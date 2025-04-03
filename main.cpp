@@ -1,41 +1,69 @@
-#if WITH_ANDROID
-#include <game-activity/native_app_glue/android_native_app_glue.h>
-extern std::unique_ptr<vkb::PlatformContext> create_platform_context(android_app *state);
-                 
-		int  platform_main(const vkb::PlatformContext &);  
-		void android_main(android_app *state)              
-		{                                                  
-			auto context = create_platform_context(state); 
-			platform_main(*context);                       
-		}                                                  
-		int platform_main(const vkb::PlatformContext &context_name)
-#elif WITH_WIN64
-#include <Windows.h>
-    extern std::unique_ptr<vkb::PlatformContext> create_platform_context(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow);
-                                                              
-    int          platform_main(const vkb::PlatformContext &);                                        
-    int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow) 
-    {                                                                                                
-        auto context = create_platform_context(hInstance, hPrevInstance, lpCmdLine, nCmdShow);       
-        return platform_main(*context);                                                              
-    }                                                                                                
-    int platform_main(const vkb::PlatformContext &context_name)
-#elif WITH_MAC
-extern std::unique_ptr<vkb::PlatformContext> create_platform_context(int argc, char **argv);
-                      
-		int platform_main(const vkb::PlatformContext &);        
-		int main(int argc, char *argv[])                        
-		{                                                       
-			auto context = create_platform_context(argc, argv); 
-			return platform_main(*context);                     
-		}                                                       
-		int platform_main(const vkb::PlatformContext &context_name)
+#include <string>
+#include <vector>
 
-#else
-	include <stdexcept>                      
-		int main(int argc, char *argv[])                        
-		{                                                       
-			throw std::runtime_error{"platform not supported"}; 
-		}                                                       
-		int unused(const vkb::PlatformContext &context_name)
+#ifdef WITH_WIN64
+    #include <windows.h>
+    #include <shellapi.h>
 #endif
+
+#include "engine/core/config/config_manager.h"
+#include "engine/core/command_line_parser.h"
+#include "engine/core/engine.h"
+
+#if WITH_WIN64
+	std::string WideToUtf8(const wchar_t* wide_str) 
+	{
+		if (!wide_str) return std::string();
+		
+		int requiredSize = WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, nullptr, 0, nullptr, nullptr);
+		if (requiredSize <= 0) return std::string();
+		
+		std::string result(requiredSize, 0);
+		WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, &result[0], requiredSize, nullptr, nullptr);
+		
+		// 移除字符串末尾的null终止符
+		if (!result.empty() && result.back() == 0)
+			result.pop_back();
+		
+		return result;
+	}
+#endif
+
+// 引擎主函数声明
+int engine_main(void* hInstance);
+
+#if WITH_WIN64
+	int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) 
+	{
+		int argc = 0;
+		LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
+		std::vector<std::string> args;
+		for (int i = 0; i < argc; i++) 
+		{
+			args.push_back(WideToUtf8(argvW[i]));
+		}
+		LocalFree(argvW);
+		CommandLineParser::get_instance().parser_args(args);
+		return engine_main(hInstance);
+	}
+#else
+	int main(int argc, char* argv[]) 
+	{
+		std::vector<std::string> args;
+		for (int i = 0; i < argc; i++) 
+		{
+			args.push_back(argv[i]);
+		}
+		CommandLineParser::get_instance().parser_args(args);
+		return engine_main(nullptr);
+	}
+#endif
+
+int engine_main(void* hInstance)
+{
+    Engine engine;
+	engine.init(hInstance);
+	engine.main_loop();
+	engine.exit();
+    return 0;
+}

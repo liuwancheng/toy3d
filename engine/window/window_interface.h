@@ -1,18 +1,9 @@
 #pragma once
 
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string>
+#include "pch.h"
 
 namespace toy3d
 {
-	struct Extent
-	{
-		uint32_t width;
-		uint32_t height;
-	};
-
 	enum class Mode
 	{
 		Headless,
@@ -29,21 +20,26 @@ namespace toy3d
 		Default
 	};
 
+	struct Extent
+	{
+		uint32_t width;
+		uint32_t height;
+	};
+
 	struct Properties
 	{
 		std::string title     = "toy3d";
 		Mode        mode      = Mode::Default;
-		bool        resizable = true;
 		Vsync       vsync     = Vsync::Default;
 		Extent      extent    = {1280, 720};
 	};
 
-    class IWindow
+    class WindowInterface
     {
     public:
-        IWindow(uint32_t width, uint32_t height);
+        WindowInterface(){};
 
-        virtual ~IWindow();
+        virtual ~WindowInterface(){};
 
         virtual bool should_close() = 0;
 
@@ -51,10 +47,14 @@ namespace toy3d
 
         virtual void close() = 0;
 
-        virtual void resize(uint32_t width, uint32_t height);
+        virtual void resize(uint32_t width, uint32_t height){};
     public:
-        Extent get_win_size(){};
+        Extent get_win_size(){return _properties.extent;};
+
+        Vsync get_vsync(){return _properties.vsync;};
+
+        Mode get_mode(){return _properties.mode;};
     protected:
-        Properties properties;
+        Properties _properties;
     };
 }// namespace toy3d

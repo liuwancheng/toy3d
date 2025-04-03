@@ -1,9 +1,12 @@
 #pragma once
-#include "window.h"
-#include <memory>
+#include "pch.h"
 
 namespace toy3d
 {
+	class PlatformInterface;
+	class WindowInterface;
+	class RHIInterface;
+
 	class Engine
 	{
 	public:
@@ -12,7 +15,7 @@ namespace toy3d
 
 		void pre_init();
 
-		void init();
+		void init(void * hInstance);
 
 		void post_init();
 
@@ -20,10 +23,12 @@ namespace toy3d
 
 		void exit();
 	private:
-		double m_game_time;
-		double m_delta_time;
-		int m_frame_count;
+		double game_time;
+		double delta_time;
+		int frame_count;
 
-		std::shared_ptr<IWindow> m_win;
+		std::unique_ptr<PlatformInterface> platform;
+		std::unique_ptr<WindowInterface> window;
+		std::unique_ptr<RHIInterface> rhi;
 	};
 }//toy3d

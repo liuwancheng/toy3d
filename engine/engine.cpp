@@ -5,26 +5,42 @@ namespace toy3d
 {
 	Engine::Engine()
 	{
-		m_win = std::make_shared<MacWindow>();
 	}
 
 	Engine::~Engine()
 	{
 	}
 
-	void Engine::exit()
-	{
-
-	}
-
 	void Engine::pre_init()
 	{
-		// todo : 一些配置文件的加载
+		// 1.配置文件的加载
+		ConfigManager::get_instance().load_config_file("engine_config.ini");
+		// 2.命令行参数override 配置文件的参数
+		CommandLineParser::get_instance().apply_config();
 	}
 
-	void Engine::init()
+	void Engine::init(void* hInstance)
 	{
-		// todo: 一些其它engine模块的初始化
+		pre_init();
+
+		// 1.创建平台
+	#if WITH_WIN64
+		platform = std::make_unique<WinPlatform>(new WinPlatform(hInstance));
+	#elif WITH_MAC
+		platform = std::make_unique<MacPlatform>(new MacPlatform(hInstance));
+	#elif WITH_ANDROID
+		platform = std::make_unique<AndroidPlatform>(new AndroidPlatform(hInstance));
+	#endif
+
+		// 2.创建窗口
+	#if WITH_WIN64
+		window = std::make_unique<WinWindow>();
+	#elif WITH_MAC
+		window = std::make_unique<MacWindow>();
+	#endif
+
+		post_init();
+		// 3.创建RHI
 	}
 
 	void Engine::post_init()
@@ -34,12 +50,17 @@ namespace toy3d
 
 	void Engine::main_loop()
 	{
-		while (m_win->should_close())
+		while (window->should_close())
 		{
-			m_win->process_events();
+			window->process_events();
 		}
-		m_win->close();
+		window->close();
 		exit();
+	}
+
+	void Engine::exit()
+	{
+		// todo: resource的释放、文件系统的关闭、游戏模块的关闭等
 	}
 	
 }
