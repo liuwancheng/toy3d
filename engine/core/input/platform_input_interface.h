@@ -1,16 +1,17 @@
 #pragma once
 #include "pch.h"
+#include "input_device.h"
 
 namespace toy3d
 {
-    class IPlatform
+    class IPlatformInput 
     {
     public:
-        IPlatform(){};
-        virtual ~IPlatform(){};
-
         virtual bool init() = 0;
         virtual void exit() = 0;
-        virtual const char* get_platform_name() const = 0;
+
+        virtual void update() = 0;
+
+        virtual bool is_pressed(KeyCode key_code) const = 0;
     };
 } // namespace toy3d

@@ -3,8 +3,8 @@
 
 namespace toy3d
 {
-	class PlatformInterface;
-	class WindowInterface;
+	class IPlatform;
+	class IWindow;
 	class RHIInterface;
 
 	class Engine
@@ -27,8 +27,8 @@ namespace toy3d
 		double delta_time;
 		int frame_count;
 
-		std::unique_ptr<PlatformInterface> platform;
-		std::unique_ptr<WindowInterface> window;
+		std::unique_ptr<IPlatform> platform;
+		std::unique_ptr<IWindow> window;
 		std::unique_ptr<RHIInterface> rhi;
 	};
 }//toy3d

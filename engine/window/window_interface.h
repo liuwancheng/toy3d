@@ -34,12 +34,14 @@ namespace toy3d
 		Extent      extent    = {1280, 720};
 	};
 
-    class WindowInterface
+	class IPlatformInput;
+
+    class IWindow
     {
     public:
-        WindowInterface(){};
+        IWindow(){};
 
-        virtual ~WindowInterface(){};
+        virtual ~IWindow(){};
 
         virtual bool should_close() = 0;
 
@@ -49,12 +51,13 @@ namespace toy3d
 
         virtual void resize(uint32_t width, uint32_t height){};
     public:
-        Extent get_win_size(){return _properties.extent;};
+        Extent get_win_size(){return properties_.extent;};
 
-        Vsync get_vsync(){return _properties.vsync;};
+        Vsync get_vsync(){return properties_.vsync;};
 
-        Mode get_mode(){return _properties.mode;};
+        Mode get_mode(){return properties_.mode;};
     protected:
-        Properties _properties;
+        Properties properties_;
+		std::unique_ptr<IPlatformInput> platform_input_;
     };
 }// namespace toy3d

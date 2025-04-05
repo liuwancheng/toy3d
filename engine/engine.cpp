@@ -34,7 +34,7 @@ namespace toy3d
 
 		// 2.创建窗口
 	#if WITH_WIN64
-		window = std::make_unique<WinWindow>();
+		window = std::make_unique<Win32Window>();
 	#elif WITH_MAC
 		window = std::make_unique<MacWindow>();
 	#endif

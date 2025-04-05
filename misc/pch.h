@@ -29,9 +29,10 @@
 #include <mutex>
 #include <chrono>
 #include <atomic>
+#include <functional>
 
 #ifndef WITH_WIN64
-#define WITH_WIN64 0
+#define WITH_WIN64 1
 #endif
 
 #ifndef WITH_MAC
