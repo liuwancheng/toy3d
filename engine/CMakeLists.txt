@@ -1,13 +1,16 @@
 
+cmake_minimum_required(VERSION 3.15)
+project(Toy3dEngine)
+
 set(ENGINE_ROOT_DIR "${TOY3D_ROOT_DIR}/engine")
-set(THIRD_PARTY_DIR "${ENGINE_ROOT_DIR}/third_party")
-set(ENGINE_ASSET_DIR "/asset")
+set(THIRD_PARTY_DIR "${ENGINE_ROOT_DIR}/thirdparty")
+set(ENGINE_RUNTIME_DIR "${ENGINE_ROOT_DIR}/runtime")
+#set(ENGINE_ASSET_DIR "/asset")
 
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    add_compile_options("/MP")
-    set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Toy3dEditor)
-endif()
+# 设置C++标准
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # vulkan sdk
 set(vulkan_include ${THIRD_PARTY_DIR}/VulkanSDK/include)
@@ -36,6 +39,6 @@ endif()
 #set(SHADER_COMPILE_TARGET Toy3dShaderCompile)
 #add_subdirectory(shader)
 
-add_subdirectory(third_party)
-
-add_subdirectory(source/core)
+add_subdirectory(thirdparty)
+add_subdirectory(runtime)
+add_subdirectory(editor)
