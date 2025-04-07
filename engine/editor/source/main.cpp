@@ -1,5 +1,7 @@
 #include <string>
 #include <vector>
+#include <codecvt>
+#include <locale>
 
 #ifdef WITH_WIN64
     #include <windows.h>
@@ -11,6 +13,11 @@
 #include "core/config/command_line_parser.h"
 #include "engine.h"
 
+std::string wchar2string(const wchar_t* wstr) 
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+    return converter.to_bytes(wstr);
+}
 
 #if WITH_WIN64
 	std::string WideToUtf8(const wchar_t* wide_str) 
@@ -31,6 +38,8 @@
 	}
 #endif
 
+
+
 // 引擎主函数声明
 int engine_main(void* hInstance);
 
@@ -38,13 +47,13 @@ int engine_main(void* hInstance);
 	int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) 
 	{
 		int argc = 0;
-		LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
+		LPWSTR* argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
 		std::vector<std::string> args;
 		for (int i = 0; i < argc; i++) 
 		{
-			args.push_back(WideToUtf8(argvW[i]));
+			args.push_back(wchar2string(argvw[i]));
 		}
-		LocalFree(argvW);
+		LocalFree(argvw);
 		toy3d::CommandLineParser::get_instance().parser_args(args);
 		return engine_main(static_cast<void*>(hInstance));
 	}
