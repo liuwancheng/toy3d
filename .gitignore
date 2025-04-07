@@ -1,5 +1,6 @@
 assets/scenes
 build/*
+bin/*
 .vs
 .vscode
 imgui.ini
