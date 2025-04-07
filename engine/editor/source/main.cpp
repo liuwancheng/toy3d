@@ -46,6 +46,22 @@ int engine_main(void* hInstance);
 #if WITH_WIN64
 	int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) 
 	{
+		// attempt to attach to the parent process console if it exists
+		if (!AttachConsole(ATTACH_PARENT_PROCESS))
+		{
+			// No parent console, allocate a new one for this process
+			if (!AllocConsole())
+			{
+				throw std::runtime_error{"AllocConsole error"};
+			}
+		}
+
+		FILE *fp;
+		freopen_s(&fp, "conin$", "r", stdin);
+		freopen_s(&fp, "conout$", "w", stdout);
+		freopen_s(&fp, "conout$", "w", stderr);
+
+		// process command line args
 		int argc = 0;
 		LPWSTR* argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
 		std::vector<std::string> args;
@@ -55,17 +71,22 @@ int engine_main(void* hInstance);
 		}
 		LocalFree(argvw);
 		toy3d::CommandLineParser::get_instance().parser_args(args);
+
+		// start engine
 		return engine_main(static_cast<void*>(hInstance));
 	}
 #else
 	int main(int argc, char* argv[]) 
 	{
+		// process command line args
 		std::vector<std::string> args;
 		for (int i = 0; i < argc; i++) 
 		{
 			args.push_back(argv[i]);
 		}
 		toy3d::CommandLineParser::get_instance().parser_args(args);
+
+		// start engine
 		return engine_main(nullptr);
 	}
 #endif
