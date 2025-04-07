@@ -60,6 +60,8 @@ namespace toy3d
         Vsync get_vsync(){return properties_.vsync;};
 
         Mode get_mode(){return properties_.mode;};
+
+		IPlatformInput* get_platform_input() const { return platform_input_.get();}
     protected:
         Properties properties_;
 		std::unique_ptr<IPlatformInput> platform_input_;

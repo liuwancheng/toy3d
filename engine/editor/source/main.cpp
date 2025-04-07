@@ -4,9 +4,7 @@
 #include <locale>
 
 #ifdef WITH_WIN64
-    #include <windows.h>
-    #include <shellapi.h>
-	#include <stringapiset.h>
+#include <windows.h>
 #endif
 
 #include "core/config/config_manager.h"
@@ -18,27 +16,6 @@ std::string wchar2string(const wchar_t* wstr)
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     return converter.to_bytes(wstr);
 }
-
-#if WITH_WIN64
-	std::string WideToUtf8(const wchar_t* wide_str) 
-	{
-		if (!wide_str) return std::string();
-		
-		int requiredSize = WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, nullptr, 0, nullptr, nullptr);
-		if (requiredSize <= 0) return std::string();
-		
-		std::string result(requiredSize, 0);
-		WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, &result[0], requiredSize, nullptr, nullptr);
-		
-		// 移除字符串末尾的null终止符
-		if (!result.empty() && result.back() == 0)
-			result.pop_back();
-		
-		return result;
-	}
-#endif
-
-
 
 // 引擎主函数声明
 int engine_main(void* hInstance);

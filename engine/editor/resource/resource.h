@@ -1,0 +1,1 @@
+#define IDI_TOY3D_ICON 101

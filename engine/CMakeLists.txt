@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.19)
 project(Toy3dEngine)
 
 set(ENGINE_ROOT_DIR "${TOY3D_ROOT_DIR}/engine")

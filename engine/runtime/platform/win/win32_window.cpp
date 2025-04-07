@@ -3,18 +3,20 @@
 #include "core/input/input_system.h"
 #include "win32_input.h"
 
+#define IDI_TOY3D_ICON 101
+
 namespace toy3d
 {
     static Win32Window* s_win_instance = nullptr;
 
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
-        if (s_win_instance)
+         if (s_win_instance)
         {
             switch (uMsg)
             {
             case WM_CLOSE:
-                s_win_instance->should_close();
+                s_win_instance->close();
                 return 0;
 
             case WM_DESTROY:
@@ -27,6 +29,12 @@ namespace toy3d
                 //LOG_DEBUG("Window resized: {}x{}", s_win_instance->m_width, s_win_instance->m_height);
                 return 0;
             }
+        }
+
+        if (s_win_instance)
+        {
+            Win32PlatformInput* win32_input = static_cast<Win32PlatformInput*>(s_win_instance->get_platform_input());
+            win32_input->process_win32_msg(hwnd, uMsg, wParam, lParam);
         }
 
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -97,6 +105,20 @@ namespace toy3d
         properties_.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
 
     
+        HICON hIcon = static_cast<HICON>(::LoadImage(hInstance_,
+            "D:\\GitProject\\toy3d\\engine\\editor\\resource\\Toy3dEditor.ico",
+            IMAGE_ICON,
+            64, 64,
+            LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE));
+
+
+        HICON hIconSm = static_cast<HICON>(::LoadImage(hInstance_,
+            MAKEINTRESOURCE(IDI_TOY3D_ICON),
+            IMAGE_ICON,
+            16, 16,
+            LR_DEFAULTCOLOR));
+        //HICON Sm = LoadIcon(hInstance_, MAKEINTRESOURCE(IDI_TOY3D_ICON));
+
         // 创建窗口类
         WNDCLASSEX wc = {};
         wc.cbSize = sizeof(WNDCLASSEX);
@@ -105,12 +127,12 @@ namespace toy3d
         wc.cbClsExtra = 0;
         wc.cbWndExtra = 0;
         wc.hInstance = hInstance_;
-        wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+        wc.hIcon = hIcon;
+        wc.hIconSm = hIcon;
         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
         wc.lpszMenuName = nullptr;
-        wc.lpszClassName = "Toy3dWindowClass";
-        wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+        wc.lpszClassName = "Win32Window";
     
         if (!RegisterClassEx(&wc))
         {
@@ -125,7 +147,7 @@ namespace toy3d
         // 创建窗口
         hWnd_ = CreateWindowEx(
             0,                          // 扩展样式
-            "Toy3dWindowClass",        // 窗口类名
+            "Win32Window",        // 窗口类名
             properties_.title.c_str(),  // 窗口标题
             WS_OVERLAPPEDWINDOW,        // 窗口样式
             CW_USEDEFAULT,              // X 位置
@@ -134,8 +156,8 @@ namespace toy3d
             windowRect.bottom - windowRect.top,  // 高度
             nullptr,                    // 父窗口
             nullptr,                    // 菜单
-            hInstance_,                // 实例句柄
-            nullptr                     // 附加参数
+            hInstance_,                 // 实例句柄
+            this                        // 附加参数
         );
 
         if (!hWnd_)
