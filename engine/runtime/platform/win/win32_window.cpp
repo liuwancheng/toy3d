@@ -106,18 +106,15 @@ namespace toy3d
 
     
         HICON hIcon = static_cast<HICON>(::LoadImage(hInstance_,
-            "D:\\GitProject\\toy3d\\engine\\editor\\resource\\Toy3dEditor.ico",
+            MAKEINTRESOURCE(IDI_TOY3D_ICON),
             IMAGE_ICON,
-            64, 64,
-            LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE));
-
-
+            128, 128,
+            LR_DEFAULTCOLOR));
         HICON hIconSm = static_cast<HICON>(::LoadImage(hInstance_,
             MAKEINTRESOURCE(IDI_TOY3D_ICON),
             IMAGE_ICON,
-            16, 16,
+            32, 32,
             LR_DEFAULTCOLOR));
-        //HICON Sm = LoadIcon(hInstance_, MAKEINTRESOURCE(IDI_TOY3D_ICON));
 
         // 创建窗口类
         WNDCLASSEX wc = {};
@@ -128,7 +125,7 @@ namespace toy3d
         wc.cbWndExtra = 0;
         wc.hInstance = hInstance_;
         wc.hIcon = hIcon;
-        wc.hIconSm = hIcon;
+        wc.hIconSm = hIconSm;
         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
         wc.lpszMenuName = nullptr;

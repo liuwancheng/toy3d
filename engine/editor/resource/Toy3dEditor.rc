@@ -1,6 +1,4 @@
-
-#define APSTUDIO_READONLY_SYMBOLS
 #include <windows.h>
-#undef APSTUDIO_READONLY_SYMBOLS
+#include "resource.h"
 
 IDI_TOY3D_ICON               ICON                    "Toy3dEditor.ico"
