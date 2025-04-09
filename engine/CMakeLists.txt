@@ -5,7 +5,7 @@ project(Toy3dEngine)
 set(ENGINE_ROOT_DIR "${TOY3D_ROOT_DIR}/engine")
 set(THIRD_PARTY_DIR "${ENGINE_ROOT_DIR}/thirdparty")
 set(ENGINE_RUNTIME_DIR "${ENGINE_ROOT_DIR}/runtime")
-#set(ENGINE_ASSET_DIR "/asset")
+set(ASSET_NAME "asset")
 
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 17)
@@ -42,3 +42,11 @@ endif()
 add_subdirectory(thirdparty)
 add_subdirectory(runtime)
 add_subdirectory(editor)
+
+# 生成配置头文件
+set(ENGINE_ASSET_ROOT "${BINARY_ROOT_DIR}asset/") 
+
+configure_file(
+  ${ENGINE_ROOT_DIR}/template/defines.h.in
+  ${ENGINE_ROOT_DIR}/generated/defines.h
+)

@@ -1,4 +1,0 @@
-#include <windows.h>
-#include "resource.h"
-
-IDI_TOY3D_ICON               ICON                    "Toy3dEditor.ico"

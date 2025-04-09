@@ -2,8 +2,7 @@
 #include "core/config/config_manager.h"
 #include "core/input/input_system.h"
 #include "win32_input.h"
-
-#define IDI_TOY3D_ICON 101
+#include "resource.h"
 
 namespace toy3d
 {

@@ -30,19 +30,3 @@
 #include <chrono>
 #include <atomic>
 #include <functional>
-
-#ifndef WITH_WIN64
-#define WITH_WIN64 0
-#endif
-
-#ifndef WITH_MAC
-#define WITH_MAC 0
-#endif
-
-#ifndef WITH_ANDROID
-#define WITH_ANDROID 0
-#endif
-
-#ifndef WITH_IOS
-#define WITH_IOS 0
-#endif
