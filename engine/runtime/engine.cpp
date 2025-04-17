@@ -13,6 +13,8 @@
 #include "platform/android/android_window.h"
 #endif
 
+#include "core/file_system/file_system.h"
+
 namespace toy3d
 {
 	Engine::Engine()
@@ -29,6 +31,8 @@ namespace toy3d
 		ConfigManager::get_instance().load_config_file("engine_config.ini");
 		// 2.命令行参数override 配置文件的参数
 		CommandLineParser::get_instance().apply_config();
+		// 3.初始化文件系统
+		FileSystem::get_instance().initialize();
 	}
 
 	void Engine::init(void* hInstance)

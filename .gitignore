@@ -10,3 +10,5 @@ tests/system_test/tmp
 output/*
 *.aps
 engine/generated/*
+engine/runtime/generated/*
+editor/generated/*

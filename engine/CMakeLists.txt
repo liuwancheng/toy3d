@@ -39,14 +39,15 @@ endif()
 #set(SHADER_COMPILE_TARGET Toy3dShaderCompile)
 #add_subdirectory(shader)
 
-add_subdirectory(thirdparty)
-add_subdirectory(runtime)
-add_subdirectory(editor)
-
 # 生成配置头文件
-set(ENGINE_ASSET_ROOT "${BINARY_ROOT_DIR}asset/") 
+set(ENGINE_ASSET_ROOT "${BINARY_ROOT_DIR}") 
 
 configure_file(
   ${ENGINE_ROOT_DIR}/template/defines.h.in
-  ${ENGINE_ROOT_DIR}/generated/defines.h
+  ${ENGINE_RUNTIME_DIR}/generated/defines.h
 )
+
+# 构建子文件夹cmake工程
+add_subdirectory(thirdparty)
+add_subdirectory(runtime)
+add_subdirectory(editor)

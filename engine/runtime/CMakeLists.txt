@@ -45,11 +45,12 @@ target_include_directories(
     ${TARGET_NAME} 
     PUBLIC $<BUILD_INTERFACE:${ENGINE_ROOT_DIR}/runtime/drivers>)
 
-  target_include_directories(
-      ${TARGET_NAME} 
-      PUBLIC $<BUILD_INTERFACE:${ENGINE_ROOT_DIR}/generated>)
+# add generated files
+target_include_directories(
+    ${TARGET_NAME} 
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/generated>)
   
 # win32 resouce.h
 if(WIN32)
-    target_include_directories(${TARGET_NAME} PRIVATE ${ASSET_NAME}/win32)
+    target_include_directories(${TARGET_NAME} PRIVATE ${ENGINE_ROOT_DIR}/${ASSET_NAME}/win32)
 endif()
