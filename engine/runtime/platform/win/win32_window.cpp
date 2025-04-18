@@ -52,6 +52,14 @@ namespace toy3d
         // 创建窗口
         create_window();
         s_win_instance = this;
+
+        // 初始化InputSystem
+        platform_input_ = std::make_unique<Win32PlatformInput>();
+        if (!platform_input_->init()) 
+        {
+            //LOG_ERROR("Failed to initialize platform input system");
+            return ;
+        }
     }
 
     Win32Window::~Win32Window()
@@ -88,14 +96,6 @@ namespace toy3d
 
     void Win32Window::create_window()
     {
-        // 初始化InputSystem
-        platform_input_ = std::make_unique<Win32PlatformInput>();
-        if (!platform_input_->init()) 
-        {
-            //LOG_ERROR("Failed to initialize platform input system");
-            return ;
-        }
-
         // 获取配置文件中的窗口标题和大小
         properties_.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
         properties_.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);

@@ -1,3 +1,4 @@
+#pragma once
 #include "platform/platform_interface.h"
 
 namespace toy3d
@@ -8,8 +9,8 @@ namespace toy3d
         AndroidPlatform() :IPlatform() {};
         virtual ~AndroidPlatform() {};
 
-        virtual bool init() { return true; };
-        virtual void exit() {};
+        virtual bool init();
+        virtual void exit();
         virtual const char* get_platform_name() const { return "AndroidPlatform"; };
     };
 } // namespace toy3d

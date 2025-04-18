@@ -1,3 +1,4 @@
+#pragma once
 #include "platform/platform_interface.h"
 
 namespace toy3d

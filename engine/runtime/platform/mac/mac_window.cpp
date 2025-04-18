@@ -13,7 +13,16 @@ namespace toy3d
 
     MacWindow::MacWindow(): IWindow()
     {
+        // 初始化窗口
         create_glfw_window();
+
+        // 初始化InputSystem
+        platform_input_ = std::make_unique<MacPlatformInput>(glfw_window_);
+        if (!platform_input_->init()) 
+        {
+            //LOG_ERROR("Failed to initialize platform input system");
+            return ;
+        }
     }
 
     MacWindow::~MacWindow()
@@ -23,14 +32,6 @@ namespace toy3d
 
     void MacWindow::create_glfw_window()
     {
-        // 初始化InputSystem
-        platform_input_ = std::make_unique<MacPlatformInput>(glfw_window_);
-        if (!platform_input_->init()) 
-        {
-            //LOG_ERROR("Failed to initialize platform input system");
-            return ;
-        }
-
         // 获取配置文件中的窗口标题和大小
         properties_.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
         properties_.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
