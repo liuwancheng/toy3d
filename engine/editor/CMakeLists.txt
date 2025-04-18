@@ -15,6 +15,24 @@ if(WIN32)
     set_source_files_properties(${EDITOR_ICON_FILE} PROPERTIES OBJECT_DEPENDS ${RESOURCE_H})
 
     source_group("resource" FILES ${EDITOR_ICON_FILE} ${RESOURCE_H})
+elseif(APPLE)
+    # 使用 macOS 的 .icns 图标文件
+    set(EDITOR_ICON_FILE ${ASSET_ABS_DIR}/mac/Toy3d.icns)
+    # 创建 macOS 应用程序包
+    add_executable(${TARGET_NAME} MACOSX_BUNDLE ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+    
+    # 设置应用程序图标
+    set_target_properties(${TARGET_NAME} PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE Toy3d.icns
+    )
+    
+    # 将图标文件添加到应用程序资源中
+    set_source_files_properties(${EDITOR_ICON_FILE} PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources"
+    )
+    
+    # 添加资源文件到目标
+    target_sources(${TARGET_NAME} PRIVATE ${EDITOR_ICON_FILE})
 else()
     add_executable(${TARGET_NAME} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
 endif()
