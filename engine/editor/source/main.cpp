@@ -3,7 +3,7 @@
 #include <codecvt>
 #include <locale>
 
-#ifdef WITH_WIN64
+#if WITH_WIN64
 #include <windows.h>
 #endif
 

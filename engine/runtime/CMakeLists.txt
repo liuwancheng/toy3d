@@ -6,11 +6,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE HEADER_FILES "*.h")
 file(GLOB_RECURSE SOURCE_FILES "*.cpp")
 
-
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
-
-
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
+
+# 分类平台特定的文件
+file(GLOB_RECURSE WINDOWS_FILES "platform/windows/*.cpp" "platform/windows/*.h")
+file(GLOB_RECURSE MACOS_FILES "platform/macos/*.cpp" "platform/macos/*.h")
+file(GLOB_RECURSE LINUX_FILES "platform/linux/*.cpp" "platform/linux/*.h")
+# 根据平台设置文件属性，使非当前平台的代码不参与编译
+if(WIN32)
+    set_source_files_properties(${MACOS_FILES} ${LINUX_FILES} PROPERTIES HEADER_FILE_ONLY TRUE)
+elseif(APPLE)
+    set_source_files_properties(${WINDOWS_FILES} ${LINUX_FILES} PROPERTIES HEADER_FILE_ONLY TRUE)
+elseif(UNIX AND NOT APPLE)
+    set_source_files_properties(${WINDOWS_FILES} ${MACOS_FILES} PROPERTIES HEADER_FILE_ONLY TRUE)
+endif()
 
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17)
 set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Engine")

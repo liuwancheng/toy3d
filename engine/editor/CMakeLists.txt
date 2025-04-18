@@ -16,14 +16,15 @@ if(WIN32)
 
     source_group("resource" FILES ${EDITOR_ICON_FILE} ${RESOURCE_H})
 elseif(APPLE)
-    # 使用 macOS 的 .icns 图标文件
+    # 使用 macOS 的 .icns 图标文件和 Info.plist
     set(EDITOR_ICON_FILE ${ASSET_ABS_DIR}/mac/Toy3d.icns)
-    # 创建 macOS 应用程序包
-    add_executable(${TARGET_NAME} MACOSX_BUNDLE ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+    set(EDITOR_PLIST_TEMPLATE ${ASSET_ABS_DIR}/mac/Info.plist)
     
-    # 设置应用程序图标
+    # 创建 macOS 应用程序包，并指定 Info.plist 模板
+    add_executable(${TARGET_NAME} MACOSX_BUNDLE ${EDITOR_HEADERS} ${EDITOR_SOURCES})
     set_target_properties(${TARGET_NAME} PROPERTIES
-        MACOSX_BUNDLE_ICON_FILE Toy3d.icns
+        MACOSX_BUNDLE_INFO_PLIST ${EDITOR_PLIST_TEMPLATE}
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""  # 避免需要代码签名
     )
     
     # 将图标文件添加到应用程序资源中
