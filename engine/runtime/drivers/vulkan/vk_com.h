@@ -1,16 +1,5 @@
 #pragma once
-
-#include <map>
-#include <sstream>
-#include <string>
-#include <unordered_map>
-#include <mutex>
-#include <bitset>
-
-#include <vector>
-#include <stdlib.h>
-#include <stdint.h>
-#include <iostream>
+#include "core/misc/pch.h"
 
 #include <vulkan/vulkan.h>
 

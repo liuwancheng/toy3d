@@ -24,6 +24,8 @@ namespace toy3d
 		void main_loop();
 
 		void exit();
+
+		IWindow* get_window() { return window.get(); };
 	private:
 		double game_time;
 		double delta_time;

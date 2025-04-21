@@ -8,14 +8,15 @@ namespace toy3d
     {
     public:
         Win32Window(HINSTANCE hInstance = nullptr);
-        ~Win32Window() override;
+        ~Win32Window() final;
         
-        bool should_close() override;
-        void process_events() override;
-        void close() override;
-        void resize(uint32_t width, uint32_t height) override;
+        bool should_close() final;
+        void process_events() final;
+        void close() final;
+        void resize(uint32_t width, uint32_t height) final;
         
-        void* get_native_hwnd() const{ return hWnd_;}
+        HWND get_native_hwnd() const{ return hWnd_;}
+        HINSTANCE get_native_hinstance() const { return hInstance_; }
     private:
         void create_window();
         void destroy_window();

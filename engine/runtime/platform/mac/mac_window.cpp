@@ -77,17 +77,4 @@ namespace toy3d
     {
 		glfwSetWindowShouldClose(glfw_window_, true);
     }
-
-    //void MacWindow::get_reequired_extensions(const char** ex_name_list, uint32_t* count)
-    //{
-    //    ex_name_list = glfwGetRequiredInstanceExtensions(count);
-    //}
-
-    // void MacWindow::create_window_surface(VkInstance instance, VkSurfaceKHR& surface)
-    // {
-    //     if (glfwCreateWindowSurface(instance, glfw_window_, nullptr, &surface) != VK_SUCCESS)
-    //     {
-    //         std::cout << "failed to create vk surface" << std::endl;
-    //     }
-    // }
 }

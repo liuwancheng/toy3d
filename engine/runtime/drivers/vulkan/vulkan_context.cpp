@@ -1,6 +1,5 @@
 #include "vulkan_context.h"
-#include <iostream>
-#include <array>
+#include "core/config/config_manager.h"
 
 namespace toy3d
 {
@@ -167,14 +166,16 @@ namespace toy3d
             std::cout << '\t' << val.extensionName << '\n';
         }
 
+        auto title = ConfigManager::get_instance().get_str("window_title", "toy3d");
+
         VkApplicationInfo info{};
         info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         info.pNext = nullptr;
         info.apiVersion = VK_MAKE_API_VERSION(0, VK_REQUIRED_VERSION_MAJOR, VK_REQUIRED_VERSION_MINOR, 0);
         info.applicationVersion = VK_MAKE_VERSION(1,0,0);
         info.engineVersion = VK_MAKE_VERSION(1,0,0);
-        info.pApplicationName = "vulkan_render";
-        info.pEngineName = "toy3d";  
+        info.pApplicationName = title.c_str();
+        info.pEngineName = title.c_str();
 
         VkInstanceCreateInfo ins_info{};
         ins_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -182,8 +183,7 @@ namespace toy3d
         ins_info.pApplicationInfo = &info;
 
         uint32_t ex_count;
-        const char** ex_name_list;
-        SurfaceUtils::get_reequired_extensions(ex_name_list, &ex_count);
+        const char** ex_name_list = SurfaceUtils::get_required_extensions(&ex_count);
         ins_info.enabledExtensionCount = ex_count;
         ins_info.ppEnabledExtensionNames = ex_name_list;
         ins_info.enabledLayerCount = static_cast<uint32_t>(g_enable_layers.size());
