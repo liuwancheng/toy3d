@@ -1,5 +1,5 @@
 #include "file_system.h"
-#include "generated/defines.h"
+#include "core/misc/logger.h"
 
 namespace toy3d {
 
@@ -37,13 +37,12 @@ void FileSystem::initialize()
     //     register_path("game/asset", m_root_path + "/game/asset");
     // }
     
-    std::cout << "FileSystem initialized with root path: " << m_root_path << std::endl;
-    
+    TOY_LOG_INFO("FileSystem initialized with root path: {}", m_root_path);
     // 输出所有注册路径用于调试
-    std::cout << "Registered paths:" << std::endl;
+    TOY_LOG_INFO("Registered paths:");
     for (const auto& [vpath, ppath] : m_path_mappings) 
     {
-        std::cout << "  " << vpath << " -> " << ppath << std::endl;
+        TOY_LOG_DEBUG("  {} -> {}", vpath, ppath);
     }
 }
 

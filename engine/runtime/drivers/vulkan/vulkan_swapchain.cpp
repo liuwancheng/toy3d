@@ -43,7 +43,7 @@ namespace toy3d
         }
         if(surface_format.format == VK_FORMAT_UNDEFINED) 
         {
-            std::cout << " surface format check failed! formats:" << count << std::endl;
+            TOY_LOG_ERROR(" surface format check failed! formats:{}", count);
             abort();
         }
         

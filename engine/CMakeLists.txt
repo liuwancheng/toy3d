@@ -41,6 +41,7 @@ endif()
 
 # 生成配置头文件
 set(ENGINE_ASSET_ROOT "${BINARY_ROOT_DIR}") 
+set(ENGINE_SAVED_ROOT "${BINARY_ROOT_DIR}saved") 
 
 configure_file(
   ${ENGINE_ROOT_DIR}/template/defines.h.in

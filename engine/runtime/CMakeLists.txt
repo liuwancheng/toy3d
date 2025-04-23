@@ -55,6 +55,8 @@ target_link_libraries(${TARGET_NAME} PUBLIC imgui)
 target_link_libraries(${TARGET_NAME} PUBLIC ${vulkan_lib})
 target_link_libraries(${TARGET_NAME} PUBLIC vma)
 target_link_libraries(${TARGET_NAME} PUBLIC glm::glm)
+target_link_libraries(${TARGET_NAME} PUBLIC fmt)
+target_link_libraries(${TARGET_NAME} PUBLIC spdlog)
 
 
 target_include_directories(

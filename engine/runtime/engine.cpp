@@ -14,6 +14,7 @@
 #endif
 
 #include "core/file_system/file_system.h"
+#include "core/misc/logger.h"
 
 namespace toy3d
 {
@@ -27,6 +28,8 @@ namespace toy3d
 
 	void Engine::pre_init()
 	{
+		Logger::get_instance().init("toy3d.log");
+
 		// 1.配置文件的加载
 		ConfigManager::get_instance().load_config_file("engine_config.ini");
 		// 2.命令行参数override 配置文件的参数
@@ -79,6 +82,7 @@ namespace toy3d
 	void Engine::exit()
 	{
 		// todo: resource的释放、文件系统的关闭、游戏模块的关闭等
+		Logger::get_instance().exit();
 	}
 	
 }

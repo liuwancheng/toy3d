@@ -2,6 +2,7 @@
 
 #include "vk_com.h"
 #include "vulkan_framebuffer.h"
+#include "core/misc/logger.h"
 
 // 把需要hash的自定义结构放入std命名空间中，这样就能统一使用std::hash
 namespace std
@@ -62,7 +63,7 @@ T& get_or_create(VulkanContext& context, std::unordered_map<std::size_t, T> & re
     auto res_pair = resources.emplace(hash_key, std::move(resource));
     if(!res_pair.second)
     {
-        cout << "insert failed" << endl;
+        TOY_LOG_ERROR("insert failed");
         return nullptr;
     }
 

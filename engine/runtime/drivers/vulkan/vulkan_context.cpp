@@ -1,5 +1,6 @@
 #include "vulkan_context.h"
 #include "core/config/config_manager.h"
+#include "core/misc/logger.h"
 
 namespace toy3d
 {
@@ -47,7 +48,7 @@ namespace toy3d
         bool validation = check_validation_layer_support();
         if(!validation)
         {
-            std::cout << "vulkan init failed... please check validation layers" << std::endl;
+            TOY_LOG_ERROR("vulkan init failed... please check validation layers");
             return ;
         }
 
@@ -163,7 +164,7 @@ namespace toy3d
 
         for(const VkExtensionProperties & val : m_instance_ex_props)
         {
-            std::cout << '\t' << val.extensionName << '\n';
+            TOY_LOG_INFO("\t{}", val.extensionName);
         }
 
         auto title = ConfigManager::get_instance().get_str("window_title", "toy3d");
@@ -204,7 +205,7 @@ namespace toy3d
         vkEnumeratePhysicalDevices(instance, &count, nullptr);
         if(count == 0)
         {
-            std::cout << " no physical device, please check your gpu card " << std::endl;
+            TOY_LOG_ERROR(" no physical device, please check your gpu card ");
             return false;
         }
         m_physical_devices.resize(count);
@@ -293,14 +294,13 @@ namespace toy3d
             const uint32_t vendor_id = properties.vendorID;
             const uint32_t device_id = properties.deviceID;
             const std::string gpu_name = gpu_info.count(vendor_id) ? gpu_info[vendor_id] : std::to_string(vendor_id);
-            std::cout << "Selected physical device '"
-                    << properties.deviceName
-                    << "' from " << count << " physical devices. "
-                    << "(vendor " << gpu_name << ", "
-                    << "device " << device_id << ", "
-                    << "driver " << driver_version << ", "
-                    << "api " << major << "." << minor << ")"
-                    << std::endl;
+            TOY_LOG_INFO("Selected physical device '{}' from {} physical devices. (vendor {}, device {}, driver {}, api {}.{})"
+                ,properties.deviceName
+                ,count
+                ,gpu_name
+                ,device_id
+                ,driver_version
+                ,major, minor);
             return true;
         }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "core/misc/pch.h"
+#include "core/misc/logger.h"
 
 #include <vulkan/vulkan.h>
 
@@ -58,7 +59,7 @@ namespace toy3d
             VkResult err = x;                                           \
             if (err)                                                    \
             {                                                           \
-                std::cout << "error: " << to_string(err) << std::endl;  \
+                TOY_LOG_ERROR("error: {}", to_string(err));               \
                 abort();                                                \
             }                                                           \
         } while (0)
