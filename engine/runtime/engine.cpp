@@ -28,6 +28,7 @@ namespace toy3d
 
 	void Engine::pre_init()
 	{
+		// 初始化日志系统
 		Logger::get_instance().init("toy3d.log");
 
 		// 1.配置文件的加载

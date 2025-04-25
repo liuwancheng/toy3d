@@ -29,22 +29,22 @@ namespace toy3d {
         void set_level(Level level);
  
         template<typename... Args>
-        void trace(const std::string& fmt, const Args&... args);
-    
+        void trace(const char* file, int line, const std::string& fmt, const Args&... args);
+        
         template<typename... Args>
-        void debug(const std::string& fmt, const Args&... args);
-    
+        void debug(const char* file, int line, const std::string& fmt, const Args&... args);
+        
         template<typename... Args>
-        void info(const std::string& fmt, const Args&... args);
-    
+        void info(const char* file, int line, const std::string& fmt, const Args&... args);
+        
         template<typename... Args>
-        void warn(const std::string& fmt, const Args&... args);
-    
+        void warn(const char* file, int line, const std::string& fmt, const Args&... args);
+        
         template<typename... Args>
-        void error(const std::string& fmt, const Args&... args);
-    
+        void error(const char* file, int line, const std::string& fmt, const Args&... args);
+        
         template<typename... Args>
-        void critical(const std::string& fmt, const Args&... args);
+        void critical(const char* file, int line, const std::string& fmt, const Args&... args);
     
         void exit();
     private:
@@ -58,53 +58,53 @@ namespace toy3d {
 
     // 模板函数实现
     template<typename... Args>
-    void Logger::trace(const std::string& fmt, const Args&... args) 
+    void Logger::trace(const char* file, int line, const std::string& fmt, const Args&... args)
     {
         if (spd_logger_)
-            spd_logger_->trace(fmt, args...);
+            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::trace, fmt, args...);
     }
 
     template<typename... Args>
-    void Logger::debug(const std::string& fmt, const Args&... args) 
+    void Logger::debug(const char* file, int line, const std::string& fmt, const Args&... args)
     {
         if (spd_logger_)
-            spd_logger_->debug(fmt, args...);
+            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::debug, fmt, args...);
     }
 
     template<typename... Args>
-    void Logger::info(const std::string& fmt, const Args&... args) 
+    void Logger::info(const char* file, int line, const std::string& fmt, const Args&... args)
     {
         if (spd_logger_)
-            spd_logger_->info(fmt, args...);
+            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::info, fmt, args...);
     }
 
     template<typename... Args>
-    void Logger::warn(const std::string& fmt, const Args&... args) 
+    void Logger::warn(const char* file, int line, const std::string& fmt, const Args&... args)
     {
         if (spd_logger_)
-            spd_logger_->warn(fmt, args...);
+            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::warn, fmt, args...);
     }
 
     template<typename... Args>
-    void Logger::error(const std::string& fmt, const Args&... args) 
+    void Logger::error(const char* file, int line, const std::string& fmt, const Args&... args)
     {
         if (spd_logger_)
-            spd_logger_->error(fmt, args...);
+            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::err, fmt, args...);
     }
 
     template<typename... Args>
-    void Logger::critical(const std::string& fmt, const Args&... args) 
+    void Logger::critical(const char* file, int line, const std::string& fmt, const Args&... args)
     {
         if (spd_logger_)
-            spd_logger_->critical(fmt, args...);
+            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::critical, fmt, args...);
     }
 
 } // namespace toy3d
 
-// 便捷宏定义 - 同时支持普通消息和格式化消息
-#define TOY_LOG_TRACE(...) ::toy3d::Logger::get_instance().trace(__VA_ARGS__)
-#define TOY_LOG_DEBUG(...) ::toy3d::Logger::get_instance().debug(__VA_ARGS__)
-#define TOY_LOG_INFO(...) ::toy3d::Logger::get_instance().info(__VA_ARGS__)
-#define TOY_LOG__WARN(...) ::toy3d::Logger::get_instance().warn(__VA_ARGS__)
-#define TOY_LOG_ERROR(...) ::toy3d::Logger::get_instance().error(__VA_ARGS__)
-#define TOY_LOG_CRITICAL(...) ::toy3d::Logger::get_instance().critical(__VA_ARGS__)
+
+#define TOY_LOG_TRACE(...) ::toy3d::Logger::get_instance().trace(__FILE__, __LINE__, __VA_ARGS__)
+#define TOY_LOG_DEBUG(...) ::toy3d::Logger::get_instance().debug(__FILE__, __LINE__, __VA_ARGS__)
+#define TOY_LOG_INFO(...) ::toy3d::Logger::get_instance().info(__FILE__, __LINE__, __VA_ARGS__)
+#define TOY_LOG_WARN(...) ::toy3d::Logger::get_instance().warn(__FILE__, __LINE__, __VA_ARGS__)
+#define TOY_LOG_ERROR(...) ::toy3d::Logger::get_instance().error(__FILE__, __LINE__, __VA_ARGS__)
+#define TOY_LOG_CRITICAL(...) ::toy3d::Logger::get_instance().critical(__FILE__, __LINE__, __VA_ARGS__)

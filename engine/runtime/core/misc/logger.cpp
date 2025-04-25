@@ -20,6 +20,7 @@ void Logger::init(const std::string& file_name, bool console_output)
     {
         auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%s:%#] %v");
+        //console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
         sinks.push_back(console_sink);
     }
 
@@ -29,7 +30,7 @@ void Logger::init(const std::string& file_name, bool console_output)
         std::filesystem::path saved_root = ENGINE_SAVED_ROOT;
         std::filesystem::path abs_log_path = saved_root / file_name;
         auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(abs_log_path.string(), true);
-        file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%s:%#] %v");
+        file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
         sinks.push_back(file_sink);
     }
 

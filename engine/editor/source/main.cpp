@@ -11,6 +11,8 @@
 #include "core/config/command_line_parser.h"
 #include "engine.h"
 
+toy3d::Engine g_engine;
+
 std::string wchar2string(const wchar_t* wstr) 
 {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
@@ -21,6 +23,18 @@ std::string wchar2string(const wchar_t* wstr)
 int engine_main(void* hInstance);
 
 #if WITH_WIN64
+
+	BOOL WINAPI ConsoleCtrlHandler(DWORD ctrlType)
+	{
+		if (ctrlType == CTRL_CLOSE_EVENT)
+		{
+			g_engine.exit();
+			Sleep(500);
+			return TRUE;
+		}
+		return FALSE;
+	}
+
 	int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) 
 	{
 		// attempt to attach to the parent process console if it exists
@@ -37,6 +51,9 @@ int engine_main(void* hInstance);
 		freopen_s(&fp, "conin$", "r", stdin);
 		freopen_s(&fp, "conout$", "w", stdout);
 		freopen_s(&fp, "conout$", "w", stderr);
+
+		// 注册处理函数
+		SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
 		// process command line args
 		int argc = 0;
@@ -70,9 +87,8 @@ int engine_main(void* hInstance);
 
 int engine_main(void* hInstance)
 {
-    toy3d::Engine engine;
-	engine.init(hInstance);
-	engine.main_loop();
-	engine.exit();
+	g_engine.init(hInstance);
+	g_engine.main_loop();
+	g_engine.exit();
     return 0;
 }

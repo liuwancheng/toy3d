@@ -27,9 +27,9 @@ namespace toy3d
 
 		IWindow* get_window() { return window.get(); };
 	private:
-		double game_time;
-		double delta_time;
-		int frame_count;
+		double game_time = 0.0;
+		double delta_time = 0.0;
+		int frame_count = 0;
 
 		std::unique_ptr<IPlatform> platform;
 		std::unique_ptr<IWindow> window;
