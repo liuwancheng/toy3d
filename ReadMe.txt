@@ -55,3 +55,128 @@ toy3d/
 │   └── imgui/
 ├── docs/                      # 文档
 └── scripts/                   # 构建脚本和工具
+
+
+//1、 RHI 层
+参考 UE的 Global Shader设计，先实现非RDG的方案，让Render线程调用时，和调用原生API很类似：
+
+D:\ue4.27plus\Engine\Source\Runtime\SlateRHIRenderer\Private\SlateRHIRenderingPolicy.cpp
+D:\ue4.27plus\Engine\Source\Runtime\Renderer\Private\MobileDecalRendering.cpp
+
+void FDecalRendering::SetShader(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, const FViewInfo& View,
+	const FTransientDecalRenderData& DecalData, EDecalRenderStage DecalRenderStage, const FMatrix& FrustumComponentToClip)
+{
+	const FMaterialShaderMap* MaterialShaderMap = DecalData.MaterialResource->GetRenderingThreadShaderMap();
+	const EDebugViewShaderMode DebugViewMode = View.Family->GetDebugViewShaderMode();
+
+	// When in shader complexity, decals get rendered as emissive even though there might not be emissive decals.
+	// FDeferredDecalEmissivePS might not be available depending on the decal blend mode.
+	TShaderRef<FDeferredDecalPS> PixelShader = (DecalRenderStage == DRS_Emissive && DebugViewMode == DVSM_None)
+		? TShaderRef<FDeferredDecalPS>(MaterialShaderMap->GetShader<FDeferredDecalEmissivePS>())
+		: MaterialShaderMap->GetShader<FDeferredDecalPS>();
+
+	TShaderMapRef<FDeferredDecalVS> VertexShader(View.ShaderMap);
+
+	{
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+		PixelShader->SetParameters(RHICmdList, View, DecalData.MaterialProxy, *DecalData.DecalProxy, DecalData.FadeAlpha);
+	}
+
+	// SetUniformBufferParameter() need to happen after the shader has been set otherwise a DebugBreak could occur.
+
+	// we don't have the Primitive uniform buffer setup for decals (later we want to batch)
+	{
+		auto& PrimitiveVS = VertexShader->GetUniformBufferParameter<FPrimitiveUniformShaderParameters>();
+		auto& PrimitivePS = PixelShader->GetUniformBufferParameter<FPrimitiveUniformShaderParameters>();
+
+		// uncomment to track down usage of the Primitive uniform buffer
+		//	check(!PrimitiveVS.IsBound());
+		//	check(!PrimitivePS.IsBound());
+
+		// to prevent potential shader error (UE-18852 ElementalDemo crashes due to nil constant buffer)
+		SetUniformBufferParameter(RHICmdList, VertexShader.GetVertexShader(), PrimitiveVS, GIdentityPrimitiveUniformBuffer);
+
+		if (DebugViewMode == DVSM_None)
+		{
+			SetUniformBufferParameter(RHICmdList, PixelShader.GetPixelShader(), PrimitivePS, GIdentityPrimitiveUniformBuffer);
+		}
+	}
+
+	VertexShader->SetParameters(RHICmdList, View.ViewUniformBuffer, FrustumComponentToClip);
+
+	// Set stream source after updating cached strides
+	RHICmdList.SetStreamSource(0, GetUnitCubeVertexBuffer(), 0);
+}
+
+void RenderDeferredDecalsMobile(FRHICommandList& RHICmdList, const FScene& Scene, const FViewInfo& View)
+{
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+	// Build a list of decals that need to be rendered for this view
+	FTransientDecalRenderDataList SortedDecals;
+	FDecalRendering::BuildVisibleDecalList(Scene, View, DRS_Mobile, &SortedDecals);
+	if (SortedDecals.Num())
+	{
+		SCOPED_DRAW_EVENT(RHICmdList, DeferredDecals);
+		INC_DWORD_STAT_BY(STAT_Decals, SortedDecals.Num());
+
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
+		RHICmdList.SetStreamSource(0, GetUnitCubeVertexBuffer(), 0);
+
+		for (int32 DecalIndex = 0, DecalCount = SortedDecals.Num(); DecalIndex < DecalCount; DecalIndex++)
+		{
+			const FTransientDecalRenderData& DecalData = SortedDecals[DecalIndex];
+			const FDeferredDecalProxy& DecalProxy = *DecalData.DecalProxy;
+			const FMatrix ComponentToWorldMatrix = DecalProxy.ComponentTrans.ToMatrixWithScale();
+			const FMatrix FrustumComponentToClip = FDecalRendering::ComputeComponentToClipMatrix(View, ComponentToWorldMatrix);
+						
+			const float ConservativeRadius = DecalData.ConservativeRadius;
+			const bool bInsideDecal = ((FVector)View.ViewMatrices.GetViewOrigin() - ComponentToWorldMatrix.GetOrigin()).SizeSquared() < FMath::Square(ConservativeRadius * 1.05f + View.NearClippingDistance * 2.0f);
+			bool bReverseHanded = false;
+			{
+				// Account for the reversal of handedness caused by negative scale on the decal
+				const auto& Scale3d = DecalProxy.ComponentTrans.GetScale3D();
+				bReverseHanded = Scale3d[0] * Scale3d[1] * Scale3d[2] < 0.f;
+			}
+			EDecalRasterizerState DecalRasterizerState = FDecalRenderingCommon::ComputeDecalRasterizerState(bInsideDecal, bReverseHanded, View.bReverseCulling);
+			GraphicsPSOInit.RasterizerState = GetDecalRasterizerState(DecalRasterizerState);
+
+			if (bInsideDecal)
+			{
+				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<
+					false, CF_Always,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1), 0x00>::GetRHI();
+			}
+			else
+			{
+				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<
+					false, CF_DepthNearOrEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1), 0x00>::GetRHI();
+			}
+			
+			if (bDeferredShading)
+			{
+				GraphicsPSOInit.BlendState = MobileDeferred_GetDecalBlendState(DecalData.FinalDecalBlendMode, DecalData.bHasNormal);
+			}
+			else
+			{
+				GraphicsPSOInit.BlendState = MobileForward_GetDecalBlendState(DecalData.FinalDecalBlendMode);
+			}
+
+			// Set shader params
+			FDecalRendering::SetShader(RHICmdList, GraphicsPSOInit, View, DecalData, DRS_Mobile, FrustumComponentToClip);
+			
+			RHICmdList.DrawIndexedPrimitive(GetUnitCubeIndexBuffer(), 0, 0, 8, 0, UE_ARRAY_COUNT(GCubeIndices) / 3, 1);
+		}
+	}
+}
