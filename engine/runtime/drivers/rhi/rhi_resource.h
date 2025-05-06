@@ -21,32 +21,32 @@ namespace toy3d
     class RHIRasterizerState : public RHIResource
     {
     public:
-        virtual bool GetInitializer(struct RasterizerStateInitializerRHI& Init) { return false; }
+        virtual bool get_initializer(struct RasterizerStateInitializerRHI& init) { return false; }
     };
 
     class RHIDepthStencilState : public RHIResource
     {
     public:
-        virtual bool GetInitializer(struct DepthStencilStateInitializerRHI& Init) { return false; }
+        virtual bool get_initializer(struct DepthStencilStateInitializerRHI& init) { return false; }
     };
 
     class RHIBlendState : public RHIResource
     {
     public:
-        virtual bool GetInitializer(class BlendStateInitializerRHI& Init) { return false; }
+        virtual bool get_initializer(class BlendStateInitializerRHI& init) { return false; }
     };
 
     class RHISamplerState : public RHIResource 
     {
     public:
-        virtual bool IsImmutable() const { return false; }
+        virtual bool is_immutable() const { return false; }
     };
 
     // Texture base class
     class RHITexture : public RHIResource
     {
     public:
-        RHITexture(EPixelFormat _format,ETextureCreateFlags _flags,uint32_t _mips, uint32_t _samples)
+        RHITexture(EPixelFormat _format, ETextureCreateFlags _flags, uint32_t _mips, uint32_t _samples)
         :format(_format)
         ,flags(_flags)
         ,mips_num(_mips)
@@ -176,7 +176,7 @@ namespace toy3d
 
     using RHITextureRef = std::shared_ptr<RHITexture>;
 
-    class FExclusiveDepthStencil
+    class ExclusiveDepthStencil
     {
     public:
         enum Type
@@ -205,92 +205,92 @@ namespace toy3d
         };
 
     private:
-        Type Value;
+        Type value;
 
     public:
         // constructor
-        FExclusiveDepthStencil(Type InValue = DepthNop_StencilNop)
-            : Value(InValue)
+        FExclusiveDepthStencil(Type in_value = DepthNop_StencilNop)
+            : value(in_value)
         {
         }
 
-        inline bool IsUsingDepthStencil() const
+        inline bool is_using_depth_stencil() const
         {
-            return Value != DepthNop_StencilNop;
+            return value != DepthNop_StencilNop;
         }
-        inline bool IsUsingDepth() const
+        inline bool is_using_depth() const
         {
-            return (ExtractDepth() != DepthNop);
+            return (extract_depth() != DepthNop);
         }
-        inline bool IsUsingStencil() const
+        inline bool is_using_stencil() const
         {
-            return (ExtractStencil() != StencilNop);
+            return (extract_stencil() != StencilNop);
         }
-        inline bool IsDepthWrite() const
+        inline bool is_depth_write() const
         {
-            return ExtractDepth() == DepthWrite;
+            return extract_depth() == DepthWrite;
         }
-        inline bool IsDepthRead() const
+        inline bool is_depth_read() const
         {
-            return ExtractDepth() == DepthRead;
+            return extract_depth() == DepthRead;
         }
-        inline bool IsStencilWrite() const
+        inline bool is_stencil_write() const
         {
-            return ExtractStencil() == StencilWrite;
+            return extract_stencil() == StencilWrite;
         }
-        inline bool IsStencilRead() const
+        inline bool is_stencil_read() const
         {
-            return ExtractStencil() == StencilRead;
-        }
-
-        inline bool IsAnyWrite() const
-        {
-            return IsDepthWrite() || IsStencilWrite();
+            return extract_stencil() == StencilRead;
         }
 
-        inline void SetDepthWrite()
+        inline bool is_any_write() const
         {
-            Value = (Type)(ExtractStencil() | DepthWrite);
+            return is_depth_write() || is_stencil_write();
         }
-        inline void SetStencilWrite()
-        {
-            Value = (Type)(ExtractDepth() | StencilWrite);
-        }
-        inline void SetDepthStencilWrite(bool bDepth, bool bStencil)
-        {
-            Value = DepthNop_StencilNop;
 
-            if (bDepth)
+        inline void set_depth_write()
+        {
+            value = (Type)(extract_stencil() | DepthWrite);
+        }
+        inline void set_stencil_write()
+        {
+            value = (Type)(extract_depth() | StencilWrite);
+        }
+        inline void set_depth_stencil_write(bool b_depth, bool b_stencil)
+        {
+            value = DepthNop_StencilNop;
+
+            if (b_depth)
             {
-                SetDepthWrite();
+                set_depth_write();
             }
-            if (bStencil)
+            if (b_stencil)
             {
-                SetStencilWrite();
+                set_stencil_write();
             }
         }
         bool operator==(const FExclusiveDepthStencil& rhs) const
         {
-            return Value == rhs.Value;
+            return value == rhs.value;
         }
 
-        bool operator != (const FExclusiveDepthStencil& RHS) const
+        bool operator != (const FExclusiveDepthStencil& rhs) const
         {
-            return Value != RHS.Value;
+            return value != rhs.value;
         }
 
-        inline bool IsValid(FExclusiveDepthStencil& Current) const
+        inline bool is_valid(FExclusiveDepthStencil& current) const
         {
-            Type Depth = ExtractDepth();
+            Type depth = extract_depth();
 
-            if (Depth != DepthNop && Depth != Current.ExtractDepth())
+            if (depth != DepthNop && depth != current.extract_depth())
             {
                 return false;
             }
 
-            Type Stencil = ExtractStencil();
+            Type stencil = extract_stencil();
 
-            if (Stencil != StencilNop && Stencil != Current.ExtractStencil())
+            if (stencil != StencilNop && stencil != current.extract_stencil())
             {
                 return false;
             }
@@ -298,96 +298,96 @@ namespace toy3d
             return true;
         }
 
-        inline void GetAccess(ERHIAccess& DepthAccess, ERHIAccess& StencilAccess) const
+        inline void get_access(ERHIAccess& depth_access, ERHIAccess& stencil_access) const
         {
-            DepthAccess = ERHIAccess::None;
+            depth_access = ERHIAccess::None;
 
             // SRV access is allowed whilst a depth stencil target is "readable".
-            ERHIAccess DSVReadOnlyMask = static_cast<ERHIAccess>(
+            ERHIAccess dsv_read_only_mask = static_cast<ERHIAccess>(
                 static_cast<uint32>(ERHIAccess::DSVRead) | 
                 static_cast<uint32>(ERHIAccess::SRVGraphics) | 
                 static_cast<uint32>(ERHIAccess::SRVCompute)
             );
 
             // If write access is required, only the depth block can access the resource.
-            ERHIAccess DSVReadWriteMask = static_cast<ERHIAccess>(
+            ERHIAccess dsv_read_write_mask = static_cast<ERHIAccess>(
                 static_cast<uint32>(ERHIAccess::DSVRead) | 
                 static_cast<uint32>(ERHIAccess::DSVWrite)
             );
 
-            if (IsUsingDepth())
+            if (is_using_depth())
             {
-                DepthAccess = IsDepthWrite() ? DSVReadWriteMask : DSVReadOnlyMask;
+                depth_access = is_depth_write() ? dsv_read_write_mask : dsv_read_only_mask;
             }
 
-            StencilAccess = ERHIAccess::None;
+            stencil_access = ERHIAccess::None;
 
-            if (IsUsingStencil())
+            if (is_using_stencil())
             {
-                StencilAccess = IsStencilWrite() ? DSVReadWriteMask : DSVReadOnlyMask;
+                stencil_access = is_stencil_write() ? dsv_read_write_mask : dsv_read_only_mask;
             }
         }
 
         template <typename TFunction>
-        inline void EnumerateSubresources(TFunction Function) const
+        inline void enumerate_subresources(TFunction function) const
         {
-            if (!IsUsingDepthStencil())
+            if (!is_using_depth_stencil())
             {
                 return;
             }
 
-            ERHIAccess DepthAccess = ERHIAccess::None;
-            ERHIAccess StencilAccess = ERHIAccess::None;
-            GetAccess(DepthAccess, StencilAccess);
+            ERHIAccess depth_access = ERHIAccess::None;
+            ERHIAccess stencil_access = ERHIAccess::None;
+            get_access(depth_access, stencil_access);
 
             // Same depth / stencil state; single subresource.
-            if (DepthAccess == StencilAccess)
+            if (depth_access == stencil_access)
             {
-                Function(DepthAccess, FRHITransitionInfo::kAllSubresources);
+                function(depth_access, FRHITransitionInfo::kAllSubresources);
             }
             // Separate subresources for depth / stencil.
             else
             {
-                if (DepthAccess != ERHIAccess::None)
+                if (depth_access != ERHIAccess::None)
                 {
-                    Function(DepthAccess, FRHITransitionInfo::kDepthPlaneSlice);
+                    function(depth_access, FRHITransitionInfo::kDepthPlaneSlice);
                 }
-                if (StencilAccess != ERHIAccess::None)
+                if (stencil_access != ERHIAccess::None)
                 {
-                    Function(StencilAccess, FRHITransitionInfo::kStencilPlaneSlice);
+                    function(stencil_access, FRHITransitionInfo::kStencilPlaneSlice);
                 }
             }
         }
 
-        inline FExclusiveDepthStencil GetReadableTransition() const
+        inline FExclusiveDepthStencil get_readable_transition() const
         {
-            FExclusiveDepthStencil::Type NewDepthState = IsDepthWrite()
+            FExclusiveDepthStencil::Type new_depth_state = is_depth_write()
                 ? FExclusiveDepthStencil::DepthRead
                 : FExclusiveDepthStencil::DepthNop;
 
-            FExclusiveDepthStencil::Type NewStencilState = IsStencilWrite()
+            FExclusiveDepthStencil::Type new_stencil_state = is_stencil_write()
                 ? FExclusiveDepthStencil::StencilRead
                 : FExclusiveDepthStencil::StencilNop;
 
-            return (FExclusiveDepthStencil::Type)(NewDepthState | NewStencilState);
+            return (FExclusiveDepthStencil::Type)(new_depth_state | new_stencil_state);
         }
 
-        inline FExclusiveDepthStencil GetWritableTransition() const
+        inline FExclusiveDepthStencil get_writable_transition() const
         {
-            FExclusiveDepthStencil::Type NewDepthState = IsDepthRead()
+            FExclusiveDepthStencil::Type new_depth_state = is_depth_read()
                 ? FExclusiveDepthStencil::DepthWrite
                 : FExclusiveDepthStencil::DepthNop;
 
-            FExclusiveDepthStencil::Type NewStencilState = IsStencilRead()
+            FExclusiveDepthStencil::Type new_stencil_state = is_stencil_read()
                 ? FExclusiveDepthStencil::StencilWrite
                 : FExclusiveDepthStencil::StencilNop;
 
-            return (FExclusiveDepthStencil::Type)(NewDepthState | NewStencilState);
+            return (FExclusiveDepthStencil::Type)(new_depth_state | new_stencil_state);
         }
 
-        uint32 GetIndex() const
+        uint32 get_index() const
         {
-            switch (Value)
+            switch (value)
             {
             case DepthWrite_StencilNop:
             case DepthNop_StencilWrite:
@@ -411,13 +411,13 @@ namespace toy3d
         static const uint32 MaxIndex = 4;
 
     private:
-        inline Type ExtractDepth() const
+        inline Type extract_depth() const
         {
-            return (Type)(Value & DepthMask);
+            return (Type)(value & DepthMask);
         }
-        inline Type ExtractStencil() const
+        inline Type extract_stencil() const
         {
-            return (Type)(Value & StencilMask);
+            return (Type)(value & StencilMask);
         }
     };
 
@@ -429,7 +429,7 @@ namespace toy3d
     class RHIVertexDeclaration : public RHIResource
     {
     public:
-        virtual bool GetInitializer(VertexDeclarationElementList& Init) { return false; }
+        virtual bool get_initializer(VertexDeclarationElementList& init) { return false; }
     };
 
     class RHIBoundShaderState : public RHIResource {};
@@ -441,34 +441,34 @@ namespace toy3d
     class RHIShader : public RHIResource
     {
     public:
-        void SetHash(std::size_t InHash) { Hash = InHash; }
-        std::size_t GetHash() const { return Hash; }
+        void set_hash(std::size_t in_hash) { hash = in_hash; }
+        std::size_t get_hash() const { return hash; }
 
-        explicit RHIShader(EShaderFrequency InFrequency)
-            : Frequency(InFrequency)
+        explicit RHIShader(EShaderFrequency in_frequency)
+            : frequency(in_frequency)
         {
         }
 
-        inline EShaderFrequency GetFrequency() const
+        inline EShaderFrequency get_frequency() const
         {
-            return Frequency;
+            return frequency;
         }
 
     #if (BUILD_DEBUG || BUILD_DEVELOPMENT)
-        std::string ShaderName;
-        const std::string GetShaderName() const { return ShaderName; }
+        std::string shader_name;
+        const std::string get_shader_name() const { return shader_name; }
     #else
-        const std::string GetShaderName() const { return ""; }
+        const std::string get_shader_name() const { return ""; }
     #endif
     private:
-        std::size_t Hash;
-        EShaderFrequency Frequency;
+        std::size_t hash;
+        EShaderFrequency frequency;
     };
 
     class RHIGraphicsShader : public RHIShader
     {
     public:
-        explicit RHIGraphicsShader(EShaderFrequency InFrequency) : RHIShader(InFrequency) {}
+        explicit RHIGraphicsShader(EShaderFrequency in_frequency) : RHIShader(in_frequency) {}
     };
 
     class RHIVertexShader : public RHIGraphicsShader
@@ -508,36 +508,36 @@ namespace toy3d
 
         inline BoundShaderStateInput
         (
-            RHIVertexDeclaration* InVertexDeclarationRHI
-            , RHIVertexShader* InVertexShaderRHI
+            RHIVertexDeclaration* in_vertex_declaration_rhi
+            , RHIVertexShader* in_vertex_shader_rhi
     #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-            , FRHIHullShader* InHullShaderRHI
-            , FRHIDomainShader* InDomainShaderRHI
+            , FRHIHullShader* in_hull_shader_rhi
+            , FRHIDomainShader* in_domain_shader_rhi
     #endif
-            , RHIPixelShader* InPixelShaderRHI
+            , RHIPixelShader* in_pixel_shader_rhi
     #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-            , RHIGeometryShader* InGeometryShaderRHI
+            , RHIGeometryShader* in_geometry_shader_rhi
     #endif
         )
-            : VertexDeclarationRHI(InVertexDeclarationRHI)
-            , VertexShaderRHI(InVertexShaderRHI)
+            : vertex_declaration_rhi(in_vertex_declaration_rhi)
+            , vertex_shader_rhi(in_vertex_shader_rhi)
     #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-            , HullShaderRHI(InHullShaderRHI)
-            , DomainShaderRHI(InDomainShaderRHI)
+            , hull_shader_rhi(in_hull_shader_rhi)
+            , domain_shader_rhi(in_domain_shader_rhi)
     #endif
-            , PixelShaderRHI(InPixelShaderRHI)
+            , pixel_shader_rhi(in_pixel_shader_rhi)
     #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-            , GeometryShaderRHI(InGeometryShaderRHI)
+            , geometry_shader_rhi(in_geometry_shader_rhi)
     #endif
         {
         }
 
-        RHIVertexDeclaration* VertexDeclarationRHI = nullptr;
-        RHIVertexShader* VertexShaderRHI = nullptr;
-        RHIHullShader* HullShaderRHI = nullptr;
-        RHIDomainShader* DomainShaderRHI = nullptr;
-        RHIPixelShader* PixelShaderRHI = nullptr;
-        RHIGeometryShader* GeometryShaderRHI = nullptr;
+        RHIVertexDeclaration* vertex_declaration_rhi = nullptr;
+        RHIVertexShader* vertex_shader_rhi = nullptr;
+        RHIHullShader* hull_shader_rhi = nullptr;
+        RHIDomainShader* domain_shader_rhi = nullptr;
+        RHIPixelShader* pixel_shader_rhi = nullptr;
+        RHIGeometryShader* geometry_shader_rhi = nullptr;
     };
 
     class RHIGraphicsPipelineState : public RHIResource 
