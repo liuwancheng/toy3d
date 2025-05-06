@@ -543,4 +543,194 @@ namespace toy3d
     class RHIGraphicsPipelineState : public RHIResource 
     {
     };
+
+
+    /** The layout of a uniform buffer in memory. */
+    struct RHIUniformBufferLayout
+    {
+        uint32 const_buffer_size;
+    };
+
+    class FRHIUniformBuffer : public RHIResource
+    {
+    public:
+
+        /** Initialization constructor. */
+        FRHIUniformBuffer(const RHIUniformBufferLayout& in_layout)
+        : layout(&in_layout)
+        , layout_const_buffer_size(in_layout.const_buffer_size)
+        {}
+
+        uint32 get_size() const
+        {
+            return layout_const_buffer_size;
+        }
+        const RHIUniformBufferLayout& get_layout() const { return *layout; }
+    private:
+        /** Layout of the uniform buffer. */
+        const RHIUniformBufferLayout* layout;
+
+        uint32 layout_const_buffer_size;
+    };
+
+    class RHIIndexBuffer : public RHIResource
+    {
+    public:
+
+        /** Initialization constructor. */
+        RHIIndexBuffer(uint32 in_stride,uint32 in_size,uint32 in_usage)
+        : stride(in_stride)
+        , size(in_size)
+        , usage(in_usage)
+        {}
+
+        /** @return The stride in bytes of the index buffer; must be 2 or 4. */
+        uint32 get_stride() const { return stride; }
+
+        /** @return The number of bytes in the index buffer. */
+        uint32 get_size() const { return size; }
+
+        /** @return The usage flags used to create the index buffer. */
+        uint32 get_usage() const { return usage; }
+
+    protected:
+        RHIIndexBuffer()
+            : stride(0)
+            , size(0)
+            , usage(0)
+        {}
+
+        void swap(RHIIndexBuffer& other)
+        {
+            std::swap(stride, other.stride);
+            std::swap(size, other.size);
+            std::swap(usage, other.usage);
+        }
+
+        void release_underlying_resource()
+        {
+            stride = size = usage = 0;
+        }
+
+    private:
+        uint32 stride;
+        uint32 size;
+        uint32 usage;
+    };
+
+    class RHIVertexBuffer : public RHIResource
+    {
+    public:
+
+        /**
+         * Initialization constructor.
+         * @apram in_usage e.g. BUF_UnorderedAccess
+         */
+        RHIVertexBuffer(uint32 in_size, uint32 in_usage)
+        : size(in_size)
+        , usage(in_usage)
+        {}
+
+        /** @return The number of bytes in the vertex buffer. */
+        uint32 get_size() const { return size; }
+
+        /** @return The usage flags used to create the vertex buffer. e.g. BUF_UnorderedAccess */
+        uint32 get_usage() const { return usage; }
+
+    protected:
+        RHIVertexBuffer()
+            : size(0)
+            , usage(0)
+        {}
+
+        void swap(RHIVertexBuffer& other)
+        {
+            std::swap(size, other.size);
+            std::swap(usage, other.usage);
+        }
+
+        void release_underlying_resource()
+        {
+            size = 0;
+            usage = 0;
+        }
+
+    private:
+        uint32 size;
+        uint32 usage;
+    };
+
+    class RHIStructuredBuffer : public RHIResource
+    {
+    public:
+
+        /** Initialization constructor. */
+        RHIStructuredBuffer(uint32 in_stride,uint32 in_size, uint32 in_usage)
+        : stride(in_stride)
+        , size(in_size)
+        , usage(in_usage)
+        {}
+
+        /** @return The stride in bytes of the structured buffer; must be 2 or 4. */
+        uint32 get_stride() const { return stride; }
+
+        /** @return The number of bytes in the structured buffer. */
+        uint32 get_size() const { return size; }
+
+        /** @return The usage flags used to create the structured buffer. */
+        uint32 get_usage() const { return usage; }
+
+    private:
+        uint32 stride;
+        uint32 size;
+        uint32 usage;
+    };
+
+    //
+    // Misc
+    //
+    class FRHITimestampCalibrationQuery : public RHIResource
+    {
+    public:
+        uint64 gpu_microseconds = 0;
+        uint64 cpu_microseconds = 0;
+    };
+
+    class RHIGPUFence : public RHIResource
+    {
+    public:
+        RHIGPUFence(std::string in_name) : fence_name(in_name) {}
+        virtual ~RHIGPUFence() {}
+
+        virtual void clear() = 0;
+
+        /**
+         * Poll the fence to see if the GPU has signaled it.
+         * @returns True if and only if the GPU fence has been inserted and the GPU has signaled the fence.
+         */
+        virtual bool poll() const = 0;
+
+        const std::string& get_name() const { return fence_name; }
+
+    protected:
+        std::string fence_name;
+    };
+
+    // Generic implementation of RHIGPUFence
+    class GenericRHIGPUFence : public RHIGPUFence
+    {
+    public:
+        GenericRHIGPUFence(std::string in_name);
+
+        virtual void clear() final override;
+
+        /** @discussion RHI implementations must be thread-safe and must correctly handle being called before RHIInsertFence if an RHI thread is active. */
+        virtual bool poll() const final override;
+
+    private:
+        uint32 inserted_frame_number;
+    };
+
+    class RHIRenderQuery : public RHIResource {};
+
 }
