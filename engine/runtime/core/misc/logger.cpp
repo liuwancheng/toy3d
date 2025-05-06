@@ -36,49 +36,49 @@ void Logger::init(const std::string& file_name, bool console_output)
 
     if (!sinks.empty()) 
     {
-        spd_logger_ = std::make_shared<spdlog::logger>("toy3d", sinks.begin(), sinks.end());
-        spd_logger_->set_level(spdlog::level::trace);
-        spd_logger_->flush_on(spdlog::level::warn);
-        spdlog::register_logger(spd_logger_);
+        spd_logger = std::make_shared<spdlog::logger>("toy3d", sinks.begin(), sinks.end());
+        spd_logger->set_level(spdlog::level::trace);
+        spd_logger->flush_on(spdlog::level::warn);
+        spdlog::register_logger(spd_logger);
     }
 }
 
 void Logger::set_level(Level level) 
 {
-    if (!spd_logger_)
+    if (!spd_logger)
         return;
 
     switch (level) 
     {
         case Level::TOY_TRACE:
-            spd_logger_->set_level(spdlog::level::trace);
+            spd_logger->set_level(spdlog::level::trace);
             break;
         case Level::TOY_DEBUG:
-            spd_logger_->set_level(spdlog::level::debug);
+            spd_logger->set_level(spdlog::level::debug);
             break;
         case Level::TOY_INFO:
-            spd_logger_->set_level(spdlog::level::info);
+            spd_logger->set_level(spdlog::level::info);
             break;
         case Level::TOY_WARN:
-            spd_logger_->set_level(spdlog::level::warn);
+            spd_logger->set_level(spdlog::level::warn);
             break;
         case Level::TOY_ERROR:
-            spd_logger_->set_level(spdlog::level::err);
+            spd_logger->set_level(spdlog::level::err);
             break;
         case Level::TOY_CRITICAL:
-            spd_logger_->set_level(spdlog::level::critical);
+            spd_logger->set_level(spdlog::level::critical);
             break;
         case Level::TOY_OFF:
-            spd_logger_->set_level(spdlog::level::off);
+            spd_logger->set_level(spdlog::level::off);
             break;
     }
 }
 
 void Logger::exit() 
 {
-    if (spd_logger_) 
+    if (spd_logger) 
     {
-        spd_logger_->flush();
+        spd_logger->flush();
         spdlog::drop_all();
         spdlog::shutdown();
     }

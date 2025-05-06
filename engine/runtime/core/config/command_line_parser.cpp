@@ -25,13 +25,13 @@ namespace toy3d
                 {
                     std::string key = arg.substr(2, equalPos - 2);
                     std::string value = arg.substr(equalPos + 1);
-                    _options[key] = value;
+                    options[key] = value;
                 } 
                 else 
                 {
                     // 2、处理--flag格式的布尔标志
                     std::string key = arg.substr(2);
-                    _options[key] = "true";
+                    options[key] = "true";
                 }
             }
             else 
@@ -42,7 +42,7 @@ namespace toy3d
                 {
                     std::string key = arg.substr(0, equalPos);
                     std::string value = arg.substr(equalPos + 1);
-                    _options[key] = value;
+                    options[key] = value;
                 }
             }
         }
@@ -60,12 +60,12 @@ namespace toy3d
                 {
                     std::string key = arg.substr(2, equalPos - 2);
                     std::string value = arg.substr(equalPos + 1);
-                    _options[key] = value;
+                    options[key] = value;
                 } 
                 else 
                 {
                     std::string key = arg.substr(2);
-                    _options[key] = "true";
+                    options[key] = "true";
                 }
             }
             else 
@@ -75,7 +75,7 @@ namespace toy3d
                 {
                     std::string key = arg.substr(0, equalPos);
                     std::string value = arg.substr(equalPos + 1);
-                    _options[key] = value;
+                    options[key] = value;
                 }
             }
         }
@@ -83,20 +83,20 @@ namespace toy3d
 
     bool CommandLineParser::has_option(const std::string& option) const 
     {
-        return _options.find(option) != _options.end();
+        return options.find(option) != options.end();
     }
 
     std::string CommandLineParser::get_option(const std::string& option, const std::string& default_val) const 
     {
-        auto it = _options.find(option);
-        return (it != _options.end()) ? it->second : default_val;
+        auto it = options.find(option);
+        return (it != options.end()) ? it->second : default_val;
     }
 
     void CommandLineParser::apply_config() const 
     {
         auto& config = ConfigManager::get_instance();
         
-        for (const auto& [key, value] : _options) 
+        for (const auto& [key, value] : options) 
         {
             if (key == "resX" || key == "Width") 
             {

@@ -90,16 +90,16 @@ namespace toy3d
     bool AndroidPlatformInput::init()
     {
         // 设置键盘回调
-        glfwSetKeyCallback(glfw_window_, AndroidPlatformInput::key_callback);
+        glfwSetKeyCallback(glfw_window, AndroidPlatformInput::key_callback);
         
         // 设置鼠标按钮回调
-        glfwSetMouseButtonCallback(glfw_window_, AndroidPlatformInput::mousebutton_callback);
+        glfwSetMouseButtonCallback(glfw_window, AndroidPlatformInput::mousebutton_callback);
         
         // 设置鼠标移动回调
-        glfwSetCursorPosCallback(glfw_window_, AndroidPlatformInput::mousemove_callback);
+        glfwSetCursorPosCallback(glfw_window, AndroidPlatformInput::mousemove_callback);
         
         // 设置鼠标滚轮回调
-        glfwSetScrollCallback(glfw_window_, AndroidPlatformInput::mousewheel_callback);
+        glfwSetScrollCallback(glfw_window, AndroidPlatformInput::mousewheel_callback);
 
         InputSystem::get_instance().init();
 

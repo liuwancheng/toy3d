@@ -2,7 +2,7 @@
 
 namespace toy3d
 {
-    VulkanFrameBuffer::VulkanFrameBuffer(toy3d::VulkanContext &in_context, const std::vector<VkImageView> &attachments, VkRenderPass render_pass)
+    VulkanFrameBuffer::VulkanFrameBuffer(VulkanContext* in_context, const std::vector<VkImageView> &attachments, VkRenderPass render_pass)
     :context(in_context)
     {
         VkFramebufferCreateInfo create_info{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
@@ -14,11 +14,11 @@ namespace toy3d
         create_info.height          = extent.height;
         create_info.layers          = 1;
 
-        VK_CHECK(vkCreateFramebuffer(context.device, &create_info, nullptr, &handle));
+        VK_CHECK(vkCreateFramebuffer(context->device, &create_info, nullptr, &handle));
     }
 
     VulkanFrameBuffer::~VulkanFrameBuffer()
     {
-        vkDestroyFramebuffer(context.device, handle, nullptr);
+        vkDestroyFramebuffer(context->device, handle, nullptr);
     }
 }

@@ -49,21 +49,21 @@ namespace toy3d
 
         virtual void close() = 0;
 
-        virtual void resize(uint32_t width, uint32_t height)
+        virtual void resize(uint32_t _width, uint32_t _height)
 		{
-			properties_.extent.width = width;
-			properties_.extent.height = height;
+			properties.extent.width = _width;
+			properties.extent.height = _height;
 		};
     public:
-        Extent get_win_size(){return properties_.extent;};
+        Extent get_win_size(){return properties.extent;};
 
-        Vsync get_vsync(){return properties_.vsync;};
+        Vsync get_vsync(){return properties.vsync;};
 
-        Mode get_mode(){return properties_.mode;};
+        Mode get_mode(){return properties.mode;};
 
-		IPlatformInput* get_platform_input() const { return platform_input_.get();}
+		IPlatformInput* get_platform_input() const { return platform_input.get();}
     protected:
-        Properties properties_;
-		std::unique_ptr<IPlatformInput> platform_input_;
+        Properties properties;
+		std::unique_ptr<IPlatformInput> platform_input;
     };
 }// namespace toy3d

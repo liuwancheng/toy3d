@@ -12,16 +12,16 @@ namespace toy3d
         MacWindow();
         ~MacWindow() final;
 
-        void resize(uint32_t width, uint32_t height) final;
+        void resize(uint32_t _width, uint32_t _height) final;
         bool should_close() final;
         void process_events() final;
         void close() final;
 
-        GLFWwindow* get_glfw_window(){return glfw_window_;}
+        GLFWwindow* get_glfw_window(){return glfw_window;}
     private:
         void create_glfw_window();
         void destroy_glfw_window();
     private:
-        GLFWwindow* glfw_window_ = nullptr;
+        GLFWwindow* glfw_window = nullptr;
     };
 }

@@ -8,14 +8,14 @@ namespace toy3d
     class MacPlatformInput : public IPlatformInput 
     {
     public:
-        MacPlatformInput(GLFWwindow* window) :IPlatformInput(), glfw_window_(window) {}
+        MacPlatformInput(GLFWwindow* window) :IPlatformInput(), glfw_window(window) {}
         virtual ~MacPlatformInput(){};
     public:        
         bool init() override;
         void exit() override;
         void update() override;
     private:
-        GLFWwindow* glfw_window_ = nullptr;
+        GLFWwindow* glfw_window = nullptr;
         
         // GLFW回调函数
         static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);

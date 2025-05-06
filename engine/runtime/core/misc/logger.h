@@ -53,50 +53,50 @@ namespace toy3d {
         Logger(const Logger&) = delete;
         Logger& operator=(const Logger&) = delete;
     
-        std::shared_ptr<spdlog::logger> spd_logger_;
+        std::shared_ptr<spdlog::logger> spd_logger;
     };
 
     // 模板函数实现
     template<typename... Args>
     void Logger::trace(const char* file, int line, const std::string& fmt, const Args&... args)
     {
-        if (spd_logger_)
-            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::trace, fmt, args...);
+        if (spd_logger)
+            spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::trace, fmt, args...);
     }
 
     template<typename... Args>
     void Logger::debug(const char* file, int line, const std::string& fmt, const Args&... args)
     {
-        if (spd_logger_)
-            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::debug, fmt, args...);
+        if (spd_logger)
+            spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::debug, fmt, args...);
     }
 
     template<typename... Args>
     void Logger::info(const char* file, int line, const std::string& fmt, const Args&... args)
     {
-        if (spd_logger_)
-            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::info, fmt, args...);
+        if (spd_logger)
+            spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::info, fmt, args...);
     }
 
     template<typename... Args>
     void Logger::warn(const char* file, int line, const std::string& fmt, const Args&... args)
     {
-        if (spd_logger_)
-            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::warn, fmt, args...);
+        if (spd_logger)
+            spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::warn, fmt, args...);
     }
 
     template<typename... Args>
     void Logger::error(const char* file, int line, const std::string& fmt, const Args&... args)
     {
-        if (spd_logger_)
-            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::err, fmt, args...);
+        if (spd_logger)
+            spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::err, fmt, args...);
     }
 
     template<typename... Args>
     void Logger::critical(const char* file, int line, const std::string& fmt, const Args&... args)
     {
-        if (spd_logger_)
-            spd_logger_->log(spdlog::source_loc{file, line, ""}, spdlog::level::critical, fmt, args...);
+        if (spd_logger)
+            spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::critical, fmt, args...);
     }
 
 } // namespace toy3d

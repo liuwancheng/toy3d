@@ -18,12 +18,12 @@ struct InputBinding
 class InputAction 
 {
 private:
-    std::string action_name_;
+    std::string action_name;
     std::vector<InputBinding> bindings;
 
 public:
 	InputAction() = default;
-    InputAction(const std::string& name) : action_name_(name) {}
+    InputAction(const std::string& name) : action_name(name) {}
     
     // 用于处理单击事件，比如开火、跳跃等
     void add_binding(KeyCode _key_code, KeyStatus _key_status, InputActionCallback callback)
@@ -46,7 +46,7 @@ public:
         bindings.push_back(binding);
     }
 
-    const std::string& get_name() const { return action_name_; }
+    const std::string& get_name() const { return action_name; }
     const std::vector<InputBinding>& get_bindings() const { return bindings; }
 };
 
@@ -55,12 +55,12 @@ class InputBindingContext
 private:
     std::string context_name;
     std::unordered_map<std::string, InputAction> actions;
-    int ctx_priority_;
-    bool is_active_ctx_;
+    int priority;
+    bool b_active_context;
 
 public:
     InputBindingContext(const std::string& ctx_name, int in_priority = 0)
-        : context_name(ctx_name), ctx_priority_(in_priority), is_active_ctx_(false) {}
+        : context_name(ctx_name), priority(in_priority), b_active_context(false) {}
     
     InputAction& create_action(const std::string& _action_name)
     {
@@ -92,9 +92,9 @@ public:
         }
     }
 
-    void set_active(bool active) { is_active_ctx_ = active; }
-    bool is_active() const { return is_active_ctx_; }
-    int get_priority() const { return ctx_priority_; }
+    void set_active(bool active) { b_active_context = active; }
+    bool is_active() const { return b_active_context; }
+    int get_priority() const { return priority; }
     const std::string& get_name() const { return context_name; }
 
     std::unordered_map<std::string, InputAction>& get_actions() { return actions; }

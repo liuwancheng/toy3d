@@ -209,7 +209,7 @@ namespace toy3d
 
     public:
         // constructor
-        FExclusiveDepthStencil(Type in_value = DepthNop_StencilNop)
+        ExclusiveDepthStencil(Type in_value = DepthNop_StencilNop)
             : value(in_value)
         {
         }
@@ -269,17 +269,17 @@ namespace toy3d
                 set_stencil_write();
             }
         }
-        bool operator==(const FExclusiveDepthStencil& rhs) const
+        bool operator==(const ExclusiveDepthStencil& rhs) const
         {
             return value == rhs.value;
         }
 
-        bool operator != (const FExclusiveDepthStencil& rhs) const
+        bool operator != (const ExclusiveDepthStencil& rhs) const
         {
             return value != rhs.value;
         }
 
-        inline bool is_valid(FExclusiveDepthStencil& current) const
+        inline bool is_valid(ExclusiveDepthStencil& current) const
         {
             Type depth = extract_depth();
 
@@ -359,30 +359,30 @@ namespace toy3d
             }
         }
 
-        inline FExclusiveDepthStencil get_readable_transition() const
+        inline ExclusiveDepthStencil get_readable_transition() const
         {
-            FExclusiveDepthStencil::Type new_depth_state = is_depth_write()
-                ? FExclusiveDepthStencil::DepthRead
-                : FExclusiveDepthStencil::DepthNop;
+            ExclusiveDepthStencil::Type new_depth_state = is_depth_write()
+                ? ExclusiveDepthStencil::DepthRead
+                : ExclusiveDepthStencil::DepthNop;
 
-            FExclusiveDepthStencil::Type new_stencil_state = is_stencil_write()
-                ? FExclusiveDepthStencil::StencilRead
-                : FExclusiveDepthStencil::StencilNop;
+            ExclusiveDepthStencil::Type new_stencil_state = is_stencil_write()
+                ? ExclusiveDepthStencil::StencilRead
+                : ExclusiveDepthStencil::StencilNop;
 
-            return (FExclusiveDepthStencil::Type)(new_depth_state | new_stencil_state);
+            return (ExclusiveDepthStencil::Type)(new_depth_state | new_stencil_state);
         }
 
-        inline FExclusiveDepthStencil get_writable_transition() const
+        inline ExclusiveDepthStencil get_writable_transition() const
         {
-            FExclusiveDepthStencil::Type new_depth_state = is_depth_read()
-                ? FExclusiveDepthStencil::DepthWrite
-                : FExclusiveDepthStencil::DepthNop;
+            ExclusiveDepthStencil::Type new_depth_state = is_depth_read()
+                ? ExclusiveDepthStencil::DepthWrite
+                : ExclusiveDepthStencil::DepthNop;
 
-            FExclusiveDepthStencil::Type new_stencil_state = is_stencil_read()
-                ? FExclusiveDepthStencil::StencilWrite
-                : FExclusiveDepthStencil::StencilNop;
+            ExclusiveDepthStencil::Type new_stencil_state = is_stencil_read()
+                ? ExclusiveDepthStencil::StencilWrite
+                : ExclusiveDepthStencil::StencilNop;
 
-            return (FExclusiveDepthStencil::Type)(new_depth_state | new_stencil_state);
+            return (ExclusiveDepthStencil::Type)(new_depth_state | new_stencil_state);
         }
 
         uint32 get_index() const

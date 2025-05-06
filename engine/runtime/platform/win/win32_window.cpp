@@ -39,23 +39,23 @@ namespace toy3d
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
-    Win32Window::Win32Window(HINSTANCE hInstance):IWindow()
+    Win32Window::Win32Window(HINSTANCE _hInstance):IWindow()
     {
-        if (hInstance == nullptr) 
+        if (_hInstance == nullptr) 
         {
-            hInstance_ = GetModuleHandle(nullptr);
+            hInstance = GetModuleHandle(nullptr);
         }
         else 
         {
-            hInstance_ = hInstance;
+            hInstance = _hInstance;
         }
         // 创建窗口
         create_window();
         s_win_instance = this;
 
         // 初始化InputSystem
-        platform_input_ = std::make_unique<Win32PlatformInput>();
-        if (!platform_input_->init()) 
+        platform_input = std::make_unique<Win32PlatformInput>();
+        if (!platform_input->init()) 
         {
             //LOG_ERROR("Failed to initialize platform input system");
             return ;
@@ -70,7 +70,7 @@ namespace toy3d
 
     bool Win32Window::should_close()
     {
-        return should_close_;
+        return b_close;
     }
     void Win32Window::process_events()
     {
@@ -81,35 +81,35 @@ namespace toy3d
             DispatchMessage(&msg);
         }
 
-        platform_input_->update();
+        platform_input->update();
     }
     void Win32Window::close()
     {
-        should_close_ = true;
+        b_close = true;
     }
 
-    void Win32Window::resize(uint32_t width, uint32_t height)
+    void Win32Window::resize(uint32_t _width, uint32_t _height)
     {
-        properties_.extent.width = width;
-        properties_.extent.height = height;
+        properties.extent.width = _width;
+        properties.extent.height = _height;
     }
 
     void Win32Window::create_window()
     {
         // 获取配置文件中的窗口标题和大小
-        properties_.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
-        properties_.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
-        properties_.extent.height = ConfigManager::get_instance().get_int("window_height", 720);
-        properties_.vsync = static_cast<Vsync>(ConfigManager::get_instance().get_int("window_vsync", 0));
-        properties_.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
+        properties.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
+        properties.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
+        properties.extent.height = ConfigManager::get_instance().get_int("window_height", 720);
+        properties.vsync = static_cast<Vsync>(ConfigManager::get_instance().get_int("window_vsync", 0));
+        properties.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
 
     
-        HICON hIcon = static_cast<HICON>(::LoadImage(hInstance_,
+        HICON hIcon = static_cast<HICON>(::LoadImage(hInstance,
             MAKEINTRESOURCE(IDI_TOY3D_ICON),
             IMAGE_ICON,
             128, 128,
             LR_DEFAULTCOLOR));
-        HICON hIconSm = static_cast<HICON>(::LoadImage(hInstance_,
+        HICON hIconSm = static_cast<HICON>(::LoadImage(hInstance,
             MAKEINTRESOURCE(IDI_TOY3D_ICON),
             IMAGE_ICON,
             32, 32,
@@ -122,7 +122,7 @@ namespace toy3d
         wc.lpfnWndProc = WindowProc;
         wc.cbClsExtra = 0;
         wc.cbWndExtra = 0;
-        wc.hInstance = hInstance_;
+        wc.hInstance = hInstance;
         wc.hIcon = hIcon;
         wc.hIconSm = hIconSm;
         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
@@ -137,14 +137,14 @@ namespace toy3d
         }
 
         // 调整窗口大小，使客户区达到指定尺寸
-        RECT windowRect = { 0, 0, properties_.extent.width, properties_.extent.height };
+        RECT windowRect = { 0, 0, properties.extent.width, properties.extent.height };
         AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
 
         // 创建窗口
-        hWnd_ = CreateWindowEx(
+        hWnd = CreateWindowEx(
             0,                          // 扩展样式
             "Win32Window",        // 窗口类名
-            properties_.title.c_str(),  // 窗口标题
+            properties.title.c_str(),  // 窗口标题
             WS_OVERLAPPEDWINDOW,        // 窗口样式
             CW_USEDEFAULT,              // X 位置
             CW_USEDEFAULT,              // Y 位置
@@ -152,11 +152,11 @@ namespace toy3d
             windowRect.bottom - windowRect.top,  // 高度
             nullptr,                    // 父窗口
             nullptr,                    // 菜单
-            hInstance_,                 // 实例句柄
+            hInstance,                 // 实例句柄
             this                        // 附加参数
         );
 
-        if (!hWnd_)
+        if (!hWnd)
         {
             //LOG_ERROR("Failed to create window");
 
@@ -183,16 +183,16 @@ namespace toy3d
         }
 
         // 显示窗口
-        ShowWindow(hWnd_, SW_SHOW);
-        UpdateWindow(hWnd_);
+        ShowWindow(hWnd, SW_SHOW);
+        UpdateWindow(hWnd);
     }
 
     void Win32Window::destroy_window()
     {
-        if (hWnd_) 
+        if (hWnd) 
         {
-            DestroyWindow(hWnd_);
-            hWnd_ = nullptr;
+            DestroyWindow(hWnd);
+            hWnd = nullptr;
         }
     }
 } // namespace toy3d

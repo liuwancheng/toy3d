@@ -24,7 +24,7 @@ namespace toy3d
         
         void apply_config() const;
     private:
-        std::unordered_map<std::string, std::string> _options;
+        std::unordered_map<std::string, std::string> options;
     };
 
 } // namespace toy3d

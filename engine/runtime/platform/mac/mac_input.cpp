@@ -90,16 +90,16 @@ namespace toy3d
     bool MacPlatformInput::init()
     {
         // 设置键盘回调
-        glfwSetKeyCallback(glfw_window_, MacPlatformInput::key_callback);
+        glfwSetKeyCallback(glfw_window, MacPlatformInput::key_callback);
         
         // 设置鼠标按钮回调
-        glfwSetMouseButtonCallback(glfw_window_, MacPlatformInput::mousebutton_callback);
+        glfwSetMouseButtonCallback(glfw_window, MacPlatformInput::mousebutton_callback);
         
         // 设置鼠标移动回调
-        glfwSetCursorPosCallback(glfw_window_, MacPlatformInput::mousemove_callback);
+        glfwSetCursorPosCallback(glfw_window, MacPlatformInput::mousemove_callback);
         
         // 设置鼠标滚轮回调
-        glfwSetScrollCallback(glfw_window_, MacPlatformInput::mousewheel_callback);
+        glfwSetScrollCallback(glfw_window, MacPlatformInput::mousewheel_callback);
 
         InputSystem::get_instance().init();
 

@@ -11,8 +11,8 @@ class InputSystem
 public:
     static InputSystem& get_instance() 
     {
-        static InputSystem _instance;
-        return _instance;
+        static InputSystem instance;
+        return instance;
     }
     
     bool init();

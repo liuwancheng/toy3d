@@ -43,7 +43,7 @@ int engine_main(void* hInstance);
 			// No parent console, allocate a new one for this process
 			if (!AllocConsole())
 			{
-				throw std::runtime_error{"AllocConsole error"};
+				return -1;
 			}
 		}
 

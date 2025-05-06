@@ -17,8 +17,8 @@ namespace toy3d
         create_glfw_window();
 
         // 初始化InputSystem
-        platform_input_ = std::make_unique<MacPlatformInput>(glfw_window_);
-        if (!platform_input_->init()) 
+        platform_input = std::make_unique<MacPlatformInput>(glfw_window);
+        if (!platform_input->init()) 
         {
             //LOG_ERROR("Failed to initialize platform input system");
             return ;
@@ -33,39 +33,39 @@ namespace toy3d
     void MacWindow::create_glfw_window()
     {
         // 获取配置文件中的窗口标题和大小
-        properties_.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
-        properties_.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
-        properties_.extent.height = ConfigManager::get_instance().get_int("window_height", 720);
-        properties_.vsync = static_cast<Vsync>(ConfigManager::get_instance().get_int("window_vsync", 0));
-        properties_.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
+        properties.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
+        properties.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
+        properties.extent.height = ConfigManager::get_instance().get_int("window_height", 720);
+        properties.vsync = static_cast<Vsync>(ConfigManager::get_instance().get_int("window_vsync", 0));
+        properties.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
 
         // glfw init
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfw_window_ = glfwCreateWindow(properties_.extent.width, properties_.extent.height, properties_.title.c_str(), nullptr, nullptr);
-        glfwSetWindowUserPointer(glfw_window_, this);
-        glfwSetFramebufferSizeCallback(glfw_window_, frame_buffer_size_cb);
+        glfw_window = glfwCreateWindow(properties.extent.width, properties.extent.height, properties.title.c_str(), nullptr, nullptr);
+        glfwSetWindowUserPointer(glfw_window, this);
+        glfwSetFramebufferSizeCallback(glfw_window, frame_buffer_size_cb);
 
-        glfwSetInputMode(glfw_window_, GLFW_STICKY_KEYS, 1);
-        glfwSetInputMode(glfw_window_, GLFW_STICKY_MOUSE_BUTTONS, 1);
+        glfwSetInputMode(glfw_window, GLFW_STICKY_KEYS, 1);
+        glfwSetInputMode(glfw_window, GLFW_STICKY_MOUSE_BUTTONS, 1);
     }
 
 	void MacWindow::destroy_glfw_window()
 	{
-        glfwDestroyWindow(glfw_window_);
+        glfwDestroyWindow(glfw_window);
         glfwTerminate();
 	}
 
-    void MacWindow::resize(uint32_t width, uint32_t height)
+    void MacWindow::resize(uint32_t _width, uint32_t _height)
     {
-        IWindow::resize(width, height);
+        IWindow::resize(_width, _height);
     }
 
     bool MacWindow::should_close()
     {
-        return glfwWindowShouldClose(glfw_window_);
+        return glfwWindowShouldClose(glfw_window);
     }
 
     void MacWindow::process_events()
@@ -75,6 +75,6 @@ namespace toy3d
 
     void MacWindow::close()
     {
-		glfwSetWindowShouldClose(glfw_window_, true);
+		glfwSetWindowShouldClose(glfw_window, true);
     }
 }
