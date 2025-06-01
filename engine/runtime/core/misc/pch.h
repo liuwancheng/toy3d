@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <cmath>
+#include <bitset>
 
 #include <thread>
 #include <mutex>

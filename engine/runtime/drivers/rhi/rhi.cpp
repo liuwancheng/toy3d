@@ -1,10 +1,7 @@
 #include "rhi.h"
-#include "dynamic_rhi.h"
 
 namespace toy3d
 {
-    IDynamicRHI* g_rhi = nullptr;
-
     void init_dynamic_rhi()
     {
         if (g_rhi == nullptr)

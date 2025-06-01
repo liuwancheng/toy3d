@@ -180,3 +180,14 @@ void RenderDeferredDecalsMobile(FRHICommandList& RHICmdList, const FScene& Scene
 		}
 	}
 }
+
+
+
+######### Flax引擎如何封装shader binding
+
+1、一个drawcall最多有4个cb，一个是BindViewData、一个是MaterialShaderDataPerDraw
+2、其中1号槽位，为BindViewData只负责视口矩阵的uniform数据
+3、0号位置，会遍历所有材质上的cb数据，Material->Bind(bindParams)会通过遍历材质身上的所有uniform、srv、uav等，其中uniform就会叠加到0号slot
+4、2号位置负责处理instance的cb数据，MaterialShaderDataPerDraw只负责instance的数据，它会通过dynamic offset映射单个instance的cb数据
+5、3号位置负责ddgi的cb数据
+6、它在drawcall调用前会执行真正的binding，这个时候，内部有维护一个pipelinestate，甚至是buff状态，如果和前一个一致，就跳过的逻辑

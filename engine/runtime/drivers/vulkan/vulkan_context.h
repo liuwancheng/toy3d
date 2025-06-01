@@ -3,6 +3,7 @@
 #include "surface/surface_utils.h"
 #include "vulkan_swapchain.h"
 #include "vulkan_resource.h"
+#include "core/misc/pch.h"
 
 namespace toy3d
 {
