@@ -47,17 +47,19 @@ namespace toy3d
     class RHITexture : public RHIResource
     {
     public:
-        RHITexture(EPixelFormat _format, ETextureCreateFlags _flags, uint32_t _mips, uint32_t _samples)
-        :format(_format)
+        RHITexture(uint32_t mips, uint32_t samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        :mips_num(mips)
+        ,samples_num(samples)
+        ,format(_format)
         ,flags(_flags)
-        ,mips_num(_mips)
-        ,samples_num(_samples){}
+        ,clear_value(_clear_value){}
 
         virtual class RHITexture2D* cast_texture2d(){return nullptr;}
+        virtual class RHITexture2DArray* cast_texture2d_array(){return nullptr;}
         virtual class RHITextureCube* cast_texture_cube(){return nullptr;}
         virtual class RHITexture3D* cast_texture3d(){return nullptr;}
 
-        virtual vec2 get_size() const = 0;
+        virtual vec3 get_size_xyz() const = 0;
     public:
         bool is_msaa(){return samples_num > 0;}
 
@@ -69,35 +71,81 @@ namespace toy3d
 
         uint32_t get_mips_num(){return mips_num;}
 
+        ClearValueBindig get_clear_value(){return clear_value;}
+
         void set_texture_name(std::string name){tex_name = name;}
-    private:
-        EPixelFormat format;
-        ETextureCreateFlags flags;
+    protected:
         uint32_t mips_num;
         uint32_t samples_num;
+        EPixelFormat format;
+        ETextureCreateFlags flags;
+        ClearValueBindig clear_value;
         std::string tex_name;
     };
 
     class RHITexture2D : public RHITexture
     {
     public:
-        RHITexture2D(uint32_t w, uint32_t h, EPixelFormat _format, ETextureCreateFlags _flags, uint32_t _mips, uint32_t _samples)
-        :RHITexture(_format, _flags, _mips,_samples)
-        ,size_x(w)
-        ,size_y(h){}
+        RHITexture2D(uint32_t x, uint32_t y, uint32_t _mips, uint32_t _samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        :RHITexture(_mips,_samples, _format, _flags, _clear_value)
+        ,size_x(x)
+        ,size_y(y){}
 
         virtual RHITexture2D* cast_texture2d(){return this;}
-        virtual vec2 get_size(){return vec2(size_x, size_y);}
-    private:
+        virtual vec2 get_size_xy(){return vec2(size_x, size_y);}
+        virtual vce3 get_size_xyz(){return vec3(size_x, size_y, 1.0f);}
+    protected:
         uint32_t size_x;
         uint32_t size_y;
     };
 
-    class RHITextureCube : public RHITexture
-    {};
+    class RHITexture2DArray : public RHITexture2D
+    {
+    public:
+        RHITexture2DArray(uint32_t x, uint32_t y, uint32_t z,uint32_t _mips, uint32_t _samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        :RHITexture2D(x, y,_mips,_samples, _format, _flags, _clear_value)
+        ,depth(z){}
+
+        virtual RHITexture2DArray* cast_texture2d_array(){return this;}
+
+        virtual RHITexture2D * cast_texture2d(){return nullptr;}
+
+        virtual vec3 get_size_xyz() const { return vec3(size_x, size_y, depth); }
+    protected:
+        uint32_t depth;
+    };
 
     class RHITexture3D : public RHITexture
-    {};
+    {
+    public:
+        RHITexture3D(uint32_t x, uint32_t y, uint32_t z,uint32_t _mips, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        :RHITexture(_mips, 1, _format, _flags, _clear_value)
+        ,size_x(x)
+        ,size_y(y)
+        ,depth(z){}
+
+        virtual vec3 get_size_xyz() const { return vec3(size_x, size_y, depth); }
+        virtual RHITexture3D* cast_texture3d(){return this;}
+    protected:
+        uint32_t size_x;
+        uint32_t size_y;
+        uint32_t depth;
+    };
+
+    class RHITextureCube : public RHITexture
+    {
+    public:
+        RHITextureCube(uint32_t x, uint32_t _mips, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        :RHITexture(_mips, 1, _format, _flags, _clear_value)
+        ,size(x){}
+
+        virtual vec3 get_size_xyz() const { return vec3(size_x, size_y, 6); }
+        virtual RHITextureCube* cast_texture_cube(){return this;}
+
+    protected:
+        uint32_t size;
+    };
+
 
     //
     // Shader bindings
@@ -393,6 +441,10 @@ namespace toy3d
     using RHIGraphicsPipelineStateRef = std::shared_ptr<RHIGraphicsPipelineState>;
 
     using RHITextureRef = std::shared_ptr<RHITexture>;
+    using RHITexture2DRef = std::shared_ptr<RHITexture2D>;
+    using RHITexture2DArrayRef = std::shared_ptr<RHITexture2DArray>;
+    using RHITextureCubeRef = std::shared_ptr<RHITextureCube>;
+    using RHITexture3DRef = std::shared_ptr<RHITexture3D>;
     using RHISamplerStateRef = std::shared_ptr<RHISamplerState>;
 
     using RHIRasterizerStateRef = std::shared_ptr<RHIRasterizerState>;
