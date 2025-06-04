@@ -760,4 +760,81 @@ namespace toy3d
         bool                            depth_bounds;
         bool                            has_fragment_density_attachment;
     };
+
+    struct ClearValueBinding
+    {
+        struct DSValue
+        {
+            float depth;
+            uint32 stencil;
+        }
+
+        union ClearValueTye
+        {
+            float color[4];
+            DSValue depth_stencil;
+        }Value;
+
+        enum EClearBinding
+        {
+            ENoneBound,
+            EColorBound,
+            EDepthStencilBound
+        }
+
+        EClearBinding binding_flag;
+
+        ClearValueBinding(const vec4 & in_color)
+        {
+            Value.color[0] = in_color.x;
+            Value.color[1] = in_color.y;
+            Value.color[2] = in_color.z;
+            Value.color[3] = in_color.w;
+            binding_flag = EColorBound;
+        }
+
+        ClearValueBinding(float in_depth, uint32 in_stencil)
+        {
+            Value.depth_stencil.depth = in_depth;
+            Value.depth_stencil.stencil = in_stencil;
+            binding_flag = EDepthStencilBound;
+        }
+
+        ClearValueBinding()
+        {
+            Value.color[0] = 0.f;
+            Value.color[1] = 0.f;
+            Value.color[2] = 0.f;
+            Value.color[3] = 0.f;
+            binding_flag = ENoneBound;
+        }
+
+        vec4 get_clear_color() const 
+        {
+            return vec4(Value.color[0], Value.color[1], Value.color[2], Value.color[3]);
+        }
+
+        void get_clear_depth_stencil(float& out_depth, uint32& out_stencil) const
+        {
+            out_depth = Value.depth_stencil.depth;
+            out_stencil = Value.depth_stencil.stencil;
+        }
+
+        static const ClearValueBinding None;
+        static const ClearValueBinding Black;
+        static const ClearValueBinding White;
+        static const ClearValueBinding DepthOne;
+        static const ClearValueBinding DepthZero;
+        static const ClearValueBinding DepthNear;
+        static const ClearValueBinding DepthFar;
+    };
+
+    const ClearValueBinding ClearValueBinding::None = ClearValueBinding();
+    const ClearValueBinding ClearValueBinding::Black = ClearValueBinding(0.0f, 0.0f, 0.0f, 0.0f);
+    const ClearValueBinding ClearValueBinding::White = ClearValueBinding(1.0f, 1.0f, 1.0f, 1.0f);
+    const ClearValueBinding ClearValueBinding::DepthZero = ClearValueBinding(0.0f, 0);
+    const ClearValueBinding ClearValueBinding::DepthOne = ClearValueBinding(1.0f, 0);
+    const ClearValueBinding ClearValueBinding::DepthNear = ClearValueBinding(1.0f, 0);  
+    const ClearValueBinding ClearValueBinding::DepthFar = ClearValueBinding(0.0f, 0);
 }
+
