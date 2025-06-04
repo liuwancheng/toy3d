@@ -35,7 +35,7 @@ namespace toy3d
 	    virtual void draw_indexed_indirect(RHIIndexBuffer* index_buffer, RHIVertexBuffer* argument_buffer, uint32 argument_offset) = 0;
         virtual void draw_index_indirect(RHIIndexBuffer* index_buffer, RHIStructuredBuffer* argument_buffer, int32 arguments_index, uint32 num_instance) = 0;
 
-
+        // 管线状态、着色器相关
         virtual RHIRasterizerStateRef create_rasterizer_state(RasterizerStateInitializerRHI* rasterizer_state) = 0;
         virtual RHIDepthStencilStateRef create_depth_stencil_state(DepthStencilStateInitializerRHI* depth_stencil_state) = 0;
         virtual RHIBlendStateRef create_blend_state(BlendStateInitializerRHI* blend_state) = 0;
@@ -51,37 +51,42 @@ namespace toy3d
     
         virtual RHIBoundShaderStateRef create_bound_shader_state(const BoundShaderStateInput& input) = 0;
 
-        virtual RHIUniformBufferRef create_uniform_buffer(const RHIUniformBufferLayout& layout, EUniformBufferUsage usage) = 0;
+        // 缓冲区相关
+        virtual RHIUniformBufferRef create_uniform_buffer(const RHIUniformBufferLayout& layout, EUniformBufferUsage usage, const void* data = nullptr) = 0;
         virtual void update_uniform_buffer(RHIUniformBuffer* uniform_buffer, const void* data) = 0;
     
-        virtual RHIIndexBufferRef create_index_buffer(uint32 stride, uint32 size, uint32 usage) = 0;
+        virtual RHIIndexBufferRef create_index_buffer(uint32 stride, uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) = 0;
         virtual void* map_index_buffer(RHIIndexBuffer* index_buffer, uint32 offset, uint32 size) = 0;
         virtual void unmap_index_buffer(RHIIndexBuffer* index_buffer) = 0;
     
-        virtual RHIStructuredBufferRef create_structured_buffer(uint32 stride, uint32 size, uint32 usage) = 0;
+        virtual RHIStructuredBufferRef create_structured_buffer(uint32 stride, uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) = 0;
         virtual void* map_structured_buffer(RHIStructuredBuffer* structured_buffer, uint32 offset, uint32 size) = 0;
         virtual void unmap_structured_buffer(RHIStructuredBuffer* structured_buffer) = 0;
     
-        virtual RHIVertexBufferRef create_vertex_buffer(uint32 size, uint32 usage) = 0;
+        virtual RHIVertexBufferRef create_vertex_buffer(uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) = 0;
         virtual void* map_vertex_buffer(RHIVertexBuffer* vertex_buffer, uint32 offset, uint32 size) = 0;
         virtual void unmap_vertex_buffer(RHIVertexBuffer* vertex_buffer) = 0;
-        virtual void copy_vertex_buffer(RHIVertexBuffer* src, RHIVertexBuffer* dst) = 0;
 
-        virtual RHITexture2DRef create_texture2d(uint32 x, uint32 y, uint8 format, uint32 mips, uint32 num_samples, 
-            ETextureCreateFlags flags, ERHIAccess assess, const ClearValueBinding& clear = ClearValueBinding::None) = 0;
-        virtual void update_texture2d(RHITexture2D* texture, uint32 mip_level, const void* data) = 0;
+        // 纹理相关
+        virtual RHITexture2DRef create_texture2d(uint32 x, uint32 y, EPixelFormat format, uint32 mips, uint32 num_samples, 
+            ETextureCreateFlags flags, const RHIResourceCreateInfo& create_info) = 0;
+        virtual void update_texture2d(RHITexture2D* texture, const void* data) = 0;
+        virtual void update_texture2d(RHITexture2D* texture, uint32 mip_level, const void* data) = 0;  // 不支持按区域更新，只支持更新整页
 
-        virtual RHITexture2DArrayRef create_texture2d_array(uint32 x, uint32 y,uint32 z, uint8 format, uint32 mips,
-            uint32 num_samples, ETextureCreateFlags flags, ERHIAccess assess, const ClearValueBinding& clear = ClearValueBinding::None) = 0;
-        virtual void update_texture2d_array(RHITexture2DArray* texture, uint32 mip_level, uint32 tex_index, const void* data) = 0;
+        virtual RHITexture2DArrayRef create_texture2d_array(uint32 x, uint32 y,uint32 z, EPixelFormat format, uint32 mips,
+            uint32 num_samples, ETextureCreateFlags flags, const RHIResourceCreateInfo& create_info) = 0;
+        virtual void update_texture2d_array(RHITexture2DArray* texture, const void* data) = 0;
+        virtual void update_texture2d_array(RHITexture2DArray* texture, uint32 mip_level, uint32 array_index, const void* data) = 0; // 不支持按区域更新，只支持更新整页
 
-        virtual RHITextureCubeRef create_texture_cube(uint32 x, uint8 format, uint32 mips,
-           ETextureCreateFlags flags, ERHIAccess assess, const ClearValueBinding& clear = ClearValueBinding::None) = 0;
-        virtual void update_texture_cube(RHITextureCube* texture, uint32 mip_level, uint32 cube_index, const void* data) = 0;
+        virtual RHITextureCubeRef create_texture_cube(uint32 x, EPixelFormat format, uint32 mips,
+           ETextureCreateFlags flags, const RHIResourceCreateInfo& create_info) = 0;
+        virtual void update_texture_cube(RHITextureCube* texture, const void* data) = 0;
+        virtual void update_texture_cube(RHITextureCube* texture, uint32 mip_level, uint32 cube_index, const void* data) = 0; // 不支持按区域更新，只支持更新整页
 
-        virtual RHITexture3DRef create_texture3d(uint32 x, uint32 y, uint32 z, uint8 format, uint32 mips,
-            ETextureCreateFlags flags, ERHIAccess assess, const ClearValueBinding& clear = ClearValueBinding::None) = 0;
-        virtual void update_texture3d(RHITexture3D* texture, uint32 mip_level, const void* data) = 0;
+        virtual RHITexture3DRef create_texture3d(uint32 x, uint32 y, uint32 z, EPixelFormat format, uint32 mips,
+            ETextureCreateFlags flags, const RHIResourceCreateInfo& create_info) = 0;
+        virtual void update_texture3d(RHITexture3D* texture, const void* data) = 0;
+        virtual void update_texture3d(RHITexture3D* texture, uint32 mip_level, const void* data) = 0; // 不支持按区域更新，只支持更新整页
     };
 
     IDynamicRHI* g_rhi = nullptr;

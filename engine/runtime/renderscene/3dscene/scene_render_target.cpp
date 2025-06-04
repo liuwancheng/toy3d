@@ -16,7 +16,12 @@ void SceneRenderTargetMgr::allocate()
     }
     else
     {
-        scene_color = g_rhi->create_texture2d(color_desc.size.x, color_desc.size.y, static_cast<uint8_t>(color_desc.format), color_desc.sample_num, static_cast<uint32_t>(color_desc.flags));
+        RHIResourceCreateInfo color_create_info;
+        color_create_info.access_type = ERHIAccess::EWritable;
+        color_create_info.clear_value = ClearValueBinding(color_desc.clear_value);
+        color_create_info.debug_name = "SceneColor";
+        
+        scene_color = g_rhi->create_texture2d(color_desc.size.x, color_desc.size.y, color_desc.format, 1, color_desc.sample_num, color_desc.flags, color_create_info);
         render_target_pool[color_desc] = scene_color;
     }
 
@@ -30,7 +35,12 @@ void SceneRenderTargetMgr::allocate()
     }
     else
     {
-        scene_depth = g_rhi->create_texture2d(desc_depth.size.x, desc_depth.size.y, static_cast<uint8_t>(desc_depth.format), desc_depth.sample_num, static_cast<uint32_t>(desc_depth.flags));
+        RHIResourceCreateInfo depth_create_info{};
+        depth_create_info.access_type = ERHIAccess::EWritable;
+        depth_create_info.clear_value = ClearValueBinding(1.0f, 0); // 默认深度1.0，模板0
+        depth_create_info.debug_name = "SceneDepth";
+
+        scene_depth = g_rhi->create_texture2d(desc_depth.size.x, desc_depth.size.y, desc_depth.format, 1, desc_depth.sample_num, desc_depth.flags, depth_create_info);
         render_target_pool[desc_depth] = scene_depth;
     }  
 }

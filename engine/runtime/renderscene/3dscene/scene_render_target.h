@@ -20,7 +20,7 @@ namespace toy3d
         }
 
         RenderTargetDesc(EPixelFormat tex_format
-        , uint32_t tex_flags
+        , ETextureCreateFlags tex_flags
         , vec2 tex_size
         , std::string tex_name
         , uint32_t tex_msaa_num = 1
@@ -62,7 +62,7 @@ namespace toy3d
         EPixelFormat format;
         uint32_t array_num;      // texture array num
         uint32_t sample_num;    // msaa
-        uint32_t flags;
+        ETextureCreateFlags flags;
         vec2 size;
         color clear_value;
         std::string debug_name;

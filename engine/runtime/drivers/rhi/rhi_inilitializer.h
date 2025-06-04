@@ -767,7 +767,7 @@ namespace toy3d
         {
             float depth;
             uint32 stencil;
-        }
+        };
 
         union ClearValueTye
         {
@@ -780,11 +780,11 @@ namespace toy3d
             ENoneBound,
             EColorBound,
             EDepthStencilBound
-        }
+        };
 
         EClearBinding binding_flag;
 
-        ClearValueBinding(const vec4 & in_color)
+        ClearValueBinding(const color & in_color)
         {
             Value.color[0] = in_color.x;
             Value.color[1] = in_color.y;
@@ -809,9 +809,9 @@ namespace toy3d
             binding_flag = ENoneBound;
         }
 
-        vec4 get_clear_color() const 
+        color get_clear_color() const 
         {
-            return vec4(Value.color[0], Value.color[1], Value.color[2], Value.color[3]);
+            return color(Value.color[0], Value.color[1], Value.color[2], Value.color[3]);
         }
 
         void get_clear_depth_stencil(float& out_depth, uint32& out_stencil) const
@@ -830,11 +830,27 @@ namespace toy3d
     };
 
     const ClearValueBinding ClearValueBinding::None = ClearValueBinding();
-    const ClearValueBinding ClearValueBinding::Black = ClearValueBinding(0.0f, 0.0f, 0.0f, 0.0f);
-    const ClearValueBinding ClearValueBinding::White = ClearValueBinding(1.0f, 1.0f, 1.0f, 1.0f);
+    const ClearValueBinding ClearValueBinding::Black = ClearValueBinding(vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    const ClearValueBinding ClearValueBinding::White = ClearValueBinding(vec4(1.0f, 1.0f, 1.0f, 1.0f));
     const ClearValueBinding ClearValueBinding::DepthZero = ClearValueBinding(0.0f, 0);
     const ClearValueBinding ClearValueBinding::DepthOne = ClearValueBinding(1.0f, 0);
     const ClearValueBinding ClearValueBinding::DepthNear = ClearValueBinding(1.0f, 0);  
     const ClearValueBinding ClearValueBinding::DepthFar = ClearValueBinding(0.0f, 0);
+
+    struct RHIResourceCreateInfo
+    {
+        RHIResourceCreateInfo()
+            :access_type(ERHIAccess::None)
+            ,clear_value(ClearValueBinding::None)
+            , debug_name("null")
+            , bulk_data(nullptr)
+        {
+        }
+
+        ERHIAccess access_type;
+        ClearValueBinding clear_value;
+        const char* debug_name;
+        void* bulk_data;
+    };
 }
 

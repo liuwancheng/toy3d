@@ -47,7 +47,7 @@ namespace toy3d
     class RHITexture : public RHIResource
     {
     public:
-        RHITexture(uint32_t mips, uint32_t samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        RHITexture(uint32_t mips, uint32_t samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBinding& _clear_value)
         :mips_num(mips)
         ,samples_num(samples)
         ,format(_format)
@@ -71,7 +71,7 @@ namespace toy3d
 
         uint32_t get_mips_num(){return mips_num;}
 
-        ClearValueBindig get_clear_value(){return clear_value;}
+        ClearValueBinding get_clear_value(){return clear_value;}
 
         void set_texture_name(std::string name){tex_name = name;}
     protected:
@@ -79,21 +79,21 @@ namespace toy3d
         uint32_t samples_num;
         EPixelFormat format;
         ETextureCreateFlags flags;
-        ClearValueBindig clear_value;
+        ClearValueBinding clear_value;
         std::string tex_name;
     };
 
     class RHITexture2D : public RHITexture
     {
     public:
-        RHITexture2D(uint32_t x, uint32_t y, uint32_t _mips, uint32_t _samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        RHITexture2D(uint32_t x, uint32_t y, uint32_t _mips, uint32_t _samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBinding& _clear_value)
         :RHITexture(_mips,_samples, _format, _flags, _clear_value)
         ,size_x(x)
         ,size_y(y){}
 
         virtual RHITexture2D* cast_texture2d(){return this;}
         virtual vec2 get_size_xy(){return vec2(size_x, size_y);}
-        virtual vce3 get_size_xyz(){return vec3(size_x, size_y, 1.0f);}
+        virtual vec3 get_size_xyz(){return vec3(size_x, size_y, 1.0f);}
     protected:
         uint32_t size_x;
         uint32_t size_y;
@@ -102,7 +102,7 @@ namespace toy3d
     class RHITexture2DArray : public RHITexture2D
     {
     public:
-        RHITexture2DArray(uint32_t x, uint32_t y, uint32_t z,uint32_t _mips, uint32_t _samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        RHITexture2DArray(uint32_t x, uint32_t y, uint32_t z,uint32_t _mips, uint32_t _samples, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBinding& _clear_value)
         :RHITexture2D(x, y,_mips,_samples, _format, _flags, _clear_value)
         ,depth(z){}
 
@@ -118,7 +118,7 @@ namespace toy3d
     class RHITexture3D : public RHITexture
     {
     public:
-        RHITexture3D(uint32_t x, uint32_t y, uint32_t z,uint32_t _mips, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        RHITexture3D(uint32_t x, uint32_t y, uint32_t z,uint32_t _mips, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBinding& _clear_value)
         :RHITexture(_mips, 1, _format, _flags, _clear_value)
         ,size_x(x)
         ,size_y(y)
@@ -135,11 +135,11 @@ namespace toy3d
     class RHITextureCube : public RHITexture
     {
     public:
-        RHITextureCube(uint32_t x, uint32_t _mips, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBindig& _clear_value)
+        RHITextureCube(uint32_t x, uint32_t _mips, EPixelFormat _format, ETextureCreateFlags _flags, const ClearValueBinding& _clear_value)
         :RHITexture(_mips, 1, _format, _flags, _clear_value)
         ,size(x){}
 
-        virtual vec3 get_size_xyz() const { return vec3(size_x, size_y, 6); }
+        virtual vec3 get_size_xyz() const { return vec3(size, size, size); }
         virtual RHITextureCube* cast_texture_cube(){return this;}
 
     protected:
@@ -239,8 +239,6 @@ namespace toy3d
     class RHIUniformBuffer : public RHIResource
     {
     public:
-
-        /** Initialization constructor. */
         RHIUniformBuffer(const RHIUniformBufferLayout& in_layout)
         : layout(&in_layout)
         , layout_const_buffer_size(in_layout.const_buffer_size)
@@ -261,8 +259,6 @@ namespace toy3d
     class RHIIndexBuffer : public RHIResource
     {
     public:
-
-        /** Initialization constructor. */
         RHIIndexBuffer(uint32 in_stride,uint32 in_size,uint32 in_usage)
         : stride(in_stride)
         , size(in_size)
@@ -291,12 +287,6 @@ namespace toy3d
             std::swap(size, other.size);
             std::swap(usage, other.usage);
         }
-
-        void release_underlying_resource()
-        {
-            stride = size = usage = 0;
-        }
-
     private:
         uint32 stride;
         uint32 size;
@@ -306,11 +296,6 @@ namespace toy3d
     class RHIVertexBuffer : public RHIResource
     {
     public:
-
-        /**
-         * Initialization constructor.
-         * @apram in_usage e.g. BUF_UnorderedAccess
-         */
         RHIVertexBuffer(uint32 in_size, uint32 in_usage)
         : size(in_size)
         , usage(in_usage)
@@ -348,8 +333,6 @@ namespace toy3d
     class RHIStructuredBuffer : public RHIResource
     {
     public:
-
-        /** Initialization constructor. */
         RHIStructuredBuffer(uint32 in_stride,uint32 in_size, uint32 in_usage)
         : stride(in_stride)
         , size(in_size)
@@ -389,10 +372,6 @@ namespace toy3d
 
         virtual void clear() = 0;
 
-        /**
-         * Poll the fence to see if the GPU has signaled it.
-         * @returns True if and only if the GPU fence has been inserted and the GPU has signaled the fence.
-         */
         virtual bool poll() const = 0;
 
         const std::string& get_name() const { return fence_name; }
@@ -409,7 +388,6 @@ namespace toy3d
 
         virtual void clear() final override;
 
-        /** @discussion RHI implementations must be thread-safe and must correctly handle being called before RHIInsertFence if an RHI thread is active. */
         virtual bool poll() const final override;
 
     private:
