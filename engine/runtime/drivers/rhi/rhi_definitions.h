@@ -1,5 +1,6 @@
 #pragma once
 #include "core/misc/pch.h"
+#include "core/misc/enum_class_utils.h"
 
 namespace  toy3d
 {
@@ -312,7 +313,7 @@ enum EPrimitiveType
 	PT_MaxBits = 6
 };
 
-enum EBufferUsageFlags
+enum class EBufferUsageFlags
 {
 	BUF_None					= 0x0000,
 	BUF_Static					= 0x0001, // The buffer will be written to once, GPU read only, CPU write only.  The data lifetime is until the buffer is destroyed.
@@ -331,6 +332,7 @@ enum EBufferUsageFlags
 	// Helper bit-masks
 	BUF_AnyDynamic = (BUF_Dynamic | BUF_Volatile),
 };
+ENUM_CLASS_FLAGS(EBufferUsageFlags);
 
 enum class ETextureDimension
 {
@@ -411,7 +413,7 @@ enum class EPixelFormat : uint8
     PixelFormat_Max
 };
 
-enum ETextureCreateFlags : uint32
+enum class ETextureCreateFlags : uint32
 {
     Tex_None = 0,               // normal texture
     Tex_RenderTarget            = 1<<0,
@@ -422,8 +424,10 @@ enum ETextureCreateFlags : uint32
     Tex_Dynamic                 = 1<<5,     // 动态贴图，可能每帧都更新
     Tex_Memoryless              = 1<<6,
     Tex_Virtual                 = 1<<7,
-    Tex_Transient               = 1<<8      // 临时申请的资源
+	Tex_UAV 					= 1<<8,
+    Tex_Transient               = 1<<9     // 临时申请的资源
 };
+ENUM_CLASS_FLAGS(ETextureCreateFlags);
 
 enum class ERHIPipeline : uint8_t
 {

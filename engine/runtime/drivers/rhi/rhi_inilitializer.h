@@ -616,18 +616,18 @@ namespace toy3d
 
     struct GraphicsPipelineStateInitializerRHI
     {
-        using TRenderTargetFormats = std::array<uint8/*EPixelFormat*/, MaxSimultaneousRenderTargets>;
-        using TRenderTargetFlags = std::array<uint32/*ETextureCreateFlags*/, MaxSimultaneousRenderTargets>;
+        using TRenderTargetFormats = std::array<EPixelFormat, MaxSimultaneousRenderTargets>;
+        using TRenderTargetFlags = std::array<ETextureCreateFlags, MaxSimultaneousRenderTargets>;
 
         GraphicsPipelineStateInitializerRHI()
             : blend_state(nullptr)
             , rasterizer_state(nullptr)
             , depth_stencil_state(nullptr)
             , render_targets_enabled(0)
-            , render_target_formats{0}
-            , render_target_flags{0}
+            , render_target_formats{EPixelFormat::Unknow}
+            , render_target_flags{ETextureCreateFlags::Tex_None}
             , depth_stencil_target_format(EPixelFormat::Unknow)
-            , depth_stencil_target_flag(0)
+            , depth_stencil_target_flag(ETextureCreateFlags::Tex_None)
             , depth_target_load_action(ERenderTargetLoadAction::ENoAction)
             , depth_target_store_action(ERenderTargetStoreAction::ENoAction)
             , stencil_target_load_action(ERenderTargetLoadAction::ENoAction)
@@ -727,7 +727,7 @@ namespace toy3d
                 int32 last_valid_target = -1;
                 for (int32 i = (int32)render_targets_enabled - 1; i >= 0; i--)
                 {
-                    if (render_target_formats[i] != static_cast<uint32>(EPixelFormat::Unknow))
+                    if (render_target_formats[i] != EPixelFormat::Unknow)
                     {
                         last_valid_target = i;
                         break;
@@ -748,7 +748,7 @@ namespace toy3d
         TRenderTargetFormats            render_target_formats;
         TRenderTargetFlags              render_target_flags;
         EPixelFormat                    depth_stencil_target_format;
-        uint32                          depth_stencil_target_flag;
+        ETextureCreateFlags             depth_stencil_target_flag;
         ERenderTargetLoadAction         depth_target_load_action;
         ERenderTargetStoreAction        depth_target_store_action;
         ERenderTargetLoadAction         stencil_target_load_action;
