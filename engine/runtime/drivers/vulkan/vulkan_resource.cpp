@@ -1,4 +1,5 @@
 #include "vulkan_resource.h"
+#include "core/math/math.h"
 #include "vulkan/vulkan_context.h"
 
 namespace toy3d
@@ -78,90 +79,134 @@ namespace toy3d
         VK_CHECK(vkResetFences(m_context->device, 1, &fence));
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    VkFormat cast_format(const EPixelFormat &format)
+    ///////////////////////////////// vulkan state ////////////////////////////////////
+    VulkanRasterizerState::VulkanRasterizerState(const RasterizerStateInitializerRHI& in_desc)
     {
-        // 以后再慢慢加吧！！！
-        VkFormat vk_format{VK_FORMAT_R8G8B8A8_UNORM};
-        switch (format)
-        {
-        case EPixelFormat::B8G8R8A8 :
-            vk_format = VkFormat::VK_FORMAT_B8G8R8A8_UNORM;
-            break;
-        case EPixelFormat::A16G16B16R16 :
-            vk_format = VkFormat::VK_FORMAT_R16G16B16A16_UNORM;
-            break;
-        default:
-            break;
-        }
-        return vk_format;
+        rhi_desc = in_desc;
+        zero_vulkan_struct(rasterizer_state, VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO);
+		rasterizer_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
+		rasterizer_state.lineWidth = 1.0f;
+
+        rasterizer_state.polygonMode = cast_fill_mode(in_desc.fill_mode);
+        rasterizer_state.cullMode = cast_cull_mode(in_desc.cull_mode);
+
+        //rasterizer_state.depthClampEnable = VK_FALSE;
+        rasterizer_state.depthBiasEnable = in_desc.depth_bias != 0.0f ? VK_TRUE : VK_FALSE;
+        //RasterizerState.rasterizerDiscardEnable = VK_FALSE;
+
+        rasterizer_state.depthBiasSlopeFactor = in_desc.slope_scale_depth_bias;
+        rasterizer_state.depthBiasConstantFactor = in_desc.depth_bias;
     }
 
-    VkSampleCountFlagBits cast_msaa(const uint32_t &nums)
+    VulkanDepthStencilState::VulkanDepthStencilState(const DepthStencilStateInitializerRHI& in_desc)
     {
-        VkSampleCountFlagBits flag{VK_SAMPLE_COUNT_1_BIT};
-        switch (nums)
+        rhi_desc = in_desc;
+        zero_vulkan_struct(depth_stencil_state, VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO);
+
+        depth_stencil_state.depthTestEnable = (in_desc.depth_test != CF_Always || in_desc.enable_depth_write) ? VK_TRUE : VK_FALSE;
+        depth_stencil_state.depthCompareOp = cast_depth_stencil_compare_function(in_desc.depth_test);
+        depth_stencil_state.depthWriteEnable = in_desc.enable_depth_write ? VK_TRUE : VK_FALSE;
+
         {
-        case 2:
-            flag = VkSampleCountFlagBits::VK_SAMPLE_COUNT_2_BIT;
-            break;
-        case 4:
-            flag = VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT;
-            break;
-        case 8:
-            flag = VkSampleCountFlagBits::VK_SAMPLE_COUNT_8_BIT;
-            break;
-        case 16:
-            flag = VkSampleCountFlagBits::VK_SAMPLE_COUNT_16_BIT;
-            break;
-        case 32:
-            flag = VkSampleCountFlagBits::VK_SAMPLE_COUNT_32_BIT;
-            break;
-        default:
-            break;
+            // 深度整体范围测试
+            depth_stencil_state.depthBoundsTestEnable = in_desc.enable_depth_bounds;
+            depth_stencil_state.minDepthBounds = 0.0f;
+            depth_stencil_state.maxDepthBounds = 1.0f;
         }
-        return flag;
+
+        depth_stencil_state.stencilTestEnable = (in_desc.enable_front_face_stencil || in_desc.enable_back_face_stencil) ? VK_TRUE : VK_FALSE;
+
+        // Front
+        depth_stencil_state.back.failOp = cast_stencil_op(in_desc.front_face_depth_fail_stencil_op);
+        depth_stencil_state.back.passOp = cast_stencil_op(in_desc.front_face_pass_stencil_op);
+        depth_stencil_state.back.depthFailOp = cast_stencil_op(in_desc.front_face_depth_fail_stencil_op);
+        depth_stencil_state.back.compareOp = cast_depth_stencil_compare_function(in_desc.front_face_stencil_test);
+        depth_stencil_state.back.compareMask = in_desc.stencil_read_mask;
+        depth_stencil_state.back.writeMask = in_desc.stencil_write_mask;
+        depth_stencil_state.back.reference = 0;
+
+        if (in_desc.enable_back_face_stencil)
+        {
+            // Back
+            depth_stencil_state.front.failOp = cast_stencil_op(in_desc.back_face_depth_fail_stencil_op);
+            depth_stencil_state.front.passOp = cast_stencil_op(in_desc.back_face_pass_stencil_op);
+            depth_stencil_state.front.depthFailOp = cast_stencil_op(in_desc.back_face_depth_fail_stencil_op);
+            depth_stencil_state.front.compareOp = cast_depth_stencil_compare_function(in_desc.back_face_stencil_test);
+            depth_stencil_state.front.compareMask = in_desc.stencil_read_mask;
+            depth_stencil_state.front.writeMask = in_desc.stencil_write_mask;
+            depth_stencil_state.front.reference = 0;
+        }
+        else
+        {
+            depth_stencil_state.front = depth_stencil_state.back;
+        }
     }
 
-    VkAttachmentLoadOp cast_loadop(const ERenderTargetLoadAction &load_action)
+    VulkanBlendState::VulkanBlendState(const BlendStateInitializerRHI& in_desc)
     {
-        VkAttachmentLoadOp load_op{VK_ATTACHMENT_LOAD_OP_NONE_EXT};
-        switch (load_action)
+        rhi_desc = in_desc;
+        for (uint32 index = 0; index < MaxSimultaneousRenderTargets; ++index)
         {
-        case ERenderTargetLoadAction::EClear :
-            load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            break;
-        case ERenderTargetLoadAction::ELoad:
-            load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
-            break;
-        case ERenderTargetLoadAction::EDontCare:
-            load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            break;
-        default:
-            break;
-        }
-        return load_op;
+            const BlendStateInitializerRHI::PerRenderTargetBlendState& color_target = in_desc.render_targets[index];
+            VkPipelineColorBlendAttachmentState& blend_state = blend_states[index];
+            std::memset(&blend_state, 0, sizeof(VkPipelineColorBlendAttachmentState));
 
+            blend_state.colorBlendOp = cast_blend_operation(color_target.color_blend_op);
+            blend_state.alphaBlendOp = cast_blend_operation(color_target.alpha_blend_op);
+
+            blend_state.dstColorBlendFactor = cast_blend_factor(color_target.color_dest_blend);
+            blend_state.dstAlphaBlendFactor = cast_blend_factor(color_target.alpha_dest_blend);
+
+            blend_state.srcColorBlendFactor = cast_blend_factor(color_target.color_src_blend);
+            blend_state.srcAlphaBlendFactor = cast_blend_factor(color_target.alpha_src_blend);
+
+            blend_state.blendEnable =
+                (color_target.color_blend_op != BO_Add || color_target.color_dest_blend != BF_Zero || color_target.color_src_blend != BF_One ||
+                color_target.alpha_blend_op != BO_Add || color_target.alpha_dest_blend != BF_Zero || color_target.alpha_src_blend != BF_One) ? VK_TRUE : VK_FALSE;
+
+            blend_state.colorWriteMask = (color_target.color_write_mask & CW_RED) ? VK_COLOR_COMPONENT_R_BIT : 0;
+            blend_state.colorWriteMask |= (color_target.color_write_mask & CW_GREEN) ? VK_COLOR_COMPONENT_G_BIT : 0;
+            blend_state.colorWriteMask |= (color_target.color_write_mask & CW_BLUE) ? VK_COLOR_COMPONENT_B_BIT : 0;
+            blend_state.colorWriteMask |= (color_target.color_write_mask & CW_ALPHA) ? VK_COLOR_COMPONENT_A_BIT : 0;
+        }
     }
 
-    VkAttachmentStoreOp cast_storeop(const ERenderTargetStoreAction &store_action)
+    uint32 g_vk_sampler_handle_counter = 0;
+
+    VulkanSamplerState::VulkanSamplerState(const VkSamplerCreateInfo& info, VkDevice& device, const bool is_immutable)
+    : vk_sampler(VK_NULL_HANDLE)
+	, sampler_id(0)
+	, b_immutable(is_immutable)
     {
-        VkAttachmentStoreOp store_op{VK_ATTACHMENT_STORE_OP_NONE_EXT};
-        switch (store_action)
-        {
-        case ERenderTargetStoreAction::EMultisampleResolve :
-            store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            break;
-        case ERenderTargetStoreAction::EStore:
-            store_op = VK_ATTACHMENT_STORE_OP_STORE;
-            break;
-        case ERenderTargetStoreAction::EDontCare:
-            store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            break;
-        default:
-            break;
-        }
-        return store_op;
+        vkCreateSampler(device, &info, nullptr, &vk_sampler);
+
+		sampler_id = ++g_vk_sampler_handle_counter;
     }
 
+    void VulkanSamplerState::setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& create_info, uint32 device_max_anisotropy)
+    {
+        zero_vulkan_struct(create_info, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
+
+        create_info.magFilter = cast_filter_mode(in_desc.filter);
+        create_info.minFilter = cast_filter_mode(in_desc.filter);
+        create_info.mipmapMode = cast_mipmap_mode(in_desc.filter);
+        create_info.addressModeU = cast_sampler_mode(in_desc.address_u);
+        create_info.addressModeV = cast_sampler_mode(in_desc.address_v);
+        create_info.addressModeW = cast_sampler_mode(in_desc.address_w);
+
+        create_info.mipLodBias = in_desc.mip_bias;
+        
+        create_info.maxAnisotropy = 1.0f;
+        if (in_desc.filter == SF_AnisotropicLinear || in_desc.filter == SF_AnisotropicPoint)
+        {
+            create_info.maxAnisotropy = Math::clamp((float)in_desc.max_anisotropy, 1.0f, device_max_anisotropy);
+        }
+        create_info.anisotropyEnable = create_info.maxAnisotropy > 1.0f;
+
+        create_info.compareEnable = in_desc.sampler_comparison_function != SCF_Never ? VK_TRUE : VK_FALSE;
+        create_info.compareOp = cast_sampler_compare_function(in_desc.sampler_comparison_function);
+        create_info.minLod = in_desc.min_mip_level;
+        create_info.maxLod = in_desc.max_mip_level;
+        create_info.borderColor = in_desc.border_color == 0 ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    }
 }// namespace toy3d

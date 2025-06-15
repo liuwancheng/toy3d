@@ -32,10 +32,62 @@ namespace toy3d
         VulkanContext* m_context;
     };
 
+    class VulkanRasterizerState : public RHIRasterizerState
+    {
+    public:
+        VulkanRasterizerState(const RasterizerStateInitializerRHI& in_desc);
+        virtual bool get_initializer(struct RasterizerStateInitializerRHI& out) override
+        { 
+            out = rhi_desc;
+            return true;
+        }
+    public:
+        VkPipelineRasterizationStateCreateInfo rasterizer_state;
+        RasterizerStateInitializerRHI rhi_desc;
+    };
 
-    VkFormat cast_format(const EPixelFormat &format);
-    VkSampleCountFlagBits cast_msaa(const uint32_t &nums);
-    VkAttachmentLoadOp cast_loadop(const ERenderTargetLoadAction &load_action);
-    VkAttachmentStoreOp cast_storeop(const ERenderTargetStoreAction &store_action);
+    class VulkanDepthStencilState : public RHIDepthStencilState
+    {
+    public:
+        VulkanDepthStencilState(const DepthStencilStateInitializerRHI& in_desc);
+        virtual bool get_initializer(struct DepthStencilStateInitializerRHI& out) override
+        { 
+            out = rhi_desc;
+            return true; 
+        }
+    public:
+        VkPipelineDepthStencilStateCreateInfo depth_stencil_state;
+        DepthStencilStateInitializerRHI rhi_desc;
+    };
+
+    class VulkanBlendState : public RHIBlendState
+    {
+    public:
+        VulkanBlendState(const BlendStateInitializerRHI& in_desc);
+    
+        virtual bool get_initializer(class BlendStateInitializerRHI& out) override
+        { 
+            out = rhi_desc;
+            return true; 
+        }
+    public:
+        VkPipelineColorBlendAttachmentState blend_states[MaxSimultaneousRenderTargets];
+        BlendStateInitializerRHI rhi_desc;
+    };
+
+    class VulkanSamplerState : public RHISamplerState 
+    {
+    public:
+	    VulkanSamplerState(const VkSamplerCreateInfo& info, VkDevice& device, const bool is_immutable = false);
+
+	    static void setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& create_info, uint32 device_max_anisotropy);
+
+        virtual bool is_immutable() const override{ return b_immutable; }
+    public:
+    	VkSampler vk_sampler;
+        uint32 sampler_id;
+    private:
+        bool b_immutable;
+    };
 
 }

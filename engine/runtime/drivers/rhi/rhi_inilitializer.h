@@ -165,6 +165,7 @@ namespace toy3d
     struct DepthStencilStateInitializerRHI
     {
         bool enable_depth_write;
+        bool enable_depth_bounds;
         ECompareFunction depth_test;
 
         bool enable_front_face_stencil;
@@ -182,6 +183,7 @@ namespace toy3d
 
         DepthStencilStateInitializerRHI(
             bool in_enable_depth_write = true,
+            bool in_enable_depth_bounds = true,
             ECompareFunction in_depth_test = CF_LessEqual,
             bool in_enable_front_face_stencil = false,
             ECompareFunction in_front_face_stencil_test = CF_Always,
@@ -197,6 +199,7 @@ namespace toy3d
             uint8_t in_stencil_write_mask = 0xFF
             )
         : enable_depth_write(in_enable_depth_write)
+        , enable_depth_bounds(in_enable_depth_bounds)
         , depth_test(in_depth_test)
         , enable_front_face_stencil(in_enable_front_face_stencil)
         , front_face_stencil_test(in_front_face_stencil_test)
@@ -220,10 +223,6 @@ namespace toy3d
     {
         struct PerRenderTargetBlendState
         {
-            enum
-            {
-                NUM_STRING_FIELDS = 7
-            };
             EBlendOperation color_blend_op;
             EBlendFactor color_src_blend;
             EBlendFactor color_dest_blend;
