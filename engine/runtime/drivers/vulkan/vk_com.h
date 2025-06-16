@@ -72,15 +72,14 @@ namespace toy3d
 
     ////////////////////////////////////////////////////////////////////////
     template<typename T>
-    void zero_vulkan_struct(T& vulkan_struct, int32_t vk_sType)
+    void zero_vulkan_struct(T& vulkan_struct, VkStructureType vk_sType)
     {
         static_assert(!std::is_pointer_v<T>, "Don't use a pointer!");
         static_assert(std::is_standard_layout_v<T>, "T must be standard layout!");
         static_assert(offsetof(T, sType) == 0, "sType must be the first member!");
-        static_assert(sizeof(T::sType) == sizeof(int32_t), "sType must be compatible with int32_t!");
         
         std::memset(&vulkan_struct, 0, sizeof(T));
-        vulkan_struct.sType = static_cast<decltype(T::sType)>(vk_sType);
+        vulkan_struct.sType = vk_sType;
     }
 
     VkFormat cast_format(const EPixelFormat &format)
@@ -224,7 +223,7 @@ namespace toy3d
         return VK_FILTER_MAX_ENUM;
     }
 
-    VkSamplerAddressMode cast_sampler_mode(ESamplerAddressMode address_mode)
+    VkSamplerAddressMode cast_wrap_mode(ESamplerAddressMode address_mode)
     {
         switch (address_mode)
         {

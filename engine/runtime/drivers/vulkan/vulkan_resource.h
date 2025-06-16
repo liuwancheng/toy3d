@@ -80,7 +80,7 @@ namespace toy3d
     public:
 	    VulkanSamplerState(const VkSamplerCreateInfo& info, VkDevice& device, const bool is_immutable = false);
 
-	    static void setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& create_info, uint32 device_max_anisotropy);
+	    static void setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& out_info, uint32 device_max_anisotropy);
 
         virtual bool is_immutable() const override{ return b_immutable; }
     public:

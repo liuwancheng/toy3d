@@ -183,30 +183,30 @@ namespace toy3d
 		sampler_id = ++g_vk_sampler_handle_counter;
     }
 
-    void VulkanSamplerState::setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& create_info, uint32 device_max_anisotropy)
+    void VulkanSamplerState::setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& out_info, uint32 device_max_anisotropy)
     {
-        zero_vulkan_struct(create_info, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
+        zero_vulkan_struct(out_info, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
 
-        create_info.magFilter = cast_filter_mode(in_desc.filter);
-        create_info.minFilter = cast_filter_mode(in_desc.filter);
-        create_info.mipmapMode = cast_mipmap_mode(in_desc.filter);
-        create_info.addressModeU = cast_sampler_mode(in_desc.address_u);
-        create_info.addressModeV = cast_sampler_mode(in_desc.address_v);
-        create_info.addressModeW = cast_sampler_mode(in_desc.address_w);
+        out_info.magFilter = cast_filter_mode(in_desc.filter);
+        out_info.minFilter = cast_filter_mode(in_desc.filter);
+        out_info.mipmapMode = cast_mipmap_mode(in_desc.filter);
+        out_info.addressModeU = cast_wrap_mode(in_desc.address_u);
+        out_info.addressModeV = cast_wrap_mode(in_desc.address_v);
+        out_info.addressModeW = cast_wrap_mode(in_desc.address_w);
 
-        create_info.mipLodBias = in_desc.mip_bias;
+        out_info.mipLodBias = in_desc.mip_bias;
         
-        create_info.maxAnisotropy = 1.0f;
+        out_info.maxAnisotropy = 1.0f;
         if (in_desc.filter == SF_AnisotropicLinear || in_desc.filter == SF_AnisotropicPoint)
         {
-            create_info.maxAnisotropy = Math::clamp((float)in_desc.max_anisotropy, 1.0f, device_max_anisotropy);
+            out_info.maxAnisotropy = Math::clamp((float)in_desc.max_anisotropy, 1.0f, device_max_anisotropy);
         }
-        create_info.anisotropyEnable = create_info.maxAnisotropy > 1.0f;
+        out_info.anisotropyEnable = out_info.maxAnisotropy > 1.0f;
 
-        create_info.compareEnable = in_desc.sampler_comparison_function != SCF_Never ? VK_TRUE : VK_FALSE;
-        create_info.compareOp = cast_sampler_compare_function(in_desc.sampler_comparison_function);
-        create_info.minLod = in_desc.min_mip_level;
-        create_info.maxLod = in_desc.max_mip_level;
-        create_info.borderColor = in_desc.border_color == 0 ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        out_info.compareEnable = in_desc.sampler_comparison_function != SCF_Never ? VK_TRUE : VK_FALSE;
+        out_info.compareOp = cast_sampler_compare_function(in_desc.sampler_comparison_function);
+        out_info.minLod = in_desc.min_mip_level;
+        out_info.maxLod = in_desc.max_mip_level;
+        out_info.borderColor = in_desc.border_color == 0 ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     }
 }// namespace toy3d
