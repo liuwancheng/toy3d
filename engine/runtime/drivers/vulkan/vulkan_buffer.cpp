@@ -2,46 +2,61 @@
 
 namespace toy3d
 {
+     ///////////////////////////////////////////// VulkanBuffer //////////////////////////////////////////////
+    void VulkanBuffer::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkDeviceMemory& memory)
+    {
+
+    }
+
+    void VulkanBuffer::copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+    {
+
+    }
+
+
     ///////////////////////////////////////////// VulkanIndexBuffer //////////////////////////////////////////////
-    VulkanIndexBuffer::VulkanIndexBuffer(VkDevice* device, uint32 in_stride, uint32 in_size, uint32 in_usage, RHIResourceCreateInfo& create_info)
+    VulkanIndexBuffer::VulkanIndexBuffer(VulkanContext* context, uint32 in_stride, uint32 in_size, EBufferUsageFlags in_usage, RHIResourceCreateInfo& create_info)
+    :RHIIndexBuffer(in_stride, in_size, in_usage)
     {
 
     }
 
-    void* VulkanIndexBuffer::map(VkDevice* device, uint32 offset, uint32 size)
+    void* VulkanIndexBuffer::map(VulkanContext* context, uint32 offset, uint32 size)
     {
 
     }
 
-    void VulkanIndexBuffer::unmap(VkDevice* device)
+    void VulkanIndexBuffer::unmap(VulkanContext* context)
     {
 
     }
 
 
     ///////////////////////////////////////////// VulkanVertexBuffer //////////////////////////////////////////////
-    VulkanVertexBuffer::VulkanVertexBuffer(VkDevice* device, uint32 in_stride, uint32 in_size, uint32 in_usage, RHIResourceCreateInfo& create_info)
+    VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext* context, uint32 in_stride, uint32 in_size, EBufferUsageFlags in_usage, RHIResourceCreateInfo& create_info)
+    :RHIVertexBuffer(in_size, in_usage)
     {
 
     }
 
-    void* VulkanVertexBuffer::map(VkDevice* device, uint32 offset, uint32 size)
+    void* VulkanVertexBuffer::map(VulkanContext* context, uint32 offset, uint32 size)
     {
 
     }
 
-    void VulkanVertexBuffer::unmap(VkDevice* device)
+    void VulkanVertexBuffer::unmap(VulkanContext* context)
     {
 
     }
 
     ///////////////////////////////////////////// VulkanUniformBuffer //////////////////////////////////////////////
     VulkanUniformBuffer::VulkanUniformBuffer(const RHIUniformBufferLayout& in_layout, EUniformBufferUsage in_usage, const void* data)
+    :RHIUniformBuffer(in_layout)
     {
 
     }
 
-    void VulkanUniformBuffer::update(VkDevice* device, const void* data)
+    void VulkanUniformBuffer::update(VulkanContext* context, const void* data)
     {
 
     }

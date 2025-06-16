@@ -7,37 +7,43 @@ namespace toy3d
 {
     class VulkanContext;
 
-    class VulkanIndexBuffer : public RHIIndexBuffer
+    class VulkanBuffer
     {
     public:
-        VulkanIndexBuffer(VkDevice* device, uint32 in_stride, uint32 in_size, uint32 in_usage, RHIResourceCreateInfo& create_info);
+        void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkDeviceMemory& memory);
 
-        void* map(VkDevice* device, uint32 offset, uint32 size);
+        void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
 
-        void unmap(VkDevice* device);
-    private:
-        VkBuffer vk_buffer;
+        VkBuffer get_native_ptr(){return vk_buffer;};
+    protected:
+        VkBuffer vk_buffer{VK_NULL_HANDLE};
     };
 
-    class VulkanVertexBuffer : public RHIVertexBuffer
+    class VulkanIndexBuffer : public RHIIndexBuffer, VulkanBuffer
     {
     public:
-        VulkanVertexBuffer(VkDevice* device, uint32 in_stride, uint32 in_size, uint32 in_usage, RHIResourceCreateInfo& create_info);
+        VulkanIndexBuffer(VulkanContext* context, uint32 in_stride, uint32 in_size, EBufferUsageFlags in_usage, RHIResourceCreateInfo& create_info);
 
-        void* map(VkDevice* device, uint32 offset, uint32 size);
+        void* map(VulkanContext* context, uint32 offset, uint32 size);
 
-        void unmap(VkDevice* device);
-    private:
-        VkBuffer vk_buffer;
+        void unmap(VulkanContext* context);
     };
 
-    class VulkanUniformBuffer : public RHIUniformBuffer
+    class VulkanVertexBuffer : public RHIVertexBuffer, VulkanBuffer
+    {
+    public:
+        VulkanVertexBuffer(VulkanContext* context, uint32 in_stride, uint32 in_size, EBufferUsageFlags in_usage, RHIResourceCreateInfo& create_info);
+
+        void* map(VulkanContext* context, uint32 offset, uint32 size);
+
+        void unmap(VulkanContext* context);
+    };
+
+    class VulkanUniformBuffer : public RHIUniformBuffer, VulkanBuffer
     {
     public:
         VulkanUniformBuffer(const RHIUniformBufferLayout& in_layout, EUniformBufferUsage in_usage, const void* data);
 
-        void update(VkDevice* device, const void* data);
-    private:
-        VkBuffer vk_buffer;
+        void update(VulkanContext* context, const void* data);
     };
 }// namespace toy3d

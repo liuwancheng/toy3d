@@ -55,15 +55,15 @@ namespace toy3d
         virtual RHIUniformBufferRef create_uniform_buffer(const RHIUniformBufferLayout& layout, EUniformBufferUsage usage, const void* data = nullptr) = 0;
         virtual void update_uniform_buffer(RHIUniformBuffer* uniform_buffer, const void* data) = 0;
     
-        virtual RHIIndexBufferRef create_index_buffer(uint32 stride, uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) = 0;
+        virtual RHIIndexBufferRef create_index_buffer(uint32 stride, uint32 size, EBufferUsageFlags usage, const RHIResourceCreateInfo& create_info) = 0;
         virtual void* map_index_buffer(RHIIndexBuffer* index_buffer, uint32 offset, uint32 size) = 0;
         virtual void unmap_index_buffer(RHIIndexBuffer* index_buffer) = 0;
     
-        virtual RHIStructuredBufferRef create_structured_buffer(uint32 stride, uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) = 0;
+        virtual RHIStructuredBufferRef create_structured_buffer(uint32 stride, uint32 size, EBufferUsageFlags usage, const RHIResourceCreateInfo& create_info) = 0;
         virtual void* map_structured_buffer(RHIStructuredBuffer* structured_buffer, uint32 offset, uint32 size) = 0;
         virtual void unmap_structured_buffer(RHIStructuredBuffer* structured_buffer) = 0;
     
-        virtual RHIVertexBufferRef create_vertex_buffer(uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) = 0;
+        virtual RHIVertexBufferRef create_vertex_buffer(uint32 size, EBufferUsageFlags usage, const RHIResourceCreateInfo& create_info) = 0;
         virtual void* map_vertex_buffer(RHIVertexBuffer* vertex_buffer, uint32 offset, uint32 size) = 0;
         virtual void unmap_vertex_buffer(RHIVertexBuffer* vertex_buffer) = 0;
 

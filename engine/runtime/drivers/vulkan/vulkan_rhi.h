@@ -61,15 +61,15 @@ namespace toy3d
         virtual RHIUniformBufferRef create_uniform_buffer(const RHIUniformBufferLayout& layout, EUniformBufferUsage usage, const void* data = nullptr) override;
         virtual void update_uniform_buffer(RHIUniformBuffer* uniform_buffer, const void* data) override;
     
-        virtual RHIIndexBufferRef create_index_buffer(uint32 stride, uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) override;
+        virtual RHIIndexBufferRef create_index_buffer(uint32 stride, uint32 size, EBufferUsageFlags usage, const RHIResourceCreateInfo& create_info) override;
         virtual void* map_index_buffer(RHIIndexBuffer* index_buffer, uint32 offset, uint32 size) override;
         virtual void unmap_index_buffer(RHIIndexBuffer* index_buffer) override;
     
-        virtual RHIStructuredBufferRef create_structured_buffer(uint32 stride, uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) override;
+        virtual RHIStructuredBufferRef create_structured_buffer(uint32 stride, uint32 size, EBufferUsageFlags usage, const RHIResourceCreateInfo& create_info) override;
         virtual void* map_structured_buffer(RHIStructuredBuffer* structured_buffer, uint32 offset, uint32 size) override;
         virtual void unmap_structured_buffer(RHIStructuredBuffer* structured_buffer) override;
     
-        virtual RHIVertexBufferRef create_vertex_buffer(uint32 size, uint32 usage, const RHIResourceCreateInfo& create_info) override;
+        virtual RHIVertexBufferRef create_vertex_buffer(uint32 size, EBufferUsageFlags usage, const RHIResourceCreateInfo& create_info) override;
         virtual void* map_vertex_buffer(RHIVertexBuffer* vertex_buffer, uint32 offset, uint32 size) override;
         virtual void unmap_vertex_buffer(RHIVertexBuffer* vertex_buffer) override;
 

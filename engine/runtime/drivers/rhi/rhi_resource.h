@@ -259,7 +259,7 @@ namespace toy3d
     class RHIIndexBuffer : public RHIResource
     {
     public:
-        RHIIndexBuffer(uint32 in_stride,uint32 in_size,uint32 in_usage)
+        RHIIndexBuffer(uint32 in_stride,uint32 in_size, EBufferUsageFlags in_usage)
         : stride(in_stride)
         , size(in_size)
         , usage(in_usage)
@@ -272,14 +272,7 @@ namespace toy3d
         uint32 get_size() const { return size; }
 
         /** @return The usage flags used to create the index buffer. */
-        uint32 get_usage() const { return usage; }
-
-    protected:
-        RHIIndexBuffer()
-            : stride(0)
-            , size(0)
-            , usage(0)
-        {}
+        EBufferUsageFlags get_usage() const { return usage; }
 
         void swap(RHIIndexBuffer& other)
         {
@@ -290,13 +283,13 @@ namespace toy3d
     private:
         uint32 stride;
         uint32 size;
-        uint32 usage;
+        EBufferUsageFlags usage;
     };
 
     class RHIVertexBuffer : public RHIResource
     {
     public:
-        RHIVertexBuffer(uint32 in_size, uint32 in_usage)
+        RHIVertexBuffer(uint32 in_size, EBufferUsageFlags in_usage)
         : size(in_size)
         , usage(in_usage)
         {}
@@ -305,29 +298,16 @@ namespace toy3d
         uint32 get_size() const { return size; }
 
         /** @return The usage flags used to create the vertex buffer. e.g. BUF_UnorderedAccess */
-        uint32 get_usage() const { return usage; }
-
-    protected:
-        RHIVertexBuffer()
-            : size(0)
-            , usage(0)
-        {}
+        EBufferUsageFlags get_usage() const { return usage; }
 
         void swap(RHIVertexBuffer& other)
         {
             std::swap(size, other.size);
             std::swap(usage, other.usage);
         }
-
-        void release_underlying_resource()
-        {
-            size = 0;
-            usage = 0;
-        }
-
     private:
         uint32 size;
-        uint32 usage;
+        EBufferUsageFlags usage;
     };
 
     class RHIStructuredBuffer : public RHIResource
