@@ -39,6 +39,8 @@ namespace toy3d
         VkCommandBuffer& get_cmd_buffer(){return m_frames.at(m_active_frame_index).get()->cmd_buffer;};
 
         VulkanSwapChain& get_swapchain(){return *m_swapchain;};
+
+        VmaAllocate get_vma_allocator(){return allocator;};
     private:
         void create_instance();
 
