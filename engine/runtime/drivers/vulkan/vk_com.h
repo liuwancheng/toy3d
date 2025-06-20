@@ -17,7 +17,7 @@ namespace toy3d
     constexpr const int VK_REQUIRED_VERSION_MAJOR = 1;
     constexpr const int VK_REQUIRED_VERSION_MINOR = 0;
 
-    const std::string to_string(VkResult result)
+    const std::string cast_vk_error(VkResult result)
     {
         switch (result)
         {
@@ -60,7 +60,7 @@ namespace toy3d
             VkResult err = x;                                           \
             if (err)                                                    \
             {                                                           \
-                TOY_LOG_ERROR("error: {}", to_string(err));               \
+                TOY_LOG_ERROR("error: {}", cast_vk_error(err));               \
                 abort();                                                \
             }                                                           \
         } while (0)

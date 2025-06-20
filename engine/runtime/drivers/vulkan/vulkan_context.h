@@ -30,7 +30,7 @@ namespace toy3d
 
         void end_frame();
 
-        void submit();
+        void submit_current_command_buffer();
 
         void submit(const std::vector<VkCommandBuffer>& commands, VkPipelineStageFlags flag);
     public:
@@ -40,7 +40,7 @@ namespace toy3d
 
         VulkanSwapChain& get_swapchain(){return *m_swapchain;};
 
-        VmaAllocate get_vma_allocator(){return allocator;};
+        VmaAllocator get_vma_allocator(){return allocator;};
     private:
         void create_instance();
 

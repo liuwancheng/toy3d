@@ -99,7 +99,7 @@ namespace toy3d
         VK_CHECK(vkQueueSubmit(graphics_queue, 1, &submit_info, cur_frame.fence));
     }
 
-    void VulkanContext::submit()
+    void VulkanContext::submit_current_command_buffer()
     {
         auto& cur_frame = get_active_frame();
         VkSubmitInfo submit_info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
