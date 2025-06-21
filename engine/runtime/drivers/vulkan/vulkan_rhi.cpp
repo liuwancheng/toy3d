@@ -4,18 +4,18 @@ namespace toy3d
 {
     void VulkanDynamicRHI::init()
     {
-        m_context = std::make_unique<VulkanContext>();
+        vulkan_context = std::make_unique<VulkanContext>();
     }
 
     void VulkanDynamicRHI::clear()
     {
-        m_context.reset();
+        vulkan_context.reset();
     }
 
     void VulkanDynamicRHI::begin_render_pass(const RHIRenderPassInfo &info, std::string pass_name)
     {
         cache_pass_info = info;
-        m_context.get()->get_active_frame();
+        vulkan_context.get()->get_active_frame();
     }
 
     VkAttachmentDescription VulkanDynamicRHI::cast_vk_attachment_desc(const RHIRenderPassInfo &info)

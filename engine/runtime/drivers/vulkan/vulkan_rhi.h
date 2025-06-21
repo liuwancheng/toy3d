@@ -2,6 +2,7 @@
 
 #include "vk_com.h"
 #include "rhi/rhi.h"
+#include "vulkan_descriptor_sets.h"
 #include "vulkan_context.h"
 
 class IWindow;
