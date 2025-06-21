@@ -94,11 +94,15 @@ namespace toy3d
         virtual void update_texture3d(RHITexture3D* texture, const void* data) override;
         virtual void update_texture3d(RHITexture3D* texture, uint32 mip_level, const void* data) override; // 不支持按区域更新，只支持更新整页
 
+        // 描述符集相关
+        VulkanDescriptorSetManager* get_descriptor_set_manager() const { return descriptor_set_manager.get(); }
+
     private:
         VkAttachmentDescription cast_vk_attachment_desc(const RHIRenderPassInfo &info);
 
     private:
         std::unique_ptr<VulkanContext> vulkan_context = nullptr;
+        std::unique_ptr<VulkanDescriptorSetManager> descriptor_set_manager = nullptr;
 
         RHIRenderPassInfo cache_pass_info;
     };
