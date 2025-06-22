@@ -34,16 +34,18 @@ namespace toy3d
         virtual void set_shader_sampler(RHIGraphicsShader* shader, uint32 sampler_slot, RHISamplerState* sampler_state) = 0;
         virtual void set_uav_parameter(RHIPixelShader* pixel_shader, uint32 uav_slot, RHIUnorderedAccessView* uav) = 0;
         virtual void set_srv_parameter(RHIGraphicsShader* shader, uint32 sampler_slot, RHIShaderResourceView* srv) = 0;
-        virtual void set_shader_parameter(RHIGraphicsShader* shader, uint32 buffer_slot, uint32 base_index, uint32 num_bytes, const void* data) = 0;
         virtual void set_shader_uniform_buffer(RHIGraphicsShader* shader, uint32 buffer_slot, RHIUniformBuffer* buffer) = 0;
+        // global uniform buffer ： 主要用于合并零散的ubo，尤其是材质上的const 参数
+        virtual void set_shader_parameter(RHIGraphicsShader* shader, uint32 buffer_slot, uint32 base_index, uint32 num_bytes, const void* data) {};
 
         virtual void set_shader_texture(RHIComputeShader* compute_shader, uint32 texture_slot, RHITexture* texture) = 0;
         virtual void set_shader_sampler(RHIComputeShader* compute_shader, uint32 sampler_slot, RHISamplerState* sampler_state) = 0;
         virtual void set_uav_parameter(RHIComputeShader* compute_shader, uint32 uav_slot, RHIUnorderedAccessView* uav) = 0;
         virtual void set_uav_parameter(RHIComputeShader* compute_shader, uint32 uav_slot, RHIUnorderedAccessView* uav, uint32 init_count) = 0;
         virtual void set_srv_parameter(RHIComputeShader* compute_shader, uint32 sampler_slot, RHIShaderResourceView* srv) = 0;
-        virtual void set_shader_parameter(RHIComputeShader* compute_shader, uint32 buffer_slot, uint32 base_index, uint32 num_bytes, const void* data) = 0;
         virtual void set_shader_uniform_buffer(RHIComputeShader* compute_shader, uint32 buffer_slot, RHIUniformBuffer* buffer) = 0;
+        // global uniform buffer ： 主要用于合并零散的ubo，尤其是材质上的const 参数
+        virtual void set_shader_parameter(RHIComputeShader* compute_shader, uint32 buffer_slot, uint32 base_index, uint32 num_bytes, const void* data) = 0;
         virtual void clear_uav_float(RHIUnorderedAccessView* uav, const vec4& values) = 0;
 	    virtual void clear_uav_uint(RHIUnorderedAccessView* uav, const uvec4& values) = 0;
 

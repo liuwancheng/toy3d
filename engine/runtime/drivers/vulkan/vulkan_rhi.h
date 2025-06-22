@@ -5,10 +5,11 @@
 #include "vulkan_descriptor_sets.h"
 #include "vulkan_context.h"
 
-class IWindow;
-
 namespace toy3d
 {
+    class IWindow;
+    class VulkanGraphicsPipelineState;
+
     class VulkanDynamicRHI : public IDynamicRHI
     {
     public:
@@ -125,7 +126,8 @@ namespace toy3d
     private:
         std::unique_ptr<VulkanContext> vulkan_context = nullptr;
         std::unique_ptr<VulkanDescriptorSetManager> descriptor_set_manager = nullptr;
-
+        
+        std::shared_ptr<VulkanGraphicsPipelineState> pending_gfx_state;
         RHIRenderPassInfo cache_pass_info;
     };
 }

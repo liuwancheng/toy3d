@@ -215,7 +215,7 @@ namespace toy3d
     void frame_management_example()
     {
         VulkanDynamicRHI* rhi = static_cast<VulkanDynamicRHI*>(g_rhi);
-        VulkanDescriptorSetManager* manager = rhi->get_descriptor_set_manager();
+        VulkanDescriptorSetManager* manager = r hi->get_descriptor_set_manager();
 
         // 每帧开始时调用
         manager->begin_frame();
