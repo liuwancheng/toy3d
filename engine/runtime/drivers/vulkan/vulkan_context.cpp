@@ -1,6 +1,7 @@
 #include "vulkan_context.h"
 #include "core/config/config_manager.h"
 #include "core/misc/logger.h"
+#include "surface/vulkan_platform.h"
 
 namespace toy3d
 {
@@ -184,7 +185,7 @@ namespace toy3d
         ins_info.pApplicationInfo = &info;
 
         uint32_t ex_count;
-        const char** ex_name_list = SurfaceUtils::get_required_extensions(&ex_count);
+        const char** ex_name_list = VulkanGenericPlatform::get_required_extensions(&ex_count);
         ins_info.enabledExtensionCount = ex_count;
         ins_info.ppEnabledExtensionNames = ex_name_list;
         ins_info.enabledLayerCount = static_cast<uint32_t>(g_enable_layers.size());
@@ -196,7 +197,7 @@ namespace toy3d
 
     void VulkanContext::create_surface()
     {
-        SurfaceUtils::create_window_surface(instance, surface);
+        VulkanGenericPlatform::create_window_surface(instance, surface);
     }
 
     bool VulkanContext::select_physical_device()

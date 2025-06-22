@@ -195,6 +195,12 @@ namespace toy3d
         explicit RHIGraphicsShader(EShaderFrequency in_frequency) : RHIShader(in_frequency) {}
     };
 
+    class RHIComputeShader : public RHIShader
+    {
+    public:
+        RHIComputeShader() : RHIShader(SF_Compute){}
+    };
+
     class RHIVertexShader : public RHIGraphicsShader
     {
     public:
@@ -229,11 +235,29 @@ namespace toy3d
     {
     };
 
+    class RHIComputePipelineState : public RHIResource 
+    {
+    public:
+        RHIComputePipelineState(RHIComputeShader* in_compute_shader)
+            : compute_shader(in_compute_shader)
+        {
+        }
+
+        RHIComputeShader* get_compute_shader()
+        {
+            return compute_shader;
+        }
+
+    protected:
+	    RHIComputeShader* compute_shader;
+    };
 
     /** The layout of a uniform buffer in memory. */
     struct RHIUniformBufferLayout
     {
-        uint32 const_buffer_size;
+        uint32 buffer_size;
+        uint8 slot;
+        std::string debug_name;
     };
 
     class RHIUniformBuffer : public RHIResource
@@ -241,19 +265,20 @@ namespace toy3d
     public:
         RHIUniformBuffer(const RHIUniformBufferLayout& in_layout)
         : layout(&in_layout)
-        , layout_const_buffer_size(in_layout.const_buffer_size)
+        , uniform_buffer_slot(in_layout.slot)
+        , uniform_buffer_size(in_layout.buffer_size)
         {}
 
         uint32 get_size() const
         {
-            return layout_const_buffer_size;
+            return uniform_buffer_size;
         }
         const RHIUniformBufferLayout& get_layout() const { return *layout; }
     private:
         /** Layout of the uniform buffer. */
         const RHIUniformBufferLayout* layout;
-
-        uint32 layout_const_buffer_size;
+        uint8 uniform_buffer_slot;
+        uint32 uniform_buffer_size;
     };
 
     class RHIIndexBuffer : public RHIResource
@@ -397,6 +422,7 @@ namespace toy3d
 
     using RHIBoundShaderStateRef = std::shared_ptr<RHIBoundShaderState>;
     using RHIGraphicsPipelineStateRef = std::shared_ptr<RHIGraphicsPipelineState>;
+    using RHIComputePipelineStateRef = std::shared_ptr<RHIComputePipelineState>;
 
     using RHITextureRef = std::shared_ptr<RHITexture>;
     using RHITexture2DRef = std::shared_ptr<RHITexture2D>;

@@ -26,6 +26,9 @@ namespace toy3d
     using vec2 = glm::vec2;
     using vec3 = glm::vec3;
     using vec4 = glm::vec4;
+    using uvec2 = glm::u32vec2;
+    using uvec3 = glm::u32vec3;
+    using uvec4 = glm::u32vec4;
     using mat3x3 = glm::mat3x3;
     using mat4x4 = glm::mat4x4;
     using mat3x4 = glm::mat3x4;

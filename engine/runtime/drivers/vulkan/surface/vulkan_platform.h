@@ -5,7 +5,7 @@
 
 namespace toy3d
 {
-    class SurfaceUtils
+    class VulkanGenericPlatform
     {
     public:
         static const char** get_required_extensions(uint32_t* count);

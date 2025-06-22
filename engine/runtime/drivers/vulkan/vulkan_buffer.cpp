@@ -321,7 +321,7 @@ namespace toy3d
     VulkanUniformBuffer::VulkanUniformBuffer(VmaAllocator allocator, const RHIUniformBufferLayout& in_layout, EUniformBufferUsage in_usage, const void* data)
         : RHIUniformBuffer(in_layout)
         , VulkanBuffer(allocator)
-        , buffer_size(in_layout.get_size())
+        , buffer_size(in_layout.buffer_size)
         , is_persistent_mapped(true)
     {
         // 持久映射内存以提高更新性能

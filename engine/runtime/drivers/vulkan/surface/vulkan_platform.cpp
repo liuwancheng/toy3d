@@ -1,4 +1,4 @@
-#include "surface_utils.h"
+#include "vulkan_platform.h"
 #include "vulkan/vk_com.h"
 #include "engine.h"
 #if WITH_WIN64
@@ -14,7 +14,7 @@ namespace toy3d
 {
     extern Engine g_engine;
 
-    const char** SurfaceUtils::get_required_extensions(uint32_t* count)
+    const char** VulkanGenericPlatform::get_required_extensions(uint32_t* count)
     {
 #if WITH_WIN64
         const char* required_extensions[] = {
@@ -31,7 +31,7 @@ namespace toy3d
 #endif
     }
 
-    void SurfaceUtils::create_window_surface(VkInstance instance, VkSurfaceKHR & surface)
+    void VulkanGenericPlatform::create_window_surface(VkInstance instance, VkSurfaceKHR & surface)
     {
         IWindow* win = g_engine.get_window();
 #if WITH_WIN64

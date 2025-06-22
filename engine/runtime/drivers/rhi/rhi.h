@@ -27,13 +27,34 @@ namespace toy3d
         virtual void set_stencil(uint32 stencil){};
         virtual void set_blend_factor(vec4 blend_factor){};
         virtual void set_graphics_pipeline_state(RHIGraphicsPipelineState* graphics_pso, bool applay_bound_state) = 0;
+        virtual void set_compute_pipeline_state(RHIComputePipelineState* compute_pso) = 0;
+    
+        /** Set the shader resource view of a surface. */
+        virtual void set_shader_texture(RHIGraphicsShader* shader, uint32 texture_slot, RHITexture* texture) = 0;
+        virtual void set_shader_sampler(RHIGraphicsShader* shader, uint32 sampler_slot, RHISamplerState* sampler_state) = 0;
+        virtual void set_uav_parameter(RHIPixelShader* pixel_shader, uint32 uav_slot, RHIUnorderedAccessView* uav) = 0;
+        virtual void set_srv_parameter(RHIGraphicsShader* shader, uint32 sampler_slot, RHIShaderResourceView* srv) = 0;
+        virtual void set_shader_parameter(RHIGraphicsShader* shader, uint32 buffer_slot, uint32 base_index, uint32 num_bytes, const void* data) = 0;
+        virtual void set_shader_uniform_buffer(RHIGraphicsShader* shader, uint32 buffer_slot, RHIUniformBuffer* buffer) = 0;
+
+        virtual void set_shader_texture(RHIComputeShader* compute_shader, uint32 texture_slot, RHITexture* texture) = 0;
+        virtual void set_shader_sampler(RHIComputeShader* compute_shader, uint32 sampler_slot, RHISamplerState* sampler_state) = 0;
+        virtual void set_uav_parameter(RHIComputeShader* compute_shader, uint32 uav_slot, RHIUnorderedAccessView* uav) = 0;
+        virtual void set_uav_parameter(RHIComputeShader* compute_shader, uint32 uav_slot, RHIUnorderedAccessView* uav, uint32 init_count) = 0;
+        virtual void set_srv_parameter(RHIComputeShader* compute_shader, uint32 sampler_slot, RHIShaderResourceView* srv) = 0;
+        virtual void set_shader_parameter(RHIComputeShader* compute_shader, uint32 buffer_slot, uint32 base_index, uint32 num_bytes, const void* data) = 0;
+        virtual void set_shader_uniform_buffer(RHIComputeShader* compute_shader, uint32 buffer_slot, RHIUniformBuffer* buffer) = 0;
+        virtual void clear_uav_float(RHIUnorderedAccessView* uav, const vec4& values) = 0;
+	    virtual void clear_uav_uint(RHIUnorderedAccessView* uav, const uvec4& values) = 0;
 
         virtual void draw(uint32 first_vertex, uint32 num_vertice, uint32 first_instance, uint32 num_instance) = 0;
 	    virtual void draw_indirect(RHIVertexBuffer* argument_buffer, uint32 argument_offset) = 0;
+        virtual void dispatch_compute_shader(uint32 thread_group_x, uint32 thread_group_y, uint32 thread_group_z) = 0;
     
 	    virtual void draw_indexed(RHIIndexBuffer* index_buffer, int32 first_index, uint32 num_index, uint32 vertex_offset, uint32 first_instance, uint32 num_instance) = 0;
 	    virtual void draw_indexed_indirect(RHIIndexBuffer* index_buffer, RHIVertexBuffer* argument_buffer, uint32 argument_offset) = 0;
         virtual void draw_index_indirect(RHIIndexBuffer* index_buffer, RHIStructuredBuffer* argument_buffer, int32 arguments_index, uint32 num_instance) = 0;
+	    virtual void dispatch_indirect_compute_shader(RHIVertexBuffer* argument_buffer, uint32 offset) = 0;
 
         // 管线状态、着色器相关
         virtual RHIRasterizerStateRef create_rasterizer_state(RasterizerStateInitializerRHI* rasterizer_state) = 0;

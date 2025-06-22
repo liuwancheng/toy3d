@@ -101,7 +101,7 @@ namespace toy3d
     {
         // 颜色附件
         VkAttachmentDescription color_attachment{};
-        color_attachment.format = convert_pixel_format(EPixelFormat::PF_R8G8B8A8_UNORM); // 应该从初始化器获取
+        color_attachment.format = convert_pixel_format(EPixelFormat::R8G8B8A8_SNORM); // 应该从初始化器获取
         color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
