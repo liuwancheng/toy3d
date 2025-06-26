@@ -1,7 +1,7 @@
 #pragma once
-
-#include "RHI/RHI_resource.h"
 #include "vk_com.h"
+#include "rhi/rhi_resource.h"
+
 
 namespace toy3d
 {

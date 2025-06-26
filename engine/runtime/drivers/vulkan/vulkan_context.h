@@ -1,6 +1,6 @@
 #pragma once
 #include "vk_com.h"
-#include "surface/surface_utils.h"
+#include "surface/vulkan_platform.h"
 #include "vulkan_swapchain.h"
 #include "vulkan_resource.h"
 #include "core/misc/pch.h"
