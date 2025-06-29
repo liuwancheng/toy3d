@@ -30,4 +30,16 @@ namespace toy3d
                 abort();                                                \
             }                                                           \
         } while (0)
+
+    /// Initialize a Vulkan struct with proper sType and zero other fields
+    template<typename T>
+    void zero_vulkan_struct(T& vulkan_struct, VkStructureType vk_sType)
+    {
+        static_assert(!std::is_pointer_v<T>, "Don't use a pointer!");
+        static_assert(std::is_standard_layout_v<T>, "T must be standard layout!");
+        static_assert(offsetof(T, sType) == 0, "sType must be the first member!");
+        
+        std::memset(&vulkan_struct, 0, sizeof(T));
+        vulkan_struct.sType = vk_sType;
+    }
 }// namespace toy3d

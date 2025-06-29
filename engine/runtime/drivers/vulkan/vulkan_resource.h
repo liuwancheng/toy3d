@@ -90,4 +90,8 @@ namespace toy3d
         bool b_immutable;
     };
 
+    using VulkanRasterizerStateRef = std::shared_ptr<VulkanRasterizerState>;
+    using VulkanDepthStencilStateRef = std::shared_ptr<VulkanDepthStencilState>;
+    using VulkanBlendStateRef = std::shared_ptr<VulkanBlendState>;
+    using VulkanSamplerStateRef = std::shared_ptr<VulkanSamplerState>;
 }

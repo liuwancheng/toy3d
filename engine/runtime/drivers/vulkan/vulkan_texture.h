@@ -182,4 +182,9 @@ namespace toy3d
         uint32_t size;
     };
 
+    using VulkanTextureRef = std::shared_ptr<VulkanTexture>;
+    using VulkanTexture2DRef = std::shared_ptr<VulkanTexture2D>;
+    using VulkanTexture2DArrayRef = std::shared_ptr<VulkanTexture2DArray>;
+    using VulkanTexture3DRef = std::shared_ptr<VulkanTexture3D>;
+    using VulkanTextureCubeRef = std::shared_ptr<VulkanTextureCube>;
 }// namespace toy3d

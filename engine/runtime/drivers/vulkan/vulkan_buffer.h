@@ -100,4 +100,8 @@ namespace toy3d
         bool is_persistent_mapped; // Uniform Buffer保持持久映射
     };
 
+    using VulkanBufferRef = std::shared_ptr<VulkanBuffer>;
+    using VulkanIndexBufferRef = std::shared_ptr<VulkanIndexBuffer>;
+    using VulkanVertexBufferRef = std::shared_ptr<VulkanVertexBuffer>;
+    using VulkanUniformBufferRef = std::shared_ptr<VulkanUniformBuffer>;
 }// namespace toy3d

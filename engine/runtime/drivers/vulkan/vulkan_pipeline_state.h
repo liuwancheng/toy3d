@@ -26,6 +26,8 @@ namespace toy3d
         // 描述符集相关
         void set_descriptor_set(uint32 set_index, VulkanDescriptorSet* descriptor_set);
         void bind_descriptor_sets(VkCommandBuffer cmd_buffer);
+
+        void bind_pipeline(VkCommandBuffer comd_buffer);
         
         // 获取描述符集布局
         std::shared_ptr<VulkanDescriptorSetLayout> get_descriptor_set_layout(uint32 set_index) const;
@@ -52,14 +54,6 @@ namespace toy3d
         void create_pipeline_layout();
         void create_render_pass(const GraphicsPipelineStateInitializerRHI& initializer);
         void create_graphics_pipeline(const GraphicsPipelineStateInitializerRHI& initializer);
-
-        // 辅助函数
-        VkFormat convert_pixel_format(EPixelFormat format) const;
-        VkCompareOp convert_compare_function(ECompareFunction func) const;
-        VkBlendFactor convert_blend_factor(EBlendFactor factor) const;
-        VkBlendOp convert_blend_op(EBlendOperation op) const;
-        VkCullModeFlags convert_cull_mode(ERasterizerCullMode mode) const;
-        VkPolygonMode convert_fill_mode(ERasterizerFillMode mode) const;
     };
 
     // 管线状态缓存
@@ -111,4 +105,5 @@ namespace toy3d
         std::unordered_map<uint32, VkPipelineLayout> layout_cache;
     };
 
+    using VulkanGraphicsPipelineStateRef = std::shared_ptr<VulkanGraphicsPipelineState>;
 } // namespace toy3d

@@ -169,8 +169,8 @@ namespace toy3d
     bool VulkanIndexBuffer::needs_staging_buffer(EBufferUsageFlags usage) const
     {
         // 如果是静态使用且不需要频繁更新，使用staging buffer获得更好性能
-        return (usage & EBufferUsageFlags::BUF_Static) != EBufferUsageFlags::None ||
-               (usage & EBufferUsageFlags::BUF_IndexBuffer) != EBufferUsageFlags::None;
+        return (usage & EBufferUsageFlags::BUF_Static) != EBufferUsageFlags::BUF_None ||
+               (usage & EBufferUsageFlags::BUF_IndexBuffer) != EBufferUsageFlags::BUF_None;
     }
 
     void* VulkanIndexBuffer::map(uint32 offset, uint32 size)
@@ -267,8 +267,8 @@ namespace toy3d
     bool VulkanVertexBuffer::needs_staging_buffer(EBufferUsageFlags usage) const
     {
         // 如果是静态使用且不需要频繁更新，使用staging buffer获得更好性能
-        return (usage & EBufferUsageFlags::BUF_Static) != EBufferUsageFlags::None ||
-               (usage & EBufferUsageFlags::BUF_VertexBuffer) != EBufferUsageFlags::None;
+        return (usage & EBufferUsageFlags::BUF_Static) != EBufferUsageFlags::BUF_None ||
+               (usage & EBufferUsageFlags::BUF_VertexBuffer) != EBufferUsageFlags::BUF_None;
     }
 
     void* VulkanVertexBuffer::map(uint32 offset, uint32 size)

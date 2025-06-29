@@ -2,6 +2,7 @@
 #include "vulkan_context.h"
 #include "vulkan_resource.h"
 #include "rhi/rhi_inilitializer.h"
+#include "vk_cast.h"
 #include <cassert>
 #include <functional>
 
@@ -43,6 +44,11 @@ namespace toy3d
     void VulkanGraphicsPipelineState::bind_descriptor_sets(VkCommandBuffer cmd_buffer)
     {
         descriptor_binder.bind_to_command_buffer(cmd_buffer, pipeline_layout);
+    }
+
+    void VulkanGraphicsPipelineState::bind_pipeline(VkCommandBuffer comd_buffer)
+    {
+        vkCmdBindPipeline(comd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
     }
 
     std::shared_ptr<VulkanDescriptorSetLayout> VulkanGraphicsPipelineState::get_descriptor_set_layout(uint32 set_index) const
@@ -101,7 +107,7 @@ namespace toy3d
     {
         // 颜色附件
         VkAttachmentDescription color_attachment{};
-        color_attachment.format = convert_pixel_format(EPixelFormat::R8G8B8A8_SNORM); // 应该从初始化器获取
+        color_attachment.format = cast_format(EPixelFormat::R8G8B8A8_SNORM); // 应该从初始化器获取
         color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -326,129 +332,6 @@ namespace toy3d
 
         VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline);
         assert(result == VK_SUCCESS && "Failed to create graphics pipeline!");
-    }
-
-    // 格式转换辅助函数
-    VkFormat VulkanGraphicsPipelineState::convert_pixel_format(EPixelFormat format) const
-    {
-        switch (format)
-        {
-            case EPixelFormat::PF_R8G8B8A8_UNORM:
-                return VK_FORMAT_R8G8B8A8_UNORM;
-            case EPixelFormat::PF_B8G8R8A8_UNORM:
-                return VK_FORMAT_B8G8R8A8_UNORM;
-            case EPixelFormat::PF_R32G32B32A32_SFLOAT:
-                return VK_FORMAT_R32G32B32A32_SFLOAT;
-            case EPixelFormat::PF_D32_SFLOAT:
-                return VK_FORMAT_D32_SFLOAT;
-            case EPixelFormat::PF_D24_UNORM_S8_UINT:
-                return VK_FORMAT_D24_UNORM_S8_UINT;
-            default:
-                return VK_FORMAT_R8G8B8A8_UNORM;
-        }
-    }
-
-    VkCompareOp VulkanGraphicsPipelineState::convert_compare_function(ECompareFunction func) const
-    {
-        switch (func)
-        {
-            case CF_Never:
-                return VK_COMPARE_OP_NEVER;
-            case CF_Less:
-                return VK_COMPARE_OP_LESS;
-            case CF_Equal:
-                return VK_COMPARE_OP_EQUAL;
-            case CF_LessEqual:
-                return VK_COMPARE_OP_LESS_OR_EQUAL;
-            case CF_Greater:
-                return VK_COMPARE_OP_GREATER;
-            case CF_NotEqual:
-                return VK_COMPARE_OP_NOT_EQUAL;
-            case CF_GreaterEqual:
-                return VK_COMPARE_OP_GREATER_OR_EQUAL;
-            case CF_Always:
-                return VK_COMPARE_OP_ALWAYS;
-            default:
-                return VK_COMPARE_OP_LESS;
-        }
-    }
-
-    VkBlendFactor VulkanGraphicsPipelineState::convert_blend_factor(EBlendFactor factor) const
-    {
-        switch (factor)
-        {
-            case BF_Zero:
-                return VK_BLEND_FACTOR_ZERO;
-            case BF_One:
-                return VK_BLEND_FACTOR_ONE;
-            case BF_SourceColor:
-                return VK_BLEND_FACTOR_SRC_COLOR;
-            case BF_InverseSourceColor:
-                return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-            case BF_SourceAlpha:
-                return VK_BLEND_FACTOR_SRC_ALPHA;
-            case BF_InverseSourceAlpha:
-                return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            case BF_DestAlpha:
-                return VK_BLEND_FACTOR_DST_ALPHA;
-            case BF_InverseDestAlpha:
-                return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-            case BF_DestColor:
-                return VK_BLEND_FACTOR_DST_COLOR;
-            case BF_InverseDestColor:
-                return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-            default:
-                return VK_BLEND_FACTOR_ONE;
-        }
-    }
-
-    VkBlendOp VulkanGraphicsPipelineState::convert_blend_op(EBlendOperation op) const
-    {
-        switch (op)
-        {
-            case BO_Add:
-                return VK_BLEND_OP_ADD;
-            case BO_Subtract:
-                return VK_BLEND_OP_SUBTRACT;
-            case BO_Min:
-                return VK_BLEND_OP_MIN;
-            case BO_Max:
-                return VK_BLEND_OP_MAX;
-            case BO_ReverseSubtract:
-                return VK_BLEND_OP_REVERSE_SUBTRACT;
-            default:
-                return VK_BLEND_OP_ADD;
-        }
-    }
-
-    VkCullModeFlags VulkanGraphicsPipelineState::convert_cull_mode(ERasterizerCullMode mode) const
-    {
-        switch (mode)
-        {
-            case CM_None:
-                return VK_CULL_MODE_NONE;
-            case CM_CW:
-                return VK_CULL_MODE_FRONT_BIT;
-            case CM_CCW:
-                return VK_CULL_MODE_BACK_BIT;
-            default:
-                return VK_CULL_MODE_BACK_BIT;
-        }
-    }
-
-    VkPolygonMode VulkanGraphicsPipelineState::convert_fill_mode(ERasterizerFillMode mode) const
-    {
-        switch (mode)
-        {
-            case FM_Point:
-                return VK_POLYGON_MODE_POINT;
-            case FM_Wireframe:
-                return VK_POLYGON_MODE_LINE;
-            case FM_Solid:
-                return VK_POLYGON_MODE_FILL;
-            default:
-                return VK_POLYGON_MODE_FILL;
-        }
     }
 
     ////////////////////////////////// VulkanPipelineStateCache //////////////////////////////////
