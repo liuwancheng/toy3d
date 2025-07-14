@@ -153,7 +153,7 @@ namespace toy3d
             CurrentState->SetPackedGlobalShaderParameter(Stage, BufferIndex, Offset, NumBytes, NewValue);
         }
 
-        void PrepareForDraw(FVulkanCmdBuffer* CmdBuffer);
+        void prepare_draw(VkCommandBuffer* cmd_buffer);
 
         void SetTextureForStage(ShaderStage::EStage Stage, uint32 ParameterIndex, const FVulkanTextureBase* TextureBase, VkImageLayout Layout)
         {
