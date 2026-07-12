@@ -1,0 +1,4 @@
+interface:
+  display_name: "渲染代码审查"
+  short_description: "审查 Toy3d 渲染器与 RHI 代码的正确性和边界"
+  default_prompt: "使用 -render-code 审查当前 Toy3d 渲染或 RHI 改动。"
