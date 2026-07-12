@@ -1,0 +1,800 @@
+# Toy3d RHI 设计
+
+## 1. 文档目的
+
+本文定义 Toy3d 的 Render Hardware Interface（RHI）公共架构、Render 上层调用方式、资源与同步模型，以及 Shader、Binding、Pass 和 Material 系统之间的边界。后续 RHI 与各图形 API 后端按本文分阶段实现。
+
+本文的目标后端为 Vulkan、Direct3D 11 和 Direct3D 12。若历史文档或代码仍使用 Direct3D 10，应在实现前统一修正为 Direct3D 11；公共接口不得依赖某个后端的原生类型或行为。
+
+UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCommand 和 RHI command list 的组织方式，但 Toy3d 不复制 UE 的宏系统、对象系统、RHI thread、完整 Render Dependency Graph（RDG）或历史兼容接口。Material 系统后续可参考 Godot 的 MaterialTemplate/MaterialInstance 思路，但其后端绑定仍必须经过公共 RHI。
+
+## 2. 第一阶段范围
+
+第一阶段实现以下闭环：
+
+- 单 graphics queue；
+- 单线程录制；
+- pass 级独立 recording unit；
+- swapchain acquire、submit、present 和 resize；
+- buffer、texture、view、sampler 和 shader；
+- upload、copy、resource transition 和 deferred deletion；
+- graphics pipeline、binding、render pass、draw 和 draw indexed；
+- capability、limits、可检查错误和 device lost 路径；
+- GlobalShader 驱动的 test/fullscreen pass；
+- 简化的 BasePass、MeshPassProcessor 和 MeshDrawPacket。
+
+第一阶段不实现 async compute、bindless、ray tracing、VRS、多 GPU、完整 Render Graph、RHI thread 和 draw batch 内并行。公共描述符和 binding layout 需要预留 compute 与 storage resource，但未实现功能必须返回 `Unsupported`，不得空操作成功。
+
+## 3. 总体分层
+
+```text
+GameScene / Editor
+        |
+        v
+RenderScene
+    - scene visibility
+    - render pass scheduling
+    - BasePass / ShadowPass / post process
+        |
+        v
+RenderCore
+    - GlobalShaderMap / MaterialShaderMap
+    - MaterialTemplate / MaterialInstance
+    - shader reflection / parameter binding
+    - MeshPassProcessor / MeshDrawPacket
+    - pipeline and binding cache
+        |
+        v
+RHI frontend
+    - RHIDevice
+    - RHICommandContext / RHIGraphicsCommandContext
+    - RHICommandList
+    - RHIQueue
+    - RHISwapchain
+    - RHI resources / views / descriptors
+        |
+        v
+Backend
+    - Vulkan
+    - D3D11
+    - D3D12
+```
+
+各层遵守以下边界：
+
+- RenderScene 决定 pass、资源依赖、可见物体和绘制顺序。
+- RenderCore 决定 shader permutation、material 参数、pipeline 描述和 draw packet。
+- RHI 只表达跨 API 的资源、binding、命令、同步和提交语义。
+- 后端负责原生对象、枚举转换、barrier、descriptor、command pool/list 和 fence。
+- 上层禁止引用 `Vk*`、`ID3D11*`、`ID3D12*` 或按后端名称分支。
+
+### 3.1 公共依赖与源码组织
+
+RHI 公共层可以依赖 `core/math` 中的纯值类型，例如 `vec2`、`vec3`、`vec4`、`uvec4` 和矩阵类型，避免在 RHI 内重复定义颜色、向量和矩阵表示。RHI 公共层不得依赖 GameScene、RenderScene、Material、窗口平台实现、Vulkan 或 Direct3D 头文件。
+
+公共 RHI 按职责拆分，避免重新形成大型 `rhi_inilitializer.h`：
+
+```text
+rhi_result.h             error/status/result
+rhi_types.h              enum、flags、基础值语义
+rhi_capabilities.h       capability、limits、format support
+rhi_descriptors.h        resource/view/shader/binding/pipeline descriptor
+rhi_resource.h           公共资源身份和强引用
+rhi_device.h             创建与 capability 查询
+rhi_command_context.h    录制命令
+rhi_queue.h              submit/completion serial
+rhi_swapchain.h          acquire/present/resize
+```
+
+重构期间旧接口只作为待迁移代码，不得继续增加能力。每个旧类型必须明确映射到新类型或明确删除；调用方迁移完成后立即移除旧定义，禁止长期维护两套 `format`、`access`、clear value、resource 或 pipeline 模型。
+
+## 4. RHI 公共对象
+
+### 4.1 `RHIDevice`
+
+`RHIDevice` 负责初始化、能力查询和资源创建，不负责 draw、render pass 或 submit。
+
+```cpp
+class RHIDevice
+{
+public:
+    virtual ~RHIDevice() = default;
+
+    virtual const RHICapabilities& capabilities() const = 0;
+    virtual const RHILimits& limits() const = 0;
+
+    virtual RHIResult<RHIBufferRef> create_buffer(
+        const RHIBufferDesc& desc,
+        const RHIInitialData* initial_data) = 0;
+
+    virtual RHIResult<RHITextureRef> create_texture(
+        const RHITextureDesc& desc,
+        const RHIInitialData* initial_data) = 0;
+
+    virtual RHIResult<RHITextureViewRef> create_texture_view(
+        const RHITextureViewDesc& desc) = 0;
+
+    virtual RHIResult<RHIShaderRef> create_shader(
+        const RHIShaderDesc& desc) = 0;
+
+    virtual RHIResult<RHIBindingLayoutRef> create_binding_layout(
+        const RHIBindingLayoutDesc& desc) = 0;
+
+    virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
+        const RHIGraphicsPipelineDesc& desc) = 0;
+};
+```
+
+资源不得反向访问全局 device。公共头文件不得定义可变 `g_rhi` 指针；engine 初始化层显式拥有 device，并向 renderer 注入所需引用。
+
+### 4.2 Command context 与 command list
+
+创建和执行必须分离。公共 command context 分为通用、graphics 和预留 compute 三层：
+
+```cpp
+class RHICommandContext
+{
+public:
+    virtual ~RHICommandContext() = default;
+
+    virtual RHIResult begin_recording() = 0;
+    virtual RHIResult transition_resources(
+        Span<const RHIResourceTransition> transitions) = 0;
+    virtual RHIResult copy_buffer(const RHIBufferCopyDesc& desc) = 0;
+    virtual RHIResult copy_texture(const RHITextureCopyDesc& desc) = 0;
+    virtual RHIResult<RHICommandListRef> finish_recording() = 0;
+};
+
+class RHIGraphicsCommandContext : public RHICommandContext
+{
+public:
+    virtual RHIResult begin_render_pass(
+        const RHIRenderPassDesc& desc) = 0;
+    virtual RHIResult end_render_pass() = 0;
+
+    virtual RHIResult set_graphics_pipeline(
+        const RHIGraphicsPipelineRef& pipeline) = 0;
+    virtual RHIResult set_viewport(const RHIViewport& viewport) = 0;
+    virtual RHIResult set_scissor(const RHIRect& rect) = 0;
+    virtual RHIResult bind_graphics_resources(
+        const RHIGraphicsBindings& bindings) = 0;
+    virtual RHIResult draw(const RHIDrawArgs& args) = 0;
+    virtual RHIResult draw_indexed(const RHIDrawIndexedArgs& args) = 0;
+};
+```
+
+`RHICommandList` 是结束后不可修改的公共录制单元，不等同于 Vulkan `VkCommandBuffer` 或 D3D12 `ID3D12GraphicsCommandList`。第一阶段后端可以串行复用一个 immediate graphics context，但上层接口不得假定 context 永远唯一。
+
+### 4.3 Queue
+
+```cpp
+class RHIQueue
+{
+public:
+    virtual RHIResult<RHISubmitSerial> submit(
+        Span<const RHICommandListRef> command_lists,
+        const RHISubmitInfo& submit_info) = 0;
+
+    virtual RHISubmitSerial completed_serial() const = 0;
+    virtual RHIResult wait(RHISubmitSerial serial) = 0;
+};
+```
+
+Submit serial 是 deferred deletion、frame resource、descriptor pool、command pool 和 upload ring 回收的统一完成依据。
+
+### 4.4 Swapchain
+
+```cpp
+class RHISwapchain
+{
+public:
+    virtual RHIResult<RHIAcquiredImage> acquire_next_image() = 0;
+    virtual RHIResult present(
+        RHIQueue& queue,
+        const RHIPresentInfo& info) = 0;
+    virtual RHIResult resize(uint32 width, uint32 height) = 0;
+    virtual RHITextureRef back_buffer(uint32 image_index) const = 0;
+};
+```
+
+`acquire_next_image()` 和 `present()` 必须区分 `OutOfDate`、`Suboptimal`、`DeviceLost` 和普通错误。Resize 由 renderer/frame coordinator 触发，render pass 不得自行重建 swapchain。
+
+## 5. 资源与 view
+
+### 5.1 Descriptor
+
+Buffer 和 texture 使用完整 descriptor 创建。Descriptor 至少表达：
+
+- dimension、extent、format、mip、array layer 和 sample count；
+- usage、CPU access 和 initial access；
+- debug name；
+- buffer size、stride 和结构化元素信息；
+- texture clear value；
+- 非法组合的创建前验证。
+
+Initial data 必须包含 size、row pitch、slice pitch、所有权和消费时机。禁止只传裸 `void*` 并假定后端知道数据大小。
+
+### 5.2 独立 view
+
+Texture/buffer 与其用途 view 分离：
+
+```text
+RHITexture
+    - RHIShaderResourceView
+    - RHIUnorderedAccessView
+    - RHIRenderTargetView
+    - RHIDepthStencilView
+
+RHIBuffer
+    - RHIShaderResourceView
+    - RHIUnorderedAccessView
+```
+
+View descriptor 表达 format、mip/layer 范围、aspect 和 depth/stencil read-only 属性。Render pass 只能引用 RTV/DSV view，不直接引用 texture。
+
+后端映射如下：
+
+| 公共对象 | Vulkan | D3D11 | D3D12 |
+|---|---|---|---|
+| texture view | `VkImageView` | SRV/UAV/RTV/DSV | view descriptor |
+| buffer view | buffer descriptor | SRV/UAV | view descriptor |
+| render target view | color `VkImageView` | RTV | RTV descriptor |
+| depth stencil view | depth/stencil `VkImageView` | DSV | DSV descriptor |
+
+## 6. 资源状态与同步
+
+公共层使用 `ERHIAccess` 表达用途，不暴露 Vulkan image layout、pipeline stage/access mask 或 D3D12 resource state。
+
+```cpp
+struct RHIResourceTransition
+{
+    RHIResourceRef resource;
+    RHISubresourceRange subresources;
+    ERHIAccess before;
+    ERHIAccess after;
+};
+```
+
+三后端处理方式：
+
+- Vulkan：生成 pipeline barrier、access mask 和 image layout transition；
+- D3D12：生成 resource barrier；
+- D3D11：跟踪逻辑状态、验证 hazard，并解除 SRV/RTV/DSV/UAV 冲突绑定。
+
+资源对象不得私自 submit、wait idle 或执行 immediate transition。Upload、copy 和 transition 必须记录到 command context，由 queue 统一提交。
+
+## 7. 生命周期
+
+资源生命周期按以下模型实现：
+
+1. `RHIDevice` 创建公共资源。
+2. Render/Material/scene 对资源持有公共强引用。
+3. Command list 在录制期间保留 GPU 工作所需资源引用。
+4. Submit 后，command list 和资源引用与 submit serial 绑定。
+5. CPU 最后一个引用释放后，原生对象进入 deferred-deletion queue。
+6. 仅当 `completed_serial >= retire_serial` 时销毁原生对象。
+7. Device 晚于所有子资源、swapchain、pool 和 cache 销毁。
+
+Descriptor pool、command pool、upload ring 和临时 framebuffer 按 frame-in-flight/serial 分代，GPU 完成前不得 reset 或复用。
+
+## 8. Shader 系统边界
+
+### 8.1 RHI Shader
+
+RHI shader descriptor 只包含后端创建 shader 所需的信息：
+
+- shader stage；
+- 目标 bytecode；
+- entry point；
+- reflection/binding metadata；
+- 稳定 content hash；
+- debug name。
+
+Shader 源文件、include、permutation、Material 和 GlobalShader 类型都属于 RenderCore，不进入 RHI。
+
+### 8.2 GlobalShader
+
+GlobalShader 适用于不依赖具体 Material/VertexFactory 的渲染任务：
+
+- fullscreen triangle；
+- clear、copy 和 blit；
+- tone mapping 和后处理；
+- debug rendering；
+- mip generation；
+- compute utilities。
+
+GlobalShader 的流程参考 UE4.27：
+
+```text
+GlobalShader 类型注册
+        |
+        v
+platform / feature / permutation 编译
+        |
+        v
+GlobalShaderMap 缓存编译结果
+        |
+        v
+Render pass 获取 typed shader
+        |
+        v
+RenderCore 获取 pipeline 和 binding
+        |
+        v
+RHI command context draw / dispatch
+```
+
+建议的稳定 key 包含 shader type、permutation、target、feature level 和 compilation environment hash。第一阶段使用显式 registry 即可，不要求复制 UE 的静态注册宏。
+
+### 8.3 MaterialShader
+
+BasePass、DepthPass、ShadowPass 等 mesh pass 使用 MaterialShader，而不是把所有 shader 放入 GlobalShaderMap。
+
+Material shader variant 的选择至少依赖：
+
+- MaterialTemplate；
+- static switches；
+- VertexFactory type；
+- MeshPass type；
+- feature level；
+- shader target。
+
+GlobalShader 和 MaterialShader 最终都生成同一种 `RHIShader`，差异只存在于 RenderCore 的注册、编译和缓存层。
+
+## 9. Shader 参数域
+
+参数按所有者和更新频率分域，禁止把所有参数保存为无归属的扁平 slot 表。
+
+| 参数域 | 内容示例 | 更新频率 | 所有者 |
+|---|---|---|---|
+| Global | 时间、环境和全局 sampler | frame 或更低 | Render system |
+| View | view/projection、camera、viewport | 每个 view | Scene renderer |
+| Pass | light、shadow、GBuffer 和 pass texture | 每个 pass | Render pass |
+| Material | base color、roughness 和材质 texture | 每个 material instance | Material system |
+| Object | model matrix、primitive ID、skin data | draw/instance | Primitive/draw packet |
+
+```cpp
+enum class ShaderParameterScope : uint8_t
+{
+    Global,
+    View,
+    Pass,
+    Material,
+    Object
+};
+
+struct ShaderParameterId
+{
+    ShaderParameterScope scope;
+    StringId name;
+};
+```
+
+资产和 MaterialInstance 按稳定参数名存储数据。`binding_slot`、constant buffer offset 和后端 descriptor 位置只能作为 shader 编译/reflection 的派生结果，不能作为资产格式中的持久标识。
+
+Constant 数据按更新频率分块：
+
+```text
+GlobalConstants
+ViewConstants
+PassConstants
+MaterialConstants
+ObjectConstants
+```
+
+Global/View/Pass/Object 可使用 frame upload allocator；Material 保存持久 CPU 参数数据，值变更后按版本上传。Vulkan/D3D12 可使用 dynamic uniform/constant buffer offset 或 upload buffer，D3D11 后端使用 dynamic constant buffer 和安全的 discard/suballocation 策略。
+
+## 10. Binding layout 与 binding set
+
+公共 binding layout 使用 shader 可见的资源语义，不暴露 descriptor set、descriptor heap 或 root parameter：
+
+```cpp
+enum class RHIBindingGroup : uint8_t
+{
+    Global,
+    View,
+    Pass,
+    Material,
+    Object
+};
+
+struct RHIBindingLayoutEntry
+{
+    RHIBindingGroup group;
+    uint32 slot;
+    RHIResourceBindingType type;
+    RHIShaderStageFlags stages;
+    uint32 array_count;
+};
+```
+
+Binding resource type 至少包括 uniform buffer、sampled texture、storage texture、sampler、storage buffer。Compute 和 storage binding 可从第一版进入 descriptor，但实际调用受 capability 控制。
+
+```cpp
+struct RHIGraphicsBindings
+{
+    RHIBindingSetRef global;
+    RHIBindingSetRef view;
+    RHIBindingSetRef pass;
+    RHIBindingSetRef material;
+    RHIBindingSetRef object;
+};
+```
+
+映射规则：
+
+- Vulkan 可将 group 编译为 descriptor set；
+- D3D12 可编译为 descriptor table、root CBV 或 root constants；
+- D3D11 展开为各 shader stage 的 CBV/SRV/UAV/sampler slot。
+
+公共枚举数值不等于 Vulkan set index 或 D3D12 root parameter index。映射只存在于后端 binding layout 编译结果中。
+
+Pass 不得修改 Material binding，Material 也不得持有 SceneColor、SceneDepth 等 pass resource。Global/View/Pass binding 通常在 pass 开始时绑定，Material/Object binding 按 draw packet 更新。
+
+## 11. Material 系统预留
+
+### 11.1 `MaterialTemplate`
+
+`MaterialTemplate` 描述材质的能力和稳定 schema：
+
+- shader 模板或 shader 生成规则；
+- dynamic parameter schema；
+- static switch schema；
+- material domain；
+- 默认 blend、depth 和 cull state；
+- 支持的 BasePass、DepthPass、ShadowPass 等 mesh pass；
+- shader reflection 和 Material binding ABI。
+
+```cpp
+class MaterialTemplate
+{
+public:
+    virtual ~MaterialTemplate() = default;
+
+    virtual MaterialTemplateId id() const = 0;
+    virtual MaterialDomain domain() const = 0;
+    virtual const MaterialParameterSchema& parameter_schema() const = 0;
+    virtual const MaterialStaticSwitchSchema& static_switch_schema() const = 0;
+
+    virtual Result<MaterialShaderVariantRef> get_shader_variant(
+        const MaterialVariantKey& key) const = 0;
+};
+```
+
+### 11.2 `MaterialShaderVariant`
+
+```cpp
+struct MaterialVariantKey
+{
+    MaterialTemplateId template_id;
+    MaterialStaticSwitchMask static_switches;
+    VertexFactoryTypeId vertex_factory;
+    MeshPassType pass_type;
+    RenderFeatureLevel feature_level;
+    ShaderTarget target;
+};
+```
+
+Variant 保存编译后的 shader、reflection、Material binding layout、稳定 content hash 和 pipeline-compatible shader state。同一个 MaterialTemplate 的不同 pass 可以使用不同 shader 与参数子集。
+
+### 11.3 `MaterialInstance`
+
+`MaterialInstance` 只保存模板引用、static switch 和实例参数覆盖，不保存 Vulkan descriptor set 或 D3D12 descriptor handle。
+
+```cpp
+class MaterialInstance
+{
+public:
+    MaterialTemplateRef material_template;
+    MaterialParameterStorage parameters;
+    MaterialStaticSwitchValues static_switches;
+
+    uint64 parameter_version = 0;
+    uint64 resource_version = 0;
+};
+```
+
+Static parameter 决定 shader variant，例如 normal map、alpha test 和 shading model；修改后重新选择或编译 variant。Dynamic parameter 只更新 uniform/resource binding，不触发 shader 编译。
+
+Material binding cache 根据 MaterialInstance 版本、variant layout 和后端 device 生成 `RHIBindingSet`。Material 资产序列化格式不依赖 RHI backend。
+
+### 11.4 稳定 Binding ABI
+
+为避免 Vulkan pipeline layout 和 D3D12 root signature 碎片化：
+
+- Global/View/Pass group 由 renderer 约定稳定布局；
+- Material group 由 MaterialTemplate schema 定义；
+- Object group 由 renderer/VertexFactory 定义；
+- 同一 MaterialTemplate 的 dynamic parameter ABI 尽量跨 static switch 保持稳定；
+- reflection 必须与 schema 做完整验证；
+- layout cache 使用完整稳定 key，hash 命中后继续做 equality 比较。
+
+## 12. Pipeline
+
+Graphics pipeline descriptor 是完整不可变值，至少覆盖：
+
+- shader stages；
+- binding layout；
+- vertex input layout；
+- primitive topology；
+- rasterizer、blend 和 depth/stencil state；
+- color attachment formats；
+- depth/stencil format；
+- sample count；
+- dynamic state mask。
+
+Vulkan 和 D3D12 创建原生 pipeline/PSO；D3D11 将其编译为 shader 与 state object 的不可变组合。公共接口不暴露 pipeline layout 或 root signature。
+
+Pipeline cache key 不得使用对象地址，必须覆盖完整 descriptor 和 shader content hash；hash collision 后必须比较完整 descriptor。
+
+## 13. Render pass 与 Render 上层调用
+
+### 13.1 Pass 职责
+
+Render pass 分为资源声明和命令执行：
+
+```cpp
+class RenderPass
+{
+public:
+    virtual ~RenderPass() = default;
+    virtual void setup(RenderPassBuilder& builder) = 0;
+    virtual RHIResult execute(RenderPassContext& context) = 0;
+};
+```
+
+`setup()` 声明资源 read/write、attachment、load/store/clear 和预期 access。Scheduler 计算 pass 顺序和 transition。`execute()` 只录制当前 pass 的命令，不直接 submit，不访问 swapchain，不等待 device idle。
+
+第一阶段 scheduler 串行运行即可，但每个 pass 应生成独立、结束后不可修改的 command list。后续可在 pass 之间并行录制，并按依赖拓扑提交。
+
+### 13.2 GlobalShader pass
+
+GlobalShader pass 适合 test/fullscreen/compute 类任务：
+
+```cpp
+RHIResult TestPass::execute(RenderPassContext& context)
+{
+    const auto vertex_shader =
+        context.global_shader_map.get_shader<TestVertexShader>();
+    const auto pixel_shader =
+        context.global_shader_map.get_shader<TestPixelShader>();
+
+    const auto pipeline = context.pipeline_cache.get_or_create(
+        make_test_pipeline_desc(
+            vertex_shader,
+            pixel_shader,
+            context.attachment_formats));
+
+    RHIGraphicsCommandContext& commands = context.graphics_context;
+    RHI_TRY(commands.begin_render_pass(context.render_pass_desc));
+    RHI_TRY(commands.set_graphics_pipeline(pipeline));
+    RHI_TRY(commands.bind_graphics_resources(context.graphics_bindings));
+    RHI_TRY(commands.draw({3, 1, 0, 0}));
+    return commands.end_render_pass();
+}
+```
+
+### 13.3 BasePass
+
+BasePass 参考 UE4.27 的核心流程，但使用精简对象：
+
+```text
+Visible primitives
+        |
+        v
+MeshBatch
+        |
+        v
+BasePassMeshProcessor
+    - pass eligibility
+    - material fallback
+    - shader variant
+    - render state
+    - sort key
+        |
+        v
+MeshDrawPacket
+    - pipeline
+    - vertex/index buffers
+    - material/object bindings
+    - draw arguments
+        |
+        v
+sort / filter / optional merge
+        |
+        v
+RHIGraphicsCommandContext
+```
+
+`BasePassMeshProcessor` 属于 RenderCore/RenderScene，不属于 RHI：
+
+```cpp
+class BasePassMeshProcessor
+{
+public:
+    void add_mesh_batch(
+        const MeshBatch& mesh_batch,
+        const PrimitiveSceneProxy& primitive);
+
+private:
+    bool process(
+        const MeshBatch& mesh_batch,
+        const MaterialRenderProxy& material);
+};
+```
+
+BasePass 使用 MaterialShaderMap，根据 MaterialTemplate、static switches、VertexFactory、pass type、feature level 和 target 获取 shader variant，再构建 draw packet。
+
+### 13.4 `MeshDrawPacket`
+
+```cpp
+struct MeshDrawPacket
+{
+    RHIGraphicsPipelineRef pipeline;
+
+    RHIBindingSetRef material_bindings;
+    RHIBindingSetRef object_bindings;
+
+    RHIVertexBufferBindings vertex_buffers;
+    RHIIndexBufferRef index_buffer;
+    RHIDrawIndexedArgs draw_args;
+
+    uint64 sort_key = 0;
+};
+```
+
+Global/View/Pass bindings 在 pass 开始时绑定，Material/Object bindings 按 packet 更新：
+
+```cpp
+commands.bind_binding_set(RHIBindingGroup::Global, global_bindings);
+commands.bind_binding_set(RHIBindingGroup::View, view_bindings);
+commands.bind_binding_set(RHIBindingGroup::Pass, pass_bindings);
+
+for (const MeshDrawPacket& packet : draw_packets)
+{
+    commands.set_graphics_pipeline(packet.pipeline);
+    commands.bind_binding_set(
+        RHIBindingGroup::Material,
+        packet.material_bindings);
+    commands.bind_binding_set(
+        RHIBindingGroup::Object,
+        packet.object_bindings);
+    commands.draw_indexed(packet.draw_args);
+}
+```
+
+提交器可缓存当前 pipeline、vertex stream 和 binding set，减少重复 RHI 命令。缓存属于 command recording/RenderCore，不改变 draw packet 的语义。
+
+## 14. Render 与 RHI 的禁止依赖
+
+以下类型或概念不得进入公共 RHI：
+
+- `GlobalShader`、`MaterialShader` 和 shader permutation domain；
+- `MaterialTemplate`、`MaterialInstance` 和 Material 参数资产；
+- `VertexFactory`、`MeshBatch` 和 `MeshPassProcessor`；
+- `BasePass`、`ShadowPass` 和 mesh sorting；
+- shader source compilation 和 include 管理；
+- Render Graph 的 pass dependency 对象。
+
+RHI 只接收这些类型编译后的结果：shader bytecode、binding layout/set、pipeline descriptor、resource/view、render pass descriptor、command 和 submit dependency。
+
+## 15. Capability、错误和线程
+
+`RHICapabilities` 和 `RHILimits` 至少覆盖：
+
+- graphics、compute、storage resource、indirect draw；
+- geometry/tessellation shader；
+- format usage、MSAA sample count；
+- buffer/texture alignment；
+- attachment、binding slot、dimension limits；
+- timestamp query 和 async compute；
+- 后端可支持的 recording 并行度。
+
+所有初始化、创建、map/update、acquire、submit、present 和 resize 操作返回可检查结果。Assert 只用于内部不变量，不能替代 Release 错误路径。
+
+第一阶段规定：
+
+- renderer/render thread 拥有 device、queue 和 swapchain 的主要调用权；
+- 每个 recording context 在录制期间只属于一个线程；
+- 结束后的 command list 不可修改，可跨线程交给 queue；
+- 资源对象对只读操作线程安全，可变后端状态必须 context-local 或内部同步；
+- device lost 后停止继续调用原生 API，并进入统一终止或恢复路径。
+
+## 16. 三后端实现映射
+
+| 公共语义 | Vulkan | D3D11 | D3D12 |
+|---|---|---|---|
+| resource access | barrier/layout | logic state + unbind hazard | resource state barrier |
+| graphics pipeline | pipeline + layout | shader/state object 组合 | PSO + root signature |
+| binding layout | descriptor set layout | stage slot layout | root signature/table |
+| binding set | descriptor set | CBV/SRV/UAV/sampler binding packet | descriptor table/root binding |
+| render pass | dynamic rendering/render pass | OM + clear/resolve | render pass API 或命令组合 |
+| recording | command buffer | deferred/immediate context | command list |
+| submit completion | fence/timeline | query/fence strategy | fence value |
+| async compute | capability gated | 通常不作为基线 | capability gated |
+
+D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力时，可以安全退化为串行和隐式同步，但渲染结果与公共错误语义必须一致。
+
+## 17. 迁移与实现顺序
+
+### 阶段 1：公共定义
+
+- 统一 Vulkan、D3D11、D3D12 目标；
+- 建立 `RHIResult` 和错误分类；
+- 重构 enum、descriptor、capability 和 limits；
+- 定义 resource、view、subresource range 和 initial data；
+- 定义 shader、binding layout/set 和完整 pipeline descriptor。
+
+### 阶段 2：公共接口拆分
+
+- 建立 `RHIDevice`；
+- 建立 `RHICommandContext` 和 `RHIGraphicsCommandContext`；
+- 建立 `RHICommandList`、`RHIQueue` 和 `RHISwapchain`；
+- 临时保留旧 `IDynamicRHI` adapter；
+- 移除公共头文件中的 `g_rhi` 定义并改为显式注入。
+
+### 阶段 3：RenderCore 基础
+
+- 建立 shader reflection 和稳定 content hash；
+- 建立 Global/View/Pass/Material/Object 参数域；
+- 建立 `GlobalShaderMap`；
+- 建立 pipeline cache 和 binding cache；
+- 迁移 test pass 到 GlobalShader 路径。
+
+### 阶段 4：Vulkan graphics 闭环
+
+- swapchain acquire/present/resize；
+- buffer、texture 和 view；
+- upload/copy/transition；
+- graphics pipeline 和 binding；
+- render pass 和 draw；
+- submit serial、frame resource 和 deferred deletion；
+- 通过 validation layer 验证多 frame-in-flight。
+
+### 阶段 5：Material 与 BasePass 骨架
+
+- 建立最小 `MaterialTemplate`、`MaterialInstance`；
+- 区分 static/dynamic parameters；
+- 建立 `MaterialShaderVariant` 和 `MaterialShaderMap`；
+- 建立 `MeshBatch`、`BasePassMeshProcessor` 和 `MeshDrawPacket`；
+- 完成 SceneColor/SceneDepth 的 BasePass 绘制闭环。
+
+### 阶段 6：跨后端审计
+
+- 对每个公共 descriptor 和命令写出 D3D11/D3D12 映射；
+- 检查是否存在 Vulkan descriptor set、layout 或 stage mask 泄漏；
+- 对 D3D11 不支持能力提供 capability/`Unsupported` 路径；
+- 使用后端独立测试覆盖创建、binding、transition、draw 和 resize。
+
+### 阶段 7：后续演进
+
+- pass 资源声明和依赖显式化；
+- 每线程 context/pool；
+- pass 级并行录制；
+- compute context 和 dispatch；
+- 按实际需求增加 Render Graph、async compute 或其他高级能力。
+
+## 18. 第一阶段验收条件
+
+- 公共 RHI 头文件不包含后端原生类型或后端判断。
+- Render pass、Material 和 scene 代码不直接访问全局 RHI 指针。
+- GlobalShader test pass 无 validation error 完成 acquire、render pass、draw、submit 和 present。
+- Resize、out-of-date 和 suboptimal 路径可恢复。
+- Buffer/texture 创建、initial upload、transition、view 和 deferred deletion 形成闭环。
+- 多 frame-in-flight 不提前 reset descriptor/command pool，不提前销毁资源。
+- Shader、binding layout 和 pipeline 使用稳定完整 key，hash collision 不返回错误对象。
+- BasePass 能通过 `BasePassMeshProcessor` 构建 `MeshDrawPacket`，并正确组合 Pass、Material 和 Object 参数。
+- 后端不支持功能返回可诊断的 `Unsupported`，不存在默认空操作成功。
+
+## 19. 待定事项
+
+以下事项在对应实现阶段定型，不阻塞当前公共边界：
+
+- GlobalShader/MaterialShader 使用显式 registry 还是轻量注册宏；
+- shader 编译工具链和 Vulkan/D3D bytecode 产物格式；
+- D3D11 submit serial 的 fence/query 实现策略；
+- transient uniform allocator 的公共 API 形态；
+- binding group 是否固定为五组，或允许 renderer profile 配置映射；
+- MaterialTemplate 的序列化格式、shader language 和 Godot 风格生成接口；
+- 第一阶段是否缓存静态 mesh draw packet；
+- 何时引入轻量 Render Graph。
