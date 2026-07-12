@@ -1,0 +1,179 @@
+#include "drivers/rhi/rhi_command_descriptors.h"
+
+#include <algorithm>
+
+namespace toy3d
+{
+    RHIStatus validate_resource_transition(const RHIResourceTransition& transition)
+    {
+        if (!transition.resource)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Resource transition requires a resource.");
+        }
+        if (transition.before == RHIAccess::Unknown || transition.after == RHIAccess::Unknown)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Resource transition requires explicit before and after access.");
+        }
+        if (transition.before == transition.after)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Resource transition cannot use identical access states.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_buffer_copy_desc(const RHIBufferCopyDesc& desc)
+    {
+        if (!desc.source || !desc.destination || desc.size == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer copy requires source, destination, and non-zero size.");
+        }
+        if (desc.source_offset > desc.source->desc().size ||
+            desc.size > desc.source->desc().size - desc.source_offset ||
+            desc.destination_offset > desc.destination->desc().size ||
+            desc.size > desc.destination->desc().size - desc.destination_offset)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer copy range is outside a resource.");
+        }
+        if (!rhi_has_any_flag(desc.source->desc().usage, RHIResourceUsage::CopySource) ||
+            !rhi_has_any_flag(desc.destination->desc().usage, RHIResourceUsage::CopyDestination))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer copy resources are missing copy usage flags.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_texture_copy_desc(const RHITextureCopyDesc& desc)
+    {
+        if (!desc.source.texture || !desc.destination.texture)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy requires source and destination textures.");
+        }
+        if (desc.extent.width == 0 || desc.extent.height == 0 || desc.extent.depth == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy extent must be non-zero.");
+        }
+        const RHITextureDesc& source_desc = desc.source.texture->desc();
+        const RHITextureDesc& destination_desc = desc.destination.texture->desc();
+        if (desc.source.mip >= source_desc.mip_levels || desc.source.layer >= source_desc.array_layers ||
+            desc.destination.mip >= destination_desc.mip_levels || desc.destination.layer >= destination_desc.array_layers)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy subresource is outside a texture.");
+        }
+        if (!rhi_has_any_flag(source_desc.usage, RHIResourceUsage::CopySource) ||
+            !rhi_has_any_flag(destination_desc.usage, RHIResourceUsage::CopyDestination))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy resources are missing copy usage flags.");
+        }
+        const std::uint32_t source_width = std::max(1U, source_desc.width >> desc.source.mip);
+        const std::uint32_t source_height = std::max(1U, source_desc.height >> desc.source.mip);
+        const std::uint32_t source_depth = std::max(1U, source_desc.depth >> desc.source.mip);
+        const std::uint32_t destination_width = std::max(1U, destination_desc.width >> desc.destination.mip);
+        const std::uint32_t destination_height = std::max(1U, destination_desc.height >> desc.destination.mip);
+        const std::uint32_t destination_depth = std::max(1U, destination_desc.depth >> desc.destination.mip);
+        if (desc.source.offset.x > source_width || desc.extent.width > source_width - desc.source.offset.x ||
+            desc.source.offset.y > source_height || desc.extent.height > source_height - desc.source.offset.y ||
+            desc.source.offset.z > source_depth || desc.extent.depth > source_depth - desc.source.offset.z ||
+            desc.destination.offset.x > destination_width || desc.extent.width > destination_width - desc.destination.offset.x ||
+            desc.destination.offset.y > destination_height || desc.extent.height > destination_height - desc.destination.offset.y ||
+            desc.destination.offset.z > destination_depth || desc.extent.depth > destination_depth - desc.destination.offset.z)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy region is outside a mip extent.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_render_pass_desc(const RHIRenderPassDesc& desc)
+    {
+        if (desc.color_attachments.empty() && !desc.has_depth_stencil_attachment)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Render pass requires at least one attachment.");
+        }
+        std::uint32_t pass_width = 0;
+        std::uint32_t pass_height = 0;
+        std::uint32_t pass_samples = 0;
+        const auto validate_extent = [&pass_width, &pass_height, &pass_samples](const RHITextureViewRef& view) -> bool
+        {
+            const RHITextureDesc& texture_desc = view->texture()->desc();
+            const std::uint32_t mip = view->desc().subresources.first_mip;
+            const std::uint32_t width = std::max(1U, texture_desc.width >> mip);
+            const std::uint32_t height = std::max(1U, texture_desc.height >> mip);
+            if (pass_width == 0)
+            {
+                pass_width = width;
+                pass_height = height;
+                pass_samples = texture_desc.sample_count;
+                return true;
+            }
+            return pass_width == width && pass_height == height && pass_samples == texture_desc.sample_count;
+        };
+
+        for (const RHIColorAttachmentDesc& attachment : desc.color_attachments)
+        {
+            if (!attachment.view || attachment.view->desc().type != RHIResourceViewType::RenderTarget)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Color attachment requires a render-target view.");
+            }
+            if (!validate_extent(attachment.view))
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Render pass attachments require matching extent and sample count.");
+            }
+            if (attachment.resolve_view && attachment.resolve_view->desc().type != RHIResourceViewType::RenderTarget)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Resolve attachment requires a render-target view.");
+            }
+            if (attachment.resolve_view)
+            {
+                const RHITextureDesc& source = attachment.view->texture()->desc();
+                const RHITextureDesc& destination = attachment.resolve_view->texture()->desc();
+                const std::uint32_t source_mip = attachment.view->desc().subresources.first_mip;
+                const std::uint32_t destination_mip = attachment.resolve_view->desc().subresources.first_mip;
+                if (source.sample_count <= 1 || destination.sample_count != 1 || source.format != destination.format ||
+                    std::max(1U, source.width >> source_mip) != std::max(1U, destination.width >> destination_mip) ||
+                    std::max(1U, source.height >> source_mip) != std::max(1U, destination.height >> destination_mip))
+                {
+                    return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Resolve requires compatible source and destination attachments.");
+                }
+            }
+            if (attachment.load == RHILoadOperation::Clear && attachment.clear_value.type() != RHIClearValue::Type::Color)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Cleared color attachment requires a color clear value.");
+            }
+        }
+        if (desc.has_depth_stencil_attachment)
+        {
+            const RHIDepthStencilAttachmentDesc& attachment = desc.depth_stencil_attachment;
+            if (!attachment.view || attachment.view->desc().type != RHIResourceViewType::DepthStencil)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Depth attachment requires a depth-stencil view.");
+            }
+            if (!validate_extent(attachment.view))
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Depth attachment extent and sample count must match color attachments.");
+            }
+            if ((attachment.depth_load == RHILoadOperation::Clear || attachment.stencil_load == RHILoadOperation::Clear) &&
+                attachment.clear_value.type() != RHIClearValue::Type::DepthStencil)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Cleared depth-stencil attachment requires a depth-stencil clear value.");
+            }
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_draw_args(const RHIDrawArgs& args)
+    {
+        if (args.vertex_count == 0 || args.instance_count == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Draw counts must be non-zero.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_draw_indexed_args(const RHIDrawIndexedArgs& args)
+    {
+        if (args.index_count == 0 || args.instance_count == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Indexed draw counts must be non-zero.");
+        }
+        return RHIStatus::success();
+    }
+}

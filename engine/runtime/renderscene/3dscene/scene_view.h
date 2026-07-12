@@ -1,5 +1,4 @@
 #pragma once
-#include "rhi/rhi_resource.h"
 #include "core/math/math.h"
 
 namespace toy3d
