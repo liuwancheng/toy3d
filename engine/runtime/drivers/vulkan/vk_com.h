@@ -10,7 +10,7 @@
 #include "core/misc/logger.h"
 #include "rhi/rhi_definitions.h"
 #include "rhi/rhi_inilitializer.h"
-#include "rhi/rhi_resource.h"
+#include "rhi/rhi_legacy_resource.h"
 #include "vk_cast.h"
 
 namespace toy3d

@@ -42,6 +42,33 @@ namespace toy3d
         return RHIStatus::success();
     }
 
+    RHIStatus validate_buffer_upload_desc(const RHIBufferUploadDesc& desc)
+    {
+        if (!desc.destination)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload requires a destination buffer.");
+        }
+        if (desc.source.data == nullptr || desc.source.size == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload requires non-empty source data.");
+        }
+        if (desc.source.row_pitch != 0 || desc.source.slice_pitch != 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload source data cannot specify row or slice pitch.");
+        }
+        const RHIBufferDesc& destination_desc = desc.destination->desc();
+        if (desc.destination_offset > destination_desc.size ||
+            desc.source.size > destination_desc.size - desc.destination_offset)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload range is outside the destination buffer.");
+        }
+        if (!rhi_has_any_flag(destination_desc.usage, RHIResourceUsage::CopyDestination))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload destination is missing CopyDestination usage.");
+        }
+        return RHIStatus::success();
+    }
+
     RHIStatus validate_texture_copy_desc(const RHITextureCopyDesc& desc)
     {
         if (!desc.source.texture || !desc.destination.texture)
@@ -78,6 +105,42 @@ namespace toy3d
             desc.destination.offset.z > destination_depth || desc.extent.depth > destination_depth - desc.destination.offset.z)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy region is outside a mip extent.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_texture_upload_desc(const RHITextureUploadDesc& desc)
+    {
+        if (!desc.destination.texture)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload requires a destination texture.");
+        }
+        if (desc.extent.width == 0 || desc.extent.height == 0 || desc.extent.depth == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload extent must be non-zero.");
+        }
+        if (desc.source.data == nullptr || desc.source.size == 0 ||
+            desc.source.row_pitch == 0 || desc.source.slice_pitch == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload requires data, row pitch, and slice pitch.");
+        }
+        const RHITextureDesc& destination_desc = desc.destination.texture->desc();
+        if (desc.destination.mip >= destination_desc.mip_levels || desc.destination.layer >= destination_desc.array_layers)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload destination subresource is outside the texture.");
+        }
+        if (!rhi_has_any_flag(destination_desc.usage, RHIResourceUsage::CopyDestination))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload destination is missing CopyDestination usage.");
+        }
+        const std::uint32_t mip_width = std::max(1U, destination_desc.width >> desc.destination.mip);
+        const std::uint32_t mip_height = std::max(1U, destination_desc.height >> desc.destination.mip);
+        const std::uint32_t mip_depth = std::max(1U, destination_desc.depth >> desc.destination.mip);
+        if (desc.destination.offset.x > mip_width || desc.extent.width > mip_width - desc.destination.offset.x ||
+            desc.destination.offset.y > mip_height || desc.extent.height > mip_height - desc.destination.offset.y ||
+            desc.destination.offset.z > mip_depth || desc.extent.depth > mip_depth - desc.destination.offset.z)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload region is outside the destination mip extent.");
         }
         return RHIStatus::success();
     }

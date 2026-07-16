@@ -1,10 +1,12 @@
 set(TARGET_NAME Toy3dRuntime)
 
+option(TOY3D_ENABLE_VULKAN_RHI "Build the canonical Vulkan RHI backend" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
  
-file(GLOB_RECURSE ALL_HEADER_FILES "*.h")
-file(GLOB_RECURSE ALL_SOURCE_FILES "*.cpp")
+file(GLOB_RECURSE ALL_HEADER_FILES CONFIGURE_DEPENDS "*.h")
+file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 
 # The previous IDynamicRHI Vulkan prototype is intentionally kept out of the
 # target while the backend is rebuilt against the canonical RHIDevice API.
@@ -46,6 +48,48 @@ set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
+add_dependencies(${TARGET_NAME} Toy3dShaders)
+
+add_custom_command(
+    TARGET ${TARGET_NAME}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}/shader"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TOY3D_SHADER_OUTPUTS} "${BINARY_ROOT_DIR}/shader"
+    VERBATIM)
+
+if(TOY3D_ENABLE_VULKAN_RHI)
+    if(NOT WIN32)
+        message(FATAL_ERROR "The canonical Vulkan RHI backend currently requires WIN32.")
+    endif()
+    if(NOT EXISTS "${vulkan_include}/vulkan/vulkan.h" OR NOT EXISTS "${vulkan_lib}")
+        message(FATAL_ERROR "The canonical Vulkan RHI backend requires the configured Vulkan headers and loader library.")
+    endif()
+
+    target_sources(${TARGET_NAME}
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_device.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_device.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_command_context.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_command_context.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_deferred_deletion.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_deferred_deletion.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_resource.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_resource.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_graphics_state.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_graphics_state.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_memory_allocator.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_memory_allocator.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_queue.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_queue.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_swapchain.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_swapchain.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_viewport_context.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_viewport_context.h")
+    target_compile_definitions(${TARGET_NAME}
+        PRIVATE
+            TOY3D_ENABLE_VULKAN_RHI=1
+            "TOY3D_VK_LAYER_PATH=\"${TOY3D_VK_LAYER_PATH}\"")
+endif()
 
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17)
 set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Engine")

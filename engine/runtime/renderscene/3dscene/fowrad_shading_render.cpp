@@ -2,19 +2,15 @@
 
 namespace toy3d
 {
-    ForwardSceneRendering::ForwardSceneRendering() :SceneRendering()
+    ForwardSceneRendering::ForwardSceneRendering(RHIDevice& device)
+        : SceneRendering(device)
     {
 
     }
 
-    ForwardSceneRendering::~ForwardSceneRendering()
+    RHIResult<RHICommandListRef> ForwardSceneRendering::render(RHIFrameContext& frame)
     {
-
-    }
-
-    void ForwardSceneRendering::render()
-    {
-        render_test_pass();
+        return SceneRendering::render(frame);
     }
 
     void ForwardSceneRendering::allocate_scene_rt()

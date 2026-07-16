@@ -160,6 +160,24 @@ namespace toy3d
         RHIBindingLayoutDesc layout_desc;
     };
 
+    class RHISampler : public RHIObject
+    {
+    public:
+        explicit RHISampler(RHISamplerDesc desc)
+            : RHIObject(desc.debug_name)
+            , sampler_desc(std::move(desc))
+        {
+        }
+
+        const RHISamplerDesc& desc() const
+        {
+            return sampler_desc;
+        }
+
+    private:
+        RHISamplerDesc sampler_desc;
+    };
+
     class RHIGraphicsPipeline : public RHIObject
     {
     public:
@@ -181,43 +199,79 @@ namespace toy3d
     class RHIBindingSet : public RHIObject
     {
     public:
-        RHIBindingSet(
-            RHIBindingGroup group,
-            std::shared_ptr<RHIBindingLayout> layout,
-            std::string debug_name = {})
-            : RHIObject(std::move(debug_name))
-            , binding_group(group)
-            , binding_layout(std::move(layout))
+        explicit RHIBindingSet(RHIBindingSetDesc desc)
+            : RHIObject(desc.debug_name)
+            , binding_set_desc(std::move(desc))
         {
         }
 
         RHIBindingGroup group() const
         {
-            return binding_group;
+            return binding_set_desc.group;
         }
 
         const std::shared_ptr<RHIBindingLayout>& layout() const
         {
-            return binding_layout;
+            return binding_set_desc.layout;
+        }
+
+        const RHIBindingSetDesc& desc() const
+        {
+            return binding_set_desc;
         }
 
     private:
-        RHIBindingGroup binding_group;
-        std::shared_ptr<RHIBindingLayout> binding_layout;
+        RHIBindingSetDesc binding_set_desc;
     };
 
-    class RHISyncToken : public RHIObject
+    // A GPU fence marks an explicit point in recorded GPU work. It is intended
+    // for CPU polling, such as asynchronous readback; it does not represent
+    // swapchain acquire or present synchronization.
+    class RHIGPUFence : public RHIObject
     {
     public:
         using RHIObject::RHIObject;
-        ~RHISyncToken() override = default;
+        ~RHIGPUFence() override = default;
+
+        virtual RHIResult<bool> is_signaled() const = 0;
     };
 
+    enum class RHISurfacePlatform : std::uint8_t
+    {
+        Unknown,
+        Win32,
+        Glfw
+    };
+
+    struct RHISurfaceDesc
+    {
+        RHISurfacePlatform platform = RHISurfacePlatform::Unknown;
+        void* window_handle = nullptr;
+        void* application_handle = nullptr;
+        std::string debug_name;
+    };
+
+    // Stores platform window identity without exposing graphics-backend types.
+    // Vulkan, D3D10, and D3D12 translate the opaque handles in their own
+    // platform-specific surface creation code.
     class RHISurface : public RHIObject
     {
     public:
-        using RHIObject::RHIObject;
+        explicit RHISurface(RHISurfaceDesc desc)
+            : RHIObject(desc.debug_name)
+            , surface_desc(std::move(desc))
+        {
+        }
+
         ~RHISurface() override = default;
+
+        const RHISurfaceDesc& desc() const
+        {
+            return surface_desc;
+        }
+
+    private:
+        RHISurfaceDesc surface_desc;
     };
 
     using RHIResourceRef = std::shared_ptr<RHIResource>;
@@ -227,8 +281,11 @@ namespace toy3d
     using RHIBufferViewRef = std::shared_ptr<RHIBufferView>;
     using RHIShaderRef = std::shared_ptr<RHIShader>;
     using RHIBindingLayoutRef = std::shared_ptr<RHIBindingLayout>;
+    using RHISamplerRef = std::shared_ptr<RHISampler>;
     using RHIGraphicsPipelineRef = std::shared_ptr<RHIGraphicsPipeline>;
     using RHIBindingSetRef = std::shared_ptr<RHIBindingSet>;
-    using RHISyncTokenRef = std::shared_ptr<RHISyncToken>;
+    using RHIGPUFenceRef = std::shared_ptr<RHIGPUFence>;
     using RHISurfaceRef = std::shared_ptr<RHISurface>;
+
+    RHIStatus validate_surface_desc(const RHISurfaceDesc& desc);
 }

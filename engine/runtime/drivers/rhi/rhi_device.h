@@ -3,8 +3,10 @@
 #include "drivers/rhi/rhi_capabilities.h"
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
+#include "drivers/rhi/rhi_viewport_context.h"
 
 #include <memory>
+#include <string>
 
 namespace toy3d
 {
@@ -12,6 +14,15 @@ namespace toy3d
     class RHIQueue;
     class RHISwapchain;
     struct RHISwapchainDesc;
+
+    struct RHIDeviceDesc
+    {
+        RHISurfaceRef primary_surface;
+        bool enable_validation = false;
+        std::string debug_name;
+    };
+
+    RHIStatus validate_device_desc(const RHIDeviceDesc& desc);
 
     class RHIDevice
     {
@@ -22,7 +33,7 @@ namespace toy3d
         RHIDevice(const RHIDevice&) = delete;
         RHIDevice& operator=(const RHIDevice&) = delete;
 
-        virtual RHIStatus initialize() = 0;
+        virtual RHIStatus initialize(const RHIDeviceDesc& desc) = 0;
         virtual RHIStatus shutdown() = 0;
 
         virtual const RHICapabilities& capabilities() const = 0;
@@ -34,6 +45,14 @@ namespace toy3d
         virtual RHIResult<std::shared_ptr<RHISwapchain>> create_swapchain(
             const RHISurfaceRef& surface,
             const RHISwapchainDesc& desc) = 0;
+
+        // RenderScene creates one viewport context per presentation surface.
+        // The context owns acquire, submission, presentation, and frame-local
+        // recycling so those backend details do not leak into pass code.
+        virtual RHIResult<std::unique_ptr<RHIViewportContext>>
+            create_viewport_context(
+                const RHISurfaceRef& surface,
+                const RHIViewportContextDesc& desc) = 0;
 
         virtual RHIResult<RHIBufferRef> create_buffer(
             const RHIBufferDesc& desc,
@@ -57,8 +76,17 @@ namespace toy3d
         virtual RHIResult<RHIBindingLayoutRef> create_binding_layout(
             const RHIBindingLayoutDesc& desc) = 0;
 
+        virtual RHIResult<RHISamplerRef> create_sampler(
+            const RHISamplerDesc& desc) = 0;
+
+        virtual RHIResult<RHIBindingSetRef> create_binding_set(
+            const RHIBindingSetDesc& desc) = 0;
+
         virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
             const RHIGraphicsPipelineDesc& desc) = 0;
+
+        virtual RHIResult<RHIGPUFenceRef> create_gpu_fence(
+            const std::string& debug_name) = 0;
 
         virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
             create_graphics_command_context() = 0;

@@ -78,7 +78,7 @@ namespace toy3d
 
         void bind(VkCommandBuffer cmd_buffer)
         {
-            gfx_pipeline_state->bind_pipeline(cmd_buffer);
+            gfx_current_pipeline->bind_pipeline(cmd_buffer);
         }
 
 
@@ -183,15 +183,15 @@ namespace toy3d
         VkRect2D                    scissor;
 
 
-        struct FVertexStream
+        struct VulkanVertexStream
         {
-            FVertexStream() : stream(VK_NULL_HANDLE), buffer_offset(0){}
+            VulkanVertexStream() : stream(VK_NULL_HANDLE), buffer_offset(0){}
             VkBuffer    stream;
             uint32      buffer_offset;
         };
-        FVertexStream           vertex_streams[MaxVertexElementCount];
+        VulkanVertexStream           vertex_streams[MaxVertexElementCount];
  
-        VulkanGraphicsPipelineStateRef gfx_pipeline_state; 
+        VulkanGraphicsPipelineStateRef gfx_current_pipeline;
         std::array<VulkanShader, EShaderFrequency::SF_NumGraphicsFrequencies> shader_stages;
     };
 }// namespace toy3d

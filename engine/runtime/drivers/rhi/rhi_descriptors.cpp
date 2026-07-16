@@ -1,11 +1,86 @@
 #include "drivers/rhi/rhi_descriptors.h"
 #include "drivers/rhi/rhi_resource.h"
 
+#include <cmath>
 #include <set>
 #include <tuple>
 
 namespace toy3d
 {
+    namespace
+    {
+        enum class BindingRegisterClass : std::uint8_t
+        {
+            ConstantBuffer,
+            ShaderResource,
+            Sampler,
+            UnorderedAccess
+        };
+
+        BindingRegisterClass binding_register_class(RHIResourceBindingType type)
+        {
+            switch (type)
+            {
+            case RHIResourceBindingType::UniformBuffer:
+                return BindingRegisterClass::ConstantBuffer;
+            case RHIResourceBindingType::SampledTexture:
+            case RHIResourceBindingType::ReadOnlyBuffer:
+                return BindingRegisterClass::ShaderResource;
+            case RHIResourceBindingType::Sampler:
+                return BindingRegisterClass::Sampler;
+            case RHIResourceBindingType::StorageTexture:
+            case RHIResourceBindingType::StorageBuffer:
+                return BindingRegisterClass::UnorderedAccess;
+            }
+            return BindingRegisterClass::ShaderResource;
+        }
+
+        bool binding_ranges_overlap(
+            std::uint32_t first_slot,
+            std::uint32_t first_count,
+            std::uint32_t second_slot,
+            std::uint32_t second_count)
+        {
+            const std::uint64_t first_end = static_cast<std::uint64_t>(first_slot) + first_count;
+            const std::uint64_t second_end = static_cast<std::uint64_t>(second_slot) + second_count;
+            return first_slot < second_end && second_slot < first_end;
+        }
+
+        RHIResult<RHIResourceBindingType> binding_value_type(const RHIBindingValue& value)
+        {
+            const std::uint32_t populated_fields =
+                (value.buffer ? 1U : 0U) +
+                (value.buffer_view ? 1U : 0U) +
+                (value.texture_view ? 1U : 0U) +
+                (value.sampler ? 1U : 0U);
+            if (populated_fields != 1)
+            {
+                return RHIResult<RHIResourceBindingType>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "A binding value must contain exactly one resource.");
+            }
+            if (value.buffer)
+            {
+                return RHIResult<RHIResourceBindingType>::success(RHIResourceBindingType::UniformBuffer);
+            }
+            if (value.sampler)
+            {
+                return RHIResult<RHIResourceBindingType>::success(RHIResourceBindingType::Sampler);
+            }
+            if (value.texture_view)
+            {
+                return RHIResult<RHIResourceBindingType>::success(
+                    value.texture_view->desc().type == RHIResourceViewType::UnorderedAccess
+                        ? RHIResourceBindingType::StorageTexture
+                        : RHIResourceBindingType::SampledTexture);
+            }
+            return RHIResult<RHIResourceBindingType>::success(
+                value.buffer_view->desc().type == RHIResourceViewType::UnorderedAccess
+                    ? RHIResourceBindingType::StorageBuffer
+                    : RHIResourceBindingType::ReadOnlyBuffer);
+        }
+    }
+
     const RHIClearValue RHIClearValue::None = RHIClearValue::none();
     const RHIClearValue RHIClearValue::Black = RHIClearValue::color_value(vec4(0.0F));
     const RHIClearValue RHIClearValue::White = RHIClearValue::color_value(vec4(1.0F));
@@ -201,7 +276,7 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader content hash must be stable and non-zero.");
         }
 
-        using BindingKey = std::tuple<RHIBindingGroup, std::uint32_t>;
+        using BindingKey = std::tuple<RHIBindingGroup, BindingRegisterClass, std::uint32_t>;
         std::set<BindingKey> reflected_bindings;
         for (const RHIShaderBindingReflection& binding : desc.reflection)
         {
@@ -209,9 +284,10 @@ namespace toy3d
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader reflection bindings require a name and non-zero array count.");
             }
-            if (!reflected_bindings.emplace(binding.group, binding.slot).second)
+            if (!reflected_bindings.emplace(
+                    binding.group, binding_register_class(binding.type), binding.slot).second)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader reflection group and slot pair must be unique.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader reflection register must be unique within its group and resource class.");
             }
         }
         return RHIStatus::success();
@@ -219,8 +295,7 @@ namespace toy3d
 
     RHIStatus validate_binding_layout_desc(const RHIBindingLayoutDesc& desc)
     {
-        using BindingKey = std::tuple<RHIBindingGroup, std::uint32_t>;
-        std::set<BindingKey> bindings;
+        std::vector<RHIBindingLayoutEntry> bindings;
         for (const RHIBindingLayoutEntry& entry : desc.entries)
         {
             if (entry.array_count == 0)
@@ -231,9 +306,111 @@ namespace toy3d
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding must be visible to at least one shader stage.");
             }
-            if (!bindings.emplace(entry.group, entry.slot).second)
+            for (const RHIBindingLayoutEntry& existing : bindings)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding group and slot pair must be unique.");
+                if (binding_register_class(existing.type) == binding_register_class(entry.type) &&
+                    rhi_has_any_flag(existing.stages, entry.stages) &&
+                    binding_ranges_overlap(existing.slot, existing.array_count, entry.slot, entry.array_count))
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Binding register ranges must not overlap within the same shader stages and resource class.");
+                }
+            }
+            bindings.push_back(entry);
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_sampler_desc(const RHISamplerDesc& desc)
+    {
+        if (!std::isfinite(desc.mip_lod_bias) || !std::isfinite(desc.min_lod) ||
+            !std::isfinite(desc.max_lod) || desc.min_lod > desc.max_lod)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Sampler LOD values are invalid.");
+        }
+        if (desc.max_anisotropy == 0)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Sampler anisotropy must be at least one.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_binding_set_desc(const RHIBindingSetDesc& desc)
+    {
+        if (!desc.layout)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding set requires a binding layout.");
+        }
+
+        std::set<std::tuple<BindingRegisterClass, std::uint32_t, std::uint32_t>> supplied_bindings;
+        for (const RHIBindingValue& value : desc.bindings)
+        {
+            const auto value_type = binding_value_type(value);
+            if (!value_type)
+            {
+                return value_type.status();
+            }
+            const RHIBindingLayoutEntry* matching_entry = nullptr;
+            for (const RHIBindingLayoutEntry& entry : desc.layout->desc().entries)
+            {
+                if (entry.group == desc.group && entry.slot == value.slot && entry.type == value_type.value())
+                {
+                    matching_entry = &entry;
+                    break;
+                }
+            }
+            if (!matching_entry || value.array_index >= matching_entry->array_count)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Binding value does not match its layout group, slot, type, or array range.");
+            }
+            if (!supplied_bindings.emplace(
+                    binding_register_class(value_type.value()), value.slot, value.array_index).second)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding set contains a duplicate value.");
+            }
+            if (value.buffer)
+            {
+                if (!rhi_has_any_flag(value.buffer->desc().usage, RHIResourceUsage::UniformBuffer) ||
+                    value.buffer_offset >= value.buffer->desc().size)
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Uniform-buffer binding requires UniformBuffer usage and a valid offset.");
+                }
+                const std::uint64_t range = value.buffer_size == 0
+                    ? value.buffer->desc().size - value.buffer_offset
+                    : value.buffer_size;
+                if (range == 0 || range > value.buffer->desc().size - value.buffer_offset)
+                {
+                    return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Uniform-buffer binding range is invalid.");
+                }
+            }
+            else if ((value.buffer_offset != 0 || value.buffer_size != 0))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Buffer offset and size are valid only for direct uniform-buffer bindings.");
+            }
+        }
+
+        for (const RHIBindingLayoutEntry& entry : desc.layout->desc().entries)
+        {
+            if (entry.group != desc.group)
+            {
+                continue;
+            }
+            for (std::uint32_t array_index = 0; array_index < entry.array_count; ++array_index)
+            {
+                if (supplied_bindings.find(std::make_tuple(
+                        binding_register_class(entry.type), entry.slot, array_index)) == supplied_bindings.end())
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Binding set must provide every binding declared for its group.");
+                }
             }
         }
         return RHIStatus::success();
@@ -258,12 +435,42 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Pipeline sample count must be non-zero.");
         }
+        std::set<std::uint32_t> vertex_bindings;
+        for (const RHIGraphicsPipelineDesc::VertexBufferLayout& layout : desc.vertex_buffers)
+        {
+            if (layout.stride == 0 || !vertex_bindings.emplace(layout.binding).second)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vertex-buffer layouts require a non-zero stride and unique binding index.");
+            }
+        }
+        std::set<std::uint32_t> attribute_locations;
+        for (const RHIGraphicsPipelineDesc::VertexAttribute& attribute : desc.vertex_attributes)
+        {
+            if (attribute.format == RHIFormat::Unknown ||
+                vertex_bindings.find(attribute.binding) == vertex_bindings.end() ||
+                !attribute_locations.emplace(attribute.location).second)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vertex attributes require a format, an existing binding, and a unique location.");
+            }
+        }
         for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
         {
             if (desc.color_formats[index] == RHIFormat::Unknown)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Enabled color attachment format must be specified.");
             }
+        }
+        const bool depth_state_enabled = desc.depth_stencil.depth_test_enable ||
+            desc.depth_stencil.depth_write_enable || desc.depth_stencil.stencil_test_enable;
+        if (depth_state_enabled && desc.depth_stencil_format == RHIFormat::Unknown)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Enabled depth/stencil state requires a depth-stencil attachment format.");
         }
         return RHIStatus::success();
     }

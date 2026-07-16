@@ -9,14 +9,12 @@ namespace toy3d
     struct RHISubmitInfo
     {
         std::vector<RHICommandListRef> command_lists;
-        std::vector<RHISyncTokenRef> wait_tokens;
         std::string debug_name;
     };
 
     struct RHISubmitResult
     {
         RHISubmitSerial serial = 0;
-        RHISyncTokenRef completion_token;
     };
 
     class RHIQueue

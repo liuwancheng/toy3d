@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vk_com.h"
-#include "rhi/rhi_resource.h"
+#include "rhi/rhi_legacy_resource.h"
 #include <unordered_map>
 #include <vector>
 #include <memory>

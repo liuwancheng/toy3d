@@ -18,14 +18,12 @@ namespace toy3d
     {
         std::uint32_t image_index = 0;
         RHITextureRef back_buffer;
-        RHISyncTokenRef available_token;
         bool suboptimal = false;
     };
 
     struct RHIPresentInfo
     {
         std::uint32_t image_index = 0;
-        RHISyncTokenRef wait_token;
     };
 
     class RHISwapchain : public RHIObject

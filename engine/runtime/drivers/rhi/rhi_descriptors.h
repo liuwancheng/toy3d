@@ -13,8 +13,12 @@
 
 namespace toy3d
 {
+    class RHIBuffer;
+    class RHIBufferView;
     class RHIBindingLayout;
+    class RHISampler;
     class RHIShader;
+    class RHITextureView;
 
     struct RHISubresourceRange
     {
@@ -202,13 +206,112 @@ namespace toy3d
         bool operator==(const RHIBindingLayoutDesc& other) const;
     };
 
+    struct RHISamplerDesc
+    {
+        RHIFilter min_filter = RHIFilter::Linear;
+        RHIFilter mag_filter = RHIFilter::Linear;
+        RHIFilter mip_filter = RHIFilter::Linear;
+        RHIAddressMode address_u = RHIAddressMode::Repeat;
+        RHIAddressMode address_v = RHIAddressMode::Repeat;
+        RHIAddressMode address_w = RHIAddressMode::Repeat;
+        float mip_lod_bias = 0.0F;
+        std::uint32_t max_anisotropy = 1;
+        bool compare_enable = false;
+        RHICompareOperation compare_operation = RHICompareOperation::Always;
+        float min_lod = 0.0F;
+        float max_lod = 1000.0F;
+        RHIBorderColor border_color = RHIBorderColor::TransparentBlack;
+        std::string debug_name;
+    };
+
+    struct RHIBindingValue
+    {
+        std::uint32_t slot = 0;
+        std::uint32_t array_index = 0;
+        std::shared_ptr<RHIBuffer> buffer;
+        std::shared_ptr<RHIBufferView> buffer_view;
+        std::shared_ptr<RHITextureView> texture_view;
+        std::shared_ptr<RHISampler> sampler;
+        std::uint64_t buffer_offset = 0;
+        std::uint64_t buffer_size = 0;
+    };
+
+    struct RHIBindingSetDesc
+    {
+        std::shared_ptr<RHIBindingLayout> layout;
+        RHIBindingGroup group = RHIBindingGroup::Material;
+        std::vector<RHIBindingValue> bindings;
+        std::string debug_name;
+    };
+
     struct RHIGraphicsPipelineDesc
     {
         std::shared_ptr<RHIShader> vertex_shader;
         std::shared_ptr<RHIShader> pixel_shader;
         std::shared_ptr<RHIBindingLayout> binding_layout;
         RHIPrimitiveTopology primitive_topology = RHIPrimitiveTopology::TriangleList;
+        struct VertexBufferLayout
+        {
+            std::uint32_t binding = 0;
+            std::uint32_t stride = 0;
+            RHIVertexInputRate input_rate = RHIVertexInputRate::PerVertex;
+        };
+
+        struct VertexAttribute
+        {
+            std::uint32_t location = 0;
+            std::uint32_t binding = 0;
+            RHIFormat format = RHIFormat::Unknown;
+            std::uint32_t offset = 0;
+        };
+
+        struct RasterizationState
+        {
+            RHIPolygonMode polygon_mode = RHIPolygonMode::Fill;
+            RHICullMode cull_mode = RHICullMode::Back;
+            RHIFrontFace front_face = RHIFrontFace::CounterClockwise;
+            bool depth_clamp_enable = false;
+        };
+
+        struct StencilFaceState
+        {
+            RHIStencilOperation fail_operation = RHIStencilOperation::Keep;
+            RHIStencilOperation depth_fail_operation = RHIStencilOperation::Keep;
+            RHIStencilOperation pass_operation = RHIStencilOperation::Keep;
+            RHICompareOperation compare_operation = RHICompareOperation::Always;
+            std::uint32_t compare_mask = 0xffffffffU;
+            std::uint32_t write_mask = 0xffffffffU;
+            std::uint32_t reference = 0;
+        };
+
+        struct DepthStencilState
+        {
+            bool depth_test_enable = false;
+            bool depth_write_enable = false;
+            RHICompareOperation depth_compare_operation = RHICompareOperation::LessEqual;
+            bool stencil_test_enable = false;
+            StencilFaceState front_face;
+            StencilFaceState back_face;
+        };
+
+        struct ColorBlendAttachmentState
+        {
+            bool blend_enable = false;
+            RHIBlendFactor source_color_factor = RHIBlendFactor::One;
+            RHIBlendFactor destination_color_factor = RHIBlendFactor::Zero;
+            RHIBlendOperation color_operation = RHIBlendOperation::Add;
+            RHIBlendFactor source_alpha_factor = RHIBlendFactor::One;
+            RHIBlendFactor destination_alpha_factor = RHIBlendFactor::Zero;
+            RHIBlendOperation alpha_operation = RHIBlendOperation::Add;
+            RHIColorWriteMask color_write_mask = RHIColorWriteMask::All;
+        };
+
+        std::vector<VertexBufferLayout> vertex_buffers;
+        std::vector<VertexAttribute> vertex_attributes;
+        RasterizationState rasterization;
+        DepthStencilState depth_stencil;
         std::array<RHIFormat, 8> color_formats = {};
+        std::array<ColorBlendAttachmentState, 8> color_blend_attachments = {};
         std::uint32_t color_attachment_count = 0;
         RHIFormat depth_stencil_format = RHIFormat::Unknown;
         std::uint32_t sample_count = 1;
@@ -231,5 +334,7 @@ namespace toy3d
         const RHIBufferViewDesc& view_desc);
     RHIStatus validate_shader_desc(const RHIShaderDesc& desc);
     RHIStatus validate_binding_layout_desc(const RHIBindingLayoutDesc& desc);
+    RHIStatus validate_sampler_desc(const RHISamplerDesc& desc);
+    RHIStatus validate_binding_set_desc(const RHIBindingSetDesc& desc);
     RHIStatus validate_graphics_pipeline_desc(const RHIGraphicsPipelineDesc& desc);
 }

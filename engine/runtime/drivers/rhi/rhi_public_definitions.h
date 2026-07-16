@@ -224,6 +224,27 @@ namespace toy3d
         StorageBuffer
     };
 
+    enum class RHIFilter : std::uint8_t
+    {
+        Nearest,
+        Linear
+    };
+
+    enum class RHIAddressMode : std::uint8_t
+    {
+        Repeat,
+        MirroredRepeat,
+        ClampToEdge,
+        ClampToBorder
+    };
+
+    enum class RHIBorderColor : std::uint8_t
+    {
+        TransparentBlack,
+        OpaqueBlack,
+        OpaqueWhite
+    };
+
     enum class RHITextureAspect : std::uint8_t
     {
         Color,
@@ -266,6 +287,92 @@ namespace toy3d
     {
         UInt16,
         UInt32
+    };
+
+    enum class RHIVertexInputRate : std::uint8_t
+    {
+        PerVertex,
+        PerInstance
+    };
+
+    enum class RHIPolygonMode : std::uint8_t
+    {
+        Fill,
+        Line,
+        Point
+    };
+
+    enum class RHICullMode : std::uint8_t
+    {
+        None,
+        Front,
+        Back
+    };
+
+    enum class RHIFrontFace : std::uint8_t
+    {
+        CounterClockwise,
+        Clockwise
+    };
+
+    enum class RHICompareOperation : std::uint8_t
+    {
+        Never,
+        Less,
+        Equal,
+        LessEqual,
+        Greater,
+        NotEqual,
+        GreaterEqual,
+        Always
+    };
+
+    enum class RHIStencilOperation : std::uint8_t
+    {
+        Keep,
+        Zero,
+        Replace,
+        IncrementClamp,
+        DecrementClamp,
+        Invert,
+        IncrementWrap,
+        DecrementWrap
+    };
+
+    enum class RHIBlendFactor : std::uint8_t
+    {
+        Zero,
+        One,
+        SourceColor,
+        OneMinusSourceColor,
+        DestinationColor,
+        OneMinusDestinationColor,
+        SourceAlpha,
+        OneMinusSourceAlpha,
+        DestinationAlpha,
+        OneMinusDestinationAlpha,
+        ConstantColor,
+        OneMinusConstantColor,
+        SourceAlphaSaturate
+    };
+
+    enum class RHIBlendOperation : std::uint8_t
+    {
+        Add,
+        Subtract,
+        ReverseSubtract,
+        Min,
+        Max
+    };
+
+    enum class RHIColorWriteMask : std::uint8_t
+    {
+        None = 0,
+        Red = 1U << 0,
+        Green = 1U << 1,
+        Blue = 1U << 2,
+        Alpha = 1U << 3,
+        All = Red | Green | Blue | Alpha
     };
 
     enum class RHICommandListState : std::uint8_t

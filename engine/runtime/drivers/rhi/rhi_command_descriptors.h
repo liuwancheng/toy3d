@@ -57,6 +57,16 @@ namespace toy3d
         std::uint64_t size = 0;
     };
 
+    // Upload data is copied into backend-owned staging storage before this
+    // command returns. The staging storage remains alive until the command
+    // list's frame slot has completed on the GPU.
+    struct RHIBufferUploadDesc
+    {
+        RHIBufferRef destination;
+        std::uint64_t destination_offset = 0;
+        RHIInitialData source;
+    };
+
     struct RHITextureCopyLocation
     {
         RHITextureRef texture;
@@ -70,6 +80,13 @@ namespace toy3d
         RHITextureCopyLocation source;
         RHITextureCopyLocation destination;
         RHIExtent3D extent;
+    };
+
+    struct RHITextureUploadDesc
+    {
+        RHITextureCopyLocation destination;
+        RHIExtent3D extent;
+        RHIInitialData source;
     };
 
     struct RHIColorAttachmentDesc
@@ -132,7 +149,9 @@ namespace toy3d
 
     RHIStatus validate_resource_transition(const RHIResourceTransition& transition);
     RHIStatus validate_buffer_copy_desc(const RHIBufferCopyDesc& desc);
+    RHIStatus validate_buffer_upload_desc(const RHIBufferUploadDesc& desc);
     RHIStatus validate_texture_copy_desc(const RHITextureCopyDesc& desc);
+    RHIStatus validate_texture_upload_desc(const RHITextureUploadDesc& desc);
     RHIStatus validate_render_pass_desc(const RHIRenderPassDesc& desc);
     RHIStatus validate_draw_args(const RHIDrawArgs& args);
     RHIStatus validate_draw_indexed_args(const RHIDrawIndexedArgs& args);

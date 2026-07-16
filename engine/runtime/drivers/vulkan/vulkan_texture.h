@@ -1,5 +1,5 @@
 #pragma once
-#include "rhi/rhi_resource.h"
+#include "rhi/rhi_legacy_resource.h"
 #include "vk_com.h"
 
 namespace toy3d

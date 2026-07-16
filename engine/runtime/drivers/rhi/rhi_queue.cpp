@@ -29,16 +29,6 @@ namespace toy3d
                     "A command list cannot appear twice in one submission.");
             }
         }
-        for (const RHISyncTokenRef& wait_token : info.wait_tokens)
-        {
-            if (!wait_token)
-            {
-                return RHIResult<RHISubmitResult>::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Queue submission wait tokens cannot be null.");
-            }
-        }
-
         RHIResult<RHISubmitResult> result = submit_impl(info);
         if (!result)
         {

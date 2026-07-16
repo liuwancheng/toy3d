@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vk_com.h"
-#include "rhi/rhi_resource.h"
+#include "rhi/rhi_legacy_resource.h"
 #include "vulkan_descriptor_sets.h"
 #include <vector>
 #include <memory>

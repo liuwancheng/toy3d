@@ -11,6 +11,7 @@ namespace toy3d
         InvalidArgument,
         Unsupported,
         OutOfMemory,
+        NotReady,
         OutOfDate,
         Suboptimal,
         DeviceLost,
@@ -27,10 +28,7 @@ namespace toy3d
             return {};
         }
 
-        static RHIStatus failure(RHIErrorCode code, std::string message)
-        {
-            return RHIStatus(code, std::move(message));
-        }
+        static RHIStatus failure(RHIErrorCode code, std::string message);
 
         bool succeeded() const
         {

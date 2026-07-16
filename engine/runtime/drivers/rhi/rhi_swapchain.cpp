@@ -12,8 +12,7 @@ namespace toy3d
 
         const RHIAcquiredImage& image = result.value();
         if (image.image_index >= swapchain_desc.image_count ||
-            !image.back_buffer ||
-            !image.available_token)
+            !image.back_buffer)
         {
             return RHIResult<RHIAcquiredImage>::failure(
                 RHIErrorCode::BackendFailure,
@@ -73,10 +72,6 @@ namespace toy3d
         if (info.image_index >= swapchain_desc.image_count)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Presented image index is outside the swapchain.");
-        }
-        if (!info.wait_token)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Presentation requires a completion token.");
         }
         return RHIStatus::success();
     }
