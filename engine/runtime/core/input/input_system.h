@@ -59,4 +59,26 @@ private:
     void sort_active_mapping_contexts();
 };
 
+template<typename callback>
+void InputSystem::bind_action(const std::string& context_name, const std::string& action_name,
+    KeyCode key_code, KeyStatus click_status, callback&& cb)
+{
+    auto it = binding_contexts.find(context_name);
+    if (it == binding_contexts.end()) return;
+
+    auto& action = it->second.create_action(action_name);
+    action.add_binding(key_code, click_status, std::forward<callback>(cb));
+}
+
+template<typename callback>
+void InputSystem::bind_axis(const std::string& context_name, const std::string& action_name,
+    KeyCode key_code, float scale, callback&& cb)
+{
+    auto it = binding_contexts.find(context_name);
+    if (it == binding_contexts.end()) return;
+
+    auto& action = it->second.create_action(action_name);
+    action.add_axis_binding(key_code, scale, std::forward<callback>(cb));
+}
+
 } // namespace toy3d
