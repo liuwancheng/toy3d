@@ -1,6 +1,6 @@
 set(TARGET_NAME Toy3dRuntime)
 
-option(TOY3D_ENABLE_VULKAN_RHI "Build the canonical Vulkan RHI backend" OFF)
+option(TOY3D_ENABLE_VULKAN_RHI "Build the Vulkan RHI backend" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE ALL_HEADER_FILES CONFIGURE_DEPENDS "*.h")
 file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 
-# The previous IDynamicRHI Vulkan prototype is intentionally kept out of the
-# target while the backend is rebuilt against the canonical RHIDevice API.
+# Vulkan sources are registered explicitly below so backend code is only built
+# when TOY3D_ENABLE_VULKAN_RHI is enabled.
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.cpp$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/example/.*\\.cpp$")
@@ -58,37 +58,48 @@ add_custom_command(
     VERBATIM)
 
 if(TOY3D_ENABLE_VULKAN_RHI)
-    if(NOT WIN32)
-        message(FATAL_ERROR "The canonical Vulkan RHI backend currently requires WIN32.")
+    if(NOT WIN32 AND NOT APPLE)
+        message(FATAL_ERROR "The Vulkan RHI backend currently supports Windows and macOS.")
     endif()
     if(NOT EXISTS "${vulkan_include}/vulkan/vulkan.h" OR NOT EXISTS "${vulkan_lib}")
-        message(FATAL_ERROR "The canonical Vulkan RHI backend requires the configured Vulkan headers and loader library.")
+        message(FATAL_ERROR "The Vulkan RHI backend requires the configured Vulkan headers and loader library.")
+    endif()
+    if(APPLE AND (NOT EXISTS "${TOY3D_VK_ICD_PATH}" OR
+                  NOT EXISTS "${TOY3D_VK_LAYER_PATH}/libMoltenVK.dylib"))
+        message(FATAL_ERROR "The macOS Vulkan RHI backend requires the bundled MoltenVK ICD and library.")
     endif()
 
     target_sources(${TARGET_NAME}
         PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_device.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_device.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_command_context.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_command_context.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_deferred_deletion.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_deferred_deletion.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_resource.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_resource.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_graphics_state.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_graphics_state.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_memory_allocator.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_memory_allocator.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_queue.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_queue.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_swapchain.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_swapchain.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_viewport_context.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/canonical/vulkan_viewport_context.h")
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_device.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_device.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_command_context.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_command_context.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_deferred_deletion.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_deferred_deletion.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_graphics_state.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_graphics_state.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_memory_manager.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_memory_manager.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_upload_manager.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_upload_manager.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_queue.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_queue.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_viewport_context.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_viewport_context.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vma_implementation.cpp")
     target_compile_definitions(${TARGET_NAME}
         PRIVATE
             TOY3D_ENABLE_VULKAN_RHI=1
             "TOY3D_VK_LAYER_PATH=\"${TOY3D_VK_LAYER_PATH}\"")
+    if(APPLE)
+        target_compile_definitions(${TARGET_NAME}
+            PRIVATE
+                VK_USE_PLATFORM_METAL_EXT
+                "TOY3D_VK_ICD_PATH=\"${TOY3D_VK_ICD_PATH}\"")
+    endif()
 endif()
 
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17)

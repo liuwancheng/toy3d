@@ -1,212 +1,532 @@
-#include "vulkan_resource.h"
-#include "core/math/math.h"
-#include "vulkan/vulkan_context.h"
+#include "drivers/vulkan/vulkan_resource.h"
+
+#include "drivers/vulkan/vulkan_deferred_deletion.h"
+
+#include "core/misc/logger.h"
+
+#include <algorithm>
+#include <cstring>
+#include <utility>
 
 namespace toy3d
 {
-  
-    SwapFrameData::SwapFrameData(VulkanContext* context, VkImage swap_image)
-    :m_context(context)
+    VkFormat vulkan_format_from_rhi(RHIFormat format)
     {
-        VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        VK_CHECK(vkCreateFence(context->device, &fence_info, nullptr, &fence));
-
-        VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        VK_CHECK(vkCreateSemaphore(context->device, &semaphore_info, nullptr, &semaphore));
-
-        // command pool
-        VkCommandPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        pool_info.queueFamilyIndex = context->graphics_family_index;
-        VK_CHECK(vkCreateCommandPool(context->device, &pool_info, nullptr, &cmd_pool));
-
-        // command buffer  
-        VkCommandBufferAllocateInfo cmd_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-        cmd_info.commandPool = cmd_pool;
-        cmd_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cmd_info.commandBufferCount = 1;
-        VK_CHECK(vkAllocateCommandBuffers(context->device, &cmd_info, &cmd_buffer));
-
-        // default color buffer
-        VkImageViewCreateInfo view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view_info.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
-        view_info.format                      = context->get_swapchain().get_format();
-        view_info.image                       = swap_image;
-        view_info.subresourceRange.levelCount = 1;
-        view_info.subresourceRange.layerCount = 1;
-        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        view_info.components.r                = VK_COMPONENT_SWIZZLE_R;
-        view_info.components.g                = VK_COMPONENT_SWIZZLE_G;
-        view_info.components.b                = VK_COMPONENT_SWIZZLE_B;
-        view_info.components.a                = VK_COMPONENT_SWIZZLE_A;
-        VK_CHECK(vkCreateImageView(context->device, &view_info, nullptr, &default_color));
-    }
-
-    SwapFrameData::~SwapFrameData()
-    {
-        if(fence != VK_NULL_HANDLE)
+        switch (format)
         {
-            vkDestroyFence(m_context->device, fence, nullptr);
-            fence = VK_NULL_HANDLE;
-        }
-        if(semaphore != VK_NULL_HANDLE)
-        {
-            vkDestroySemaphore(m_context->device, semaphore, nullptr);
-            semaphore = VK_NULL_HANDLE;
-        }
-        if(cmd_buffer != VK_NULL_HANDLE)
-        {
-            vkFreeCommandBuffers(m_context->device, cmd_pool, 1, &cmd_buffer);
-            cmd_buffer = VK_NULL_HANDLE;
-        }
-        if(cmd_pool != VK_NULL_HANDLE)
-        {
-            vkDestroyCommandPool(m_context->device, cmd_pool, nullptr);
-            cmd_pool = VK_NULL_HANDLE;
-        }
-        if(default_color != VK_NULL_HANDLE)
-        {
-            vkDestroyImageView(m_context->device, default_color, nullptr);
-            default_color = VK_NULL_HANDLE;
+        case RHIFormat::R8UNorm:
+            return VK_FORMAT_R8_UNORM;
+        case RHIFormat::R8G8B8A8UNorm:
+            return VK_FORMAT_R8G8B8A8_UNORM;
+        case RHIFormat::R8G8B8A8UNormSRGB:
+            return VK_FORMAT_R8G8B8A8_SRGB;
+        case RHIFormat::B8G8R8A8UNorm:
+            return VK_FORMAT_B8G8R8A8_UNORM;
+        case RHIFormat::B8G8R8A8UNormSRGB:
+            return VK_FORMAT_B8G8R8A8_SRGB;
+        case RHIFormat::R16Float:
+            return VK_FORMAT_R16_SFLOAT;
+        case RHIFormat::R16G16Float:
+            return VK_FORMAT_R16G16_SFLOAT;
+        case RHIFormat::R16G16B16A16Float:
+            return VK_FORMAT_R16G16B16A16_SFLOAT;
+        case RHIFormat::R32Float:
+            return VK_FORMAT_R32_SFLOAT;
+        case RHIFormat::R32G32Float:
+            return VK_FORMAT_R32G32_SFLOAT;
+        case RHIFormat::R32G32B32Float:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case RHIFormat::R32G32B32A32Float:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case RHIFormat::R16UInt:
+            return VK_FORMAT_R16_UINT;
+        case RHIFormat::R32UInt:
+            return VK_FORMAT_R32_UINT;
+        case RHIFormat::R8SNorm:
+            return VK_FORMAT_R8_SNORM;
+        case RHIFormat::R8G8B8A8SNorm:
+            return VK_FORMAT_R8G8B8A8_SNORM;
+        case RHIFormat::R10G10B10A2UNorm:
+            return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+        case RHIFormat::R11G11B10Float:
+            return VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+        case RHIFormat::BC1UNorm:
+            return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
+        case RHIFormat::BC2UNorm:
+            return VK_FORMAT_BC2_UNORM_BLOCK;
+        case RHIFormat::BC3UNorm:
+            return VK_FORMAT_BC3_UNORM_BLOCK;
+        case RHIFormat::D16UNorm:
+            return VK_FORMAT_D16_UNORM;
+        case RHIFormat::D24UNormS8UInt:
+            return VK_FORMAT_D24_UNORM_S8_UINT;
+        case RHIFormat::D32Float:
+            return VK_FORMAT_D32_SFLOAT;
+        case RHIFormat::D32FloatS8UInt:
+            return VK_FORMAT_D32_SFLOAT_S8_UINT;
+        default:
+            return VK_FORMAT_UNDEFINED;
         }
     }
 
-    void SwapFrameData::wait_prev_frame(uint32_t timeout) const
+    bool is_vk_depth_format(VkFormat format)
     {
-        vkWaitForFences(m_context->device, 1, &fence, VK_TRUE, timeout);
-
-        // 重制fence状态
-        VK_CHECK(vkResetFences(m_context->device, 1, &fence));
+        return format == VK_FORMAT_D16_UNORM ||
+            format == VK_FORMAT_D24_UNORM_S8_UINT ||
+            format == VK_FORMAT_D32_SFLOAT ||
+            format == VK_FORMAT_D32_SFLOAT_S8_UINT;
     }
 
-    ///////////////////////////////// vulkan state ////////////////////////////////////
-    VulkanRasterizerState::VulkanRasterizerState(const RasterizerStateInitializerRHI& in_desc)
+    bool is_vk_stencil_format(VkFormat format)
     {
-        rhi_desc = in_desc;
-        zero_vulkan_struct(rasterizer_state, VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO);
-		rasterizer_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
-		rasterizer_state.lineWidth = 1.0f;
-
-        rasterizer_state.polygonMode = cast_fill_mode(in_desc.fill_mode);
-        rasterizer_state.cullMode = cast_cull_mode(in_desc.cull_mode);
-
-        //rasterizer_state.depthClampEnable = VK_FALSE;
-        rasterizer_state.depthBiasEnable = in_desc.depth_bias != 0.0f ? VK_TRUE : VK_FALSE;
-        //RasterizerState.rasterizerDiscardEnable = VK_FALSE;
-
-        rasterizer_state.depthBiasSlopeFactor = in_desc.slope_scale_depth_bias;
-        rasterizer_state.depthBiasConstantFactor = in_desc.depth_bias;
+        return format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
     }
 
-    VulkanDepthStencilState::VulkanDepthStencilState(const DepthStencilStateInitializerRHI& in_desc)
+    VulkanBuffer::VulkanBuffer(
+        RHIBufferDesc desc,
+        VulkanMemoryManager& memory_manager,
+        VulkanDeferredDeletionQueue& deletion_queue,
+        VulkanAllocatedBuffer allocated_buffer,
+        RHIAccess initial_access)
+        : RHIBuffer(std::move(desc))
+        , memory_manager_instance(&memory_manager)
+        , deletion_queue_instance(&deletion_queue)
+        , allocated_buffer(std::move(allocated_buffer))
+        , resource_access(initial_access == RHIAccess::Unknown ? RHIAccess::Common : initial_access)
     {
-        rhi_desc = in_desc;
-        zero_vulkan_struct(depth_stencil_state, VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO);
+    }
 
-        depth_stencil_state.depthTestEnable = (in_desc.depth_test != CF_Always || in_desc.enable_depth_write) ? VK_TRUE : VK_FALSE;
-        depth_stencil_state.depthCompareOp = cast_depth_stencil_compare_function(in_desc.depth_test);
-        depth_stencil_state.depthWriteEnable = in_desc.enable_depth_write ? VK_TRUE : VK_FALSE;
-
+    VulkanBuffer::~VulkanBuffer()
+    {
+        if (memory_manager_instance == nullptr)
         {
-            // 深度整体范围测试
-            depth_stencil_state.depthBoundsTestEnable = in_desc.enable_depth_bounds;
-            depth_stencil_state.minDepthBounds = 0.0f;
-            depth_stencil_state.maxDepthBounds = 1.0f;
+            return;
+        }
+        if (last_use_value == 0 || deletion_queue_instance == nullptr)
+        {
+            memory_manager_instance->destroy_buffer(allocated_buffer);
+            return;
         }
 
-        depth_stencil_state.stencilTestEnable = (in_desc.enable_front_face_stencil || in_desc.enable_back_face_stencil) ? VK_TRUE : VK_FALSE;
-
-        // Front
-        depth_stencil_state.back.failOp = cast_stencil_op(in_desc.front_face_depth_fail_stencil_op);
-        depth_stencil_state.back.passOp = cast_stencil_op(in_desc.front_face_pass_stencil_op);
-        depth_stencil_state.back.depthFailOp = cast_stencil_op(in_desc.front_face_depth_fail_stencil_op);
-        depth_stencil_state.back.compareOp = cast_depth_stencil_compare_function(in_desc.front_face_stencil_test);
-        depth_stencil_state.back.compareMask = in_desc.stencil_read_mask;
-        depth_stencil_state.back.writeMask = in_desc.stencil_write_mask;
-        depth_stencil_state.back.reference = 0;
-
-        if (in_desc.enable_back_face_stencil)
+        auto payload = std::make_shared<VulkanAllocatedBuffer>(std::move(allocated_buffer));
+        VulkanMemoryManager* const memory_manager = memory_manager_instance;
+        const RHIStatus status = deletion_queue_instance->enqueue(
+            last_use_value,
+            [memory_manager, payload](VkDevice)
+            {
+                memory_manager->destroy_buffer(*payload);
+            });
+        if (!status)
         {
-            // Back
-            depth_stencil_state.front.failOp = cast_stencil_op(in_desc.back_face_depth_fail_stencil_op);
-            depth_stencil_state.front.passOp = cast_stencil_op(in_desc.back_face_pass_stencil_op);
-            depth_stencil_state.front.depthFailOp = cast_stencil_op(in_desc.back_face_depth_fail_stencil_op);
-            depth_stencil_state.front.compareOp = cast_depth_stencil_compare_function(in_desc.back_face_stencil_test);
-            depth_stencil_state.front.compareMask = in_desc.stencil_read_mask;
-            depth_stencil_state.front.writeMask = in_desc.stencil_write_mask;
-            depth_stencil_state.front.reference = 0;
-        }
-        else
-        {
-            depth_stencil_state.front = depth_stencil_state.back;
+            TOY_LOG_ERROR("Failed to defer Vulkan buffer deletion: {}", status.message());
+            memory_manager_instance->destroy_buffer(*payload);
         }
     }
 
-    VulkanBlendState::VulkanBlendState(const BlendStateInitializerRHI& in_desc)
+    VkBuffer VulkanBuffer::buffer() const
     {
-        rhi_desc = in_desc;
-        for (uint32 index = 0; index < MaxSimultaneousRenderTargets; ++index)
+        return allocated_buffer.buffer;
+    }
+
+    RHIAccess VulkanBuffer::current_access() const
+    {
+        return resource_access;
+    }
+
+    void VulkanBuffer::set_current_access(RHIAccess access)
+    {
+        resource_access = access;
+    }
+
+    void VulkanBuffer::mark_used(RHIQueueCompletionValue completion_value)
+    {
+        last_use_value = std::max(last_use_value, completion_value);
+    }
+
+    RHIQueueCompletionValue VulkanBuffer::last_use_completion_value() const
+    {
+        return last_use_value;
+    }
+
+    VulkanTexture::VulkanTexture(
+        RHITextureDesc desc,
+        VulkanMemoryManager& memory_manager,
+        VulkanDeferredDeletionQueue& deletion_queue,
+        VulkanAllocatedImage allocated_image,
+        VkImageLayout initial_layout,
+        RHIAccess initial_access)
+        : RHITexture(std::move(desc))
+        , memory_manager_instance(&memory_manager)
+        , deletion_queue_instance(&deletion_queue)
+        , allocated_image(std::move(allocated_image))
+        , initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    {
+        subresource_states.assign(
+            static_cast<std::size_t>(this->desc().mip_levels) * this->desc().array_layers * 2U,
+            {initial_layout, initial_access == RHIAccess::Unknown ? RHIAccess::Common : initial_access});
+    }
+
+    VulkanTexture::VulkanTexture(
+        RHITextureDesc desc,
+        VkImage external_image,
+        VkImageLayout initial_layout,
+        RHIAccess initial_access)
+        : RHITexture(std::move(desc))
+        , initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    {
+        allocated_image.image = external_image;
+        subresource_states.assign(
+            static_cast<std::size_t>(this->desc().mip_levels) * this->desc().array_layers * 2U,
+            {initial_layout, initial_access == RHIAccess::Unknown ? RHIAccess::Common : initial_access});
+    }
+
+    VulkanTexture::~VulkanTexture()
+    {
+        if (memory_manager_instance == nullptr)
         {
-            const BlendStateInitializerRHI::PerRenderTargetBlendState& color_target = in_desc.render_targets[index];
-            VkPipelineColorBlendAttachmentState& blend_state = blend_states[index];
-            std::memset(&blend_state, 0, sizeof(VkPipelineColorBlendAttachmentState));
+            return;
+        }
+        if (last_use_value == 0 || deletion_queue_instance == nullptr)
+        {
+            memory_manager_instance->destroy_image(allocated_image);
+            return;
+        }
 
-            blend_state.colorBlendOp = cast_blend_operation(color_target.color_blend_op);
-            blend_state.alphaBlendOp = cast_blend_operation(color_target.alpha_blend_op);
-
-            blend_state.dstColorBlendFactor = cast_blend_factor(color_target.color_dest_blend);
-            blend_state.dstAlphaBlendFactor = cast_blend_factor(color_target.alpha_dest_blend);
-
-            blend_state.srcColorBlendFactor = cast_blend_factor(color_target.color_src_blend);
-            blend_state.srcAlphaBlendFactor = cast_blend_factor(color_target.alpha_src_blend);
-
-            blend_state.blendEnable =
-                (color_target.color_blend_op != BO_Add || color_target.color_dest_blend != BF_Zero || color_target.color_src_blend != BF_One ||
-                color_target.alpha_blend_op != BO_Add || color_target.alpha_dest_blend != BF_Zero || color_target.alpha_src_blend != BF_One) ? VK_TRUE : VK_FALSE;
-
-            blend_state.colorWriteMask = (color_target.color_write_mask & CW_RED) ? VK_COLOR_COMPONENT_R_BIT : 0;
-            blend_state.colorWriteMask |= (color_target.color_write_mask & CW_GREEN) ? VK_COLOR_COMPONENT_G_BIT : 0;
-            blend_state.colorWriteMask |= (color_target.color_write_mask & CW_BLUE) ? VK_COLOR_COMPONENT_B_BIT : 0;
-            blend_state.colorWriteMask |= (color_target.color_write_mask & CW_ALPHA) ? VK_COLOR_COMPONENT_A_BIT : 0;
+        auto payload = std::make_shared<VulkanAllocatedImage>(std::move(allocated_image));
+        VulkanMemoryManager* const memory_manager = memory_manager_instance;
+        const RHIStatus status = deletion_queue_instance->enqueue(
+            last_use_value,
+            [memory_manager, payload](VkDevice)
+            {
+                memory_manager->destroy_image(*payload);
+            });
+        if (!status)
+        {
+            TOY_LOG_ERROR("Failed to defer Vulkan image deletion: {}", status.message());
+            memory_manager_instance->destroy_image(*payload);
         }
     }
 
-    uint32 g_vk_sampler_handle_counter = 0;
-
-    VulkanSamplerState::VulkanSamplerState(const VkSamplerCreateInfo& info, VkDevice& device, const bool is_immutable)
-    : vk_sampler(VK_NULL_HANDLE)
-	, sampler_id(0)
-	, b_immutable(is_immutable)
+    VkImage VulkanTexture::image() const
     {
-        vkCreateSampler(device, &info, nullptr, &vk_sampler);
-
-		sampler_id = ++g_vk_sampler_handle_counter;
+        return allocated_image.image;
     }
 
-    void VulkanSamplerState::setup_sampler_createinfo(const SamplerStateInitializerRHI& in_desc, VkSamplerCreateInfo& out_info, uint32 device_max_anisotropy)
+    VkImageLayout VulkanTexture::image_layout() const
     {
-        zero_vulkan_struct(out_info, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
+        return subresource_states.front().layout;
+    }
 
-        out_info.magFilter = cast_filter_mode(in_desc.filter);
-        out_info.minFilter = cast_filter_mode(in_desc.filter);
-        out_info.mipmapMode = cast_mipmap_mode(in_desc.filter);
-        out_info.addressModeU = cast_wrap_mode(in_desc.address_u);
-        out_info.addressModeV = cast_wrap_mode(in_desc.address_v);
-        out_info.addressModeW = cast_wrap_mode(in_desc.address_w);
+    RHIAccess VulkanTexture::current_access() const
+    {
+        return subresource_states.front().access;
+    }
 
-        out_info.mipLodBias = in_desc.mip_bias;
-        
-        out_info.maxAnisotropy = 1.0f;
-        if (in_desc.filter == SF_AnisotropicLinear || in_desc.filter == SF_AnisotropicPoint)
+    bool VulkanTexture::has_undefined_initial_layout() const
+    {
+        return initial_layout_is_undefined;
+    }
+
+    void VulkanTexture::set_state(VkImageLayout layout, RHIAccess access)
+    {
+        std::fill(subresource_states.begin(), subresource_states.end(), VulkanTextureSubresourceState{layout, access});
+        initial_layout_is_undefined = false;
+    }
+
+    VulkanTextureSubresourceState VulkanTexture::subresource_state(
+        RHITextureAspect aspect,
+        std::uint32_t mip,
+        std::uint32_t layer) const
+    {
+        const std::size_t plane = aspect == RHITextureAspect::Stencil ? 1U : 0U;
+        const std::size_t index =
+            (static_cast<std::size_t>(layer) * desc().mip_levels + mip) * 2U + plane;
+        return subresource_states[index];
+    }
+
+    void VulkanTexture::set_subresource_state(
+        RHITextureAspect aspect,
+        std::uint32_t mip,
+        std::uint32_t layer,
+        VulkanTextureSubresourceState state)
+    {
+        const auto set_plane = [&](std::size_t plane)
         {
-            out_info.maxAnisotropy = Math::clamp((float)in_desc.max_anisotropy, 1.0f, device_max_anisotropy);
+            const std::size_t index =
+                (static_cast<std::size_t>(layer) * desc().mip_levels + mip) * 2U + plane;
+            subresource_states[index] = state;
+        };
+        set_plane(aspect == RHITextureAspect::Stencil ? 1U : 0U);
+        if (aspect == RHITextureAspect::DepthStencil)
+        {
+            set_plane(1U);
         }
-        out_info.anisotropyEnable = out_info.maxAnisotropy > 1.0f;
-
-        out_info.compareEnable = in_desc.sampler_comparison_function != SCF_Never ? VK_TRUE : VK_FALSE;
-        out_info.compareOp = cast_sampler_compare_function(in_desc.sampler_comparison_function);
-        out_info.minLod = in_desc.min_mip_level;
-        out_info.maxLod = in_desc.max_mip_level;
-        out_info.borderColor = in_desc.border_color == 0 ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        initial_layout_is_undefined = false;
     }
-}// namespace toy3d
+
+    void VulkanTexture::mark_used(RHIQueueCompletionValue completion_value)
+    {
+        last_use_value = std::max(last_use_value, completion_value);
+    }
+
+    RHIQueueCompletionValue VulkanTexture::last_use_completion_value() const
+    {
+        return last_use_value;
+    }
+
+    VulkanTextureView::VulkanTextureView(
+        std::shared_ptr<RHITexture> texture,
+        RHITextureViewDesc desc,
+        VkDevice device,
+        VkImageView image_view,
+        bool owns_image_view)
+        : RHITextureView(std::move(texture), std::move(desc))
+        , vk_device(device)
+        , vk_image_view(image_view)
+        , owns_vk_image_view(owns_image_view)
+    {
+    }
+
+    VulkanTextureView::~VulkanTextureView()
+    {
+        if (owns_vk_image_view && vk_image_view != VK_NULL_HANDLE && vk_device != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(vk_device, vk_image_view, nullptr);
+        }
+    }
+
+    VkImageView VulkanTextureView::image_view() const
+    {
+        return vk_image_view;
+    }
+
+    VulkanRenderPassResources::VulkanRenderPassResources(
+        VkDevice device,
+        VkRenderPass render_pass,
+        VkFramebuffer framebuffer,
+        std::vector<RHIFormat> color_formats,
+        std::uint32_t sample_count)
+        : vk_device(device)
+        , vk_render_pass(render_pass)
+        , vk_framebuffer(framebuffer)
+        , pass_color_formats(std::move(color_formats))
+        , pass_sample_count(sample_count)
+    {
+    }
+
+    VulkanRenderPassResources::~VulkanRenderPassResources()
+    {
+        if (vk_device == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        if (vk_framebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(vk_device, vk_framebuffer, nullptr);
+        }
+        if (vk_render_pass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(vk_device, vk_render_pass, nullptr);
+        }
+    }
+
+    VkRenderPass VulkanRenderPassResources::render_pass() const
+    {
+        return vk_render_pass;
+    }
+
+    VkFramebuffer VulkanRenderPassResources::framebuffer() const
+    {
+        return vk_framebuffer;
+    }
+
+    bool VulkanRenderPassResources::is_compatible_with(const RHIGraphicsPipelineDesc& pipeline_desc) const
+    {
+        if (pipeline_desc.color_attachment_count != pass_color_formats.size() ||
+            pipeline_desc.sample_count != pass_sample_count ||
+            pipeline_desc.depth_stencil_format != RHIFormat::Unknown)
+        {
+            return false;
+        }
+        for (std::uint32_t index = 0; index < pipeline_desc.color_attachment_count; ++index)
+        {
+            if (pipeline_desc.color_formats[index] != pass_color_formats[index])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    VulkanShader::VulkanShader(RHIShaderDesc desc, VkDevice device, VkShaderModule shader_module)
+        : RHIShader(std::move(desc))
+        , vk_device(device)
+        , vk_shader_module(shader_module)
+    {
+    }
+
+    VulkanShader::~VulkanShader()
+    {
+        if (vk_device != VK_NULL_HANDLE && vk_shader_module != VK_NULL_HANDLE)
+        {
+            vkDestroyShaderModule(vk_device, vk_shader_module, nullptr);
+        }
+    }
+
+    VkShaderModule VulkanShader::shader_module() const
+    {
+        return vk_shader_module;
+    }
+
+    VulkanBindingLayout::VulkanBindingLayout(
+        RHIBindingLayoutDesc desc,
+        VkDevice device,
+        std::array<
+            VkDescriptorSetLayout,
+            static_cast<std::size_t>(RHIBindingGroup::Max)> descriptor_set_layouts,
+        std::vector<NativeBinding> native_bindings)
+        : RHIBindingLayout(std::move(desc))
+        , vk_device(device)
+        , vk_descriptor_set_layouts(descriptor_set_layouts)
+        , binding_mappings(std::move(native_bindings))
+    {
+    }
+
+    VulkanBindingLayout::~VulkanBindingLayout()
+    {
+        if (vk_device == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        for (VkDescriptorSetLayout layout : vk_descriptor_set_layouts)
+        {
+            if (layout != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorSetLayout(vk_device, layout, nullptr);
+            }
+        }
+    }
+
+    VkDescriptorSetLayout VulkanBindingLayout::descriptor_set_layout(RHIBindingGroup group) const
+    {
+        return vk_descriptor_set_layouts[static_cast<std::size_t>(group)];
+    }
+
+    RHIResult<std::uint32_t> VulkanBindingLayout::native_binding(
+        RHIBindingGroup group,
+        RHIResourceBindingType type,
+        std::uint32_t slot) const
+    {
+        for (const NativeBinding& mapping : binding_mappings)
+        {
+            if (mapping.group == group && mapping.type == type && mapping.slot == slot)
+            {
+                return RHIResult<std::uint32_t>::success(mapping.binding);
+            }
+        }
+        return RHIResult<std::uint32_t>::failure(
+            RHIErrorCode::InvalidArgument,
+            "Vulkan binding layout has no matching native binding.");
+    }
+
+    const std::array<
+        VkDescriptorSetLayout,
+        static_cast<std::size_t>(RHIBindingGroup::Max)>& VulkanBindingLayout::descriptor_set_layouts() const
+    {
+        return vk_descriptor_set_layouts;
+    }
+
+    VulkanSampler::VulkanSampler(RHISamplerDesc desc, VkDevice device, VkSampler sampler)
+        : RHISampler(std::move(desc))
+        , vk_device(device)
+        , vk_sampler(sampler)
+    {
+    }
+
+    VulkanSampler::~VulkanSampler()
+    {
+        if (vk_device != VK_NULL_HANDLE && vk_sampler != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(vk_device, vk_sampler, nullptr);
+        }
+    }
+
+    VkSampler VulkanSampler::sampler() const
+    {
+        return vk_sampler;
+    }
+
+    VulkanBindingSet::VulkanBindingSet(
+        RHIBindingSetDesc desc,
+        VkDevice device,
+        VkDescriptorPool descriptor_pool,
+        VkDescriptorSet descriptor_set)
+        : RHIBindingSet(std::move(desc))
+        , vk_device(device)
+        , vk_descriptor_pool(descriptor_pool)
+        , vk_descriptor_set(descriptor_set)
+    {
+    }
+
+    VulkanBindingSet::~VulkanBindingSet()
+    {
+        if (vk_device != VK_NULL_HANDLE && vk_descriptor_pool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(vk_device, vk_descriptor_pool, nullptr);
+        }
+    }
+
+    VkDescriptorSet VulkanBindingSet::descriptor_set() const
+    {
+        return vk_descriptor_set;
+    }
+
+    VulkanGraphicsPipeline::VulkanGraphicsPipeline(
+        RHIGraphicsPipelineDesc desc,
+        VkDevice device,
+        VkRenderPass compatibility_render_pass,
+        VkPipelineLayout pipeline_layout,
+        VkPipeline pipeline)
+        : RHIGraphicsPipeline(std::move(desc))
+        , vk_device(device)
+        , vk_compatibility_render_pass(compatibility_render_pass)
+        , vk_pipeline_layout(pipeline_layout)
+        , vk_pipeline(pipeline)
+    {
+    }
+
+    VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
+    {
+        if (vk_device == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        if (vk_pipeline != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(vk_device, vk_pipeline, nullptr);
+        }
+        if (vk_pipeline_layout != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, nullptr);
+        }
+        if (vk_compatibility_render_pass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(vk_device, vk_compatibility_render_pass, nullptr);
+        }
+    }
+
+    VkPipeline VulkanGraphicsPipeline::pipeline() const
+    {
+        return vk_pipeline;
+    }
+
+    VkPipelineLayout VulkanGraphicsPipeline::pipeline_layout() const
+    {
+        return vk_pipeline_layout;
+    }
+
+    bool VulkanGraphicsPipeline::is_compatible_with(const VulkanRenderPassResources& render_pass) const
+    {
+        return render_pass.is_compatible_with(desc());
+    }
+}

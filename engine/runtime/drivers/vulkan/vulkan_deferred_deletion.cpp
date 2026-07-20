@@ -1,4 +1,4 @@
-#include "drivers/vulkan/canonical/vulkan_deferred_deletion.h"
+#include "drivers/vulkan/vulkan_deferred_deletion.h"
 
 #include <algorithm>
 #include <utility>
@@ -6,28 +6,28 @@
 namespace toy3d
 {
     RHIStatus VulkanDeferredDeletionQueue::enqueue(
-        RHISubmitSerial serial,
+        RHIQueueCompletionValue retire_value,
         DeletionCallback callback)
     {
-        if (serial == 0 || !callback)
+        if (retire_value == 0 || !callback)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Deferred Vulkan deletion requires a valid submit serial and callback.");
+                "Deferred Vulkan deletion requires a valid retire value and callback.");
         }
-        entries.push_back({serial, std::move(callback)});
+        entries.push_back({retire_value, std::move(callback)});
         return RHIStatus::success();
     }
 
     void VulkanDeferredDeletionQueue::release_completed(
         VkDevice device,
-        RHISubmitSerial completed_serial)
+        RHIQueueCompletionValue completed_value)
     {
         const auto first_pending = std::stable_partition(
             entries.begin(), entries.end(),
-            [completed_serial](const Entry& entry)
+            [completed_value](const Entry& entry)
             {
-                return entry.serial > completed_serial;
+                return entry.retire_value > completed_value;
             });
         for (auto iterator = first_pending; iterator != entries.end(); ++iterator)
         {

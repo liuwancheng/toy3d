@@ -1,27 +1,37 @@
-#include "drivers/vulkan/canonical/vulkan_device.h"
-#include "drivers/vulkan/canonical/vulkan_deferred_deletion.h"
-#include "drivers/vulkan/canonical/vulkan_memory_allocator.h"
-#include "drivers/vulkan/canonical/vulkan_queue.h"
-#include "drivers/vulkan/canonical/vulkan_resource.h"
-#include "drivers/vulkan/canonical/vulkan_swapchain.h"
-#include "drivers/vulkan/canonical/vulkan_viewport_context.h"
+#include "drivers/vulkan/vulkan_device.h"
+#include "drivers/vulkan/vulkan_deferred_deletion.h"
+#include "drivers/vulkan/vulkan_memory_manager.h"
+#include "drivers/vulkan/vulkan_upload_manager.h"
+#include "drivers/vulkan/vulkan_queue.h"
+#include "drivers/vulkan/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_viewport_context.h"
 
 #include "drivers/rhi/rhi_queue.h"
-#include "drivers/rhi/rhi_swapchain.h"
 #include "core/misc/logger.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
 #include <vector>
 
+#if WITH_MAC
+#include <GLFW/glfw3.h>
+#endif
+
 namespace toy3d
 {
     namespace
     {
+#if WITH_MAC
+        constexpr const char* portability_enumeration_extension_name = "VK_KHR_portability_enumeration";
+        constexpr const char* portability_subset_extension_name = "VK_KHR_portability_subset";
+        constexpr VkInstanceCreateFlags enumerate_portability_flag = 0x00000001;
+#endif
+
         VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(
             VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
             VkDebugUtilsMessageTypeFlagsEXT message_types,
@@ -66,8 +76,6 @@ namespace toy3d
             VkDebugUtilsMessengerCreateInfoEXT create_info{
                 VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
             create_info.messageSeverity =
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
             create_info.messageType =
@@ -78,10 +86,10 @@ namespace toy3d
             return create_info;
         }
 
-        RHIStatus configure_validation_layer_path()
+        RHIStatus configure_vulkan_environment(bool enable_validation)
         {
 #if WITH_WIN64
-            if (GetEnvironmentVariableA("VK_LAYER_PATH", nullptr, 0) != 0)
+            if (!enable_validation || GetEnvironmentVariableA("VK_LAYER_PATH", nullptr, 0) != 0)
             {
                 return RHIStatus::success();
             }
@@ -92,6 +100,21 @@ namespace toy3d
                     "Failed to query the VK_LAYER_PATH environment variable.");
             }
             if (!SetEnvironmentVariableA("VK_LAYER_PATH", TOY3D_VK_LAYER_PATH))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::BackendFailure,
+                    "Failed to configure VK_LAYER_PATH for the bundled validation layer.");
+            }
+#elif WITH_MAC
+            if (std::getenv("VK_ICD_FILENAMES") == nullptr &&
+                setenv("VK_ICD_FILENAMES", TOY3D_VK_ICD_PATH, 0) != 0)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::BackendFailure,
+                    "Failed to configure VK_ICD_FILENAMES for the bundled MoltenVK ICD.");
+            }
+            if (enable_validation && std::getenv("VK_LAYER_PATH") == nullptr &&
+                setenv("VK_LAYER_PATH", TOY3D_VK_LAYER_PATH, 0) != 0)
             {
                 return RHIStatus::failure(
                     RHIErrorCode::BackendFailure,
@@ -411,27 +434,6 @@ namespace toy3d
             return VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
         }
 
-        RHIResult<std::uint32_t> find_device_local_memory_type(
-            VkPhysicalDevice physical_device,
-            std::uint32_t memory_type_bits)
-        {
-            VkPhysicalDeviceMemoryProperties memory_properties{};
-            vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
-            for (std::uint32_t index = 0; index < memory_properties.memoryTypeCount; ++index)
-            {
-                const bool supported = (memory_type_bits & (1U << index)) != 0;
-                const bool device_local =
-                    (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
-                if (supported && device_local)
-                {
-                    return RHIResult<std::uint32_t>::success(index);
-                }
-            }
-            return RHIResult<std::uint32_t>::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan resource requires a device-local memory type, but none is available.");
-        }
-
         VkBufferUsageFlags to_vk_buffer_usage(RHIResourceUsage usage)
         {
             VkBufferUsageFlags result = 0;
@@ -654,7 +656,19 @@ namespace toy3d
         }
 
         query_capabilities_and_limits();
-        allocator = std::make_unique<VulkanMemoryAllocator>(vk_physical_device, vk_device);
+        memory_manager_instance = std::make_unique<VulkanMemoryManager>();
+        VulkanMemoryManagerDesc memory_manager_desc;
+        memory_manager_desc.instance = vk_instance;
+        memory_manager_desc.physical_device = vk_physical_device;
+        memory_manager_desc.device = vk_device;
+        memory_manager_desc.vulkan_api_version = VK_API_VERSION_1_0;
+        status = memory_manager_instance->initialize(memory_manager_desc);
+        if (!status)
+        {
+            shutdown();
+            return status;
+        }
+        upload_manager_instance = std::make_unique<VulkanUploadManager>(*memory_manager_instance);
         deletion_queue = std::make_unique<VulkanDeferredDeletionQueue>();
         queue = std::make_unique<VulkanQueue>(vk_device, vk_graphics_queue);
         initialized = true;
@@ -679,7 +693,12 @@ namespace toy3d
             deletion_queue->release_all(vk_device);
         }
         deletion_queue.reset();
-        allocator.reset();
+        if (upload_manager_instance)
+        {
+            upload_manager_instance->shutdown();
+        }
+        upload_manager_instance.reset();
+        memory_manager_instance.reset();
         if (vk_device != VK_NULL_HANDLE)
         {
             vkDestroyDevice(vk_device, nullptr);
@@ -763,39 +782,6 @@ namespace toy3d
         return *queue;
     }
 
-    RHIResult<std::shared_ptr<RHISwapchain>> VulkanDevice::create_swapchain(
-        const RHISurfaceRef& surface,
-        const RHISwapchainDesc& desc)
-    {
-        const RHIStatus validation = validate_swapchain_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<std::shared_ptr<RHISwapchain>>::failure(
-                validation.code(), validation.message());
-        }
-        if (!initialized || !surface)
-        {
-            return RHIResult<std::shared_ptr<RHISwapchain>>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan swapchain requires an initialized device and surface.");
-        }
-        if (surface != primary_rhi_surface)
-        {
-            return RHIResult<std::shared_ptr<RHISwapchain>>::failure(
-                RHIErrorCode::Unsupported,
-                "Canonical Vulkan currently supports swapchains for the primary surface only.");
-        }
-
-        auto swapchain = std::make_shared<VulkanSwapchain>(*this, surface, desc);
-        const RHIStatus status = swapchain->initialize();
-        if (!status)
-        {
-            return RHIResult<std::shared_ptr<RHISwapchain>>::failure(
-                status.code(), status.message());
-        }
-        return RHIResult<std::shared_ptr<RHISwapchain>>::success(std::move(swapchain));
-    }
-
     RHIResult<std::unique_ptr<RHIViewportContext>> VulkanDevice::create_viewport_context(
         const RHISurfaceRef& surface,
         const RHIViewportContextDesc& desc)
@@ -810,7 +796,7 @@ namespace toy3d
         {
             return RHIResult<std::unique_ptr<RHIViewportContext>>::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan viewport contexts currently support only the primary surface.");
+                "Vulkan viewport contexts currently support only the primary surface.");
         }
         if (desc.width == 0 || desc.height == 0 || desc.image_count < 2 || desc.format == RHIFormat::Unknown)
         {
@@ -871,39 +857,22 @@ namespace toy3d
         create_info.usage = usage;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        VkBuffer buffer = VK_NULL_HANDLE;
-        RHIStatus status = make_vulkan_status(vkCreateBuffer(vk_device, &create_info, nullptr, &buffer), "vkCreateBuffer");
-        if (!status)
+        auto allocated_buffer = memory_manager_instance->create_buffer(
+            create_info,
+            VulkanMemoryClass::DeviceLocal,
+            desc.debug_name.c_str());
+        if (!allocated_buffer)
         {
-            return RHIResult<RHIBufferRef>::failure(status.code(), status.message());
-        }
-        VkMemoryRequirements memory_requirements{};
-        vkGetBufferMemoryRequirements(vk_device, buffer, &memory_requirements);
-        const auto memory_type = find_device_local_memory_type(vk_physical_device, memory_requirements.memoryTypeBits);
-        if (!memory_type)
-        {
-            vkDestroyBuffer(vk_device, buffer, nullptr);
-            return RHIResult<RHIBufferRef>::failure(memory_type.status().code(), memory_type.status().message());
-        }
-        VkMemoryAllocateInfo allocation_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-        allocation_info.allocationSize = memory_requirements.size;
-        allocation_info.memoryTypeIndex = memory_type.value();
-        VkDeviceMemory memory = VK_NULL_HANDLE;
-        status = make_vulkan_status(vkAllocateMemory(vk_device, &allocation_info, nullptr, &memory), "vkAllocateMemory");
-        if (!status)
-        {
-            vkDestroyBuffer(vk_device, buffer, nullptr);
-            return RHIResult<RHIBufferRef>::failure(status.code(), status.message());
-        }
-        status = make_vulkan_status(vkBindBufferMemory(vk_device, buffer, memory, 0), "vkBindBufferMemory");
-        if (!status)
-        {
-            vkFreeMemory(vk_device, memory, nullptr);
-            vkDestroyBuffer(vk_device, buffer, nullptr);
-            return RHIResult<RHIBufferRef>::failure(status.code(), status.message());
+            return RHIResult<RHIBufferRef>::failure(
+                allocated_buffer.status().code(), allocated_buffer.status().message());
         }
         return RHIResult<RHIBufferRef>::success(
-            std::make_shared<VulkanBuffer>(desc, vk_device, buffer, memory, desc.initial_access));
+            std::make_shared<VulkanBuffer>(
+                desc,
+                *memory_manager_instance,
+                *deletion_queue,
+                std::move(allocated_buffer.value()),
+                desc.initial_access));
     }
 
     RHIResult<RHITextureRef> VulkanDevice::create_texture(
@@ -980,43 +949,20 @@ namespace toy3d
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VkImage image = VK_NULL_HANDLE;
-        RHIStatus status = make_vulkan_status(vkCreateImage(vk_device, &create_info, nullptr, &image), "vkCreateImage");
-        if (!status)
+        auto allocated_image = memory_manager_instance->create_image(
+            create_info,
+            VulkanMemoryClass::DeviceLocal,
+            desc.debug_name.c_str());
+        if (!allocated_image)
         {
-            return RHIResult<RHITextureRef>::failure(status.code(), status.message());
-        }
-        VkMemoryRequirements memory_requirements{};
-        vkGetImageMemoryRequirements(vk_device, image, &memory_requirements);
-        const auto memory_type = find_device_local_memory_type(vk_physical_device, memory_requirements.memoryTypeBits);
-        if (!memory_type)
-        {
-            vkDestroyImage(vk_device, image, nullptr);
-            return RHIResult<RHITextureRef>::failure(memory_type.status().code(), memory_type.status().message());
-        }
-        VkMemoryAllocateInfo allocation_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-        allocation_info.allocationSize = memory_requirements.size;
-        allocation_info.memoryTypeIndex = memory_type.value();
-        VkDeviceMemory memory = VK_NULL_HANDLE;
-        status = make_vulkan_status(vkAllocateMemory(vk_device, &allocation_info, nullptr, &memory), "vkAllocateMemory");
-        if (!status)
-        {
-            vkDestroyImage(vk_device, image, nullptr);
-            return RHIResult<RHITextureRef>::failure(status.code(), status.message());
-        }
-        status = make_vulkan_status(vkBindImageMemory(vk_device, image, memory, 0), "vkBindImageMemory");
-        if (!status)
-        {
-            vkFreeMemory(vk_device, memory, nullptr);
-            vkDestroyImage(vk_device, image, nullptr);
-            return RHIResult<RHITextureRef>::failure(status.code(), status.message());
+            return RHIResult<RHITextureRef>::failure(
+                allocated_image.status().code(), allocated_image.status().message());
         }
         return RHIResult<RHITextureRef>::success(std::make_shared<VulkanTexture>(
             desc,
-            vk_device,
-            image,
-            memory,
-            true,
+            *memory_manager_instance,
+            *deletion_queue,
+            std::move(allocated_image.value()),
             VK_IMAGE_LAYOUT_UNDEFINED,
             desc.initial_access));
     }
@@ -1050,14 +996,14 @@ namespace toy3d
         {
             return RHIResult<RHITextureViewRef>::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan texture views require a texture created by the canonical Vulkan device.");
+                "Vulkan texture views require a texture created by the Vulkan device.");
         }
         const VkFormat view_format = vulkan_format_from_rhi(desc.format);
         if (view_format == VK_FORMAT_UNDEFINED || view_format != vulkan_format_from_rhi(texture->desc().format))
         {
             return RHIResult<RHITextureViewRef>::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan texture views currently require the texture's original format.");
+                "Vulkan texture views currently require the texture's original format.");
         }
         const auto view_type = to_vk_image_view_type(desc);
         if (!view_type)
@@ -1129,7 +1075,7 @@ namespace toy3d
         {
             return RHIResult<RHIShaderRef>::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan shaders require SPIR-V bytecode.");
+                "Vulkan shaders require SPIR-V bytecode.");
         }
         if (desc.bytecode.bytes.size() % sizeof(std::uint32_t) != 0)
         {
@@ -1164,7 +1110,9 @@ namespace toy3d
         {
             return RHIResult<RHIBindingLayoutRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
-        std::array<std::vector<VkDescriptorSetLayoutBinding>, 5> group_bindings;
+        std::array<
+            std::vector<VkDescriptorSetLayoutBinding>,
+            static_cast<std::size_t>(RHIBindingGroup::Max)> group_bindings;
         std::vector<VulkanBindingLayout::NativeBinding> native_bindings;
         native_bindings.reserve(desc.entries.size());
         for (const RHIBindingLayoutEntry& entry : desc.entries)
@@ -1193,7 +1141,9 @@ namespace toy3d
             native_bindings.push_back({entry.group, entry.slot, entry.type, native_binding});
         }
 
-        std::array<VkDescriptorSetLayout, 5> descriptor_set_layouts{};
+        std::array<
+            VkDescriptorSetLayout,
+            static_cast<std::size_t>(RHIBindingGroup::Max)> descriptor_set_layouts{};
         for (std::size_t group_index = 0; group_index < group_bindings.size(); ++group_index)
         {
             VkDescriptorSetLayoutCreateInfo create_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -1278,7 +1228,7 @@ namespace toy3d
         {
             return RHIResult<RHIBindingSetRef>::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan binding set requires a layout created by the canonical Vulkan device.");
+                "Vulkan binding set requires a layout created by the Vulkan device.");
         }
 
         std::map<VkDescriptorType, std::uint32_t> descriptor_counts;
@@ -1294,7 +1244,7 @@ namespace toy3d
             {
                 return RHIResult<RHIBindingSetRef>::failure(
                     RHIErrorCode::Unsupported,
-                    "Canonical Vulkan binding sets currently support uniform buffers, sampled textures, and samplers only.");
+                    "Vulkan binding sets currently support uniform buffers, sampled textures, and samplers only.");
             }
             descriptor_counts[to_vk_descriptor_type(entry.type)] += entry.array_count;
         }
@@ -1369,7 +1319,7 @@ namespace toy3d
                     vkDestroyDescriptorPool(vk_device, descriptor_pool, nullptr);
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
-                        "Vulkan sampled-texture binding requires a canonical Vulkan texture view.");
+                        "Vulkan sampled-texture binding requires a Vulkan texture view.");
                 }
                 image_infos.push_back({VK_NULL_HANDLE, view->image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
                 image_info = &image_infos.back();
@@ -1383,7 +1333,7 @@ namespace toy3d
                     vkDestroyDescriptorPool(vk_device, descriptor_pool, nullptr);
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
-                        "Vulkan sampler binding requires a sampler created by the canonical Vulkan device.");
+                        "Vulkan sampler binding requires a sampler created by the Vulkan device.");
                 }
                 image_infos.push_back({sampler->sampler(), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED});
                 image_info = &image_infos.back();
@@ -1393,7 +1343,7 @@ namespace toy3d
                 vkDestroyDescriptorPool(vk_device, descriptor_pool, nullptr);
                 return RHIResult<RHIBindingSetRef>::failure(
                     RHIErrorCode::Unsupported,
-                    "Canonical Vulkan buffer-view and storage bindings are not implemented yet.");
+                    "Vulkan buffer-view and storage bindings are not implemented yet.");
             }
 
             const auto native_binding = layout->native_binding(desc.group, type, value.slot);
@@ -1436,26 +1386,26 @@ namespace toy3d
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan graphics pipelines require shaders and a binding layout created by the canonical Vulkan device.");
+                "Vulkan graphics pipelines require shaders and a binding layout created by the Vulkan device.");
         }
         if (desc.color_attachment_count == 0)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan graphics pipelines currently require at least one color attachment.");
+                "Vulkan graphics pipelines currently require at least one color attachment.");
         }
         if (desc.depth_stencil_format != RHIFormat::Unknown || desc.depth_stencil.depth_test_enable ||
             desc.depth_stencil.depth_write_enable || desc.depth_stencil.stencil_test_enable)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan graphics pipelines do not support depth/stencil attachments yet.");
+                "Vulkan graphics pipelines do not support depth/stencil attachments yet.");
         }
         if (desc.rasterization.depth_clamp_enable || desc.rasterization.polygon_mode != RHIPolygonMode::Fill)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan graphics pipelines currently support filled primitives without depth clamp only.");
+                "Vulkan graphics pipelines currently support filled primitives without depth clamp only.");
         }
 
         const auto primitive_topology = to_vk_primitive_topology(desc.primitive_topology);
@@ -1688,9 +1638,14 @@ namespace toy3d
         return graphics_queue_family;
     }
 
-    VulkanMemoryAllocator& VulkanDevice::memory_allocator()
+    VulkanMemoryManager& VulkanDevice::memory_manager()
     {
-        return *allocator;
+        return *memory_manager_instance;
+    }
+
+    VulkanUploadManager& VulkanDevice::upload_manager()
+    {
+        return *upload_manager_instance;
     }
 
     VulkanDeferredDeletionQueue& VulkanDevice::deferred_deletion_queue()
@@ -1698,15 +1653,46 @@ namespace toy3d
         return *deletion_queue;
     }
 
+    VulkanDeviceObservation VulkanDevice::observation_snapshot() const
+    {
+        VulkanDeviceObservation observation;
+        if (memory_manager_instance)
+        {
+            observation.memory = memory_manager_instance->statistics();
+        }
+        if (upload_manager_instance)
+        {
+            observation.upload = upload_manager_instance->statistics();
+        }
+        if (deletion_queue)
+        {
+            observation.pending_deletions = deletion_queue->pending_count();
+        }
+        if (queue)
+        {
+            observation.completed_value = queue->completed_value();
+        }
+        return observation;
+    }
+
+    void VulkanDevice::release_completed_work(RHIQueueCompletionValue completed_value)
+    {
+        if (upload_manager_instance)
+        {
+            upload_manager_instance->release_completed(completed_value);
+        }
+        if (deletion_queue && vk_device != VK_NULL_HANDLE)
+        {
+            deletion_queue->release_completed(vk_device, completed_value);
+        }
+    }
+
     RHIStatus VulkanDevice::create_instance(const RHIDeviceDesc& desc)
     {
-        if (desc.enable_validation)
+        const RHIStatus environment_status = configure_vulkan_environment(desc.enable_validation);
+        if (!environment_status)
         {
-            const RHIStatus layer_path_status = configure_validation_layer_path();
-            if (!layer_path_status)
-            {
-                return layer_path_status;
-            }
+            return environment_status;
         }
 
         std::uint32_t extension_count = 0;
@@ -1722,12 +1708,51 @@ namespace toy3d
             return make_vulkan_status(result, "vkEnumerateInstanceExtensionProperties");
         }
 
-        std::vector<const char*> extensions = {VK_KHR_SURFACE_EXTENSION_NAME};
+        std::vector<const char*> extensions;
 #if WITH_WIN64
+        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#elif WITH_MAC
+        std::uint32_t glfw_extension_count = 0;
+        const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+        if (glfw_extensions == nullptr || glfw_extension_count == 0)
+        {
+            const char* glfw_error = nullptr;
+            glfwGetError(&glfw_error);
+            return RHIStatus::failure(
+                RHIErrorCode::Unsupported,
+                std::string("GLFW did not provide the Vulkan surface extensions required by macOS") +
+                    (glfw_error ? std::string(": ") + glfw_error : std::string(".")));
+        }
+        extensions.assign(glfw_extensions, glfw_extensions + glfw_extension_count);
 #else
-        return RHIStatus::failure(RHIErrorCode::Unsupported, "Canonical Vulkan device currently supports Win32 surfaces only.");
+        return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device does not support this platform.");
 #endif
+
+        VkInstanceCreateFlags instance_flags = 0;
+#if WITH_MAC
+        if (has_instance_extension(
+                available_extensions,
+                VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+        {
+            extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+        }
+        if (has_instance_extension(available_extensions, portability_enumeration_extension_name))
+        {
+            extensions.push_back(portability_enumeration_extension_name);
+            instance_flags |= enumerate_portability_flag;
+        }
+#endif
+        std::sort(extensions.begin(), extensions.end(), [](const char* lhs, const char* rhs)
+        {
+            return std::strcmp(lhs, rhs) < 0;
+        });
+        extensions.erase(
+            std::unique(extensions.begin(), extensions.end(), [](const char* lhs, const char* rhs)
+            {
+                return std::strcmp(lhs, rhs) == 0;
+            }),
+            extensions.end());
         for (const char* extension : extensions)
         {
             if (!has_instance_extension(available_extensions, extension))
@@ -1783,6 +1808,7 @@ namespace toy3d
         application_info.apiVersion = VK_API_VERSION_1_0;
 
         VkInstanceCreateInfo create_info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+        create_info.flags = instance_flags;
         create_info.pApplicationInfo = &application_info;
         create_info.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
         create_info.ppEnabledExtensionNames = extensions.data();
@@ -1842,16 +1868,39 @@ namespace toy3d
 #if WITH_WIN64
         if (desc.platform != RHISurfacePlatform::Win32)
         {
-            return RHIStatus::failure(RHIErrorCode::Unsupported, "Canonical Vulkan device currently requires a Win32 surface.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device currently requires a Win32 surface.");
         }
 
         VkWin32SurfaceCreateInfoKHR create_info{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
         create_info.hinstance = reinterpret_cast<HINSTANCE>(desc.application_handle);
         create_info.hwnd = reinterpret_cast<HWND>(desc.window_handle);
         return make_vulkan_status(vkCreateWin32SurfaceKHR(vk_instance, &create_info, nullptr, &primary_surface), "vkCreateWin32SurfaceKHR");
+#elif WITH_MAC
+        if (desc.platform != RHISurfacePlatform::Glfw)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::Unsupported,
+                "The macOS Vulkan backend requires a GLFW-backed surface.");
+        }
+        auto* glfw_window = static_cast<GLFWwindow*>(desc.window_handle);
+        const VkResult result = glfwCreateWindowSurface(
+            vk_instance,
+            glfw_window,
+            nullptr,
+            &primary_surface);
+        if (result != VK_SUCCESS)
+        {
+            const char* glfw_error = nullptr;
+            glfwGetError(&glfw_error);
+            const std::string operation = glfw_error
+                ? std::string("glfwCreateWindowSurface: ") + glfw_error
+                : std::string("glfwCreateWindowSurface");
+            return make_vulkan_status(result, operation.c_str());
+        }
+        return RHIStatus::success();
 #else
         (void)desc;
-        return RHIStatus::failure(RHIErrorCode::Unsupported, "Canonical Vulkan device currently supports Win32 surfaces only.");
+        return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device does not support this platform.");
 #endif
     }
 
@@ -1940,13 +1989,19 @@ namespace toy3d
         enabled_features.samplerAnisotropy = available_features.samplerAnisotropy;
         enabled_features.fragmentStoresAndAtomics = available_features.fragmentStoresAndAtomics;
 
-        constexpr const char* extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        std::vector<const char*> extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+#if WITH_MAC
+        if (has_device_extension(vk_physical_device, portability_subset_extension_name))
+        {
+            extensions.push_back(portability_subset_extension_name);
+        }
+#endif
         VkDeviceCreateInfo create_info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         create_info.queueCreateInfoCount = 1;
         create_info.pQueueCreateInfos = &queue_info;
         create_info.pEnabledFeatures = &enabled_features;
-        create_info.enabledExtensionCount = 1;
-        create_info.ppEnabledExtensionNames = extensions;
+        create_info.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
+        create_info.ppEnabledExtensionNames = extensions.data();
 
         const RHIStatus status = make_vulkan_status(vkCreateDevice(vk_physical_device, &create_info, nullptr, &vk_device), "vkCreateDevice");
         if (!status)

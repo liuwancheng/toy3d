@@ -1,7 +1,8 @@
-#include "drivers/vulkan/canonical/vulkan_command_context.h"
+#include "drivers/vulkan/vulkan_command_context.h"
 
-#include "drivers/vulkan/canonical/vulkan_device.h"
-#include "drivers/vulkan/canonical/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_device.h"
+#include "drivers/vulkan/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_upload_manager.h"
 
 #include <algorithm>
 #include <array>
@@ -117,7 +118,7 @@ namespace toy3d
             default:
                 return RHIStatus::failure(
                     RHIErrorCode::Unsupported,
-                    "The requested RHI access mask has no canonical Vulkan transition mapping.");
+                    "The requested RHI access mask has no Vulkan transition mapping.");
             }
         }
 
@@ -156,13 +157,6 @@ namespace toy3d
             return RHIResult<VkImageAspectFlags>::failure(
                 RHIErrorCode::InvalidArgument,
                 "Texture transition aspect is incompatible with its Vulkan format.");
-        }
-
-        bool is_full_texture_range(const RHITextureDesc& desc, const RHISubresourceRange& range)
-        {
-            const bool all_mips = range.mip_count == RHI_ALL_MIPS || range.mip_count == desc.mip_levels;
-            const bool all_layers = range.layer_count == RHI_ALL_LAYERS || range.layer_count == desc.array_layers;
-            return range.first_mip == 0 && range.first_layer == 0 && all_mips && all_layers;
         }
 
         RHIResult<std::uint32_t> color_format_bytes_per_texel(RHIFormat format)
@@ -291,17 +285,17 @@ namespace toy3d
         return resources;
     }
 
-    void VulkanCommandList::retain_staging_buffer(std::shared_ptr<VulkanStagingBuffer> staging_buffer)
+    void VulkanCommandList::retain_upload_page(const std::shared_ptr<VulkanUploadPage>& upload_page)
     {
-        if (staging_buffer)
+        if (upload_page && std::find(upload_pages.begin(), upload_pages.end(), upload_page) == upload_pages.end())
         {
-            staging_buffers.push_back(std::move(staging_buffer));
+            upload_pages.push_back(upload_page);
         }
     }
 
-    const std::vector<std::shared_ptr<VulkanStagingBuffer>>& VulkanCommandList::retained_staging_buffers() const
+    const std::vector<std::shared_ptr<VulkanUploadPage>>& VulkanCommandList::retained_upload_pages() const
     {
-        return staging_buffers;
+        return upload_pages;
     }
 
     void VulkanCommandList::retain_texture_view(const RHITextureViewRef& view)
@@ -355,6 +349,230 @@ namespace toy3d
         VulkanCommandList::retained_render_pass_resources() const
     {
         return render_pass_resources;
+    }
+
+    RHIAccess VulkanCommandList::tracked_buffer_access(const std::shared_ptr<VulkanBuffer>& buffer) const
+    {
+        const auto found = buffer_states.find(buffer.get());
+        return found == buffer_states.end() ? buffer->current_access() : found->second.final_access;
+    }
+
+    RHIResult<VulkanTextureSubresourceState> VulkanCommandList::tracked_texture_state(
+        const std::shared_ptr<VulkanTexture>& texture,
+        const RHISubresourceRange& range) const
+    {
+        const std::uint32_t mip_count = range.mip_count == RHI_ALL_MIPS
+            ? texture->desc().mip_levels - range.first_mip
+            : range.mip_count;
+        const std::uint32_t layer_count = range.layer_count == RHI_ALL_LAYERS
+            ? texture->desc().array_layers - range.first_layer
+            : range.layer_count;
+        const auto found = texture_states.find(texture.get());
+        bool has_result = false;
+        VulkanTextureSubresourceState result;
+        const auto inspect = [&](RHITextureAspect aspect, std::uint32_t mip, std::uint32_t layer) -> bool
+        {
+            VulkanTextureSubresourceState state = texture->subresource_state(aspect, mip, layer);
+            if (found != texture_states.end())
+            {
+                const auto entry = std::find_if(
+                    found->second.entries.begin(), found->second.entries.end(),
+                    [aspect, mip, layer](const TextureState::Entry& candidate)
+                    {
+                        return candidate.aspect == aspect && candidate.mip == mip && candidate.layer == layer;
+                    });
+                if (entry != found->second.entries.end())
+                {
+                    state = entry->final;
+                }
+            }
+            if (!has_result)
+            {
+                result = state;
+                has_result = true;
+                return true;
+            }
+            return result.layout == state.layout && result.access == state.access;
+        };
+        for (std::uint32_t layer = range.first_layer; layer < range.first_layer + layer_count; ++layer)
+        {
+            for (std::uint32_t mip = range.first_mip; mip < range.first_mip + mip_count; ++mip)
+            {
+                if (!inspect(range.aspect == RHITextureAspect::DepthStencil ? RHITextureAspect::Depth : range.aspect, mip, layer) ||
+                    (range.aspect == RHITextureAspect::DepthStencil &&
+                     !inspect(RHITextureAspect::Stencil, mip, layer)))
+                {
+                    return RHIResult<VulkanTextureSubresourceState>::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Vulkan texture subresource range has mixed tracked states.");
+                }
+            }
+        }
+        return RHIResult<VulkanTextureSubresourceState>::success(result);
+    }
+
+    bool VulkanCommandList::try_get_tracked_texture_state(
+        const std::shared_ptr<VulkanTexture>& texture,
+        VkImageLayout& layout,
+        RHIAccess& access) const
+    {
+        if (texture_states.find(texture.get()) == texture_states.end())
+        {
+            return false;
+        }
+        RHISubresourceRange range;
+        const auto state = tracked_texture_state(texture, range);
+        if (!state)
+        {
+            return false;
+        }
+        layout = state.value().layout;
+        access = state.value().access;
+        return true;
+    }
+
+    void VulkanCommandList::track_buffer_transition(
+        const std::shared_ptr<VulkanBuffer>& buffer,
+        RHIAccess access)
+    {
+        const auto found = buffer_states.find(buffer.get());
+        if (found == buffer_states.end())
+        {
+            buffer_states.emplace(buffer.get(), BufferState{buffer, buffer->current_access(), access});
+            return;
+        }
+        found->second.final_access = access;
+    }
+
+    void VulkanCommandList::track_texture_transition(
+        const std::shared_ptr<VulkanTexture>& texture,
+        const RHISubresourceRange& range,
+        VkImageLayout layout,
+        RHIAccess access)
+    {
+        auto insertion = texture_states.emplace(texture.get(), TextureState{});
+        TextureState& tracked = insertion.first->second;
+        tracked.resource = texture;
+        const std::uint32_t mip_count = range.mip_count == RHI_ALL_MIPS
+            ? texture->desc().mip_levels - range.first_mip : range.mip_count;
+        const std::uint32_t layer_count = range.layer_count == RHI_ALL_LAYERS
+            ? texture->desc().array_layers - range.first_layer : range.layer_count;
+        const auto update = [&](RHITextureAspect aspect, std::uint32_t mip, std::uint32_t layer)
+        {
+            const auto entry = std::find_if(
+                tracked.entries.begin(), tracked.entries.end(),
+                [aspect, mip, layer](const TextureState::Entry& candidate)
+                {
+                    return candidate.aspect == aspect && candidate.mip == mip && candidate.layer == layer;
+                });
+            if (entry == tracked.entries.end())
+            {
+                const VulkanTextureSubresourceState initial = texture->subresource_state(aspect, mip, layer);
+                tracked.entries.push_back({aspect, mip, layer, initial, {layout, access}});
+            }
+            else
+            {
+                entry->final = {layout, access};
+            }
+        };
+        for (std::uint32_t layer = range.first_layer; layer < range.first_layer + layer_count; ++layer)
+        {
+            for (std::uint32_t mip = range.first_mip; mip < range.first_mip + mip_count; ++mip)
+            {
+                update(range.aspect == RHITextureAspect::DepthStencil ? RHITextureAspect::Depth : range.aspect, mip, layer);
+                if (range.aspect == RHITextureAspect::DepthStencil)
+                {
+                    update(RHITextureAspect::Stencil, mip, layer);
+                }
+            }
+        }
+    }
+
+    RHIStatus VulkanCommandList::validate_committed_resource_states() const
+    {
+        for (const auto& entry : buffer_states)
+        {
+            const BufferState& state = entry.second;
+            if (state.resource->current_access() != state.initial_access)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan command list buffer initial state no longer matches the committed submit-order state.");
+            }
+        }
+        for (const auto& entry : texture_states)
+        {
+            const TextureState& state = entry.second;
+            const bool mismatch = std::any_of(
+                state.entries.begin(), state.entries.end(),
+                [&state](const TextureState::Entry& subresource)
+                {
+                    const VulkanTextureSubresourceState committed = state.resource->subresource_state(
+                        subresource.aspect, subresource.mip, subresource.layer);
+                    return committed.layout != subresource.initial.layout ||
+                        committed.access != subresource.initial.access;
+                });
+            if (mismatch)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan command list texture initial state no longer matches the committed submit-order state.");
+            }
+        }
+        return RHIStatus::success();
+    }
+
+    bool VulkanCommandList::has_state_overlap(const VulkanCommandList& other) const
+    {
+        const auto other_retains = [&other](const RHIResource* resource)
+        {
+            return std::any_of(
+                other.resources.begin(),
+                other.resources.end(),
+                [resource](const RHIResourceRef& retained) { return retained.get() == resource; });
+        };
+        for (const auto& entry : buffer_states)
+        {
+            if (other.buffer_states.find(entry.first) != other.buffer_states.end() || other_retains(entry.first))
+            {
+                return true;
+            }
+        }
+        for (const auto& entry : texture_states)
+        {
+            if (other.texture_states.find(entry.first) != other.texture_states.end() || other_retains(entry.first))
+            {
+                return true;
+            }
+        }
+        for (const RHIResourceRef& retained : resources)
+        {
+            const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(retained);
+            const auto texture = std::dynamic_pointer_cast<VulkanTexture>(retained);
+            if ((buffer && other.buffer_states.find(buffer.get()) != other.buffer_states.end()) ||
+                (texture && other.texture_states.find(texture.get()) != other.texture_states.end()))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void VulkanCommandList::commit_resource_states() const
+    {
+        for (const auto& entry : buffer_states)
+        {
+            entry.second.resource->set_current_access(entry.second.final_access);
+        }
+        for (const auto& entry : texture_states)
+        {
+            const TextureState& state = entry.second;
+            for (const TextureState::Entry& subresource : state.entries)
+            {
+                state.resource->set_subresource_state(
+                    subresource.aspect, subresource.mip, subresource.layer, subresource.final);
+            }
+        }
     }
 
     RHIStatus VulkanCommandList::begin_recording_by_context()
@@ -479,7 +697,7 @@ namespace toy3d
                         RHIErrorCode::InvalidArgument,
                         "Vulkan buffer transition must use the default full-resource subresource range.");
                 }
-                if (buffer->current_access() != transition.before)
+                if (recording_command_list->tracked_buffer_access(buffer) != transition.before)
                 {
                     return RHIStatus::failure(
                         RHIErrorCode::InvalidArgument,
@@ -504,7 +722,7 @@ namespace toy3d
                     &barrier,
                     0,
                     nullptr);
-                buffer->set_current_access(transition.after);
+                recording_command_list->track_buffer_transition(buffer, transition.after);
                 recording_command_list->retain_resource(transition.resource);
                 continue;
             }
@@ -514,7 +732,7 @@ namespace toy3d
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
-                    "Vulkan transition requires a resource created by the canonical Vulkan device.");
+                    "Vulkan transition requires a resource created by the Vulkan device.");
             }
             if (!before_state.supports_image || !after_state.supports_image)
             {
@@ -522,13 +740,12 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan texture transition uses a buffer-only access state.");
             }
-            if (!is_full_texture_range(texture->desc(), transition.subresources))
+            const auto tracked_state = recording_command_list->tracked_texture_state(texture, transition.subresources);
+            if (!tracked_state)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::Unsupported,
-                    "Canonical Vulkan transitions currently require the full texture subresource range.");
+                return RHIStatus::failure(tracked_state.status().code(), tracked_state.status().message());
             }
-            if (texture->current_access() != transition.before)
+            if (tracked_state.value().access != transition.before)
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -541,21 +758,27 @@ namespace toy3d
                 return RHIStatus::failure(aspect.status().code(), aspect.status().message());
             }
             VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-            barrier.oldLayout = texture->image_layout();
+            barrier.oldLayout = tracked_state.value().layout;
             barrier.newLayout = after_state.image_layout;
-            barrier.srcAccessMask = texture->has_undefined_initial_layout() ? 0 : before_state.access_mask;
+            const bool old_layout_is_undefined =
+                tracked_state.value().layout == VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.srcAccessMask = old_layout_is_undefined ? 0 : before_state.access_mask;
             barrier.dstAccessMask = after_state.access_mask;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.image = texture->image();
             barrier.subresourceRange.aspectMask = aspect.value();
-            barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = texture->desc().mip_levels;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount = texture->desc().array_layers;
+            barrier.subresourceRange.baseMipLevel = transition.subresources.first_mip;
+            barrier.subresourceRange.levelCount = transition.subresources.mip_count == RHI_ALL_MIPS
+                ? texture->desc().mip_levels - transition.subresources.first_mip
+                : transition.subresources.mip_count;
+            barrier.subresourceRange.baseArrayLayer = transition.subresources.first_layer;
+            barrier.subresourceRange.layerCount = transition.subresources.layer_count == RHI_ALL_LAYERS
+                ? texture->desc().array_layers - transition.subresources.first_layer
+                : transition.subresources.layer_count;
             vkCmdPipelineBarrier(
                 vk_command_buffer,
-                texture->has_undefined_initial_layout() ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : before_state.pipeline_stage,
+                old_layout_is_undefined ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : before_state.pipeline_stage,
                 after_state.pipeline_stage,
                 0,
                 0,
@@ -564,7 +787,8 @@ namespace toy3d
                 nullptr,
                 1,
                 &barrier);
-            texture->set_state(after_state.image_layout, transition.after);
+            recording_command_list->track_texture_transition(
+                texture, transition.subresources, after_state.image_layout, transition.after);
             recording_command_list->retain_resource(transition.resource);
         }
         return RHIStatus::success();
@@ -588,10 +812,10 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan buffer copy requires canonical Vulkan source and destination buffers.");
+                "Vulkan buffer copy requires Vulkan source and destination buffers.");
         }
-        if (source->current_access() != RHIAccess::CopySource ||
-            destination->current_access() != RHIAccess::CopyDestination)
+        if (recording_command_list->tracked_buffer_access(source) != RHIAccess::CopySource ||
+            recording_command_list->tracked_buffer_access(destination) != RHIAccess::CopyDestination)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -624,30 +848,27 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan buffer upload requires a buffer created by the canonical Vulkan device.");
+                "Vulkan buffer upload requires a buffer created by the Vulkan device.");
         }
-        if (destination->current_access() != RHIAccess::CopyDestination)
+        if (recording_command_list->tracked_buffer_access(destination) != RHIAccess::CopyDestination)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Vulkan buffer upload requires the destination buffer in CopyDestination state.");
         }
-        const auto staging_buffer = create_vulkan_staging_buffer(
-            vulkan_device.physical_device(),
-            vulkan_device.device(),
-            desc.source.data,
-            desc.source.size);
-        if (!staging_buffer)
+        const auto upload = vulkan_device.upload_manager().upload(desc.source.data, desc.source.size, 4);
+        if (!upload)
         {
-            return RHIStatus::failure(staging_buffer.status().code(), staging_buffer.status().message());
+            return RHIStatus::failure(upload.status().code(), upload.status().message());
         }
-        record_staging_buffer_barrier(vk_command_buffer, staging_buffer.value()->buffer());
+        record_staging_buffer_barrier(vk_command_buffer, upload.value().buffer());
         VkBufferCopy region{};
+        region.srcOffset = upload.value().offset;
         region.dstOffset = desc.destination_offset;
         region.size = desc.source.size;
-        vkCmdCopyBuffer(vk_command_buffer, staging_buffer.value()->buffer(), destination->buffer(), 1, &region);
+        vkCmdCopyBuffer(vk_command_buffer, upload.value().buffer(), destination->buffer(), 1, &region);
         recording_command_list->retain_resource(desc.destination);
-        recording_command_list->retain_staging_buffer(staging_buffer.value());
+        recording_command_list->retain_upload_page(upload.value().page);
         return RHIStatus::success();
     }
 
@@ -669,16 +890,23 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan texture copy requires canonical Vulkan source and destination textures.");
+                "Vulkan texture copy requires Vulkan source and destination textures.");
         }
         if (source->desc().format != destination->desc().format)
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan texture copy currently requires identical source and destination formats.");
+                "Vulkan texture copy currently requires identical source and destination formats.");
         }
-        if (source->current_access() != RHIAccess::CopySource ||
-            destination->current_access() != RHIAccess::CopyDestination)
+        const RHISubresourceRange source_range{
+            RHITextureAspect::Color, desc.source.mip, 1, desc.source.layer, 1};
+        const RHISubresourceRange destination_range{
+            RHITextureAspect::Color, desc.destination.mip, 1, desc.destination.layer, 1};
+        const auto source_state = recording_command_list->tracked_texture_state(source, source_range);
+        const auto destination_state = recording_command_list->tracked_texture_state(destination, destination_range);
+        if (!source_state || !destination_state ||
+            source_state.value().access != RHIAccess::CopySource ||
+            destination_state.value().access != RHIAccess::CopyDestination)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -689,7 +917,7 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan texture copy currently supports color textures only.");
+                "Vulkan texture copy currently supports color textures only.");
         }
         VkImageCopy region{};
         region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -712,9 +940,9 @@ namespace toy3d
         vkCmdCopyImage(
             vk_command_buffer,
             source->image(),
-            source->image_layout(),
+            source_state.value().layout,
             destination->image(),
-            destination->image_layout(),
+            destination_state.value().layout,
             1,
             &region);
         recording_command_list->retain_resource(desc.source.texture);
@@ -739,9 +967,12 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan texture upload requires a texture created by the canonical Vulkan device.");
+                "Vulkan texture upload requires a texture created by the Vulkan device.");
         }
-        if (destination->current_access() != RHIAccess::CopyDestination)
+        const RHISubresourceRange destination_range{
+            RHITextureAspect::Color, desc.destination.mip, 1, desc.destination.layer, 1};
+        const auto destination_state = recording_command_list->tracked_texture_state(destination, destination_range);
+        if (!destination_state || destination_state.value().access != RHIAccess::CopyDestination)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -751,7 +982,7 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan texture upload currently supports only single-sample color textures.");
+                "Vulkan texture upload currently supports only single-sample color textures.");
         }
         const auto bytes_per_texel = color_format_bytes_per_texel(destination->desc().format);
         if (!bytes_per_texel)
@@ -768,17 +999,17 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan texture upload source pitches or data size do not cover the requested region.");
         }
-        const auto staging_buffer = create_vulkan_staging_buffer(
-            vulkan_device.physical_device(),
-            vulkan_device.device(),
+        const auto upload = vulkan_device.upload_manager().upload(
             desc.source.data,
-            desc.source.size);
-        if (!staging_buffer)
+            desc.source.size,
+            std::max<VkDeviceSize>(4, bytes_per_texel.value()));
+        if (!upload)
         {
-            return RHIStatus::failure(staging_buffer.status().code(), staging_buffer.status().message());
+            return RHIStatus::failure(upload.status().code(), upload.status().message());
         }
-        record_staging_buffer_barrier(vk_command_buffer, staging_buffer.value()->buffer());
+        record_staging_buffer_barrier(vk_command_buffer, upload.value().buffer());
         VkBufferImageCopy region{};
+        region.bufferOffset = upload.value().offset;
         region.bufferRowLength = static_cast<std::uint32_t>(desc.source.row_pitch / bytes_per_texel.value());
         region.bufferImageHeight = static_cast<std::uint32_t>(desc.source.slice_pitch / desc.source.row_pitch);
         region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -792,13 +1023,13 @@ namespace toy3d
         region.imageExtent = {desc.extent.width, desc.extent.height, desc.extent.depth};
         vkCmdCopyBufferToImage(
             vk_command_buffer,
-            staging_buffer.value()->buffer(),
+            upload.value().buffer(),
             destination->image(),
-            destination->image_layout(),
+            destination_state.value().layout,
             1,
             &region);
         recording_command_list->retain_resource(desc.destination.texture);
-        recording_command_list->retain_staging_buffer(staging_buffer.value());
+        recording_command_list->retain_upload_page(upload.value().page);
         return RHIStatus::success();
     }
 
@@ -854,7 +1085,7 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
-                "Canonical Vulkan render passes currently support one or more color attachments without depth/stencil.");
+                "Vulkan render passes currently support one or more color attachments without depth/stencil.");
         }
 
         std::vector<VkAttachmentDescription> attachments;
@@ -876,7 +1107,7 @@ namespace toy3d
             {
                 return RHIStatus::failure(
                     RHIErrorCode::Unsupported,
-                    "Canonical Vulkan render-pass resolve attachments are not implemented yet.");
+                    "Vulkan render-pass resolve attachments are not implemented yet.");
             }
             const auto view = std::dynamic_pointer_cast<VulkanTextureView>(attachment.view);
             const auto texture = view ? std::dynamic_pointer_cast<VulkanTexture>(view->texture()) : nullptr;
@@ -884,9 +1115,11 @@ namespace toy3d
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
-                    "Vulkan render pass requires canonical Vulkan color attachment views.");
+                    "Vulkan render pass requires Vulkan color attachment views.");
             }
-            if (texture->current_access() != RHIAccess::RenderTarget)
+            const auto attachment_state = recording_command_list->tracked_texture_state(
+                texture, attachment.view->desc().subresources);
+            if (!attachment_state || attachment_state.value().access != RHIAccess::RenderTarget)
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1022,7 +1255,7 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan graphics command recording requires a canonical Vulkan graphics pipeline.");
+                "Vulkan graphics command recording requires a Vulkan graphics pipeline.");
         }
         if (!vulkan_pipeline->is_compatible_with(*active_render_pass))
         {
@@ -1129,7 +1362,7 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan command recording requires a canonical Vulkan binding set.");
+                "Vulkan command recording requires a Vulkan binding set.");
         }
         graphics_state.set_binding_set(binding_set);
         return RHIStatus::success();
@@ -1194,7 +1427,7 @@ namespace toy3d
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan draw requires a compatible canonical Vulkan graphics pipeline.");
+                "Vulkan draw requires a compatible Vulkan graphics pipeline.");
         }
         if (!graphics_state.has_viewport() || !graphics_state.has_scissor())
         {
@@ -1225,7 +1458,7 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Vulkan indexed draw requires an index buffer.");
         }
 
-        std::array<bool, 5> required_groups{};
+        std::array<bool, static_cast<std::size_t>(RHIBindingGroup::Max)> required_groups{};
         for (const RHIBindingLayoutEntry& entry : pipeline->desc().binding_layout->desc().entries)
         {
             if (rhi_has_any_flag(entry.stages, RHIShaderStageFlags::AllGraphics))
@@ -1233,7 +1466,7 @@ namespace toy3d
                 required_groups[static_cast<std::size_t>(entry.group)] = true;
             }
         }
-        std::array<std::shared_ptr<VulkanBindingSet>, 5> bound_sets{};
+        std::array<std::shared_ptr<VulkanBindingSet>, static_cast<std::size_t>(RHIBindingGroup::Max)> bound_sets{};
         for (const RHIBindingSetRef& binding_set : graphics_state.binding_sets())
         {
             const std::size_t group_index = static_cast<std::size_t>(binding_set->group());
@@ -1251,7 +1484,7 @@ namespace toy3d
                     if (value.buffer)
                     {
                         const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
-                        if (!buffer || buffer->current_access() != RHIAccess::UniformBuffer)
+                        if (!buffer || recording_command_list->tracked_buffer_access(buffer) != RHIAccess::UniformBuffer)
                         {
                             return RHIStatus::failure(
                                 RHIErrorCode::InvalidArgument,
@@ -1261,7 +1494,12 @@ namespace toy3d
                     if (value.texture_view)
                     {
                         const auto texture = std::dynamic_pointer_cast<VulkanTexture>(value.texture_view->texture());
-                        if (!texture || texture->current_access() != RHIAccess::ShaderResourceGraphics)
+                        const auto texture_state = texture
+                            ? recording_command_list->tracked_texture_state(
+                                  texture, value.texture_view->desc().subresources)
+                            : RHIResult<VulkanTextureSubresourceState>::failure(
+                                  RHIErrorCode::InvalidArgument, "Invalid Vulkan sampled texture.");
+                        if (!texture_state || texture_state.value().access != RHIAccess::ShaderResourceGraphics)
                         {
                             return RHIStatus::failure(
                                 RHIErrorCode::InvalidArgument,

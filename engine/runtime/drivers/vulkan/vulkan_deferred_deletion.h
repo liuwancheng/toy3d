@@ -18,21 +18,21 @@
 namespace toy3d
 {
     // Render-thread-owned retirement queue. Callbacks may destroy native
-    // objects only after the associated submit serial has completed.
+    // objects only after the associated queue completion value has completed.
     class VulkanDeferredDeletionQueue final
     {
     public:
         using DeletionCallback = std::function<void(VkDevice)>;
 
-        RHIStatus enqueue(RHISubmitSerial serial, DeletionCallback callback);
-        void release_completed(VkDevice device, RHISubmitSerial completed_serial);
+        RHIStatus enqueue(RHIQueueCompletionValue retire_value, DeletionCallback callback);
+        void release_completed(VkDevice device, RHIQueueCompletionValue completed_value);
         void release_all(VkDevice device);
         std::size_t pending_count() const;
 
     private:
         struct Entry
         {
-            RHISubmitSerial serial = 0;
+            RHIQueueCompletionValue retire_value = 0;
             DeletionCallback callback;
         };
 

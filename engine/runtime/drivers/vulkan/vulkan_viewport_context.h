@@ -32,6 +32,7 @@ namespace toy3d
         RHIStatus end_frame(
             std::unique_ptr<RHIFrameContext> frame,
             const std::vector<RHICommandListRef>& command_lists) override;
+        RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) override;
         RHIStatus request_resize(std::uint32_t width, std::uint32_t height) override;
 
         // Backend-only entry point used by the frame context. Command buffers
@@ -47,6 +48,7 @@ namespace toy3d
         void destroy_swapchain();
         RHIStatus submit_active_frame(const std::vector<VulkanCommandList*>& command_lists);
         RHIStatus present_active_image();
+        RHIStatus abort_active_frame();
         void finish_active_frame();
 
         VulkanDevice& vulkan_device;
@@ -65,6 +67,7 @@ namespace toy3d
         std::uint32_t active_image_index = 0;
         std::uint64_t active_frame_id = 0;
         bool frame_active = false;
+        bool presentation_failed = false;
         bool resize_pending = false;
         std::uint32_t pending_width = 0;
         std::uint32_t pending_height = 0;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "drivers/rhi/rhi_device.h"
+#include "drivers/vulkan/vulkan_memory_manager.h"
+#include "drivers/vulkan/vulkan_upload_manager.h"
 
 #if WITH_WIN64
 #ifndef NOMINMAX
@@ -15,8 +17,15 @@
 namespace toy3d
 {
     class VulkanDeferredDeletionQueue;
-    class VulkanMemoryAllocator;
     class VulkanQueue;
+
+    struct VulkanDeviceObservation
+    {
+        VulkanMemoryManagerStats memory;
+        VulkanUploadManagerStats upload;
+        std::size_t pending_deletions = 0;
+        RHIQueueCompletionValue completed_value = 0;
+    };
 
     class VulkanDevice final : public RHIDevice
     {
@@ -35,10 +44,6 @@ namespace toy3d
         RHIFormatCapabilities format_capabilities(RHIFormat format) const override;
 
         RHIQueue& graphics_queue() override;
-
-        RHIResult<std::shared_ptr<RHISwapchain>> create_swapchain(
-            const RHISurfaceRef& surface,
-            const RHISwapchainDesc& desc) override;
 
         RHIResult<std::unique_ptr<RHIViewportContext>> create_viewport_context(
             const RHISurfaceRef& surface,
@@ -81,8 +86,11 @@ namespace toy3d
         VkDevice device() const;
         VkQueue graphics_queue_handle() const;
         std::uint32_t graphics_queue_family_index() const;
-        VulkanMemoryAllocator& memory_allocator();
+        VulkanMemoryManager& memory_manager();
+        VulkanUploadManager& upload_manager();
         VulkanDeferredDeletionQueue& deferred_deletion_queue();
+        VulkanDeviceObservation observation_snapshot() const;
+        void release_completed_work(RHIQueueCompletionValue completed_value);
 
     private:
         RHIStatus create_instance(const RHIDeviceDesc& desc);
@@ -103,7 +111,8 @@ namespace toy3d
         RHISurfaceRef primary_rhi_surface;
         RHICapabilities device_capabilities;
         RHILimits device_limits;
-        std::unique_ptr<VulkanMemoryAllocator> allocator;
+        std::unique_ptr<VulkanMemoryManager> memory_manager_instance;
+        std::unique_ptr<VulkanUploadManager> upload_manager_instance;
         std::unique_ptr<VulkanDeferredDeletionQueue> deletion_queue;
         std::unique_ptr<VulkanQueue> queue;
         bool initialized = false;

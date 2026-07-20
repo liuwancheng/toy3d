@@ -1,7 +1,8 @@
 #pragma once
 
 #include "drivers/rhi/rhi_command_context.h"
-#include "drivers/vulkan/canonical/vulkan_graphics_state.h"
+#include "drivers/vulkan/vulkan_graphics_state.h"
+#include "drivers/vulkan/vulkan_resource.h"
 
 #if WITH_WIN64
 #ifndef NOMINMAX
@@ -14,13 +15,16 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace toy3d
 {
     class VulkanDevice;
+    class VulkanBuffer;
     class VulkanGraphicsPipeline;
     class VulkanRenderPassResources;
-    class VulkanStagingBuffer;
+    class VulkanTexture;
+    class VulkanUploadPage;
     class VulkanViewportContext;
 
     // A command list is allocated from one viewport frame slot. Its native
@@ -39,8 +43,8 @@ namespace toy3d
         bool belongs_to(const VulkanViewportContext& viewport, std::uint64_t frame_id) const;
         void retain_resource(const RHIResourceRef& resource);
         const std::vector<RHIResourceRef>& retained_resources() const;
-        void retain_staging_buffer(std::shared_ptr<VulkanStagingBuffer> staging_buffer);
-        const std::vector<std::shared_ptr<VulkanStagingBuffer>>& retained_staging_buffers() const;
+        void retain_upload_page(const std::shared_ptr<VulkanUploadPage>& upload_page);
+        const std::vector<std::shared_ptr<VulkanUploadPage>>& retained_upload_pages() const;
         void retain_texture_view(const RHITextureViewRef& view);
         const std::vector<RHITextureViewRef>& retained_texture_views() const;
         void retain_graphics_pipeline(const RHIGraphicsPipelineRef& pipeline);
@@ -50,20 +54,61 @@ namespace toy3d
         void retain_render_pass_resources(std::shared_ptr<VulkanRenderPassResources> resources);
         const std::vector<std::shared_ptr<VulkanRenderPassResources>>& retained_render_pass_resources() const;
 
+        RHIAccess tracked_buffer_access(const std::shared_ptr<VulkanBuffer>& buffer) const;
+        RHIResult<VulkanTextureSubresourceState> tracked_texture_state(
+            const std::shared_ptr<VulkanTexture>& texture,
+            const RHISubresourceRange& range) const;
+        bool try_get_tracked_texture_state(
+            const std::shared_ptr<VulkanTexture>& texture,
+            VkImageLayout& layout,
+            RHIAccess& access) const;
+        void track_buffer_transition(const std::shared_ptr<VulkanBuffer>& buffer, RHIAccess access);
+        void track_texture_transition(
+            const std::shared_ptr<VulkanTexture>& texture,
+            const RHISubresourceRange& range,
+            VkImageLayout layout,
+            RHIAccess access);
+        RHIStatus validate_committed_resource_states() const;
+        bool has_state_overlap(const VulkanCommandList& other) const;
+        void commit_resource_states() const;
+
         RHIStatus begin_recording_by_context();
         RHIStatus close_by_context();
         RHIStatus mark_submitted_by_viewport();
 
     private:
+        struct BufferState
+        {
+            std::shared_ptr<VulkanBuffer> resource;
+            RHIAccess initial_access = RHIAccess::Unknown;
+            RHIAccess final_access = RHIAccess::Unknown;
+        };
+
+        struct TextureState
+        {
+            std::shared_ptr<VulkanTexture> resource;
+            struct Entry
+            {
+                RHITextureAspect aspect = RHITextureAspect::Color;
+                std::uint32_t mip = 0;
+                std::uint32_t layer = 0;
+                VulkanTextureSubresourceState initial;
+                VulkanTextureSubresourceState final;
+            };
+            std::vector<Entry> entries;
+        };
+
         VulkanViewportContext* viewport_owner = nullptr;
         VkCommandBuffer vk_command_buffer = VK_NULL_HANDLE;
         std::uint64_t command_frame_id = 0;
         std::vector<RHIResourceRef> resources;
-        std::vector<std::shared_ptr<VulkanStagingBuffer>> staging_buffers;
+        std::vector<std::shared_ptr<VulkanUploadPage>> upload_pages;
         std::vector<RHITextureViewRef> texture_views;
         std::vector<RHIGraphicsPipelineRef> graphics_pipelines;
         std::vector<RHIBindingSetRef> binding_sets;
         std::vector<std::shared_ptr<VulkanRenderPassResources>> render_pass_resources;
+        std::unordered_map<const VulkanBuffer*, BufferState> buffer_states;
+        std::unordered_map<const VulkanTexture*, TextureState> texture_states;
     };
 
     class VulkanGraphicsCommandContext final : public RHIGraphicsCommandContext

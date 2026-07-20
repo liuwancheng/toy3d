@@ -1,8 +1,10 @@
-#include "drivers/vulkan/canonical/vulkan_viewport_context.h"
+#include "drivers/vulkan/vulkan_viewport_context.h"
 
-#include "drivers/vulkan/canonical/vulkan_command_context.h"
-#include "drivers/vulkan/canonical/vulkan_device.h"
-#include "drivers/vulkan/canonical/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_command_context.h"
+#include "drivers/vulkan/vulkan_device.h"
+#include "drivers/vulkan/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_queue.h"
+#include "drivers/vulkan/vulkan_upload_manager.h"
 
 #include <algorithm>
 #include <string>
@@ -12,6 +14,42 @@ namespace toy3d
 {
     namespace
     {
+        void get_present_source_sync(
+            RHIAccess access,
+            VkPipelineStageFlags& pipeline_stage,
+            VkAccessFlags& access_mask)
+        {
+            pipeline_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            access_mask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            switch (access)
+            {
+            case RHIAccess::RenderTarget:
+                pipeline_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                access_mask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                break;
+            case RHIAccess::CopyDestination:
+            case RHIAccess::ResolveDestination:
+                pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                access_mask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                break;
+            case RHIAccess::CopySource:
+            case RHIAccess::ResolveSource:
+                pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                access_mask = VK_ACCESS_TRANSFER_READ_BIT;
+                break;
+            case RHIAccess::ShaderResourceGraphics:
+                pipeline_stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+                access_mask = VK_ACCESS_SHADER_READ_BIT;
+                break;
+            case RHIAccess::Present:
+                pipeline_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                access_mask = 0;
+                break;
+            default:
+                break;
+            }
+        }
+
         RHIStatus make_vulkan_status(VkResult result, const char* operation)
         {
             if (result == VK_SUCCESS)
@@ -114,8 +152,13 @@ namespace toy3d
         VkFence completion_fence = VK_NULL_HANDLE;
         VkCommandPool command_pool = VK_NULL_HANDLE;
         VkCommandBuffer present_command_buffer = VK_NULL_HANDLE;
+        RHIQueueCompletionValue completion_value = 0;
+        // Keep each submitted command list as the lifetime root for every
+        // native payload captured while recording. The typed collections below
+        // remain for completion-value bookkeeping and upload-page retirement.
+        std::vector<RHICommandListRef> submitted_command_lists;
         std::vector<RHIResourceRef> submitted_resources;
-        std::vector<VulkanStagingBufferRef> submitted_staging_buffers;
+        std::vector<std::shared_ptr<VulkanUploadPage>> submitted_upload_pages;
         std::vector<RHITextureViewRef> submitted_texture_views;
         std::vector<RHIGraphicsPipelineRef> submitted_graphics_pipelines;
         std::vector<RHIBindingSetRef> submitted_binding_sets;
@@ -137,6 +180,7 @@ namespace toy3d
         if (vulkan_device.device() != VK_NULL_HANDLE)
         {
             vkDeviceWaitIdle(vulkan_device.device());
+            vulkan_device.graphics_queue().completed_value();
         }
         const VkSwapchainKHR old_swapchain = vk_swapchain;
         destroy_swapchain();
@@ -148,6 +192,12 @@ namespace toy3d
 
     RHIResult<std::unique_ptr<RHIFrameContext>> VulkanViewportContext::begin_frame()
     {
+        if (presentation_failed)
+        {
+            return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
+                RHIErrorCode::NotReady,
+                "The Vulkan viewport entered an unrecoverable presentation failure state.");
+        }
         if (frame_active)
         {
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
@@ -171,8 +221,11 @@ namespace toy3d
         {
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
+        const RHIQueueCompletionValue completed_value = vulkan_device.graphics_queue().completed_value();
+        vulkan_device.release_completed_work(completed_value);
+        slot.submitted_command_lists.clear();
         slot.submitted_resources.clear();
-        slot.submitted_staging_buffers.clear();
+        slot.submitted_upload_pages.clear();
         slot.submitted_texture_views.clear();
         slot.submitted_graphics_pipelines.clear();
         slot.submitted_binding_sets.clear();
@@ -220,6 +273,10 @@ namespace toy3d
                 "vkWaitForFences");
             if (!status)
             {
+                // Acquire already signaled image_available. A failed wait means
+                // the previous image use cannot be proven complete, so neither
+                // the image nor this frame slot may be safely reused.
+                presentation_failed = true;
                 return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
             }
         }
@@ -275,17 +332,31 @@ namespace toy3d
                     "Vulkan viewport submission requires closed command lists.");
                 break;
             }
+            validation_status = vulkan_command_list->validate_committed_resource_states();
+            if (!validation_status)
+            {
+                break;
+            }
+            for (const VulkanCommandList* previous : vulkan_command_lists)
+            {
+                if (vulkan_command_list->has_state_overlap(*previous))
+                {
+                    validation_status = RHIStatus::failure(
+                        RHIErrorCode::Unsupported,
+                        "Vulkan cannot yet submit multiple command lists with overlapping state transitions.");
+                    break;
+                }
+            }
+            if (!validation_status)
+            {
+                break;
+            }
             vulkan_command_lists.push_back(vulkan_command_list);
         }
 
         if (!validation_status)
         {
-            RHIStatus recovery_status = submit_active_frame({});
-            if (recovery_status)
-            {
-                recovery_status = present_active_image();
-            }
-            finish_active_frame();
+            const RHIStatus recovery_status = abort_frame(std::move(frame));
             return recovery_status ? validation_status : recovery_status;
         }
 
@@ -293,13 +364,29 @@ namespace toy3d
         if (status)
         {
             FrameSlot& slot = frame_slots[current_frame_slot];
+            slot.submitted_command_lists.insert(
+                slot.submitted_command_lists.end(), command_lists.begin(), command_lists.end());
             for (const VulkanCommandList* command_list : vulkan_command_lists)
             {
+                command_list->commit_resource_states();
                 const std::vector<RHIResourceRef>& resources = command_list->retained_resources();
                 slot.submitted_resources.insert(slot.submitted_resources.end(), resources.begin(), resources.end());
-                const std::vector<VulkanStagingBufferRef>& staging_buffers = command_list->retained_staging_buffers();
-                slot.submitted_staging_buffers.insert(
-                    slot.submitted_staging_buffers.end(), staging_buffers.begin(), staging_buffers.end());
+                for (const RHIResourceRef& resource : resources)
+                {
+                    if (const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(resource))
+                    {
+                        buffer->mark_used(slot.completion_value);
+                    }
+                    else if (const auto texture = std::dynamic_pointer_cast<VulkanTexture>(resource))
+                    {
+                        texture->mark_used(slot.completion_value);
+                    }
+                }
+                const std::vector<std::shared_ptr<VulkanUploadPage>>& upload_pages =
+                    command_list->retained_upload_pages();
+                slot.submitted_upload_pages.insert(
+                    slot.submitted_upload_pages.end(), upload_pages.begin(), upload_pages.end());
+                vulkan_device.upload_manager().mark_submitted(upload_pages, slot.completion_value);
                 const std::vector<RHITextureViewRef>& texture_views = command_list->retained_texture_views();
                 slot.submitted_texture_views.insert(
                     slot.submitted_texture_views.end(), texture_views.begin(), texture_views.end());
@@ -316,6 +403,12 @@ namespace toy3d
                     slot.submitted_render_pass_resources.end(),
                     render_pass_resources.begin(), render_pass_resources.end());
             }
+            const auto active_texture =
+                std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
+            if (active_texture)
+            {
+                active_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
+            }
             for (VulkanCommandList* command_list : vulkan_command_lists)
             {
                 status = command_list->mark_submitted_by_viewport();
@@ -331,6 +424,18 @@ namespace toy3d
         }
         finish_active_frame();
         return status;
+    }
+
+    RHIStatus VulkanViewportContext::abort_frame(std::unique_ptr<RHIFrameContext> frame)
+    {
+        auto* vulkan_frame = dynamic_cast<VulkanFrameContext*>(frame.get());
+        if (!frame_active || vulkan_frame == nullptr || &vulkan_frame->owner() != this)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Frame context does not belong to this active Vulkan viewport frame.");
+        }
+        return abort_active_frame();
     }
 
     RHIStatus VulkanViewportContext::request_resize(std::uint32_t width, std::uint32_t height)
@@ -374,6 +479,7 @@ namespace toy3d
         {
             return status;
         }
+        vulkan_device.graphics_queue().completed_value();
 
         const VkSwapchainKHR old_swapchain = vk_swapchain;
         destroy_swapchain();
@@ -563,10 +669,7 @@ namespace toy3d
             texture_desc.debug_name = viewport_desc.debug_name + ".Image" + std::to_string(index);
             RHITextureRef texture = std::make_shared<VulkanTexture>(
                 std::move(texture_desc),
-                vulkan_device.device(),
                 swapchain_images[index],
-                VK_NULL_HANDLE,
-                false,
                 VK_IMAGE_LAYOUT_UNDEFINED,
                 RHIAccess::Present);
 
@@ -686,11 +789,25 @@ namespace toy3d
         {
             return status;
         }
-        if (active_texture->image_layout() != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+        VkImageLayout layout_before_present = active_texture->image_layout();
+        RHIAccess access_before_present = active_texture->current_access();
+        for (const VulkanCommandList* command_list : command_lists)
         {
+            command_list->try_get_tracked_texture_state(
+                active_texture, layout_before_present, access_before_present);
+        }
+        if (layout_before_present != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+        {
+            VkPipelineStageFlags source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            VkAccessFlags source_access = 0;
+            if (layout_before_present != VK_IMAGE_LAYOUT_UNDEFINED)
+            {
+                get_present_source_sync(access_before_present, source_stage, source_access);
+            }
             VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-            barrier.oldLayout = active_texture->image_layout();
+            barrier.oldLayout = layout_before_present;
             barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            barrier.srcAccessMask = source_access;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.image = swapchain_images[active_image_index];
@@ -699,7 +816,7 @@ namespace toy3d
             barrier.subresourceRange.layerCount = 1;
             vkCmdPipelineBarrier(
                 slot.present_command_buffer,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                source_stage,
                 VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                 0,
                 0,
@@ -727,21 +844,46 @@ namespace toy3d
             command_buffers.push_back(command_list->command_buffer());
         }
         command_buffers.push_back(slot.present_command_buffer);
-        VkSubmitInfo submit_info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-        submit_info.waitSemaphoreCount = 1;
-        submit_info.pWaitSemaphores = &slot.image_available;
-        submit_info.pWaitDstStageMask = &wait_stage;
-        submit_info.commandBufferCount = static_cast<std::uint32_t>(command_buffers.size());
-        submit_info.pCommandBuffers = command_buffers.data();
-        submit_info.signalSemaphoreCount = 1;
-        submit_info.pSignalSemaphores = &slot.render_finished;
-        status = make_vulkan_status(vkQueueSubmit(vulkan_device.graphics_queue_handle(), 1, &submit_info, slot.completion_fence), "vkQueueSubmit");
-        if (status)
+        auto& queue = static_cast<VulkanQueue&>(vulkan_device.graphics_queue());
+        const auto submit_result = queue.submit_viewport(
+            command_buffers,
+            slot.image_available,
+            wait_stage,
+            slot.render_finished,
+            slot.completion_fence);
+        if (!submit_result)
+        {
+            // image_available may remain signaled and the acquired image was
+            // not returned to the presentation engine. Retrying this viewport
+            // would reuse synchronization with an unknown state.
+            presentation_failed = true;
+            const VkFence discarded_fence = slot.completion_fence;
+            for (VkFence& image_fence : image_fences)
+            {
+                if (image_fence == discarded_fence)
+                {
+                    image_fence = VK_NULL_HANDLE;
+                }
+            }
+            vkDestroyFence(vulkan_device.device(), discarded_fence, nullptr);
+            slot.completion_fence = VK_NULL_HANDLE;
+            VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            const RHIStatus fence_status = make_vulkan_status(
+                vkCreateFence(vulkan_device.device(), &fence_info, nullptr, &slot.completion_fence),
+                "vkCreateFence");
+            if (!fence_status)
+            {
+                return fence_status;
+            }
+            return RHIStatus::failure(submit_result.status().code(), submit_result.status().message());
+        }
+        slot.completion_value = submit_result.value().completion_value;
+        if (slot.completion_value != 0)
         {
             image_fences[active_image_index] = slot.completion_fence;
-            active_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
         }
-        return status;
+        return RHIStatus::success();
     }
 
     RHIStatus VulkanViewportContext::present_active_image()
@@ -764,6 +906,29 @@ namespace toy3d
             resize_pending = true;
         }
         return make_vulkan_status(result, "vkQueuePresentKHR");
+    }
+
+    RHIStatus VulkanViewportContext::abort_active_frame()
+    {
+        RHIStatus status = submit_active_frame({});
+        if (status)
+        {
+            const auto active_texture =
+                std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
+            if (!active_texture)
+            {
+                status = RHIStatus::failure(
+                    RHIErrorCode::BackendFailure,
+                    "Vulkan viewport lost its native swapchain texture wrapper after abort submission.");
+            }
+            else
+            {
+                active_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
+                status = present_active_image();
+            }
+        }
+        finish_active_frame();
+        return status;
     }
 
     void VulkanViewportContext::finish_active_frame()
