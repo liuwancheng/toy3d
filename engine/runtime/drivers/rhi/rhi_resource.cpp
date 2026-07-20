@@ -3,7 +3,7 @@
 namespace toy3d
 {
     // Public RHI resources are intentionally data-only identities. Native
-    // destruction is owned by backend subclasses and deferred by submit serial.
+    // destruction is owned by backend subclasses and deferred by queue completion value.
 
     RHIStatus validate_surface_desc(const RHISurfaceDesc& desc)
     {
@@ -21,9 +21,4 @@ namespace toy3d
         }
         return RHIStatus::success();
     }
-}
-
-namespace toy3d
-{
-    
 }

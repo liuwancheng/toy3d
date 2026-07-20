@@ -117,8 +117,10 @@ namespace toy3d
     struct RHIBufferDesc
     {
         std::uint64_t size = 0;
-        std::uint32_t stride = 0;
+        std::uint32_t structure_stride = 0;
         RHIResourceUsage usage = RHIResourceUsage::None;
+        // Expresses access intent only; it does not select a native heap or
+        // promise persistent mapping.
         RHICPUAccess cpu_access = RHICPUAccess::None;
         RHIAccess initial_access = RHIAccess::Unknown;
         std::string debug_name;
@@ -135,6 +137,8 @@ namespace toy3d
         std::uint32_t sample_count = 1;
         RHIFormat format = RHIFormat::Unknown;
         RHIResourceUsage usage = RHIResourceUsage::None;
+        // Expresses access intent only; it does not select a native heap or
+        // promise persistent mapping.
         RHICPUAccess cpu_access = RHICPUAccess::None;
         RHIAccess initial_access = RHIAccess::Unknown;
         RHIClearValue clear_value;
@@ -158,7 +162,6 @@ namespace toy3d
         RHIFormat format = RHIFormat::Unknown;
         std::uint64_t offset = 0;
         std::uint64_t size = 0;
-        std::uint32_t stride = 0;
         std::string debug_name;
     };
 
@@ -310,8 +313,8 @@ namespace toy3d
         std::vector<VertexAttribute> vertex_attributes;
         RasterizationState rasterization;
         DepthStencilState depth_stencil;
-        std::array<RHIFormat, 8> color_formats = {};
-        std::array<ColorBlendAttachmentState, 8> color_blend_attachments = {};
+        std::array<RHIFormat, RHI_MAX_COLOR_ATTACHMENTS> color_formats = {};
+        std::array<ColorBlendAttachmentState, RHI_MAX_COLOR_ATTACHMENTS> color_blend_attachments = {};
         std::uint32_t color_attachment_count = 0;
         RHIFormat depth_stencil_format = RHIFormat::Unknown;
         std::uint32_t sample_count = 1;
@@ -323,6 +326,9 @@ namespace toy3d
         const RHIBufferDesc& desc,
         const RHIInitialData& initial_data);
     RHIStatus validate_texture_desc(const RHITextureDesc& desc);
+    RHIStatus validate_texture_subresource_range(
+        const RHITextureDesc& texture_desc,
+        const RHISubresourceRange& range);
     RHIStatus validate_texture_initial_data(
         const RHITextureDesc& desc,
         const RHIInitialData& initial_data);

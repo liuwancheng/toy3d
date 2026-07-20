@@ -14,7 +14,7 @@ namespace toy3d
 
     struct RHISubmitResult
     {
-        RHISubmitSerial serial = 0;
+        RHIQueueCompletionValue completion_value = 0;
     };
 
     class RHIQueue
@@ -28,8 +28,8 @@ namespace toy3d
 
         RHIResult<RHISubmitResult> submit(const RHISubmitInfo& info);
 
-        virtual RHISubmitSerial completed_serial() const = 0;
-        virtual RHIStatus wait(RHISubmitSerial serial) = 0;
+        virtual RHIQueueCompletionValue completed_value() const = 0;
+        virtual RHIStatus wait_for_value(RHIQueueCompletionValue value) = 0;
         virtual RHIStatus wait_idle() = 0;
 
     protected:

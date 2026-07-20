@@ -18,6 +18,20 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Resource transition cannot use identical access states.");
         }
+        const auto texture = std::dynamic_pointer_cast<RHITexture>(transition.resource);
+        if (texture)
+        {
+            return validate_texture_subresource_range(texture->desc(), transition.subresources);
+        }
+        if (transition.subresources.aspect != RHITextureAspect::Color ||
+            transition.subresources.first_mip != 0 || transition.subresources.first_layer != 0 ||
+            transition.subresources.mip_count != RHI_ALL_MIPS ||
+            transition.subresources.layer_count != RHI_ALL_LAYERS)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Buffer transition must use the default full-resource subresource range.");
+        }
         return RHIStatus::success();
     }
 
@@ -169,12 +183,28 @@ namespace toy3d
             }
             return pass_width == width && pass_height == height && pass_samples == texture_desc.sample_count;
         };
+        const auto is_single_attachment_subresource = [](const RHITextureViewRef& view) -> bool
+        {
+            const RHISubresourceRange& range = view->desc().subresources;
+            const RHITextureDesc& texture_desc = view->texture()->desc();
+            const std::uint32_t mip_count = range.mip_count == RHI_ALL_MIPS
+                ? texture_desc.mip_levels - range.first_mip : range.mip_count;
+            const std::uint32_t layer_count = range.layer_count == RHI_ALL_LAYERS
+                ? texture_desc.array_layers - range.first_layer : range.layer_count;
+            return mip_count == 1 && layer_count == 1;
+        };
 
         for (const RHIColorAttachmentDesc& attachment : desc.color_attachments)
         {
             if (!attachment.view || attachment.view->desc().type != RHIResourceViewType::RenderTarget)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Color attachment requires a render-target view.");
+            }
+            if (!is_single_attachment_subresource(attachment.view))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Render-pass attachment views must select exactly one mip and one array layer.");
             }
             if (!validate_extent(attachment.view))
             {
@@ -186,6 +216,12 @@ namespace toy3d
             }
             if (attachment.resolve_view)
             {
+                if (!is_single_attachment_subresource(attachment.resolve_view))
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Resolve attachment views must select exactly one mip and one array layer.");
+                }
                 const RHITextureDesc& source = attachment.view->texture()->desc();
                 const RHITextureDesc& destination = attachment.resolve_view->texture()->desc();
                 const std::uint32_t source_mip = attachment.view->desc().subresources.first_mip;
@@ -208,6 +244,12 @@ namespace toy3d
             if (!attachment.view || attachment.view->desc().type != RHIResourceViewType::DepthStencil)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Depth attachment requires a depth-stencil view.");
+            }
+            if (!is_single_attachment_subresource(attachment.view))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Depth-stencil attachment views must select exactly one mip and one array layer.");
             }
             if (!validate_extent(attachment.view))
             {

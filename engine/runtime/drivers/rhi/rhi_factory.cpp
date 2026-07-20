@@ -1,7 +1,7 @@
 #include "drivers/rhi/rhi_factory.h"
 
 #if defined(TOY3D_ENABLE_VULKAN_RHI) && TOY3D_ENABLE_VULKAN_RHI
-#include "drivers/vulkan/canonical/vulkan_device.h"
+#include "drivers/vulkan/vulkan_device.h"
 #endif
 
 namespace toy3d
@@ -13,7 +13,7 @@ namespace toy3d
 #else
         return RHIResult<std::unique_ptr<RHIDevice>>::failure(
             RHIErrorCode::Unsupported,
-            "No canonical RHI backend is enabled. Configure with TOY3D_ENABLE_VULKAN_RHI=ON.");
+            "No RHI backend is enabled. Configure with TOY3D_ENABLE_VULKAN_RHI=ON.");
 #endif
     }
 }

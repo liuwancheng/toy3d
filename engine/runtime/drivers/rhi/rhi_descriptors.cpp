@@ -107,14 +107,34 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer size must be greater than zero.");
         }
-        if (desc.stride > desc.size)
+        if (desc.usage == RHIResourceUsage::None)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer stride cannot exceed buffer size.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer usage must not be None.");
         }
-        if (desc.cpu_access == RHICPUAccess::Read &&
-            rhi_has_any_flag(desc.usage, RHIResourceUsage::RenderTarget))
+        if (rhi_has_any_flag(
+                desc.usage,
+                rhi_enum_or(RHIResourceUsage::RenderTarget, RHIResourceUsage::DepthStencil)))
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "CPU-readable buffers cannot be render targets.");
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Buffers cannot use render-target or depth-stencil usage.");
+        }
+        if (desc.structure_stride != 0)
+        {
+            if (desc.structure_stride > desc.size || desc.size % desc.structure_stride != 0)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Structured-buffer size must be a multiple of its structure stride.");
+            }
+            if (!rhi_has_any_flag(
+                    desc.usage,
+                    rhi_enum_or(RHIResourceUsage::ShaderResource, RHIResourceUsage::UnorderedAccess)))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Structured buffers require shader-resource or unordered-access usage.");
+            }
         }
         return RHIStatus::success();
     }
@@ -169,6 +189,34 @@ namespace toy3d
         return RHIStatus::success();
     }
 
+    RHIStatus validate_texture_subresource_range(
+        const RHITextureDesc& texture_desc,
+        const RHISubresourceRange& range)
+    {
+        if (range.first_mip >= texture_desc.mip_levels ||
+            range.first_layer >= texture_desc.array_layers)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Texture subresource range begins outside the texture.");
+        }
+        const std::uint32_t mip_count = range.mip_count == RHI_ALL_MIPS
+            ? texture_desc.mip_levels - range.first_mip
+            : range.mip_count;
+        const std::uint32_t layer_count = range.layer_count == RHI_ALL_LAYERS
+            ? texture_desc.array_layers - range.first_layer
+            : range.layer_count;
+        if (mip_count == 0 || layer_count == 0 ||
+            mip_count > texture_desc.mip_levels - range.first_mip ||
+            layer_count > texture_desc.array_layers - range.first_layer)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Texture subresource range extends outside the texture.");
+        }
+        return RHIStatus::success();
+    }
+
     RHIStatus validate_texture_initial_data(
         const RHITextureDesc& desc,
         const RHIInitialData& initial_data)
@@ -206,14 +254,11 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture view format must be specified.");
         }
-        if (view_desc.subresources.mip_count == 0 || view_desc.subresources.layer_count == 0)
+        const RHIStatus range_status = validate_texture_subresource_range(
+            texture_desc, view_desc.subresources);
+        if (!range_status)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture view subresource counts must be non-zero.");
-        }
-        if (view_desc.subresources.first_mip >= texture_desc.mip_levels ||
-            view_desc.subresources.first_layer >= texture_desc.array_layers)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture view starts outside the texture subresources.");
+            return range_status;
         }
         const RHIResourceUsage required_usage =
             view_desc.type == RHIResourceViewType::ShaderResource ? RHIResourceUsage::ShaderResource :
@@ -253,6 +298,17 @@ namespace toy3d
         if (!rhi_has_any_flag(buffer_desc.usage, required_usage))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer was not created for the requested view type.");
+        }
+        if (buffer_desc.structure_stride != 0)
+        {
+            if (view_desc.format != RHIFormat::Unknown ||
+                view_desc.offset % buffer_desc.structure_stride != 0 ||
+                view_desc.size % buffer_desc.structure_stride != 0)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Structured-buffer views require an unknown format and structure-aligned range.");
+            }
         }
         return RHIStatus::success();
     }

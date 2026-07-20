@@ -131,10 +131,13 @@ namespace toy3d
 
     enum class RHICPUAccess : std::uint8_t
     {
+        // The resource is not directly CPU accessible. Updates and readback
+        // use explicit GPU copy paths.
         None,
+        // The CPU consumes GPU-produced data through a backend readback path.
         Read,
-        Write,
-        ReadWrite
+        // The CPU supplies data through a backend upload or dynamic-resource path.
+        Write
     };
 
     enum class RHIAccess : std::uint32_t
@@ -211,7 +214,8 @@ namespace toy3d
         View,
         Pass,
         Material,
-        Object
+        Object,
+        Max
     };
 
     enum class RHIResourceBindingType : std::uint8_t
@@ -390,8 +394,9 @@ namespace toy3d
         Fifo
     };
 
-    using RHISubmitSerial = std::uint64_t;
+    using RHIQueueCompletionValue = std::uint64_t;
 
     constexpr std::uint32_t RHI_ALL_MIPS = 0xffffffffU;
     constexpr std::uint32_t RHI_ALL_LAYERS = 0xffffffffU;
+    constexpr std::uint32_t RHI_MAX_COLOR_ATTACHMENTS = 8U;
 }

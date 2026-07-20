@@ -22,7 +22,7 @@ namespace toy3d
     };
 
     // A frame context is valid only between RHIViewportContext::begin_frame()
-    // and end_frame(). It exposes the current presentation image as a normal
+    // and either end_frame() or abort_frame(). It exposes the current presentation image as a normal
     // render-graph external resource while keeping acquire synchronization
     // private to the viewport implementation.
     class RHIFrameContext
@@ -41,7 +41,7 @@ namespace toy3d
         virtual std::uint32_t height() const = 0;
 
         // Recording contexts are frame-local so their allocators can be
-        // recycled only after this frame's submit serial has completed.
+        // recycled only after this frame's queue completion value has completed.
         virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
             create_graphics_command_context() = 0;
     };
@@ -63,6 +63,12 @@ namespace toy3d
         virtual RHIStatus end_frame(
             std::unique_ptr<RHIFrameContext> frame,
             const std::vector<RHICommandListRef>& command_lists) = 0;
+
+        // Consumes an acquired frame after recording cannot continue. The
+        // backend must discharge acquire synchronization without submitting
+        // discarded command lists. A successful abort leaves the slot reusable;
+        // an unrecoverable backend failure must reject subsequent frames.
+        virtual RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) = 0;
 
         // Resize is deferred until a later begin_frame() can safely replace
         // all in-flight presentation images.

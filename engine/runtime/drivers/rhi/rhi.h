@@ -11,5 +11,4 @@
 #include "drivers/rhi/rhi_queue.h"
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
-#include "drivers/rhi/rhi_swapchain.h"
 #include "drivers/rhi/rhi_viewport_context.h"

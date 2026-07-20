@@ -34,11 +34,11 @@ namespace toy3d
         {
             return result;
         }
-        if (result.value().serial == 0)
+        if (result.value().completion_value == 0)
         {
             return RHIResult<RHISubmitResult>::failure(
                 RHIErrorCode::BackendFailure,
-                "Backend returned an invalid submit serial.");
+                "Backend returned an invalid queue completion value.");
         }
 
         for (const RHICommandListRef& command_list : info.command_lists)

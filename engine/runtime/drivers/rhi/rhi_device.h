@@ -12,8 +12,6 @@ namespace toy3d
 {
     class RHIGraphicsCommandContext;
     class RHIQueue;
-    class RHISwapchain;
-    struct RHISwapchainDesc;
 
     struct RHIDeviceDesc
     {
@@ -41,10 +39,6 @@ namespace toy3d
         virtual RHIFormatCapabilities format_capabilities(RHIFormat format) const = 0;
 
         virtual RHIQueue& graphics_queue() = 0;
-
-        virtual RHIResult<std::shared_ptr<RHISwapchain>> create_swapchain(
-            const RHISurfaceRef& surface,
-            const RHISwapchainDesc& desc) = 0;
 
         // RenderScene creates one viewport context per presentation surface.
         // The context owns acquire, submission, presentation, and frame-local

@@ -224,14 +224,22 @@ namespace toy3d
 		if (!scene_renderer)
 		{
 			TOY_LOG_ERROR("A viewport frame was acquired without a scene renderer.");
-			(void)rhi_viewport->end_frame(std::move(frame), {});
+			const RHIStatus abort_status = rhi_viewport->abort_frame(std::move(frame));
+			if (!abort_status)
+			{
+				log_rhi_failure("RHIViewportContext::abort_frame", abort_status);
+			}
 			return;
 		}
 		auto command_list_result = scene_renderer->render(*frame);
 		if (!command_list_result)
 		{
 			log_rhi_failure("SceneRendering::render", command_list_result.status());
-			(void)rhi_viewport->end_frame(std::move(frame), {});
+			const RHIStatus abort_status = rhi_viewport->abort_frame(std::move(frame));
+			if (!abort_status)
+			{
+				log_rhi_failure("RHIViewportContext::abort_frame", abort_status);
+			}
 			return;
 		}
 		std::vector<RHICommandListRef> command_lists;
