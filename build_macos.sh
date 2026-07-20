@@ -1,5 +1,69 @@
 #!/bin/bash
 
-cmake -S . -B build -G "Xcode"
+set -euo pipefail
 
-#cmake --build build --config " Debug"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+configuration="${1:-Debug}"
+
+case "${configuration}" in
+    Debug|Release|RelWithDebInfo|MinSizeRel)
+        ;;
+    *)
+        echo "Unsupported configuration: ${configuration}" >&2
+        echo "Usage: $0 [Debug|Release|RelWithDebInfo|MinSizeRel]" >&2
+        exit 2
+        ;;
+esac
+
+default_generator="Xcode"
+if [[ -n "${CODEX_SANDBOX:-}" || -n "${CODEX_CI:-}" ]]; then
+    # CMake's Xcode compiler probe invokes xcodebuild before native build
+    # arguments can redirect DerivedData. Sandboxed automation cannot write
+    # Xcode's user Library directories, so use an in-repository build backend.
+    default_generator="Unix Makefiles"
+fi
+generator="${TOY3D_MACOS_GENERATOR:-${default_generator}}"
+
+case "${generator}" in
+    Xcode)
+        build_dir="${script_dir}/build/macos-xcode"
+        cache_file="${build_dir}/CMakeCache.txt"
+        if [[ -f "${cache_file}" ]] && ! grep -q '^CMAKE_CXX_COMPILER:' "${cache_file}"; then
+            echo "Removing incomplete Xcode configuration: ${build_dir}"
+            cmake -E remove_directory "${build_dir}"
+        fi
+        cmake \
+            -S "${script_dir}" \
+            -B "${build_dir}" \
+            -G "Xcode" \
+            -DTOY3D_ENABLE_VULKAN_RHI=ON \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
+        cmake \
+            --build "${build_dir}" \
+            --config "${configuration}" \
+            --target Toy3dEditor \
+            -- \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+        ;;
+    "Unix Makefiles")
+        build_dir="${script_dir}/build/macos-make"
+        cmake \
+            -S "${script_dir}" \
+            -B "${build_dir}" \
+            -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE="${configuration}" \
+            -DTOY3D_ENABLE_VULKAN_RHI=ON
+        cmake \
+            --build "${build_dir}" \
+            --target Toy3dEditor \
+            --parallel
+        ;;
+    *)
+        echo "Unsupported generator: ${generator}" >&2
+        echo "Set TOY3D_MACOS_GENERATOR to Xcode or Unix Makefiles." >&2
+        exit 2
+        ;;
+esac

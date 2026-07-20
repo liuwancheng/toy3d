@@ -62,12 +62,28 @@ endif()
 set(POST_BUILD_COMMANDS
   COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}"
   COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}saved"
-  # COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resource" "${BINARY_ROOT_DIR}/resource"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory "$<TARGET_FILE_DIR:${TARGET_NAME}>/" "${BINARY_ROOT_DIR}"
+)
+
+if(APPLE)
+  list(APPEND POST_BUILD_COMMANDS
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "$<TARGET_BUNDLE_DIR:${TARGET_NAME}>"
+            "${BINARY_ROOT_DIR}${TARGET_NAME}.app"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:${TARGET_NAME}>"
+            "${BINARY_ROOT_DIR}${TARGET_NAME}"
+  )
+else()
+  list(APPEND POST_BUILD_COMMANDS
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "$<TARGET_FILE_DIR:${TARGET_NAME}>/"
+            "${BINARY_ROOT_DIR}"
+  )
+endif()
+
+list(APPEND POST_BUILD_COMMANDS
   COMMAND ${CMAKE_COMMAND} -E remove_directory "${BINARY_ROOT_DIR}/${ASSET_NAME}"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${ASSET_ABS_DIR}" "${BINARY_ROOT_DIR}/${ASSET_NAME}"
-  # COMMAND ${CMAKE_COMMAND} -E copy "${ENGINE_ROOT_DIR}/${DEPLOY_CONFIG_DIR}/${TARGET_NAME}.ini" "${BINARY_ROOT_DIR}"
-  # COMMAND ${CMAKE_COMMAND} -E copy "${ENGINE_ROOT_DIR}/${DEVELOP_CONFIG_DIR}/${TARGET_NAME}.ini" "$<TARGET_FILE_DIR:${TARGET_NAME}>/"
 )
 
 
