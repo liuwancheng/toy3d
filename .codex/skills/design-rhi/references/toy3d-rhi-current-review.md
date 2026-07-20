@@ -2,29 +2,31 @@
 
 ## 文档职责
 
-本文记录 2026-07 的代码现状问题，是可更新的迁移清单，不是长期需求。
+本文记录截至 2026-07-20 的代码现状问题，是可更新的迁移清单，不是长期需求。旧 `IDynamicRHI` 原型与 legacy Vulkan 实现已经删除，当前 Vulkan 后端直接实现 `RHIDevice` 管线。
 
 ## P0
 
-1. `rhi.h` 的 `IDynamicRHI` 混合 device、frame、命令和资源创建，并在头文件定义 `g_rhi`。
-2. `set_stencil`、`set_blend_factor`、graphics `set_shader_parameter` 默认空实现。
-3. `ERHIAccess` 没有公共 transition 命令；Vulkan texture 自行维护 layout，buffer update 缺 barrier。
-4. Vulkan 初始化结果不可检查；`VulkanContext::clear()` 的 instance/device/swapchain 销毁顺序错误。
-5. acquire/submit/present 缺少完整 resize、semaphore、fence reset/serial 契约。
-6. render pass 未录制；pipeline attachment、descriptor layout、push constant 仍为硬编码示例。
+当前没有未完成项。
+
+## 已完成
+
+1. 已删除公共 `RHISwapchain`、`RHIDevice::create_swapchain()` 以及未完成的 `VulkanSwapchain` 平行路径。presentation 唯一公共入口为 `RHIViewportContext`，Vulkan 的 swapchain、acquire、submit、present 和 resize 继续由 `VulkanViewportContext` 内部管理。
+2. Vulkan command list 已使用 local buffer/texture state tracker；录制 transition、copy、upload、render pass 和 binding 不再提前修改 committed state。queue/viewport 在原生提交前验证 initial state，并仅在 `vkQueueSubmit` 成功后提交 final state；丢弃、录制失败和提交失败不会污染资源状态。viewport 的隐式 present barrier 读取 command list 的最终局部 layout。
+3. 公共 `RHIViewportContext::abort_frame()` 已明确消费 acquire 后无法继续录制的失败帧。Vulkan 通过最小提交消费 acquire semaphore、恢复并提交 backbuffer `Present` 状态、尝试 present，并推进 frame slot；renderscene 失败路径不再使用空 command-list 的 `end_frame()` 隐式收尾。
+4. Vulkan frame slot 在提交成功后直接强持有完整 command list，直到 completion fence 后才释放，以 command list 作为所有录制期 GPU payload 的统一生命周期根。pipeline descriptor 传递持有 shader 和 binding layout，binding set descriptor 传递持有 layout、buffer、texture view 和 sampler，binding set 自身持有 descriptor pool/set；upload page 另按 completion value 退休。Buffer View 当前明确返回 `Unsupported`，不存在未保活的已录制路径。
+5. 公共 `RHICPUAccess` 已收紧为 `None`、`Read`、`Write` 三种访问需求并移除无调用方的 `ReadWrite`。该枚举不选择 native heap/memory type，也不承诺 persistent mapping；Vulkan 在 readback/map 闭环实现前对 CPU-accessible resource 明确返回 `Unsupported`。
+6. texture transition 已支持 `RHISubresourceRange` 的 aspect、mip 与 array layer 精确范围。Vulkan texture committed state 按 subresource 保存，command list 以稀疏 delta 记录 initial/final state，barrier 使用精确 `VkImageSubresourceRange`；copy、upload、render-pass attachment 与 sampled binding 均按实际访问范围验证，混合状态范围明确报错，提交失败仍不发布 final state。
 
 ## P1
 
-1. render-pass/shader-state descriptor 使用裸资源指针，缺少 view/subresource 和录制期强引用。
-2. `RHIResourceCreateInfo::bulk_data` 缺少 size、pitch、所有权；`debug_name` 是借用指针。
-3. map/unmap 未定义统一 mode、range、alignment 和 in-flight 冲突。
-4. descriptor pool reset 无 fence 约束；binder 保存裸指针；32-bit layout hash 命中后不比较完整键。
-5. pipeline cache key 使用对象地址和不完整状态。
-6. 缺少统一 `RHICapabilities/RHILimits`，固定最大值和 assert 代替创建前验证。
+1. CPU map/unmap 尚未定义统一 lock mode、range、alignment、flush/invalidate及in-flight冲突；应与 GPU fence/readback 能力一并定型，禁止资源对象私自 submit 或 wait idle。
+2. `RHIDevice::create_graphics_command_context()` 与 `RHIFrameContext::create_graphics_command_context()` 并存，Vulkan前者返回 `Unsupported`。需要明确非frame录制的产品需求；若第一阶段只允许frame-local context，应从公共device主路径移除或后置。
+3. `create_buffer/create_texture(initial_data)` 在Vulkan明确返回`Unsupported`，当前上传只能通过frame-local context完成；需要保持诊断行为并决定后续初始化批次，不得引入隐式submit/wait idle。
+4. Buffer View、storage binding、resolve attachment和GPU fence/readback尚未闭环；其 capability和错误路径需要与Vulkan、D3D10、D3D12映射一起定型。
+5. 正式RDG尚未实现。后续直接在renderscene建设RDG，不新增临时Pass Scheduler；在RDG接管跨pass状态前，手写renderscene transition只能作为RHI bring-up代码。
 
 ## P2
 
-1. 公共枚举包含 ray tracing、VRS、patch topology、subpass hint 等当前非目标语义。
-2. texture 的虚拟 `cast_texture*()` 存在可疑 override 返回 `nullptr`。
-3. 公共头依赖大型 `pch.h`，部分 const/override 和头文件静态定义需要整理。
-4. shader reflection 未落地，Vulkan descriptor layout 仍硬编码。
+1. 公共枚举仍包含legacy spelling alias；完成调用方迁移后应删除，避免cache key、日志和后端转换存在双重名称。
+2. 当前公共行为命名混用`Desc`、`Info`、`set_graphics_pipeline`、`transition_resources`等风格；按UE语义和Toy3d命名规则分调用链迁移，不做一次性无关重命名。
+3. shader reflection、binding参数模型和完整pipeline cache仍需成熟；最终公共命名不能泄漏descriptor set/root signature概念。

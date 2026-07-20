@@ -50,7 +50,7 @@ RHI frontend
     - RHICommandContext / RHIGraphicsCommandContext
     - RHICommandList
     - RHIQueue
-    - RHISwapchain
+    - RHIViewportContext
     - RHI resources / views / descriptors
         |
         v
@@ -82,8 +82,8 @@ rhi_descriptors.h        resource/view/shader/binding/pipeline descriptor
 rhi_resource.h           公共资源身份和强引用
 rhi_device.h             创建与 capability 查询
 rhi_command_context.h    录制命令
-rhi_queue.h              submit/completion serial
-rhi_swapchain.h          acquire/present/resize
+rhi_queue.h              submit 与 queue completion value
+rhi_viewport_context.h   frame 边界与 presentation
 ```
 
 重构期间旧接口只作为待迁移代码，不得继续增加能力。每个旧类型必须明确映射到新类型或明确删除；调用方迁移完成后立即移除旧定义，禁止长期维护两套 `format`、`access`、clear value、resource 或 pipeline 模型。
@@ -171,33 +171,32 @@ public:
 class RHIQueue
 {
 public:
-    virtual RHIResult<RHISubmitSerial> submit(
+    virtual RHIResult<RHIQueueCompletionValue> submit(
         Span<const RHICommandListRef> command_lists,
         const RHISubmitInfo& submit_info) = 0;
 
-    virtual RHISubmitSerial completed_serial() const = 0;
-    virtual RHIResult wait(RHISubmitSerial serial) = 0;
+    virtual RHIQueueCompletionValue completed_value() const = 0;
+    virtual RHIResult wait_for_value(RHIQueueCompletionValue value) = 0;
 };
 ```
 
-Submit serial 是 deferred deletion、frame resource、descriptor pool、command pool 和 upload ring 回收的统一完成依据。
+`RHIQueueCompletionValue` 是 deferred deletion、frame resource、descriptor pool、command pool 和 upload ring 回收的统一完成依据。它只在所属 queue 内单调递增和可比较。
 
-### 4.4 Swapchain
+### 4.4 Viewport 与 presentation
 
 ```cpp
-class RHISwapchain
+class RHIViewportContext
 {
 public:
-    virtual RHIResult<RHIAcquiredImage> acquire_next_image() = 0;
-    virtual RHIResult present(
-        RHIQueue& queue,
-        const RHIPresentInfo& info) = 0;
-    virtual RHIResult resize(uint32 width, uint32 height) = 0;
-    virtual RHITextureRef back_buffer(uint32 image_index) const = 0;
+    virtual RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() = 0;
+    virtual RHIStatus end_frame(
+        std::unique_ptr<RHIFrameContext> frame,
+        const std::vector<RHICommandListRef>& command_lists) = 0;
+    virtual RHIStatus request_resize(uint32 width, uint32 height) = 0;
 };
 ```
 
-`acquire_next_image()` 和 `present()` 必须区分 `OutOfDate`、`Suboptimal`、`DeviceLost` 和普通错误。Resize 由 renderer/frame coordinator 触发，render pass 不得自行重建 swapchain。
+Swapchain 是各后端 `RHIViewportContext` 的内部 presentation 组件，不建立公共 `RHISwapchain` 或 `RHIDevice::create_swapchain()` 平行路径。`begin_frame()` 返回当前 presentation texture/view，`end_frame()` 统一完成 submit 和 present；image index、frame slot、acquire/present 同步对象及原生 swapchain 均不得泄漏到 renderscene。Out-of-date、suboptimal、surface lost、device lost 和延迟 resize 由 viewport 内部处理并通过可诊断结果反馈。
 
 ## 5. 资源与 view
 
@@ -270,12 +269,12 @@ struct RHIResourceTransition
 1. `RHIDevice` 创建公共资源。
 2. Render/Material/scene 对资源持有公共强引用。
 3. Command list 在录制期间保留 GPU 工作所需资源引用。
-4. Submit 后，command list 和资源引用与 submit serial 绑定。
+4. Submit 后，command list 和资源引用与本次提交返回的 `completion_value` 绑定。
 5. CPU 最后一个引用释放后，原生对象进入 deferred-deletion queue。
-6. 仅当 `completed_serial >= retire_serial` 时销毁原生对象。
+6. 仅当 `completed_value >= retire_value` 时销毁原生对象。
 7. Device 晚于所有子资源、swapchain、pool 和 cache 销毁。
 
-Descriptor pool、command pool、upload ring 和临时 framebuffer 按 frame-in-flight/serial 分代，GPU 完成前不得 reset 或复用。
+Descriptor pool、command pool、upload ring 和临时 framebuffer 按 frame-in-flight/completion value 分代，GPU 完成前不得 reset 或复用。
 
 ## 8. Shader 系统边界
 
@@ -729,9 +728,9 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 - 建立 `RHIDevice`；
 - 建立 `RHICommandContext` 和 `RHIGraphicsCommandContext`；
-- 建立 `RHICommandList`、`RHIQueue` 和 `RHISwapchain`；
-- 临时保留旧 `IDynamicRHI` adapter；
-- 移除公共头文件中的 `g_rhi` 定义并改为显式注入。
+- 建立 `RHICommandList`、`RHIQueue` 和 `RHIViewportContext`，将 swapchain 收入 viewport 后端实现；
+- Vulkan 后端直接实现公共 `RHIDevice` 接口，不保留旧 `IDynamicRHI` adapter；
+- engine 初始化层显式持有并注入 RHI device，不定义可变全局 `g_rhi`。
 
 ### 阶段 3：RenderCore 基础
 
@@ -748,7 +747,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 - upload/copy/transition；
 - graphics pipeline 和 binding；
 - render pass 和 draw；
-- submit serial、frame resource 和 deferred deletion；
+- queue completion value、frame resource 和 deferred deletion；
 - 通过 validation layer 验证多 frame-in-flight。
 
 ### 阶段 5：Material 与 BasePass 骨架
@@ -792,7 +791,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 - GlobalShader/MaterialShader 使用显式 registry 还是轻量注册宏；
 - shader 编译工具链和 Vulkan/D3D bytecode 产物格式；
-- D3D11 submit serial 的 fence/query 实现策略；
+- D3D11 queue completion value 的 fence/query 实现策略；
 - transient uniform allocator 的公共 API 形态；
 - binding group 是否固定为五组，或允许 renderer profile 配置映射；
 - MaterialTemplate 的序列化格式、shader language 和 Godot 风格生成接口；
