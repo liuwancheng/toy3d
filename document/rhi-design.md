@@ -526,6 +526,8 @@ Vulkan 和 D3D12 创建原生 pipeline/PSO；D3D11 将其编译为 shader 与 st
 
 Pipeline cache key 不得使用对象地址，必须覆盖完整 descriptor 和 shader content hash；hash collision 后必须比较完整 descriptor。
 
+Pipeline 创建入口采用 non-virtual interface。公共 `RHIDevice::create_graphics_pipeline()` 负责 validation、capability/limits、descriptor canonicalization、完整 key 和并发 cache；各后端只实现受保护的 `create_graphics_pipeline_impl()`。公共 cache 由 device 拥有；shutdown 通过 lifecycle gate 拒绝新创建、等待已进入创建结束，再等待 GPU idle、释放 cache 并销毁 native device。Vulkan/D3D12 的 native cache blob 或 pipeline library 属于后端第二级 cache，不能代替公共逻辑 PSO cache。
+
 ## 13. Render pass 与 Render 上层调用
 
 ### 13.1 Pass 职责

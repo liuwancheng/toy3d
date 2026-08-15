@@ -22,6 +22,7 @@
 
 ## 分层
 
+- 公共 RHI 行为入口使用 non-virtual interface：公共方法统一执行 descriptor validation、capability/limits 检查、规范化、cache、状态机和错误语义，只把不可共享的原生创建或命令翻译路由到受保护的 backend `*_impl()`。禁止 renderscene 绕过公共入口直接调用 backend hook。
 - `RHIDevice`：初始化、capability/limits、资源/view/shader/binding layout/pipeline 创建。第一阶段初始化接收含 `primary_surface` 的 device descriptor，Vulkan 必须据此选择同时支持 graphics 和 present 的 queue family；无法满足时返回 `Unsupported`。
 - `RHICommandContext`：copy、transition、通用绑定；`RHIGraphicsCommandContext`：render pass、graphics pipeline、draw；预留 `RHIComputeCommandContext`：compute pipeline、dispatch。
 - queue：submit 和完成序号。第一阶段只有单 graphics queue；swapchain acquire/present 的 GPU-GPU 同步仅由后端处理，不进入公共资源或普通 submit 描述符。
@@ -81,6 +82,7 @@
 - sampler descriptor 只包含三后端共有的 filter、address mode、LOD、anisotropy、comparison 和固定 border color 语义；后端在创建前检查 capability 与 limits。
 - shader 输入包含 stage、目标字节码、entry point、reflection 和稳定 content hash。
 - pipeline descriptor 是完整不可变值；cache key 覆盖全部兼容状态，hash 命中后做 equality 校验。
+- graphics pipeline cache 由 device 拥有并在公共 RHI frontend 实现。它使用不含对象地址和 debug name 的规范化值键，对并发 miss 做 single-flight 去重；确定性 validation 在进入 cache 前完成，backend 创建失败不永久缓存。shutdown 必须拒绝新的 pipeline 创建并等待已进入的创建结束，再等待 GPU idle、释放 cache 强引用并销毁 native device。
 - graphics pipeline descriptor 必须显式包含 vertex buffer/attribute、primitive topology、rasterization、depth/stencil、每 color attachment 的 blend/write mask，以及 attachment format/sample count；viewport 和 scissor 属于 command context 的动态状态。
 - graphics pipeline 必须兼容实际 attachment 的 format、sample count、load/store/resolve 与 depth/stencil 用法。
 
