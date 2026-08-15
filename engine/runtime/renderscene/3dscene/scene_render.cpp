@@ -30,6 +30,11 @@ namespace toy3d
         {
             return RHIResult<RHICommandListRef>::failure(status.code(), status.message());
         }
+        status = initialize_test_depth_resources(frame);
+        if (!status)
+        {
+            return RHIResult<RHICommandListRef>::failure(status.code(), status.message());
+        }
         auto context_result = frame.create_graphics_command_context();
         if (!context_result)
         {
@@ -42,6 +47,10 @@ namespace toy3d
         if (status)
         {
             status = prepare_test_pass_texture(*context);
+        }
+        if (status)
+        {
+            status = prepare_test_pass_depth(*context);
         }
         if (status)
         {

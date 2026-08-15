@@ -159,6 +159,10 @@ namespace toy3d
         pipeline_desc.rasterization.cull_mode = RHICullMode::None;
         pipeline_desc.color_formats[0] = RHIFormat::B8G8R8A8UNorm;
         pipeline_desc.color_attachment_count = 1;
+        pipeline_desc.depth_stencil.depth_test_enable = true;
+        pipeline_desc.depth_stencil.depth_write_enable = true;
+        pipeline_desc.depth_stencil.depth_compare_operation = RHICompareOperation::LessEqual;
+        pipeline_desc.depth_stencil_format = RHIFormat::D32Float;
         pipeline_desc.debug_name = "TestPassFullscreenPipeline";
         auto pipeline_result = rhi_device.create_graphics_pipeline(pipeline_desc);
         if (!pipeline_result)
@@ -172,6 +176,50 @@ namespace toy3d
         test_binding_layout = std::move(binding_layout);
         test_binding_set = std::move(binding_set_result).value();
         test_pipeline = std::move(pipeline_result).value();
+        return RHIStatus::success();
+    }
+
+    RHIStatus SceneRendering::initialize_test_depth_resources(const RHIFrameContext& frame)
+    {
+        if (test_depth_texture && test_depth_width == frame.width() &&
+            test_depth_height == frame.height())
+        {
+            return RHIStatus::success();
+        }
+
+        RHITextureDesc texture_desc;
+        texture_desc.width = frame.width();
+        texture_desc.height = frame.height();
+        texture_desc.format = RHIFormat::D32Float;
+        texture_desc.usage = RHIResourceUsage::DepthStencil;
+        texture_desc.initial_access = RHIAccess::Common;
+        texture_desc.clear_value = RHIClearValue::DepthOne;
+        texture_desc.debug_name = "TestPassDepth";
+        auto texture_result = rhi_device.create_texture(texture_desc);
+        if (!texture_result)
+        {
+            return texture_result.status();
+        }
+
+        RHITextureViewDesc view_desc;
+        view_desc.type = RHIResourceViewType::DepthStencil;
+        view_desc.dimension = RHITextureViewDimension::Texture2D;
+        view_desc.format = RHIFormat::D32Float;
+        view_desc.subresources.aspect = RHITextureAspect::Depth;
+        view_desc.subresources.mip_count = 1;
+        view_desc.subresources.layer_count = 1;
+        view_desc.debug_name = "TestPassDepthView";
+        auto view_result = rhi_device.create_texture_view(texture_result.value(), view_desc);
+        if (!view_result)
+        {
+            return view_result.status();
+        }
+
+        test_depth_texture = std::move(texture_result).value();
+        test_depth_view = std::move(view_result).value();
+        test_depth_width = frame.width();
+        test_depth_height = frame.height();
+        test_depth_transitioned = false;
         return RHIStatus::success();
     }
 
@@ -230,6 +278,28 @@ namespace toy3d
         return status;
     }
 
+    RHIStatus SceneRendering::prepare_test_pass_depth(RHIGraphicsCommandContext& context)
+    {
+        if (test_depth_transitioned)
+        {
+            return RHIStatus::success();
+        }
+
+        RHIResourceTransition transition;
+        transition.resource = test_depth_texture;
+        transition.before = RHIAccess::Common;
+        transition.after = RHIAccess::DepthStencilWrite;
+        transition.subresources.aspect = RHITextureAspect::Depth;
+        transition.subresources.mip_count = 1;
+        transition.subresources.layer_count = 1;
+        const RHIStatus status = context.transition_resources({transition});
+        if (status)
+        {
+            test_depth_transitioned = true;
+        }
+        return status;
+    }
+
     RHIStatus SceneRendering::render_test_pass(
         RHIGraphicsCommandContext& context,
         const RHIFrameContext& frame)
@@ -241,6 +311,13 @@ namespace toy3d
         color_attachment.store = RHIStoreOperation::Store;
         color_attachment.clear_value = RHIClearValue::color_value(vec4(0.04F, 0.08F, 0.16F, 1.0F));
         pass_desc.color_attachments.push_back(std::move(color_attachment));
+        pass_desc.has_depth_stencil_attachment = true;
+        pass_desc.depth_stencil_attachment.view = test_depth_view;
+        pass_desc.depth_stencil_attachment.depth_load = RHILoadOperation::Clear;
+        pass_desc.depth_stencil_attachment.depth_store = RHIStoreOperation::Store;
+        pass_desc.depth_stencil_attachment.stencil_load = RHILoadOperation::Discard;
+        pass_desc.depth_stencil_attachment.stencil_store = RHIStoreOperation::Discard;
+        pass_desc.depth_stencil_attachment.clear_value = RHIClearValue::DepthOne;
         pass_desc.debug_name = "SceneRenderingTestPass";
 
         RHIStatus status = context.begin_render_pass(pass_desc);
