@@ -137,6 +137,8 @@ namespace toy3d
             const RHIGraphicsPipelineRef& pipeline) override;
         RHIStatus set_viewport(const RHIViewport& viewport) override;
         RHIStatus set_scissor(const RHIRect& rect) override;
+        RHIStatus set_blend_constants(const vec4& constants) override;
+        RHIStatus set_stencil_reference(std::uint8_t reference) override;
         RHIStatus set_vertex_buffers(
             const std::vector<RHIVertexBufferBinding>& bindings) override;
         RHIStatus set_index_buffer(const RHIIndexBufferBinding& binding) override;

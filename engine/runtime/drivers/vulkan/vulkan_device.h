@@ -37,7 +37,6 @@ namespace toy3d
         VulkanDevice& operator=(const VulkanDevice&) = delete;
 
         RHIStatus initialize(const RHIDeviceDesc& desc) override;
-        RHIStatus shutdown() override;
 
         const RHICapabilities& capabilities() const override;
         const RHILimits& limits() const override;
@@ -72,8 +71,6 @@ namespace toy3d
             const RHISamplerDesc& desc) override;
         RHIResult<RHIBindingSetRef> create_binding_set(
             const RHIBindingSetDesc& desc) override;
-        RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
-            const RHIGraphicsPipelineDesc& desc) override;
         RHIResult<RHIGPUFenceRef> create_gpu_fence(
             const std::string& debug_name) override;
 
@@ -91,6 +88,13 @@ namespace toy3d
         VulkanDeferredDeletionQueue& deferred_deletion_queue();
         VulkanDeviceObservation observation_snapshot() const;
         void release_completed_work(RHIQueueCompletionValue completed_value);
+
+    protected:
+        RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
+            const RHIGraphicsPipelineDesc& desc) override;
+        bool is_initialized_impl() const override;
+        RHIStatus wait_idle_before_shutdown_impl() override;
+        RHIStatus shutdown_impl() override;
 
     private:
         RHIStatus create_instance(const RHIDeviceDesc& desc);

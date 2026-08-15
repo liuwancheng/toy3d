@@ -126,6 +126,9 @@ namespace toy3d
             VkRenderPass render_pass,
             VkFramebuffer framebuffer,
             std::vector<RHIFormat> color_formats,
+            RHIFormat depth_stencil_format,
+            bool depth_read_only,
+            bool stencil_read_only,
             std::uint32_t sample_count);
         ~VulkanRenderPassResources();
 
@@ -138,6 +141,9 @@ namespace toy3d
         VkRenderPass vk_render_pass = VK_NULL_HANDLE;
         VkFramebuffer vk_framebuffer = VK_NULL_HANDLE;
         std::vector<RHIFormat> pass_color_formats;
+        RHIFormat pass_depth_stencil_format = RHIFormat::Unknown;
+        bool pass_depth_read_only = false;
+        bool pass_stencil_read_only = false;
         std::uint32_t pass_sample_count = 1;
     };
 

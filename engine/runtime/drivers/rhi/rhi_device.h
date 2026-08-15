@@ -5,12 +5,16 @@
 #include "drivers/rhi/rhi_result.h"
 #include "drivers/rhi/rhi_viewport_context.h"
 
+#include <condition_variable>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace toy3d
 {
     class RHIGraphicsCommandContext;
+    class RHIGraphicsPipelineCache;
     class RHIQueue;
 
     struct RHIDeviceDesc
@@ -25,14 +29,14 @@ namespace toy3d
     class RHIDevice
     {
     public:
-        RHIDevice() = default;
-        virtual ~RHIDevice() = default;
+        RHIDevice();
+        virtual ~RHIDevice();
 
         RHIDevice(const RHIDevice&) = delete;
         RHIDevice& operator=(const RHIDevice&) = delete;
 
         virtual RHIStatus initialize(const RHIDeviceDesc& desc) = 0;
-        virtual RHIStatus shutdown() = 0;
+        RHIStatus shutdown();
 
         virtual const RHICapabilities& capabilities() const = 0;
         virtual const RHILimits& limits() const = 0;
@@ -76,13 +80,45 @@ namespace toy3d
         virtual RHIResult<RHIBindingSetRef> create_binding_set(
             const RHIBindingSetDesc& desc) = 0;
 
-        virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
-            const RHIGraphicsPipelineDesc& desc) = 0;
+        // Graphics pipelines pass through the common frontend so every
+        // backend shares validation, canonical keys, and concurrent caching.
+        RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
+            const RHIGraphicsPipelineDesc& desc);
 
         virtual RHIResult<RHIGPUFenceRef> create_gpu_fence(
             const std::string& debug_name) = 0;
 
         virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
             create_graphics_command_context() = 0;
+
+    protected:
+        virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
+            const RHIGraphicsPipelineDesc& desc) = 0;
+        virtual bool is_initialized_impl() const = 0;
+        virtual RHIStatus wait_idle_before_shutdown_impl() = 0;
+        virtual RHIStatus shutdown_impl() = 0;
+
+    private:
+        class PipelineCreationScope final
+        {
+        public:
+            explicit PipelineCreationScope(RHIDevice& owner);
+            ~PipelineCreationScope();
+
+            PipelineCreationScope(const PipelineCreationScope&) = delete;
+            PipelineCreationScope& operator=(const PipelineCreationScope&) = delete;
+
+        private:
+            RHIDevice& device;
+        };
+
+        RHIStatus begin_pipeline_creation();
+        void end_pipeline_creation();
+
+        std::unique_ptr<RHIGraphicsPipelineCache> graphics_pipeline_cache;
+        std::mutex lifecycle_mutex;
+        std::condition_variable lifecycle_changed;
+        std::uint32_t active_pipeline_creations = 0;
+        bool shutting_down = false;
     };
 }

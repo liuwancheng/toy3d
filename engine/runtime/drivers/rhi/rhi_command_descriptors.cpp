@@ -1,6 +1,8 @@
 #include "drivers/rhi/rhi_command_descriptors.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace toy3d
 {
@@ -255,10 +257,30 @@ namespace toy3d
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Depth attachment extent and sample count must match color attachments.");
             }
+            if ((attachment.view->desc().depth_read_only && attachment.depth_load == RHILoadOperation::Clear) ||
+                (attachment.view->desc().stencil_read_only && attachment.stencil_load == RHILoadOperation::Clear))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Read-only depth/stencil aspects cannot use a clear load operation.");
+            }
             if ((attachment.depth_load == RHILoadOperation::Clear || attachment.stencil_load == RHILoadOperation::Clear) &&
                 attachment.clear_value.type() != RHIClearValue::Type::DepthStencil)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Cleared depth-stencil attachment requires a depth-stencil clear value.");
+            }
+            if (attachment.clear_value.type() == RHIClearValue::Type::DepthStencil)
+            {
+                float depth = 1.0F;
+                std::uint32_t stencil = 0;
+                attachment.clear_value.get_clear_depth_stencil(depth, stencil);
+                if (!std::isfinite(depth) || depth < 0.0F || depth > 1.0F ||
+                    stencil > std::numeric_limits<std::uint8_t>::max())
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Depth-stencil clear values require depth in [0, 1] and an 8-bit stencil value.");
+                }
             }
         }
         return RHIStatus::success();

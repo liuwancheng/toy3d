@@ -92,6 +92,8 @@ namespace toy3d
             const RHIGraphicsPipelineRef& pipeline) = 0;
         virtual RHIStatus set_viewport(const RHIViewport& viewport) = 0;
         virtual RHIStatus set_scissor(const RHIRect& rect) = 0;
+        virtual RHIStatus set_blend_constants(const vec4& constants) = 0;
+        virtual RHIStatus set_stencil_reference(std::uint8_t reference) = 0;
         virtual RHIStatus set_vertex_buffers(
             const std::vector<RHIVertexBufferBinding>& bindings) = 0;
         virtual RHIStatus set_index_buffer(

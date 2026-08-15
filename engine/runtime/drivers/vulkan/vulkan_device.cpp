@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <string>
 #include <vector>
@@ -423,6 +424,38 @@ namespace toy3d
             return VK_COMPARE_OP_ALWAYS;
         }
 
+        VkStencilOp to_vk_stencil_operation(RHIStencilOperation operation)
+        {
+            switch (operation)
+            {
+            case RHIStencilOperation::Keep: return VK_STENCIL_OP_KEEP;
+            case RHIStencilOperation::Zero: return VK_STENCIL_OP_ZERO;
+            case RHIStencilOperation::Replace: return VK_STENCIL_OP_REPLACE;
+            case RHIStencilOperation::IncrementClamp: return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
+            case RHIStencilOperation::DecrementClamp: return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
+            case RHIStencilOperation::Invert: return VK_STENCIL_OP_INVERT;
+            case RHIStencilOperation::IncrementWrap: return VK_STENCIL_OP_INCREMENT_AND_WRAP;
+            case RHIStencilOperation::DecrementWrap: return VK_STENCIL_OP_DECREMENT_AND_WRAP;
+            }
+            return VK_STENCIL_OP_KEEP;
+        }
+
+        VkStencilOpState to_vk_stencil_face(
+            const RHIGraphicsPipelineDesc::StencilFaceState& face,
+            std::uint8_t read_mask,
+            std::uint8_t write_mask)
+        {
+            VkStencilOpState result{};
+            result.failOp = to_vk_stencil_operation(face.fail_operation);
+            result.passOp = to_vk_stencil_operation(face.pass_operation);
+            result.depthFailOp = to_vk_stencil_operation(face.depth_fail_operation);
+            result.compareOp = to_vk_compare_operation(face.compare_operation);
+            result.compareMask = read_mask;
+            result.writeMask = write_mask;
+            result.reference = 0;
+            return result;
+        }
+
         VkBorderColor to_vk_border_color(RHIBorderColor color)
         {
             switch (color)
@@ -675,18 +708,22 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanDevice::shutdown()
+    RHIStatus VulkanDevice::wait_idle_before_shutdown_impl()
     {
-        RHIStatus status = RHIStatus::success();
-        if (vk_device != VK_NULL_HANDLE)
+        if (vk_device == VK_NULL_HANDLE)
         {
-            const VkResult wait_result = vkDeviceWaitIdle(vk_device);
-            if (wait_result != VK_SUCCESS)
-            {
-                status = make_vulkan_status(wait_result, "vkDeviceWaitIdle");
-            }
+            return RHIStatus::success();
         }
+        return make_vulkan_status(vkDeviceWaitIdle(vk_device), "vkDeviceWaitIdle");
+    }
 
+    bool VulkanDevice::is_initialized_impl() const
+    {
+        return initialized;
+    }
+
+    RHIStatus VulkanDevice::shutdown_impl()
+    {
         queue.reset();
         if (deletion_queue && vk_device != VK_NULL_HANDLE)
         {
@@ -723,7 +760,7 @@ namespace toy3d
         device_capabilities = {};
         device_limits = {};
         initialized = false;
-        return status;
+        return RHIStatus::success();
     }
 
     const RHICapabilities& VulkanDevice::capabilities() const
@@ -1014,6 +1051,25 @@ namespace toy3d
         if (!aspect)
         {
             return RHIResult<RHITextureViewRef>::failure(aspect.status().code(), aspect.status().message());
+        }
+        if (desc.type == RHIResourceViewType::DepthStencil)
+        {
+            const RHITextureAspect required_aspect = is_vk_stencil_format(view_format)
+                ? RHITextureAspect::DepthStencil
+                : RHITextureAspect::Depth;
+            if (desc.subresources.aspect != required_aspect)
+            {
+                return RHIResult<RHITextureViewRef>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan depth-stencil views must select every aspect present in the attachment format.");
+            }
+            if (is_vk_stencil_format(view_format) &&
+                desc.depth_read_only != desc.stencil_read_only)
+            {
+                return RHIResult<RHITextureViewRef>::failure(
+                    RHIErrorCode::Unsupported,
+                    "Vulkan 1.0 depth-stencil views do not support mixed read-only and writable aspects.");
+            }
         }
         const std::uint32_t mip_count = desc.subresources.mip_count == RHI_ALL_MIPS
             ? texture->desc().mip_levels - desc.subresources.first_mip
@@ -1368,13 +1424,8 @@ namespace toy3d
             desc, vk_device, descriptor_pool, descriptor_set));
     }
 
-    RHIResult<RHIGraphicsPipelineRef> VulkanDevice::create_graphics_pipeline(const RHIGraphicsPipelineDesc& desc)
+    RHIResult<RHIGraphicsPipelineRef> VulkanDevice::create_graphics_pipeline_impl(const RHIGraphicsPipelineDesc& desc)
     {
-        const RHIStatus validation = validate_graphics_pipeline_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHIGraphicsPipelineRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized || vk_device == VK_NULL_HANDLE)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
@@ -1388,18 +1439,11 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan graphics pipelines require shaders and a binding layout created by the Vulkan device.");
         }
-        if (desc.color_attachment_count == 0)
+        if (desc.color_attachment_count == 0 && desc.depth_stencil_format == RHIFormat::Unknown)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan graphics pipelines currently require at least one color attachment.");
-        }
-        if (desc.depth_stencil_format != RHIFormat::Unknown || desc.depth_stencil.depth_test_enable ||
-            desc.depth_stencil.depth_write_enable || desc.depth_stencil.stencil_test_enable)
-        {
-            return RHIResult<RHIGraphicsPipelineRef>::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan graphics pipelines do not support depth/stencil attachments yet.");
+                RHIErrorCode::InvalidArgument,
+                "Vulkan graphics pipelines require at least one color or depth-stencil attachment.");
         }
         if (desc.rasterization.depth_clamp_enable || desc.rasterization.polygon_mode != RHIPolygonMode::Fill)
         {
@@ -1422,7 +1466,8 @@ namespace toy3d
         std::vector<VkAttachmentDescription> attachments;
         std::vector<VkAttachmentReference> attachment_references;
         std::vector<VkPipelineColorBlendAttachmentState> blend_attachments;
-        attachments.reserve(desc.color_attachment_count);
+        attachments.reserve(desc.color_attachment_count +
+            (desc.depth_stencil_format != RHIFormat::Unknown ? 1U : 0U));
         attachment_references.reserve(desc.color_attachment_count);
         blend_attachments.reserve(desc.color_attachment_count);
         for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
@@ -1472,10 +1517,46 @@ namespace toy3d
             blend_attachments.push_back(vk_blend);
         }
 
+        VkAttachmentReference depth_stencil_reference{};
+        const bool has_depth_stencil_attachment = desc.depth_stencil_format != RHIFormat::Unknown;
+        if (has_depth_stencil_attachment)
+        {
+            const VkFormat format = to_vk_format(desc.depth_stencil_format);
+            if (!is_vk_depth_format(format))
+            {
+                return RHIResult<RHIGraphicsPipelineRef>::failure(
+                    RHIErrorCode::Unsupported,
+                    "The Vulkan graphics pipeline depth-stencil format is not a supported depth format.");
+            }
+            if (desc.depth_stencil.stencil_test_enable && !is_vk_stencil_format(format))
+            {
+                return RHIResult<RHIGraphicsPipelineRef>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan stencil testing requires a depth-stencil format with a stencil aspect.");
+            }
+            VkAttachmentDescription attachment{};
+            attachment.format = format;
+            attachment.samples = sample_count.value();
+            attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depth_stencil_reference.attachment = static_cast<std::uint32_t>(attachments.size());
+            depth_stencil_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            attachments.push_back(attachment);
+        }
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = static_cast<std::uint32_t>(attachment_references.size());
-        subpass.pColorAttachments = attachment_references.data();
+        subpass.pColorAttachments = attachment_references.empty()
+            ? nullptr
+            : attachment_references.data();
+        subpass.pDepthStencilAttachment = has_depth_stencil_attachment
+            ? &depth_stencil_reference
+            : nullptr;
         VkRenderPassCreateInfo render_pass_info{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
         render_pass_info.attachmentCount = static_cast<std::uint32_t>(attachments.size());
         render_pass_info.pAttachments = attachments.data();
@@ -1559,12 +1640,31 @@ namespace toy3d
         rasterizer.lineWidth = 1.0F;
         VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
         multisample.rasterizationSamples = sample_count.value();
+        VkPipelineDepthStencilStateCreateInfo depth_stencil{
+            VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        depth_stencil.depthTestEnable = desc.depth_stencil.depth_test_enable ? VK_TRUE : VK_FALSE;
+        depth_stencil.depthWriteEnable = desc.depth_stencil.depth_write_enable ? VK_TRUE : VK_FALSE;
+        depth_stencil.depthCompareOp = to_vk_compare_operation(desc.depth_stencil.depth_compare_operation);
+        depth_stencil.depthBoundsTestEnable = VK_FALSE;
+        depth_stencil.stencilTestEnable = desc.depth_stencil.stencil_test_enable ? VK_TRUE : VK_FALSE;
+        depth_stencil.front = to_vk_stencil_face(
+            desc.depth_stencil.front_face,
+            desc.depth_stencil.stencil_read_mask,
+            desc.depth_stencil.stencil_write_mask);
+        depth_stencil.back = to_vk_stencil_face(
+            desc.depth_stencil.back_face,
+            desc.depth_stencil.stencil_read_mask,
+            desc.depth_stencil.stencil_write_mask);
         VkPipelineColorBlendStateCreateInfo color_blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         color_blend.attachmentCount = static_cast<std::uint32_t>(blend_attachments.size());
-        color_blend.pAttachments = blend_attachments.data();
-        const VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        color_blend.pAttachments = blend_attachments.empty() ? nullptr : blend_attachments.data();
+        const VkDynamicState dynamic_states[] = {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR,
+            VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+            VK_DYNAMIC_STATE_STENCIL_REFERENCE};
         VkPipelineDynamicStateCreateInfo dynamic_state{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-        dynamic_state.dynamicStateCount = 2;
+        dynamic_state.dynamicStateCount = static_cast<std::uint32_t>(std::size(dynamic_states));
         dynamic_state.pDynamicStates = dynamic_states;
         VkGraphicsPipelineCreateInfo pipeline_info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
         pipeline_info.stageCount = 2;
@@ -1574,6 +1674,7 @@ namespace toy3d
         pipeline_info.pViewportState = &viewport_state;
         pipeline_info.pRasterizationState = &rasterizer;
         pipeline_info.pMultisampleState = &multisample;
+        pipeline_info.pDepthStencilState = has_depth_stencil_attachment ? &depth_stencil : nullptr;
         pipeline_info.pColorBlendState = &color_blend;
         pipeline_info.pDynamicState = &dynamic_state;
         pipeline_info.layout = pipeline_layout;

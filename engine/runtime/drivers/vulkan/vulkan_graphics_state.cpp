@@ -19,9 +19,13 @@ namespace toy3d
         index_buffer_binding = {};
         current_viewport = {};
         current_scissor = {};
+        current_blend_constants = vec4(0.0F);
+        current_stencil_reference = 0;
         index_buffer_set = false;
         viewport_set = false;
         scissor_set = false;
+        blend_constants_set = false;
+        stencil_reference_set = false;
         state_dirty_flags = VulkanGraphicsStateDirty::All;
     }
 
@@ -81,6 +85,20 @@ namespace toy3d
         mark_dirty(VulkanGraphicsStateDirty::Scissor);
     }
 
+    void VulkanGraphicsState::set_blend_constants(const vec4& constants)
+    {
+        current_blend_constants = constants;
+        blend_constants_set = true;
+        mark_dirty(VulkanGraphicsStateDirty::BlendConstants);
+    }
+
+    void VulkanGraphicsState::set_stencil_reference(std::uint8_t reference)
+    {
+        current_stencil_reference = reference;
+        stencil_reference_set = true;
+        mark_dirty(VulkanGraphicsStateDirty::StencilReference);
+    }
+
     VulkanGraphicsStateDirty VulkanGraphicsState::dirty_flags() const
     {
         return state_dirty_flags;
@@ -123,6 +141,16 @@ namespace toy3d
         return current_scissor;
     }
 
+    const vec4& VulkanGraphicsState::blend_constants() const
+    {
+        return current_blend_constants;
+    }
+
+    std::uint8_t VulkanGraphicsState::stencil_reference() const
+    {
+        return current_stencil_reference;
+    }
+
     bool VulkanGraphicsState::has_index_buffer() const
     {
         return index_buffer_set;
@@ -136,6 +164,16 @@ namespace toy3d
     bool VulkanGraphicsState::has_scissor() const
     {
         return scissor_set;
+    }
+
+    bool VulkanGraphicsState::has_blend_constants() const
+    {
+        return blend_constants_set;
+    }
+
+    bool VulkanGraphicsState::has_stencil_reference() const
+    {
+        return stencil_reference_set;
     }
 
     void VulkanGraphicsState::mark_dirty(VulkanGraphicsStateDirty flags)

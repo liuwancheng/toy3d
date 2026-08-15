@@ -305,11 +305,17 @@ namespace toy3d
         VkRenderPass render_pass,
         VkFramebuffer framebuffer,
         std::vector<RHIFormat> color_formats,
+        RHIFormat depth_stencil_format,
+        bool depth_read_only,
+        bool stencil_read_only,
         std::uint32_t sample_count)
         : vk_device(device)
         , vk_render_pass(render_pass)
         , vk_framebuffer(framebuffer)
         , pass_color_formats(std::move(color_formats))
+        , pass_depth_stencil_format(depth_stencil_format)
+        , pass_depth_read_only(depth_read_only)
+        , pass_stencil_read_only(stencil_read_only)
         , pass_sample_count(sample_count)
     {
     }
@@ -344,9 +350,21 @@ namespace toy3d
     {
         if (pipeline_desc.color_attachment_count != pass_color_formats.size() ||
             pipeline_desc.sample_count != pass_sample_count ||
-            pipeline_desc.depth_stencil_format != RHIFormat::Unknown)
+            pipeline_desc.depth_stencil_format != pass_depth_stencil_format)
         {
             return false;
+        }
+        if (pass_depth_stencil_format != RHIFormat::Unknown)
+        {
+            if (pass_depth_read_only && pipeline_desc.depth_stencil.depth_write_enable)
+            {
+                return false;
+            }
+            if (pass_stencil_read_only && pipeline_desc.depth_stencil.stencil_test_enable &&
+                pipeline_desc.depth_stencil.stencil_write_mask != 0)
+            {
+                return false;
+            }
         }
         for (std::uint32_t index = 0; index < pipeline_desc.color_attachment_count; ++index)
         {

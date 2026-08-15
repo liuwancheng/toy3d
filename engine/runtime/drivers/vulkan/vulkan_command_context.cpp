@@ -14,6 +14,30 @@ namespace toy3d
 {
     namespace
     {
+        bool uses_constant_blend_factor(const RHIGraphicsPipelineDesc& desc)
+        {
+            for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
+            {
+                const auto& blend = desc.color_blend_attachments[index];
+                if (!blend.blend_enable)
+                {
+                    continue;
+                }
+                if (blend.source_color_factor == RHIBlendFactor::ConstantColor ||
+                    blend.source_color_factor == RHIBlendFactor::OneMinusConstantColor ||
+                    blend.destination_color_factor == RHIBlendFactor::ConstantColor ||
+                    blend.destination_color_factor == RHIBlendFactor::OneMinusConstantColor ||
+                    blend.source_alpha_factor == RHIBlendFactor::ConstantColor ||
+                    blend.source_alpha_factor == RHIBlendFactor::OneMinusConstantColor ||
+                    blend.destination_alpha_factor == RHIBlendFactor::ConstantColor ||
+                    blend.destination_alpha_factor == RHIBlendFactor::OneMinusConstantColor)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         RHIStatus make_vulkan_status(VkResult result, const char* operation)
         {
             if (result == VK_SUCCESS)
@@ -740,6 +764,18 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan texture transition uses a buffer-only access state.");
             }
+            const bool uses_depth_stencil_access =
+                transition.before == RHIAccess::DepthStencilRead ||
+                transition.before == RHIAccess::DepthStencilWrite ||
+                transition.after == RHIAccess::DepthStencilRead ||
+                transition.after == RHIAccess::DepthStencilWrite;
+            if (uses_depth_stencil_access &&
+                !rhi_has_any_flag(texture->desc().usage, RHIResourceUsage::DepthStencil))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan depth-stencil transitions require a texture created with DepthStencil usage.");
+            }
             const auto tracked_state = recording_command_list->tracked_texture_state(texture, transition.subresources);
             if (!tracked_state)
             {
@@ -1081,25 +1117,23 @@ namespace toy3d
         {
             return validation;
         }
-        if (desc.has_depth_stencil_attachment || desc.color_attachments.empty())
-        {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan render passes currently support one or more color attachments without depth/stencil.");
-        }
-
         std::vector<VkAttachmentDescription> attachments;
-        std::vector<VkAttachmentReference> attachment_references;
+        std::vector<VkAttachmentReference> color_attachment_references;
         std::vector<VkImageView> image_views;
         std::vector<VkClearValue> clear_values;
         std::vector<RHIFormat> color_formats;
-        attachments.reserve(desc.color_attachments.size());
-        attachment_references.reserve(desc.color_attachments.size());
-        image_views.reserve(desc.color_attachments.size());
-        clear_values.reserve(desc.color_attachments.size());
+        const std::size_t attachment_count = desc.color_attachments.size() +
+            (desc.has_depth_stencil_attachment ? 1U : 0U);
+        attachments.reserve(attachment_count);
+        color_attachment_references.reserve(desc.color_attachments.size());
+        image_views.reserve(attachment_count);
+        clear_values.reserve(attachment_count);
         color_formats.reserve(desc.color_attachments.size());
         std::uint32_t width = 0;
         std::uint32_t height = 0;
+        std::uint32_t sample_count = 0;
+        bool depth_read_only = false;
+        bool stencil_read_only = false;
         for (std::uint32_t index = 0; index < desc.color_attachments.size(); ++index)
         {
             const RHIColorAttachmentDesc& attachment = desc.color_attachments[index];
@@ -1142,6 +1176,7 @@ namespace toy3d
             }
             width = attachment_width;
             height = attachment_height;
+            sample_count = texture->desc().sample_count;
 
             VkAttachmentDescription vk_attachment{};
             vk_attachment.format = vulkan_format_from_rhi(texture->desc().format);
@@ -1154,7 +1189,7 @@ namespace toy3d
             vk_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             attachments.push_back(vk_attachment);
             color_formats.push_back(texture->desc().format);
-            attachment_references.push_back({index, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+            color_attachment_references.push_back({index, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
             image_views.push_back(view->image_view());
 
             VkClearValue clear_value{};
@@ -1171,10 +1206,123 @@ namespace toy3d
             recording_command_list->retain_texture_view(attachment.view);
         }
 
+        VkAttachmentReference depth_stencil_reference{};
+        RHIFormat depth_stencil_format = RHIFormat::Unknown;
+        if (desc.has_depth_stencil_attachment)
+        {
+            const RHIDepthStencilAttachmentDesc& attachment = desc.depth_stencil_attachment;
+            const auto view = std::dynamic_pointer_cast<VulkanTextureView>(attachment.view);
+            const auto texture = view ? std::dynamic_pointer_cast<VulkanTexture>(view->texture()) : nullptr;
+            if (!view || !texture)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan render pass requires a Vulkan depth-stencil attachment view.");
+            }
+            const VkFormat vk_format = vulkan_format_from_rhi(attachment.view->desc().format);
+            if (!is_vk_depth_format(vk_format))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan depth-stencil attachment requires a depth format.");
+            }
+            const bool has_stencil = is_vk_stencil_format(vk_format);
+            if (has_stencil && attachment.view->desc().depth_read_only !=
+                attachment.view->desc().stencil_read_only)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::Unsupported,
+                    "Vulkan 1.0 render passes do not support mixed read-only and writable depth-stencil aspects.");
+            }
+            const bool read_only = attachment.view->desc().depth_read_only &&
+                (!has_stencil || attachment.view->desc().stencil_read_only);
+            const RHIAccess required_access = read_only
+                ? RHIAccess::DepthStencilRead
+                : RHIAccess::DepthStencilWrite;
+            const auto attachment_state = recording_command_list->tracked_texture_state(
+                texture, attachment.view->desc().subresources);
+            if (!attachment_state || attachment_state.value().access != required_access)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    read_only
+                        ? "Vulkan read-only depth-stencil attachment must be transitioned to DepthStencilRead before begin_render_pass."
+                        : "Vulkan writable depth-stencil attachment must be transitioned to DepthStencilWrite before begin_render_pass.");
+            }
+
+            const auto depth_load = to_vk_load_operation(attachment.depth_load);
+            const auto depth_store = to_vk_store_operation(attachment.depth_store);
+            const auto stencil_load = to_vk_load_operation(attachment.stencil_load);
+            const auto stencil_store = to_vk_store_operation(attachment.stencil_store);
+            if (!depth_load || !depth_store || !stencil_load || !stencil_store)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan render pass received an invalid depth-stencil load or store operation.");
+            }
+
+            const std::uint32_t mip = attachment.view->desc().subresources.first_mip;
+            const std::uint32_t attachment_width = std::max(1U, texture->desc().width >> mip);
+            const std::uint32_t attachment_height = std::max(1U, texture->desc().height >> mip);
+            if (width != 0 && (width != attachment_width || height != attachment_height ||
+                sample_count != texture->desc().sample_count))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan depth-stencil attachment extent or sample count does not match the color attachments.");
+            }
+            width = attachment_width;
+            height = attachment_height;
+            sample_count = texture->desc().sample_count;
+
+            const VkImageLayout layout = read_only
+                ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            VkAttachmentDescription vk_attachment{};
+            vk_attachment.format = vk_format;
+            vk_attachment.samples = static_cast<VkSampleCountFlagBits>(texture->desc().sample_count);
+            vk_attachment.loadOp = depth_load.value();
+            vk_attachment.storeOp = depth_store.value();
+            vk_attachment.stencilLoadOp = has_stencil
+                ? stencil_load.value()
+                : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            vk_attachment.stencilStoreOp = has_stencil
+                ? stencil_store.value()
+                : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            vk_attachment.initialLayout = layout;
+            vk_attachment.finalLayout = layout;
+            depth_stencil_reference.attachment = static_cast<std::uint32_t>(attachments.size());
+            depth_stencil_reference.layout = layout;
+            attachments.push_back(vk_attachment);
+            image_views.push_back(view->image_view());
+
+            VkClearValue clear_value{};
+            if (attachment.depth_load == RHILoadOperation::Clear ||
+                (has_stencil && attachment.stencil_load == RHILoadOperation::Clear))
+            {
+                float depth = 1.0F;
+                std::uint32_t stencil = 0;
+                attachment.clear_value.get_clear_depth_stencil(depth, stencil);
+                clear_value.depthStencil.depth = depth;
+                clear_value.depthStencil.stencil = stencil;
+            }
+            clear_values.push_back(clear_value);
+            depth_stencil_format = attachment.view->desc().format;
+            depth_read_only = attachment.view->desc().depth_read_only;
+            stencil_read_only = attachment.view->desc().stencil_read_only;
+            recording_command_list->retain_resource(texture);
+            recording_command_list->retain_texture_view(attachment.view);
+        }
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = static_cast<std::uint32_t>(attachment_references.size());
-        subpass.pColorAttachments = attachment_references.data();
+        subpass.colorAttachmentCount = static_cast<std::uint32_t>(color_attachment_references.size());
+        subpass.pColorAttachments = color_attachment_references.empty()
+            ? nullptr
+            : color_attachment_references.data();
+        subpass.pDepthStencilAttachment = desc.has_depth_stencil_attachment
+            ? &depth_stencil_reference
+            : nullptr;
         VkRenderPassCreateInfo render_pass_info{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
         render_pass_info.attachmentCount = static_cast<std::uint32_t>(attachments.size());
         render_pass_info.pAttachments = attachments.data();
@@ -1210,7 +1358,10 @@ namespace toy3d
             render_pass,
             framebuffer,
             std::move(color_formats),
-            desc.color_attachments.front().view->texture()->desc().sample_count);
+            depth_stencil_format,
+            depth_read_only,
+            stencil_read_only,
+            sample_count);
         VkRenderPassBeginInfo begin_info{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         begin_info.renderPass = active_render_pass->render_pass();
         begin_info.framebuffer = active_render_pass->framebuffer();
@@ -1298,6 +1449,35 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Vulkan scissor extent must be non-zero.");
         }
         graphics_state.set_scissor(rect);
+        return RHIStatus::success();
+    }
+
+    RHIStatus VulkanGraphicsCommandContext::set_blend_constants(const vec4& constants)
+    {
+        const RHIStatus status = require_recording();
+        if (!status)
+        {
+            return status;
+        }
+        if (!std::isfinite(constants.x) || !std::isfinite(constants.y) ||
+            !std::isfinite(constants.z) || !std::isfinite(constants.w))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan blend constants must be finite.");
+        }
+        graphics_state.set_blend_constants(constants);
+        return RHIStatus::success();
+    }
+
+    RHIStatus VulkanGraphicsCommandContext::set_stencil_reference(std::uint8_t reference)
+    {
+        const RHIStatus status = require_recording();
+        if (!status)
+        {
+            return status;
+        }
+        graphics_state.set_stencil_reference(reference);
         return RHIStatus::success();
     }
 
@@ -1435,6 +1615,19 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan draw requires viewport and scissor state.");
         }
+        if (uses_constant_blend_factor(pipeline->desc()) && !graphics_state.has_blend_constants())
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan draw requires blend constants for the active graphics pipeline.");
+        }
+        if (pipeline->desc().depth_stencil.stencil_test_enable &&
+            !graphics_state.has_stencil_reference())
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan draw requires a stencil reference for the active graphics pipeline.");
+        }
 
         const auto& vertex_layouts = pipeline->desc().vertex_buffers;
         const auto& vertex_bindings = graphics_state.vertex_buffers();
@@ -1473,7 +1666,8 @@ namespace toy3d
             if (group_index < bound_sets.size() && required_groups[group_index])
             {
                 const auto vulkan_set = std::dynamic_pointer_cast<VulkanBindingSet>(binding_set);
-                if (!vulkan_set || binding_set->layout() != pipeline->desc().binding_layout)
+                if (!vulkan_set ||
+                    !(binding_set->layout()->desc() == pipeline->desc().binding_layout->desc()))
                 {
                     return RHIStatus::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1592,6 +1786,21 @@ namespace toy3d
             vk_scissor.offset = {scissor.x, scissor.y};
             vk_scissor.extent = {scissor.width, scissor.height};
             vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
+        }
+        if (graphics_state.has_blend_constants() &&
+            (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::BlendConstants)))
+        {
+            const vec4& constants = graphics_state.blend_constants();
+            const float values[4] = {constants.x, constants.y, constants.z, constants.w};
+            vkCmdSetBlendConstants(vk_command_buffer, values);
+        }
+        if (graphics_state.has_stencil_reference() &&
+            (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::StencilReference)))
+        {
+            vkCmdSetStencilReference(
+                vk_command_buffer,
+                VK_STENCIL_FACE_FRONT_AND_BACK,
+                graphics_state.stencil_reference());
         }
         recording_command_list->retain_graphics_pipeline(graphics_state.pipeline());
         graphics_state.clear_dirty_flags(VulkanGraphicsStateDirty::All);

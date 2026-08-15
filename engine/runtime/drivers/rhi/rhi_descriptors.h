@@ -282,9 +282,6 @@ namespace toy3d
             RHIStencilOperation depth_fail_operation = RHIStencilOperation::Keep;
             RHIStencilOperation pass_operation = RHIStencilOperation::Keep;
             RHICompareOperation compare_operation = RHICompareOperation::Always;
-            std::uint32_t compare_mask = 0xffffffffU;
-            std::uint32_t write_mask = 0xffffffffU;
-            std::uint32_t reference = 0;
         };
 
         struct DepthStencilState
@@ -293,6 +290,11 @@ namespace toy3d
             bool depth_write_enable = false;
             RHICompareOperation depth_compare_operation = RHICompareOperation::LessEqual;
             bool stencil_test_enable = false;
+            // D3D10 and the baseline D3D12 depth-stencil state expose one pair
+            // of masks for both faces. Stencil reference is dynamic command
+            // state and therefore does not belong to the pipeline descriptor.
+            std::uint8_t stencil_read_mask = 0xffU;
+            std::uint8_t stencil_write_mask = 0xffU;
             StencilFaceState front_face;
             StencilFaceState back_face;
         };

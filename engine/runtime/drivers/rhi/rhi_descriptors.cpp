@@ -269,6 +269,13 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture was not created for the requested view type.");
         }
+        if (view_desc.type != RHIResourceViewType::DepthStencil &&
+            (view_desc.depth_read_only || view_desc.stencil_read_only))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Depth/stencil read-only flags are valid only for depth-stencil views.");
+        }
         return RHIStatus::success();
     }
 
@@ -487,9 +494,12 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Pipeline has too many color attachments.");
         }
-        if (desc.sample_count == 0)
+        if (desc.sample_count == 0 ||
+            (desc.sample_count & (desc.sample_count - 1U)) != 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Pipeline sample count must be non-zero.");
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Pipeline sample count must be a non-zero power of two.");
         }
         std::set<std::uint32_t> vertex_bindings;
         for (const RHIGraphicsPipelineDesc::VertexBufferLayout& layout : desc.vertex_buffers)
@@ -522,6 +532,12 @@ namespace toy3d
         }
         const bool depth_state_enabled = desc.depth_stencil.depth_test_enable ||
             desc.depth_stencil.depth_write_enable || desc.depth_stencil.stencil_test_enable;
+        if (desc.depth_stencil.depth_write_enable && !desc.depth_stencil.depth_test_enable)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Graphics pipeline depth writes require depth testing to be enabled.");
+        }
         if (depth_state_enabled && desc.depth_stencil_format == RHIFormat::Unknown)
         {
             return RHIStatus::failure(
