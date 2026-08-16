@@ -41,14 +41,19 @@ namespace toy3d::shader
         bool parse_property(ShaderAsset& asset);
         bool parse_resources(ShaderAsset& asset);
         bool parse_resource_group(ShaderAsset& asset);
+        bool parse_resource_type(Resource& resource);
         bool parse_variants(ShaderAsset& asset);
         bool parse_variant(ShaderAsset& asset);
         bool parse_pass(ShaderAsset& asset);
+        bool parse_stencil_state(ShaderPass& pass);
+        bool parse_stencil_face(StencilFaceState& face);
+        bool parse_blend_state(ShaderPass& pass);
         bool parse_hlsl_block(HlslBlock& block);
         bool parse_default_value(DefaultValue& value);
         std::optional<double> parse_number();
         void extract_pragmas(HlslBlock& block);
         void validate_program(ShaderPass& pass);
+        void validate_identifier(ShaderAsset& asset, const Token& token, std::string_view category);
         void add_error(DiagnosticCode code, const SourceLocation& at, std::string message);
         void copy_tokenizer_diagnostics();
 

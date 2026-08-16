@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
+#include <unordered_set>
 #include <utility>
 
 namespace toy3d::shader
@@ -34,7 +36,128 @@ namespace toy3d::shader
             if (name == "Texture2D") return PropertyType::Texture2D;
             if (name == "TextureCube") return PropertyType::TextureCube;
             if (name == "Sampler") return PropertyType::Sampler;
+            if (name == "ComparisonSampler") return PropertyType::ComparisonSampler;
             return std::nullopt;
+        }
+
+        std::optional<ResourceKind> resource_kind_from_name(std::string_view name)
+        {
+            if (name == "Texture2D") return ResourceKind::Texture2D;
+            if (name == "Texture2DArray") return ResourceKind::Texture2DArray;
+            if (name == "Texture3D") return ResourceKind::Texture3D;
+            if (name == "TextureCube") return ResourceKind::TextureCube;
+            if (name == "Texture2DMS") return ResourceKind::Texture2DMS;
+            if (name == "Sampler") return ResourceKind::Sampler;
+            if (name == "ComparisonSampler") return ResourceKind::ComparisonSampler;
+            if (name == "Buffer") return ResourceKind::Buffer;
+            if (name == "ByteAddressBuffer") return ResourceKind::ByteAddressBuffer;
+            if (name == "StructuredBuffer") return ResourceKind::StructuredBuffer;
+            if (name == "RWBuffer") return ResourceKind::RWBuffer;
+            if (name == "RWByteAddressBuffer") return ResourceKind::RWByteAddressBuffer;
+            if (name == "RWStructuredBuffer") return ResourceKind::RWStructuredBuffer;
+            if (name == "RWTexture2D") return ResourceKind::RWTexture2D;
+            if (name == "RWTexture2DArray") return ResourceKind::RWTexture2DArray;
+            if (name == "RWTexture3D") return ResourceKind::RWTexture3D;
+            return std::nullopt;
+        }
+
+        std::optional<ResourceElementType> resource_element_type_from_name(std::string_view name)
+        {
+            if (name == "Float") return ResourceElementType::Float;
+            if (name == "Float2") return ResourceElementType::Float2;
+            if (name == "Float3") return ResourceElementType::Float3;
+            if (name == "Float4") return ResourceElementType::Float4;
+            if (name == "Int") return ResourceElementType::Int;
+            if (name == "Int2") return ResourceElementType::Int2;
+            if (name == "Int3") return ResourceElementType::Int3;
+            if (name == "Int4") return ResourceElementType::Int4;
+            if (name == "UInt") return ResourceElementType::UInt;
+            if (name == "UInt2") return ResourceElementType::UInt2;
+            if (name == "UInt3") return ResourceElementType::UInt3;
+            if (name == "UInt4") return ResourceElementType::UInt4;
+            if (name == "Float2x2") return ResourceElementType::Float2x2;
+            if (name == "Float2x3") return ResourceElementType::Float2x3;
+            if (name == "Float2x4") return ResourceElementType::Float2x4;
+            if (name == "Float3x2") return ResourceElementType::Float3x2;
+            if (name == "Float3x3") return ResourceElementType::Float3x3;
+            if (name == "Float3x4") return ResourceElementType::Float3x4;
+            if (name == "Float4x2") return ResourceElementType::Float4x2;
+            if (name == "Float4x3") return ResourceElementType::Float4x3;
+            if (name == "Float4x4") return ResourceElementType::Float4x4;
+            return std::nullopt;
+        }
+
+        bool is_matrix(ResourceElementType type)
+        {
+            switch (type)
+            {
+            case ResourceElementType::Float2x2:
+            case ResourceElementType::Float2x3:
+            case ResourceElementType::Float2x4:
+            case ResourceElementType::Float3x2:
+            case ResourceElementType::Float3x3:
+            case ResourceElementType::Float3x4:
+            case ResourceElementType::Float4x2:
+            case ResourceElementType::Float4x3:
+            case ResourceElementType::Float4x4:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool requires_element_type(ResourceKind kind)
+        {
+            return kind != ResourceKind::Sampler && kind != ResourceKind::ComparisonSampler &&
+                kind != ResourceKind::ByteAddressBuffer && kind != ResourceKind::RWByteAddressBuffer;
+        }
+
+        bool allows_matrix_element(ResourceKind kind)
+        {
+            return kind == ResourceKind::StructuredBuffer || kind == ResourceKind::RWStructuredBuffer;
+        }
+
+        bool valid_shader_name(std::string_view name)
+        {
+            if (name.empty() || name.front() == '/' || name.back() == '/') return false;
+            std::size_t segment_start = 0;
+            while (segment_start < name.size())
+            {
+                const std::size_t segment_end = name.find('/', segment_start);
+                const std::size_t end = segment_end == std::string_view::npos ? name.size() : segment_end;
+                if (end == segment_start) return false;
+                const char first = name[segment_start];
+                if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_')) return false;
+                for (std::size_t index = segment_start + 1; index < end; ++index)
+                {
+                    const char value = name[index];
+                    if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
+                        (value >= '0' && value <= '9') || value == '_')) return false;
+                }
+                if (segment_end == std::string_view::npos) break;
+                segment_start = segment_end + 1;
+            }
+            return true;
+        }
+
+        bool is_stencil_compare(std::string_view value)
+        {
+            return is_one_of(value, {"Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual", "Always"});
+        }
+
+        bool is_stencil_operation(std::string_view value)
+        {
+            return is_one_of(value, {"Keep", "Zero", "Replace", "IncrementClamp", "DecrementClamp", "Invert", "IncrementWrap", "DecrementWrap"});
+        }
+
+        bool is_blend_factor(std::string_view value)
+        {
+            return is_one_of(value, {"Zero", "One", "SrcColor", "OneMinusSrcColor", "DstColor", "OneMinusDstColor", "SrcAlpha", "OneMinusSrcAlpha", "DstAlpha", "OneMinusDstAlpha", "ConstantColor", "OneMinusConstantColor", "ConstantAlpha", "OneMinusConstantAlpha", "SrcAlphaSaturate"});
+        }
+
+        bool is_blend_operation(std::string_view value)
+        {
+            return is_one_of(value, {"Add", "Subtract", "ReverseSubtract", "Min", "Max"});
         }
 
         std::optional<BindingGroup> binding_group_from_name(std::string_view name)
@@ -62,8 +185,8 @@ namespace toy3d::shader
             if (state == "FrontFace") return is_one_of(value, {"Clockwise", "CounterClockwise"});
             if (state == "Fill") return is_one_of(value, {"Solid", "Wireframe"});
             if (state == "DepthTest") return is_one_of(value, {"Off", "Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual", "Always"});
-            if (state == "DepthWrite" || state == "Stencil" || state == "Blend") return is_one_of(value, {"Off", "On"});
-            if (state == "ColorWrite") return is_one_of(value, {"None", "R", "RG", "RGB", "RGBA"});
+            if (state == "DepthWrite") return is_one_of(value, {"Off", "On"});
+            if (state == "ColorWrite") return is_one_of(value, {"None", "R", "G", "B", "A", "RG", "RGB", "RGBA"});
             return false;
         }
 
@@ -108,6 +231,10 @@ namespace toy3d::shader
         if (const auto name = expect(TokenKind::StringLiteral, "Expected the Shader display name."))
         {
             asset.name = name->text;
+            if (!valid_shader_name(asset.name))
+            {
+                add_error(DiagnosticCode::InvalidShaderName, name->location, "Shader name must contain slash-separated ASCII identifier segments.");
+            }
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the Shader name.");
 
@@ -285,6 +412,7 @@ namespace toy3d::shader
         Property property;
         property.name = name->text;
         property.location = name->location;
+        validate_identifier(asset, *name, "property");
         const bool duplicate = contains_name(asset.properties, property.name);
         if (duplicate)
         {
@@ -370,28 +498,14 @@ namespace toy3d::shader
             resource.group = group.value_or(BindingGroup::Pass);
             resource.name = name->text;
             resource.location = name->location;
+            validate_identifier(asset, *name, "resource");
             const bool duplicate = contains_name(asset.resources, resource.name);
             if (duplicate)
             {
                 add_error(DiagnosticCode::DuplicateResource, name->location, "Duplicate resource '" + resource.name + "'.");
             }
             expect(TokenKind::Colon, "Expected ':' after the resource name.");
-            if (const auto type = expect_identifier("Expected a resource type."))
-            {
-                resource.type = type->text;
-                if (match(TokenKind::LeftAngle))
-                {
-                    resource.type += '<';
-                    int depth = 1;
-                    while (depth > 0 && !check(TokenKind::EndOfFile))
-                    {
-                        const Token part = consume();
-                        if (part.kind == TokenKind::LeftAngle) ++depth;
-                        if (part.kind == TokenKind::RightAngle) --depth;
-                        resource.type += part.text;
-                    }
-                }
-            }
+            parse_resource_type(resource);
             if (match(TokenKind::Equal))
             {
                 parse_default_value(resource.default_value);
@@ -402,6 +516,54 @@ namespace toy3d::shader
             }
         }
         return expect(TokenKind::RightBrace, "Expected '}' to close the resource Binding Group.").has_value();
+    }
+
+    bool ShaderParser::parse_resource_type(Resource& resource)
+    {
+        const auto type = expect_identifier("Expected a resource type.");
+        if (!type)
+        {
+            return false;
+        }
+        const auto kind = resource_kind_from_name(type->text);
+        if (!kind)
+        {
+            add_error(DiagnosticCode::InvalidResourceType, type->location, "Unknown resource type '" + type->text + "'.");
+            return false;
+        }
+        resource.kind = *kind;
+        const bool has_element = match(TokenKind::LeftAngle);
+        if (requires_element_type(*kind) != has_element)
+        {
+            add_error(
+                DiagnosticCode::InvalidResourceType,
+                type->location,
+                requires_element_type(*kind) ? "Resource type requires an element type." : "Resource type does not accept an element type.");
+            if (!has_element)
+            {
+                return false;
+            }
+        }
+        if (!has_element)
+        {
+            return true;
+        }
+
+        const auto element = expect_identifier("Expected a resource element type.");
+        if (element)
+        {
+            const auto parsed_element = resource_element_type_from_name(element->text);
+            if (!parsed_element || (is_matrix(*parsed_element) && !allows_matrix_element(*kind)))
+            {
+                add_error(DiagnosticCode::InvalidResourceType, element->location, "Resource element type '" + element->text + "' is not supported by this resource kind.");
+            }
+            else
+            {
+                resource.element_type = *parsed_element;
+            }
+        }
+        expect(TokenKind::RightAngle, "Expected '>' after the resource element type.");
+        return resource.element_type != ResourceElementType::None;
     }
 
     bool ShaderParser::parse_variants(ShaderAsset& asset)
@@ -428,6 +590,7 @@ namespace toy3d::shader
         Variant variant;
         variant.name = name->text;
         variant.location = name->location;
+        validate_identifier(asset, *name, "variant");
         const bool duplicate = contains_name(asset.variants, variant.name);
         if (duplicate)
         {
@@ -499,6 +662,10 @@ namespace toy3d::shader
         {
             pass.name = name->text;
             pass.location = name->location;
+            if (pass.name.empty())
+            {
+                add_error(DiagnosticCode::InvalidPassName, name->location, "Pass name cannot be empty.");
+            }
             if (contains_name(asset.passes, pass.name))
             {
                 add_error(DiagnosticCode::DuplicatePass, name->location, "Duplicate Pass '" + pass.name + "'.");
@@ -506,6 +673,7 @@ namespace toy3d::shader
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the Pass name.");
         bool has_program = false;
+        std::unordered_set<std::string> declared_states;
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
         {
             if (match_identifier("Requires"))
@@ -530,6 +698,21 @@ namespace toy3d::shader
             if (peek().kind == TokenKind::Identifier && is_pass_state_name(peek().text))
             {
                 const Token state_name = consume();
+                pass.has_explicit_graphics_state = true;
+                if (!declared_states.insert(state_name.text).second)
+                {
+                    add_error(DiagnosticCode::DuplicatePassState, state_name.location, "Pass state '" + state_name.text + "' is declared more than once.");
+                }
+                if (state_name.text == "Stencil")
+                {
+                    parse_stencil_state(pass);
+                    continue;
+                }
+                if (state_name.text == "Blend")
+                {
+                    parse_blend_state(pass);
+                    continue;
+                }
                 const auto value = expect_identifier("Expected a value after Pass state '" + state_name.text + "'.");
                 if (value)
                 {
@@ -540,14 +723,13 @@ namespace toy3d::shader
                             value->location,
                             "Invalid value '" + value->text + "' for Pass state '" + state_name.text + "'.");
                     }
-                    const bool duplicate_state = std::any_of(pass.states.begin(), pass.states.end(), [&](const PassState& pass_state) {
-                        return pass_state.name == state_name.text;
-                    });
-                    if (duplicate_state)
-                    {
-                        add_error(DiagnosticCode::InvalidPassState, state_name.location, "Pass state '" + state_name.text + "' is declared more than once.");
-                    }
-                    pass.states.push_back(PassState{state_name.text, value->text, state_name.location});
+                    if (state_name.text == "PrimitiveTopology") pass.state.primitive_topology = value->text;
+                    else if (state_name.text == "Cull") pass.state.cull = value->text;
+                    else if (state_name.text == "FrontFace") pass.state.front_face = value->text;
+                    else if (state_name.text == "Fill") pass.state.fill = value->text;
+                    else if (state_name.text == "DepthTest") pass.state.depth_test = value->text;
+                    else if (state_name.text == "DepthWrite") pass.state.depth_write = value->text == "On";
+                    else if (state_name.text == "ColorWrite") pass.state.color_write = value->text;
                 }
                 continue;
             }
@@ -566,6 +748,152 @@ namespace toy3d::shader
         }
         asset.passes.push_back(std::move(pass));
         return true;
+    }
+
+    bool ShaderParser::parse_stencil_state(ShaderPass& pass)
+    {
+        if (match_identifier("Off"))
+        {
+            pass.state.stencil = StencilState{};
+            return true;
+        }
+        if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Stencil."))
+        {
+            return false;
+        }
+
+        bool has_front_and_back = false;
+        bool has_front = false;
+        bool has_back = false;
+        std::unordered_set<std::string> fields;
+        while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+        {
+            const auto field = expect_identifier("Expected a Stencil field.");
+            if (!field)
+            {
+                consume();
+                continue;
+            }
+            if (!fields.insert(field->text).second)
+            {
+                add_error(DiagnosticCode::InvalidPassState, field->location, "Stencil field '" + field->text + "' is declared more than once.");
+            }
+            if (field->text == "ReadMask" || field->text == "WriteMask")
+            {
+                const auto value = expect(TokenKind::Number, "Expected an integer Stencil mask.");
+                if (value)
+                {
+                    char* end = nullptr;
+                    const unsigned long parsed = std::strtoul(value->text.c_str(), &end, 10);
+                    if (*end != '\0' || parsed > std::numeric_limits<std::uint8_t>::max())
+                    {
+                        add_error(DiagnosticCode::InvalidPassState, value->location, "Stencil mask must be an integer from 0 through 255.");
+                    }
+                    else if (field->text == "ReadMask") pass.state.stencil.read_mask = static_cast<std::uint8_t>(parsed);
+                    else pass.state.stencil.write_mask = static_cast<std::uint8_t>(parsed);
+                }
+                continue;
+            }
+            if (field->text == "FrontAndBack")
+            {
+                has_front_and_back = true;
+                expect(TokenKind::LeftBrace, "Expected '{' after FrontAndBack.");
+                parse_stencil_face(pass.state.stencil.front);
+                expect(TokenKind::RightBrace, "Expected '}' after FrontAndBack operations.");
+                pass.state.stencil.back = pass.state.stencil.front;
+                continue;
+            }
+            if (field->text == "Front" || field->text == "Back")
+            {
+                const bool is_front = field->text == "Front";
+                has_front = has_front || is_front;
+                has_back = has_back || !is_front;
+                expect(TokenKind::LeftBrace, "Expected '{' after Stencil face.");
+                parse_stencil_face(is_front ? pass.state.stencil.front : pass.state.stencil.back);
+                expect(TokenKind::RightBrace, "Expected '}' after Stencil face operations.");
+                continue;
+            }
+            add_error(DiagnosticCode::InvalidPassState, field->location, "Unknown Stencil field '" + field->text + "'.");
+        }
+        expect(TokenKind::RightBrace, "Expected '}' to close Stencil state.");
+        if (has_front_and_back == (has_front || has_back) || (!has_front_and_back && !(has_front && has_back)))
+        {
+            add_error(DiagnosticCode::InvalidPassState, pass.location, "Stencil requires FrontAndBack or both Front and Back.");
+            return false;
+        }
+        pass.state.stencil.mode = has_front_and_back ? StencilMode::FrontAndBack : StencilMode::SeparateFaces;
+        return true;
+    }
+
+    bool ShaderParser::parse_stencil_face(StencilFaceState& face)
+    {
+        const char* names[] = {"Compare", "Fail", "DepthFail", "Pass"};
+        std::string* values[] = {&face.compare, &face.fail, &face.depth_fail, &face.pass};
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            if (!match_identifier(names[index]))
+            {
+                add_error(DiagnosticCode::InvalidPassState, peek().location, "Expected Stencil operation field '" + std::string(names[index]) + "'.");
+                return false;
+            }
+            const auto value = expect_identifier("Expected a Stencil operation value.");
+            if (!value) return false;
+            const bool valid = index == 0 ? is_stencil_compare(value->text) : is_stencil_operation(value->text);
+            if (!valid)
+            {
+                add_error(DiagnosticCode::InvalidPassState, value->location, "Invalid Stencil operation value '" + value->text + "'.");
+            }
+            *values[index] = value->text;
+        }
+        return true;
+    }
+
+    bool ShaderParser::parse_blend_state(ShaderPass& pass)
+    {
+        if (match_identifier("Off"))
+        {
+            pass.state.blend = BlendState{};
+            return true;
+        }
+        if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Blend.")) return false;
+        pass.state.blend.enabled = true;
+        struct BlendLine
+        {
+            const char* name;
+            std::string* source;
+            std::string* destination;
+            std::string* operation;
+        };
+        BlendLine lines[] = {
+            {"Color", &pass.state.blend.source_color, &pass.state.blend.destination_color, &pass.state.blend.color_operation},
+            {"Alpha", &pass.state.blend.source_alpha, &pass.state.blend.destination_alpha, &pass.state.blend.alpha_operation}};
+        for (BlendLine& line : lines)
+        {
+            if (!match_identifier(line.name))
+            {
+                add_error(DiagnosticCode::InvalidPassState, peek().location, "Expected Blend field '" + std::string(line.name) + "'.");
+                break;
+            }
+            const auto source = expect_identifier("Expected source Blend factor.");
+            const auto destination = expect_identifier("Expected destination Blend factor.");
+            const auto operation = expect_identifier("Expected Blend operation.");
+            if (source)
+            {
+                if (!is_blend_factor(source->text)) add_error(DiagnosticCode::InvalidPassState, source->location, "Invalid Blend factor '" + source->text + "'.");
+                *line.source = source->text;
+            }
+            if (destination)
+            {
+                if (!is_blend_factor(destination->text)) add_error(DiagnosticCode::InvalidPassState, destination->location, "Invalid Blend factor '" + destination->text + "'.");
+                *line.destination = destination->text;
+            }
+            if (operation)
+            {
+                if (!is_blend_operation(operation->text)) add_error(DiagnosticCode::InvalidPassState, operation->location, "Invalid Blend operation '" + operation->text + "'.");
+                *line.operation = operation->text;
+            }
+        }
+        return expect(TokenKind::RightBrace, "Expected '}' to close Blend state.").has_value();
     }
 
     bool ShaderParser::parse_hlsl_block(HlslBlock& block)
@@ -713,11 +1041,30 @@ namespace toy3d::shader
         }
         else if (has_compute)
         {
+            if (pass.has_explicit_graphics_state)
+            {
+                add_error(DiagnosticCode::InvalidPassState, pass.location, "Compute Pass cannot declare graphics pipeline state.");
+            }
             return;
         }
-        else if (!has_vertex || !has_pixel)
+        else if (!has_vertex)
         {
-            add_error(DiagnosticCode::MissingEntryPoint, pass.program.location, "Graphics Pass requires both vertex and pixel pragmas.");
+            add_error(DiagnosticCode::MissingEntryPoint, pass.program.location, "Graphics Pass requires a vertex pragma; pixel is optional.");
+        }
+    }
+
+    void ShaderParser::validate_identifier(ShaderAsset& asset, const Token& token, std::string_view category)
+    {
+        if (token.text.rfind("toy3d_", 0) == 0 || token.text.rfind("TOY3D_", 0) == 0)
+        {
+            add_error(DiagnosticCode::ReservedIdentifier, token.location, "Identifier '" + token.text + "' uses a reserved Toy3d prefix.");
+        }
+        const bool conflict = (category != "property" && contains_name(asset.properties, token.text)) ||
+            (category != "resource" && contains_name(asset.resources, token.text)) ||
+            (category != "variant" && contains_name(asset.variants, token.text));
+        if (conflict)
+        {
+            add_error(DiagnosticCode::IdentifierConflict, token.location, "The " + std::string(category) + " identifier '" + token.text + "' conflicts with another generated HLSL identifier.");
         }
     }
 

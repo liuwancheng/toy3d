@@ -13,13 +13,14 @@ Shader "Tests/FrontendValid"
     {
         Pass
         {
-            scene_texture : Texture2D
+            scene_texture : Texture2D<Float4>
             scene_sampler : Sampler = LinearClamp
+            shadow_sampler : ComparisonSampler = ShadowCompareClamp
         }
 
         Object
         {
-            transforms : StructuredBuffer<float4x4>
+            transforms : StructuredBuffer<Float4x4>
         }
     }
 
@@ -45,9 +46,24 @@ Shader "Tests/FrontendValid"
         Fill Solid
         DepthTest LessEqual
         DepthWrite On
-        Stencil Off
-        Blend Off
-        ColorWrite RGBA
+        Stencil
+        {
+            ReadMask 127
+            WriteMask 63
+            FrontAndBack
+            {
+                Compare GreaterEqual
+                Fail Keep
+                DepthFail Replace
+                Pass IncrementClamp
+            }
+        }
+        Blend
+        {
+            Color SrcAlpha OneMinusSrcAlpha Add
+            Alpha One OneMinusSrcAlpha Add
+        }
+        ColorWrite RGB
 
         HLSLPROGRAM
         #pragma vertex vs_main

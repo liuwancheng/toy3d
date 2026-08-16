@@ -25,15 +25,25 @@ namespace toy3d::shader
         DuplicateResource,
         DuplicateVariant,
         DuplicatePass,
+        InvalidPassName,
         InvalidPropertyType,
+        InvalidShaderName,
+        ReservedIdentifier,
+        IdentifierConflict,
         InvalidDefaultValue,
         InvalidResourceGroup,
+        InvalidResourceType,
         InvalidVariant,
         InvalidPassState,
+        DuplicatePassState,
         UnknownPragma,
         DuplicateEntryPoint,
         MissingEntryPoint,
-        MixedProgramStages
+        MixedProgramStages,
+        ShaderParameterIdCollision,
+        ConstantBufferSizeLimitExceeded,
+        UnknownParameterUsage,
+        BindingLimitExceeded
     };
 
     struct Diagnostic

@@ -67,14 +67,23 @@ namespace
         check(asset.name == "Tests/FrontendValid", "Shader name must be preserved");
         check(asset.version == 1, "Shader version must be parsed");
         check(asset.properties.size() == 3, "all Properties must be parsed");
-        check(asset.resources.size() == 3, "all Resources must be parsed");
+        check(asset.resources.size() == 4, "all Resources must be parsed");
         check(asset.variants.size() == 2, "all Variants must be parsed");
         check(asset.includes.size() == 1, "HLSLINCLUDE must be captured");
         check(asset.passes.size() == 1, "Pass must be parsed");
         if (!asset.passes.empty())
         {
             check(asset.passes[0].program.entry_points.size() == 2, "graphics entry points must be extracted");
-            check(asset.passes[0].states.size() == 9, "portable Pass states must be parsed");
+            const toy3d::shader::ShaderPass& pass = asset.passes[0];
+            check(pass.state.stencil.mode == toy3d::shader::StencilMode::FrontAndBack, "structured Stencil state must be parsed");
+            check(pass.state.stencil.read_mask == 127, "Stencil read mask must be parsed");
+            check(pass.state.stencil.front.depth_fail == "Replace", "Stencil face operations must be parsed");
+            check(pass.state.blend.enabled, "structured Blend state must be enabled");
+            check(pass.state.blend.source_color == "SrcAlpha", "Blend factors must be parsed");
+            check(pass.state.color_write == "RGB", "single-target ColorWrite mask must be parsed");
+            check(asset.resources[0].kind == toy3d::shader::ResourceKind::Texture2D, "resource kind must be strongly typed");
+            check(asset.resources[0].element_type == toy3d::shader::ResourceElementType::Float4, "resource element type must be strongly typed");
+            check(asset.resources[2].kind == toy3d::shader::ResourceKind::ComparisonSampler, "ComparisonSampler must remain distinct from a regular Sampler");
         }
     }
 
@@ -85,16 +94,35 @@ namespace
         check(!result.asset.has_value(), name + " must not return a partial asset");
         check(contains_diagnostic(result, expected), name + " must return the expected diagnostic");
     }
+
+    void test_vertex_only_graphics_pass()
+    {
+        const toy3d::shader::ParseResult result = parse_test_data("vertex_only.shader");
+        check(result.succeeded(), "graphics Pass may omit the pixel entry point");
+        if (result.asset && !result.asset->passes.empty())
+        {
+            const toy3d::shader::PassState& state = result.asset->passes[0].state;
+            check(state.depth_test == "GreaterEqual", "omitted Pass state must normalize to reversed-Z defaults");
+            check(state.depth_write, "omitted DepthWrite must normalize to On");
+        }
+    }
 }
 
 int main()
 {
     test_valid_shader();
+    test_vertex_only_graphics_pass();
     test_error("duplicate_property.shader", toy3d::shader::DiagnosticCode::DuplicateProperty);
     test_error("missing_entry.shader", toy3d::shader::DiagnosticCode::MissingEntryPoint);
     test_error("invalid_state.shader", toy3d::shader::DiagnosticCode::InvalidPassState);
     test_error("unknown_field.shader", toy3d::shader::DiagnosticCode::UnexpectedToken);
     test_error("unterminated_hlsl.shader", toy3d::shader::DiagnosticCode::UnterminatedHlslBlock);
+    test_error("invalid_resource_type.shader", toy3d::shader::DiagnosticCode::InvalidResourceType);
+    test_error("identifier_conflict.shader", toy3d::shader::DiagnosticCode::IdentifierConflict);
+    test_error("duplicate_pass_state.shader", toy3d::shader::DiagnosticCode::DuplicatePassState);
+    test_error("compute_graphics_state.shader", toy3d::shader::DiagnosticCode::InvalidPassState);
+    test_error("invalid_shader_name.shader", toy3d::shader::DiagnosticCode::InvalidShaderName);
+    test_error("reserved_identifier.shader", toy3d::shader::DiagnosticCode::ReservedIdentifier);
 
     if (failure_count != 0)
     {
