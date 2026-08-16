@@ -1,0 +1,51 @@
+(* Toy3d Shader asset language, version 1. HLSL bodies are opaque text. *)
+
+shader          = "Shader", string, "{", "Version", integer,
+                  { shader_section }, { pass }, "}" ;
+shader_section  = properties | resources | variants | hlsl_include ;
+
+properties      = "Properties", "{", { property }, "}" ;
+property        = identifier, "(", string, ",", property_type, ")",
+                  "=", default_value ;
+property_type   = "Float" | "Float2" | "Float3" | "Float4" | "Color"
+                | "Matrix4x4" | "Texture2D" | "TextureCube" | "Sampler"
+                | "Range", "(", number, ",", number, ")" ;
+
+resources       = "Resources", "{", { resource_group }, "}" ;
+resource_group  = binding_group, "{", { resource }, "}" ;
+binding_group   = "Global" | "View" | "Pass" | "Material" | "Object" ;
+resource        = identifier, ":", resource_type, [ "=", default_value ] ;
+resource_type   = identifier, [ "<", type_text, ">" ] ;
+
+variants        = "Variants", "{", { variant }, "}" ;
+variant         = identifier, ":", "bool", "=", boolean
+                | identifier, ":", "enum", "{", identifier,
+                  { ",", identifier }, "}", "=", identifier ;
+
+pass            = "Pass", string, "{", { pass_item }, hlsl_program, "}" ;
+pass_item       = "Requires", identifier
+                | "PrimitiveTopology", topology
+                | "Cull", ( "Off" | "Front" | "Back" )
+                | "FrontFace", ( "Clockwise" | "CounterClockwise" )
+                | "Fill", ( "Solid" | "Wireframe" )
+                | "DepthTest", compare_operation
+                | "DepthWrite", boolean_switch
+                | "Stencil", ( "Off" | "On" )
+                | "Blend", ( "Off" | "On" )
+                | "ColorWrite", ( "None" | "R" | "RG" | "RGB" | "RGBA" ) ;
+
+hlsl_include    = "HLSLINCLUDE", opaque_text, "ENDHLSL" ;
+hlsl_program    = "HLSLPROGRAM", opaque_text, "ENDHLSL" ;
+topology        = "PointList" | "LineList" | "LineStrip"
+                | "TriangleList" | "TriangleStrip" ;
+compare_operation = "Off" | "Never" | "Less" | "Equal" | "LessEqual"
+                  | "Greater" | "NotEqual" | "GreaterEqual" | "Always" ;
+boolean_switch  = "Off" | "On" ;
+default_value   = number | string | identifier
+                | "(", number, { ",", number }, ")" ;
+boolean         = "false" | "true" ;
+
+(* Lexical productions: identifiers use [A-Za-z_][A-Za-z0-9_]*. Numbers are
+   decimal floating-point values with an optional sign and exponent. Comments
+   use // or slash-star syntax. A raw HLSL block ends only when ENDHLSL is the
+   first non-whitespace token on its own source line. *)

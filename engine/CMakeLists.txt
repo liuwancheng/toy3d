@@ -36,8 +36,6 @@ else()
   message(FATAL_ERROR "unknown platform")
 endif()
 
-add_subdirectory(shader)
-
 # 生成配置头文件
 set(ENGINE_ASSET_ROOT "${BINARY_ROOT_DIR}") 
 set(ENGINE_SAVED_ROOT "${BINARY_ROOT_DIR}saved") 
@@ -49,5 +47,7 @@ configure_file(
 
 # 构建子文件夹cmake工程
 add_subdirectory(thirdparty)
+add_subdirectory(tools)
+add_subdirectory(shader)
 add_subdirectory(runtime)
 add_subdirectory(editor)

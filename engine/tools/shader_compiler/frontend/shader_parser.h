@@ -1,0 +1,60 @@
+#pragma once
+
+#include "frontend/diagnostic.h"
+#include "frontend/shader_ast.h"
+#include "frontend/tokenizer.h"
+
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace toy3d::shader
+{
+    struct ParseResult
+    {
+        std::optional<ShaderAsset> asset;
+        std::vector<Diagnostic> diagnostics;
+
+        bool succeeded() const;
+    };
+
+    ParseResult parse_shader(std::string_view source, std::string path);
+
+    class ShaderParser
+    {
+    public:
+        ShaderParser(std::string_view source, std::string path);
+
+        ParseResult parse();
+
+    private:
+        const Token& peek();
+        Token consume();
+        bool check(TokenKind kind);
+        bool check_identifier(std::string_view text);
+        bool match(TokenKind kind);
+        bool match_identifier(std::string_view text);
+        std::optional<Token> expect(TokenKind kind, std::string message);
+        std::optional<Token> expect_identifier(std::string message);
+        bool parse_properties(ShaderAsset& asset);
+        bool parse_property(ShaderAsset& asset);
+        bool parse_resources(ShaderAsset& asset);
+        bool parse_resource_group(ShaderAsset& asset);
+        bool parse_variants(ShaderAsset& asset);
+        bool parse_variant(ShaderAsset& asset);
+        bool parse_pass(ShaderAsset& asset);
+        bool parse_hlsl_block(HlslBlock& block);
+        bool parse_default_value(DefaultValue& value);
+        std::optional<double> parse_number();
+        void extract_pragmas(HlslBlock& block);
+        void validate_program(ShaderPass& pass);
+        void add_error(DiagnosticCode code, const SourceLocation& at, std::string message);
+        void copy_tokenizer_diagnostics();
+
+        Tokenizer tokenizer;
+        std::optional<Token> lookahead;
+        std::vector<Diagnostic> parser_diagnostics;
+        std::size_t copied_tokenizer_diagnostics = 0;
+    };
+}
