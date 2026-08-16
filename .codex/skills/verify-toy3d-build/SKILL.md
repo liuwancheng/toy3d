@@ -1,85 +1,20 @@
 ---
 name: verify-toy3d-build
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: 独立验证 Toy3d 的 C++、CMake、平台或渲染改动。完成代码修改后，或用户要求配置、构建、测试和核对构建结果时使用；由验证者运行适合当前平台和改动范围的命令并报告证据，不代替实现者修改代码。
 ---
 
 # Toy3d 构建验证
 
-## Overview
+## 职责
 
-[TODO: 1-2 sentences explaining what this skill enables]
+独立验证改动，保留工作区中的既有内容。不要修复实现；失败时记录最早的可操作诊断并交回主 agent。
 
-## Structuring This Skill
+## 工作流
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
-
-**1. Workflow-Based** (best for sequential processes)
-- Works well when there are clear step-by-step procedures
-- Example: DOCX skill with "Workflow Decision Tree" -> "Reading" -> "Creating" -> "Editing"
-- Structure: ## Overview -> ## Workflow Decision Tree -> ## Step 1 -> ## Step 2...
-
-**2. Task-Based** (best for tool collections)
-- Works well when the skill offers different operations/capabilities
-- Example: PDF skill with "Quick Start" -> "Merge PDFs" -> "Split PDFs" -> "Extract Text"
-- Structure: ## Overview -> ## Quick Start -> ## Task Category 1 -> ## Task Category 2...
-
-**3. Reference/Guidelines** (best for standards or specifications)
-- Works well for brand guidelines, coding standards, or requirements
-- Example: Brand styling with "Brand Guidelines" -> "Colors" -> "Typography" -> "Features"
-- Structure: ## Overview -> ## Guidelines -> ## Specifications -> ## Usage...
-
-**4. Capabilities-Based** (best for integrated systems)
-- Works well when the skill provides multiple interrelated features
-- Example: Product Management with "Core Capabilities" -> numbered capability list
-- Structure: ## Overview -> ## Core Capabilities -> ### 1. Feature -> ### 2. Feature...
-
-Patterns can be mixed and matched as needed. Most skills combine patterns (e.g., start with task-based, add workflow for complex operations).
-
-Delete this entire "Structuring This Skill" section when done - it's just guidance.]
-
-## [TODO: Replace with the first main section based on chosen structure]
-
-[TODO: Add content here. See examples in existing skills:
-- Code samples for technical skills
-- Decision trees for complex workflows
-- Concrete examples with realistic user requests
-- References to scripts/templates/references as needed]
-
-## Resources (optional)
-
-Create only the resource directories this skill actually needs. Delete this section if no resources are required.
-
-### scripts/
-Executable code (Python/Bash/etc.) that can be run directly to perform specific operations.
-
-**Examples from other skills:**
-- PDF skill: `fill_fillable_fields.py`, `extract_form_field_info.py` - utilities for PDF manipulation
-- DOCX skill: `document.py`, `utilities.py` - Python modules for document processing
-
-**Appropriate for:** Python scripts, shell scripts, or any executable code that performs automation, data processing, or specific operations.
-
-**Note:** Scripts may be executed without loading into context, but can still be read by Codex for patching or environment adjustments.
-
-### references/
-Documentation and reference material intended to be loaded into context to inform Codex's process and thinking.
-
-**Examples from other skills:**
-- Product management: `communication.md`, `context_building.md` - detailed workflow guides
-- BigQuery: API reference documentation and query examples
-- Finance: Schema documentation, company policies
-
-**Appropriate for:** In-depth documentation, API references, database schemas, comprehensive guides, or any detailed information that Codex should reference while working.
-
-### assets/
-Files not intended to be loaded into context, but rather used within the output Codex produces.
-
-**Examples from other skills:**
-- Brand styling: PowerPoint template files (.pptx), logo files
-- Frontend builder: HTML/React boilerplate project directories
-- Typography: Font files (.ttf, .woff2)
-
-**Appropriate for:** Templates, boilerplate code, document templates, images, icons, fonts, or any files meant to be copied or used in the final output.
-
----
-
-**Not every skill requires all three types of resources.**
+1. 检查 `git status --short` 和相关 diff，区分待验证改动与用户已有改动。
+2. 根据改动选择最小充分验证：纯文档和 skill 改动只做结构检查；CMake 改动必须重新配置；C++ 改动至少构建受影响目标。
+3. 在 macOS 默认运行 `./build_macos.sh Debug`，该脚本完成配置并构建 `Toy3dEditor`。需要其他配置时传入 `Release`、`RelWithDebInfo` 或 `MinSizeRel`。
+4. 在 Windows 运行 `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`，再运行 `cmake --build build --config Debug --target Toy3dEditor`。
+5. 存在已配置且与当前平台、生成器和选项匹配的构建目录时，可以复用；不得进行 CMake 源码内构建。
+6. 存在相关 CTest 时，运行 `ctest --test-dir <build-dir> -C Debug --output-on-failure`；没有测试时明确说明。
+7. 报告实际命令、成功项、失败项、首个关键诊断和未覆盖平台。不要把未运行的检查描述为通过。

@@ -1,4 +1,4 @@
 interface:
-  display_name: "RHI Éè¼Æ"
-  short_description: "Éè¼Æ²¢Éó²é¿ç Vulkan¡¢D3D10¡¢D3D12 µÄ RHI ¹«¹²½Ó¿Ú"
-  default_prompt: "Ê¹ÓÃ -rhi Éè¼Æ»òÉó²é Toy3d µÄ¿çºó¶Ë RHI ¹«¹²½Ó¿Ú¡£"
+  display_name: "Toy3d RHI"
+  short_description: "è®¾è®¡ã€å®ç°å¹¶å®¡æŸ¥ Toy3d è·¨å›¾å½¢ API çš„å…¬å…± RHI ä¸ Vulkan åç«¯"
+  default_prompt: "ä½¿ç”¨ $design-rhi è®¾è®¡ã€å®ç°æˆ–å®¡æŸ¥ Toy3d çš„è·¨å›¾å½¢ API RHIã€‚"

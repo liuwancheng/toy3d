@@ -55,13 +55,13 @@ Toy3d 不需要复制 UE 大量全局 capability，但需要小型 `RHICapabilit
 
 ## 三后端边界
 
-| 公共语义 | Vulkan | D3D12 | D3D11 | 结论 |
+| 公共语义 | Vulkan | D3D12 | D3D10 | 结论 |
 |---|---|---|---|---|
 | usage/access | barrier/layout | resource state | 隐式状态与绑定冲突 | 公共表达用途，后端决定同步 |
 | graphics PSO | pipeline + layout | PSO + root signature | state object 组合 | 公共 PSO 可用，不暴露布局 |
 | binding | descriptor set | heap/root binding | stage slot | slot/reflection 作为基线 |
 | render pass | 原生/动态渲染 | API 或命令组合 | OM + clear/resolve | attachment 作用域均可实现 |
-| recording | command buffer | command list | deferred/immediate context | 不承诺同等并行能力 |
+| recording | command buffer | command list | immediate device，由上层串行提交 | 不承诺同等并行能力 |
 | async compute | 可选 queue | compute queue | 通常不可用 | capability-gated |
 | bindless | 可选特性 | tier dependent | 不适合作为基线 | 扩展能力，不进最小核心 |
 

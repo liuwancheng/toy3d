@@ -1,3 +1,4 @@
 interface:
   display_name: "Grilling"
-  short_description: "Stress-test thinking one question at a time"
+  short_description: "通过单问题逐项追问，检验计划、决策、假设与设计边界"
+  default_prompt: "使用 $grilling 逐项追问并检验我的方案。"

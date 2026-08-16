@@ -1,0 +1,4 @@
+interface:
+  display_name: "Toy3d 构建验证"
+  short_description: "独立配置、构建、测试并核对 Toy3d 的代码与 CMake 改动"
+  default_prompt: "使用 $verify-toy3d-build 独立验证当前 Toy3d 改动并报告证据。"
