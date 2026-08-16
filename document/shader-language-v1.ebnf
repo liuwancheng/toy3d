@@ -1,21 +1,59 @@
-(* Toy3d Shader asset language, version 1. HLSL bodies are opaque text. *)
+(* Toy3d Shader asset language, version 1.
+   HLSL bodies are opaque text. New optional language features may be added by
+   later v1 compiler revisions; an older compiler reports
+   UnsupportedLanguageFeature. Unknown keywords are always errors. *)
 
-shader          = "Shader", string, "{", "Version", integer,
-                  { shader_section }, { pass }, "}" ;
-shader_section  = properties | resources | variants | hlsl_include ;
+shader          = "Shader", shader_name, "{", "Version", "1",
+                  { top_level_item }, "}" ;
+top_level_item  = properties | resources | variants | hlsl_include | pass ;
+
+(* Properties, Resources and Variants may each occur at most once.
+   HLSLINCLUDE and Pass may occur multiple times. At least one Pass is required.
+   These cardinality rules are semantic constraints rather than EBNF syntax. *)
 
 properties      = "Properties", "{", { property }, "}" ;
 property        = identifier, "(", string, ",", property_type, ")",
                   "=", default_value ;
-property_type   = "Float" | "Float2" | "Float3" | "Float4" | "Color"
-                | "Matrix4x4" | "Texture2D" | "TextureCube" | "Sampler"
+property_type   = numeric_property_type | texture_property_type
+                | sampler_property_type
                 | "Range", "(", number, ",", number, ")" ;
+numeric_property_type = "Float" | "Float2" | "Float3" | "Float4"
+                      | "Color" | "Matrix4x4" ;
+texture_property_type = "Texture2D" | "TextureCube" ;
+sampler_property_type = "Sampler" | "ComparisonSampler" ;
 
 resources       = "Resources", "{", { resource_group }, "}" ;
 resource_group  = binding_group, "{", { resource }, "}" ;
 binding_group   = "Global" | "View" | "Pass" | "Material" | "Object" ;
-resource        = identifier, ":", resource_type, [ "=", default_value ] ;
-resource_type   = identifier, [ "<", type_text, ">" ] ;
+resource        = identifier, ":", resource_type,
+                  [ "=", default_value ] ;
+
+resource_type   = sampled_texture_type | sampler_resource_type
+                | readonly_buffer_type | writable_buffer_type
+                | writable_texture_type ;
+sampled_texture_type = ( "Texture2D" | "Texture2DArray" | "Texture3D"
+                       | "TextureCube" | "Texture2DMS" ),
+                       "<", typed_resource_element, ">" ;
+sampler_resource_type = "Sampler" | "ComparisonSampler" ;
+readonly_buffer_type = "ByteAddressBuffer"
+                     | "Buffer", "<", typed_resource_element, ">"
+                     | "StructuredBuffer", "<", structured_element, ">" ;
+writable_buffer_type = "RWByteAddressBuffer"
+                     | "RWBuffer", "<", typed_resource_element, ">"
+                     | "RWStructuredBuffer", "<", structured_element, ">" ;
+writable_texture_type = ( "RWTexture2D" | "RWTexture2DArray"
+                        | "RWTexture3D" ),
+                        "<", typed_resource_element, ">" ;
+
+typed_resource_element = scalar_32_type | vector_32_type ;
+structured_element = scalar_32_type | vector_32_type | matrix_32_type ;
+scalar_32_type  = "Float" | "Int" | "UInt" ;
+vector_32_type  = "Float2" | "Float3" | "Float4"
+                | "Int2" | "Int3" | "Int4"
+                | "UInt2" | "UInt3" | "UInt4" ;
+matrix_32_type  = "Float2x2" | "Float2x3" | "Float2x4"
+                | "Float3x2" | "Float3x3" | "Float3x4"
+                | "Float4x2" | "Float4x3" | "Float4x4" ;
 
 variants        = "Variants", "{", { variant }, "}" ;
 variant         = identifier, ":", "bool", "=", boolean
@@ -28,24 +66,73 @@ pass_item       = "Requires", identifier
                 | "Cull", ( "Off" | "Front" | "Back" )
                 | "FrontFace", ( "Clockwise" | "CounterClockwise" )
                 | "Fill", ( "Solid" | "Wireframe" )
-                | "DepthTest", compare_operation
+                | "DepthTest", depth_compare_operation
                 | "DepthWrite", boolean_switch
-                | "Stencil", ( "Off" | "On" )
-                | "Blend", ( "Off" | "On" )
-                | "ColorWrite", ( "None" | "R" | "RG" | "RGB" | "RGBA" ) ;
+                | stencil_state
+                | blend_state
+                | "ColorWrite", color_write_mask ;
+
+stencil_state   = "Stencil", "Off"
+                | "Stencil", "{",
+                    [ "ReadMask", integer ],
+                    [ "WriteMask", integer ],
+                    ( stencil_front_and_back
+                    | stencil_front, stencil_back ),
+                  "}" ;
+stencil_front_and_back = "FrontAndBack", "{", stencil_operations, "}" ;
+stencil_front   = "Front", "{", stencil_operations, "}" ;
+stencil_back    = "Back", "{", stencil_operations, "}" ;
+stencil_operations = "Compare", stencil_compare_operation,
+                     "Fail", stencil_operation,
+                     "DepthFail", stencil_operation,
+                     "Pass", stencil_operation ;
+stencil_operation = "Keep" | "Zero" | "Replace" | "IncrementClamp"
+                  | "DecrementClamp" | "Invert" | "IncrementWrap"
+                  | "DecrementWrap" ;
+
+blend_state     = "Blend", "Off"
+                | "Blend", "{",
+                    "Color", blend_factor, blend_factor, blend_operation,
+                    "Alpha", blend_factor, blend_factor, blend_operation,
+                  "}" ;
+blend_factor    = "Zero" | "One" | "SrcColor" | "OneMinusSrcColor"
+                | "DstColor" | "OneMinusDstColor" | "SrcAlpha"
+                | "OneMinusSrcAlpha" | "DstAlpha" | "OneMinusDstAlpha"
+                | "ConstantColor" | "OneMinusConstantColor"
+                | "ConstantAlpha" | "OneMinusConstantAlpha"
+                | "SrcAlphaSaturate" ;
+blend_operation = "Add" | "Subtract" | "ReverseSubtract" | "Min" | "Max" ;
+color_write_mask = "None" | "R" | "G" | "B" | "A"
+                 | "RG" | "RGB" | "RGBA" ;
 
 hlsl_include    = "HLSLINCLUDE", opaque_text, "ENDHLSL" ;
 hlsl_program    = "HLSLPROGRAM", opaque_text, "ENDHLSL" ;
 topology        = "PointList" | "LineList" | "LineStrip"
                 | "TriangleList" | "TriangleStrip" ;
-compare_operation = "Off" | "Never" | "Less" | "Equal" | "LessEqual"
-                  | "Greater" | "NotEqual" | "GreaterEqual" | "Always" ;
+depth_compare_operation = "Off" | stencil_compare_operation ;
+stencil_compare_operation = "Never" | "Less" | "Equal" | "LessEqual"
+                          | "Greater" | "NotEqual" | "GreaterEqual"
+                          | "Always" ;
 boolean_switch  = "Off" | "On" ;
-default_value   = number | string | identifier
+sampler_preset  = "PointClamp" | "PointWrap" | "LinearClamp"
+                | "LinearWrap" | "TrilinearClamp" | "TrilinearWrap"
+                | "ShadowCompareClamp" ;
+default_value   = number | string | identifier | sampler_preset
                 | "(", number, { ",", number }, ")" ;
 boolean         = "false" | "true" ;
+shader_name     = string ;
 
-(* Lexical productions: identifiers use [A-Za-z_][A-Za-z0-9_]*. Numbers are
-   decimal floating-point values with an optional sign and exponent. Comments
-   use // or slash-star syntax. A raw HLSL block ends only when ENDHLSL is the
-   first non-whitespace token on its own source line. *)
+(* Lexical and semantic constraints:
+   - identifiers use ASCII [A-Za-z_][A-Za-z0-9_]*;
+   - a shader logical name is slash-separated ASCII identifier segments;
+   - numbers are decimal values with optional sign and exponent;
+   - comments use // or slash-star syntax;
+   - ENDHLSL ends a raw block only as the first non-whitespace token on its own
+     source line;
+   - duplicate sections, duplicate Pass state, unknown keywords, invalid masks,
+     invalid resource element types, and a Shader without Pass are errors;
+   - typed Texture/Buffer element types require target format support;
+     Texture2DMS is accessed with Load and cannot be sampled with a Sampler;
+   - Program kind is inferred from pragmas: graphics has exactly one vertex and
+     optional pixel entry; compute has exactly one compute entry and no graphics
+     state. *)

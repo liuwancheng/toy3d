@@ -364,12 +364,11 @@ enum class ShaderParameterScope : uint8_t
 
 struct ShaderParameterId
 {
-    ShaderParameterScope scope;
-    StringId name;
+    uint64 value;
 };
 ```
 
-资产和 MaterialInstance 按稳定参数名存储数据。`binding_slot`、constant buffer offset 和后端 descriptor 位置只能作为 shader 编译/reflection 的派生结果，不能作为资产格式中的持久标识。
+`ShaderParameterId` 使用 Shader 规范锁定的 64-bit FNV-1a 与带长度字段输入编码，由 binding group、category 和 parameter name 生成；0 为 invalid。资产和 MaterialInstance 按稳定 ID 存储数据，并保留原始名字用于诊断。`binding_slot`、constant buffer offset 和后端 descriptor 位置只能作为 shader 编译/reflection 的派生结果，不能作为资产格式中的持久标识。
 
 Constant 数据按更新频率分块：
 
@@ -400,14 +399,16 @@ enum class RHIBindingGroup : uint8_t
 struct RHIBindingLayoutEntry
 {
     RHIBindingGroup group;
-    uint32 slot;
+    uint32 target_binding;
     RHIResourceBindingType type;
-    RHIShaderStageFlags stages;
+    RHIShaderStage stage;
     uint32 array_count;
 };
 ```
 
 Binding resource type 至少包括 uniform buffer、sampled texture、storage texture、sampler、storage buffer。Compute 和 storage binding 可从第一版进入 descriptor，但实际调用受 capability 控制。
+
+每个 entry 只描述一个 stage。同一逻辑参数被多个 stage 使用时生成多个 entry，因此 D3D11/D3D12 可以为不同 stage 保存不同 target binding；Vulkan backend 可在编译 native layout 时合并具有相同 physical set/binding 的 stage visibility。`RHIResourceBindingType` 决定 target register/descriptor class，禁止用一个 `target_binding + stages bitmask` 丢失 per-stage mapping。
 
 ```cpp
 struct RHIGraphicsBindings
@@ -422,13 +423,13 @@ struct RHIGraphicsBindings
 
 映射规则：
 
-- Vulkan 可将 group 编译为 descriptor set；
+- Vulkan backend 将多个 logical group 按 profile 打包到 physical descriptor sets；logical group 与 descriptor set 不一一对应。`VulkanPortable v1` 固定 set 0=Global+View、set 1=Pass、set 2=Material、set 3=Object；
 - D3D12 可编译为 descriptor table、root CBV 或 root constants；
 - D3D11 展开为各 shader stage 的 CBV/SRV/UAV/sampler slot。
 
-公共枚举数值不等于 Vulkan set index 或 D3D12 root parameter index。映射只存在于后端 binding layout 编译结果中。
+`target_binding` 是当前 Shader target record、当前 stage 已编译的 RHI 位置，不是跨 target 的资产级 slot。公共枚举数值不等于 Vulkan set index 或 D3D12 root parameter index。映射只存在于 target-specific binding layout 编译结果中。
 
-Pass 不得修改 Material binding，Material 也不得持有 SceneColor、SceneDepth 等 pass resource。Global/View/Pass binding 通常在 pass 开始时绑定，Material/Object binding 按 draw packet 更新。
+`RHIGraphicsBindings` 的五个引用是逻辑数据包；Vulkan backend 在 draw/dispatch 的命令录制阶段、实际 bind 前，根据当前 Global/View pair 获取或构建组合 physical set 0，其他逻辑组分别 materialize 为 set 1..3。command list 保活这些 native set 和其引用资源直到 queue completion；不能推迟到 queue submit 时再改写已经录制的绑定。Pass 不得修改 Material binding，Material 也不得持有 SceneColor、SceneDepth 等 pass resource。Global/View/Pass binding 通常在 pass 开始时绑定，Material/Object binding 按 draw packet 更新。
 
 ## 11. Material 系统预留
 
@@ -691,6 +692,16 @@ RHI 只接收这些类型编译后的结果：shader bytecode、binding layout/s
 - timestamp query 和 async compute；
 - 后端可支持的 recording 并行度。
 
+### 15.1 Platform Profile 与移动端边界
+
+Profile 是版本化的离线编译和验证基线，不等于 backend。平台配置选择默认 profile；runtime 仍以实际 `RHICapabilities`、`RHILimits` 和 format support 复核 ShaderPackage 的 requirements。默认 `VulkanPortable v1` 固定为 Vulkan 1.1、SPIR-V 1.3、最多四个 bound descriptor sets，且不默认依赖可选 device feature。
+
+高于 portable 基线的功能必须由独立 profile 或 `Requires <Capability>` 显式声明，禁止根据当前桌面 GPU 自动提高 Cook 输出要求。Cook 和 runtime 都验证 sampler、sampled image、uniform/storage buffer、storage image 的 per-stage 与 pipeline-layout limits；错误需报告 group、stage、resource class、required 和 supported。ShaderPackage/ShaderLibrary 保存 required capabilities/limits，不兼容时返回可诊断的 `UnsupportedCapability`。
+
+### 15.2 统一图形约定
+
+RHI pipeline 与 viewport 映射遵守 Shader 系统的统一约定：left-handed、+Z forward、column-vector、column-major、clip depth 0..1、reversed-Z（clear 0.0、默认 `GreaterEqual`）和公共 CounterClockwise front face。Vulkan 1.1 backend 使用 negative viewport height 处理 Y 时，必须同步修正 native front-face mapping；上层和 Shader 不做 backend-specific Y flip。
+
 所有初始化、创建、map/update、acquire、submit、present 和 resize 操作返回可检查结果。Assert 只用于内部不变量，不能替代 Release 错误路径。
 
 第一阶段规定：
@@ -795,7 +806,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 - shader 编译工具链和 Vulkan/D3D bytecode 产物格式；
 - D3D11 queue completion value 的 fence/query 实现策略；
 - transient uniform allocator 的公共 API 形态；
-- binding group 是否固定为五组，或允许 renderer profile 配置映射；
+- Global、View、Pass、Material、Object 固定为五个逻辑 group；各 target/profile 的 physical set/register/root mapping 独立版本化；
 - MaterialTemplate 的序列化格式、shader language 和 Godot 风格生成接口；
 - 第一阶段是否缓存静态 mesh draw packet；
 - 何时引入轻量 Render Graph。

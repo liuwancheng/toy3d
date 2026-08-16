@@ -1,13 +1,13 @@
 ---
 name: design-rhi
-description: 设计、实现和审查 Toy3d 的跨图形 API RHI。新增或修改公共 RHI 接口、实现 Vulkan 后端、检查 renderscene 与 RHI 边界，或评估 Vulkan、DirectX 10、DirectX 12 可实现性时使用。
+description: 设计、实现和审查 Toy3d 的跨图形 API RHI。新增或修改公共 RHI 接口、实现图形后端、检查 renderscene 与 RHI 边界，或评估 Vulkan、DirectX 11、DirectX 12 及移动端 profile 可实现性时使用。
 ---
 
 # Toy3d RHI 设计、实现与审查
 
 ## 目标
 
-设计并实现小而清晰、可由 Vulkan、DirectX 10 和 DirectX 12 实现的 RHI。只在本文件规定工作方法；分别维护项目需求、外部参考和当前代码审查结论。
+设计并实现小而清晰、可由 Vulkan、DirectX 11 和 DirectX 12 实现的 RHI。所有公共设计还必须评估移动端 Vulkan profile，通过 capability 和 limits 表达差异。只在本文件规定工作方法；分别维护项目需求、外部参考和当前代码审查结论。
 
 ## 资料路由
 
@@ -20,7 +20,7 @@ description: 设计、实现和审查 Toy3d 的跨图形 API RHI。新增或修�
 
 1. 从上层需要表达的操作、资源、生命周期和同步关系出发，不从某个后端函数签名反推公共接口。
 2. 确定所属层：公共 descriptor、device 创建、command context 执行、queue/swapchain 提交、上层 pass 调度或后端原生实现。
-3. 对每项语义评估 Vulkan、D3D10、D3D12 的等价实现、安全降级和明确不支持路径。
+3. 对每项语义评估 Vulkan、D3D11、D3D12 及移动端 Vulkan profile 的等价实现、安全降级和明确不支持路径。
 4. 写清资源创建者、CPU 所有者、GPU in-flight 引用、销毁者、线程归属及失败行为。
 5. 实现时先收敛公共语义和 validation，再修改 backend hook、原生实现及调用方；未实现路径返回 `Unsupported` 或可诊断错误。
 6. 输出或复查需求映射、接口、三后端映射、生命周期与同步、错误模型、迁移步骤和未决问题。

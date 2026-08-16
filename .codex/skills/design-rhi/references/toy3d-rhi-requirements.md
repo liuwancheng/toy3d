@@ -6,7 +6,9 @@
 
 ## 范围
 
-- 支持 Vulkan、D3D10、D3D12；公共接口禁止原生类型和后端名称分支。
+- 支持 Vulkan、D3D11、D3D12；D3D11 基线为 Feature Level 11_0 与 Shader Model 5.0，不支持 D3D10、Feature Level 10.x 或 Shader Model 4；公共接口禁止原生类型和后端名称分支。
+- 所有公共能力同时评估桌面和移动端。上层只依据 capability、limits、format support 与版本化 profile 选择路径，禁止散布 `if Vulkan`、`if Android` 等判断。
+- 默认 Vulkan profile 为 `VulkanPortable v1`，基线为 Vulkan 1.1 与 SPIR-V 1.3；Cook 和 runtime 都必须验证 required capabilities/limits。
 - 第一阶段只实现 graphics、单线程录制、单 graphics queue。
 - 接口必须允许后续无破坏性接入 compute 和 pass 级多线程录制。
 - 单个 pass 内不做并行；多 GPU、ray tracing、VRS、bindless、RDG、RHI thread、async compute 均非第一阶段目标。
@@ -63,28 +65,37 @@
 ## 同步、上传与映射
 
 - `ERHIAccess` 表达通用用途，不暴露 Vulkan layout/mask 或 D3D12 state；transition 由 command context 录制并预留 subresource range。
-- Vulkan/D3D12 生成 barrier；D3D10 跟踪逻辑状态、验证 hazard 并解除冲突绑定。
+- Vulkan/D3D12 生成 barrier；D3D11 跟踪逻辑状态、验证 hazard 并解除冲突绑定。
 - map/update 明确 mode、range、alignment、flush/invalidate 和 in-flight 冲突；GPU-only 更新通过 upload/copy，资源对象不得私自 submit 或 wait idle。
 - 第一阶段上传通过 frame-local command context 的 `upload_buffer` / `upload_texture` 录制；后端必须在调用返回前将源数据复制到自有 staging storage，并在该帧 fence 完成前保活。`RHIDevice::create_*` 不得为 `initial_data` 隐式 submit 或 wait；未引入初始化批次前必须明确返回 `Unsupported`。
 - `RHIGPUFence` 只表示命令流中的 GPU 完成点，用于 CPU 轮询 readback 等需求；创建和写入必须显式，不能作为 swapchain acquire/present semaphore 的公共替代。帧回收统一依赖 `RHIQueueCompletionValue`。
 
 ## RHI Render Pass 与 RDG 边界
 
-- `RHIRenderPassInfo` 只描述 color/depth/stencil attachment view、load/store、clear、resolve、render area 和必要的只读属性；Vulkan 可映射 render pass/dynamic rendering，D3D12/D3D10 可用目标绑定、clear、discard 和 resolve 组合实现。
+- `RHIRenderPassInfo` 只描述 color/depth/stencil attachment view、load/store、clear、resolve、render area 和必要的只读属性；Vulkan 可映射 render pass/dynamic rendering，D3D12/D3D11 可用目标绑定、clear、discard 和 resolve 组合实现。
 - 公共 RHI 不表达 RDG pass、依赖边、资源 culling、transient aliasing、queue 调度、Vulkan subpass/input attachment 或 tile-local dependency。
 - 后续 RDG 必须是 renderscene 的长期设施，统一承担 logical/transient resource、pass read/write 声明、依赖图编译、生命周期、barrier 规划、pass culling、并行录制计划与未来多 queue 调度。可以先实现其中的顺序 graphics 子集，但不得建立一套需要被 RDG 再次替换的临时 Pass Scheduler API。
 - 每个 RDG pass 是未来并行录制的最小任务边界；每个 pass 独占 context/list，单个 pass 内保持串行。RDG 生成 RHI transition 与 render-pass scope，RHI 不反向理解 `ShadowPass`、`BasePass` 等上层业务语义。
 
 ## Binding、Shader 与 Pipeline
 
-- `RHIBindingLayout` 使用 resource type、shader stage、slot、array count，不暴露 descriptor set/heap/root parameter。
-- `RHIBindingGroup` 只表达资源更新频率和所有权分组，不创建独立的 shader 寄存器命名空间；同一 stage 内重叠的 b/t/s/u 同类 slot 即使属于不同 group 也必须拒绝，以保证 D3D10 可直接映射。
+- `RHIBindingLayout` 使用 resource type、shader stage、当前 target binding、array count，不暴露 descriptor set/heap/root parameter；target binding 不是资产级跨后端 ABI。
+- `RHIBindingGroup` 只表达资源更新频率和所有权分组，不等于 descriptor set，也不创建公共物理寄存器命名空间。Shader compiler 为每个 target 独立生成紧凑 native mapping：D3D11/D3D12 按 stage 与 register class 分配，Vulkan 按 physical set 与 descriptor type 分配。公共 parity 只比较逻辑身份、类型、数组、offset 与 stage visibility，不比较不同 target 的 native slot 数字。
+- 五个逻辑组固定为 Global、View、Pass、Material、Object。`VulkanPortable v1` 使用四个 physical sets：set 0 合并 Global 与 View，set 1 为 Pass，set 2 为 Material，set 3 为 Object；每个 set 内 binding 从 0 连续紧凑分配。
 - sampler descriptor 只包含三后端共有的 filter、address mode、LOD、anisotropy、comparison 和固定 border color 语义；后端在创建前检查 capability 与 limits。
 - shader 输入包含 stage、目标字节码、entry point、reflection 和稳定 content hash。
 - pipeline descriptor 是完整不可变值；cache key 覆盖全部兼容状态，hash 命中后做 equality 校验。
 - graphics pipeline cache 由 device 拥有并在公共 RHI frontend 实现。它使用不含对象地址和 debug name 的规范化值键，对并发 miss 做 single-flight 去重；确定性 validation 在进入 cache 前完成，backend 创建失败不永久缓存。shutdown 必须拒绝新的 pipeline 创建并等待已进入的创建结束，再等待 GPU idle、释放 cache 强引用并销毁 native device。
 - graphics pipeline descriptor 必须显式包含 vertex buffer/attribute、primitive topology、rasterization、depth/stencil、每 color attachment 的 blend/write mask，以及 attachment format/sample count；viewport 和 scissor 属于 command context 的动态状态。
 - graphics pipeline 必须兼容实际 attachment 的 format、sample count、load/store/resolve 与 depth/stencil 用法。
+
+## 坐标、矩阵与深度约定
+
+- 世界坐标固定为 left-handed：+X right、+Y up、+Z forward，Camera local forward 为 +Z，1 Toy3d unit = 1 meter。
+- 使用 column-vector、column-major storage；HLSL 固定 `mul(matrix, vector)`，generated declaration 显式 `column_major`。
+- clip depth 为 0..1 reversed-Z：near=1、far=0、clear=0.0、默认 compare=`GreaterEqual`；公共 front face 为 CounterClockwise。
+- Vulkan 1.1 backend 使用 negative viewport height 处理 Y 并修正 native front-face mapping；Shader 和 renderscene 不写 backend-specific Y flip。
+- importer/Cook 将外部模型、骨骼、动画、camera/light 和单位转换到上述 canonical space，转换规则版本进入 asset Cook key。
 
 ## Capability、错误与线程
 

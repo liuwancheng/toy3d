@@ -299,7 +299,7 @@ using RHIQueueCompletionValue = std::uint64_t;
 - resource initial data 与显式 upload batch 的关系；
 - memory budget/usage 通过 capability/statistics 查询，而不是暴露 allocator。
 
-| 公共语义 | Vulkan | D3D12 | D3D10/11 类后端 |
+| 公共语义 | Vulkan | D3D12 | D3D11 后端 |
 |---|---|---|---|
 | GPU-only | VMA device-local | DEFAULT heap/placed resource | DEFAULT usage |
 | upload | host-visible upload page | UPLOAD heap ring | dynamic/staging update 路径 |
@@ -308,7 +308,7 @@ using RHIQueueCompletionValue = std::uint64_t;
 | completion value | timeline value 或 fence tracking value | fence value | query/fence 模拟值 |
 | deferred deletion | completion value + fence/timeline | fence value | completion value + query/fence |
 
-仓库文档对目标后端存在 D3D10 与 D3D11 表述不一致。本内存方案不依赖二者差异，但在公共 map/update 契约定型前应统一目标版本。
+目标后端统一为 Vulkan、D3D11 与 D3D12。D3D11 基线为 Feature Level 11_0 与 Shader Model 5.0；不支持 D3D10/Feature Level 10.x/Shader Model 4。
 
 ## 9. 建议源码组织
 
@@ -322,7 +322,7 @@ engine/runtime/drivers/vulkan/
   vma_implementation.cpp
 ```
 
-避免建立泛化过早的跨 API `RHIMemoryAllocator`。D3D12 可以拥有自己的 heap allocator，D3D10/11 使用其自然资源模型；公共层只统一语义和统计接口。
+避免建立泛化过早的跨 API `RHIMemoryAllocator`。D3D12 可以拥有自己的 heap allocator，D3D11 使用其自然资源模型；公共层只统一语义和统计接口。
 
 ## 10. 分阶段迁移
 

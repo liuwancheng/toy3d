@@ -2,7 +2,7 @@
 
 ## 目的
 
-本文从 `D:/ue4.27plus/Engine/Source/Runtime/` 提炼可供 Toy3d 使用的设计要素。它是架构参考，不是移植清单；Toy3d 最终边界必须同时适合 Vulkan、DirectX 10 和 DirectX 12。
+本文从 `D:/ue4.27plus/Engine/Source/Runtime/` 提炼可供 Toy3d 使用的设计要素。它是架构参考，不是移植清单；Toy3d 最终边界必须同时适合 Vulkan、DirectX 11、DirectX 12 与移动端 Vulkan profile。
 
 ## 核心模型
 
@@ -35,19 +35,19 @@ UE4.27 把后端无关资源、设备创建、GPU 命令语义、命令调度和
 
 ### PSO 汇总不可变绘制状态
 
-`FRHIGraphicsPipelineStateInitializer` 聚合 shader、vertex declaration、blend、rasterizer、depth/stencil、primitive 和 render-target compatibility。Vulkan/D3D12 可创建原生 pipeline/PSO；D3D10 可拆成多个 state object 并组合绑定。公共接口不暴露 pipeline layout 或 root signature。
+`FRHIGraphicsPipelineStateInitializer` 聚合 shader、vertex declaration、blend、rasterizer、depth/stencil、primitive 和 render-target compatibility。Vulkan/D3D12 可创建原生 pipeline/PSO；D3D11 可拆成多个 shader/state object 并组合绑定。公共接口不暴露 pipeline layout 或 root signature。
 
 ### Binding 使用 shader 可见语义
 
-UE4.27 context 主要按 shader stage 和 slot 设置 texture、sampler、SRV、UAV、uniform buffer，后端自行映射 descriptor 或 D3D slot。对包含 D3D10 的 Toy3d，slot/reflection 是稳妥共同基线；Vulkan set/binding 和 D3D12 root parameter 不应成为核心公共概念。
+UE4.27 context 主要按 shader stage 和 slot 设置 texture、sampler、SRV、UAV、uniform buffer，后端自行映射 descriptor 或 D3D slot。Toy3d 应保留逻辑 binding identity，并为 Vulkan、D3D11、D3D12 生成各自 target mapping；Vulkan set/binding 和 D3D12 root parameter 不应成为核心公共概念。
 
 ### Render Pass 表达附件作用域
 
-`FRHIRenderPassInfo` 描述 color/depth/stencil attachment、load/store、resolve 和 subresource。Vulkan 映射原生 render pass/dynamic rendering，D3D12/D3D10 可用目标绑定、clear、resolve 模拟。D3D10 没有显式 store action，后端可自然保留或按 capability 处理 discard。
+`FRHIRenderPassInfo` 描述 color/depth/stencil attachment、load/store、resolve 和 subresource。Vulkan 映射原生 render pass/dynamic rendering，D3D12/D3D11 可用目标绑定、clear、resolve 模拟。D3D11 没有显式 store action，后端可自然保留或按 capability 处理 discard。
 
 ### 公共意图驱动后端同步
 
-UE4.27 用 `ERHIAccess` 和 transition 表达用途变化与 pipeline 关系。Vulkan/D3D12 生成 barrier；D3D10 可维护逻辑状态、验证 hazard 并解除冲突绑定。公共层不应暴露 Vulkan stage/access mask，也不能因 D3D10 隐式状态而删除 access 语义。
+UE4.27 用 `ERHIAccess` 和 transition 表达用途变化与 pipeline 关系。Vulkan/D3D12 生成 barrier；D3D11 可维护逻辑状态、验证 hazard 并解除冲突绑定。公共层不应暴露 Vulkan stage/access mask，也不能因 D3D11 隐式状态而删除 access 语义。
 
 ### 能力差异必须可查询
 
@@ -55,7 +55,7 @@ Toy3d 不需要复制 UE 大量全局 capability，但需要小型 `RHICapabilit
 
 ## 三后端边界
 
-| 公共语义 | Vulkan | D3D12 | D3D10 | 结论 |
+| 公共语义 | Vulkan | D3D12 | D3D11 | 结论 |
 |---|---|---|---|---|
 | usage/access | barrier/layout | resource state | 隐式状态与绑定冲突 | 公共表达用途，后端决定同步 |
 | graphics PSO | pipeline + layout | PSO + root signature | state object 组合 | 公共 PSO 可用，不暴露布局 |
