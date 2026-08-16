@@ -101,11 +101,11 @@ VulkanDevice
 替换当前名不副实的 `VulkanMemoryAllocator`，device 唯一拥有它。建议职责：
 
 ```cpp
-enum class VulkanMemoryClass
+enum class VulkanAllocationUsage
 {
-    DeviceLocal,
-    Upload,
-    Readback
+    GpuOnly,
+    CpuUpload,
+    CpuReadback
 };
 
 struct VulkanAllocation
@@ -137,13 +137,13 @@ public:
 
     RHIResult<VulkanAllocatedBuffer> create_buffer(
         const VkBufferCreateInfo& buffer_info,
-        VulkanMemoryClass memory_class,
+        VulkanAllocationUsage allocation_usage,
         VulkanAllocationFlags flags,
         const char* debug_name);
 
     RHIResult<VulkanAllocatedImage> create_image(
         const VkImageCreateInfo& image_info,
-        VulkanMemoryClass memory_class,
+        VulkanAllocationUsage allocation_usage,
         VulkanAllocationFlags flags,
         const char* debug_name);
 

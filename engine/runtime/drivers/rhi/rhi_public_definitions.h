@@ -57,39 +57,6 @@ namespace toy3d
         D24UNormS8UInt,
         D32Float,
         D32FloatS8UInt,
-
-        // Legacy spelling aliases. Remove after backend and RenderScene migration.
-        Unknow = Unknown,
-        A32B32G32R32F = R32G32B32A32Float,
-        B8G8R8A8 = B8G8R8A8UNorm,
-        G8 = R8UNorm,
-        G16 = R16UInt,
-        DXT1 = BC1UNorm,
-        DXT3 = BC2UNorm,
-        DXT5 = BC3UNorm,
-        FloatRGB = R32G32B32Float,
-        FloatRGBA = R16G16B16A16Float,
-        DepthStencil = D24UNormS8UInt,
-        ShadowDepth = D32Float,
-        R32_Float = R32Float,
-        G16R16 = R16G16Float,
-        G16R16F = R16G16Float,
-        G32R32F = R32G32Float,
-        A2B10G10R10 = R10G10B10A2UNorm,
-        A16G16B16R16 = R16G16B16A16Float,
-        R16G16B16A16 = R16G16B16A16Float,
-        Depth24 = D24UNormS8UInt,
-        FloatR11G11B10 = R11G11B10Float,
-        A8 = R8UNorm,
-        R32_UINT = R32UInt,
-        R8G8B8A8 = R8G8B8A8UNorm,
-        A8R8G8B8 = B8G8R8A8UNorm,
-        R8G8B8A8_SNORM = R8G8B8A8SNorm,
-        PF_R8G8B8A8_UNORM = R8G8B8A8UNorm,
-        ASTC_4x4 = ASTC4x4,
-        ASTC_6x6 = ASTC6x6,
-        ASTC_8x8 = ASTC8x8,
-        ASTC_12x12 = ASTC12x12,
         PixelFormat_Max
     };
 
@@ -161,28 +128,7 @@ namespace toy3d
         ResolveSource = 1U << 15,
         ResolveDestination = 1U << 16,
         CPURead = 1U << 17,
-        CPUWrite = 1U << 18,
-
-        // Legacy spelling aliases. Remove after command-context migration.
-        None = Unknown,
-        IndirectArgs = IndirectArguments,
-        VertexOrIndexBuffer = (1U << 2) | (1U << 3),
-        SRVCompute = ShaderResourceCompute,
-        SRVGraphics = ShaderResourceGraphics,
-        UAVCompute = UnorderedAccessCompute,
-        UAVGraphics = UnorderedAccessGraphics,
-        RTV = RenderTarget,
-        DSVRead = DepthStencilRead,
-        DSVWrite = DepthStencilWrite,
-        CopySrc = CopySource,
-        CopyDest = CopyDestination,
-        ResolveSrc = ResolveSource,
-        ResolveDst = ResolveDestination,
-        EReadable = (1U << 1) | (1U << 2) | (1U << 3) | (1U << 4) |
-            (1U << 5) | (1U << 6) | (1U << 7) | (1U << 11) |
-            (1U << 13) | (1U << 15) | (1U << 17),
-        EWritable = (1U << 8) | (1U << 9) | (1U << 10) | (1U << 12) |
-            (1U << 14) | (1U << 16) | (1U << 18)
+        CPUWrite = 1U << 18
     };
 
     enum class RHIShaderStage : std::uint8_t

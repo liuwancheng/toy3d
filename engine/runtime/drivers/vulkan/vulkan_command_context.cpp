@@ -86,10 +86,6 @@ namespace toy3d
                 state = {VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT,
                     VK_IMAGE_LAYOUT_UNDEFINED, true, false};
                 return RHIStatus::success();
-            case RHIAccess::VertexOrIndexBuffer:
-                state = {VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT,
-                    VK_IMAGE_LAYOUT_UNDEFINED, true, false};
-                return RHIStatus::success();
             case RHIAccess::UniformBuffer:
                 state = {VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                     VK_ACCESS_UNIFORM_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED, true, false};

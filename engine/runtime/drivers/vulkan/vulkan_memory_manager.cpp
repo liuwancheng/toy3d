@@ -22,23 +22,23 @@ namespace toy3d
             }
         }
 
-        VmaAllocationCreateInfo make_allocation_create_info(VulkanMemoryClass memory_class)
+        VmaAllocationCreateInfo make_allocation_create_info(VulkanAllocationUsage allocation_usage)
         {
             VmaAllocationCreateInfo create_info{};
-            switch (memory_class)
+            switch (allocation_usage)
             {
-            case VulkanMemoryClass::DeviceLocal:
+            case VulkanAllocationUsage::GpuOnly:
                 create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
                 create_info.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
                 break;
-            case VulkanMemoryClass::Upload:
+            case VulkanAllocationUsage::CpuUpload:
                 create_info.flags =
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
                     VMA_ALLOCATION_CREATE_MAPPED_BIT;
                 create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
                 create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
                 break;
-            case VulkanMemoryClass::Readback:
+            case VulkanAllocationUsage::CpuReadback:
                 create_info.flags =
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
                     VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -102,7 +102,7 @@ namespace toy3d
 
     RHIResult<VulkanAllocatedBuffer> VulkanMemoryManager::create_buffer(
         const VkBufferCreateInfo& buffer_info,
-        VulkanMemoryClass memory_class,
+        VulkanAllocationUsage allocation_usage,
         const char* debug_name)
     {
         if (vma_allocator == VK_NULL_HANDLE)
@@ -119,7 +119,7 @@ namespace toy3d
         }
 
         const VmaAllocationCreateInfo allocation_create_info =
-            make_allocation_create_info(memory_class);
+            make_allocation_create_info(allocation_usage);
         VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
         VmaAllocationInfo allocation_info{};
@@ -204,7 +204,7 @@ namespace toy3d
 
     RHIResult<VulkanAllocatedImage> VulkanMemoryManager::create_image(
         const VkImageCreateInfo& image_info,
-        VulkanMemoryClass memory_class,
+        VulkanAllocationUsage allocation_usage,
         const char* debug_name)
     {
         if (vma_allocator == VK_NULL_HANDLE)
@@ -224,7 +224,7 @@ namespace toy3d
         }
 
         const VmaAllocationCreateInfo allocation_create_info =
-            make_allocation_create_info(memory_class);
+            make_allocation_create_info(allocation_usage);
         VkImage image = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
         VmaAllocationInfo allocation_info{};

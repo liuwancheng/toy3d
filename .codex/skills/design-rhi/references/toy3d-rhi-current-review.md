@@ -19,6 +19,7 @@
 7. graphics pipeline 创建已迁移为 `RHIDevice::create_graphics_pipeline()` 公共 NVI 与 backend `create_graphics_pipeline_impl()`。公共 frontend 统一执行 validation、limits/format capability、descriptor canonicalization，并使用 pointer-free 完整键、hash collision equality 和并发 single-flight 的 device-owned cache；lifecycle gate 使 shutdown 拒绝新的 pipeline 创建、等待已进入创建结束，再等待 GPU idle、释放 cache 并销毁 native device。
 8. stencil pipeline 语义已收敛为 front/back operation 加共用 8-bit read/write mask，stencil reference 移到 command context 动态状态；constant blend factor 对应的 blend constants 也已补为动态命令，Vulkan pipeline 显式声明并录制这两类 dynamic state。
 9. Vulkan graphics pipeline 已映射 `VkPipelineDepthStencilStateCreateInfo`，compatibility render pass 与 command-list-local render pass 支持 color+depth 和 depth-only attachment、depth/stencil load/store/clear、只读/可写 layout 与 access 校验，并将 attachment format、sample count 和只读写入兼容性检查。packed depth/stencil format 在 Vulkan 1.0 下不支持一个 aspect 只读而另一个可写，后端会明确返回 `Unsupported`。renderscene test pass 已接入 `D32Float` depth attachment，实际经过创建、transition、clear 和 depth-enabled draw 路径。
+10. 已迁移并删除 `RHIFormat`、`RHIAccess` 的 legacy spelling alias，公共枚举只保留规范名称，避免 cache key、日志和后端转换出现同值异名。
 
 ## P1
 
@@ -32,7 +33,6 @@
 
 ## P2
 
-1. 公共枚举仍包含legacy spelling alias；完成调用方迁移后应删除，避免cache key、日志和后端转换存在双重名称。
-2. 当前公共行为命名混用`Desc`、`Info`、`set_graphics_pipeline`、`transition_resources`等风格；按UE语义和Toy3d命名规则分调用链迁移，不做一次性无关重命名。
-3. shader reflection、binding参数模型、shader/binding layout cache与persistent backend pipeline cache仍需成熟；最终公共命名不能泄漏descriptor set/root signature概念。
-4. binding layout entry 与 vertex input vector 尚未定义 canonical ordering；语义等价但排列不同的 descriptor 可能生成重复 PSO。应在各自 descriptor 创建边界统一顺序，不能只在 pipeline key 中排序而改变当前 vertex binding 位置语义。
+1. 当前公共行为命名混用`Desc`、`Info`、`set_graphics_pipeline`、`transition_resources`等风格；按UE语义和Toy3d命名规则分调用链迁移，不做一次性无关重命名。
+2. shader reflection、binding参数模型、shader/binding layout cache与persistent backend pipeline cache仍需成熟；最终公共命名不能泄漏descriptor set/root signature概念。
+3. binding layout entry 与 vertex input vector 尚未定义 canonical ordering；语义等价但排列不同的 descriptor 可能生成重复 PSO。应在各自 descriptor 创建边界统一顺序，不能只在 pipeline key 中排序而改变当前 vertex binding 位置语义。

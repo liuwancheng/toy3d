@@ -16,11 +16,12 @@
 
 namespace toy3d
 {
-    enum class VulkanMemoryClass
+    enum class VulkanAllocationUsage
     {
-        DeviceLocal,
-        Upload,
-        Readback
+        // CPU access is not requested; VMA still selects the actual memory type.
+        GpuOnly,
+        CpuUpload,
+        CpuReadback
     };
 
     struct VulkanMemoryManagerDesc
@@ -105,7 +106,7 @@ namespace toy3d
 
         RHIResult<VulkanAllocatedBuffer> create_buffer(
             const VkBufferCreateInfo& buffer_info,
-            VulkanMemoryClass memory_class,
+            VulkanAllocationUsage allocation_usage,
             const char* debug_name = nullptr);
         void destroy_buffer(VulkanAllocatedBuffer& buffer);
         RHIStatus flush_allocation(
@@ -115,7 +116,7 @@ namespace toy3d
 
         RHIResult<VulkanAllocatedImage> create_image(
             const VkImageCreateInfo& image_info,
-            VulkanMemoryClass memory_class,
+            VulkanAllocationUsage allocation_usage,
             const char* debug_name = nullptr);
         void destroy_image(VulkanAllocatedImage& image);
 

@@ -248,7 +248,7 @@ namespace toy3d
         buffer_info.size = capacity;
         buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        auto buffer = memory_manager.create_buffer(buffer_info, VulkanMemoryClass::Upload, "Vulkan upload page");
+        auto buffer = memory_manager.create_buffer(buffer_info, VulkanAllocationUsage::CpuUpload, "Vulkan upload page");
         if (!buffer)
         {
             return RHIResult<std::shared_ptr<VulkanUploadPage>>::failure(

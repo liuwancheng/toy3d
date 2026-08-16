@@ -896,7 +896,7 @@ namespace toy3d
 
         auto allocated_buffer = memory_manager_instance->create_buffer(
             create_info,
-            VulkanMemoryClass::DeviceLocal,
+            VulkanAllocationUsage::GpuOnly,
             desc.debug_name.c_str());
         if (!allocated_buffer)
         {
@@ -988,7 +988,7 @@ namespace toy3d
 
         auto allocated_image = memory_manager_instance->create_image(
             create_info,
-            VulkanMemoryClass::DeviceLocal,
+            VulkanAllocationUsage::GpuOnly,
             desc.debug_name.c_str());
         if (!allocated_image)
         {

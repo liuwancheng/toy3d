@@ -40,7 +40,7 @@ namespace toy3d
         }
 
         RenderTargetDesc depth_desc;
-        depth_desc.format = RHIFormat::DepthStencil;
+        depth_desc.format = RHIFormat::D24UNormS8UInt;
         depth_desc.width = buffer_width;
         depth_desc.height = buffer_height;
         depth_desc.usage = RHIResourceUsage::DepthStencil;
