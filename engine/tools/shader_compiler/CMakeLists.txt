@@ -3,6 +3,16 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "codegen/binding_codegen.h"
     "common/sha256.cpp"
     "common/sha256.h"
+    "compiler/compile_request.cpp"
+    "compiler/compile_request.h"
+    "compiler/dxc_adapter.cpp"
+    "compiler/dxc_adapter.h"
+    "compiler/include_resolver.cpp"
+    "compiler/include_resolver.h"
+    "compiler/process_runner.cpp"
+    "compiler/process_runner.h"
+    "compiler/toolchain_manifest.cpp"
+    "compiler/toolchain_manifest.h"
     "frontend/diagnostic.h"
     "frontend/shader_ast.h"
     "frontend/shader_parser.cpp"
@@ -34,6 +44,15 @@ set_target_properties(Toy3dShaderCompiler PROPERTIES
     CXX_EXTENSIONS OFF
     FOLDER "Engine/Tools")
 target_link_libraries(Toy3dShaderCompiler PRIVATE Toy3dShaderCompilerCore)
+add_dependencies(Toy3dShaderCompiler Toy3dShaderToolchainSync)
+add_custom_command(
+    TARGET Toy3dShaderCompiler
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Toy3dShaderCompiler>"
+            "${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dShaderCompiler>"
+    VERBATIM)
 
 if(BUILD_TESTING)
     add_executable(Toy3dShaderCompilerFrontendTests "tests/frontend_tests.cpp")
@@ -60,4 +79,43 @@ if(BUILD_TESTING)
             Toy3dShaderCompilerCore)
     add_test(NAME Toy3dShaderCompiler.Layout
         COMMAND Toy3dShaderCompilerLayoutTests)
+
+    add_executable(Toy3dShaderCompilerCompileTests "tests/compile_tests.cpp")
+    target_compile_features(Toy3dShaderCompilerCompileTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dShaderCompilerCompileTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dShaderCompilerCompileTests
+        PRIVATE
+            Toy3dShaderCompilerCore)
+    set(TOY3D_SHADER_TEST_DXC "" CACHE FILEPATH "Explicit DXC executable used only by Shader compiler integration tests")
+    set(TOY3D_SHADER_TEST_SPIRV_VAL "" CACHE FILEPATH "Explicit spirv-val executable used only by Shader compiler integration tests")
+    set(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT "${TOY3D_SHADER_TOOLCHAIN_ROOT}" CACHE PATH
+        "Explicit locked Toy3dShaderToolchain bundle used by integration tests")
+    if(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)
+        if(TOY3D_SHADER_TEST_DXC OR TOY3D_SHADER_TEST_SPIRV_VAL)
+            message(FATAL_ERROR "TOY3D_SHADER_TEST_TOOLCHAIN_ROOT cannot be combined with individual tool paths")
+        endif()
+        if(NOT EXISTS "${TOY3D_SHADER_TEST_TOOLCHAIN_ROOT}/Toy3dShaderToolchain.manifest")
+            message(FATAL_ERROR "TOY3D_SHADER_TEST_TOOLCHAIN_ROOT has no manifest: ${TOY3D_SHADER_TEST_TOOLCHAIN_ROOT}")
+        endif()
+        target_compile_definitions(Toy3dShaderCompilerCompileTests
+            PRIVATE
+                "TOY3D_SHADER_TEST_TOOLCHAIN_ROOT=\"${TOY3D_SHADER_TEST_TOOLCHAIN_ROOT}\"")
+    elseif(TOY3D_SHADER_TEST_DXC AND TOY3D_SHADER_TEST_SPIRV_VAL)
+        if(NOT EXISTS "${TOY3D_SHADER_TEST_DXC}")
+            message(FATAL_ERROR "TOY3D_SHADER_TEST_DXC does not exist: ${TOY3D_SHADER_TEST_DXC}")
+        endif()
+        if(NOT EXISTS "${TOY3D_SHADER_TEST_SPIRV_VAL}")
+            message(FATAL_ERROR "TOY3D_SHADER_TEST_SPIRV_VAL does not exist: ${TOY3D_SHADER_TEST_SPIRV_VAL}")
+        endif()
+        target_compile_definitions(Toy3dShaderCompilerCompileTests
+            PRIVATE
+                "TOY3D_SHADER_TEST_DXC=\"${TOY3D_SHADER_TEST_DXC}\""
+                "TOY3D_SHADER_TEST_SPIRV_VAL=\"${TOY3D_SHADER_TEST_SPIRV_VAL}\"")
+    elseif(TOY3D_SHADER_TEST_DXC OR TOY3D_SHADER_TEST_SPIRV_VAL)
+        message(FATAL_ERROR "DXC integration tests require both TOY3D_SHADER_TEST_DXC and TOY3D_SHADER_TEST_SPIRV_VAL")
+    endif()
+    add_test(NAME Toy3dShaderCompiler.Compile
+        COMMAND Toy3dShaderCompilerCompileTests)
 endif()

@@ -1193,6 +1193,42 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 
 ## 21. 实现步骤
 
+### 21.0 当前实现进度
+
+本节是后续实现工作的入口。每完成一个可独立验收的 vertical slice，都必须同步更新“已完成”“下一批任务”“尚未完成”和验证记录，避免仅根据阶段标题重复实现或越级开发。阶段正文仍定义长期范围与最终验收条件，本节只记录当前工作树相对这些条件的实际状态。
+
+截至 2026-08-18：
+
+- 阶段 0 部分完成：已建立 `engine/tools/shader_compiler/`、`engine/shader/builtin/`、`engine/shader/include/`、`Toy3dShaderCompilerCore`、`Toy3dShaderCompiler` 和测试 target；已实现 SHA-256、`ShaderParameterId`、ToyShaderABI version contract，以及 `engine/thirdparty/ShaderToolchain/` 下锁定版本、按 host 分包的预编译工具链。`engine/runtime/rendercore/shader/`、ShaderPackage format contract 和正式 `Toy3dShaders` 迁移尚未完成。
+- 阶段 1 的当前范围已完成：已有 `.shader` tokenizer、parser、AST、源码位置 diagnostics、`#pragma vertex/pixel/compute` 提取、基础 PSO state 校验及合法/非法语料测试。
+- 阶段 2 的核心 compiler contract 已完成：已有 constant-buffer packer、parameter schema 与 logical layout hash、active-resource 裁剪、D3D11/D3D12 register allocator、VulkanPortable 四 set allocator、target binding hash，以及 D3D/Vulkan generated binding HLSL。当前测试覆盖 packing、matrix/array stride、默认值、确定性排序、binding limits、target mapping 和 generated HLSL。
+- 阶段 3 继续推进：已有版本化 `ShaderCompileRequest`、target/profile/stage/debug/compiler identity 校验、稳定 compile key，以及只允许 `/Engine/ShaderIncludes/` 的虚拟 include resolver。resolver 已支持传递依赖 SHA-256、确定性依赖排序、`#line`、缺失文件、非法路径、include cycle 和最大深度诊断；用户 HLSL 不能直接 include compiler-owned `/Generated/` 路径。现已增加 `Toy3dShaderToolchain` manifest v1 reader、显式或可执行文件相对 bundle discovery、host platform/artifact SHA-256/compiler identity 校验、跨 Windows/POSIX 的无 shell 子进程执行，以及 Vulkan DXC adapter；adapter 固定 Vulkan 1.1、SPIR-V 1.3 上限、DX-compatible cbuffer layout、column-major、stage profile 和 Debug/Development/Shipping 参数，并在发布 binary 前强制执行 `spirv-val --target-env vulkan1.1`。共享 lock 已锁定 DXC `v1.8.2505.1`（`b106a961d09221b3c5bdb37be45b679257da08b8`）、SPIRV-Tools `vulkan-sdk-1.4.313.0`（`a62abcb402009b9ca5975e6167c09f237f630e0e`）、SPIRV-Headers（`aa6cef192b8e693916eb713e7a9ccadf06062ceb`）和 SPIRV-Reflect（`c6c0f5c9796bdef40c55065d82e0df67c38a29a4`）；Windows x64 正式 bundle 已发布，macOS x64/arm64 发布逻辑已建立但仍需对应硬件验证和提交产物。
+
+阶段 3 的 DXC/SPIR-V 编译 slice 当前已完成代码侧闭环：
+
+1. manifest v1 要求 DXC、SPIR-V Tools 与 SPIRV-Reflect 的 source revision、构建参数、license 和来源，要求 DXC、`spirv-val` 的 bundle-relative 路径与 SHA-256，并记录 Microsoft 官方 `d3dcompiler_47.dll`、DXIL validator 的版本、来源和 license；当前 Vulkan slice 只发现并执行 DXC 与 `spirv-val`。
+2. discovery 接受 `--toolchain-root` 显式根目录；未指定时只使用 `Toy3dShaderCompiler` 相邻的 `ShaderToolchain/<host-platform>/`。它不读取环境变量且不搜索 `PATH`、UE 或系统 SDK；manifest 缺失、字段/版本无效、artifact 缺失、hash 不符和 compiler identity 不符均诊断失败。
+3. adapter golden tests覆盖固定参数；单元测试覆盖 discovery、hash/identity mismatch、DXC/validation 失败不发布 binary；通过显式 CMake file path 可选测试使用真实 DXC 与 `spirv-val` 编译最小 vertex/pixel HLSL。
+
+下一批任务固定为阶段 3 的 reflection 与 loose artifact slice：
+
+1. 将 bundle 中已锁定的 SPIRV-Reflect 静态库与头文件接入 `Toy3dShaderCompilerCore`，提取最终 SPIR-V 的 resource、constant layout、stage visibility、vertex input 和 native set/binding。
+2. 实现 schema/reflection/native mapping parity validation，并补齐 `ReflectionUnexpectedResource`、constant offset/stride、32-bit interface precision、mapping version 和 VulkanPortable limits 诊断。
+3. 定义并写出以 compile key 分目录的已验证 loose artifact；在 reflection/parity 全部成功前不得发布 artifact，也不提前接入 runtime/RHI。
+4. Windows x64、macOS x64 和 macOS arm64 使用共享 source lock 与独立 host bundle；每个平台必须在匹配架构的 host 上完成真实 DXC/SPIR-V 验证，不得把 Windows artifact、本机 Vulkan SDK 或未经运行的交叉编译产物当作 fallback。
+
+最近一次独立验证（Windows、Visual Studio 2022、x64、Debug）：
+
+```text
+python engine/thirdparty/ShaderToolchain/Build/bootstrap_shader_toolchain.py --skip-build
+engine\thirdparty\ShaderToolchain\Build\publish_windows_x64.bat --package-only
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+cmake --build build --config Debug --target Toy3dShaderCompiler Toy3dShaderCompilerFrontendTests Toy3dShaderCompilerLayoutTests Toy3dShaderCompilerCompileTests Toy3dEditor
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+实现期间已从空 build tree 完成 Windows x64 full bootstrap；发布入口又从既有 locked build tree 生成 staging bundle，实际执行 DXC vertex/pixel 编译和 `spirv-val` 后替换 `engine/thirdparty/ShaderToolchain/windows-x64/`。manifest 记录 MSVC 14.44.35207、Windows SDK 10.0.26100.0、全部 source revision/build parameters/license 和 executable/library/header SHA-256；`dxc --version` 为 `1.8.2505.1 (Toy3d, b106a961d09221b3)`。独立验证重新完成 CMake configure，构建 `Toy3dShaderCompiler`、三个测试 target 与 `Toy3dEditor`，CTest 3/3 通过；`Compile` 测试使用正式 bundle 实际执行 DXC 与 `spirv-val`。验证还确认 `Toy3dShaderToolchainSync` 的 11 个源/目标文件 SHA-256 全部一致，`Toy3dShaderCompiler toolchain-info` 能从 `bin/ShaderToolchain/windows-x64/` 完成默认相对发现，Git LFS 规则只覆盖预期二进制。macOS x64、macOS arm64、Linux、移动设备、SPIRV-Reflect parity 和 runtime loose artifact 尚未验证，这些结果不得被描述为阶段 3 已完成。
+
 ### 21.1 依赖关系与可并行工作流
 
 后续按小批次提交和验收，不把整个 Shader 系统作为一次大改动。主依赖链为：

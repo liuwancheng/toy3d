@@ -17,5 +17,6 @@ foreach(TOY3D_SHADER_SOURCE IN LISTS TOY3D_SHADER_SOURCES)
 endforeach()
 
 add_custom_target(Toy3dShaders DEPENDS ${TOY3D_SHADER_OUTPUTS})
+add_dependencies(Toy3dShaders Toy3dShaderToolchainSync)
 set_target_properties(Toy3dShaders PROPERTIES FOLDER "Engine")
 set(TOY3D_SHADER_OUTPUTS "${TOY3D_SHADER_OUTPUTS}" PARENT_SCOPE)

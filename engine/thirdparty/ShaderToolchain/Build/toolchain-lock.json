@@ -1,0 +1,58 @@
+{
+  "lock_version": 1,
+  "bundle_identity": "Toy3dShaderToolchain/v1-dxc-1.8.2505.1-vulkan-sdk-1.4.313.0",
+  "dxc": {
+    "url": "https://github.com/microsoft/DirectXShaderCompiler.git",
+    "tag": "v1.8.2505.1",
+    "commit": "b106a961d09221b3c5bdb37be45b679257da08b8",
+    "license": "NCSA",
+    "submodules": {
+      "external/DirectX-Headers": "980971e835876dc0cde415e8f9bc646e64667bf7",
+      "external/SPIRV-Headers": "aa6cef192b8e693916eb713e7a9ccadf06062ceb",
+      "external/SPIRV-Tools": "a62abcb402009b9ca5975e6167c09f237f630e0e"
+    },
+    "cmake_arguments": [
+      "-DHLSL_INCLUDE_TESTS=OFF",
+      "-DSPIRV_BUILD_TESTS=OFF",
+      "-DLLVM_INCLUDE_TESTS=OFF",
+      "-DLLVM_BUILD_TESTS=OFF",
+      "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+      "-DHLSL_ENABLE_FIXED_VER=ON"
+    ]
+  },
+  "spirv_tools": {
+    "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+    "tag": "vulkan-sdk-1.4.313.0",
+    "commit": "a62abcb402009b9ca5975e6167c09f237f630e0e",
+    "headers_url": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+    "headers_tag": "vulkan-sdk-1.4.313.0",
+    "headers_commit": "aa6cef192b8e693916eb713e7a9ccadf06062ceb",
+    "license": "Apache-2.0",
+    "cmake_arguments": [
+      "-DSPIRV_SKIP_TESTS=ON",
+      "-DSPIRV_SKIP_EXECUTABLES=OFF",
+      "-DSPIRV_TOOLS_BUILD_STATIC=ON",
+      "-DBUILD_SHARED_LIBS=OFF"
+    ]
+  },
+  "spirv_reflect": {
+    "url": "https://github.com/KhronosGroup/SPIRV-Reflect.git",
+    "tag": "vulkan-sdk-1.4.313.0",
+    "commit": "c6c0f5c9796bdef40c55065d82e0df67c38a29a4",
+    "license": "Apache-2.0",
+    "cmake_arguments": [
+      "-DSPIRV_REFLECT_EXECUTABLE=OFF",
+      "-DSPIRV_REFLECT_STATIC_LIB=ON",
+      "-DSPIRV_REFLECT_BUILD_TESTS=OFF",
+      "-DSPIRV_REFLECT_ENABLE_ASSERTS=OFF"
+    ]
+  },
+  "deferred_microsoft_binaries": {
+    "d3dcompiler_version": "deferred-to-d3d11-slice",
+    "d3dcompiler_source_url": "https://developer.microsoft.com/windows/downloads/windows-sdk/",
+    "d3dcompiler_license": "Microsoft Windows SDK license",
+    "dxil_validator_version": "deferred-to-d3d12-slice",
+    "dxil_validator_source_url": "https://github.com/microsoft/DirectXShaderCompiler/releases",
+    "dxil_validator_license": "Microsoft binary license"
+  }
+}

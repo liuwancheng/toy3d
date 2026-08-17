@@ -43,7 +43,17 @@ namespace toy3d::shader
         ShaderParameterIdCollision,
         ConstantBufferSizeLimitExceeded,
         UnknownParameterUsage,
-        BindingLimitExceeded
+        BindingLimitExceeded,
+        InvalidIncludePath,
+        IncludeNotFound,
+        IncludeCycle,
+        IncludeDepthExceeded,
+        CompilerUnavailable,
+        InvalidCompileRequest,
+        InvalidToolchainManifest,
+        ToolchainHashMismatch,
+        ShaderCompilationFailed,
+        ShaderValidationFailed
     };
 
     struct Diagnostic

@@ -1,0 +1,7 @@
+engine/thirdparty/ShaderToolchain/**/*.exe filter=lfs diff=lfs merge=lfs -text
+engine/thirdparty/ShaderToolchain/**/*.dll filter=lfs diff=lfs merge=lfs -text
+engine/thirdparty/ShaderToolchain/**/*.dylib filter=lfs diff=lfs merge=lfs -text
+engine/thirdparty/ShaderToolchain/**/*.lib filter=lfs diff=lfs merge=lfs -text
+engine/thirdparty/ShaderToolchain/**/*.a filter=lfs diff=lfs merge=lfs -text
+engine/thirdparty/ShaderToolchain/macos-*/bin/dxc filter=lfs diff=lfs merge=lfs -text
+engine/thirdparty/ShaderToolchain/macos-*/bin/spirv-val filter=lfs diff=lfs merge=lfs -text
