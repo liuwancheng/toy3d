@@ -20,7 +20,7 @@ namespace toy3d::shader
         std::vector<std::string> arguments;
     };
 
-    struct VulkanCompileResult
+    struct ShaderCompilerOutput
     {
         std::optional<std::vector<std::uint8_t>> binary;
         std::vector<Diagnostic> diagnostics;
@@ -34,7 +34,7 @@ namespace toy3d::shader
         const std::filesystem::path& output_path,
         std::vector<Diagnostic>& diagnostics);
 
-    VulkanCompileResult compile_vulkan_shader(
+    ShaderCompilerOutput compile_vulkan_shader(
         const ShaderCompileRequest& request,
         const DiscoveredShaderToolchain& toolchain,
         const std::filesystem::path& working_directory,

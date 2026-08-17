@@ -58,6 +58,8 @@ toy3d/
 ## 渲染器与 RHI 规范
 
 - 项目以跨图形 API 渲染器为目标，RHI 需要支持 Vulkan、DirectX 11 和 DirectX 12。D3D11 基线为 Feature Level 11_0、Shader Model 5.0；不支持 D3D10、Feature Level 10.x 或 Shader Model 4。整体设计参考 Unreal Engine 4.27，但不照搬不适合本项目的复杂机制。
+- 第一方渲染、RHI、RenderCore 与 Shader 系统在语义等价时，命名优先采用 UE4.27 中容易识别的通用术语，降低架构沟通和源码阅读成本，例如 `Device`、`CommandContext`、`PipelineState`、`RenderPass`、`ShaderMap`、`ShaderMapEntry`、`ShaderCode` 与 `ShaderCodeLibrary`。借用术语时必须保持 Toy3d 的实际职责边界并在设计文档中定义，不得仅因名称相似照搬 UE 实现；语义不等价时使用能准确描述 Toy3d 行为的名称。
+- UE 风格只用于架构术语和职责划分，不引入 `F`/`E`/`T`/`I` 类型前缀、UE 宏、反射系统、对象系统或历史兼容层；代码标识符继续遵守本项目的 PascalCase、snake_case 和 `RHI` 前缀规范。
 - 上层渲染代码只能依赖 RHI 公共接口，禁止直接引用 `Vk*`、`ID3D11*`、`ID3D12*` 等后端类型。
 - 各图形 API 使用独立后端目录。后端专用类型、宏和头文件不得泄漏到公共 RHI 接口。
 - RHI 公共接口表达通用渲染语义，不得围绕单一图形 API 设计。API 特有能力通过 capability 查询或后端扩展提供，禁止在上层散布后端判断。

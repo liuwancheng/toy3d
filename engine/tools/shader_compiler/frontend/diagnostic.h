@@ -58,7 +58,7 @@ namespace toy3d::shader
         ReflectionUnexpectedResource,
         ReflectionMismatch,
         ShaderInterfacePrecisionMismatch,
-        ArtifactWriteFailed
+        ShaderCodeWriteFailed
     };
 
     struct Diagnostic

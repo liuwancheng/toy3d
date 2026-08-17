@@ -4,21 +4,21 @@
 
 namespace toy3d::shader
 {
-    bool VulkanArtifactCompileResult::succeeded() const
+    bool VulkanShaderCodeEntryResult::succeeded() const
     {
-        return artifact_directory.has_value() && diagnostics.empty();
+        return entry_directory.has_value() && diagnostics.empty();
     }
 
-    VulkanArtifactCompileResult compile_vulkan_loose_artifact(
+    VulkanShaderCodeEntryResult compile_vulkan_shader_code_entry(
         const ShaderCompileRequest& request,
         const TargetBindingLayout& target_layout,
         const DiscoveredShaderToolchain& toolchain,
         const std::filesystem::path& working_directory,
-        const std::filesystem::path& artifact_root,
+        const std::filesystem::path& entry_root,
         const ShaderProcessRunner& process_runner)
     {
-        VulkanArtifactCompileResult result;
-        VulkanCompileResult compiled = compile_vulkan_shader(
+        VulkanShaderCodeEntryResult result;
+        ShaderCompilerOutput compiled = compile_vulkan_shader(
             request, toolchain, working_directory, process_runner);
         if (!compiled.succeeded())
         {
@@ -32,10 +32,10 @@ namespace toy3d::shader
             result.diagnostics = std::move(reflected.diagnostics);
             return result;
         }
-        LooseArtifactWriteResult written = write_verified_loose_artifact(
-            artifact_root, request, target_layout, *reflected.reflection, *compiled.binary);
+        ShaderCodeEntryWriteResult written = write_verified_shader_code_entry(
+            entry_root, request, target_layout, *reflected.reflection, *compiled.binary);
         result.diagnostics = std::move(written.diagnostics);
-        result.artifact_directory = std::move(written.artifact_directory);
+        result.entry_directory = std::move(written.entry_directory);
         return result;
     }
 }

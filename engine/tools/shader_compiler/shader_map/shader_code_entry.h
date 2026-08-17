@@ -4,23 +4,26 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace toy3d::shader
 {
-    constexpr std::uint32_t shader_loose_artifact_version = 1;
+    constexpr std::uint32_t shader_code_entry_version = 1;
 
-    struct LooseArtifactWriteResult
+    struct ShaderCodeEntryWriteResult
     {
-        std::optional<std::filesystem::path> artifact_directory;
+        std::optional<std::filesystem::path> entry_directory;
         std::vector<Diagnostic> diagnostics;
 
         bool succeeded() const;
     };
 
-    LooseArtifactWriteResult write_verified_loose_artifact(
-        const std::filesystem::path& artifact_root,
+    ShaderCodeEntryWriteResult write_verified_shader_code_entry(
+        const std::filesystem::path& entry_root,
         const ShaderCompileRequest& request,
         const TargetBindingLayout& target_layout,
         const ShaderStageReflection& reflection,
         const std::vector<std::uint8_t>& binary);
+
+    std::string serialize_shader_stage_reflection(const ShaderStageReflection& reflection);
 }

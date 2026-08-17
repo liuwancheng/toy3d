@@ -1,3 +1,5 @@
+#include "shader_map/shader_map_entry.h"
+#include "compiler/program_compiler.h"
 #include "compiler/toolchain_manifest.h"
 #include "core/misc/logger.h"
 #include "frontend/shader_parser.h"
@@ -63,6 +65,7 @@ namespace
             toy3d::Logger::Level::TOY_ERROR,
             "Usage:\n"
             "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
+            "  Toy3dShaderCompiler [--toolchain-root <path>] compile-vulkan <input.shader> <virtual-path> <pass> <shader-map-root> <working-directory>\n"
             "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
     }
 
@@ -161,7 +164,9 @@ int main(int argument_count, char** arguments)
         return 0;
     }
 
-    if (command != "parse" || command_index + 2 != argument_count)
+    const bool compile_vulkan = command == "compile-vulkan";
+    if ((!compile_vulkan && command != "parse") ||
+        (compile_vulkan ? command_index + 6 != argument_count : command_index + 2 != argument_count))
     {
         print_usage();
         return 2;
@@ -187,6 +192,46 @@ int main(int argument_count, char** arguments)
     if (!result.succeeded())
     {
         return 1;
+    }
+
+    if (compile_vulkan)
+    {
+        std::error_code error;
+        const std::filesystem::path executable_path = current_executable_path(arguments[0], error);
+        if (error)
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR,
+                "error: unable to resolve Toy3dShaderCompiler executable path: " + error.message());
+            return 2;
+        }
+        const std::filesystem::path toolchain_root = explicit_toolchain_root.value_or(
+            toy3d::shader::shader_toolchain_root_for_executable(executable_path));
+        toy3d::shader::ToolchainDiscoveryResult discovered =
+            toy3d::shader::discover_shader_toolchain(toolchain_root);
+        for (const toy3d::shader::Diagnostic& diagnostic : discovered.diagnostics)
+            report_diagnostic(diagnostic);
+        if (!discovered.succeeded()) return 1;
+
+        toy3d::shader::ShaderProgramCompileInput compile_input;
+        compile_input.source_virtual_path = arguments[command_index + 2];
+        compile_input.pass_name = arguments[command_index + 3];
+        toy3d::shader::ShaderMapEntryCompileResult compiled =
+            toy3d::shader::compile_vulkan_shader_map_entry(
+                *result.asset, compile_input, *discovered.toolchain,
+                arguments[command_index + 5]);
+        for (const toy3d::shader::Diagnostic& diagnostic : compiled.diagnostics)
+            report_diagnostic(diagnostic);
+        if (!compiled.succeeded()) return 1;
+        toy3d::shader::ShaderMapEntryWriteResult written =
+            toy3d::shader::write_verified_shader_map_entry(
+                arguments[command_index + 4], *compiled.entry);
+        for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
+            report_diagnostic(diagnostic);
+        if (!written.succeeded()) return 1;
+        std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/"
+                  << compiled.entry->pass_name << "' to "
+                  << written.entry_directory->generic_string() << '\n';
+        return 0;
     }
 
     const toy3d::shader::ShaderAsset& asset = *result.asset;

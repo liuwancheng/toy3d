@@ -35,10 +35,19 @@ namespace toy3d::shader
 
     struct ReflectedInterfaceVariable
     {
+        enum class ScalarType
+        {
+            Float32,
+            Int32,
+            UInt32
+        };
+
         std::string name;
         std::string semantic;
         std::uint32_t location = 0;
         bool input = true;
+        ScalarType scalar_type = ScalarType::Float32;
+        std::uint32_t component_count = 1;
     };
 
     struct ShaderStageReflection
@@ -64,5 +73,6 @@ namespace toy3d::shader
     SpirvReflectionResult reflect_and_validate_spirv(
         const std::vector<std::uint8_t>& binary,
         const ShaderCompileRequest& request,
-        const TargetBindingLayout& expected_layout);
+        const TargetBindingLayout& expected_layout,
+        bool require_all_expected_bindings = true);
 }

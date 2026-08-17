@@ -202,6 +202,8 @@ namespace toy3d::shader
                 append_string(bytes, variable.semantic);
                 append_integer(bytes, variable.location);
                 append_integer(bytes, variable.input ? 1u : 0u);
+                append_integer(bytes, static_cast<std::uint32_t>(variable.scalar_type));
+                append_integer(bytes, variable.component_count);
             }
             append_integer(bytes, reflection.thread_group_size_x);
             append_integer(bytes, reflection.thread_group_size_y);
@@ -218,7 +220,8 @@ namespace toy3d::shader
     SpirvReflectionResult reflect_and_validate_spirv(
         const std::vector<std::uint8_t>& binary,
         const ShaderCompileRequest& request,
-        const TargetBindingLayout& expected_layout)
+        const TargetBindingLayout& expected_layout,
+        bool require_all_expected_bindings)
     {
         SpirvReflectionResult result;
         if (request.target != ShaderTarget::VulkanSpirV ||
@@ -359,18 +362,21 @@ namespace toy3d::shader
             }
             reflection.bindings.push_back(std::move(binding));
         }
-        for (const NativeBinding& expected : expected_layout.bindings)
+        if (require_all_expected_bindings)
         {
-            if (!has_stage(expected.stages, request.stage)) continue;
-            const bool found = std::any_of(reflection.bindings.begin(), reflection.bindings.end(),
-                [&](const ReflectedBinding& binding) {
-                    return binding.descriptor_set == expected.descriptor_set &&
-                        binding.descriptor_binding == expected.descriptor_binding;
-                });
-            if (!found)
+            for (const NativeBinding& expected : expected_layout.bindings)
             {
-                add_error(result.diagnostics, DiagnosticCode::ReflectionMismatch, request,
-                    "Expected active binding '" + expected.name + "' is absent from final SPIR-V.");
+                if (!has_stage(expected.stages, request.stage)) continue;
+                const bool found = std::any_of(reflection.bindings.begin(), reflection.bindings.end(),
+                    [&](const ReflectedBinding& binding) {
+                        return binding.descriptor_set == expected.descriptor_set &&
+                            binding.descriptor_binding == expected.descriptor_binding;
+                    });
+                if (!found)
+                {
+                    add_error(result.diagnostics, DiagnosticCode::ReflectionMismatch, request,
+                        "Expected active binding '" + expected.name + "' is absent from final SPIR-V.");
+                }
             }
         }
 
@@ -387,11 +393,21 @@ namespace toy3d::shader
                             "' is not guaranteed to use the public 32-bit interface ABI.");
                     continue;
                 }
-                reflection.interface_variables.push_back({
-                    variable.name ? variable.name : std::string{},
-                    variable.semantic ? variable.semantic : std::string{},
-                    variable.location,
-                    input});
+                ReflectedInterfaceVariable reflected;
+                reflected.name = variable.name ? variable.name : std::string{};
+                reflected.semantic = variable.semantic ? variable.semantic : std::string{};
+                reflected.location = variable.location;
+                reflected.input = input;
+                reflected.component_count = variable.numeric.vector.component_count == 0u ?
+                    1u : variable.numeric.vector.component_count;
+                if (variable.type_description &&
+                    (variable.type_description->type_flags & SPV_REFLECT_TYPE_FLAG_INT) != 0u)
+                {
+                    reflected.scalar_type = variable.numeric.scalar.signedness != 0u ?
+                        ReflectedInterfaceVariable::ScalarType::Int32 :
+                        ReflectedInterfaceVariable::ScalarType::UInt32;
+                }
+                reflection.interface_variables.push_back(std::move(reflected));
             }
         };
         append_interfaces(reflected_module.module.input_variables,

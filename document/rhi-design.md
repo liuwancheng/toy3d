@@ -696,7 +696,7 @@ RHI 只接收这些类型编译后的结果：shader bytecode、binding layout/s
 
 Profile 是版本化的离线编译和验证基线，不等于 backend。平台配置选择默认 profile；runtime 仍以实际 `RHICapabilities`、`RHILimits` 和 format support 复核 ShaderPackage 的 requirements。默认 `VulkanPortable v1` 固定为 Vulkan 1.1、SPIR-V 1.3、最多四个 bound descriptor sets，且不默认依赖可选 device feature。
 
-高于 portable 基线的功能必须由独立 profile 或 `Requires <Capability>` 显式声明，禁止根据当前桌面 GPU 自动提高 Cook 输出要求。Cook 和 runtime 都验证 sampler、sampled image、uniform/storage buffer、storage image 的 per-stage 与 pipeline-layout limits；错误需报告 group、stage、resource class、required 和 supported。ShaderPackage/ShaderLibrary 保存 required capabilities/limits，不兼容时返回可诊断的 `UnsupportedCapability`。
+高于 portable 基线的功能必须由独立 profile 或 `Requires <Capability>` 显式声明，禁止根据当前桌面 GPU 自动提高 Cook 输出要求。Cook 和 runtime 都验证 sampler、sampled image、uniform/storage buffer、storage image 的 per-stage 与 pipeline-layout limits；错误需报告 group、stage、resource class、required 和 supported。ShaderPackage/ShaderCodeLibrary 保存 required capabilities/limits，不兼容时返回可诊断的 `UnsupportedCapability`。
 
 ### 15.2 统一图形约定
 

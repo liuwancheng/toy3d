@@ -94,10 +94,20 @@
 
 #### Hash、package、Editor 与故障处理
 
+Shader 数据沿用容易识别的 UE 风格术语，但职责以 Toy3d 本文定义为准：
+
+- `ShaderCompilerOutput`：目标编译器刚产生、尚未进入持久化索引的内存结果，包含 binary、diagnostics 和原始 reflection；
+- `ShaderCodeEntry`：单个 vertex、pixel 或 compute stage 经 validation/parity 后的稳定记录；
+- `ShaderMapEntry`：一个 Shader、Pass、permutation、target/profile 组合的完整记录，拥有各 stage `ShaderCodeEntry`、合并 reflection、Binding Map 和 Pass template identity；
+- `ShaderMap`：Editor/runtime 按 Shader、Pass、permutation 和 target/profile 查询 `ShaderMapEntry` 的索引与生命周期容器；
+- `ShaderCodeLibrary`：Cook 后按平台发布、按 content hash 去重的只读 Shader code 集合。
+
+`Artifact`、`LooseArtifact` 和 `ProgramArtifact` 不再作为 Shader 领域类型名；`Program` 仅描述 graphics/compute stage 组合语义，不代替 `ShaderMapEntry` 的持久化身份。
+
 - 分离 `parameter_schema_hash`、`logical_layout_hash`、`target_binding_hash`、`bytecode_content_hash`。默认值、UI、sampler preset 进入 schema hash但不进入 logical layout；native mapping 只进入 target binding hash。compile/package/dependency/bytecode 内容寻址统一 SHA-256，`ShaderParameterId` 仍使用 FNV-1a。
 - ShaderPackage 使用 little-endian、定宽字段、section table、major/minor、required/optional section；独立记录 ABI、ID algorithm 与 target mapping version，不 dump C++ struct。reader 验证范围、重叠与整数溢出。格式支持 multi-target，Cook 按产品裁剪并用显式 profile/fallback chain 选择；v1 不压缩。
-- Editor/uncooked 不加载 ShaderLibrary，而是读取以 compile key 分目录的已验证 loose artifacts：manifest、binary、reflection、dependencies、debug。Cook 收集、验证、去重后生成只读 ShaderLibrary；Shipping 只加载 library。
-- Cook/Shipping ShaderLibrary 优先 memory map，不支持时回退普通只读 buffer并按需解析；热更新写入新 content-hash 文件，不能覆盖仍在使用的映射文件。
+- Editor/uncooked 不加载 ShaderCodeLibrary，而是读取以 ShaderMap key 分目录的已验证 `ShaderMapEntry`：manifest、`ShaderCodeEntry`、reflection、dependencies、debug。Cook 收集、验证、去重后生成只读 ShaderCodeLibrary；Shipping 只加载 library。
+- Cook/Shipping ShaderCodeLibrary 优先 memory map，不支持时回退普通只读 buffer并按需解析；热更新写入新 content-hash 文件，不能覆盖仍在使用的映射文件。
 - Debug 使用低优化与 embedded debug并保留源码；Development 正常优化并使用外置 symbols；Shipping strip 源码、symbols 与绝对路径。debug mode 进入 compile key，不进入 logical layout hash。
 - 热重载在后台编译和验证。有 last-known-good 时失败继续使用旧 Shader；首次失败使用 pass-family 兼容 Error Shader。Compute 无通用 fallback，除非功能显式提供，否则跳过并诊断；Global/copy/present 等核心 Shader 失败不能伪装成功。
 - layout 变化按 `ShaderParameterId + type` 迁移；类型不一致使用新默认并 warning，旧 override 成为 orphan。新 Program/PSO 全部成功后在 frame safe point 原子切换，旧 RHI 对象按 queue completion 延迟释放；批次任一 PSO 失败则整批回滚。
@@ -184,10 +194,10 @@ UE 并未把 `View`、`Material` 等 Uniform Buffer 简单固定为全工程统�
           +----------+----------+
           |                     |
           v                     v
- Verified Loose Artifact   ShaderPackage Records
+ Verified ShaderMapEntry   ShaderCodeLibrary Records
           |                     |
           |                     v
-          |              Cook ShaderLibrary
+          |              Cook ShaderCodeLibrary
           |                     |
           +----------+----------+
                      |
@@ -203,7 +213,7 @@ UE 并未把 `View`、`Material` 等 Uniform Buffer 简单固定为全工程统�
 
 职责边界：
 
-- Shader Frontend、layout、codegen 和目标编译器只属于 `engine/tools/shader_compiler/`；ShaderPackage loader、ShaderLibrary 和参数运行时属于 RenderCore，二者都不属于 RHI；
+- Shader Frontend、layout、codegen 和目标编译器只属于 `engine/tools/shader_compiler/`；ShaderPackage loader、ShaderCodeLibrary 和参数运行时属于 RenderCore，二者都不属于 RHI；
 - RHI 不读取 `.shader`、不处理 include、不展开 permutation、不理解 Material；
 - RHI 只接收目标字节码、entry point、精简 reflection、稳定 content hash 和 Binding Layout；
 - Material 系统操作参数 ID、逻辑分组和 Shader permutation，不操作物理 slot；
@@ -247,7 +257,7 @@ engine/
 │           ├── shader_parameter.h/.cpp
 │           ├── shader_package_format.h
 │           ├── shader_package.h/.cpp    # 只读、校验、反序列化
-│           └── shader_library.h/.cpp    # target 选择、缓存、热替换
+│           └── shader_code_library.h/.cpp # target 选择、缓存、热替换
 └── thirdparty/                          # 锁定版本的 DXC 等上游依赖
 ```
 
@@ -259,7 +269,7 @@ engine/
 | 公共 `.hlsli` | `engine/shader/include/` | 同上；Full debug 模式可作为 debug artifact 携带 |
 | parser、AST、layout、codegen | `engine/tools/shader_compiler/` | 否 |
 | DXC/FXC、reflection、package writer | `engine/tools/shader_compiler/` | 否 |
-| package format、loader、ShaderLibrary | `engine/runtime/rendercore/shader/` | 是 |
+| package format、loader、ShaderCodeLibrary | `engine/runtime/rendercore/shader/` | 是 |
 | RHI Shader/Binding 公共接口 | `engine/runtime/drivers/rhi/` | 是 |
 | Vulkan/D3D 原生 Shader 对象 | 对应 `engine/runtime/drivers/<backend>/` | 是，仅加入所选 backend |
 | 编译器测试 Shader | `engine/tools/shader_compiler/tests/data/` | 否 |
@@ -632,7 +642,7 @@ graphics pass 必须且只能声明一个 vertex，pixel 可选，不得声明 c
 7. 对每个 target/permutation 编译；
 8. 从最终字节码提取 reflection；
 9. 验证 reflection 的逻辑身份、类型、constant layout、stage visibility 和当前 target mapping；
-10. Editor 写入 loose artifact，Cook 阶段再汇集为 ShaderPackage/ShaderLibrary。
+10. Editor 写入 `ShaderMapEntry`，Cook 阶段再汇集为 ShaderPackage/ShaderCodeLibrary。
 
 ### 6.2 示例布局
 
@@ -979,7 +989,7 @@ Shader 编译缓存 key 至少覆盖：
 建议分两层：
 
 - `ShaderDerivedDataCache`：编译任务 key 到单目标输出，用于 Editor 增量编译；
-- `ShaderLibrary`：Cook 后面向运行时的平台字节码库，按 content hash 去重。
+- `ShaderCodeLibrary`：Cook 后面向运行时的平台字节码库，按 content hash 去重。
 
 include dependency graph 记录虚拟路径与内容 SHA-256。文件变更只使受影响 Shader/permutation 失效。并发 cache miss 使用 single-flight，避免同一任务重复编译。diagnostic 数量上限不进入合法输出 hash。
 
@@ -1188,7 +1198,7 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 - Toy3d 自建 `dxcompiler.dll` 的 source commit/build flags，以及 Microsoft 官方 `d3dcompiler_47.dll`、`dxil.dll` 的匹配版本、下载 URL、SHA-256 与 license 清单；
 - 锁定 DXC 版本下 Vulkan 1.1/SPIR-V 1.3、relaxed cbuffer layout、debug 与 optimization flags 的精确拼写；
 - 实际移动设备的 limits、驱动兼容证据与 profile conformance 测试清单；
-- Editor loose artifact 和 Cook ShaderLibrary 的具体磁盘分片、清理与部署策略。
+- Editor ShaderMap 和 Cook ShaderCodeLibrary 的具体磁盘分片、清理与部署策略。
 
 这些细节若导致公共 Shader 语法、Material 参数身份、RHI Binding 语义或支持平台范围变化，必须先更新本文并重新确认；仅实现选择可以在对应阶段设计记录中确定。
 
@@ -1203,23 +1213,24 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 - 阶段 0 部分完成：已建立 `engine/tools/shader_compiler/`、`engine/shader/builtin/`、`engine/shader/include/`、`Toy3dShaderCompilerCore`、`Toy3dShaderCompiler` 和测试 target；已实现 SHA-256、`ShaderParameterId`、ToyShaderABI version contract，以及 `engine/thirdparty/ShaderToolchain/` 下锁定版本、按 host 分包的预编译工具链。`engine/runtime/rendercore/shader/`、ShaderPackage format contract 和正式 `Toy3dShaders` 迁移尚未完成。
 - 阶段 1 的当前范围已完成：已有 `.shader` tokenizer、parser、AST、源码位置 diagnostics、`#pragma vertex/pixel/compute` 提取、基础 PSO state 校验及合法/非法语料测试。
 - 阶段 2 的核心 compiler contract 已完成：已有 constant-buffer packer、parameter schema 与 logical layout hash、active-resource 裁剪、D3D11/D3D12 register allocator、VulkanPortable 四 set allocator、target binding hash，以及 D3D/Vulkan generated binding HLSL。当前测试覆盖 packing、matrix/array stride、默认值、确定性排序、binding limits、target mapping 和 generated HLSL。
-- 阶段 3 的 compiler-side Vulkan slice 已闭环：已有版本化 `ShaderCompileRequest`、target/profile/stage/debug/compiler identity 校验、logical/target layout identity、稳定 compile key，以及只允许 `/Engine/ShaderIncludes/` 的虚拟 include resolver。resolver 已支持传递依赖 SHA-256、确定性依赖排序、`#line`、缺失文件、非法路径、include cycle 和最大深度诊断；用户 HLSL 不能直接 include compiler-owned `/Generated/` 路径。`Toy3dShaderToolchain` manifest v1 reader、显式或可执行文件相对 bundle discovery、host platform/artifact SHA-256/compiler identity 校验、跨 Windows/POSIX 的无 shell 子进程执行，以及 Vulkan DXC adapter 已完成；adapter 固定 Vulkan 1.1、SPIR-V 1.3 上限、DX-compatible cbuffer layout、column-major、stage profile 和 Debug/Development/Shipping 参数，并在 reflection 前强制执行 `spirv-val --target-env vulkan1.1`。最终 SPIR-V 通过 SPIRV-Reflect 提取并验证 logical/native reflection，成功后才以 compile key 分目录原子发布 loose artifact。共享 lock 已锁定 DXC `v1.8.2505.1`（`b106a961d09221b3c5bdb37be45b679257da08b8`）、SPIRV-Tools `vulkan-sdk-1.4.313.0`（`a62abcb402009b9ca5975e6167c09f237f630e0e`）、SPIRV-Headers（`aa6cef192b8e693916eb713e7a9ccadf06062ceb`）和 SPIRV-Reflect（`c6c0f5c9796bdef40c55065d82e0df67c38a29a4`）；Windows x64 正式 bundle 已发布，macOS x64/arm64 发布逻辑已建立但仍需对应硬件验证和提交产物。
+- 阶段 3 的 compiler-side Vulkan slice 已闭环：已有版本化 `ShaderCompileRequest`、target/profile/stage/debug/compiler identity 校验、logical/target layout identity、稳定 compile key，以及只允许 `/Engine/ShaderIncludes/` 的虚拟 include resolver。resolver 已支持传递依赖 SHA-256、确定性依赖排序、`#line`、缺失文件、非法路径、include cycle 和最大深度诊断；用户 HLSL 不能直接 include compiler-owned `/Generated/` 路径。`Toy3dShaderToolchain` manifest v1 reader、显式或可执行文件相对 bundle discovery、host platform/artifact SHA-256/compiler identity 校验、跨 Windows/POSIX 的无 shell 子进程执行，以及 Vulkan DXC adapter 已完成；adapter 固定 Vulkan 1.1、SPIR-V 1.3 上限、DX-compatible cbuffer layout、column-major、stage profile 和 Debug/Development/Shipping 参数，并在 reflection 前强制执行 `spirv-val --target-env vulkan1.1`。最终 SPIR-V 通过 SPIRV-Reflect 提取并验证 logical/native reflection，成功后才以 compile key 分目录原子发布 `ShaderCodeEntry`。共享 lock 已锁定 DXC `v1.8.2505.1`（`b106a961d09221b3c5bdb37be45b679257da08b8`）、SPIRV-Tools `vulkan-sdk-1.4.313.0`（`a62abcb402009b9ca5975e6167c09f237f630e0e`）、SPIRV-Headers（`aa6cef192b8e693916eb713e7a9ccadf06062ceb`）和 SPIRV-Reflect（`c6c0f5c9796bdef40c55065d82e0df67c38a29a4`）；Windows x64 正式 bundle 已发布，macOS x64/arm64 发布逻辑已建立但仍需对应硬件验证和提交产物。
 
-阶段 3 的 DXC/SPIR-V/reflection/loose artifact slice 当前已完成代码侧闭环：
+阶段 3 的 DXC/SPIR-V/reflection/`ShaderCodeEntry` slice 当前已完成代码侧闭环：
 
 1. manifest v1 要求 DXC、SPIR-V Tools 与 SPIRV-Reflect 的 source revision、构建参数、license 和来源，验证 DXC、`spirv-val`、SPIRV-Reflect library 与完整传递头文件的 bundle-relative 路径和 SHA-256，并记录 Microsoft 官方 `d3dcompiler_47.dll`、DXIL validator 的版本、来源和 license。Windows bundle 分别携带 Release 与 Debug CRT 对应的 SPIRV-Reflect 静态库；当前 Vulkan slice 执行 DXC、`spirv-val` 并静态链接 SPIRV-Reflect。
 2. discovery 接受 `--toolchain-root` 显式根目录；未指定时只使用 `Toy3dShaderCompiler` 相邻的 `ShaderToolchain/<host-platform>/`。它不读取环境变量且不搜索 `PATH`、UE 或系统 SDK；manifest 缺失、字段/版本无效、artifact 缺失、hash 不符和 compiler identity 不符均诊断失败。
 3. adapter golden tests覆盖固定参数；单元测试覆盖 discovery、hash/identity mismatch、DXC/validation 失败不发布 binary；通过显式 CMake file path 可选测试使用真实 DXC 与 `spirv-val` 编译最小 vertex/pixel HLSL。
 4. SPIRV-Reflect 从最终 SPIR-V 提取 resource kind、constant member type/offset/array stride/matrix stride、stage interface、compute thread-group size 和 Vulkan `set/binding`；校验 stage/entry、parameter identity、group、resource category/kind、array count、active binding 完整性、mapping version、target binding hash，以及 32-bit interface/`RelaxedPrecision` 约束。
-5. `compile_vulkan_loose_artifact()` 串联 compile、`spirv-val`、reflection/parity 与 artifact publication。artifact staging 完整写出 manifest、SPIR-V、reflection 和 dependency hash 后才 rename 到 compile-key 目录；compile、validation、reflection 或 parity 任一步失败都不发布最终目录。真实 DXC 集成测试覆盖 cbuffer `float3 + float`、matrix stride、array stride、Texture/Sampler、native mapping mismatch 和失败不发布路径。
+5. `compile_vulkan_shader_code_entry()` 串联 compile、`spirv-val`、reflection/parity 与 `ShaderCodeEntry` publication。staging 完整写出 manifest、SPIR-V、reflection 和 dependency hash 后才 rename 到 compile-key 目录；compile、validation、reflection 或 parity 任一步失败都不发布最终目录。真实 DXC 集成测试覆盖 cbuffer `float3 + float`、matrix stride、array stride、Texture/Sampler、native mapping mismatch 和失败不发布路径。
+6. ShaderMap compiler orchestration 已串联 Pass entry、logical layout、active-resource discovery、最终 target mapping、generated HLSL、各 stage compile/reflection 与 `ShaderMapEntry`。Vulkan 使用 discovery/final 两遍编译：第一遍允许 reflection 中缺少被优化掉的声明并收集真实 stage usage，第二遍按紧凑 mapping 重编译且要求严格 parity；共享 Pass 源码的每个 stage 都声明完整 Vulkan Program binding 集，最终 stage visibility 只取最终 SPIR-V reflection。
+7. ShaderMap-level validation 已合并 vertex/pixel/compute stage，检查 vertex output/pixel input 的 location、semantic、32-bit scalar type/component count，检查 compute thread-group size，并通过最终 allocator 复核 VulkanPortable per-stage/pipeline limits。`compile-vulkan` CLI 可从 `.shader` 与 Pass 直接生成原子发布的 `ShaderMapEntry`，Entry 保存 Shader/Pass identity、Pass template hash、logical/target hash、紧凑 mapping、各 stage `ShaderCodeEntry`/reflection/binary/dependency hash。VariantId ABI 尚未锁定时，含 `Variants` 的资产必须由调用方显式提供 generated permutation prelude，CLI 不会静默按未定义宏编译。
 
-下一批任务固定为阶段 3 的 program artifact 与读取闭环：
+下一批任务固定为阶段 3 的 permutation ABI 与 ShaderMapEntry 读取闭环：
 
-1. 增加 program compiler orchestration：从已解析 `.shader` 的 Pass/permutation 生成 logical layout、active stage usage、target mapping、generated HLSL、compile request 和各 stage artifact；CLI 提供显式 compile 入口，不要求调用方手工拼接中间结构。
-2. 合并同一 Program 的各 stage reflection，计算最终 stage visibility，并验证 vertex output/pixel input、compute thread-group metadata 和 program-level VulkanPortable limits；跨 stage parity 失败不得形成 program artifact。
-3. 实现 loose artifact reader/validator 与 cache-hit contract，读取时复核版本、target/profile、mapping、各 content hash、文件边界和依赖记录；补齐损坏、重复 compile key、并发发布和已存在 artifact 的确定性行为测试。
-4. 在 reader contract 稳定后，让当前 test pass 通过 Editor loose artifact provider 消费 program artifact，移除裸 `.spv`、手写 reflection/hash/Binding Layout；此项开始进入阶段 4 边界，实施前再次核对 RHI 生命周期和错误路径。
-5. Windows x64、macOS x64 和 macOS arm64 继续使用共享 source lock 与独立 host bundle；每个平台必须在匹配架构的 host 上完成真实 DXC/SPIR-V/reflection 验证，不得把 Windows artifact、本机 Vulkan SDK 或未经运行的交叉编译产物当作 fallback。
+1. 锁定并实现 VariantId、enum value ID、permutation key 与 generated macro contract；Program compile input 接受 typed variant selection，CLI 显式选择或使用 schema default，不再接收无身份的自由形式 permutation prelude。
+2. 实现 ShaderMapEntry reader/validator 与 cache-hit contract，读取时复核版本、target/profile、mapping、各 content hash、文件边界和依赖记录；补齐损坏、重复 ShaderMap key、并发发布和已存在 Entry 的确定性行为测试。
+3. 在 reader contract 稳定后，让当前 test pass 通过 Editor ShaderMap provider 消费 `ShaderMapEntry`，移除裸 `.spv`、手写 reflection/hash/Binding Layout；此项开始进入阶段 4 边界，实施前再次核对 RHI 生命周期和错误路径。
+4. Windows x64、macOS x64 和 macOS arm64 继续使用共享 source lock 与独立 host bundle；每个平台必须在匹配架构的 host 上完成真实 DXC/SPIR-V/reflection 验证，不得把 Windows artifact、本机 Vulkan SDK 或未经运行的交叉编译产物当作 fallback。
 
 最近一次独立验证（Windows、Visual Studio 2022、x64、Debug）：
 
@@ -1231,7 +1242,7 @@ cmake --build build --config Debug --target Toy3dShaderCompiler Toy3dShaderCompi
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-实现期间已从空 build tree 完成 Windows x64 full bootstrap；本轮独立验证又从既有 locked build tree 生成 staging bundle，实际执行 DXC vertex/pixel 编译和 `spirv-val` 后替换 `engine/thirdparty/ShaderToolchain/windows-x64/`。manifest 记录 MSVC 14.44.35207、Windows SDK 10.0.26100.0、全部 source revision/build parameters/license，以及 7 个 executable/library/header artifact 的 SHA-256；`dxc --version` 为 `1.8.2505.1 (Toy3d, b106a961d09221b3)`。独立验证重新完成 CMake configure，构建 `Toy3dShaderCompiler`、三个测试 target 与 `Toy3dEditor`，CTest 3/3 通过，未出现 Debug/Release CRT mismatch 或其他 linker warning；`Compile` 测试使用正式 bundle 实际执行 DXC、`spirv-val` 与静态链接的 SPIRV-Reflect，验证 112-byte cbuffer 的 scalar/vector offset、column-major matrix stride、固定数组 stride、Material set 2 的 cbuffer/texture/sampler binding 0/1/2，以及 reflection/parity 失败不发布 loose artifact。验证还确认正式 bundle 与 `Toy3dShaderToolchainSync` 同步副本的全部 manifest artifact SHA-256 一致，`Toy3dShaderCompiler toolchain-info` 能从 `bin/ShaderToolchain/windows-x64/` 完成默认相对发现。macOS x64、macOS arm64、Linux、移动设备、非 Debug 配置、D3D11/D3D12 target 和 runtime loose artifact provider 尚未验证，这些结果不得被描述为阶段 3 全部完成。
+实现期间已从空 build tree 完成 Windows x64 full bootstrap；本轮独立验证又从既有 locked build tree 生成 staging bundle，实际执行 DXC vertex/pixel 编译和 `spirv-val` 后替换 `engine/thirdparty/ShaderToolchain/windows-x64/`。manifest 记录 MSVC 14.44.35207、Windows SDK 10.0.26100.0、全部 source revision/build parameters/license，以及 7 个 executable/library/header artifact 的 SHA-256；`dxc --version` 为 `1.8.2505.1 (Toy3d, b106a961d09221b3)`。独立验证重新完成 CMake configure，构建 `Toy3dShaderCompiler`、三个测试 target 与 `Toy3dEditor`，CTest 3/3 通过，未出现 Debug/Release CRT mismatch 或其他 linker warning；`Compile` 测试使用正式 bundle 实际执行 DXC、`spirv-val` 与静态链接的 SPIRV-Reflect，验证 112-byte cbuffer 的 scalar/vector offset、column-major matrix stride、固定数组 stride、Material set 2 的 cbuffer/texture/sampler binding 0/1/2，以及 reflection/parity 失败不发布 `ShaderCodeEntry`。验证还确认正式 bundle 与 `Toy3dShaderToolchainSync` 同步副本的全部 manifest artifact SHA-256 一致，`Toy3dShaderCompiler toolchain-info` 能从 `bin/ShaderToolchain/windows-x64/` 完成默认相对发现。macOS x64、macOS arm64、Linux、移动设备、非 Debug 配置、D3D11/D3D12 target 和 runtime ShaderMap provider 尚未验证，这些结果不得被描述为阶段 3 全部完成。
 
 ### 21.1 依赖关系与可并行工作流
 
@@ -1242,7 +1253,7 @@ ctest --test-dir build -C Debug --output-on-failure
     -> logical schema 与 ToyShaderABI
     -> generated HLSL
     -> target compiler/reflection
-    -> loose artifact/package
+    -> ShaderMapEntry/ShaderCodeLibrary
     -> RenderCore/RHI runtime
 ```
 
@@ -1309,24 +1320,24 @@ ctest --test-dir build -C Debug --output-on-failure
 4. 使用 `spirv-val` 验证；
 5. 在 `engine/tools/shader_compiler/reflection/` 使用 SPIRV-Reflect 生成 logical reflection 与 Vulkan native mapping；
 6. 验证 SPIR-V `set/binding`、constant layout、resource type 与预期 schema/target mapping；
-7. 输出已完整验证的 Editor loose artifact；ShaderPackage writer/reader contract可独立并行实现；
-8. 让当前 test pass 通过 loose artifact provider 替换裸 `.spv`、手写 reflection、手写 hash 和手写 Binding Layout。
+7. 输出已完整验证的 Editor `ShaderMapEntry`；ShaderPackage writer/reader contract可独立并行实现；
+8. 让当前 test pass 通过 ShaderMap provider 替换裸 `.spv`、手写 reflection、手写 hash 和手写 Binding Layout。
 
-验收：单个 `.shader` 的已验证 loose artifact 在 Vulkan 完成无 validation error 的 render pass/draw/present；四个 physical sets 内 native binding 连续且无冲突；ShaderCompiler 结果与 Vulkan backend mapping version 一致；renderscene 不再读取裸 `.spv`，也不再手写 Shader reflection 或 Binding Layout。
+验收：单个 `.shader` 的已验证 `ShaderMapEntry` 在 Vulkan 完成无 validation error 的 render pass/draw/present；四个 physical sets 内 native binding 连续且无冲突；ShaderCompiler 结果与 Vulkan backend mapping version 一致；renderscene 不再读取裸 `.spv`，也不再手写 Shader reflection 或 Binding Layout。
 
 ### 阶段 4：Shader Runtime 与 RHI 收敛
 
 工作内容：
 
-1. 在 `engine/runtime/rendercore/shader/` 新增统一 `ShaderProgramProvider` 边界、Editor loose artifact provider，以及 Cook/Shipping ShaderLibrary provider；
+1. 在 `engine/runtime/rendercore/shader/` 新增统一 `ShaderMapProvider` 边界、Editor ShaderMap provider，以及 Cook/Shipping ShaderCodeLibrary provider；
 2. 增加 `RHIShaderBinaryFormat`；
 3. 将 `create_shader()`、`create_binding_layout()` 逐步迁移到公共 NVI validation/cache；
 4. 从 Program reflection 自动合并 `RHIBindingLayoutDesc`；
 5. 实现 parameter ID 到 group/offset/resource binding 的运行时查找；
 6. 确保 command list 保活 Shader、Binding Layout、Binding Set 和 PSO；
-7. 增加 loose artifact validation、package corrupt、target/profile mismatch 和 unsupported capability 测试。
+7. 增加 ShaderMapEntry validation、package corrupt、target/profile mismatch 和 unsupported capability 测试。
 
-验收：Editor 只从已验证 loose artifact 注册 program，Cook/Shipping 只从 ShaderLibrary 选择 target/profile record；上层不感知 provider 来源或物理 slot；错误 artifact、package 和 target/profile 均可诊断失败。
+验收：Editor 只从已验证 ShaderMapEntry 注册 program，Cook/Shipping 只从 ShaderCodeLibrary 选择 target/profile record；上层不感知 provider 来源或物理 slot；错误 Entry、package 和 target/profile 均可诊断失败。
 
 ### 阶段 5：D3D11 与 D3D12 编译目标
 
@@ -1363,7 +1374,7 @@ ctest --test-dir build -C Debug --output-on-failure
 1. 建立轻量 Shader program registry/GlobalShaderMap；
 2. 实现 typed permutation key、capability 裁剪和确定性序列化；
 3. 实现 `ShaderDerivedDataCache` single-flight；
-4. 实现 Cook `ShaderLibrary` 与字节码 content-hash 去重；
+4. 实现 Cook `ShaderCodeLibrary` 与字节码 content-hash 去重；
 5. 支持 `ShaderFeature` 与 `MultiCompile` 策略；
 6. 将 fullscreen、copy、depth 等内置 pass 迁移到新系统。
 

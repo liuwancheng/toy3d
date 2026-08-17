@@ -168,8 +168,14 @@ namespace toy3d::shader
         source << "#line 1 \"/Generated/ToyBindings.hlsli\"\n\n";
         for (const NativeBinding& binding : target_layout.bindings)
         {
-            if (!has_stage(binding.stages, stage)) continue;
-            if (target_layout.target != ShaderTarget::VulkanSpirV && binding.stages != stage) continue;
+            // A Vulkan Program uses one mapping shared by all stages. Emit the complete
+            // Program declaration set because DXC still parses non-entry functions in the
+            // shared Pass source; optimization determines the actual stage visibility.
+            if (target_layout.target != ShaderTarget::VulkanSpirV &&
+                (!has_stage(binding.stages, stage) || binding.stages != stage))
+            {
+                continue;
+            }
             if (!binding.logical_binding)
             {
                 result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::UnexpectedToken, {}, "Native binding is missing its logical binding."});

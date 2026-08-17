@@ -62,7 +62,7 @@ namespace toy3d::shader
             case DiagnosticCode::ReflectionUnexpectedResource: return "ReflectionUnexpectedResource";
             case DiagnosticCode::ReflectionMismatch: return "ReflectionMismatch";
             case DiagnosticCode::ShaderInterfacePrecisionMismatch: return "ShaderInterfacePrecisionMismatch";
-            case DiagnosticCode::ArtifactWriteFailed: return "ArtifactWriteFailed";
+            case DiagnosticCode::ShaderCodeWriteFailed: return "ShaderCodeWriteFailed";
         }
         return "UnknownDiagnostic";
     }

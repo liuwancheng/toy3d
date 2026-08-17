@@ -61,7 +61,7 @@ namespace toy3d::shader
         }
     }
 
-    bool VulkanCompileResult::succeeded() const
+    bool ShaderCompilerOutput::succeeded() const
     {
         return binary.has_value() && diagnostics.empty();
     }
@@ -105,13 +105,13 @@ namespace toy3d::shader
         return invocation;
     }
 
-    VulkanCompileResult compile_vulkan_shader(
+    ShaderCompilerOutput compile_vulkan_shader(
         const ShaderCompileRequest& request,
         const DiscoveredShaderToolchain& toolchain,
         const std::filesystem::path& working_directory,
         const ShaderProcessRunner& process_runner)
     {
-        VulkanCompileResult result;
+        ShaderCompilerOutput result;
         if (request.compiler_identity != toolchain.manifest.identity)
         {
             add_error(result.diagnostics, DiagnosticCode::CompilerUnavailable, request,

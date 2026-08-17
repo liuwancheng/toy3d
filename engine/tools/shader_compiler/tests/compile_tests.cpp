@@ -1,7 +1,10 @@
+#include "shader_map/shader_map_entry.h"
 #include "compiler/compile_request.h"
 #include "compiler/dxc_adapter.h"
+#include "compiler/program_compiler.h"
 #include "compiler/shader_compiler.h"
 #include "compiler/toolchain_manifest.h"
+#include "frontend/shader_parser.h"
 
 #include <algorithm>
 #include <chrono>
@@ -290,7 +293,7 @@ namespace
             }
             return result;
         };
-        const VulkanCompileResult compiled = compile_vulkan_shader(*built.request, toolchain, working, runner);
+        const ShaderCompilerOutput compiled = compile_vulkan_shader(*built.request, toolchain, working, runner);
         check(compiled.succeeded(), "DXC adapter must publish binary only after spirv-val succeeds");
         check(invocation_count == 2, "successful Vulkan compile must invoke DXC and spirv-val exactly once");
 
@@ -298,14 +301,14 @@ namespace
         empty_layout.target = ShaderTarget::VulkanSpirV;
         empty_layout.mapping_version = vulkan_binding_mapping_version;
         empty_layout.target_binding_hash[0] = 1u;
-        const std::filesystem::path artifact_root = working / "artifacts";
+        const std::filesystem::path entry_root = working / "shader-code-entries";
         invocation_count = 0;
-        const VulkanArtifactCompileResult reflection_failure = compile_vulkan_loose_artifact(
-            *built.request, empty_layout, toolchain, working / "reflection", artifact_root, runner);
+        const VulkanShaderCodeEntryResult reflection_failure = compile_vulkan_shader_code_entry(
+            *built.request, empty_layout, toolchain, working / "reflection", entry_root, runner);
         check(!reflection_failure.succeeded() &&
             has_diagnostic(reflection_failure.diagnostics, DiagnosticCode::ReflectionFailed),
-            "invalid final SPIR-V must fail reflection before loose artifact publication");
-        check(!std::filesystem::exists(artifact_root / sha256_to_hex(built.request->compile_key)),
+            "invalid final SPIR-V must fail reflection before ShaderCodeEntry publication");
+        check(!std::filesystem::exists(entry_root / sha256_to_hex(built.request->compile_key)),
             "reflection failure must not publish a compile-key artifact directory");
 
         std::size_t failing_invocation = 0;
@@ -321,17 +324,17 @@ namespace
             }
             return result;
         };
-        const VulkanCompileResult validation_failure = compile_vulkan_shader(*built.request, toolchain, working, failing_validator);
+        const ShaderCompilerOutput validation_failure = compile_vulkan_shader(*built.request, toolchain, working, failing_validator);
         check(!validation_failure.binary && has_diagnostic(validation_failure.diagnostics, DiagnosticCode::ShaderValidationFailed), "spirv-val failure must suppress binary publication");
 
         const ShaderProcessRunner failing_compiler = [](const std::filesystem::path&, const std::vector<std::string>&) {
             return ProcessResult{true, 1, "compile failed"};
         };
-        const VulkanCompileResult compilation_failure = compile_vulkan_shader(*built.request, toolchain, working, failing_compiler);
+        const ShaderCompilerOutput compilation_failure = compile_vulkan_shader(*built.request, toolchain, working, failing_compiler);
         check(!compilation_failure.binary && has_diagnostic(compilation_failure.diagnostics, DiagnosticCode::ShaderCompilationFailed), "DXC failure must suppress binary publication");
 
         toolchain.manifest.identity = "wrong";
-        const VulkanCompileResult identity_mismatch = compile_vulkan_shader(*built.request, toolchain, working, runner);
+        const ShaderCompilerOutput identity_mismatch = compile_vulkan_shader(*built.request, toolchain, working, runner);
         check(!identity_mismatch.succeeded() && has_diagnostic(identity_mismatch.diagnostics, DiagnosticCode::CompilerUnavailable), "adapter must reject a mismatched compiler identity");
         std::filesystem::remove_all(working);
     }
@@ -370,24 +373,24 @@ namespace
         check(vertex_request.succeeded() && pixel_request.succeeded(), "real DXC integration requests must build");
         if (vertex_request.request)
         {
-            const VulkanArtifactCompileResult compiled = compile_vulkan_loose_artifact(
+            const VulkanShaderCodeEntryResult compiled = compile_vulkan_shader_code_entry(
                 *vertex_request.request, empty_layout, toolchain, working / "compile",
                 working / "artifacts");
             check(compiled.succeeded(),
-                "explicit DXC vertex output must pass reflection and publish a verified loose artifact");
-            check(compiled.artifact_directory &&
-                std::filesystem::exists(*compiled.artifact_directory / "manifest.txt") &&
-                std::filesystem::exists(*compiled.artifact_directory / "shader.spv") &&
-                std::filesystem::exists(*compiled.artifact_directory / "reflection.txt"),
-                "verified vertex loose artifact must contain manifest, binary, and reflection records");
+                "explicit DXC vertex output must pass reflection and publish a verified ShaderCodeEntry");
+            check(compiled.entry_directory &&
+                std::filesystem::exists(*compiled.entry_directory / "manifest.txt") &&
+                std::filesystem::exists(*compiled.entry_directory / "shader.spv") &&
+                std::filesystem::exists(*compiled.entry_directory / "reflection.txt"),
+                "verified vertex ShaderCodeEntry must contain manifest, binary, and reflection records");
         }
         if (pixel_request.request)
         {
-            const VulkanArtifactCompileResult compiled = compile_vulkan_loose_artifact(
+            const VulkanShaderCodeEntryResult compiled = compile_vulkan_shader_code_entry(
                 *pixel_request.request, empty_layout, toolchain, working / "compile",
                 working / "artifacts");
             check(compiled.succeeded(),
-                "explicit DXC pixel output must pass reflection and publish a verified loose artifact");
+                "explicit DXC pixel output must pass reflection and publish a verified ShaderCodeEntry");
         }
 
         ConstantBufferLayout material_constants;
@@ -464,7 +467,7 @@ namespace
         check(resource_request.succeeded(), "resource reflection integration request must build");
         if (resource_request.request)
         {
-            const VulkanArtifactCompileResult compiled = compile_vulkan_loose_artifact(
+            const VulkanShaderCodeEntryResult compiled = compile_vulkan_shader_code_entry(
                 *resource_request.request, resource_layout, toolchain, working / "compile",
                 working / "resource-artifacts");
             check(compiled.succeeded(),
@@ -472,7 +475,7 @@ namespace
 
             TargetBindingLayout mismatched_layout = resource_layout;
             mismatched_layout.bindings[1].descriptor_binding = 7u;
-            const VulkanArtifactCompileResult mismatch = compile_vulkan_loose_artifact(
+            const VulkanShaderCodeEntryResult mismatch = compile_vulkan_shader_code_entry(
                 *resource_request.request, mismatched_layout, toolchain, working / "compile-mismatch",
                 working / "mismatch-artifacts");
             check(!mismatch.succeeded() &&
@@ -480,10 +483,113 @@ namespace
                 "native set/binding mismatch must fail parity validation");
             check(!std::filesystem::exists(working / "mismatch-artifacts" /
                 sha256_to_hex(resource_request.request->compile_key)),
-                "parity mismatch must not publish a loose artifact");
+                "parity mismatch must not publish a ShaderCodeEntry");
         }
         std::filesystem::remove_all(working);
     }
+
+#if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)
+    void test_real_program_compiler()
+    {
+        using namespace toy3d::shader;
+        const ToolchainDiscoveryResult discovered =
+            discover_shader_toolchain(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT);
+        check(discovered.succeeded(), "Program compiler requires the locked toolchain bundle");
+        if (!discovered.toolchain) return;
+
+        const std::string source = R"(
+Shader "Tests/ProgramCompile"
+{
+    Version 1
+    Properties
+    {
+        tint ("Tint", Color) = (1.0, 1.0, 1.0, 1.0)
+        source_texture ("Source", Texture2D) = "white"
+        source_sampler ("Sampler", Sampler) = LinearClamp
+    }
+    Pass "Forward"
+    {
+        HLSLPROGRAM
+        #pragma vertex vs_main
+        #pragma pixel ps_main
+        struct Varyings
+        {
+            float4 position : SV_Position;
+            float2 uv : TEXCOORD0;
+        };
+        Varyings vs_main(uint vertex_id : SV_VertexID)
+        {
+            Varyings output;
+            output.position = float4(vertex_id == 1 ? 1.0 : -1.0,
+                vertex_id == 2 ? 1.0 : -1.0, 0.0, 1.0);
+            output.uv = float2(0.5, 0.5);
+            return output;
+        }
+        float4 ps_main(Varyings input) : SV_Target0
+        {
+            return source_texture.Sample(source_sampler, input.uv) * tint;
+        }
+        ENDHLSL
+    }
+})";
+        const ParseResult parsed = parse_shader(
+            source, "/Engine/Shaders/Tests/ProgramCompile.shader");
+        check(parsed.succeeded(), "Program compiler test Shader must parse");
+        if (!parsed.asset) return;
+
+        ShaderProgramCompileInput input;
+        input.pass_name = "Forward";
+        input.source_virtual_path = "/Engine/Shaders/Tests/ProgramCompile.shader";
+        const std::filesystem::path working = make_test_directory("program_compile");
+        const ShaderMapEntryCompileResult compiled = compile_vulkan_shader_map_entry(
+            *parsed.asset, input, *discovered.toolchain, working);
+        for (const Diagnostic& diagnostic : compiled.diagnostics)
+        {
+            std::cerr << format_diagnostic(diagnostic) << '\n';
+        }
+        check(compiled.succeeded(),
+            "Program compiler must discover active bindings and complete the strict final compile");
+        if (compiled.entry)
+        {
+            check(compiled.entry->stages.size() == 2u,
+                "Graphics ShaderMapEntry must contain vertex and pixel ShaderCodeEntry records");
+            check(compiled.entry->bindings.size() == 3u,
+                "Only the active Material cbuffer, texture, and sampler must remain");
+            check(std::all_of(compiled.entry->bindings.begin(), compiled.entry->bindings.end(),
+                [](const ShaderMapBinding& binding) {
+                    return binding.stages == ShaderStageFlags::Pixel;
+                }), "Discovery must compute final pixel-only stage visibility");
+            check(compiled.entry->bindings[0].descriptor_set == 2u &&
+                compiled.entry->bindings[0].descriptor_binding == 0u &&
+                compiled.entry->bindings[1].descriptor_binding == 1u &&
+                compiled.entry->bindings[2].descriptor_binding == 2u,
+                "Final Vulkan Material bindings must be compact and deterministic");
+            const ShaderMapEntryWriteResult entry_write = write_verified_shader_map_entry(
+                working / "shader-map", *compiled.entry);
+            check(entry_write.succeeded(),
+                "Strictly validated Program compilation must publish one atomic ShaderMapEntry");
+            check(entry_write.entry_directory &&
+                std::filesystem::exists(*entry_write.entry_directory / "manifest.txt") &&
+                std::filesystem::exists(*entry_write.entry_directory / "mapping.txt") &&
+                std::filesystem::exists(*entry_write.entry_directory / "vertex.spv") &&
+                std::filesystem::exists(*entry_write.entry_directory / "pixel.spv"),
+                "ShaderMapEntry must contain manifest, mapping, and all stage binaries");
+            const ShaderMapEntryWriteResult duplicate = write_verified_shader_map_entry(
+                working / "shader-map", *compiled.entry);
+            check(!duplicate.succeeded() &&
+                has_diagnostic(duplicate.diagnostics, DiagnosticCode::ShaderCodeWriteFailed),
+                "An existing ShaderMapEntry key must fail deterministically before reader cache hits are implemented");
+        }
+        if (compiled.succeeded())
+        {
+            std::filesystem::remove_all(working);
+        }
+        else
+        {
+            std::cerr << "Program compiler working directory: " << working << '\n';
+        }
+    }
+#endif
 #endif
 }
 
@@ -497,6 +603,9 @@ int main()
     test_dxc_arguments_and_adapter_flow();
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT) || (defined(TOY3D_SHADER_TEST_DXC) && defined(TOY3D_SHADER_TEST_SPIRV_VAL))
     test_real_dxc_spirv_integration();
+#if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)
+    test_real_program_compiler();
+#endif
 #endif
     if (failure_count != 0)
     {
