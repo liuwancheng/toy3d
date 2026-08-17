@@ -53,7 +53,12 @@ namespace toy3d::shader
         InvalidToolchainManifest,
         ToolchainHashMismatch,
         ShaderCompilationFailed,
-        ShaderValidationFailed
+        ShaderValidationFailed,
+        ReflectionFailed,
+        ReflectionUnexpectedResource,
+        ReflectionMismatch,
+        ShaderInterfacePrecisionMismatch,
+        ArtifactWriteFailed
     };
 
     struct Diagnostic
@@ -63,4 +68,8 @@ namespace toy3d::shader
         SourceLocation location;
         std::string message;
     };
+
+    const char* diagnostic_severity_name(DiagnosticSeverity severity);
+    const char* diagnostic_code_name(DiagnosticCode code);
+    std::string format_diagnostic(const Diagnostic& diagnostic);
 }

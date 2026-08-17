@@ -106,12 +106,26 @@ namespace
             check(state.depth_write, "omitted DepthWrite must normalize to On");
         }
     }
+
+    void test_diagnostic_formatting()
+    {
+        const toy3d::shader::Diagnostic diagnostic{
+            toy3d::shader::DiagnosticSeverity::Error,
+            toy3d::shader::DiagnosticCode::IncludeCycle,
+            {"/Engine/Test.shader", 0, 12, 7},
+            "include cycle detected"};
+        check(
+            toy3d::shader::format_diagnostic(diagnostic) ==
+                "/Engine/Test.shader:12:7: error [IncludeCycle]: include cycle detected",
+            "diagnostics must use the shared stable display format");
+    }
 }
 
 int main()
 {
     test_valid_shader();
     test_vertex_only_graphics_pass();
+    test_diagnostic_formatting();
     test_error("duplicate_property.shader", toy3d::shader::DiagnosticCode::DuplicateProperty);
     test_error("missing_entry.shader", toy3d::shader::DiagnosticCode::MissingEntryPoint);
     test_error("invalid_state.shader", toy3d::shader::DiagnosticCode::InvalidPassState);

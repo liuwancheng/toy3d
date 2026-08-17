@@ -16,9 +16,12 @@
 #include "core/file_system/file_system.h"
 #include "core/misc/logger.h"
 #include "drivers/rhi/rhi_factory.h"
+#include "generated/defines.h"
 #include "platform/rhi_surface_factory.h"
 #include "renderscene/3dscene/forward_shading_render.h"
 
+#include <filesystem>
+#include <iostream>
 #include <utility>
 
 namespace toy3d
@@ -34,7 +37,15 @@ namespace toy3d
 	void Engine::pre_init()
 	{
 		// 初始化日志系统
-		Logger::get_instance().init("toy3d.log");
+		LogConfig log_config;
+		log_config.logger_name = "Toy3dRuntime";
+		log_config.log_directory = std::filesystem::path(ENGINE_SAVED_ROOT) / "logs";
+		log_config.file_name = "toy3d.log";
+		std::string log_error;
+		if (!Logger::get_instance().init(log_config, &log_error))
+		{
+			std::cerr << "Failed to initialize Toy3d logging: " << log_error << '\n';
+		}
 
 		// 1.配置文件的加载
 		ConfigManager::get_instance().load_config_file("engine_config.ini");

@@ -173,39 +173,6 @@ namespace toy3d::shader
         return toolchain.has_value() && diagnostics.empty();
     }
 
-    std::string sha256_to_hex(const Sha256Hash& hash)
-    {
-        static constexpr char digits[] = "0123456789abcdef";
-        std::string result;
-        result.reserve(hash.size() * 2u);
-        for (const std::uint8_t value : hash)
-        {
-            result.push_back(digits[value >> 4u]);
-            result.push_back(digits[value & 0x0fu]);
-        }
-        return result;
-    }
-
-    std::optional<Sha256Hash> sha256_from_hex(const std::string& text)
-    {
-        if (text.size() != Sha256Hash{}.size() * 2u) return std::nullopt;
-        Sha256Hash result{};
-        const auto value = [](char character) -> int {
-            if (character >= '0' && character <= '9') return character - '0';
-            if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-            if (character >= 'A' && character <= 'F') return character - 'A' + 10;
-            return -1;
-        };
-        for (std::size_t index = 0; index < result.size(); ++index)
-        {
-            const int high = value(text[index * 2u]);
-            const int low = value(text[index * 2u + 1u]);
-            if (high < 0 || low < 0) return std::nullopt;
-            result[index] = static_cast<std::uint8_t>((high << 4) | low);
-        }
-        return result;
-    }
-
     std::string shader_toolchain_host_platform()
     {
 #if defined(_WIN32) && defined(_M_X64)
@@ -258,7 +225,11 @@ namespace toy3d::shader
         load_artifact(*fields, "dxc_library", manifest.dxc_library, result.diagnostics);
         load_artifact(*fields, "spirv_val", manifest.spirv_val, result.diagnostics);
         load_artifact(*fields, "spirv_reflect", manifest.spirv_reflect, result.diagnostics);
+#if defined(_WIN32)
+        load_artifact(*fields, "spirv_reflect_debug", manifest.spirv_reflect_debug, result.diagnostics);
+#endif
         load_artifact(*fields, "spirv_reflect_header", manifest.spirv_reflect_header, result.diagnostics);
+        load_artifact(*fields, "spirv_header", manifest.spirv_header, result.diagnostics);
         load_metadata(*fields, "d3dcompiler", manifest.d3dcompiler_version, manifest.d3dcompiler_source_url,
             manifest.d3dcompiler_license, result.diagnostics);
         load_metadata(*fields, "dxil_validator", manifest.dxil_validator_version, manifest.dxil_validator_source_url,
@@ -278,7 +249,11 @@ namespace toy3d::shader
         verify_artifact(explicit_bundle_root, discovered.manifest.dxc_library, "DXC library", discovered.dxc_library_path, result.diagnostics);
         verify_artifact(explicit_bundle_root, discovered.manifest.spirv_val, "spirv-val", discovered.spirv_val_path, result.diagnostics);
         verify_artifact(explicit_bundle_root, discovered.manifest.spirv_reflect, "SPIRV-Reflect", discovered.spirv_reflect_path, result.diagnostics);
+#if defined(_WIN32)
+        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_reflect_debug, "SPIRV-Reflect Debug", discovered.spirv_reflect_debug_path, result.diagnostics);
+#endif
         verify_artifact(explicit_bundle_root, discovered.manifest.spirv_reflect_header, "SPIRV-Reflect header", discovered.spirv_reflect_header_path, result.diagnostics);
+        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_header, "SPIR-V header", discovered.spirv_header_path, result.diagnostics);
         if (!result.diagnostics.empty()) return result;
         result.toolchain = std::move(discovered);
         return result;

@@ -31,7 +31,9 @@ namespace toy3d::shader
         ToolchainArtifact dxc_library;
         ToolchainArtifact spirv_val;
         ToolchainArtifact spirv_reflect;
+        ToolchainArtifact spirv_reflect_debug;
         ToolchainArtifact spirv_reflect_header;
+        ToolchainArtifact spirv_header;
         std::string d3dcompiler_version;
         std::string d3dcompiler_source_url;
         std::string d3dcompiler_license;
@@ -47,7 +49,9 @@ namespace toy3d::shader
         std::filesystem::path dxc_library_path;
         std::filesystem::path spirv_val_path;
         std::filesystem::path spirv_reflect_path;
+        std::filesystem::path spirv_reflect_debug_path;
         std::filesystem::path spirv_reflect_header_path;
+        std::filesystem::path spirv_header_path;
     };
 
     struct ToolchainDiscoveryResult
@@ -58,8 +62,6 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    std::string sha256_to_hex(const Sha256Hash& hash);
-    std::optional<Sha256Hash> sha256_from_hex(const std::string& text);
     std::string shader_toolchain_host_platform();
     std::filesystem::path shader_toolchain_root_for_executable(
         const std::filesystem::path& executable_path);

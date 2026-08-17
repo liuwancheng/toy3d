@@ -12,7 +12,7 @@ ShaderToolchain/
 └── macos-arm64/       Apple Silicon macOS 正式 bundle
 ```
 
-每个平台 bundle 包含 DXC、`dxcompiler` 动态库、`spirv-val`、SPIRV-Reflect 静态库与头文件、第三方 license，以及 `Toy3dShaderToolchain.manifest`。manifest 锁定 host platform、source revision、构建参数、compiler identity 和每个 artifact 的 SHA-256。
+每个平台 bundle 包含 DXC、`dxcompiler` 动态库、`spirv-val`、SPIRV-Reflect 静态库及其完整公共头文件依赖、第三方 license，以及 `Toy3dShaderToolchain.manifest`。Windows 同时包含与 MSVC Debug CRT 匹配的 SPIRV-Reflect Debug 静态库；其他配置使用 Release 静态库。manifest 锁定 host platform、source revision、构建参数、compiler identity 和每个 artifact 的 SHA-256。
 
 `macos-x64` 和 `macos-arm64` 必须分别在对应架构的 Mac 上构建并运行验证，不能用未经运行验证的交叉编译产物代替。
 
@@ -30,7 +30,7 @@ macOS（脚本自动识别 Intel 或 Apple Silicon）：
 bash engine/thirdparty/ShaderToolchain/Build/publish_macos.sh
 ```
 
-发布会在被忽略的 `build/shader-toolchain/` 中拉取 lock 指定的源码、构建 Release 工具、生成 staging bundle，并真实编译最小 vertex/pixel HLSL、执行 `spirv-val`。全部成功后才替换当前 host 对应的平台目录；替换失败会恢复旧 bundle。
+发布会在被忽略的 `build/shader-toolchain/` 中拉取 lock 指定的源码、构建 Release 工具（Windows 额外构建 Debug SPIRV-Reflect 静态库）、生成 staging bundle，并真实编译最小 vertex/pixel HLSL、执行 `spirv-val`。全部成功后才替换当前 host 对应的平台目录；替换失败会恢复旧 bundle。
 
 已有完整构建树时可以只重新打包和验证：
 

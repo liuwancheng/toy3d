@@ -1,5 +1,6 @@
 #include "compiler/compile_request.h"
 #include "compiler/dxc_adapter.h"
+#include "compiler/shader_compiler.h"
 #include "compiler/toolchain_manifest.h"
 
 #include <algorithm>
@@ -77,6 +78,8 @@ namespace
         input.include_files = {
             {"/Engine/ShaderIncludes/Nested.hlsli", "#include \"/Engine/ShaderIncludes/Common.hlsli\"\n"},
             {"/Engine/ShaderIncludes/Common.hlsli", "static const float4 included_value = 1.0;\n"}};
+        input.logical_layout_hash[0] = 1u;
+        input.target_binding_hash[0] = 1u;
         return input;
     }
 
@@ -87,6 +90,9 @@ namespace
         check(first.succeeded(), "valid Vulkan compile request must build");
         if (!first.request) return;
         check(first.request->dependencies.size() == 2, "transitive virtual includes must be tracked");
+        check(first.request->logical_layout_hash == make_input().logical_layout_hash &&
+            first.request->target_binding_hash == make_input().target_binding_hash,
+            "compile request must retain logical and target layout identities for artifact validation");
         check(first.request->dependencies[0].virtual_path == "/Engine/ShaderIncludes/Common.hlsli", "dependencies must be deterministically sorted");
         check(first.request->source.find("#line 1 \"/Engine/ShaderIncludes/Common.hlsli\"") != std::string::npos, "expanded includes must retain virtual #line paths");
 
@@ -167,12 +173,26 @@ namespace
             "spirv_reflect.build_parameters=static\n"
             "spirv_reflect.license=Apache-2.0\n"
             "spirv_reflect.source_url=https://github.com/KhronosGroup/SPIRV-Reflect\n"
+#if defined(_WIN32)
+            "spirv_reflect_debug.path=lib/spirv-reflect-static-debug\n"
+            "spirv_reflect_debug.sha256=" + sha256_to_hex(sha256(spirv_val)) + "\n"
+            "spirv_reflect_debug.source_revision=spirv-reflect-test-commit\n"
+            "spirv_reflect_debug.build_parameters=static-debug\n"
+            "spirv_reflect_debug.license=Apache-2.0\n"
+            "spirv_reflect_debug.source_url=https://github.com/KhronosGroup/SPIRV-Reflect\n"
+#endif
             "spirv_reflect_header.path=include/spirv_reflect.h\n"
             "spirv_reflect_header.sha256=" + sha256_to_hex(sha256(spirv_val)) + "\n"
             "spirv_reflect_header.source_revision=spirv-reflect-test-commit\n"
             "spirv_reflect_header.build_parameters=public-header\n"
             "spirv_reflect_header.license=Apache-2.0\n"
             "spirv_reflect_header.source_url=https://github.com/KhronosGroup/SPIRV-Reflect\n"
+            "spirv_header.path=include/include/spirv/unified1/spirv.h\n"
+            "spirv_header.sha256=" + sha256_to_hex(sha256(spirv_val)) + "\n"
+            "spirv_header.source_revision=spirv-reflect-test-commit\n"
+            "spirv_header.build_parameters=vendored-public-header\n"
+            "spirv_header.license=Apache-2.0\n"
+            "spirv_header.source_url=https://github.com/KhronosGroup/SPIRV-Reflect\n"
             "d3dcompiler.version=10.0-test\n"
             "d3dcompiler.source_url=https://developer.microsoft.com/windows/downloads/windows-sdk/\n"
             "d3dcompiler.license=Microsoft Windows SDK\n"
@@ -194,7 +214,12 @@ namespace
         std::filesystem::create_directories(root / "lib");
         std::filesystem::create_directories(root / "include");
         write_bytes(root / "lib/spirv-reflect-static", spirv_val);
+#if defined(_WIN32)
+        write_bytes(root / "lib/spirv-reflect-static-debug", spirv_val);
+#endif
         write_bytes(root / "include/spirv_reflect.h", spirv_val);
+        std::filesystem::create_directories(root / "include/include/spirv/unified1");
+        write_bytes(root / "include/include/spirv/unified1/spirv.h", spirv_val);
         write_text(root / "Toy3dShaderToolchain.manifest", make_manifest(dxc, spirv_val));
 
         const ToolchainDiscoveryResult discovered = discover_shader_toolchain(root);
@@ -269,6 +294,20 @@ namespace
         check(compiled.succeeded(), "DXC adapter must publish binary only after spirv-val succeeds");
         check(invocation_count == 2, "successful Vulkan compile must invoke DXC and spirv-val exactly once");
 
+        TargetBindingLayout empty_layout;
+        empty_layout.target = ShaderTarget::VulkanSpirV;
+        empty_layout.mapping_version = vulkan_binding_mapping_version;
+        empty_layout.target_binding_hash[0] = 1u;
+        const std::filesystem::path artifact_root = working / "artifacts";
+        invocation_count = 0;
+        const VulkanArtifactCompileResult reflection_failure = compile_vulkan_loose_artifact(
+            *built.request, empty_layout, toolchain, working / "reflection", artifact_root, runner);
+        check(!reflection_failure.succeeded() &&
+            has_diagnostic(reflection_failure.diagnostics, DiagnosticCode::ReflectionFailed),
+            "invalid final SPIR-V must fail reflection before loose artifact publication");
+        check(!std::filesystem::exists(artifact_root / sha256_to_hex(built.request->compile_key)),
+            "reflection failure must not publish a compile-key artifact directory");
+
         std::size_t failing_invocation = 0;
         const ShaderProcessRunner failing_validator = [&](const std::filesystem::path&, const std::vector<std::string>& args) {
             ProcessResult result;
@@ -313,6 +352,10 @@ namespace
         toolchain.spirv_val_path = TOY3D_SHADER_TEST_SPIRV_VAL;
 #endif
         const std::filesystem::path working = make_test_directory("real_dxc");
+        TargetBindingLayout empty_layout;
+        empty_layout.target = ShaderTarget::VulkanSpirV;
+        empty_layout.mapping_version = vulkan_binding_mapping_version;
+        empty_layout.target_binding_hash[0] = 1u;
         ShaderCompileRequestInput vertex = make_input();
         vertex.compiler_identity = toolchain.manifest.identity;
         vertex.shader_include_source.clear();
@@ -327,13 +370,117 @@ namespace
         check(vertex_request.succeeded() && pixel_request.succeeded(), "real DXC integration requests must build");
         if (vertex_request.request)
         {
-            const VulkanCompileResult compiled = compile_vulkan_shader(*vertex_request.request, toolchain, working);
-            check(compiled.succeeded(), "explicit DXC must compile minimal vertex HLSL and pass spirv-val");
+            const VulkanArtifactCompileResult compiled = compile_vulkan_loose_artifact(
+                *vertex_request.request, empty_layout, toolchain, working / "compile",
+                working / "artifacts");
+            check(compiled.succeeded(),
+                "explicit DXC vertex output must pass reflection and publish a verified loose artifact");
+            check(compiled.artifact_directory &&
+                std::filesystem::exists(*compiled.artifact_directory / "manifest.txt") &&
+                std::filesystem::exists(*compiled.artifact_directory / "shader.spv") &&
+                std::filesystem::exists(*compiled.artifact_directory / "reflection.txt"),
+                "verified vertex loose artifact must contain manifest, binary, and reflection records");
         }
         if (pixel_request.request)
         {
-            const VulkanCompileResult compiled = compile_vulkan_shader(*pixel_request.request, toolchain, working);
-            check(compiled.succeeded(), "explicit DXC must compile minimal pixel HLSL and pass spirv-val");
+            const VulkanArtifactCompileResult compiled = compile_vulkan_loose_artifact(
+                *pixel_request.request, empty_layout, toolchain, working / "compile",
+                working / "artifacts");
+            check(compiled.succeeded(),
+                "explicit DXC pixel output must pass reflection and publish a verified loose artifact");
+        }
+
+        ConstantBufferLayout material_constants;
+        material_constants.group = BindingGroup::Material;
+        material_constants.size = 112u;
+        material_constants.members = {
+            {11u, "tint", ShaderValueType::Float32x3, 0u, 12u, 1u, 0u, 0u, {}, {}},
+            {12u, "factor", ShaderValueType::Float32, 12u, 4u, 1u, 0u, 0u, {}, {}},
+            {13u, "transform", ShaderValueType::Float32x4x4, 16u, 64u, 1u, 0u, 16u, {}, {}},
+            {14u, "weights", ShaderValueType::Float32x4, 80u, 32u, 2u, 16u, 0u, {}, {}}};
+        ActiveBinding active_constants;
+        active_constants.binding_id = 10u;
+        active_constants.name = "ToyMaterialConstants";
+        active_constants.group = BindingGroup::Material;
+        active_constants.category = ShaderParameterCategory::Constant;
+        active_constants.stages = ShaderStageFlags::Pixel;
+        active_constants.constant_buffer = &material_constants;
+        ShaderResourceParameter material_texture;
+        material_texture.parameter_id = 20u;
+        material_texture.name = "material_texture";
+        material_texture.group = BindingGroup::Material;
+        material_texture.category = ShaderParameterCategory::SampledTexture;
+        material_texture.resource_kind = ResourceKind::Texture2D;
+        material_texture.element_type = ResourceElementType::Float4;
+        ShaderResourceParameter material_sampler;
+        material_sampler.parameter_id = 21u;
+        material_sampler.name = "material_sampler";
+        material_sampler.group = BindingGroup::Material;
+        material_sampler.category = ShaderParameterCategory::Sampler;
+        material_sampler.resource_kind = ResourceKind::Sampler;
+        ActiveBinding active_texture;
+        active_texture.binding_id = material_texture.parameter_id;
+        active_texture.name = material_texture.name;
+        active_texture.group = material_texture.group;
+        active_texture.category = material_texture.category;
+        active_texture.stages = ShaderStageFlags::Pixel;
+        active_texture.resource = &material_texture;
+        ActiveBinding active_sampler;
+        active_sampler.binding_id = material_sampler.parameter_id;
+        active_sampler.name = material_sampler.name;
+        active_sampler.group = material_sampler.group;
+        active_sampler.category = material_sampler.category;
+        active_sampler.stages = ShaderStageFlags::Pixel;
+        active_sampler.resource = &material_sampler;
+        TargetBindingLayout resource_layout;
+        resource_layout.target = ShaderTarget::VulkanSpirV;
+        resource_layout.mapping_version = vulkan_binding_mapping_version;
+        resource_layout.target_binding_hash[0] = 2u;
+        resource_layout.bindings = {
+            {10u, "ToyMaterialConstants", BindingGroup::Material, ShaderParameterCategory::Constant,
+                ShaderStageFlags::Pixel, NativeRegisterClass::ConstantBuffer, 0u, 2u, 0u, &active_constants},
+            {20u, "material_texture", BindingGroup::Material, ShaderParameterCategory::SampledTexture,
+                ShaderStageFlags::Pixel, NativeRegisterClass::ShaderResource, 0u, 2u, 1u, &active_texture},
+            {21u, "material_sampler", BindingGroup::Material, ShaderParameterCategory::Sampler,
+                ShaderStageFlags::Pixel, NativeRegisterClass::Sampler, 0u, 2u, 2u, &active_sampler}};
+        ShaderCompileRequestInput resource_pixel = pixel;
+        resource_pixel.generated_bindings =
+            "[[vk::binding(0, 2)]]\n"
+            "cbuffer ToyMaterialConstants : register(b0)\n"
+            "{\n"
+            "    float3 tint : packoffset(c0);\n"
+            "    float factor : packoffset(c0.w);\n"
+            "    column_major float4x4 transform : packoffset(c1);\n"
+            "    float4 weights[2] : packoffset(c5);\n"
+            "};\n"
+            "[[vk::binding(1, 2)]] Texture2D<float4> material_texture : register(t0);\n"
+            "[[vk::binding(2, 2)]] SamplerState material_sampler : register(s0);\n";
+        resource_pixel.pass_source =
+            "float4 ps_main(float2 uv : TEXCOORD0) : SV_Target0 "
+            "{ return material_texture.Sample(material_sampler, uv) * "
+            "(mul(transform, float4(tint * factor, 1.0)) + weights[1]); }";
+        resource_pixel.target_binding_hash = resource_layout.target_binding_hash;
+        const ShaderCompileRequestResult resource_request = build_shader_compile_request(resource_pixel);
+        check(resource_request.succeeded(), "resource reflection integration request must build");
+        if (resource_request.request)
+        {
+            const VulkanArtifactCompileResult compiled = compile_vulkan_loose_artifact(
+                *resource_request.request, resource_layout, toolchain, working / "compile",
+                working / "resource-artifacts");
+            check(compiled.succeeded(),
+                "SPIRV-Reflect must validate constant offsets, resource types, and Vulkan set/binding mapping");
+
+            TargetBindingLayout mismatched_layout = resource_layout;
+            mismatched_layout.bindings[1].descriptor_binding = 7u;
+            const VulkanArtifactCompileResult mismatch = compile_vulkan_loose_artifact(
+                *resource_request.request, mismatched_layout, toolchain, working / "compile-mismatch",
+                working / "mismatch-artifacts");
+            check(!mismatch.succeeded() &&
+                has_diagnostic(mismatch.diagnostics, DiagnosticCode::ReflectionUnexpectedResource),
+                "native set/binding mismatch must fail parity validation");
+            check(!std::filesystem::exists(working / "mismatch-artifacts" /
+                sha256_to_hex(resource_request.request->compile_key)),
+                "parity mismatch must not publish a loose artifact");
         }
         std::filesystem::remove_all(working);
     }

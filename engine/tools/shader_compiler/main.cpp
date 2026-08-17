@@ -1,4 +1,5 @@
 #include "compiler/toolchain_manifest.h"
+#include "core/misc/logger.h"
 #include "frontend/shader_parser.h"
 
 #include <cstdint>
@@ -19,17 +20,50 @@
 
 namespace
 {
-    const char* severity_name(toy3d::shader::DiagnosticSeverity severity)
+    class LoggerLifetime
     {
-        return severity == toy3d::shader::DiagnosticSeverity::Error ? "error" : "warning";
+    public:
+        ~LoggerLifetime()
+        {
+            toy3d::Logger::get_instance().exit();
+        }
+    };
+
+    void report_message(toy3d::Logger::Level level, const std::string& message)
+    {
+        std::cerr << message << '\n';
+        switch (level)
+        {
+            case toy3d::Logger::Level::TOY_WARN:
+                TOY_LOG_WARN("{}", message);
+                break;
+            case toy3d::Logger::Level::TOY_ERROR:
+            case toy3d::Logger::Level::TOY_CRITICAL:
+                TOY_LOG_ERROR("{}", message);
+                break;
+            default:
+                TOY_LOG_INFO("{}", message);
+                break;
+        }
+    }
+
+    void report_diagnostic(const toy3d::shader::Diagnostic& diagnostic)
+    {
+        const std::string message = toy3d::shader::format_diagnostic(diagnostic);
+        const toy3d::Logger::Level level =
+            diagnostic.severity == toy3d::shader::DiagnosticSeverity::Warning
+                ? toy3d::Logger::Level::TOY_WARN
+                : toy3d::Logger::Level::TOY_ERROR;
+        report_message(level, message);
     }
 
     void print_usage()
     {
-        std::cerr
-            << "Usage:\n"
-            << "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
-            << "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info\n";
+        report_message(
+            toy3d::Logger::Level::TOY_ERROR,
+            "Usage:\n"
+            "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
+            "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
     }
 
     std::filesystem::path current_executable_path(
@@ -65,6 +99,19 @@ namespace
 
 int main(int argument_count, char** arguments)
 {
+    toy3d::LogConfig log_config;
+    log_config.logger_name = "Toy3dShaderCompiler";
+    log_config.log_directory = TOY3D_SHADER_COMPILER_LOG_DIR;
+    log_config.file_name = "shader_compiler.log";
+    log_config.console_output = false;
+    std::string log_error;
+    if (!toy3d::Logger::get_instance().init(log_config, &log_error))
+    {
+        std::cerr << "warning: unable to initialize Shader compiler log: " << log_error << '\n';
+    }
+    const LoggerLifetime logger_lifetime;
+    TOY_LOG_INFO("Shader compiler started.");
+
     std::optional<std::filesystem::path> explicit_toolchain_root;
     int command_index = 1;
     if (argument_count > 2 && std::string(arguments[1]) == "--toolchain-root")
@@ -90,8 +137,10 @@ int main(int argument_count, char** arguments)
         const std::filesystem::path executable_path = current_executable_path(arguments[0], error);
         if (error)
         {
-            std::cerr << "error: unable to resolve Toy3dShaderCompiler executable path: "
-                      << error.message() << '\n';
+            report_message(
+                toy3d::Logger::Level::TOY_ERROR,
+                "error: unable to resolve Toy3dShaderCompiler executable path: " +
+                    error.message());
             return 2;
         }
         const std::filesystem::path toolchain_root = explicit_toolchain_root.value_or(
@@ -100,9 +149,12 @@ int main(int argument_count, char** arguments)
             toy3d::shader::discover_shader_toolchain(toolchain_root);
         for (const toy3d::shader::Diagnostic& diagnostic : discovered.diagnostics)
         {
-            std::cerr << severity_name(diagnostic.severity) << ": " << diagnostic.message << '\n';
+            report_diagnostic(diagnostic);
         }
         if (!discovered.succeeded()) return 1;
+        TOY_LOG_INFO(
+            "Shader toolchain discovery succeeded for '{}'.",
+            toolchain_root.generic_string());
         std::cout << "Shader toolchain root: " << toolchain_root.generic_string() << '\n'
                   << "Host platform: " << discovered.toolchain->manifest.host_platform << '\n'
                   << "Bundle identity: " << discovered.toolchain->manifest.identity << '\n';
@@ -119,7 +171,9 @@ int main(int argument_count, char** arguments)
     std::ifstream input(path, std::ios::binary);
     if (!input)
     {
-        std::cerr << path << ": error: unable to open Shader asset.\n";
+        report_message(
+            toy3d::Logger::Level::TOY_ERROR,
+            path + ": error: unable to open Shader asset.");
         return 2;
     }
     const std::string source{
@@ -128,9 +182,7 @@ int main(int argument_count, char** arguments)
     const toy3d::shader::ParseResult result = toy3d::shader::parse_shader(source, path);
     for (const toy3d::shader::Diagnostic& diagnostic : result.diagnostics)
     {
-        std::cerr << diagnostic.location.path << ':' << diagnostic.location.line << ':'
-                  << diagnostic.location.column << ": " << severity_name(diagnostic.severity)
-                  << ": " << diagnostic.message << '\n';
+        report_diagnostic(diagnostic);
     }
     if (!result.succeeded())
     {
@@ -138,6 +190,7 @@ int main(int argument_count, char** arguments)
     }
 
     const toy3d::shader::ShaderAsset& asset = *result.asset;
+    TOY_LOG_INFO("Parsed Shader '{}' from '{}'.", asset.name, path);
     std::cout << "Parsed Shader '" << asset.name << "' (v" << asset.version << ") with "
               << asset.properties.size() << " properties, " << asset.resources.size()
               << " resources, " << asset.variants.size() << " variants, and "

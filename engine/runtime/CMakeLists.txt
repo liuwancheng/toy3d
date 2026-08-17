@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE ALL_HEADER_FILES CONFIGURE_DEPENDS "*.h")
 file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 
+# Logger is built by the shared Toy3dLogging target so tools can use it
+# without linking the runtime.
+list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/core/misc/logger\\.h$")
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/core/misc/logger\\.cpp$")
+
 # Vulkan sources are registered explicitly below so backend code is only built
 # when TOY3D_ENABLE_VULKAN_RHI is enabled.
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.h$")
@@ -117,7 +122,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC ${vulkan_lib})
 target_link_libraries(${TARGET_NAME} PUBLIC vma)
 target_link_libraries(${TARGET_NAME} PUBLIC glm::glm)
 target_link_libraries(${TARGET_NAME} PUBLIC fmt)
-target_link_libraries(${TARGET_NAME} PUBLIC spdlog)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
 
 
 target_include_directories(

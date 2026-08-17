@@ -224,10 +224,11 @@ def locate_artifacts(sources, builds, host, host_config):
     if host == "windows-x64":
         dxc_library_candidates = ["Release/bin/dxcompiler.dll", "bin/Release/dxcompiler.dll"]
         reflect_candidates = ["Release/spirv-reflect-static.lib", "Release/lib/spirv-reflect-static.lib"]
+        reflect_debug_candidates = ["Debug/spirv-reflect-static.lib", "Debug/lib/spirv-reflect-static.lib"]
     else:
         dxc_library_candidates = ["lib/libdxcompiler.dylib", "bin/libdxcompiler.dylib"]
         reflect_candidates = ["libspirv-reflect.a", "lib/libspirv-reflect.a"]
-    return {
+    artifacts = {
         "dxc": find_artifact(builds / "dxc", [f"Release/bin/{dxc_name}", f"bin/{dxc_name}"], "DXC"),
         "dxc_library": find_artifact(
             builds / "dxc", dxc_library_candidates, host_config["dxc_library_name"]),
@@ -237,7 +238,12 @@ def locate_artifacts(sources, builds, host, host_config):
         "spirv_reflect": find_artifact(
             builds / "spirv-reflect", reflect_candidates, host_config["reflect_library_name"]),
         "spirv_reflect_header": sources / "spirv-reflect/spirv_reflect.h",
+        "spirv_header": sources / "spirv-reflect/include/spirv/unified1/spirv.h",
     }
+    if host == "windows-x64":
+        artifacts["spirv_reflect_debug"] = find_artifact(
+            builds / "spirv-reflect", reflect_debug_candidates, "spirv-reflect-static Debug")
+    return artifacts
 
 
 def prepare_macos_runtime(bundle_root):
@@ -293,6 +299,8 @@ def create_bundle(lock, sources, builds, bundle_root, host, host_config):
     artifacts_on_disk = locate_artifacts(sources, builds, host, host_config)
     if not artifacts_on_disk["spirv_reflect_header"].is_file():
         raise RuntimeError("Expected SPIRV-Reflect public header is missing.")
+    if not artifacts_on_disk["spirv_header"].is_file():
+        raise RuntimeError("Expected SPIRV-Headers dependency for SPIRV-Reflect is missing.")
     if bundle_root.exists():
         shutil.rmtree(bundle_root)
     dxc_library_relative = Path("bin/dxcompiler.dll") if host == "windows-x64" else Path("lib/libdxcompiler.dylib")
@@ -308,6 +316,9 @@ def create_bundle(lock, sources, builds, bundle_root, host, host_config):
     spirv_tools_build_parameters = common_build_parameters + lock["spirv_tools"]["cmake_arguments"] + [
         f"-DSPIRV-Headers_SOURCE_REVISION={lock['spirv_tools']['headers_commit']}"]
     reflect_build_parameters = common_build_parameters + lock["spirv_reflect"]["cmake_arguments"]
+    reflect_debug_build_parameters = (
+        host_config["generator_arguments"] + host_config["cmake_arguments"] +
+        ["--config", "Debug"] + lock["spirv_reflect"]["cmake_arguments"])
     artifacts = {
         "dxc": (artifacts_on_disk["dxc"], Path(f"bin/dxc{executable_suffix}"), lock["dxc"], dxc_build_parameters),
         "dxc_library": (artifacts_on_disk["dxc_library"], dxc_library_relative, lock["dxc"], dxc_build_parameters),
@@ -320,7 +331,14 @@ def create_bundle(lock, sources, builds, bundle_root, host, host_config):
         "spirv_reflect_header": (
             artifacts_on_disk["spirv_reflect_header"], Path("include/spirv_reflect.h"),
             lock["spirv_reflect"], ["public-header"]),
+        "spirv_header": (
+            artifacts_on_disk["spirv_header"], Path("include/include/spirv/unified1/spirv.h"),
+            lock["spirv_reflect"], ["vendored-public-header"]),
     }
+    if host == "windows-x64":
+        artifacts["spirv_reflect_debug"] = (
+            artifacts_on_disk["spirv_reflect_debug"], Path("lib/spirv-reflect-static-debug.lib"),
+            lock["spirv_reflect"], reflect_debug_build_parameters)
     for source, relative_path, _, _ in artifacts.values():
         copy_file(source, bundle_root / relative_path)
     license_files = {
@@ -455,6 +473,9 @@ def main():
         configure(
             reflect_source, builds / "spirv-reflect", lock["spirv_reflect"]["cmake_arguments"], host_config)
         build(builds / "spirv-reflect", ["spirv-reflect-static"])
+        if host == "windows-x64":
+            run(["cmake", "--build", builds / "spirv-reflect", "--config", "Debug",
+                 "--target", "spirv-reflect-static"])
     create_bundle(lock, sources, builds, bundle_root, host, host_config)
     return 0
 

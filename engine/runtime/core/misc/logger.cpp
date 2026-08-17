@@ -1,87 +1,108 @@
-#include "logger.h"
-#include <iostream>
+#include "core/misc/logger.h"
+
+#include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+
 #include <filesystem>
-#include "generated/defines.h"
+#include <utility>
+#include <vector>
 
-namespace toy3d {
-
-Logger& Logger::get_instance() 
+namespace toy3d
 {
-    static Logger instance;
-    return instance;
-}
-
-void Logger::init(const std::string& file_name, bool console_output) 
-{
-    std::vector<spdlog::sink_ptr> sinks;
-
-    // 添加控制台输出
-    if (console_output) 
+    Logger& Logger::get_instance()
     {
-        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%s:%#] %v");
-        //console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
-        sinks.push_back(console_sink);
+        static Logger instance;
+        return instance;
     }
 
-    // 添加文件输出
-    if (!file_name.empty()) 
+    bool Logger::init(const LogConfig& config, std::string* error_message)
     {
-        std::filesystem::path saved_root = ENGINE_SAVED_ROOT;
-        std::filesystem::path abs_log_path = saved_root / file_name;
-        auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(abs_log_path.string(), true);
-        file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
-        sinks.push_back(file_sink);
-    }
+        exit();
 
-    if (!sinks.empty()) 
-    {
-        spd_logger = std::make_shared<spdlog::logger>("toy3d", sinks.begin(), sinks.end());
-        spd_logger->set_level(spdlog::level::trace);
-        spd_logger->flush_on(spdlog::level::warn);
-        spdlog::register_logger(spd_logger);
-    }
-}
+        if (!config.console_output && !config.file_output)
+        {
+            if (error_message) *error_message = "Logger requires at least one output sink.";
+            return false;
+        }
+        if (config.file_output &&
+            (config.log_directory.empty() || config.file_name.empty() ||
+             config.max_file_size == 0 || config.max_file_count == 0))
+        {
+            if (error_message) *error_message = "Logger file output configuration is incomplete.";
+            return false;
+        }
 
-void Logger::set_level(Level level) 
-{
-    if (!spd_logger)
-        return;
+        try
+        {
+            std::vector<spdlog::sink_ptr> sinks;
+            if (config.console_output)
+            {
+                auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+                console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v");
+                sinks.push_back(std::move(console_sink));
+            }
 
-    switch (level) 
-    {
-        case Level::TOY_TRACE:
+            if (config.file_output)
+            {
+                std::error_code directory_error;
+                std::filesystem::create_directories(config.log_directory, directory_error);
+                if (directory_error)
+                {
+                    if (error_message)
+                    {
+                        *error_message = "Failed to create log directory '" +
+                            config.log_directory.string() + "': " + directory_error.message();
+                    }
+                    return false;
+                }
+
+                const std::filesystem::path log_path = config.log_directory / config.file_name;
+                auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                    log_path.string(), config.max_file_size, config.max_file_count, false);
+                file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] %v");
+                sinks.push_back(std::move(file_sink));
+            }
+
+            logger_name = config.logger_name.empty() ? "toy3d" : config.logger_name;
+            spd_logger = std::make_shared<spdlog::logger>(logger_name, sinks.begin(), sinks.end());
             spd_logger->set_level(spdlog::level::trace);
-            break;
-        case Level::TOY_DEBUG:
-            spd_logger->set_level(spdlog::level::debug);
-            break;
-        case Level::TOY_INFO:
-            spd_logger->set_level(spdlog::level::info);
-            break;
-        case Level::TOY_WARN:
-            spd_logger->set_level(spdlog::level::warn);
-            break;
-        case Level::TOY_ERROR:
-            spd_logger->set_level(spdlog::level::err);
-            break;
-        case Level::TOY_CRITICAL:
-            spd_logger->set_level(spdlog::level::critical);
-            break;
-        case Level::TOY_OFF:
-            spd_logger->set_level(spdlog::level::off);
-            break;
+            spd_logger->flush_on(spdlog::level::warn);
+            spdlog::register_logger(spd_logger);
+            return true;
+        }
+        catch (const spdlog::spdlog_ex& error)
+        {
+            spd_logger.reset();
+            logger_name.clear();
+            if (error_message) *error_message = error.what();
+            return false;
+        }
     }
-}
 
-void Logger::exit() 
-{
-    if (spd_logger) 
+    void Logger::set_level(Level level)
     {
-        spd_logger->flush();
-        spdlog::drop_all();
-        spdlog::shutdown();
+        if (!spd_logger) return;
+
+        switch (level)
+        {
+            case Level::TOY_TRACE: spd_logger->set_level(spdlog::level::trace); break;
+            case Level::TOY_DEBUG: spd_logger->set_level(spdlog::level::debug); break;
+            case Level::TOY_INFO: spd_logger->set_level(spdlog::level::info); break;
+            case Level::TOY_WARN: spd_logger->set_level(spdlog::level::warn); break;
+            case Level::TOY_ERROR: spd_logger->set_level(spdlog::level::err); break;
+            case Level::TOY_CRITICAL: spd_logger->set_level(spdlog::level::critical); break;
+            case Level::TOY_OFF: spd_logger->set_level(spdlog::level::off); break;
+        }
+    }
+
+    void Logger::exit()
+    {
+        if (spd_logger)
+        {
+            spd_logger->flush();
+            spd_logger.reset();
+            spdlog::drop(logger_name);
+        }
+        logger_name.clear();
     }
 }
-
-} // namespace toy3d

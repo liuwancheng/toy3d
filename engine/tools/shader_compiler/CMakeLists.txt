@@ -1,4 +1,6 @@
 set(TOY3D_SHADER_COMPILER_CORE_SOURCES
+    "artifact/loose_artifact.cpp"
+    "artifact/loose_artifact.h"
     "codegen/binding_codegen.cpp"
     "codegen/binding_codegen.h"
     "common/sha256.cpp"
@@ -11,8 +13,11 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "compiler/include_resolver.h"
     "compiler/process_runner.cpp"
     "compiler/process_runner.h"
+    "compiler/shader_compiler.cpp"
+    "compiler/shader_compiler.h"
     "compiler/toolchain_manifest.cpp"
     "compiler/toolchain_manifest.h"
+    "frontend/diagnostic.cpp"
     "frontend/diagnostic.h"
     "frontend/shader_ast.h"
     "frontend/shader_parser.cpp"
@@ -24,7 +29,9 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "layout/binding_allocator.cpp"
     "layout/binding_allocator.h"
     "layout/shader_layout.cpp"
-    "layout/shader_layout.h")
+    "layout/shader_layout.h"
+    "reflection/spirv_reflection.cpp"
+    "reflection/spirv_reflection.h")
 
 add_library(Toy3dShaderCompilerCore STATIC)
 target_sources(Toy3dShaderCompilerCore
@@ -37,13 +44,22 @@ set_target_properties(Toy3dShaderCompilerCore PROPERTIES
 target_include_directories(Toy3dShaderCompilerCore
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+target_link_libraries(Toy3dShaderCompilerCore
+    PUBLIC
+        Toy3d::SpirvReflect)
 
 add_executable(Toy3dShaderCompiler "main.cpp")
 target_compile_features(Toy3dShaderCompiler PRIVATE cxx_std_17)
 set_target_properties(Toy3dShaderCompiler PROPERTIES
     CXX_EXTENSIONS OFF
     FOLDER "Engine/Tools")
-target_link_libraries(Toy3dShaderCompiler PRIVATE Toy3dShaderCompilerCore)
+target_link_libraries(Toy3dShaderCompiler
+    PRIVATE
+        Toy3dLogging
+        Toy3dShaderCompilerCore)
+target_compile_definitions(Toy3dShaderCompiler
+    PRIVATE
+        "TOY3D_SHADER_COMPILER_LOG_DIR=\"${BINARY_ROOT_DIR}saved/logs\"")
 add_dependencies(Toy3dShaderCompiler Toy3dShaderToolchainSync)
 add_custom_command(
     TARGET Toy3dShaderCompiler

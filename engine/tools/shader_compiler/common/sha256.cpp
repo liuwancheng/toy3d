@@ -113,4 +113,37 @@ namespace toy3d::shader
     {
         return sha256(std::vector<std::uint8_t>(text.begin(), text.end()));
     }
+
+    std::string sha256_to_hex(const Sha256Hash& hash)
+    {
+        static constexpr char digits[] = "0123456789abcdef";
+        std::string result;
+        result.reserve(hash.size() * 2u);
+        for (const std::uint8_t value : hash)
+        {
+            result.push_back(digits[value >> 4u]);
+            result.push_back(digits[value & 0x0fu]);
+        }
+        return result;
+    }
+
+    std::optional<Sha256Hash> sha256_from_hex(const std::string& text)
+    {
+        if (text.size() != Sha256Hash{}.size() * 2u) return std::nullopt;
+        Sha256Hash result{};
+        const auto value = [](char character) -> int {
+            if (character >= '0' && character <= '9') return character - '0';
+            if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+            if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+            return -1;
+        };
+        for (std::size_t index = 0; index < result.size(); ++index)
+        {
+            const int high = value(text[index * 2u]);
+            const int low = value(text[index * 2u + 1u]);
+            if (high < 0 || low < 0) return std::nullopt;
+            result[index] = static_cast<std::uint8_t>((high << 4) | low);
+        }
+        return result;
+    }
 }

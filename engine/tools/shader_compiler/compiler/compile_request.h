@@ -55,6 +55,8 @@ namespace toy3d::shader
         std::string compiler_identity;
         std::string source;
         std::vector<ShaderDependency> dependencies;
+        Sha256Hash logical_layout_hash{};
+        Sha256Hash target_binding_hash{};
         Sha256Hash compile_key{};
     };
 

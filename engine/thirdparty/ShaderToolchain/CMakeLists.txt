@@ -8,7 +8,10 @@ if(WIN32)
         "bin/dxcompiler.dll"
         "bin/spirv-val.exe"
         "lib/spirv-reflect-static.lib"
+        "lib/spirv-reflect-static-debug.lib"
         "include/spirv_reflect.h")
+    list(APPEND TOY3D_SHADER_TOOLCHAIN_REQUIRED_ARTIFACTS
+        "include/include/spirv/unified1/spirv.h")
     set(TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY "lib/spirv-reflect-static.lib")
 elseif(APPLE)
     if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
@@ -24,6 +27,8 @@ elseif(APPLE)
         "lib/libdxcompiler.dylib"
         "lib/libspirv-reflect.a"
         "include/spirv_reflect.h")
+    list(APPEND TOY3D_SHADER_TOOLCHAIN_REQUIRED_ARTIFACTS
+        "include/include/spirv/unified1/spirv.h")
     set(TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY "lib/libspirv-reflect.a")
 else()
     message(FATAL_ERROR "Toy3d Shader toolchain currently supports only Windows and macOS hosts.")
@@ -78,9 +83,19 @@ add_custom_target(Toy3dShaderToolchainSync
 set_target_properties(Toy3dShaderToolchainSync PROPERTIES FOLDER "ThirdParty/ShaderToolchain")
 
 add_library(Toy3dSpirvReflect STATIC IMPORTED GLOBAL)
-set_target_properties(Toy3dSpirvReflect PROPERTIES
-    IMPORTED_LOCATION "${TOY3D_SHADER_TOOLCHAIN_ROOT}/${TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${TOY3D_SHADER_TOOLCHAIN_ROOT}/include")
+if(WIN32)
+    set_target_properties(Toy3dSpirvReflect PROPERTIES
+        IMPORTED_CONFIGURATIONS "DEBUG;RELEASE;RELWITHDEBINFO;MINSIZEREL"
+        IMPORTED_LOCATION_DEBUG "${TOY3D_SHADER_TOOLCHAIN_ROOT}/lib/spirv-reflect-static-debug.lib"
+        IMPORTED_LOCATION_RELEASE "${TOY3D_SHADER_TOOLCHAIN_ROOT}/${TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY}"
+        IMPORTED_LOCATION_RELWITHDEBINFO "${TOY3D_SHADER_TOOLCHAIN_ROOT}/${TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY}"
+        IMPORTED_LOCATION_MINSIZEREL "${TOY3D_SHADER_TOOLCHAIN_ROOT}/${TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${TOY3D_SHADER_TOOLCHAIN_ROOT}/include")
+else()
+    set_target_properties(Toy3dSpirvReflect PROPERTIES
+        IMPORTED_LOCATION "${TOY3D_SHADER_TOOLCHAIN_ROOT}/${TOY3D_SHADER_TOOLCHAIN_REFLECT_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${TOY3D_SHADER_TOOLCHAIN_ROOT}/include")
+endif()
 add_library(Toy3d::SpirvReflect ALIAS Toy3dSpirvReflect)
 
 set(TOY3D_SHADER_TOOLCHAIN_PLATFORM "${TOY3D_SHADER_TOOLCHAIN_PLATFORM}" CACHE INTERNAL

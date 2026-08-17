@@ -86,6 +86,8 @@ namespace toy3d::shader
         request.compiler_identity = input.compiler_identity;
         request.source = std::move(*resolved.source);
         request.dependencies = std::move(resolved.dependencies);
+        request.logical_layout_hash = input.logical_layout_hash;
+        request.target_binding_hash = input.target_binding_hash;
 
         std::vector<std::uint8_t> key;
         append_integer(key, request.version);
