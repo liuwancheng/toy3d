@@ -1,6 +1,6 @@
 #include "engine.h"
-#include "core/config/config_manager.h"
-#include "core/config/command_line_parser.h"
+#include "config/command_line_parser.h"
+#include "config/console_manager.h"
 
 #if WITH_WIN64
 #include "platform/win/win32_platform.h"
@@ -13,12 +13,12 @@
 #include "platform/android/android_window.h"
 #endif
 
-#include "core/file_system/file_system.h"
-#include "core/misc/logger.h"
+#include "logging/logger.h"
 #include "drivers/rhi/rhi_factory.h"
 #include "generated/defines.h"
 #include "platform/rhi_surface_factory.h"
 #include "renderscene/3dscene/forward_shading_render.h"
+#include "shader/shader_bytecode_provider.h"
 
 #include <filesystem>
 #include <iostream>
@@ -26,6 +26,32 @@
 
 namespace toy3d
 {
+	namespace
+	{
+		FileStatus add_directory_mount(
+			FileSystem& file_system,
+			const char* virtual_root,
+			const std::shared_ptr<DirectoryFileStore>& store,
+			MountAccess access,
+			bool allow_enumeration,
+			const char* debug_name)
+		{
+			auto parsed_root = VirtualPath::parse(virtual_root);
+			if (!parsed_root.succeeded())
+			{
+				return parsed_root.status();
+			}
+			FileMountDesc descriptor;
+			descriptor.virtual_root = parsed_root.value();
+			descriptor.store = store;
+			descriptor.access = access;
+			descriptor.allow_enumeration = allow_enumeration;
+			descriptor.debug_name = debug_name;
+			return file_system.add_mount(descriptor);
+		}
+
+	}
+
 	Engine::Engine()
 	{
 	}
@@ -47,17 +73,44 @@ namespace toy3d
 			std::cerr << "Failed to initialize Toy3d logging: " << log_error << '\n';
 		}
 
-		// 1.配置文件的加载
-		ConfigManager::get_instance().load_config_file("engine_config.ini");
-		// 2.命令行参数override 配置文件的参数
+		// 1. Initialize the shared file system.
+		const FileStatus file_system_status = initialize_file_system();
+		if (!file_system_status.succeeded())
+		{
+			TOY_LOG_ERROR(
+				"Runtime file system initialization failed during {}: {}",
+				file_system_status.operation,
+				file_system_status.message);
+			return;
+		}
+		// 2. Load engine configuration.
+		auto config_path = VirtualPath::parse("/Engine/config/engine_config.ini");
+		if (!config_path.succeeded())
+		{
+			TOY_LOG_ERROR("The built-in engine config path is invalid.");
+			return;
+		}
+		const FileStatus config_status = ConsoleManager::get_instance().load_config(
+			file_system,
+			config_path.value());
+		if (!config_status.succeeded())
+		{
+			TOY_LOG_ERROR(
+				"Failed to load {}: {}",
+				config_path.value().utf8(),
+				config_status.message);
+		}
+		// 3. Apply command-line configuration overrides.
 		CommandLineParser::get_instance().apply_config();
-		// 3.初始化文件系统
-		FileSystem::get_instance().initialize();
 	}
 
 	void Engine::init(void* hInstance)
 	{
 		pre_init();
+		if (!shader_bytecode_provider)
+		{
+			return;
+		}
 
 		// 1.创建平台
 	#if WITH_WIN64
@@ -90,12 +143,115 @@ namespace toy3d
 
 	void Engine::post_init()
 	{
-		scene_renderer = std::make_unique<ForwardSceneRendering>(*rhi_device);
+		scene_renderer = std::make_unique<ForwardSceneRendering>(
+			*rhi_device,
+			*shader_bytecode_provider);
 		// todo: game module的初始化
+	}
+
+	FileStatus Engine::initialize_file_system()
+	{
+		if (shader_bytecode_provider)
+		{
+			return FileStatus::success();
+		}
+		const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
+		const PhysicalPath saved_root(ENGINE_SAVED_ROOT);
+		auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
+		if (!shader_root.succeeded())
+		{
+			return shader_root.status();
+		}
+		auto asset_root = native_platform_file.join_relative(deployment_root, "asset");
+		if (!asset_root.succeeded())
+		{
+			return asset_root.status();
+		}
+		auto temp_root = native_platform_file.join_relative(saved_root, "temp");
+		if (!temp_root.succeeded())
+		{
+			return temp_root.status();
+		}
+
+		FileStatus status = native_platform_file.create_directories(saved_root);
+		if (!status.succeeded())
+		{
+			return status;
+		}
+		status = native_platform_file.create_directories(temp_root.value());
+		if (!status.succeeded())
+		{
+			return status;
+		}
+
+		auto create_store = [this](
+			const PhysicalPath& root,
+			bool writable,
+			const char* debug_name)
+		{
+			DirectoryFileStoreDesc descriptor;
+			descriptor.physical_root = root;
+			descriptor.writable = writable;
+			descriptor.symlink_policy = DirectorySymlinkPolicy::Deny;
+			descriptor.debug_name = debug_name;
+			return DirectoryFileStore::create(native_platform_file, descriptor);
+		};
+
+		auto engine_assets = create_store(asset_root.value(), false, "RuntimeEngineAssets");
+		if (!engine_assets.succeeded())
+		{
+			return engine_assets.status();
+		}
+		engine_asset_store = engine_assets.value();
+		auto engine_shaders = create_store(shader_root.value(), false, "RuntimeEngineShaders");
+		if (!engine_shaders.succeeded())
+		{
+			return engine_shaders.status();
+		}
+		engine_shader_store = engine_shaders.value();
+		auto saved = create_store(saved_root, true, "RuntimeSaved");
+		if (!saved.succeeded())
+		{
+			return saved.status();
+		}
+		saved_store = saved.value();
+		auto temp = create_store(temp_root.value(), true, "RuntimeTemp");
+		if (!temp.succeeded())
+		{
+			return temp.status();
+		}
+		temp_store = temp.value();
+
+		status = add_directory_mount(
+			file_system, "/Engine", engine_asset_store, MountAccess::ReadOnly, true, "Engine");
+		if (!status.succeeded()) return status;
+		status = add_directory_mount(
+			file_system, "/Engine/Shader", engine_shader_store, MountAccess::ReadOnly, true, "EngineShader");
+		if (!status.succeeded()) return status;
+		status = add_directory_mount(
+			file_system, "/Project", engine_asset_store, MountAccess::ReadOnly, true, "Project");
+		if (!status.succeeded()) return status;
+		status = add_directory_mount(
+			file_system, "/Saved", saved_store, MountAccess::ReadWrite, true, "Saved");
+		if (!status.succeeded()) return status;
+		status = add_directory_mount(
+			file_system, "/Temp", temp_store, MountAccess::ReadWrite, true, "Temp");
+		if (!status.succeeded()) return status;
+		status = file_system.freeze();
+		if (!status.succeeded()) return status;
+
+		shader_bytecode_provider = std::make_unique<FileSystemShaderBytecodeProvider>(
+			file_system,
+			"/Engine/Shader");
+		return FileStatus::success();
 	}
 
 	void Engine::main_loop()
 	{
+		if (!window)
+		{
+			return;
+		}
 		while (!window->should_close())
 		{
 			window->process_events();

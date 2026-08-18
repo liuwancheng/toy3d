@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/misc/pch.h"
+#include "runtime_pch.h"
 #include "platform/platform_input_interface.h"
 
 namespace toy3d

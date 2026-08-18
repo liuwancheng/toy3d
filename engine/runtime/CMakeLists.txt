@@ -8,10 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE ALL_HEADER_FILES CONFIGURE_DEPENDS "*.h")
 file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 
-# Logger is built by the shared Toy3dLogging target so tools can use it
-# without linking the runtime.
-list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/core/misc/logger\\.h$")
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/core/misc/logger\\.cpp$")
+list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/tests/.*\\.h$")
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/tests/.*\\.cpp$")
 
 # Vulkan sources are registered explicitly below so backend code is only built
 # when TOY3D_ENABLE_VULKAN_RHI is enabled.
@@ -113,6 +111,7 @@ set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Engine")
 # being a cross-platform target, we enforce standards conformance on MSVC
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive->")
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
+target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 
 # Link dependencies    
 target_link_libraries(${TARGET_NAME} PRIVATE tinyobjloader stb)
@@ -123,6 +122,8 @@ target_link_libraries(${TARGET_NAME} PUBLIC vma)
 target_link_libraries(${TARGET_NAME} PUBLIC glm::glm)
 target_link_libraries(${TARGET_NAME} PUBLIC fmt)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMath)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
 
 
 target_include_directories(
@@ -150,4 +151,26 @@ target_include_directories(
 # win32 resouce.h
 if(WIN32)
     target_include_directories(${TARGET_NAME} PRIVATE ${ENGINE_ROOT_DIR}/${ASSET_NAME}/win32)
+endif()
+
+if(BUILD_TESTING)
+    find_package(Threads REQUIRED)
+    add_executable(Toy3dConsoleManagerTests
+        "tests/console_manager_tests.cpp"
+        "config/console_manager.cpp"
+        "config/console_manager.h"
+        "config/command_line_parser.cpp"
+        "config/command_line_parser.h")
+    target_compile_features(Toy3dConsoleManagerTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dConsoleManagerTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_include_directories(Toy3dConsoleManagerTests
+        PRIVATE
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+    target_compile_options(Toy3dConsoleManagerTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dConsoleManagerTests PRIVATE Toy3dFileSystem Threads::Threads)
+    add_test(NAME Toy3dRuntime.ConsoleManager COMMAND Toy3dConsoleManagerTests)
 endif()

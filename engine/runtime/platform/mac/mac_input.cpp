@@ -1,5 +1,5 @@
 #include "mac_input.h"
-#include "core/input/input_system.h"
+#include "input/input_system.h"
 
 namespace toy3d
 {

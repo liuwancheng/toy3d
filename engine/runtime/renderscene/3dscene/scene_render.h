@@ -6,11 +6,12 @@
 
 namespace toy3d
 {
+class ShaderBytecodeProvider;
 // 这个做基类，会派生出ForwardSceneRendering、DeferredSceneRendering
 class SceneRendering
 {
 public:
-    explicit SceneRendering(RHIDevice& device);
+    SceneRendering(RHIDevice& device, ShaderBytecodeProvider& shader_bytecode_provider);
     virtual ~SceneRendering() = default;
 
     virtual RHIResult<RHICommandListRef> render(RHIFrameContext& frame);
@@ -30,6 +31,7 @@ protected:
         const RHIFrameContext& frame);
 
     RHIDevice& rhi_device;
+    ShaderBytecodeProvider& shader_bytecode_provider;
     RHITextureRef test_texture;
     RHITextureViewRef test_texture_view;
     RHITextureRef test_depth_texture;

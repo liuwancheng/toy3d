@@ -7,7 +7,7 @@ namespace toy3d
     class Win32Window : public IWindow
     {
     public:
-        Win32Window(HINSTANCE _hInstance = nullptr);
+        explicit Win32Window(HINSTANCE instance = nullptr);
         ~Win32Window() final;
         
         bool should_close() final;

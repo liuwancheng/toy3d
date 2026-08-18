@@ -1,6 +1,9 @@
 #pragma once
 
-#include "core/misc/pch.h"
+#include "runtime_pch.h"
+#include "file_system/directory_file_store.h"
+#include "file_system/file_system.h"
+#include "file_system/native_platform_file.h"
 #include "drivers/rhi/rhi.h"
 #include "platform/platform_interface.h"
 #include "platform/window_interface.h"
@@ -10,6 +13,7 @@ namespace toy3d
 	class IPlatform;
 	class IWindow;
 	class SceneRendering;
+	class ShaderBytecodeProvider;
 
 	class Engine
 	{
@@ -29,6 +33,7 @@ namespace toy3d
 
 		IWindow* get_window() { return window.get(); };
 	private:
+		FileStatus initialize_file_system();
 		RHIStatus initialize_rhi();
 		void shutdown_rhi();
 		void render_frame();
@@ -38,6 +43,13 @@ namespace toy3d
 		double delta_time = 0.0;
 		int frame_count = 0;
 
+		NativePlatformFile native_platform_file;
+		std::shared_ptr<DirectoryFileStore> engine_asset_store;
+		std::shared_ptr<DirectoryFileStore> engine_shader_store;
+		std::shared_ptr<DirectoryFileStore> saved_store;
+		std::shared_ptr<DirectoryFileStore> temp_store;
+		FileSystem file_system;
+		std::unique_ptr<ShaderBytecodeProvider> shader_bytecode_provider;
 		std::unique_ptr<IPlatform> platform;
 		std::unique_ptr<IWindow> window;
 		RHISurfaceRef main_window_surface;

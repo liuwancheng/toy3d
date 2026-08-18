@@ -1,6 +1,6 @@
 #include "drivers/rhi/rhi_result.h"
 
-#include "core/misc/logger.h"
+#include "logging/logger.h"
 
 namespace toy3d
 {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/math/math.h"
+#include "math/math.h"
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "drivers/rhi/rhi_result.h"
 

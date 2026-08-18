@@ -7,12 +7,14 @@
 ```text
 toy3d/
 ├── engine/
+│   ├── core/                    runtime、editor 与 tools 共享的第一方基础设施
 │   ├── runtime/                 第一方运行时代码
-│   │   ├── core/                基础设施与通用类型
+│   │   ├── config/              runtime 配置与命令行策略
 │   │   ├── drivers/
 │   │   │   ├── rhi/             跨图形 API 的公共 RHI
 │   │   │   └── vulkan/          Vulkan 后端
 │   │   ├── gamescene/           游戏场景
+│   │   ├── input/               runtime 输入模型与映射
 │   │   ├── platform/            win、mac、android 等平台实现
 │   │   ├── renderscene/         上层渲染场景与 pass
 │   │   └── generated/           历史生成头文件位置，待迁移
@@ -29,7 +31,16 @@ toy3d/
 └── bin/                         可执行文件和复制后的运行资源，不提交
 ```
 
-新增运行时代码放入 `engine/runtime/` 中职责最接近的模块。RHI 公共类型和行为放在 `drivers/rhi/`，图形 API 实现放在各自独立后端目录；renderscene 不得依赖后端类型。离线工具放在 `engine/tools/`，不得反向依赖 editor。shader 源文件与 shader compiler 实现分开管理。除升级依赖外不要修改 `engine/thirdparty/`。
+新增运行时代码放入 `engine/runtime/` 中职责最接近的模块，不再建立笼统的 `engine/runtime/core/`。需要同时被 runtime、editor 或 tools 使用的第一方基础设施放入 `engine/core/`，不得为了复用而让工具反向依赖 `engine/runtime/`。RHI 公共类型和行为放在 `drivers/rhi/`，图形 API 实现放在各自独立后端目录；renderscene 不得依赖后端类型。离线工具放在 `engine/tools/`，不得反向依赖 editor。shader 源文件与 shader compiler 实现分开管理。除升级依赖外不要修改 `engine/thirdparty/`。
+
+## 基础设施与模块边界规范
+
+- 新增文件系统、日志、进程、线程/任务、时间、配置、序列化、缓存、哈希、ID、内存分配或通用容器等能力前，必须先搜索并盘点现有实现，判断它属于业务策略、模块内机制还是跨模块基础设施。禁止业务模块为完成局部闭环而再封装一套语义重复的通用系统。
+- 已判定为文件、日志、进程、任务、时间等通用系统的能力，即使当前只有一个调用模块，也必须放入 `engine/core/` 的独立第一方目标；当前调用方数量不是允许业务模块自建通用系统的理由。仅与领域模型紧密耦合、无法形成独立稳定 contract 的机制才留在业务模块。业务模块依赖共享接口并保留自身策略层，不得让共享基础设施反向依赖 Shader、RenderScene、RHI backend、editor 或其他具体业务。
+- 实现通用系统前必须先形成设计方案并写入 `document/`：至少说明用例与非目标、目录和 CMake target、接口与实现分层、所有权和生命周期、线程模型、错误模型、平台差异、安全边界、测试矩阵、迁移顺序及删除旧实现的条件。方案未确认前不得先在业务模块中落临时正式接口。
+- 通用系统优先采用接口注入和 composition root 持有，不在 library core 中新增不可替换的全局单例。平台或第三方细节只存在于具体实现；调用方不得绕过共享接口直接使用另一套实现。确有性能或平台原因需要例外时，必须在设计文档中记录理由和收敛路径。
+- 抽离通用能力不等于把业务规则下沉。Shader include 白名单、ShaderMap key、RHI resource state、RenderScene pass 调度等领域策略仍属于对应模块，只组合使用共享文件、任务、哈希等基础能力。
+- 修改已有模块时若发现重复基础设施，应先停止扩展重复实现，补齐共享方案并按可独立验证的小批次迁移；不得一次性重写所有调用方，也不得在新旧两套正式入口之间长期双轨运行。
 
 ## 构建、测试与开发命令
 

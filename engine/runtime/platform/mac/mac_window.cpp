@@ -1,7 +1,7 @@
 #include "mac_window.h"
-#include "core/config/config_manager.h"
-#include "core/input/input_system.h"
-#include "core/misc/logger.h"
+#include "config/console_manager.h"
+#include "input/input_system.h"
+#include "logging/logger.h"
 #include "mac_input.h"
 
 namespace toy3d
@@ -37,11 +37,20 @@ namespace toy3d
     bool MacWindow::create_glfw_window()
     {
         // 获取配置文件中的窗口标题和大小
-        properties.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
-        properties.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
-        properties.extent.height = ConfigManager::get_instance().get_int("window_height", 720);
-        properties.vsync = static_cast<Vsync>(ConfigManager::get_instance().get_int("window_vsync", 0));
-        properties.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
+        const ConsoleManager& console = ConsoleManager::get_instance();
+        properties.title = console.get_string("Window.Title", "toy3d");
+        const int configured_width = console.get_int("Window.Width", 1280);
+        const int configured_height = console.get_int("Window.Height", 720);
+        properties.extent.width = configured_width > 0
+            ? static_cast<std::uint32_t>(configured_width)
+            : 1U;
+        properties.extent.height = configured_height > 0
+            ? static_cast<std::uint32_t>(configured_height)
+            : 1U;
+        properties.vsync = console.get_bool("Renderer.VSync", true) ? Vsync::ON : Vsync::OFF;
+        properties.mode = console.get_bool("Window.Fullscreen", false)
+            ? Mode::Fullscreen
+            : Mode::Default;
 
         // glfw init
         if (glfwInit() != GLFW_TRUE)

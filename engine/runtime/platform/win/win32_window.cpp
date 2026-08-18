@@ -1,6 +1,6 @@
 #include "win32_window.h"
-#include "core/config/config_manager.h"
-#include "core/input/input_system.h"
+#include "config/console_manager.h"
+#include "input/input_system.h"
 #include "win32_input.h"
 #include "resource.h"
 
@@ -39,15 +39,15 @@ namespace toy3d
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
-    Win32Window::Win32Window(HINSTANCE _hInstance):IWindow()
+    Win32Window::Win32Window(HINSTANCE instance):IWindow()
     {
-        if (_hInstance == nullptr) 
+        if (instance == nullptr)
         {
             hInstance = GetModuleHandle(nullptr);
         }
         else 
         {
-            hInstance = _hInstance;
+            hInstance = instance;
         }
         // 创建窗口
         create_window();
@@ -97,11 +97,20 @@ namespace toy3d
     void Win32Window::create_window()
     {
         // 获取配置文件中的窗口标题和大小
-        properties.title = ConfigManager::get_instance().get_str("window_title", "toy3d");
-        properties.extent.width = ConfigManager::get_instance().get_int("window_width", 1280);
-        properties.extent.height = ConfigManager::get_instance().get_int("window_height", 720);
-        properties.vsync = static_cast<Vsync>(ConfigManager::get_instance().get_int("window_vsync", 0));
-        properties.mode = static_cast<Mode>(ConfigManager::get_instance().get_int("window_mode", 0));
+        const ConsoleManager& console = ConsoleManager::get_instance();
+        properties.title = console.get_string("Window.Title", "toy3d");
+        const int configured_width = console.get_int("Window.Width", 1280);
+        const int configured_height = console.get_int("Window.Height", 720);
+        properties.extent.width = configured_width > 0
+            ? static_cast<std::uint32_t>(configured_width)
+            : 1U;
+        properties.extent.height = configured_height > 0
+            ? static_cast<std::uint32_t>(configured_height)
+            : 1U;
+        properties.vsync = console.get_bool("Renderer.VSync", true) ? Vsync::ON : Vsync::OFF;
+        properties.mode = console.get_bool("Window.Fullscreen", false)
+            ? Mode::Fullscreen
+            : Mode::Default;
 
     
         HICON hIcon = static_cast<HICON>(::LoadImage(hInstance,
@@ -137,7 +146,11 @@ namespace toy3d
         }
 
         // 调整窗口大小，使客户区达到指定尺寸
-        RECT windowRect = { 0, 0, properties.extent.width, properties.extent.height };
+        RECT windowRect = {
+            0,
+            0,
+            static_cast<LONG>(properties.extent.width),
+            static_cast<LONG>(properties.extent.height)};
         AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
 
         // 创建窗口

@@ -2,7 +2,7 @@
 #include <windows.h>
 #include <windowsx.h>
 
-#include "core/input/input_system.h"
+#include "input/input_system.h"
 
 namespace toy3d
 {

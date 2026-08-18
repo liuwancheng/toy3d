@@ -2,8 +2,10 @@
 
 namespace toy3d
 {
-    ForwardSceneRendering::ForwardSceneRendering(RHIDevice& device)
-        : SceneRendering(device)
+    ForwardSceneRendering::ForwardSceneRendering(
+        RHIDevice& device,
+        ShaderBytecodeProvider& shader_bytecode_provider)
+        : SceneRendering(device, shader_bytecode_provider)
     {
 
     }

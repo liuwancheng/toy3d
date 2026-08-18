@@ -7,7 +7,7 @@
 #include "drivers/vulkan/vulkan_viewport_context.h"
 
 #include "drivers/rhi/rhi_queue.h"
-#include "core/misc/logger.h"
+#include "logging/logger.h"
 
 #include <algorithm>
 #include <array>

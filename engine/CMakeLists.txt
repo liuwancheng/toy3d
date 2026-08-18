@@ -47,20 +47,7 @@ configure_file(
 
 # 构建子文件夹cmake工程
 add_subdirectory(thirdparty)
-
-add_library(Toy3dLogging STATIC)
-target_sources(Toy3dLogging
-    PRIVATE
-        "${ENGINE_RUNTIME_DIR}/core/misc/logger.cpp"
-        "${ENGINE_RUNTIME_DIR}/core/misc/logger.h")
-target_compile_features(Toy3dLogging PUBLIC cxx_std_17)
-set_target_properties(Toy3dLogging PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dLogging
-    PUBLIC
-        "$<BUILD_INTERFACE:${ENGINE_RUNTIME_DIR}>")
-target_link_libraries(Toy3dLogging PUBLIC spdlog)
+add_subdirectory(core)
 
 add_subdirectory(tools)
 add_subdirectory(shader)

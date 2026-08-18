@@ -7,8 +7,7 @@
 #include <windows.h>
 #endif
 
-#include "core/config/config_manager.h"
-#include "core/config/command_line_parser.h"
+#include "config/command_line_parser.h"
 #include "engine.h"
 
 toy3d::Engine g_engine;

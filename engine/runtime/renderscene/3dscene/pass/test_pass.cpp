@@ -1,10 +1,9 @@
 #include "renderscene/3dscene/scene_render.h"
 
-#include "core/file_system/file_system.h"
+#include "shader/shader_bytecode_provider.h"
 
 #include <array>
 #include <cstdint>
-#include <exception>
 #include <utility>
 
 namespace toy3d
@@ -25,26 +24,27 @@ namespace toy3d
 
         RHIResult<RHIShaderRef> create_test_shader(
             RHIDevice& device,
-            const char* path,
+            ShaderBytecodeProvider& bytecode_provider,
+            const char* shader_name,
             RHIShaderStage stage,
             std::vector<RHIShaderBindingReflection> reflection)
         {
-            try
+            ShaderBytecodeLoadResult loaded = bytecode_provider.load(shader_name);
+            if (!loaded.succeeded())
             {
-                RHIShaderDesc desc;
-                desc.stage = stage;
-                desc.bytecode.bytes = FileSystem::get_instance().read_file(path);
-                desc.bytecode.target = "spirv";
-                desc.entry_point = "main";
-                desc.reflection = std::move(reflection);
-                desc.content_hash = hash_shader_bytecode(desc.bytecode.bytes);
-                desc.debug_name = path;
-                return device.create_shader(desc);
+                return RHIResult<RHIShaderRef>::failure(
+                    RHIErrorCode::BackendFailure,
+                    loaded.error);
             }
-            catch (const std::exception& exception)
-            {
-                return RHIResult<RHIShaderRef>::failure(RHIErrorCode::BackendFailure, exception.what());
-            }
+            RHIShaderDesc desc;
+            desc.stage = stage;
+            desc.bytecode.bytes = std::move(loaded.bytes);
+            desc.bytecode.target = "spirv";
+            desc.entry_point = "main";
+            desc.reflection = std::move(reflection);
+            desc.content_hash = hash_shader_bytecode(desc.bytecode.bytes);
+            desc.debug_name = shader_name;
+            return device.create_shader(desc);
         }
     }
 
@@ -67,14 +67,19 @@ namespace toy3d
         sampler_reflection.type = RHIResourceBindingType::Sampler;
 
         auto vertex_shader_result = create_test_shader(
-            rhi_device, "shader/test_pass.vert.spv", RHIShaderStage::Vertex, {});
+            rhi_device,
+            shader_bytecode_provider,
+            "test_pass.vert.spv",
+            RHIShaderStage::Vertex,
+            {});
         if (!vertex_shader_result)
         {
             return vertex_shader_result.status();
         }
         auto pixel_shader_result = create_test_shader(
             rhi_device,
-            "shader/test_pass.frag.spv",
+            shader_bytecode_provider,
+            "test_pass.frag.spv",
             RHIShaderStage::Pixel,
             {texture_reflection, sampler_reflection});
         if (!pixel_shader_result)

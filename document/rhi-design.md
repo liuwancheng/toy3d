@@ -70,7 +70,7 @@ Backend
 
 ### 3.1 公共依赖与源码组织
 
-RHI 公共层可以依赖 `core/math` 中的纯值类型，例如 `vec2`、`vec3`、`vec4`、`uvec4` 和矩阵类型，避免在 RHI 内重复定义颜色、向量和矩阵表示。RHI 公共层不得依赖 GameScene、RenderScene、Material、窗口平台实现、Vulkan 或 Direct3D 头文件。
+RHI 公共层可以依赖 `engine/core/math` 中的纯值类型，例如 `vec2`、`vec3`、`vec4`、`uvec4` 和矩阵类型，避免在 RHI 内重复定义颜色、向量和矩阵表示。RHI 公共层不得依赖 GameScene、RenderScene、Material、窗口平台实现、Vulkan 或 Direct3D 头文件。
 
 公共 RHI 按职责拆分，避免重新形成大型 `rhi_inilitializer.h`：
 

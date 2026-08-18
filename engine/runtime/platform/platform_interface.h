@@ -1,5 +1,5 @@
 #pragma once
-#include "core/misc/pch.h"
+#include "runtime_pch.h"
 
 namespace toy3d
 {
