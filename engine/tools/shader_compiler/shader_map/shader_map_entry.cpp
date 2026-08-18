@@ -1,11 +1,11 @@
 #include "shader_map/shader_map_entry.h"
 
-#include "shader_map/shader_code_entry.h"
-
 #include <algorithm>
-#include <fstream>
 #include <sstream>
 #include <type_traits>
+
+#include "shader_map/shader_code_entry.h"
+#include "shader_map/shader_map_storage.h"
 
 namespace toy3d::shader
 {
@@ -40,25 +40,6 @@ namespace toy3d::shader
             case ShaderStageFlags::Compute: return "compute";
             default: return "unknown";
             }
-        }
-
-        bool write_text(const std::filesystem::path& path, const std::string& text)
-        {
-            std::ofstream output(path, std::ios::binary | std::ios::trunc);
-            if (!output) return false;
-            output.write(text.data(), static_cast<std::streamsize>(text.size()));
-            output.close();
-            return static_cast<bool>(output);
-        }
-
-        bool write_binary(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes)
-        {
-            std::ofstream output(path, std::ios::binary | std::ios::trunc);
-            if (!output) return false;
-            output.write(reinterpret_cast<const char*>(bytes.data()),
-                static_cast<std::streamsize>(bytes.size()));
-            output.close();
-            return static_cast<bool>(output);
         }
 
         void add_error(ShaderMapEntryWriteResult& result, const std::string& message)
@@ -98,7 +79,8 @@ namespace toy3d::shader
     }
 
     ShaderMapEntryWriteResult write_verified_shader_map_entry(
-        const std::filesystem::path& shader_map_root,
+        PlatformFile& platform_file,
+        const PhysicalPath& shader_map_root,
         const ShaderMapEntry& entry)
     {
         ShaderMapEntryWriteResult result;
@@ -127,15 +109,12 @@ namespace toy3d::shader
 
         result.shader_map_key = calculate_shader_map_key(entry);
         const std::string key = sha256_to_hex(result.shader_map_key);
-        const std::filesystem::path final_directory = shader_map_root / key;
-        const std::filesystem::path staging_directory = shader_map_root / (key + ".tmp");
-        std::error_code error;
-        std::filesystem::create_directories(shader_map_root, error);
-        if (error || std::filesystem::exists(final_directory) || std::filesystem::exists(staging_directory) ||
-            !std::filesystem::create_directory(staging_directory, error) || error)
+        ShaderEntryStagingResult staging = create_shader_entry_staging_directory(
+            platform_file, shader_map_root, key);
+        if (!staging.succeeded())
         {
-            add_error(result, error ? "Failed to create ShaderMapEntry directory: " + error.message() :
-                "ShaderMapEntry key already exists.");
+            add_error(result,
+                "Failed to create ShaderMapEntry directory: " + staging.status.message);
             return result;
         }
 
@@ -164,8 +143,15 @@ namespace toy3d::shader
                     << binding.descriptor_binding << '\n';
         }
 
-        bool wrote_all = write_text(staging_directory / "manifest.txt", manifest.str()) &&
-            write_text(staging_directory / "mapping.txt", mapping.str());
+        const auto write_text = [&](const std::string& name, const std::string& text) {
+            const FileResult<PhysicalPath> path =
+                platform_file.join_relative(*staging.staging_directory, name);
+            return path.succeeded()
+                ? platform_file.write_text_utf8(path.value(), text, FileWriteMode::CreateNew)
+                : path.status();
+        };
+        bool wrote_all = write_text("manifest.txt", manifest.str()).succeeded() &&
+            write_text("mapping.txt", mapping.str()).succeeded();
         for (const ShaderCodeEntry& stage : entry.stages)
         {
             const std::string prefix = stage_name(stage.request.stage);
@@ -180,28 +166,33 @@ namespace toy3d::shader
             for (const ShaderDependency& dependency : stage.request.dependencies)
                 dependencies << dependency.virtual_path << '\t'
                              << sha256_to_hex(dependency.content_hash) << '\n';
+            const FileResult<PhysicalPath> binary_path = platform_file.join_relative(
+                *staging.staging_directory, prefix + ".spv");
             wrote_all = wrote_all &&
-                write_text(staging_directory / (prefix + ".manifest.txt"), stage_manifest.str()) &&
-                write_binary(staging_directory / (prefix + ".spv"), stage.binary) &&
-                write_text(staging_directory / (prefix + ".reflection.txt"),
-                    serialize_shader_stage_reflection(stage.reflection)) &&
-                write_text(staging_directory / (prefix + ".dependencies.txt"), dependencies.str());
+                write_text(prefix + ".manifest.txt", stage_manifest.str()).succeeded() &&
+                binary_path.succeeded() &&
+                platform_file.write_binary(
+                    binary_path.value(), stage.binary, FileWriteMode::CreateNew).succeeded() &&
+                write_text(prefix + ".reflection.txt",
+                    serialize_shader_stage_reflection(stage.reflection)).succeeded() &&
+                write_text(prefix + ".dependencies.txt", dependencies.str()).succeeded();
         }
         if (!wrote_all)
         {
-            std::filesystem::remove_all(staging_directory, error);
+            cleanup_shader_entry_staging_directory(platform_file, *staging.staging_directory);
             add_error(result, "Failed to write all ShaderMapEntry records.");
             return result;
         }
-        std::filesystem::rename(staging_directory, final_directory, error);
-        if (error)
+        const FileStatus published = publish_shader_entry_directory(
+            platform_file, *staging.staging_directory, *staging.final_directory);
+        if (!published.succeeded())
         {
-            const std::string message = error.message();
-            std::filesystem::remove_all(staging_directory, error);
-            add_error(result, "Failed to publish ShaderMapEntry atomically: " + message);
+            cleanup_shader_entry_staging_directory(platform_file, *staging.staging_directory);
+            add_error(result,
+                "Failed to publish ShaderMapEntry atomically: " + published.message);
             return result;
         }
-        result.entry_directory = final_directory;
+        result.entry_directory = *staging.final_directory;
         return result;
     }
 }

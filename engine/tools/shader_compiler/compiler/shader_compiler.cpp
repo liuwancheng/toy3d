@@ -13,13 +13,14 @@ namespace toy3d::shader
         const ShaderCompileRequest& request,
         const TargetBindingLayout& target_layout,
         const DiscoveredShaderToolchain& toolchain,
-        const std::filesystem::path& working_directory,
-        const std::filesystem::path& entry_root,
+        PlatformFile& platform_file,
+        const PhysicalPath& working_directory,
+        const PhysicalPath& entry_root,
         const ShaderProcessRunner& process_runner)
     {
         VulkanShaderCodeEntryResult result;
         ShaderCompilerOutput compiled = compile_vulkan_shader(
-            request, toolchain, working_directory, process_runner);
+            request, toolchain, platform_file, working_directory, process_runner);
         if (!compiled.succeeded())
         {
             result.diagnostics = std::move(compiled.diagnostics);
@@ -33,7 +34,8 @@ namespace toy3d::shader
             return result;
         }
         ShaderCodeEntryWriteResult written = write_verified_shader_code_entry(
-            entry_root, request, target_layout, *reflected.reflection, *compiled.binary);
+            platform_file, entry_root, request, target_layout,
+            *reflected.reflection, *compiled.binary);
         result.diagnostics = std::move(written.diagnostics);
         result.entry_directory = std::move(written.entry_directory);
         return result;

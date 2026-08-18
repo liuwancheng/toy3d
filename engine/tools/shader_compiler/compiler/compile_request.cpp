@@ -69,7 +69,15 @@ namespace toy3d::shader
         source << input.generated_bindings << '\n';
         source << "#line 1 \"" << input.source_virtual_path << "\"\n";
         source << input.shader_include_source << '\n' << input.pass_source << '\n';
-        IncludeResolveResult resolved = resolve_shader_includes(source.str(), input.source_virtual_path, input.include_files);
+        if (input.source_provider == nullptr)
+        {
+            result.diagnostics.push_back({DiagnosticSeverity::Error,
+                DiagnosticCode::InvalidCompileRequest, {input.source_virtual_path, 0, 1, 1},
+                "Shader compilation requires an injected ShaderSourceProvider."});
+            return result;
+        }
+        IncludeResolveResult resolved = resolve_shader_includes(
+            source.str(), input.source_virtual_path, *input.source_provider);
         if (!resolved.succeeded())
         {
             result.diagnostics = std::move(resolved.diagnostics);

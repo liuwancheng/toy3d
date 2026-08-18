@@ -4,7 +4,6 @@
 #include "compiler/process_runner.h"
 #include "compiler/toolchain_manifest.h"
 
-#include <filesystem>
 #include <functional>
 #include <optional>
 #include <vector>
@@ -12,7 +11,7 @@
 namespace toy3d::shader
 {
     using ShaderProcessRunner = std::function<ProcessResult(
-        const std::filesystem::path&,
+        const PhysicalPath&,
         const std::vector<std::string>&)>;
 
     struct DxcInvocation
@@ -30,13 +29,14 @@ namespace toy3d::shader
 
     std::optional<DxcInvocation> build_vulkan_dxc_invocation(
         const ShaderCompileRequest& request,
-        const std::filesystem::path& source_path,
-        const std::filesystem::path& output_path,
+        const PhysicalPath& source_path,
+        const PhysicalPath& output_path,
         std::vector<Diagnostic>& diagnostics);
 
     ShaderCompilerOutput compile_vulkan_shader(
         const ShaderCompileRequest& request,
         const DiscoveredShaderToolchain& toolchain,
-        const std::filesystem::path& working_directory,
+        PlatformFile& platform_file,
+        const PhysicalPath& working_directory,
         const ShaderProcessRunner& process_runner = run_process);
 }

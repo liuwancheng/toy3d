@@ -5,6 +5,7 @@
 #include "compiler/shader_compiler.h"
 #include "compiler/toolchain_manifest.h"
 #include "frontend/shader_parser.h"
+#include "file_system/native_platform_file.h"
 
 #include <algorithm>
 #include <chrono>
@@ -12,11 +13,194 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
 {
     int failure_count = 0;
+    toy3d::NativePlatformFile platform_file;
+
+    toy3d::PhysicalPath physical_path(const std::filesystem::path& path)
+    {
+        return toy3d::PhysicalPath(path.u8string());
+    }
+
+    std::vector<toy3d::shader::VirtualIncludeFile> default_include_files()
+    {
+        return {
+            {"/Engine/ShaderIncludes/Nested.hlsli", "#include \"/Engine/ShaderIncludes/Common.hlsli\"\n"},
+            {"/Engine/ShaderIncludes/Common.hlsli", "static const float4 included_value = 1.0;\n"}};
+    }
+
+    class FaultInjectingPlatformFile final : public toy3d::PlatformFile
+    {
+    public:
+        enum class Failure
+        {
+            None,
+            WriteText,
+            Rename
+        };
+
+        explicit FaultInjectingPlatformFile(Failure failure)
+            : failure_(failure)
+        {
+        }
+
+        toy3d::PlatformFileCapabilities capabilities() const override
+        {
+            return native_.capabilities();
+        }
+
+        toy3d::FileResult<std::unique_ptr<toy3d::FileHandle>> open(
+            const toy3d::PhysicalPath& path,
+            toy3d::FileOpenMode mode) const override
+        {
+            return native_.open(path, mode);
+        }
+
+        toy3d::FileResult<toy3d::FileStat> stat(const toy3d::PhysicalPath& path) const override
+        {
+            return native_.stat(path);
+        }
+
+        toy3d::FileResult<bool> exists(const toy3d::PhysicalPath& path) const override
+        {
+            return native_.exists(path);
+        }
+
+        toy3d::FileResult<std::vector<std::uint8_t>> read_binary(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.read_binary(path);
+        }
+
+        toy3d::FileResult<std::string> read_text_utf8(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.read_text_utf8(path);
+        }
+
+        toy3d::FileStatus write_text_utf8(
+            const toy3d::PhysicalPath& path,
+            const std::string& text,
+            toy3d::FileWriteMode mode) override
+        {
+            if (failure_ == Failure::WriteText)
+            {
+                failure_ = Failure::None;
+                return injected_error("write_text_utf8", path);
+            }
+            return native_.write_text_utf8(path, text, mode);
+        }
+
+        toy3d::FileStatus write_binary(
+            const toy3d::PhysicalPath& path,
+            const std::vector<std::uint8_t>& bytes,
+            toy3d::FileWriteMode mode) override
+        {
+            return native_.write_binary(path, bytes, mode);
+        }
+
+        toy3d::FileStatus create_directory(const toy3d::PhysicalPath& path) override
+        {
+            return native_.create_directory(path);
+        }
+
+        toy3d::FileStatus create_directories(const toy3d::PhysicalPath& path) override
+        {
+            return native_.create_directories(path);
+        }
+
+        toy3d::FileStatus rename_no_replace(
+            const toy3d::PhysicalPath& source,
+            const toy3d::PhysicalPath& destination) override
+        {
+            if (failure_ == Failure::Rename)
+            {
+                failure_ = Failure::None;
+                return injected_error("rename_no_replace", destination);
+            }
+            return native_.rename_no_replace(source, destination);
+        }
+
+        toy3d::FileStatus replace(
+            const toy3d::PhysicalPath& source,
+            const toy3d::PhysicalPath& destination) override
+        {
+            return native_.replace(source, destination);
+        }
+
+        toy3d::FileStatus remove_file(const toy3d::PhysicalPath& path) override
+        {
+            return native_.remove_file(path);
+        }
+
+        toy3d::FileStatus remove_empty_directory(const toy3d::PhysicalPath& path) override
+        {
+            return native_.remove_empty_directory(path);
+        }
+
+        toy3d::FileResult<std::uintmax_t> remove_directory_tree(
+            const toy3d::PhysicalPath& path) override
+        {
+            return native_.remove_directory_tree(path);
+        }
+
+        toy3d::FileResult<std::vector<toy3d::DirectoryEntry>> enumerate_directory(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.enumerate_directory(path);
+        }
+
+        toy3d::FileResult<toy3d::PhysicalPath> absolute(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.absolute(path);
+        }
+
+        toy3d::FileResult<toy3d::PhysicalPath> lexically_normal(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.lexically_normal(path);
+        }
+
+        toy3d::FileResult<toy3d::PhysicalPath> canonical(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.canonical(path);
+        }
+
+        toy3d::FileResult<toy3d::PhysicalPath> parent_path(
+            const toy3d::PhysicalPath& path) const override
+        {
+            return native_.parent_path(path);
+        }
+
+        toy3d::FileResult<toy3d::PhysicalPath> join_relative(
+            const toy3d::PhysicalPath& base,
+            const std::string& relative) const override
+        {
+            return native_.join_relative(base, relative);
+        }
+
+    private:
+        static toy3d::FileStatus injected_error(
+            const std::string& operation,
+            const toy3d::PhysicalPath& path)
+        {
+            toy3d::FileStatus status;
+            status.code = toy3d::FileErrorCode::IoError;
+            status.operation = operation;
+            status.path = path;
+            status.message = "injected test failure";
+            return status;
+        }
+
+        toy3d::NativePlatformFile native_;
+        Failure failure_ = Failure::None;
+    };
 
     void check(bool condition, const std::string& message)
     {
@@ -65,7 +249,8 @@ namespace
             0x00, 0x00, 0x00, 0x00};
     }
 
-    toy3d::shader::ShaderCompileRequestInput make_input()
+    toy3d::shader::ShaderCompileRequestInput make_input(
+        const toy3d::shader::ShaderSourceProvider& source_provider)
     {
         toy3d::shader::ShaderCompileRequestInput input;
         input.target = toy3d::shader::ShaderTarget::VulkanSpirV;
@@ -78,9 +263,7 @@ namespace
         input.generated_bindings = "float4 test_value;";
         input.shader_include_source = "#include \"/Engine/ShaderIncludes/Nested.hlsli\"";
         input.pass_source = "float4 vs_main() : SV_Position { return included_value; }";
-        input.include_files = {
-            {"/Engine/ShaderIncludes/Nested.hlsli", "#include \"/Engine/ShaderIncludes/Common.hlsli\"\n"},
-            {"/Engine/ShaderIncludes/Common.hlsli", "static const float4 included_value = 1.0;\n"}};
+        input.source_provider = &source_provider;
         input.logical_layout_hash[0] = 1u;
         input.target_binding_hash[0] = 1u;
         return input;
@@ -89,23 +272,29 @@ namespace
     void test_include_resolution_and_compile_key()
     {
         using namespace toy3d::shader;
-        const ShaderCompileRequestResult first = build_shader_compile_request(make_input());
+        const RegisteredShaderSourceProvider first_provider(default_include_files());
+        const ShaderCompileRequestInput first_input = make_input(first_provider);
+        const ShaderCompileRequestResult first = build_shader_compile_request(first_input);
         check(first.succeeded(), "valid Vulkan compile request must build");
         if (!first.request) return;
         check(first.request->dependencies.size() == 2, "transitive virtual includes must be tracked");
-        check(first.request->logical_layout_hash == make_input().logical_layout_hash &&
-            first.request->target_binding_hash == make_input().target_binding_hash,
+        check(first.request->logical_layout_hash == first_input.logical_layout_hash &&
+            first.request->target_binding_hash == first_input.target_binding_hash,
             "compile request must retain logical and target layout identities for artifact validation");
         check(first.request->dependencies[0].virtual_path == "/Engine/ShaderIncludes/Common.hlsli", "dependencies must be deterministically sorted");
         check(first.request->source.find("#line 1 \"/Engine/ShaderIncludes/Common.hlsli\"") != std::string::npos, "expanded includes must retain virtual #line paths");
 
-        ShaderCompileRequestInput reordered = make_input();
-        std::reverse(reordered.include_files.begin(), reordered.include_files.end());
+        std::vector<VirtualIncludeFile> reordered_files = default_include_files();
+        std::reverse(reordered_files.begin(), reordered_files.end());
+        const RegisteredShaderSourceProvider reordered_provider(std::move(reordered_files));
+        ShaderCompileRequestInput reordered = make_input(reordered_provider);
         const ShaderCompileRequestResult second = build_shader_compile_request(reordered);
         check(second.succeeded() && second.request->compile_key == first.request->compile_key, "include registration order must not change the compile key");
 
-        ShaderCompileRequestInput changed = make_input();
-        changed.include_files[1].source = "static const float4 included_value = 0.0;\n";
+        std::vector<VirtualIncludeFile> changed_files = default_include_files();
+        changed_files[1].source = "static const float4 included_value = 0.0;\n";
+        const RegisteredShaderSourceProvider changed_provider(std::move(changed_files));
+        ShaderCompileRequestInput changed = make_input(changed_provider);
         const ShaderCompileRequestResult changed_result = build_shader_compile_request(changed);
         check(changed_result.succeeded() && changed_result.request->compile_key != first.request->compile_key, "dependency content must enter the compile key");
     }
@@ -113,17 +302,20 @@ namespace
     void test_include_failures()
     {
         using namespace toy3d::shader;
-        ShaderCompileRequestInput relative = make_input();
+        const RegisteredShaderSourceProvider provider(default_include_files());
+        ShaderCompileRequestInput relative = make_input(provider);
         relative.shader_include_source = "#include \"Common.hlsli\"";
         const ShaderCompileRequestResult relative_result = build_shader_compile_request(relative);
         check(!relative_result.succeeded() && has_diagnostic(relative_result.diagnostics, DiagnosticCode::InvalidIncludePath), "relative include paths must fail diagnostically");
 
-        ShaderCompileRequestInput cycle = make_input();
-        cycle.include_files[1].source = "#include \"/Engine/ShaderIncludes/Nested.hlsli\"\n";
+        std::vector<VirtualIncludeFile> cycle_files = default_include_files();
+        cycle_files[1].source = "#include \"/Engine/ShaderIncludes/Nested.hlsli\"\n";
+        const RegisteredShaderSourceProvider cycle_provider(std::move(cycle_files));
+        ShaderCompileRequestInput cycle = make_input(cycle_provider);
         const ShaderCompileRequestResult cycle_result = build_shader_compile_request(cycle);
         check(!cycle_result.succeeded() && has_diagnostic(cycle_result.diagnostics, DiagnosticCode::IncludeCycle), "include cycles must report the complete failure class");
 
-        ShaderCompileRequestInput generated = make_input();
+        ShaderCompileRequestInput generated = make_input(provider);
         generated.shader_include_source = "#include \"/Generated/ToyBindings.hlsli\"";
         const ShaderCompileRequestResult generated_result = build_shader_compile_request(generated);
         check(!generated_result.succeeded() && has_diagnostic(generated_result.diagnostics, DiagnosticCode::InvalidIncludePath), "user HLSL must not include compiler-owned generated paths");
@@ -132,12 +324,13 @@ namespace
     void test_request_validation()
     {
         using namespace toy3d::shader;
-        ShaderCompileRequestInput missing_compiler = make_input();
+        const RegisteredShaderSourceProvider provider(default_include_files());
+        ShaderCompileRequestInput missing_compiler = make_input(provider);
         missing_compiler.compiler_identity.clear();
         const ShaderCompileRequestResult missing_result = build_shader_compile_request(missing_compiler);
         check(!missing_result.succeeded() && has_diagnostic(missing_result.diagnostics, DiagnosticCode::CompilerUnavailable), "missing locked compiler identity must fail explicitly");
 
-        ShaderCompileRequestInput mismatched = make_input();
+        ShaderCompileRequestInput mismatched = make_input(provider);
         mismatched.profile = ShaderCompileProfile::D3D11FeatureLevel11_0;
         const ShaderCompileRequestResult mismatch_result = build_shader_compile_request(mismatched);
         check(!mismatch_result.succeeded() && has_diagnostic(mismatch_result.diagnostics, DiagnosticCode::InvalidCompileRequest), "target/profile mismatch must fail before adapter invocation");
@@ -225,7 +418,8 @@ namespace
         write_bytes(root / "include/include/spirv/unified1/spirv.h", spirv_val);
         write_text(root / "Toy3dShaderToolchain.manifest", make_manifest(dxc, spirv_val));
 
-        const ToolchainDiscoveryResult discovered = discover_shader_toolchain(root);
+        const ToolchainDiscoveryResult discovered =
+            discover_shader_toolchain(platform_file, physical_path(root));
         check(discovered.succeeded(), "explicit locked toolchain with matching hashes must be discovered");
         check(discovered.toolchain && discovered.toolchain->manifest.identity == "Toy3dShaderToolchain/test", "manifest compiler identity must be retained");
 
@@ -234,15 +428,18 @@ namespace
         wrong_platform_manifest.replace(
             wrong_platform_manifest.find(expected_platform), expected_platform.size(), "host_platform=unsupported-test-host");
         write_text(root / "Toy3dShaderToolchain.manifest", wrong_platform_manifest);
-        const ToolchainDiscoveryResult wrong_platform = discover_shader_toolchain(root);
+        const ToolchainDiscoveryResult wrong_platform =
+            discover_shader_toolchain(platform_file, physical_path(root));
         check(!wrong_platform.succeeded() && has_diagnostic(wrong_platform.diagnostics, DiagnosticCode::CompilerUnavailable), "toolchain host platform mismatch must fail before process launch");
         write_text(root / "Toy3dShaderToolchain.manifest", make_manifest(dxc, spirv_val));
 
         write_text(root / "bin/dxc", "changed");
-        const ToolchainDiscoveryResult mismatch = discover_shader_toolchain(root);
+        const ToolchainDiscoveryResult mismatch =
+            discover_shader_toolchain(platform_file, physical_path(root));
         check(!mismatch.succeeded() && has_diagnostic(mismatch.diagnostics, DiagnosticCode::ToolchainHashMismatch), "toolchain hash mismatch must fail diagnostically");
 
-        const ToolchainDiscoveryResult missing = discover_shader_toolchain(root / "missing");
+        const ToolchainDiscoveryResult missing = discover_shader_toolchain(
+            platform_file, physical_path(root / "missing"));
         check(!missing.succeeded() && has_diagnostic(missing.diagnostics, DiagnosticCode::CompilerUnavailable), "missing explicit bundle must not fall back to PATH");
         std::filesystem::remove_all(root);
     }
@@ -254,19 +451,24 @@ namespace
             std::filesystem::path("root") / "bin" / "Toy3dShaderCompiler";
         const std::filesystem::path expected =
             std::filesystem::path("root") / "bin" / "ShaderToolchain" / shader_toolchain_host_platform();
-        check(shader_toolchain_root_for_executable(executable) == expected,
+        const toy3d::FileResult<toy3d::PhysicalPath> actual = shader_toolchain_root_for_executable(
+            platform_file, physical_path(executable));
+        check(actual.succeeded() && actual.value() == physical_path(expected),
             "default toolchain root must be relative to the Shader compiler executable");
     }
 
     void test_dxc_arguments_and_adapter_flow()
     {
         using namespace toy3d::shader;
-        ShaderCompileRequestResult built = build_shader_compile_request(make_input());
+        const RegisteredShaderSourceProvider provider(default_include_files());
+        ShaderCompileRequestResult built = build_shader_compile_request(make_input(provider));
         check(built.succeeded(), "adapter test compile request must build");
         if (!built.request) return;
         const std::filesystem::path working = make_test_directory("adapter");
         std::vector<Diagnostic> diagnostics;
-        const auto invocation = build_vulkan_dxc_invocation(*built.request, working / "input.hlsl", working / "output.spv", diagnostics);
+        const auto invocation = build_vulkan_dxc_invocation(
+            *built.request, physical_path(working / "input.hlsl"),
+            physical_path(working / "output.spv"), diagnostics);
         check(invocation.has_value() && diagnostics.empty(), "Vulkan DXC invocation must build");
         if (invocation)
         {
@@ -279,10 +481,10 @@ namespace
 
         DiscoveredShaderToolchain toolchain;
         toolchain.manifest.identity = built.request->compiler_identity;
-        toolchain.dxc_path = "locked-dxc";
-        toolchain.spirv_val_path = "locked-spirv-val";
+        toolchain.dxc_path = toy3d::PhysicalPath("locked-dxc");
+        toolchain.spirv_val_path = toy3d::PhysicalPath("locked-spirv-val");
         std::size_t invocation_count = 0;
-        const ShaderProcessRunner runner = [&](const std::filesystem::path&, const std::vector<std::string>& args) {
+        const ShaderProcessRunner runner = [&](const toy3d::PhysicalPath&, const std::vector<std::string>& args) {
             ProcessResult result;
             result.launched = true;
             result.exit_code = 0;
@@ -293,7 +495,8 @@ namespace
             }
             return result;
         };
-        const ShaderCompilerOutput compiled = compile_vulkan_shader(*built.request, toolchain, working, runner);
+        const ShaderCompilerOutput compiled = compile_vulkan_shader(
+            *built.request, toolchain, platform_file, physical_path(working), runner);
         check(compiled.succeeded(), "DXC adapter must publish binary only after spirv-val succeeds");
         check(invocation_count == 2, "successful Vulkan compile must invoke DXC and spirv-val exactly once");
 
@@ -304,7 +507,8 @@ namespace
         const std::filesystem::path entry_root = working / "shader-code-entries";
         invocation_count = 0;
         const VulkanShaderCodeEntryResult reflection_failure = compile_vulkan_shader_code_entry(
-            *built.request, empty_layout, toolchain, working / "reflection", entry_root, runner);
+            *built.request, empty_layout, toolchain, platform_file,
+            physical_path(working / "reflection"), physical_path(entry_root), runner);
         check(!reflection_failure.succeeded() &&
             has_diagnostic(reflection_failure.diagnostics, DiagnosticCode::ReflectionFailed),
             "invalid final SPIR-V must fail reflection before ShaderCodeEntry publication");
@@ -312,7 +516,7 @@ namespace
             "reflection failure must not publish a compile-key artifact directory");
 
         std::size_t failing_invocation = 0;
-        const ShaderProcessRunner failing_validator = [&](const std::filesystem::path&, const std::vector<std::string>& args) {
+        const ShaderProcessRunner failing_validator = [&](const toy3d::PhysicalPath&, const std::vector<std::string>& args) {
             ProcessResult result;
             result.launched = true;
             result.exit_code = failing_invocation++ == 0 ? 0 : 1;
@@ -324,19 +528,93 @@ namespace
             }
             return result;
         };
-        const ShaderCompilerOutput validation_failure = compile_vulkan_shader(*built.request, toolchain, working, failing_validator);
+        const ShaderCompilerOutput validation_failure = compile_vulkan_shader(
+            *built.request, toolchain, platform_file, physical_path(working), failing_validator);
         check(!validation_failure.binary && has_diagnostic(validation_failure.diagnostics, DiagnosticCode::ShaderValidationFailed), "spirv-val failure must suppress binary publication");
 
-        const ShaderProcessRunner failing_compiler = [](const std::filesystem::path&, const std::vector<std::string>&) {
+        const ShaderProcessRunner failing_compiler = [](const toy3d::PhysicalPath&, const std::vector<std::string>&) {
             return ProcessResult{true, 1, "compile failed"};
         };
-        const ShaderCompilerOutput compilation_failure = compile_vulkan_shader(*built.request, toolchain, working, failing_compiler);
+        const ShaderCompilerOutput compilation_failure = compile_vulkan_shader(
+            *built.request, toolchain, platform_file, physical_path(working), failing_compiler);
         check(!compilation_failure.binary && has_diagnostic(compilation_failure.diagnostics, DiagnosticCode::ShaderCompilationFailed), "DXC failure must suppress binary publication");
 
         toolchain.manifest.identity = "wrong";
-        const ShaderCompilerOutput identity_mismatch = compile_vulkan_shader(*built.request, toolchain, working, runner);
+        const ShaderCompilerOutput identity_mismatch = compile_vulkan_shader(
+            *built.request, toolchain, platform_file, physical_path(working), runner);
         check(!identity_mismatch.succeeded() && has_diagnostic(identity_mismatch.diagnostics, DiagnosticCode::CompilerUnavailable), "adapter must reject a mismatched compiler identity");
         std::filesystem::remove_all(working);
+    }
+
+    toy3d::shader::ShaderMapEntry make_shader_map_entry()
+    {
+        using namespace toy3d::shader;
+        ShaderMapEntry entry;
+        entry.shader_name = "Tests/Storage";
+        entry.pass_name = "Forward";
+        entry.mapping_version = vulkan_binding_mapping_version;
+        entry.logical_layout_hash[0] = 1u;
+        entry.target_binding_hash[0] = 2u;
+        entry.pass_template_hash[0] = 3u;
+
+        ShaderCodeEntry stage;
+        stage.request.stage = ShaderStageFlags::Vertex;
+        stage.request.entry_point = "vs_main";
+        stage.request.logical_layout_hash = entry.logical_layout_hash;
+        stage.request.target_binding_hash = entry.target_binding_hash;
+        stage.request.compile_key[0] = 4u;
+        stage.reflection.stage = ShaderStageFlags::Vertex;
+        stage.reflection.entry_point = "vs_main";
+        stage.reflection.reflection_hash[0] = 5u;
+        stage.binary = minimal_spirv_header();
+        entry.stages.push_back(std::move(stage));
+        return entry;
+    }
+
+    void test_shader_map_storage_faults_and_concurrency()
+    {
+        using namespace toy3d::shader;
+        const ShaderMapEntry entry = make_shader_map_entry();
+
+        for (const FaultInjectingPlatformFile::Failure failure : {
+                 FaultInjectingPlatformFile::Failure::WriteText,
+                 FaultInjectingPlatformFile::Failure::Rename})
+        {
+            const std::filesystem::path root = make_test_directory("storage_fault");
+            const std::filesystem::path entry_root = root / "entries";
+            FaultInjectingPlatformFile faulting_file(failure);
+            const ShaderMapEntryWriteResult written = write_verified_shader_map_entry(
+                faulting_file, physical_path(entry_root), entry);
+            check(!written.succeeded() &&
+                has_diagnostic(written.diagnostics, DiagnosticCode::ShaderCodeWriteFailed),
+                "injected ShaderMap storage failure must be diagnostic");
+            const toy3d::FileResult<std::vector<toy3d::DirectoryEntry>> children =
+                platform_file.enumerate_directory(physical_path(entry_root));
+            check(children.succeeded() && children.value().empty(),
+                "failed ShaderMap publication must clean only its owned staging directory");
+            std::filesystem::remove_all(root);
+        }
+
+        const std::filesystem::path root = make_test_directory("storage_concurrency");
+        const toy3d::PhysicalPath entry_root = physical_path(root / "entries");
+        ShaderMapEntryWriteResult first;
+        ShaderMapEntryWriteResult second;
+        std::thread first_thread([&] {
+            first = write_verified_shader_map_entry(platform_file, entry_root, entry);
+        });
+        std::thread second_thread([&] {
+            second = write_verified_shader_map_entry(platform_file, entry_root, entry);
+        });
+        first_thread.join();
+        second_thread.join();
+        check(first.succeeded() != second.succeeded(),
+            "concurrent publication of one ShaderMap key must have exactly one winner");
+        const toy3d::FileResult<std::vector<toy3d::DirectoryEntry>> children =
+            platform_file.enumerate_directory(entry_root);
+        check(children.succeeded() && children.value().size() == 1u &&
+            children.value()[0].path.utf8().find(".tmp.") == std::string::npos,
+            "concurrent ShaderMap publication must leave one final directory and no staging residue");
+        std::filesystem::remove_all(root);
     }
 
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT) || (defined(TOY3D_SHADER_TEST_DXC) && defined(TOY3D_SHADER_TEST_SPIRV_VAL))
@@ -345,25 +623,26 @@ namespace
         using namespace toy3d::shader;
         DiscoveredShaderToolchain toolchain;
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)
-        const ToolchainDiscoveryResult discovered = discover_shader_toolchain(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT);
+        const ToolchainDiscoveryResult discovered = discover_shader_toolchain(
+            platform_file, toy3d::PhysicalPath(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT));
         check(discovered.succeeded(), "formal locked toolchain bundle must pass manifest and artifact hash discovery");
         if (!discovered.toolchain) return;
         toolchain = *discovered.toolchain;
 #else
         toolchain.manifest.identity = "Toy3dShaderToolchain/explicit-integration-test";
-        toolchain.dxc_path = TOY3D_SHADER_TEST_DXC;
-        toolchain.spirv_val_path = TOY3D_SHADER_TEST_SPIRV_VAL;
+        toolchain.dxc_path = toy3d::PhysicalPath(TOY3D_SHADER_TEST_DXC);
+        toolchain.spirv_val_path = toy3d::PhysicalPath(TOY3D_SHADER_TEST_SPIRV_VAL);
 #endif
         const std::filesystem::path working = make_test_directory("real_dxc");
         TargetBindingLayout empty_layout;
         empty_layout.target = ShaderTarget::VulkanSpirV;
         empty_layout.mapping_version = vulkan_binding_mapping_version;
         empty_layout.target_binding_hash[0] = 1u;
-        ShaderCompileRequestInput vertex = make_input();
+        const RegisteredShaderSourceProvider empty_provider({});
+        ShaderCompileRequestInput vertex = make_input(empty_provider);
         vertex.compiler_identity = toolchain.manifest.identity;
         vertex.shader_include_source.clear();
         vertex.pass_source = "float4 vs_main(uint vertex_id : SV_VertexID) : SV_Position { return float4(vertex_id == 1 ? 1.0 : -1.0, vertex_id == 2 ? 1.0 : -1.0, 0.0, 1.0); }";
-        vertex.include_files.clear();
         ShaderCompileRequestInput pixel = vertex;
         pixel.stage = ShaderStageFlags::Pixel;
         pixel.entry_point = "ps_main";
@@ -374,21 +653,21 @@ namespace
         if (vertex_request.request)
         {
             const VulkanShaderCodeEntryResult compiled = compile_vulkan_shader_code_entry(
-                *vertex_request.request, empty_layout, toolchain, working / "compile",
-                working / "artifacts");
+                *vertex_request.request, empty_layout, toolchain, platform_file,
+                physical_path(working / "compile"), physical_path(working / "artifacts"));
             check(compiled.succeeded(),
                 "explicit DXC vertex output must pass reflection and publish a verified ShaderCodeEntry");
             check(compiled.entry_directory &&
-                std::filesystem::exists(*compiled.entry_directory / "manifest.txt") &&
-                std::filesystem::exists(*compiled.entry_directory / "shader.spv") &&
-                std::filesystem::exists(*compiled.entry_directory / "reflection.txt"),
+                std::filesystem::exists(std::filesystem::u8path(compiled.entry_directory->utf8()) / "manifest.txt") &&
+                std::filesystem::exists(std::filesystem::u8path(compiled.entry_directory->utf8()) / "shader.spv") &&
+                std::filesystem::exists(std::filesystem::u8path(compiled.entry_directory->utf8()) / "reflection.txt"),
                 "verified vertex ShaderCodeEntry must contain manifest, binary, and reflection records");
         }
         if (pixel_request.request)
         {
             const VulkanShaderCodeEntryResult compiled = compile_vulkan_shader_code_entry(
-                *pixel_request.request, empty_layout, toolchain, working / "compile",
-                working / "artifacts");
+                *pixel_request.request, empty_layout, toolchain, platform_file,
+                physical_path(working / "compile"), physical_path(working / "artifacts"));
             check(compiled.succeeded(),
                 "explicit DXC pixel output must pass reflection and publish a verified ShaderCodeEntry");
         }
@@ -468,16 +747,17 @@ namespace
         if (resource_request.request)
         {
             const VulkanShaderCodeEntryResult compiled = compile_vulkan_shader_code_entry(
-                *resource_request.request, resource_layout, toolchain, working / "compile",
-                working / "resource-artifacts");
+                *resource_request.request, resource_layout, toolchain, platform_file,
+                physical_path(working / "compile"), physical_path(working / "resource-artifacts"));
             check(compiled.succeeded(),
                 "SPIRV-Reflect must validate constant offsets, resource types, and Vulkan set/binding mapping");
 
             TargetBindingLayout mismatched_layout = resource_layout;
             mismatched_layout.bindings[1].descriptor_binding = 7u;
             const VulkanShaderCodeEntryResult mismatch = compile_vulkan_shader_code_entry(
-                *resource_request.request, mismatched_layout, toolchain, working / "compile-mismatch",
-                working / "mismatch-artifacts");
+                *resource_request.request, mismatched_layout, toolchain, platform_file,
+                physical_path(working / "compile-mismatch"),
+                physical_path(working / "mismatch-artifacts"));
             check(!mismatch.succeeded() &&
                 has_diagnostic(mismatch.diagnostics, DiagnosticCode::ReflectionUnexpectedResource),
                 "native set/binding mismatch must fail parity validation");
@@ -493,7 +773,8 @@ namespace
     {
         using namespace toy3d::shader;
         const ToolchainDiscoveryResult discovered =
-            discover_shader_toolchain(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT);
+            discover_shader_toolchain(
+                platform_file, toy3d::PhysicalPath(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT));
         check(discovered.succeeded(), "Program compiler requires the locked toolchain bundle");
         if (!discovered.toolchain) return;
 
@@ -540,9 +821,12 @@ Shader "Tests/ProgramCompile"
         ShaderProgramCompileInput input;
         input.pass_name = "Forward";
         input.source_virtual_path = "/Engine/Shaders/Tests/ProgramCompile.shader";
+        const RegisteredShaderSourceProvider source_provider({});
+        input.source_provider = &source_provider;
         const std::filesystem::path working = make_test_directory("program_compile");
         const ShaderMapEntryCompileResult compiled = compile_vulkan_shader_map_entry(
-            *parsed.asset, input, *discovered.toolchain, working);
+            *parsed.asset, input, *discovered.toolchain,
+            platform_file, physical_path(working));
         for (const Diagnostic& diagnostic : compiled.diagnostics)
         {
             std::cerr << format_diagnostic(diagnostic) << '\n';
@@ -565,17 +849,17 @@ Shader "Tests/ProgramCompile"
                 compiled.entry->bindings[2].descriptor_binding == 2u,
                 "Final Vulkan Material bindings must be compact and deterministic");
             const ShaderMapEntryWriteResult entry_write = write_verified_shader_map_entry(
-                working / "shader-map", *compiled.entry);
+                platform_file, physical_path(working / "shader-map"), *compiled.entry);
             check(entry_write.succeeded(),
                 "Strictly validated Program compilation must publish one atomic ShaderMapEntry");
             check(entry_write.entry_directory &&
-                std::filesystem::exists(*entry_write.entry_directory / "manifest.txt") &&
-                std::filesystem::exists(*entry_write.entry_directory / "mapping.txt") &&
-                std::filesystem::exists(*entry_write.entry_directory / "vertex.spv") &&
-                std::filesystem::exists(*entry_write.entry_directory / "pixel.spv"),
+                std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) / "manifest.txt") &&
+                std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) / "mapping.txt") &&
+                std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) / "vertex.spv") &&
+                std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) / "pixel.spv"),
                 "ShaderMapEntry must contain manifest, mapping, and all stage binaries");
             const ShaderMapEntryWriteResult duplicate = write_verified_shader_map_entry(
-                working / "shader-map", *compiled.entry);
+                platform_file, physical_path(working / "shader-map"), *compiled.entry);
             check(!duplicate.succeeded() &&
                 has_diagnostic(duplicate.diagnostics, DiagnosticCode::ShaderCodeWriteFailed),
                 "An existing ShaderMapEntry key must fail deterministically before reader cache hits are implemented");
@@ -601,6 +885,7 @@ int main()
     test_toolchain_discovery();
     test_toolchain_relative_root();
     test_dxc_arguments_and_adapter_flow();
+    test_shader_map_storage_faults_and_concurrency();
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT) || (defined(TOY3D_SHADER_TEST_DXC) && defined(TOY3D_SHADER_TEST_SPIRV_VAL))
     test_real_dxc_spirv_integration();
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)

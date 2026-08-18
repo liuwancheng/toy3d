@@ -2,8 +2,8 @@
 
 #include "common/sha256.h"
 #include "frontend/diagnostic.h"
+#include "file_system/platform_file.h"
 
-#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,13 +45,13 @@ namespace toy3d::shader
     struct DiscoveredShaderToolchain
     {
         ShaderToolchainManifest manifest;
-        std::filesystem::path dxc_path;
-        std::filesystem::path dxc_library_path;
-        std::filesystem::path spirv_val_path;
-        std::filesystem::path spirv_reflect_path;
-        std::filesystem::path spirv_reflect_debug_path;
-        std::filesystem::path spirv_reflect_header_path;
-        std::filesystem::path spirv_header_path;
+        PhysicalPath dxc_path;
+        PhysicalPath dxc_library_path;
+        PhysicalPath spirv_val_path;
+        PhysicalPath spirv_reflect_path;
+        PhysicalPath spirv_reflect_debug_path;
+        PhysicalPath spirv_reflect_header_path;
+        PhysicalPath spirv_header_path;
     };
 
     struct ToolchainDiscoveryResult
@@ -63,7 +63,10 @@ namespace toy3d::shader
     };
 
     std::string shader_toolchain_host_platform();
-    std::filesystem::path shader_toolchain_root_for_executable(
-        const std::filesystem::path& executable_path);
-    ToolchainDiscoveryResult discover_shader_toolchain(const std::filesystem::path& explicit_bundle_root);
+    FileResult<PhysicalPath> shader_toolchain_root_for_executable(
+        const PlatformFile& platform_file,
+        const PhysicalPath& executable_path);
+    ToolchainDiscoveryResult discover_shader_toolchain(
+        const PlatformFile& platform_file,
+        const PhysicalPath& explicit_bundle_root);
 }

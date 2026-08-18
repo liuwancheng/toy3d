@@ -65,22 +65,14 @@ namespace toy3d::shader
         class Resolver
         {
         public:
-            Resolver(const std::vector<VirtualIncludeFile>& files, std::uint32_t max_depth)
-                : max_depth_(max_depth)
+            Resolver(const ShaderSourceProvider& source_provider, std::uint32_t max_depth)
+                : source_provider_(source_provider), max_depth_(max_depth)
             {
-                for (const VirtualIncludeFile& file : files)
+                if (!source_provider_.validation_error().empty())
                 {
-                    if (!has_valid_include_path(file.virtual_path))
-                    {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, {file.virtual_path, 0, 1, 1},
-                            "Include files must use a normalized /Engine/ShaderIncludes/ virtual path."});
-                        continue;
-                    }
-                    if (!files_.emplace(file.virtual_path, &file).second)
-                    {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, {file.virtual_path, 0, 1, 1},
-                            "Duplicate virtual include path."});
-                    }
+                    diagnostics_.push_back({DiagnosticSeverity::Error,
+                        DiagnosticCode::InvalidIncludePath, {},
+                        source_provider_.validation_error()});
                 }
             }
 
@@ -135,11 +127,11 @@ namespace toy3d::shader
                             "Includes must use a normalized /Engine/ShaderIncludes/ virtual path."});
                         return std::nullopt;
                     }
-                    const auto found = files_.find(*include_path);
-                    if (found == files_.end())
+                    const ShaderSourceLoadResult loaded = source_provider_.load(*include_path);
+                    if (!loaded.succeeded())
                     {
                         diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::IncludeNotFound, location,
-                            "Virtual include was not provided: " + *include_path});
+                            loaded.error});
                         return std::nullopt;
                     }
                     if (depth >= max_depth_)
@@ -161,8 +153,8 @@ namespace toy3d::shader
                             "Shader include cycle: " + chain});
                         return std::nullopt;
                     }
-                    const VirtualIncludeFile& file = *found->second;
-                    dependencies_[file.virtual_path] = sha256(file.source);
+                    const ShaderSourceRecord& file = *loaded.source;
+                    dependencies_[file.virtual_path] = file.content_hash;
                     stack_.push_back(file.virtual_path);
                     const std::optional<std::string> expanded = resolve_source(file.source, file.virtual_path, depth + 1);
                     stack_.pop_back();
@@ -175,7 +167,7 @@ namespace toy3d::shader
             }
 
             std::uint32_t max_depth_ = 0;
-            std::unordered_map<std::string, const VirtualIncludeFile*> files_;
+            const ShaderSourceProvider& source_provider_;
             std::unordered_map<std::string, Sha256Hash> dependencies_;
             std::vector<std::string> stack_;
             std::vector<Diagnostic> diagnostics_;
@@ -190,7 +182,7 @@ namespace toy3d::shader
     IncludeResolveResult resolve_shader_includes(
         const std::string& source,
         const std::string& source_virtual_path,
-        const std::vector<VirtualIncludeFile>& include_files,
+        const ShaderSourceProvider& source_provider,
         std::uint32_t max_depth)
     {
         IncludeResolveResult result;
@@ -200,7 +192,7 @@ namespace toy3d::shader
                 {source_virtual_path, 0, 1, 1}, "Shader include depth limit must be greater than zero."});
             return result;
         }
-        Resolver resolver(include_files, max_depth);
+        Resolver resolver(source_provider, max_depth);
         result.source = resolver.resolve(source, source_virtual_path);
         result.dependencies = resolver.dependencies();
         result.diagnostics = resolver.take_diagnostics();

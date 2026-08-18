@@ -1225,7 +1225,9 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 6. ShaderMap compiler orchestration 已串联 Pass entry、logical layout、active-resource discovery、最终 target mapping、generated HLSL、各 stage compile/reflection 与 `ShaderMapEntry`。Vulkan 使用 discovery/final 两遍编译：第一遍允许 reflection 中缺少被优化掉的声明并收集真实 stage usage，第二遍按紧凑 mapping 重编译且要求严格 parity；共享 Pass 源码的每个 stage 都声明完整 Vulkan Program binding 集，最终 stage visibility 只取最终 SPIR-V reflection。
 7. ShaderMap-level validation 已合并 vertex/pixel/compute stage，检查 vertex output/pixel input 的 location、semantic、32-bit scalar type/component count，检查 compute thread-group size，并通过最终 allocator 复核 VulkanPortable per-stage/pipeline limits。`compile-vulkan` CLI 可从 `.shader` 与 Pass 直接生成原子发布的 `ShaderMapEntry`，Entry 保存 Shader/Pass identity、Pass template hash、logical/target hash、紧凑 mapping、各 stage `ShaderCodeEntry`/reflection/binary/dependency hash。VariantId ABI 尚未锁定时，含 `Variants` 的资产必须由调用方显式提供 generated permutation prelude，CLI 不会静默按未定义宏编译。
 
-下一批任务固定为阶段 3 的 permutation ABI 与 ShaderMapEntry 读取闭环：
+根据 `document/core-infrastructure-design.md`，继续扩展 ShaderMap reader 前必须先收敛共享文件系统。共享文件系统阶段 A/B/C 已完成代码侧闭环：`engine/core/` 已建立独立 `Toy3dFileSystem`，提供注入式 `PlatformFile`、`NativePlatformFile`、`PhysicalPath`、文件错误模型、`VirtualPath`、版本化 mount descriptor 与冻结后只读的 `VirtualFileSystem`。ShaderCompiler 的 CLI、toolchain、DXC temporary output、`ShaderCodeEntry` 与 `ShaderMapEntry` I/O 已迁移到注入接口，include resolver 改为通过 `ShaderSourceProvider` 按需加载规范化 virtual source。Entry publication 使用唯一 owned staging 与 no-replace atomic rename；独立测试覆盖物理 I/O、虚拟路径安全、写入/rename fault injection、同 key 并发 publication、真实 DXC/SPIR-V/reflection 和失败不发布。
+
+下一批任务固定为 Variant ABI 及其后续依赖顺序：
 
 1. 锁定并实现 VariantId、enum value ID、permutation key 与 generated macro contract；Program compile input 接受 typed variant selection，CLI 显式选择或使用 schema default，不再接收无身份的自由形式 permutation prelude。
 2. 实现 ShaderMapEntry reader/validator 与 cache-hit contract，读取时复核版本、target/profile、mapping、各 content hash、文件边界和依赖记录；补齐损坏、重复 ShaderMap key、并发发布和已存在 Entry 的确定性行为测试。

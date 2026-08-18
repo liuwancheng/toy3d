@@ -3,6 +3,8 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "shader_map/shader_code_entry.h"
     "shader_map/shader_map_entry.cpp"
     "shader_map/shader_map_entry.h"
+    "shader_map/shader_map_storage.cpp"
+    "shader_map/shader_map_storage.h"
     "codegen/binding_codegen.cpp"
     "codegen/binding_codegen.h"
     "common/sha256.cpp"
@@ -19,6 +21,8 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "compiler/program_compiler.h"
     "compiler/shader_compiler.cpp"
     "compiler/shader_compiler.h"
+    "compiler/shader_source_provider.cpp"
+    "compiler/shader_source_provider.h"
     "compiler/toolchain_manifest.cpp"
     "compiler/toolchain_manifest.h"
     "frontend/diagnostic.cpp"
@@ -50,6 +54,7 @@ target_include_directories(Toy3dShaderCompilerCore
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dShaderCompilerCore
     PUBLIC
+        Toy3dFileSystem
         Toy3d::SpirvReflect)
 
 add_executable(Toy3dShaderCompiler "main.cpp")

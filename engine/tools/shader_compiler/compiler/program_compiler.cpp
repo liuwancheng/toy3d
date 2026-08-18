@@ -96,7 +96,8 @@ namespace toy3d::shader
             const LogicalShaderLayout& logical_layout,
             const TargetBindingLayout& target_layout,
             const DiscoveredShaderToolchain& toolchain,
-            const std::filesystem::path& working_directory,
+            PlatformFile& platform_file,
+            const PhysicalPath& working_directory,
             bool require_all_expected_bindings,
             const ShaderProcessRunner& process_runner)
         {
@@ -121,7 +122,7 @@ namespace toy3d::shader
             request_input.generated_bindings = std::move(*bindings.source);
             request_input.shader_include_source = shader_include_source;
             request_input.pass_source = pass.program.source;
-            request_input.include_files = input.include_files;
+            request_input.source_provider = input.source_provider;
             request_input.logical_layout_hash = logical_layout.logical_layout_hash;
             request_input.target_binding_hash = target_layout.target_binding_hash;
             ShaderCompileRequestResult request = build_shader_compile_request(request_input);
@@ -132,7 +133,7 @@ namespace toy3d::shader
             }
 
             ShaderCompilerOutput compiled = compile_vulkan_shader(
-                *request.request, toolchain, working_directory, process_runner);
+                *request.request, toolchain, platform_file, working_directory, process_runner);
             if (!compiled.succeeded())
             {
                 output.diagnostics = std::move(compiled.diagnostics);
@@ -237,7 +238,8 @@ namespace toy3d::shader
         const ShaderAsset& asset,
         const ShaderProgramCompileInput& input,
         const DiscoveredShaderToolchain& toolchain,
-        const std::filesystem::path& working_directory,
+        PlatformFile& platform_file,
+        const PhysicalPath& working_directory,
         const ShaderProcessRunner& process_runner)
     {
         ShaderMapEntryCompileResult result;
@@ -245,6 +247,7 @@ namespace toy3d::shader
             return candidate.name == input.pass_name;
         });
         if (pass == asset.passes.end() || input.source_virtual_path.empty() ||
+            input.source_provider == nullptr ||
             pass->program.entry_points.empty())
         {
             result.diagnostics.push_back({DiagnosticSeverity::Error,
@@ -285,13 +288,35 @@ namespace toy3d::shader
         }
 
         const std::string shader_include_source = combined_include_source(asset);
+        const FileResult<PhysicalPath> discovery_root =
+            platform_file.join_relative(working_directory, "discovery");
+        const FileResult<PhysicalPath> final_root =
+            platform_file.join_relative(working_directory, "final");
+        if (!discovery_root.succeeded() || !final_root.succeeded())
+        {
+            result.diagnostics.push_back({DiagnosticSeverity::Error,
+                DiagnosticCode::ShaderCompilationFailed, asset.location,
+                "Unable to resolve Shader compiler working directories."});
+            return result;
+        }
         std::vector<ParameterUsage> reflected_usage;
         for (const EntryPoint& entry : pass->program.entry_points)
         {
+            const FileResult<PhysicalPath> stage_working_directory =
+                platform_file.join_relative(
+                    discovery_root.value(),
+                    stage_directory_name(stage_flag(entry.stage)));
+            if (!stage_working_directory.succeeded())
+            {
+                result.diagnostics.push_back({DiagnosticSeverity::Error,
+                    DiagnosticCode::ShaderCompilationFailed, entry.location,
+                    "Unable to resolve discovery compile working directory."});
+                return result;
+            }
             StageCompileOutput discovered = compile_stage(
                 input, *pass, entry, shader_include_source, *logical.layout,
-                *discovery_mapping.layout, toolchain,
-                working_directory / "discovery" / stage_directory_name(stage_flag(entry.stage)),
+                *discovery_mapping.layout, toolchain, platform_file,
+                stage_working_directory.value(),
                 false, process_runner);
             if (!discovered.stage)
             {
@@ -333,10 +358,21 @@ namespace toy3d::shader
         }
         for (const EntryPoint& entry_point : pass->program.entry_points)
         {
+            const FileResult<PhysicalPath> stage_working_directory =
+                platform_file.join_relative(
+                    final_root.value(),
+                    stage_directory_name(stage_flag(entry_point.stage)));
+            if (!stage_working_directory.succeeded())
+            {
+                result.diagnostics.push_back({DiagnosticSeverity::Error,
+                    DiagnosticCode::ShaderCompilationFailed, entry_point.location,
+                    "Unable to resolve final compile working directory."});
+                return result;
+            }
             StageCompileOutput compiled = compile_stage(
                 input, *pass, entry_point, shader_include_source, *logical.layout,
-                *final_mapping.layout, toolchain,
-                working_directory / "final" / stage_directory_name(stage_flag(entry_point.stage)),
+                *final_mapping.layout, toolchain, platform_file,
+                stage_working_directory.value(),
                 true, process_runner);
             if (!compiled.stage)
             {

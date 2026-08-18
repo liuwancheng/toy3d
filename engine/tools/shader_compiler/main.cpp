@@ -1,14 +1,12 @@
 #include "shader_map/shader_map_entry.h"
 #include "compiler/program_compiler.h"
 #include "compiler/toolchain_manifest.h"
-#include "core/misc/logger.h"
+#include "logging/logger.h"
+#include "file_system/native_platform_file.h"
 #include "frontend/shader_parser.h"
 
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -69,11 +67,12 @@ namespace
             "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
     }
 
-    std::filesystem::path current_executable_path(
+    toy3d::FileResult<toy3d::PhysicalPath> current_executable_path(
+        const toy3d::PlatformFile& platform_file,
         const char* fallback_path,
-        std::error_code& error)
+        std::string& error)
     {
-        std::filesystem::path path;
+        toy3d::PhysicalPath path;
 #if defined(_WIN32)
         std::wstring buffer(32768u, L'\0');
         const DWORD length = GetModuleFileNameW(
@@ -81,7 +80,20 @@ namespace
         if (length != 0 && length < buffer.size())
         {
             buffer.resize(length);
-            path = std::move(buffer);
+            const int utf8_size = WideCharToMultiByte(
+                CP_UTF8, WC_ERR_INVALID_CHARS, buffer.data(), static_cast<int>(buffer.size()),
+                nullptr, 0, nullptr, nullptr);
+            if (utf8_size > 0)
+            {
+                std::string utf8(static_cast<std::size_t>(utf8_size), '\0');
+                if (WideCharToMultiByte(
+                        CP_UTF8, WC_ERR_INVALID_CHARS, buffer.data(),
+                        static_cast<int>(buffer.size()), utf8.data(), utf8_size,
+                        nullptr, nullptr) == utf8_size)
+                {
+                    path = toy3d::PhysicalPath(std::move(utf8));
+                }
+            }
         }
 #elif defined(__APPLE__)
         std::uint32_t size = 0;
@@ -89,14 +101,16 @@ namespace
         if (size != 0)
         {
             std::vector<char> buffer(size, '\0');
-            if (_NSGetExecutablePath(buffer.data(), &size) == 0) path = buffer.data();
+            if (_NSGetExecutablePath(buffer.data(), &size) == 0)
+                path = toy3d::PhysicalPath(buffer.data());
         }
 #endif
-        if (path.empty()) path = fallback_path;
-        std::filesystem::path normalized = std::filesystem::weakly_canonical(path, error);
-        if (!error) return normalized;
-        error.clear();
-        return std::filesystem::absolute(path, error);
+        if (path.empty()) path = toy3d::PhysicalPath(fallback_path);
+        toy3d::FileResult<toy3d::PhysicalPath> normalized = platform_file.canonical(path);
+        if (normalized.succeeded()) return normalized;
+        normalized = platform_file.absolute(path);
+        if (!normalized.succeeded()) error = normalized.status().message;
+        return normalized;
     }
 }
 
@@ -114,12 +128,13 @@ int main(int argument_count, char** arguments)
     }
     const LoggerLifetime logger_lifetime;
     TOY_LOG_INFO("Shader compiler started.");
+    toy3d::NativePlatformFile platform_file;
 
-    std::optional<std::filesystem::path> explicit_toolchain_root;
+    std::optional<toy3d::PhysicalPath> explicit_toolchain_root;
     int command_index = 1;
     if (argument_count > 2 && std::string(arguments[1]) == "--toolchain-root")
     {
-        explicit_toolchain_root = std::filesystem::path(arguments[2]);
+        explicit_toolchain_root = toy3d::PhysicalPath(arguments[2]);
         command_index = 3;
     }
     if (command_index >= argument_count)
@@ -136,20 +151,38 @@ int main(int argument_count, char** arguments)
             print_usage();
             return 2;
         }
-        std::error_code error;
-        const std::filesystem::path executable_path = current_executable_path(arguments[0], error);
-        if (error)
+        std::string error;
+        const toy3d::FileResult<toy3d::PhysicalPath> executable_path =
+            current_executable_path(platform_file, arguments[0], error);
+        if (!executable_path.succeeded())
         {
             report_message(
                 toy3d::Logger::Level::TOY_ERROR,
                 "error: unable to resolve Toy3dShaderCompiler executable path: " +
-                    error.message());
+                    error);
             return 2;
         }
-        const std::filesystem::path toolchain_root = explicit_toolchain_root.value_or(
-            toy3d::shader::shader_toolchain_root_for_executable(executable_path));
+        toy3d::PhysicalPath toolchain_root;
+        if (explicit_toolchain_root)
+        {
+            toolchain_root = *explicit_toolchain_root;
+        }
+        else
+        {
+            const toy3d::FileResult<toy3d::PhysicalPath> default_root =
+                toy3d::shader::shader_toolchain_root_for_executable(
+                    platform_file, executable_path.value());
+            if (!default_root.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR,
+                    "error: unable to resolve default Shader toolchain root: " +
+                        default_root.status().message);
+                return 2;
+            }
+            toolchain_root = default_root.value();
+        }
         const toy3d::shader::ToolchainDiscoveryResult discovered =
-            toy3d::shader::discover_shader_toolchain(toolchain_root);
+            toy3d::shader::discover_shader_toolchain(platform_file, toolchain_root);
         for (const toy3d::shader::Diagnostic& diagnostic : discovered.diagnostics)
         {
             report_diagnostic(diagnostic);
@@ -157,8 +190,8 @@ int main(int argument_count, char** arguments)
         if (!discovered.succeeded()) return 1;
         TOY_LOG_INFO(
             "Shader toolchain discovery succeeded for '{}'.",
-            toolchain_root.generic_string());
-        std::cout << "Shader toolchain root: " << toolchain_root.generic_string() << '\n'
+            toolchain_root.utf8());
+        std::cout << "Shader toolchain root: " << toolchain_root.utf8() << '\n'
                   << "Host platform: " << discovered.toolchain->manifest.host_platform << '\n'
                   << "Bundle identity: " << discovered.toolchain->manifest.identity << '\n';
         return 0;
@@ -173,17 +206,16 @@ int main(int argument_count, char** arguments)
     }
 
     const std::string path = arguments[command_index + 1];
-    std::ifstream input(path, std::ios::binary);
-    if (!input)
+    const toy3d::FileResult<std::string> source_file =
+        platform_file.read_text_utf8(toy3d::PhysicalPath(path));
+    if (!source_file.succeeded())
     {
         report_message(
             toy3d::Logger::Level::TOY_ERROR,
             path + ": error: unable to open Shader asset.");
         return 2;
     }
-    const std::string source{
-        std::istreambuf_iterator<char>(input),
-        std::istreambuf_iterator<char>()};
+    const std::string& source = source_file.value();
     const toy3d::shader::ParseResult result = toy3d::shader::parse_shader(source, path);
     for (const toy3d::shader::Diagnostic& diagnostic : result.diagnostics)
     {
@@ -196,18 +228,36 @@ int main(int argument_count, char** arguments)
 
     if (compile_vulkan)
     {
-        std::error_code error;
-        const std::filesystem::path executable_path = current_executable_path(arguments[0], error);
-        if (error)
+        std::string error;
+        const toy3d::FileResult<toy3d::PhysicalPath> executable_path =
+            current_executable_path(platform_file, arguments[0], error);
+        if (!executable_path.succeeded())
         {
             report_message(toy3d::Logger::Level::TOY_ERROR,
-                "error: unable to resolve Toy3dShaderCompiler executable path: " + error.message());
+                "error: unable to resolve Toy3dShaderCompiler executable path: " + error);
             return 2;
         }
-        const std::filesystem::path toolchain_root = explicit_toolchain_root.value_or(
-            toy3d::shader::shader_toolchain_root_for_executable(executable_path));
+        toy3d::PhysicalPath toolchain_root;
+        if (explicit_toolchain_root)
+        {
+            toolchain_root = *explicit_toolchain_root;
+        }
+        else
+        {
+            const toy3d::FileResult<toy3d::PhysicalPath> default_root =
+                toy3d::shader::shader_toolchain_root_for_executable(
+                    platform_file, executable_path.value());
+            if (!default_root.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR,
+                    "error: unable to resolve default Shader toolchain root: " +
+                        default_root.status().message);
+                return 2;
+            }
+            toolchain_root = default_root.value();
+        }
         toy3d::shader::ToolchainDiscoveryResult discovered =
-            toy3d::shader::discover_shader_toolchain(toolchain_root);
+            toy3d::shader::discover_shader_toolchain(platform_file, toolchain_root);
         for (const toy3d::shader::Diagnostic& diagnostic : discovered.diagnostics)
             report_diagnostic(diagnostic);
         if (!discovered.succeeded()) return 1;
@@ -215,22 +265,25 @@ int main(int argument_count, char** arguments)
         toy3d::shader::ShaderProgramCompileInput compile_input;
         compile_input.source_virtual_path = arguments[command_index + 2];
         compile_input.pass_name = arguments[command_index + 3];
+        const toy3d::shader::RegisteredShaderSourceProvider source_provider({});
+        compile_input.source_provider = &source_provider;
         toy3d::shader::ShaderMapEntryCompileResult compiled =
             toy3d::shader::compile_vulkan_shader_map_entry(
                 *result.asset, compile_input, *discovered.toolchain,
-                arguments[command_index + 5]);
+                platform_file, toy3d::PhysicalPath(arguments[command_index + 5]));
         for (const toy3d::shader::Diagnostic& diagnostic : compiled.diagnostics)
             report_diagnostic(diagnostic);
         if (!compiled.succeeded()) return 1;
         toy3d::shader::ShaderMapEntryWriteResult written =
             toy3d::shader::write_verified_shader_map_entry(
-                arguments[command_index + 4], *compiled.entry);
+                platform_file, toy3d::PhysicalPath(arguments[command_index + 4]),
+                *compiled.entry);
         for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
             report_diagnostic(diagnostic);
         if (!written.succeeded()) return 1;
         std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/"
                   << compiled.entry->pass_name << "' to "
-                  << written.entry_directory->generic_string() << '\n';
+                  << written.entry_directory->utf8() << '\n';
         return 0;
     }
 

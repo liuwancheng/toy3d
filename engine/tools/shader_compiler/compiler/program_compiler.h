@@ -13,7 +13,7 @@ namespace toy3d::shader
         std::string source_virtual_path;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
         std::string generated_prelude;
-        std::vector<VirtualIncludeFile> include_files;
+        const ShaderSourceProvider* source_provider = nullptr;
     };
 
     struct ShaderMapBinding
@@ -62,6 +62,7 @@ namespace toy3d::shader
         const ShaderAsset& asset,
         const ShaderProgramCompileInput& input,
         const DiscoveredShaderToolchain& toolchain,
-        const std::filesystem::path& working_directory,
+        PlatformFile& platform_file,
+        const PhysicalPath& working_directory,
         const ShaderProcessRunner& process_runner = run_process);
 }

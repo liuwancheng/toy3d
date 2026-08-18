@@ -1,6 +1,7 @@
 #pragma once
 
-#include <filesystem>
+#include "file_system/physical_path.h"
+
 #include <string>
 #include <vector>
 
@@ -14,6 +15,6 @@ namespace toy3d::shader
     };
 
     ProcessResult run_process(
-        const std::filesystem::path& executable,
+        const PhysicalPath& executable,
         const std::vector<std::string>& arguments);
 }

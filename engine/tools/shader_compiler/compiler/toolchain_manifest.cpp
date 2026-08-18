@@ -1,8 +1,8 @@
 #include "compiler/toolchain_manifest.h"
 
 #include <cctype>
-#include <fstream>
 #include <sstream>
+#include <string_view>
 #include <unordered_map>
 
 namespace toy3d::shader
@@ -16,28 +16,20 @@ namespace toy3d::shader
             diagnostics.push_back({DiagnosticSeverity::Error, code, {}, message});
         }
 
-        bool read_binary_file(const std::filesystem::path& path, std::vector<std::uint8_t>& bytes)
-        {
-            std::ifstream input(path, std::ios::binary | std::ios::ate);
-            if (!input) return false;
-            const std::streamoff size = input.tellg();
-            if (size < 0) return false;
-            bytes.resize(static_cast<std::size_t>(size));
-            input.seekg(0, std::ios::beg);
-            return bytes.empty() || static_cast<bool>(input.read(reinterpret_cast<char*>(bytes.data()), size));
-        }
-
         std::optional<std::unordered_map<std::string, std::string>> parse_manifest(
-            const std::filesystem::path& path,
+            const PlatformFile& platform_file,
+            const PhysicalPath& path,
             std::vector<Diagnostic>& diagnostics)
         {
-            std::ifstream input(path, std::ios::binary);
-            if (!input)
+            const FileResult<std::string> manifest = platform_file.read_text_utf8(path);
+            if (!manifest.succeeded())
             {
                 add_error(diagnostics, DiagnosticCode::CompilerUnavailable,
-                    "Locked Shader toolchain manifest is missing: " + path.generic_string());
+                    "Locked Shader toolchain manifest is missing or unreadable: " + path.utf8() +
+                        " (" + manifest.status().message + ")");
                 return std::nullopt;
             }
+            std::istringstream input(manifest.value());
             std::unordered_map<std::string, std::string> fields;
             std::string line;
             std::uint32_t line_number = 0;
@@ -100,23 +92,30 @@ namespace toy3d::shader
                     "Toolchain artifact '" + prefix + "' has an invalid SHA-256.");
                 return false;
             }
-            const std::filesystem::path relative_path(*path);
-            if (relative_path.is_absolute() || relative_path.empty())
+            if (path->empty() || path->front() == '/' || path->front() == '\\' ||
+                path->find('\\') != std::string::npos || path->find(':') != std::string::npos)
             {
                 add_error(diagnostics, DiagnosticCode::InvalidToolchainManifest,
                     "Toolchain artifact '" + prefix + "' must use a relative bundle path.");
                 return false;
             }
-            for (const auto& component : relative_path)
+            std::size_t begin = 0;
+            while (begin <= path->size())
             {
-                if (component == "..")
+                const std::size_t end = path->find('/', begin);
+                const std::string_view component(
+                    path->data() + begin,
+                    (end == std::string::npos ? path->size() : end) - begin);
+                if (component.empty() || component == "." || component == "..")
                 {
                     add_error(diagnostics, DiagnosticCode::InvalidToolchainManifest,
                         "Toolchain artifact '" + prefix + "' escapes the bundle root.");
                     return false;
                 }
+                if (end == std::string::npos) break;
+                begin = end + 1;
             }
-            artifact.relative_path = relative_path.generic_string();
+            artifact.relative_path = *path;
             artifact.content_hash = *parsed_hash;
             artifact.source_revision = *revision;
             artifact.build_parameters = *parameters;
@@ -144,24 +143,35 @@ namespace toy3d::shader
         }
 
         bool verify_artifact(
-            const std::filesystem::path& bundle_root,
+            const PlatformFile& platform_file,
+            const PhysicalPath& bundle_root,
             const ToolchainArtifact& artifact,
             const std::string& name,
-            std::filesystem::path& resolved_path,
+            PhysicalPath& resolved_path,
             std::vector<Diagnostic>& diagnostics)
         {
-            resolved_path = bundle_root / std::filesystem::path(artifact.relative_path);
-            std::vector<std::uint8_t> bytes;
-            if (!read_binary_file(resolved_path, bytes))
+            const FileResult<PhysicalPath> joined =
+                platform_file.join_relative(bundle_root, artifact.relative_path);
+            if (!joined.succeeded())
             {
-                add_error(diagnostics, DiagnosticCode::CompilerUnavailable,
-                    "Locked Shader toolchain artifact is missing or unreadable: " + resolved_path.generic_string());
+                add_error(diagnostics, DiagnosticCode::InvalidToolchainManifest,
+                    "Locked Shader toolchain artifact has an invalid bundle path for " + name + ".");
                 return false;
             }
-            if (sha256(bytes) != artifact.content_hash)
+            resolved_path = joined.value();
+            const FileResult<std::vector<std::uint8_t>> bytes =
+                platform_file.read_binary(resolved_path);
+            if (!bytes.succeeded())
+            {
+                add_error(diagnostics, DiagnosticCode::CompilerUnavailable,
+                    "Locked Shader toolchain artifact is missing or unreadable: " +
+                        resolved_path.utf8() + " (" + bytes.status().message + ")");
+                return false;
+            }
+            if (sha256(bytes.value()) != artifact.content_hash)
             {
                 add_error(diagnostics, DiagnosticCode::ToolchainHashMismatch,
-                    "Locked Shader toolchain artifact hash does not match for " + name + ": " + resolved_path.generic_string());
+                    "Locked Shader toolchain artifact hash does not match for " + name + ": " + resolved_path.utf8());
                 return false;
             }
             return true;
@@ -192,13 +202,21 @@ namespace toy3d::shader
 #endif
     }
 
-    std::filesystem::path shader_toolchain_root_for_executable(
-        const std::filesystem::path& executable_path)
+    FileResult<PhysicalPath> shader_toolchain_root_for_executable(
+        const PlatformFile& platform_file,
+        const PhysicalPath& executable_path)
     {
-        return executable_path.parent_path() / "ShaderToolchain" / shader_toolchain_host_platform();
+        const FileResult<PhysicalPath> parent = platform_file.parent_path(executable_path);
+        if (!parent.succeeded()) return FileResult<PhysicalPath>(parent.status());
+        const FileResult<PhysicalPath> toolchain =
+            platform_file.join_relative(parent.value(), "ShaderToolchain");
+        if (!toolchain.succeeded()) return FileResult<PhysicalPath>(toolchain.status());
+        return platform_file.join_relative(toolchain.value(), shader_toolchain_host_platform());
     }
 
-    ToolchainDiscoveryResult discover_shader_toolchain(const std::filesystem::path& explicit_bundle_root)
+    ToolchainDiscoveryResult discover_shader_toolchain(
+        const PlatformFile& platform_file,
+        const PhysicalPath& explicit_bundle_root)
     {
         ToolchainDiscoveryResult result;
         if (explicit_bundle_root.empty())
@@ -207,7 +225,15 @@ namespace toy3d::shader
                 "An explicit Toy3dShaderToolchain bundle root is required.");
             return result;
         }
-        const auto fields = parse_manifest(explicit_bundle_root / manifest_file_name, result.diagnostics);
+        const FileResult<PhysicalPath> manifest_path =
+            platform_file.join_relative(explicit_bundle_root, manifest_file_name);
+        if (!manifest_path.succeeded())
+        {
+            add_error(result.diagnostics, DiagnosticCode::CompilerUnavailable,
+                "Unable to resolve the locked Shader toolchain manifest path.");
+            return result;
+        }
+        const auto fields = parse_manifest(platform_file, manifest_path.value(), result.diagnostics);
         if (!fields) return result;
 
         ShaderToolchainManifest manifest;
@@ -245,15 +271,15 @@ namespace toy3d::shader
 
         DiscoveredShaderToolchain discovered;
         discovered.manifest = std::move(manifest);
-        verify_artifact(explicit_bundle_root, discovered.manifest.dxc, "DXC", discovered.dxc_path, result.diagnostics);
-        verify_artifact(explicit_bundle_root, discovered.manifest.dxc_library, "DXC library", discovered.dxc_library_path, result.diagnostics);
-        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_val, "spirv-val", discovered.spirv_val_path, result.diagnostics);
-        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_reflect, "SPIRV-Reflect", discovered.spirv_reflect_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.dxc, "DXC", discovered.dxc_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.dxc_library, "DXC library", discovered.dxc_library_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_val, "spirv-val", discovered.spirv_val_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_reflect, "SPIRV-Reflect", discovered.spirv_reflect_path, result.diagnostics);
 #if defined(_WIN32)
-        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_reflect_debug, "SPIRV-Reflect Debug", discovered.spirv_reflect_debug_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_reflect_debug, "SPIRV-Reflect Debug", discovered.spirv_reflect_debug_path, result.diagnostics);
 #endif
-        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_reflect_header, "SPIRV-Reflect header", discovered.spirv_reflect_header_path, result.diagnostics);
-        verify_artifact(explicit_bundle_root, discovered.manifest.spirv_header, "SPIR-V header", discovered.spirv_header_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_reflect_header, "SPIRV-Reflect header", discovered.spirv_reflect_header_path, result.diagnostics);
+        verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_header, "SPIR-V header", discovered.spirv_header_path, result.diagnostics);
         if (!result.diagnostics.empty()) return result;
         result.toolchain = std::move(discovered);
         return result;

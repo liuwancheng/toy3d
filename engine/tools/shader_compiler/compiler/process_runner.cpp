@@ -1,6 +1,7 @@
 #include "compiler/process_runner.h"
 
 #include <array>
+#include <filesystem>
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -63,12 +64,12 @@ namespace toy3d::shader
     }
 
     ProcessResult run_process(
-        const std::filesystem::path& executable,
+        const PhysicalPath& executable,
         const std::vector<std::string>& arguments)
     {
         ProcessResult result;
 #if defined(_WIN32)
-        const std::wstring application = executable.wstring();
+        const std::wstring application = std::filesystem::u8path(executable.utf8()).wstring();
         if (application.empty()) return result;
         std::wstring command_line = quote_argument(application);
         for (const std::string& argument : arguments)
@@ -136,7 +137,7 @@ namespace toy3d::shader
             close(pipe_handles[1]);
             std::vector<std::string> storage;
             storage.reserve(arguments.size() + 1u);
-            storage.push_back(executable.string());
+            storage.push_back(executable.utf8());
             storage.insert(storage.end(), arguments.begin(), arguments.end());
             std::vector<char*> argv;
             argv.reserve(storage.size() + 1u);

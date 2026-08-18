@@ -2,7 +2,6 @@
 
 #include "compiler/program_compiler.h"
 
-#include <filesystem>
 #include <optional>
 
 namespace toy3d::shader
@@ -11,7 +10,7 @@ namespace toy3d::shader
 
     struct ShaderMapEntryWriteResult
     {
-        std::optional<std::filesystem::path> entry_directory;
+        std::optional<PhysicalPath> entry_directory;
         Sha256Hash shader_map_key{};
         std::vector<Diagnostic> diagnostics;
 
@@ -19,6 +18,7 @@ namespace toy3d::shader
     };
 
     ShaderMapEntryWriteResult write_verified_shader_map_entry(
-        const std::filesystem::path& shader_map_root,
+        PlatformFile& platform_file,
+        const PhysicalPath& shader_map_root,
         const ShaderMapEntry& entry);
 }

@@ -7,7 +7,7 @@ namespace toy3d::shader
 {
     struct VulkanShaderCodeEntryResult
     {
-        std::optional<std::filesystem::path> entry_directory;
+        std::optional<PhysicalPath> entry_directory;
         std::vector<Diagnostic> diagnostics;
 
         bool succeeded() const;
@@ -17,7 +17,8 @@ namespace toy3d::shader
         const ShaderCompileRequest& request,
         const TargetBindingLayout& target_layout,
         const DiscoveredShaderToolchain& toolchain,
-        const std::filesystem::path& working_directory,
-        const std::filesystem::path& entry_root,
+        PlatformFile& platform_file,
+        const PhysicalPath& working_directory,
+        const PhysicalPath& entry_root,
         const ShaderProcessRunner& process_runner = run_process);
 }

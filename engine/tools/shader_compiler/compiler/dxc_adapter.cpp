@@ -1,7 +1,5 @@
 #include "compiler/dxc_adapter.h"
 
-#include <fstream>
-
 namespace toy3d::shader
 {
     namespace
@@ -29,23 +27,6 @@ namespace toy3d::shader
                     ", entry=" + request.entry_point + ", target=VulkanPortableV1]"});
         }
 
-        bool write_source(const std::filesystem::path& path, const std::string& source)
-        {
-            std::ofstream output(path, std::ios::binary | std::ios::trunc);
-            return output && static_cast<bool>(output.write(source.data(), static_cast<std::streamsize>(source.size())));
-        }
-
-        bool read_binary(const std::filesystem::path& path, std::vector<std::uint8_t>& bytes)
-        {
-            std::ifstream input(path, std::ios::binary | std::ios::ate);
-            if (!input) return false;
-            const std::streamoff size = input.tellg();
-            if (size < 0) return false;
-            bytes.resize(static_cast<std::size_t>(size));
-            input.seekg(0, std::ios::beg);
-            return bytes.empty() || static_cast<bool>(input.read(reinterpret_cast<char*>(bytes.data()), size));
-        }
-
         bool is_spirv_1_3_or_older(const std::vector<std::uint8_t>& binary)
         {
             if (binary.size() < 20u || binary.size() % 4u != 0u) return false;
@@ -68,8 +49,8 @@ namespace toy3d::shader
 
     std::optional<DxcInvocation> build_vulkan_dxc_invocation(
         const ShaderCompileRequest& request,
-        const std::filesystem::path& source_path,
-        const std::filesystem::path& output_path,
+        const PhysicalPath& source_path,
+        const PhysicalPath& output_path,
         std::vector<Diagnostic>& diagnostics)
     {
         if (request.target != ShaderTarget::VulkanSpirV ||
@@ -88,7 +69,7 @@ namespace toy3d::shader
             "-Zpc",
             "-E", request.entry_point,
             "-T", profile_name(request.stage),
-            "-Fo", output_path.generic_string()};
+            "-Fo", output_path.utf8()};
         switch (request.debug_mode)
         {
         case ShaderDebugMode::Debug:
@@ -101,14 +82,15 @@ namespace toy3d::shader
             invocation.arguments.insert(invocation.arguments.end(), {"-O3", "-Qstrip_debug", "-Qstrip_reflect"});
             break;
         }
-        invocation.arguments.push_back(source_path.generic_string());
+        invocation.arguments.push_back(source_path.utf8());
         return invocation;
     }
 
     ShaderCompilerOutput compile_vulkan_shader(
         const ShaderCompileRequest& request,
         const DiscoveredShaderToolchain& toolchain,
-        const std::filesystem::path& working_directory,
+        PlatformFile& platform_file,
+        const PhysicalPath& working_directory,
         const ShaderProcessRunner& process_runner)
     {
         ShaderCompilerOutput result;
@@ -118,32 +100,52 @@ namespace toy3d::shader
                 "Compile request compiler identity does not match the discovered locked toolchain.");
             return result;
         }
-        std::error_code error;
-        std::filesystem::create_directories(working_directory, error);
-        if (error)
+        const FileStatus created = platform_file.create_directories(working_directory);
+        if (!created.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
-                "Failed to create Shader compiler working directory: " + error.message());
+                "Failed to create Shader compiler working directory: " + created.message);
             return result;
         }
         const std::string key = sha256_to_hex(request.compile_key);
-        const std::filesystem::path source_path = working_directory / (key + ".hlsl");
-        const std::filesystem::path output_path = working_directory / (key + ".spv");
-        std::filesystem::remove(output_path, error);
-        if (error)
+        const FileResult<PhysicalPath> source_path =
+            platform_file.join_relative(working_directory, key + ".hlsl");
+        const FileResult<PhysicalPath> output_path =
+            platform_file.join_relative(working_directory, key + ".spv");
+        if (!source_path.succeeded() || !output_path.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
-                "Failed to remove a stale Shader compiler output: " + error.message());
+                "Failed to resolve Shader compiler temporary paths.");
             return result;
         }
-        if (!write_source(source_path, request.source))
+        const FileResult<bool> output_exists = platform_file.exists(output_path.value());
+        if (!output_exists.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
-                "Failed to write generated Shader source.");
+                "Failed to inspect stale Shader compiler output: " + output_exists.status().message);
+            return result;
+        }
+        if (output_exists.value())
+        {
+            const FileStatus removed = platform_file.remove_file(output_path.value());
+            if (!removed.succeeded())
+            {
+                add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
+                    "Failed to remove a stale Shader compiler output: " + removed.message);
+                return result;
+            }
+        }
+        const FileStatus source_written = platform_file.write_text_utf8(
+            source_path.value(), request.source, FileWriteMode::Truncate);
+        if (!source_written.succeeded())
+        {
+            add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
+                "Failed to write generated Shader source: " + source_written.message);
             return result;
         }
         std::vector<Diagnostic> invocation_diagnostics;
-        const auto invocation = build_vulkan_dxc_invocation(request, source_path, output_path, invocation_diagnostics);
+        const auto invocation = build_vulkan_dxc_invocation(
+            request, source_path.value(), output_path.value(), invocation_diagnostics);
         if (!invocation)
         {
             result.diagnostics = std::move(invocation_diagnostics);
@@ -156,22 +158,22 @@ namespace toy3d::shader
                 "DXC failed (exit " + std::to_string(compiled.exit_code) + "):\n" + compiled.output);
             return result;
         }
-        std::vector<std::uint8_t> binary;
-        if (!read_binary(output_path, binary) || !is_spirv_1_3_or_older(binary))
+        FileResult<std::vector<std::uint8_t>> binary = platform_file.read_binary(output_path.value());
+        if (!binary.succeeded() || !is_spirv_1_3_or_older(binary.value()))
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
                 "DXC did not produce a valid SPIR-V 1.3-or-older module.");
             return result;
         }
         const ProcessResult validated = process_runner(toolchain.spirv_val_path,
-            {"--target-env", "vulkan1.1", output_path.generic_string()});
+            {"--target-env", "vulkan1.1", output_path.value().utf8()});
         if (!validated.launched || validated.exit_code != 0)
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderValidationFailed, request,
                 "spirv-val failed (exit " + std::to_string(validated.exit_code) + "):\n" + validated.output);
             return result;
         }
-        result.binary = std::move(binary);
+        result.binary = std::move(binary.value());
         return result;
     }
 }
