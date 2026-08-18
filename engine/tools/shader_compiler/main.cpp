@@ -63,7 +63,7 @@ namespace
             toy3d::Logger::Level::TOY_ERROR,
             "Usage:\n"
             "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
-            "  Toy3dShaderCompiler [--toolchain-root <path>] compile-vulkan <input.shader> <virtual-path> <pass> <shader-map-root> <working-directory>\n"
+            "  Toy3dShaderCompiler [--toolchain-root <path>] compile-vulkan <input.shader> <virtual-path> <pass> <shader-map-root> <working-directory> [--variant <name>=<value>]...\n"
             "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
     }
 
@@ -198,8 +198,12 @@ int main(int argument_count, char** arguments)
     }
 
     const bool compile_vulkan = command == "compile-vulkan";
+    const int compile_required_end = command_index + 6;
+    const bool valid_compile_arguments = compile_vulkan &&
+        argument_count >= compile_required_end &&
+        (argument_count - compile_required_end) % 2 == 0;
     if ((!compile_vulkan && command != "parse") ||
-        (compile_vulkan ? command_index + 6 != argument_count : command_index + 2 != argument_count))
+        (compile_vulkan ? !valid_compile_arguments : command_index + 2 != argument_count))
     {
         print_usage();
         return 2;
@@ -265,6 +269,25 @@ int main(int argument_count, char** arguments)
         toy3d::shader::ShaderProgramCompileInput compile_input;
         compile_input.source_virtual_path = arguments[command_index + 2];
         compile_input.pass_name = arguments[command_index + 3];
+        for (int index = compile_required_end; index < argument_count; index += 2)
+        {
+            if (std::string(arguments[index]) != "--variant")
+            {
+                print_usage();
+                return 2;
+            }
+            const std::string selection = arguments[index + 1];
+            const std::size_t separator = selection.find('=');
+            if (separator == std::string::npos || separator == 0u ||
+                separator + 1u == selection.size())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR,
+                    "error: --variant requires <name>=<value>.");
+                return 2;
+            }
+            compile_input.variant_selections.push_back(
+                {selection.substr(0, separator), selection.substr(separator + 1u)});
+        }
         const toy3d::shader::RegisteredShaderSourceProvider source_provider({});
         compile_input.source_provider = &source_provider;
         toy3d::shader::ShaderMapEntryCompileResult compiled =

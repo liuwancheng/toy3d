@@ -90,6 +90,7 @@ namespace toy3d::shader
 
         StageCompileOutput compile_stage(
             const ShaderProgramCompileInput& input,
+            const ShaderPermutation& permutation,
             const ShaderPass& pass,
             const EntryPoint& entry,
             const std::string& shader_include_source,
@@ -118,7 +119,7 @@ namespace toy3d::shader
             request_input.entry_point = entry.name;
             request_input.source_virtual_path = input.source_virtual_path;
             request_input.compiler_identity = toolchain.manifest.identity;
-            request_input.generated_prelude = input.generated_prelude;
+            request_input.generated_prelude = permutation.generated_prelude;
             request_input.generated_bindings = std::move(*bindings.source);
             request_input.shader_include_source = shader_include_source;
             request_input.pass_source = pass.program.source;
@@ -255,11 +256,11 @@ namespace toy3d::shader
                 "Program compilation requires an existing Pass, entry points, and a virtual source path."});
             return result;
         }
-        if (!asset.variants.empty() && input.generated_prelude.empty())
+        ShaderPermutationResult permutation =
+            resolve_shader_permutation(asset, input.variant_selections);
+        if (!permutation.succeeded())
         {
-            result.diagnostics.push_back({DiagnosticSeverity::Error,
-                DiagnosticCode::InvalidCompileRequest, asset.variants.front().location,
-                "Program compilation requires an explicit generated permutation prelude until the VariantId ABI is available."});
+            result.diagnostics = std::move(permutation.diagnostics);
             return result;
         }
 
@@ -314,7 +315,7 @@ namespace toy3d::shader
                 return result;
             }
             StageCompileOutput discovered = compile_stage(
-                input, *pass, entry, shader_include_source, *logical.layout,
+                input, *permutation.permutation, *pass, entry, shader_include_source, *logical.layout,
                 *discovery_mapping.layout, toolchain, platform_file,
                 stage_working_directory.value(),
                 false, process_runner);
@@ -349,6 +350,9 @@ namespace toy3d::shader
         entry.logical_layout_hash = logical.layout->logical_layout_hash;
         entry.target_binding_hash = final_mapping.layout->target_binding_hash;
         entry.pass_template_hash = hash_pass_template(pass->state);
+        entry.variant_id_version = permutation.permutation->variant_id_version;
+        entry.permutation_version = permutation.permutation->version;
+        entry.permutation_key = permutation.permutation->key;
         entry.mapping_version = final_mapping.layout->mapping_version;
         for (const NativeBinding& binding : final_mapping.layout->bindings)
         {
@@ -370,7 +374,7 @@ namespace toy3d::shader
                 return result;
             }
             StageCompileOutput compiled = compile_stage(
-                input, *pass, entry_point, shader_include_source, *logical.layout,
+                input, *permutation.permutation, *pass, entry_point, shader_include_source, *logical.layout,
                 *final_mapping.layout, toolchain, platform_file,
                 stage_working_directory.value(),
                 true, process_runner);

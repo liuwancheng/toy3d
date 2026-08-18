@@ -38,6 +38,10 @@ namespace toy3d::shader
             case DiagnosticCode::InvalidResourceGroup: return "InvalidResourceGroup";
             case DiagnosticCode::InvalidResourceType: return "InvalidResourceType";
             case DiagnosticCode::InvalidVariant: return "InvalidVariant";
+            case DiagnosticCode::InvalidVariantSelection: return "InvalidVariantSelection";
+            case DiagnosticCode::VariantIdCollision: return "VariantIdCollision";
+            case DiagnosticCode::ShaderMapReadFailed: return "ShaderMapReadFailed";
+            case DiagnosticCode::ShaderMapCacheConflict: return "ShaderMapCacheConflict";
             case DiagnosticCode::InvalidPassState: return "InvalidPassState";
             case DiagnosticCode::DuplicatePassState: return "DuplicatePassState";
             case DiagnosticCode::UnknownPragma: return "UnknownPragma";

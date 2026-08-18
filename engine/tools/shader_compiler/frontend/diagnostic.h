@@ -58,7 +58,11 @@ namespace toy3d::shader
         ReflectionUnexpectedResource,
         ReflectionMismatch,
         ShaderInterfacePrecisionMismatch,
-        ShaderCodeWriteFailed
+        ShaderCodeWriteFailed,
+        InvalidVariantSelection,
+        VariantIdCollision,
+        ShaderMapReadFailed,
+        ShaderMapCacheConflict
     };
 
     struct Diagnostic

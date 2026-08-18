@@ -4,6 +4,7 @@
 #include "compiler/program_compiler.h"
 #include "compiler/shader_compiler.h"
 #include "compiler/toolchain_manifest.h"
+#include "compiler/variant_permutation.h"
 #include "frontend/shader_parser.h"
 #include "file_system/native_platform_file.h"
 
@@ -20,6 +21,83 @@ namespace
 {
     int failure_count = 0;
     toy3d::NativePlatformFile platform_file;
+
+    void check(bool condition, const std::string& message);
+    bool has_diagnostic(
+        const std::vector<toy3d::shader::Diagnostic>& diagnostics,
+        toy3d::shader::DiagnosticCode code);
+
+    void test_variant_permutation_contract()
+    {
+        using namespace toy3d::shader;
+        ShaderAsset asset;
+        asset.name = "Toy3d/Tests/Variants";
+        asset.variants = {
+            {VariantType::Boolean, "USE_NORMAL_MAP", {}, "false", {}},
+            {VariantType::Enumeration, "LIGHTING_MODEL",
+                {"Unlit", "DefaultLit", "ClearCoat"}, "DefaultLit", {}}};
+        check(make_shader_variant_id("USE_NORMAL_MAP") == 0xf17f0b805c4eae94ull,
+            "ShaderVariantId v1 must retain its golden value");
+        check(make_shader_enum_value_id(
+                make_shader_variant_id("LIGHTING_MODEL"), "DefaultLit") ==
+                0x75c1de6eb41f9e57ull,
+            "ShaderEnumValueId v1 must retain its golden value");
+
+        const ShaderPermutationResult defaults = resolve_shader_permutation(asset, {});
+        check(defaults.succeeded(), "Variant schema defaults must resolve to one typed permutation");
+        check(defaults.permutation && defaults.permutation->records.size() == 2u,
+            "Every declared Variant must produce one canonical permutation record");
+        check(defaults.permutation && sha256_to_hex(defaults.permutation->key) ==
+                "6a67420b795afb9f008e5710bbc472fafe5bdea607dc887dccbb79fb838905a7",
+            "Permutation ABI v1 must retain its golden default key");
+        check(defaults.permutation &&
+            defaults.permutation->generated_prelude.find(
+                "#define TOY3D_VARIANT_USE_NORMAL_MAP 0") != std::string::npos,
+            "Boolean Variant default must generate a 0/1 macro");
+        check(defaults.permutation &&
+            defaults.permutation->generated_prelude.find(
+                "#define TOY3D_VARIANT_LIGHTING_MODEL_DefaultLit") != std::string::npos,
+            "Enum Variant options must generate compiler-owned symbolic macros");
+
+        const ShaderPermutationResult selected = resolve_shader_permutation(asset,
+            {{"LIGHTING_MODEL", "ClearCoat"}, {"USE_NORMAL_MAP", "true"}});
+        check(selected.succeeded() && defaults.permutation && selected.permutation &&
+            selected.permutation->key != defaults.permutation->key,
+            "Changing a typed Variant value must change the permutation key");
+
+        ShaderAsset reordered = asset;
+        std::reverse(reordered.variants.begin(), reordered.variants.end());
+        std::reverse(reordered.variants.front().options.begin(), reordered.variants.front().options.end());
+        const ShaderPermutationResult stable = resolve_shader_permutation(reordered,
+            {{"USE_NORMAL_MAP", "true"}, {"LIGHTING_MODEL", "ClearCoat"}});
+        check(stable.succeeded() && selected.permutation && stable.permutation &&
+            stable.permutation->key == selected.permutation->key &&
+            stable.permutation->generated_prelude == selected.permutation->generated_prelude,
+            "Variant declaration and enum option order must not change canonical identity or macros");
+
+        const ShaderPermutationResult duplicate = resolve_shader_permutation(asset,
+            {{"USE_NORMAL_MAP", "true"}, {"USE_NORMAL_MAP", "false"}});
+        check(!duplicate.succeeded() &&
+            has_diagnostic(duplicate.diagnostics, DiagnosticCode::InvalidVariantSelection),
+            "Duplicate Variant selections must fail diagnostically");
+        const ShaderPermutationResult unknown = resolve_shader_permutation(asset,
+            {{"UNKNOWN", "true"}});
+        check(!unknown.succeeded() &&
+            has_diagnostic(unknown.diagnostics, DiagnosticCode::InvalidVariantSelection),
+            "Unknown Variant selections must fail diagnostically");
+        const ShaderPermutationResult invalid = resolve_shader_permutation(asset,
+            {{"LIGHTING_MODEL", "Invalid"}});
+        check(!invalid.succeeded() &&
+            has_diagnostic(invalid.diagnostics, DiagnosticCode::InvalidVariantSelection),
+            "Invalid enum Variant values must fail diagnostically");
+
+        ShaderAsset empty;
+        const ShaderPermutationResult empty_domain = resolve_shader_permutation(empty, {});
+        check(empty_domain.succeeded() && empty_domain.permutation &&
+            std::any_of(empty_domain.permutation->key.begin(), empty_domain.permutation->key.end(),
+                [](std::uint8_t byte) { return byte != 0u; }),
+            "An empty Variant domain must still have a versioned non-zero permutation key");
+    }
 
     toy3d::PhysicalPath physical_path(const std::filesystem::path& path)
     {
@@ -554,8 +632,12 @@ namespace
         entry.pass_name = "Forward";
         entry.mapping_version = vulkan_binding_mapping_version;
         entry.logical_layout_hash[0] = 1u;
-        entry.target_binding_hash[0] = 2u;
         entry.pass_template_hash[0] = 3u;
+        entry.permutation_key[0] = 6u;
+        TargetBindingLayout empty_layout;
+        empty_layout.target = ShaderTarget::VulkanSpirV;
+        empty_layout.mapping_version = vulkan_binding_mapping_version;
+        entry.target_binding_hash = calculate_target_binding_hash(empty_layout);
 
         ShaderCodeEntry stage;
         stage.request.stage = ShaderStageFlags::Vertex;
@@ -565,7 +647,8 @@ namespace
         stage.request.compile_key[0] = 4u;
         stage.reflection.stage = ShaderStageFlags::Vertex;
         stage.reflection.entry_point = "vs_main";
-        stage.reflection.reflection_hash[0] = 5u;
+        stage.reflection.reflection_hash =
+            calculate_shader_stage_reflection_hash(stage.reflection);
         stage.binary = minimal_spirv_header();
         entry.stages.push_back(std::move(stage));
         return entry;
@@ -607,14 +690,151 @@ namespace
         });
         first_thread.join();
         second_thread.join();
-        check(first.succeeded() != second.succeeded(),
-            "concurrent publication of one ShaderMap key must have exactly one winner");
+        check(first.succeeded() && second.succeeded() && first.cache_hit != second.cache_hit,
+            "concurrent publication of one ShaderMap key must have one publisher and one cache hit");
         const toy3d::FileResult<std::vector<toy3d::DirectoryEntry>> children =
             platform_file.enumerate_directory(entry_root);
         check(children.succeeded() && children.value().size() == 1u &&
             children.value()[0].path.utf8().find(".tmp.") == std::string::npos,
             "concurrent ShaderMap publication must leave one final directory and no staging residue");
         std::filesystem::remove_all(root);
+
+        const std::filesystem::path reader_root = make_test_directory("storage_reader");
+        const toy3d::PhysicalPath reader_entry_root = physical_path(reader_root / "entries");
+        const ShaderMapEntryWriteResult published = write_verified_shader_map_entry(
+            platform_file, reader_entry_root, entry);
+        check(published.succeeded() && !published.cache_hit,
+            "first ShaderMapEntry publication must create a new cache record");
+        const ShaderMapEntryReadResult read = read_verified_shader_map_entry(
+            platform_file, reader_entry_root, published.shader_map_key);
+        check(read.succeeded() && read.entry &&
+            read.entry->shader_name == entry.shader_name &&
+            read.entry->stages.size() == entry.stages.size() &&
+            read.entry_content_hash == published.entry_content_hash,
+            "ShaderMapEntry v2 reader must reconstruct and validate a published Entry");
+        const ShaderMapEntryWriteResult duplicate = write_verified_shader_map_entry(
+            platform_file, reader_entry_root, entry);
+        check(duplicate.succeeded() && duplicate.cache_hit &&
+            duplicate.entry_content_hash == published.entry_content_hash,
+            "an existing identical ShaderMapEntry must return a deterministic cache hit");
+
+        ShaderMapEntry conflicting = entry;
+        ShaderDependency conflict_dependency;
+        conflict_dependency.virtual_path = "/Engine/ShaderIncludes/Conflict.hlsli";
+        conflict_dependency.content_hash = sha256("different dependency");
+        conflicting.stages[0].request.dependencies.push_back(conflict_dependency);
+        const ShaderMapEntryWriteResult conflict = write_verified_shader_map_entry(
+            platform_file, reader_entry_root, conflicting);
+        check(!conflict.succeeded() &&
+            has_diagnostic(conflict.diagnostics, DiagnosticCode::ShaderMapCacheConflict),
+            "the same ShaderMap key with different validated content must fail as a cache conflict");
+        std::filesystem::remove_all(reader_root);
+
+        const auto publish_corrupt_fixture = [&](const std::string& name) {
+            const std::filesystem::path fixture_root = make_test_directory(name);
+            const ShaderMapEntryWriteResult fixture = write_verified_shader_map_entry(
+                platform_file, physical_path(fixture_root / "entries"), entry);
+            check(fixture.succeeded(), "corrupt-input fixture publication must succeed");
+            return std::make_pair(fixture_root, fixture);
+        };
+
+        auto binary_fixture = publish_corrupt_fixture("storage_corrupt_binary");
+        if (binary_fixture.second.entry_directory)
+        {
+            const std::filesystem::path binary_path =
+                std::filesystem::u8path(binary_fixture.second.entry_directory->utf8()) / "vertex.spv";
+            std::vector<std::uint8_t> corrupt_binary = minimal_spirv_header();
+            corrupt_binary[0] ^= 0xffu;
+            write_bytes(binary_path, corrupt_binary);
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(binary_fixture.first / "entries"),
+                binary_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() &&
+                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+                "binary content hash corruption must be rejected by the ShaderMap reader");
+        }
+        std::filesystem::remove_all(binary_fixture.first);
+
+        auto version_fixture = publish_corrupt_fixture("storage_corrupt_version");
+        if (version_fixture.second.entry_directory)
+        {
+            const std::filesystem::path manifest_path =
+                std::filesystem::u8path(version_fixture.second.entry_directory->utf8()) / "manifest.txt";
+            const toy3d::FileResult<std::string> manifest =
+                platform_file.read_text_utf8(physical_path(manifest_path));
+            if (manifest.succeeded())
+            {
+                std::string changed = manifest.value();
+                const std::size_t version = changed.find("shader_map_entry_version=2");
+                if (version != std::string::npos)
+                    changed.replace(version, std::string("shader_map_entry_version=2").size(),
+                        "shader_map_entry_version=999");
+                write_text(manifest_path, changed);
+            }
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(version_fixture.first / "entries"),
+                version_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() &&
+                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+                "unsupported ShaderMapEntry versions must be rejected");
+        }
+        std::filesystem::remove_all(version_fixture.first);
+
+        auto target_fixture = publish_corrupt_fixture("storage_corrupt_target");
+        if (target_fixture.second.entry_directory)
+        {
+            const std::filesystem::path manifest_path =
+                std::filesystem::u8path(target_fixture.second.entry_directory->utf8()) / "manifest.txt";
+            const toy3d::FileResult<std::string> manifest =
+                platform_file.read_text_utf8(physical_path(manifest_path));
+            if (manifest.succeeded())
+            {
+                std::string changed = manifest.value();
+                const std::size_t target = changed.find("target=2");
+                if (target != std::string::npos) changed.replace(target, 8u, "target=0");
+                write_text(manifest_path, changed);
+            }
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(target_fixture.first / "entries"),
+                target_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() &&
+                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+                "target/profile mismatches must be rejected by the ShaderMap reader");
+        }
+        std::filesystem::remove_all(target_fixture.first);
+
+        auto dependency_fixture = publish_corrupt_fixture("storage_corrupt_dependencies");
+        if (dependency_fixture.second.entry_directory)
+        {
+            const std::filesystem::path dependency_path =
+                std::filesystem::u8path(dependency_fixture.second.entry_directory->utf8()) /
+                "vertex.dependencies.txt";
+            write_text(dependency_path,
+                "/Engine/ShaderIncludes/Tampered.hlsli\t" +
+                sha256_to_hex(sha256("tampered")) + "\n");
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(dependency_fixture.first / "entries"),
+                dependency_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() &&
+                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+                "dependency record corruption must be rejected by its file content hash");
+        }
+        std::filesystem::remove_all(dependency_fixture.first);
+
+        auto oversized_fixture = publish_corrupt_fixture("storage_oversized_mapping");
+        if (oversized_fixture.second.entry_directory)
+        {
+            const std::filesystem::path mapping_path =
+                std::filesystem::u8path(oversized_fixture.second.entry_directory->utf8()) / "mapping.txt";
+            write_text(mapping_path, std::string(4u * 1024u * 1024u + 1u, 'x'));
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(oversized_fixture.first / "entries"),
+                oversized_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() &&
+                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+                "oversized ShaderMap metadata must be rejected before whole-file parsing");
+        }
+        std::filesystem::remove_all(oversized_fixture.first);
     }
 
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT) || (defined(TOY3D_SHADER_TEST_DXC) && defined(TOY3D_SHADER_TEST_SPIRV_VAL))
@@ -788,6 +1008,10 @@ Shader "Tests/ProgramCompile"
         source_texture ("Source", Texture2D) = "white"
         source_sampler ("Sampler", Sampler) = LinearClamp
     }
+    Variants
+    {
+        USE_TINT : bool = false
+    }
     Pass "Forward"
     {
         HLSLPROGRAM
@@ -808,7 +1032,11 @@ Shader "Tests/ProgramCompile"
         }
         float4 ps_main(Varyings input) : SV_Target0
         {
+#if TOY3D_VARIANT_USE_TINT
             return source_texture.Sample(source_sampler, input.uv) * tint;
+#else
+            return source_texture.Sample(source_sampler, input.uv) * tint;
+#endif
         }
         ENDHLSL
     }
@@ -821,6 +1049,7 @@ Shader "Tests/ProgramCompile"
         ShaderProgramCompileInput input;
         input.pass_name = "Forward";
         input.source_virtual_path = "/Engine/Shaders/Tests/ProgramCompile.shader";
+        input.variant_selections.push_back({"USE_TINT", "true"});
         const RegisteredShaderSourceProvider source_provider({});
         input.source_provider = &source_provider;
         const std::filesystem::path working = make_test_directory("program_compile");
@@ -837,6 +1066,12 @@ Shader "Tests/ProgramCompile"
         {
             check(compiled.entry->stages.size() == 2u,
                 "Graphics ShaderMapEntry must contain vertex and pixel ShaderCodeEntry records");
+            check(compiled.entry->variant_id_version == shader_variant_id_version &&
+                compiled.entry->permutation_version == shader_permutation_version &&
+                std::any_of(compiled.entry->permutation_key.begin(),
+                    compiled.entry->permutation_key.end(),
+                    [](std::uint8_t byte) { return byte != 0u; }),
+                "ShaderMapEntry must persist its versioned typed permutation identity");
             check(compiled.entry->bindings.size() == 3u,
                 "Only the active Material cbuffer, texture, and sampler must remain");
             check(std::all_of(compiled.entry->bindings.begin(), compiled.entry->bindings.end(),
@@ -860,9 +1095,13 @@ Shader "Tests/ProgramCompile"
                 "ShaderMapEntry must contain manifest, mapping, and all stage binaries");
             const ShaderMapEntryWriteResult duplicate = write_verified_shader_map_entry(
                 platform_file, physical_path(working / "shader-map"), *compiled.entry);
-            check(!duplicate.succeeded() &&
-                has_diagnostic(duplicate.diagnostics, DiagnosticCode::ShaderCodeWriteFailed),
-                "An existing ShaderMapEntry key must fail deterministically before reader cache hits are implemented");
+            check(duplicate.succeeded() && duplicate.cache_hit,
+                "An existing validated ShaderMapEntry must return a deterministic cache hit");
+            const ShaderMapEntryReadResult loaded = read_verified_shader_map_entry(
+                platform_file, physical_path(working / "shader-map"), entry_write.shader_map_key);
+            check(loaded.succeeded() && loaded.entry && loaded.entry->bindings.size() == 3u &&
+                loaded.entry->stages.size() == 2u,
+                "ShaderMap reader must validate and reconstruct a real reflected Program Entry");
         }
         if (compiled.succeeded())
         {
@@ -879,6 +1118,7 @@ Shader "Tests/ProgramCompile"
 
 int main()
 {
+    test_variant_permutation_contract();
     test_include_resolution_and_compile_key();
     test_include_failures();
     test_request_validation();

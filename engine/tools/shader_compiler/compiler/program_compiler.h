@@ -1,6 +1,7 @@
 #pragma once
 
 #include "compiler/shader_compiler.h"
+#include "compiler/variant_permutation.h"
 #include "frontend/shader_ast.h"
 
 #include <optional>
@@ -12,7 +13,7 @@ namespace toy3d::shader
         std::string pass_name;
         std::string source_virtual_path;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
-        std::string generated_prelude;
+        std::vector<ShaderVariantSelection> variant_selections;
         const ShaderSourceProvider* source_provider = nullptr;
     };
 
@@ -45,6 +46,9 @@ namespace toy3d::shader
         Sha256Hash logical_layout_hash{};
         Sha256Hash target_binding_hash{};
         Sha256Hash pass_template_hash{};
+        std::uint32_t variant_id_version = shader_variant_id_version;
+        std::uint32_t permutation_version = shader_permutation_version;
+        Sha256Hash permutation_key{};
         std::uint32_t mapping_version = 0;
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderCodeEntry> stages;
