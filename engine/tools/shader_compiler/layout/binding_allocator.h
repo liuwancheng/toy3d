@@ -91,4 +91,6 @@ namespace toy3d::shader
         const ActiveShaderLayout& active_layout,
         ShaderTarget target,
         const TargetBindingLimits& limits);
+
+    Sha256Hash calculate_target_binding_hash(const TargetBindingLayout& layout);
 }

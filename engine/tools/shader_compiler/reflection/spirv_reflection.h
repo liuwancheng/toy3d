@@ -75,4 +75,7 @@ namespace toy3d::shader
         const ShaderCompileRequest& request,
         const TargetBindingLayout& expected_layout,
         bool require_all_expected_bindings = true);
+
+    Sha256Hash calculate_shader_stage_reflection_hash(
+        const ShaderStageReflection& reflection);
 }

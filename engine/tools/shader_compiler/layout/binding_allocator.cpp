@@ -152,26 +152,6 @@ namespace toy3d::shader
             append_integer(bytes, static_cast<std::uint32_t>(value));
         }
 
-        Sha256Hash calculate_mapping_hash(const TargetBindingLayout& layout)
-        {
-            std::vector<std::uint8_t> bytes;
-            append_enum(bytes, layout.target);
-            append_integer(bytes, layout.mapping_version);
-            append_integer(bytes, static_cast<std::uint32_t>(layout.bindings.size()));
-            for (const NativeBinding& binding : layout.bindings)
-            {
-                append_integer(bytes, binding.binding_id);
-                append_enum(bytes, binding.group);
-                append_enum(bytes, binding.category);
-                append_enum(bytes, binding.stages);
-                append_enum(bytes, binding.register_class);
-                append_integer(bytes, binding.register_index);
-                append_integer(bytes, binding.descriptor_set);
-                append_integer(bytes, binding.descriptor_binding);
-            }
-            return sha256(bytes);
-        }
-
         constexpr std::array<ShaderStageFlags, 3> individual_stages = {
             ShaderStageFlags::Vertex, ShaderStageFlags::Pixel, ShaderStageFlags::Compute};
     }
@@ -182,6 +162,26 @@ namespace toy3d::shader
         limits.per_stage = {{{14, 128, 16, 0}, {14, 128, 16, 8}, {14, 128, 16, 8}}};
         limits.pipeline = {42, 384, 48, 16};
         return limits;
+    }
+
+    Sha256Hash calculate_target_binding_hash(const TargetBindingLayout& layout)
+    {
+        std::vector<std::uint8_t> bytes;
+        append_enum(bytes, layout.target);
+        append_integer(bytes, layout.mapping_version);
+        append_integer(bytes, static_cast<std::uint32_t>(layout.bindings.size()));
+        for (const NativeBinding& binding : layout.bindings)
+        {
+            append_integer(bytes, binding.binding_id);
+            append_enum(bytes, binding.group);
+            append_enum(bytes, binding.category);
+            append_enum(bytes, binding.stages);
+            append_enum(bytes, binding.register_class);
+            append_integer(bytes, binding.register_index);
+            append_integer(bytes, binding.descriptor_set);
+            append_integer(bytes, binding.descriptor_binding);
+        }
+        return sha256(bytes);
     }
 
     TargetBindingLimits TargetBindingLimits::d3d12_sm6()
@@ -309,7 +309,7 @@ namespace toy3d::shader
         }
 
         if (!result.diagnostics.empty()) return result;
-        layout.target_binding_hash = calculate_mapping_hash(layout);
+        layout.target_binding_hash = calculate_target_binding_hash(layout);
         result.layout = std::move(layout);
         return result;
     }
