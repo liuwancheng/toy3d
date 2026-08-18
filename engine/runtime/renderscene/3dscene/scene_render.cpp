@@ -5,9 +5,9 @@ namespace toy3d
     /*****************   SceneRendering  *****************/
     SceneRendering::SceneRendering(
         RHIDevice& device,
-        ShaderBytecodeProvider& shader_bytecode_provider_value)
+        ShaderMap& shader_map_value)
         : rhi_device(device),
-          shader_bytecode_provider(shader_bytecode_provider_value)
+          shader_map(shader_map_value)
     {
 
     }

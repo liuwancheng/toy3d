@@ -3,6 +3,39 @@
 
 namespace toy3d
 {
+    RHIResult<RHIShaderRef> RHIDevice::create_shader(const RHIShaderDesc& desc)
+    {
+        const RHIStatus validation = validate_shader_desc(desc);
+        if (!validation)
+        {
+            return RHIResult<RHIShaderRef>::failure(
+                validation.code(), validation.message());
+        }
+        if (!is_initialized_impl())
+        {
+            return RHIResult<RHIShaderRef>::failure(
+                RHIErrorCode::NotReady, "RHI device is not initialized.");
+        }
+        return create_shader_impl(desc);
+    }
+
+    RHIResult<RHIBindingLayoutRef> RHIDevice::create_binding_layout(
+        const RHIBindingLayoutDesc& desc)
+    {
+        const RHIStatus validation = validate_binding_layout_desc(desc);
+        if (!validation)
+        {
+            return RHIResult<RHIBindingLayoutRef>::failure(
+                validation.code(), validation.message());
+        }
+        if (!is_initialized_impl())
+        {
+            return RHIResult<RHIBindingLayoutRef>::failure(
+                RHIErrorCode::NotReady, "RHI device is not initialized.");
+        }
+        return create_binding_layout_impl(desc);
+    }
+
     RHIDevice::PipelineCreationScope::PipelineCreationScope(RHIDevice& owner)
         : device(owner)
     {

@@ -1729,7 +1729,8 @@ namespace toy3d
                     vk_command_buffer,
                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline->pipeline_layout(),
-                    static_cast<std::uint32_t>(group_index),
+                    VulkanBindingLayout::physical_set(
+                        static_cast<RHIBindingGroup>(group_index)),
                     1,
                     &descriptor_set,
                     0,

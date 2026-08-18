@@ -18,7 +18,11 @@
 #include "generated/defines.h"
 #include "platform/rhi_surface_factory.h"
 #include "renderscene/3dscene/forward_shading_render.h"
-#include "shader/shader_bytecode_provider.h"
+#include "rendercore/shader/loaders/shader_code_library_loader.h"
+#if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
+#include "rendercore/shader/loaders/shader_map_entry_loader.h"
+#endif
+#include "rendercore/shader/shader_map.h"
 
 #include <filesystem>
 #include <iostream>
@@ -58,6 +62,14 @@ namespace toy3d
 
 	Engine::~Engine()
 	{
+	}
+
+	void Engine::set_shader_load_config(ShaderLoadConfig config)
+	{
+		if (!rhi_initialized)
+		{
+			shader_load_config = std::move(config);
+		}
 	}
 
 	void Engine::pre_init()
@@ -107,8 +119,23 @@ namespace toy3d
 	void Engine::init(void* hInstance)
 	{
 		pre_init();
-		if (!shader_bytecode_provider)
+		switch (shader_load_config.mode)
 		{
+		case ShaderLoadMode::ShaderMapEntry:
+#if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
+			shader_map_loader = std::make_unique<ShaderMapEntryLoader>(shader_load_config.path);
+#else
+			TOY_LOG_ERROR("ShaderMapEntry loading is not enabled in this build.");
+			return;
+#endif
+			break;
+		case ShaderLoadMode::ShaderCodeLibrary:
+			shader_map_loader = std::make_unique<ShaderCodeLibraryLoader>(shader_load_config.path);
+			break;
+		}
+		if (!shader_map_loader)
+		{
+			TOY_LOG_ERROR("Engine initialization requires a ShaderMapLoader.");
 			return;
 		}
 
@@ -143,15 +170,16 @@ namespace toy3d
 
 	void Engine::post_init()
 	{
+		shader_map = std::make_unique<ShaderMap>(*shader_map_loader);
 		scene_renderer = std::make_unique<ForwardSceneRendering>(
 			*rhi_device,
-			*shader_bytecode_provider);
+			*shader_map);
 		// todo: game module的初始化
 	}
 
 	FileStatus Engine::initialize_file_system()
 	{
-		if (shader_bytecode_provider)
+		if (file_system.frozen())
 		{
 			return FileStatus::success();
 		}
@@ -240,9 +268,6 @@ namespace toy3d
 		status = file_system.freeze();
 		if (!status.succeeded()) return status;
 
-		shader_bytecode_provider = std::make_unique<FileSystemShaderBytecodeProvider>(
-			file_system,
-			"/Engine/Shader");
 		return FileStatus::success();
 	}
 
@@ -343,6 +368,8 @@ namespace toy3d
 			return;
 		}
 		scene_renderer.reset();
+		shader_map.reset();
+		shader_map_loader.reset();
 		rhi_viewport.reset();
 		const RHIStatus status = rhi_device->shutdown();
 		if (!status)

@@ -1,53 +1,15 @@
 #include "renderscene/3dscene/scene_render.h"
 
-#include "shader/shader_bytecode_provider.h"
+#include "rendercore/shader/rhi_shader_program.h"
+#include "rendercore/shader/shader_map.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <utility>
 
 namespace toy3d
 {
-    namespace
-    {
-        std::array<std::uint64_t, 2> hash_shader_bytecode(const std::vector<std::uint8_t>& bytes)
-        {
-            std::uint64_t first = 1469598103934665603ULL;
-            std::uint64_t second = 1099511628211ULL;
-            for (const std::uint8_t byte : bytes)
-            {
-                first = (first ^ byte) * 1099511628211ULL;
-                second = (second + byte) * 1469598103934665603ULL;
-            }
-            return {first, second};
-        }
-
-        RHIResult<RHIShaderRef> create_test_shader(
-            RHIDevice& device,
-            ShaderBytecodeProvider& bytecode_provider,
-            const char* shader_name,
-            RHIShaderStage stage,
-            std::vector<RHIShaderBindingReflection> reflection)
-        {
-            ShaderBytecodeLoadResult loaded = bytecode_provider.load(shader_name);
-            if (!loaded.succeeded())
-            {
-                return RHIResult<RHIShaderRef>::failure(
-                    RHIErrorCode::BackendFailure,
-                    loaded.error);
-            }
-            RHIShaderDesc desc;
-            desc.stage = stage;
-            desc.bytecode.bytes = std::move(loaded.bytes);
-            desc.bytecode.target = "spirv";
-            desc.entry_point = "main";
-            desc.reflection = std::move(reflection);
-            desc.content_hash = hash_shader_bytecode(desc.bytecode.bytes);
-            desc.debug_name = shader_name;
-            return device.create_shader(desc);
-        }
-    }
-
     RHIStatus SceneRendering::initialize_test_pass_resources()
     {
         if (test_pipeline)
@@ -55,49 +17,48 @@ namespace toy3d
             return RHIStatus::success();
         }
 
-        RHIShaderBindingReflection texture_reflection;
-        texture_reflection.name = "source_texture";
-        texture_reflection.group = RHIBindingGroup::Material;
-        texture_reflection.slot = 0;
-        texture_reflection.type = RHIResourceBindingType::SampledTexture;
-        RHIShaderBindingReflection sampler_reflection;
-        sampler_reflection.name = "source_sampler";
-        sampler_reflection.group = RHIBindingGroup::Material;
-        sampler_reflection.slot = 0;
-        sampler_reflection.type = RHIResourceBindingType::Sampler;
-
-        auto vertex_shader_result = create_test_shader(
-            rhi_device,
-            shader_bytecode_provider,
-            "test_pass.vert.spv",
-            RHIShaderStage::Vertex,
-            {});
-        if (!vertex_shader_result)
+        ShaderMapProgramKey key;
+        key.shader_name = "Toy3d/Test/TestPass";
+        key.pass_name = "TestPass";
+        ShaderMapProgramResult loaded = shader_map.find_or_load(key);
+        if (!loaded.succeeded())
         {
-            return vertex_shader_result.status();
+            return RHIStatus::failure(RHIErrorCode::BackendFailure, loaded.error);
         }
-        auto pixel_shader_result = create_test_shader(
-            rhi_device,
-            shader_bytecode_provider,
-            "test_pass.frag.spv",
-            RHIShaderStage::Pixel,
-            {texture_reflection, sampler_reflection});
-        if (!pixel_shader_result)
+        auto program_result = create_rhi_shader_program(rhi_device, *loaded.program);
+        if (!program_result)
         {
-            return pixel_shader_result.status();
+            return program_result.status();
         }
-
-        RHIBindingLayoutDesc layout_desc;
-        layout_desc.entries = {
-            {RHIBindingGroup::Material, 0, RHIResourceBindingType::SampledTexture, RHIShaderStageFlags::Pixel, 1},
-            {RHIBindingGroup::Material, 0, RHIResourceBindingType::Sampler, RHIShaderStageFlags::Pixel, 1}};
-        layout_desc.debug_name = "TestPassBindingLayout";
-        auto layout_result = rhi_device.create_binding_layout(layout_desc);
-        if (!layout_result)
+        RHIShaderProgram program = std::move(program_result).value();
+        if (!program.vertex_shader || !program.pixel_shader || program.compute_shader)
         {
-            return layout_result.status();
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Test pass requires a vertex/pixel ShaderMap Program.");
         }
-        RHIBindingLayoutRef binding_layout = std::move(layout_result).value();
+        const ShaderMapProgramData& shader_map_program = loaded.program->data();
+        const auto find_binding = [&](const char* name, RHIResourceBindingType type)
+            -> const ShaderMapBinding* {
+            const auto binding = std::find_if(
+                shader_map_program.bindings.begin(), shader_map_program.bindings.end(),
+                [&](const ShaderMapBinding& value) {
+                    return value.name == name && value.group == RHIBindingGroup::Material &&
+                        value.type == type;
+                });
+            return binding == shader_map_program.bindings.end() ? nullptr : &*binding;
+        };
+        const ShaderMapBinding* texture_parameter = find_binding(
+            "source_texture", RHIResourceBindingType::SampledTexture);
+        const ShaderMapBinding* sampler_parameter = find_binding(
+            "source_sampler", RHIResourceBindingType::Sampler);
+        if (!texture_parameter || !sampler_parameter)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Test pass ShaderMap Program is missing its Material texture or sampler.");
+        }
+        RHIBindingLayoutRef binding_layout = program.binding_layout;
 
         RHITextureDesc texture_desc;
         texture_desc.width = 4;
@@ -143,10 +104,10 @@ namespace toy3d
         binding_set_desc.layout = binding_layout;
         binding_set_desc.group = RHIBindingGroup::Material;
         RHIBindingValue texture_binding;
-        texture_binding.slot = 0;
+        texture_binding.slot = texture_parameter->target_binding;
         texture_binding.texture_view = texture_view;
         RHIBindingValue sampler_binding;
-        sampler_binding.slot = 0;
+        sampler_binding.slot = sampler_parameter->target_binding;
         sampler_binding.sampler = sampler;
         binding_set_desc.bindings = {texture_binding, sampler_binding};
         binding_set_desc.debug_name = "TestPassBindingSet";
@@ -157,8 +118,8 @@ namespace toy3d
         }
 
         RHIGraphicsPipelineDesc pipeline_desc;
-        pipeline_desc.vertex_shader = std::move(vertex_shader_result).value();
-        pipeline_desc.pixel_shader = std::move(pixel_shader_result).value();
+        pipeline_desc.vertex_shader = std::move(program.vertex_shader);
+        pipeline_desc.pixel_shader = std::move(program.pixel_shader);
         pipeline_desc.binding_layout = binding_layout;
         pipeline_desc.primitive_topology = RHIPrimitiveTopology::TriangleList;
         pipeline_desc.rasterization.cull_mode = RHICullMode::None;
@@ -166,7 +127,7 @@ namespace toy3d
         pipeline_desc.color_attachment_count = 1;
         pipeline_desc.depth_stencil.depth_test_enable = true;
         pipeline_desc.depth_stencil.depth_write_enable = true;
-        pipeline_desc.depth_stencil.depth_compare_operation = RHICompareOperation::LessEqual;
+        pipeline_desc.depth_stencil.depth_compare_operation = RHICompareOperation::GreaterEqual;
         pipeline_desc.depth_stencil_format = RHIFormat::D32Float;
         pipeline_desc.debug_name = "TestPassFullscreenPipeline";
         auto pipeline_result = rhi_device.create_graphics_pipeline(pipeline_desc);
@@ -198,7 +159,7 @@ namespace toy3d
         texture_desc.format = RHIFormat::D32Float;
         texture_desc.usage = RHIResourceUsage::DepthStencil;
         texture_desc.initial_access = RHIAccess::Common;
-        texture_desc.clear_value = RHIClearValue::DepthOne;
+        texture_desc.clear_value = RHIClearValue::DepthZero;
         texture_desc.debug_name = "TestPassDepth";
         auto texture_result = rhi_device.create_texture(texture_desc);
         if (!texture_result)
@@ -322,7 +283,7 @@ namespace toy3d
         pass_desc.depth_stencil_attachment.depth_store = RHIStoreOperation::Store;
         pass_desc.depth_stencil_attachment.stencil_load = RHILoadOperation::Discard;
         pass_desc.depth_stencil_attachment.stencil_store = RHIStoreOperation::Discard;
-        pass_desc.depth_stencil_attachment.clear_value = RHIClearValue::DepthOne;
+        pass_desc.depth_stencil_attachment.clear_value = RHIClearValue::DepthZero;
         pass_desc.debug_name = "SceneRenderingTestPass";
 
         RHIStatus status = context.begin_render_pass(pass_desc);

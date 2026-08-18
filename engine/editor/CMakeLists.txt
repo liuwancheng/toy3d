@@ -51,6 +51,10 @@ set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Engine")
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
 target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 
+target_compile_definitions(${TARGET_NAME}
+  PRIVATE
+    "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/test_pass\"")
+
 target_link_libraries(${TARGET_NAME} Toy3dRuntime)
 
 if(WIN32)

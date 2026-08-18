@@ -399,9 +399,7 @@ namespace toy3d
     VulkanBindingLayout::VulkanBindingLayout(
         RHIBindingLayoutDesc desc,
         VkDevice device,
-        std::array<
-            VkDescriptorSetLayout,
-            static_cast<std::size_t>(RHIBindingGroup::Max)> descriptor_set_layouts,
+        std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
         std::vector<NativeBinding> native_bindings)
         : RHIBindingLayout(std::move(desc))
         , vk_device(device)
@@ -425,9 +423,26 @@ namespace toy3d
         }
     }
 
+    std::uint32_t VulkanBindingLayout::physical_set(RHIBindingGroup group)
+    {
+        switch (group)
+        {
+        case RHIBindingGroup::Global:
+        case RHIBindingGroup::View: return 0;
+        case RHIBindingGroup::Pass: return 1;
+        case RHIBindingGroup::Material: return 2;
+        case RHIBindingGroup::Object: return 3;
+        case RHIBindingGroup::Max: break;
+        }
+        return static_cast<std::uint32_t>(physical_set_count);
+    }
+
     VkDescriptorSetLayout VulkanBindingLayout::descriptor_set_layout(RHIBindingGroup group) const
     {
-        return vk_descriptor_set_layouts[static_cast<std::size_t>(group)];
+        const std::uint32_t set = physical_set(group);
+        return set < vk_descriptor_set_layouts.size()
+            ? vk_descriptor_set_layouts[set]
+            : VK_NULL_HANDLE;
     }
 
     RHIResult<std::uint32_t> VulkanBindingLayout::native_binding(
@@ -447,9 +462,8 @@ namespace toy3d
             "Vulkan binding layout has no matching native binding.");
     }
 
-    const std::array<
-        VkDescriptorSetLayout,
-        static_cast<std::size_t>(RHIBindingGroup::Max)>& VulkanBindingLayout::descriptor_set_layouts() const
+    const std::array<VkDescriptorSetLayout, VulkanBindingLayout::physical_set_count>&
+        VulkanBindingLayout::descriptor_set_layouts() const
     {
         return vk_descriptor_set_layouts;
     }

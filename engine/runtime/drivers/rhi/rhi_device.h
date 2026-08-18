@@ -68,11 +68,10 @@ namespace toy3d
             const RHITextureRef& texture,
             const RHITextureViewDesc& desc) = 0;
 
-        virtual RHIResult<RHIShaderRef> create_shader(
-            const RHIShaderDesc& desc) = 0;
+        RHIResult<RHIShaderRef> create_shader(const RHIShaderDesc& desc);
 
-        virtual RHIResult<RHIBindingLayoutRef> create_binding_layout(
-            const RHIBindingLayoutDesc& desc) = 0;
+        RHIResult<RHIBindingLayoutRef> create_binding_layout(
+            const RHIBindingLayoutDesc& desc);
 
         virtual RHIResult<RHISamplerRef> create_sampler(
             const RHISamplerDesc& desc) = 0;
@@ -92,6 +91,10 @@ namespace toy3d
             create_graphics_command_context() = 0;
 
     protected:
+        virtual RHIResult<RHIShaderRef> create_shader_impl(
+            const RHIShaderDesc& desc) = 0;
+        virtual RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(
+            const RHIBindingLayoutDesc& desc) = 0;
         virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
             const RHIGraphicsPipelineDesc& desc) = 0;
         virtual bool is_initialized_impl() const = 0;

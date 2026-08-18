@@ -7,7 +7,7 @@ namespace toy3d
 class ForwardSceneRendering : public SceneRendering
 {
 public:
-    ForwardSceneRendering(RHIDevice& device, ShaderBytecodeProvider& shader_bytecode_provider);
+    ForwardSceneRendering(RHIDevice& device, ShaderMap& shader_map);
     ~ForwardSceneRendering() override = default;
 
     RHIResult<RHICommandListRef> render(RHIFrameContext& frame) override;

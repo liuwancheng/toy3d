@@ -165,6 +165,8 @@ namespace toy3d
     class VulkanBindingLayout final : public RHIBindingLayout
     {
     public:
+        static constexpr std::size_t physical_set_count = 4;
+
         struct NativeBinding
         {
             RHIBindingGroup group = RHIBindingGroup::Material;
@@ -176,26 +178,22 @@ namespace toy3d
         VulkanBindingLayout(
             RHIBindingLayoutDesc desc,
             VkDevice device,
-            std::array<
-                VkDescriptorSetLayout,
-                static_cast<std::size_t>(RHIBindingGroup::Max)> descriptor_set_layouts,
+            std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
             std::vector<NativeBinding> native_bindings);
         ~VulkanBindingLayout() override;
 
+        static std::uint32_t physical_set(RHIBindingGroup group);
         VkDescriptorSetLayout descriptor_set_layout(RHIBindingGroup group) const;
         RHIResult<std::uint32_t> native_binding(
             RHIBindingGroup group,
             RHIResourceBindingType type,
             std::uint32_t slot) const;
-        const std::array<
-            VkDescriptorSetLayout,
-            static_cast<std::size_t>(RHIBindingGroup::Max)>& descriptor_set_layouts() const;
+        const std::array<VkDescriptorSetLayout, physical_set_count>&
+            descriptor_set_layouts() const;
 
     private:
         VkDevice vk_device = VK_NULL_HANDLE;
-        std::array<
-            VkDescriptorSetLayout,
-            static_cast<std::size_t>(RHIBindingGroup::Max)> vk_descriptor_set_layouts = {};
+        std::array<VkDescriptorSetLayout, physical_set_count> vk_descriptor_set_layouts = {};
         std::vector<NativeBinding> binding_mappings;
     };
 

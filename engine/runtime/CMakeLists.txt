@@ -1,6 +1,8 @@
 set(TARGET_NAME Toy3dRuntime)
 
 option(TOY3D_ENABLE_VULKAN_RHI "Build the Vulkan RHI backend" OFF)
+option(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
+    "Build the development ShaderMapEntry loading path" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +18,7 @@ list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/tests/.*\\.cpp$")
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.cpp$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/example/.*\\.cpp$")
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/shader/loaders/shader_map_entry_loader\\.cpp$")
 
 # 排除特定平台文件夹
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/platform/(android|mac|win)/.*\\.h$")
@@ -53,12 +56,16 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_F
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 add_dependencies(${TARGET_NAME} Toy3dShaders)
 
-add_custom_command(
-    TARGET ${TARGET_NAME}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}/shader"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TOY3D_SHADER_OUTPUTS} "${BINARY_ROOT_DIR}/shader"
-    VERBATIM)
+if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
+    target_sources(${TARGET_NAME}
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/shader/loaders/shader_map_entry_loader.cpp")
+    target_compile_definitions(${TARGET_NAME}
+        PRIVATE TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING=1)
+else()
+    target_compile_definitions(${TARGET_NAME}
+        PRIVATE TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING=0)
+endif()
 
 if(TOY3D_ENABLE_VULKAN_RHI)
     if(NOT WIN32 AND NOT APPLE)
@@ -124,6 +131,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC fmt)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMath)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dShaderFormat)
 
 
 target_include_directories(
@@ -173,4 +181,34 @@ if(BUILD_TESTING)
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     target_link_libraries(Toy3dConsoleManagerTests PRIVATE Toy3dFileSystem Threads::Threads)
     add_test(NAME Toy3dRuntime.ConsoleManager COMMAND Toy3dConsoleManagerTests)
+
+    add_executable(Toy3dShaderMapTests
+        "tests/shader_map_tests.cpp")
+    target_compile_features(Toy3dShaderMapTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dShaderMapTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dShaderMapTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dShaderMapTests PRIVATE Toy3dRuntime Threads::Threads)
+    add_test(NAME Toy3dRuntime.ShaderMap COMMAND Toy3dShaderMapTests)
+
+    if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
+        add_executable(Toy3dShaderMapEntryLoaderTests
+            "tests/shader_map_entry_loader_tests.cpp")
+        target_compile_features(Toy3dShaderMapEntryLoaderTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dShaderMapEntryLoaderTests PROPERTIES
+            CXX_EXTENSIONS OFF
+            FOLDER "Engine/Tests")
+        target_compile_definitions(Toy3dShaderMapEntryLoaderTests
+            PRIVATE
+                "TOY3D_SHADER_MAP_ENTRY_TEST_ROOT=\"${TOY3D_SHADER_MAP_OUTPUT_DIR}/test_pass\"")
+        target_compile_options(Toy3dShaderMapEntryLoaderTests
+            PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_link_libraries(Toy3dShaderMapEntryLoaderTests PRIVATE Toy3dRuntime)
+        add_dependencies(Toy3dShaderMapEntryLoaderTests Toy3dShaders)
+        add_test(NAME Toy3dRuntime.ShaderMapEntryLoader COMMAND Toy3dShaderMapEntryLoaderTests)
+    endif()
 endif()

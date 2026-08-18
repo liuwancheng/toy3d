@@ -16,6 +16,7 @@
 #include <cstring>
 #include <iterator>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -359,29 +360,6 @@ namespace toy3d
                 return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             }
             return VK_DESCRIPTOR_TYPE_MAX_ENUM;
-        }
-
-        std::uint32_t to_vk_descriptor_binding(RHIResourceBindingType type, std::uint32_t slot)
-        {
-            // Keep Vulkan shader decoration stable while preserving D3D-style
-            // b/t/s/u register namespaces in the backend-neutral RHI.
-            constexpr std::uint32_t shader_resource_base = 256;
-            constexpr std::uint32_t sampler_base = 512;
-            constexpr std::uint32_t unordered_access_base = 768;
-            switch (type)
-            {
-            case RHIResourceBindingType::UniformBuffer:
-                return slot;
-            case RHIResourceBindingType::SampledTexture:
-            case RHIResourceBindingType::ReadOnlyBuffer:
-                return shader_resource_base + slot;
-            case RHIResourceBindingType::Sampler:
-                return sampler_base + slot;
-            case RHIResourceBindingType::StorageTexture:
-            case RHIResourceBindingType::StorageBuffer:
-                return unordered_access_base + slot;
-            }
-            return slot;
         }
 
         VkFilter to_vk_filter(RHIFilter filter)
@@ -1111,13 +1089,8 @@ namespace toy3d
             true));
     }
 
-    RHIResult<RHIShaderRef> VulkanDevice::create_shader(const RHIShaderDesc& desc)
+    RHIResult<RHIShaderRef> VulkanDevice::create_shader_impl(const RHIShaderDesc& desc)
     {
-        const RHIStatus validation = validate_shader_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHIShaderRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized || vk_device == VK_NULL_HANDLE)
         {
             return RHIResult<RHIShaderRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
@@ -1155,25 +1128,22 @@ namespace toy3d
         return RHIResult<RHIShaderRef>::success(std::make_shared<VulkanShader>(desc, vk_device, shader_module));
     }
 
-    RHIResult<RHIBindingLayoutRef> VulkanDevice::create_binding_layout(const RHIBindingLayoutDesc& desc)
+    RHIResult<RHIBindingLayoutRef> VulkanDevice::create_binding_layout_impl(
+        const RHIBindingLayoutDesc& desc)
     {
-        const RHIStatus validation = validate_binding_layout_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHIBindingLayoutRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized)
         {
             return RHIResult<RHIBindingLayoutRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
         std::array<
             std::vector<VkDescriptorSetLayoutBinding>,
-            static_cast<std::size_t>(RHIBindingGroup::Max)> group_bindings;
+            VulkanBindingLayout::physical_set_count> group_bindings;
         std::vector<VulkanBindingLayout::NativeBinding> native_bindings;
+        std::set<std::pair<std::uint32_t, std::uint32_t>> occupied_bindings;
         native_bindings.reserve(desc.entries.size());
         for (const RHIBindingLayoutEntry& entry : desc.entries)
         {
-            const std::size_t group_index = static_cast<std::size_t>(entry.group);
+            const std::size_t group_index = VulkanBindingLayout::physical_set(entry.group);
             if (group_index >= group_bindings.size())
             {
                 return RHIResult<RHIBindingLayoutRef>::failure(
@@ -1187,7 +1157,14 @@ namespace toy3d
                     RHIErrorCode::Unsupported,
                     "Vulkan binding layout contains an unsupported resource type.");
             }
-            const std::uint32_t native_binding = to_vk_descriptor_binding(entry.type, entry.slot);
+            const std::uint32_t native_binding = entry.slot;
+            if (!occupied_bindings.emplace(
+                    static_cast<std::uint32_t>(group_index), native_binding).second)
+            {
+                return RHIResult<RHIBindingLayoutRef>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan binding layout contains duplicate bindings in one physical set.");
+            }
             VkDescriptorSetLayoutBinding layout_binding{};
             layout_binding.binding = native_binding;
             layout_binding.descriptorType = descriptor_type;
@@ -1199,7 +1176,7 @@ namespace toy3d
 
         std::array<
             VkDescriptorSetLayout,
-            static_cast<std::size_t>(RHIBindingGroup::Max)> descriptor_set_layouts{};
+            VulkanBindingLayout::physical_set_count> descriptor_set_layouts{};
         for (std::size_t group_index = 0; group_index < group_bindings.size(); ++group_index)
         {
             VkDescriptorSetLayoutCreateInfo create_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -1285,6 +1262,18 @@ namespace toy3d
             return RHIResult<RHIBindingSetRef>::failure(
                 RHIErrorCode::InvalidArgument,
                 "Vulkan binding set requires a layout created by the Vulkan device.");
+        }
+        if ((desc.group == RHIBindingGroup::Global || desc.group == RHIBindingGroup::View) &&
+            std::any_of(desc.layout->desc().entries.begin(), desc.layout->desc().entries.end(),
+                [&](const RHIBindingLayoutEntry& entry) {
+                    return entry.group != desc.group &&
+                        (entry.group == RHIBindingGroup::Global ||
+                         entry.group == RHIBindingGroup::View);
+                }))
+        {
+            return RHIResult<RHIBindingSetRef>::failure(
+                RHIErrorCode::Unsupported,
+                "Vulkan Global+View physical-set aggregation is not implemented yet.");
         }
 
         std::map<VkDescriptorType, std::uint32_t> descriptor_counts;

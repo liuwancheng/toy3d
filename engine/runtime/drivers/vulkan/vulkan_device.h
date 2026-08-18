@@ -64,8 +64,8 @@ namespace toy3d
             const RHITextureRef& texture,
             const RHITextureViewDesc& desc) override;
 
-        RHIResult<RHIShaderRef> create_shader(const RHIShaderDesc& desc) override;
-        RHIResult<RHIBindingLayoutRef> create_binding_layout(
+        RHIResult<RHIShaderRef> create_shader_impl(const RHIShaderDesc& desc) override;
+        RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(
             const RHIBindingLayoutDesc& desc) override;
         RHIResult<RHISamplerRef> create_sampler(
             const RHISamplerDesc& desc) override;

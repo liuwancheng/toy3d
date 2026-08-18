@@ -13,7 +13,20 @@ namespace toy3d
 	class IPlatform;
 	class IWindow;
 	class SceneRendering;
-	class ShaderBytecodeProvider;
+	class ShaderMapLoader;
+	class ShaderMap;
+
+	enum class ShaderLoadMode
+	{
+		ShaderMapEntry,
+		ShaderCodeLibrary
+	};
+
+	struct ShaderLoadConfig
+	{
+		ShaderLoadMode mode = ShaderLoadMode::ShaderCodeLibrary;
+		PhysicalPath path;
+	};
 
 	class Engine
 	{
@@ -30,6 +43,8 @@ namespace toy3d
 		void main_loop();
 
 		void exit();
+
+		void set_shader_load_config(ShaderLoadConfig config);
 
 		IWindow* get_window() { return window.get(); };
 	private:
@@ -49,7 +64,9 @@ namespace toy3d
 		std::shared_ptr<DirectoryFileStore> saved_store;
 		std::shared_ptr<DirectoryFileStore> temp_store;
 		FileSystem file_system;
-		std::unique_ptr<ShaderBytecodeProvider> shader_bytecode_provider;
+		ShaderLoadConfig shader_load_config;
+		std::unique_ptr<ShaderMapLoader> shader_map_loader;
+		std::unique_ptr<ShaderMap> shader_map;
 		std::unique_ptr<IPlatform> platform;
 		std::unique_ptr<IWindow> window;
 		RHISurfaceRef main_window_surface;
