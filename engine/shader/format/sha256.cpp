@@ -1,4 +1,4 @@
-#include "common/sha256.h"
+#include "format/sha256.h"
 
 #include <array>
 #include <cstddef>

@@ -749,8 +749,7 @@ namespace
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
                 platform_file, physical_path(binary_fixture.first / "entries"),
                 binary_fixture.second.shader_map_key);
-            check(!corrupt.succeeded() &&
-                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
                 "binary content hash corruption must be rejected by the ShaderMap reader");
         }
         std::filesystem::remove_all(binary_fixture.first);
@@ -774,8 +773,7 @@ namespace
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
                 platform_file, physical_path(version_fixture.first / "entries"),
                 version_fixture.second.shader_map_key);
-            check(!corrupt.succeeded() &&
-                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
                 "unsupported ShaderMapEntry versions must be rejected");
         }
         std::filesystem::remove_all(version_fixture.first);
@@ -797,8 +795,7 @@ namespace
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
                 platform_file, physical_path(target_fixture.first / "entries"),
                 target_fixture.second.shader_map_key);
-            check(!corrupt.succeeded() &&
-                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
                 "target/profile mismatches must be rejected by the ShaderMap reader");
         }
         std::filesystem::remove_all(target_fixture.first);
@@ -815,8 +812,7 @@ namespace
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
                 platform_file, physical_path(dependency_fixture.first / "entries"),
                 dependency_fixture.second.shader_map_key);
-            check(!corrupt.succeeded() &&
-                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
                 "dependency record corruption must be rejected by its file content hash");
         }
         std::filesystem::remove_all(dependency_fixture.first);
@@ -830,8 +826,7 @@ namespace
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
                 platform_file, physical_path(oversized_fixture.first / "entries"),
                 oversized_fixture.second.shader_map_key);
-            check(!corrupt.succeeded() &&
-                has_diagnostic(corrupt.diagnostics, DiagnosticCode::ShaderMapReadFailed),
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
                 "oversized ShaderMap metadata must be rejected before whole-file parsing");
         }
         std::filesystem::remove_all(oversized_fixture.first);

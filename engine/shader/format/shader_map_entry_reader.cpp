@@ -1,4 +1,4 @@
-#include "shader_map/shader_map_entry.h"
+#include "format/shader_map_entry.h"
 
 #include "file_system/virtual_path.h"
 
@@ -27,8 +27,7 @@ namespace toy3d::shader
 
         void add_error(ShaderMapEntryReadResult& result, std::string message)
         {
-            result.diagnostics.push_back({DiagnosticSeverity::Error,
-                DiagnosticCode::ShaderMapReadFailed, {}, std::move(message)});
+            result.diagnostics.push_back(std::move(message));
         }
 
         bool has_forbidden_text_character(std::string_view text)
@@ -385,17 +384,9 @@ namespace toy3d::shader
                     static_cast<NativeRegisterClass>(*register_class), *register_index,
                     *descriptor_set, *descriptor_binding});
             }
-            TargetBindingLayout layout;
-            layout.target = entry.target;
-            layout.mapping_version = entry.mapping_version;
-            for (const ShaderMapBinding& binding : entry.bindings)
-            {
-                layout.bindings.push_back({binding.binding_id, binding.name, binding.group,
-                    binding.category, binding.stages, binding.register_class,
-                    binding.register_index, binding.descriptor_set,
-                    binding.descriptor_binding, nullptr});
-            }
-            if (calculate_target_binding_hash(layout) != entry.target_binding_hash)
+            if (calculate_target_binding_hash(
+                    entry.target, entry.mapping_version, entry.bindings) !=
+                entry.target_binding_hash)
             {
                 add_error(result, "mapping.txt does not match target_binding_hash.");
                 return false;

@@ -1,5 +1,5 @@
 #include "codegen/binding_codegen.h"
-#include "common/sha256.h"
+#include "format/sha256.h"
 #include "frontend/shader_parser.h"
 #include "layout/binding_allocator.h"
 #include "layout/shader_layout.h"

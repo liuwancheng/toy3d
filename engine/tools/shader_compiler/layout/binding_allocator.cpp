@@ -135,23 +135,6 @@ namespace toy3d::shader
                 std::move(scope) + " binding limit exceeded by '" + binding.name + "': required " + std::to_string(required) + ", supported " + std::to_string(supported) + "."});
         }
 
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
-        {
-            using Unsigned = std::make_unsigned_t<T>;
-            const Unsigned converted = static_cast<Unsigned>(value);
-            for (std::size_t index = 0; index < sizeof(T); ++index)
-            {
-                bytes.push_back(static_cast<std::uint8_t>(converted >> (index * 8u)));
-            }
-        }
-
-        template<typename T>
-        void append_enum(std::vector<std::uint8_t>& bytes, T value)
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(value));
-        }
-
         constexpr std::array<ShaderStageFlags, 3> individual_stages = {
             ShaderStageFlags::Vertex, ShaderStageFlags::Pixel, ShaderStageFlags::Compute};
     }
@@ -166,22 +149,17 @@ namespace toy3d::shader
 
     Sha256Hash calculate_target_binding_hash(const TargetBindingLayout& layout)
     {
-        std::vector<std::uint8_t> bytes;
-        append_enum(bytes, layout.target);
-        append_integer(bytes, layout.mapping_version);
-        append_integer(bytes, static_cast<std::uint32_t>(layout.bindings.size()));
+        std::vector<ShaderMapBinding> bindings;
+        bindings.reserve(layout.bindings.size());
         for (const NativeBinding& binding : layout.bindings)
         {
-            append_integer(bytes, binding.binding_id);
-            append_enum(bytes, binding.group);
-            append_enum(bytes, binding.category);
-            append_enum(bytes, binding.stages);
-            append_enum(bytes, binding.register_class);
-            append_integer(bytes, binding.register_index);
-            append_integer(bytes, binding.descriptor_set);
-            append_integer(bytes, binding.descriptor_binding);
+            bindings.push_back({binding.binding_id, binding.name, binding.group,
+                binding.category, binding.stages, binding.register_class,
+                binding.register_index, binding.descriptor_set,
+                binding.descriptor_binding});
         }
-        return sha256(bytes);
+        return calculate_target_binding_hash(
+            layout.target, layout.mapping_version, bindings);
     }
 
     TargetBindingLimits TargetBindingLimits::d3d12_sm6()

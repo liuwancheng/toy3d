@@ -1,5 +1,6 @@
 #pragma once
 
+#include "format/shader_format_types.h"
 #include "frontend/source_location.h"
 
 #include <cstdint>
@@ -49,35 +50,6 @@ namespace toy3d::shader
         std::optional<double> range_max;
         DefaultValue default_value;
         SourceLocation location;
-    };
-
-    enum class BindingGroup
-    {
-        Global,
-        View,
-        Pass,
-        Material,
-        Object
-    };
-
-    enum class ResourceKind
-    {
-        Texture2D,
-        Texture2DArray,
-        Texture3D,
-        TextureCube,
-        Texture2DMS,
-        Sampler,
-        ComparisonSampler,
-        Buffer,
-        ByteAddressBuffer,
-        StructuredBuffer,
-        RWBuffer,
-        RWByteAddressBuffer,
-        RWStructuredBuffer,
-        RWTexture2D,
-        RWTexture2DArray,
-        RWTexture3D
     };
 
     enum class ResourceElementType

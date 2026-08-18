@@ -9,21 +9,6 @@
 
 namespace toy3d::shader
 {
-    enum class ShaderTarget
-    {
-        D3D11Dxbc,
-        D3D12Dxil,
-        VulkanSpirV
-    };
-
-    enum class NativeRegisterClass
-    {
-        ConstantBuffer,
-        ShaderResource,
-        Sampler,
-        UnorderedAccess
-    };
-
     struct BindingClassLimits
     {
         std::uint32_t constant_buffers = 0;

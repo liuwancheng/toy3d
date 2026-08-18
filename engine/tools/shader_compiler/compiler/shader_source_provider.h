@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sha256.h"
+#include "format/sha256.h"
 
 #include <optional>
 #include <string>

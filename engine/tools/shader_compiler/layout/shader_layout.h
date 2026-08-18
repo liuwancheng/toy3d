@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sha256.h"
+#include "format/shader_format_types.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
 
@@ -12,61 +12,6 @@
 
 namespace toy3d::shader
 {
-    using ShaderParameterId = std::uint64_t;
-
-    constexpr std::uint32_t toy_shader_abi_version = 1;
-    constexpr std::uint32_t shader_parameter_id_version = 1;
-    constexpr std::uint32_t d3d_binding_mapping_version = 1;
-    constexpr std::uint32_t vulkan_binding_mapping_version = 1;
-    constexpr std::uint32_t max_constant_buffer_size = 16u * 1024u;
-
-    enum class ShaderValueType
-    {
-        Float32,
-        Float32x2,
-        Float32x3,
-        Float32x4,
-        Int32,
-        Int32x2,
-        Int32x3,
-        Int32x4,
-        UInt32,
-        UInt32x2,
-        UInt32x3,
-        UInt32x4,
-        Float32x2x2,
-        Float32x2x3,
-        Float32x2x4,
-        Float32x3x2,
-        Float32x3x3,
-        Float32x3x4,
-        Float32x4x2,
-        Float32x4x3,
-        Float32x4x4
-    };
-
-    enum class ShaderParameterCategory
-    {
-        Constant,
-        SampledTexture,
-        Sampler,
-        ReadOnlyBuffer,
-        StorageBuffer,
-        StorageTexture
-    };
-
-    enum class ShaderStageFlags : std::uint8_t
-    {
-        None = 0,
-        Vertex = 1u << 0u,
-        Pixel = 1u << 1u,
-        Compute = 1u << 2u
-    };
-
-    ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right);
-    ShaderStageFlags& operator|=(ShaderStageFlags& left, ShaderStageFlags right);
-    bool has_stage(ShaderStageFlags flags, ShaderStageFlags stage);
-
     struct ConstantMemberInput
     {
         std::string name;

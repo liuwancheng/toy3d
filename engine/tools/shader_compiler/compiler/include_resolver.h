@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sha256.h"
+#include "format/shader_format_types.h"
 #include "compiler/shader_source_provider.h"
 #include "frontend/diagnostic.h"
 
@@ -12,12 +12,6 @@
 namespace toy3d::shader
 {
     constexpr std::uint32_t default_max_include_depth = 64;
-
-    struct ShaderDependency
-    {
-        std::string virtual_path;
-        Sha256Hash content_hash{};
-    };
 
     struct IncludeResolveResult
     {

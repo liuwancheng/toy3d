@@ -1,10 +1,8 @@
 #include "shader_map/shader_map_entry.h"
 
 #include <algorithm>
-#include <iterator>
 #include <set>
 #include <sstream>
-#include <type_traits>
 
 #include "file_system/virtual_path.h"
 #include "shader_map/shader_code_entry.h"
@@ -14,21 +12,6 @@ namespace toy3d::shader
 {
     namespace
     {
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
-        {
-            using Unsigned = std::make_unsigned_t<T>;
-            const Unsigned converted = static_cast<Unsigned>(value);
-            for (std::size_t index = 0; index < sizeof(T); ++index)
-                bytes.push_back(static_cast<std::uint8_t>(converted >> (index * 8u)));
-        }
-
-        void append_string(std::vector<std::uint8_t>& bytes, const std::string& value)
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(value.size()));
-            bytes.insert(bytes.end(), value.begin(), value.end());
-        }
-
         bool hash_is_zero(const Sha256Hash& hash)
         {
             return std::all_of(hash.begin(), hash.end(), [](std::uint8_t byte) { return byte == 0u; });
@@ -60,9 +43,11 @@ namespace toy3d::shader
                 platform_file, shader_map_root, result.shader_map_key);
             if (!existing.succeeded())
             {
-                result.diagnostics.insert(result.diagnostics.end(),
-                    std::make_move_iterator(existing.diagnostics.begin()),
-                    std::make_move_iterator(existing.diagnostics.end()));
+                for (std::string& message : existing.diagnostics)
+                {
+                    result.diagnostics.push_back({DiagnosticSeverity::Error,
+                        DiagnosticCode::ShaderMapReadFailed, {}, std::move(message)});
+                }
                 return false;
             }
             if (existing.entry_content_hash != result.entry_content_hash)
@@ -75,17 +60,6 @@ namespace toy3d::shader
             result.entry_directory = *existing.entry_directory;
             result.cache_hit = true;
             return true;
-        }
-
-        std::vector<const ShaderCodeEntry*> sorted_stages(const ShaderMapEntry& entry)
-        {
-            std::vector<const ShaderCodeEntry*> stages;
-            for (const ShaderCodeEntry& stage : entry.stages) stages.push_back(&stage);
-            std::sort(stages.begin(), stages.end(), [](const auto* left, const auto* right) {
-                return static_cast<std::uint32_t>(left->request.stage) <
-                    static_cast<std::uint32_t>(right->request.stage);
-            });
-            return stages;
         }
 
         bool validate_dependencies(const std::vector<ShaderDependency>& dependencies)
@@ -102,63 +76,6 @@ namespace toy3d::shader
             }
             return true;
         }
-    }
-
-    Sha256Hash calculate_shader_map_key(const ShaderMapEntry& entry)
-    {
-        std::vector<std::uint8_t> bytes;
-        append_integer(bytes, shader_map_entry_version);
-        append_string(bytes, entry.shader_name);
-        append_string(bytes, entry.pass_name);
-        append_integer(bytes, static_cast<std::uint32_t>(entry.target));
-        append_integer(bytes, static_cast<std::uint32_t>(entry.profile));
-        append_integer(bytes, entry.mapping_version);
-        bytes.insert(bytes.end(), entry.logical_layout_hash.begin(), entry.logical_layout_hash.end());
-        bytes.insert(bytes.end(), entry.target_binding_hash.begin(), entry.target_binding_hash.end());
-        bytes.insert(bytes.end(), entry.pass_template_hash.begin(), entry.pass_template_hash.end());
-        append_integer(bytes, entry.variant_id_version);
-        append_integer(bytes, entry.permutation_version);
-        bytes.insert(bytes.end(), entry.permutation_key.begin(), entry.permutation_key.end());
-        for (const ShaderCodeEntry* stage : sorted_stages(entry))
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(stage->request.stage));
-            bytes.insert(bytes.end(), stage->request.compile_key.begin(), stage->request.compile_key.end());
-            bytes.insert(bytes.end(), stage->reflection.reflection_hash.begin(),
-                stage->reflection.reflection_hash.end());
-            const Sha256Hash binary_hash = sha256(stage->binary);
-            bytes.insert(bytes.end(), binary_hash.begin(), binary_hash.end());
-        }
-        return sha256(bytes);
-    }
-
-    Sha256Hash calculate_shader_map_entry_content_hash(const ShaderMapEntry& entry)
-    {
-        std::vector<std::uint8_t> bytes;
-        const Sha256Hash key = calculate_shader_map_key(entry);
-        bytes.insert(bytes.end(), key.begin(), key.end());
-        append_integer(bytes, static_cast<std::uint32_t>(entry.bindings.size()));
-        for (const ShaderMapBinding& binding : entry.bindings)
-        {
-            append_integer(bytes, binding.binding_id);
-            append_string(bytes, binding.name);
-            append_integer(bytes, static_cast<std::uint32_t>(binding.group));
-            append_integer(bytes, static_cast<std::uint32_t>(binding.category));
-            append_integer(bytes, static_cast<std::uint32_t>(binding.stages));
-            append_integer(bytes, static_cast<std::uint32_t>(binding.register_class));
-            append_integer(bytes, binding.register_index);
-            append_integer(bytes, binding.descriptor_set);
-            append_integer(bytes, binding.descriptor_binding);
-        }
-        for (const ShaderCodeEntry* stage : sorted_stages(entry))
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(stage->request.dependencies.size()));
-            for (const ShaderDependency& dependency : stage->request.dependencies)
-            {
-                append_string(bytes, dependency.virtual_path);
-                bytes.insert(bytes.end(), dependency.content_hash.begin(), dependency.content_hash.end());
-            }
-        }
-        return sha256(bytes);
     }
 
     bool ShaderMapEntryWriteResult::succeeded() const

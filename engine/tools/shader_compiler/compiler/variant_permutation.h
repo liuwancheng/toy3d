@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sha256.h"
+#include "format/sha256.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
 
@@ -12,12 +12,6 @@
 
 namespace toy3d::shader
 {
-    using ShaderVariantId = std::uint64_t;
-    using ShaderEnumValueId = std::uint64_t;
-
-    constexpr std::uint32_t shader_variant_id_version = 1;
-    constexpr std::uint32_t shader_permutation_version = 1;
-
     struct ShaderVariantSelection
     {
         std::string name;

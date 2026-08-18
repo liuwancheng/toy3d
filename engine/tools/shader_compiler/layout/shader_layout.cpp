@@ -265,22 +265,6 @@ namespace toy3d::shader
         }
     }
 
-    ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right)
-    {
-        return static_cast<ShaderStageFlags>(static_cast<std::uint8_t>(left) | static_cast<std::uint8_t>(right));
-    }
-
-    ShaderStageFlags& operator|=(ShaderStageFlags& left, ShaderStageFlags right)
-    {
-        left = left | right;
-        return left;
-    }
-
-    bool has_stage(ShaderStageFlags flags, ShaderStageFlags stage)
-    {
-        return (static_cast<std::uint8_t>(flags) & static_cast<std::uint8_t>(stage)) != 0;
-    }
-
     bool ConstantBufferPackResult::succeeded() const
     {
         return layout.has_value() && diagnostics.empty();

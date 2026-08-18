@@ -149,68 +149,6 @@ namespace toy3d::shader
             return static_cast<ShaderValueType>(static_cast<int>(base) + static_cast<int>(rows - 1u));
         }
 
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
-        {
-            using Unsigned = std::make_unsigned_t<T>;
-            const Unsigned converted = static_cast<Unsigned>(value);
-            for (std::size_t index = 0; index < sizeof(T); ++index)
-                bytes.push_back(static_cast<std::uint8_t>(converted >> (index * 8u)));
-        }
-
-        void append_string(std::vector<std::uint8_t>& bytes, const std::string& value)
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(value.size()));
-            bytes.insert(bytes.end(), value.begin(), value.end());
-        }
-    }
-
-    Sha256Hash calculate_shader_stage_reflection_hash(
-        const ShaderStageReflection& reflection)
-    {
-        std::vector<std::uint8_t> bytes;
-        append_integer(bytes, static_cast<std::uint32_t>(reflection.stage));
-        append_string(bytes, reflection.entry_point);
-        append_integer(bytes, static_cast<std::uint32_t>(reflection.bindings.size()));
-        for (const ReflectedBinding& binding : reflection.bindings)
-        {
-            append_integer(bytes, binding.parameter_id);
-            append_string(bytes, binding.name);
-            append_integer(bytes, static_cast<std::uint32_t>(binding.group));
-            append_integer(bytes, static_cast<std::uint32_t>(binding.category));
-            append_integer(bytes, binding.resource_kind ?
-                static_cast<std::uint32_t>(*binding.resource_kind) : 0xffffffffu);
-            append_integer(bytes, static_cast<std::uint32_t>(binding.stages));
-            append_integer(bytes, binding.array_count);
-            append_integer(bytes, binding.descriptor_set);
-            append_integer(bytes, binding.descriptor_binding);
-            append_integer(bytes, binding.constant_buffer_size);
-            append_integer(bytes, static_cast<std::uint32_t>(binding.constant_members.size()));
-            for (const ReflectedConstantMember& member : binding.constant_members)
-            {
-                append_integer(bytes, member.parameter_id);
-                append_string(bytes, member.name);
-                append_integer(bytes, static_cast<std::uint32_t>(member.type));
-                append_integer(bytes, member.offset);
-                append_integer(bytes, member.size);
-                append_integer(bytes, member.array_stride);
-                append_integer(bytes, member.matrix_stride);
-            }
-        }
-        append_integer(bytes, static_cast<std::uint32_t>(reflection.interface_variables.size()));
-        for (const ReflectedInterfaceVariable& variable : reflection.interface_variables)
-        {
-            append_string(bytes, variable.name);
-            append_string(bytes, variable.semantic);
-            append_integer(bytes, variable.location);
-            append_integer(bytes, variable.input ? 1u : 0u);
-            append_integer(bytes, static_cast<std::uint32_t>(variable.scalar_type));
-            append_integer(bytes, variable.component_count);
-        }
-        append_integer(bytes, reflection.thread_group_size_x);
-        append_integer(bytes, reflection.thread_group_size_y);
-        append_integer(bytes, reflection.thread_group_size_z);
-        return sha256(bytes);
     }
 
     bool SpirvReflectionResult::succeeded() const

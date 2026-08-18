@@ -3,13 +3,10 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "shader_map/shader_code_entry.h"
     "shader_map/shader_map_entry.cpp"
     "shader_map/shader_map_entry.h"
-    "shader_map/shader_map_reader.cpp"
     "shader_map/shader_map_storage.cpp"
     "shader_map/shader_map_storage.h"
     "codegen/binding_codegen.cpp"
     "codegen/binding_codegen.h"
-    "common/sha256.cpp"
-    "common/sha256.h"
     "compiler/compile_request.cpp"
     "compiler/compile_request.h"
     "compiler/dxc_adapter.cpp"
@@ -58,6 +55,7 @@ target_include_directories(Toy3dShaderCompilerCore
 target_link_libraries(Toy3dShaderCompilerCore
     PUBLIC
         Toy3dFileSystem
+        Toy3dShaderFormat
         Toy3d::SpirvReflect)
 
 add_executable(Toy3dShaderCompiler "main.cpp")
