@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- FND-6C 施工起点 commit：`4898ef4`（`建立 ViewportFrame 输出契约`）。
+- FND-6D-DESIGN 施工起点 commit：`ed5e34b`（`建立 Camera 视图帧构建器`）。
 - 当前分支：`main`。
-- 当前工作包：FND-6C Game Thread CameraComponent 到 owned ViewportFrame 的 snapshot builder；主 agent 与
-  独立 sub-agent 验证通过。
+- 当前工作包：FND-6D-DESIGN 持久 Offscreen SceneOutput update、version、ownership、错误与生命周期 contract；
+  主 agent 修订并经独立 sub-agent 跨后端审查。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -45,6 +45,7 @@
 | FND-6A | SceneView/SceneViewFamily 与 reversed-Z matrix contract | 完成 | Editor/定向构建、CTest 18/18、直接测试与独立矩阵/传输核查通过 |
 | FND-6B | ViewportFrame/SceneOutput owned-value contract | 完成 | Editor/定向构建、CTest 19/19、直接测试与独立 processor/transport 核查通过 |
 | FND-6C | CameraComponent 到 ViewportFrame snapshot builder | 完成 | Editor/定向构建、CTest 20/20、直接测试与独立层级 transform/FOV 核查通过 |
+| FND-6D-DESIGN | 持久 Offscreen SceneOutput lifecycle 设计 | 完成 | 独立 Vulkan/D3D11/D3D12/mobile、revision、Present ownership 与错误模型审查通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -1140,3 +1141,29 @@ ViewRect 保留。补强用例通过父层级 X 轴 90° 旋转明确验证 worl
 验证者提出的初始 P2 测试覆盖意见已通过旋转轴与 FOV 断言消除，并对最终源码再次完成定向 4/4 与全量 20/20。
 非 Perspective 分支因当前 CameraComponent 尚无公开构造对应模式的 API，仅完成静态核查；未覆盖 D3D11、D3D12、
 macOS、移动端与 Editor GUI/画面验收。
+
+## 30. FND-6D-DESIGN：持久 Offscreen SceneOutput Lifecycle
+
+本设计包补齐 foundation §7.4 与聚合 packet 顺序，不修改 C++、CMake 或 RHI backend。`SceneOutputUpdate`
+使用独立强类型 revision，以事务式 batch 表达 Offscreen create/resize/release；cache 为每个见过的 ID 保留
+Live/Released tombstone，equal/lower revision、unknown/duplicate release 与 Released ID 复活均明确拒绝。
+zero extent 是无 texture/view 的 Live 版本，所有 zero/non-zero observation 都必须先匹配 cache ID、状态与 extent。
+
+Present 选择显式注册方案：composition root 维护稳定 `ViewportId -> Present SceneOutputId`，Present ID 不得进入
+Offscreen update/cache 或另一 viewport。真实 Present extent 以成功 acquire 后的 `RHIFrameContext` 为权威；与
+immutable packet 不符时必须 abort acquired frame 并返回可恢复 `OutOfDate`，不得偷换 ViewRect。
+
+生命周期收敛为 Prepared Frame 保活上层 `SceneOutputResource`、closed command list 保活 RHI refs、frame slot
+保活 command list 至 queue completion、backend 再按 last-use 延迟销毁。output batch 原子性不回滚此前已 Apply
+的 content resource 或 RenderScene update；候选 native allocation 在未发布失败路径通过局部 refs 释放。
+
+错误 contract 要求 `SceneOutputApplyReport` 保留原始 `RHIStatus`，并让 execution/completion 结构化传递
+`RHIErrorCode`。Offscreen 的 InvalidArgument/Unsupported/OutOfMemory 只失败当前帧；DeviceLost/BackendFailure
+终止 renderer；非 viewport create/view 路径若返回 NotReady/OutOfDate/Suboptimal，按 backend contract violation
+终止但保留原始 code。Present 继续使用既有 recoverable status 语义。
+
+新的独立 sub-agent 完整使用 `design-rhi` 及 requirement/current-review references，只读检查 Vulkan、D3D11
+FL11_0、D3D12 与 `VulkanPortable v1`。初审提出 release tombstone、zero observation、Present registration/acquire
+extent、完整错误映射与精确引用链等 P1/P2；主 Agent 已逐项写入最终设计，并扩充 equal revision、批次失败、
+ownership 冲突、全 `RHIErrorCode` 与 completion 生命周期测试矩阵。`git diff --check` 通过；纯文档工作包未构建
+C++ 目标，也未覆盖未实现后端或移动端实机。

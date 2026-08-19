@@ -119,6 +119,7 @@ engine/runtime/renderscene/
 ├── render_frame_queue.*
 ├── scene/                        # RenderScene、Info、Proxy
 ├── resources/                    # RenderResourceCache
+├── output/                       # SceneOutput update、resource version 与 cache
 ├── view/                         # ViewFamily / View / visibility
 └── renderer/                     # Forward、MeshProcessor、Pass
 
@@ -257,11 +258,17 @@ enum class SceneOutputType
     Offscreen
 };
 
+struct SceneOutputExtent
+{
+    uint32 width;
+    uint32 height;
+};
+
 struct SceneOutput
 {
     SceneOutputId output_id;
     SceneOutputType type;
-    Extent extent;
+    SceneOutputExtent extent;
 };
 
 struct SceneViewFamilyFrame
@@ -284,9 +291,84 @@ struct ViewportFrame
 
 ### 7.4 持久 Offscreen 输出
 
-Offscreen output 由稳定 `SceneOutputId` 标识，并在 Render Thread持有版本化 `SceneOutputResource`。create、resize 与 release 都通过 Render 消息执行。resize 产生新版本，旧 texture 由 Prepared Frame与 RHI frame slot 保活至 GPU 安全。
+Offscreen output 由稳定 `SceneOutputId` 标识，并在 Render Thread 持有版本化 `SceneOutputResource`。Present
+output 的 resource 始终来自所属 `RHIViewportContext` 当前帧，不进入 Offscreen cache，也不允许用 output update
+创建。Game/Editor 侧只持有 ID、revision 与 extent，不持有 RHI texture 或 view。
 
-`extent == 0` 时跳过输出。第一版 Editor-ready 格式为 Tone Mapping 后的 linear SDR `RGBA8_UNorm`。同一 packet 中先写 Offscreen、transition 为 ShaderResource，再由主窗口 ImGui 通过稳定 `ImGuiTextureId`采样；不把 RHI texture 指针传回 Game Thread。
+```cpp
+class SceneOutputRevision; // 独立的单调非零 64 位强类型
+
+enum class SceneOutputUpdateOperation
+{
+    Update,
+    Release
+};
+
+struct SceneOutputUpdate
+{
+    SceneOutputUpdateOperation operation;
+    SceneOutputId output_id;
+    SceneOutputRevision revision;
+    SceneOutputExtent extent;
+};
+```
+
+`Update` 同时表达 create 与 resize；同一 `SceneOutputId` 的 revision 只增不减，不要求连续。cache 为每个见过的
+ID 保留 `{latest_revision, Live|Released}` metadata：只有 revision 严格大于 latest 才能继续处理，equal 与 lower
+一律作为 stale `InvalidArgument`，不提供重复消息幂等。`Release` 要求当前为 Live 且携带更高 revision，成功后
+写入 Released tombstone；release 是该 ID 的终态，后续即使 revision 更高也不得重新创建，重新打开的逻辑 output
+必须分配新 ID。SceneOutputId 进程内不复用，因此 tombstone 保留到 cache shutdown；不设置提前回收水位。
+
+一个 packet 内同一 output 最多一条 update；ID/revision 无效、单轴 zero、stale revision、unknown/duplicate
+release、对 Released ID 的 Update 或同 extent 的伪 resize 都返回可诊断 `InvalidArgument`。整批 update 先验证
+metadata，再构造 staged metadata 与全部非零 candidate texture/RTV/SRV，全部成功后才单次 commit release 与
+replacement。这里的原子性只覆盖 `scene_output_updates` 的 cache 可见状态，不回滚此前已 Apply 的 resource/scene
+updates，也不承诺撤销已经成功但尚未发布的 native allocation；失败路径释放 candidate refs 即可。
+
+`SceneOutputResource` 是不可变、引用计数的 Render Thread 对象，包含 ID、revision、extent、linear
+`R8G8B8A8UNorm` texture、RTV 与 SRV。非零 extent 使用 `RenderTarget | ShaderResource` usage，初始状态为
+`Common`，具体 pass 显式 transition。resize 创建新对象并原子替换 cache entry。`PreparedRenderFrame` 强持有
+`SceneOutputResource` 直到所有 recording worker 结束；closed command list 强持有实际 texture/view/pipeline 等
+RHI refs；RHI frame slot 强持有 command list 直到 queue completion；RHI resource 析构再按 last-use completion
+进入 backend deferred deletion。RHI 层不认识也不直接持有 renderscene 的 `SceneOutputResource`。
+
+`extent == {0,0}` 是一个有效 Live 逻辑版本，但不创建 texture/view。所有 Offscreen 观察（包括 zero extent）都
+必须先解析 cache 中的 Live entry，并要求 ID 与 extent 完全匹配；unknown、Released 或尺寸不匹配均使当前帧以
+`InvalidArgument` 失败。zero extent 只跳过 Scene lookup、Prepare、texture/view 与 GPU pass，不跳过 family、cache
+或 ownership validation。恢复到非零 extent 必须发送更高 revision 的 `Update` 并创建新版本；禁止退回旧尺寸或
+临时隐式创建。Release 后同 packet 再观察也失败。
+
+Present 采用显式注册方案：composition root 创建 `RenderViewport` 时一次性注册稳定
+`ViewportId -> Present SceneOutputId`，映射保留到 viewport shutdown。该 Present ID 禁止出现在
+`SceneOutputUpdate`、Offscreen cache、另一 viewport 或另一类型的 observation 中；packet validation 必须按注册
+映射核对 ownership。viewport 销毁后 Present ID 同样不复用。
+
+Present 的权威 extent 来自成功 `begin_frame()` 后的 `RHIFrameContext::width()/height()`，不能只相信 acquire 前的
+window/requested extent。处理顺序为：packet 与 Offscreen 逻辑预验证、Apply output updates、对需要 Present 的
+viewport acquire frame、核对 Present requested extent 与 acquired extent、再 Prepare/record。若 acquire 成功但
+extent 不匹配，必须 `abort_frame()` 消费 acquire synchronization，并以携带 `OutOfDate` 的可恢复 frame failure
+结束；不得修改 immutable packet 或用 acquired extent 偷换 ViewRect。`NotReady/OutOfDate` 的 acquire 失败沿用
+viewport 可恢复路径，`Suboptimal` 在已完成 submit/present 时可成功完成本帧并提示后续重建。
+
+`SceneOutputApplyReport` 保存原始 `RHIStatus`；`RenderFrameExecutionStatus` 与跨线程
+`RenderFrameCompletionResult` 增加 `RHIErrorCode rhi_error_code = RHIErrorCode::None`，非 RHI 错误保持 `None`，
+dispatcher 原样传递 code 与 message。Offscreen create/view 路径完整分类为：`InvalidArgument`、`Unsupported`、
+`OutOfMemory`
+映射 `FrameFailed` 且整批 cache 状态不变（`OutOfMemory` 不承诺一定可重试，由上层策略决定）；`DeviceLost` 与
+`BackendFailure` 映射 `FatalRenderer`；该路径若异常返回 viewport 专用的 `NotReady`、`OutOfDate` 或 `Suboptimal`，
+视为 backend contract violation 并映射 `FatalRenderer`，同时保留原始 code 便于诊断。Present 路径仍按既有语义
+把 `NotReady`/`OutOfDate` 映射为 recoverable `FrameFailed`、已完成 present 的 `Suboptimal` 映射为带原始 code 的
+成功帧；terminal code 不降级。
+
+第一版 Editor-ready 内容为 Tone Mapping 后的 linear SDR `RGBA8_UNorm`。同一 packet 中先写 Offscreen、
+transition 为 `ShaderResourceGraphics`，再由主窗口 ImGui 通过稳定 `ImGuiTextureId` 采样；不把 RHI texture 指针
+传回 Game Thread。
+
+跨后端映射保持在 backend：Vulkan 使用 color-attachment + sampled image usage 与显式 layout transition；D3D12
+使用允许 RTV 的 texture resource、RTV/SRV descriptor 与显式 state transition；D3D11 FL11_0 使用同一 texture 的
+RTV/SRV bind flags，并由 backend 在 pass 边界解除冲突 binding，公共 transition 仍用于 hazard validation。移动端
+`VulkanPortable v1` 不新增 feature 要求，runtime 必须查询 `R8G8B8A8UNorm` 同时支持 RenderTarget 与
+ShaderResource；不支持时返回 `Unsupported`，不得静默换格式或提高 profile。
 
 ## 8. Render Thread 与帧同步
 
@@ -315,6 +397,7 @@ struct RenderFramePacket
     FrameTiming timing;
     std::vector<RenderResourceUpdate> resource_updates;
     std::vector<RenderSceneUpdateBatch> scene_updates;
+    std::vector<SceneOutputUpdate> scene_output_updates;
     std::vector<ViewportFrame> viewport_frames;
 };
 ```
@@ -323,11 +406,13 @@ struct RenderFramePacket
 
 1. Apply resource updates；
 2. Apply all scene updates；
-3. Prepare all ViewFamilies；
-4. record uploads and passes；
-5. submit and present；
-6. complete frame completion；
-7. 才处理下一个 packet。
+3. 事务式 Apply Offscreen output updates；
+4. 预验证 Present/Offscreen ownership、Offscreen cache/extent 与 ViewFamily；
+5. acquire 所需 Present frame 并核对权威 extent，再 Prepare all ViewFamilies；
+6. record uploads and passes；
+7. submit and present；
+8. complete frame completion；
+9. 才处理下一个 packet。
 
 同一 packet 的 Apply 到 Submit 不与下一 packet交错，因此不需要公开 `freeze()/unfreeze()`。`PreparedRenderFrame` 必须只读并强持有资源；录制期间可使用内部 debug counter/assert 发现非法写，但不把 Freeze 变成架构 API。
 
@@ -355,7 +440,7 @@ struct RenderFramePacket
 5. 更新 Transform hierarchy与 world bounds
 6. 构建 SceneViewFamily / SceneView
 7. ImGui::Render()并深拷贝 ImGuiDrawPacket
-8. 收集资源更新与 RenderSceneUpdateBatch
+8. 收集资源更新、RenderSceneUpdateBatch 与 SceneOutputUpdate
 9. enqueue RenderFramePacket(N)
 10. 按 lag策略等待 completion
 ```
@@ -368,7 +453,8 @@ struct RenderFramePacket
 
 1. Main Thread创建 OS Window与 surface descriptor；
 2. 启动 `RenderFrameDispatcher`；
-3. 渲染执行线程创建 RHI device、viewport、RenderResourceCache；
+3. 渲染执行线程创建 RHI device、注册 Present ID 的 RenderViewport、RenderResourceCache 与
+   SceneOutputResourceCache；
 4. bootstrap上传 Error Material、placeholder textures与 ImGui font；
 5. bootstrap submit完成后才开放正常帧。
 
@@ -637,11 +723,13 @@ spot_attenuation =
 - `RenderScene`；
 - `RenderViewport` / `RHIViewportContext`；
 - `RenderResourceCache`；
-- viewport与 SceneOutput render resources。
+- viewport resources 与 `SceneOutputResourceCache`；
 
 每个 `SceneViewFamily`临时创建一个 `ForwardSceneRenderer`，类似 UE 的每帧 `FSceneRenderer`。它持有 visibility、selected lights、MeshBatch/DrawPacket、prepared pass inputs与录制结果。未来工厂可创建 `DeferredSceneRenderer`；在未实现时请求 Deferred必须返回 `Unsupported`。
 
-`PreparedRenderFrame`是 Apply结束后的只读帧快照。它强持有所有 recording所需资源，worker不得回读可变 RenderScene。Render Thread必须等同帧所有 worker结束后才处理下一 packet；第一阶段无 worker，仍遵守此 contract。
+`PreparedRenderFrame`是 Apply结束后的只读帧快照。它强持有所有 recording 所需的 scene、content resource 与
+`SceneOutputResource` 版本，worker 不得回读可变 RenderScene 或 output cache。Render Thread 必须等同帧所有
+worker 结束后才处理下一 packet；第一阶段无 worker，仍遵守此 contract。
 
 ## 15. 显式 Pass 与资源
 
@@ -898,6 +986,11 @@ Multithreaded=false, OneFrameThreadLag=false
 - 灯光选择、稳定排序与 `0..8`截断；
 - Opaque/Translucent packet排序；
 - Material revision、placeholder与旧版本生命周期；
+- SceneOutput create/resize/zero extent/release、equal/lower revision、release tombstone、批次原子性与旧版本保活；
+- SceneOutput release + 多 create 中途 RHI failure 的零部分发布，以及旧版本从 Prepared、command list 到
+  frame-slot completion 的引用释放顺序；
+- zero unknown/released/mismatched observation 与 Present ID/update/viewport ownership 冲突；
+- SceneOutput 每个 `RHIErrorCode` 的 frame/fatal 映射及 completion 原始 code 传递；
 - queue容量、lag、flush、shutdown与 completion必达；
 - ImGui DrawPacket深拷贝、clip、offset与 invalid TextureId；
 - RHI `RGBA16F render→sample`；
@@ -952,6 +1045,7 @@ Multithreaded=false, OneFrameThreadLag=false
 ### 批次 6：SceneView与 Forward Prepare
 
 - ViewFamily/View与矩阵；
+- SceneOutput update、持久 Offscreen cache 与 version lifecycle；
 - Frustum Culling与灯光选择；
 - MeshBatch、ForwardMeshProcessor与 MeshDrawPacket；
 - Opaque/Translucent排序；
