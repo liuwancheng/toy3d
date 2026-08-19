@@ -33,8 +33,11 @@ namespace toy3d
         ValueType value_ = 0;
     };
 
+    // 这些空 Tag 只在编译期区分 ID 所属的领域，不会被实例化，也不占用运行时内存。
+    // 因此 PrimitiveId 与 LightId 即使底层数值相同，仍是不能互相传递的不同 C++ 类型。
     struct PrimitiveIdTag;
     struct LightIdTag;
+    struct RenderFrameIdTag;
     struct RenderSceneIdTag;
     struct ViewportIdTag;
     struct SceneOutputIdTag;
@@ -44,6 +47,7 @@ namespace toy3d
 
     using PrimitiveId = RenderId<PrimitiveIdTag>;
     using LightId = RenderId<LightIdTag>;
+    using RenderFrameId = RenderId<RenderFrameIdTag>;
     using RenderSceneId = RenderId<RenderSceneIdTag>;
     using ViewportId = RenderId<ViewportIdTag>;
     using SceneOutputId = RenderId<SceneOutputIdTag>;
@@ -57,6 +61,7 @@ namespace toy3d
         static_assert(std::is_same<typename Id::ValueType, std::uint64_t>::value,
             "allocate_render_id requires a Toy3d RenderId type");
 
+        // 函数模板中的 static 变量按 Id 类型分别存在，使每类 RenderId 拥有独立的单调分配序列。
         static std::atomic<std::uint64_t> next_value{1};
         std::uint64_t value = next_value.load(std::memory_order_relaxed);
         while (value != 0)

@@ -1,0 +1,56 @@
+#pragma once
+
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <string>
+
+namespace toy3d
+{
+    enum class RenderFrameCompletionState
+    {
+        Pending,
+        Succeeded,
+        Failed,
+        Cancelled
+    };
+
+    struct RenderFrameCompletionResult
+    {
+        RenderFrameCompletionState state = RenderFrameCompletionState::Pending;
+        std::string message;
+
+        explicit operator bool() const
+        {
+            return state == RenderFrameCompletionState::Succeeded;
+        }
+    };
+
+    class RenderFrameCompletion final
+    {
+    public:
+        RenderFrameCompletion() = default;
+
+        RenderFrameCompletion(const RenderFrameCompletion&) = delete;
+        RenderFrameCompletion& operator=(const RenderFrameCompletion&) = delete;
+
+        bool complete_success();
+        bool complete_failure(std::string message);
+        bool cancel(std::string message);
+
+        RenderFrameCompletionResult wait() const;
+        RenderFrameCompletionResult result() const;
+        bool is_complete() const;
+
+    private:
+        // Producer and Render role share this object; the first terminal result
+        // wins so a late failure cannot rewrite an already observed frame outcome.
+        bool complete(RenderFrameCompletionState state, std::string message);
+
+        mutable std::mutex mutex_;
+        mutable std::condition_variable completed_;
+        RenderFrameCompletionResult result_;
+    };
+
+    using RenderFrameCompletionRef = std::shared_ptr<RenderFrameCompletion>;
+}

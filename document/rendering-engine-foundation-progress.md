@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`5fbf01c`（`完善 RHI viewport 可恢复状态`）。
+- 基线 commit：`86f1e76`（`完善 GameScene 渲染同步基础`）。
 - 当前分支：`main`。
-- 工作区状态：仅包含已独立验证的 FND-2C 失败帧闭环、独立 RHI status 测试与对应
-  文档同步；尚未提交。
+- 工作区状态：仅包含已独立验证的 FND-4A Render Frame Transport 纯 CPU contract、独立测试与
+  对应文档同步；尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -29,6 +29,10 @@
 | FND-2A | Renderer format contract 与 capability 验证 | 完成 | Debug 全量构建、CTest 9/9 与公共 RHI format contract 测试通过 |
 | FND-2B | Viewport resize 与 recoverable status | 完成 | Debug 全量构建、CTest 10/10 与公共 viewport status 测试通过 |
 | FND-2C | `abort_frame()` 完整失败帧语义 | 完成 | Debug 重新配置、Editor/测试构建、CTest 10/10 与 diff 检查通过 |
+| FND-3A | GameScene hierarchy 与 Transform | 完成 | Editor/GameScene 构建、CTest 11/11 与 hierarchy/transform 测试通过 |
+| FND-3B | GameScene 可渲染 Component 与资产引用 | 完成 | Editor/GameScene 构建、CTest 11/11 与纯 CPU 资产 contract 测试通过 |
+| FND-3C | Render 注册、dirty 合并与 owned-value batch | 完成 | Editor/GameScene 构建、CTest 11/11 与同步协议测试通过 |
+| FND-4A | RenderFramePacket、completion 与 bounded queue | 完成 | VS 2022/x64/Vulkan 配置、Editor/定向构建、CTest 12/12 与 transport 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -521,3 +525,56 @@ D3D11/D3D12、非 Debug 配置与 GPU/窗口运行态；本工作包为纯 CPU G
 
 下一工作包为 FND-4A：先设计并实现 `RenderFramePacket`、completion 与 bounded queue 的纯 CPU
 contract；仍不在该包创建真实 RHI Render Thread 或进入 RenderScene Apply。
+
+## 17. FND-4A：Render Frame Packet、Completion 与 Bounded Queue
+
+### 17.1 实现边界与关键决定
+
+- `rendercore/render_id.h` 新增强类型 `RenderFrameId`，与 Scene、Viewport 及资源身份保持类型隔离；
+- `RenderFramePacket` 持有 frame identity、有限且非负的 timing、`RenderSceneUpdateBatch` owned-value
+  集合与共享 completion。packet 禁止复制、允许移动，避免一个 frame identity/completion 被意外复制成
+  两次提交；
+- 本包只聚合已经定型的 Scene 更新。尚未实现的 `RenderResourceUpdate`、`ViewportFrame` 与 ImGui
+  payload 不建立占位 wrapper，待对应领域 contract 确认后再加入同一 packet；
+- `RenderFrameCompletion` 使用 mutex/condition variable 实现一次性 first-terminal-result-wins 握手，
+  区分 `Succeeded`、`Failed` 与 `Cancelled`，并保留 owned diagnostic；重复完成不能改写首个结果；
+- `RenderFrameQueue` 固定只保存一个 queued packet。单一 Render role consumer 取走该 packet 后形成
+  一个 processing 加一个 queued 的设计上限；enqueue 在容量满时背压，不创建无界积压；
+- `stop_accepting()` 停止新提交但允许已有 packet 优雅排空；`abort_pending()` 只取消仍由 queue 持有的
+  packet，并在锁外完成 completion。已经 dequeue 的 processing packet 仍由 Render role 负责完成，queue
+  不伪造其结果；
+- 本包没有创建 OS/通用 Thread、Event、Fence、TaskSystem 或全局 singleton，也没有接入 RHI、
+  RenderScene Apply、resource upload、ViewFamily、one-frame lag policy 或 single-thread fallback。
+
+### 17.2 测试与验证
+
+`Toy3dRenderFrameTransportTests` 覆盖：
+
+- completion pending/wait、成功、失败、诊断保留与重复完成 first-wins；
+- packet owned Scene batch 与 FIFO 移交；
+- 一个 queued packet 的 bounded backpressure，以及 dequeue 后释放容量；
+- graceful stop 排空、停止后提交必达 cancellation、abort pending cancellation；
+- invalid frame identity/NaN timing 拒绝且 completion 必达。
+
+主 agent 定向构建与测试通过。一次沙箱内增量构建因 Windows SDK 用户目录访问被拒绝而未进入编译，
+获准在沙箱外执行相同构建后成功；定向 CTest 1/1 通过。新增文件无行尾空白，公共 transport 头未发现
+Vulkan、D3D11 或 D3D12 类型。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在 Windows、Visual Studio 17 2022、x64、
+Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+  -DTOY3D_ENABLE_VULKAN_RHI=ON`；
+- `cmake --build build --config Debug --target Toy3dEditor`；
+- `cmake --build build --config Debug --target Toy3dRenderFrameTransportTests`；
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`；
+- `ctest --test-dir build -C Debug --output-on-failure`，12/12 通过；
+- `git diff --check` 无 whitespace error，仅有两个既有 tracked 文件的 LF→CRLF 提示。
+
+验证者确认最新 move-only ownership 收敛已进入构建对象，验证前后 source worktree 状态集合一致，未修改
+实现、测试或文档。未覆盖 D3D11/D3D12、macOS、Android、Vulkan 运行画面、TSAN 或压力测试；本包是
+纯 CPU transport contract，不把构建结果描述为 Render Thread 或 Renderer 运行验收。
+
+下一工作包为 FND-4B：在本 transport contract 上实现 Render role lifecycle、one-frame lag 与强制同步的
+single-thread fallback，先以 fake Render role 覆盖成功、处理失败、flush 和 shutdown completion 必达；
+仍不在该包进入真实 RHI 初始化或 RenderScene Apply。

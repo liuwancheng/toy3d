@@ -1,0 +1,31 @@
+#pragma once
+
+#include "gamescene/render_scene_update.h"
+#include "rendercore/render_id.h"
+#include "renderscene/render_frame_completion.h"
+
+#include <vector>
+
+namespace toy3d
+{
+    struct FrameTiming
+    {
+        double delta_seconds = 0.0;
+        double total_seconds = 0.0;
+    };
+
+    struct RenderFramePacket
+    {
+        RenderFramePacket() = default;
+
+        RenderFramePacket(const RenderFramePacket&) = delete;
+        RenderFramePacket& operator=(const RenderFramePacket&) = delete;
+        RenderFramePacket(RenderFramePacket&&) = default;
+        RenderFramePacket& operator=(RenderFramePacket&&) = default;
+
+        RenderFrameId frame_id;
+        FrameTiming timing;
+        std::vector<RenderSceneUpdateBatch> scene_updates;
+        RenderFrameCompletionRef completion;
+    };
+}

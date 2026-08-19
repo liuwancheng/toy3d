@@ -242,6 +242,20 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dGameSceneTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.GameScene COMMAND Toy3dGameSceneTests)
 
+    add_executable(Toy3dRenderFrameTransportTests
+        "tests/render_frame_transport_tests.cpp")
+    target_compile_features(Toy3dRenderFrameTransportTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRenderFrameTransportTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRenderFrameTransportTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRenderFrameTransportTests
+        PRIVATE Toy3dRuntime Threads::Threads)
+    add_test(NAME Toy3dRuntime.RenderFrameTransport
+        COMMAND Toy3dRenderFrameTransportTests)
+
     if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
         add_executable(Toy3dShaderMapEntryLoaderTests
             "tests/shader_map_entry_loader_tests.cpp")
