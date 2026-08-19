@@ -56,6 +56,8 @@
 - buffer/texture descriptor 表达 dimension、extent、format、mip、layer、sample count、usage、CPU access、initial access、debug name，并验证非法组合。
 - buffer 保持统一的 `RHIBuffer` 资源类型，以 usage flags 表达允许用途；只有 structured buffer 的 `structure_stride` 属于资源创建描述符，vertex stride 和 index format 属于 binding/view 语义。
 - SRV/UAV/RTV/DSV 是独立 view，描述 format、subresource range、depth/stencil 只读属性；render pass 引用 view。
+- format capability validation 必须覆盖一次创建所请求的全部 usage 与 sample count，不能用“任一 usage 支持”代替组合验证。第一版 Renderer 的 `R16G16B16A16Float` 必须同时支持 `RenderTarget | ShaderResource`；不满足时返回可诊断的 `Unsupported`。
+- `D24UNormS8UInt` SceneDepth 必须同时支持 `DepthStencil | ShaderResource`。公共 DSV 使用 `D24UNormS8UInt` 与 `DepthStencil` aspect，公共 sampled view 保持同一 format 并只选择 `Depth` aspect；D3D11/D3D12 的 typeless resource、DSV format 与 depth SRV format 拆分属于 backend 内部映射。缺少组合能力或不支持 depth-only sampled view 时必须返回可诊断的 `Unsupported`，不得退化为采样 stencil 或静默成功。
 - 公共强引用表达 CPU 所有权；录制单元保留 GPU 工作所需资源。最终释放进入按 queue completion value 管理的 deferred-deletion queue。
 - command/descriptor pool、upload ring、临时 framebuffer 按 frame-in-flight/completion value 分代，GPU 完成后才能复用。
 - initial data 包含 size、row/slice pitch、所有权和消费时机。

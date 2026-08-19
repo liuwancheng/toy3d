@@ -46,6 +46,50 @@ namespace toy3d
             return first_slot < second_end && second_slot < first_end;
         }
 
+        bool is_depth_format(RHIFormat format)
+        {
+            return format == RHIFormat::D16UNorm ||
+                format == RHIFormat::D24UNormS8UInt ||
+                format == RHIFormat::D32Float ||
+                format == RHIFormat::D32FloatS8UInt;
+        }
+
+        bool has_stencil(RHIFormat format)
+        {
+            return format == RHIFormat::D24UNormS8UInt ||
+                format == RHIFormat::D32FloatS8UInt;
+        }
+
+        RHIFormatUsage required_format_usage(RHIResourceUsage usage)
+        {
+            RHIFormatUsage result = RHIFormatUsage::None;
+            if (rhi_has_any_flag(usage, RHIResourceUsage::ShaderResource))
+            {
+                result = rhi_enum_or(result, RHIFormatUsage::Sampled);
+            }
+            if (rhi_has_any_flag(usage, RHIResourceUsage::UnorderedAccess))
+            {
+                result = rhi_enum_or(result, RHIFormatUsage::Storage);
+            }
+            if (rhi_has_any_flag(usage, RHIResourceUsage::RenderTarget))
+            {
+                result = rhi_enum_or(result, RHIFormatUsage::RenderTarget);
+            }
+            if (rhi_has_any_flag(usage, RHIResourceUsage::DepthStencil))
+            {
+                result = rhi_enum_or(result, RHIFormatUsage::DepthStencil);
+            }
+            if (rhi_has_any_flag(usage, RHIResourceUsage::CopySource))
+            {
+                result = rhi_enum_or(result, RHIFormatUsage::CopySource);
+            }
+            if (rhi_has_any_flag(usage, RHIResourceUsage::CopyDestination))
+            {
+                result = rhi_enum_or(result, RHIFormatUsage::CopyDestination);
+            }
+            return result;
+        }
+
         RHIResult<RHIResourceBindingType> binding_value_type(const RHIBindingValue& value)
         {
             const std::uint32_t populated_fields =
@@ -178,6 +222,32 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture format must be specified.");
         }
+        if (desc.usage == RHIResourceUsage::None)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture usage must not be None.");
+        }
+        if (rhi_has_any_flag(
+                desc.usage,
+                rhi_enum_or(
+                    rhi_enum_or(RHIResourceUsage::VertexBuffer, RHIResourceUsage::IndexBuffer),
+                    rhi_enum_or(RHIResourceUsage::UniformBuffer, RHIResourceUsage::IndirectArguments))))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Textures cannot use vertex, index, uniform-buffer, or indirect-argument usage.");
+        }
+        if (rhi_has_any_flag(desc.usage, RHIResourceUsage::RenderTarget) && is_depth_format(desc.format))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Depth/stencil formats cannot use render-target usage.");
+        }
+        if (rhi_has_any_flag(desc.usage, RHIResourceUsage::DepthStencil) && !is_depth_format(desc.format))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Depth-stencil usage requires a depth/stencil format.");
+        }
         if (desc.sample_count > 1 && desc.mip_levels > 1)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Multisampled textures cannot have multiple mip levels.");
@@ -185,6 +255,31 @@ namespace toy3d
         if (desc.dimension == RHIResourceDimension::Texture3D && desc.array_layers != 1)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "3D textures cannot have array layers.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_texture_format_capabilities(
+        const RHITextureDesc& desc,
+        const RHIFormatCapabilities& capabilities)
+    {
+        const RHIStatus desc_status = validate_texture_desc(desc);
+        if (!desc_status)
+        {
+            return desc_status;
+        }
+        const RHIFormatUsage required_usage = required_format_usage(desc.usage);
+        if (!rhi_has_all_flags(capabilities.usage, required_usage))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::Unsupported,
+                "Texture format does not support every requested usage.");
+        }
+        if ((capabilities.supported_sample_counts & desc.sample_count) == 0)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::Unsupported,
+                "Texture format does not support the requested sample count.");
         }
         return RHIStatus::success();
     }
@@ -254,6 +349,12 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture view format must be specified.");
         }
+        if (view_desc.format != texture_desc.format)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::Unsupported,
+                "Texture views currently require the texture's public format; backend typeless storage remains internal.");
+        }
         const RHIStatus range_status = validate_texture_subresource_range(
             texture_desc, view_desc.subresources);
         if (!range_status)
@@ -275,6 +376,44 @@ namespace toy3d
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Depth/stencil read-only flags are valid only for depth-stencil views.");
+        }
+        const bool depth_format = is_depth_format(view_desc.format);
+        if (view_desc.type == RHIResourceViewType::RenderTarget ||
+            view_desc.type == RHIResourceViewType::UnorderedAccess)
+        {
+            if (depth_format || view_desc.subresources.aspect != RHITextureAspect::Color)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Render-target and unordered-access views require a color format and color aspect.");
+            }
+        }
+        else if (view_desc.type == RHIResourceViewType::DepthStencil)
+        {
+            const RHITextureAspect required_aspect = has_stencil(view_desc.format)
+                ? RHITextureAspect::DepthStencil
+                : RHITextureAspect::Depth;
+            if (!depth_format || view_desc.subresources.aspect != required_aspect)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Depth-stencil views must select every aspect present in the depth/stencil format.");
+            }
+        }
+        else if (depth_format)
+        {
+            if (view_desc.subresources.aspect != RHITextureAspect::Depth)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Sampled depth/stencil textures expose a depth-only shader-resource view.");
+            }
+        }
+        else if (view_desc.subresources.aspect != RHITextureAspect::Color)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Color texture views require the color aspect.");
         }
         return RHIStatus::success();
     }

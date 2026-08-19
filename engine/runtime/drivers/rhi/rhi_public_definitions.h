@@ -21,6 +21,15 @@ namespace toy3d
         return (static_cast<Underlying>(value) & static_cast<Underlying>(flags)) != 0;
     }
 
+    template<typename T>
+    constexpr bool rhi_has_all_flags(T value, T flags)
+    {
+        static_assert(std::is_enum<T>::value, "RHI flag type must be an enum.");
+        using Underlying = typename std::underlying_type<T>::type;
+        const Underlying flag_bits = static_cast<Underlying>(flags);
+        return (static_cast<Underlying>(value) & flag_bits) == flag_bits;
+    }
+
     enum class RHIFormat : std::uint16_t
     {
         Unknown,

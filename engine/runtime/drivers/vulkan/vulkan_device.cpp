@@ -788,6 +788,14 @@ namespace toy3d
         {
             result.usage = rhi_enum_or(result.usage, RHIFormatUsage::VertexBuffer);
         }
+        if ((features & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT) != 0)
+        {
+            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::CopySource);
+        }
+        if ((features & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) != 0)
+        {
+            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::CopyDestination);
+        }
         result.supported_sample_counts = VK_SAMPLE_COUNT_1_BIT;
         return result;
     }
@@ -934,6 +942,13 @@ namespace toy3d
                 RHIErrorCode::Unsupported,
                 "The requested RHI texture format has no Vulkan mapping.");
         }
+        const RHIStatus format_status = validate_texture_format_capabilities(
+            desc, format_capabilities(desc.format));
+        if (!format_status)
+        {
+            return RHIResult<RHITextureRef>::failure(
+                format_status.code(), format_status.message());
+        }
         const VkImageUsageFlags usage = to_vk_image_usage(desc.usage);
         if (usage == 0)
         {
@@ -950,6 +965,32 @@ namespace toy3d
         if (!sample_count)
         {
             return RHIResult<RHITextureRef>::failure(sample_count.status().code(), sample_count.status().message());
+        }
+
+        VkImageFormatProperties image_format_properties{};
+        const VkResult format_properties_result = vkGetPhysicalDeviceImageFormatProperties(
+            vk_physical_device,
+            format,
+            image_type.value(),
+            VK_IMAGE_TILING_OPTIMAL,
+            usage,
+            0,
+            &image_format_properties);
+        if (format_properties_result == VK_ERROR_FORMAT_NOT_SUPPORTED ||
+            (format_properties_result == VK_SUCCESS &&
+                (image_format_properties.sampleCounts & sample_count.value()) == 0))
+        {
+            return RHIResult<RHITextureRef>::failure(
+                RHIErrorCode::Unsupported,
+                "Vulkan does not support the requested texture format, combined usage, and sample count.");
+        }
+        if (format_properties_result != VK_SUCCESS)
+        {
+            return RHIResult<RHITextureRef>::failure(
+                make_vulkan_status(
+                    format_properties_result,
+                    "vkGetPhysicalDeviceImageFormatProperties").code(),
+                "vkGetPhysicalDeviceImageFormatProperties failed while validating texture support.");
         }
 
         VkImageCreateInfo create_info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};

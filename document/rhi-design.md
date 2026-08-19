@@ -233,6 +233,13 @@ RHIBuffer
 
 View descriptor 表达 format、mip/layer 范围、aspect 和 depth/stencil read-only 属性。Render pass 只能引用 RTV/DSV view，不直接引用 texture。
 
+公共 view format 表达引擎语义而不是原生存储格式。`D24UNormS8UInt` texture 的 DSV 选择
+`DepthStencil` aspect，供 Shader 读取的 SRV 保持相同公共 format 并只选择 `Depth` aspect；
+D3D11/D3D12 使用 typeless resource 及不同原生 DSV/SRV format 的细节由 backend 封装。
+texture 创建必须验证 format capability 覆盖所请求的全部 usage 与 sample count；第一版 Renderer
+要求 `R16G16B16A16Float` 支持 `RenderTarget | ShaderResource`，并要求 `D24UNormS8UInt`
+支持 `DepthStencil | ShaderResource`。缺少任一能力必须返回可诊断的 `Unsupported`。
+
 后端映射如下：
 
 | 公共对象 | Vulkan | D3D11 | D3D12 |

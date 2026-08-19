@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`87c6db7`（`完善 RHI Binding 聚合与渲染施工规划`）。
+- 基线 commit：`ed47a6d`（`修复 Windows Editor 关闭崩溃`）。
 - 当前分支：`main`。
-- 工作区状态：仅包含已验证的 BASE-1 Windows shutdown 生命周期修复与对应进度文档同步；
-  提交前不得在其上继续叠加 Renderer 新功能。
+- 工作区状态：仅包含已独立验证的 FND-2A format contract、Vulkan capability validation、
+  独立 RHI 测试与对应文档同步；尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -26,7 +26,7 @@
 | BIND-AGG | 五逻辑 Binding Group 的 Vulkan physical set 聚合 | 完成 | 自动测试与两轮 Editor/Vulkan draw/present 冒烟通过 |
 | FND-1 | Foundation 文档与 RDG 路线收敛 | 完成 | 术语、链接、Material 与 RDG 路线一致性检查通过 |
 | BASE-1 | Windows Editor shutdown 崩溃诊断与修复 | 完成 | Debug 构建、CTest 8/8、两轮 `WM_CLOSE` 退出码 0 |
-| FND-2A | Renderer format contract 与 capability 验证 | 未开始 | — |
+| FND-2A | Renderer format contract 与 capability 验证 | 完成 | Debug 全量构建、CTest 9/9 与公共 RHI format contract 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -119,7 +119,65 @@ sub-agent 实际执行并通过：
 未覆盖系统关机/会话注销、macOS、Android、D3D11、D3D12 和视觉像素正确性。BASE-1
 只证明当前 Windows/Vulkan Editor 的正常窗口关闭路径与 BIND-AGG draw/present 冒烟。
 
-## 6. 已知但不在当前工作包解决
+## 6. 已完成工作包：FND-2A
+
+### 6.1 实现边界与关键决定
+
+- 公共 validation 新增 texture format capability 组合检查，创建所请求的全部 usage 必须同时
+  受支持，sample count 也必须匹配；缺少任一能力返回带诊断信息的 `Unsupported`。
+- `R16G16B16A16Float` SceneColor contract 固定验证
+  `RenderTarget | ShaderResource`，RTV 与 SRV 均使用 `Color` aspect。
+- `D24UNormS8UInt` SceneDepth contract 固定验证
+  `DepthStencil | ShaderResource`；DSV 使用 `DepthStencil` aspect，sampled view 保持同一公共
+  format 并只选择 `Depth` aspect。公共层不暴露 D3D typeless/native view format。
+- texture descriptor 现在拒绝 `None`、buffer-only usage、color format 的 `DepthStencil` usage
+  以及 depth/stencil format 的 `RenderTarget` usage；view validation 统一拒绝不兼容的 format、
+  aspect、view type 与 read-only flag 组合。
+- Vulkan format capability 补齐 transfer usage 报告；texture 创建在分配前先执行公共组合检查，
+  再通过 `vkGetPhysicalDeviceImageFormatProperties` 精确复核 native format、组合 image usage 与
+  sample count，不支持路径不会进入 `vkCreateImage`。
+- 新增 `Toy3dRHIFormatTests`，仅依赖公共 RHI descriptor/capability contract，不依赖
+  RenderScene、窗口或旧 `test_pass`。
+
+跨后端可实现性结论：
+
+- Vulkan 使用同 format 的 attachment view 与 depth-aspect sampled view，不要求
+  separate depth/stencil layouts；`D24UNormS8UInt` 在 `VulkanPortable v1` 中仍是可选格式，
+  由 runtime capability 决定是否支持，不提升移动基线；
+- D3D11 FL11_0 可在 backend 内使用 typeless depth resource，分别创建 DSV 与 depth-only SRV；
+- D3D12 同样由 backend 管理 typeless resource 与 native DSV/SRV format，并保持公共 contract
+  不变；
+- D3D11、D3D12 与移动设备本轮只完成公共可实现性评估，未实现 backend 或运行验收。
+
+### 6.2 修改文件
+
+- 公共 RHI：`rhi_public_definitions.h`、`rhi_descriptors.h/.cpp`；
+- Vulkan backend：`vulkan_device.cpp`；
+- 独立测试与登记：`tests/rhi_format_tests.cpp`、`engine/runtime/CMakeLists.txt`；
+- 长期 contract：`toy3d-rhi-requirements.md`、`rhi-design.md`；
+- 施工台账：本文件。
+
+未修改 viewport resize、recoverable status、`abort_frame()`、RenderScene、旧 `test_pass`、
+World、Render Thread、Forward Renderer、RDG、Scheduler 或 TaskSystem。
+
+### 6.3 独立验证证据
+
+独立 sub-agent 使用 `verify-toy3d-build`，在 Windows、Visual Studio 17 2022、x64、Debug、
+`BUILD_TESTING=ON` 环境实际执行：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON`；
+- `cmake --build build --config Debug --target Toy3dEditor`；
+- `cmake --build build --config Debug --target Toy3dRHIFormatTests`；
+- `cmake --build build --config Debug`；
+- `ctest --test-dir build -C Debug --output-on-failure`，9/9 通过，包含新增
+  `Toy3dRuntime.RHIFormat`；
+- `git diff --check`，无 whitespace error，仅有既有 LF→CRLF 提示。
+
+验证前后 HEAD 均为 `ed47a6d8910a8397686ee406bc78e7fbbde231ac`，工作区改动清单未被
+验证者改变。没有构建或测试失败。未覆盖 macOS、Android/移动 `VulkanPortable v1` 真机、
+D3D11、D3D12、真实 GPU format capability 运行时探测及画面像素正确性。
+
+## 7. 已知但不在当前工作包解决
 
 - 公共 RHI owner identity 尚未完成；同 backend 类型跨 device 的对象混用仍是既有 P1。
 - Global/View constant buffer 的具体字段属于后续 Renderer parameter contract，不在
@@ -129,29 +187,26 @@ sub-agent 实际执行并通过：
 - D3D11、D3D12、Android 与 macOS 不属于第一里程碑实际运行验收，但新增公共 contract
   必须持续保持可实现性。
 
-## 7. 建议提交拆分
+## 8. 建议提交
 
-实际提交前必须根据最终 diff 再核对文件归属，预期拆分为：
+FND-2A 的公共 contract、Vulkan validation、独立测试和文档互为一个工作包闭环，建议作为
+单一提交：
 
-1. `完善 RHI Binding Group 聚合`：Binding aggregation 设计、公共 RHI、Vulkan backend、
-   test pass、Shader 测试资产和对应自动测试；
-2. `收敛渲染基础架构执行路线`：Foundation 总设计，以及 RHI requirement/current review、
-   RHI design、Shader design 中与显式 Renderer、Material、TaskSystem 和 RDG 顺序相关的同步；
-3. 本施工台账随第 2 个提交进入仓库。
+- `完善 Renderer 格式能力验证`
 
-若同一文件同时包含两个提交的内容，提交前应按语义拆分 patch；不得用重写文件或丢弃改动
-来获得表面整洁。
+提交前再次核对 diff，不包含构建产物、本机配置或后续工作包内容。
 
-## 8. 下一工作包
+## 9. 下一工作包
 
-BASE-1 形成独立提交后，进入 `FND-2A`：
+FND-2A 提交并确认新基线后，再单独规划后续工作包：
 
-- 验证 `R16G16B16A16Float` 的 `RenderTarget | ShaderResource` capability；
-- 验证 `D24UNormS8UInt` 的 `DepthStencil` 与 depth-only sampled view contract；
-- 增加不依赖 RenderScene 的独立 RHI 测试；
-- 不同时处理 viewport resize、recoverable status 或 `abort_frame()`，这些继续拆为后续工作包。
+- viewport resize 与 recoverable status；
+- `abort_frame()` 的完整失败帧语义复核；
+- 继续保持它们与 World、RenderScene、Render Thread、Forward Renderer 分批施工。
 
-## 9. 每轮交接规则
+本轮在 FND-2A 完成后停止，不进入上述工作包。
+
+## 10. 每轮交接规则
 
 每轮开始读取 `AGENTS.md`、Foundation 总设计、本台账及当前工作包直接依赖的局部设计；
 每轮结束记录：

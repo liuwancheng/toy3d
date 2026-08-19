@@ -1,6 +1,7 @@
 #pragma once
 
 #include "math/math.h"
+#include "drivers/rhi/rhi_capabilities.h"
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "drivers/rhi/rhi_result.h"
 
@@ -328,6 +329,9 @@ namespace toy3d
         const RHIBufferDesc& desc,
         const RHIInitialData& initial_data);
     RHIStatus validate_texture_desc(const RHITextureDesc& desc);
+    RHIStatus validate_texture_format_capabilities(
+        const RHITextureDesc& desc,
+        const RHIFormatCapabilities& capabilities);
     RHIStatus validate_texture_subresource_range(
         const RHITextureDesc& texture_desc,
         const RHISubresourceRange& range);
