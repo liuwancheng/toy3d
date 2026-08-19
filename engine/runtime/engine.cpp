@@ -292,6 +292,8 @@ namespace toy3d
 		}
 		engine_exited = true;
 		shutdown_rhi();
+		window.reset();
+		platform.reset();
 		// todo: resource的释放、文件系统的关闭、游戏模块的关闭等
 		Logger::get_instance().exit();
 	}

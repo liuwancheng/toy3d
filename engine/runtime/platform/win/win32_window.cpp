@@ -33,7 +33,10 @@ namespace toy3d
         if (s_win_instance)
         {
             Win32PlatformInput* win32_input = static_cast<Win32PlatformInput*>(s_win_instance->get_platform_input());
-            win32_input->process_win32_msg(hwnd, uMsg, wParam, lParam);
+            if (win32_input)
+            {
+                win32_input->process_win32_msg(hwnd, uMsg, wParam, lParam);
+            }
         }
 
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -64,8 +67,16 @@ namespace toy3d
 
     Win32Window::~Win32Window()
     {
+        if (s_win_instance == this)
+        {
+            s_win_instance = nullptr;
+        }
+        if (platform_input)
+        {
+            platform_input->exit();
+            platform_input.reset();
+        }
         destroy_window();
-        s_win_instance = nullptr;
     }
 
     bool Win32Window::should_close()

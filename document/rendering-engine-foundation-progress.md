@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`2bd29f4`（`更新 Shader 系统加载架构设计`）。
+- 基线 commit：`87c6db7`（`完善 RHI Binding 聚合与渲染施工规划`）。
 - 当前分支：`main`。
-- 工作区状态：存在尚未提交的 Binding aggregation 代码、测试与设计，以及 Foundation
-  批次 1 的路线收敛文档；不得在其上继续叠加 Renderer 新功能。
+- 工作区状态：仅包含已验证的 BASE-1 Windows shutdown 生命周期修复与对应进度文档同步；
+  提交前不得在其上继续叠加 Renderer 新功能。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -23,9 +23,9 @@
 | 编号 | 名称 | 状态 | 完成证据 |
 |---|---|---|---|
 | BASE-0 | 当前工作区基线收拢 | 完成 | VS 2022/x64 重新配置、Debug 构建、CTest 8/8 与主 agent 复查 |
-| BIND-AGG | 五逻辑 Binding Group 的 Vulkan physical set 聚合 | 自动验证通过，运行验收未完成 | 构建与 CTest 通过；Editor 正常关闭崩溃 |
+| BIND-AGG | 五逻辑 Binding Group 的 Vulkan physical set 聚合 | 完成 | 自动测试与两轮 Editor/Vulkan draw/present 冒烟通过 |
 | FND-1 | Foundation 文档与 RDG 路线收敛 | 完成 | 术语、链接、Material 与 RDG 路线一致性检查通过 |
-| BASE-1 | Windows Editor shutdown 崩溃诊断与修复 | 未开始 | — |
+| BASE-1 | Windows Editor shutdown 崩溃诊断与修复 | 完成 | Debug 构建、CTest 8/8、两轮 `WM_CLOSE` 退出码 0 |
 | FND-2A | Renderer format contract 与 capability 验证 | 未开始 | — |
 
 ## 4. 已完成工作包：BASE-0
@@ -88,14 +88,38 @@ sub-agent 实际执行并通过：
   binding overlap 错误；
 - 未执行截图、像素级画面核对或完整多帧 validation suite；
 - 发送 `WM_CLOSE` 后进程以 `0xC000041D` 异常退出，Windows Event Log 同时记录底层
-  `0xC0000005`，因此 Editor 冒烟整体失败，BIND-AGG 尚不能宣称完整运行验收通过。
+  `0xC0000005`；这是 BASE-0 时的失败基线，已由 BASE-1 修复并复验。
 
 只读诊断将 fault offset 定位到 `std::map<int, KeyCode>::_Find_lower_bound`。证据指向
 `win32_input.cpp` 的静态 `win2keycode` 与 `Win32Window::~Win32Window -> DestroyWindow`
 关闭消息回调之间可能存在静态析构顺序 use-after-destruction。该判断尚无 debugger 调用栈
-最终确认，必须作为 BASE-1 的待验证假设，不能写成已确认根因。
+最终确认；BASE-1 随后通过生命周期修复与重复运行验收验证了该诊断方向。
 
-## 5. 已知但不在当前工作包解决
+## 5. 已完成工作包：BASE-1
+
+### 5.1 修复边界
+
+- `Engine::exit()` 在 RHI shutdown 后、Logger shutdown 前显式销毁 window 与 platform，
+  不再把 native window 拖到全局 `g_engine` 的静态析构阶段；
+- `Win32Window` 析构时先解除全局 window callback，再退出并销毁 platform input，最后
+  `DestroyWindow()`，窗口销毁消息不能访问处于析构中的对象；
+- Win32 key mapping 改为无动态析构的 `constexpr` 表，只在对应 keyboard/mouse message
+  分支执行翻译；鼠标按钮不再误用 `wParam` 的状态位作为 virtual-key code；
+- 未修改 RHI、Renderer、GameScene、RenderScene 或共享基础设施 contract。
+
+### 5.2 独立验证证据
+
+- VS 2022 x64、`BUILD_TESTING=ON` 重新配置成功；
+- `Toy3dEditor` Debug 与全部已登记测试目标构建成功；
+- `ctest --test-dir build -C Debug --output-on-failure`：8/8 通过；
+- 两轮通过主窗口句柄投递 `WM_CLOSE`，退出码均为 0；
+- 两轮均成功连接 RHI，无新增 Vulkan warning/error、Application Error/WER 或残留进程；
+- `git diff --check` 通过，仅有既有 LF→CRLF 提示。
+
+未覆盖系统关机/会话注销、macOS、Android、D3D11、D3D12 和视觉像素正确性。BASE-1
+只证明当前 Windows/Vulkan Editor 的正常窗口关闭路径与 BIND-AGG draw/present 冒烟。
+
+## 6. 已知但不在当前工作包解决
 
 - 公共 RHI owner identity 尚未完成；同 backend 类型跨 device 的对象混用仍是既有 P1。
 - Global/View constant buffer 的具体字段属于后续 Renderer parameter contract，不在
@@ -105,7 +129,7 @@ sub-agent 实际执行并通过：
 - D3D11、D3D12、Android 与 macOS 不属于第一里程碑实际运行验收，但新增公共 contract
   必须持续保持可实现性。
 
-## 6. 建议提交拆分
+## 7. 建议提交拆分
 
 实际提交前必须根据最终 diff 再核对文件归属，预期拆分为：
 
@@ -118,23 +142,16 @@ sub-agent 实际执行并通过：
 若同一文件同时包含两个提交的内容，提交前应按语义拆分 patch；不得用重写文件或丢弃改动
 来获得表面整洁。
 
-## 7. 下一工作包
+## 8. 下一工作包
 
-先执行 `BASE-1`，确认并修复 Windows Editor 正常关闭崩溃：
-
-- 使用 debugger 调用栈确认 fault 是否来自静态 `win2keycode` 生命周期；
-- 盘点 Win32 window/input 的既有所有权和消息分发，不新增重复平台基础设施；
-- 修复后要求 `WM_CLOSE` 正常退出为 0、无残留进程，并保留原有输入映射行为；
-- 不修改 RHI、Renderer、GameScene 或 RenderScene contract。
-
-BASE-1 完成并将当前两个交付单元形成清晰提交后，进入 `FND-2A`：
+BASE-1 形成独立提交后，进入 `FND-2A`：
 
 - 验证 `R16G16B16A16Float` 的 `RenderTarget | ShaderResource` capability；
 - 验证 `D24UNormS8UInt` 的 `DepthStencil` 与 depth-only sampled view contract；
 - 增加不依赖 RenderScene 的独立 RHI 测试；
 - 不同时处理 viewport resize、recoverable status 或 `abort_frame()`，这些继续拆为后续工作包。
 
-## 8. 每轮交接规则
+## 9. 每轮交接规则
 
 每轮开始读取 `AGENTS.md`、Foundation 总设计、本台账及当前工作包直接依赖的局部设计；
 每轮结束记录：
