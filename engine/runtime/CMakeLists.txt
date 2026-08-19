@@ -291,6 +291,19 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dRuntime.CameraViewportFrameBuilder
         COMMAND Toy3dCameraViewportFrameBuilderTests)
 
+    add_executable(Toy3dSceneOutputResourceCacheTests
+        "tests/scene_output_resource_cache_tests.cpp")
+    target_compile_features(Toy3dSceneOutputResourceCacheTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dSceneOutputResourceCacheTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dSceneOutputResourceCacheTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dSceneOutputResourceCacheTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.SceneOutputResourceCache
+        COMMAND Toy3dSceneOutputResourceCacheTests)
+
     add_executable(Toy3dRenderResourceCacheTests
         "tests/render_resource_cache_tests.cpp")
     target_compile_features(Toy3dRenderResourceCacheTests PRIVATE cxx_std_17)

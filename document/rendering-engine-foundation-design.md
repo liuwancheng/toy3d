@@ -325,6 +325,9 @@ metadata，再构造 staged metadata 与全部非零 candidate texture/RTV/SRV�
 replacement。这里的原子性只覆盖 `scene_output_updates` 的 cache 可见状态，不回滚此前已 Apply 的 resource/scene
 updates，也不承诺撤销已经成功但尚未发布的 native allocation；失败路径释放 candidate refs 即可。
 
+`Release` 的 extent 必须为 `{0,0}`，避免携带没有语义的旧尺寸；该 zero 只表示 release payload 为空，不创建新的
+zero-extent Live version。
+
 `SceneOutputResource` 是不可变、引用计数的 Render Thread 对象，包含 ID、revision、extent、linear
 `R8G8B8A8UNorm` texture、RTV 与 SRV。非零 extent 使用 `RenderTarget | ShaderResource` usage，初始状态为
 `Common`，具体 pass 显式 transition。resize 创建新对象并原子替换 cache entry。`PreparedRenderFrame` 强持有

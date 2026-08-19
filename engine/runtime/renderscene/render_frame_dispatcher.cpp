@@ -19,9 +19,12 @@ namespace toy3d
         }
     }
 
-    RenderFrameExecutionStatus RenderFrameExecutionStatus::success()
+    RenderFrameExecutionStatus RenderFrameExecutionStatus::success(
+        RHIErrorCode rhi_error_code)
     {
-        return {};
+        RenderFrameExecutionStatus result;
+        result.rhi_error_code = rhi_error_code;
+        return result;
     }
 
     bool RenderFrameExecutionStatus::is_fatal() const
@@ -29,18 +32,24 @@ namespace toy3d
         return outcome == RenderFrameExecutionOutcome::FatalRenderer;
     }
 
-    RenderFrameExecutionStatus RenderFrameExecutionStatus::frame_failure(std::string message)
+    RenderFrameExecutionStatus RenderFrameExecutionStatus::frame_failure(
+        std::string message,
+        RHIErrorCode rhi_error_code)
     {
         RenderFrameExecutionStatus result;
         result.outcome = RenderFrameExecutionOutcome::FrameFailed;
+        result.rhi_error_code = rhi_error_code;
         result.message = std::move(message);
         return result;
     }
 
-    RenderFrameExecutionStatus RenderFrameExecutionStatus::fatal_failure(std::string message)
+    RenderFrameExecutionStatus RenderFrameExecutionStatus::fatal_failure(
+        std::string message,
+        RHIErrorCode rhi_error_code)
     {
         RenderFrameExecutionStatus result;
         result.outcome = RenderFrameExecutionOutcome::FatalRenderer;
+        result.rhi_error_code = rhi_error_code;
         result.message = std::move(message);
         return result;
     }
@@ -354,18 +363,22 @@ namespace toy3d
 
         if (status)
         {
-            packet.completion->complete_success();
+            packet.completion->complete_success(status.rhi_error_code);
         }
         else
         {
             if (status.is_fatal())
             {
                 fail_thread(status.message);
-                packet.completion->complete_fatal(status.message);
+                packet.completion->complete_fatal(
+                    status.message,
+                    status.rhi_error_code);
             }
             else
             {
-                packet.completion->complete_failure(status.message);
+                packet.completion->complete_failure(
+                    status.message,
+                    status.rhi_error_code);
             }
         }
         return status;

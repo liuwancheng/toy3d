@@ -20,6 +20,7 @@ namespace toy3d
     struct RenderFrameExecutionStatus
     {
         RenderFrameExecutionOutcome outcome = RenderFrameExecutionOutcome::Succeeded;
+        RHIErrorCode rhi_error_code = RHIErrorCode::None;
         std::string message;
 
         explicit operator bool() const
@@ -29,9 +30,14 @@ namespace toy3d
 
         bool is_fatal() const;
 
-        static RenderFrameExecutionStatus success();
-        static RenderFrameExecutionStatus frame_failure(std::string message);
-        static RenderFrameExecutionStatus fatal_failure(std::string message);
+        static RenderFrameExecutionStatus success(
+            RHIErrorCode rhi_error_code = RHIErrorCode::None);
+        static RenderFrameExecutionStatus frame_failure(
+            std::string message,
+            RHIErrorCode rhi_error_code = RHIErrorCode::None);
+        static RenderFrameExecutionStatus fatal_failure(
+            std::string message,
+            RHIErrorCode rhi_error_code = RHIErrorCode::None);
     };
 
     class RenderFrameProcessor

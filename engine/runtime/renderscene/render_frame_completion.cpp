@@ -4,24 +4,40 @@
 
 namespace toy3d
 {
-    bool RenderFrameCompletion::complete_success()
+    bool RenderFrameCompletion::complete_success(RHIErrorCode rhi_error_code)
     {
-        return complete(RenderFrameCompletionState::Succeeded, {});
+        return complete(
+            RenderFrameCompletionState::Succeeded,
+            rhi_error_code,
+            {});
     }
 
-    bool RenderFrameCompletion::complete_failure(std::string message)
+    bool RenderFrameCompletion::complete_failure(
+        std::string message,
+        RHIErrorCode rhi_error_code)
     {
-        return complete(RenderFrameCompletionState::Failed, std::move(message));
+        return complete(
+            RenderFrameCompletionState::Failed,
+            rhi_error_code,
+            std::move(message));
     }
 
-    bool RenderFrameCompletion::complete_fatal(std::string message)
+    bool RenderFrameCompletion::complete_fatal(
+        std::string message,
+        RHIErrorCode rhi_error_code)
     {
-        return complete(RenderFrameCompletionState::Fatal, std::move(message));
+        return complete(
+            RenderFrameCompletionState::Fatal,
+            rhi_error_code,
+            std::move(message));
     }
 
     bool RenderFrameCompletion::cancel(std::string message)
     {
-        return complete(RenderFrameCompletionState::Cancelled, std::move(message));
+        return complete(
+            RenderFrameCompletionState::Cancelled,
+            RHIErrorCode::None,
+            std::move(message));
     }
 
     RenderFrameCompletionResult RenderFrameCompletion::wait() const
@@ -48,6 +64,7 @@ namespace toy3d
 
     bool RenderFrameCompletion::complete(
         RenderFrameCompletionState state,
+        RHIErrorCode rhi_error_code,
         std::string message)
     {
         {
@@ -57,6 +74,7 @@ namespace toy3d
                 return false;
             }
             result_.state = state;
+            result_.rhi_error_code = rhi_error_code;
             result_.message = std::move(message);
         }
         completed_.notify_all();

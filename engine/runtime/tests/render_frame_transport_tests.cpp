@@ -77,11 +77,15 @@ namespace
             state_->process_thread = std::this_thread::get_id();
             if (packet.frame_id == state_->failing_frame)
             {
-                return toy3d::RenderFrameExecutionStatus::frame_failure("fake frame failure");
+                return toy3d::RenderFrameExecutionStatus::frame_failure(
+                    "fake frame failure",
+                    toy3d::RHIErrorCode::OutOfMemory);
             }
             if (packet.frame_id == state_->fatal_frame)
             {
-                return toy3d::RenderFrameExecutionStatus::fatal_failure("fake fatal renderer failure");
+                return toy3d::RenderFrameExecutionStatus::fatal_failure(
+                    "fake fatal renderer failure",
+                    toy3d::RHIErrorCode::DeviceLost);
             }
             return toy3d::RenderFrameExecutionStatus::success();
         }
@@ -118,14 +122,15 @@ int main()
     auto success_completion = std::make_shared<RenderFrameCompletion>();
     check(!success_completion->is_complete(),
         "A new completion must be pending");
-    check(success_completion->complete_success(),
+    check(success_completion->complete_success(RHIErrorCode::Suboptimal),
         "The first completion result must be accepted");
     check(!success_completion->complete_failure("late failure"),
         "A completion result must be immutable after the first signal");
     const RenderFrameCompletionResult success_result = success_completion->wait();
     check(success_result.state == RenderFrameCompletionState::Succeeded &&
+        success_result.rhi_error_code == RHIErrorCode::Suboptimal &&
         static_cast<bool>(success_result) && success_result.message.empty(),
-        "A successful completion must wake waiters with an empty diagnostic");
+        "A successful completion must preserve a structured Suboptimal result");
 
     auto failure_completion = std::make_shared<RenderFrameCompletion>();
     auto failure_waiter = std::async(std::launch::async, [failure_completion]()
@@ -134,12 +139,14 @@ int main()
     });
     check(failure_waiter.wait_for(20ms) == std::future_status::timeout,
         "wait() must block while a completion is pending");
-    check(failure_completion->complete_failure("render failed"),
+    check(failure_completion->complete_failure(
+            "render failed", RHIErrorCode::OutOfMemory),
         "A pending completion must accept a failure result");
     check(failure_waiter.wait_for(1s) == std::future_status::ready,
         "Completing a frame must wake a blocked waiter");
     const RenderFrameCompletionResult failure_result = failure_waiter.get();
     check(failure_result.state == RenderFrameCompletionState::Failed &&
+        failure_result.rhi_error_code == RHIErrorCode::OutOfMemory &&
         !static_cast<bool>(failure_result) &&
         failure_result.message == "render failed",
         "A failed completion must preserve its diagnostic");
@@ -162,6 +169,11 @@ int main()
     viewport_frame.scene_frames.push_back(std::move(scene_frame));
     first_packet.viewport_frames.push_back(std::move(viewport_frame));
     first_packet.scene_updates.push_back(std::move(scene_batch));
+    SceneOutputUpdate output_update;
+    output_update.output_id = SceneOutputId(1);
+    output_update.revision = SceneOutputRevision(1);
+    output_update.extent = {1280, 720};
+    first_packet.scene_output_updates.push_back(std::move(output_update));
     MaterialRenderResourceUpdate resource_update;
     resource_update.resource_id = MaterialRenderResourceId(1);
     auto material_version = std::make_shared<MaterialRenderResourceVersion>();
@@ -187,10 +199,13 @@ int main()
         dequeued_packet.frame_id == first_frame &&
         dequeued_packet.resource_updates.size() == 1 &&
         dequeued_packet.scene_updates.size() == 1 &&
+        dequeued_packet.scene_output_updates.size() == 1 &&
+        dequeued_packet.scene_output_updates[0].revision ==
+            SceneOutputRevision(1) &&
         dequeued_packet.viewport_frames.size() == 1 &&
         dequeued_packet.viewport_frames[0].scene_frames.size() == 1 &&
         dequeued_packet.viewport_frames[0].scene_frames[0].view_family.views.size() == 1,
-        "The consumer must receive the complete owned resource, scene, and view packet in FIFO order");
+        "The consumer must receive the complete owned resource, scene, output, and view packet in FIFO order");
     check(second_enqueue.wait_for(1s) == std::future_status::ready &&
         second_enqueue.get() == RenderFrameEnqueueResult::Accepted,
         "Dequeuing the processing frame must release capacity for one queued frame");
@@ -309,6 +324,8 @@ int main()
         make_packet(threaded_failing_frame, threaded_failure_completion));
     check(threaded_failure_submit.completed_frame_id == threaded_failing_frame &&
         threaded_failure_submit.completed_frame.state == RenderFrameCompletionState::Failed &&
+        threaded_failure_submit.completed_frame.rhi_error_code ==
+            RHIErrorCode::OutOfMemory &&
         threaded_failure_submit.completed_frame.message == "fake frame failure" &&
         threaded_sync_dispatcher.is_running(),
         "A normal threaded processing failure must complete frame N without terminating the dispatcher");
@@ -328,6 +345,7 @@ int main()
         make_packet(fatal_frame, fatal_completion));
     check(fatal_submit.completed_frame_id == fatal_frame &&
         fatal_submit.completed_frame.state == RenderFrameCompletionState::Fatal &&
+        fatal_submit.completed_frame.rhi_error_code == RHIErrorCode::DeviceLost &&
         fatal_submit.completed_frame.message == "fake fatal renderer failure" &&
         !fatal_dispatcher.is_running(),
         "FatalRenderer must be explicit in the completion and stop the RenderFrameDispatcher");
@@ -352,6 +370,7 @@ int main()
         make_packet(inline_failing_frame, inline_completion));
     check(inline_submit.completed_frame_id == inline_failing_frame &&
         inline_submit.completed_frame.state == RenderFrameCompletionState::Failed &&
+        inline_submit.completed_frame.rhi_error_code == RHIErrorCode::OutOfMemory &&
         inline_submit.completed_frame.message == "fake frame failure",
         "Single-thread submit must synchronously return the current frame failure");
     check(inline_dispatcher.flush() && inline_dispatcher.shutdown(),

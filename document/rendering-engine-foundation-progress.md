@@ -1167,3 +1167,45 @@ FL11_0、D3D12 与 `VulkanPortable v1`。初审提出 release tombstone、zero o
 extent、完整错误映射与精确引用链等 P1/P2；主 Agent 已逐项写入最终设计，并扩充 equal revision、批次失败、
 ownership 冲突、全 `RHIErrorCode` 与 completion 生命周期测试矩阵。`git diff --check` 通过；纯文档工作包未构建
 C++ 目标，也未覆盖未实现后端或移动端实机。
+
+## 31. FND-6D1：SceneOutput 版本资源缓存
+
+### 31.1 实现边界与关键决定
+
+- 将 `SceneOutput` 值类型移入 `renderscene/output/`，新增独立强类型 `SceneOutputRevision` 与
+  `SceneOutputUpdate`；`RenderFramePacket` 以 owned `scene_output_updates` 搬运 create/resize/release 流，
+  不保留第二套正式入口。
+- 新增 Render Thread 所有的 `SceneOutputResourceCache`。每个 ID 持久记录 latest revision 与
+  Live/Released tombstone；equal/lower revision、unknown/duplicate release、同尺寸伪 resize、单轴 zero、
+  非法 operation 与 Released ID 复活均返回 `InvalidArgument`。`Release` 必须携带 `{0,0}` 空 payload，
+  tombstone 永不删除。
+- zero extent 仍发布有效的不可变逻辑 `SceneOutputResource`，但不创建 texture、RTV 或 SRV；非零 extent 创建
+  linear `R8G8B8A8UNorm`、`RenderTarget | ShaderResource`、`Common` initial access 的 texture，并显式验证
+  format capabilities 及 RTV/SRV view contract。
+- batch 先完成全部协议校验，再创建全部 candidate。发布阶段先复制完整 cache 状态并在副本上应用，最终一次
+  `swap`；因此 RHI 创建失败或 map allocation 异常都不会暴露部分 create/resize/release，未发布 candidate refs
+  由 RAII 释放。旧 immutable resource 可由在途 Prepared 工作继续持有。
+- `RenderFrameExecutionStatus` 与 `RenderFrameCompletionResult` 新增结构化 `RHIErrorCode` 并由 dispatcher 原样
+  传递。SceneOutput apply 的 InvalidArgument/Unsupported/OutOfMemory 映射为当前帧失败；DeviceLost、
+  BackendFailure 以及非 viewport create/view 不应产生的 NotReady/OutOfDate/Suboptimal 映射为 renderer fatal，
+  同时保留原始 code。
+- 本包只建立 output update/cache 与错误传输基础，不接入 `RenderSceneFrameProcessor`，也不实现 Present registry、
+  viewport acquire/abort、Prepared Frame 引用链、Forward pass 或画面输出；这些留给 FND-6D2。
+
+### 31.2 测试与验证
+
+新增 `Toy3dSceneOutputResourceCacheTests`，覆盖非零 texture/RTV/SRV contract、zero logical resource、immutable
+resize 与旧版本保活、严格 revision、永久 tombstone、全部协议拒绝路径、混合 release/create 批次中途 RHI 失败
+的零部分发布与 candidate 清理，以及全部 `RHIErrorCode` 分类。transport 测试补充 update stream 和 execution 到
+completion 的结构化 code 传播，包括成功 `Suboptimal`、帧失败 `OutOfMemory` 与 fatal `DeviceLost`。
+
+主 Agent 构建 `Toy3dSceneOutputResourceCacheTests`、`Toy3dRenderFrameTransportTests` 与 `Toy3dEditor`，直接运行两项
+专项测试，并完成相关 CTest 5/5 与全量 CTest 21/21。一次沙箱内增量构建因 Windows SDK 用户目录 ACL 被拒绝、
+未进入编译；随后在沙箱外对最新源码重跑相同构建成功，不使用旧二进制作为证据。`git diff --check` 无 whitespace
+error，仅有既存 LF/CRLF 提示。
+
+新的独立验证 sub-agent 完整使用 `verify-toy3d-build`，重新配置 VS 2022 x64、`BUILD_TESTING=ON`、Vulkan ON，
+顺序构建 output cache、transport、viewport、pipeline 与 Editor 目标；全量 CTest 21/21 和两项 executable 直接运行
+均通过。验证者初审发现 live map 逐项插入在 `std::bad_alloc` 下可能部分发布；主 Agent 改为副本构建后单点
+`swap`，同一验证者复验确认强异常安全并完成最新源码的相关 CTest 5/5。验证前后 HEAD 与工作区集合一致，验证者
+未修改、暂存或提交文件。未覆盖 D3D11、D3D12、macOS、移动端 Vulkan 或 GUI/画面验收。
