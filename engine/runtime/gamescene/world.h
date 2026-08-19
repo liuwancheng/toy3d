@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gamescene/actor.h"
-#include "gamescene/render_scene_update.h"
+#include "rendercore/render_scene_update.h"
 
 #include <memory>
 #include <vector>

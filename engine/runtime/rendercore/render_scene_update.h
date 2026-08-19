@@ -1,7 +1,7 @@
 #pragma once
 
-#include "gamescene/render_dirty.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
+#include "rendercore/render_dirty.h"
 #include "rendercore/render_id.h"
 
 #include <vector>

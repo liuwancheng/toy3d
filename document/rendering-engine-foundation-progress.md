@@ -657,3 +657,59 @@ Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
 未覆盖 D3D11/D3D12、macOS、Android、移动端 Vulkan profile、实际 Editor 窗口与渲染画面。下一
 工作包建议为 FND-5A：只实现持久 `RenderScene` 的 Primitive/Light Info、Proxy 与增量 Apply 协议纯 CPU
 闭环，不在同包接入 `RenderResourceCache`、RHI upload 或 View prepare。
+
+## 19. FND-5A：持久 RenderScene 与增量 Apply
+
+### 19.1 实现边界与关键决定
+
+- 新增持久 `RenderScene`，按强类型 `PrimitiveId` 与 `LightId` 管理 `PrimitiveSceneInfo / Proxy` 和
+  `LightSceneInfo / Proxy`；`Info` 保存 RenderScene 身份与 Proxy，Proxy 持有 Render Thread 后续 Prepare
+  所需的完整 owned-value snapshot，不回访 `World`、Actor、Component 或 MaterialInstance；
+- `State` 更新以完整 snapshot 原子替换 Proxy；Primitive `Transform` 只更新 world transform 与 bounds，
+  Light `Transform + DynamicData` 只更新对应字段并保留 Light type、enabled 等 State；当前没有 Primitive
+  DynamicData payload contract，若收到该标记会明确拒绝，不以空操作返回成功；
+- `RenderSceneApplyResult` 记录 added、updated、removed、rejected 数量与结构化诊断。scene identity 不匹配
+  时整批拒绝；对象级 invalid ID、duplicate Add、unknown Update/Remove、同 batch 重复 ID、非法 dirty flags
+  或 snapshot 只拒绝当前对象并继续处理后续对象，且被拒绝的更新不改变既有 Proxy；
+- Apply 边界验证矩阵、bounds 与 Light 参数为有限值，验证 Mesh resource identity、Point/Spot range 与 Spot
+  cone 约束；Light DynamicData 先与既有 type 合成候选值再验证，避免恶意 payload 通过伪造 type 破坏现有
+  Proxy invariant；
+- 将 `RenderDirtyFlags` 与 `RenderSceneUpdateBatch` 从 `gamescene/` 迁到 `rendercore/`。它们是 GameScene
+  producer 与 RenderScene consumer 共享的跨线程 contract，迁移后 RenderScene 不再直接或间接依赖
+  GameScene；旧 include 路径已删除并收敛；
+- 本工作包没有接入真实 `RenderFrameProcessor`、RHI、RenderResourceCache、revision、placeholder、upload、
+  SceneView、Forward Prepare、RDG、Scheduler 或 TaskSystem。旧 `SceneRendering/test_pass` bring-up 路径仍按
+  总体删除条件保留。
+
+### 19.2 测试与主验证
+
+新增 `Toy3dRenderSceneTests`，覆盖 Primitive/Light Add 与持久查询、Transform/DynamicData 局部合并、
+State 完整替换、Remove、错误更新原子拒绝、同批次错误后继续、duplicate Add、同 ID 重复、scene mismatch
+以及非有限 Light payload。
+
+主 agent 在 Windows、Visual Studio 17 2022、x64、Debug 下执行并通过：
+
+- `cmake --build build --config Debug --target Toy3dRenderSceneTests Toy3dGameSceneTests`；
+- `ctest --test-dir build -C Debug -R "Toy3dRuntime.(RenderScene|GameScene)" --output-on-failure`，2/2 通过；
+- `git diff --check` 无 whitespace error，仅有既有 tracked 文件的 LF→CRLF 提示；
+- 静态检查确认新增 RenderScene/RenderCore 公共 contract 不含 Vulkan、D3D11、D3D12、DXGI 类型、直接
+  `new/delete` 或旧 `gamescene/render_dirty.h`、`gamescene/render_scene_update.h` include。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在 Windows、Visual Studio 17 2022、x64、
+Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
+
+- 重新配置 CMake；
+- 构建 `Toy3dEditor`、`Toy3dRenderSceneTests`、`Toy3dGameSceneTests` 与
+  `Toy3dRenderFrameTransportTests`；
+- 全量 CTest 13/13 通过；主 agent 补强定向测试后，验证者按最新源码重新构建 RenderScene test 并重跑
+  全量 CTest，可执行文件时间戳晚于最新测试源码；
+- `git diff --check` 退出码 0，仅有既有 LF→CRLF 提示；公共 contract/backend 类型、旧 include 与
+  RenderScene/RenderCore→GameScene 依赖扫描均为零匹配；
+- 验证前后工作树文件集合一致；验证者未修改实现、测试或文档。
+
+未覆盖 D3D11/D3D12、macOS、Android、移动端 Vulkan profile、实际 Editor 窗口与渲染画面；本工作包是
+纯 CPU RenderScene mirror contract，不把构建结果描述为 Render Thread、GPU resource 或 Renderer 画面验收。
+
+下一工作包建议为 FND-5B：先定义 `RenderResourceUpdate`、强类型 revision、不可变 CPU resource version、
+placeholder 与 cache Apply/miss/release 的纯 CPU contract，再单独接入 frame-local RHI upload 和 GPU
+资源生命周期；不在资源 contract 尚未稳定时同时进入 SceneView 或 Forward Prepare。

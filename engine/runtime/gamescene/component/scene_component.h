@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gamescene/component/scene_transform.h"
-#include "gamescene/render_dirty.h"
+#include "rendercore/render_dirty.h"
 
 #include <vector>
 

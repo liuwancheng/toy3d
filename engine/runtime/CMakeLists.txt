@@ -242,6 +242,18 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dGameSceneTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.GameScene COMMAND Toy3dGameSceneTests)
 
+    add_executable(Toy3dRenderSceneTests
+        "tests/render_scene_tests.cpp")
+    target_compile_features(Toy3dRenderSceneTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRenderSceneTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRenderSceneTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRenderSceneTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.RenderScene COMMAND Toy3dRenderSceneTests)
+
     add_executable(Toy3dRenderFrameTransportTests
         "tests/render_frame_transport_tests.cpp")
     target_compile_features(Toy3dRenderFrameTransportTests PRIVATE cxx_std_17)
