@@ -71,7 +71,10 @@
 - `ERHIAccess` 表达通用用途，不暴露 Vulkan layout/mask 或 D3D12 state；transition 由 command context 录制并预留 subresource range。
 - Vulkan/D3D12 生成 barrier；D3D11 跟踪逻辑状态、验证 hazard 并解除冲突绑定。
 - map/update 明确 mode、range、alignment、flush/invalidate 和 in-flight 冲突；GPU-only 更新通过 upload/copy，资源对象不得私自 submit 或 wait idle。
-- 第一阶段上传通过 frame-local command context 的 `upload_buffer` / `upload_texture` 录制；后端必须在调用返回前将源数据复制到自有 staging storage，并在该帧 fence 完成前保活。`RHIDevice::create_*` 不得为 `initial_data` 隐式 submit 或 wait；未引入初始化批次前必须明确返回 `Unsupported`。
+- 第一阶段普通资源上传通过 frame-local command context 的 `upload_buffer` / `upload_texture` 录制；后端必须在调用返回前将源数据复制到自有 staging storage，并在该帧 fence 完成前保活。当前 `RHIDevice::create_buffer/create_texture(initial_data)` 始终明确返回 `Unsupported`；显式 device-level bootstrap context 创建空资源后再录制 upload，不改变资源创建函数无隐式 submit/wait 和不接受 initial data 的 contract。
+- 启动必需的 placeholder、font 与其他 device-level immutable resource 使用显式 bootstrap submission。调用方在 Render Thread 从 `RHIDevice::create_graphics_command_context()` 获取非 frame context，录制相同的 upload/transition 命令，`finish_recording()` 后显式交给 `graphics_queue().submit()`，并只在 bootstrap/flush/shutdown 边界按返回的 completion value 等待；资源创建函数仍不得隐式 submit 或 wait。
+- device-level context 不属于 viewport frame slot，不得 acquire/present，也不得绕过 queue 的 command-list state、local resource-state 提交和 GPU payload 保活规则。Vulkan/D3D12 的 command pool/allocator、staging 与 descriptor 临时对象必须按该 submission 的 completion value 退休。D3D11 使用 deferred context 或 backend 私有 immutable packet 录制，只能在 Render Thread 的 queue submit 阶段交给 immediate context 执行；discard 的 command list 不得产生 GPU 工作，completion 使用 FL11_0 event query 或等价机制跟踪，不能把 `ExecuteCommandList` 返回当作 GPU completion。
+- bootstrap 采用全有或全无的 renderer initialization contract：任何创建、录制、submit 或 completion wait 失败都不发布 initialized 状态，释放尚未发布的 cache 强引用并保留任意原始非成功 RHI code（例如 `OutOfMemory`、`InvalidArgument`、`NotReady`、`Unsupported`、`DeviceLost` 或 `BackendFailure`），禁止为了统一分类丢失诊断。成功后 placeholder 才可被普通 frame Prepare resolve；正常逐帧资源更新继续走 frame-local context，不复用 bootstrap 等待路径。
 - `RHIGPUFence` 只表示命令流中的 GPU 完成点，用于 CPU 轮询 readback 等需求；创建和写入必须显式，不能作为 swapchain acquire/present semaphore 的公共替代。帧回收统一依赖 `RHIQueueCompletionValue`。
 
 ## RHI Render Pass 与 RDG 边界

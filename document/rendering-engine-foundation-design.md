@@ -445,6 +445,27 @@ Render Thread Apply创建 GPU buffer并标记 `PendingUpload`。当前帧在所�
 
 禁止资源创建函数内部隐式 `submit()`、`wait_idle()`或创建一次性同步 context。若帧在 submit前失败，资源保持 Pending并在下一帧重试。启动必需 placeholder/font使用显式 bootstrap submission与初始化 completion。
 
+bootstrap submission 复用公共 RHI 已有的 device-level context/queue contract，而不建立 Renderer 私有的一次性上传器：
+
+```text
+RHIDevice::create_graphics_command_context()
+    → begin_recording("Renderer bootstrap")
+    → create placeholder/font resources without initial_data
+    → upload + transition
+    → finish_recording()
+    → RHIDevice::graphics_queue().submit()
+    → wait_for_value(completion_value)
+    → atomically publish renderer initialized state
+```
+
+该 context 由 Render Thread 独占，不依赖 viewport frame slot，不执行 acquire/present。Vulkan/D3D12 独立
+command pool/allocator、staging payload 与临时 backend 对象按 submission completion value 退休；D3D11
+使用 deferred context 或 backend 私有 immutable packet 录制，只在 queue submit 阶段由 Render Thread
+immediate context 执行，并以 FL11_0 event query 或等价机制跟踪真实 GPU completion，不能让 discarded list
+产生工作或把 `ExecuteCommandList` 返回当作完成。只有 bootstrap、显式 flush 与 shutdown 可等待 completion；普通
+frame 资源更新继续进入 viewport submission，禁止退化为逐资源 CPU wait。任一步失败都不得发布部分
+placeholder，Renderer initialization 保留任意原始非成功 RHI code 与诊断并进入有序清理。
+
 ## 11. StaticMesh、Material 与 Mesh 绘制链
 
 ### 11.1 StaticMesh

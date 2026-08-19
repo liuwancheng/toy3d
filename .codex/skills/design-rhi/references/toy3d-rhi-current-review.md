@@ -26,8 +26,8 @@
 ## P1
 
 1. CPU map/unmap 尚未定义统一 lock mode、range、alignment、flush/invalidate及in-flight冲突；应与 GPU fence/readback 能力一并定型，禁止资源对象私自 submit 或 wait idle。
-2. `RHIDevice::create_graphics_command_context()` 与 `RHIFrameContext::create_graphics_command_context()` 并存，Vulkan前者返回 `Unsupported`。需要明确非frame录制的产品需求；若第一阶段只允许frame-local context，应从公共device主路径移除或后置。
-3. `create_buffer/create_texture(initial_data)` 在Vulkan明确返回`Unsupported`，当前上传只能通过frame-local context完成；需要保持诊断行为并决定后续初始化批次，不得引入隐式submit/wait idle。
+2. 已确认 `RHIDevice::create_graphics_command_context()` 保留为 Render Thread 的 device-level bootstrap 录制入口，配合显式 `RHIQueue::submit()` 与 completion wait 初始化 placeholder/font；它不 acquire/present，也不属于 viewport frame slot。Vulkan 仍返回 `Unsupported`，尚需实现独立 command-pool/allocator 与按 completion value 的 payload 退休，不能复用某个 viewport slot 或在资源创建函数中隐式等待。
+3. `create_buffer/create_texture(initial_data)` 在 Vulkan 明确返回 `Unsupported`，该诊断继续保留。普通更新使用 frame-local upload；placeholder/font 改由已确认的 device-level bootstrap context 显式录制、submit 与等待 completion，不改变资源创建接口的无隐式提交 contract。
 4. Buffer View、storage binding、resolve attachment和GPU fence/readback尚未闭环；其 capability和错误路径需要与Vulkan、D3D11、D3D12映射一起定型。
 5. 正式 Renderer 与 RDG 均尚未实现。下一阶段按 `document/rendering-engine-foundation-design.md` 先建设 World/RenderScene、Game/Render Thread、Material、Forward Renderer、PostProcess 与 ImGui；显式 SceneRenderer/业务 Pass 是长期职责，不新增通用临时 Pass Scheduler。RDG 后置，在真实跨 Pass 依赖形成后再接管资源声明、barrier 与调度。
 6. 当前只完成 graphics pipeline 创建链与 queue submit 的 NVI；其他 resource/view/shader/binding 创建入口以及 command context 行为仍由 backend 直接实现完整接口。后续应按调用链迁移公共 validation、状态机和资源保活，不能让新后端复制 Vulkan frontend policy。

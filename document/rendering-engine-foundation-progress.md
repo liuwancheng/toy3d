@@ -39,6 +39,7 @@
 | FND-5C | Resource collection、Scene frame processor 与 Prepare resolve | 完成 | Editor/定向构建、CTest 15/15 与 pipeline contract 测试通过 |
 | FND-5D1 | Mesh RHI resource 与事务式随帧上传 | 完成 | Editor/定向构建、CTest 16/16 与 upload transaction contract 测试通过 |
 | FND-5D2 | Texture RHI resource 与统一上传事务 | 完成 | Editor/定向构建、CTest 16/16 与 mixed upload transaction 测试通过 |
+| FND-5D3-DESIGN | Placeholder bootstrap submission 设计 | 完成 | 独立跨文档/三后端一致性检查与主 Agent 修订 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -941,3 +942,23 @@ unstaged 文件。补强测试后验证者对最终源码执行 upload test `--c
 未覆盖 D3D11/D3D12、macOS、Android、真实 Vulkan submission/validation layer、Material binding 与画面。
 下一工作包应为 FND-5D3：用显式 bootstrap submission 初始化 Error Material 依赖的 placeholder textures，
 并定义 initialization completion；不得通过普通资源创建隐式 submit/wait。
+
+## 24. FND-5D3-DESIGN：Placeholder Bootstrap Submission
+
+本设计包确认第一阶段存在 device-level 非 frame 录制需求：`RHIDevice::create_graphics_command_context()`
+保留为 Render Thread bootstrap 入口，与 `RHIQueue::submit()`、completion value 和显式 startup wait 组成
+完整闭环；它不复用 viewport frame slot、不 acquire/present，也不允许资源创建函数隐式提交。
+
+后端实现边界：Vulkan/D3D12 使用独立 command pool/allocator 并按 completion value 退休 command list、
+staging 和临时 payload；D3D11 使用 deferred context 或 backend 私有 immutable packet 录制，在 queue submit
+阶段交给 Render Thread immediate context，并以 FL11_0 event query 或等价机制跟踪 GPU completion；移动端
+Vulkan 不新增 feature/profile 要求。bootstrap 全部成功后才能原子发布 renderer initialized 与 placeholder RHI
+资源，失败保留任意原始非成功 RHI code 与诊断并清理未发布引用。普通动态资源仍使用 FND-5D1/2 的 frame-local upload batch，
+不得因 bootstrap 支持而逐帧等待 GPU。
+
+本包只更新长期 RHI contract、foundation 设计与施工台账，不修改 C++、CMake 或 backend。独立一致性
+检查发现并推动三项收敛：保留任意原始非成功 RHI code；D3D11 录制不直接产生 GPU 工作，只在 queue
+submit 阶段由 immediate context 执行并用 event query 或等价机制跟踪 completion；显式 bootstrap 不改变
+`create_buffer/create_texture(initial_data)` 继续返回 `Unsupported` 的 contract。修订后重新扫描四份文档，
+旧条件句与含糊 D3D11 表述均已清除，`git diff --check` 通过。下一工作包进入 Vulkan device-level context、
+command pool/command list payload 退休与真实 queue completion 实现。
