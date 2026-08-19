@@ -109,25 +109,70 @@ namespace
         }
     };
 
+    class FakeCommandList final : public toy3d::RHICommandList
+    {
+    public:
+        explicit FakeCommandList(std::string debug_name)
+            : RHICommandList(std::move(debug_name))
+        {
+        }
+
+        toy3d::RHIStatus begin() { return mark_recording(); }
+        toy3d::RHIStatus close() { return mark_closed(); }
+    };
+
     class FakeQueue final : public toy3d::RHIQueue
     {
     public:
-        toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
-        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
+        toy3d::RHIQueueCompletionValue completed_value() const override
         {
+            return last_completed_value;
+        }
+        toy3d::RHIStatus wait_for_value(
+            toy3d::RHIQueueCompletionValue value) override
+        {
+            if (fail_wait)
+            {
+                return toy3d::RHIStatus::failure(
+                    toy3d::RHIErrorCode::DeviceLost,
+                    "Injected queue completion failure.");
+            }
+            last_completed_value = value;
             return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
+
+        bool allow_submissions = false;
+        bool fail_submit = false;
+        bool fail_wait = false;
 
     protected:
         toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(
             const toy3d::RHISubmitInfo&) override
         {
+            if (fail_submit)
+            {
+                return toy3d::RHIResult<toy3d::RHISubmitResult>::failure(
+                    toy3d::RHIErrorCode::OutOfMemory,
+                    "Injected queue submission failure.");
+            }
+            if (allow_submissions)
+            {
+                return toy3d::RHIResult<toy3d::RHISubmitResult>::success(
+                    {next_completion_value++});
+            }
             return toy3d::RHIResult<toy3d::RHISubmitResult>::failure(
                 toy3d::RHIErrorCode::Unsupported,
                 "The upload unit test does not submit command lists.");
         }
+
+    private:
+        toy3d::RHIQueueCompletionValue next_completion_value = 1;
+        toy3d::RHIQueueCompletionValue last_completed_value = 0;
     };
+
+    std::unique_ptr<toy3d::RHIGraphicsCommandContext>
+        make_fake_bootstrap_context();
 
     class FakeDevice final : public toy3d::RHIDevice
     {
@@ -212,9 +257,17 @@ namespace
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
         create_graphics_command_context() override
         {
+            if (supports_bootstrap_context)
+            {
+                return toy3d::RHIResult<
+                    std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::success(
+                        make_fake_bootstrap_context());
+            }
             return unsupported<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>();
         }
 
+        bool supports_bootstrap_context = false;
+        FakeQueue queue;
         std::vector<toy3d::RHIBufferDesc> created_buffer_descs;
         std::vector<toy3d::RHITextureDesc> created_texture_descs;
         std::vector<toy3d::RHITextureViewDesc> created_texture_view_descs;
@@ -257,12 +310,16 @@ namespace
         bool initialized = true;
         toy3d::RHICapabilities capabilities_;
         toy3d::RHILimits limits_;
-        FakeQueue queue;
     };
 
     class FakeGraphicsCommandContext final : public toy3d::RHIGraphicsCommandContext
     {
     public:
+        explicit FakeGraphicsCommandContext(bool supports_finish = false)
+            : supports_finish_(supports_finish)
+        {
+        }
+
         enum class OperationType
         {
             Transition,
@@ -278,8 +335,13 @@ namespace
             std::vector<std::uint8_t> bytes;
         };
 
-        toy3d::RHIStatus begin_recording(const std::string&) override
+        toy3d::RHIStatus begin_recording(const std::string& debug_name) override
         {
+            if (supports_finish_)
+            {
+                command_list_ = std::make_shared<FakeCommandList>(debug_name);
+                return command_list_->begin();
+            }
             return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus transition_resources(
@@ -339,6 +401,17 @@ namespace
         }
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
+            if (supports_finish_ && command_list_)
+            {
+                const toy3d::RHIStatus status = command_list_->close();
+                if (!status)
+                {
+                    return toy3d::RHIResult<toy3d::RHICommandListRef>::failure(
+                        status.code(), status.message());
+                }
+                return toy3d::RHIResult<toy3d::RHICommandListRef>::success(
+                    std::move(command_list_));
+            }
             return toy3d::RHIResult<toy3d::RHICommandListRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "Not required by this test.");
         }
@@ -403,12 +476,21 @@ namespace
         }
 
     private:
+        bool supports_finish_ = false;
+        std::shared_ptr<FakeCommandList> command_list_;
+
         static toy3d::RHIStatus unsupported()
         {
             return toy3d::RHIStatus::failure(
                 toy3d::RHIErrorCode::Unsupported, "Not required by this test.");
         }
     };
+
+    std::unique_ptr<toy3d::RHIGraphicsCommandContext>
+        make_fake_bootstrap_context()
+    {
+        return std::make_unique<FakeGraphicsCommandContext>(true);
+    }
 }
 
 int main()
@@ -591,6 +673,55 @@ int main()
     check(atomic_cache.apply_updates(
             {RenderResourceUpdate(invalid_semantic_update)}).rejected_count == 1,
         "Texture Apply must reject an out-of-domain color semantic before RHI mapping");
+
+    RenderResourceCache bootstrap_cache(
+        create_builtin_render_resource_placeholders());
+    FakeDevice bootstrap_device;
+    bootstrap_device.supports_bootstrap_context = true;
+    bootstrap_device.queue.allow_submissions = true;
+    bootstrap_device.queue.fail_submit = true;
+    RHIStatus bootstrap_status =
+        bootstrap_cache.initialize_rhi_placeholders(bootstrap_device);
+    check(!bootstrap_status &&
+            bootstrap_status.code() == RHIErrorCode::OutOfMemory &&
+            !bootstrap_cache.rhi_placeholders_initialized() &&
+            !bootstrap_cache.resolve_texture_rhi(
+                TextureRenderResourceId{}, TextureColorSemantic::Color),
+        "A bootstrap submit failure must preserve its RHI code and publish no placeholder");
+
+    bootstrap_device.queue.fail_submit = false;
+    bootstrap_device.queue.fail_wait = true;
+    bootstrap_status =
+        bootstrap_cache.initialize_rhi_placeholders(bootstrap_device);
+    check(!bootstrap_status &&
+            bootstrap_status.code() == RHIErrorCode::DeviceLost &&
+            !bootstrap_cache.rhi_placeholders_initialized() &&
+            !bootstrap_cache.resolve_texture_rhi(
+                TextureRenderResourceId{}, TextureColorSemantic::Linear),
+        "A bootstrap completion failure must preserve its RHI code and publish no partial cache");
+
+    bootstrap_device.queue.fail_wait = false;
+    bootstrap_status =
+        bootstrap_cache.initialize_rhi_placeholders(bootstrap_device);
+    const auto bootstrap_color = bootstrap_cache.resolve_texture_rhi(
+        TextureRenderResourceId{}, TextureColorSemantic::Color);
+    const auto bootstrap_linear = bootstrap_cache.resolve_texture_rhi(
+        TextureRenderResourceId{}, TextureColorSemantic::Linear);
+    const auto bootstrap_normal = bootstrap_cache.resolve_texture_rhi(
+        TextureRenderResourceId{}, TextureColorSemantic::Normal);
+    check(bootstrap_status && bootstrap_cache.rhi_placeholders_initialized() &&
+            bootstrap_color.state == RenderResourceResolveState::Placeholder &&
+            bootstrap_color &&
+            bootstrap_linear.state == RenderResourceResolveState::Placeholder &&
+            bootstrap_linear &&
+            bootstrap_normal.state == RenderResourceResolveState::Placeholder &&
+            bootstrap_normal,
+        "One completed bootstrap submission must atomically publish all semantic placeholders");
+    const std::size_t created_texture_count =
+        bootstrap_device.created_texture_descs.size();
+    check(bootstrap_cache.initialize_rhi_placeholders(bootstrap_device) &&
+            bootstrap_device.created_texture_descs.size() == created_texture_count,
+        "A completed placeholder bootstrap must be idempotent");
 
     if (failure_count != 0)
     {

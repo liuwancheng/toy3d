@@ -67,7 +67,7 @@ namespace toy3d
         while (value != 0)
         {
             const std::uint64_t following_value =
-                value == std::numeric_limits<std::uint64_t>::max()
+                value == (std::numeric_limits<std::uint64_t>::max)()
                     ? 0
                     : value + 1;
             if (next_value.compare_exchange_weak(

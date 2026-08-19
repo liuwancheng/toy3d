@@ -15,6 +15,7 @@ namespace toy3d
 	class SceneRendering;
 	class ShaderMapLoader;
 	class ShaderMap;
+	class RenderResourceCache;
 
 	enum class ShaderLoadMode
 	{
@@ -38,7 +39,7 @@ namespace toy3d
 
 		void init(void * hInstance);
 
-		void post_init();
+		RHIStatus post_init();
 
 		void main_loop();
 
@@ -72,6 +73,7 @@ namespace toy3d
 		RHISurfaceRef main_window_surface;
 		std::unique_ptr<RHIDevice> rhi_device;
 		std::unique_ptr<RHIViewportContext> rhi_viewport;
+		std::unique_ptr<RenderResourceCache> render_resource_cache;
 		std::unique_ptr<SceneRendering> scene_renderer;
 		std::uint32_t viewport_width = 0;
 		std::uint32_t viewport_height = 0;

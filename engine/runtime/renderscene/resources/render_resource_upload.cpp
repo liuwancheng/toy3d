@@ -1,5 +1,7 @@
 #include "renderscene/resources/render_resource_cache.h"
 
+#include "drivers/rhi/rhi_queue.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -248,6 +250,82 @@ namespace toy3d
         }
     }
 
+    RHIStatus RenderResourceCache::initialize_rhi_placeholders(RHIDevice& device)
+    {
+        if (!valid_)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "RenderResourceCache requires valid CPU placeholders before RHI bootstrap.");
+        }
+        if (rhi_placeholders_initialized_)
+        {
+            return RHIStatus::success();
+        }
+
+        auto context_result = device.create_graphics_command_context();
+        if (!context_result)
+        {
+            return context_result.status();
+        }
+        std::unique_ptr<RHIGraphicsCommandContext> context =
+            std::move(context_result).value();
+        RHIStatus status = context->begin_recording(
+            "Renderer placeholder bootstrap");
+        if (!status)
+        {
+            return status;
+        }
+
+        auto checkerboard_result = record_texture_upload(
+            device, *context, placeholders_.checkerboard_texture);
+        if (!checkerboard_result)
+        {
+            return checkerboard_result.status();
+        }
+        auto white_result = record_texture_upload(
+            device, *context, placeholders_.white_texture);
+        if (!white_result)
+        {
+            return white_result.status();
+        }
+        auto normal_result = record_texture_upload(
+            device, *context, placeholders_.normal_texture);
+        if (!normal_result)
+        {
+            return normal_result.status();
+        }
+
+        auto command_list_result = context->finish_recording();
+        if (!command_list_result)
+        {
+            return command_list_result.status();
+        }
+        RHICommandListRef command_list = std::move(command_list_result).value();
+        RHISubmitInfo submit_info;
+        submit_info.command_lists.push_back(command_list);
+        submit_info.debug_name = "Renderer placeholder bootstrap";
+        auto submit_result = device.graphics_queue().submit(submit_info);
+        if (!submit_result)
+        {
+            return submit_result.status();
+        }
+        status = device.graphics_queue().wait_for_value(
+            submit_result.value().completion_value);
+        if (!status)
+        {
+            return status;
+        }
+
+        // Publish all placeholders only after their one initialization
+        // submission has reached its explicit GPU completion point.
+        checkerboard_texture_rhi_ = std::move(checkerboard_result).value();
+        white_texture_rhi_ = std::move(white_result).value();
+        normal_texture_rhi_ = std::move(normal_result).value();
+        rhi_placeholders_initialized_ = true;
+        return RHIStatus::success();
+    }
+
     RHIResult<RenderResourceUploadBatch>
     RenderResourceCache::record_pending_uploads(
         RHIDevice& device,
@@ -375,6 +453,35 @@ namespace toy3d
             return {};
         }
         return {RenderResourceResolveState::Found, uploaded->second};
+    }
+
+    RenderResourceResolveResult<TextureRHIResourceRef>
+    RenderResourceCache::resolve_texture_rhi(
+        TextureRenderResourceId resource_id,
+        TextureColorSemantic semantic) const
+    {
+        const auto resolved = resolve_texture_rhi(resource_id);
+        if (resolved)
+        {
+            return resolved;
+        }
+        if (!rhi_placeholders_initialized_)
+        {
+            return {};
+        }
+        switch (semantic)
+        {
+        case TextureColorSemantic::Color:
+            return {RenderResourceResolveState::Placeholder,
+                checkerboard_texture_rhi_};
+        case TextureColorSemantic::Linear:
+            return {RenderResourceResolveState::Placeholder,
+                white_texture_rhi_};
+        case TextureColorSemantic::Normal:
+            return {RenderResourceResolveState::Placeholder,
+                normal_texture_rhi_};
+        }
+        return {};
     }
 
     RenderResourceResolveResult<MeshRHIResourceRef>

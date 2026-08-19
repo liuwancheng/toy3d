@@ -41,6 +41,7 @@
 | FND-5D2 | Texture RHI resource 与统一上传事务 | 完成 | Editor/定向构建、CTest 16/16 与 mixed upload transaction 测试通过 |
 | FND-5D3-DESIGN | Placeholder bootstrap submission 设计 | 完成 | 独立跨文档/三后端一致性检查与主 Agent 修订 |
 | FND-5D3A | Vulkan device-level bootstrap context | 完成 | 主 Agent 与独立验证均完成 VS 2022 x64 Vulkan 构建、CTest 17/17 和真实集成测试 |
+| FND-5D3B | Renderer placeholder bootstrap orchestration | 完成 | 原子发布/错误保留测试、真实 Vulkan bootstrap、CTest 17/17 与 composition-root 启动存活验证通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -999,3 +1000,37 @@ device-level list、viewport submit 路径未改变、command pool 与 upload pa
 头文件没有 Vulkan 类型泄漏。Editor 仅验证启动后稳定存活 5 秒；隐藏窗口无法通过 `CloseMainWindow()` 正常
 关闭，因此不计为完整 Editor 冒烟证据。本包未覆盖 D3D11、D3D12、macOS、移动端 Vulkan profile，也未实现
 Renderer placeholder bootstrap orchestration。
+
+## 26. FND-5D3B：Renderer Placeholder Bootstrap Orchestration
+
+### 26.1 实现边界与关键决定
+
+- 新增 production `create_builtin_render_resource_placeholders()`，使用现有强类型 ID 分配序列创建 Error Material、
+  2x2 sRGB checkerboard、linear white 与 linear normal CPU immutable version，不建立第二套 builtin ID 系统；
+- `RenderResourceCache::initialize_rhi_placeholders()` 复用公共 device-level context 与 graphics queue，顺序执行
+  begin、三张纹理的无 `initial_data` 创建、upload/transition、finish、submit 和显式 completion wait。普通
+  `record_pending_uploads()` 未增加 CPU wait；
+- 三个临时 `TextureRHIResource` 只在 submission completion 成功后写入 cache 并发布 initialized state。context、
+  录制、资源创建、finish、submit 或 wait 任一步失败都直接保留原始 `RHIErrorCode`，不发布部分 placeholder；
+  submit 成功而 wait 失败时由 queue pending submission 继续保活 command list、资源、upload page 与 command pool；
+- `Engine` 作为当前 composition root 先在局部 cache 完成 bootstrap，成功后才发布成员并创建旧 bring-up
+  `ForwardSceneRendering`。失败路径进入 `shutdown_rhi()`；关闭时 renderer/cache 先于 viewport 与 device 销毁；
+- Texture RHI resolve 新增 semantic-aware miss 路径，只有 bootstrap 完成后才返回对应 checkerboard、white 或
+  normal placeholder。本包不实现 Material GPU binding、ImGui font、D3D11/D3D12 backend 或新移动端能力。
+
+### 26.2 测试与验证
+
+`Toy3dRenderResourceUploadTests` 新增可提交 fake device/context/queue，注入 submit `OutOfMemory` 与 completion
+`DeviceLost`，验证原始 code、零部分发布、安全重试、一次成功后三种 semantic placeholder 同时可见，以及重复
+initialize 幂等。`Toy3dVulkanBootstrapContextTests` 在真实 Win32/Vulkan validation device 上完成三张 production
+placeholder 的创建、upload、transition、submit、wait 和 format/semantic resolve 核对。
+
+主 Agent 构建 `Toy3dEditor`、upload 与 Vulkan bootstrap tests，完成全量 Debug 构建；定向测试与全量 CTest
+17/17 通过。一次沙箱内 `ALL_BUILD` 因 Windows SDK 用户目录 ACL 被拒绝，随后在沙箱外重跑同一全量构建成功，
+不使用失败构建后的旧产物作为编译证据。
+
+新的独立验证 sub-agent 重新配置 VS 2022 x64、`BUILD_TESTING=ON`、Vulkan ON，构建上述三个目标并完成全量
+CTest 17/17；两个测试 executable 直接运行均通过，验证前后 HEAD 与八个未提交文件集合保持不变。
+`Toy3dEditor` 启动后持续存活 5 秒，证明 production composition root 未在 bootstrap 阶段提前退出；因没有可观察
+stdout/stderr validation 文本且窗口无法通过 `CloseMainWindow()` 正常关闭，该证据只记为启动存活，进程已按精确
+PID 清理且无遗留。本包未覆盖 D3D11、D3D12、macOS、移动端运行和画面验收。

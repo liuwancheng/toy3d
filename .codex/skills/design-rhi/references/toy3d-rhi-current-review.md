@@ -23,11 +23,12 @@
 11. graphics binding 已使用 `RHIGraphicsBindings` 原子提交完整 logical 快照；Vulkan logical `RHIBindingSet` 不再等同于 `VkDescriptorSet`，而是在 draw 前按 pipeline layout materialize physical packet。Global+View 原子聚合为 set 0，packet 与 source sets 由 command list 保活到 queue completion；旧 `bind_binding_set()` 和未实现诊断已删除。runtime Vulkan API 基线同步为 1.1，与 ShaderCompiler 的 SPIR-V 1.3 contract 一致。代码、生成映射和自动测试已验证；独立 Editor/Vulkan 冒烟已连续两轮完成 draw/present、正常 `WM_CLOSE`、日志刷新与退出码 0，未产生新的 validation warning/error。该证据不代替截图或像素级视觉验收。
 12. Vulkan viewport 的失败帧闭环已补齐：acquire `OutOfDate` 不再重建后复用失效的 frame-slot 引用重试；recording/validation failure 通过 `abort_frame()` 的最小 present transition submit 消费 acquire synchronization。acquire 后在 command-buffer begin/end、fence reset、queue submit 等任一步失败都会锁存 terminal presentation failure，可恢复 code 会提升为 `BackendFailure`；重复 command list 在 native submit 前拒绝，submit 后即使 command-list CPU 状态发布异常仍会尝试 present 消费同步。
 13. Vulkan device-level graphics context 已实现：每个 context 创建独立 transient command pool，command list 强持有 pool 到 generic queue completion；queue submit 保活 command list、提交 local final state、标记资源与 upload page 的 completion value，并只接受 device-level list，防止 viewport list 绕过 acquire/present 路径。真实 Win32/Vulkan 集成测试已完成 buffer 创建、upload、transition、submit、wait 与 shutdown，无 validation error。
+14. Renderer composition root 已使用 device-level context 显式 bootstrap Error Material 所需 checkerboard、white 与 normal textures：三张资源只在单次 submit completion 成功后共同发布，任一步失败保留原始 `RHIErrorCode` 且不部分发布；普通 frame upload 不等待。真实 Vulkan 集成测试与错误注入测试已覆盖该 contract。
 
 ## P1
 
 1. CPU map/unmap 尚未定义统一 lock mode、range、alignment、flush/invalidate及in-flight冲突；应与 GPU fence/readback 能力一并定型，禁止资源对象私自 submit 或 wait idle。
-2. Vulkan 已实现 `RHIDevice::create_graphics_command_context()`、独立 command pool 与 generic queue completion 生命周期；Renderer composition root 尚未使用该路径 bootstrap placeholder/font，也尚未在 initialization completion 成功后原子发布 cache initialized 状态。
+2. Vulkan placeholder texture bootstrap 已接入 Renderer composition root；ImGui font bootstrap 尚未实现。D3D11/D3D12 仍需按既定 device-level context、immutable packet 与真实 GPU completion contract 实现对应 backend，未实现路径必须继续明确返回 `Unsupported`。
 3. `create_buffer/create_texture(initial_data)` 在 Vulkan 明确返回 `Unsupported`，该诊断继续保留。普通更新使用 frame-local upload；placeholder/font 改由已确认的 device-level bootstrap context 显式录制、submit 与等待 completion，不改变资源创建接口的无隐式提交 contract。
 4. Buffer View、storage binding、resolve attachment和GPU fence/readback尚未闭环；其 capability和错误路径需要与Vulkan、D3D11、D3D12映射一起定型。
 5. 正式 Renderer 与 RDG 均尚未实现。下一阶段按 `document/rendering-engine-foundation-design.md` 先建设 World/RenderScene、Game/Render Thread、Material、Forward Renderer、PostProcess 与 ImGui；显式 SceneRenderer/业务 Pass 是长期职责，不新增通用临时 Pass Scheduler。RDG 后置，在真实跨 Pass 依赖形成后再接管资源声明、barrier 与调度。

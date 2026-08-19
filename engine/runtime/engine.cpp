@@ -18,6 +18,7 @@
 #include "generated/defines.h"
 #include "platform/rhi_surface_factory.h"
 #include "renderscene/3dscene/forward_shading_render.h"
+#include "renderscene/resources/render_resource_cache.h"
 #include "rendercore/shader/loaders/shader_code_library_loader.h"
 #if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
@@ -166,17 +167,34 @@ namespace toy3d
 			window->close();
 			return;
 		}
-		post_init();
+		const RHIStatus renderer_status = post_init();
+		if (!renderer_status)
+		{
+			log_rhi_failure("post_init", renderer_status);
+			shutdown_rhi();
+			window->close();
+			return;
+		}
 		// 3.创建RHI
 	}
 
-	void Engine::post_init()
+	RHIStatus Engine::post_init()
 	{
 		shader_map = std::make_unique<ShaderMap>(*shader_map_loader);
+		auto cache = std::make_unique<RenderResourceCache>(
+			create_builtin_render_resource_placeholders());
+		const RHIStatus bootstrap_status =
+			cache->initialize_rhi_placeholders(*rhi_device);
+		if (!bootstrap_status)
+		{
+			return bootstrap_status;
+		}
+		render_resource_cache = std::move(cache);
 		scene_renderer = std::make_unique<ForwardSceneRendering>(
 			*rhi_device,
 			*shader_map);
 		// todo: game module的初始化
+		return RHIStatus::success();
 	}
 
 	FileStatus Engine::initialize_file_system()
@@ -372,6 +390,7 @@ namespace toy3d
 			return;
 		}
 		scene_renderer.reset();
+		render_resource_cache.reset();
 		shader_map.reset();
 		shader_map_loader.reset();
 		rhi_viewport.reset();

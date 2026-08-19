@@ -70,12 +70,19 @@ namespace toy3d
         TextureRenderResourceVersionRef normal_texture;
     };
 
+    RenderResourcePlaceholders create_builtin_render_resource_placeholders();
+
     class RenderResourceCache final
     {
     public:
         explicit RenderResourceCache(RenderResourcePlaceholders placeholders);
 
         bool is_valid() const { return valid_; }
+        bool rhi_placeholders_initialized() const
+        {
+            return rhi_placeholders_initialized_;
+        }
+        RHIStatus initialize_rhi_placeholders(RHIDevice& device);
         RenderResourceApplyResult apply_updates(
             const std::vector<RenderResourceUpdate>& updates);
 
@@ -95,6 +102,9 @@ namespace toy3d
             MeshRenderResourceId resource_id) const;
         RenderResourceResolveResult<TextureRHIResourceRef> resolve_texture_rhi(
             TextureRenderResourceId resource_id) const;
+        RenderResourceResolveResult<TextureRHIResourceRef> resolve_texture_rhi(
+            TextureRenderResourceId resource_id,
+            TextureColorSemantic semantic) const;
 
         std::size_t mesh_count() const { return meshes_.size(); }
         std::size_t material_count() const { return materials_.size(); }
@@ -108,6 +118,10 @@ namespace toy3d
 
         RenderResourcePlaceholders placeholders_;
         bool valid_ = false;
+        bool rhi_placeholders_initialized_ = false;
+        TextureRHIResourceRef checkerboard_texture_rhi_;
+        TextureRHIResourceRef white_texture_rhi_;
+        TextureRHIResourceRef normal_texture_rhi_;
         std::unordered_map<std::uint64_t, MeshRenderResourceVersionRef> meshes_;
         std::unordered_map<std::uint64_t, MaterialRenderResourceVersionRef> materials_;
         std::unordered_map<std::uint64_t, TextureRenderResourceVersionRef> textures_;

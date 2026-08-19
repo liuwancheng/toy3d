@@ -2,6 +2,7 @@
 #include "drivers/rhi/rhi_queue.h"
 #include "platform/rhi_surface_factory.h"
 #include "platform/win/win32_window.h"
+#include "renderscene/resources/render_resource_cache.h"
 
 #include <array>
 #include <cstdint>
@@ -61,6 +62,7 @@ int main()
     RHIBufferRef buffer;
     RHICommandListRef command_list;
     RHISubmitInfo submit_info;
+    std::unique_ptr<RenderResourceCache> resource_cache;
     if (initialized)
     {
         auto context_result = device->create_graphics_command_context();
@@ -148,10 +150,45 @@ int main()
         }
     }
 
+    if (initialized)
+    {
+        resource_cache = std::make_unique<RenderResourceCache>(
+            create_builtin_render_resource_placeholders());
+        check(resource_cache->is_valid() &&
+                !resource_cache->rhi_placeholders_initialized(),
+            "Built-in CPU placeholders must be valid but unpublished before bootstrap");
+        const RHIStatus bootstrap_status =
+            resource_cache->initialize_rhi_placeholders(*device);
+        check(static_cast<bool>(bootstrap_status),
+            "Renderer placeholder bootstrap must complete on the real Vulkan queue");
+        check(resource_cache->rhi_placeholders_initialized(),
+            "Renderer placeholder RHI resources must publish after completion");
+
+        const auto color = resource_cache->resolve_texture_rhi(
+            TextureRenderResourceId{}, TextureColorSemantic::Color);
+        const auto linear = resource_cache->resolve_texture_rhi(
+            TextureRenderResourceId{}, TextureColorSemantic::Linear);
+        const auto normal = resource_cache->resolve_texture_rhi(
+            TextureRenderResourceId{}, TextureColorSemantic::Normal);
+        check(color.state == RenderResourceResolveState::Placeholder && color &&
+                color.version->texture->desc().format ==
+                    RHIFormat::R8G8B8A8UNormSRGB,
+            "Color misses must resolve the completed sRGB checkerboard placeholder");
+        check(linear.state == RenderResourceResolveState::Placeholder && linear &&
+                linear.version->texture->desc().format ==
+                    RHIFormat::R8G8B8A8UNorm,
+            "Linear misses must resolve the completed linear white placeholder");
+        check(normal.state == RenderResourceResolveState::Placeholder && normal &&
+                normal.version->texture->desc().format ==
+                    RHIFormat::R8G8B8A8UNorm,
+            "Normal misses must resolve the completed linear normal placeholder");
+    }
+
     submit_info.command_lists.clear();
     command_list.reset();
     buffer.reset();
     context.reset();
+    resource_cache.reset();
     if (initialized)
     {
         check(static_cast<bool>(device->shutdown()),

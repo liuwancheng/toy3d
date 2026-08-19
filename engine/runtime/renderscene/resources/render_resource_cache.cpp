@@ -224,6 +224,22 @@ namespace toy3d
                 left.rgba8_pixels == right.rgba8_pixels;
         }
 
+        TextureRenderResourceVersionRef make_builtin_texture(
+            TextureColorSemantic semantic,
+            std::uint32_t width,
+            std::uint32_t height,
+            std::vector<std::uint8_t> pixels)
+        {
+            auto texture = std::make_shared<TextureRenderResourceVersion>();
+            texture->resource_id = allocate_render_id<TextureRenderResourceId>();
+            texture->revision = RenderResourceRevision(1);
+            texture->width = width;
+            texture->height = height;
+            texture->color_semantic = semantic;
+            texture->rgba8_pixels = std::move(pixels);
+            return texture;
+        }
+
         void reject_update(
             RenderResourceApplyResult& result,
             RenderResourceApplyError error,
@@ -320,6 +336,37 @@ namespace toy3d
             iterator->second = update.version;
             ++result.applied_count;
         }
+    }
+
+    RenderResourcePlaceholders create_builtin_render_resource_placeholders()
+    {
+        auto material = std::make_shared<MaterialRenderResourceVersion>();
+        material->resource_id = allocate_render_id<MaterialRenderResourceId>();
+        material->revision = RenderResourceRevision(1);
+        material->material.shader_name = "Builtin/Error";
+
+        RenderResourcePlaceholders placeholders;
+        placeholders.error_material = std::move(material);
+        placeholders.checkerboard_texture = make_builtin_texture(
+            TextureColorSemantic::Color,
+            2,
+            2,
+            {
+                255, 0, 255, 255,
+                0, 0, 0, 255,
+                0, 0, 0, 255,
+                255, 0, 255, 255});
+        placeholders.white_texture = make_builtin_texture(
+            TextureColorSemantic::Linear,
+            1,
+            1,
+            {255, 255, 255, 255});
+        placeholders.normal_texture = make_builtin_texture(
+            TextureColorSemantic::Normal,
+            1,
+            1,
+            {128, 128, 255, 255});
+        return placeholders;
     }
 
     RenderResourceCache::RenderResourceCache(RenderResourcePlaceholders placeholders)
