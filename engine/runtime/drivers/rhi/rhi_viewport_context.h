@@ -18,6 +18,24 @@ namespace toy3d
             status.code() == RHIErrorCode::Suboptimal;
     }
 
+    inline RHIStatus rhi_normalize_incomplete_acquired_frame_status(
+        const RHIStatus& status,
+        const char* operation)
+    {
+        // Once a backend has acquired presentation ownership, a failure to
+        // discharge that ownership cannot be retried as an ordinary viewport
+        // resize/minimize outcome. Preserve an existing terminal diagnostic,
+        // but promote an otherwise recoverable code to BackendFailure.
+        if (status || !rhi_is_recoverable_viewport_status(status))
+        {
+            return status;
+        }
+        return RHIStatus::failure(
+            RHIErrorCode::BackendFailure,
+            std::string(operation) +
+                " could not complete an acquired viewport frame: " + status.message());
+    }
+
     struct RHIViewportContextDesc
     {
         std::uint32_t width = 1;

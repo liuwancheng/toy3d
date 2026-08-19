@@ -49,6 +49,10 @@ namespace toy3d
         RHIStatus submit_active_frame(const std::vector<VulkanCommandList*>& command_lists);
         RHIStatus present_active_image();
         RHIStatus abort_active_frame();
+        RHIStatus latch_presentation_failure(const RHIStatus& status);
+        RHIStatus latch_incomplete_active_frame_failure(
+            const RHIStatus& status,
+            const char* operation);
         void finish_active_frame();
 
         VulkanDevice& vulkan_device;

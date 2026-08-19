@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`71187dc`（`完善 Renderer 格式能力验证`）。
+- 基线 commit：`5fbf01c`（`完善 RHI viewport 可恢复状态`）。
 - 当前分支：`main`。
-- 工作区状态：仅包含已独立验证的 FND-2B viewport recoverable status、Vulkan resize/status
-  propagation、独立 RHI 测试与对应文档同步；尚未提交。
+- 工作区状态：仅包含已独立验证的 FND-2C 失败帧闭环、独立 RHI status 测试与对应
+  文档同步；尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -28,6 +28,7 @@
 | BASE-1 | Windows Editor shutdown 崩溃诊断与修复 | 完成 | Debug 构建、CTest 8/8、两轮 `WM_CLOSE` 退出码 0 |
 | FND-2A | Renderer format contract 与 capability 验证 | 完成 | Debug 全量构建、CTest 9/9 与公共 RHI format contract 测试通过 |
 | FND-2B | Viewport resize 与 recoverable status | 完成 | Debug 全量构建、CTest 10/10 与公共 viewport status 测试通过 |
+| FND-2C | `abort_frame()` 完整失败帧语义 | 完成 | Debug 重新配置、Editor/测试构建、CTest 10/10 与 diff 检查通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -249,7 +250,44 @@ surface 的 `OutOfDate`/`Suboptimal`；未覆盖 D3D11、D3D12、移动设备、
 - `ctest --test-dir build -C Debug --output-on-failure`，10/10 通过；
 - `git diff --check`，无 whitespace error。
 
-## 8. 已知但不在当前工作包解决
+## 8. 已完成工作包：FND-2C
+
+### 8.1 实现边界与关键决定
+
+- `vkAcquireNextImageKHR` 返回 `VK_ERROR_OUT_OF_DATE_KHR` 时不再在同一次 `begin_frame()` 中
+  重建并重试；本次返回 `OutOfDate`，下一次调用在干净边界重建，避免复用已销毁 frame slot 的
+  semaphore 引用。
+- acquire 已成功后，最小 present transition 的 command-buffer begin/end、fence reset、queue
+  submit 或 abort presentation 前置步骤任一失败都会锁存 terminal status；底层若给出 recoverable
+  viewport code，则统一提升为 `BackendFailure`，后续 `begin_frame()` 重复返回原诊断。
+- `end_frame()` 在 native submit 前拒绝重复 command list，使 post-submit state publication 保持
+  不失败前提；若该 CPU invariant 仍异常，已经提交的帧仍尝试 present 消费 `render_finished`，随后
+  锁存 terminal failure。
+- validation/recording failure 仍不提交已丢弃业务 command list；`abort_frame()` 只提交 present
+  transition command buffer，成功 submit 后才发布 backbuffer committed `Present` state，并推进
+  frame slot。submit 失败不发布 committed state。
+- 公共测试扩展了 acquire 后未完成帧的 status normalization：`NotReady`、`OutOfDate`、
+  `Suboptimal` 提升为 `BackendFailure`，既有 `DeviceLost` code/message 原样保留。
+
+### 8.2 独立验证证据
+
+独立 sub-agent 使用 `verify-toy3d-build`，在 Windows、Visual Studio 17 2022、x64、Debug、
+`BUILD_TESTING=ON` 环境实际执行：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON`；
+- `cmake --build build --config Debug --target Toy3dEditor`；
+- `cmake --build build --config Debug --target Toy3dRHIViewportStatusTests`；
+- `ctest --test-dir build -C Debug --output-on-failure`，10/10 通过；
+- `git diff --check`，无 whitespace error，仅有既有 LF→CRLF 提示。
+
+验证前后工作区均为相同 8 个已跟踪修改文件，无暂存或未跟踪项，验证者未修改实现和文档。
+没有构建或测试失败。未启动 GUI Editor，未覆盖实际 Vulkan draw/present 与窗口关闭、D3D11、
+D3D12、移动端、非 Windows 和非 Debug 配置。
+
+主 agent 此前定向组合构建首次曾因 `Toy3dEditor.ilk` 瞬时占用产生 `LNK1104`；当时测试 target
+已成功生成，确认无残留 Editor/MSBuild/link 进程后原命令重试通过。该瞬时失败未在独立验证中重现。
+
+## 9. 已知但不在当前工作包解决
 
 - 公共 RHI owner identity 尚未完成；同 backend 类型跨 device 的对象混用仍是既有 P1。
 - Global/View constant buffer 的具体字段属于后续 Renderer parameter contract，不在
@@ -259,28 +297,25 @@ surface 的 `OutOfDate`/`Suboptimal`；未覆盖 D3D11、D3D12、移动设备、
 - D3D11、D3D12、Android 与 macOS 不属于第一里程碑实际运行验收，但新增公共 contract
   必须持续保持可实现性。
 
-## 9. 建议提交
+## 10. 建议提交
 
-FND-2B 的公共 status contract、Vulkan propagation、caller policy、独立测试和文档互为一个
+FND-2C 的失败帧 contract、Vulkan 状态机修正、独立测试和文档互为一个
 工作包闭环，建议作为
 单一提交：
 
-- `完善 RHI viewport 可恢复状态`
+- `完善 RHI viewport 失败帧闭环`
 
 提交前再次核对 diff，不包含构建产物、本机配置或后续工作包内容。
 
-## 10. 下一工作包
+## 11. 下一工作包
 
-FND-2B 提交并确认新基线后，再单独进入 FND-2C：
+FND-2C 独立验证、主 agent 复查并提交确认新基线后，批次 2 的 RHI 最小缺口闭环。下一轮再按
+`rendering-engine-foundation-design.md` 单独拆分批次 3 的 GameScene 领域模型；不在本工作包同时开始
+World、RenderScene、Render Thread 或 Forward Renderer。
 
-- `abort_frame()` 的完整失败帧语义复核；
-- 覆盖 acquire 已成功后 recording/submit/present 失败时的 semaphore 消费、frame-slot 推进、
-  committed state 与 terminal/recoverable status；
-- 不同时开始 World、RenderScene、Render Thread 或 Forward Renderer。
+本轮在 FND-2C 完成后停止，不进入批次 3。
 
-本轮在 FND-2B 完成后停止，不进入 FND-2C。
-
-## 11. 每轮交接规则
+## 12. 每轮交接规则
 
 每轮开始读取 `AGENTS.md`、Foundation 总设计、本台账及当前工作包直接依赖的局部设计；
 每轮结束记录：

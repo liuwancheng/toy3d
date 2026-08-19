@@ -194,6 +194,7 @@ public:
     virtual RHIStatus end_frame(
         std::unique_ptr<RHIFrameContext> frame,
         const std::vector<RHICommandListRef>& command_lists) = 0;
+    virtual RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) = 0;
     virtual RHIStatus request_resize(uint32 width, uint32 height) = 0;
 };
 ```
@@ -204,6 +205,15 @@ viewport status 中 `NotReady`、`OutOfDate` 与 `Suboptimal` 分别表达暂时
 以及本帧完成但后续应重建，caller 可将它们作为 recoverable frame outcome。不可恢复的 submit、
 同步或 surface failure 保持 `DeviceLost`、`BackendFailure` 等原始诊断，不得降格为 `NotReady`
 而被渲染循环永久静默忽略。
+
+`begin_frame()` 的 acquire 返回 `OutOfDate` 时，本次直接返回可恢复结果并保持 resize pending；
+不得在重建 swapchain 后继续使用重建前 frame slot 的 semaphore/fence 引用重试 acquire。acquire 已成功但
+recording 无法继续时，caller 必须调用 `abort_frame()`；backend 只提交恢复 present layout 所需的最小
+command buffer，不提交已丢弃的业务 command list，并消费 acquire synchronization、尝试 present、推进
+frame slot。若最小提交、同步或 present 前的恢复步骤失败，本帧不再具备可重试语义：即使底层返回
+`NotReady`、`OutOfDate` 或 `Suboptimal`，也必须提升为 terminal `BackendFailure` 并锁存，禁止后续帧复用
+状态未知的 presentation object。若 GPU submit 已成功，后续 CPU 状态发布异常也仍须尝试 present，以消费
+已经安排 signal 的 presentation semaphore，再报告 terminal failure。
 
 ## 5. 资源与 view
 

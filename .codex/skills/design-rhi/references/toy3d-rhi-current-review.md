@@ -21,6 +21,7 @@
 9. Vulkan graphics pipeline 已映射 `VkPipelineDepthStencilStateCreateInfo`，compatibility render pass 与 command-list-local render pass 支持 color+depth 和 depth-only attachment、depth/stencil load/store/clear、只读/可写 layout 与 access 校验，并将 attachment format、sample count 和只读写入兼容性检查。`VulkanPortable v1` 不要求 separate depth/stencil layouts，当前 backend path 对 packed depth/stencil format 的一个 aspect 只读、另一个可写明确返回 `Unsupported`。renderscene test pass 已接入 `D32Float` depth attachment，实际经过创建、transition、clear 和 depth-enabled draw 路径。
 10. 已迁移并删除 `RHIFormat`、`RHIAccess` 的 legacy spelling alias，公共枚举只保留规范名称，避免 cache key、日志和后端转换出现同值异名。
 11. graphics binding 已使用 `RHIGraphicsBindings` 原子提交完整 logical 快照；Vulkan logical `RHIBindingSet` 不再等同于 `VkDescriptorSet`，而是在 draw 前按 pipeline layout materialize physical packet。Global+View 原子聚合为 set 0，packet 与 source sets 由 command list 保活到 queue completion；旧 `bind_binding_set()` 和未实现诊断已删除。runtime Vulkan API 基线同步为 1.1，与 ShaderCompiler 的 SPIR-V 1.3 contract 一致。代码、生成映射和自动测试已验证；独立 Editor/Vulkan 冒烟已连续两轮完成 draw/present、正常 `WM_CLOSE`、日志刷新与退出码 0，未产生新的 validation warning/error。该证据不代替截图或像素级视觉验收。
+12. Vulkan viewport 的失败帧闭环已补齐：acquire `OutOfDate` 不再重建后复用失效的 frame-slot 引用重试；recording/validation failure 通过 `abort_frame()` 的最小 present transition submit 消费 acquire synchronization。acquire 后在 command-buffer begin/end、fence reset、queue submit 等任一步失败都会锁存 terminal presentation failure，可恢复 code 会提升为 `BackendFailure`；重复 command list 在 native submit 前拒绝，submit 后即使 command-list CPU 状态发布异常仍会尝试 present 消费同步。
 
 ## P1
 

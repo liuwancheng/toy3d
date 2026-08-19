@@ -7,6 +7,7 @@
 #include "drivers/vulkan/vulkan_upload_manager.h"
 
 #include <algorithm>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -213,6 +214,7 @@ namespace toy3d
             const RHIStatus status = recreate_swapchain();
             if (!status)
             {
+                latch_presentation_failure(status);
                 return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
             }
         }
@@ -223,6 +225,7 @@ namespace toy3d
             "vkWaitForFences");
         if (!status)
         {
+            latch_presentation_failure(status);
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
         const RHIQueueCompletionValue completed_value = vulkan_device.graphics_queue().completed_value();
@@ -237,6 +240,7 @@ namespace toy3d
         status = make_vulkan_status(vkResetCommandPool(vulkan_device.device(), slot.command_pool, 0), "vkResetCommandPool");
         if (!status)
         {
+            latch_presentation_failure(status);
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
 
@@ -250,22 +254,13 @@ namespace toy3d
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
         {
             resize_pending = true;
-            status = recreate_swapchain();
-            if (!status)
-            {
-                return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
-            }
-            result = vkAcquireNextImageKHR(
-                vulkan_device.device(),
-                vk_swapchain,
-                UINT64_MAX,
-                slot.image_available,
-                VK_NULL_HANDLE,
-                &active_image_index);
+            status = make_vulkan_status(result, "vkAcquireNextImageKHR");
+            return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
         {
             status = make_vulkan_status(result, "vkAcquireNextImageKHR");
+            latch_presentation_failure(status);
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
 
@@ -280,7 +275,7 @@ namespace toy3d
                 // Acquire already signaled image_available. A failed wait means
                 // the previous image use cannot be proven complete, so neither
                 // the image nor this frame slot may be safely reused.
-                presentation_failure = status;
+                latch_incomplete_active_frame_failure(status, "vkWaitForFences");
                 return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
             }
         }
@@ -311,6 +306,7 @@ namespace toy3d
 
         std::vector<VulkanCommandList*> vulkan_command_lists;
         vulkan_command_lists.reserve(command_lists.size());
+        std::set<const RHICommandList*> unique_command_lists;
         RHIStatus validation_status = RHIStatus::success();
         for (const RHICommandListRef& command_list : command_lists)
         {
@@ -319,6 +315,13 @@ namespace toy3d
                 validation_status = RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
                     "Vulkan viewport submission received a null command list.");
+                break;
+            }
+            if (!unique_command_lists.emplace(command_list.get()).second)
+            {
+                validation_status = RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "A command list cannot appear twice in one Vulkan viewport submission.");
                 break;
             }
             auto* vulkan_command_list = dynamic_cast<VulkanCommandList*>(command_list.get());
@@ -413,18 +416,28 @@ namespace toy3d
             {
                 active_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
             }
+            RHIStatus command_list_status = RHIStatus::success();
             for (VulkanCommandList* command_list : vulkan_command_lists)
             {
-                status = command_list->mark_submitted_by_viewport();
-                if (!status)
+                command_list_status = command_list->mark_submitted_by_viewport();
+                if (!command_list_status)
                 {
                     break;
                 }
             }
-        }
-        if (status)
-        {
-            status = present_active_image();
+            const RHIStatus present_status = present_active_image();
+            if (!present_status && !rhi_is_recoverable_viewport_status(present_status))
+            {
+                status = present_status;
+            }
+            else if (!command_list_status)
+            {
+                status = latch_presentation_failure(command_list_status);
+            }
+            else
+            {
+                status = present_status;
+            }
         }
         finish_active_frame();
         return status;
@@ -789,15 +802,16 @@ namespace toy3d
         const auto active_texture = std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
         if (!active_texture)
         {
-            return RHIStatus::failure(
+            return latch_incomplete_active_frame_failure(RHIStatus::failure(
                 RHIErrorCode::BackendFailure,
-                "Vulkan viewport lost its native swapchain texture wrapper.");
+                "Vulkan viewport lost its native swapchain texture wrapper."),
+                "Vulkan present transition recording");
         }
         VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         RHIStatus status = make_vulkan_status(vkBeginCommandBuffer(slot.present_command_buffer, &begin_info), "vkBeginCommandBuffer");
         if (!status)
         {
-            return status;
+            return latch_incomplete_active_frame_failure(status, "vkBeginCommandBuffer");
         }
         VkImageLayout layout_before_present = active_texture->image_layout();
         RHIAccess access_before_present = active_texture->current_access();
@@ -839,12 +853,12 @@ namespace toy3d
         status = make_vulkan_status(vkEndCommandBuffer(slot.present_command_buffer), "vkEndCommandBuffer");
         if (!status)
         {
-            return status;
+            return latch_incomplete_active_frame_failure(status, "vkEndCommandBuffer");
         }
         status = make_vulkan_status(vkResetFences(vulkan_device.device(), 1, &slot.completion_fence), "vkResetFences");
         if (!status)
         {
-            return status;
+            return latch_incomplete_active_frame_failure(status, "vkResetFences");
         }
         const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         std::vector<VkCommandBuffer> command_buffers;
@@ -866,14 +880,9 @@ namespace toy3d
             // image_available may remain signaled and the acquired image was
             // not returned to the presentation engine. Retrying this viewport
             // would reuse synchronization with an unknown state.
-            presentation_failure = submit_result.status();
-            if (rhi_is_recoverable_viewport_status(presentation_failure))
-            {
-                presentation_failure = RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "Vulkan viewport submission failed after image acquisition: " +
-                        submit_result.status().message());
-            }
+            latch_incomplete_active_frame_failure(
+                submit_result.status(),
+                "Vulkan viewport submission");
             const VkFence discarded_fence = slot.completion_fence;
             for (VkFence& image_fence : image_fences)
             {
@@ -891,7 +900,7 @@ namespace toy3d
                 "vkCreateFence");
             if (!fence_status)
             {
-                presentation_failure = fence_status;
+                latch_incomplete_active_frame_failure(fence_status, "vkCreateFence");
                 return fence_status;
             }
             return presentation_failure;
@@ -942,9 +951,10 @@ namespace toy3d
                 std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
             if (!active_texture)
             {
-                status = RHIStatus::failure(
+                status = latch_incomplete_active_frame_failure(RHIStatus::failure(
                     RHIErrorCode::BackendFailure,
-                    "Vulkan viewport lost its native swapchain texture wrapper after abort submission.");
+                    "Vulkan viewport lost its native swapchain texture wrapper after abort submission."),
+                    "Vulkan aborted-frame presentation");
             }
             else
             {
@@ -954,6 +964,23 @@ namespace toy3d
         }
         finish_active_frame();
         return status;
+    }
+
+    RHIStatus VulkanViewportContext::latch_presentation_failure(const RHIStatus& status)
+    {
+        if (!status && !rhi_is_recoverable_viewport_status(status))
+        {
+            presentation_failure = status;
+        }
+        return status;
+    }
+
+    RHIStatus VulkanViewportContext::latch_incomplete_active_frame_failure(
+        const RHIStatus& status,
+        const char* operation)
+    {
+        presentation_failure = rhi_normalize_incomplete_acquired_frame_status(status, operation);
+        return presentation_failure;
     }
 
     void VulkanViewportContext::finish_active_frame()
