@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- FND-6B 施工起点 commit：`a911fed`（`建立 SceneView 反向深度契约`）。
+- FND-6C 施工起点 commit：`4898ef4`（`建立 ViewportFrame 输出契约`）。
 - 当前分支：`main`。
-- 当前工作包：FND-6B ViewportFrame/SceneOutput owned-value contract、packet transport 与 processor observation
-  validation；主 agent 与独立 sub-agent 验证通过。
+- 当前工作包：FND-6C Game Thread CameraComponent 到 owned ViewportFrame 的 snapshot builder；主 agent 与
+  独立 sub-agent 验证通过。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -44,6 +44,7 @@
 | FND-5D3B | Renderer placeholder bootstrap orchestration | 完成 | 原子发布/错误保留测试、真实 Vulkan bootstrap、CTest 17/17 与 composition-root 启动存活验证通过 |
 | FND-6A | SceneView/SceneViewFamily 与 reversed-Z matrix contract | 完成 | Editor/定向构建、CTest 18/18、直接测试与独立矩阵/传输核查通过 |
 | FND-6B | ViewportFrame/SceneOutput owned-value contract | 完成 | Editor/定向构建、CTest 19/19、直接测试与独立 processor/transport 核查通过 |
+| FND-6C | CameraComponent 到 ViewportFrame snapshot builder | 完成 | Editor/定向构建、CTest 20/20、直接测试与独立层级 transform/FOV 核查通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -1105,3 +1106,37 @@ Unsupported 分类。transport 测试增加 Family/View 随 packet enqueue/deque
 补强端到端断言后，验证者再次构建 pipeline test，并完成直接测试、定向 CTest 4/4 与全量 CTest 19/19；
 确认观察失败不回滚 Primitive Remove，且 zero extent 在 family validation 后跳过未知 Scene lookup。
 未覆盖 D3D11、D3D12、macOS、移动端与 Editor GUI/画面验收。
+
+## 29. FND-6C：CameraComponent 到 ViewportFrame Snapshot Builder
+
+### 29.1 实现边界与关键决定
+
+- 在 GameScene 一侧新增 `build_camera_viewport_frame()`，同步读取 `CameraComponent`、已更新的 hierarchy world
+  transform 与调用方提供的 viewport/output/ViewRect 描述，构建只含 owned values 和 stable IDs 的单 Family
+  `ViewportFrame`；RenderScene 与 RHI 不反向依赖 GameScene，也不把 Camera、Actor 或 World 指针放入 packet；
+- world transform 的 column 3/2/1 分别提供 camera position/forward/up，方向由 `build_scene_view()` 正规化；
+  finite Perspective 的 vertical FOV、near 与 far 完整透传，并继续使用已确认的 left-handed、+Z forward、
+  column-vector 与 reversed-Z 矩阵 contract；
+- builder 要求调用方先完成 `World::update_transforms()`；dirty transform 返回 `InvalidArgument`，避免静默读取旧
+  world matrix。非 finite Perspective 模式明确返回 `Unsupported`；输出在完整 SceneView 与 ViewportFrame
+  validation 成功后才原子替换，失败不覆盖调用方原有结果；
+- output extent 与 ViewRect 分别由真实 viewport/editor panel 状态和有效观察区域提供。`{0,0}` output 可保留
+  最近有效的非零 ViewRect，从而携带真实 minimized 状态，同时仍生成可验证的 Camera snapshot；
+- 本包不建立全局 `RenderFramePacket` producer，不持有 viewport/output ID 生命周期，不实现 UI-only frame、
+  `SceneOutputResource`、GPU resize/versioning、Forward rendering 或 composition-root 替换。
+
+### 29.2 测试与验证
+
+新增 `Toy3dCameraViewportFrameBuilderTests`，覆盖 dirty transform 的失败原子性、同 World hierarchy transform、
+非均匀 scale 后的方向正规化、Camera/World/Viewport/Output identity、非法 output、zero extent Offscreen 与有效
+ViewRect 保留。补强用例通过父层级 X 轴 90° 旋转明确验证 world position、column 2 forward、column 1 up，
+并核对 75° vertical FOV 对 `projection_matrix[1][1]` 的实际影响。
+
+主 Agent 构建 `Toy3dCameraViewportFrameBuilderTests` 与 `Toy3dEditor`，完成定向 CTest 4/4、全量 CTest
+20/20 和专项 executable 直接运行。新的独立验证 sub-agent 使用 `verify-toy3d-build` 重新配置 VS 2022 x64、
+`BUILD_TESTING=ON`、Vulkan ON，顺序构建 Camera builder、GameScene、SceneView、ViewportFrame、pipeline 与 Editor
+目标；全量 CTest 20/20、直接测试与 `git diff --check` 均通过，验证前后 HEAD 与工作区集合一致。
+
+验证者提出的初始 P2 测试覆盖意见已通过旋转轴与 FOV 断言消除，并对最终源码再次完成定向 4/4 与全量 20/20。
+非 Perspective 分支因当前 CameraComponent 尚无公开构造对应模式的 API，仅完成静态核查；未覆盖 D3D11、D3D12、
+macOS、移动端与 Editor GUI/画面验收。
