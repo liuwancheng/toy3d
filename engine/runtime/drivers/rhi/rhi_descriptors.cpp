@@ -371,13 +371,14 @@ namespace toy3d
             }
             for (const RHIBindingLayoutEntry& existing : bindings)
             {
-                if (binding_register_class(existing.type) == binding_register_class(entry.type) &&
+                if (existing.group == entry.group &&
+                    binding_register_class(existing.type) == binding_register_class(entry.type) &&
                     rhi_has_any_flag(existing.stages, entry.stages) &&
                     binding_ranges_overlap(existing.slot, existing.array_count, entry.slot, entry.array_count))
                 {
                     return RHIStatus::failure(
                         RHIErrorCode::InvalidArgument,
-                        "Binding register ranges must not overlap within the same shader stages and resource class.");
+                        "Binding register ranges must not overlap within one logical group, shader stages, and resource class.");
                 }
             }
             bindings.push_back(entry);

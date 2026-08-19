@@ -130,6 +130,15 @@ namespace toy3d
         RHIIndexFormat format = RHIIndexFormat::UInt16;
     };
 
+    struct RHIGraphicsBindings
+    {
+        RHIBindingSetRef global;
+        RHIBindingSetRef view;
+        RHIBindingSetRef pass;
+        RHIBindingSetRef material;
+        RHIBindingSetRef object;
+    };
+
     struct RHIDrawArgs
     {
         std::uint32_t vertex_count = 0;
@@ -153,6 +162,7 @@ namespace toy3d
     RHIStatus validate_texture_copy_desc(const RHITextureCopyDesc& desc);
     RHIStatus validate_texture_upload_desc(const RHITextureUploadDesc& desc);
     RHIStatus validate_render_pass_desc(const RHIRenderPassDesc& desc);
+    RHIStatus validate_graphics_bindings(const RHIGraphicsBindings& bindings);
     RHIStatus validate_draw_args(const RHIDrawArgs& args);
     RHIStatus validate_draw_indexed_args(const RHIDrawIndexedArgs& args);
 }

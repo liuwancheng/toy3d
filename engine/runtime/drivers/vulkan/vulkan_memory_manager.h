@@ -29,7 +29,7 @@ namespace toy3d
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
-        std::uint32_t vulkan_api_version = VK_API_VERSION_1_0;
+        std::uint32_t vulkan_api_version = VK_API_VERSION_1_1;
     };
 
     struct VulkanAllocation

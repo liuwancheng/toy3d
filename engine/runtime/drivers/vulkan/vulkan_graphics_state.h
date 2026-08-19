@@ -28,7 +28,7 @@ namespace toy3d
     public:
         void reset();
         void set_pipeline(RHIGraphicsPipelineRef pipeline);
-        void set_binding_set(RHIBindingSetRef binding_set);
+        void set_graphics_bindings(RHIGraphicsBindings bindings);
         void set_vertex_buffers(std::vector<RHIVertexBufferBinding> bindings);
         void set_index_buffer(RHIIndexBufferBinding binding);
         void set_viewport(const RHIViewport& viewport);
@@ -40,7 +40,7 @@ namespace toy3d
         void clear_dirty_flags(VulkanGraphicsStateDirty flags);
 
         const RHIGraphicsPipelineRef& pipeline() const;
-        const std::vector<RHIBindingSetRef>& binding_sets() const;
+        const RHIGraphicsBindings& bindings() const;
         const std::vector<RHIVertexBufferBinding>& vertex_buffers() const;
         const RHIIndexBufferBinding& index_buffer() const;
         const RHIViewport& viewport() const;
@@ -57,7 +57,7 @@ namespace toy3d
         void mark_dirty(VulkanGraphicsStateDirty flags);
 
         RHIGraphicsPipelineRef graphics_pipeline;
-        std::vector<RHIBindingSetRef> resource_binding_sets;
+        RHIGraphicsBindings graphics_bindings;
         std::vector<RHIVertexBufferBinding> vertex_buffer_bindings;
         RHIIndexBufferBinding index_buffer_binding;
         RHIViewport current_viewport;

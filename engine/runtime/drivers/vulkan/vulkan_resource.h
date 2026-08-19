@@ -213,12 +213,22 @@ namespace toy3d
     class VulkanBindingSet final : public RHIBindingSet
     {
     public:
-        VulkanBindingSet(
-            RHIBindingSetDesc desc,
+        explicit VulkanBindingSet(RHIBindingSetDesc desc);
+        ~VulkanBindingSet() override = default;
+    };
+
+    class VulkanBindingPacket final
+    {
+    public:
+        VulkanBindingPacket(
             VkDevice device,
             VkDescriptorPool descriptor_pool,
-            VkDescriptorSet descriptor_set);
-        ~VulkanBindingSet() override;
+            VkDescriptorSet descriptor_set,
+            std::vector<std::shared_ptr<VulkanBindingSet>> logical_sets);
+        ~VulkanBindingPacket();
+
+        VulkanBindingPacket(const VulkanBindingPacket&) = delete;
+        VulkanBindingPacket& operator=(const VulkanBindingPacket&) = delete;
 
         VkDescriptorSet descriptor_set() const;
 
@@ -226,6 +236,7 @@ namespace toy3d
         VkDevice vk_device = VK_NULL_HANDLE;
         VkDescriptorPool vk_descriptor_pool = VK_NULL_HANDLE;
         VkDescriptorSet vk_descriptor_set = VK_NULL_HANDLE;
+        std::vector<std::shared_ptr<VulkanBindingSet>> source_sets;
     };
 
     // The compatibility render pass supplies the attachment signature Vulkan

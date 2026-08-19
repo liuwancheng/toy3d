@@ -38,7 +38,9 @@ protected:
     RHITextureViewRef test_depth_view;
     RHISamplerRef test_sampler;
     RHIBindingLayoutRef test_binding_layout;
-    RHIBindingSetRef test_binding_set;
+    RHIBindingSetRef test_global_binding_set;
+    RHIBindingSetRef test_view_binding_set;
+    RHIBindingSetRef test_material_binding_set;
     RHIGraphicsPipelineRef test_pipeline;
     bool test_texture_uploaded = false;
     bool test_depth_transitioned = false;

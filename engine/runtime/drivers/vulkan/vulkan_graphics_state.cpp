@@ -1,6 +1,5 @@
 #include "drivers/vulkan/vulkan_graphics_state.h"
 
-#include <algorithm>
 #include <type_traits>
 #include <utility>
 
@@ -14,7 +13,7 @@ namespace toy3d
     void VulkanGraphicsState::reset()
     {
         graphics_pipeline.reset();
-        resource_binding_sets.clear();
+        graphics_bindings = {};
         vertex_buffer_bindings.clear();
         index_buffer_binding = {};
         current_viewport = {};
@@ -35,26 +34,9 @@ namespace toy3d
         mark_dirty(VulkanGraphicsStateDirty::Pipeline);
     }
 
-    void VulkanGraphicsState::set_binding_set(RHIBindingSetRef binding_set)
+    void VulkanGraphicsState::set_graphics_bindings(RHIGraphicsBindings bindings)
     {
-        if (!binding_set)
-        {
-            return;
-        }
-        const auto iterator = std::find_if(
-            resource_binding_sets.begin(), resource_binding_sets.end(),
-            [&binding_set](const RHIBindingSetRef& existing)
-            {
-                return existing && existing->group() == binding_set->group();
-            });
-        if (iterator == resource_binding_sets.end())
-        {
-            resource_binding_sets.push_back(std::move(binding_set));
-        }
-        else
-        {
-            *iterator = std::move(binding_set);
-        }
+        graphics_bindings = std::move(bindings);
         mark_dirty(VulkanGraphicsStateDirty::Bindings);
     }
 
@@ -116,9 +98,9 @@ namespace toy3d
         return graphics_pipeline;
     }
 
-    const std::vector<RHIBindingSetRef>& VulkanGraphicsState::binding_sets() const
+    const RHIGraphicsBindings& VulkanGraphicsState::bindings() const
     {
-        return resource_binding_sets;
+        return graphics_bindings;
     }
 
     const std::vector<RHIVertexBufferBinding>& VulkanGraphicsState::vertex_buffers() const

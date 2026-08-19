@@ -12,6 +12,7 @@
 #endif
 #include <vulkan/vulkan.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -22,6 +23,7 @@ namespace toy3d
     class VulkanDevice;
     class VulkanBuffer;
     class VulkanGraphicsPipeline;
+    class VulkanBindingPacket;
     class VulkanRenderPassResources;
     class VulkanTexture;
     class VulkanUploadPage;
@@ -51,6 +53,7 @@ namespace toy3d
         const std::vector<RHIGraphicsPipelineRef>& retained_graphics_pipelines() const;
         void retain_binding_set(const RHIBindingSetRef& binding_set);
         const std::vector<RHIBindingSetRef>& retained_binding_sets() const;
+        void retain_binding_packet(const std::shared_ptr<VulkanBindingPacket>& binding_packet);
         void retain_render_pass_resources(std::shared_ptr<VulkanRenderPassResources> resources);
         const std::vector<std::shared_ptr<VulkanRenderPassResources>>& retained_render_pass_resources() const;
 
@@ -106,6 +109,7 @@ namespace toy3d
         std::vector<RHITextureViewRef> texture_views;
         std::vector<RHIGraphicsPipelineRef> graphics_pipelines;
         std::vector<RHIBindingSetRef> binding_sets;
+        std::vector<std::shared_ptr<VulkanBindingPacket>> binding_packets;
         std::vector<std::shared_ptr<VulkanRenderPassResources>> render_pass_resources;
         std::unordered_map<const VulkanBuffer*, BufferState> buffer_states;
         std::unordered_map<const VulkanTexture*, TextureState> texture_states;
@@ -142,9 +146,12 @@ namespace toy3d
         RHIStatus set_vertex_buffers(
             const std::vector<RHIVertexBufferBinding>& bindings) override;
         RHIStatus set_index_buffer(const RHIIndexBufferBinding& binding) override;
-        RHIStatus bind_binding_set(const RHIBindingSetRef& binding_set) override;
         RHIStatus draw(const RHIDrawArgs& args) override;
         RHIStatus draw_indexed(const RHIDrawIndexedArgs& args) override;
+
+    protected:
+        RHIStatus bind_graphics_bindings_impl(
+            const RHIGraphicsBindings& bindings) override;
 
     private:
         RHIStatus require_recording() const;
@@ -159,5 +166,7 @@ namespace toy3d
         std::shared_ptr<VulkanCommandList> recording_command_list;
         std::shared_ptr<VulkanRenderPassResources> active_render_pass;
         VulkanGraphicsState graphics_state;
+        std::array<std::shared_ptr<VulkanBindingPacket>,
+            VulkanBindingLayout::physical_set_count> active_binding_packets{};
     };
 }

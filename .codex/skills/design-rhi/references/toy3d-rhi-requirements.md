@@ -12,7 +12,7 @@
 - 第一阶段只实现 graphics、单线程录制、单 graphics queue。
 - 接口必须允许后续无破坏性接入 compute 和 pass 级多线程录制。
 - 单个 pass 内不做并行；多 GPU、ray tracing、VRS、bindless、RDG、RHI thread、async compute 均非第一阶段目标。
-- RHI 图形闭环稳定后直接建设完整 RDG，不实现独立的临时 Pass Scheduler。RDG 位于 renderscene，不进入公共 RHI；第一版 RDG 可以分阶段交付，但其资源、pass 和编译模型必须属于同一长期架构。
+- RHI 图形闭环稳定后，先使用显式、长期可保留的 SceneRenderer 与 `render_*_pass(RHIGraphicsCommandContext&)` 完成 Forward Renderer，不实现独立的通用临时 Pass Scheduler。RDG 后置并位于 renderscene，不进入公共 RHI；引入后逐步接管资源依赖、barrier、transient 生命周期与调度，不替换 World/RenderScene、Material、MeshProcessor 或业务 Pass 职责。
 - API 特有能力通过 capability/扩展表达；不支持返回 `Unsupported`，禁止空操作成功。
 
 ## 命名原则
@@ -41,14 +41,14 @@
 - `ShaderStage`、binding layout、usage/access 从第一版容纳 Compute 和 storage/UAV。
 - `compute_dispatch`、`storage_resource/UAV`、`async_compute_queue` 是独立 capability。
 - 后续以完整 pass 为并行任务，例如 `ShadowPass` 与 `BasePass`；每个 pass 独占 context/list，结束后不可修改。
-- 后续由 RDG 按依赖拓扑规划 pass、跨 pass transition/hazard 和提交顺序。后端不能可靠并行时退化为串行且结果不变。
+- 完整 Renderer 稳定后可先由 SceneRenderer 私有策略实现独立 Pass 间录制与按依赖提交；后续 RDG 再统一规划 pass、跨 pass transition/hazard 和提交顺序。后端不能可靠并行时退化为串行且结果不变。
 
 ## Command List 与资源状态权威
 
 - command context 是录制入口；`finish_recording()` 产出结束后不可修改的 command list。command list 必须保留所录制 GPU 工作引用的 resource、view、sampler、shader、binding、pipeline、render-pass backend object 和 upload allocation，直到对应 queue completion value 完成。
 - 录制 transition 时不得直接修改资源对象或 device 全局表中的 committed access/layout。每个 command list 使用 local state tracker，至少记录资源第一次使用要求的 initial access、录制过程中的 local access 和结束时的 final access；texture tracker 必须允许演进到 subresource range。
 - 同一 graphics queue 的 committed state 按实际提交顺序推进，不需要等待 GPU 完成；queue completion value 只负责 allocator、上传内存、descriptor 和资源销毁等生命周期回收，不能代替资源状态排序。
-- command list 丢弃、录制失败或提交失败时不得提交其 final state。第一阶段可由调用方在录制前确定 transition 计划，local tracker 负责验证并输出状态摘要；后续由 RDG 统一规划跨 pass transition，并可在 command-list 边界增加接缝 barrier 编译，但不引入 UE 的完整 RHI thread/command replay 系统。
+- command list 丢弃、录制失败或提交失败时不得提交其 final state。显式 Renderer 阶段由 SceneRenderer/Pass 在录制前确定 transition 计划，local tracker 负责验证并输出状态摘要；后续由 RDG 统一规划跨 pass transition，并可在 command-list 边界增加接缝 barrier 编译，但不引入 UE 的完整 RHI thread/command replay 系统。
 - 每个 context/list 单线程录制；queue submit 串行化。并行 pass 只能共享不可变对象或使用明确同步的 device cache、thread-local/frame-local pool。
 
 ## 资源与生命周期
@@ -74,8 +74,9 @@
 
 - `RHIRenderPassInfo` 只描述 color/depth/stencil attachment view、load/store、clear、resolve、render area 和必要的只读属性；Vulkan 可映射 render pass/dynamic rendering，D3D12/D3D11 可用目标绑定、clear、discard 和 resolve 组合实现。
 - 公共 RHI 不表达 RDG pass、依赖边、资源 culling、transient aliasing、queue 调度、Vulkan subpass/input attachment 或 tile-local dependency。
-- 后续 RDG 必须是 renderscene 的长期设施，统一承担 logical/transient resource、pass read/write 声明、依赖图编译、生命周期、barrier 规划、pass culling、并行录制计划与未来多 queue 调度。可以先实现其中的顺序 graphics 子集，但不得建立一套需要被 RDG 再次替换的临时 Pass Scheduler API。
-- 每个 RDG pass 是未来并行录制的最小任务边界；每个 pass 独占 context/list，单个 pass 内保持串行。RDG 生成 RHI transition 与 render-pass scope，RHI 不反向理解 `ShadowPass`、`BasePass` 等上层业务语义。
+- 显式 Renderer 的 SceneRenderer、业务 Pass、Material、MeshProcessor 与 `render_*_pass(context)` 是长期职责，不是待 RDG 替换的临时 Scheduler API。RDG 引入前由它们显式管理已知资源、transition 与提交顺序。
+- 后续 RDG 必须是 renderscene 的长期设施，统一承担 logical/transient resource、pass read/write 声明、依赖图编译、生命周期、barrier 规划、pass culling、并行录制计划与未来多 queue 调度；不得为过渡再建立一套通用 Pass Scheduler。
+- 每个完整业务 pass 是未来并行录制的最小任务边界；每个 pass 独占 context/list，单个 pass 内保持串行。RDG 后续生成 RHI transition 与 render-pass scope，RHI 不反向理解 `ShadowPass`、`ForwardPass` 等上层业务语义。
 
 ## Binding、Shader 与 Pipeline
 
@@ -118,9 +119,10 @@
 2. device、graphics context、queue、viewport/presentation 分层；swapchain 收入 viewport 内部。
 3. 资源/view、上传、command-list-local transition、提交状态推进、延迟销毁。
 4. graphics render pass、pipeline、binding、draw/copy 闭环。
-5. 在 renderscene 建设正式 RDG，先闭环 graphics pass 声明、依赖编译、barrier、生命周期和串行录制，不建立临时 Pass Scheduler。
-6. RDG pass culling、transient pool/aliasing及每线程 context/pool与pass级并行录制按依赖继续演进。
-7. compute pipeline/context 和 RDG compute pass；async compute/multi-queue及其他高级能力独立后置。
+5. 按 `document/rendering-engine-foundation-design.md` 建设 World/RenderScene、Game/Render Thread、Material、Forward Renderer、PostProcess 与 ImGui 的完整显式渲染闭环，不建立通用临时 Pass Scheduler。
+6. 先设计共享 TaskSystem，再以 Shadow/Forward 等完整 Pass 为边界实现可串行退化的 Pass 间并行录制。
+7. 在真实 Renderer 的资源依赖和生命周期得到验证后建设正式 RDG，逐步接管依赖编译、barrier、transient pool/aliasing、pass culling 与调度。
+8. compute pipeline/context 和 RDG compute pass；async compute/multi-queue及其他高级能力独立后置。
 
 ## Vulkan 启动边界
 

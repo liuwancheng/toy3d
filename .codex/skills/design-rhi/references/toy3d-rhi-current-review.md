@@ -18,8 +18,9 @@
 6. texture transition 已支持 `RHISubresourceRange` 的 aspect、mip 与 array layer 精确范围。Vulkan texture committed state 按 subresource 保存，command list 以稀疏 delta 记录 initial/final state，barrier 使用精确 `VkImageSubresourceRange`；copy、upload、render-pass attachment 与 sampled binding 均按实际访问范围验证，混合状态范围明确报错，提交失败仍不发布 final state。
 7. graphics pipeline 创建已迁移为 `RHIDevice::create_graphics_pipeline()` 公共 NVI 与 backend `create_graphics_pipeline_impl()`。公共 frontend 统一执行 validation、limits/format capability、descriptor canonicalization，并使用 pointer-free 完整键、hash collision equality 和并发 single-flight 的 device-owned cache；lifecycle gate 使 shutdown 拒绝新的 pipeline 创建、等待已进入创建结束，再等待 GPU idle、释放 cache 并销毁 native device。
 8. stencil pipeline 语义已收敛为 front/back operation 加共用 8-bit read/write mask，stencil reference 移到 command context 动态状态；constant blend factor 对应的 blend constants 也已补为动态命令，Vulkan pipeline 显式声明并录制这两类 dynamic state。
-9. Vulkan graphics pipeline 已映射 `VkPipelineDepthStencilStateCreateInfo`，compatibility render pass 与 command-list-local render pass 支持 color+depth 和 depth-only attachment、depth/stencil load/store/clear、只读/可写 layout 与 access 校验，并将 attachment format、sample count 和只读写入兼容性检查。packed depth/stencil format 在 Vulkan 1.0 下不支持一个 aspect 只读而另一个可写，后端会明确返回 `Unsupported`。renderscene test pass 已接入 `D32Float` depth attachment，实际经过创建、transition、clear 和 depth-enabled draw 路径。
+9. Vulkan graphics pipeline 已映射 `VkPipelineDepthStencilStateCreateInfo`，compatibility render pass 与 command-list-local render pass 支持 color+depth 和 depth-only attachment、depth/stencil load/store/clear、只读/可写 layout 与 access 校验，并将 attachment format、sample count 和只读写入兼容性检查。`VulkanPortable v1` 不要求 separate depth/stencil layouts，当前 backend path 对 packed depth/stencil format 的一个 aspect 只读、另一个可写明确返回 `Unsupported`。renderscene test pass 已接入 `D32Float` depth attachment，实际经过创建、transition、clear 和 depth-enabled draw 路径。
 10. 已迁移并删除 `RHIFormat`、`RHIAccess` 的 legacy spelling alias，公共枚举只保留规范名称，避免 cache key、日志和后端转换出现同值异名。
+11. graphics binding 已使用 `RHIGraphicsBindings` 原子提交完整 logical 快照；Vulkan logical `RHIBindingSet` 不再等同于 `VkDescriptorSet`，而是在 draw 前按 pipeline layout materialize physical packet。Global+View 原子聚合为 set 0，packet 与 source sets 由 command list 保活到 queue completion；旧 `bind_binding_set()` 和未实现诊断已删除。runtime Vulkan API 基线同步为 1.1，与 ShaderCompiler 的 SPIR-V 1.3 contract 一致。代码、生成映射和自动测试已验证；可正常退出并刷新日志的独立 Editor/Vulkan 冒烟尚未形成有效证据。
 
 ## P1
 
@@ -27,7 +28,7 @@
 2. `RHIDevice::create_graphics_command_context()` 与 `RHIFrameContext::create_graphics_command_context()` 并存，Vulkan前者返回 `Unsupported`。需要明确非frame录制的产品需求；若第一阶段只允许frame-local context，应从公共device主路径移除或后置。
 3. `create_buffer/create_texture(initial_data)` 在Vulkan明确返回`Unsupported`，当前上传只能通过frame-local context完成；需要保持诊断行为并决定后续初始化批次，不得引入隐式submit/wait idle。
 4. Buffer View、storage binding、resolve attachment和GPU fence/readback尚未闭环；其 capability和错误路径需要与Vulkan、D3D11、D3D12映射一起定型。
-5. 正式RDG尚未实现。后续直接在renderscene建设RDG，不新增临时Pass Scheduler；在RDG接管跨pass状态前，手写renderscene transition只能作为RHI bring-up代码。
+5. 正式 Renderer 与 RDG 均尚未实现。下一阶段按 `document/rendering-engine-foundation-design.md` 先建设 World/RenderScene、Game/Render Thread、Material、Forward Renderer、PostProcess 与 ImGui；显式 SceneRenderer/业务 Pass 是长期职责，不新增通用临时 Pass Scheduler。RDG 后置，在真实跨 Pass 依赖形成后再接管资源声明、barrier 与调度。
 6. 当前只完成 graphics pipeline 创建链与 queue submit 的 NVI；其他 resource/view/shader/binding 创建入口以及 command context 行为仍由 backend 直接实现完整接口。后续应按调用链迁移公共 validation、状态机和资源保活，不能让新后端复制 Vulkan frontend policy。
 7. `RHIObject` 尚无不可变 device ownership identity。backend 的 `dynamic_pointer_cast` 只能拒绝不同类型，不能拒绝来自另一个同类型 device 的对象；在支持多 device 或 D3D backend 前应增加公共 owner token/id，并在 NVI frontend 统一检查。
 

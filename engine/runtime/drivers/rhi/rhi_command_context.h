@@ -98,9 +98,12 @@ namespace toy3d
             const std::vector<RHIVertexBufferBinding>& bindings) = 0;
         virtual RHIStatus set_index_buffer(
             const RHIIndexBufferBinding& binding) = 0;
-        virtual RHIStatus bind_binding_set(
-            const RHIBindingSetRef& binding_set) = 0;
+        RHIStatus bind_graphics_bindings(const RHIGraphicsBindings& bindings);
         virtual RHIStatus draw(const RHIDrawArgs& args) = 0;
         virtual RHIStatus draw_indexed(const RHIDrawIndexedArgs& args) = 0;
+
+    protected:
+        virtual RHIStatus bind_graphics_bindings_impl(
+            const RHIGraphicsBindings& bindings) = 0;
     };
 }

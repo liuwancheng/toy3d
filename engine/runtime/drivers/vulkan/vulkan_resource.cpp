@@ -488,19 +488,24 @@ namespace toy3d
         return vk_sampler;
     }
 
-    VulkanBindingSet::VulkanBindingSet(
-        RHIBindingSetDesc desc,
-        VkDevice device,
-        VkDescriptorPool descriptor_pool,
-        VkDescriptorSet descriptor_set)
+    VulkanBindingSet::VulkanBindingSet(RHIBindingSetDesc desc)
         : RHIBindingSet(std::move(desc))
-        , vk_device(device)
-        , vk_descriptor_pool(descriptor_pool)
-        , vk_descriptor_set(descriptor_set)
     {
     }
 
-    VulkanBindingSet::~VulkanBindingSet()
+    VulkanBindingPacket::VulkanBindingPacket(
+        VkDevice device,
+        VkDescriptorPool descriptor_pool,
+        VkDescriptorSet descriptor_set,
+        std::vector<std::shared_ptr<VulkanBindingSet>> logical_sets)
+        : vk_device(device)
+        , vk_descriptor_pool(descriptor_pool)
+        , vk_descriptor_set(descriptor_set)
+        , source_sets(std::move(logical_sets))
+    {
+    }
+
+    VulkanBindingPacket::~VulkanBindingPacket()
     {
         if (vk_device != VK_NULL_HANDLE && vk_descriptor_pool != VK_NULL_HANDLE)
         {
@@ -508,7 +513,7 @@ namespace toy3d
         }
     }
 
-    VkDescriptorSet VulkanBindingSet::descriptor_set() const
+    VkDescriptorSet VulkanBindingPacket::descriptor_set() const
     {
         return vk_descriptor_set;
     }

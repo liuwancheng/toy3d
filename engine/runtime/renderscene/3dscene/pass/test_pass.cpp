@@ -38,25 +38,35 @@ namespace toy3d
                 "Test pass requires a vertex/pixel ShaderMap Program.");
         }
         const ShaderMapProgramData& shader_map_program = loaded.program->data();
-        const auto find_binding = [&](const char* name, RHIResourceBindingType type)
+        const auto find_binding = [&](const char* name, RHIBindingGroup group,
+                                      RHIResourceBindingType type)
             -> const ShaderMapBinding* {
             const auto binding = std::find_if(
                 shader_map_program.bindings.begin(), shader_map_program.bindings.end(),
                 [&](const ShaderMapBinding& value) {
-                    return value.name == name && value.group == RHIBindingGroup::Material &&
+                    return value.name == name && value.group == group &&
                         value.type == type;
                 });
             return binding == shader_map_program.bindings.end() ? nullptr : &*binding;
         };
         const ShaderMapBinding* texture_parameter = find_binding(
-            "source_texture", RHIResourceBindingType::SampledTexture);
+            "source_texture", RHIBindingGroup::Material,
+            RHIResourceBindingType::SampledTexture);
         const ShaderMapBinding* sampler_parameter = find_binding(
-            "source_sampler", RHIResourceBindingType::Sampler);
-        if (!texture_parameter || !sampler_parameter)
+            "source_sampler", RHIBindingGroup::Material,
+            RHIResourceBindingType::Sampler);
+        const ShaderMapBinding* global_texture_parameter = find_binding(
+            "global_texture", RHIBindingGroup::Global,
+            RHIResourceBindingType::SampledTexture);
+        const ShaderMapBinding* view_texture_parameter = find_binding(
+            "view_texture", RHIBindingGroup::View,
+            RHIResourceBindingType::SampledTexture);
+        if (!texture_parameter || !sampler_parameter ||
+            !global_texture_parameter || !view_texture_parameter)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Test pass ShaderMap Program is missing its Material texture or sampler.");
+                "Test pass ShaderMap Program is missing Global, View, or Material bindings.");
         }
         RHIBindingLayoutRef binding_layout = program.binding_layout;
 
@@ -100,21 +110,52 @@ namespace toy3d
         }
         RHISamplerRef sampler = std::move(sampler_result).value();
 
-        RHIBindingSetDesc binding_set_desc;
-        binding_set_desc.layout = binding_layout;
-        binding_set_desc.group = RHIBindingGroup::Material;
+        RHIBindingSetDesc material_binding_set_desc;
+        material_binding_set_desc.layout = binding_layout;
+        material_binding_set_desc.group = RHIBindingGroup::Material;
         RHIBindingValue texture_binding;
         texture_binding.slot = texture_parameter->target_binding;
         texture_binding.texture_view = texture_view;
         RHIBindingValue sampler_binding;
         sampler_binding.slot = sampler_parameter->target_binding;
         sampler_binding.sampler = sampler;
-        binding_set_desc.bindings = {texture_binding, sampler_binding};
-        binding_set_desc.debug_name = "TestPassBindingSet";
-        auto binding_set_result = rhi_device.create_binding_set(binding_set_desc);
-        if (!binding_set_result)
+        material_binding_set_desc.bindings = {texture_binding, sampler_binding};
+        material_binding_set_desc.debug_name = "TestPassMaterialBindingSet";
+        auto material_binding_set_result = rhi_device.create_binding_set(
+            material_binding_set_desc);
+        if (!material_binding_set_result)
         {
-            return binding_set_result.status();
+            return material_binding_set_result.status();
+        }
+
+        RHIBindingSetDesc global_binding_set_desc;
+        global_binding_set_desc.layout = binding_layout;
+        global_binding_set_desc.group = RHIBindingGroup::Global;
+        RHIBindingValue global_texture_binding;
+        global_texture_binding.slot = global_texture_parameter->target_binding;
+        global_texture_binding.texture_view = texture_view;
+        global_binding_set_desc.bindings = {global_texture_binding};
+        global_binding_set_desc.debug_name = "TestPassGlobalBindingSet";
+        auto global_binding_set_result = rhi_device.create_binding_set(
+            global_binding_set_desc);
+        if (!global_binding_set_result)
+        {
+            return global_binding_set_result.status();
+        }
+
+        RHIBindingSetDesc view_binding_set_desc;
+        view_binding_set_desc.layout = binding_layout;
+        view_binding_set_desc.group = RHIBindingGroup::View;
+        RHIBindingValue view_texture_binding;
+        view_texture_binding.slot = view_texture_parameter->target_binding;
+        view_texture_binding.texture_view = texture_view;
+        view_binding_set_desc.bindings = {view_texture_binding};
+        view_binding_set_desc.debug_name = "TestPassViewBindingSet";
+        auto view_binding_set_result = rhi_device.create_binding_set(
+            view_binding_set_desc);
+        if (!view_binding_set_result)
+        {
+            return view_binding_set_result.status();
         }
 
         RHIGraphicsPipelineDesc pipeline_desc;
@@ -140,7 +181,9 @@ namespace toy3d
         test_texture_view = std::move(texture_view);
         test_sampler = std::move(sampler);
         test_binding_layout = std::move(binding_layout);
-        test_binding_set = std::move(binding_set_result).value();
+        test_global_binding_set = std::move(global_binding_set_result).value();
+        test_view_binding_set = std::move(view_binding_set_result).value();
+        test_material_binding_set = std::move(material_binding_set_result).value();
         test_pipeline = std::move(pipeline_result).value();
         return RHIStatus::success();
     }
@@ -309,7 +352,11 @@ namespace toy3d
         }
         if (status)
         {
-            status = context.bind_binding_set(test_binding_set);
+            RHIGraphicsBindings bindings;
+            bindings.global = test_global_binding_set;
+            bindings.view = test_view_binding_set;
+            bindings.material = test_material_binding_set;
+            status = context.bind_graphics_bindings(bindings);
         }
         if (status)
         {

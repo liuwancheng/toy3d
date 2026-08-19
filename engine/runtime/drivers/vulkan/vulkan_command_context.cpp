@@ -357,6 +357,17 @@ namespace toy3d
         return binding_sets;
     }
 
+    void VulkanCommandList::retain_binding_packet(
+        const std::shared_ptr<VulkanBindingPacket>& binding_packet)
+    {
+        if (binding_packet &&
+            std::find(binding_packets.begin(), binding_packets.end(), binding_packet) ==
+                binding_packets.end())
+        {
+            binding_packets.push_back(binding_packet);
+        }
+    }
+
     void VulkanCommandList::retain_render_pass_resources(std::shared_ptr<VulkanRenderPassResources> resources)
     {
         if (resources)
@@ -667,6 +678,7 @@ namespace toy3d
         }
         recording_command_list = std::move(command_list);
         graphics_state.reset();
+        active_binding_packets.fill(nullptr);
         return RHIStatus::success();
     }
 
@@ -1228,7 +1240,8 @@ namespace toy3d
             {
                 return RHIStatus::failure(
                     RHIErrorCode::Unsupported,
-                    "Vulkan 1.0 render passes do not support mixed read-only and writable depth-stencil aspects.");
+                    "VulkanPortable v1 does not require separate depth and stencil layouts; "
+                    "mixed read-only and writable depth-stencil aspects are unsupported by this backend path.");
             }
             const bool read_only = attachment.view->desc().depth_read_only &&
                 (!has_stencil || attachment.view->desc().stencil_read_only);
@@ -1527,20 +1540,25 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::bind_binding_set(const RHIBindingSetRef& binding_set)
+    RHIStatus VulkanGraphicsCommandContext::bind_graphics_bindings_impl(
+        const RHIGraphicsBindings& bindings)
     {
         const RHIStatus status = require_recording();
         if (!status)
         {
             return status;
         }
-        if (!std::dynamic_pointer_cast<VulkanBindingSet>(binding_set))
+        const std::array<RHIBindingSetRef, static_cast<std::size_t>(RHIBindingGroup::Max)> sets = {
+            bindings.global, bindings.view, bindings.pass, bindings.material, bindings.object};
+        if (std::any_of(sets.begin(), sets.end(), [](const RHIBindingSetRef& binding_set) {
+                return binding_set && !std::dynamic_pointer_cast<VulkanBindingSet>(binding_set);
+            }))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan command recording requires a Vulkan binding set.");
+                "Vulkan command recording requires Vulkan binding sets.");
         }
-        graphics_state.set_binding_set(binding_set);
+        graphics_state.set_graphics_bindings(bindings);
         return RHIStatus::success();
     }
 
@@ -1655,59 +1673,68 @@ namespace toy3d
                 required_groups[static_cast<std::size_t>(entry.group)] = true;
             }
         }
-        std::array<std::shared_ptr<VulkanBindingSet>, static_cast<std::size_t>(RHIBindingGroup::Max)> bound_sets{};
-        for (const RHIBindingSetRef& binding_set : graphics_state.binding_sets())
+        const RHIGraphicsBindings& bindings = graphics_state.bindings();
+        const std::array<RHIBindingSetRef, static_cast<std::size_t>(RHIBindingGroup::Max)>
+            logical_sets = {
+                bindings.global,
+                bindings.view,
+                bindings.pass,
+                bindings.material,
+                bindings.object
+            };
+        std::array<std::vector<std::shared_ptr<VulkanBindingSet>>,
+            VulkanBindingLayout::physical_set_count> physical_sources;
+        for (std::size_t group_index = 0; group_index < logical_sets.size(); ++group_index)
         {
-            const std::size_t group_index = static_cast<std::size_t>(binding_set->group());
-            if (group_index < bound_sets.size() && required_groups[group_index])
+            if (!required_groups[group_index])
             {
-                const auto vulkan_set = std::dynamic_pointer_cast<VulkanBindingSet>(binding_set);
-                if (!vulkan_set ||
-                    !(binding_set->layout()->desc() == pipeline->desc().binding_layout->desc()))
-                {
-                    return RHIStatus::failure(
-                        RHIErrorCode::InvalidArgument,
-                        "Vulkan binding set layout is incompatible with the graphics pipeline.");
-                }
-                for (const RHIBindingValue& value : binding_set->desc().bindings)
-                {
-                    if (value.buffer)
-                    {
-                        const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
-                        if (!buffer || recording_command_list->tracked_buffer_access(buffer) != RHIAccess::UniformBuffer)
-                        {
-                            return RHIStatus::failure(
-                                RHIErrorCode::InvalidArgument,
-                                "Vulkan uniform buffer must be transitioned to UniformBuffer before draw.");
-                        }
-                    }
-                    if (value.texture_view)
-                    {
-                        const auto texture = std::dynamic_pointer_cast<VulkanTexture>(value.texture_view->texture());
-                        const auto texture_state = texture
-                            ? recording_command_list->tracked_texture_state(
-                                  texture, value.texture_view->desc().subresources)
-                            : RHIResult<VulkanTextureSubresourceState>::failure(
-                                  RHIErrorCode::InvalidArgument, "Invalid Vulkan sampled texture.");
-                        if (!texture_state || texture_state.value().access != RHIAccess::ShaderResourceGraphics)
-                        {
-                            return RHIStatus::failure(
-                                RHIErrorCode::InvalidArgument,
-                                "Vulkan sampled texture must be transitioned to ShaderResourceGraphics before draw.");
-                        }
-                    }
-                }
-                bound_sets[group_index] = vulkan_set;
+                continue;
             }
-        }
-        for (std::size_t group_index = 0; group_index < required_groups.size(); ++group_index)
-        {
-            if (required_groups[group_index] && !bound_sets[group_index])
+            const RHIBindingSetRef& binding_set = logical_sets[group_index];
+            if (!binding_set)
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
                     "Vulkan draw is missing a required graphics binding group.");
             }
+            const auto vulkan_set = std::dynamic_pointer_cast<VulkanBindingSet>(binding_set);
+            if (!vulkan_set ||
+                !(binding_set->layout()->desc() == pipeline->desc().binding_layout->desc()))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan binding set layout is incompatible with the graphics pipeline.");
+            }
+            for (const RHIBindingValue& value : binding_set->desc().bindings)
+            {
+                if (value.buffer)
+                {
+                    const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
+                    if (!buffer || recording_command_list->tracked_buffer_access(buffer) != RHIAccess::UniformBuffer)
+                    {
+                        return RHIStatus::failure(
+                            RHIErrorCode::InvalidArgument,
+                            "Vulkan uniform buffer must be transitioned to UniformBuffer before draw.");
+                    }
+                }
+                if (value.texture_view)
+                {
+                    const auto texture = std::dynamic_pointer_cast<VulkanTexture>(value.texture_view->texture());
+                    const auto texture_state = texture
+                        ? recording_command_list->tracked_texture_state(
+                              texture, value.texture_view->desc().subresources)
+                        : RHIResult<VulkanTextureSubresourceState>::failure(
+                              RHIErrorCode::InvalidArgument, "Invalid Vulkan sampled texture.");
+                    if (!texture_state || texture_state.value().access != RHIAccess::ShaderResourceGraphics)
+                    {
+                        return RHIStatus::failure(
+                            RHIErrorCode::InvalidArgument,
+                            "Vulkan sampled texture must be transitioned to ShaderResourceGraphics before draw.");
+                    }
+                }
+            }
+            const RHIBindingGroup group = static_cast<RHIBindingGroup>(group_index);
+            physical_sources[VulkanBindingLayout::physical_set(group)].push_back(vulkan_set);
         }
 
         const VulkanGraphicsStateDirty dirty_flags = graphics_state.dirty_flags();
@@ -1718,24 +1745,44 @@ namespace toy3d
         }
         if (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::Bindings))
         {
-            for (std::size_t group_index = 0; group_index < bound_sets.size(); ++group_index)
+            active_binding_packets.fill(nullptr);
+            const auto layout = std::dynamic_pointer_cast<VulkanBindingLayout>(
+                pipeline->desc().binding_layout);
+            for (std::size_t physical_set = 0;
+                 physical_set < physical_sources.size();
+                 ++physical_set)
             {
-                if (!bound_sets[group_index])
+                if (physical_sources[physical_set].empty())
                 {
                     continue;
                 }
-                const VkDescriptorSet descriptor_set = bound_sets[group_index]->descriptor_set();
+                auto packet_result = vulkan_device.materialize_binding_packet(
+                    layout,
+                    static_cast<std::uint32_t>(physical_set),
+                    physical_sources[physical_set]);
+                if (!packet_result)
+                {
+                    return packet_result.status();
+                }
+                active_binding_packets[physical_set] = std::move(packet_result).value();
+                const VkDescriptorSet descriptor_set =
+                    active_binding_packets[physical_set]->descriptor_set();
                 vkCmdBindDescriptorSets(
                     vk_command_buffer,
                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline->pipeline_layout(),
-                    VulkanBindingLayout::physical_set(
-                        static_cast<RHIBindingGroup>(group_index)),
+                    static_cast<std::uint32_t>(physical_set),
                     1,
                     &descriptor_set,
                     0,
                     nullptr);
-                recording_command_list->retain_binding_set(bound_sets[group_index]);
+                recording_command_list->retain_binding_packet(
+                    active_binding_packets[physical_set]);
+                for (const std::shared_ptr<VulkanBindingSet>& logical_set :
+                     physical_sources[physical_set])
+                {
+                    recording_command_list->retain_binding_set(logical_set);
+                }
             }
         }
         if (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::VertexBuffers))

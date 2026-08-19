@@ -1,11 +1,24 @@
 #include "drivers/rhi/rhi_command_descriptors.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace toy3d
 {
+    namespace
+    {
+        bool binding_layouts_match(
+            const RHIBindingSetRef& first,
+            const RHIBindingSetRef& second)
+        {
+            return !first || !second ||
+                first->layout()->desc() == second->layout()->desc();
+        }
+    }
+
     RHIStatus validate_resource_transition(const RHIResourceTransition& transition)
     {
         if (!transition.resource)
@@ -281,6 +294,50 @@ namespace toy3d
                         RHIErrorCode::InvalidArgument,
                         "Depth-stencil clear values require depth in [0, 1] and an 8-bit stencil value.");
                 }
+            }
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_graphics_bindings(const RHIGraphicsBindings& bindings)
+    {
+        const std::array<std::pair<RHIBindingGroup, RHIBindingSetRef>,
+            static_cast<std::size_t>(RHIBindingGroup::Max)> sets = {{
+            {RHIBindingGroup::Global, bindings.global},
+            {RHIBindingGroup::View, bindings.view},
+            {RHIBindingGroup::Pass, bindings.pass},
+            {RHIBindingGroup::Material, bindings.material},
+            {RHIBindingGroup::Object, bindings.object}
+        }};
+
+        RHIBindingSetRef first_set;
+        for (const auto& entry : sets)
+        {
+            if (!entry.second)
+            {
+                continue;
+            }
+            if (entry.second->group() != entry.first)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Graphics bindings contain a binding set in the wrong logical group field.");
+            }
+            if (!entry.second->layout())
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Graphics bindings require every binding set to have a layout.");
+            }
+            if (!binding_layouts_match(first_set, entry.second))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Graphics binding sets must use compatible binding layouts.");
+            }
+            if (!first_set)
+            {
+                first_set = entry.second;
             }
         }
         return RHIStatus::success();

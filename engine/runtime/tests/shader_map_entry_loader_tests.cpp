@@ -37,11 +37,20 @@ namespace
 
         const toy3d::ShaderMapBinding* texture = find_binding(*loaded.program, "source_texture");
         const toy3d::ShaderMapBinding* sampler = find_binding(*loaded.program, "source_sampler");
+        const toy3d::ShaderMapBinding* global_texture = find_binding(
+            *loaded.program, "global_texture");
+        const toy3d::ShaderMapBinding* view_texture = find_binding(
+            *loaded.program, "view_texture");
         check(texture && sampler, "test Program must expose texture and sampler bindings");
         check(texture->group == toy3d::RHIBindingGroup::Material && texture->target_binding == 0,
             "texture must use VulkanPortable Material binding 0");
         check(sampler->group == toy3d::RHIBindingGroup::Material && sampler->target_binding == 1,
             "sampler must use VulkanPortable Material binding 1");
+        check(global_texture && view_texture &&
+              global_texture->group == toy3d::RHIBindingGroup::Global &&
+              view_texture->group == toy3d::RHIBindingGroup::View &&
+              global_texture->target_binding == 0 && view_texture->target_binding == 1,
+            "Global and View must use compact VulkanPortable set 0 bindings");
 
         toy3d::ShaderMap shader_map(loader);
         toy3d::ShaderMapProgramResult mapped = shader_map.find_or_load(key);
@@ -52,9 +61,9 @@ namespace
               rhi_desc.value().pixel_shader.has_value() &&
               !rhi_desc.value().compute_shader.has_value(),
             "RHI Program conversion must preserve the graphics stage set");
-        check(rhi_desc.value().binding_layout.entries.size() == 2,
+        check(rhi_desc.value().binding_layout.entries.size() == 4,
             "RHI binding layout must be generated from ShaderMap reflection");
-        check(rhi_desc.value().pixel_shader->reflection.size() == 2,
+        check(rhi_desc.value().pixel_shader->reflection.size() == 4,
             "pixel Shader reflection must be generated from the verified entry");
 
         toy3d::ShaderMapProgramData invalid = *loaded.program;
@@ -63,7 +72,18 @@ namespace
             "missing required stage reflection must fail runtime validation");
 
         invalid = *loaded.program;
-        invalid.bindings.back().target_binding = invalid.bindings.front().target_binding;
+        auto invalid_global = std::find_if(invalid.bindings.begin(), invalid.bindings.end(),
+            [](const toy3d::ShaderMapBinding& binding) {
+                return binding.group == toy3d::RHIBindingGroup::Global;
+            });
+        auto invalid_view = std::find_if(invalid.bindings.begin(), invalid.bindings.end(),
+            [](const toy3d::ShaderMapBinding& binding) {
+                return binding.group == toy3d::RHIBindingGroup::View;
+            });
+        check(invalid_global != invalid.bindings.end() &&
+              invalid_view != invalid.bindings.end(),
+            "test Program must retain Global and View bindings for corruption tests");
+        invalid_view->target_binding = invalid_global->target_binding;
         check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
             "duplicate Vulkan set/binding must fail runtime validation");
     }

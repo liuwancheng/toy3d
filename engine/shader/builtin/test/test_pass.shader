@@ -4,6 +4,16 @@ Shader "Toy3d/Test/TestPass"
 
     Resources
     {
+        Global
+        {
+            global_texture : Texture2D<Float4>
+        }
+
+        View
+        {
+            view_texture : Texture2D<Float4>
+        }
+
         Material
         {
             source_texture : Texture2D<Float4>
@@ -52,7 +62,10 @@ Shader "Toy3d/Test/TestPass"
 
         float4 ps_main(PixelInput input) : SV_Target0
         {
-            return source_texture.Sample(source_sampler, input.uv);
+            const float4 global_value = global_texture.Load(int3(0, 0, 0));
+            const float4 view_value = view_texture.Load(int3(1, 0, 0));
+            return source_texture.Sample(source_sampler, input.uv) *
+                (global_value + view_value) * 0.5;
         }
         ENDHLSL
     }

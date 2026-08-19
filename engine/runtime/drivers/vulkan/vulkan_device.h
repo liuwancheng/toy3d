@@ -13,9 +13,13 @@
 #include <vulkan/vulkan.h>
 
 #include <memory>
+#include <vector>
 
 namespace toy3d
 {
+    class VulkanBindingLayout;
+    class VulkanBindingPacket;
+    class VulkanBindingSet;
     class VulkanDeferredDeletionQueue;
     class VulkanQueue;
 
@@ -71,6 +75,10 @@ namespace toy3d
             const RHISamplerDesc& desc) override;
         RHIResult<RHIBindingSetRef> create_binding_set(
             const RHIBindingSetDesc& desc) override;
+        RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_binding_packet(
+            const std::shared_ptr<VulkanBindingLayout>& layout,
+            std::uint32_t physical_set,
+            const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets);
         RHIResult<RHIGPUFenceRef> create_gpu_fence(
             const std::string& debug_name) override;
 

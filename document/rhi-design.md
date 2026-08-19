@@ -6,7 +6,7 @@
 
 本文的目标后端为 Vulkan、Direct3D 11 和 Direct3D 12。若历史文档或代码仍使用 Direct3D 10，应在实现前统一修正为 Direct3D 11；公共接口不得依赖某个后端的原生类型或行为。
 
-UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCommand 和 RHI command list 的组织方式，但 Toy3d 不复制 UE 的宏系统、对象系统、RHI thread、完整 Render Dependency Graph（RDG）或历史兼容接口。Material 系统后续可参考 Godot 的 MaterialTemplate/MaterialInstance 思路，但其后端绑定仍必须经过公共 RHI。
+UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCommand 和 RHI command list 的组织方式，但 Toy3d 不复制 UE 的宏系统、对象系统、RHI thread、完整 Render Dependency Graph（RDG）或历史兼容接口。上层正式采用 `Material → MaterialInstance → MaterialRenderProxy`；其后端绑定必须经过公共 RHI。
 
 ## 2. 第一阶段范围
 
@@ -25,6 +25,8 @@ UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCom
 
 第一阶段不实现 async compute、bindless、ray tracing、VRS、多 GPU、完整 Render Graph、RHI thread 和 draw batch 内并行。公共描述符和 binding layout 需要预留 compute 与 storage resource，但未实现功能必须返回 `Unsupported`，不得空操作成功。
 
+RHI 图形闭环后的上层路线以 `rendering-engine-foundation-design.md` 为准：先使用显式、长期可保留的 SceneRenderer 与业务 Pass 完成 World/RenderScene、Game/Render Thread、Forward Renderer、PostProcess 与 ImGui，再基于真实资源依赖后置引入 RDG。该显式阶段不建立通用临时 Pass Scheduler。
+
 ## 3. 总体分层
 
 ```text
@@ -39,7 +41,7 @@ RenderScene
         v
 RenderCore
     - GlobalShaderMap / MaterialShaderMap
-    - MaterialTemplate / MaterialInstance
+    - Material / MaterialInstance / MaterialRenderProxy
     - shader reflection / parameter binding
     - MeshPassProcessor / MeshDrawPacket
     - pipeline and binding cache
@@ -331,7 +333,7 @@ BasePass、DepthPass、ShadowPass 等 mesh pass 使用 MaterialShader，而不�
 
 Material shader variant 的选择至少依赖：
 
-- MaterialTemplate；
+- Material 的 shader identity 与静态属性；
 - static switches；
 - VertexFactory type；
 - MeshPass type；
@@ -384,6 +386,10 @@ Global/View/Pass/Object 可使用 frame upload allocator；Material 保存持久
 
 ## 10. Binding layout 与 binding set
 
+Global/View physical binding 聚合的公共接口、后端 materialization、生命周期、错误语义、
+测试矩阵和迁移删除条件详见 `rhi-binding-aggregation-design.md`。本节保留长期分层原则；若
+实现细节存在歧义，以该专项设计的已确认 contract 为准。
+
 公共 binding layout 使用 shader 可见的资源语义，不暴露 descriptor set、descriptor heap 或 root parameter：
 
 ```cpp
@@ -433,79 +439,47 @@ struct RHIGraphicsBindings
 
 ## 11. Material 系统预留
 
-### 11.1 `MaterialTemplate`
+Material 系统正式采用：
 
-`MaterialTemplate` 描述材质的能力和稳定 schema：
-
-- shader 模板或 shader 生成规则；
-- dynamic parameter schema；
-- static switch schema；
-- material domain；
-- 默认 blend、depth 和 cull state；
-- 支持的 BasePass、DepthPass、ShadowPass 等 mesh pass；
-- shader reflection 和 Material binding ABI。
-
-```cpp
-class MaterialTemplate
-{
-public:
-    virtual ~MaterialTemplate() = default;
-
-    virtual MaterialTemplateId id() const = 0;
-    virtual MaterialDomain domain() const = 0;
-    virtual const MaterialParameterSchema& parameter_schema() const = 0;
-    virtual const MaterialStaticSwitchSchema& static_switch_schema() const = 0;
-
-    virtual Result<MaterialShaderVariantRef> get_shader_variant(
-        const MaterialVariantKey& key) const = 0;
-};
+```text
+Material → MaterialInstance → MaterialRenderProxy
 ```
 
-### 11.2 `MaterialShaderVariant`
+不引入 `MaterialTemplate` 或 `MaterialInterface`。完整第一版范围见
+`rendering-engine-foundation-design.md`。
 
-```cpp
-struct MaterialVariantKey
-{
-    MaterialTemplateId template_id;
-    MaterialStaticSwitchMask static_switches;
-    VertexFactoryTypeId vertex_factory;
-    MeshPassType pass_type;
-    RenderFeatureLevel feature_level;
-    ShaderTarget target;
-};
-```
+### 11.1 `Material`
 
-Variant 保存编译后的 shader、reflection、Material binding layout、稳定 content hash 和 pipeline-compatible shader state。同一个 MaterialTemplate 的不同 pass 可以使用不同 shader 与参数子集。
+`Material` 是不可变资产定义，保存稳定参数 schema、静态渲染属性与 ShaderMap
+reference。第一版静态属性包括 Phong shading model、`Opaque | Translucent` blend
+mode 与 `two_sided`。静态属性参与 shader/PSO 选择，不作为普通 dynamic parameter
+上传。
 
-### 11.3 `MaterialInstance`
+Game 侧共享引用为 `shared_ptr<const Material>`。Material 不保存 RHI object、Vulkan
+descriptor set 或 D3D12 descriptor handle。
 
-`MaterialInstance` 只保存模板引用、static switch 和实例参数覆盖，不保存 Vulkan descriptor set 或 D3D12 descriptor handle。
+### 11.2 `MaterialInstance`
 
-```cpp
-class MaterialInstance
-{
-public:
-    MaterialTemplateRef material_template;
-    MaterialParameterStorage parameters;
-    MaterialStaticSwitchValues static_switches;
+`MaterialInstance` 保存 `MaterialRef` 与由稳定 `ShaderParameterId` 标识的 typed
+parameter override。参数类型必须匹配 Material schema；动态参数更新只增加 revision，
+不触发 shader 编译。`StaticMeshComponent` 始终引用 MaterialInstance，不在 Component
+内复制一套材质字段。
 
-    uint64 parameter_version = 0;
-    uint64 resource_version = 0;
-};
-```
+### 11.3 `MaterialRenderProxy`
 
-Static parameter 决定 shader variant，例如 normal map、alpha test 和 shading model；修改后重新选择或编译 variant。Dynamic parameter 只更新 uniform/resource binding，不触发 shader 编译。
-
-Material binding cache 根据 MaterialInstance 版本、variant layout 和后端 device 生成 `RHIBindingSet`。Material 资产序列化格式不依赖 RHI backend。
+`MaterialRenderProxy` 由 Render Thread 创建和拥有，保存已 resolve 的不可变参数快照、
+texture/sampler strong references、ShaderMap program 与 Material binding。资源更新使用稳定
+Render Resource ID 和单调 revision；正在录制或被 GPU 使用的旧版本由 RenderScene、
+Prepared Frame 与 RHI completion 生命周期继续保活。
 
 ### 11.4 稳定 Binding ABI
 
 为避免 Vulkan pipeline layout 和 D3D12 root signature 碎片化：
 
 - Global/View/Pass group 由 renderer 约定稳定布局；
-- Material group 由 MaterialTemplate schema 定义；
+- Material group 由 Material 参数 schema 与 shader reflection 共同定义；
 - Object group 由 renderer/VertexFactory 定义；
-- 同一 MaterialTemplate 的 dynamic parameter ABI 尽量跨 static switch 保持稳定；
+- 同一 Material 的 dynamic parameter ABI 应跨兼容 shader variant 保持稳定；
 - reflection 必须与 schema 做完整验证；
 - layout cache 使用完整稳定 key，hash 命中后继续做 equality 比较。
 
@@ -625,7 +599,7 @@ private:
 };
 ```
 
-BasePass 使用 MaterialShaderMap，根据 MaterialTemplate、static switches、VertexFactory、pass type、feature level 和 target 获取 shader variant，再构建 draw packet。
+BasePass 使用 MaterialShaderMap，根据 Material shader identity、静态属性、static switches、VertexFactory、pass type、feature level 和 target 获取 shader variant，再构建 draw packet。
 
 ### 13.4 `MeshDrawPacket`
 
@@ -645,22 +619,20 @@ struct MeshDrawPacket
 };
 ```
 
-Global/View/Pass bindings 在 pass 开始时绑定，Material/Object bindings 按 packet 更新：
+Global/View/Pass bindings 在 pass 开始时准备，Material/Object bindings 按 packet 更新；
+每次 draw 提交一个完整 logical binding 快照：
 
 ```cpp
-commands.bind_binding_set(RHIBindingGroup::Global, global_bindings);
-commands.bind_binding_set(RHIBindingGroup::View, view_bindings);
-commands.bind_binding_set(RHIBindingGroup::Pass, pass_bindings);
-
 for (const MeshDrawPacket& packet : draw_packets)
 {
     commands.set_graphics_pipeline(packet.pipeline);
-    commands.bind_binding_set(
-        RHIBindingGroup::Material,
-        packet.material_bindings);
-    commands.bind_binding_set(
-        RHIBindingGroup::Object,
-        packet.object_bindings);
+    RHIGraphicsBindings bindings;
+    bindings.global = global_bindings;
+    bindings.view = view_bindings;
+    bindings.pass = pass_bindings;
+    bindings.material = packet.material_bindings;
+    bindings.object = packet.object_bindings;
+    commands.bind_graphics_bindings(bindings);
     commands.draw_indexed(packet.draw_args);
 }
 ```
@@ -672,7 +644,7 @@ for (const MeshDrawPacket& packet : draw_packets)
 以下类型或概念不得进入公共 RHI：
 
 - `GlobalShader`、`MaterialShader` 和 shader permutation domain；
-- `MaterialTemplate`、`MaterialInstance` 和 Material 参数资产；
+- `Material`、`MaterialInstance`、`MaterialRenderProxy` 和 Material 参数资产；
 - `VertexFactory`、`MeshBatch` 和 `MeshPassProcessor`；
 - `BasePass`、`ShadowPass` 和 mesh sorting；
 - shader source compilation 和 include 管理；
@@ -765,7 +737,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 ### 阶段 5：Material 与 BasePass 骨架
 
-- 建立最小 `MaterialTemplate`、`MaterialInstance`；
+- 建立最小 `Material`、`MaterialInstance` 与 `MaterialRenderProxy`；
 - 区分 static/dynamic parameters；
 - 建立 `MaterialShaderVariant` 和 `MaterialShaderMap`；
 - 建立 `MeshBatch`、`BasePassMeshProcessor` 和 `MeshDrawPacket`；
@@ -780,11 +752,12 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 ### 阶段 7：后续演进
 
-- pass 资源声明和依赖显式化；
-- 每线程 context/pool；
-- pass 级并行录制；
+- 按 `rendering-engine-foundation-design.md` 完成显式 Forward Renderer；
+- pass 资源与依赖由 SceneRenderer/业务 Pass 明确管理；
+- 先设计共享 TaskSystem，再增加每线程 context/pool 与 pass 间并行录制；
 - compute context 和 dispatch；
-- 按实际需求增加 Render Graph、async compute 或其他高级能力。
+- 在真实依赖形成后增加 RDG，由其逐步接管 barrier、transient 资源和调度；
+- async compute 或其他高级能力继续后置。
 
 ## 18. 第一阶段验收条件
 
@@ -807,6 +780,6 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 - D3D11 queue completion value 的 fence/query 实现策略；
 - transient uniform allocator 的公共 API 形态；
 - Global、View、Pass、Material、Object 固定为五个逻辑 group；各 target/profile 的 physical set/register/root mapping 独立版本化；
-- MaterialTemplate 的序列化格式、shader language 和 Godot 风格生成接口；
+- Material 的序列化格式与未来 Material Graph 生成接口；
 - 第一阶段是否缓存静态 mesh draw packet；
-- 何时引入轻量 Render Graph。
+- RDG 的具体资源声明与编译模型；引入条件和前置路线见 `rendering-engine-foundation-design.md`。
