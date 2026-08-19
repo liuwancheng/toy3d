@@ -40,6 +40,7 @@
 | FND-5D1 | Mesh RHI resource 与事务式随帧上传 | 完成 | Editor/定向构建、CTest 16/16 与 upload transaction contract 测试通过 |
 | FND-5D2 | Texture RHI resource 与统一上传事务 | 完成 | Editor/定向构建、CTest 16/16 与 mixed upload transaction 测试通过 |
 | FND-5D3-DESIGN | Placeholder bootstrap submission 设计 | 完成 | 独立跨文档/三后端一致性检查与主 Agent 修订 |
+| FND-5D3A | Vulkan device-level bootstrap context | 完成 | 主 Agent 与独立验证均完成 VS 2022 x64 Vulkan 构建、CTest 17/17 和真实集成测试 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -962,3 +963,39 @@ submit 阶段由 immediate context 执行并用 event query 或等价机制跟�
 `create_buffer/create_texture(initial_data)` 继续返回 `Unsupported` 的 contract。修订后重新扫描四份文档，
 旧条件句与含糊 D3D11 表述均已清除，`git diff --check` 通过。下一工作包进入 Vulkan device-level context、
 command pool/command list payload 退休与真实 queue completion 实现。
+
+## 25. FND-5D3A：Vulkan Device-Level Bootstrap Context
+
+### 25.1 实现边界与关键决定
+
+- `VulkanDevice::create_graphics_command_context()` 为每个 device-level context 创建独立 transient
+  `VkCommandPool`；`VulkanCommandPool` 是 backend 所有权对象，context 与完成后的 `VulkanCommandList`
+  共同强持有，generic queue 的 fence completion 释放最后一个 command-list 引用后才能销毁 native pool；
+- `VulkanGraphicsCommandContext` 继续复用同一 upload/transition/local-state 实现，但以 nullable viewport identity
+  区分 device-level 与 frame-slot context。device-level list 不伪造 frame id，也不能交给 viewport；generic
+  `VulkanQueue::submit_impl()` 反向只接受 device-level list，viewport list 必须通过所属 viewport 的
+  `end_frame()` 保持 acquire/present 同步闭环；
+- generic submit 成功后按实际 submission order 提交 resource final state，标记 buffer/texture last-use value，
+  并把 command list 捕获的 upload pages 标记为同一 completion value。pending submission 强持有完整 list，
+  从而间接保活 command pool、staging、resource/view/binding/pipeline 等 payload；
+- 本包实现 Vulkan backend 与真实集成测试，不把它描述成 Renderer placeholder bootstrap 已完成。
+  D3D11/D3D12 仍按 FND-5D3-DESIGN 的既定 contract 后续实现；公共 RHI 接口与移动端 profile 未改变。
+
+### 25.2 测试与主验证
+
+新增 Windows+Vulkan 条件测试 `Toy3dVulkanBootstrapContextTests`：创建隐藏 Win32 window/surface 和启用
+validation 的真实 Vulkan device，通过 device-level context 创建 GPU-only buffer，录制
+`Common -> CopyDestination -> VertexBuffer` 与 staging upload，完成 immutable command list，显式 generic
+queue submit、等待 completion、核对 submitted/completed state，最后释放 payload 并 shutdown device。
+
+主 Agent 使用 VS 2022 x64、Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 重新配置并完成
+全量构建；CTest 17/17 通过，集成测试直接运行输出 `Vulkan bootstrap context checks passed.`，未产生
+validation error。
+
+独立验证 sub-agent 在同一 HEAD 与未修改工作树上重新配置，并构建 `Toy3dEditor`、
+`Toy3dVulkanBootstrapContextTests`、`Toy3dRenderResourceUploadTests`；全量 CTest 17/17 通过，直接运行
+bootstrap 测试再次输出 `Vulkan bootstrap context checks passed.`。静态核查确认 generic queue 只接受
+device-level list、viewport submit 路径未改变、command pool 与 upload page 均保活到 completion，且公共 RHI
+头文件没有 Vulkan 类型泄漏。Editor 仅验证启动后稳定存活 5 秒；隐藏窗口无法通过 `CloseMainWindow()` 正常
+关闭，因此不计为完整 Editor 冒烟证据。本包未覆盖 D3D11、D3D12、macOS、移动端 Vulkan profile，也未实现
+Renderer placeholder bootstrap orchestration。

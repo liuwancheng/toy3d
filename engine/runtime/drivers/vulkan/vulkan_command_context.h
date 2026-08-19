@@ -29,9 +29,26 @@ namespace toy3d
     class VulkanUploadPage;
     class VulkanViewportContext;
 
-    // A command list is allocated from one viewport frame slot. Its native
-    // command buffer remains valid until that slot's completion fence allows
-    // the viewport to reset its command pool.
+    // Device-level command pools are retained by their command lists until
+    // queue completion. Viewport frame-slot pools remain viewport-owned.
+    class VulkanCommandPool final
+    {
+    public:
+        VulkanCommandPool(VkDevice device, VkCommandPool command_pool);
+        ~VulkanCommandPool();
+
+        VulkanCommandPool(const VulkanCommandPool&) = delete;
+        VulkanCommandPool& operator=(const VulkanCommandPool&) = delete;
+
+        VkCommandPool handle() const { return vk_command_pool; }
+
+    private:
+        VkDevice vk_device = VK_NULL_HANDLE;
+        VkCommandPool vk_command_pool = VK_NULL_HANDLE;
+    };
+
+    // A command list retains either a device-level pool or the viewport/frame
+    // identity whose slot owns its native command buffer.
     class VulkanCommandList final : public RHICommandList
     {
     public:
@@ -40,8 +57,13 @@ namespace toy3d
             VkCommandBuffer command_buffer,
             std::uint64_t frame_id,
             std::string debug_name);
+        VulkanCommandList(
+            std::shared_ptr<VulkanCommandPool> command_pool,
+            VkCommandBuffer command_buffer,
+            std::string debug_name);
 
         VkCommandBuffer command_buffer() const;
+        bool is_device_level() const;
         bool belongs_to(const VulkanViewportContext& viewport, std::uint64_t frame_id) const;
         void retain_resource(const RHIResourceRef& resource);
         const std::vector<RHIResourceRef>& retained_resources() const;
@@ -102,6 +124,7 @@ namespace toy3d
         };
 
         VulkanViewportContext* viewport_owner = nullptr;
+        std::shared_ptr<VulkanCommandPool> owned_command_pool;
         VkCommandBuffer vk_command_buffer = VK_NULL_HANDLE;
         std::uint64_t command_frame_id = 0;
         std::vector<RHIResourceRef> resources;
@@ -123,6 +146,9 @@ namespace toy3d
             VulkanViewportContext& viewport,
             VkCommandPool command_pool,
             std::uint64_t frame_id);
+        VulkanGraphicsCommandContext(
+            VulkanDevice& device,
+            std::shared_ptr<VulkanCommandPool> command_pool);
         ~VulkanGraphicsCommandContext() override = default;
 
         RHIStatus begin_recording(const std::string& debug_name) override;
@@ -159,7 +185,8 @@ namespace toy3d
         RHIStatus unsupported_while_recording(const char* operation) const;
 
         VulkanDevice& vulkan_device;
-        VulkanViewportContext& viewport_context;
+        VulkanViewportContext* viewport_context = nullptr;
+        std::shared_ptr<VulkanCommandPool> owned_command_pool;
         VkCommandPool vk_command_pool = VK_NULL_HANDLE;
         VkCommandBuffer vk_command_buffer = VK_NULL_HANDLE;
         std::uint64_t recording_frame_id = 0;

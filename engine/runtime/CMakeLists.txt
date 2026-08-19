@@ -280,6 +280,21 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dRuntime.RenderResourceUpload
         COMMAND Toy3dRenderResourceUploadTests)
 
+    if(WIN32 AND TOY3D_ENABLE_VULKAN_RHI)
+        add_executable(Toy3dVulkanBootstrapContextTests
+            "tests/vulkan_bootstrap_context_tests.cpp")
+        target_compile_features(Toy3dVulkanBootstrapContextTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dVulkanBootstrapContextTests PROPERTIES
+            CXX_EXTENSIONS OFF
+            FOLDER "Engine/Tests")
+        target_compile_options(Toy3dVulkanBootstrapContextTests
+            PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_link_libraries(Toy3dVulkanBootstrapContextTests PRIVATE Toy3dRuntime)
+        add_test(NAME Toy3dRuntime.VulkanBootstrapContext
+            COMMAND Toy3dVulkanBootstrapContextTests)
+    endif()
+
     add_executable(Toy3dRenderFoundationPipelineTests
         "tests/render_foundation_pipeline_tests.cpp")
     target_compile_features(Toy3dRenderFoundationPipelineTests PRIVATE cxx_std_17)

@@ -2,6 +2,7 @@
 
 #include "drivers/vulkan/vulkan_command_context.h"
 #include "drivers/vulkan/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_upload_manager.h"
 
 #include <string>
 #include <utility>
@@ -23,9 +24,13 @@ namespace toy3d
         }
     }
 
-    VulkanQueue::VulkanQueue(VkDevice device, VkQueue queue)
+    VulkanQueue::VulkanQueue(
+        VkDevice device,
+        VkQueue queue,
+        VulkanUploadManager& manager)
         : vk_device(device)
         , vk_queue(queue)
+        , upload_manager(manager)
     {
     }
 
@@ -118,6 +123,12 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan queue requires Vulkan command lists.");
             }
+            if (!vulkan_command_list->is_device_level())
+            {
+                return RHIResult<RHISubmitResult>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan generic queue submission accepts only device-level command lists; viewport lists must be submitted by their viewport context.");
+            }
             const RHIStatus state_status = vulkan_command_list->validate_committed_resource_states();
             if (!state_status)
             {
@@ -169,6 +180,9 @@ namespace toy3d
                         texture->mark_used(submit_result.value().completion_value);
                     }
                 }
+                upload_manager.mark_submitted(
+                    vulkan_command_list->retained_upload_pages(),
+                    submit_result.value().completion_value);
             }
         }
         return submit_result;

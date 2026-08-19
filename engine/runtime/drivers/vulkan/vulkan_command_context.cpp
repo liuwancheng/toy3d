@@ -12,6 +12,22 @@
 
 namespace toy3d
 {
+    VulkanCommandPool::VulkanCommandPool(
+        VkDevice device,
+        VkCommandPool command_pool)
+        : vk_device(device)
+        , vk_command_pool(command_pool)
+    {
+    }
+
+    VulkanCommandPool::~VulkanCommandPool()
+    {
+        if (vk_device != VK_NULL_HANDLE && vk_command_pool != VK_NULL_HANDLE)
+        {
+            vkDestroyCommandPool(vk_device, vk_command_pool, nullptr);
+        }
+    }
+
     namespace
     {
         bool uses_constant_blend_factor(const RHIGraphicsPipelineDesc& desc)
@@ -277,9 +293,24 @@ namespace toy3d
     {
     }
 
+    VulkanCommandList::VulkanCommandList(
+        std::shared_ptr<VulkanCommandPool> command_pool,
+        VkCommandBuffer command_buffer,
+        std::string debug_name)
+        : RHICommandList(std::move(debug_name))
+        , owned_command_pool(std::move(command_pool))
+        , vk_command_buffer(command_buffer)
+    {
+    }
+
     VkCommandBuffer VulkanCommandList::command_buffer() const
     {
         return vk_command_buffer;
+    }
+
+    bool VulkanCommandList::is_device_level() const
+    {
+        return viewport_owner == nullptr && owned_command_pool != nullptr;
     }
 
     bool VulkanCommandList::belongs_to(const VulkanViewportContext& viewport, std::uint64_t frame_id) const
@@ -627,9 +658,19 @@ namespace toy3d
         VkCommandPool command_pool,
         std::uint64_t frame_id)
         : vulkan_device(device)
-        , viewport_context(viewport)
+        , viewport_context(&viewport)
         , vk_command_pool(command_pool)
         , recording_frame_id(frame_id)
+    {
+    }
+
+    VulkanGraphicsCommandContext::VulkanGraphicsCommandContext(
+        VulkanDevice& device,
+        std::shared_ptr<VulkanCommandPool> command_pool)
+        : vulkan_device(device)
+        , owned_command_pool(std::move(command_pool))
+        , vk_command_pool(
+            owned_command_pool ? owned_command_pool->handle() : VK_NULL_HANDLE)
     {
     }
 
@@ -666,11 +707,22 @@ namespace toy3d
             return status;
         }
 
-        auto command_list = std::make_shared<VulkanCommandList>(
-            viewport_context,
-            vk_command_buffer,
-            recording_frame_id,
-            debug_name);
+        std::shared_ptr<VulkanCommandList> command_list;
+        if (viewport_context != nullptr)
+        {
+            command_list = std::make_shared<VulkanCommandList>(
+                *viewport_context,
+                vk_command_buffer,
+                recording_frame_id,
+                debug_name);
+        }
+        else
+        {
+            command_list = std::make_shared<VulkanCommandList>(
+                owned_command_pool,
+                vk_command_buffer,
+                debug_name);
+        }
         status = command_list->begin_recording_by_context();
         if (!status)
         {

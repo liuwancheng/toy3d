@@ -1,4 +1,5 @@
 #include "drivers/vulkan/vulkan_device.h"
+#include "drivers/vulkan/vulkan_command_context.h"
 #include "drivers/vulkan/vulkan_deferred_deletion.h"
 #include "drivers/vulkan/vulkan_memory_manager.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
@@ -681,7 +682,10 @@ namespace toy3d
         }
         upload_manager_instance = std::make_unique<VulkanUploadManager>(*memory_manager_instance);
         deletion_queue = std::make_unique<VulkanDeferredDeletionQueue>();
-        queue = std::make_unique<VulkanQueue>(vk_device, vk_graphics_queue);
+        queue = std::make_unique<VulkanQueue>(
+            vk_device,
+            vk_graphics_queue,
+            *upload_manager_instance);
         initialized = true;
         return RHIStatus::success();
     }
@@ -1788,9 +1792,34 @@ namespace toy3d
 
     RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanDevice::create_graphics_command_context()
     {
-        return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::failure(
-            RHIErrorCode::Unsupported,
-            "Vulkan graphics command contexts are not implemented yet.");
+        if (!initialized || vk_device == VK_NULL_HANDLE ||
+            graphics_queue_family == VK_QUEUE_FAMILY_IGNORED)
+        {
+            return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::failure(
+                RHIErrorCode::NotReady,
+                "Vulkan device-level command context requires an initialized device.");
+        }
+
+        VkCommandPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        pool_info.queueFamilyIndex = graphics_queue_family;
+        VkCommandPool command_pool = VK_NULL_HANDLE;
+        const RHIStatus status = make_vulkan_status(
+            vkCreateCommandPool(vk_device, &pool_info, nullptr, &command_pool),
+            "vkCreateCommandPool");
+        if (!status)
+        {
+            return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::failure(
+                status.code(), status.message());
+        }
+
+        auto owned_pool = std::make_shared<VulkanCommandPool>(
+            vk_device,
+            command_pool);
+        return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::success(
+            std::make_unique<VulkanGraphicsCommandContext>(
+                *this,
+                std::move(owned_pool)));
     }
 
     VkInstance VulkanDevice::instance() const

@@ -16,13 +16,17 @@
 
 namespace toy3d
 {
+    class VulkanUploadManager;
     // Owns submission ordering and completion serials for one native queue.
     // Swapchain semaphores remain private to VulkanViewportContext and are not
     // represented by the public RHISubmitInfo contract.
     class VulkanQueue final : public RHIQueue
     {
     public:
-        VulkanQueue(VkDevice device, VkQueue queue);
+        VulkanQueue(
+            VkDevice device,
+            VkQueue queue,
+            VulkanUploadManager& upload_manager);
         ~VulkanQueue() override;
 
         RHIQueueCompletionValue completed_value() const override;
@@ -62,6 +66,7 @@ namespace toy3d
 
         VkDevice vk_device = VK_NULL_HANDLE;
         VkQueue vk_queue = VK_NULL_HANDLE;
+        VulkanUploadManager& upload_manager;
         mutable std::mutex queue_mutex;
         mutable std::deque<PendingSubmission> pending_submissions;
         mutable RHIQueueCompletionValue last_completed_value = 0;
