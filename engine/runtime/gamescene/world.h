@@ -8,6 +8,8 @@
 
 namespace toy3d
 {
+    class RenderResourceUpdateCollector;
+
     class World
     {
     public:
@@ -25,7 +27,10 @@ namespace toy3d
         RenderSceneId render_scene_id() const { return render_scene_id_; }
 
     private:
+        friend class RenderResourceUpdateCollector;
+
         void collect_actor_removals(const Actor& actor);
+        void append_render_resources(RenderResourceUpdateCollector& collector) const;
 
         std::vector<std::unique_ptr<Actor>> actors_;
         RenderSceneId render_scene_id_;

@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`c92d602`（`添加持久 RenderScene 增量镜像`）。
+- 基线 commit：`90359c8`（`添加 Render Resource 缓存基础`）。
 - 当前分支：`main`。
-- 工作区状态：包含 FND-5B Render Resource version/update/cache 的纯 CPU vertical slice、
-  packet 接入、自动测试与本节文档同步；已经独立复验，尚未提交。
+- 工作区状态：包含 FND-5C Game 侧资源更新收集、真实 Scene frame processor、Prepare 资源解析、
+  自动测试与本节文档同步；主 agent 与独立 sub-agent 验证通过，尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -36,6 +36,7 @@
 | FND-4B | Render frame dispatch、lag 与 single-thread fallback | 完成 | VS 2022/x64/Vulkan 配置、Editor/定向构建、CTest 12/12 与 transport 重复测试通过 |
 | FND-5A | 持久 RenderScene 与增量 Apply | 完成 | Editor/定向构建、CTest 13/13 与 RenderScene contract 测试通过 |
 | FND-5B | Render Resource version、placeholder 与 cache Apply | 完成 | Editor/定向构建、CTest 14/14 与 resource cache contract 测试通过 |
+| FND-5C | Resource collection、Scene frame processor 与 Prepare resolve | 完成 | Editor/定向构建、CTest 15/15 与 pipeline contract 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -775,3 +776,65 @@ Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
 下一工作包建议为 FND-5C：建立 Game 侧资源更新收集器与真实 `RenderFrameProcessor` 的
 resource-before-scene Apply 顺序，让 cache version 能被持久 RenderScene 在 Prepare 边界 resolve；GPU
 upload/transition 继续作为后续独立 vertical slice，避免在 processor 生命周期尚未闭环前耦合 RHI 状态。
+
+## 21. FND-5C：Resource Collection、Scene Frame Processor 与 Prepare Resolve
+
+### 21.1 实现边界与关键决定
+
+- 新增 Main/Game Thread 所有的 `RenderResourceUpdateCollector`。调用方每个全局帧一次性提供全部活跃
+  `World`，collector 跨 World 按强类型 ID 与 revision 去重 Mesh/Material；只有最后一个 World 引用消失后
+  才发出无 version payload 的 `Release`，避免共享资产被单个 World 提前释放；
+- `World` 只向 collector 枚举当前可渲染组件实际使用的 Mesh 和 resolved Material slot。Material override
+  替代对应默认 slot 后只发布生效引用；collector 不把 Actor、Component 或裸指针放入跨线程 packet；
+- 新增首个生产 `RenderSceneFrameProcessor`，由 dispatcher 选定的渲染执行线程独占。每帧固定先 Apply 完整
+  `resource_updates`，再按 packet 顺序 Apply `scene_updates`，持久拥有 device-level cache 与多个
+  `RenderScene`；resource/scene 的对象级诊断保存在 `RenderSceneFrameReport`，不把可跳过的 ContentError
+  升级成整帧 fatal；
+- 新增 `resolve_primitive_render_resources()` 作为 Forward Prepare 前的纯 CPU 解析边界。它从持久 Proxy 的
+  resource identity snapshot 解析并强持有准确 immutable Mesh/Material version；Mesh miss 返回
+  `MissingMesh`，Material miss 使用 Error Material，section 指向不存在的 Material slot 时返回
+  `InvalidMaterialSlots`；
+- processor 初始化验证 placeholder contract，flush 与 shutdown 遵守 dispatcher lifecycle，shutdown 清理
+  持久 Scene；本包未接 composition root、RHI device/viewport、GPU buffer/texture、upload/transition、
+  SceneView、Forward Pass、RDG、Scheduler 或 TaskSystem。
+
+### 21.2 测试与主验证
+
+新增 `Toy3dRenderFoundationPipelineTests`，覆盖：
+
+- 两个 World 共享同一 Mesh/Material 时只发布一次，单 World 移除不释放，最后引用消失后才释放；
+- revision 未变化不重复发布，Material override 只发布实际生效引用；
+- 同一 packet 的 resource 与 scene update 经过真实 processor 后同时可解析；
+- Prepare 强持有准确版本、Material miss 使用 Error Material、非法 section/material-slot 关系明确失败；
+- 单对象 Apply 错误保留结构化诊断但不终止 frame，processor flush 与 shutdown lifecycle 闭环。
+
+主 agent 在 Windows、Visual Studio 17 2022、x64、Debug、`BUILD_TESTING=ON`、
+`TOY3D_ENABLE_VULKAN_RHI=ON` 下实际执行：
+
+- 重新配置 CMake 成功；
+- 构建 `Toy3dRenderFoundationPipelineTests`、`Toy3dGameSceneTests`、`Toy3dRenderSceneTests` 与
+  `Toy3dRenderResourceCacheTests` 成功；
+- 相关 CTest 4/4 通过；补强 override 与 invalid-slot 测试后，沙箱内增量构建因 Windows SDK 用户目录
+  ACL 被拒绝，未进入编译；随后在沙箱外重跑相同 target 构建成功，并以最新二进制定向 CTest 1/1 通过；
+- `git diff --check` 无 whitespace error，仅有既有 tracked 文件的 LF→CRLF 提示；新增公共 contract 未发现
+  Vulkan、D3D11、D3D12、DXGI 或原生 backend 类型。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在相同 Windows、VS 2022、x64、Debug 配置下
+执行并通过：
+
+- 重新配置 CMake，并确认生成器、架构、`BUILD_TESTING=ON` 与 `TOY3D_ENABLE_VULKAN_RHI=ON`；
+- 构建 `Toy3dEditor`、`Toy3dRenderFoundationPipelineTests`、`Toy3dGameSceneTests`、
+  `Toy3dRenderSceneTests`、`Toy3dRenderResourceCacheTests` 与 `Toy3dRenderFrameTransportTests`；
+- 全量 CTest 15/15 通过，0 失败，包含新增 `Toy3dRuntime.RenderFoundationPipeline`；
+- 生成工程包含 4 个新增生产 `.cpp`，对应 object 时间戳晚于源码，Runtime library 与 pipeline test
+  executable 随后生成，排除旧二进制误测；
+- `git diff --check` 通过，7 个 untracked 新文件另行扫描无行尾空白；新增边界无 backend 原生类型，
+  `renderscene -> gamescene` 反向依赖扫描为零匹配；
+- 验证前后均为相同 4 个 tracked 修改与 7 个 untracked 文件，HEAD 均为 `90359c8`，验证者未修改或提交。
+
+未覆盖 macOS、Android、其他 UNIX、D3D11/D3D12 backend 运行态、真实 RHI upload 与渲染画面。本包是
+CPU resource/scene Apply 与 Prepare resolve vertical slice，不把结果描述为 GPU Renderer 验收。
+
+下一工作包建议为 FND-5D：在当前 CPU version/cache 与真实 processor 生命周期上，设计并实现
+frame-local RHI resource creation、PendingUpload、upload-before-use transition 与失败帧重试；不在 GPU 资源
+生命周期闭环前同时开始 SceneView/Forward Prepare，也不允许资源创建函数隐式 submit 或 wait idle。

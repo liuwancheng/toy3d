@@ -267,6 +267,19 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dRuntime.RenderResourceCache
         COMMAND Toy3dRenderResourceCacheTests)
 
+    add_executable(Toy3dRenderFoundationPipelineTests
+        "tests/render_foundation_pipeline_tests.cpp")
+    target_compile_features(Toy3dRenderFoundationPipelineTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRenderFoundationPipelineTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRenderFoundationPipelineTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRenderFoundationPipelineTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.RenderFoundationPipeline
+        COMMAND Toy3dRenderFoundationPipelineTests)
+
     add_executable(Toy3dRenderFrameTransportTests
         "tests/render_frame_transport_tests.cpp")
     target_compile_features(Toy3dRenderFrameTransportTests PRIVATE cxx_std_17)

@@ -1,5 +1,7 @@
 #include "gamescene/world.h"
 
+#include "gamescene/render_resource_update_collector.h"
+
 #include "gamescene/component/light_component.h"
 #include "gamescene/component/static_mesh_component.h"
 
@@ -211,6 +213,34 @@ namespace toy3d
                 if (light->light_id_)
                 {
                     pending_light_removals_.push_back(light->light_id_);
+                }
+            }
+        }
+    }
+
+    void World::append_render_resources(
+        RenderResourceUpdateCollector& collector) const
+    {
+        for (const std::unique_ptr<Actor>& actor : actors_)
+        {
+            for (const std::unique_ptr<SceneComponent>& component : actor->components_)
+            {
+                const auto* primitive =
+                    dynamic_cast<const StaticMeshComponent*>(component.get());
+                if (primitive == nullptr || primitive->static_mesh() == nullptr)
+                {
+                    continue;
+                }
+
+                collector.add_mesh(primitive->static_mesh());
+                const std::size_t material_count =
+                    primitive->static_mesh()->material_slots().size();
+                for (std::size_t material_slot = 0;
+                    material_slot < material_count;
+                    ++material_slot)
+                {
+                    collector.add_material(primitive->material_for_slot(
+                        static_cast<std::uint32_t>(material_slot)));
                 }
             }
         }
