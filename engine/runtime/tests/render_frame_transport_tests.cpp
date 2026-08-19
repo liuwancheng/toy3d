@@ -152,6 +152,10 @@ int main()
     RenderFramePacket first_packet = make_packet(first_frame, first_completion);
     RenderSceneUpdateBatch scene_batch;
     scene_batch.scene_id = allocate_render_id<RenderSceneId>();
+    SceneViewFamily view_family;
+    view_family.scene_id = scene_batch.scene_id;
+    view_family.views.push_back(SceneView{});
+    first_packet.view_families.push_back(std::move(view_family));
     first_packet.scene_updates.push_back(std::move(scene_batch));
     MaterialRenderResourceUpdate resource_update;
     resource_update.resource_id = MaterialRenderResourceId(1);
@@ -177,8 +181,10 @@ int main()
     check(queue.wait_dequeue(dequeued_packet) == RenderFrameDequeueResult::Packet &&
         dequeued_packet.frame_id == first_frame &&
         dequeued_packet.resource_updates.size() == 1 &&
-        dequeued_packet.scene_updates.size() == 1,
-        "The consumer must receive the complete owned resource and scene packet in FIFO order");
+        dequeued_packet.scene_updates.size() == 1 &&
+        dequeued_packet.view_families.size() == 1 &&
+        dequeued_packet.view_families[0].views.size() == 1,
+        "The consumer must receive the complete owned resource, scene, and view packet in FIFO order");
     check(second_enqueue.wait_for(1s) == std::future_status::ready &&
         second_enqueue.get() == RenderFrameEnqueueResult::Accepted,
         "Dequeuing the processing frame must release capacity for one queued frame");

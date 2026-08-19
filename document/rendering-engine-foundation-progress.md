@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- FND-5D1 施工起点 commit：`6b6f101`（`串联 Render Resource 与 RenderScene 基础`）。
+- FND-6A 施工起点 commit：`26006f1`（`接入渲染器占位资源启动上传`）。
 - 当前分支：`main`。
-- 当前工作包：FND-5D1 Mesh RHI resource、事务式随帧上传、失败重试、自动测试与本节文档同步；
-  主 agent 与独立 sub-agent 验证通过。
+- 当前工作包：FND-6A SceneView/SceneViewFamily owned-value contract、finite reversed-Z matrix、packet transport
+  与旧空壳收敛；主 agent 与独立 sub-agent 验证通过。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -42,6 +42,7 @@
 | FND-5D3-DESIGN | Placeholder bootstrap submission 设计 | 完成 | 独立跨文档/三后端一致性检查与主 Agent 修订 |
 | FND-5D3A | Vulkan device-level bootstrap context | 完成 | 主 Agent 与独立验证均完成 VS 2022 x64 Vulkan 构建、CTest 17/17 和真实集成测试 |
 | FND-5D3B | Renderer placeholder bootstrap orchestration | 完成 | 原子发布/错误保留测试、真实 Vulkan bootstrap、CTest 17/17 与 composition-root 启动存活验证通过 |
+| FND-6A | SceneView/SceneViewFamily 与 reversed-Z matrix contract | 完成 | Editor/定向构建、CTest 18/18、直接测试与独立矩阵/传输核查通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -1034,3 +1035,35 @@ CTest 17/17；两个测试 executable 直接运行均通过，验证前后 HEAD 
 `Toy3dEditor` 启动后持续存活 5 秒，证明 production composition root 未在 bootstrap 阶段提前退出；因没有可观察
 stdout/stderr validation 文本且窗口无法通过 `CloseMainWindow()` 正常关闭，该证据只记为启动存活，进程已按精确
 PID 清理且无遗留。本包未覆盖 D3D11、D3D12、macOS、移动端运行和画面验收。
+
+## 27. FND-6A：SceneView、SceneViewFamily 与 Reversed-Z Matrix Contract
+
+### 27.1 实现边界与关键决定
+
+- 在长期目录 `renderscene/view/` 建立正式 `SceneViewDesc`、`SceneView` 与 `SceneViewFamily`；删除全仓零引用、
+  同名且可能形成 ODR/同名 object 风险的旧 `renderscene/3dscene/scene_view.*` 空壳，不保留双入口；
+- `build_scene_view()` 只接收 owned camera position/forward/up、finite perspective 参数与 `SceneViewRect`，不捕获
+  `CameraComponent` 或其他 Game 对象。所有验证和矩阵计算先写局部结果，完整成功后才替换输出；
+- view 固化 left-handed、+Z forward、column-vector 的 view matrix，以及 `w=z`、clip depth 0..1、near=1、
+  far=0 的 finite reversed-Z projection；同时持有 view/projection/view-projection 与三组 inverse，为后续 View
+  Binding 和 CPU frustum construction 提供同一快照。Vulkan viewport Y 修正仍只属于 backend；
+- Family 数据模型保留 `views` 数组，但第一里程碑验证只接受一个 View。空 Family 或无效 `RenderSceneId` 返回
+  `InvalidArgument`，多个 View 返回明确 `Unsupported`；
+- `RenderFramePacket` 新增 owned `std::vector<SceneViewFamily>`，保持 move-only packet 与 bounded queue 所有权边界。
+  本包不实现 SceneOutput、visibility、Forward Prepare/Pass、Material binding 或画面。
+
+### 27.2 测试与验证
+
+新增 `Toy3dSceneViewTests`，覆盖 camera origin/forward 变换、ViewRect aspect、near→1/far→0、右边界 NDC、
+三组 inverse、零 ViewRect/平行方向/非法 near-far 的失败不覆盖输出，以及 Family 的 InvalidArgument/Valid/
+Unsupported 分类。transport 测试增加 Family/View 随 packet enqueue/dequeue 完整移动的断言。
+
+主 Agent 重新配置 VS 2022 x64、Vulkan ON，clean-first 构建 SceneView、transport 与 Editor，随后全量构建并
+完成 CTest 18/18。沙箱内增量 MSBuild 两次因 Windows SDK 用户目录 ACL 被拒绝，均在沙箱外重建最新源码后
+再运行测试，不把旧二进制作为证据。
+
+新的独立验证 sub-agent 顺序构建 `Toy3dSceneViewTests`、`Toy3dRenderFrameTransportTests`、`Toy3dEditor`，
+全量 CTest 18/18 通过，直接测试输出 `SceneView checks passed.`；验证前后 HEAD 和工作区集合一致。静态核查
+确认 GLM column/row 索引、`projection * view` 顺序、无后端翻转、失败原子性、owned packet 与旧空壳零引用。
+验证者最初并行写同一 VS build tree 时发生 `.tlog/.recipe` 占用，改为顺序构建立刻通过；该现象不属于实现
+缺陷。未覆盖 macOS、移动端、D3D11/D3D12 平台构建或运行。
