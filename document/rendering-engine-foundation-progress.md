@@ -411,3 +411,59 @@ Light Component 与 Material/MaterialInstance 引用；dirty 分类与 batch 合
 
 未覆盖 Release 系列、非 Windows 平台、D3D11、D3D12、移动端 Vulkan profile 与 Editor 交互/画面
 冒烟测试。
+
+## 15. FND-3B：GameScene 可渲染 Component 与资产引用
+
+本工作包继续批次 3，只建立 Game Thread 领域对象与纯 CPU 资产引用：
+
+- `rendercore/geometry` 新增不可变 `StaticMesh` CPU contract，包含 position/normal/UV0 vertex、
+  UInt16/UInt32 index data、`StaticMeshSection`、Material Slot 与由 vertex position 推导的 local bounds；
+  创建边界拒绝空数据、越界 index、非法 Section、空 Material Slot 与非有限 vertex 数据；
+- `rendercore/material` 新增正式 `Material → MaterialInstance` 引用骨架；`Material` 保存不可变
+  ShaderMap identity、Phong shading model、`Opaque | Translucent` 与 `two_sided`，
+  `MaterialInstance` 强持有 `Material` 并预留单调 revision；typed parameter override 留给 Material
+  参数工作包，不在 Component 内硬编码 Phong 参数；
+- 新增 `StaticMeshComponent`，持有 `StaticMeshRef`，按 slot 解析 mesh 默认
+  `MaterialInstanceRef` 或 Component override；替换 mesh 时同步清理旧 slot override；
+- 新增 `CameraComponent`，第一版只接受有限远 Perspective，默认 60 度、near 0.1 m、
+  far 1000 m；setter 原子验证 `0 < FOV < 180` 与 `0 < near < far`，并为后续 infinite-far、
+  Orthographic 与 Custom projection 保留 projection mode；
+- 新增 `DirectionalLightComponent`、`PointLightComponent` 与 `SpotLightComponent`；公共 Light
+  参数验证非负 linear RGB、非负无量纲 intensity，local light 验证 `range > 0`，Spot 验证
+  `0 <= inner <= outer < 90 degrees`。Directional 与 Spot 继续继承 SceneComponent 的本地 `+Z`
+  朝向约定，不在 GameScene 中实现 shader 衰减或 light selection；
+- 扩展 `Toy3dGameSceneTests`，覆盖资产创建与失败、Material Slot/override、Camera 默认值和原子
+  失败、三类 Light 的公共参数与 Point/Spot 专有约束。
+
+本工作包没有实现 Material typed parameter、Texture/Sampler、Render dirty/batch 合并、world bounds
+缓存、RenderScene Proxy、RenderResourceCache、SceneView、Forward Renderer、Render Thread、RDG、
+Scheduler 或 TaskSystem；这些仍按 FND-3C 及后续批次分开施工。旧 bring-up `Camera` 和
+`SceneRendering/test_pass` 本轮不迁移或删除。
+
+主 agent 定向预检：
+
+- 沙箱内首次 `cmake --build` 因 MSBuild 无权读取 Windows SDK 用户目录失败，未进入编译；
+- 获准在沙箱外执行 `cmake --build build --config Debug --target Toy3dGameSceneTests`，成功，
+  `CONFIGURE_DEPENDS` 自动登记全部新增源码；
+- `ctest --test-dir build -C Debug -R Toy3dRuntime.GameScene --output-on-failure`，1/1 通过；
+- `git diff --check` 无 whitespace error，仅有既有 LF→CRLF 提示；新增目录未出现 backend 类型、
+  `MaterialTemplate`、`MaterialInterface` 或直接 `new/delete`。
+
+独立验证者完整读取 `verify-toy3d-build` skill 后，在 Windows、Visual Studio 17 2022、x64、
+Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+  -DTOY3D_ENABLE_VULKAN_RHI=ON`，配置与生成成功；
+- `cmake --build build --config Debug --target Toy3dEditor`，成功；
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`，成功；
+- `ctest --test-dir build -C Debug --output-on-failure`，11/11 通过；
+- `git diff --check` 退出码 0，仅有两个已跟踪文件的 LF→CRLF 提示；
+- 定向静态检查确认新增公共头没有 `Vk*`、`ID3D11*`、`ID3D12*`、直接 `new/delete`、
+  `MaterialTemplate` 或 `MaterialInterface`；
+- 验证前后工作区状态逐项一致，验证者未修改实现、测试或文档。
+
+未覆盖 Release 系列、macOS、Linux、Android、D3D11/D3D12 backend、移动端 Vulkan profile 与
+GPU 运行画面；本工作包是纯 CPU GameScene/asset contract，不把本次结果描述为 Renderer 画面验收。
+
+下一工作包保持为 FND-3C：稳定 Render ID 注册边界、三类 dirty、帧末 batch 合并与 world bounds
+更新；本轮完成后停止，不进入 Render Frame Transport。

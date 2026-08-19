@@ -1,5 +1,10 @@
 #include "gamescene/render_id.h"
 #include "gamescene/world.h"
+#include "gamescene/component/camera_component.h"
+#include "gamescene/component/light_component.h"
+#include "gamescene/component/static_mesh_component.h"
+#include "rendercore/geometry/static_mesh.h"
+#include "rendercore/material/material.h"
 
 #include "glm/gtc/matrix_transform.hpp"
 
@@ -114,6 +119,95 @@ int main()
 
     check(!static_cast<bool>(parent_actor.set_root_component(&child)),
         "An Actor must reject a root component owned by another Actor");
+
+    MaterialDesc material_desc;
+    material_desc.shader_name = "Builtin/Surface/Phong";
+    const MaterialRef material = Material::create(material_desc);
+    check(material != nullptr &&
+        material->desc().shading_model == MaterialShadingModel::Phong &&
+        material->desc().blend_mode == MaterialBlendMode::Opaque,
+        "A Material must preserve immutable shader and render-state identity");
+    const MaterialInstanceRef material_instance =
+        MaterialInstance::create(material);
+    check(material_instance != nullptr &&
+        material_instance->material() == material &&
+        material_instance->revision() == 1,
+        "A MaterialInstance must strongly reference its immutable Material");
+    check(Material::create({}) == nullptr,
+        "A Material without ShaderMap identity must fail");
+    check(MaterialInstance::create(nullptr) == nullptr,
+        "A MaterialInstance without a Material must fail");
+
+    StaticMeshDesc mesh_desc;
+    mesh_desc.vertices = {
+        {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+        {{1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+        {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 1.0f}}};
+    mesh_desc.indices = std::vector<std::uint16_t>{0, 1, 2};
+    mesh_desc.sections.push_back({0, 3, 0});
+    mesh_desc.material_slots.push_back(material_instance);
+    const StaticMeshRef mesh = StaticMesh::create(std::move(mesh_desc));
+    check(mesh != nullptr && mesh->sections().size() == 1,
+        "A valid immutable StaticMesh CPU asset must be created");
+    check(nearly_equal(mesh->local_bounds().minimum.x, -1.0f) &&
+        nearly_equal(mesh->local_bounds().maximum.y, 1.0f),
+        "StaticMesh local bounds must be derived from vertex positions");
+
+    Actor& render_actor = world.create_actor();
+    StaticMeshComponent& mesh_component =
+        render_actor.create_scene_component<StaticMeshComponent>();
+    mesh_component.set_static_mesh(mesh);
+    check(mesh_component.material_for_slot(0) == material_instance,
+        "A StaticMeshComponent must resolve its mesh Material slot");
+
+    MaterialDesc translucent_desc;
+    translucent_desc.shader_name = "Builtin/Surface/Phong";
+    translucent_desc.blend_mode = MaterialBlendMode::Translucent;
+    const MaterialInstanceRef translucent_instance = MaterialInstance::create(
+        Material::create(std::move(translucent_desc)));
+    check(mesh_component.set_material_override(0, translucent_instance) &&
+        mesh_component.material_for_slot(0) == translucent_instance,
+        "A component Material override must replace only the selected slot");
+    check(!mesh_component.set_material_override(1, translucent_instance),
+        "A component Material override outside the mesh slots must fail");
+
+    CameraComponent& camera =
+        world.create_actor().create_scene_component<CameraComponent>();
+    check(camera.projection_mode() == CameraProjectionMode::Perspective &&
+        nearly_equal(camera.vertical_fov_degrees(), 60.0f) &&
+        nearly_equal(camera.near_clip(), 0.1f) &&
+        nearly_equal(camera.far_clip(), 1000.0f),
+        "A CameraComponent must use the confirmed finite perspective defaults");
+    check(camera.set_perspective(75.0f, 0.25f, 500.0f),
+        "A valid finite perspective camera must be accepted");
+    check(!camera.set_perspective(180.0f, 0.25f, 500.0f) &&
+        nearly_equal(camera.vertical_fov_degrees(), 75.0f),
+        "Invalid camera parameters must fail atomically");
+
+    DirectionalLightComponent& directional =
+        world.create_actor().create_scene_component<DirectionalLightComponent>();
+    check(directional.set_color({1.0f, 0.8f, 0.6f}) &&
+        directional.set_intensity(2.0f),
+        "Directional light linear color and intensity must accept valid values");
+    check(!directional.set_color({-1.0f, 0.0f, 0.0f}) &&
+        !directional.set_intensity(-1.0f),
+        "Light color and intensity must reject negative values");
+
+    PointLightComponent& point =
+        world.create_actor().create_scene_component<PointLightComponent>();
+    check(point.set_range(20.0f) && nearly_equal(point.range(), 20.0f),
+        "A PointLight must accept a positive range");
+    check(!point.set_range(0.0f) && nearly_equal(point.range(), 20.0f),
+        "A PointLight must reject a non-positive range atomically");
+
+    SpotLightComponent& spot =
+        world.create_actor().create_scene_component<SpotLightComponent>();
+    check(spot.set_cone_angles(15.0f, 35.0f),
+        "A SpotLight must accept ordered cone angles below 90 degrees");
+    check(!spot.set_cone_angles(40.0f, 30.0f) &&
+        nearly_equal(spot.inner_angle_degrees(), 15.0f) &&
+        nearly_equal(spot.outer_angle_degrees(), 35.0f),
+        "Invalid SpotLight cone angles must fail atomically");
 
     if (failure_count != 0)
     {
