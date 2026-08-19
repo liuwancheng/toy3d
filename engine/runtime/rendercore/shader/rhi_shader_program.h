@@ -9,6 +9,8 @@ namespace toy3d
 {
     struct RHIShaderProgramDesc
     {
+        // optional expresses which stages belong to this graphics or compute
+        // program without manufacturing empty RHIShaderDesc values.
         std::optional<RHIShaderDesc> vertex_shader;
         std::optional<RHIShaderDesc> pixel_shader;
         std::optional<RHIShaderDesc> compute_shader;

@@ -43,6 +43,8 @@ namespace toy3d::shader
 
     struct ShaderPermutationResult
     {
+        // optional prevents invalid option selections from producing a partial
+        // permutation; string_view below hashes names without copying them.
         std::optional<ShaderPermutation> permutation;
         std::vector<Diagnostic> diagnostics;
 

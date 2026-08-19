@@ -77,6 +77,8 @@ namespace toy3d
 		// 初始化日志系统
 		LogConfig log_config;
 		log_config.logger_name = "Toy3dRuntime";
+		// filesystem composes the platform-native saved/log path without manual
+		// separator handling at the runtime composition root.
 		log_config.log_directory = std::filesystem::path(ENGINE_SAVED_ROOT) / "logs";
 		log_config.file_name = "toy3d.log";
 		std::string log_error;

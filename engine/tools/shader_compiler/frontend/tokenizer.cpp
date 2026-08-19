@@ -5,6 +5,8 @@
 
 namespace toy3d::shader
 {
+    // Tokenizer string_views observe the source buffer and raw terminators in
+    // place; ownership remains with the caller as declared by the header.
     namespace
     {
         bool is_identifier_start(char value)

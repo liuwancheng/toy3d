@@ -172,6 +172,8 @@ namespace toy3d::shader
         std::string name;
         BindingGroup group = BindingGroup::Material;
         ShaderParameterCategory category = ShaderParameterCategory::Constant;
+        // Only resource bindings have a ResourceKind; optional keeps constant
+        // members representable without an artificial sentinel enum value.
         std::optional<ResourceKind> resource_kind;
         ShaderStageFlags stages = ShaderStageFlags::None;
         std::uint32_t array_count = 1;

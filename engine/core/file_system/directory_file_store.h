@@ -22,14 +22,17 @@ namespace toy3d
 
     class DirectoryFileStore final : public FileStore
     {
-        struct ConstructionToken
-        {
-        };
-
     public:
         static FileResult<std::shared_ptr<DirectoryFileStore>> create(
             PlatformFile& platform_file,
             const DirectoryFileStoreDesc& descriptor);
+
+        DirectoryFileStore(const DirectoryFileStore&) = delete;
+        DirectoryFileStore& operator=(const DirectoryFileStore&) = delete;
+        // The factory moves its fully validated value into make_shared; the
+        // descriptor constructor remains private so callers cannot bypass validation.
+        DirectoryFileStore(DirectoryFileStore&&) noexcept = default;
+        DirectoryFileStore& operator=(DirectoryFileStore&&) = delete;
 
         FileStoreCapabilities capabilities() const override;
         FileResult<FileStat> stat(const StorePath& path) const override;
@@ -51,13 +54,12 @@ namespace toy3d
         // Migration-only adapter. New callers must not obtain physical paths.
         FileResult<PhysicalPath> resolve_physical_for_adapter(const StorePath& path) const;
 
+    private:
         DirectoryFileStore(
-            ConstructionToken,
             PlatformFile& platform_file,
             DirectoryFileStoreDesc descriptor,
             PhysicalPath canonical_root);
 
-    private:
         FileResult<PhysicalPath> resolve_physical(const StorePath& path) const;
         FileStatus ensure_writable(const char* operation, const StorePath& path) const;
 

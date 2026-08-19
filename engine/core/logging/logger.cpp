@@ -9,6 +9,8 @@
 
 namespace toy3d
 {
+    // filesystem performs native directory creation and path joining here so
+    // logging does not duplicate platform separator and error-code handling.
     Logger& Logger::get_instance()
     {
         static Logger instance;

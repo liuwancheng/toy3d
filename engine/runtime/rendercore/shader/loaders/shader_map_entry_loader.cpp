@@ -10,6 +10,8 @@
 
 namespace toy3d
 {
+    // Conversion helpers use optional to reject unsupported reflection values
+    // and withhold incomplete ShaderMap program data from runtime callers.
     namespace
     {
         RHIShaderStage to_rhi_stage(shader::ShaderStageFlags stage)
@@ -264,6 +266,8 @@ namespace toy3d
         for (const DirectoryEntry& directory : entries.value())
         {
             if (directory.type != FileType::Directory) continue;
+            // filesystem extracts the final host directory component for cache
+            // discovery without duplicating platform separator rules.
             const std::string name = std::filesystem::path(directory.path.utf8()).filename().string();
             const auto entry_key = shader::sha256_from_hex(name);
             if (!entry_key) continue;

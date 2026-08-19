@@ -46,6 +46,8 @@ namespace toy3d::shader
         std::string name;
         std::string display_name;
         PropertyType type = PropertyType::Float;
+        // Each bound is independently optional because a property may specify
+        // no range, a one-sided range, or both bounds.
         std::optional<double> range_min;
         std::optional<double> range_max;
         DefaultValue default_value;

@@ -56,6 +56,8 @@ namespace toy3d::shader
 
     struct ToolchainDiscoveryResult
     {
+        // optional publishes the toolchain only after its manifest and required
+        // artifacts pass validation.
         std::optional<DiscoveredShaderToolchain> toolchain;
         std::vector<Diagnostic> diagnostics;
 

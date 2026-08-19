@@ -6,6 +6,8 @@
 
 namespace toy3d::shader
 {
+    // Reflection helpers use optional because unsupported native kinds and
+    // invalid members must not be converted into fabricated public enum values.
     namespace
     {
         class ReflectionModule

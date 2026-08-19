@@ -43,6 +43,8 @@ namespace toy3d::shader
 
     struct ConstantBufferPackResult
     {
+        // optional keeps layout results absent on validation failure so callers
+        // cannot consume partially packed or partially activated data.
         std::optional<ConstantBufferLayout> layout;
         std::vector<Diagnostic> diagnostics;
 
@@ -114,6 +116,8 @@ namespace toy3d::shader
     ShaderParameterId make_shader_parameter_id(
         BindingGroup group,
         ShaderParameterCategory category,
+        // string_view avoids allocating a second parameter name while building
+        // its deterministic identity.
         std::string_view name);
     std::uint32_t structured_element_stride(ResourceElementType type);
     ConstantBufferPackResult pack_constant_buffer(

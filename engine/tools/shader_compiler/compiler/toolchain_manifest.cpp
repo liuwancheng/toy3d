@@ -7,6 +7,8 @@
 
 namespace toy3d::shader
 {
+    // Manifest parsing uses optional for required values that may be rejected
+    // and string_view for validating path components without allocating copies.
     namespace
     {
         constexpr const char* manifest_file_name = "Toy3dShaderToolchain.manifest";

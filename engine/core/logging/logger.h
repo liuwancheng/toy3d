@@ -13,6 +13,8 @@ namespace toy3d
     struct LogConfig
     {
         std::string logger_name = "toy3d";
+        // filesystem::path preserves native path composition for the logging
+        // backend instead of rebuilding platform separators as strings.
         std::filesystem::path log_directory;
         std::string file_name;
         bool console_output = true;

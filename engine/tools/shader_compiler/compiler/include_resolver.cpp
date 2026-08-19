@@ -7,6 +7,8 @@
 
 namespace toy3d::shader
 {
+    // Include parsing uses string_view for allocation-free path slices and
+    // optional to abort recursive expansion without returning partial source.
     namespace
     {
         constexpr std::string_view engine_include_root = "/Engine/ShaderIncludes/";

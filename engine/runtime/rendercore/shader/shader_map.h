@@ -12,14 +12,12 @@ namespace toy3d
     class ShaderMapProgram final
     {
     public:
-        struct ConstructionToken
-        {
-        private:
-            ConstructionToken() = default;
-            friend class ShaderMap;
-        };
-
-        ShaderMapProgram(ConstructionToken, ShaderMapProgramData data);
+        ShaderMapProgram(const ShaderMapProgram&) = delete;
+        ShaderMapProgram& operator=(const ShaderMapProgram&) = delete;
+        // ShaderMap moves validated program data into make_shared; the data
+        // constructor stays private so no caller can publish an unchecked program.
+        ShaderMapProgram(ShaderMapProgram&&) noexcept = default;
+        ShaderMapProgram& operator=(ShaderMapProgram&&) noexcept = default;
 
         const ShaderMapProgramData& data() const;
         const ShaderParameterBinding* find_parameter_binding(
@@ -27,6 +25,8 @@ namespace toy3d
 
     private:
         friend class ShaderMap;
+
+        explicit ShaderMapProgram(ShaderMapProgramData data);
 
         ShaderMapProgramData data_;
         std::unordered_map<ShaderParameterId, ShaderParameterBinding> parameter_bindings_;

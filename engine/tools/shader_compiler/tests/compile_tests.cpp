@@ -19,6 +19,8 @@
 
 namespace
 {
+    // filesystem manages isolated compiler fixtures and artifact assertions in
+    // tests; production compiler paths still flow through PlatformFile.
     int failure_count = 0;
     toy3d::NativePlatformFile platform_file;
 

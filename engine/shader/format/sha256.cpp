@@ -5,6 +5,8 @@
 
 namespace toy3d::shader
 {
+    // This implementation uses string_view for non-owning text hashing and
+    // optional to reject malformed hexadecimal hashes without sentinel data.
     namespace
     {
         constexpr std::array<std::uint32_t, 64> round_constants = {

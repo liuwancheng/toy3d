@@ -172,6 +172,8 @@ namespace toy3d
             }
         }
 
+        // std::byte performs untyped mapped-memory offset arithmetic without
+        // implying character data or a typed GPU element representation.
         auto* destination = static_cast<std::byte*>(current_page->mapped_data()) + offset;
         std::memcpy(destination, source_data, source_size);
         const RHIStatus flush_status = current_page->flush(offset, size);

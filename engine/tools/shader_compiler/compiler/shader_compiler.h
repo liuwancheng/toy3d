@@ -7,6 +7,8 @@ namespace toy3d::shader
 {
     struct VulkanShaderCodeEntryResult
     {
+        // optional reports the entry directory only after publication succeeds,
+        // so callers cannot consume incomplete output.
         std::optional<PhysicalPath> entry_directory;
         std::vector<Diagnostic> diagnostics;
 

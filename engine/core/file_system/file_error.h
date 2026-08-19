@@ -78,6 +78,8 @@ namespace toy3d
         }
 
     private:
+        // optional keeps a failed result from containing a fabricated T while
+        // allowing FileStatus to carry the diagnostic independently.
         std::optional<T> value_;
         FileStatus status_;
     };

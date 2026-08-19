@@ -8,6 +8,8 @@
 
 namespace toy3d::shader
 {
+    // Permutation identity helpers use string_view to append caller-owned names
+    // directly to the stable hash input without temporary strings.
     namespace
     {
         template<typename T>

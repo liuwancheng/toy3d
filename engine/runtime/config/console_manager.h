@@ -35,6 +35,8 @@ namespace toy3d
     private:
         ConsoleManager() = default;
 
+        // shared_mutex allows concurrent read-only CVar queries while keeping
+        // registration and mutation exclusive under the same lock.
         mutable std::shared_mutex mutex_;
         std::unordered_map<std::string, std::string> values_;
     };

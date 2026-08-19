@@ -20,6 +20,8 @@
 
 namespace
 {
+    // optional records whether the CLI supplied a toolchain root, avoiding an
+    // empty path sentinel that could be confused with a real argument.
     class LoggerLifetime
     {
     public:

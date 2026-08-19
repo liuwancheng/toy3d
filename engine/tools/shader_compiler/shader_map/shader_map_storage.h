@@ -9,6 +9,8 @@ namespace toy3d::shader
 {
     struct ShaderEntryStagingResult
     {
+        // Staging and final paths become available at distinct successful phases,
+        // so optional represents each publication point independently.
         std::optional<PhysicalPath> staging_directory;
         std::optional<PhysicalPath> final_directory;
         FileStatus status;

@@ -9,6 +9,8 @@ namespace toy3d
 {
     struct ShaderMapProgramLoadResult
     {
+        // optional publishes program data only after loading and validation
+        // succeed, so failure cannot expose a partially initialized program.
         std::optional<ShaderMapProgramData> program;
         std::string error;
 

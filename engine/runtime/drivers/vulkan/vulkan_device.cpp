@@ -1746,6 +1746,8 @@ namespace toy3d
             VK_DYNAMIC_STATE_BLEND_CONSTANTS,
             VK_DYNAMIC_STATE_STENCIL_REFERENCE};
         VkPipelineDynamicStateCreateInfo dynamic_state{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        // std::size derives the native C-array length so the Vulkan count cannot
+        // drift when dynamic states are added or removed.
         dynamic_state.dynamicStateCount = static_cast<std::uint32_t>(std::size(dynamic_states));
         dynamic_state.pDynamicStates = dynamic_states;
         VkGraphicsPipelineCreateInfo pipeline_info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};

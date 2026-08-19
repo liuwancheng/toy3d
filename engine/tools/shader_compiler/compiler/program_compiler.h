@@ -20,6 +20,8 @@ namespace toy3d::shader
 
     struct ShaderMapEntryCompileResult
     {
+        // optional keeps a failed multi-stage compile from exposing an entry
+        // assembled from only a subset of its stages.
         std::optional<ShaderMapEntry> entry;
         std::vector<Diagnostic> diagnostics;
 

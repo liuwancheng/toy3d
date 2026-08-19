@@ -9,6 +9,8 @@ namespace toy3d::shader
 {
     struct BindingCodegenResult
     {
+        // optional withholds generated source when diagnostics reject the
+        // binding model instead of using an ambiguous empty string.
         std::optional<std::string> source;
         std::vector<Diagnostic> diagnostics;
         Sha256Hash compile_key{};

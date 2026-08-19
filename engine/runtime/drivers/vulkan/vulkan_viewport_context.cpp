@@ -597,6 +597,8 @@ namespace toy3d
         VkExtent2D extent = capabilities.currentExtent;
         if (extent.width == UINT32_MAX)
         {
+            // std::clamp applies Vulkan's inclusive surface extent limits
+            // directly and keeps width/height handling symmetric.
             extent.width = std::clamp(viewport_desc.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
             extent.height = std::clamp(viewport_desc.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
         }

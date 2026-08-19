@@ -13,9 +13,7 @@ namespace toy3d
         }
     }
 
-    ShaderMapProgram::ShaderMapProgram(
-        ConstructionToken,
-        ShaderMapProgramData data)
+    ShaderMapProgram::ShaderMapProgram(ShaderMapProgramData data)
         : data_(std::move(data))
     {
         for (const ShaderMapBinding& binding : data_.bindings)
@@ -126,8 +124,9 @@ namespace toy3d
         {
             return {existing->second, {}};
         }
+        ShaderMapProgram program_value(std::move(*validated.program));
         ShaderMapProgramRef program = std::make_shared<ShaderMapProgram>(
-            ShaderMapProgram::ConstructionToken{}, std::move(*validated.program));
+            std::move(program_value));
         programs_.emplace(storage_key, program);
         return {std::move(program), {}};
     }

@@ -13,6 +13,9 @@
 
 namespace toy3d::shader
 {
+    // Reader helpers use string_view to slice immutable file text without
+    // allocating each field, optional to stop publication on parse failure,
+    // and from_chars for locale-independent bounded integer parsing.
     namespace
     {
         constexpr std::uintmax_t maximum_manifest_size = 64u * 1024u;

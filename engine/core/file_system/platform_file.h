@@ -46,6 +46,8 @@ namespace toy3d
         bool case_sensitive_lookup = false;
     };
 
+    // C++17 inline constexpr gives all FileSystem targets one header-defined
+    // read limit without an out-of-line storage definition.
     inline constexpr std::size_t default_maximum_file_read_size =
         static_cast<std::size_t>(512) * 1024 * 1024;
 

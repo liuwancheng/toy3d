@@ -95,7 +95,6 @@ namespace toy3d
     }
 
     DirectoryFileStore::DirectoryFileStore(
-        ConstructionToken,
         PlatformFile& platform_file,
         DirectoryFileStoreDesc descriptor,
         PhysicalPath canonical_root)
@@ -157,9 +156,10 @@ namespace toy3d
                 StorePath(),
                 "canonical store root must be a directory"));
         }
+        DirectoryFileStore store(
+            platform_file, descriptor, canonical_root.value());
         return FileResult<std::shared_ptr<DirectoryFileStore>>(
-            std::make_shared<DirectoryFileStore>(
-                ConstructionToken{}, platform_file, descriptor, canonical_root.value()));
+            std::make_shared<DirectoryFileStore>(std::move(store)));
     }
 
     FileStoreCapabilities DirectoryFileStore::capabilities() const

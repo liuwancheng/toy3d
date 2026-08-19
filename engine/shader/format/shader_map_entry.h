@@ -13,6 +13,8 @@ namespace toy3d::shader
 
     struct ShaderMapEntryReadResult
     {
+        // Parsed values are present only after the complete entry is accepted;
+        // optional prevents callers from observing partial reader output.
         std::optional<ShaderMapEntry> entry;
         std::optional<PhysicalPath> entry_directory;
         Sha256Hash shader_map_key{};

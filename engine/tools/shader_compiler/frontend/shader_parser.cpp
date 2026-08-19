@@ -9,6 +9,8 @@
 
 namespace toy3d::shader
 {
+    // Parser helpers use string_view for non-owning token-name comparisons and
+    // optional when a grammar conversion has no valid value to return.
     namespace
     {
         template<typename Collection>

@@ -21,12 +21,16 @@ namespace toy3d::shader
 
     struct ShaderCompilerOutput
     {
+        // optional distinguishes a produced binary from compile failure without
+        // treating an empty byte vector as an error sentinel.
         std::optional<std::vector<std::uint8_t>> binary;
         std::vector<Diagnostic> diagnostics;
 
         bool succeeded() const;
     };
 
+    // optional rejects invalid profiles before an incomplete DXC process
+    // invocation can be launched.
     std::optional<DxcInvocation> build_vulkan_dxc_invocation(
         const ShaderCompileRequest& request,
         const PhysicalPath& source_path,

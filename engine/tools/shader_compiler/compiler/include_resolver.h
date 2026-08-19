@@ -15,6 +15,8 @@ namespace toy3d::shader
 
     struct IncludeResolveResult
     {
+        // optional publishes expanded source only when the full recursive
+        // include graph resolves successfully.
         std::optional<std::string> source;
         std::vector<ShaderDependency> dependencies;
         std::vector<Diagnostic> diagnostics;

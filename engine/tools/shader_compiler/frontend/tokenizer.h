@@ -19,6 +19,8 @@ namespace toy3d::shader
     class Tokenizer
     {
     public:
+        // string_view scans caller-owned source without copying it; the caller
+        // keeps that source alive for the tokenizer lifetime.
         Tokenizer(std::string_view source, std::string path);
 
         Token next();

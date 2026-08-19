@@ -69,6 +69,8 @@ namespace toy3d::shader
     {
         ProcessResult result;
 #if defined(_WIN32)
+        // filesystem performs the UTF-8 to native Windows path conversion used
+        // by CreateProcessW without a second custom conversion path.
         const std::wstring application = std::filesystem::u8path(executable.utf8()).wstring();
         if (application.empty()) return result;
         std::wstring command_line = quote_argument(application);

@@ -30,6 +30,8 @@ namespace toy3d::shader
 
     struct ShaderCompileRequestResult
     {
+        // optional publishes a request only after every source and target input
+        // is valid, avoiding a partially usable compile request.
         std::optional<ShaderCompileRequest> request;
         std::vector<Diagnostic> diagnostics;
 

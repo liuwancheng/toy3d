@@ -10,6 +10,8 @@
 
 namespace toy3d
 {
+    // C++17 inline constexpr exposes the serialized mount contract version in
+    // the header without one definition per translation unit.
     inline constexpr std::uint32_t file_mount_desc_version = 1;
 
     enum class MountAccess

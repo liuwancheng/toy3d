@@ -13,6 +13,8 @@ namespace toy3d::shader
 {
     struct ParseResult
     {
+        // optional publishes the AST only after parsing succeeds; string_view
+        // parser inputs below observe source text without copying it.
         std::optional<ShaderAsset> asset;
         std::vector<Diagnostic> diagnostics;
 
@@ -29,6 +31,8 @@ namespace toy3d::shader
         ParseResult parse();
 
     private:
+        // Parser optionals distinguish a missing/invalid token or number from a
+        // valid zero value and keep one-token lookahead explicitly nullable.
         const Token& peek();
         Token consume();
         bool check(TokenKind kind);

@@ -66,6 +66,8 @@ namespace toy3d::shader
 
     struct TargetBindingResult
     {
+        // optional publishes a target layout only when allocation completes
+        // without collisions or profile-limit diagnostics.
         std::optional<TargetBindingLayout> layout;
         std::vector<Diagnostic> diagnostics;
 

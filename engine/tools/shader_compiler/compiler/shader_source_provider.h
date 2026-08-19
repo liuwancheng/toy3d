@@ -24,6 +24,8 @@ namespace toy3d::shader
 
     struct ShaderSourceLoadResult
     {
+        // optional ensures a failed lookup cannot return a partially populated
+        // source record alongside its error.
         std::optional<ShaderSourceRecord> source;
         std::string error;
 

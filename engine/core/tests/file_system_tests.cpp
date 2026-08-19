@@ -16,6 +16,8 @@
 
 namespace
 {
+    // filesystem creates isolated host fixtures for integration tests; product
+    // code continues to use the FileSystem contract instead of these paths.
     namespace fs = std::filesystem;
 
     int failure_count = 0;

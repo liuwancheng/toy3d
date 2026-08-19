@@ -10,6 +10,8 @@ namespace toy3d::shader
 {
     struct SpirvReflectionResult
     {
+        // optional publishes reflection only when the complete SPIR-V interface
+        // is valid; diagnostics remain available independently.
         std::optional<ShaderStageReflection> reflection;
         std::vector<Diagnostic> diagnostics;
 

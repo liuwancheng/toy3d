@@ -10,6 +10,8 @@
 
 namespace toy3d::shader
 {
+    // Layout helpers use string_view for stable identity hashing without name
+    // copies and optional when a source type has no legal shader mapping.
     namespace
     {
         struct ValueTypeInfo
@@ -497,6 +499,8 @@ namespace toy3d::shader
         for (const ShaderResourceParameter& resource : layout.resources)
         {
             const std::string identity = std::string(group_name(resource.group)) + "/" + category_name(resource.category) + "/" + resource.name;
+            // Structured binding names both map insertion results directly;
+            // this keeps the collision branch tied to the returned iterator.
             const auto [found, inserted] = identities.emplace(resource.parameter_id, identity);
             if (!inserted && found->second != identity)
             {

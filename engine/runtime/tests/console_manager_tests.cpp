@@ -15,6 +15,8 @@
 
 namespace
 {
+    // filesystem is used only to create and remove test configuration fixtures;
+    // ConsoleManager itself remains independent of host path APIs.
     namespace fs = std::filesystem;
 
     int failure_count = 0;

@@ -12,6 +12,8 @@ namespace toy3d::shader
     {
         struct StageCompileOutput
         {
+            // A stage is published only after its compile and reflection both
+            // succeed; optional prevents partial multi-stage assembly.
             std::optional<ShaderCodeEntry> stage;
             std::vector<Diagnostic> diagnostics;
         };

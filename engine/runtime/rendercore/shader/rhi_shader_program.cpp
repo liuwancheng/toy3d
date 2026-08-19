@@ -94,6 +94,8 @@ namespace toy3d
         }
         result.binding_layout = std::move(layout).value();
 
+        // optional stage descriptors let one helper skip absent stages while
+        // preserving identical creation and error propagation for present ones.
         const auto create_stage = [&](const std::optional<RHIShaderDesc>& shader_desc,
                                       RHIShaderRef& output) -> RHIStatus {
             if (!shader_desc) return RHIStatus::success();

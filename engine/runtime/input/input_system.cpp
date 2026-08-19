@@ -117,6 +117,8 @@ void InputSystem::process_event(InputEvent& event)
 
 InputBindingContext& InputSystem::create_binding_context(const std::string& name, int priority)
 {
+    // Structured binding exposes the iterator returned by emplace together with
+    // its insertion flag; only the iterator is needed for the stored context.
     auto [iter, inserted] = binding_contexts.emplace(name, InputBindingContext(name, priority));
     return iter->second;
 }

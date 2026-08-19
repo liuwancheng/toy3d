@@ -24,6 +24,8 @@
 
 namespace toy3d
 {
+    // filesystem is confined to the native backend where canonicalization and
+    // directory operations require host path semantics.
     namespace
     {
         namespace fs = std::filesystem;

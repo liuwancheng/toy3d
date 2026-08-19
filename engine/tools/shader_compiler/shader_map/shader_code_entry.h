@@ -12,6 +12,8 @@ namespace toy3d::shader
 
     struct ShaderCodeEntryWriteResult
     {
+        // optional reports the directory only after atomic publication succeeds,
+        // avoiding a path to incomplete staging output.
         std::optional<PhysicalPath> entry_directory;
         std::vector<Diagnostic> diagnostics;
 

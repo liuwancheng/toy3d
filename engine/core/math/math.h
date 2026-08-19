@@ -214,6 +214,8 @@ namespace toy3d
         static float sqrt(float fValue) { return std::sqrt(fValue); }
         static float inv_sqrt(float value) { return 1.f / sqrt(value); }
         static bool  equal(float a, float b, float tolerance = std::numeric_limits<float>::epsilon());
+        // std::clamp states the inclusive bound operation directly and avoids
+        // duplicating min/max ordering logic at each math caller.
         static float clamp(float v, float min, float max) { return std::clamp(v, min, max); }
         static float max(float x, float y, float z) { return std::max({x, y, z}); }
 

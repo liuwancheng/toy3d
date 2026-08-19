@@ -2,6 +2,8 @@
 
 namespace toy3d::shader
 {
+    // DXC setup and output use optional so invalid invocations and failed
+    // compiles cannot expose partially usable command lines or binaries.
     namespace
     {
         const char* profile_name(ShaderStageFlags stage)

@@ -9,6 +9,8 @@
 
 namespace toy3d
 {
+    // shared_mutex lock modes below allow concurrent reads while serializing
+    // registration and mutation of the same ConsoleManager state.
     namespace
     {
         void trim(std::string& value)
