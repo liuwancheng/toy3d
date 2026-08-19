@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rendercore/render_id.h"
+#include "rendercore/render_resource_update.h"
 #include "rendercore/render_scene_update.h"
 #include "renderscene/render_frame_completion.h"
 
@@ -25,6 +26,7 @@ namespace toy3d
 
         RenderFrameId frame_id;
         FrameTiming timing;
+        std::vector<RenderResourceUpdate> resource_updates;
         std::vector<RenderSceneUpdateBatch> scene_updates;
         RenderFrameCompletionRef completion;
     };

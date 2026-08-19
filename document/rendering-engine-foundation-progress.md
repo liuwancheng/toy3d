@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`d60fa3d`（`添加 Render Frame Transport 基础`）。
+- 基线 commit：`c92d602`（`添加持久 RenderScene 增量镜像`）。
 - 当前分支：`main`。
-- 工作区状态：仅包含已独立复验的 FND-4B 帧派发生命周期、lag/single-thread policy、
-  fake processor 测试与对应文档同步；尚未提交。
+- 工作区状态：包含 FND-5B Render Resource version/update/cache 的纯 CPU vertical slice、
+  packet 接入、自动测试与本节文档同步；已经独立复验，尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -34,6 +34,8 @@
 | FND-3C | Render 注册、dirty 合并与 owned-value batch | 完成 | Editor/GameScene 构建、CTest 11/11 与同步协议测试通过 |
 | FND-4A | RenderFramePacket、completion 与 bounded queue | 完成 | VS 2022/x64/Vulkan 配置、Editor/定向构建、CTest 12/12 与 transport 测试通过 |
 | FND-4B | Render frame dispatch、lag 与 single-thread fallback | 完成 | VS 2022/x64/Vulkan 配置、Editor/定向构建、CTest 12/12 与 transport 重复测试通过 |
+| FND-5A | 持久 RenderScene 与增量 Apply | 完成 | Editor/定向构建、CTest 13/13 与 RenderScene contract 测试通过 |
+| FND-5B | Render Resource version、placeholder 与 cache Apply | 完成 | Editor/定向构建、CTest 14/14 与 resource cache contract 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -713,3 +715,63 @@ Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
 下一工作包建议为 FND-5B：先定义 `RenderResourceUpdate`、强类型 revision、不可变 CPU resource version、
 placeholder 与 cache Apply/miss/release 的纯 CPU contract，再单独接入 frame-local RHI upload 和 GPU
 资源生命周期；不在资源 contract 尚未稳定时同时进入 SceneView 或 Forward Prepare。
+
+## 20. FND-5B：Render Resource Version、Placeholder 与 Cache Apply
+
+### 20.1 实现边界与关键决定
+
+- 新增强类型 `RenderResourceRevision`，`StaticMesh` 与 `MaterialInstance` 的 CPU 资产接口统一暴露该类型；
+  revision 0 为 invalid，资源版本只接受有效 ID 与有效 revision；
+- `RenderResourceUpdate` 是 Mesh、Material、Texture 三种强类型 update 的封闭 `std::variant`。每个 Update
+  携带 `shared_ptr<const ...Version>`，Release 只携带强类型 ID；`RenderFramePacket` 新增有序
+  `resource_updates`，继续保持 move-only owned-value packet contract；
+- `MeshRenderResourceVersion` 持有 vertex/index/section CPU 数据，`MaterialRenderResourceVersion` 持有
+  shader 与静态 render-state 描述，`TextureRenderResourceVersion` 当前明确为 RGBA8 CPU pixels 与
+  Color/Linear/Normal semantic。本工作包不把 RHI buffer、texture、view、upload allocation 或 backend
+  handle 放入这些跨线程版本；
+- `RenderResourceCache` 只属于 Render Thread/单线程 fallback owner，不增加内部通用线程设施。Apply 只接受
+  高于 latest 的 revision；同 revision 同内容计为幂等 unchanged，同 revision 异内容报
+  `RevisionConflict`，旧 revision 报 `StaleRevision`，错误对象不阻止同 stream 后续对象；
+- 更新 latest 时不原地修改旧 version；cache 和调用方通过 `shared_ptr<const ...Version>` 保持具体版本。
+  Release 只删除 latest，已被未来 `PreparedRenderFrame` 持有的旧版本仍可继续存活；
+- cache 构造时必须提供 Error Material、checkerboard、white 与 normal 四个有效 placeholder。Material miss
+  返回 Error Material；Texture miss 按 semantic 选择 placeholder；Mesh miss 返回 `Missing`，由后续 Prepare
+  跳过 Primitive 并诊断；
+- 本工作包仍是纯 CPU contract：没有实现 Game 侧资源更新收集器、真实 `RenderFrameProcessor` Apply 编排、
+  RHI resource 创建、frame-local upload/transition、PendingUpload、GPU completion 或 Forward Prepare。
+
+### 20.2 测试与主验证
+
+新增 `Toy3dRenderResourceCacheTests`，覆盖 placeholder 初始化、三类资源 Apply/Resolve、幂等 update、
+same-revision conflict、stale revision、错误后继续、latest replacement 的旧版本保活、Release、重复
+Release，以及 Material/Texture/Mesh 三类 miss policy。Transport 测试同步确认 resource update 与 scene update
+在 move-only packet 中共同跨队列传递；GameScene 测试确认 StaticMesh/MaterialInstance 使用强类型初始 revision。
+
+主 agent 在 Windows、Visual Studio 17 2022、x64、Debug、`BUILD_TESTING=ON`、
+`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
+
+- 重新配置 CMake；
+- 构建 `Toy3dRenderResourceCacheTests`、`Toy3dRenderFrameTransportTests`、`Toy3dRenderSceneTests` 与
+  `Toy3dGameSceneTests`；
+- 定向 CTest 4/4 通过，全量 CTest 14/14 通过；
+- `git diff --check` 无 whitespace error，仅有既有 tracked 文件的 LF→CRLF 提示；
+- 新增 resource contract、cache 与测试未发现 Vulkan、D3D11、D3D12、DXGI 或原生 backend 类型。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在 Windows、Visual Studio 17 2022、x64、
+Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
+
+- 重新配置 CMake；
+- 构建 `Toy3dEditor`、`Toy3dRenderResourceCacheTests`、`Toy3dRenderFrameTransportTests`、
+  `Toy3dRenderSceneTests` 与 `Toy3dGameSceneTests`；
+- 全量 CTest 14/14 通过，0 失败；
+- `git diff --check` 退出码 0，仅有既有 tracked 文件的 LF→CRLF 提示；
+- 新增 contract/cache 与相关公共头的 Vulkan、D3D11、D3D12、DXGI、native backend 类型扫描为零匹配，
+  `rendercore/`、`renderscene/resources/` 对 GameScene 的反向依赖扫描为零匹配；
+- 验证前后 tracked modified 与 untracked 文件集合逐项一致，验证者未修改或提交文件。
+
+本工作包不覆盖 D3D11/D3D12、macOS、Android、移动端 Vulkan profile、实际 Editor 窗口、RHI upload
+或渲染画面；Windows 验证只覆盖 Vulkan RHI ON 的 Debug 配置。
+
+下一工作包建议为 FND-5C：建立 Game 侧资源更新收集器与真实 `RenderFrameProcessor` 的
+resource-before-scene Apply 顺序，让 cache version 能被持久 RenderScene 在 Prepare 边界 resolve；GPU
+upload/transition 继续作为后续独立 vertical slice，避免在 processor 生命周期尚未闭环前耦合 RHI 状态。

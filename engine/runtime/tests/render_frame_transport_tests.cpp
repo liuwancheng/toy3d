@@ -153,6 +153,14 @@ int main()
     RenderSceneUpdateBatch scene_batch;
     scene_batch.scene_id = allocate_render_id<RenderSceneId>();
     first_packet.scene_updates.push_back(std::move(scene_batch));
+    MaterialRenderResourceUpdate resource_update;
+    resource_update.resource_id = MaterialRenderResourceId(1);
+    auto material_version = std::make_shared<MaterialRenderResourceVersion>();
+    material_version->resource_id = resource_update.resource_id;
+    material_version->revision = RenderResourceRevision(1);
+    material_version->material.shader_name = "Builtin/TransportTest";
+    resource_update.version = std::move(material_version);
+    first_packet.resource_updates.push_back(std::move(resource_update));
     check(queue.enqueue(std::move(first_packet)) == RenderFrameEnqueueResult::Accepted,
         "The queue must accept its first valid frame");
 
@@ -168,8 +176,9 @@ int main()
     RenderFramePacket dequeued_packet;
     check(queue.wait_dequeue(dequeued_packet) == RenderFrameDequeueResult::Packet &&
         dequeued_packet.frame_id == first_frame &&
+        dequeued_packet.resource_updates.size() == 1 &&
         dequeued_packet.scene_updates.size() == 1,
-        "The consumer must receive the complete owned packet in FIFO order");
+        "The consumer must receive the complete owned resource and scene packet in FIFO order");
     check(second_enqueue.wait_for(1s) == std::future_status::ready &&
         second_enqueue.get() == RenderFrameEnqueueResult::Accepted,
         "Dequeuing the processing frame must release capacity for one queued frame");

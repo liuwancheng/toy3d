@@ -152,7 +152,8 @@ namespace toy3d
           sections_(std::move(other.sections_)),
           material_slots_(std::move(other.material_slots_)),
           local_bounds_(other.local_bounds_),
-          render_resource_id_(other.render_resource_id_)
+          render_resource_id_(other.render_resource_id_),
+          revision_(other.revision_)
     {
         // The immutable asset's render identity transfers with its payload;
         // the short-lived factory source must not retain a duplicate ID.

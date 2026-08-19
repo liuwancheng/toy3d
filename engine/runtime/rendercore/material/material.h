@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rendercore/render_id.h"
+#include "rendercore/render_resource_revision.h"
 
 #include <cstdint>
 #include <memory>
@@ -61,14 +62,14 @@ namespace toy3d
 
         const MaterialRef& material() const { return material_; }
         MaterialRenderResourceId render_resource_id() const { return render_resource_id_; }
-        std::uint64_t revision() const { return revision_; }
+        RenderResourceRevision revision() const { return revision_; }
 
     private:
         explicit MaterialInstance(MaterialRef material);
 
         MaterialRef material_;
         MaterialRenderResourceId render_resource_id_;
-        std::uint64_t revision_ = 1;
+        RenderResourceRevision revision_{1};
     };
 
     using MaterialInstanceRef = std::shared_ptr<MaterialInstance>;

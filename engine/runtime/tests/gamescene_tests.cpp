@@ -131,7 +131,7 @@ int main()
         MaterialInstance::create(material);
     check(material_instance != nullptr &&
         material_instance->material() == material &&
-        material_instance->revision() == 1,
+        material_instance->revision() == RenderResourceRevision(1),
         "A MaterialInstance must strongly reference its immutable Material");
     check(Material::create({}) == nullptr,
         "A Material without ShaderMap identity must fail");
@@ -149,6 +149,8 @@ int main()
     const StaticMeshRef mesh = StaticMesh::create(std::move(mesh_desc));
     check(mesh != nullptr && mesh->sections().size() == 1,
         "A valid immutable StaticMesh CPU asset must be created");
+    check(mesh->revision() == RenderResourceRevision(1),
+        "An immutable StaticMesh must expose its initial strong resource revision");
     check(nearly_equal(mesh->local_bounds().minimum.x, -1.0f) &&
         nearly_equal(mesh->local_bounds().maximum.y, 1.0f),
         "StaticMesh local bounds must be derived from vertex positions");
