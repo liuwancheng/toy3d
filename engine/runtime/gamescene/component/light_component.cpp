@@ -6,6 +6,12 @@
 
 namespace toy3d
 {
+    void LightComponent::set_enabled(bool enabled)
+    {
+        enabled_ = enabled;
+        mark_render_dirty(RenderDirtyFlags::State);
+    }
+
     namespace
     {
         bool is_finite(const vec3& value)
@@ -24,6 +30,7 @@ namespace toy3d
             return false;
         }
         color_ = color;
+        mark_render_dirty(RenderDirtyFlags::DynamicData);
         return true;
     }
 
@@ -35,7 +42,14 @@ namespace toy3d
             return false;
         }
         intensity_ = intensity;
+        mark_render_dirty(RenderDirtyFlags::DynamicData);
         return true;
+    }
+
+    void LightComponent::set_render_priority(int render_priority)
+    {
+        render_priority_ = render_priority;
+        mark_render_dirty(RenderDirtyFlags::DynamicData);
     }
 
     bool LocalLightComponent::set_range(float range)
@@ -46,6 +60,7 @@ namespace toy3d
             return false;
         }
         range_ = range;
+        mark_render_dirty(RenderDirtyFlags::DynamicData);
         return true;
     }
 
@@ -65,6 +80,7 @@ namespace toy3d
         }
         inner_angle_degrees_ = inner_angle_degrees;
         outer_angle_degrees_ = outer_angle_degrees;
+        mark_render_dirty(RenderDirtyFlags::DynamicData);
         return true;
     }
 }

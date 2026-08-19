@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gamescene/component/scene_transform.h"
+#include "gamescene/render_dirty.h"
 
 #include <vector>
 
@@ -48,11 +49,17 @@ namespace toy3d
         void update_world_transform();
         void remove_child(SceneComponent& child);
 
+    protected:
+        void mark_render_dirty(RenderDirtyFlags flags);
+        RenderDirtyFlags render_dirty_flags() const { return render_dirty_flags_; }
+        void clear_render_dirty();
+
         Actor& owner_;
         SceneComponent* parent_ = nullptr;
         std::vector<SceneComponent*> children_;
         SceneTransform local_transform_;
         mat4x4 world_transform_{1.0f};
         bool transform_dirty_ = true;
+        RenderDirtyFlags render_dirty_flags_ = RenderDirtyFlags::None;
     };
 }

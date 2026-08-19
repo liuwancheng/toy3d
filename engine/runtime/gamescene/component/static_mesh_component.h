@@ -22,8 +22,17 @@ namespace toy3d
             MaterialInstanceRef material);
         MaterialInstanceRef material_for_slot(std::uint32_t material_slot) const;
 
+        PrimitiveId primitive_id() const { return primitive_id_; }
+        const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
+
     private:
+        friend class World;
+
+        void update_world_bounds();
+
         StaticMeshRef static_mesh_;
         std::vector<MaterialInstanceRef> material_overrides_;
+        PrimitiveId primitive_id_;
+        AxisAlignedBounds world_bounds_;
     };
 }

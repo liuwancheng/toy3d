@@ -228,6 +228,7 @@ namespace toy3d
     void SceneComponent::mark_transform_dirty()
     {
         transform_dirty_ = true;
+        mark_render_dirty(RenderDirtyFlags::Transform);
         for (SceneComponent* child : children_)
         {
             child->mark_transform_dirty();
@@ -261,5 +262,15 @@ namespace toy3d
         {
             children_.erase(child_iterator);
         }
+    }
+
+    void SceneComponent::mark_render_dirty(RenderDirtyFlags flags)
+    {
+        render_dirty_flags_ |= flags;
+    }
+
+    void SceneComponent::clear_render_dirty()
+    {
+        render_dirty_flags_ = RenderDirtyFlags::None;
     }
 }

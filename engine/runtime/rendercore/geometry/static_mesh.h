@@ -2,6 +2,7 @@
 
 #include "rendercore/geometry/axis_aligned_bounds.h"
 #include "rendercore/material/material.h"
+#include "rendercore/render_id.h"
 
 #include <cstdint>
 #include <memory>
@@ -46,14 +47,15 @@ namespace toy3d
 
         StaticMesh(const StaticMesh&) = delete;
         StaticMesh& operator=(const StaticMesh&) = delete;
-        StaticMesh(StaticMesh&&) noexcept = default;
-        StaticMesh& operator=(StaticMesh&&) noexcept = default;
+        StaticMesh(StaticMesh&& other) noexcept;
+        StaticMesh& operator=(StaticMesh&&) noexcept = delete;
 
         const std::vector<StaticMeshVertex>& vertices() const { return vertices_; }
         const StaticMeshIndexData& indices() const { return indices_; }
         const std::vector<StaticMeshSection>& sections() const { return sections_; }
         const std::vector<MaterialInstanceRef>& material_slots() const { return material_slots_; }
         const AxisAlignedBounds& local_bounds() const { return local_bounds_; }
+        MeshRenderResourceId render_resource_id() const { return render_resource_id_; }
 
     private:
         StaticMesh(StaticMeshDesc desc, AxisAlignedBounds local_bounds);
@@ -63,6 +65,7 @@ namespace toy3d
         std::vector<StaticMeshSection> sections_;
         std::vector<MaterialInstanceRef> material_slots_;
         AxisAlignedBounds local_bounds_;
+        MeshRenderResourceId render_resource_id_;
     };
 
     using StaticMeshRef = std::shared_ptr<const StaticMesh>;

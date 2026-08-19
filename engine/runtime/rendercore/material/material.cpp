@@ -33,7 +33,18 @@ namespace toy3d
     }
 
     MaterialInstance::MaterialInstance(MaterialRef material)
-        : material_(std::move(material))
+        : material_(std::move(material)),
+          render_resource_id_(allocate_render_id<MaterialRenderResourceId>())
     {
+    }
+
+    MaterialInstance::MaterialInstance(MaterialInstance&& other) noexcept
+        : material_(std::move(other.material_)),
+          render_resource_id_(other.render_resource_id_),
+          revision_(other.revision_)
+    {
+        // Resource identity follows the moved value so two live objects never
+        // advertise the same ID during factory construction or later moves.
+        other.render_resource_id_ = {};
     }
 }

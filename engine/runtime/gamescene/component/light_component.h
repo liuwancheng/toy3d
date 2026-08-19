@@ -1,17 +1,17 @@
 #pragma once
 
 #include "gamescene/component/scene_component.h"
+#include "rendercore/render_id.h"
 
 namespace toy3d
 {
     class LightComponent : public SceneComponent
     {
     public:
-        explicit LightComponent(Actor& owner) : SceneComponent(owner) {}
         ~LightComponent() override = default;
 
         bool enabled() const { return enabled_; }
-        void set_enabled(bool enabled) { enabled_ = enabled; }
+        void set_enabled(bool enabled);
 
         const vec3& color() const { return color_; }
         bool set_color(const vec3& color);
@@ -20,13 +20,21 @@ namespace toy3d
         bool set_intensity(float intensity);
 
         int render_priority() const { return render_priority_; }
-        void set_render_priority(int render_priority) { render_priority_ = render_priority; }
+        void set_render_priority(int render_priority);
+
+        LightId light_id() const { return light_id_; }
+
+    protected:
+        explicit LightComponent(Actor& owner) : SceneComponent(owner) {}
 
     private:
+        friend class World;
+
         bool enabled_ = true;
         vec3 color_{1.0f};
         float intensity_ = 1.0f;
         int render_priority_ = 0;
+        LightId light_id_;
     };
 
     class DirectionalLightComponent final : public LightComponent
@@ -39,11 +47,13 @@ namespace toy3d
     class LocalLightComponent : public LightComponent
     {
     public:
-        explicit LocalLightComponent(Actor& owner) : LightComponent(owner) {}
         ~LocalLightComponent() override = default;
 
         float range() const { return range_; }
         bool set_range(float range);
+
+    protected:
+        explicit LocalLightComponent(Actor& owner) : LightComponent(owner) {}
 
     private:
         float range_ = 10.0f;

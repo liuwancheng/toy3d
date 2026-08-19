@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rendercore/render_id.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -54,16 +56,18 @@ namespace toy3d
 
         MaterialInstance(const MaterialInstance&) = delete;
         MaterialInstance& operator=(const MaterialInstance&) = delete;
-        MaterialInstance(MaterialInstance&&) noexcept = default;
-        MaterialInstance& operator=(MaterialInstance&&) noexcept = default;
+        MaterialInstance(MaterialInstance&& other) noexcept;
+        MaterialInstance& operator=(MaterialInstance&&) noexcept = delete;
 
         const MaterialRef& material() const { return material_; }
+        MaterialRenderResourceId render_resource_id() const { return render_resource_id_; }
         std::uint64_t revision() const { return revision_; }
 
     private:
         explicit MaterialInstance(MaterialRef material);
 
         MaterialRef material_;
+        MaterialRenderResourceId render_resource_id_;
         std::uint64_t revision_ = 1;
     };
 

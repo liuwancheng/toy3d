@@ -467,3 +467,57 @@ GPU 运行画面；本工作包是纯 CPU GameScene/asset contract，不把本�
 
 下一工作包保持为 FND-3C：稳定 Render ID 注册边界、三类 dirty、帧末 batch 合并与 world bounds
 更新；本轮完成后停止，不进入 Render Frame Transport。
+
+## 16. FND-3C：Render 注册、dirty 合并与 owned-value 更新批次
+
+### 16.1 实现边界与关键决定
+
+- 强类型 Render ID 移至 `rendercore/render_id.h`，作为 GameScene、RenderCore 资产与后续
+  RenderScene 共用的渲染身份 contract；各 ID 类型独立单调分配，`0` 保持 invalid，计数耗尽后
+  保持 invalid 而不回绕复用。
+- `World` 在帧末 `collect_render_scene_updates()` 边界为具备 Mesh 的 `StaticMeshComponent` 和三类
+  Light 自动分配稳定 ID。首次出现发送完整 `Add`；已注册对象只发送一条合并后的 `Update`；
+  已注册 Actor 销毁发送 `Remove`；同帧创建后销毁且从未注册的对象不发送消息。
+- dirty 明确分为 `Transform`、`State` 与 `DynamicData`。Transform hierarchy 的既有递归 dirty
+  传播同时标记 Render transform；Mesh/Material override 标记 State；Light 参数标记 DynamicData，
+  enabled 标记 State。一次收集后清除已消费 dirty，不产生空重复更新。
+- `RenderSceneUpdateBatch` 只携带矩阵、bounds、Light 参数与强类型资源 ID 等 owned value，不捕获
+  World、Actor、Component、MaterialInstance 或其他 Game Thread 对象指针。`StaticMesh` 与
+  `MaterialInstance` 在资产创建时获得稳定 Render Resource ID；移动构造显式转移身份并清空源 ID，
+  避免两个活对象同时发布同一资源身份。
+- `StaticMeshComponent` 的 world bounds 在帧末基于最终 world transform 更新；算法按仿射矩阵绝对值
+  扩展 local AABB，可覆盖 positive non-uniform scale、旋转以及 hierarchy 组合产生的剪切矩阵。
+
+本工作包没有实现 Render Thread、RenderScene Apply、RenderResourceCache、资源上传、Material typed
+parameter、SceneView、Forward Prepare、RDG、Scheduler 或 TaskSystem。资源 ID 只建立跨线程引用
+contract，具体 revision/update 与 GPU resource 生命周期仍属于后续 FND-5。
+
+### 16.2 测试与验证
+
+主 agent 定向执行并通过：
+
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`；
+- `ctest --test-dir build -C Debug -R Toy3dRuntime.GameScene --output-on-failure`，1/1 通过；
+- `git diff --check`，无 whitespace error，仅有既有 LF→CRLF 提示。
+
+`Toy3dGameSceneTests` 新增覆盖：首次注册完整 Add、资源 ID owned-value snapshot、三类 dirty 的单条
+合并、帧末 world bounds、无变化空批次、dirty 后 Remove 覆盖，以及同帧创建/销毁不发消息。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在 Windows、Visual Studio 17 2022、x64、
+Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+  -DTOY3D_ENABLE_VULKAN_RHI=ON`；
+- `cmake --build build --config Debug --target Toy3dEditor`；
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`；
+- 收到主 agent 的资源 ID move 语义补强后再次构建 `Toy3dEditor`，并核对最新源文件已进入对象；
+- `ctest --test-dir build -C Debug --output-on-failure`，11/11 通过；
+- `git diff --check` 退出码 0，仅有既有 LF→CRLF 提示；未跟踪新头另行检查无行尾空白且均有
+  `#pragma once`；旧 `gamescene/render_id.h` 引用为 0，GameScene/RenderScene 未发现 backend 类型。
+
+验证前后工作区源码条目一致，验证者未修改或提交文件。未覆盖 macOS、Linux、Android、
+D3D11/D3D12、非 Debug 配置与 GPU/窗口运行态；本工作包为纯 CPU GameScene/asset sync contract，
+不把结果描述为 Renderer 画面验收。
+
+下一工作包为 FND-4A：先设计并实现 `RenderFramePacket`、completion 与 bounded queue 的纯 CPU
+contract；仍不在该包创建真实 RHI Render Thread 或进入 RenderScene Apply。

@@ -1,4 +1,4 @@
-#include "gamescene/render_id.h"
+#include "rendercore/render_id.h"
 #include "gamescene/world.h"
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
@@ -208,6 +208,95 @@ int main()
         nearly_equal(spot.inner_angle_degrees(), 15.0f) &&
         nearly_equal(spot.outer_angle_degrees(), 35.0f),
         "Invalid SpotLight cone angles must fail atomically");
+
+    const RenderSceneUpdateBatch initial_updates =
+        world.collect_render_scene_updates();
+    check(initial_updates.scene_id == world.render_scene_id() &&
+        initial_updates.primitive_updates.size() == 1 &&
+        initial_updates.light_updates.size() == 3,
+        "The first collection must register every renderable component exactly once");
+    check(initial_updates.primitive_updates[0].operation ==
+            RenderSceneUpdateOperation::Add &&
+        initial_updates.primitive_updates[0].primitive_id ==
+            mesh_component.primitive_id() &&
+        has_render_dirty_flag(
+            initial_updates.primitive_updates[0].dirty_flags,
+            RenderDirtyFlags::Transform) &&
+        has_render_dirty_flag(
+            initial_updates.primitive_updates[0].dirty_flags,
+            RenderDirtyFlags::State) &&
+        initial_updates.primitive_updates[0].snapshot.mesh_resource_id ==
+            mesh->render_resource_id() &&
+        initial_updates.primitive_updates[0].snapshot.material_resource_ids.size() == 1 &&
+        initial_updates.primitive_updates[0].snapshot.material_resource_ids[0] ==
+            translucent_instance->render_resource_id(),
+        "A Primitive Add must own its complete transform and resource identity snapshot");
+    check(nearly_equal(mesh_component.world_bounds().minimum.x, -1.0f) &&
+        nearly_equal(mesh_component.world_bounds().maximum.y, 1.0f),
+        "Frame-end collection must update StaticMesh world bounds");
+
+    SceneTransform moved_mesh_transform;
+    moved_mesh_transform.translation.x = 4.0f;
+    moved_mesh_transform.scale = vec3(2.0f);
+    check(mesh_component.set_local_transform(moved_mesh_transform),
+        "A moved Primitive transform must be accepted");
+    check(mesh_component.set_material_override(0, material_instance),
+        "A Primitive state change must be accepted before update collection");
+
+    SceneTransform moved_light_transform;
+    moved_light_transform.translation.z = 3.0f;
+    check(directional.set_local_transform(moved_light_transform) &&
+        directional.set_intensity(4.0f),
+        "Light transform and dynamic data changes must be accepted");
+
+    const RenderSceneUpdateBatch merged_updates =
+        world.collect_render_scene_updates();
+    check(merged_updates.primitive_updates.size() == 1 &&
+        merged_updates.primitive_updates[0].operation ==
+            RenderSceneUpdateOperation::Update &&
+        has_render_dirty_flag(
+            merged_updates.primitive_updates[0].dirty_flags,
+            RenderDirtyFlags::Transform) &&
+        has_render_dirty_flag(
+            merged_updates.primitive_updates[0].dirty_flags,
+            RenderDirtyFlags::State),
+        "Transform and state changes must merge into one Primitive update per frame");
+    check(nearly_equal(mesh_component.world_bounds().minimum.x, 2.0f) &&
+        nearly_equal(mesh_component.world_bounds().maximum.x, 6.0f) &&
+        nearly_equal(mesh_component.world_bounds().minimum.y, -2.0f) &&
+        nearly_equal(mesh_component.world_bounds().maximum.y, 2.0f),
+        "World bounds must include positive non-uniform component transforms");
+    check(merged_updates.light_updates.size() == 1 &&
+        merged_updates.light_updates[0].light_id == directional.light_id() &&
+        has_render_dirty_flag(
+            merged_updates.light_updates[0].dirty_flags,
+            RenderDirtyFlags::Transform) &&
+        has_render_dirty_flag(
+            merged_updates.light_updates[0].dirty_flags,
+            RenderDirtyFlags::DynamicData),
+        "Transform and dynamic changes must merge into one Light update per frame");
+    check(world.collect_render_scene_updates().empty(),
+        "A collected World with no further changes must emit no updates");
+
+    const PrimitiveId removed_primitive_id = mesh_component.primitive_id();
+    moved_mesh_transform.translation.x = 8.0f;
+    check(mesh_component.set_local_transform(moved_mesh_transform),
+        "A registered Primitive may become dirty before destruction");
+    check(world.destroy_actor(render_actor),
+        "Destroying an Actor owned by the World must succeed");
+    const RenderSceneUpdateBatch removal_updates =
+        world.collect_render_scene_updates();
+    check(removal_updates.primitive_updates.size() == 1 &&
+        removal_updates.primitive_updates[0].operation ==
+            RenderSceneUpdateOperation::Remove &&
+        removal_updates.primitive_updates[0].primitive_id == removed_primitive_id,
+        "Removing a registered Primitive must override prior dirty state with Remove");
+
+    Actor& transient_actor = world.create_actor();
+    transient_actor.create_scene_component<StaticMeshComponent>().set_static_mesh(mesh);
+    check(world.destroy_actor(transient_actor) &&
+        world.collect_render_scene_updates().empty(),
+        "A renderable Actor created and destroyed before collection must emit no update");
 
     if (failure_count != 0)
     {

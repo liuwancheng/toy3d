@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 namespace toy3d
@@ -57,7 +58,22 @@ namespace toy3d
             "allocate_render_id requires a Toy3d RenderId type");
 
         static std::atomic<std::uint64_t> next_value{1};
-        const std::uint64_t value = next_value.fetch_add(1, std::memory_order_relaxed);
-        return value == 0 ? Id{} : Id(value);
+        std::uint64_t value = next_value.load(std::memory_order_relaxed);
+        while (value != 0)
+        {
+            const std::uint64_t following_value =
+                value == std::numeric_limits<std::uint64_t>::max()
+                    ? 0
+                    : value + 1;
+            if (next_value.compare_exchange_weak(
+                value,
+                following_value,
+                std::memory_order_relaxed,
+                std::memory_order_relaxed))
+            {
+                return Id(value);
+            }
+        }
+        return Id{};
     }
 }
