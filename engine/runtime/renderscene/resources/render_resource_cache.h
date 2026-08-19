@@ -87,20 +87,24 @@ namespace toy3d
             TextureRenderResourceId resource_id,
             TextureColorSemantic semantic) const;
 
-        RHIResult<RenderResourceUploadBatch> record_pending_mesh_uploads(
+        RHIResult<RenderResourceUploadBatch> record_pending_uploads(
             RHIDevice& device,
             RHIGraphicsCommandContext& context) const;
         RHIStatus commit_uploads(RenderResourceUploadBatch batch);
         RenderResourceResolveResult<MeshRHIResourceRef> resolve_mesh_rhi(
             MeshRenderResourceId resource_id) const;
+        RenderResourceResolveResult<TextureRHIResourceRef> resolve_texture_rhi(
+            TextureRenderResourceId resource_id) const;
 
         std::size_t mesh_count() const { return meshes_.size(); }
         std::size_t material_count() const { return materials_.size(); }
         std::size_t texture_count() const { return textures_.size(); }
         std::size_t mesh_rhi_count() const { return mesh_rhi_resources_.size(); }
+        std::size_t texture_rhi_count() const { return texture_rhi_resources_.size(); }
 
     private:
         void prune_stale_mesh_rhi_resource(MeshRenderResourceId resource_id);
+        void prune_stale_texture_rhi_resource(TextureRenderResourceId resource_id);
 
         RenderResourcePlaceholders placeholders_;
         bool valid_ = false;
@@ -108,5 +112,6 @@ namespace toy3d
         std::unordered_map<std::uint64_t, MaterialRenderResourceVersionRef> materials_;
         std::unordered_map<std::uint64_t, TextureRenderResourceVersionRef> textures_;
         std::unordered_map<std::uint64_t, MeshRHIResourceRef> mesh_rhi_resources_;
+        std::unordered_map<std::uint64_t, TextureRHIResourceRef> texture_rhi_resources_;
     };
 }

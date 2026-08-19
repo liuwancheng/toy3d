@@ -38,6 +38,7 @@
 | FND-5B | Render Resource version、placeholder 与 cache Apply | 完成 | Editor/定向构建、CTest 14/14 与 resource cache contract 测试通过 |
 | FND-5C | Resource collection、Scene frame processor 与 Prepare resolve | 完成 | Editor/定向构建、CTest 15/15 与 pipeline contract 测试通过 |
 | FND-5D1 | Mesh RHI resource 与事务式随帧上传 | 完成 | Editor/定向构建、CTest 16/16 与 upload transaction contract 测试通过 |
+| FND-5D2 | Texture RHI resource 与统一上传事务 | 完成 | Editor/定向构建、CTest 16/16 与 mixed upload transaction 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -848,7 +849,7 @@ frame-local RHI resource creation、PendingUpload、upload-before-use transition
   `RHIIndexFormat` 与 vertex stride；cache 只在该 RHI resource 对应当前 latest CPU version 时返回它，
   新 revision 或 Release 会移除 cache 强引用，已被 Prepared 输入持有的旧版本仍可存活至 RHI deferred
   deletion 安全回收；
-- `record_pending_mesh_uploads()` 只在调用方已经开始的 frame-local graphics context 中录制，按 resource ID
+- `record_pending_uploads()` 只在调用方已经开始的 frame-local graphics context 中录制，按 resource ID
   确定性排序，为每个 pending Mesh 创建 `VertexBuffer | CopyDestination` 与
   `IndexBuffer | CopyDestination` GPU-only buffer，记录
   `Common -> CopyDestination -> VertexBuffer/IndexBuffer`，并由 backend 在 `upload_buffer()` 返回前复制源数据；
@@ -898,3 +899,45 @@ upload allocation 与 copy/transition；D3D11 可由 backend 将相同语义映�
 未覆盖 D3D11/D3D12、macOS、Android、真实 Vulkan queue submission、validation layer 与渲染画面。本包只
 证明公共 RHI 命令记录和 cache 发布事务；FND-5D2 应继续完成 Texture RHI resource 与 upload transaction，
 之后再由 viewport orchestrator 把 upload batch commit 接到真实 submission 结果。
+
+## 23. FND-5D2：Texture RHI Resource 与统一上传事务
+
+### 23.1 实现边界与关键决定
+
+- `RenderResourceUploadBatch` 扩展为同一 submission 内的 Mesh 与 Texture 原子发布批次，入口收敛为
+  `record_pending_uploads()`；任一 domain 录制失败会丢弃整批，`commit_uploads()` 先验证全部 CPU version
+  仍是 latest，再同时发布，避免跨资源 domain 部分可见；
+- 新增不可变 `TextureRHIResource`，强持有准确 CPU version、`RHITexture` 与 shader-resource view。
+  `TextureColorSemantic::Color` 映射 `R8G8B8A8UNormSRGB`，Linear/Normal 映射
+  `R8G8B8A8UNorm`，公共层不出现 backend format；
+- texture 创建使用 `ShaderResource | CopyDestination`、`Common` initial access，随后在传入的 frame-local
+  context 记录 `Common -> CopyDestination`、带完整 row/slice pitch 的 `upload_texture()`，再 transition 到
+  `ShaderResourceGraphics`；创建函数不接 initial data，也不 submit/wait；
+- 新 revision 与 Release 只移除 cache 的 latest RHI 强引用，外部 Prepared 持有者和 RHI deferred deletion
+  继续负责旧 GPU 对象生命周期；Color/Linear/Normal placeholder 仍留给显式 bootstrap submission，不能把
+  普通随帧上传伪装为初始化完成。
+
+Vulkan、D3D11、D3D12 均可从公共 texture/create-view/upload/transition 语义实现；移动端不新增 format
+基线，实际 format usage 继续由 device 创建 frontend/backend capability 检查。本包不接真实 viewport、
+Material binding、SceneView 或渲染画面。
+
+### 23.2 测试与主验证
+
+`Toy3dRenderResourceUploadTests` 新增 Texture 覆盖：同一 batch 的 domain 计数、sRGB/linear format、SRV、
+row/slice pitch、copy/sampling transition、commit 前不可见、commit 后 resolve、revision 替换与 Release。
+补强用例直接构造 Mesh+Texture mixed batch，在 commit 前替换 Texture revision，确认整批拒绝且两个 domain
+均为零发布；同时覆盖 Linear→UNorm 与非法 `TextureColorSemantic` 在 Apply 边界拒绝。
+
+主 Agent 构建 `Toy3dEditor`、upload/cache/pipeline tests 并完成相关 CTest 3/3；最终补强后重新构建
+upload/cache tests，CTest 2/2 通过。沙箱内一次增量构建因 Windows SDK 用户目录 ACL 被拒绝而未进入编译，
+随后在沙箱外完成相同构建，不采用失败构建后的旧二进制作为证据。
+
+独立 sub-agent 使用 `verify-toy3d-build` 重新配置 VS 2022 x64，构建 Editor、upload/cache/pipeline/transport
+五个目标并完成全量 CTest 16/16；`git diff --check` 通过，验证前后 HEAD 为 `91bce62` 且相同 6 个
+unstaged 文件。补强测试后验证者对最终源码执行 upload test `--clean-first` 重建、定向 CTest 1/1 和直接
+运行 executable，输出 `Render resource upload checks passed.`，并核对 mixed batch、Linear 与非法 semantic
+三组断言对应 production contract；验证过程未修改或提交文件。
+
+未覆盖 D3D11/D3D12、macOS、Android、真实 Vulkan submission/validation layer、Material binding 与画面。
+下一工作包应为 FND-5D3：用显式 bootstrap submission 初始化 Error Material 依赖的 placeholder textures，
+并定义 initialization completion；不得通过普通资源创建隐式 submit/wait。

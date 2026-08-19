@@ -89,6 +89,26 @@ namespace
         }
     };
 
+    class FakeTexture final : public toy3d::RHITexture
+    {
+    public:
+        explicit FakeTexture(toy3d::RHITextureDesc desc)
+            : RHITexture(std::move(desc))
+        {
+        }
+    };
+
+    class FakeTextureView final : public toy3d::RHITextureView
+    {
+    public:
+        FakeTextureView(
+            toy3d::RHITextureRef texture,
+            toy3d::RHITextureViewDesc desc)
+            : RHITextureView(std::move(texture), std::move(desc))
+        {
+        }
+    };
+
     class FakeQueue final : public toy3d::RHIQueue
     {
     public:
@@ -147,10 +167,18 @@ namespace
                 std::make_shared<FakeBuffer>(desc));
         }
         toy3d::RHIResult<toy3d::RHITextureRef> create_texture(
-            const toy3d::RHITextureDesc&,
-            const toy3d::RHIInitialData* = nullptr) override
+            const toy3d::RHITextureDesc& desc,
+            const toy3d::RHIInitialData* initial_data = nullptr) override
         {
-            return unsupported<toy3d::RHITextureRef>();
+            if (initial_data != nullptr)
+            {
+                return toy3d::RHIResult<toy3d::RHITextureRef>::failure(
+                    toy3d::RHIErrorCode::InvalidArgument,
+                    "Texture uploads must not use creation-time data.");
+            }
+            created_texture_descs.push_back(desc);
+            return toy3d::RHIResult<toy3d::RHITextureRef>::success(
+                std::make_shared<FakeTexture>(desc));
         }
         toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view(
             const toy3d::RHIBufferRef&,
@@ -159,10 +187,12 @@ namespace
             return unsupported<toy3d::RHIBufferViewRef>();
         }
         toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view(
-            const toy3d::RHITextureRef&,
-            const toy3d::RHITextureViewDesc&) override
+            const toy3d::RHITextureRef& texture,
+            const toy3d::RHITextureViewDesc& desc) override
         {
-            return unsupported<toy3d::RHITextureViewRef>();
+            created_texture_view_descs.push_back(desc);
+            return toy3d::RHIResult<toy3d::RHITextureViewRef>::success(
+                std::make_shared<FakeTextureView>(texture, desc));
         }
         toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler(
             const toy3d::RHISamplerDesc&) override
@@ -186,6 +216,8 @@ namespace
         }
 
         std::vector<toy3d::RHIBufferDesc> created_buffer_descs;
+        std::vector<toy3d::RHITextureDesc> created_texture_descs;
+        std::vector<toy3d::RHITextureViewDesc> created_texture_view_descs;
 
     protected:
         toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(
@@ -292,9 +324,14 @@ namespace
         {
             return unsupported();
         }
-        toy3d::RHIStatus upload_texture(const toy3d::RHITextureUploadDesc&) override
+        toy3d::RHIStatus upload_texture(
+            const toy3d::RHITextureUploadDesc& desc) override
         {
-            return unsupported();
+            ++texture_upload_count;
+            last_texture_row_pitch = desc.source.row_pitch;
+            last_texture_slice_pitch = desc.source.slice_pitch;
+            last_texture_extent = desc.extent;
+            return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus write_gpu_fence(const toy3d::RHIGPUFenceRef&) override
         {
@@ -352,6 +389,10 @@ namespace
 
         std::size_t fail_upload_number = 0;
         std::size_t upload_count = 0;
+        std::size_t texture_upload_count = 0;
+        std::size_t last_texture_row_pitch = 0;
+        std::size_t last_texture_slice_pitch = 0;
+        toy3d::RHIExtent3D last_texture_extent;
         std::vector<Operation> operations;
 
     protected:
@@ -383,7 +424,7 @@ int main()
 
     FakeDevice device;
     FakeGraphicsCommandContext first_context;
-    auto first_result = cache.record_pending_mesh_uploads(device, first_context);
+    auto first_result = cache.record_pending_uploads(device, first_context);
     check(first_result && first_result.value().mesh_count() == 1,
         "A new Mesh version must produce one pending upload batch entry");
     check(device.created_buffer_descs.size() == 2 &&
@@ -395,7 +436,7 @@ int main()
     RenderResourceUploadBatch discarded_batch = std::move(first_result).value();
     discarded_batch = RenderResourceUploadBatch{};
     FakeGraphicsCommandContext retry_context;
-    auto retry_result = cache.record_pending_mesh_uploads(device, retry_context);
+    auto retry_result = cache.record_pending_uploads(device, retry_context);
     check(retry_result && retry_result.value().mesh_count() == 1 &&
         device.created_buffer_descs.size() == 4,
         "Discarding a pre-submit batch must leave the Mesh pending for a fresh retry");
@@ -409,7 +450,7 @@ int main()
         uploaded_one.version->vertex_stride == sizeof(StaticMeshVertex),
         "Published Mesh RHI state must retain its exact immutable CPU version and binding ABI");
     FakeGraphicsCommandContext no_work_context;
-    auto no_work_result = cache.record_pending_mesh_uploads(device, no_work_context);
+    auto no_work_result = cache.record_pending_uploads(device, no_work_context);
     check(no_work_result && no_work_result.value().empty() &&
         no_work_context.operations.empty(),
         "An already published latest Mesh version must not upload again");
@@ -422,7 +463,7 @@ int main()
         "A newer CPU revision must drop only the cache's old GPU reference while prepared holders stay valid");
 
     FakeGraphicsCommandContext version_two_context;
-    auto version_two_result = cache.record_pending_mesh_uploads(
+    auto version_two_result = cache.record_pending_uploads(
         device, version_two_context);
     const MeshRenderResourceVersionRef version_three = make_mesh_version(100, 3, 2.0F);
     cache.apply_updates({mesh_update(version_three)});
@@ -434,11 +475,11 @@ int main()
 
     FakeGraphicsCommandContext failing_context;
     failing_context.fail_upload_number = 2;
-    auto failing_result = cache.record_pending_mesh_uploads(device, failing_context);
+    auto failing_result = cache.record_pending_uploads(device, failing_context);
     check(!failing_result && cache.mesh_rhi_count() == 0,
         "A recording failure must leave the current Mesh revision pending and unpublished");
     FakeGraphicsCommandContext final_context;
-    auto final_result = cache.record_pending_mesh_uploads(device, final_context);
+    auto final_result = cache.record_pending_uploads(device, final_context);
     check(final_result && cache.commit_uploads(std::move(final_result).value()) &&
         cache.resolve_mesh_rhi(version_three->resource_id),
         "The next frame must be able to retry and publish after an earlier recording failure");
@@ -452,6 +493,104 @@ int main()
         !cache.resolve_mesh_rhi(version_three->resource_id) &&
         cache.mesh_rhi_count() == 0,
         "Release must remove the cache-owned latest CPU and GPU Mesh versions together");
+
+    const TextureRenderResourceVersionRef color_texture =
+        make_placeholder_texture(200, TextureColorSemantic::Color);
+    TextureRenderResourceUpdate texture_update;
+    texture_update.resource_id = color_texture->resource_id;
+    texture_update.version = color_texture;
+    check(cache.apply_updates({RenderResourceUpdate(texture_update)}).applied_count == 1,
+        "A valid Texture CPU version must enter the cache before upload");
+    FakeGraphicsCommandContext texture_context;
+    auto texture_result = cache.record_pending_uploads(device, texture_context);
+    check(texture_result && texture_result.value().mesh_count() == 0 &&
+        texture_result.value().texture_count() == 1,
+        "A pending Texture must join the same submission transaction without Mesh work");
+    check(device.created_texture_descs.size() == 1 &&
+        device.created_texture_descs.back().format == RHIFormat::R8G8B8A8UNormSRGB &&
+        device.created_texture_view_descs.size() == 1,
+        "Color-semantic Texture upload must create an sRGB texture and SRV");
+    check(texture_context.texture_upload_count == 1 &&
+        texture_context.last_texture_row_pitch == 4 &&
+        texture_context.last_texture_slice_pitch == 4 &&
+        texture_context.last_texture_extent.width == 1 &&
+        texture_context.operations.size() == 2 &&
+        texture_context.operations.front().after == RHIAccess::CopyDestination &&
+        texture_context.operations.back().after == RHIAccess::ShaderResourceGraphics,
+        "Texture upload must preserve pitches and record copy then graphics-sampling transitions");
+    check(!cache.resolve_texture_rhi(color_texture->resource_id),
+        "A recorded Texture must remain invisible until submission commit");
+    check(static_cast<bool>(cache.commit_uploads(std::move(texture_result).value())) &&
+        cache.resolve_texture_rhi(color_texture->resource_id),
+        "A committed Texture upload must publish its exact latest RHI resource");
+
+    auto normal_texture_mutable = std::make_shared<TextureRenderResourceVersion>(
+        *color_texture);
+    normal_texture_mutable->revision = RenderResourceRevision(2);
+    normal_texture_mutable->color_semantic = TextureColorSemantic::Normal;
+    TextureRenderResourceVersionRef normal_texture =
+        std::move(normal_texture_mutable);
+    texture_update.version = normal_texture;
+    cache.apply_updates({RenderResourceUpdate(texture_update)});
+    check(cache.texture_rhi_count() == 0,
+        "A new Texture revision must release the cache-owned old RHI version");
+    FakeGraphicsCommandContext normal_context;
+    auto normal_result = cache.record_pending_uploads(device, normal_context);
+    check(normal_result &&
+        device.created_texture_descs.back().format == RHIFormat::R8G8B8A8UNorm &&
+        cache.commit_uploads(std::move(normal_result).value()),
+        "Normal-semantic Texture data must use a linear UNorm RHI resource");
+
+    TextureRenderResourceUpdate texture_release;
+    texture_release.operation = RenderResourceUpdateOperation::Release;
+    texture_release.resource_id = normal_texture->resource_id;
+    check(cache.apply_updates({RenderResourceUpdate(texture_release)}).released_count == 1 &&
+        cache.texture_rhi_count() == 0,
+        "Texture Release must drop the cache-owned CPU and RHI latest versions");
+
+    RenderResourceCache atomic_cache(make_placeholders());
+    const MeshRenderResourceVersionRef atomic_mesh = make_mesh_version(300, 1);
+    const TextureRenderResourceVersionRef linear_texture =
+        make_placeholder_texture(301, TextureColorSemantic::Linear);
+    TextureRenderResourceUpdate linear_update;
+    linear_update.resource_id = linear_texture->resource_id;
+    linear_update.version = linear_texture;
+    atomic_cache.apply_updates(
+        {mesh_update(atomic_mesh), RenderResourceUpdate(linear_update)});
+    FakeDevice atomic_device;
+    FakeGraphicsCommandContext atomic_context;
+    auto atomic_result = atomic_cache.record_pending_uploads(
+        atomic_device, atomic_context);
+    check(atomic_result && atomic_result.value().mesh_count() == 1 &&
+        atomic_result.value().texture_count() == 1 &&
+        atomic_device.created_texture_descs.back().format ==
+            RHIFormat::R8G8B8A8UNorm,
+        "Mesh and linear Texture work must share one batch while Linear maps to UNorm");
+
+    auto newer_linear_mutable = std::make_shared<TextureRenderResourceVersion>(
+        *linear_texture);
+    newer_linear_mutable->revision = RenderResourceRevision(2);
+    TextureRenderResourceVersionRef newer_linear =
+        std::move(newer_linear_mutable);
+    linear_update.version = newer_linear;
+    atomic_cache.apply_updates({RenderResourceUpdate(linear_update)});
+    check(atomic_result &&
+        !atomic_cache.commit_uploads(std::move(atomic_result).value()) &&
+        atomic_cache.mesh_rhi_count() == 0 &&
+        atomic_cache.texture_rhi_count() == 0,
+        "One stale Texture must reject a mixed batch before any Mesh or Texture is published");
+
+    auto invalid_semantic_texture = std::make_shared<TextureRenderResourceVersion>(
+        *linear_texture);
+    invalid_semantic_texture->resource_id = TextureRenderResourceId(302);
+    invalid_semantic_texture->color_semantic =
+        static_cast<TextureColorSemantic>(255);
+    TextureRenderResourceUpdate invalid_semantic_update;
+    invalid_semantic_update.resource_id = invalid_semantic_texture->resource_id;
+    invalid_semantic_update.version = std::move(invalid_semantic_texture);
+    check(atomic_cache.apply_updates(
+            {RenderResourceUpdate(invalid_semantic_update)}).rejected_count == 1,
+        "Texture Apply must reject an out-of-domain color semantic before RHI mapping");
 
     if (failure_count != 0)
     {

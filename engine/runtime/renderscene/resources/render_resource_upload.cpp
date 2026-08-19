@@ -148,10 +148,108 @@ namespace toy3d
             resource->vertex_stride = sizeof(StaticMeshVertex);
             return RHIResult<MeshRHIResourceRef>::success(std::move(resource));
         }
+
+        RHIFormat texture_format(TextureColorSemantic semantic)
+        {
+            switch (semantic)
+            {
+            case TextureColorSemantic::Color:
+                return RHIFormat::R8G8B8A8UNormSRGB;
+            case TextureColorSemantic::Linear:
+            case TextureColorSemantic::Normal:
+                return RHIFormat::R8G8B8A8UNorm;
+            }
+            return RHIFormat::Unknown;
+        }
+
+        RHIResult<TextureRHIResourceRef> record_texture_upload(
+            RHIDevice& device,
+            RHIGraphicsCommandContext& context,
+            const TextureRenderResourceVersionRef& version)
+        {
+            RHITextureDesc texture_desc;
+            texture_desc.width = version->width;
+            texture_desc.height = version->height;
+            texture_desc.format = texture_format(version->color_semantic);
+            if (texture_desc.format == RHIFormat::Unknown)
+            {
+                return RHIResult<TextureRHIResourceRef>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "A pending Texture upload has an invalid color semantic.");
+            }
+            texture_desc.usage = rhi_enum_or(
+                RHIResourceUsage::ShaderResource,
+                RHIResourceUsage::CopyDestination);
+            texture_desc.initial_access = RHIAccess::Common;
+            texture_desc.debug_name = "Texture render resource";
+            auto texture_result = device.create_texture(texture_desc);
+            if (!texture_result)
+            {
+                return RHIResult<TextureRHIResourceRef>::failure(
+                    texture_result.status().code(), texture_result.status().message());
+            }
+            RHITextureRef texture = std::move(texture_result).value();
+
+            RHITextureViewDesc view_desc;
+            view_desc.type = RHIResourceViewType::ShaderResource;
+            view_desc.format = texture_desc.format;
+            view_desc.subresources = {RHITextureAspect::Color, 0, 1, 0, 1};
+            view_desc.debug_name = "Texture render resource SRV";
+            auto view_result = device.create_texture_view(texture, view_desc);
+            if (!view_result)
+            {
+                return RHIResult<TextureRHIResourceRef>::failure(
+                    view_result.status().code(), view_result.status().message());
+            }
+
+            RHIResourceTransition to_copy;
+            to_copy.resource = texture;
+            to_copy.subresources = view_desc.subresources;
+            to_copy.before = RHIAccess::Common;
+            to_copy.after = RHIAccess::CopyDestination;
+            RHIStatus status = context.transition_resources({to_copy});
+            if (!status)
+            {
+                return RHIResult<TextureRHIResourceRef>::failure(
+                    status.code(), status.message());
+            }
+
+            RHITextureUploadDesc upload;
+            upload.destination.texture = texture;
+            upload.extent = {version->width, version->height, 1};
+            upload.source.data = version->rgba8_pixels.data();
+            upload.source.size = version->rgba8_pixels.size();
+            upload.source.row_pitch = static_cast<std::size_t>(version->width) * 4;
+            upload.source.slice_pitch = upload.source.size;
+            status = context.upload_texture(upload);
+            if (!status)
+            {
+                return RHIResult<TextureRHIResourceRef>::failure(
+                    status.code(), status.message());
+            }
+
+            RHIResourceTransition to_shader_resource;
+            to_shader_resource.resource = texture;
+            to_shader_resource.subresources = view_desc.subresources;
+            to_shader_resource.before = RHIAccess::CopyDestination;
+            to_shader_resource.after = RHIAccess::ShaderResourceGraphics;
+            status = context.transition_resources({to_shader_resource});
+            if (!status)
+            {
+                return RHIResult<TextureRHIResourceRef>::failure(
+                    status.code(), status.message());
+            }
+
+            auto resource = std::make_shared<TextureRHIResource>();
+            resource->source_version = version;
+            resource->texture = std::move(texture);
+            resource->shader_resource_view = std::move(view_result).value();
+            return RHIResult<TextureRHIResourceRef>::success(std::move(resource));
+        }
     }
 
     RHIResult<RenderResourceUploadBatch>
-    RenderResourceCache::record_pending_mesh_uploads(
+    RenderResourceCache::record_pending_uploads(
         RHIDevice& device,
         RHIGraphicsCommandContext& context) const
     {
@@ -182,6 +280,32 @@ namespace toy3d
             }
             batch.meshes_.push_back(std::move(upload_result).value());
         }
+
+        pending_ids.clear();
+        pending_ids.reserve(textures_.size());
+        for (const auto& entry : textures_)
+        {
+            const auto uploaded = texture_rhi_resources_.find(entry.first);
+            if (uploaded == texture_rhi_resources_.end() ||
+                uploaded->second->source_version != entry.second)
+            {
+                pending_ids.push_back(entry.first);
+            }
+        }
+        std::sort(pending_ids.begin(), pending_ids.end());
+        batch.textures_.reserve(pending_ids.size());
+        for (std::uint64_t resource_id : pending_ids)
+        {
+            auto upload_result = record_texture_upload(
+                device, context, textures_.at(resource_id));
+            if (!upload_result)
+            {
+                return RHIResult<RenderResourceUploadBatch>::failure(
+                    upload_result.status().code(),
+                    upload_result.status().message());
+            }
+            batch.textures_.push_back(std::move(upload_result).value());
+        }
         return RHIResult<RenderResourceUploadBatch>::success(std::move(batch));
     }
 
@@ -207,13 +331,50 @@ namespace toy3d
                     "A Mesh upload batch cannot replace a newer or released cache version.");
             }
         }
+        for (const TextureRHIResourceRef& resource : batch.textures_)
+        {
+            if (resource == nullptr || resource->source_version == nullptr)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "A committed Texture upload must retain its immutable CPU source version.");
+            }
+            const std::uint64_t resource_id =
+                resource->source_version->resource_id.value();
+            const auto latest = textures_.find(resource_id);
+            if (latest == textures_.end() || latest->second != resource->source_version)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "A Texture upload batch cannot replace a newer or released cache version.");
+            }
+        }
 
         for (MeshRHIResourceRef& resource : batch.meshes_)
         {
             mesh_rhi_resources_[resource->source_version->resource_id.value()] =
                 std::move(resource);
         }
+        for (TextureRHIResourceRef& resource : batch.textures_)
+        {
+            texture_rhi_resources_[resource->source_version->resource_id.value()] =
+                std::move(resource);
+        }
         return RHIStatus::success();
+    }
+
+    RenderResourceResolveResult<TextureRHIResourceRef>
+    RenderResourceCache::resolve_texture_rhi(TextureRenderResourceId resource_id) const
+    {
+        const auto latest = textures_.find(resource_id.value());
+        const auto uploaded = texture_rhi_resources_.find(resource_id.value());
+        if (!resource_id || latest == textures_.end() ||
+            uploaded == texture_rhi_resources_.end() ||
+            uploaded->second->source_version != latest->second)
+        {
+            return {};
+        }
+        return {RenderResourceResolveState::Found, uploaded->second};
     }
 
     RenderResourceResolveResult<MeshRHIResourceRef>
@@ -241,6 +402,19 @@ namespace toy3d
                 uploaded->second->source_version != latest->second))
         {
             mesh_rhi_resources_.erase(uploaded);
+        }
+    }
+
+    void RenderResourceCache::prune_stale_texture_rhi_resource(
+        TextureRenderResourceId resource_id)
+    {
+        const auto latest = textures_.find(resource_id.value());
+        const auto uploaded = texture_rhi_resources_.find(resource_id.value());
+        if (uploaded != texture_rhi_resources_.end() &&
+            (latest == textures_.end() ||
+                uploaded->second->source_version != latest->second))
+        {
+            texture_rhi_resources_.erase(uploaded);
         }
     }
 }

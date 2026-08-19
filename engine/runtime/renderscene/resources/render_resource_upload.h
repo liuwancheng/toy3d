@@ -21,6 +21,15 @@ namespace toy3d
 
     using MeshRHIResourceRef = std::shared_ptr<const MeshRHIResource>;
 
+    struct TextureRHIResource
+    {
+        TextureRenderResourceVersionRef source_version;
+        RHITextureRef texture;
+        RHITextureViewRef shader_resource_view;
+    };
+
+    using TextureRHIResourceRef = std::shared_ptr<const TextureRHIResource>;
+
     // A recorded upload batch is intentionally separate from cache state.
     // It is published only after the enclosing viewport submission succeeds;
     // destroying it before commit leaves the CPU version pending for retry.
@@ -34,11 +43,13 @@ namespace toy3d
         RenderResourceUploadBatch(RenderResourceUploadBatch&&) noexcept = default;
         RenderResourceUploadBatch& operator=(RenderResourceUploadBatch&&) noexcept = default;
 
-        bool empty() const { return meshes_.empty(); }
+        bool empty() const { return meshes_.empty() && textures_.empty(); }
         std::size_t mesh_count() const { return meshes_.size(); }
+        std::size_t texture_count() const { return textures_.size(); }
 
     private:
         friend class RenderResourceCache;
         std::vector<MeshRHIResourceRef> meshes_;
+        std::vector<TextureRHIResourceRef> textures_;
     };
 }

@@ -125,6 +125,15 @@ namespace toy3d
             {
                 return false;
             }
+            switch (version.color_semantic)
+            {
+            case TextureColorSemantic::Color:
+            case TextureColorSemantic::Linear:
+            case TextureColorSemantic::Normal:
+                break;
+            default:
+                return false;
+            }
             constexpr std::size_t channel_count = 4;
             const std::size_t width = version.width;
             const std::size_t height = version.height;
@@ -383,6 +392,7 @@ namespace toy3d
                     *texture_update, RenderResourceType::Texture,
                     texture_version_is_valid, texture_content_equal,
                     textures_, result);
+                prune_stale_texture_rhi_resource(texture_update->resource_id);
             }
         }
         return result;
