@@ -5,6 +5,7 @@
 #include "renderscene/scene/render_scene.h"
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -21,6 +22,9 @@ namespace toy3d
         RenderFrameId frame_id;
         RenderResourceApplyResult resource_result;
         std::vector<RenderSceneFrameApplyResult> scene_results;
+        ViewportFrameValidation viewport_validation =
+            ViewportFrameValidation::Valid;
+        std::string viewport_diagnostic;
 
         bool has_diagnostics() const;
     };

@@ -17,7 +17,7 @@ namespace toy3d
                 return true;
             }
         }
-        return false;
+        return viewport_validation != ViewportFrameValidation::Valid;
     }
 
     RenderSceneFrameProcessor::RenderSceneFrameProcessor(
@@ -78,6 +78,38 @@ namespace toy3d
             }
             scene_result.result = iterator->second.apply_updates(batch);
             last_report_.scene_results.push_back(std::move(scene_result));
+        }
+
+        last_report_.viewport_validation = validate_viewport_frames(
+            packet.viewport_frames,
+            last_report_.viewport_diagnostic);
+        if (last_report_.viewport_validation !=
+            ViewportFrameValidation::Valid)
+        {
+            return RenderFrameExecutionStatus::frame_failure(
+                last_report_.viewport_diagnostic);
+        }
+        for (const ViewportFrame& viewport_frame : packet.viewport_frames)
+        {
+            for (const SceneViewFamilyFrame& scene_frame :
+                viewport_frame.scene_frames)
+            {
+                if (scene_frame.output.extent.width == 0 &&
+                    scene_frame.output.extent.height == 0)
+                {
+                    continue;
+                }
+                if (scenes_.find(scene_frame.view_family.scene_id.value()) ==
+                    scenes_.end())
+                {
+                    last_report_.viewport_validation =
+                        ViewportFrameValidation::InvalidArgument;
+                    last_report_.viewport_diagnostic =
+                        "A non-zero SceneOutput references an unknown RenderSceneId.";
+                    return RenderFrameExecutionStatus::frame_failure(
+                        last_report_.viewport_diagnostic);
+                }
+            }
         }
 
         // Apply diagnostics are content/protocol diagnostics. Valid objects in

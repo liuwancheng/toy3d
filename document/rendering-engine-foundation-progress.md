@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- FND-6A 施工起点 commit：`26006f1`（`接入渲染器占位资源启动上传`）。
+- FND-6B 施工起点 commit：`a911fed`（`建立 SceneView 反向深度契约`）。
 - 当前分支：`main`。
-- 当前工作包：FND-6A SceneView/SceneViewFamily owned-value contract、finite reversed-Z matrix、packet transport
-  与旧空壳收敛；主 agent 与独立 sub-agent 验证通过。
+- 当前工作包：FND-6B ViewportFrame/SceneOutput owned-value contract、packet transport 与 processor observation
+  validation；主 agent 与独立 sub-agent 验证通过。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -43,6 +43,7 @@
 | FND-5D3A | Vulkan device-level bootstrap context | 完成 | 主 Agent 与独立验证均完成 VS 2022 x64 Vulkan 构建、CTest 17/17 和真实集成测试 |
 | FND-5D3B | Renderer placeholder bootstrap orchestration | 完成 | 原子发布/错误保留测试、真实 Vulkan bootstrap、CTest 17/17 与 composition-root 启动存活验证通过 |
 | FND-6A | SceneView/SceneViewFamily 与 reversed-Z matrix contract | 完成 | Editor/定向构建、CTest 18/18、直接测试与独立矩阵/传输核查通过 |
+| FND-6B | ViewportFrame/SceneOutput owned-value contract | 完成 | Editor/定向构建、CTest 19/19、直接测试与独立 processor/transport 核查通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -1067,3 +1068,40 @@ Unsupported 分类。transport 测试增加 Family/View 随 packet enqueue/deque
 确认 GLM column/row 索引、`projection * view` 顺序、无后端翻转、失败原子性、owned packet 与旧空壳零引用。
 验证者最初并行写同一 VS build tree 时发生 `.tlog/.recipe` 占用，改为顺序构建立刻通过；该现象不属于实现
 缺陷。未覆盖 macOS、移动端、D3D11/D3D12 平台构建或运行。
+
+## 28. FND-6B：ViewportFrame 与 SceneOutput Owned-Value Contract
+
+### 28.1 实现边界与关键决定
+
+- 新增 `SceneOutput`、`SceneViewFamilyFrame` 与 `ViewportFrame`，把一个 viewport 的 Present/Offscreen 输出、
+  View Family 与稳定的 `ImGuiDrawPacket` 只读引用组织为 owned packet 数据；`ImGuiDrawPacket` 本包仅作前置声明，
+  不引入 UI 实现；
+- `SceneOutputExtent` 是 RenderScene packet 自有的跨线程值类型，不复用 platform window `Extent`，避免平台窗口模块
+  泄漏到渲染观察 contract；`RenderFramePacket` 从临时裸 `view_families` 收敛为唯一的 `viewport_frames` 入口，
+  不保留双轨接口；
+- UI-only viewport 与 `{0,0}` minimized output 合法；zero extent 仍完整验证 View Family，但跳过 ViewRect fit 与
+  processor Scene lookup。单轴为零、无效 ID、非法 `SceneOutputType`、重复 Viewport/Output ID 或越界 ViewRect
+  返回 `InvalidArgument`；每个 viewport 最多一个 Present，第二个 Present 与多 View 明确保留为 `Unsupported`；
+- 非零输出必须引用 processor 已持有的 `RenderSceneId`。processor 先 Apply resource 与 persistent Scene updates，
+  再验证本帧 observation；观察失败只返回 `FrameFailed` 并保留诊断，不升级为 fatal，也不回滚已应用的持久状态；
+- 本包不实现 GPU `SceneOutputResource`、resize/versioning、ImGui draw packet、Forward rendering、Material binding
+  或最终画面。
+
+### 28.2 测试与验证
+
+新增 `Toy3dViewportFrameTests`，覆盖一个 Present、Present 加多个 Offscreen、UI-only、zero extent、单轴 zero、
+非法 output type、重复 ID、ViewRect 越界与 `Unsupported` 传播。transport 测试验证完整
+`ViewportFrame -> SceneViewFamilyFrame -> SceneViewFamily` 随 move-only packet 传输；pipeline 测试验证合法观察、
+第二个 Present、未知 Scene、zero extent 跳过 Scene lookup，以及观察失败前持久 Scene Apply 不回滚。
+
+主 Agent 顺序构建 `Toy3dViewportFrameTests`、`Toy3dRenderFoundationPipelineTests`、
+`Toy3dRenderFrameTransportTests` 与 `Toy3dEditor`，定向 CTest 4/4、全量 CTest 19/19 和测试 executable 直接运行
+均通过；补强 processor 顺序断言后再次构建 pipeline test，并完成定向 4/4 与全量 19/19。
+
+新的独立验证 sub-agent 使用 `verify-toy3d-build` 重新配置 VS 2022 x64、`BUILD_TESTING=ON`、Vulkan ON，顺序
+构建 ViewportFrame、SceneView、pipeline、transport 与 Editor 五个目标；全量 CTest 19/19、ViewportFrame 直接
+测试和 `git diff --check` 均通过，验证前后 HEAD 与工作区集合一致。静态核查确认 zero extent、ID 唯一性、
+`Unsupported` 传播、非零输出 Scene 所有权、Apply/observation 顺序、packet 单入口与公共头无后端类型泄漏。
+补强端到端断言后，验证者再次构建 pipeline test，并完成直接测试、定向 CTest 4/4 与全量 CTest 19/19；
+确认观察失败不回滚 Primitive Remove，且 zero extent 在 family validation 后跳过未知 Scene lookup。
+未覆盖 D3D11、D3D12、macOS、移动端与 Editor GUI/画面验收。

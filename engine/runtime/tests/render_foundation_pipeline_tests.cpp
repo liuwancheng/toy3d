@@ -181,6 +181,22 @@ int main()
     packet.frame_id = RenderFrameId(1);
     packet.resource_updates = frame_collector.collect({std::cref(render_world)});
     packet.scene_updates.push_back(render_world.collect_render_scene_updates());
+    SceneViewDesc scene_view_desc;
+    scene_view_desc.view_rect = {0, 0, 1280, 720};
+    SceneView scene_view;
+    std::string scene_view_diagnostic;
+    check(build_scene_view(
+            scene_view_desc, scene_view, scene_view_diagnostic),
+        "The pipeline test must build its owned SceneView snapshot");
+    ViewportFrame viewport_frame;
+    viewport_frame.viewport_id = ViewportId(1);
+    SceneViewFamilyFrame family_frame;
+    family_frame.view_family.scene_id = render_world.render_scene_id();
+    family_frame.view_family.views.push_back(scene_view);
+    family_frame.output.output_id = SceneOutputId(1);
+    family_frame.output.extent = {1280, 720};
+    viewport_frame.scene_frames.push_back(std::move(family_frame));
+    packet.viewport_frames.push_back(std::move(viewport_frame));
 
     RenderSceneFrameProcessor processor(make_placeholders());
     check(static_cast<bool>(processor.initialize()),
@@ -189,7 +205,9 @@ int main()
         "Valid resource and scene updates must be accepted in one frame");
     check(processor.last_report().resource_result.applied_count == 2 &&
         processor.last_report().scene_results.size() == 1 &&
-        processor.last_report().scene_results[0].result.added_count == 1,
+        processor.last_report().scene_results[0].result.added_count == 1 &&
+        processor.last_report().viewport_validation ==
+            ViewportFrameValidation::Valid,
         "The real processor must apply resources before the packet's persistent Scene updates");
 
     const RenderScene* scene = processor.find_scene(render_world.render_scene_id());
@@ -256,6 +274,87 @@ int main()
         processor.last_report().has_diagnostics() &&
         processor.last_report().resource_result.rejected_count == 1,
         "Content diagnostics must be retained without aborting otherwise usable frame state");
+
+    RenderFramePacket unsupported_view_packet;
+    unsupported_view_packet.frame_id = RenderFrameId(4);
+    ViewportFrame unsupported_viewport;
+    unsupported_viewport.viewport_id = ViewportId(2);
+    SceneViewFamilyFrame first_present;
+    first_present.view_family.scene_id = render_world.render_scene_id();
+    first_present.view_family.views.push_back(scene_view);
+    first_present.output.output_id = SceneOutputId(2);
+    first_present.output.extent = {1280, 720};
+    SceneViewFamilyFrame second_present = first_present;
+    second_present.output.output_id = SceneOutputId(3);
+    unsupported_viewport.scene_frames.push_back(std::move(first_present));
+    unsupported_viewport.scene_frames.push_back(std::move(second_present));
+    unsupported_view_packet.viewport_frames.push_back(
+        std::move(unsupported_viewport));
+    RenderSceneUpdateBatch observation_failure_batch;
+    observation_failure_batch.scene_id = render_world.render_scene_id();
+    PrimitiveSceneUpdate remove_before_observation_failure;
+    remove_before_observation_failure.operation =
+        RenderSceneUpdateOperation::Remove;
+    remove_before_observation_failure.primitive_id = component.primitive_id();
+    observation_failure_batch.primitive_updates.push_back(
+        std::move(remove_before_observation_failure));
+    unsupported_view_packet.scene_updates.push_back(
+        std::move(observation_failure_batch));
+    const RenderFrameExecutionStatus unsupported_view_status =
+        processor.process_frame(unsupported_view_packet);
+    check(unsupported_view_status.outcome ==
+            RenderFrameExecutionOutcome::FrameFailed &&
+            processor.last_report().viewport_validation ==
+                ViewportFrameValidation::Unsupported &&
+            processor.last_report().has_diagnostics() &&
+            !processor.last_report().viewport_diagnostic.empty(),
+        "An unsupported viewport observation must fail only its frame with a retained diagnostic");
+    scene = processor.find_scene(render_world.render_scene_id());
+    check(scene != nullptr &&
+            scene->find_primitive(component.primitive_id()) == nullptr,
+        "Persistent Scene updates must remain applied when later observation validation fails");
+
+    RenderFramePacket unknown_scene_packet;
+    unknown_scene_packet.frame_id = RenderFrameId(5);
+    ViewportFrame unknown_scene_viewport;
+    unknown_scene_viewport.viewport_id = ViewportId(3);
+    SceneViewFamilyFrame unknown_scene_frame;
+    unknown_scene_frame.view_family.scene_id = RenderSceneId(9999);
+    unknown_scene_frame.view_family.views.push_back(scene_view);
+    unknown_scene_frame.output.output_id = SceneOutputId(4);
+    unknown_scene_frame.output.extent = {1280, 720};
+    unknown_scene_viewport.scene_frames.push_back(
+        std::move(unknown_scene_frame));
+    unknown_scene_packet.viewport_frames.push_back(
+        std::move(unknown_scene_viewport));
+    const RenderFrameExecutionStatus unknown_scene_status =
+        processor.process_frame(unknown_scene_packet);
+    check(unknown_scene_status.outcome ==
+            RenderFrameExecutionOutcome::FrameFailed &&
+            processor.last_report().viewport_validation ==
+                ViewportFrameValidation::InvalidArgument &&
+            processor.last_report().viewport_diagnostic.find("unknown") !=
+                std::string::npos,
+        "A non-zero output cannot observe a RenderScene that the processor does not own");
+
+    RenderFramePacket minimized_unknown_scene_packet;
+    minimized_unknown_scene_packet.frame_id = RenderFrameId(6);
+    ViewportFrame minimized_unknown_scene_viewport;
+    minimized_unknown_scene_viewport.viewport_id = ViewportId(4);
+    SceneViewFamilyFrame minimized_unknown_scene_frame;
+    minimized_unknown_scene_frame.view_family.scene_id = RenderSceneId(9999);
+    minimized_unknown_scene_frame.view_family.views.push_back(scene_view);
+    minimized_unknown_scene_frame.output.output_id = SceneOutputId(5);
+    minimized_unknown_scene_frame.output.extent = {};
+    minimized_unknown_scene_viewport.scene_frames.push_back(
+        std::move(minimized_unknown_scene_frame));
+    minimized_unknown_scene_packet.viewport_frames.push_back(
+        std::move(minimized_unknown_scene_viewport));
+    check(static_cast<bool>(
+            processor.process_frame(minimized_unknown_scene_packet)) &&
+            processor.last_report().viewport_validation ==
+                ViewportFrameValidation::Valid,
+        "A zero-extent output must skip Scene lookup after validating its owned family");
     check(static_cast<bool>(processor.flush()) &&
         static_cast<bool>(processor.shutdown()) &&
         static_cast<bool>(processor.shutdown()),

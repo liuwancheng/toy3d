@@ -152,10 +152,15 @@ int main()
     RenderFramePacket first_packet = make_packet(first_frame, first_completion);
     RenderSceneUpdateBatch scene_batch;
     scene_batch.scene_id = allocate_render_id<RenderSceneId>();
-    SceneViewFamily view_family;
-    view_family.scene_id = scene_batch.scene_id;
-    view_family.views.push_back(SceneView{});
-    first_packet.view_families.push_back(std::move(view_family));
+    ViewportFrame viewport_frame;
+    viewport_frame.viewport_id = ViewportId(1);
+    SceneViewFamilyFrame scene_frame;
+    scene_frame.view_family.scene_id = scene_batch.scene_id;
+    scene_frame.view_family.views.push_back(SceneView{});
+    scene_frame.output.output_id = SceneOutputId(1);
+    scene_frame.output.extent = {1280, 720};
+    viewport_frame.scene_frames.push_back(std::move(scene_frame));
+    first_packet.viewport_frames.push_back(std::move(viewport_frame));
     first_packet.scene_updates.push_back(std::move(scene_batch));
     MaterialRenderResourceUpdate resource_update;
     resource_update.resource_id = MaterialRenderResourceId(1);
@@ -182,8 +187,9 @@ int main()
         dequeued_packet.frame_id == first_frame &&
         dequeued_packet.resource_updates.size() == 1 &&
         dequeued_packet.scene_updates.size() == 1 &&
-        dequeued_packet.view_families.size() == 1 &&
-        dequeued_packet.view_families[0].views.size() == 1,
+        dequeued_packet.viewport_frames.size() == 1 &&
+        dequeued_packet.viewport_frames[0].scene_frames.size() == 1 &&
+        dequeued_packet.viewport_frames[0].scene_frames[0].view_family.views.size() == 1,
         "The consumer must receive the complete owned resource, scene, and view packet in FIFO order");
     check(second_enqueue.wait_for(1s) == std::future_status::ready &&
         second_enqueue.get() == RenderFrameEnqueueResult::Accepted,
