@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`90359c8`（`添加 Render Resource 缓存基础`）。
+- FND-5D1 施工起点 commit：`6b6f101`（`串联 Render Resource 与 RenderScene 基础`）。
 - 当前分支：`main`。
-- 工作区状态：包含 FND-5C Game 侧资源更新收集、真实 Scene frame processor、Prepare 资源解析、
-  自动测试与本节文档同步；主 agent 与独立 sub-agent 验证通过，尚未提交。
+- 当前工作包：FND-5D1 Mesh RHI resource、事务式随帧上传、失败重试、自动测试与本节文档同步；
+  主 agent 与独立 sub-agent 验证通过。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -37,6 +37,7 @@
 | FND-5A | 持久 RenderScene 与增量 Apply | 完成 | Editor/定向构建、CTest 13/13 与 RenderScene contract 测试通过 |
 | FND-5B | Render Resource version、placeholder 与 cache Apply | 完成 | Editor/定向构建、CTest 14/14 与 resource cache contract 测试通过 |
 | FND-5C | Resource collection、Scene frame processor 与 Prepare resolve | 完成 | Editor/定向构建、CTest 15/15 与 pipeline contract 测试通过 |
+| FND-5D1 | Mesh RHI resource 与事务式随帧上传 | 完成 | Editor/定向构建、CTest 16/16 与 upload transaction contract 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -838,3 +839,62 @@ CPU resource/scene Apply 与 Prepare resolve vertical slice，不把结果描述
 下一工作包建议为 FND-5D：在当前 CPU version/cache 与真实 processor 生命周期上，设计并实现
 frame-local RHI resource creation、PendingUpload、upload-before-use transition 与失败帧重试；不在 GPU 资源
 生命周期闭环前同时开始 SceneView/Forward Prepare，也不允许资源创建函数隐式 submit 或 wait idle。
+
+## 22. FND-5D1：Mesh RHI Resource 与事务式随帧上传
+
+### 22.1 实现边界与关键决定
+
+- 新增不可变 `MeshRHIResource`，强持有准确 `MeshRenderResourceVersion`、vertex/index buffer、
+  `RHIIndexFormat` 与 vertex stride；cache 只在该 RHI resource 对应当前 latest CPU version 时返回它，
+  新 revision 或 Release 会移除 cache 强引用，已被 Prepared 输入持有的旧版本仍可存活至 RHI deferred
+  deletion 安全回收；
+- `record_pending_mesh_uploads()` 只在调用方已经开始的 frame-local graphics context 中录制，按 resource ID
+  确定性排序，为每个 pending Mesh 创建 `VertexBuffer | CopyDestination` 与
+  `IndexBuffer | CopyDestination` GPU-only buffer，记录
+  `Common -> CopyDestination -> VertexBuffer/IndexBuffer`，并由 backend 在 `upload_buffer()` 返回前复制源数据；
+- `RenderResourceUploadBatch` 是 submission 前后的显式事务边界。录制完成不修改 cache；调用方只有在包含
+  这些命令的 viewport submission 成功后才调用 `commit_uploads()`。submit 前丢弃、recording failure 或
+  revision 在 commit 前改变都不会发布 GPU 状态，下帧重新创建并重试；
+- commit 先验证整批 CPU version 仍是 latest，再一次性发布，避免部分提交。资源创建继续传入空
+  `initial_data`，本路径不调用 `submit()`、`wait_idle()` 或 device-level command context；
+- 本包只闭合 Mesh vertex/index buffer。Texture RHI resource、placeholder/font bootstrap、真实 viewport
+  orchestrator 接线、SceneView、Forward Prepare/Draw、Material binding 与画面验收留给后续独立工作包。
+
+跨后端可实现性：Vulkan 由现有 frame-local staging 与 local state tracker 映射；D3D12 可映射 default buffer、
+upload allocation 与 copy/transition；D3D11 可由 backend 将相同语义映射为 default buffer 和更新/copy 路径，
+逻辑 transition 用于 hazard 验证；移动端 Vulkan 不新增 capability、descriptor set 或 profile 要求。
+
+### 22.2 测试与主验证
+
+新增 `Toy3dRenderResourceUploadTests`，使用公共 RHI fake 验证：
+
+- vertex/index buffer descriptor、录制顺序、index format 与 vertex stride；
+- record 后、commit 前不可 resolve，丢弃 batch 后下帧重新录制；
+- commit 后相同 latest version 不重复上传；
+- CPU revision 替换不破坏外部持有的旧 RHI resource，旧 batch 不能覆盖新 revision；
+- 中途 upload recording failure 不发布部分状态，后续帧可重试；
+- Release 同时移除 cache 所有的 latest CPU 与 RHI Mesh 引用。
+
+主 agent 在 Windows、Visual Studio 17 2022、x64、Debug、`BUILD_TESTING=ON`、
+`TOY3D_ENABLE_VULKAN_RHI=ON` 下完成 CMake 重新配置，构建 `Toy3dEditor`、
+`Toy3dRenderResourceUploadTests`、`Toy3dRenderResourceCacheTests` 与
+`Toy3dRenderFoundationPipelineTests`；相关 CTest 3/3 通过，`git diff --check` 无 whitespace error，
+新增 production 上传边界未发现 Vulkan、D3D11、D3D12 或 DXGI 原生类型。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在相同 Windows、VS 2022、x64、Debug 配置下
+执行并通过：
+
+- 重新配置 CMake，确认 VS 2022、x64、`BUILD_TESTING=ON` 与 `TOY3D_ENABLE_VULKAN_RHI=ON`；
+- 构建 `Toy3dEditor`、`Toy3dRenderResourceUploadTests`、`Toy3dRenderResourceCacheTests`、
+  `Toy3dRenderFoundationPipelineTests` 与 `Toy3dRenderFrameTransportTests`；
+- 全量 CTest 16/16 通过，0 失败；直接运行 upload test 输出
+  `Render resource upload checks passed.`；
+- 生成工程已登记新增 production 与测试源码，Runtime library 和测试 executable 时间戳晚于输入源码，
+  排除旧二进制误测；
+- `git diff --check` 与 3 个 untracked 文件的独立 whitespace 检查通过；production 上传边界没有 backend
+  原生类型，也没有 submit、wait、queue、finish-recording 或 device-level context 调用；
+- 验证前后 HEAD 均为 `6b6f101`，4 个 tracked 修改与 3 个 untracked 文件集合一致，验证者未修改或提交。
+
+未覆盖 D3D11/D3D12、macOS、Android、真实 Vulkan queue submission、validation layer 与渲染画面。本包只
+证明公共 RHI 命令记录和 cache 发布事务；FND-5D2 应继续完成 Texture RHI resource 与 upload transaction，
+之后再由 viewport orchestrator 把 upload batch commit 接到真实 submission 结果。

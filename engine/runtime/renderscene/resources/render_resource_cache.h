@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rendercore/render_resource_update.h"
+#include "renderscene/resources/render_resource_upload.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -86,15 +87,26 @@ namespace toy3d
             TextureRenderResourceId resource_id,
             TextureColorSemantic semantic) const;
 
+        RHIResult<RenderResourceUploadBatch> record_pending_mesh_uploads(
+            RHIDevice& device,
+            RHIGraphicsCommandContext& context) const;
+        RHIStatus commit_uploads(RenderResourceUploadBatch batch);
+        RenderResourceResolveResult<MeshRHIResourceRef> resolve_mesh_rhi(
+            MeshRenderResourceId resource_id) const;
+
         std::size_t mesh_count() const { return meshes_.size(); }
         std::size_t material_count() const { return materials_.size(); }
         std::size_t texture_count() const { return textures_.size(); }
+        std::size_t mesh_rhi_count() const { return mesh_rhi_resources_.size(); }
 
     private:
+        void prune_stale_mesh_rhi_resource(MeshRenderResourceId resource_id);
+
         RenderResourcePlaceholders placeholders_;
         bool valid_ = false;
         std::unordered_map<std::uint64_t, MeshRenderResourceVersionRef> meshes_;
         std::unordered_map<std::uint64_t, MaterialRenderResourceVersionRef> materials_;
         std::unordered_map<std::uint64_t, TextureRenderResourceVersionRef> textures_;
+        std::unordered_map<std::uint64_t, MeshRHIResourceRef> mesh_rhi_resources_;
     };
 }

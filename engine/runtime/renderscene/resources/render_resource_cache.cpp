@@ -360,6 +360,7 @@ namespace toy3d
                     MeshRenderResourceVersionRef>(
                     *mesh_update, RenderResourceType::Mesh,
                     mesh_version_is_valid, mesh_content_equal, meshes_, result);
+                prune_stale_mesh_rhi_resource(mesh_update->resource_id);
                 continue;
             }
             if (const auto* material_update =
