@@ -67,7 +67,7 @@ namespace toy3d
         std::uint32_t active_image_index = 0;
         std::uint64_t active_frame_id = 0;
         bool frame_active = false;
-        bool presentation_failed = false;
+        RHIStatus presentation_failure;
         bool resize_pending = false;
         std::uint32_t pending_width = 0;
         std::uint32_t pending_height = 0;

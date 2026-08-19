@@ -218,6 +218,18 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dRHIFormatTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.RHIFormat COMMAND Toy3dRHIFormatTests)
 
+    add_executable(Toy3dRHIViewportStatusTests
+        "tests/rhi_viewport_status_tests.cpp")
+    target_compile_features(Toy3dRHIViewportStatusTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRHIViewportStatusTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRHIViewportStatusTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRHIViewportStatusTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.RHIViewportStatus COMMAND Toy3dRHIViewportStatusTests)
+
     if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
         add_executable(Toy3dShaderMapEntryLoaderTests
             "tests/shader_map_entry_loader_tests.cpp")

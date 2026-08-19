@@ -29,6 +29,7 @@
 - `RHICommandContext`：copy、transition、通用绑定；`RHIGraphicsCommandContext`：render pass、graphics pipeline、draw；预留 `RHIComputeCommandContext`：compute pipeline、dispatch。
 - queue：submit 和完成序号。第一阶段只有单 graphics queue；swapchain acquire/present 的 GPU-GPU 同步仅由后端处理，不进入公共资源或普通 submit 描述符。
 - `RHIViewportContext`：一个 native surface 的完整 presentation 与帧边界。swapchain 作为它的后端内部组成，不建立与 viewport 平行的公共创建和使用路径。`RHIDevice` 不向 renderscene 暴露 `create_swapchain()`；viewport 在 Render Thread 提供 `begin_frame`、`end_frame`、明确的失败帧收尾语义和延迟 resize，内部处理 acquire、queue submit、present、frame slot、swapchain image 与帧内回收。
+- viewport API 以 `NotReady` 表示当前零 extent/最小化等暂时不可开始帧，以 `OutOfDate` 表示 presentation resources 必须重建，以 `Suboptimal` 表示本帧已完成但后续帧应重建；三者属于可恢复 viewport status。不可恢复的 submit、同步或 surface failure 必须保留原始 `DeviceLost`/`BackendFailure` 等诊断，禁止改写成 `NotReady` 后永久静默跳帧。
 - `RHIFrameContext` 只在 begin/end 之间有效，向 renderscene 暴露当前帧的 present texture/view 与帧内 command context 创建；image index、frame slot index、同步 token、queue 和 swapchain 均不得泄漏到 renderscene。
 - frame slot 是 CPU/GPU 周转及 command/descriptor/upload 回收域；swapchain image 是 acquire 得到的 presentation 资源；逻辑 frame id 与 queue completion value 分别表示 CPU 帧序号和 GPU 提交完成序号，四者禁止混用。
 - pass 依赖、资源声明、调度和后续 RDG 编译属于 renderscene。RHI render pass 只表达 attachment scope，不承担图调度职责。

@@ -65,6 +65,10 @@ namespace toy3d
             {
                 code = RHIErrorCode::OutOfDate;
             }
+            else if (result == VK_SUBOPTIMAL_KHR)
+            {
+                code = RHIErrorCode::Suboptimal;
+            }
             else if (result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
             {
                 code = RHIErrorCode::OutOfMemory;
@@ -192,11 +196,11 @@ namespace toy3d
 
     RHIResult<std::unique_ptr<RHIFrameContext>> VulkanViewportContext::begin_frame()
     {
-        if (presentation_failed)
+        if (!presentation_failure)
         {
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
-                RHIErrorCode::NotReady,
-                "The Vulkan viewport entered an unrecoverable presentation failure state.");
+                presentation_failure.code(),
+                presentation_failure.message());
         }
         if (frame_active)
         {
@@ -276,7 +280,7 @@ namespace toy3d
                 // Acquire already signaled image_available. A failed wait means
                 // the previous image use cannot be proven complete, so neither
                 // the image nor this frame slot may be safely reused.
-                presentation_failed = true;
+                presentation_failure = status;
                 return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
             }
         }
@@ -515,6 +519,12 @@ namespace toy3d
         if (!status)
         {
             return status;
+        }
+        if (capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::NotReady,
+                "The Vulkan presentation surface has a zero extent and cannot create a swapchain yet.");
         }
 
         const VkFormat requested_format = vulkan_format_from_rhi(viewport_desc.format);
@@ -856,7 +866,14 @@ namespace toy3d
             // image_available may remain signaled and the acquired image was
             // not returned to the presentation engine. Retrying this viewport
             // would reuse synchronization with an unknown state.
-            presentation_failed = true;
+            presentation_failure = submit_result.status();
+            if (rhi_is_recoverable_viewport_status(presentation_failure))
+            {
+                presentation_failure = RHIStatus::failure(
+                    RHIErrorCode::BackendFailure,
+                    "Vulkan viewport submission failed after image acquisition: " +
+                        submit_result.status().message());
+            }
             const VkFence discarded_fence = slot.completion_fence;
             for (VkFence& image_fence : image_fences)
             {
@@ -874,9 +891,10 @@ namespace toy3d
                 "vkCreateFence");
             if (!fence_status)
             {
+                presentation_failure = fence_status;
                 return fence_status;
             }
-            return RHIStatus::failure(submit_result.status().code(), submit_result.status().message());
+            return presentation_failure;
         }
         slot.completion_value = submit_result.value().completion_value;
         if (slot.completion_value != 0)
@@ -899,13 +917,20 @@ namespace toy3d
         if (result == VK_SUBOPTIMAL_KHR)
         {
             resize_pending = true;
-            return RHIStatus::success();
+            return RHIStatus::failure(
+                RHIErrorCode::Suboptimal,
+                "vkQueuePresentKHR completed with a suboptimal swapchain; recreation is pending.");
         }
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
         {
             resize_pending = true;
         }
-        return make_vulkan_status(result, "vkQueuePresentKHR");
+        const RHIStatus status = make_vulkan_status(result, "vkQueuePresentKHR");
+        if (!status && !rhi_is_recoverable_viewport_status(status))
+        {
+            presentation_failure = status;
+        }
+        return status;
     }
 
     RHIStatus VulkanViewportContext::abort_active_frame()

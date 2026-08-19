@@ -11,6 +11,13 @@
 
 namespace toy3d
 {
+    inline bool rhi_is_recoverable_viewport_status(const RHIStatus& status)
+    {
+        return status.code() == RHIErrorCode::NotReady ||
+            status.code() == RHIErrorCode::OutOfDate ||
+            status.code() == RHIErrorCode::Suboptimal;
+    }
+
     struct RHIViewportContextDesc
     {
         std::uint32_t width = 1;

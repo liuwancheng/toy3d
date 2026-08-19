@@ -409,8 +409,7 @@ namespace toy3d
 		auto frame_result = rhi_viewport->begin_frame();
 		if (!frame_result)
 		{
-			if (frame_result.status().code() != RHIErrorCode::NotReady &&
-				frame_result.status().code() != RHIErrorCode::OutOfDate)
+			if (!rhi_is_recoverable_viewport_status(frame_result.status()))
 			{
 				log_rhi_failure("RHIViewportContext::begin_frame", frame_result.status());
 			}
@@ -421,7 +420,7 @@ namespace toy3d
 		{
 			TOY_LOG_ERROR("A viewport frame was acquired without a scene renderer.");
 			const RHIStatus abort_status = rhi_viewport->abort_frame(std::move(frame));
-			if (!abort_status)
+			if (!abort_status && !rhi_is_recoverable_viewport_status(abort_status))
 			{
 				log_rhi_failure("RHIViewportContext::abort_frame", abort_status);
 			}
@@ -432,7 +431,7 @@ namespace toy3d
 		{
 			log_rhi_failure("SceneRendering::render", command_list_result.status());
 			const RHIStatus abort_status = rhi_viewport->abort_frame(std::move(frame));
-			if (!abort_status)
+			if (!abort_status && !rhi_is_recoverable_viewport_status(abort_status))
 			{
 				log_rhi_failure("RHIViewportContext::abort_frame", abort_status);
 			}
@@ -441,7 +440,7 @@ namespace toy3d
 		std::vector<RHICommandListRef> command_lists;
 		command_lists.push_back(std::move(command_list_result).value());
 		const RHIStatus status = rhi_viewport->end_frame(std::move(frame), command_lists);
-		if (!status)
+		if (!status && !rhi_is_recoverable_viewport_status(status))
 		{
 			log_rhi_failure("RHIViewportContext::end_frame", status);
 		}

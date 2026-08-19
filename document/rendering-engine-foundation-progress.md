@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`ed47a6d`（`修复 Windows Editor 关闭崩溃`）。
+- 基线 commit：`71187dc`（`完善 Renderer 格式能力验证`）。
 - 当前分支：`main`。
-- 工作区状态：仅包含已独立验证的 FND-2A format contract、Vulkan capability validation、
-  独立 RHI 测试与对应文档同步；尚未提交。
+- 工作区状态：仅包含已独立验证的 FND-2B viewport recoverable status、Vulkan resize/status
+  propagation、独立 RHI 测试与对应文档同步；尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -27,6 +27,7 @@
 | FND-1 | Foundation 文档与 RDG 路线收敛 | 完成 | 术语、链接、Material 与 RDG 路线一致性检查通过 |
 | BASE-1 | Windows Editor shutdown 崩溃诊断与修复 | 完成 | Debug 构建、CTest 8/8、两轮 `WM_CLOSE` 退出码 0 |
 | FND-2A | Renderer format contract 与 capability 验证 | 完成 | Debug 全量构建、CTest 9/9 与公共 RHI format contract 测试通过 |
+| FND-2B | Viewport resize 与 recoverable status | 完成 | Debug 全量构建、CTest 10/10 与公共 viewport status 测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -177,7 +178,78 @@ World、Render Thread、Forward Renderer、RDG、Scheduler 或 TaskSystem。
 验证者改变。没有构建或测试失败。未覆盖 macOS、Android/移动 `VulkanPortable v1` 真机、
 D3D11、D3D12、真实 GPU format capability 运行时探测及画面像素正确性。
 
-## 7. 已知但不在当前工作包解决
+对应提交为 `71187dc`（`完善 Renderer 格式能力验证`）。
+
+## 7. 已完成工作包：FND-2B
+
+### 7.1 实现边界与关键决定
+
+- 公共 `rhi_is_recoverable_viewport_status()` 将 `NotReady`、`OutOfDate` 与 `Suboptimal`
+  定义为 viewport API 的可恢复结果；成功、参数错误、`DeviceLost` 与 `BackendFailure` 不属于
+  recoverable failure。
+- `NotReady` 只表达零 extent、最小化等暂时无法开始 presentation frame 的状态；Vulkan
+  surface capability 报告零 extent 时在 `vkCreateSwapchainKHR` 前返回该状态并保留后续重建请求。
+- Vulkan 的 terminal presentation failure 现在保存并重复返回原始错误 code/message；submit
+  或同步失败不再在后续 `begin_frame()` 中降格为 `NotReady`，避免 Engine 永久静默跳帧；
+  acquire 后 queue 内部若错误返回 recoverable code，则 viewport 将其归一为带原始 message 的
+  terminal `BackendFailure`。
+- `vkQueuePresentKHR` 返回 `VK_SUBOPTIMAL_KHR` 时，本帧仍已完成并安排后续 swapchain 重建，
+  同时向 caller 返回带诊断的 `Suboptimal`；`VK_ERROR_OUT_OF_DATE_KHR` 继续映射为
+  `OutOfDate` 并保持 resize pending。
+- Engine 对 viewport API 的三类 recoverable outcome 不记录 error；terminal status 仍记录原始
+  诊断。未引入新的 renderer error framework，也未改变 frame completion contract。
+- 新增 `Toy3dRHIViewportStatusTests`，仅验证公共 status 分类，不依赖 RenderScene、窗口、
+  Vulkan surface 或旧 `test_pass`。
+
+跨后端可实现性结论：
+
+- Vulkan desktop 与 `VulkanPortable v1` 使用相同公共分类，原生 WSI 的 out-of-date、
+  suboptimal 与零 extent 细节只存在于 backend；
+- D3D11/D3D12 可将 DXGI occluded/暂时不可 present 状态映射为 `NotReady`，将显式 resize
+  pending 映射为 `OutOfDate`，并保留 device removed/reset 等 terminal HRESULT；
+- 公共 helper 不依赖 Vulkan/DXGI 类型。D3D11、D3D12 与移动设备本轮未实现或运行验收。
+
+### 7.2 修改文件
+
+- 公共 RHI：`rhi_viewport_context.h`；
+- Vulkan backend：`vulkan_viewport_context.h/.cpp`；
+- 当前 composition root caller：`engine.cpp`；
+- 独立测试与登记：`tests/rhi_viewport_status_tests.cpp`、`engine/runtime/CMakeLists.txt`；
+- 长期 contract：`toy3d-rhi-requirements.md`、`rhi-design.md`；
+- 施工台账：本文件。
+
+未修改 `abort_frame()` 的 submission、acquire semaphore 消费或 frame-slot 推进语义，也未修改
+RenderScene、旧 `test_pass`、World、Render Thread、Forward Renderer、RDG、Scheduler 或
+TaskSystem。
+
+### 7.3 独立验证证据
+
+独立 sub-agent 使用 `verify-toy3d-build`，在 Windows、Visual Studio 17 2022、x64、Debug、
+`BUILD_TESTING=ON` 环境实际执行：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON`；
+- `cmake --build build --config Debug --target Toy3dEditor`；
+- `cmake --build build --config Debug --target Toy3dRHIViewportStatusTests`；
+- `cmake --build build --config Debug`；
+- `ctest --test-dir build -C Debug --output-on-failure`，10/10 通过，包含新增
+  `Toy3dRuntime.RHIViewportStatus`；
+- `ctest --test-dir build -C Debug -N`，确认登记 10 项测试；
+- `git diff --check`，无 whitespace error，仅有既有 LF→CRLF 提示。
+
+验证前后 HEAD 均为 `71187dcb4b64b81e0b4474fa64914363b1a11012`，工作区改动清单未被
+验证者改变。没有构建或测试失败。未实际启动 Editor 触发窗口最小化、resize、真实 Vulkan
+surface 的 `OutOfDate`/`Suboptimal`；未覆盖 D3D11、D3D12、移动设备、macOS/Linux 与
+非 Debug 配置。
+
+主 agent 补强 acquire 后 submit failure 归类和不可恢复 present failure 锁存后，独立验证者
+再次执行并通过：
+
+- `cmake --build build --config Debug --target Toy3dEditor`；
+- `cmake --build build --config Debug --target Toy3dRHIViewportStatusTests`；
+- `ctest --test-dir build -C Debug --output-on-failure`，10/10 通过；
+- `git diff --check`，无 whitespace error。
+
+## 8. 已知但不在当前工作包解决
 
 - 公共 RHI owner identity 尚未完成；同 backend 类型跨 device 的对象混用仍是既有 P1。
 - Global/View constant buffer 的具体字段属于后续 Renderer parameter contract，不在
@@ -187,26 +259,28 @@ D3D11、D3D12、真实 GPU format capability 运行时探测及画面像素正�
 - D3D11、D3D12、Android 与 macOS 不属于第一里程碑实际运行验收，但新增公共 contract
   必须持续保持可实现性。
 
-## 8. 建议提交
+## 9. 建议提交
 
-FND-2A 的公共 contract、Vulkan validation、独立测试和文档互为一个工作包闭环，建议作为
+FND-2B 的公共 status contract、Vulkan propagation、caller policy、独立测试和文档互为一个
+工作包闭环，建议作为
 单一提交：
 
-- `完善 Renderer 格式能力验证`
+- `完善 RHI viewport 可恢复状态`
 
 提交前再次核对 diff，不包含构建产物、本机配置或后续工作包内容。
 
-## 9. 下一工作包
+## 10. 下一工作包
 
-FND-2A 提交并确认新基线后，再单独规划后续工作包：
+FND-2B 提交并确认新基线后，再单独进入 FND-2C：
 
-- viewport resize 与 recoverable status；
 - `abort_frame()` 的完整失败帧语义复核；
-- 继续保持它们与 World、RenderScene、Render Thread、Forward Renderer 分批施工。
+- 覆盖 acquire 已成功后 recording/submit/present 失败时的 semaphore 消费、frame-slot 推进、
+  committed state 与 terminal/recoverable status；
+- 不同时开始 World、RenderScene、Render Thread 或 Forward Renderer。
 
-本轮在 FND-2A 完成后停止，不进入上述工作包。
+本轮在 FND-2B 完成后停止，不进入 FND-2C。
 
-## 10. 每轮交接规则
+## 11. 每轮交接规则
 
 每轮开始读取 `AGENTS.md`、Foundation 总设计、本台账及当前工作包直接依赖的局部设计；
 每轮结束记录：
