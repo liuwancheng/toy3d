@@ -12,6 +12,7 @@ namespace toy3d
         Pending,
         Succeeded,
         Failed,
+        Fatal,
         Cancelled
     };
 
@@ -36,6 +37,7 @@ namespace toy3d
 
         bool complete_success();
         bool complete_failure(std::string message);
+        bool complete_fatal(std::string message);
         bool cancel(std::string message);
 
         RenderFrameCompletionResult wait() const;
@@ -43,7 +45,7 @@ namespace toy3d
         bool is_complete() const;
 
     private:
-        // Producer and Render role share this object; the first terminal result
+        // Producer and RenderFrameDispatcher share this object; the first terminal result
         // wins so a late failure cannot rewrite an already observed frame outcome.
         bool complete(RenderFrameCompletionState state, std::string message);
 

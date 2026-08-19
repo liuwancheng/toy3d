@@ -21,7 +21,7 @@
 
 - Main Thread 即 Game Thread；
 - Game Thread 与 Render Thread 可独立运行；
-- 可通过启动配置关闭多线程，关闭后仍保持相同 Render role 边界；
+- 可通过启动配置关闭多线程，关闭后仍保持相同 RHI/RenderScene 所有权边界；
 - 默认允许 Game Thread 比 Render Thread 领先一帧；
 - 持久 `World` 与持久 `RenderScene` 通过增量消息同步；
 - 使用 Phong 光照渲染多个自旋转 Cube；
@@ -89,10 +89,11 @@ ForwardSceneRenderer（每个 ViewFamily 临时创建）
 边界原则：
 
 - `World` 只属于 Game Thread；
-- `RenderScene`、RHI device、RHI viewport 与所有 RHI 对象只属于 Render role；
+- 多线程模式下，`RenderScene`、RHI device、RHI viewport 与所有 RHI 对象只由 Render Thread 访问；
 - 跨线程不捕获 Game 对象或 Proxy 裸指针；
 - 上层业务对象不手工管理 Render ID；
-- 单线程模式只改变 Render role 的执行线程，不允许 Gameplay 直接访问 RHI；
+- 单线程模式下，上述对象只在 Main Thread 的 `RenderFrameDispatcher` 调用链中访问；Gameplay
+  仍不得直接访问 RHI；
 - RenderScene 不依赖 Vulkan、D3D11 或 D3D12 原生类型。
 
 ## 4. 模块落点
@@ -289,9 +290,10 @@ Offscreen output 由稳定 `SceneOutputId` 标识，并在 Render Thread持有�
 
 ## 8. Render Thread 与帧同步
 
-### 8.1 所有权
+### 8.1 线程所有权
 
-Render role独占：
+多线程模式由 Render Thread 独占；single-thread fallback 由 Main Thread 在
+`RenderFrameDispatcher` 调用链中独占：
 
 - `RHIDevice` 与所有 RHI 对象；
 - `RHIViewportContext`；
@@ -341,7 +343,7 @@ struct RenderFramePacket
 - Render completion 表示 worker（未来）、RHI submit 与 present调用已结束，不表示 GPU 已执行完毕；
 - GPU completion 由 RHI frame slot、queue completion value 与 backend fence管理。
 
-单线程模式不创建 Render Thread，强制 lag关闭，并在 Main Thread同步执行相同 Render role阶段。Gameplay 仍不得直接访问 RHI。
+单线程模式不创建 Render Thread，强制 lag关闭，并在 Main Thread同步执行相同渲染管线阶段。Gameplay 仍不得直接访问 RHI。
 
 ### 8.4 Main Thread帧顺序
 
@@ -365,8 +367,8 @@ struct RenderFramePacket
 初始化使用同步 completion握手：
 
 1. Main Thread创建 OS Window与 surface descriptor；
-2. 启动 Render role；
-3. Render role创建 RHI device、viewport、RenderResourceCache；
+2. 启动 `RenderFrameDispatcher`；
+3. 渲染执行线程创建 RHI device、viewport、RenderResourceCache；
 4. bootstrap上传 Error Material、placeholder textures与 ImGui font；
 5. bootstrap submit完成后才开放正常帧。
 
@@ -375,7 +377,7 @@ shutdown顺序：
 1. Main Thread停止提交新 packet；
 2. 等待所有 frame completion；
 3. 等待未来 recording workers退出；
-4. Render role销毁 viewport/output resources、RenderScene与 cache；
+4. 渲染执行线程销毁 viewport/output resources、RenderScene与 cache；
 5. 等 GPU/RHI shutdown所需完成点并销毁 device；
 6. join Render Thread；
 7. Main Thread最后销毁 OS Window。
@@ -917,7 +919,7 @@ Multithreaded=false, OneFrameThreadLag=false
 - packet、bounded queue与 completion；
 - Render Thread lifecycle；
 - one-frame lag与 single-thread fallback；
-- 用 fake Render role覆盖成功、失败、flush与 shutdown。
+- 用 fake `RenderFrameProcessor` 覆盖成功、失败、flush与 shutdown。
 
 ### 批次 5：RenderScene与资源镜像
 

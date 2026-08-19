@@ -14,6 +14,11 @@ namespace toy3d
         return complete(RenderFrameCompletionState::Failed, std::move(message));
     }
 
+    bool RenderFrameCompletion::complete_fatal(std::string message)
+    {
+        return complete(RenderFrameCompletionState::Fatal, std::move(message));
+    }
+
     bool RenderFrameCompletion::cancel(std::string message)
     {
         return complete(RenderFrameCompletionState::Cancelled, std::move(message));

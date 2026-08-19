@@ -11,10 +11,10 @@
 
 ## 2. 当前可复现基线
 
-- 基线 commit：`86f1e76`（`完善 GameScene 渲染同步基础`）。
+- 基线 commit：`d60fa3d`（`添加 Render Frame Transport 基础`）。
 - 当前分支：`main`。
-- 工作区状态：仅包含已独立验证的 FND-4A Render Frame Transport 纯 CPU contract、独立测试与
-  对应文档同步；尚未提交。
+- 工作区状态：仅包含已独立复验的 FND-4B 帧派发生命周期、lag/single-thread policy、
+  fake processor 测试与对应文档同步；尚未提交。
 - 最近已确认的仓库能力：以基线 commit 和其历史构建记录为准；当前工作区验证结果见
   “当前工作包”。
 
@@ -33,6 +33,7 @@
 | FND-3B | GameScene 可渲染 Component 与资产引用 | 完成 | Editor/GameScene 构建、CTest 11/11 与纯 CPU 资产 contract 测试通过 |
 | FND-3C | Render 注册、dirty 合并与 owned-value batch | 完成 | Editor/GameScene 构建、CTest 11/11 与同步协议测试通过 |
 | FND-4A | RenderFramePacket、completion 与 bounded queue | 完成 | VS 2022/x64/Vulkan 配置、Editor/定向构建、CTest 12/12 与 transport 测试通过 |
+| FND-4B | Render frame dispatch、lag 与 single-thread fallback | 完成 | VS 2022/x64/Vulkan 配置、Editor/定向构建、CTest 12/12 与 transport 重复测试通过 |
 
 ## 4. 已完成工作包：BASE-0
 
@@ -538,10 +539,10 @@ contract；仍不在该包创建真实 RHI Render Thread 或进入 RenderScene A
   payload 不建立占位 wrapper，待对应领域 contract 确认后再加入同一 packet；
 - `RenderFrameCompletion` 使用 mutex/condition variable 实现一次性 first-terminal-result-wins 握手，
   区分 `Succeeded`、`Failed` 与 `Cancelled`，并保留 owned diagnostic；重复完成不能改写首个结果；
-- `RenderFrameQueue` 固定只保存一个 queued packet。单一 Render role consumer 取走该 packet 后形成
+- `RenderFrameQueue` 固定只保存一个 queued packet。唯一渲染消费者取走该 packet 后形成
   一个 processing 加一个 queued 的设计上限；enqueue 在容量满时背压，不创建无界积压；
 - `stop_accepting()` 停止新提交但允许已有 packet 优雅排空；`abort_pending()` 只取消仍由 queue 持有的
-  packet，并在锁外完成 completion。已经 dequeue 的 processing packet 仍由 Render role 负责完成，queue
+  packet，并在锁外完成 completion。已经 dequeue 的 processing packet 仍由渲染消费者负责完成，queue
   不伪造其结果；
 - 本包没有创建 OS/通用 Thread、Event、Fence、TaskSystem 或全局 singleton，也没有接入 RHI、
   RenderScene Apply、resource upload、ViewFamily、one-frame lag policy 或 single-thread fallback。
@@ -575,6 +576,84 @@ Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
 实现、测试或文档。未覆盖 D3D11/D3D12、macOS、Android、Vulkan 运行画面、TSAN 或压力测试；本包是
 纯 CPU transport contract，不把构建结果描述为 Render Thread 或 Renderer 运行验收。
 
-下一工作包为 FND-4B：在本 transport contract 上实现 Render role lifecycle、one-frame lag 与强制同步的
-single-thread fallback，先以 fake Render role 覆盖成功、处理失败、flush 和 shutdown completion 必达；
+下一工作包为 FND-4B：在本 transport contract 上实现帧派发生命周期、one-frame lag 与强制同步的
+single-thread fallback，先以 fake processor 覆盖成功、处理失败、flush 和 shutdown completion 必达；
 仍不在该包进入真实 RHI 初始化或 RenderScene Apply。
+
+## 18. FND-4B：Render Frame Dispatch、Lag 与 Single-Thread Fallback
+
+### 18.1 实现边界与关键决定
+
+- 新增 `RenderFrameDispatcher` 作为 Main Thread 提交帧和控制渲染生命周期的唯一入口；
+  composition root 注入并
+  转移 `RenderFrameProcessor` 独占所有权，processor 的 initialize、process、flush、shutdown 与销毁都在
+  配置选择的同一渲染执行线程上执行；
+- `RenderFrameDispatcherConfig::multithreaded=true` 时创建单一 Render Thread，并用同步 startup handshake 确认
+  processor 初始化结果后才允许提交；关闭 multithreaded 时不创建线程，强制
+  `one_frame_thread_lag=false`，但仍执行完全相同的 processor 阶段；
+- lag 开启时提交 N 后返回 N-1 completion，第一帧只提交不等待；lag 关闭或 single-thread fallback 时
+  submit 同步返回 N completion。`flush()` 等待并清空 lag slot，再由渲染执行线程执行 processor flush；
+- `RenderFrameQueue` 保持一个 queued packet 的容量，只增加 control interrupt，用于 queue 为空时唤醒
+  Render Thread 执行 flush；interrupt 不占用 frame 容量、不伪造 frame identity，也不越过已排队 packet；
+- `RenderFrameExecutionOutcome` 显式区分 `Succeeded`、`FrameFailed` 与 `FatalRenderer`：普通
+  processor 失败只完成
+  当前 frame 为 `Failed`，dispatcher 可继续处理后续帧；显式 fatal 结果或 processor 未预期异常则把
+  completion 标记为 `Fatal`、停止接收并取消 queue 仍持有的 packet。single-thread 路径同样转入
+  terminal state，异常不会越过 dispatcher 边界传播到 Gameplay；
+- shutdown 先停止新提交，再按 FIFO 排空已接受 packet，随后由渲染执行线程调用 processor shutdown 并
+  销毁 processor，最后 join Render Thread；重复 shutdown 保持幂等，停止后的提交以 `Cancelled`
+  completion 返回；
+- 本包的 completion 仍只表示 CPU processing 与未来 submit/present 调用已经返回，不表示 GPU 执行完成。
+  本包未接入 RHI 初始化、RenderScene Apply、GPU resource、ViewportFrame 或 Editor composition root。
+
+### 18.2 测试与主验证
+
+`Toy3dRenderFrameTransportTests` 在 FND-4A 覆盖基础上新增：
+
+- threaded startup handshake，以及 initialize/process/flush/shutdown 全部在同一 Render Thread；
+- lag 开启时首帧不等待、提交 N 返回 N-1，flush 完成最后一个 lagged frame；
+- threaded + lag off 同步返回当前 frame 的处理失败，普通失败不终止 dispatcher；显式
+  `FatalRenderer` 产生 `Fatal` completion 并停止 dispatcher；
+- single-thread 强制关闭 lag，并在 Main Thread 同步执行相同 processor 生命周期；
+- shutdown 排空 accepted packet、completion 必达、重复 shutdown，以及 shutdown 后提交取消。
+
+主 agent 在 Windows、Visual Studio 17 2022、x64、Debug 下构建
+`Toy3dRenderFrameTransportTests` 与 `Toy3dEditor` 成功；全量 CTest 12/12 通过。定向 transport test 使用
+最新二进制先后执行 `--repeat until-fail:100`、`--repeat until-fail:25` 与 fatal contract 更新后的
+`--repeat until-fail:50`，累计 175 次通过。一次沙箱内
+增量构建因 Windows SDK 用户目录访问被拒绝而未进入编译；随后获准在沙箱外完成相同构建，未把此前
+旧测试二进制的结果计入有效构建证据。
+
+独立 sub-agent 完整读取并使用 `verify-toy3d-build` 后，在 Windows、Visual Studio 17 2022、x64、
+Debug、`BUILD_TESTING=ON`、`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行并通过：
+
+- 重新配置 CMake；
+- 构建 `Toy3dEditor`、`Toy3dRenderFrameTransportTests` 与相邻生产端
+  `Toy3dGameSceneTests`；
+- 全量 CTest 12/12 通过；
+- transport test 使用 `--repeat until-fail:100` 连续通过；
+- `git diff --check` 与未跟踪 `render_frame_dispatcher.cpp/.h` 的独立 whitespace 检查无 error，仅有
+  LF→CRLF
+  提示；
+- 最新生成的 `Toy3dRuntime.vcxproj` 包含 `render_frame_dispatcher.cpp/.h`，对象、Runtime library 与
+  测试 executable
+  时间戳均晚于最新源码，排除旧二进制误测；
+- 公共 transport/dispatcher 头未发现 Vulkan、D3D11、D3D12 或 DXGI 原生类型，也未发现新增 UE 风格
+  `I/F/E/T` 类型前缀；
+- 验证前后源码工作树状态集合完全一致，验证者未修改或提交文件。
+
+根据命名复查，随后删除此前机制性命名，全面收敛为职责明确的 `RenderFrameDispatcher`：文件名、类型、
+配置、execution result、变量、错误文本、测试与 foundation 文档均同步迁移，不再为渲染线程所有权建立
+代码对象。主 agent 触发 CMake glob 重新生成，生成工程只登记 `render_frame_dispatcher.cpp/.h`；
+重新构建 Transport 与 Editor 成功，全量 CTest 12/12 通过，Transport 连续 50 次通过。
+
+独立复验重新配置 CMake，构建 Editor、Transport 与 GameScene，CTest 12/12 及 Transport 连续 100 次
+通过；源码、文档、CMake 文本与重新生成的工程中旧标识符、旧文件名与旧术语均为零匹配，
+公共头仍无 backend 类型或 UE 风格类型前缀。复用 build 目录存在不再被生成工程引用的历史孤立
+旧 object 文件，不属于当前源码或构建输入。复验期间主 agent 正在润色 progress 文档，因此验证前后
+文件集合一致但文档字节统计变化；验证者未修改文件，并已针对最终文档重新执行旧命名扫描与
+`git diff --check`。
+
+未覆盖 D3D11/D3D12、macOS、Android、移动端 Vulkan profile、实际 Editor 窗口与渲染画面。下一
+工作包建议为 FND-5A：只实现持久 `RenderScene` 的 Primitive/Light Info、Proxy 与增量 Apply 协议纯 CPU
+闭环，不在同包接入 `RenderResourceCache`、RHI upload 或 View prepare。

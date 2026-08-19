@@ -7,16 +7,6 @@ namespace toy3d
 {
     namespace
     {
-        bool is_valid(const RenderFramePacket& packet)
-        {
-            return packet.frame_id &&
-                packet.completion != nullptr &&
-                std::isfinite(packet.timing.delta_seconds) &&
-                packet.timing.delta_seconds >= 0.0 &&
-                std::isfinite(packet.timing.total_seconds) &&
-                packet.timing.total_seconds >= 0.0;
-        }
-
         void cancel_packet(RenderFramePacket& packet, const std::string& message)
         {
             if (packet.completion != nullptr)
@@ -26,6 +16,16 @@ namespace toy3d
         }
     }
 
+    bool is_valid_render_frame_packet(const RenderFramePacket& packet)
+    {
+        return packet.frame_id &&
+            packet.completion != nullptr &&
+            std::isfinite(packet.timing.delta_seconds) &&
+            packet.timing.delta_seconds >= 0.0 &&
+            std::isfinite(packet.timing.total_seconds) &&
+            packet.timing.total_seconds >= 0.0;
+    }
+
     RenderFrameQueue::~RenderFrameQueue()
     {
         abort_pending("The RenderFrameQueue was destroyed before the frame was processed.");
@@ -33,7 +33,7 @@ namespace toy3d
 
     RenderFrameEnqueueResult RenderFrameQueue::enqueue(RenderFramePacket packet)
     {
-        if (!is_valid(packet))
+        if (!is_valid_render_frame_packet(packet))
         {
             cancel_packet(packet, "The RenderFramePacket is invalid.");
             return RenderFrameEnqueueResult::InvalidPacket;
@@ -57,23 +57,38 @@ namespace toy3d
         return RenderFrameEnqueueResult::Accepted;
     }
 
-    bool RenderFrameQueue::wait_dequeue(RenderFramePacket& packet)
+    RenderFrameDequeueResult RenderFrameQueue::wait_dequeue(RenderFramePacket& packet)
     {
         std::unique_lock<std::mutex> lock(mutex_);
         queue_changed_.wait(lock, [this]()
         {
-            return !packets_.empty() || !accepting_;
+            return !packets_.empty() || interrupted_ || !accepting_;
         });
-        if (packets_.empty())
+        if (!packets_.empty())
         {
-            return false;
+            packet = std::move(packets_.front());
+            packets_.pop_front();
+            lock.unlock();
+            queue_changed_.notify_all();
+            return RenderFrameDequeueResult::Packet;
         }
 
-        packet = std::move(packets_.front());
-        packets_.pop_front();
-        lock.unlock();
+        if (interrupted_)
+        {
+            interrupted_ = false;
+            return RenderFrameDequeueResult::Interrupted;
+        }
+
+        return RenderFrameDequeueResult::Stopped;
+    }
+
+    void RenderFrameQueue::interrupt_wait()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            interrupted_ = true;
+        }
         queue_changed_.notify_all();
-        return true;
     }
 
     void RenderFrameQueue::stop_accepting()

@@ -16,6 +16,15 @@ namespace toy3d
         Stopped
     };
 
+    enum class RenderFrameDequeueResult
+    {
+        Packet,
+        Interrupted,
+        Stopped
+    };
+
+    bool is_valid_render_frame_packet(const RenderFramePacket& packet);
+
     class RenderFrameQueue final
     {
     public:
@@ -26,7 +35,11 @@ namespace toy3d
         RenderFrameQueue& operator=(const RenderFrameQueue&) = delete;
 
         RenderFrameEnqueueResult enqueue(RenderFramePacket packet);
-        bool wait_dequeue(RenderFramePacket& packet);
+        RenderFrameDequeueResult wait_dequeue(RenderFramePacket& packet);
+
+        // RenderFrameDispatcher control operations wake the consumer so flush can run on
+        // the owning thread even when no frame packet is currently queued.
+        void interrupt_wait();
 
         void stop_accepting();
         void abort_pending(std::string message);
@@ -43,5 +56,6 @@ namespace toy3d
         std::condition_variable queue_changed_;
         std::deque<RenderFramePacket> packets_;
         bool accepting_ = true;
+        bool interrupted_ = false;
     };
 }
