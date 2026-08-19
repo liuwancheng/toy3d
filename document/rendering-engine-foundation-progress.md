@@ -328,3 +328,86 @@ World、RenderScene、Render Thread 或 Forward Renderer。
 
 代码修改必须由独立 sub-agent 使用 `verify-toy3d-build` 验证。主 agent 根据验证结果修复并
 最终复查；一个工作包完成后停止，不自动进入下一个工作包。
+
+## 13. FND-3A：GameScene hierarchy 与 Transform 基础
+
+本工作包开始批次 3，但只实现可独立验证的第一部分：
+
+- 新增进程生命周期内单调分配的强类型 64 位 Render ID contract，`0` 保持 invalid，
+  `PrimitiveId`、`LightId`、`RenderSceneId`、`ViewportId`、`SceneOutputId` 与资源 ID
+  在类型系统中隔离；
+- 新增由 `World` 持有的 `Actor`，以及由 `Actor` 独占持有的 `SceneComponent`；首个组件默认成为
+  root，也可在同一 Actor 所有权内显式替换；
+- 新增同 World attachment、cycle 检查、`KeepRelative` 与 `KeepWorld`；跨 World attachment、
+  cycle、奇异父变换及无法无损表示为正缩放 TRS 的 shear 均记录错误日志并返回 `false`；
+- Transform 使用 `translation * rotation * scale` 与 column-vector 约定，只接受有限值、非零
+  quaternion 和每轴大于 `EPSILON` 的正缩放；父变换修改会递归标记所有后代 dirty，
+  `World::update_transforms()` 按依赖更新最终 world matrix；
+- 新增 `Toy3dGameSceneTests`，覆盖强类型 ID invalid/非复用、hierarchy 组合、dirty 传播、cycle、
+  `KeepWorld` attach/detach、跨 World、非法 scale 与 root ownership。
+
+本工作包没有开始 Mesh、Camera、Light、Material、RenderScene、Render Thread、Forward Renderer、
+RDG、Scheduler 或 TaskSystem，也没有迁移或删除旧 `test_pass`。
+
+主 agent 定向预检：
+
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`，成功；
+- `ctest --test-dir build -C Debug -R Toy3dRuntime.GameScene --output-on-failure`，1/1 通过；
+- 一次沙箱内重复构建因 Windows SDK 用户目录访问被拒绝而未进入编译，改用获准的沙箱外同命令后成功；
+- `git diff --check`，无 whitespace error，仅有既有 LF→CRLF 提示。
+
+独立验证者在 Windows、Visual Studio 17 2022、x64、`BUILD_TESTING=ON`、
+`TOY3D_ENABLE_VULKAN_RHI=ON` 下执行：
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+  -DTOY3D_ENABLE_VULKAN_RHI=ON`，成功；
+- `cmake --build build --config Debug --target Toy3dEditor`，成功；
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`，成功；
+- `ctest --test-dir build -C Debug --output-on-failure`，11/11 通过；
+- `git diff --check`，无 whitespace error，仅有既有 LF→CRLF 提示；
+- 验证前后工作区状态一致，验证者未修改实现、测试或文档。
+
+主复查随后仅调整 attachment commit 顺序：先扩容新 parent 的 `children_`，成功后再解除旧关系，
+保证分配异常不会留下单边 hierarchy；该调整完成后再次执行定向构建/测试与独立复验。
+最终独立复验中 `Toy3dGameSceneTests` 与 `Toy3dEditor` 均构建成功，全量 CTest 仍为 11/11
+通过，验证前后工作区一致。
+
+未覆盖 Release/RelWithDebInfo/MinSizeRel、macOS、Android、Linux、D3D11、D3D12、移动端 Vulkan
+profile、Editor 实际启动及人工画面检查。
+
+下一工作包建议为 FND-3B：在本 hierarchy 上增加 StaticMesh、Camera、Directional/Point/Spot
+Light Component 与 Material/MaterialInstance 引用；dirty 分类与 batch 合并继续作为 FND-3C，
+避免单轮同时引入全部跨线程 payload。
+
+## 14. FND-3A 目录与失败模型修正
+
+根据 FND-3A 复查，完成以下收敛：
+
+- `World` 与 `Actor` 迁移到 `engine/runtime/gamescene/`；
+- `SceneComponent` 与 `SceneTransform` 迁移到 `engine/runtime/gamescene/component/`，不再使用职责
+  笼统的 `gamescene/scene/`；
+- 删除 `SceneStatus`、`SceneErrorCode` 与 `scene_status.h`；GameScene 操作失败时通过现有
+  `TOY_LOG_ERROR` 记录原因，并以 `bool` 向调用方表达成功或失败；
+- 删除只为限制 `std::make_unique` 构造路径而引入的 `ActorCreationToken`，保留简单的
+  `Actor(World&)` 构造与 `World::create_actor()` 正式创建入口；
+- 更新 GameScene 测试 include 与断言，不再依赖独立错误对象。
+
+主 agent 修正后预检：
+
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`，成功；文件迁移触发 CMake
+  `CONFIGURE_DEPENDS` 自动重新生成；
+- `ctest --test-dir build -C Debug -R Toy3dRuntime.GameScene --output-on-failure`，1/1 通过。
+
+独立验证者在 Windows、Visual Studio 17 2022、x64、`BUILD_TESTING=ON`、
+`TOY3D_ENABLE_VULKAN_RHI=ON` 下重新配置并验证：
+
+- `cmake --build build --config Debug --target Toy3dEditor`，成功；
+- `cmake --build build --config Debug --target Toy3dGameSceneTests`，成功；
+- `ctest --test-dir build -C Debug --output-on-failure`，11/11 通过；
+- 静态检查确认没有 `gamescene/scene/` 文件或旧 include，代码/CMake 中没有 `SceneStatus`、
+  `SceneErrorCode`、`ActorCreationToken`、`scene_status` 或 `scene_state` 残留；
+- `git diff --check` 无 whitespace error，仅有既有 LF→CRLF 提示；
+- 验证前后工作区状态一致，验证者未修改实现、测试或文档。
+
+未覆盖 Release 系列、非 Windows 平台、D3D11、D3D12、移动端 Vulkan profile 与 Editor 交互/画面
+冒烟测试。
