@@ -31,6 +31,8 @@ toy3d/
 └── bin/                         可执行文件和复制后的运行资源，不提交
 ```
 
+现有公共基础设施的 CMake target、公共头文件和最小调用方式统一索引在 `document/core-module-usage-index.md`。新增文件、日志、线程、任务等通用能力前先查该索引及对应专项设计，避免重复实现。
+
 新增运行时代码放入 `engine/runtime/` 中职责最接近的模块，不再建立笼统的 `engine/runtime/core/`。需要同时被 runtime、editor 或 tools 使用的第一方基础设施放入 `engine/core/`，不得为了复用而让工具反向依赖 `engine/runtime/`。RHI 公共类型和行为放在 `drivers/rhi/`，图形 API 实现放在各自独立后端目录；renderscene 不得依赖后端类型。离线工具放在 `engine/tools/`，不得反向依赖 editor。shader 源文件与 shader compiler 实现分开管理。除升级依赖外不要修改 `engine/thirdparty/`。
 
 ## 基础设施与模块边界规范
