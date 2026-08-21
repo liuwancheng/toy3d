@@ -56,8 +56,57 @@ target_include_directories(Toy3dMath
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dMath PUBLIC glm::glm)
 
+find_package(Threads REQUIRED)
+
+add_library(Toy3dThreading STATIC)
+target_sources(Toy3dThreading
+    PRIVATE
+        "threading/event.cpp"
+        "threading/event.h"
+        "threading/containers/bounded_mpmc_queue.h"
+        "threading/containers/queue.h"
+        "threading/runnable.h"
+        "threading/runnable_thread.cpp"
+        "threading/runnable_thread.h"
+        "threading/thread.cpp"
+        "threading/thread.h"
+        "threading/thread_manager.cpp"
+        "threading/thread_manager.h"
+        "threading/threading_types.h")
+target_compile_features(Toy3dThreading PUBLIC cxx_std_17)
+set_target_properties(Toy3dThreading PROPERTIES
+    CXX_EXTENSIONS OFF
+    FOLDER "Engine/Core")
+target_include_directories(Toy3dThreading
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+target_link_libraries(Toy3dThreading PRIVATE Threads::Threads)
+
+add_library(Toy3dTaskGraph STATIC)
+target_sources(Toy3dTaskGraph
+    PRIVATE
+        "task_graph/base_graph_task.cpp"
+        "task_graph/base_graph_task.h"
+        "task_graph/graph_event.cpp"
+        "task_graph/graph_event.h"
+        "task_graph/graph_task.cpp"
+        "task_graph/graph_task.h"
+        "task_graph/stalling_task_queue.cpp"
+        "task_graph/stalling_task_queue.h"
+        "task_graph/task_graph.cpp"
+        "task_graph/task_graph.h"
+        "task_graph/task_graph_interface.h"
+        "task_graph/task_graph_types.h")
+target_compile_features(Toy3dTaskGraph PUBLIC cxx_std_17)
+set_target_properties(Toy3dTaskGraph PROPERTIES
+    CXX_EXTENSIONS OFF
+    FOLDER "Engine/Core")
+target_include_directories(Toy3dTaskGraph
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
+
 if(BUILD_TESTING)
-    find_package(Threads REQUIRED)
     add_executable(Toy3dFileSystemTests "tests/file_system_tests.cpp")
     target_compile_features(Toy3dFileSystemTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dFileSystemTests PROPERTIES
@@ -65,4 +114,36 @@ if(BUILD_TESTING)
         FOLDER "Engine/Tests")
     target_link_libraries(Toy3dFileSystemTests PRIVATE Toy3dFileSystem Threads::Threads)
     add_test(NAME Toy3dCore.FileSystem COMMAND Toy3dFileSystemTests)
+
+    add_executable(Toy3dThreadingTests "tests/threading_tests.cpp")
+    target_compile_features(Toy3dThreadingTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dThreadingTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dThreadingTests PRIVATE Toy3dThreading Threads::Threads)
+    add_test(NAME Toy3dCore.Threading COMMAND Toy3dThreadingTests)
+
+    add_executable(Toy3dQueueTests "tests/queue_tests.cpp")
+    target_compile_features(Toy3dQueueTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dQueueTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dQueueTests PRIVATE Toy3dThreading Threads::Threads)
+    add_test(NAME Toy3dCore.Queue COMMAND Toy3dQueueTests)
+
+    add_executable(Toy3dTaskGraphTests "tests/task_graph_tests.cpp")
+    target_compile_features(Toy3dTaskGraphTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dTaskGraphTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dTaskGraphTests PRIVATE Toy3dTaskGraph Threads::Threads)
+    add_test(NAME Toy3dCore.TaskGraph COMMAND Toy3dTaskGraphTests)
+
+    add_executable(Toy3dTaskGraphSchedulerTests "tests/task_graph_scheduler_tests.cpp")
+    target_compile_features(Toy3dTaskGraphSchedulerTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dTaskGraphSchedulerTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dTaskGraphSchedulerTests PRIVATE Toy3dTaskGraph Threads::Threads)
+    add_test(NAME Toy3dCore.TaskGraphScheduler COMMAND Toy3dTaskGraphSchedulerTests)
 endif()
