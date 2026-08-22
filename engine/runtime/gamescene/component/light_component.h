@@ -2,7 +2,6 @@
 
 #include "gamescene/component/scene_component.h"
 #include "math/vector3.h"
-#include "rendercore/render_id.h"
 
 namespace toy3d
 {
@@ -23,19 +22,14 @@ namespace toy3d
         int render_priority() const { return render_priority_; }
         void set_render_priority(int render_priority);
 
-        LightId light_id() const { return light_id_; }
-
     protected:
         explicit LightComponent(Actor& owner) : SceneComponent(owner) {}
 
     private:
-        friend class World;
-
         bool enabled_ = true;
         Vector3 color_{1.0f};
         float intensity_ = 1.0f;
         int render_priority_ = 0;
-        LightId light_id_;
     };
 
     class DirectionalLightComponent final : public LightComponent

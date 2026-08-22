@@ -1,10 +1,6 @@
-#include "gamescene/component/static_mesh_component.h"
-#include "gamescene/render_resource_update_collector.h"
-#include "gamescene/world.h"
 #include "renderscene/render_scene_frame_processor.h"
 #include "renderscene/resources/primitive_render_resources.h"
 
-#include <functional>
 #include <iostream>
 #include <memory>
 #include <utility>
@@ -45,6 +41,28 @@ namespace
         desc.sections.push_back({0, 3, 0});
         desc.material_slots.push_back(material);
         return toy3d::StaticMesh::create(std::move(desc));
+    }
+
+    toy3d::MaterialRenderResourceVersionRef make_material_version(
+        const toy3d::MaterialInstanceRef& material)
+    {
+        auto version = std::make_shared<toy3d::MaterialRenderResourceVersion>();
+        version->resource_id = material->render_resource_id();
+        version->revision = material->revision();
+        version->material = material->material()->desc();
+        return version;
+    }
+
+    toy3d::MeshRenderResourceVersionRef make_mesh_version(
+        const toy3d::StaticMeshRef& mesh)
+    {
+        auto version = std::make_shared<toy3d::MeshRenderResourceVersion>();
+        version->resource_id = mesh->render_resource_id();
+        version->revision = mesh->revision();
+        version->vertices = mesh->vertices();
+        version->indices = mesh->indices();
+        version->sections = mesh->sections();
+        return version;
     }
 
     toy3d::TextureRenderResourceVersionRef make_placeholder_texture(
@@ -89,98 +107,35 @@ int main()
     check(material != nullptr && mesh != nullptr,
         "The test assets must satisfy the Game-side resource contract");
 
-    World first_world;
-    Actor& first_actor = first_world.create_actor();
-    first_actor.create_scene_component<StaticMeshComponent>().set_static_mesh(mesh);
-    World second_world;
-    Actor& second_actor = second_world.create_actor();
-    second_actor.create_scene_component<StaticMeshComponent>().set_static_mesh(mesh);
-
-    RenderResourceUpdateCollector collector;
-    const std::vector<std::reference_wrapper<const World>> both_worlds = {
-        std::cref(first_world), std::cref(second_world)};
-    std::vector<RenderResourceUpdate> initial_resources =
-        collector.collect(both_worlds);
-    check(initial_resources.size() == 2,
-        "The first global collection must publish one shared Mesh and Material version");
-    check(collector.collect(both_worlds).empty(),
-        "Unchanged resource revisions must not be republished every frame");
-
-    check(first_world.destroy_actor(first_actor),
-        "The first World must release its Primitive for the shared-resource test");
-    check(collector.collect(both_worlds).empty(),
-        "A resource still referenced by another active World must not be released");
-    check(second_world.destroy_actor(second_actor),
-        "The second World must release its Primitive for the shared-resource test");
-    const std::vector<RenderResourceUpdate> releases = collector.collect(both_worlds);
-    check(releases.size() == 2,
-        "The collector must release Mesh and Material after the last World reference disappears");
-    bool releases_only = true;
-    for (const RenderResourceUpdate& update : releases)
-    {
-        // The stream contains a fixed set of typed resource domains. Explicit
-        // get_if branches make the release payload rules visible in this test.
-        if (const auto* mesh_update = std::get_if<MeshRenderResourceUpdate>(&update))
-        {
-            releases_only = releases_only &&
-                mesh_update->operation == RenderResourceUpdateOperation::Release &&
-                mesh_update->version == nullptr;
-            continue;
-        }
-        if (const auto* material_update =
-            std::get_if<MaterialRenderResourceUpdate>(&update))
-        {
-            releases_only = releases_only &&
-                material_update->operation == RenderResourceUpdateOperation::Release &&
-                material_update->version == nullptr;
-            continue;
-        }
-        releases_only = false;
-    }
-    check(releases_only,
-        "Release updates must preserve strong resource type and carry no stale version");
-
-    const MaterialInstanceRef override_material = make_material(
-        MaterialBlendMode::Translucent);
-    World override_world;
-    StaticMeshComponent& override_component =
-        override_world.create_actor().create_scene_component<StaticMeshComponent>();
-    override_component.set_static_mesh(mesh);
-    check(override_component.set_material_override(0, override_material),
-        "The override collection test requires one effective Material override");
-    const std::vector<RenderResourceUpdate> override_resources =
-        collector.collect({std::cref(override_world)});
-    bool found_override = false;
-    bool found_unused_default = false;
-    for (const RenderResourceUpdate& update : override_resources)
-    {
-        // This fixed resource variant is inspected explicitly so the test
-        // distinguishes the effective override from the mesh's default slot.
-        const auto* material_update =
-            std::get_if<MaterialRenderResourceUpdate>(&update);
-        if (material_update == nullptr ||
-            material_update->operation != RenderResourceUpdateOperation::Update)
-        {
-            continue;
-        }
-        found_override = found_override ||
-            material_update->resource_id == override_material->render_resource_id();
-        found_unused_default = found_unused_default ||
-            material_update->resource_id == material->render_resource_id();
-    }
-    check(found_override && !found_unused_default,
-        "Collection must publish the effective override and not an unused default Material");
-
-    World render_world;
-    StaticMeshComponent& component =
-        render_world.create_actor().create_scene_component<StaticMeshComponent>();
-    component.set_static_mesh(mesh);
-    RenderResourceUpdateCollector frame_collector;
-
+    const RenderSceneId scene_id(1);
+    const PrimitiveId primitive_id(1);
     RenderFramePacket packet;
     packet.frame_id = RenderFrameId(1);
-    packet.resource_updates = frame_collector.collect({std::cref(render_world)});
-    packet.scene_updates.push_back(render_world.collect_render_scene_updates());
+    MaterialRenderResourceUpdate material_update;
+    material_update.resource_id = material->render_resource_id();
+    material_update.version = make_material_version(material);
+    packet.resource_updates.push_back(std::move(material_update));
+    MeshRenderResourceUpdate mesh_update;
+    mesh_update.resource_id = mesh->render_resource_id();
+    mesh_update.version = make_mesh_version(mesh);
+    packet.resource_updates.push_back(std::move(mesh_update));
+
+    RenderSceneUpdateBatch initial_scene_update;
+    initial_scene_update.scene_id = scene_id;
+    PrimitiveSceneUpdate add_primitive;
+    add_primitive.operation = RenderSceneUpdateOperation::Add;
+    add_primitive.dirty_flags =
+        RenderDirtyFlags::Transform |
+        RenderDirtyFlags::State |
+        RenderDirtyFlags::DynamicData;
+    add_primitive.primitive_id = primitive_id;
+    add_primitive.snapshot.world_transform = Matrix4::identity();
+    add_primitive.snapshot.world_bounds = mesh->local_bounds();
+    add_primitive.snapshot.mesh_resource_id = mesh->render_resource_id();
+    add_primitive.snapshot.material_resource_ids.push_back(
+        material->render_resource_id());
+    initial_scene_update.primitive_updates.push_back(std::move(add_primitive));
+    packet.scene_updates.push_back(std::move(initial_scene_update));
     SceneViewDesc scene_view_desc;
     scene_view_desc.view_rect = {0, 0, 1280, 720};
     SceneView scene_view;
@@ -191,7 +146,7 @@ int main()
     ViewportFrame viewport_frame;
     viewport_frame.viewport_id = ViewportId(1);
     SceneViewFamilyFrame family_frame;
-    family_frame.view_family.scene_id = render_world.render_scene_id();
+    family_frame.view_family.scene_id = scene_id;
     family_frame.view_family.views.push_back(scene_view);
     family_frame.output.output_id = SceneOutputId(1);
     family_frame.output.extent = {1280, 720};
@@ -210,9 +165,9 @@ int main()
             ViewportFrameValidation::Valid,
         "The real processor must apply resources before the packet's persistent Scene updates");
 
-    const RenderScene* scene = processor.find_scene(render_world.render_scene_id());
+    const RenderScene* scene = processor.find_scene(scene_id);
     const PrimitiveSceneInfo* primitive =
-        scene != nullptr ? scene->find_primitive(component.primitive_id()) : nullptr;
+        scene != nullptr ? scene->find_primitive(primitive_id) : nullptr;
     check(primitive != nullptr,
         "The processor must retain the World's persistent PrimitiveSceneInfo");
     PrimitiveRenderResources resolved;
@@ -231,12 +186,12 @@ int main()
     RenderFramePacket missing_material_packet;
     missing_material_packet.frame_id = RenderFrameId(2);
     RenderSceneUpdateBatch missing_material_batch;
-    missing_material_batch.scene_id = render_world.render_scene_id();
+    missing_material_batch.scene_id = scene_id;
     PrimitiveSceneUpdate missing_material_update;
     missing_material_update.operation = RenderSceneUpdateOperation::Update;
     missing_material_update.dirty_flags =
         RenderDirtyFlags::Transform | RenderDirtyFlags::State;
-    missing_material_update.primitive_id = component.primitive_id();
+    missing_material_update.primitive_id = primitive_id;
     missing_material_update.snapshot = primitive->proxy().snapshot();
     missing_material_update.snapshot.material_resource_ids[0] =
         MaterialRenderResourceId(9999);
@@ -246,8 +201,8 @@ int main()
         std::move(missing_material_batch));
     check(static_cast<bool>(processor.process_frame(missing_material_packet)),
         "A missing content resource must not become a fatal frame outcome");
-    scene = processor.find_scene(render_world.render_scene_id());
-    primitive = scene != nullptr ? scene->find_primitive(component.primitive_id()) : nullptr;
+    scene = processor.find_scene(scene_id);
+    primitive = scene != nullptr ? scene->find_primitive(primitive_id) : nullptr;
     if (primitive != nullptr)
     {
         resolved = resolve_primitive_render_resources(
@@ -280,7 +235,7 @@ int main()
     ViewportFrame unsupported_viewport;
     unsupported_viewport.viewport_id = ViewportId(2);
     SceneViewFamilyFrame first_present;
-    first_present.view_family.scene_id = render_world.render_scene_id();
+    first_present.view_family.scene_id = scene_id;
     first_present.view_family.views.push_back(scene_view);
     first_present.output.output_id = SceneOutputId(2);
     first_present.output.extent = {1280, 720};
@@ -291,11 +246,11 @@ int main()
     unsupported_view_packet.viewport_frames.push_back(
         std::move(unsupported_viewport));
     RenderSceneUpdateBatch observation_failure_batch;
-    observation_failure_batch.scene_id = render_world.render_scene_id();
+    observation_failure_batch.scene_id = scene_id;
     PrimitiveSceneUpdate remove_before_observation_failure;
     remove_before_observation_failure.operation =
         RenderSceneUpdateOperation::Remove;
-    remove_before_observation_failure.primitive_id = component.primitive_id();
+    remove_before_observation_failure.primitive_id = primitive_id;
     observation_failure_batch.primitive_updates.push_back(
         std::move(remove_before_observation_failure));
     unsupported_view_packet.scene_updates.push_back(
@@ -309,9 +264,9 @@ int main()
             processor.last_report().has_diagnostics() &&
             !processor.last_report().viewport_diagnostic.empty(),
         "An unsupported viewport observation must fail only its frame with a retained diagnostic");
-    scene = processor.find_scene(render_world.render_scene_id());
+    scene = processor.find_scene(scene_id);
     check(scene != nullptr &&
-            scene->find_primitive(component.primitive_id()) == nullptr,
+            scene->find_primitive(primitive_id) == nullptr,
         "Persistent Scene updates must remain applied when later observation validation fails");
 
     RenderFramePacket unknown_scene_packet;

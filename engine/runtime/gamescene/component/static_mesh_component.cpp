@@ -15,7 +15,7 @@ namespace toy3d
         {
             material_overrides_.resize(static_mesh_->material_slots().size());
         }
-        mark_render_dirty(RenderDirtyFlags::State);
+        update_bounds();
     }
 
     bool StaticMeshComponent::set_material_override(
@@ -33,7 +33,6 @@ namespace toy3d
             return false;
         }
         material_overrides_[material_slot] = std::move(material);
-        mark_render_dirty(RenderDirtyFlags::State);
         return true;
     }
 
@@ -50,7 +49,7 @@ namespace toy3d
             : static_mesh_->material_slots()[material_slot];
     }
 
-    void StaticMeshComponent::update_world_bounds()
+    void StaticMeshComponent::update_bounds()
     {
         if (static_mesh_ == nullptr)
         {

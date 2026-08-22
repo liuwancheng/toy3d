@@ -1,14 +1,15 @@
 #include "gamescene/component/scene_component.h"
 
-#include "gamescene/actor.h"
-#include "gamescene/world.h"
 #include "logging/logger.h"
 
 #include <algorithm>
 
 namespace toy3d
 {
-    SceneComponent::SceneComponent(Actor& owner) : owner_(owner) {}
+    SceneComponent::SceneComponent(Actor& owner) : ActorComponent(owner)
+    {
+        update_component_to_world();
+    }
 
     SceneComponent::~SceneComponent()
     {
@@ -17,16 +18,14 @@ namespace toy3d
             parent_->remove_child(*this);
         }
 
-        for (SceneComponent* child : children_)
+        while (!children_.empty())
         {
-            child->parent_ = nullptr;
-            child->mark_transform_dirty();
+            SceneComponent* child = children_.back();
+            if (!child->attach_to(nullptr, AttachmentRule::KeepWorld))
+            {
+                child->attach_to(nullptr, AttachmentRule::KeepRelative);
+            }
         }
-    }
-
-    World& SceneComponent::world() const
-    {
-        return owner_.world();
     }
 
     bool SceneComponent::validate_transform(const Transform& transform)
@@ -68,7 +67,7 @@ namespace toy3d
         local_transform_ = transform;
         local_transform_.rotation = normalize_unchecked(
             local_transform_.rotation);
-        mark_transform_dirty();
+        update_component_to_world();
         return true;
     }
 
@@ -99,11 +98,9 @@ namespace toy3d
         Transform new_local_transform = local_transform_;
         if (rule == AttachmentRule::KeepWorld)
         {
-            update_world_transform();
             Matrix4 relative_matrix = world_transform_;
             if (new_parent != nullptr)
             {
-                new_parent->update_world_transform();
                 Matrix4 inverse_parent;
                 if (!try_inverse(
                         new_parent->world_transform_, inverse_parent))
@@ -136,7 +133,7 @@ namespace toy3d
         }
         parent_ = new_parent;
         local_transform_ = new_local_transform;
-        mark_transform_dirty();
+        update_component_to_world();
         return true;
     }
 
@@ -154,27 +151,11 @@ namespace toy3d
         return false;
     }
 
-    void SceneComponent::mark_transform_dirty()
+    void SceneComponent::update_component_to_world()
     {
-        transform_dirty_ = true;
-        mark_render_dirty(RenderDirtyFlags::Transform);
-        for (SceneComponent* child : children_)
-        {
-            child->mark_transform_dirty();
-        }
-    }
-
-    void SceneComponent::update_world_transform()
-    {
-        if (!transform_dirty_)
-        {
-            return;
-        }
-
         const Matrix4 local_matrix = to_matrix(local_transform_);
         if (parent_ != nullptr)
         {
-            parent_->update_world_transform();
             world_transform_ = parent_->world_transform_ * local_matrix;
             world_rotation_ = normalize_unchecked(
                 parent_->world_rotation_ * local_transform_.rotation);
@@ -184,7 +165,11 @@ namespace toy3d
             world_transform_ = local_matrix;
             world_rotation_ = local_transform_.rotation;
         }
-        transform_dirty_ = false;
+        on_world_transform_updated();
+        for (SceneComponent* child : children_)
+        {
+            child->update_component_to_world();
+        }
     }
 
     void SceneComponent::remove_child(SceneComponent& child)
@@ -196,13 +181,4 @@ namespace toy3d
         }
     }
 
-    void SceneComponent::mark_render_dirty(RenderDirtyFlags flags)
-    {
-        render_dirty_flags_ |= flags;
-    }
-
-    void SceneComponent::clear_render_dirty()
-    {
-        render_dirty_flags_ = RenderDirtyFlags::None;
-    }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gamescene/component/actor_component.h"
 #include "gamescene/component/scene_component.h"
 
 #include <memory>
@@ -15,26 +16,28 @@ namespace toy3d
     {
     public:
         explicit Actor(World& world) : world_(world) {}
-        ~Actor() = default;
+        virtual ~Actor();
 
         Actor(const Actor&) = delete;
         Actor& operator=(const Actor&) = delete;
 
         World& world() const { return world_; }
+        bool is_registered() const { return registered_; }
         SceneComponent* root_component() const { return root_component_; }
 
-        template<typename Component = SceneComponent, typename... Args>
-        Component& create_scene_component(Args&&... args)
+        template<typename Component, typename... Args>
+        Component& create_component(Args&&... args)
         {
-            static_assert(std::is_base_of<SceneComponent, Component>::value,
-                "Component must derive from SceneComponent");
+            static_assert(std::is_base_of<ActorComponent, Component>::value,
+                "Component must derive from ActorComponent");
+
             auto component = std::make_unique<Component>(
                 *this, std::forward<Args>(args)...);
             Component& result = *component;
             components_.push_back(std::move(component));
-            if (root_component_ == nullptr)
+            if (registered_)
             {
-                root_component_ = &result;
+                result.register_component();
             }
             return result;
         }
@@ -44,10 +47,13 @@ namespace toy3d
     private:
         friend class World;
 
-        bool owns_component(const SceneComponent& component) const;
+        bool owns_component(const ActorComponent& component) const;
+        void register_all_components();
+        void unregister_all_components();
 
         World& world_;
-        std::vector<std::unique_ptr<SceneComponent>> components_;
+        std::vector<std::unique_ptr<ActorComponent>> components_;
         SceneComponent* root_component_ = nullptr;
+        bool registered_ = false;
     };
 }

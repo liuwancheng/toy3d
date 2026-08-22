@@ -4,6 +4,10 @@
 
 本文定义 Toy3d 在不引入 RDG 的前提下，完成第一版可运行渲染引擎所采用的长期边界和分阶段执行计划。本文覆盖 GameScene、RenderScene、Game/Render 双线程、Forward Renderer、Material、显式 Pass、PostProcess、ImGui 以及 Editor 演进路径。
 
+GameScene 对象层级、组件注册、Game Thread 到 Rendering Thread 的 RenderCommand 与帧同步边界，现由
+`document/gamescene-design.md` 取代本文中的旧 collector、聚合 update 和 Camera builder 方案。本文其余
+RenderScene、Renderer 与 RHI 边界继续有效；发生冲突时以 `gamescene-design.md` 为准。
+
 本文中的架构决策已经逐项确认。实现阶段若发现公共 RHI 或共享基础设施缺口，应回到对应模块补齐设计与测试，不得在 RenderScene 内建立后端旁路、通用临时 Scheduler 或重复基础设施。
 
 相关文档的职责如下：

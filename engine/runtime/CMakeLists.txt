@@ -278,19 +278,6 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dViewportFrameTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.ViewportFrame COMMAND Toy3dViewportFrameTests)
 
-    add_executable(Toy3dCameraViewportFrameBuilderTests
-        "tests/camera_viewport_frame_builder_tests.cpp")
-    target_compile_features(Toy3dCameraViewportFrameBuilderTests PRIVATE cxx_std_17)
-    set_target_properties(Toy3dCameraViewportFrameBuilderTests PROPERTIES
-        CXX_EXTENSIONS OFF
-        FOLDER "Engine/Tests")
-    target_compile_options(Toy3dCameraViewportFrameBuilderTests
-        PRIVATE
-            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-    target_link_libraries(Toy3dCameraViewportFrameBuilderTests PRIVATE Toy3dRuntime)
-    add_test(NAME Toy3dRuntime.CameraViewportFrameBuilder
-        COMMAND Toy3dCameraViewportFrameBuilderTests)
-
     add_executable(Toy3dSceneOutputResourceCacheTests
         "tests/scene_output_resource_cache_tests.cpp")
     target_compile_features(Toy3dSceneOutputResourceCacheTests PRIVATE cxx_std_17)

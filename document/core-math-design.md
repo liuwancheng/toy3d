@@ -572,7 +572,7 @@ Core Math 不提供修改 SceneComponent 的重载。
 
 - `Toy3dSceneViewTests` 迁移后继续覆盖 ViewRect、inverse matrices 和失败原子性；
 - `Toy3dGameSceneTests` 覆盖 hierarchy 与 Transform；
-- `Toy3dCameraViewportFrameBuilderTests` 覆盖 Camera snapshot；
+- 未来 viewport/player 侧的 View 构建测试覆盖 Camera snapshot；
 - MSVC Debug/Release；
 - Clang/GCC；
 - x64 与 Android ARM64；
@@ -599,7 +599,6 @@ Core Math 不提供修改 SceneComponent 的重载。
 | `runtime/gamescene/component/scene_component.cpp` | normalize、determinant、inverse 与 decomposition | E |
 | `runtime/rendercore/geometry/static_mesh.cpp` | 向量逐分量 min/max | C 或 F |
 | `runtime/tests/gamescene_tests.cpp` | matrix transform 测试辅助 | 随生产调用方迁移 |
-| `runtime/tests/camera_viewport_frame_builder_tests.cpp` | Quaternion 测试辅助 | D、E |
 | `engine/runtime/CMakeLists.txt` | Runtime 对 `glm::glm` 的 PUBLIC 链接 | G |
 
 `Toy3dMathTests` 在批次 A 允许用 GLM aliases 复现当前基准；引入 Toy3d 自有类型后，测试改为公共 API golden tests，GLM 对照代码只保留在明确标注的迁移测试中。
