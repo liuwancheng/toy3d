@@ -19,9 +19,9 @@ namespace toy3d
 
     struct SceneViewDesc
     {
-        vec3 camera_position{0.0f};
-        vec3 camera_forward{0.0f, 0.0f, 1.0f};
-        vec3 camera_up{0.0f, 1.0f, 0.0f};
+        Vector3 camera_position;
+        Vector3 camera_forward{0.0f, 0.0f, 1.0f};
+        Vector3 camera_up{0.0f, 1.0f, 0.0f};
         float vertical_fov_degrees = 60.0f;
         float near_clip = 0.1f;
         float far_clip = 1000.0f;
@@ -31,16 +31,16 @@ namespace toy3d
     struct SceneView
     {
         SceneViewRect view_rect;
-        vec3 camera_position{0.0f};
-        vec3 camera_forward{0.0f, 0.0f, 1.0f};
+        Vector3 camera_position;
+        Vector3 camera_forward{0.0f, 0.0f, 1.0f};
         float near_clip = 0.1f;
         float far_clip = 1000.0f;
-        mat4x4 view_matrix{1.0f};
-        mat4x4 projection_matrix{1.0f};
-        mat4x4 view_projection_matrix{1.0f};
-        mat4x4 inverse_view_matrix{1.0f};
-        mat4x4 inverse_projection_matrix{1.0f};
-        mat4x4 inverse_view_projection_matrix{1.0f};
+        Matrix4 view_matrix;
+        Matrix4 projection_matrix;
+        Matrix4 view_projection_matrix;
+        Matrix4 inverse_view_matrix;
+        Matrix4 inverse_projection_matrix;
+        Matrix4 inverse_view_projection_matrix;
     };
 
     bool build_scene_view(

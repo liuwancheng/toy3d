@@ -43,9 +43,26 @@ target_link_libraries(Toy3dLogging PUBLIC spdlog)
 add_library(Toy3dMath STATIC)
 target_sources(Toy3dMath
     PRIVATE
+        "math/angle.h"
+        "math/integer_vector.h"
+        "math/matrix3.cpp"
+        "math/matrix3.h"
+        "math/matrix_construction.cpp"
+        "math/matrix_construction.h"
+        "math/matrix4.cpp"
+        "math/matrix4.h"
         "math/math.cpp"
         "math/math.h"
+        "math/math_constants.h"
+        "math/quaternion.cpp"
+        "math/quaternion.h"
         "math/random.h"
+        "math/scalar_math.h"
+        "math/transform.cpp"
+        "math/transform.h"
+        "math/vector2.h"
+        "math/vector3.h"
+        "math/vector4.h"
         "misc/enum_class_utils.h")
 target_compile_features(Toy3dMath PUBLIC cxx_std_17)
 set_target_properties(Toy3dMath PROPERTIES
@@ -55,6 +72,11 @@ target_include_directories(Toy3dMath
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dMath PUBLIC glm::glm)
+if(WIN32)
+    # Toy3dMath publicly declares min/max functions, so every Windows consumer
+    # must suppress the conflicting windows.h function-like macros.
+    target_compile_definitions(Toy3dMath PUBLIC NOMINMAX)
+endif()
 
 find_package(Threads REQUIRED)
 
@@ -107,6 +129,14 @@ target_include_directories(Toy3dTaskGraph
 target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
 
 if(BUILD_TESTING)
+    add_executable(Toy3dMathTests "tests/math_tests.cpp")
+    target_compile_features(Toy3dMathTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dMathTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dMathTests PRIVATE Toy3dMath)
+    add_test(NAME Toy3dCore.Math COMMAND Toy3dMathTests)
+
     add_executable(Toy3dFileSystemTests "tests/file_system_tests.cpp")
     target_compile_features(Toy3dFileSystemTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dFileSystemTests PROPERTIES

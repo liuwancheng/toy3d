@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 文件系统 | `Toy3dFileSystem` | `file_system/file_system.h`、`native_platform_file.h` | `engine/core/tests/file_system_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
-| 数学 | `Toy3dMath` | `math/math.h`、`math/random.h` | 现有 runtime/renderscene 调用方 |
+| 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | 线程、事件、Queue | `Toy3dThreading` | `threading/thread.h`、`event.h`、`runnable_thread.h`、`containers/queue.h` | `engine/core/tests/threading_tests.cpp`、`queue_tests.cpp` |
 | Task Graph | `Toy3dTaskGraph` | `task_graph/task_graph.h`、`graph_task.h` | `engine/core/tests/task_graph_tests.cpp`、`task_graph_scheduler_tests.cpp` |
 
@@ -53,7 +53,19 @@ TOY_LOG_INFO("Loaded {} entries", entry_count);
 TOY_LOG_ERROR("Load failed: {}", error_message);
 ```
 
-数学类型统一从 `math/math.h` 获取，例如 `toy3d::vec3`、`toy3d::mat4x4`、`toy3d::quat`、`toy3d::Degree`。渲染坐标与矩阵约定以 `AGENTS.md` 和 RHI 设计为准，不在业务模块建立另一套类型别名。
+数学聚合入口为 `math/math.h`；编译时间敏感的调用方可直接包含 `math/angle.h`、`math/scalar_math.h` 或 `math/math_constants.h`。角度使用显式 `toy3d::Radians`、`toy3d::Degrees` 和 `to_radians()`/`to_degrees()`，裸 `float` 不隐式表达角度单位。随机数必须单独包含 `math/random.h`。
+
+新向量代码使用 `Vector2`、`Vector3`、`Vector4` 与 `UIntVector2/3/4`，并根据退化输入语义选择 `try_normalize()`、`normalized_or_zero()` 或 `normalize_unchecked()`。`vec*`、`mat*`、`quat` 仍是受控迁移期的旧 GLM aliases，不得新增调用点。渲染坐标与矩阵约定以 `AGENTS.md` 和 `document/core-math-design.md` 为准，不在业务模块建立另一套类型别名。
+
+矩阵使用 `Matrix3`、`Matrix4`，通过 `at(column, row)` 与 `data()` 访问 column-major 数据。可能奇异的求逆必须使用 `try_inverse()`；空间变换根据语义选择 `transform_position()`、`transform_vector()` 或 `try_transform_normal()`。
+
+旋转使用 `Quaternion`，其连续存储顺序固定为 `x, y, z, w`。axis-angle、rotation matrix 和 direction-to-direction 构造使用对应 `try_make_quaternion_*` API；退化输入失败且不修改输出。比较旋转语义使用 `is_nearly_same_rotation()`，不能用分量相等代替，因为 `q` 与 `-q` 表达同一旋转。
+
+TRS 使用 `Transform`，通过 `to_matrix()` 与 `try_decompose_transform()` 在值和矩阵之间转换；decomposition 只接受能以 positive-scale TRS 重建的 affine matrix，shear、mirror、zero scale 或非有限输入失败且不修改输出。position、vector 和 direction 必须分别使用对应具名函数，Camera/Light axes 使用 direction 语义避免 scale 泄漏。
+
+forward/up rotation 使用 `quaternion.h` 中的 `try_make_rotation_from_forward_up()`；正交轴只是实现细节，不公开独立 basis 值。输出为 Matrix3/Matrix4、且不属于更具体值类型的纯语义构造统一放在 `matrix_construction.h`，当前包括 orientation-based view、target-based LookAt 和 reversed-Z perspective。Transform conversion、matrix algebra、Camera policy 与 backend correction 不得进入该模块。所有 checked construction 遇到非有限、退化或非法参数时不修改输出；业务调用方负责记录对象上下文与诊断。
+
+Windows 上 `Toy3dMath` 通过 PUBLIC compile definition 传播 `NOMINMAX`，避免 `windows.h` 的函数式宏破坏公共 `toy3d::min/max` contract；第一方目标应通过 CMake target 链接 `Toy3dMath`，不得在调用点重新引入竞争宏策略。
 
 ## Threading
 

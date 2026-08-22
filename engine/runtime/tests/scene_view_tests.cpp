@@ -22,20 +22,10 @@ namespace
         return std::fabs(left - right) <= tolerance;
     }
 
-    bool matrix_nearly_identity(const toy3d::mat4x4& value)
+    bool matrix_nearly_identity(const toy3d::Matrix4& value)
     {
-        for (std::size_t column = 0; column < 4; ++column)
-        {
-            for (std::size_t row = 0; row < 4; ++row)
-            {
-                const float expected = column == row ? 1.0f : 0.0f;
-                if (!nearly_equal(value[column][row], expected, 1.0e-4f))
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
+        return toy3d::is_nearly_equal(
+            value, toy3d::Matrix4::identity(), 1.0e-4f);
     }
 }
 
@@ -61,27 +51,28 @@ int main()
             nearly_equal(view.camera_forward.z, 1.0f),
         "SceneView must retain its ViewRect and normalized forward direction");
 
-    const vec4 camera_in_view = view.view_matrix * vec4(desc.camera_position, 1.0f);
-    const vec4 forward_in_view = view.view_matrix *
-        vec4(desc.camera_position + vec3(0.0f, 0.0f, 1.0f), 1.0f);
+    const Vector4 camera_in_view =
+        view.view_matrix * Vector4(desc.camera_position, 1.0f);
+    const Vector4 forward_in_view = view.view_matrix *
+        Vector4(desc.camera_position + Vector3(0.0f, 0.0f, 1.0f), 1.0f);
     check(nearly_equal(camera_in_view.x, 0.0f) &&
             nearly_equal(camera_in_view.y, 0.0f) &&
             nearly_equal(camera_in_view.z, 0.0f) &&
             nearly_equal(forward_in_view.z, 1.0f),
         "The view matrix must use +Z as left-handed camera forward");
 
-    const vec4 near_clip = view.projection_matrix *
-        vec4(0.0f, 0.0f, desc.near_clip, 1.0f);
-    const vec4 far_clip = view.projection_matrix *
-        vec4(0.0f, 0.0f, desc.far_clip, 1.0f);
+    const Vector4 near_clip = view.projection_matrix *
+        Vector4(0.0f, 0.0f, desc.near_clip, 1.0f);
+    const Vector4 far_clip = view.projection_matrix *
+        Vector4(0.0f, 0.0f, desc.far_clip, 1.0f);
     check(nearly_equal(near_clip.z / near_clip.w, 1.0f) &&
             nearly_equal(far_clip.z / far_clip.w, 0.0f, 1.0e-6f),
         "The projection matrix must map finite near to 1 and far to 0");
 
-    const float tan_half_fov = std::tan(30.0f * DEG2RAD);
+    const float tan_half_fov = tan(to_radians(Degrees(30.0f)));
     const float aspect = 1920.0f / 1080.0f;
-    const vec4 right_edge_clip = view.projection_matrix *
-        vec4(desc.near_clip * tan_half_fov * aspect, 0.0f,
+    const Vector4 right_edge_clip = view.projection_matrix *
+        Vector4(desc.near_clip * tan_half_fov * aspect, 0.0f,
             desc.near_clip, 1.0f);
     check(nearly_equal(right_edge_clip.x / right_edge_clip.w, 1.0f),
         "The perspective matrix must derive horizontal scale from ViewRect aspect");

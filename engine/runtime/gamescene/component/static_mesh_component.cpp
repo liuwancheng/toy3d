@@ -59,21 +59,34 @@ namespace toy3d
         }
 
         const AxisAlignedBounds& local_bounds = static_mesh_->local_bounds();
-        const vec3 local_center = (local_bounds.minimum + local_bounds.maximum) * 0.5f;
-        const vec3 local_extent = (local_bounds.maximum - local_bounds.minimum) * 0.5f;
-        const vec3 world_center = vec3(world_transform() * vec4(local_center, 1.0f));
-        const mat4x4& transform = world_transform();
-        const vec3 world_extent{
-            std::abs(transform[0].x) * local_extent.x +
-                std::abs(transform[1].x) * local_extent.y +
-                std::abs(transform[2].x) * local_extent.z,
-            std::abs(transform[0].y) * local_extent.x +
-                std::abs(transform[1].y) * local_extent.y +
-                std::abs(transform[2].y) * local_extent.z,
-            std::abs(transform[0].z) * local_extent.x +
-                std::abs(transform[1].z) * local_extent.y +
-                std::abs(transform[2].z) * local_extent.z};
-        world_bounds_.minimum = world_center - world_extent;
-        world_bounds_.maximum = world_center + world_extent;
+        const Vector3 local_center(
+            (local_bounds.minimum.x + local_bounds.maximum.x) * 0.5f,
+            (local_bounds.minimum.y + local_bounds.maximum.y) * 0.5f,
+            (local_bounds.minimum.z + local_bounds.maximum.z) * 0.5f);
+        const Vector3 local_extent(
+            (local_bounds.maximum.x - local_bounds.minimum.x) * 0.5f,
+            (local_bounds.maximum.y - local_bounds.minimum.y) * 0.5f,
+            (local_bounds.maximum.z - local_bounds.minimum.z) * 0.5f);
+        const Matrix4& transform = world_transform();
+        const Vector3 world_center = transform_position(
+            transform, local_center);
+        const Vector3 world_extent{
+            std::abs(transform.at(0, 0)) * local_extent.x +
+                std::abs(transform.at(1, 0)) * local_extent.y +
+                std::abs(transform.at(2, 0)) * local_extent.z,
+            std::abs(transform.at(0, 1)) * local_extent.x +
+                std::abs(transform.at(1, 1)) * local_extent.y +
+                std::abs(transform.at(2, 1)) * local_extent.z,
+            std::abs(transform.at(0, 2)) * local_extent.x +
+                std::abs(transform.at(1, 2)) * local_extent.y +
+                std::abs(transform.at(2, 2)) * local_extent.z};
+        world_bounds_.minimum = vec3(
+            world_center.x - world_extent.x,
+            world_center.y - world_extent.y,
+            world_center.z - world_extent.z);
+        world_bounds_.maximum = vec3(
+            world_center.x + world_extent.x,
+            world_center.y + world_extent.y,
+            world_center.z + world_extent.z);
     }
 }

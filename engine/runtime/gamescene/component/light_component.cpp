@@ -12,17 +12,7 @@ namespace toy3d
         mark_render_dirty(RenderDirtyFlags::State);
     }
 
-    namespace
-    {
-        bool is_finite(const vec3& value)
-        {
-            return std::isfinite(value.x) &&
-                std::isfinite(value.y) &&
-                std::isfinite(value.z);
-        }
-    }
-
-    bool LightComponent::set_color(const vec3& color)
+    bool LightComponent::set_color(const Vector3& color)
     {
         if (!is_finite(color) || color.x < 0.0f || color.y < 0.0f || color.z < 0.0f)
         {

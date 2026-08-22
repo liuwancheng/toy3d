@@ -1,5 +1,7 @@
 #pragma once
 
+#include "math/matrix4.h"
+#include "math/vector3.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
 #include "rendercore/render_dirty.h"
 #include "rendercore/render_id.h"
@@ -24,7 +26,7 @@ namespace toy3d
 
     struct PrimitiveRenderSnapshot
     {
-        mat4x4 world_transform{1.0f};
+        Matrix4 world_transform;
         AxisAlignedBounds world_bounds;
         MeshRenderResourceId mesh_resource_id;
         std::vector<MaterialRenderResourceId> material_resource_ids;
@@ -41,8 +43,8 @@ namespace toy3d
     struct LightRenderSnapshot
     {
         LightType type = LightType::Directional;
-        mat4x4 world_transform{1.0f};
-        vec3 color{1.0f};
+        Matrix4 world_transform;
+        Vector3 color{1.0f};
         float intensity = 1.0f;
         float range = 0.0f;
         float inner_angle_degrees = 0.0f;

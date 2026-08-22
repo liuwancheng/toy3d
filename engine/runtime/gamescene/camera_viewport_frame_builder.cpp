@@ -27,11 +27,14 @@ namespace toy3d
             return ViewportFrameValidation::Unsupported;
         }
 
-        const mat4x4& camera_transform = camera.world_transform();
+        const Matrix4& camera_transform = camera.world_transform();
         SceneViewDesc view_desc;
-        view_desc.camera_position = vec3(camera_transform[3]);
-        view_desc.camera_forward = vec3(camera_transform[2]);
-        view_desc.camera_up = vec3(camera_transform[1]);
+        view_desc.camera_position = transform_position(
+            camera_transform, Vector3());
+        view_desc.camera_forward = rotate_vector(
+            camera.world_rotation(), Vector3(0.0f, 0.0f, 1.0f));
+        view_desc.camera_up = rotate_vector(
+            camera.world_rotation(), Vector3(0.0f, 1.0f, 0.0f));
         view_desc.vertical_fov_degrees = camera.vertical_fov_degrees();
         view_desc.near_clip = camera.near_clip();
         view_desc.far_clip = camera.far_clip();

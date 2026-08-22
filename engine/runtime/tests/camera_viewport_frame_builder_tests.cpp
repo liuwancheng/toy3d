@@ -3,8 +3,6 @@
 #include "gamescene/component/camera_component.h"
 #include "gamescene/world.h"
 
-#include "glm/gtc/quaternion.hpp"
-
 #include <cmath>
 #include <iostream>
 #include <string>
@@ -35,10 +33,14 @@ int main()
     World world;
     SceneComponent& camera_parent =
         world.create_actor().create_scene_component();
-    SceneTransform parent_transform;
+    Transform parent_transform;
     parent_transform.translation = {10.0f, 0.0f, 0.0f};
-    parent_transform.rotation = glm::angleAxis(
-        90.0f * DEG2RAD, vec3(1.0f, 0.0f, 0.0f));
+    check(try_make_quaternion_from_axis_angle(
+            Vector3(1.0f, 0.0f, 0.0f),
+            to_radians(Degrees(90.0f)),
+            parent_transform.rotation),
+        "The test camera parent rotation must build");
+    parent_transform.scale = {2.0f, 3.0f, 4.0f};
     check(camera_parent.set_local_transform(parent_transform),
         "The test camera parent must accept its hierarchy transform");
     CameraComponent& camera =
@@ -48,8 +50,13 @@ int main()
     check(camera.set_perspective(75.0f, 0.25f, 500.0f),
         "The test camera must accept a finite perspective projection");
 
-    SceneTransform transform;
+    Transform transform;
     transform.scale = {2.0f, 3.0f, 4.0f};
+    check(try_make_quaternion_from_axis_angle(
+            Vector3(0.0f, 1.0f, 0.0f),
+            to_radians(Degrees(45.0f)),
+            transform.rotation),
+        "The test camera local rotation must build");
     check(camera.set_local_transform(transform),
         "The test camera must accept its Game Thread transform");
 
@@ -81,22 +88,25 @@ int main()
         "The built frame must own the requested viewport, scene, View, and output identities");
     const SceneView& view = frame.scene_frames[0].view_family.views[0];
     const float expected_vertical_projection_scale =
-        1.0f / std::tan(75.0f * DEG2RAD * 0.5f);
+        1.0f / tan(to_radians(Degrees(75.0f)) * 0.5f);
+    const float expected_forward_component = std::sqrt(0.5f);
     check(nearly_equal(view.camera_position.x, 10.0f) &&
             nearly_equal(view.camera_position.y, 0.0f) &&
             nearly_equal(view.camera_position.z, 0.0f) &&
-            nearly_equal(view.camera_forward.x, 0.0f) &&
-            nearly_equal(view.camera_forward.y, -1.0f) &&
-            nearly_equal(view.camera_forward.z, 0.0f) &&
-            nearly_equal(view.inverse_view_matrix[1].x, 0.0f) &&
-            nearly_equal(view.inverse_view_matrix[1].y, 0.0f) &&
-            nearly_equal(view.inverse_view_matrix[1].z, 1.0f) &&
             nearly_equal(
-                view.projection_matrix[1][1],
+                view.camera_forward.x, expected_forward_component) &&
+            nearly_equal(
+                view.camera_forward.y, -expected_forward_component) &&
+            nearly_equal(view.camera_forward.z, 0.0f) &&
+            nearly_equal(view.inverse_view_matrix.at(1, 0), 0.0f) &&
+            nearly_equal(view.inverse_view_matrix.at(1, 1), 0.0f) &&
+            nearly_equal(view.inverse_view_matrix.at(1, 2), 1.0f) &&
+            nearly_equal(
+                view.projection_matrix.at(1, 1),
                 expected_vertical_projection_scale) &&
             nearly_equal(view.near_clip, 0.25f) &&
             nearly_equal(view.far_clip, 500.0f),
-        "The SceneView snapshot must derive hierarchy world axes and projection from the CameraComponent");
+        "The SceneView snapshot must derive scale-independent hierarchy axes and projection from the CameraComponent");
 
     ViewportFrame previous = frame;
     CameraViewportFrameDesc invalid = desc;

@@ -6,8 +6,6 @@
 #include "rendercore/geometry/static_mesh.h"
 #include "rendercore/material/material.h"
 
-#include "glm/gtc/matrix_transform.hpp"
-
 #include <cmath>
 #include <iostream>
 #include <type_traits>
@@ -30,19 +28,11 @@ namespace
         return std::abs(lhs - rhs) <= 1.0e-5f;
     }
 
-    bool matrices_nearly_equal(const toy3d::mat4x4& lhs, const toy3d::mat4x4& rhs)
+    bool matrices_nearly_equal(
+        const toy3d::Matrix4& lhs,
+        const toy3d::Matrix4& rhs)
     {
-        for (int column = 0; column < 4; ++column)
-        {
-            for (int row = 0; row < 4; ++row)
-            {
-                if (!nearly_equal(lhs[column][row], rhs[column][row]))
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
+        return toy3d::is_nearly_equal(lhs, rhs, 1.0e-5f);
     }
 }
 
@@ -64,21 +54,21 @@ int main()
     SceneComponent& parent = parent_actor.create_scene_component();
     SceneComponent& child = child_actor.create_scene_component();
 
-    SceneTransform parent_transform;
-    parent_transform.translation = vec3(10.0f, 0.0f, 0.0f);
+    Transform parent_transform;
+    parent_transform.translation = Vector3(10.0f, 0.0f, 0.0f);
     check(static_cast<bool>(parent.set_local_transform(parent_transform)),
         "A valid positive-scale parent transform must be accepted");
 
-    SceneTransform child_transform;
-    child_transform.translation = vec3(0.0f, 2.0f, 0.0f);
+    Transform child_transform;
+    child_transform.translation = Vector3(0.0f, 2.0f, 0.0f);
     check(static_cast<bool>(child.set_local_transform(child_transform)),
         "A valid child transform must be accepted");
     check(static_cast<bool>(child.attach_to(&parent, AttachmentRule::KeepRelative)),
         "Same-World KeepRelative attachment must succeed");
 
     world.update_transforms();
-    check(nearly_equal(child.world_transform()[3].x, 10.0f) &&
-        nearly_equal(child.world_transform()[3].y, 2.0f),
+    check(nearly_equal(child.world_transform().at(3, 0), 10.0f) &&
+        nearly_equal(child.world_transform().at(3, 1), 2.0f),
         "Child world transform must equal parent world times local transform");
 
     parent_transform.translation.x = 20.0f;
@@ -87,13 +77,13 @@ int main()
     check(parent.is_transform_dirty() && child.is_transform_dirty(),
         "A parent transform change must dirty all descendants");
     world.update_transforms();
-    check(nearly_equal(child.world_transform()[3].x, 20.0f),
+    check(nearly_equal(child.world_transform().at(3, 0), 20.0f),
         "World transform update must propagate the changed parent transform");
 
     check(!parent.attach_to(&child, AttachmentRule::KeepRelative),
         "Attachment cycles must fail");
 
-    const mat4x4 child_world_before_detach = child.world_transform();
+    const Matrix4 child_world_before_detach = child.world_transform();
     check(static_cast<bool>(child.attach_to(nullptr, AttachmentRule::KeepWorld)),
         "KeepWorld detach must succeed for a representable transform");
     world.update_transforms();
@@ -112,10 +102,33 @@ int main()
     check(!child.attach_to(&other_component, AttachmentRule::KeepRelative),
         "Cross-World attachment must be rejected");
 
-    SceneTransform invalid_scale;
+    Transform invalid_scale;
     invalid_scale.scale.x = 0.0f;
     check(!child.set_local_transform(invalid_scale),
         "Zero scale must fail");
+
+    SceneComponent& shear_parent =
+        world.create_actor().create_scene_component();
+    SceneComponent& shear_child =
+        world.create_actor().create_scene_component();
+    Transform shear_parent_transform;
+    shear_parent_transform.scale = Vector3(2.0f, 1.0f, 1.0f);
+    Transform shear_child_transform;
+    check(try_make_quaternion_from_axis_angle(
+            Vector3(0.0f, 0.0f, 1.0f),
+            to_radians(Degrees(45.0f)),
+            shear_child_transform.rotation) &&
+        shear_parent.set_local_transform(shear_parent_transform) &&
+        shear_child.set_local_transform(shear_child_transform) &&
+        shear_child.attach_to(&shear_parent, AttachmentRule::KeepRelative),
+        "The hierarchy shear test must build a valid relative attachment");
+    world.update_transforms();
+    const Matrix4 sheared_world = shear_child.world_transform();
+    check(!shear_child.attach_to(nullptr, AttachmentRule::KeepWorld) &&
+            shear_child.parent() == &shear_parent &&
+            matrices_nearly_equal(
+                shear_child.world_transform(), sheared_world),
+        "KeepWorld must reject shear atomically while KeepRelative preserves its world matrix");
 
     check(!static_cast<bool>(parent_actor.set_root_component(&child)),
         "An Actor must reject a root component owned by another Actor");
@@ -237,15 +250,15 @@ int main()
         nearly_equal(mesh_component.world_bounds().maximum.y, 1.0f),
         "Frame-end collection must update StaticMesh world bounds");
 
-    SceneTransform moved_mesh_transform;
+    Transform moved_mesh_transform;
     moved_mesh_transform.translation.x = 4.0f;
-    moved_mesh_transform.scale = vec3(2.0f);
+    moved_mesh_transform.scale = Vector3(2.0f);
     check(mesh_component.set_local_transform(moved_mesh_transform),
         "A moved Primitive transform must be accepted");
     check(mesh_component.set_material_override(0, material_instance),
         "A Primitive state change must be accepted before update collection");
 
-    SceneTransform moved_light_transform;
+    Transform moved_light_transform;
     moved_light_transform.translation.z = 3.0f;
     check(directional.set_local_transform(moved_light_transform) &&
         directional.set_intensity(4.0f),

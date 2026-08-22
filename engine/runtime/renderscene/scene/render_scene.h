@@ -57,7 +57,7 @@ namespace toy3d
         const PrimitiveRenderSnapshot& snapshot() const { return snapshot_; }
         void replace_snapshot(PrimitiveRenderSnapshot snapshot);
         void update_transform(
-            const mat4x4& world_transform,
+            const Matrix4& world_transform,
             const AxisAlignedBounds& world_bounds);
 
     private:
@@ -76,7 +76,7 @@ namespace toy3d
 
         void replace_proxy(PrimitiveRenderSnapshot snapshot);
         void update_transform(
-            const mat4x4& world_transform,
+            const Matrix4& world_transform,
             const AxisAlignedBounds& world_bounds);
 
     private:
@@ -91,7 +91,7 @@ namespace toy3d
 
         const LightRenderSnapshot& snapshot() const { return snapshot_; }
         void replace_snapshot(LightRenderSnapshot snapshot);
-        void update_transform(const mat4x4& world_transform);
+        void update_transform(const Matrix4& world_transform);
         void update_dynamic_data(const LightRenderSnapshot& snapshot);
 
     private:
@@ -107,7 +107,7 @@ namespace toy3d
         const LightSceneProxy& proxy() const { return proxy_; }
 
         void replace_proxy(LightRenderSnapshot snapshot);
-        void update_transform(const mat4x4& world_transform);
+        void update_transform(const Matrix4& world_transform);
         void update_dynamic_data(const LightRenderSnapshot& snapshot);
 
     private:

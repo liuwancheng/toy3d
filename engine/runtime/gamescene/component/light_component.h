@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gamescene/component/scene_component.h"
+#include "math/vector3.h"
 #include "rendercore/render_id.h"
 
 namespace toy3d
@@ -13,8 +14,8 @@ namespace toy3d
         bool enabled() const { return enabled_; }
         void set_enabled(bool enabled);
 
-        const vec3& color() const { return color_; }
-        bool set_color(const vec3& color);
+        const Vector3& color() const { return color_; }
+        bool set_color(const Vector3& color);
 
         float intensity() const { return intensity_; }
         bool set_intensity(float intensity);
@@ -31,7 +32,7 @@ namespace toy3d
         friend class World;
 
         bool enabled_ = true;
-        vec3 color_{1.0f};
+        Vector3 color_{1.0f};
         float intensity_ = 1.0f;
         int render_priority_ = 0;
         LightId light_id_;

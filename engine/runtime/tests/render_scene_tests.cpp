@@ -34,7 +34,7 @@ namespace
         float translation_x)
     {
         toy3d::PrimitiveRenderSnapshot snapshot;
-        snapshot.world_transform[3][0] = translation_x;
+        snapshot.world_transform.at(3, 0) = translation_x;
         snapshot.world_bounds.minimum = {translation_x - 1.0f, -1.0f, -1.0f};
         snapshot.world_bounds.maximum = {translation_x + 1.0f, 1.0f, 1.0f};
         snapshot.mesh_resource_id = toy3d::MeshRenderResourceId(mesh_id);
@@ -47,7 +47,7 @@ namespace
     {
         toy3d::LightRenderSnapshot snapshot;
         snapshot.type = toy3d::LightType::Point;
-        snapshot.world_transform[3][2] = translation_z;
+        snapshot.world_transform.at(3, 2) = translation_z;
         snapshot.color = {1.0f, 0.5f, 0.25f};
         snapshot.intensity = 2.0f;
         snapshot.range = 20.0f;
@@ -112,10 +112,11 @@ int main()
         scene.find_light(light_id)->proxy().snapshot();
     check(dynamic_result.succeeded() && dynamic_result.updated_count == 2,
         "Transform and Light DynamicData updates must apply without rebuilding identity");
-    check(nearly_equal(transformed_primitive.world_transform[3][0], 8.0f) &&
+    check(nearly_equal(
+            transformed_primitive.world_transform.at(3, 0), 8.0f) &&
         transformed_primitive.mesh_resource_id == MeshRenderResourceId(31),
         "A transform-only Primitive update must preserve state owned by its Proxy");
-    check(nearly_equal(transformed_light.world_transform[3][2], 9.0f) &&
+    check(nearly_equal(transformed_light.world_transform.at(3, 2), 9.0f) &&
         nearly_equal(transformed_light.intensity, 6.0f) &&
         transformed_light.type == LightType::Point,
         "A Light update must merge transform and dynamic fields into its persistent Proxy");
@@ -137,7 +138,7 @@ int main()
     check(!unsupported_dynamic_result.succeeded() &&
         unsupported_dynamic_result.rejected_count == 2 &&
         nearly_equal(
-            scene.find_primitive(primitive_id)->proxy().snapshot().world_transform[3][0],
+            scene.find_primitive(primitive_id)->proxy().snapshot().world_transform.at(3, 0),
             8.0f) &&
         nearly_equal(scene.find_light(light_id)->proxy().snapshot().intensity, 6.0f),
         "Unsupported Primitive data and spoofed Light types must not become no-op successes");
@@ -154,7 +155,7 @@ int main()
         scene.find_primitive(primitive_id)->proxy().snapshot().mesh_resource_id ==
             MeshRenderResourceId(41) &&
         nearly_equal(
-            scene.find_primitive(primitive_id)->proxy().snapshot().world_transform[3][0],
+            scene.find_primitive(primitive_id)->proxy().snapshot().world_transform.at(3, 0),
             12.0f),
         "A Primitive State update must atomically replace its complete Proxy snapshot");
 

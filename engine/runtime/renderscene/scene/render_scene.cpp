@@ -23,21 +23,6 @@ namespace toy3d
             return is_finite(value.x) && is_finite(value.y) && is_finite(value.z);
         }
 
-        bool is_finite(const mat4x4& value)
-        {
-            for (int column = 0; column < 4; ++column)
-            {
-                for (int row = 0; row < 4; ++row)
-                {
-                    if (!is_finite(value[column][row]))
-                    {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
         bool is_valid(const AxisAlignedBounds& bounds)
         {
             return is_finite(bounds.minimum) && is_finite(bounds.maximum) &&
@@ -48,7 +33,8 @@ namespace toy3d
 
         bool is_valid_transform(const PrimitiveRenderSnapshot& snapshot)
         {
-            return is_finite(snapshot.world_transform) && is_valid(snapshot.world_bounds);
+            return toy3d::is_finite(snapshot.world_transform) &&
+                is_valid(snapshot.world_bounds);
         }
 
         bool is_valid_state(const PrimitiveRenderSnapshot& snapshot)
@@ -58,12 +44,12 @@ namespace toy3d
 
         bool is_valid_transform(const LightRenderSnapshot& snapshot)
         {
-            return is_finite(snapshot.world_transform);
+            return toy3d::is_finite(snapshot.world_transform);
         }
 
         bool is_valid_dynamic_data(const LightRenderSnapshot& snapshot)
         {
-            if (!is_finite(snapshot.color) ||
+            if (!toy3d::is_finite(snapshot.color) ||
                 snapshot.color.x < 0.0f ||
                 snapshot.color.y < 0.0f ||
                 snapshot.color.z < 0.0f ||
@@ -142,7 +128,7 @@ namespace toy3d
     }
 
     void PrimitiveSceneProxy::update_transform(
-        const mat4x4& world_transform,
+        const Matrix4& world_transform,
         const AxisAlignedBounds& world_bounds)
     {
         snapshot_.world_transform = world_transform;
@@ -163,7 +149,7 @@ namespace toy3d
     }
 
     void PrimitiveSceneInfo::update_transform(
-        const mat4x4& world_transform,
+        const Matrix4& world_transform,
         const AxisAlignedBounds& world_bounds)
     {
         proxy_.update_transform(world_transform, world_bounds);
@@ -179,7 +165,7 @@ namespace toy3d
         snapshot_ = std::move(snapshot);
     }
 
-    void LightSceneProxy::update_transform(const mat4x4& world_transform)
+    void LightSceneProxy::update_transform(const Matrix4& world_transform)
     {
         snapshot_.world_transform = world_transform;
     }
@@ -205,7 +191,7 @@ namespace toy3d
         proxy_.replace_snapshot(std::move(snapshot));
     }
 
-    void LightSceneInfo::update_transform(const mat4x4& world_transform)
+    void LightSceneInfo::update_transform(const Matrix4& world_transform)
     {
         proxy_.update_transform(world_transform);
     }
