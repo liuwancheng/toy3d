@@ -126,7 +126,7 @@
 2. device、graphics context、queue、viewport/presentation 分层；swapchain 收入 viewport 内部。
 3. 资源/view、上传、command-list-local transition、提交状态推进、延迟销毁。
 4. graphics render pass、pipeline、binding、draw/copy 闭环。
-5. 按 `document/rendering-engine-foundation-design.md` 建设 World/RenderScene、Game/Render Thread、Material、Forward Renderer、PostProcess 与 ImGui 的完整显式渲染闭环，不建立通用临时 Pass Scheduler。
+5. 按 OpenSpec change `establish-game-render-framework` 建设 World/RenderScene、Game/Render Thread、Material/resource 生命周期与显式 SceneRenderer 骨架；Forward Renderer、PostProcess 与 ImGui 分别进入后续 Spec，不建立通用临时 Pass Scheduler。
 6. 先设计共享 TaskSystem，再以 Shadow/Forward 等完整 Pass 为边界实现可串行退化的 Pass 间并行录制。
 7. 在真实 Renderer 的资源依赖和生命周期得到验证后建设正式 RDG，逐步接管依赖编译、barrier、transient pool/aliasing、pass culling 与调度。
 8. compute pipeline/context 和 RDG compute pass；async compute/multi-queue及其他高级能力独立后置。

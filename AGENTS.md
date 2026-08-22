@@ -35,6 +35,13 @@ toy3d/
 
 新增运行时代码放入 `engine/runtime/` 中职责最接近的模块，不再建立笼统的 `engine/runtime/core/`。需要同时被 runtime、editor 或 tools 使用的第一方基础设施放入 `engine/core/`，不得为了复用而让工具反向依赖 `engine/runtime/`。RHI 公共类型和行为放在 `drivers/rhi/`，图形 API 实现放在各自独立后端目录；renderscene 不得依赖后端类型。离线工具放在 `engine/tools/`，不得反向依赖 editor。shader 源文件与 shader compiler 实现分开管理。除升级依赖外不要修改 `engine/thirdparty/`。
 
+### 文档读取与规范优先级
+
+- `document/index.md` 是设计文档状态和规范入口的唯一索引。AI 开始架构、实现或审查任务时，应先按任务涉及的模块读取索引中标记为 `Active` 的对应文档，不得默认遍历全部 `document/`。
+- `document/archive/` 只保存历史方案、旧施工台账和已被替代的说明，不构成当前实现约束。除非用户明确要求追溯历史、比较旧方案或恢复背景，否则 AI 不得读取、引用或依据该目录内容作出设计和实现决定。
+- 文档发生冲突时，优先级依次为：`AGENTS.md`、`document/index.md` 指向的 `Active` 专项设计、当前公共接口与测试、`Draft` 文档。`Historical` 与 `Superseded` 文档没有规范效力。
+- 施工进度、验证流水账和阶段性评审记录不得混入长期 contract；完成后应归档或压缩为设计文档中的简短状态摘要。
+
 ## 基础设施与模块边界规范
 
 - 新增文件系统、日志、进程、线程/任务、时间、配置、序列化、缓存、哈希、ID、内存分配或通用容器等能力前，必须先搜索并盘点现有实现，判断它属于业务策略、模块内机制还是跨模块基础设施。禁止业务模块为完成局部闭环而再封装一套语义重复的通用系统。

@@ -2,6 +2,10 @@
 
 ## 1. 文档状态
 
+Game/Render Thread transport 正在废弃本文的 `RenderFramePacket/Dispatcher/Queue/Completion` 旧模式。
+新的唯一入口见 `game-render-thread-framework-design.md`；发生冲突时以该文档为准。本文后续只保留仍有效的 Renderer、Pass、
+Material、View 与输出目标设计；旧 transport 术语只作为迁移/删除对象出现，不作为兼容接口依据。
+
 本文定义 Toy3d 在不引入 RDG 的前提下，完成第一版可运行渲染引擎所采用的长期边界和分阶段执行计划。本文覆盖 GameScene、RenderScene、Game/Render 双线程、Forward Renderer、Material、显式 Pass、PostProcess、ImGui 以及 Editor 演进路径。
 
 GameScene 对象层级、组件注册、Game Thread 到 Rendering Thread 的 RenderCommand 与帧同步边界，现由
@@ -67,9 +71,10 @@ World（GameScene）
 ├── Material / MaterialInstance references
 └── SceneViewFamily / SceneView 构建
         │
-        │ owned value + stable ID
+        │ global RenderCommand façade
+        │ owned value + transferred Proxy ownership
         v
-RenderFramePacket
+Task Graph RenderingThread named queue
         │
         v
 Render Thread
@@ -94,9 +99,10 @@ ForwardSceneRenderer（每个 ViewFamily 临时创建）
 
 - `World` 只属于 Game Thread；
 - 多线程模式下，`RenderScene`、RHI device、RHI viewport 与所有 RHI 对象只由 Render Thread 访问；
-- 跨线程不捕获 Game 对象或 Proxy 裸指针；
+- 跨线程不捕获 Game 对象裸指针；稳定 SceneProxy 指针可以按 `game-render-thread-framework-design.md` 的 FIFO 与
+  shutdown/drain contract 作为 non-owning identity；
 - 上层业务对象不手工管理 Render ID；
-- 单线程模式下，上述对象只在 Main Thread 的 `RenderFrameDispatcher` 调用链中访问；Gameplay
+- 单线程模式下，上述对象只在 Game Thread 立即执行的 RenderCommand 调用链中访问；Gameplay
   仍不得直接访问 RHI；
 - RenderScene 不依赖 Vulkan、D3D11 或 D3D12 原生类型。
 
@@ -109,18 +115,18 @@ engine/runtime/gamescene/
 ├── world / actor
 ├── components/
 ├── transform hierarchy
-└── render update collection
+└── component render-state façade
 
 engine/runtime/rendercore/
+├── scene_interface.*             # Game/Render Scene bridge
+├── render_command.*              # UE 式全局 enqueue façade
+├── frame_end_sync.*              # Task Graph GraphEvent fence
 ├── shader/                       # 已有 ShaderMap runtime
 ├── material/                     # Material / MaterialInstance
 └── geometry/                     # StaticMesh / Section / Slot CPU contract
 
 engine/runtime/renderscene/
-├── render_thread.*
-├── render_frame_packet.*
-├── render_frame_completion.*
-├── render_frame_queue.*
+├── rendering_thread.*
 ├── scene/                        # RenderScene、Info、Proxy
 ├── resources/                    # RenderResourceCache
 ├── output/                       # SceneOutput update、resource version 与 cache
@@ -136,7 +142,9 @@ engine/editor/
 └── Editor widgets、Docking layout 与 Editor policy
 ```
 
-本轮不在 `engine/core/` 新建 Thread、Event、Fence、Queue 或 Task System。`RenderFrameQueue` 与 `RenderFrameCompletion` 的 contract 直接依赖渲染帧、RHI shutdown 和 one-frame lag，属于渲染领域机制。后续 Pass 并行需要通用 `TaskSystem` 时，必须先单独形成 `engine/core/` 基础设施设计文档。
+本轮复用 `engine/core/` 已有 Thread 与 Task Graph，不在 RenderScene 再建立 Thread、Queue、Event 或 Task System。
+RenderCommand 直接创建 RenderingThread named GraphTask；`FrameEndSync` 直接复用 GraphEvent。后续 Pass 并行同样只能
+扩展现有 Task Graph contract，不得在 renderscene 内封装临时线程池。
 
 ## 5. GameScene 领域模型
 
@@ -190,47 +198,49 @@ clip depth   = 0..1 reversed-Z
 
 FOV、near 与 far 都由 `CameraComponent` 配置。接口预留 infinite-far perspective、Orthographic 与高级自定义 projection，但自定义 projection 不得悄悄破坏引擎的 depth 与坐标约定。
 
-## 6. Render ID 与跨线程协议
+## 6. 跨线程 identity 与更新协议
 
 ### 6.1 稳定 ID
 
-跨线程实体使用引擎内部强类型 64 位 ID：
+Scene primitive/light 不使用统一 Render ID 作为跨线程协议 identity：Component 保存 non-owning `SceneProxy*`，
+Scene/SceneInfo 独占 Proxy，生命周期由 FIFO remove 与 shutdown drain 保证。稳定 ID 只用于确有 registry/外部引用语义的
+输出和资源域：
 
 - `0` 为 invalid；
 - 进程生命周期内不复用；
-- `PrimitiveId`、`LightId`、`RenderSceneId`、`ViewportId`、`SceneOutputId` 与各类资源 ID 不得混用；
+- `ViewportId`、`SceneOutputId` 与各类资源 ID 不得混用；
 - ID 由引擎在注册边界自动分配，Gameplay 上层不传递或维护 ID；
-- Component 离开 World 后重新注册时分配新 ID，不复活旧 ID。
+- registry 对象销毁后重新注册时分配新 ID，不复活旧 ID。
 
-ID 解决跨线程身份，owned value payload 解决跨线程数据所有权。二者不能由裸指针捕获替代。
+ID 与稳定 Proxy identity 分属不同 contract；owned value payload 仍解决跨线程数据所有权。不得把任意 Game 对象裸指针
+伪装成稳定 identity。
 
-### 6.2 Dirty 分类
+### 6.2 更新分类
 
-采用三类 Render dirty：
+Transform、State 与 DynamicData 仍用于区分 Scene 更新影响范围：
 
 - `RenderTransformDirty`；
 - `RenderStateDirty`；
 - `RenderDynamicDataDirty`。
 
-MaterialInstance revision 由独立资源更新收集器处理，不为每个引用该 Material 的 Primitive 重复生成 DynamicData 更新。
+MaterialInstance revision 由后续 RenderResource contract 处理，不为每个引用该 Material 的 Primitive 重复生成 DynamicData 更新。
 
-### 6.3 帧末合并
+### 6.3 Render Thread 合并
 
-同一 ID 在一个 `RenderSceneUpdateBatch` 中最多出现一次，合并优先级为：
+Game setter 立即 enqueue，不再构造 Game Thread `RenderSceneUpdateBatch`。Rendering Thread 执行完整 FIFO 后，按 Proxy 与
+更新类别合并空间结构、visibility、draw cache 等昂贵后续工作；后写覆盖同一 Proxy 的前写。
 
 ```text
-Remove > Add/FullState > State > Transform + DynamicData
+SetTransform(A) → SetTransform(B) → SetTransform(C)
+pending_transform[proxy] = C
 ```
 
 规则：
 
-- 新增后多次修改只发送最终完整 `Add`；
-- 同一 Tick 新增又销毁不发送消息，已分配 ID 仍作废；
-- 已存在对象销毁时 `Remove` 覆盖此前 dirty；
-- `RenderStateDirty` 发送完整 snapshot，Render Thread 可保持 ID 并重建 Proxy；
-- Transform 与 DynamicData 可合并在一条 bitmask update 中；
-- payload 全部拥有其数据，Apply 后不回访 World 或 Component；
-- duplicate Add、unknown Update 等协议错误必须诊断，不能静默创建或覆盖。
+- add/update/remove RenderCommand 本身不丢弃并保持 FIFO；
+- remove 清除该 Proxy 尚未消费的 pending Scene work；
+- payload 全部拥有其数据，执行时不回访 World 或 Component；
+- duplicate Add、unknown Update/Remove 等协议错误必须诊断并 fail fast。
 
 ## 7. World、RenderScene 与 View
 
@@ -240,12 +250,13 @@ Remove > Add/FullState > State > Transform + DynamicData
 
 ```text
 World（Game Thread）
-    ↕ ID / 增量更新
+    ↓ SceneInterface / typed SceneProxy / RenderCommand
 RenderScene（Render Thread）
     ← SceneViewFamily / SceneView（每帧观察数据）
 ```
 
-一个 `World` 对应一个持久 `RenderScene`。一个 `RenderScene` 可以被多个 View 观察。每帧不复制整个 World；Render Thread按 batch增量维护 Primitive 与 Light 镜像。
+一个 `World` 对应一个持久 `RenderScene`。一个 `RenderScene` 可以被多个 View 观察。每帧不复制整个 World；
+Rendering Thread 按有序 RenderCommand 增量维护 Primitive 与 Light 镜像。
 
 ### 7.2 SceneViewFamily 与 SceneView
 
@@ -291,7 +302,8 @@ struct ViewportFrame
 
 一个 `ViewportFrame` 可包含多个 Offscreen family，最多一个 Present family，也可以没有 Scene、只显示 UI。同一帧不能有两个 Family 写同一个 `SceneOutputId`。
 
-第一里程碑实际只实现一个 native viewport、一个 Present family 与一个 View。数据模型从第一版保留多 Family/多输出能力，避免 EditorWorld 与 PlayWorld 接入时破坏 packet ABI。
+第一里程碑实际只实现一个 native viewport、一个 Present family 与一个 View。数据模型从第一版保留多 Family/多输出能力，
+避免 EditorWorld 与 PlayWorld 接入时破坏 DrawSceneCommand payload contract。
 
 ### 7.4 持久 Offscreen 输出
 
@@ -323,8 +335,8 @@ ID 保留 `{latest_revision, Live|Released}` metadata：只有 revision 严格�
 写入 Released tombstone；release 是该 ID 的终态，后续即使 revision 更高也不得重新创建，重新打开的逻辑 output
 必须分配新 ID。SceneOutputId 进程内不复用，因此 tombstone 保留到 cache shutdown；不设置提前回收水位。
 
-一个 packet 内同一 output 最多一条 update；ID/revision 无效、单轴 zero、stale revision、unknown/duplicate
-release、对 Released ID 的 Update 或同 extent 的伪 resize 都返回可诊断 `InvalidArgument`。整批 update 先验证
+一个 SceneOutput 更新命令内同一 output 最多一条 update；ID/revision 无效、单轴 zero、stale revision、unknown/duplicate
+release、对 Released ID 的 Update 或同 extent 的伪 resize 都返回可诊断 `InvalidArgument`。命令先验证
 metadata，再构造 staged metadata 与全部非零 candidate texture/RTV/SRV，全部成功后才单次 commit release 与
 replacement。这里的原子性只覆盖 `scene_output_updates` 的 cache 可见状态，不回滚此前已 Apply 的 resource/scene
 updates，也不承诺撤销已经成功但尚未发布的 native allocation；失败路径释放 candidate refs 即可。
@@ -343,31 +355,26 @@ RHI refs；RHI frame slot 强持有 command list 直到 queue completion；RHI r
 必须先解析 cache 中的 Live entry，并要求 ID 与 extent 完全匹配；unknown、Released 或尺寸不匹配均使当前帧以
 `InvalidArgument` 失败。zero extent 只跳过 Scene lookup、Prepare、texture/view 与 GPU pass，不跳过 family、cache
 或 ownership validation。恢复到非零 extent 必须发送更高 revision 的 `Update` 并创建新版本；禁止退回旧尺寸或
-临时隐式创建。Release 后同 packet 再观察也失败。
+临时隐式创建。Release command 之后的 DrawSceneCommand 再观察也失败。
 
 Present 采用显式注册方案：composition root 创建 `RenderViewport` 时一次性注册稳定
 `ViewportId -> Present SceneOutputId`，映射保留到 viewport shutdown。该 Present ID 禁止出现在
-`SceneOutputUpdate`、Offscreen cache、另一 viewport 或另一类型的 observation 中；packet validation 必须按注册
+`SceneOutputUpdate`、Offscreen cache、另一 viewport 或另一类型的 observation 中；DrawSceneCommand validation 必须按注册
 映射核对 ownership。viewport 销毁后 Present ID 同样不复用。
 
 Present 的权威 extent 来自成功 `begin_frame()` 后的 `RHIFrameContext::width()/height()`，不能只相信 acquire 前的
-window/requested extent。处理顺序为：packet 与 Offscreen 逻辑预验证、Apply output updates、对需要 Present 的
+window/requested extent。处理顺序为：预验证 command-owned ViewFamily 与 Offscreen 逻辑状态、Apply 此前有序 output updates、对需要 Present 的
 viewport acquire frame、核对 Present requested extent 与 acquired extent、再 Prepare/record。若 acquire 成功但
 extent 不匹配，必须 `abort_frame()` 消费 acquire synchronization，并以携带 `OutOfDate` 的可恢复 frame failure
-结束；不得修改 immutable packet 或用 acquired extent 偷换 ViewRect。`NotReady/OutOfDate` 的 acquire 失败沿用
+结束；不得修改 command-owned ViewFamily 或用 acquired extent 偷换 ViewRect。`NotReady/OutOfDate` 的 acquire 失败沿用
 viewport 可恢复路径，`Suboptimal` 在已完成 submit/present 时可成功完成本帧并提示后续重建。
 
-`SceneOutputApplyReport` 保存原始 `RHIStatus`；`RenderFrameExecutionStatus` 与跨线程
-`RenderFrameCompletionResult` 增加 `RHIErrorCode rhi_error_code = RHIErrorCode::None`，非 RHI 错误保持 `None`，
-dispatcher 原样传递 code 与 message。Offscreen create/view 路径完整分类为：`InvalidArgument`、`Unsupported`、
-`OutOfMemory`
-映射 `FrameFailed` 且整批 cache 状态不变（`OutOfMemory` 不承诺一定可重试，由上层策略决定）；`DeviceLost` 与
-`BackendFailure` 映射 `FatalRenderer`；该路径若异常返回 viewport 专用的 `NotReady`、`OutOfDate` 或 `Suboptimal`，
-视为 backend contract violation 并映射 `FatalRenderer`，同时保留原始 code 便于诊断。Present 路径仍按既有语义
-把 `NotReady`/`OutOfDate` 映射为 recoverable `FrameFailed`、已完成 present 的 `Suboptimal` 映射为带原始 code 的
-成功帧；terminal code 不降级。
+`SceneOutputApplyReport` 保存原始 `RHIStatus` 供 Rendering Thread 诊断和 terminal 分类，不建立普通 DrawSceneCommand
+的逐命令跨线程 result。Offscreen create/view 路径完整分类为 `InvalidArgument`、`Unsupported`、`OutOfMemory`、
+`DeviceLost` 与 `BackendFailure`；前三者按明确的内容/当前 draw fallback 处理，后两者进入 renderer terminal path。
+viewport 专用的 `NotReady`、`OutOfDate` 或 `Suboptimal` 不能伪装成 device terminal error，反之 terminal code 也不得降级。
 
-第一版 Editor-ready 内容为 Tone Mapping 后的 linear SDR `RGBA8_UNorm`。同一 packet 中先写 Offscreen、
+第一版 Editor-ready 内容为 Tone Mapping 后的 linear SDR `RGBA8_UNorm`。RenderCommand FIFO 保证先写 Offscreen、
 transition 为 `ShaderResourceGraphics`，再由主窗口 ImGui 通过稳定 `ImGuiTextureId` 采样；不把 RHI texture 指针
 传回 Game Thread。
 
@@ -381,8 +388,8 @@ ShaderResource；不支持时返回 `Unsupported`，不得静默换格式或提�
 
 ### 8.1 线程所有权
 
-多线程模式由 Render Thread 独占；single-thread fallback 由 Main Thread 在
-`RenderFrameDispatcher` 调用链中独占：
+多线程模式由 Rendering Thread 独占；single-thread fallback 由 Game Thread 在立即执行的 RenderCommand
+调用链中保持同一逻辑线程域：
 
 - `RHIDevice` 与所有 RHI 对象；
 - `RHIViewportContext`；
@@ -393,49 +400,37 @@ ShaderResource；不支持时返回 `Unsupported`，不得静默换格式或提�
 
 OS Window、Input、World、ImGui Context 与 Widget 构建只属于 Main/Game Thread。
 
-### 8.2 聚合 RenderFramePacket
+### 8.2 RenderCommand stream
 
-每个 Game Tick只提交一个全局 packet：
+Game/Render transport 由 `game-render-thread-framework-design.md` 唯一定义：Game Thread 通过全局
+`enqueue_render_command()` 创建 RenderingThread named GraphTask，不再聚合全局 frame packet，也不建立私有 dispatcher、
+bounded render queue 或逐帧 completion。Scene、resource、draw 与 fence 依靠同一 FIFO stream 排序：
 
-```cpp
-struct RenderFramePacket
-{
-    RenderFrameId frame_id;
-    FrameTiming timing;
-    std::vector<RenderResourceUpdate> resource_updates;
-    std::vector<RenderSceneUpdateBatch> scene_updates;
-    std::vector<SceneOutputUpdate> scene_output_updates;
-    std::vector<ViewportFrame> viewport_frames;
-};
+```text
+Scene add/update/remove
+Resource init/update/release
+DrawSceneCommand(ViewFamily A)
+DrawSceneCommand(ViewFamily B)
+FrameEndFence
 ```
 
-一个 packet可同时包含 EditorWorld、PlayWorld 与多个 viewport。Render Thread固定按以下顺序处理：
-
-1. Apply resource updates；
-2. Apply all scene updates；
-3. 事务式 Apply Offscreen output updates；
-4. 预验证 Present/Offscreen ownership、Offscreen cache/extent 与 ViewFamily；
-5. acquire 所需 Present frame 并核对权威 extent，再 Prepare all ViewFamilies；
-6. record uploads and passes；
-7. submit and present；
-8. complete frame completion；
-9. 才处理下一个 packet。
-
-同一 packet 的 Apply 到 Submit 不与下一 packet交错，因此不需要公开 `freeze()/unfreeze()`。`PreparedRenderFrame` 必须只读并强持有资源；录制期间可使用内部 debug counter/assert 发现非法写，但不把 Freeze 变成架构 API。
+每个 ViewFamily 是对应 DrawSceneCommand 独占的值快照；同一 Game frame 可以没有 draw，也可以提交多个 viewport draw。
+`PreparedRenderFrame` 仍必须只读并强持有实际资源，但它是 Rendering Thread 内部 prepare/record 边界，不是跨线程总 packet。
 
 ### 8.3 one-frame lag
 
-帧节流采用 UE 风格双 completion 轮转：
+帧节流采用 UE 风格双 GraphEvent fence 轮转：
 
 - 默认 `one_frame_thread_lag=true`；
 - Game Thread提交 N 后等待 N-1；
 - lag关闭时提交 N 后等待 N；
 - 第一个 lag帧没有 N-1，只提交不等待；
-- 队列最多包含一个 processing 与一个 queued packet；
-- Render completion 表示 worker（未来）、RHI submit 与 present调用已结束，不表示 GPU 已执行完毕；
+- named queue 动态增长，不以任意固定命令数量拒绝已提交命令；Game Thread 通过 fence 限制领先距离；
+- fence 表示此前 Rendering Thread CPU command 已执行且所需 RHI work 已 submit，不表示 GPU 已执行完毕；
 - GPU completion 由 RHI frame slot、queue completion value 与 backend fence管理。
 
-单线程模式不创建 Render Thread，强制 lag关闭，并在 Main Thread同步执行相同渲染管线阶段。Gameplay 仍不得直接访问 RHI。
+single-thread 模式不创建 RenderingThread，`enqueue_render_command()` 在 Game Thread 立即执行同一 callable；不建立同线程
+queue 或额外 pump 点。Gameplay 仍不得直接访问 RHI。
 
 ### 8.4 Main Thread帧顺序
 
@@ -447,35 +442,31 @@ struct RenderFramePacket
 5. 更新 Transform hierarchy与 world bounds
 6. 构建 SceneViewFamily / SceneView
 7. ImGui::Render()并深拷贝 ImGuiDrawPacket
-8. 收集资源更新、RenderSceneUpdateBatch 与 SceneOutputUpdate
-9. enqueue RenderFramePacket(N)
-10. 按 lag策略等待 completion
+8. 各变化入口已即时 enqueue；提交本帧 DrawSceneCommand
+9. enqueue FrameEndFence(N)
+10. 按 lag 策略等待当前或上一 fence
 ```
 
 先布局 ImGui再构建 SceneView，使未来 Editor 可按中央面板的真实像素尺寸创建 Offscreen输出。
 
 ### 8.5 初始化与关闭
 
-初始化使用同步 completion握手：
-
-1. Main Thread创建 OS Window与 surface descriptor；
-2. 启动 `RenderFrameDispatcher`；
-3. 渲染执行线程创建 RHI device、注册 Present ID 的 RenderViewport、RenderResourceCache 与
-   SceneOutputResourceCache；
-4. bootstrap上传 Error Material、placeholder textures与 ImGui font；
-5. bootstrap submit完成后才开放正常帧。
+引擎初始化阶段创建 Task Graph、attach GameThread、创建/attach RenderingThread，并在 Rendering Thread 初始化
+Renderer/RHI 与最小 `RHIDeviceCommandList`。这些步骤成功后才开放 process-wide RenderCommand façade；普通 enqueue 不增加
+逐调用启动状态机。bootstrap 资源完成所需 submit 边界后，才创建 World/Scene/RenderViewport 并进入正常 tick。
 
 shutdown顺序：
 
-1. Main Thread停止提交新 packet；
-2. 等待所有 frame completion；
+1. Game Thread停止 tick 与新 draw request，World/Component enqueue remove/release；
+2. 关闭正常 RenderCommand 入口并等待最终 RenderCommandFence；
 3. 等待未来 recording workers退出；
 4. 渲染执行线程销毁 viewport/output resources、RenderScene与 cache；
 5. 等 GPU/RHI shutdown所需完成点并销毁 device；
-6. join Render Thread；
-7. Main Thread最后销毁 OS Window。
+6. request return并 join RenderingThread；
+7. 最后 shutdown Task Graph并销毁 OS Window。
 
-窗口关闭事件只设置退出请求，不立即销毁 native window。所有失败路径必须完成正在等待的 completion。
+窗口关闭事件只设置退出请求，不立即销毁 native window。正常 shutdown 必须 drain；terminal failure 必须唤醒 fence waiter，
+并让 pending RenderCommandTask 只析构 payload、不再执行 callable。
 
 ## 9. RenderScene 数据模型
 
@@ -488,7 +479,10 @@ PrimitiveSceneInfo
 └── PrimitiveSceneProxy
 ```
 
-Proxy由 Render Thread创建、拥有和销毁。Proxy只生成 `MeshBatch`，不得直接录制 RHI draw。`PrimitiveSceneInfo` 保存 RenderScene索引、bounds、visibility相关状态与 Proxy所有权。
+Proxy由 Component 在 Game Thread创建为 CPU-only 类型化渲染镜像，随 add RenderCommand 转移到 Rendering Thread；
+SceneInfo/Scene 使用 RAII 独占拥有并销毁。Component 只保留 non-owning Proxy 指针。Proxy 不得保存可由 Rendering Thread
+解引用的 Game 对象指针；Proxy只生成 `MeshBatch`，不得直接录制 RHI draw。`PrimitiveSceneInfo` 保存 RenderScene索引、
+bounds、visibility相关状态与 Proxy所有权。
 
 ### 9.2 Light
 
@@ -503,7 +497,8 @@ Directional、Point 与 Spot不得塞进 Primitive路径。Light Proxy保存 Ren
 
 ### 9.3 生命周期错误
 
-对已存在 ID执行 Add、对未知 ID执行 Update，以及重复 Remove均为同步协议错误。内容级错误可跳过对象，但不得破坏 batch后续对象的 Apply。Proxy重建失败时保留错误诊断并按资源重要性选择 placeholder或跳过，不能留下半更新对象。
+duplicate Add、unknown Update/Remove 与错误线程/生命周期调用属于协议不变量破坏，必须诊断并 fail fast，不建立逐命令
+异步回执。资源内容缺失仍可按明确策略选择 placeholder；不得留下半更新对象。
 
 ## 10. RenderResourceCache
 
@@ -734,9 +729,9 @@ spot_attenuation =
 
 每个 `SceneViewFamily`临时创建一个 `ForwardSceneRenderer`，类似 UE 的每帧 `FSceneRenderer`。它持有 visibility、selected lights、MeshBatch/DrawPacket、prepared pass inputs与录制结果。未来工厂可创建 `DeferredSceneRenderer`；在未实现时请求 Deferred必须返回 `Unsupported`。
 
-`PreparedRenderFrame`是 Apply结束后的只读帧快照。它强持有所有 recording 所需的 scene、content resource 与
+`PreparedRenderFrame` 是 Scene apply 后的只读准备结果。它强持有所有 recording 所需的 scene、content resource 与
 `SceneOutputResource` 版本，worker 不得回读可变 RenderScene 或 output cache。Render Thread 必须等同帧所有
-worker 结束后才处理下一 packet；第一阶段无 worker，仍遵守此 contract。
+worker 结束后才结束当前 DrawSceneCommand；第一阶段无 worker，仍遵守此 contract。
 
 ## 15. 显式 Pass 与资源
 
@@ -829,7 +824,8 @@ Present
 - `ImGui::Render()`；
 - 将结果深拷贝为 immutable `ImGuiDrawPacket`。
 
-DrawPacket与 World/View数据进入同一个 `RenderFramePacket`，接受相同 one-frame lag。Render Thread不得访问 ImGui Context或 ImDrawList原始内存。
+DrawPacket 是 command-owned value；它随对应 viewport 的 DrawSceneCommand 进入 Rendering Thread，并接受相同
+FrameEndFence lag contract。Rendering Thread 不得访问 ImGui Context 或 ImDrawList 原始内存。
 
 ### 16.2 三层结构
 
@@ -879,7 +875,8 @@ FrustumCulling=true
 ForwardMaxLocalLights=8
 ```
 
-Renderer、RenderScene与 Pass不得直接轮询全局 `ConsoleManager`。第一版这些配置初始化后不可变；单线程强制关闭 lag。未来 Editor动态设置通过带 revision的 `RendererSettingsUpdate`在 packet帧边界生效。
+Renderer、RenderScene与 Pass不得直接轮询全局 `ConsoleManager`。第一版这些配置初始化后不可变；single-thread 模式不等待
+跨线程 lag fence。未来 Editor 动态设置通过带 revision 的 RenderCommand 在明确的 frame fence 边界生效。
 
 ## 18. 错误模型
 
@@ -888,10 +885,12 @@ Renderer、RenderScene与 Pass不得直接轮询全局 `ConsoleManager`。第一
 ```text
 ContentError      → placeholder或跳过单个对象
 RecoverableFrame  → 放弃本帧并在后续帧恢复
-FatalRenderer     → 停止接收 packet并有序关闭
+FatalRenderer     → 停止接收 RenderCommand并进入 terminal teardown
 ```
 
-每个 packet必须且只能完成一次 `RenderFrameCompletion`。completion RAII guard兜底所有 early return。错误通过显式 status传回 Game Thread，不跨线程抛异常。
+RenderCommand callable 为 `noexcept`，不通过异常或普通逐命令 completion 向 Game Thread 返回结果。协议误用 fail fast；
+可恢复 draw/viewport 错误保留原始诊断并由 Rendering Thread 策略处理；device terminal 错误 latch renderer terminal state，
+停止接受新命令并唤醒 FrameEndFence waiter。
 
 处理策略：
 
@@ -899,10 +898,11 @@ FatalRenderer     → 停止接收 packet并有序关闭
 - `OutOfDate`：放弃该 viewport帧并安排 Render Thread重建；其他 viewport可继续；
 - Pass必需资源或录制失败：`abort_frame()`并丢弃未提交 command list；
 - Present失败：报告已提交 GPU工作的结果，按状态重建或终止；
-- `DeviceLost`、Render Thread未捕获异常或关键同步失效：进入 terminal state，拒绝新 packet并唤醒全部等待者；
+- `DeviceLost`、backend failure 或关键同步失效：进入 terminal state，拒绝新 RenderCommand 并唤醒全部等待者；
 - 正常失败不得直接 `wait_idle()`，只有明确的 viewport重建、flush或 shutdown可执行所需同步。
 
-未来并行录制中，任一 worker失败后仍须等待同帧其他 worker退出，再丢弃所有录制结果并完成 completion。
+未来并行录制中，任一 worker 失败后仍须等待同一 draw 的其他 worker 退出，再丢弃所有录制结果并完成该 draw 的内部收尾；
+普通 DrawSceneCommand 仍不新增跨线程 completion。
 
 ## 19. Pass 间并行与后续 RDG
 
@@ -910,7 +910,7 @@ FatalRenderer     → 停止接收 packet并有序关闭
 
 第二阶段在显式 Forward Renderer稳定后：
 
-1. 先为共享 `TaskSystem`形成独立 `engine/core/`设计；
+1. 为现有 `engine/core/` Task Graph 补齐并行录制所需的能力与测试；
 2. 为 Vulkan/D3D12实现独立 graphics recording context capability；
 3. Prepared输入保持 immutable；
 4. 首个并行用例为未来 Shadow Pass与 Forward Pass的 Pass间并行；
@@ -981,13 +981,13 @@ Multithreaded=true,  OneFrameThreadLag=true
 Multithreaded=false, OneFrameThreadLag=false
 ```
 
-两条路径都必须完成 resize、最小化/恢复、正常退出、失败 completion与资源安全销毁。
+两条路径都必须完成 resize、最小化/恢复、正常退出、terminal fence 唤醒与资源安全销毁。
 
 ### 21.3 自动测试矩阵
 
 - 强类型 ID invalid、非复用与类型隔离；
 - Transform hierarchy、cycle、KeepWorld与非法 scale；
-- dirty合并优先级；
+- RenderCommand FIFO 与 Rendering Thread dirty work 合并；
 - RenderScene Add/Update/Remove协议；
 - Frustum Culling；
 - 灯光选择、稳定排序与 `0..8`截断；
@@ -997,8 +997,8 @@ Multithreaded=false, OneFrameThreadLag=false
 - SceneOutput release + 多 create 中途 RHI failure 的零部分发布，以及旧版本从 Prepared、command list 到
   frame-slot completion 的引用释放顺序；
 - zero unknown/released/mismatched observation 与 Present ID/update/viewport ownership 冲突；
-- SceneOutput 每个 `RHIErrorCode` 的 frame/fatal 映射及 completion 原始 code 传递；
-- queue容量、lag、flush、shutdown与 completion必达；
+- SceneOutput 每个 `RHIErrorCode` 的 recoverable/terminal 映射与原始诊断保留；
+- named queue 动态增长、lag、flush、normal drain、terminal skip 与 fence 必达；
 - ImGui DrawPacket深拷贝、clip、offset与 invalid TextureId；
 - RHI `RGBA16F render→sample`；
 - RHI `D24S8 depth attachment→depth SRV`；
@@ -1032,15 +1032,15 @@ Multithreaded=false, OneFrameThreadLag=false
 - World、Actor、SceneComponent hierarchy；
 - Mesh、Camera与三类 Light Component；
 - Material/MaterialInstance引用；
-- 强类型 Render ID、dirty与 batch合并；
+- Component 创建类型化 SceneProxy、SceneInterface 与 Render Thread dirty work 合并；
 - 完成纯 CPU测试。
 
-### 批次 4：Render Frame Transport
+### 批次 4：RenderCommand Transport
 
-- packet、bounded queue与 completion；
-- Render Thread lifecycle；
-- one-frame lag与 single-thread fallback；
-- 用 fake `RenderFrameProcessor` 覆盖成功、失败、flush与 shutdown。
+- 全局 `enqueue_render_command()` 与专用 RenderingThread GraphTask；
+- RenderingThread lifecycle 与初始化阶段 binding；
+- 双 GraphEvent fence、one-frame lag 与 single-thread immediate fallback；
+- 覆盖 FIFO、错误线程 fail fast、normal drain、terminal skip、flush 与 shutdown。
 
 ### 批次 5：RenderScene与资源镜像
 
@@ -1100,7 +1100,7 @@ Multithreaded=false, OneFrameThreadLag=false
 第一里程碑之后建议顺序：
 
 1. Directional single shadow map；
-2. `engine/core/` TaskSystem独立设计与实现；
+2. 扩展现有 `engine/core/` Task Graph 的 pass recording 用例；
 3. Shadow/Forward Pass间并行录制，D3D11串行退化；
 4. Editor Offscreen Scene View与 PlayWorld；
 5. D3D11 backend用于跨 API验证；

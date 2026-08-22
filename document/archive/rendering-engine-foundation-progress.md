@@ -1,5 +1,7 @@
 # Toy3d 渲染引擎基础架构施工进度
 
+> **历史文档：** 本文是旧 Foundation 施工与验证台账，不构成当前架构、实现状态或测试基线。当前规范入口见 `document/index.md`。
+
 ## 1. 文档职责
 
 本文是 `rendering-engine-foundation-design.md` 的施工台账，记录当前可复现基线、工作包状态、

@@ -1,5 +1,10 @@
 # Toy3d RHI 设计
 
+> **Active override（Game/Render change）**：OpenSpec change
+> `establish-game-render-framework` 的 `game-render-framework/rhi-frame-submission` capability 与 design 是 viewport frame-end、业务 submit、
+> presentation status、abort 和资源提交后发布语义的当前规范。本文中与该 contract 冲突的旧返回值或失败发布表述不再构成
+> 实现约束；其余公共 RHI、资源、binding、pipeline 和跨后端 contract 继续有效。change 归档后应将结果同步回本文并删除本 override。
+
 ## 1. 文档目的
 
 本文定义 Toy3d 的 Render Hardware Interface（RHI）公共架构、Render 上层调用方式、资源与同步模型，以及 Shader、Binding、Pass 和 Material 系统之间的边界。后续 RHI 与各图形 API 后端按本文分阶段实现。
@@ -25,7 +30,7 @@ UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCom
 
 第一阶段不实现 async compute、bindless、ray tracing、VRS、多 GPU、完整 Render Graph、RHI thread 和 draw batch 内并行。公共描述符和 binding layout 需要预留 compute 与 storage resource，但未实现功能必须返回 `Unsupported`，不得空操作成功。
 
-RHI 图形闭环后的上层路线以 `rendering-engine-foundation-design.md` 为准：先使用显式、长期可保留的 SceneRenderer 与业务 Pass 完成 World/RenderScene、Game/Render Thread、Forward Renderer、PostProcess 与 ImGui，再基于真实资源依赖后置引入 RDG。该显式阶段不建立通用临时 Pass Scheduler。
+RHI 图形闭环后的当前上层路线以 OpenSpec change `establish-game-render-framework` 为准：先完成 World/RenderScene、Game/Render Thread、资源生命周期与显式 SceneRenderer 骨架。Forward Renderer、PostProcess、ImGui 与后续 RDG 的具体能力分别进入后续 Spec；期间不建立通用临时 Pass Scheduler。
 
 ## 3. 总体分层
 
@@ -467,8 +472,8 @@ Material 系统正式采用：
 Material → MaterialInstance → MaterialRenderProxy
 ```
 
-不引入 `MaterialTemplate` 或 `MaterialInterface`。完整第一版范围见
-`rendering-engine-foundation-design.md`。
+不引入 `MaterialTemplate` 或 `MaterialInterface`。当前 Material 线程与资源边界见 OpenSpec change
+`establish-game-render-framework` 的 `game-render-framework/material-updates` 与 `game-render-framework/render-resource-manager` capability。
 
 ### 11.1 `Material`
 
@@ -483,16 +488,17 @@ descriptor set 或 D3D12 descriptor handle。
 ### 11.2 `MaterialInstance`
 
 `MaterialInstance` 保存 `MaterialRef` 与由稳定 `ShaderParameterId` 标识的 typed
-parameter override。参数类型必须匹配 Material schema；动态参数更新只增加 revision，
-不触发 shader 编译。`StaticMeshComponent` 始终引用 MaterialInstance，不在 Component
+parameter override。参数类型必须匹配 Material schema；普通动态参数更新按 RenderCommand FIFO
+更新稳定 `MaterialRenderProxy`，不携带通用 revision，也不触发 shader 编译。`StaticMeshComponent` 始终引用 MaterialInstance，不在 Component
 内复制一套材质字段。
 
 ### 11.3 `MaterialRenderProxy`
 
-`MaterialRenderProxy` 由 Render Thread 创建和拥有，保存已 resolve 的不可变参数快照、
-texture/sampler strong references、ShaderMap program 与 Material binding。资源更新使用稳定
-Render Resource ID 和单调 revision；正在录制或被 GPU 使用的旧版本由 RenderScene、
-Prepared Frame 与 RHI completion 生命周期继续保活。
+`MaterialInstance` 拥有地址稳定的 `MaterialRenderProxy` render representation，其可变状态只由
+Render Thread 访问。Proxy 保存 RT 参数表、non-owning `TextureRenderResource*`、ShaderMap program
+和 binding cache；Draw 前解析 override/default 并按需物化 frame-local constants 与 Material binding。
+Texture Asset/上层状态保证引用生命周期，已录制 GPU 工作则由 RHI command list 强引用实际 view、
+binding 与 native resource，直至对应 queue completion。
 
 ### 11.4 稳定 Binding ABI
 
@@ -774,7 +780,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 ### 阶段 7：后续演进
 
-- 按 `rendering-engine-foundation-design.md` 完成显式 Forward Renderer；
+- 先按 OpenSpec change `establish-game-render-framework` 完成显式 SceneRenderer 与资源生命周期，再以独立 Spec 完成 Forward Renderer；
 - pass 资源与依赖由 SceneRenderer/业务 Pass 明确管理；
 - 先设计共享 TaskSystem，再增加每线程 context/pool 与 pass 间并行录制；
 - compute context 和 dispatch；
@@ -804,4 +810,4 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 - Global、View、Pass、Material、Object 固定为五个逻辑 group；各 target/profile 的 physical set/register/root mapping 独立版本化；
 - Material 的序列化格式与未来 Material Graph 生成接口；
 - 第一阶段是否缓存静态 mesh draw packet；
-- RDG 的具体资源声明与编译模型；引入条件和前置路线见 `rendering-engine-foundation-design.md`。
+- RDG 的具体资源声明与编译模型；在显式 Renderer 与真实资源生命周期完成验收后另立 Spec。

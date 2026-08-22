@@ -2,7 +2,11 @@
 
 ## 1. 状态与目标
 
-本文取代 `rendering-engine-foundation-design.md` 中由 `World` 帧末扫描并生成
+Game Thread 到 Rendering Thread 的正式边界统一由 OpenSpec change
+`establish-game-render-framework` 定义。本文第 5～7 节只保留 GameScene 调用侧摘要；线程、RenderCommand、
+SceneProxy、frame fence 或 RHI 资源命令语义以该 change 的 capability specs 与 design 为准。
+
+本文取代已归档 `archive/rendering-engine-foundation-design.md` 中由 `World` 帧末扫描并生成
 `RenderSceneUpdateBatch`、由 `RenderResourceUpdateCollector` 全局遍历资源，以及
 `CameraViewportFrameBuilder` 从 `CameraComponent` 直接构建渲染帧的旧 GameScene 方案。
 历史施工记录只保留为事实记录，不再代表长期接口。
@@ -23,12 +27,12 @@ collector/builder 兼容入口，也不让 `World` 暂时承担 RenderScene diff
 - 只有显式启用的 Actor 参与 Tick，ActorComponent 不提供通用 Tick；
 - Tick 或生命周期回调中销毁 Actor 时先标记 pending，安全点再执行 EndPlay、注销与释放；
 - GameScene 不包含 RenderScene、RHI、ViewportFrame 或后端类型；
-- 未来组件注册和变更通过 owned closure RenderCommand 推送，不扫描整个 World。
+- 组件注册和变更通过 UE 式 RenderCommand 推送，不扫描整个 World。
 
 非目标：
 
 - 不复制 UE 的 UObject、反射、CDO、Blueprint、Level、GC 或 replication；
-- 本批不实现 Rendering Thread、RenderCommand queue、SceneProxy 或帧同步；
+- 本文不重复定义 Rendering Thread、RenderCommand、SceneProxy 或帧同步实现；
 - 本批不实现 Character、Pawn、Controller、GameMode、Physics 或通用 component tick；
 - 不把 Asset/Material/StaticMesh 资源发布策略塞进 World。
 
@@ -97,8 +101,9 @@ World
 - `UPrimitiveComponent` 在注册、Transform 或动态数据变化时通知 Scene；
 - `AStaticMeshActor` 只是一个拥有默认 `UStaticMeshComponent` root 的便利 Actor。
 
-Toy3d 不复制 UObject subobject、construction script 或并发后缀。注册生命周期保持直接的 C++
-composition；RenderCommand bridge 出现后再为 PrimitiveComponent 增加稳定的 render-state contract。
+Toy3d 不复制 UObject subobject、construction script 或 UE 宏。注册生命周期保持直接的 C++ composition；
+PrimitiveComponent 的正式 render-state contract 见第 5 节与 OpenSpec capability
+`game-render-framework/renderer-scene-ownership`、`game-render-framework/primitive-proxy-lifecycle`。
 
 ### 4.1 World、Actor 与 Component 运行时生命周期
 
@@ -130,54 +135,60 @@ Transform、Physics、Animation、Particle 与 Audio 等领域更新不通过通
 `WorldTickContext`。World 不直接读取平台时钟。Tick 开始时固定本帧 Actor 数量，因此 Tick
 期间新 spawn 的 Actor 可以完成 register/initialize/begin play，但从下一帧才参与 Tick。
 
-## 5. 未来 Game → RenderCommand 边界
+## 5. Game → RenderCommand 边界
 
-GameScene 不直接依赖 `RenderScene`。未来在 RenderCore 定义小型 `SceneInterface`，由 Rendering
-Thread 所有的实现接收 Game Thread 调用并 enqueue owned closure：
+GameScene 不直接依赖 RenderScene 实现。RenderCore 定义小型 `SceneInterface`，稳定 `Scene` 自身实现该接口；
+Game Thread 方法只 enqueue，Render Thread 方法才修改场景状态：
 
 ```text
 PrimitiveComponent register
-    -> SceneInterface::add_primitive(owned snapshot)
+    -> Component::create_scene_proxy()
+    -> SceneInterface::add_primitive(unique_ptr<SceneProxy>)
     -> enqueue RenderCommand
-    -> Rendering Thread creates PrimitiveSceneInfo / SceneProxy
+    -> Rendering Thread creates PrimitiveSceneInfo and owns SceneProxy
 
 Transform change
-    -> coalesced end-of-frame component update
-    -> SceneInterface::update_primitive_transform(id, owned transform/bounds)
+    -> SceneInterface::update_primitive_transform(SceneProxy*, owned transform/bounds)
     -> enqueue RenderCommand
+    -> Rendering Thread updates Proxy and merges expensive Scene work
 
 PrimitiveComponent unregister
-    -> SceneInterface::remove_primitive(id)
+    -> clear Component non-owning SceneProxy*
+    -> SceneInterface::remove_primitive(SceneProxy*)
     -> enqueue RenderCommand
 ```
 
 约束：
 
-- closure 不捕获 Actor、Component、World 或临时对象裸指针；
-- payload 使用 stable ID、值快照或明确共享所有权；
+- SceneProxy 是 Component 的类型化 Rendering Thread 镜像，不是 snapshot wrapper；
+- Component 在 Game Thread 创建 CPU-only Proxy 并保留 non-owning `SceneProxy*`，Scene/SceneInfo 使用 RAII 独占拥有；
+- Proxy 复制渲染数据，不保存可由 Rendering Thread 解引用的 Actor、Component 或 World 指针；
+- Scene 结构相关更新走 SceneInterface；纯 Proxy-local 更新可使用明确的 `*_game_thread()` enqueue façade；
+- RenderCommand payload 使用 owned value、转移所有权或 immutable render data，稳定 Scene/Proxy 指针只作为受 drain contract
+  保护的 identity；
 - `World` 不遍历所有 Actor 来发现资源或渲染变化；
 - `StaticMeshComponent` 保留 `StaticMeshRef` 作为 Game Thread 资产引用；StaticMesh 保存可共享的
   CPU 几何、local bounds、section 与默认 Material slot，不能由 Component 或 RHI handle 取代；
-- `set_local_transform()`、`set_static_mesh()`、Material override 与 Light setter 是未来标记
-  Transform/State/DynamicData dirty 的唯一属性修改入口；
-- RenderCommand lambda 只能捕获 stable render ID、owned value snapshot 或 immutable resource
-  version，不捕获 World、Actor、Component 或可变资产裸指针；
+- `set_local_transform()`、`set_static_mesh()`、Material override 与 Light setter 是变化入口并立即 enqueue，不在
+  Game Thread 建立统一 frame-local render batch；
 - StaticMesh/Material 的 RHI 初始化与释放走 RenderResource 自己的命令生命周期，不建立全局 collector；
 - CameraComponent 只保存相机属性，View 由 GameViewport、Player 或 Editor viewport 根据输出尺寸构建；
 - RenderCommand 是高层 CPU 命令，RHI command list 和 GPU command buffer 是后续两层。
 
 ## 6. 帧同步约束
 
-Rendering Thread 接入时采用 UE 风格但保持 Toy3d 的显式注入：
+Rendering Thread 采用 UE 风格全局 enqueue façade，并直接复用 Task Graph：
 
 - Rendering Thread attach `NamedThread::RenderingThread` 并只 pump Task Graph named queue；
-- 第一阶段只有 Game Thread 可以提交正式 RenderCommand，保持单 producer command stream；
+- 引擎初始化阶段保证 RenderingThread/Renderer/RHI 已建立后才开放 RenderCommand；
+- 第一阶段只有 Game Thread 可以提交正式 RenderCommand，错误线程 fail fast；
+- multi-thread 模式进入 RenderingThread named queue，single-thread 模式在 Game Thread 立即执行相同 callable；
 - 每个全局帧末插入 tracked frame fence；允许 one-frame lag 时双 fence 轮转，提交 N 后等待 N-1；
 - Game Thread 通过 `TaskGraphInterface::wait_until_task_completes()` 等待并 helping，不另建条件变量队列；
 - RenderCommand/frame fence 只表示 Rendering Thread CPU 工作到达完成点；
 - GPU 完成继续由 `RHIQueueCompletionValue`、viewport frame slot 和 backend fence 表达；
 - flush、renderer shutdown 和 device teardown 是显式强同步边界，正常逐帧不等待 GPU idle；
-- 任何已接受命令都必须发布 completion，错误结果在 completion release 前写入 owned result payload。
+- 普通 RenderCommand 为 `FireAndForget`；只有 RenderCommandFence 等显式同步任务使用 GraphEvent completion。
 
 ## 7. 迁移批次
 
@@ -198,15 +209,15 @@ Rendering Thread 接入时采用 UE 风格但保持 Toy3d 的显式注入：
 
 ### G2：Render SceneInterface 与组件 render state
 
-- 先设计 RenderCore `SceneInterface`、render state ID 和错误语义；
-- PrimitiveComponent 注册/注销生成 add/remove closure；
-- Transform/state/dynamic data 在 Game Thread 帧末合并后生成 update closure；
-- RenderScene 创建并独占 SceneInfo/Proxy。
+- 实现 RenderCore `SceneInterface` 与类型化 SceneProxy contract；
+- PrimitiveComponent 在 Game Thread 创建 Proxy，注册/注销生成 add/remove closure；
+- transform/state/dynamic data 立即 enqueue，Render Thread 合并昂贵 Scene work；
+- SceneInfo/Scene 使用 RAII 独占 Proxy，Component 只保留 non-owning 指针。
 
 ### G3：Rendering Thread 与 RenderCommand stream
 
 - composition root 创建 RenderingThread Runnable；
-- 用 Task Graph named queue 替换 `RenderFrameDispatcher` 的 `std::thread`、私有 queue 和 completion condition variable；
+- 全局模板 façade 直接使用 Task Graph named queue，替换 `RenderFrameDispatcher` 的 `std::thread`、私有 queue 和 completion；
 - 实现双 frame fence 与 single-thread fallback；
 - 完成启动、flush、fatal、shutdown 与窗口生命周期测试。
 

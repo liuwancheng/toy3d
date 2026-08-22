@@ -1,5 +1,11 @@
 # Toy3d 线程与 Task Graph 设计
 
+> **Active override（Game/Render change）**：OpenSpec change
+> `establish-game-render-framework` 已确认 Task Graph 为 composition root 显式拥有的进程级唯一 active instance，并提供
+> 生命周期受控的 `TaskGraphInterface::get()` / `is_running()`。本文中禁止全局访问、要求所有 GraphTask 调用方逐次注入
+> `TaskGraphInterface&` 的旧表述，在该 change 范围内不再构成实现约束；其余 Queue、GraphEvent、Named Thread、等待和 shutdown
+> contract 继续有效。change 归档后应将该决定同步回本文并删除本 override。
+
 ## 1. 文档状态与核心决定
 
 本文定义 Toy3d 第一版共享线程基础设施与 Task Graph。设计依据以本机 `D:/ue4.27plus/Engine` 中的 UE4.27Plus 源码为主，不以 Toy3d 当前任何多线程、渲染线程或局部队列实现为兼容前提。
@@ -464,7 +470,8 @@ contract：
 - 只有 owner consumer 可以调用 `dequeue()`；
 - linked dummy-node 实现允许 consumer 安全回收旧 tail，无需 hazard pointer；
 - enqueue 为元素分配 node，因此是无界、运行期分配的容器；
-- 上层必须提供 outstanding budget/backpressure；
+- 通用调用方应按领域需要提供 outstanding budget/backpressure；Task Graph 的 Game/Rendering named queue 是明确例外，
+  为不能丢失的线程亲和命令动态增长，直到内存分配失败；
 - `is_empty()` 只是 consumer 的瞬时观测；
 - 销毁前所有 producer/consumer 必须退出。
 
@@ -477,8 +484,9 @@ Any Worker ready queue 需要 MPMC。内部实现采用固定 2 的幂容量、p
 - 多 producer、多 consumer；
 - 不做动态节点回收，避免 ABA/hazard pointer；
 - 第一版只承载 `BaseGraphTask*`；
-- capacity 等于 `max_tasks_in_flight`；
-- Task Graph 在创建 Task 前取得 outstanding budget，保证已接受 ready Task 不因 queue full 丢失；
+- capacity 等于 `max_worker_tasks_in_flight`；
+- 只有 desired thread 为 `AnyWorker` 的 Task 取得 worker outstanding budget，保证已接受 ready worker Task 不因 queue full 丢失；
+- Game/Rendering named task 不占 worker budget；它们使用各自动态 MPSC queue，并由各自领域负责生产节奏与生命周期；
 - 只有出现第二个明确 MPMC 用例并通过独立压力测试后，才考虑提升为公共容器。
 
 ### 9.3 `StallingTaskQueue`
@@ -710,7 +718,7 @@ struct TaskGraphConfig
 {
     // Zero selects an automatic count from the composition-root policy.
     std::uint32_t worker_thread_count = 0;
-    std::uint32_t max_tasks_in_flight = 4096;
+    std::uint32_t max_worker_tasks_in_flight = 4096;
     bool multithreaded = true;
 };
 
@@ -727,11 +735,12 @@ factory 返回 composition root 独占的 `std::unique_ptr<TaskGraphInterface>`�
 
 ### 13.1 路由
 
-- `NamedThread::AnyWorker`：进入 internal High/Normal `StallingTaskQueue`；
-- `NamedThread::GameThread`：进入 Game named MPSC queue；
-- `NamedThread::RenderingThread`：进入 Render named MPSC queue；
+- `NamedThread::AnyWorker`：取得 bounded worker budget 后进入 internal High/Normal `StallingTaskQueue`；
+- `NamedThread::GameThread`：进入动态增长的 Game named MPSC queue，不受 worker budget 限制；
+- `NamedThread::RenderingThread`：进入动态增长的 Render named MPSC queue，不受 worker budget 限制；
 - Named Thread 未 attach 时，定向 dispatch 返回/记录 `TargetUnavailable`，不得在错误线程执行；
-- `multithreaded=false` 时，AnyWorker 与 logical Render target 都路由到 Game Thread FIFO；
+- `multithreaded=false` 时，AnyWorker 与 logical Render target 都路由到 Game Thread FIFO；budget 仍按 Task 的原始 desired thread
+  判断，AnyWorker 继续受限，RenderingThread task 继续不受 worker budget 限制；
 - Task 的 desired thread 在构造完成后固定，运行期不漂移。
 
 ### 13.2 prerequisite/subsequent
@@ -860,7 +869,9 @@ DeadlockRisk
 
 - create、dispatch、wait、attach 和 shutdown 返回结构化 status；
 - Task dispatch 被接受后不得静默丢失；
-- saturation 返回 `Overloaded`，不在提交线程偷偷同步执行；
+- 只有 `AnyWorker` outstanding budget saturation 返回 `Overloaded`，不在提交线程偷偷同步执行；
+- Game/Rendering named task 不因固定数量预算返回 `Overloaded`；动态节点分配失败属于 fatal allocation failure，领域 façade
+  可以据此 fail fast，但 Task Graph 不静默丢失已接受 task；
 - TaskType::do_task 抛出的异常在 executor 边界捕获，completion outcome 为 `Failed`；
 - 异常不跨线程传播；
 - failure 默认不取消 subsequent；prerequisite 只表达执行顺序；
@@ -901,8 +912,10 @@ workers = clamp(logical - reserved, configured_min, configured_max)
 ## 18. 安全边界
 
 - 禁止强杀线程，避免锁、TLS、allocator 和 RHI state 泄漏；
-- `max_tasks_in_flight` 限制 graph 内存；
-- unbounded MPSC named queue 受同一 outstanding budget 约束；
+- `max_worker_tasks_in_flight` 限制 AnyWorker task 与 bounded MPMC ready queue 内存；
+- Game/Rendering named MPSC queue 不设固定 outstanding 上限，适用于不能因任意 4096 阈值丢失的线程亲和命令；
+- named queue 的内存增长必须进入 high-water mark、pending count 与 allocation failure 诊断，领域层仍应合并昂贵后续工作，
+  但不得通过丢弃 named task 实现过载保护；
 - Task debug name 不解释为格式串、路径或命令；
 - 用户 Task 不在 graph control mutex 下执行；
 - CancelPending 不释放 running Task 仍可能访问的 payload；
@@ -967,7 +980,7 @@ workers = clamp(logical - reserved, configured_min, configured_max)
 - Game wait 时 pump/help；Render wait 时只 pump Render；worker wait 时 help；
 - Unknown thread wait 使用 Event；
 - High/Normal 和防饥饿；
-- max_tasks_in_flight saturation；
+- max_worker_tasks_in_flight saturation 只拒绝 AnyWorker，Game/Rendering named task 超过同一数量仍保持 FIFO；
 - Drain/CancelPending；
 - single-thread fallback 确定性 FIFO；
 - self-wait、cycle 与 deadlock-risk 诊断；

@@ -1453,7 +1453,7 @@ ShaderMap 原型 slice 完成后的独立验证重新配置 Windows x64 Debug，
 6. Material 参数和资源通过 parameter ID 构建 Binding Set；
 7. 后续 Material Graph 只生成 HLSL、schema 和 permutation，不接触 backend binary。
 
-验收：MaterialInstance 改变动态参数无需重编译；static switch 只切换或触发对应 permutation；SceneRenderer、Material 和 Shader 均不引用 backend 类型或物理 slot。完整线程、Forward、PostProcess 与 ImGui 路线见 `rendering-engine-foundation-design.md`。
+验收：MaterialInstance 改变动态参数无需重编译；static switch 只切换或触发对应 permutation；SceneRenderer、Material 和 Shader 均不引用 backend 类型或物理 slot。当前线程与 Material resource 边界见 OpenSpec change `establish-game-render-framework`；Forward、PostProcess 与 ImGui 分别进入后续 Spec。
 
 ### 阶段 9：后置 RDG 接入
 

@@ -1,3 +1,5 @@
+【历史文档】本文件描述的项目结构已被替代，不构成当前规范。当前结构以仓库根 `AGENTS.md` 为准。
+
 toy3d/
 ├── CMakeLists.txt                # 主CMake文件
 ├── platform/                     # 平台抽象层
