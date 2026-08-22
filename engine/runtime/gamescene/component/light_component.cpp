@@ -1,8 +1,7 @@
 #include "gamescene/component/light_component.h"
 
 #include "logging/logger.h"
-
-#include <cmath>
+#include "math/scalar_math.h"
 
 namespace toy3d
 {
@@ -24,7 +23,7 @@ namespace toy3d
 
     bool LightComponent::set_intensity(float intensity)
     {
-        if (!std::isfinite(intensity) || intensity < 0.0f)
+        if (!is_finite(intensity) || intensity < 0.0f)
         {
             TOY_LOG_ERROR("Light intensity must be finite and non-negative.");
             return false;
@@ -40,7 +39,7 @@ namespace toy3d
 
     bool LocalLightComponent::set_range(float range)
     {
-        if (!std::isfinite(range) || range <= 0.0f)
+        if (!is_finite(range) || range <= 0.0f)
         {
             TOY_LOG_ERROR("A local light range must be finite and greater than zero.");
             return false;
@@ -53,8 +52,8 @@ namespace toy3d
         float inner_angle_degrees,
         float outer_angle_degrees)
     {
-        if (!std::isfinite(inner_angle_degrees) ||
-            !std::isfinite(outer_angle_degrees) ||
+        if (!is_finite(inner_angle_degrees) ||
+            !is_finite(outer_angle_degrees) ||
             inner_angle_degrees < 0.0f ||
             inner_angle_degrees > outer_angle_degrees ||
             outer_angle_degrees >= 90.0f)

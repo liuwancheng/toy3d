@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gamescene/actor/actor.h"
+#include "gamescene/world/world_types.h"
 
 #include <cstddef>
 #include <memory>
@@ -14,7 +15,7 @@ namespace toy3d
     {
     public:
         World() = default;
-        ~World() = default;
+        ~World();
 
         World(const World&) = delete;
         World& operator=(const World&) = delete;
@@ -30,14 +31,41 @@ namespace toy3d
             ActorType& result = *actor;
             actors_.push_back(std::move(actor));
             result.register_all_components();
+            if (lifecycle_state_ != WorldLifecycleState::Created)
+            {
+                result.initialize_actor();
+            }
+            if (lifecycle_state_ == WorldLifecycleState::Playing)
+            {
+                result.begin_play();
+            }
             return result;
         }
 
+        void initialize();
+        void begin_play();
+        bool tick(double delta_seconds);
+        void end_play();
         bool destroy_actor(Actor& actor);
         bool contains(const Actor& actor) const;
         std::size_t actor_count() const { return actors_.size(); }
+        WorldLifecycleState lifecycle_state() const { return lifecycle_state_; }
+        double world_time_seconds() const { return world_time_seconds_; }
+        std::uint64_t frame_number() const { return frame_number_; }
+        bool is_ticking() const { return ticking_; }
 
     private:
-        std::vector<std::unique_ptr<Actor>> actors_;
+        using ActorStorage = std::vector<std::unique_ptr<Actor>>;
+
+        ActorStorage::iterator find_actor(Actor& actor);
+        void destroy_actor_immediate(ActorStorage::iterator actor);
+        void flush_pending_destruction();
+
+        ActorStorage actors_;
+        WorldLifecycleState lifecycle_state_ = WorldLifecycleState::Created;
+        double world_time_seconds_ = 0.0;
+        std::uint64_t frame_number_ = 0;
+        bool ticking_ = false;
+        bool dispatching_lifecycle_ = false;
     };
 }

@@ -2,6 +2,7 @@
 
 #include "gamescene/component/actor_component.h"
 #include "gamescene/component/scene_component.h"
+#include "gamescene/world/world_types.h"
 
 #include <memory>
 #include <type_traits>
@@ -23,6 +24,11 @@ namespace toy3d
 
         World& world() const { return world_; }
         bool is_registered() const { return registered_; }
+        bool is_initialized() const { return initialized_; }
+        bool has_begun_play() const { return begun_play_; }
+        bool is_pending_destroy() const { return pending_destroy_; }
+        bool is_tick_enabled() const { return tick_enabled_; }
+        void set_tick_enabled(bool enabled) { tick_enabled_ = enabled; }
         SceneComponent* root_component() const { return root_component_; }
 
         template<typename Component, typename... Args>
@@ -39,21 +45,44 @@ namespace toy3d
             {
                 result.register_component();
             }
+            if (initialized_)
+            {
+                result.initialize_component();
+            }
+            if (begun_play_)
+            {
+                result.begin_play();
+            }
             return result;
         }
 
         bool set_root_component(SceneComponent* component);
+
+    protected:
+        virtual void on_initialize() {}
+        virtual void on_begin_play() {}
+        virtual void tick(const WorldTickContext&) {}
+        virtual void on_end_play(EndPlayReason) {}
 
     private:
         friend class World;
 
         bool owns_component(const ActorComponent& component) const;
         void register_all_components();
+        void initialize_actor();
+        void begin_play();
+        void tick_actor(const WorldTickContext& context);
+        void end_play(EndPlayReason reason);
         void unregister_all_components();
+        void mark_pending_destroy() { pending_destroy_ = true; }
 
         World& world_;
         std::vector<std::unique_ptr<ActorComponent>> components_;
         SceneComponent* root_component_ = nullptr;
         bool registered_ = false;
+        bool initialized_ = false;
+        bool begun_play_ = false;
+        bool pending_destroy_ = false;
+        bool tick_enabled_ = false;
     };
 }

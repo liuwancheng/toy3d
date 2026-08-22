@@ -1,8 +1,7 @@
 #include "gamescene/component/camera_component.h"
 
 #include "logging/logger.h"
-
-#include <cmath>
+#include "math/scalar_math.h"
 
 namespace toy3d
 {
@@ -11,9 +10,9 @@ namespace toy3d
         float near_clip,
         float far_clip)
     {
-        if (!std::isfinite(vertical_fov_degrees) ||
-            !std::isfinite(near_clip) ||
-            !std::isfinite(far_clip) ||
+        if (!is_finite(vertical_fov_degrees) ||
+            !is_finite(near_clip) ||
+            !is_finite(far_clip) ||
             vertical_fov_degrees <= 0.0f ||
             vertical_fov_degrees >= 180.0f ||
             near_clip <= 0.0f ||

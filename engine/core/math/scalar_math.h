@@ -51,6 +51,11 @@ namespace toy3d
         return std::isfinite(value);
     }
 
+    inline bool is_finite(double value)
+    {
+        return std::isfinite(value);
+    }
+
     inline bool is_nearly_zero(
         float value,
         float tolerance = k_default_float_tolerance)

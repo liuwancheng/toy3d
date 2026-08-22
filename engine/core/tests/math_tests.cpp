@@ -231,11 +231,15 @@ namespace
 
         const float nan = std::numeric_limits<float>::quiet_NaN();
         const float infinity = std::numeric_limits<float>::infinity();
+        const double double_infinity =
+            std::numeric_limits<double>::infinity();
         check(!toy3d::is_finite(nan) &&
                 !toy3d::is_finite(infinity) &&
+                !toy3d::is_finite(double_infinity) &&
+                toy3d::is_finite(1.0) &&
                 !toy3d::is_nearly_zero(nan) &&
                 !toy3d::is_nearly_equal(1.0f, 1.0f, -1.0f),
-            "Scalar checked predicates must reject non-finite inputs and negative tolerance");
+            "Scalar predicates must reject invalid float/double values and negative tolerance");
     }
 
     void check_angle_contract()
