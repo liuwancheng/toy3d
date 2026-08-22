@@ -1,18 +1,18 @@
 ## 1. Apply Governance
 
-- [ ] 1.1 在每次 apply 开始时读取主 design、目标子 Spec 与直接前置完成状态，并在本次交付中记录选择依据。
-- [ ] 1.2 在新增任何第一方具名类型前核对目标 Spec 的 Type Contracts；缺失时先更新 Spec 并以 `openspec validate establish-game-render-framework --strict` 验证。
+- [x] 1.1 在每次 apply 开始时读取主 design、目标子 Spec 与直接前置完成状态，并在本次交付中记录选择依据。
+- [x] 1.2 在新增任何第一方具名类型前核对目标 Spec 的 Type Contracts；缺失时先更新 Spec 并以 `openspec validate establish-game-render-framework --strict` 验证。
 - [ ] 1.3 每个 capability 完成后运行其单元测试、受影响目标构建和废弃符号搜索，只有三者通过才勾选该组完成任务。
-- [ ] 1.4 每个新增或修改模块 MUST 标明 Game side、Render side 或 stateless bridge，并通过依赖审查验证 Game side 无 RenderScene/RHI、Render side 无 Game 对象回读。
+- [x] 1.4 每个新增或修改模块 MUST 标明 Game side、Render side 或 stateless bridge，并通过依赖审查验证 Game side 无 RenderScene/RHI、Render side 无 Game 对象回读。
 
 ## 2. Legacy Rendering Cleanup
 
-- [ ] 2.1 生成旧 frame transport、Scene frame processor、resource cache/collector、typed ID/revision、空壳 command list 的定义/调用/测试/CMake 清单，并用 `rg` 验证覆盖全部正式入口。
-- [ ] 2.2 删除旧 `RenderFramePacket/Queue/Dispatcher/Completion` 源码和 CMake/test target，并验证旧 transport 符号只剩 archive/OpenSpec 引用。
-- [ ] 2.3 删除旧 Scene update batch、frame processor 和 Camera frame builder 正式路径，并验证 GameScene/RenderScene 不再生成旧 frame packet。
-- [ ] 2.4 删除 `RenderResourceCache`、collector、render-resource typed ID/revision 与对应 cache/upload pipeline tests，并验证旧 identity 符号无运行时残留。
-- [ ] 2.5 删除空壳 `RHIDeviceCommandList`、带该参数的 RenderCommand 原型及原型测试，验证公共 RHI 不再包含该类型。
-- [ ] 2.6 调整 Engine 临时启动路径使删除后仍可配置和安全退出，不增加 no-op 成功 adapter，并构建 `Toy3dEditor` 验证阶段 0 build green。
+- [x] 2.1 生成旧 frame transport、Scene frame processor、resource cache/collector、typed ID/revision、空壳 command list 的定义/调用/测试/CMake 清单，并用 `rg` 验证覆盖全部正式入口。
+- [x] 2.2 删除旧 `RenderFramePacket/Queue/Dispatcher/Completion` 源码和 CMake/test target，并验证旧 transport 符号只剩 archive/OpenSpec 引用。
+- [x] 2.3 删除旧 Scene update batch、frame processor 和 Camera frame builder 正式路径，并验证 GameScene/RenderScene 不再生成旧 frame packet。
+- [x] 2.4 删除 `RenderResourceCache`、collector、render-resource typed ID/revision 与对应 cache/upload pipeline tests，并验证旧 identity 符号无运行时残留。
+- [x] 2.5 删除空壳 `RHIDeviceCommandList`、带该参数的 RenderCommand 原型及原型测试，验证公共 RHI 不再包含该类型。
+- [x] 2.6 调整 Engine 临时启动路径使删除后仍可配置和安全退出，不增加 no-op 成功 adapter，并构建 `Toy3dEditor` 验证阶段 0 build green。
 - [ ] 2.7 运行保留的 Task Graph、RHI upload/state/viewport tests，验证清理未删除底层可复用能力。
 
 ## 3. Task Graph Runtime

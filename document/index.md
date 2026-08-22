@@ -35,8 +35,8 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | `archive/legacy-readme.txt` | Superseded | 项目结构以 `AGENTS.md` 为准 |
 | `archive/rendering-engine-foundation-progress.md` | Historical | 旧 Foundation 施工与验证台账；当前状态以代码、测试和专项设计为准 |
 | `archive/game-render-thread-design.md` | Superseded | 旧版 Game/Render 线程方案，最终由 OpenSpec change `establish-game-render-framework` 取代 |
-| `archive/game-render-thread-framework-design.md` | Superseded | 框架讨论中间稿，包含 `RHIDeviceCommandList` 等已撤销决定；由 OpenSpec change `establish-game-render-framework` 取代 |
-| `archive/rendering-engine-foundation-design.md` | Superseded | 旧 Renderer Foundation 总设计，包含 RenderResourceCache、typed ID/revision 等已撤销决定；由 OpenSpec change `establish-game-render-framework` 取代 |
+| `archive/game-render-thread-framework-design.md` | Superseded | 框架讨论中间稿，包含已撤销的命令参数设计；由 OpenSpec change `establish-game-render-framework` 取代 |
+| `archive/rendering-engine-foundation-design.md` | Superseded | 旧 Renderer Foundation 总设计，包含已撤销的资源缓存与跨线程身份设计；由 OpenSpec change `establish-game-render-framework` 取代 |
 
 ## 维护规则
 

@@ -14,16 +14,7 @@
 #endif
 
 #include "logging/logger.h"
-#include "drivers/rhi/rhi_factory.h"
 #include "generated/defines.h"
-#include "platform/rhi_surface_factory.h"
-#include "renderscene/3dscene/forward_shading_render.h"
-#include "renderscene/resources/render_resource_cache.h"
-#include "rendercore/shader/loaders/shader_code_library_loader.h"
-#if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
-#include "rendercore/shader/loaders/shader_map_entry_loader.h"
-#endif
-#include "rendercore/shader/shader_map.h"
 
 #include <filesystem>
 #include <iostream>
@@ -67,7 +58,7 @@ namespace toy3d
 
 	void Engine::set_shader_load_config(ShaderLoadConfig config)
 	{
-		if (!rhi_initialized)
+		if (!window)
 		{
 			shader_load_config = std::move(config);
 		}
@@ -122,26 +113,6 @@ namespace toy3d
 	void Engine::init(void* hInstance)
 	{
 		pre_init();
-		switch (shader_load_config.mode)
-		{
-		case ShaderLoadMode::ShaderMapEntry:
-#if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
-			shader_map_loader = std::make_unique<ShaderMapEntryLoader>(shader_load_config.path);
-#else
-			TOY_LOG_ERROR("ShaderMapEntry loading is not enabled in this build.");
-			return;
-#endif
-			break;
-		case ShaderLoadMode::ShaderCodeLibrary:
-			shader_map_loader = std::make_unique<ShaderCodeLibraryLoader>(shader_load_config.path);
-			break;
-		}
-		if (!shader_map_loader)
-		{
-			TOY_LOG_ERROR("Engine initialization requires a ShaderMapLoader.");
-			return;
-		}
-
 		// 1.创建平台
 	#if WITH_WIN64
 		platform = std::make_unique<Win32Platform>();
@@ -159,42 +130,6 @@ namespace toy3d
 	#elif WITH_ANDROID
 		window = std::make_unique<AndroidWindow>();
 	#endif
-
-		const RHIStatus rhi_status = initialize_rhi();
-		if (!rhi_status)
-		{
-			log_rhi_failure("initialize_rhi", rhi_status);
-			window->close();
-			return;
-		}
-		const RHIStatus renderer_status = post_init();
-		if (!renderer_status)
-		{
-			log_rhi_failure("post_init", renderer_status);
-			shutdown_rhi();
-			window->close();
-			return;
-		}
-		// 3.创建RHI
-	}
-
-	RHIStatus Engine::post_init()
-	{
-		shader_map = std::make_unique<ShaderMap>(*shader_map_loader);
-		auto cache = std::make_unique<RenderResourceCache>(
-			create_builtin_render_resource_placeholders());
-		const RHIStatus bootstrap_status =
-			cache->initialize_rhi_placeholders(*rhi_device);
-		if (!bootstrap_status)
-		{
-			return bootstrap_status;
-		}
-		render_resource_cache = std::move(cache);
-		scene_renderer = std::make_unique<ForwardSceneRendering>(
-			*rhi_device,
-			*shader_map);
-		// todo: game module的初始化
-		return RHIStatus::success();
 	}
 
 	FileStatus Engine::initialize_file_system()
@@ -300,7 +235,6 @@ namespace toy3d
 		while (!window->should_close())
 		{
 			window->process_events();
-			render_frame();
 		}
 	}
 
@@ -311,164 +245,10 @@ namespace toy3d
 			return;
 		}
 		engine_exited = true;
-		shutdown_rhi();
 		window.reset();
 		platform.reset();
 		// todo: resource的释放、文件系统的关闭、游戏模块的关闭等
 		Logger::get_instance().exit();
 	}
 
-	RHIStatus Engine::initialize_rhi()
-	{
-		if (rhi_initialized)
-		{
-			return RHIStatus::success();
-		}
-		if (!window)
-		{
-			return RHIStatus::failure(RHIErrorCode::NotReady, "RHI initialization requires a window.");
-		}
-
-		auto surface_result = create_rhi_surface(*window);
-		if (!surface_result)
-		{
-			return surface_result.status();
-		}
-		main_window_surface = std::move(surface_result).value();
-
-		auto device_result = create_default_rhi_device();
-		if (!device_result)
-		{
-			main_window_surface.reset();
-			return device_result.status();
-		}
-		rhi_device = std::move(device_result).value();
-		RHIDeviceDesc device_desc;
-		device_desc.primary_surface = main_window_surface;
-		device_desc.enable_validation = true;
-		device_desc.debug_name = "Toy3dMainDevice";
-		RHIStatus status = rhi_device->initialize(device_desc);
-		if (!status)
-		{
-			rhi_device.reset();
-			main_window_surface.reset();
-			return status;
-		}
-
-		const Extent extent = window->get_win_size();
-		if (extent.width == 0 || extent.height == 0)
-		{
-			shutdown_rhi();
-			return RHIStatus::failure(RHIErrorCode::NotReady, "RHI viewport requires a non-zero window extent.");
-		}
-		RHIViewportContextDesc viewport_desc;
-		viewport_desc.width = extent.width;
-		viewport_desc.height = extent.height;
-		viewport_desc.image_count = 2;
-		viewport_desc.format = RHIFormat::B8G8R8A8UNorm;
-		viewport_desc.present_mode = RHIPresentMode::Fifo;
-		viewport_desc.debug_name = "Toy3dMainViewport";
-		auto viewport_result = rhi_device->create_viewport_context(main_window_surface, viewport_desc);
-		if (!viewport_result)
-		{
-			status = viewport_result.status();
-			shutdown_rhi();
-			return status;
-		}
-		rhi_viewport = std::move(viewport_result).value();
-		viewport_width = extent.width;
-		viewport_height = extent.height;
-		rhi_initialized = true;
-		TOY_LOG_INFO("The default RHI is connected to the main window at {}x{}.", viewport_width, viewport_height);
-		return RHIStatus::success();
-	}
-
-	void Engine::shutdown_rhi()
-	{
-		if (!rhi_device)
-		{
-			return;
-		}
-		scene_renderer.reset();
-		render_resource_cache.reset();
-		shader_map.reset();
-		shader_map_loader.reset();
-		rhi_viewport.reset();
-		const RHIStatus status = rhi_device->shutdown();
-		if (!status)
-		{
-			log_rhi_failure("RHIDevice::shutdown", status);
-		}
-		rhi_device.reset();
-		main_window_surface.reset();
-		rhi_initialized = false;
-	}
-
-	void Engine::render_frame()
-	{
-		if (!rhi_initialized || !rhi_viewport || !window)
-		{
-			return;
-		}
-		const Extent extent = window->get_win_size();
-		if (extent.width == 0 || extent.height == 0)
-		{
-			return;
-		}
-		if (extent.width != viewport_width || extent.height != viewport_height)
-		{
-			const RHIStatus resize_status = rhi_viewport->request_resize(extent.width, extent.height);
-			if (!resize_status)
-			{
-				log_rhi_failure("RHIViewportContext::request_resize", resize_status);
-				return;
-			}
-			viewport_width = extent.width;
-			viewport_height = extent.height;
-		}
-
-		auto frame_result = rhi_viewport->begin_frame();
-		if (!frame_result)
-		{
-			if (!rhi_is_recoverable_viewport_status(frame_result.status()))
-			{
-				log_rhi_failure("RHIViewportContext::begin_frame", frame_result.status());
-			}
-			return;
-		}
-		std::unique_ptr<RHIFrameContext> frame = std::move(frame_result).value();
-		if (!scene_renderer)
-		{
-			TOY_LOG_ERROR("A viewport frame was acquired without a scene renderer.");
-			const RHIStatus abort_status = rhi_viewport->abort_frame(std::move(frame));
-			if (!abort_status && !rhi_is_recoverable_viewport_status(abort_status))
-			{
-				log_rhi_failure("RHIViewportContext::abort_frame", abort_status);
-			}
-			return;
-		}
-		auto command_list_result = scene_renderer->render(*frame);
-		if (!command_list_result)
-		{
-			log_rhi_failure("SceneRendering::render", command_list_result.status());
-			const RHIStatus abort_status = rhi_viewport->abort_frame(std::move(frame));
-			if (!abort_status && !rhi_is_recoverable_viewport_status(abort_status))
-			{
-				log_rhi_failure("RHIViewportContext::abort_frame", abort_status);
-			}
-			return;
-		}
-		std::vector<RHICommandListRef> command_lists;
-		command_lists.push_back(std::move(command_list_result).value());
-		const RHIStatus status = rhi_viewport->end_frame(std::move(frame), command_lists);
-		if (!status && !rhi_is_recoverable_viewport_status(status))
-		{
-			log_rhi_failure("RHIViewportContext::end_frame", status);
-		}
-	}
-
-	void Engine::log_rhi_failure(const char* operation, const RHIStatus& status) const
-	{
-		TOY_LOG_ERROR("{} failed: {}", operation, status.message());
-	}
 }

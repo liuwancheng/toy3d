@@ -6,9 +6,8 @@ Game Thread 到 Rendering Thread 的正式边界统一由 OpenSpec change
 `establish-game-render-framework` 定义。本文第 5～7 节只保留 GameScene 调用侧摘要；线程、RenderCommand、
 SceneProxy、frame fence 或 RHI 资源命令语义以该 change 的 capability specs 与 design 为准。
 
-本文取代已归档 `archive/rendering-engine-foundation-design.md` 中由 `World` 帧末扫描并生成
-`RenderSceneUpdateBatch`、由 `RenderResourceUpdateCollector` 全局遍历资源，以及
-`CameraViewportFrameBuilder` 从 `CameraComponent` 直接构建渲染帧的旧 GameScene 方案。
+本文取代已归档 `archive/rendering-engine-foundation-design.md` 中由 `World` 帧末扫描生成批量更新、
+全局遍历资源，以及从 `CameraComponent` 直接构建长期渲染帧的旧 GameScene 方案。
 历史施工记录只保留为事实记录，不再代表长期接口。
 
 GameScene G1 建立清晰的对象层级、所有权、注册和 Transform 生命周期；G1.5 在不接入
@@ -217,7 +216,7 @@ Rendering Thread 采用 UE 风格全局 enqueue façade，并直接复用 Task G
 ### G3：Rendering Thread 与 RenderCommand stream
 
 - composition root 创建 RenderingThread Runnable；
-- 全局模板 façade 直接使用 Task Graph named queue，替换 `RenderFrameDispatcher` 的 `std::thread`、私有 queue 和 completion；
+- 全局模板 façade 直接使用 Task Graph named queue，作为唯一 Game-to-Render transport；
 - 实现双 frame fence 与 single-thread fallback；
 - 完成启动、flush、fatal、shutdown 与窗口生命周期测试。
 
@@ -230,13 +229,7 @@ Rendering Thread 采用 UE 风格全局 enqueue façade，并直接复用 Task G
 
 ## 8. 删除条件
 
-G1 不保留以下旧入口：
-
-- `World::create_actor()`；
-- `World::update_transforms()`；
-- `World::collect_render_scene_updates()`；
-- `RenderResourceUpdateCollector`；
-- `build_camera_viewport_frame()`；
-- 空的旧 `gamescene.h/.cpp` 与 `camera/Camera` 占位类型。
+G1 不保留旧 Actor factory、帧末 transform 扫描、Scene/resource collector、Camera frame builder，
+也不保留空的 GameScene 与 Camera 占位类型。
 
 后续每批必须保持唯一正式入口，不新增 snapshot collector 与 RenderCommand 双轨。
