@@ -35,6 +35,7 @@ namespace toy3d
     {
     public:
         VulkanBuffer(
+            const RHIDevice& owner,
             RHIBufferDesc desc,
             VulkanMemoryManager& memory_manager,
             VulkanDeferredDeletionQueue& deletion_queue,
@@ -60,6 +61,7 @@ namespace toy3d
     {
     public:
         VulkanTexture(
+            const RHIDevice& owner,
             RHITextureDesc desc,
             VulkanMemoryManager& memory_manager,
             VulkanDeferredDeletionQueue& deletion_queue,
@@ -67,6 +69,7 @@ namespace toy3d
             VkImageLayout initial_layout,
             RHIAccess initial_access);
         VulkanTexture(
+            const RHIDevice& owner,
             RHITextureDesc desc,
             VkImage external_image,
             VkImageLayout initial_layout,
@@ -152,7 +155,11 @@ namespace toy3d
     class VulkanShader final : public RHIShader
     {
     public:
-        VulkanShader(RHIShaderDesc desc, VkDevice device, VkShaderModule shader_module);
+        VulkanShader(
+            const RHIDevice& owner,
+            RHIShaderDesc desc,
+            VkDevice device,
+            VkShaderModule shader_module);
         ~VulkanShader() override;
 
         VkShaderModule shader_module() const;
@@ -176,6 +183,7 @@ namespace toy3d
         };
 
         VulkanBindingLayout(
+            const RHIDevice& owner,
             RHIBindingLayoutDesc desc,
             VkDevice device,
             std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
@@ -200,7 +208,11 @@ namespace toy3d
     class VulkanSampler final : public RHISampler
     {
     public:
-        VulkanSampler(RHISamplerDesc desc, VkDevice device, VkSampler sampler);
+        VulkanSampler(
+            const RHIDevice& owner,
+            RHISamplerDesc desc,
+            VkDevice device,
+            VkSampler sampler);
         ~VulkanSampler() override;
 
         VkSampler sampler() const;
@@ -246,6 +258,7 @@ namespace toy3d
     {
     public:
         VulkanGraphicsPipeline(
+            const RHIDevice& owner,
             RHIGraphicsPipelineDesc desc,
             VkDevice device,
             VkRenderPass compatibility_render_pass,

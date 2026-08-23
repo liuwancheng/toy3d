@@ -36,6 +36,30 @@ namespace toy3d
                 " could not complete an acquired viewport frame: " + status.message());
     }
 
+    inline RHIStatus rhi_normalize_submitted_presentation_status(
+        const RHIStatus& status,
+        const char* operation)
+    {
+        // A successful business submit has already consumed the acquired
+        // synchronization. NotReady cannot describe that presentation
+        // boundary and must become terminal instead of inviting a retry that
+        // would roll back submitted work.
+        if (status.code() != RHIErrorCode::NotReady)
+        {
+            return status;
+        }
+        return RHIStatus::failure(
+            RHIErrorCode::BackendFailure,
+            std::string(operation) +
+                " returned NotReady after business work was submitted: " + status.message());
+    }
+
+    struct RHIFrameEndResult
+    {
+        RHIQueueCompletionValue completion_value = 0;
+        RHIStatus presentation_status;
+    };
+
     struct RHIViewportContextDesc
     {
         std::uint32_t width = 1;
@@ -85,7 +109,9 @@ namespace toy3d
 
         virtual RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() = 0;
 
-        virtual RHIStatus end_frame(
+        // Outer success is the business-submit truth. Presentation status is
+        // reported separately because present cannot roll submitted work back.
+        virtual RHIResult<RHIFrameEndResult> end_frame(
             std::unique_ptr<RHIFrameContext> frame,
             const std::vector<RHICommandListRef>& command_lists) = 0;
 

@@ -114,6 +114,14 @@ namespace toy3d
                 RHIErrorCode::NotReady,
                 "Graphics pipeline creation requires an initialized RHI device.");
         }
+        if (!desc.vertex_shader->is_owned_by(*this) ||
+            !desc.pixel_shader->is_owned_by(*this) ||
+            !desc.binding_layout->is_owned_by(*this))
+        {
+            return RHIResult<RHIGraphicsPipelineRef>::failure(
+                RHIErrorCode::InvalidArgument,
+                "Graphics pipeline shaders and binding layout must belong to this RHI device.");
+        }
         if (desc.color_attachment_count > limits().max_color_attachments)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(

@@ -292,24 +292,59 @@ namespace toy3d
                 swapchain_extent.height));
     }
 
-    RHIStatus VulkanViewportContext::end_frame(
+    RHIResult<RHIFrameEndResult> VulkanViewportContext::end_frame(
         std::unique_ptr<RHIFrameContext> frame,
         const std::vector<RHICommandListRef>& command_lists)
     {
         auto* vulkan_frame = dynamic_cast<VulkanFrameContext*>(frame.get());
+        const auto fail_before_business_submit = [this](const RHIStatus& failure)
+        {
+            if (!frame_active)
+            {
+                return RHIResult<RHIFrameEndResult>::failure(
+                    failure.code(), failure.message());
+            }
+            const RHIStatus recovery_status = abort_active_frame();
+            const RHIStatus reported_status =
+                recovery_status || rhi_is_recoverable_viewport_status(recovery_status)
+                ? failure
+                : recovery_status;
+            return RHIResult<RHIFrameEndResult>::failure(
+                reported_status.code(), reported_status.message());
+        };
         if (!frame_active || vulkan_frame == nullptr || &vulkan_frame->owner() != this)
         {
-            return RHIStatus::failure(
+            const RHIStatus invalid_frame_status = RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Frame context does not belong to this Vulkan viewport context.");
+            if (vulkan_frame != nullptr && &vulkan_frame->owner() != this)
+            {
+                VulkanViewportContext& owner = vulkan_frame->owner();
+                const RHIStatus owner_recovery_status = owner.abort_frame(std::move(frame));
+                const RHIStatus reported_status =
+                    owner_recovery_status || rhi_is_recoverable_viewport_status(owner_recovery_status)
+                    ? invalid_frame_status
+                    : owner_recovery_status;
+                return RHIResult<RHIFrameEndResult>::failure(
+                    reported_status.code(), reported_status.message());
+            }
+            return fail_before_business_submit(invalid_frame_status);
         }
 
         std::vector<VulkanCommandList*> vulkan_command_lists;
         vulkan_command_lists.reserve(command_lists.size());
         std::set<const RHICommandList*> unique_command_lists;
-        RHIStatus validation_status = RHIStatus::success();
+        RHIStatus validation_status = command_lists.size() == 1
+            ? RHIStatus::success()
+            : RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "The first renderer stage requires exactly one Vulkan viewport business command list.");
         for (const RHICommandListRef& command_list : command_lists)
         {
+            if (!validation_status)
+            {
+                break;
+            }
             if (!command_list)
             {
                 validation_status = RHIStatus::failure(
@@ -325,7 +360,9 @@ namespace toy3d
                 break;
             }
             auto* vulkan_command_list = dynamic_cast<VulkanCommandList*>(command_list.get());
-            if (vulkan_command_list == nullptr || !vulkan_command_list->belongs_to(*this, active_frame_id))
+            if (vulkan_command_list == nullptr ||
+                !vulkan_command_list->is_owned_by(vulkan_device) ||
+                !vulkan_command_list->belongs_to(*this, active_frame_id))
             {
                 validation_status = RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -337,11 +374,6 @@ namespace toy3d
                 validation_status = RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
                     "Vulkan viewport submission requires closed command lists.");
-                break;
-            }
-            validation_status = vulkan_command_list->validate_committed_resource_states();
-            if (!validation_status)
-            {
                 break;
             }
             for (const VulkanCommandList* previous : vulkan_command_lists)
@@ -363,84 +395,64 @@ namespace toy3d
 
         if (!validation_status)
         {
-            const RHIStatus recovery_status = abort_frame(std::move(frame));
-            return recovery_status ? validation_status : recovery_status;
+            return fail_before_business_submit(validation_status);
         }
 
         RHIStatus status = submit_active_frame(vulkan_command_lists);
-        if (status)
+        if (!status)
         {
-            FrameSlot& slot = frame_slots[current_frame_slot];
-            slot.submitted_command_lists.insert(
-                slot.submitted_command_lists.end(), command_lists.begin(), command_lists.end());
-            for (const VulkanCommandList* command_list : vulkan_command_lists)
+            finish_active_frame();
+            return RHIResult<RHIFrameEndResult>::failure(status.code(), status.message());
+        }
+
+        FrameSlot& slot = frame_slots[current_frame_slot];
+        slot.submitted_command_lists.insert(
+            slot.submitted_command_lists.end(), command_lists.begin(), command_lists.end());
+        for (const VulkanCommandList* command_list : vulkan_command_lists)
+        {
+            const std::vector<RHIResourceRef>& resources = command_list->retained_resources();
+            slot.submitted_resources.insert(slot.submitted_resources.end(), resources.begin(), resources.end());
+            const std::vector<std::shared_ptr<VulkanUploadPage>>& upload_pages =
+                command_list->retained_upload_pages();
+            slot.submitted_upload_pages.insert(
+                slot.submitted_upload_pages.end(), upload_pages.begin(), upload_pages.end());
+            const std::vector<RHITextureViewRef>& texture_views = command_list->retained_texture_views();
+            slot.submitted_texture_views.insert(
+                slot.submitted_texture_views.end(), texture_views.begin(), texture_views.end());
+            const std::vector<RHIGraphicsPipelineRef>& graphics_pipelines =
+                command_list->retained_graphics_pipelines();
+            slot.submitted_graphics_pipelines.insert(
+                slot.submitted_graphics_pipelines.end(), graphics_pipelines.begin(), graphics_pipelines.end());
+            const std::vector<RHIBindingSetRef>& binding_sets = command_list->retained_binding_sets();
+            slot.submitted_binding_sets.insert(
+                slot.submitted_binding_sets.end(), binding_sets.begin(), binding_sets.end());
+            const std::vector<VulkanRenderPassResourcesRef>& render_pass_resources =
+                command_list->retained_render_pass_resources();
+            slot.submitted_render_pass_resources.insert(
+                slot.submitted_render_pass_resources.end(),
+                render_pass_resources.begin(), render_pass_resources.end());
+        }
+        RHIStatus post_submit_status = RHIStatus::success();
+        for (VulkanCommandList* command_list : vulkan_command_lists)
+        {
+            post_submit_status = command_list->mark_submitted_by_viewport();
+            if (!post_submit_status)
             {
-                command_list->commit_resource_states();
-                const std::vector<RHIResourceRef>& resources = command_list->retained_resources();
-                slot.submitted_resources.insert(slot.submitted_resources.end(), resources.begin(), resources.end());
-                for (const RHIResourceRef& resource : resources)
-                {
-                    if (const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(resource))
-                    {
-                        buffer->mark_used(slot.completion_value);
-                    }
-                    else if (const auto texture = std::dynamic_pointer_cast<VulkanTexture>(resource))
-                    {
-                        texture->mark_used(slot.completion_value);
-                    }
-                }
-                const std::vector<std::shared_ptr<VulkanUploadPage>>& upload_pages =
-                    command_list->retained_upload_pages();
-                slot.submitted_upload_pages.insert(
-                    slot.submitted_upload_pages.end(), upload_pages.begin(), upload_pages.end());
-                vulkan_device.upload_manager().mark_submitted(upload_pages, slot.completion_value);
-                const std::vector<RHITextureViewRef>& texture_views = command_list->retained_texture_views();
-                slot.submitted_texture_views.insert(
-                    slot.submitted_texture_views.end(), texture_views.begin(), texture_views.end());
-                const std::vector<RHIGraphicsPipelineRef>& graphics_pipelines =
-                    command_list->retained_graphics_pipelines();
-                slot.submitted_graphics_pipelines.insert(
-                    slot.submitted_graphics_pipelines.end(), graphics_pipelines.begin(), graphics_pipelines.end());
-                const std::vector<RHIBindingSetRef>& binding_sets = command_list->retained_binding_sets();
-                slot.submitted_binding_sets.insert(
-                    slot.submitted_binding_sets.end(), binding_sets.begin(), binding_sets.end());
-                const std::vector<VulkanRenderPassResourcesRef>& render_pass_resources =
-                    command_list->retained_render_pass_resources();
-                slot.submitted_render_pass_resources.insert(
-                    slot.submitted_render_pass_resources.end(),
-                    render_pass_resources.begin(), render_pass_resources.end());
-            }
-            const auto active_texture =
-                std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
-            if (active_texture)
-            {
-                active_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
-            }
-            RHIStatus command_list_status = RHIStatus::success();
-            for (VulkanCommandList* command_list : vulkan_command_lists)
-            {
-                command_list_status = command_list->mark_submitted_by_viewport();
-                if (!command_list_status)
-                {
-                    break;
-                }
-            }
-            const RHIStatus present_status = present_active_image();
-            if (!present_status && !rhi_is_recoverable_viewport_status(present_status))
-            {
-                status = present_status;
-            }
-            else if (!command_list_status)
-            {
-                status = latch_presentation_failure(command_list_status);
-            }
-            else
-            {
-                status = present_status;
+                post_submit_status = latch_presentation_failure(post_submit_status);
+                break;
             }
         }
+        const RHIStatus present_status = rhi_normalize_submitted_presentation_status(
+            present_active_image(), "Vulkan presentation");
+        if (!present_status && !rhi_is_recoverable_viewport_status(present_status))
+        {
+            latch_presentation_failure(present_status);
+        }
+        const RHIStatus reported_presentation_status =
+            post_submit_status ? present_status : post_submit_status;
+        const RHIFrameEndResult result{slot.completion_value, reported_presentation_status};
         finish_active_frame();
-        return status;
+        return RHIResult<RHIFrameEndResult>::success(result);
     }
 
     RHIStatus VulkanViewportContext::abort_frame(std::unique_ptr<RHIFrameContext> frame)
@@ -448,9 +460,25 @@ namespace toy3d
         auto* vulkan_frame = dynamic_cast<VulkanFrameContext*>(frame.get());
         if (!frame_active || vulkan_frame == nullptr || &vulkan_frame->owner() != this)
         {
-            return RHIStatus::failure(
+            const RHIStatus invalid_frame_status = RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Frame context does not belong to this active Vulkan viewport frame.");
+            if (vulkan_frame != nullptr && &vulkan_frame->owner() != this)
+            {
+                VulkanViewportContext& owner = vulkan_frame->owner();
+                const RHIStatus owner_recovery_status = owner.abort_frame(std::move(frame));
+                return owner_recovery_status || rhi_is_recoverable_viewport_status(owner_recovery_status)
+                    ? invalid_frame_status
+                    : owner_recovery_status;
+            }
+            if (!frame_active)
+            {
+                return invalid_frame_status;
+            }
+            const RHIStatus recovery_status = abort_active_frame();
+            return recovery_status || rhi_is_recoverable_viewport_status(recovery_status)
+                ? invalid_frame_status
+                : recovery_status;
         }
         return abort_active_frame();
     }
@@ -693,6 +721,7 @@ namespace toy3d
             texture_desc.initial_access = RHIAccess::Present;
             texture_desc.debug_name = viewport_desc.debug_name + ".Image" + std::to_string(index);
             RHITextureRef texture = std::make_shared<VulkanTexture>(
+                vulkan_device,
                 std::move(texture_desc),
                 swapchain_images[index],
                 VK_IMAGE_LAYOUT_UNDEFINED,
@@ -872,7 +901,9 @@ namespace toy3d
         command_buffers.push_back(slot.present_command_buffer);
         auto& queue = static_cast<VulkanQueue&>(vulkan_device.graphics_queue());
         const auto submit_result = queue.submit_viewport(
+            command_lists,
             command_buffers,
+            *active_texture,
             slot.image_available,
             wait_stage,
             slot.render_finished,
@@ -939,7 +970,7 @@ namespace toy3d
         const RHIStatus status = make_vulkan_status(result, "vkQueuePresentKHR");
         if (!status && !rhi_is_recoverable_viewport_status(status))
         {
-            presentation_failure = status;
+            latch_presentation_failure(status);
         }
         return status;
     }
@@ -962,6 +993,12 @@ namespace toy3d
             {
                 active_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
                 status = present_active_image();
+                if (!status)
+                {
+                    status = latch_incomplete_active_frame_failure(
+                        status,
+                        "Vulkan aborted-frame presentation");
+                }
             }
         }
         finish_active_frame();
@@ -970,9 +1007,13 @@ namespace toy3d
 
     RHIStatus VulkanViewportContext::latch_presentation_failure(const RHIStatus& status)
     {
-        if (!status && !rhi_is_recoverable_viewport_status(status))
+        if (!status && !rhi_is_recoverable_viewport_status(status) && presentation_failure)
         {
             presentation_failure = status;
+        }
+        if (!presentation_failure)
+        {
+            return presentation_failure;
         }
         return status;
     }
@@ -981,7 +1022,10 @@ namespace toy3d
         const RHIStatus& status,
         const char* operation)
     {
-        presentation_failure = rhi_normalize_incomplete_acquired_frame_status(status, operation);
+        if (presentation_failure)
+        {
+            presentation_failure = rhi_normalize_incomplete_acquired_frame_status(status, operation);
+        }
         return presentation_failure;
     }
 

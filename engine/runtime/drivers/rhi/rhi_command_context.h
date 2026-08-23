@@ -54,6 +54,12 @@ namespace toy3d
 
     private:
         friend class RHIQueue;
+
+        void publish_submitted()
+        {
+            command_list_state = RHICommandListState::Submitted;
+        }
+
         RHICommandListState command_list_state = RHICommandListState::Initial;
     };
 

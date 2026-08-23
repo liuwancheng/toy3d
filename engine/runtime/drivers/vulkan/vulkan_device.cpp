@@ -683,6 +683,7 @@ namespace toy3d
         upload_manager_instance = std::make_unique<VulkanUploadManager>(*memory_manager_instance);
         deletion_queue = std::make_unique<VulkanDeferredDeletionQueue>();
         queue = std::make_unique<VulkanQueue>(
+            *this,
             vk_device,
             vk_graphics_queue,
             *upload_manager_instance);
@@ -895,6 +896,7 @@ namespace toy3d
         }
         return RHIResult<RHIBufferRef>::success(
             std::make_shared<VulkanBuffer>(
+                *this,
                 desc,
                 *memory_manager_instance,
                 *deletion_queue,
@@ -1019,6 +1021,7 @@ namespace toy3d
                 allocated_image.status().code(), allocated_image.status().message());
         }
         return RHIResult<RHITextureRef>::success(std::make_shared<VulkanTexture>(
+            *this,
             desc,
             *memory_manager_instance,
             *deletion_queue,
@@ -1041,6 +1044,12 @@ namespace toy3d
         if (!texture)
         {
             return RHIResult<RHITextureViewRef>::failure(RHIErrorCode::InvalidArgument, "Vulkan texture view requires a texture.");
+        }
+        if (!texture->is_owned_by(*this))
+        {
+            return RHIResult<RHITextureViewRef>::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan texture view cannot use a texture created by another device.");
         }
         if (!initialized || vk_device == VK_NULL_HANDLE)
         {
@@ -1171,7 +1180,8 @@ namespace toy3d
         {
             return RHIResult<RHIShaderRef>::failure(status.code(), status.message());
         }
-        return RHIResult<RHIShaderRef>::success(std::make_shared<VulkanShader>(desc, vk_device, shader_module));
+        return RHIResult<RHIShaderRef>::success(
+            std::make_shared<VulkanShader>(*this, desc, vk_device, shader_module));
     }
 
     RHIResult<RHIBindingLayoutRef> VulkanDevice::create_binding_layout_impl(
@@ -1244,7 +1254,7 @@ namespace toy3d
             }
         }
         return RHIResult<RHIBindingLayoutRef>::success(std::make_shared<VulkanBindingLayout>(
-            desc, vk_device, descriptor_set_layouts, std::move(native_bindings)));
+            *this, desc, vk_device, descriptor_set_layouts, std::move(native_bindings)));
     }
 
     RHIResult<RHISamplerRef> VulkanDevice::create_sampler(const RHISamplerDesc& desc)
@@ -1288,7 +1298,8 @@ namespace toy3d
         {
             return RHIResult<RHISamplerRef>::failure(create_status.code(), create_status.message());
         }
-        return RHIResult<RHISamplerRef>::success(std::make_shared<VulkanSampler>(desc, vk_device, sampler));
+        return RHIResult<RHISamplerRef>::success(
+            std::make_shared<VulkanSampler>(*this, desc, vk_device, sampler));
     }
 
     RHIResult<RHIBindingSetRef> VulkanDevice::create_binding_set(const RHIBindingSetDesc& desc)
@@ -1303,7 +1314,7 @@ namespace toy3d
             return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
         const auto layout = std::dynamic_pointer_cast<VulkanBindingLayout>(desc.layout);
-        if (!layout)
+        if (!layout || !layout->is_owned_by(*this))
         {
             return RHIResult<RHIBindingSetRef>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1329,7 +1340,8 @@ namespace toy3d
             if (value.buffer)
             {
                 const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
-                if (!buffer || value.buffer_offset % device_limits.uniform_buffer_offset_alignment != 0)
+                if (!buffer || !buffer->is_owned_by(*this) ||
+                    value.buffer_offset % device_limits.uniform_buffer_offset_alignment != 0)
                 {
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1339,7 +1351,7 @@ namespace toy3d
             else if (value.texture_view)
             {
                 const auto view = std::dynamic_pointer_cast<VulkanTextureView>(value.texture_view);
-                if (!view)
+                if (!view || !view->is_owned_by(*this))
                 {
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1349,7 +1361,7 @@ namespace toy3d
             else if (value.sampler)
             {
                 const auto sampler = std::dynamic_pointer_cast<VulkanSampler>(value.sampler);
-                if (!sampler)
+                if (!sampler || !sampler->is_owned_by(*this))
                 {
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1378,6 +1390,17 @@ namespace toy3d
             return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
                 RHIErrorCode::InvalidArgument,
                 "Vulkan binding packet requires an initialized device, layout, physical set, and logical sets.");
+        }
+        if (!layout->is_owned_by(*this) ||
+            std::any_of(logical_sets.begin(), logical_sets.end(), [this](
+                const std::shared_ptr<VulkanBindingSet>& logical_set)
+            {
+                return !logical_set || !logical_set->is_owned_by(*this);
+            }))
+        {
+            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan binding packet cannot combine objects from different devices.");
         }
 
         std::size_t binding_value_count = 0;
@@ -1519,7 +1542,10 @@ namespace toy3d
         const auto vertex_shader = std::dynamic_pointer_cast<VulkanShader>(desc.vertex_shader);
         const auto pixel_shader = std::dynamic_pointer_cast<VulkanShader>(desc.pixel_shader);
         const auto binding_layout = std::dynamic_pointer_cast<VulkanBindingLayout>(desc.binding_layout);
-        if (!vertex_shader || !pixel_shader || !binding_layout)
+        if (!vertex_shader || !pixel_shader || !binding_layout ||
+            !vertex_shader->is_owned_by(*this) ||
+            !pixel_shader->is_owned_by(*this) ||
+            !binding_layout->is_owned_by(*this))
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1781,6 +1807,7 @@ namespace toy3d
             return RHIResult<RHIGraphicsPipelineRef>::failure(status.code(), status.message());
         }
         return RHIResult<RHIGraphicsPipelineRef>::success(std::make_shared<VulkanGraphicsPipeline>(
+            *this,
             desc,
             vk_device,
             compatibility_render_pass,

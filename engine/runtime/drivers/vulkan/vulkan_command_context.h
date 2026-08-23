@@ -53,11 +53,13 @@ namespace toy3d
     {
     public:
         VulkanCommandList(
+            const RHIDevice& device,
             VulkanViewportContext& owner,
             VkCommandBuffer command_buffer,
             std::uint64_t frame_id,
             std::string debug_name);
         VulkanCommandList(
+            const RHIDevice& device,
             std::shared_ptr<VulkanCommandPool> command_pool,
             VkCommandBuffer command_buffer,
             std::string debug_name);

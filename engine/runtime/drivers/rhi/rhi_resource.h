@@ -8,11 +8,18 @@
 
 namespace toy3d
 {
+    class RHIDevice;
+
     class RHIObject
     {
     public:
         explicit RHIObject(std::string debug_name = {})
-            : object_debug_name(std::move(debug_name))
+            : RHIObject(nullptr, std::move(debug_name))
+        {
+        }
+
+        RHIObject(const RHIDevice& owner, std::string debug_name = {})
+            : RHIObject(&owner, std::move(debug_name))
         {
         }
 
@@ -23,7 +30,29 @@ namespace toy3d
             return object_debug_name;
         }
 
+        const RHIDevice* owner_device() const
+        {
+            return owning_device;
+        }
+
+        bool is_owned_by(const RHIDevice& device) const
+        {
+            return owning_device == &device;
+        }
+
+    protected:
+        RHIObject(const RHIDevice* owner, std::string debug_name)
+            : owning_device(owner)
+            , object_debug_name(std::move(debug_name))
+        {
+        }
+
     private:
+        // The creating device address is stable for the device lifetime and
+        // cannot be replaced after construction. Null is reserved for
+        // platform surfaces and descriptor-only test objects created before a
+        // device exists.
+        const RHIDevice* const owning_device = nullptr;
         std::string object_debug_name;
     };
 
@@ -39,6 +68,12 @@ namespace toy3d
     public:
         explicit RHIBuffer(RHIBufferDesc desc)
             : RHIResource(desc.debug_name)
+            , resource_desc(std::move(desc))
+        {
+        }
+
+        RHIBuffer(const RHIDevice& owner, RHIBufferDesc desc)
+            : RHIResource(owner, desc.debug_name)
             , resource_desc(std::move(desc))
         {
         }
@@ -61,6 +96,12 @@ namespace toy3d
         {
         }
 
+        RHITexture(const RHIDevice& owner, RHITextureDesc desc)
+            : RHIResource(owner, desc.debug_name)
+            , resource_desc(std::move(desc))
+        {
+        }
+
         const RHITextureDesc& desc() const
         {
             return resource_desc;
@@ -76,7 +117,7 @@ namespace toy3d
         RHITextureView(
             std::shared_ptr<RHITexture> texture,
             RHITextureViewDesc desc)
-            : RHIObject(desc.debug_name)
+            : RHIObject(texture ? texture->owner_device() : nullptr, desc.debug_name)
             , viewed_texture(std::move(texture))
             , view_desc(std::move(desc))
         {
@@ -103,7 +144,7 @@ namespace toy3d
         RHIBufferView(
             std::shared_ptr<RHIBuffer> buffer,
             RHIBufferViewDesc desc)
-            : RHIObject(desc.debug_name)
+            : RHIObject(buffer ? buffer->owner_device() : nullptr, desc.debug_name)
             , viewed_buffer(std::move(buffer))
             , view_desc(std::move(desc))
         {
@@ -133,6 +174,12 @@ namespace toy3d
         {
         }
 
+        RHIShader(const RHIDevice& owner, RHIShaderDesc desc)
+            : RHIObject(owner, desc.debug_name)
+            , shader_desc(std::move(desc))
+        {
+        }
+
         const RHIShaderDesc& desc() const
         {
             return shader_desc;
@@ -147,6 +194,12 @@ namespace toy3d
     public:
         explicit RHIBindingLayout(RHIBindingLayoutDesc desc)
             : RHIObject(desc.debug_name)
+            , layout_desc(std::move(desc))
+        {
+        }
+
+        RHIBindingLayout(const RHIDevice& owner, RHIBindingLayoutDesc desc)
+            : RHIObject(owner, desc.debug_name)
             , layout_desc(std::move(desc))
         {
         }
@@ -169,6 +222,12 @@ namespace toy3d
         {
         }
 
+        RHISampler(const RHIDevice& owner, RHISamplerDesc desc)
+            : RHIObject(owner, desc.debug_name)
+            , sampler_desc(std::move(desc))
+        {
+        }
+
         const RHISamplerDesc& desc() const
         {
             return sampler_desc;
@@ -187,6 +246,12 @@ namespace toy3d
         {
         }
 
+        RHIGraphicsPipeline(const RHIDevice& owner, RHIGraphicsPipelineDesc desc)
+            : RHIObject(owner, desc.debug_name)
+            , pipeline_desc(std::move(desc))
+        {
+        }
+
         const RHIGraphicsPipelineDesc& desc() const
         {
             return pipeline_desc;
@@ -200,7 +265,7 @@ namespace toy3d
     {
     public:
         explicit RHIBindingSet(RHIBindingSetDesc desc)
-            : RHIObject(desc.debug_name)
+            : RHIObject(desc.layout ? desc.layout->owner_device() : nullptr, desc.debug_name)
             , binding_set_desc(std::move(desc))
         {
         }

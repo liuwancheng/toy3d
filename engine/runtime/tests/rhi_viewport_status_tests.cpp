@@ -60,6 +60,26 @@ int main()
         "Frame abort").code() == RHIErrorCode::BackendFailure,
         "Suboptimal must become terminal when an acquired frame never reached presentation");
 
+    check(rhi_normalize_submitted_presentation_status(
+        RHIStatus::success(), "Present").succeeded(),
+        "successful presentation must remain successful after business submit");
+    check(rhi_normalize_submitted_presentation_status(
+        RHIStatus::failure(RHIErrorCode::Suboptimal, "Rebuild later."),
+        "Present").code() == RHIErrorCode::Suboptimal,
+        "Suboptimal must remain a recoverable presentation status after business submit");
+    check(rhi_normalize_submitted_presentation_status(
+        RHIStatus::failure(RHIErrorCode::OutOfDate, "Rebuild before the next frame."),
+        "Present").code() == RHIErrorCode::OutOfDate,
+        "OutOfDate must remain a recoverable presentation status after business submit");
+    check(rhi_normalize_submitted_presentation_status(
+        RHIStatus::failure(RHIErrorCode::NotReady, "Presentation did not reach a defined boundary."),
+        "Present").code() == RHIErrorCode::BackendFailure,
+        "NotReady must become terminal after business submit");
+    check(rhi_normalize_submitted_presentation_status(
+        RHIStatus::failure(RHIErrorCode::DeviceLost, "The device was lost after submit."),
+        "Present").code() == RHIErrorCode::DeviceLost,
+        "terminal presentation status must remain separate from successful business submit");
+
     const RHIStatus device_lost = RHIStatus::failure(
         RHIErrorCode::DeviceLost, "The device was lost during frame abort.");
     const RHIStatus preserved_device_lost = rhi_normalize_incomplete_acquired_frame_status(
@@ -68,6 +88,14 @@ int main()
         "an incomplete acquired frame must preserve an existing terminal code");
     check(preserved_device_lost.message() == device_lost.message(),
         "an incomplete acquired frame must preserve an existing terminal diagnostic");
+
+    const RHIFrameEndResult submitted_out_of_date{
+        17,
+        RHIStatus::failure(RHIErrorCode::OutOfDate, "Rebuild before the next frame.")};
+    check(submitted_out_of_date.completion_value == 17,
+        "a submitted frame result must preserve its business completion value");
+    check(submitted_out_of_date.presentation_status.code() == RHIErrorCode::OutOfDate,
+        "a submitted frame result must report presentation independently from business submit");
 
     if (failure_count != 0)
     {

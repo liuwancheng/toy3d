@@ -2,9 +2,9 @@
 
 - [x] 1.1 在每次 apply 开始时读取主 design、目标子 Spec 与直接前置完成状态，并在本次交付中记录选择依据。
 - [x] 1.2 在新增任何第一方具名类型前核对目标 Spec 的 Type Contracts；缺失时先更新 Spec 并以 `openspec validate establish-game-render-framework --strict` 验证。
-- [ ] 1.3 从下一未完成 capability 起采用批次验证：Batch B/C 中间阶段只执行 CMake configure、受影响正式 target build 和少量跨模块 smoke；完整单元、failure matrix、single/multi-thread E2E 与真实 Vulkan smoke 集中到 Batch D，不再要求每个框架空壳单独建立大测试 fixture。
+- [x] 1.3 从下一未完成 capability 起采用批次验证：Batch B/C 中间阶段只执行 CMake configure、受影响正式 target build 和少量跨模块 smoke；完整单元、failure matrix、single/multi-thread E2E 与真实 Vulkan smoke 集中到 Batch D，不再要求每个框架空壳单独建立大测试 fixture。
 - [x] 1.4 每个新增或修改模块 MUST 标明 Game side、Render side 或 stateless bridge，并通过依赖审查验证 Game side 无 RenderScene/RHI、Render side 无 Game 对象回读。
-- [ ] 1.5 在对应代码 Batch 开始前，为仍涉及新增或修改运行时代码的 capability spec 补齐 `Minimal Implementation Example`，只使用已确认名称，并覆盖 owner/observer/ownership transfer、GT/RT mutable thread、主调用顺序和至少一个失败路径。
+- [x] 1.5 在对应代码 Batch 开始前，为仍涉及新增或修改运行时代码的 capability spec 补齐 `Minimal Implementation Example`，只使用已确认名称，并覆盖 owner/observer/ownership transfer、GT/RT mutable thread、主调用顺序和至少一个失败路径。
 - [ ] 1.6 新增具名类型时逐项记录 UE4.27 对应术语、Toy3d 实际职责、不能复用既有类型的原因和用户确认结果；未登记到 Type Contracts 前不得实现或写入正式测试接口。
 
 ## 2. Legacy Rendering Cleanup
@@ -90,8 +90,8 @@
 
 ## 10. Batch C2 — Resource / Material / Forward Base Pass
 
-- [ ] 10.1 完成 viewport business submit result、submit/present/abort contract：submit success 后即 commit，present Suboptimal/OutOfDate/terminal 不回滚；明确未产生 GPU work 的 submit failure discard，执行边界未知时锁存 terminal。
-- [ ] 10.2 完成 command-list local first/current/final access、按实际 submit 顺序的 queue committed state、device ownership identity 和 completion-driven payload 回收；支持同一 list upload→transition→draw，D3D11 completion 使用 FL11_0 event query contract。
+- [x] 10.1 完成 viewport business submit result、submit/present/abort contract：submit success 后即 commit，present Suboptimal/OutOfDate/terminal 不回滚；明确未产生 GPU work 的 submit failure discard，执行边界未知时锁存 terminal。
+- [x] 10.2 完成 command-list local first/current/final access、按实际 submit 顺序的 queue committed state、device ownership identity 和 completion-driven payload 回收；支持同一 list upload→transition→draw，D3D11 completion 使用 FL11_0 event query contract。
 - [ ] 10.3 实现 `RenderResource`、`RenderResourceState`、`RenderResourceManager` 的 RT-only pending collection、`record_pending_uploads()`、当前 recording 局部可用、submit 后 Ready、abort/retry、release 与 terminal clear；Manager 保持 non-owning。
 - [ ] 10.4 实现 `StaticMeshRenderData`、`PositionVertexBuffer`、`StaticMeshVertexBuffer`、optional `ColorVertexBuffer`、`StaticMeshIndexBuffer` 与 `LocalVertexFactory` 的完整 candidate gate；当前只支持单组 geometry/sections，不实现 LOD/streaming/partial residency。
 - [ ] 10.5 实现 `Texture`、`TextureDesc`、`TextureRef` 与 `TextureResource`，覆盖 stable address、initial upload、active/candidate replacement、内容更新不换 view、submit 后 binding generation 和旧 view 到 completion 保活。

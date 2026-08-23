@@ -196,13 +196,17 @@ class RHIViewportContext
 {
 public:
     virtual RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() = 0;
-    virtual RHIStatus end_frame(
+    virtual RHIResult<RHIFrameEndResult> end_frame(
         std::unique_ptr<RHIFrameContext> frame,
         const std::vector<RHICommandListRef>& command_lists) = 0;
     virtual RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) = 0;
     virtual RHIStatus request_resize(uint32 width, uint32 height) = 0;
 };
 ```
+
+`RHIFrameEndResult` 将业务提交事实与 presentation 结果分开：外层成功表示业务 command list 已提交，
+并携带有效 `completion_value`；`presentation_status` 独立表达 Success、Suboptimal、OutOfDate 或 terminal。
+submit 成功后，present 的任何结果都不得回滚已经发布的资源状态或 in-flight ownership。
 
 Swapchain 是各后端 `RHIViewportContext` 的内部 presentation 组件，不建立公共 `RHISwapchain` 或 `RHIDevice::create_swapchain()` 平行路径。`begin_frame()` 返回当前 presentation texture/view，`end_frame()` 统一完成 submit 和 present；image index、frame slot、acquire/present 同步对象及原生 swapchain 均不得泄漏到 renderscene。Out-of-date、suboptimal、surface lost、device lost 和延迟 resize 由 viewport 内部处理并通过可诊断结果反馈。
 
@@ -291,6 +295,10 @@ struct RHIResourceTransition
 
 资源对象不得私自 submit、wait idle 或执行 immediate transition。Upload、copy 和 transition 必须记录到 command context，由 queue 统一提交。
 
+Command list 的 tracker 对每个 transition 或实际 resource usage 记录 first required access、当前 local access 和 final access；录制期间只推进 local state。Queue 在同一提交临界区内按 `validate current committed → native submit → publish final committed` 的顺序处理，因此 committed state 以原生 queue 的实际成功 submit 顺序为准，而不是 command list 的录制顺序。失败且明确未产生 GPU work 时不发布 final state。
+
+每个由 device 创建的 `RHIObject` 保存不可变的创建 device identity。Resource、view、shader、binding、pipeline、render-pass attachment 和 command list 在创建、录制或 submit 入口先验证 identity，再执行 backend downcast 或原生 API；platform surface 是 device 创建前存在的例外，不伪造 device owner。Device 必须晚于其全部子对象销毁。
+
 ## 7. 生命周期
 
 资源生命周期按以下模型实现：
@@ -304,6 +312,8 @@ struct RHIResourceTransition
 7. Device 晚于所有子资源、swapchain、pool 和 cache 销毁。
 
 Descriptor pool、command pool、upload ring 和临时 framebuffer 按 frame-in-flight/completion value 分代，GPU 完成前不得 reset 或复用。
+
+Completion 只控制 GPU payload 回收：command list、staging page、descriptor packet、pipeline/binding/resource 强引用和临时 render-pass payload 都保留到对应 `RHIQueueCompletionValue` 完成。Vulkan 使用 submit fence；D3D12 使用 fence value；D3D11 FL11_0 基线在 `ExecuteCommandList` 后发出 `D3D11_QUERY_EVENT`，以 `ID3D11DeviceContext::GetData` 确认 GPU 到达该点。`ExecuteCommandList` 的 CPU 返回不得视为 completion，且不依赖 D3D11.3 fence 抬高基线。
 
 ## 8. Shader 系统边界
 
@@ -722,7 +732,7 @@ RHI pipeline 与 viewport 映射遵守 Shader 系统的统一约定：left-hande
 | binding set | descriptor set | CBV/SRV/UAV/sampler binding packet | descriptor table/root binding |
 | render pass | dynamic rendering/render pass | OM + clear/resolve | render pass API 或命令组合 |
 | recording | command buffer | deferred/immediate context | command list |
-| submit completion | fence/timeline | query/fence strategy | fence value |
+| submit completion | submit fence/timeline | FL11_0 `D3D11_QUERY_EVENT` | fence value |
 | async compute | capability gated | 通常不作为基线 | capability gated |
 
 D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力时，可以安全退化为串行和隐式同步，但渲染结果与公共错误语义必须一致。
@@ -805,7 +815,6 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 - GlobalShader/MaterialShader 使用显式 registry 还是轻量注册宏；
 - shader 编译工具链和 Vulkan/D3D bytecode 产物格式；
-- D3D11 queue completion value 的 fence/query 实现策略；
 - transient uniform allocator 的公共 API 形态；
 - Global、View、Pass、Material、Object 固定为五个逻辑 group；各 target/profile 的 physical set/register/root mapping 独立版本化；
 - Material 的序列化格式与未来 Material Graph 生成接口；

@@ -33,7 +33,6 @@
 4. Buffer View、storage binding、resolve attachment和GPU fence/readback尚未闭环；其 capability和错误路径需要与Vulkan、D3D11、D3D12映射一起定型。
 5. 正式 Renderer 与 RDG 均尚未实现。下一阶段按 `document/rendering-engine-foundation-design.md` 先建设 World/RenderScene、Game/Render Thread、Material、Forward Renderer、PostProcess 与 ImGui；显式 SceneRenderer/业务 Pass 是长期职责，不新增通用临时 Pass Scheduler。RDG 后置，在真实跨 Pass 依赖形成后再接管资源声明、barrier 与调度。
 6. 当前只完成 graphics pipeline 创建链与 queue submit 的 NVI；其他 resource/view/shader/binding 创建入口以及 command context 行为仍由 backend 直接实现完整接口。后续应按调用链迁移公共 validation、状态机和资源保活，不能让新后端复制 Vulkan frontend policy。
-7. `RHIObject` 尚无不可变 device ownership identity。backend 的 `dynamic_pointer_cast` 只能拒绝不同类型，不能拒绝来自另一个同类型 device 的对象；在支持多 device 或 D3D backend 前应增加公共 owner token/id，并在 NVI frontend 统一检查。
 
 ## P2
 

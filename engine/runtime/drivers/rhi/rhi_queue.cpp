@@ -6,6 +6,7 @@ namespace toy3d
 {
     RHIResult<RHISubmitResult> RHIQueue::submit(const RHISubmitInfo& info)
     {
+        std::lock_guard<std::mutex> submission_lock(submission_mutex);
         if (info.command_lists.empty())
         {
             return RHIResult<RHISubmitResult>::failure(
@@ -43,13 +44,10 @@ namespace toy3d
 
         for (const RHICommandListRef& command_list : info.command_lists)
         {
-            const RHIStatus status = command_list->mark_submitted();
-            if (!status)
-            {
-                return RHIResult<RHISubmitResult>::failure(
-                    RHIErrorCode::BackendFailure,
-                    "Command list state changed during submission.");
-            }
+            // The public submission mutex preserves the Closed validation
+            // through backend success, so publication cannot fail after GPU
+            // work has already entered the queue.
+            command_list->publish_submitted();
         }
         return result;
     }

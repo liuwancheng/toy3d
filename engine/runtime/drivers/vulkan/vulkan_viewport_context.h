@@ -29,7 +29,7 @@ namespace toy3d
         ~VulkanViewportContext() override;
 
         RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() override;
-        RHIStatus end_frame(
+        RHIResult<RHIFrameEndResult> end_frame(
             std::unique_ptr<RHIFrameContext> frame,
             const std::vector<RHICommandListRef>& command_lists) override;
         RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) override;

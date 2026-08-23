@@ -83,12 +83,13 @@ namespace toy3d
     }
 
     VulkanBuffer::VulkanBuffer(
+        const RHIDevice& owner,
         RHIBufferDesc desc,
         VulkanMemoryManager& memory_manager,
         VulkanDeferredDeletionQueue& deletion_queue,
         VulkanAllocatedBuffer allocated_buffer,
         RHIAccess initial_access)
-        : RHIBuffer(std::move(desc))
+        : RHIBuffer(owner, std::move(desc))
         , memory_manager_instance(&memory_manager)
         , deletion_queue_instance(&deletion_queue)
         , allocated_buffer(std::move(allocated_buffer))
@@ -149,13 +150,14 @@ namespace toy3d
     }
 
     VulkanTexture::VulkanTexture(
+        const RHIDevice& owner,
         RHITextureDesc desc,
         VulkanMemoryManager& memory_manager,
         VulkanDeferredDeletionQueue& deletion_queue,
         VulkanAllocatedImage allocated_image,
         VkImageLayout initial_layout,
         RHIAccess initial_access)
-        : RHITexture(std::move(desc))
+        : RHITexture(owner, std::move(desc))
         , memory_manager_instance(&memory_manager)
         , deletion_queue_instance(&deletion_queue)
         , allocated_image(std::move(allocated_image))
@@ -167,11 +169,12 @@ namespace toy3d
     }
 
     VulkanTexture::VulkanTexture(
+        const RHIDevice& owner,
         RHITextureDesc desc,
         VkImage external_image,
         VkImageLayout initial_layout,
         RHIAccess initial_access)
-        : RHITexture(std::move(desc))
+        : RHITexture(owner, std::move(desc))
         , initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
     {
         allocated_image.image = external_image;
@@ -376,8 +379,12 @@ namespace toy3d
         return true;
     }
 
-    VulkanShader::VulkanShader(RHIShaderDesc desc, VkDevice device, VkShaderModule shader_module)
-        : RHIShader(std::move(desc))
+    VulkanShader::VulkanShader(
+        const RHIDevice& owner,
+        RHIShaderDesc desc,
+        VkDevice device,
+        VkShaderModule shader_module)
+        : RHIShader(owner, std::move(desc))
         , vk_device(device)
         , vk_shader_module(shader_module)
     {
@@ -397,11 +404,12 @@ namespace toy3d
     }
 
     VulkanBindingLayout::VulkanBindingLayout(
+        const RHIDevice& owner,
         RHIBindingLayoutDesc desc,
         VkDevice device,
         std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
         std::vector<NativeBinding> native_bindings)
-        : RHIBindingLayout(std::move(desc))
+        : RHIBindingLayout(owner, std::move(desc))
         , vk_device(device)
         , vk_descriptor_set_layouts(descriptor_set_layouts)
         , binding_mappings(std::move(native_bindings))
@@ -468,8 +476,12 @@ namespace toy3d
         return vk_descriptor_set_layouts;
     }
 
-    VulkanSampler::VulkanSampler(RHISamplerDesc desc, VkDevice device, VkSampler sampler)
-        : RHISampler(std::move(desc))
+    VulkanSampler::VulkanSampler(
+        const RHIDevice& owner,
+        RHISamplerDesc desc,
+        VkDevice device,
+        VkSampler sampler)
+        : RHISampler(owner, std::move(desc))
         , vk_device(device)
         , vk_sampler(sampler)
     {
@@ -519,12 +531,13 @@ namespace toy3d
     }
 
     VulkanGraphicsPipeline::VulkanGraphicsPipeline(
+        const RHIDevice& owner,
         RHIGraphicsPipelineDesc desc,
         VkDevice device,
         VkRenderPass compatibility_render_pass,
         VkPipelineLayout pipeline_layout,
         VkPipeline pipeline)
-        : RHIGraphicsPipeline(std::move(desc))
+        : RHIGraphicsPipeline(owner, std::move(desc))
         , vk_device(device)
         , vk_compatibility_render_pass(compatibility_render_pass)
         , vk_pipeline_layout(pipeline_layout)

@@ -16,6 +16,9 @@
 
 namespace toy3d
 {
+    class RHIDevice;
+    class VulkanCommandList;
+    class VulkanTexture;
     class VulkanUploadManager;
     // Owns submission ordering and completion serials for one native queue.
     // Swapchain semaphores remain private to VulkanViewportContext and are not
@@ -24,6 +27,7 @@ namespace toy3d
     {
     public:
         VulkanQueue(
+            const RHIDevice& owner,
             VkDevice device,
             VkQueue queue,
             VulkanUploadManager& upload_manager);
@@ -35,7 +39,9 @@ namespace toy3d
 
         VkQueue native_handle() const;
         RHIResult<RHISubmitResult> submit_viewport(
+            const std::vector<VulkanCommandList*>& command_lists,
             const std::vector<VkCommandBuffer>& command_buffers,
+            VulkanTexture& presentation_texture,
             VkSemaphore wait_semaphore,
             VkPipelineStageFlags wait_stage,
             VkSemaphore signal_semaphore,
@@ -60,10 +66,13 @@ namespace toy3d
             VkSemaphore signal_semaphore,
             VkFence completion_fence,
             bool owns_fence,
+            const std::vector<VulkanCommandList*>& command_lists,
+            VulkanTexture* presentation_texture,
             std::vector<RHICommandListRef> retained_command_lists = {});
         void update_completed_value_locked() const;
         void release_pending_submissions_locked();
 
+        const RHIDevice& owner_device;
         VkDevice vk_device = VK_NULL_HANDLE;
         VkQueue vk_queue = VK_NULL_HANDLE;
         VulkanUploadManager& upload_manager;

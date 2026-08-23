@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_command_context.h"
 
+#include <mutex>
 #include <vector>
 
 namespace toy3d
@@ -35,5 +36,8 @@ namespace toy3d
     protected:
         virtual RHIResult<RHISubmitResult> submit_impl(
             const RHISubmitInfo& info) = 0;
+
+    private:
+        std::mutex submission_mutex;
     };
 }

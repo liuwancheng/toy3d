@@ -282,11 +282,12 @@ namespace toy3d
     }
 
     VulkanCommandList::VulkanCommandList(
+        const RHIDevice& device,
         VulkanViewportContext& owner,
         VkCommandBuffer command_buffer,
         std::uint64_t frame_id,
         std::string debug_name)
-        : RHICommandList(std::move(debug_name))
+        : RHICommandList(device, std::move(debug_name))
         , viewport_owner(&owner)
         , vk_command_buffer(command_buffer)
         , command_frame_id(frame_id)
@@ -294,10 +295,11 @@ namespace toy3d
     }
 
     VulkanCommandList::VulkanCommandList(
+        const RHIDevice& device,
         std::shared_ptr<VulkanCommandPool> command_pool,
         VkCommandBuffer command_buffer,
         std::string debug_name)
-        : RHICommandList(std::move(debug_name))
+        : RHICommandList(device, std::move(debug_name))
         , owned_command_pool(std::move(command_pool))
         , vk_command_buffer(command_buffer)
     {
@@ -711,6 +713,7 @@ namespace toy3d
         if (viewport_context != nullptr)
         {
             command_list = std::make_shared<VulkanCommandList>(
+                vulkan_device,
                 *viewport_context,
                 vk_command_buffer,
                 recording_frame_id,
@@ -719,6 +722,7 @@ namespace toy3d
         else
         {
             command_list = std::make_shared<VulkanCommandList>(
+                vulkan_device,
                 owned_command_pool,
                 vk_command_buffer,
                 debug_name);
@@ -748,6 +752,12 @@ namespace toy3d
             if (!validation)
             {
                 return validation;
+            }
+            if (!transition.resource->is_owned_by(vulkan_device))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan transition cannot use a resource created by another device.");
             }
 
             VulkanAccessState before_state;
@@ -902,6 +912,13 @@ namespace toy3d
         {
             return validation;
         }
+        if (!desc.source->is_owned_by(vulkan_device) ||
+            !desc.destination->is_owned_by(vulkan_device))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan buffer copy cannot use resources created by another device.");
+        }
         const auto source = std::dynamic_pointer_cast<VulkanBuffer>(desc.source);
         const auto destination = std::dynamic_pointer_cast<VulkanBuffer>(desc.destination);
         if (!source || !destination)
@@ -917,6 +934,8 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan buffer copy requires CopySource and CopyDestination resource states.");
         }
+        recording_command_list->track_buffer_transition(source, RHIAccess::CopySource);
+        recording_command_list->track_buffer_transition(destination, RHIAccess::CopyDestination);
         VkBufferCopy region{};
         region.srcOffset = desc.source_offset;
         region.dstOffset = desc.destination_offset;
@@ -939,6 +958,12 @@ namespace toy3d
         {
             return validation;
         }
+        if (!desc.destination->is_owned_by(vulkan_device))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan buffer upload cannot use a resource created by another device.");
+        }
         const auto destination = std::dynamic_pointer_cast<VulkanBuffer>(desc.destination);
         if (!destination)
         {
@@ -952,6 +977,7 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan buffer upload requires the destination buffer in CopyDestination state.");
         }
+        recording_command_list->track_buffer_transition(destination, RHIAccess::CopyDestination);
         const auto upload = vulkan_device.upload_manager().upload(desc.source.data, desc.source.size, 4);
         if (!upload)
         {
@@ -979,6 +1005,13 @@ namespace toy3d
         if (!validation)
         {
             return validation;
+        }
+        if (!desc.source.texture->is_owned_by(vulkan_device) ||
+            !desc.destination.texture->is_owned_by(vulkan_device))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan texture copy cannot use resources created by another device.");
         }
         const auto source = std::dynamic_pointer_cast<VulkanTexture>(desc.source.texture);
         const auto destination = std::dynamic_pointer_cast<VulkanTexture>(desc.destination.texture);
@@ -1008,6 +1041,13 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan texture copy requires CopySource and CopyDestination resource states.");
         }
+        recording_command_list->track_texture_transition(
+            source, source_range, source_state.value().layout, source_state.value().access);
+        recording_command_list->track_texture_transition(
+            destination,
+            destination_range,
+            destination_state.value().layout,
+            destination_state.value().access);
         const VkFormat format = vulkan_format_from_rhi(source->desc().format);
         if (is_vk_depth_format(format))
         {
@@ -1058,6 +1098,12 @@ namespace toy3d
         {
             return validation;
         }
+        if (!desc.destination.texture->is_owned_by(vulkan_device))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan texture upload cannot use a resource created by another device.");
+        }
         const auto destination = std::dynamic_pointer_cast<VulkanTexture>(desc.destination.texture);
         if (!destination)
         {
@@ -1074,6 +1120,11 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan texture upload requires the destination texture in CopyDestination state.");
         }
+        recording_command_list->track_texture_transition(
+            destination,
+            destination_range,
+            destination_state.value().layout,
+            destination_state.value().access);
         if (destination->desc().sample_count != 1 || is_vk_depth_format(vulkan_format_from_rhi(destination->desc().format)))
         {
             return RHIStatus::failure(
@@ -1129,8 +1180,14 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::write_gpu_fence(const RHIGPUFenceRef&)
+    RHIStatus VulkanGraphicsCommandContext::write_gpu_fence(const RHIGPUFenceRef& fence)
     {
+        if (fence && !fence->is_owned_by(vulkan_device))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Vulkan command recording cannot use a GPU fence created by another device.");
+        }
         return unsupported_while_recording("Vulkan GPU fence writes are not implemented yet.");
     }
 
@@ -1205,7 +1262,8 @@ namespace toy3d
             }
             const auto view = std::dynamic_pointer_cast<VulkanTextureView>(attachment.view);
             const auto texture = view ? std::dynamic_pointer_cast<VulkanTexture>(view->texture()) : nullptr;
-            if (!view || !texture)
+            if (!view || !texture || !view->is_owned_by(vulkan_device) ||
+                !texture->is_owned_by(vulkan_device))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1219,6 +1277,11 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan color attachment must be transitioned to RenderTarget before begin_render_pass.");
             }
+            recording_command_list->track_texture_transition(
+                texture,
+                attachment.view->desc().subresources,
+                attachment_state.value().layout,
+                attachment_state.value().access);
             const auto load_operation = to_vk_load_operation(attachment.load);
             const auto store_operation = to_vk_store_operation(attachment.store);
             if (!load_operation || !store_operation)
@@ -1273,7 +1336,8 @@ namespace toy3d
             const RHIDepthStencilAttachmentDesc& attachment = desc.depth_stencil_attachment;
             const auto view = std::dynamic_pointer_cast<VulkanTextureView>(attachment.view);
             const auto texture = view ? std::dynamic_pointer_cast<VulkanTexture>(view->texture()) : nullptr;
-            if (!view || !texture)
+            if (!view || !texture || !view->is_owned_by(vulkan_device) ||
+                !texture->is_owned_by(vulkan_device))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1310,6 +1374,11 @@ namespace toy3d
                         ? "Vulkan read-only depth-stencil attachment must be transitioned to DepthStencilRead before begin_render_pass."
                         : "Vulkan writable depth-stencil attachment must be transitioned to DepthStencilWrite before begin_render_pass.");
             }
+            recording_command_list->track_texture_transition(
+                texture,
+                attachment.view->desc().subresources,
+                attachment_state.value().layout,
+                attachment_state.value().access);
 
             const auto depth_load = to_vk_load_operation(attachment.depth_load);
             const auto depth_store = to_vk_store_operation(attachment.depth_store);
@@ -1463,7 +1532,7 @@ namespace toy3d
                 "A Vulkan graphics pipeline can be bound only inside an active render pass.");
         }
         const auto vulkan_pipeline = std::dynamic_pointer_cast<VulkanGraphicsPipeline>(pipeline);
-        if (!vulkan_pipeline)
+        if (!vulkan_pipeline || !vulkan_pipeline->is_owned_by(vulkan_device))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1553,7 +1622,8 @@ namespace toy3d
         for (const RHIVertexBufferBinding& binding : bindings)
         {
             const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
-            if (!buffer || !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::VertexBuffer))
+            if (!buffer || !buffer->is_owned_by(vulkan_device) ||
+                !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::VertexBuffer))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1578,7 +1648,8 @@ namespace toy3d
             return status;
         }
         const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
-        if (!buffer || !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::IndexBuffer))
+        if (!buffer || !buffer->is_owned_by(vulkan_device) ||
+            !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::IndexBuffer))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1602,8 +1673,10 @@ namespace toy3d
         }
         const std::array<RHIBindingSetRef, static_cast<std::size_t>(RHIBindingGroup::Max)> sets = {
             bindings.global, bindings.view, bindings.pass, bindings.material, bindings.object};
-        if (std::any_of(sets.begin(), sets.end(), [](const RHIBindingSetRef& binding_set) {
-                return binding_set && !std::dynamic_pointer_cast<VulkanBindingSet>(binding_set);
+        if (std::any_of(sets.begin(), sets.end(), [this](const RHIBindingSetRef& binding_set) {
+                return binding_set &&
+                    (!binding_set->is_owned_by(vulkan_device) ||
+                     !std::dynamic_pointer_cast<VulkanBindingSet>(binding_set));
             }))
         {
             return RHIStatus::failure(
@@ -1711,6 +1784,15 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan vertex-buffer stride is incompatible with the graphics pipeline.");
             }
+            const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(vertex_bindings[index].buffer);
+            if (!buffer ||
+                recording_command_list->tracked_buffer_access(buffer) != RHIAccess::VertexBuffer)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan draw requires vertex buffers in VertexBuffer state.");
+            }
+            recording_command_list->track_buffer_transition(buffer, RHIAccess::VertexBuffer);
         }
         if (indexed_draw && !graphics_state.has_index_buffer())
         {
@@ -1751,6 +1833,7 @@ namespace toy3d
             }
             const auto vulkan_set = std::dynamic_pointer_cast<VulkanBindingSet>(binding_set);
             if (!vulkan_set ||
+                !vulkan_set->is_owned_by(vulkan_device) ||
                 !(binding_set->layout()->desc() == pipeline->desc().binding_layout->desc()))
             {
                 return RHIStatus::failure(
@@ -1768,6 +1851,7 @@ namespace toy3d
                             RHIErrorCode::InvalidArgument,
                             "Vulkan uniform buffer must be transitioned to UniformBuffer before draw.");
                     }
+                    recording_command_list->track_buffer_transition(buffer, RHIAccess::UniformBuffer);
                 }
                 if (value.texture_view)
                 {
@@ -1783,6 +1867,11 @@ namespace toy3d
                             RHIErrorCode::InvalidArgument,
                             "Vulkan sampled texture must be transitioned to ShaderResourceGraphics before draw.");
                     }
+                    recording_command_list->track_texture_transition(
+                        texture,
+                        value.texture_view->desc().subresources,
+                        texture_state.value().layout,
+                        texture_state.value().access);
                 }
             }
             const RHIBindingGroup group = static_cast<RHIBindingGroup>(group_index);
@@ -1857,6 +1946,13 @@ namespace toy3d
         {
             const RHIIndexBufferBinding& binding = graphics_state.index_buffer();
             const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
+            if (recording_command_list->tracked_buffer_access(buffer) != RHIAccess::IndexBuffer)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vulkan indexed draw requires the index buffer in IndexBuffer state.");
+            }
+            recording_command_list->track_buffer_transition(buffer, RHIAccess::IndexBuffer);
             const VkIndexType index_type = binding.format == RHIIndexFormat::UInt16
                 ? VK_INDEX_TYPE_UINT16
                 : VK_INDEX_TYPE_UINT32;
