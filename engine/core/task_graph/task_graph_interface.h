@@ -18,6 +18,11 @@ namespace toy3d
     public:
         virtual ~TaskGraphInterface() = default;
 
+        // The composition root retains ownership. These accessors only expose the
+        // process-wide active scheduler during its published running lifetime.
+        static bool is_running() noexcept;
+        static TaskGraphInterface& get();
+
         virtual NamedThread get_current_thread_if_known() const = 0;
         virtual NamedThread get_render_thread() const = 0;
         virtual std::uint32_t get_num_worker_threads() const = 0;

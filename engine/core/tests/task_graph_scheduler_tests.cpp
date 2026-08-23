@@ -86,6 +86,187 @@ namespace
         return created.succeeded() ? created.take_task_graph() : nullptr;
     }
 
+    void test_active_instance_lifecycle_and_factory_race()
+    {
+        check(!toy3d::TaskGraphInterface::is_running(),
+            "Task Graph must not publish an active instance before factory success");
+        bool stopped_access_rejected = false;
+        try
+        {
+            static_cast<void>(toy3d::TaskGraphInterface::get());
+        }
+        catch (const toy3d::TaskGraphException& exception)
+        {
+            stopped_access_rejected =
+                exception.status().code == toy3d::TaskGraphErrorCode::Stopped;
+        }
+        check(stopped_access_rejected,
+            "TaskGraphInterface::get must diagnose access before startup");
+
+        toy3d::ThreadManager first_thread_manager;
+        std::unique_ptr<toy3d::TaskGraphInterface> first = create_graph(
+            first_thread_manager, {0, 8, false});
+        if (!first)
+        {
+            return;
+        }
+        check(toy3d::TaskGraphInterface::is_running()
+                && &toy3d::TaskGraphInterface::get() == first.get(),
+            "factory success must publish the composition-root-owned instance");
+
+        std::atomic<toy3d::TaskGraphErrorCode> duplicate_diagnostic{
+            toy3d::TaskGraphErrorCode::None};
+        toy3d::ThreadManager duplicate_thread_manager;
+        toy3d::TaskGraphCreateResult duplicate = toy3d::create_task_graph(
+            {0, 8, false},
+            duplicate_thread_manager,
+            [&duplicate_diagnostic](const toy3d::TaskGraphStatus& status)
+            {
+                duplicate_diagnostic.store(status.code);
+            });
+        check(!duplicate.succeeded()
+                && duplicate.status().code == toy3d::TaskGraphErrorCode::InvalidState
+                && duplicate_diagnostic.load() == toy3d::TaskGraphErrorCode::InvalidState
+                && &toy3d::TaskGraphInterface::get() == first.get(),
+            "duplicate startup must preserve and diagnose the first active instance");
+
+        check(first->shutdown(toy3d::TaskGraphShutdownMode::Drain).succeeded(),
+            "the first active graph must shut down cleanly");
+        check(!toy3d::TaskGraphInterface::is_running(),
+            "shutdown must withdraw active publication before object destruction");
+
+        toy3d::ThreadManager race_thread_managers[2];
+        std::unique_ptr<toy3d::TaskGraphInterface> race_graphs[2];
+        std::atomic<toy3d::TaskGraphErrorCode> race_results[2]{
+            toy3d::TaskGraphErrorCode::InvalidState,
+            toy3d::TaskGraphErrorCode::InvalidState};
+        toy3d::Event start_race(toy3d::EventMode::ManualReset);
+        std::thread factories[2];
+        for (int index = 0; index < 2; ++index)
+        {
+            factories[index] = std::thread(
+                [index, &race_thread_managers, &race_graphs, &race_results, &start_race]()
+                {
+                    start_race.wait();
+                    toy3d::TaskGraphCreateResult created = toy3d::create_task_graph(
+                        {0, 8, false}, race_thread_managers[index]);
+                    race_results[index].store(created.status().code);
+                    if (created.succeeded())
+                    {
+                        race_graphs[index] = created.take_task_graph();
+                    }
+                });
+        }
+        start_race.trigger();
+        factories[0].join();
+        factories[1].join();
+
+        const int first_succeeded = race_results[0].load()
+            == toy3d::TaskGraphErrorCode::None ? 1 : 0;
+        const int second_succeeded = race_results[1].load()
+            == toy3d::TaskGraphErrorCode::None ? 1 : 0;
+        check(first_succeeded + second_succeeded == 1,
+            "two racing factories must publish exactly one active instance");
+        const int winner = first_succeeded != 0 ? 0 : 1;
+        const int loser = 1 - winner;
+        check(race_results[loser].load() == toy3d::TaskGraphErrorCode::InvalidState
+                && race_graphs[winner]
+                && &toy3d::TaskGraphInterface::get() == race_graphs[winner].get(),
+            "factory race rejection must leave the winning instance published");
+        check(race_graphs[winner]->shutdown(
+                toy3d::TaskGraphShutdownMode::Drain).succeeded(),
+            "the factory-race winner must retain normal shutdown ownership");
+    }
+
+    void test_shutdown_publication_race_and_waiter_wake()
+    {
+        toy3d::ThreadManager thread_manager;
+        std::unique_ptr<toy3d::TaskGraphInterface> graph = create_graph(
+            thread_manager, {1, 16, true});
+        if (!graph)
+        {
+            return;
+        }
+        check(graph->attach_to_thread(toy3d::NamedThread::GameThread).succeeded(),
+            "shutdown race graph must attach GameThread");
+
+        toy3d::Event task_started(toy3d::EventMode::ManualReset);
+        toy3d::Event release_task(toy3d::EventMode::ManualReset);
+        toy3d::GraphEventRef running_task = toy3d::dispatch_graph_task(
+            *graph,
+            "ShutdownPublicationRace",
+            [&task_started, &release_task](
+                toy3d::NamedThread, const toy3d::GraphEventRef&)
+            {
+                task_started.trigger();
+                release_task.wait();
+            },
+            toy3d::NamedThread::AnyWorker);
+        check(task_started.wait_for(1s),
+            "shutdown race requires a running task to hold teardown open");
+
+        std::atomic<bool> shutdown_access_rejected{false};
+        std::thread shutdown_observer(
+            [&release_task, &shutdown_access_rejected]()
+            {
+                const auto publication_deadline =
+                    std::chrono::steady_clock::now() + 1s;
+                while (toy3d::TaskGraphInterface::is_running()
+                    && std::chrono::steady_clock::now() < publication_deadline)
+                {
+                    std::this_thread::yield();
+                }
+                try
+                {
+                    static_cast<void>(toy3d::TaskGraphInterface::get());
+                }
+                catch (const toy3d::TaskGraphException& exception)
+                {
+                    shutdown_access_rejected.store(
+                        exception.status().code == toy3d::TaskGraphErrorCode::Stopped);
+                }
+                release_task.trigger();
+            });
+        const toy3d::TaskGraphShutdownResult shutdown_result =
+            graph->shutdown(toy3d::TaskGraphShutdownMode::Drain);
+        shutdown_observer.join();
+        check(!toy3d::TaskGraphInterface::is_running()
+                && shutdown_access_rejected.load(),
+            "shutdown must make racing global access observe a stopped scheduler");
+        check(shutdown_result.succeeded()
+                && running_task->get_outcome() == toy3d::TaskOutcome::Succeeded,
+            "Drain must retain tracked completion while withdrawing publication");
+
+        std::unique_ptr<toy3d::TaskGraphInterface> cancel_graph = create_graph(
+            thread_manager, {0, 8, false});
+        if (!cancel_graph)
+        {
+            return;
+        }
+        check(cancel_graph->attach_to_thread(toy3d::NamedThread::GameThread).succeeded(),
+            "waiter wake graph must attach GameThread");
+        toy3d::GraphTask<SchedulerTask>* held =
+            toy3d::GraphTask<SchedulerTask>::create_task(*cancel_graph)
+                .construct_and_hold(
+                    [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                    toy3d::NamedThread::GameThread);
+        toy3d::GraphEventRef held_event = held->get_completion_event();
+        std::atomic<toy3d::TaskGraphErrorCode> waiter_result{
+            toy3d::TaskGraphErrorCode::InvalidState};
+        std::thread waiter([&cancel_graph, &held_event, &waiter_result]()
+        {
+            waiter_result.store(
+                cancel_graph->wait_until_task_completes(held_event).status.code);
+        });
+        check(cancel_graph->shutdown(
+                toy3d::TaskGraphShutdownMode::CancelPending).succeeded(),
+            "CancelPending must close tracked work during explicit shutdown");
+        waiter.join();
+        check(waiter_result.load() == toy3d::TaskGraphErrorCode::Cancelled
+                && held_event->get_outcome() == toy3d::TaskOutcome::Cancelled,
+            "shutdown must wake a waiter with the tracked cancellation outcome");
+    }
+
     void test_single_thread_fifo_drain_and_self_wait()
     {
         toy3d::ThreadManager thread_manager;
@@ -427,6 +608,23 @@ namespace
         check(graph->attach_to_thread(toy3d::NamedThread::GameThread).succeeded(),
             "GameThread attachment must succeed for routing integration");
 
+        bool unattached_render_rejected = false;
+        try
+        {
+            toy3d::dispatch_graph_task(
+                *graph,
+                "UnattachedRenderingThread",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                toy3d::NamedThread::RenderingThread);
+        }
+        catch (const toy3d::TaskGraphException& exception)
+        {
+            unattached_render_rejected =
+                exception.status().code == toy3d::TaskGraphErrorCode::TargetUnavailable;
+        }
+        check(unattached_render_rejected,
+            "render work must be rejected until RenderingThread attaches");
+
         std::thread wrong_caller([&graph]()
         {
             graph->process_thread_until_idle(toy3d::NamedThread::GameThread);
@@ -453,6 +651,30 @@ namespace
         check(render_ready.wait_for(1s)
                 && render_attach.load() == toy3d::TaskGraphErrorCode::None,
             "RenderingThread must attach on its external owner thread");
+
+        std::vector<int> render_fifo_order;
+        toy3d::GraphEventArray render_fifo_events;
+        for (int index = 0; index < 32; ++index)
+        {
+            render_fifo_events.push_back(toy3d::dispatch_graph_task(
+                *graph,
+                "RenderFifo",
+                [&render_fifo_order, index](
+                    toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                    render_fifo_order.push_back(index);
+                },
+                toy3d::NamedThread::RenderingThread));
+        }
+        check(graph->wait_until_tasks_complete(render_fifo_events).succeeded(),
+            "RenderingThread FIFO tasks must all publish completion");
+        bool render_fifo_preserved = render_fifo_order.size() == 32;
+        for (int index = 0; render_fifo_preserved && index < 32; ++index)
+        {
+            render_fifo_preserved = render_fifo_order[index] == index;
+        }
+        check(render_fifo_preserved,
+            "one producer must retain FIFO order on the RenderingThread named queue");
 
         std::atomic<toy3d::NamedThread> worker_current{toy3d::NamedThread::Unknown};
         std::atomic<toy3d::NamedThread> game_current{toy3d::NamedThread::Unknown};
@@ -601,6 +823,11 @@ namespace
 int main(int argument_count, char** arguments)
 {
     const std::string selected = argument_count > 1 ? arguments[1] : "all";
+    if (selected == "all" || selected == "active")
+    {
+        test_active_instance_lifecycle_and_factory_race();
+        test_shutdown_publication_race_and_waiter_wake();
+    }
     if (selected == "all" || selected == "single")
     {
         test_single_thread_fifo_drain_and_self_wait();

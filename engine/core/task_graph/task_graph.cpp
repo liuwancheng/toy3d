@@ -30,6 +30,43 @@ namespace toy3d
         constexpr std::uint32_t wait_help_batch_size = 16;
         constexpr std::chrono::milliseconds wait_poll_interval(1);
 
+        std::mutex active_task_graph_mutex;
+        TaskGraphInterface* active_task_graph = nullptr;
+        bool task_graph_creation_in_progress = false;
+
+        bool reserve_active_task_graph_creation()
+        {
+            std::lock_guard<std::mutex> lock(active_task_graph_mutex);
+            if (active_task_graph != nullptr || task_graph_creation_in_progress)
+            {
+                return false;
+            }
+            task_graph_creation_in_progress = true;
+            return true;
+        }
+
+        void cancel_active_task_graph_creation()
+        {
+            std::lock_guard<std::mutex> lock(active_task_graph_mutex);
+            task_graph_creation_in_progress = false;
+        }
+
+        void publish_active_task_graph(TaskGraphInterface& task_graph)
+        {
+            std::lock_guard<std::mutex> lock(active_task_graph_mutex);
+            active_task_graph = &task_graph;
+            task_graph_creation_in_progress = false;
+        }
+
+        void unpublish_active_task_graph(TaskGraphInterface& task_graph)
+        {
+            std::lock_guard<std::mutex> lock(active_task_graph_mutex);
+            if (active_task_graph == &task_graph)
+            {
+                active_task_graph = nullptr;
+            }
+        }
+
         std::size_t round_up_queue_capacity(std::uint32_t requested)
         {
             std::size_t capacity = 2;
@@ -454,6 +491,7 @@ namespace toy3d
                         TaskGraphErrorCode::InvalidState,
                         "Task Graph shutdown is already in progress")};
             }
+            unpublish_active_task_graph(*this);
             accepting_tasks_.store(false);
 
             TaskGraphStatus shutdown_status = TaskGraphStatus::success();
@@ -1044,6 +1082,24 @@ namespace toy3d
                 TaskGraphErrorCode::InvalidConfig,
                 "Task Graph worker_thread_count exceeds the supported limit"), nullptr};
         }
+        if (!reserve_active_task_graph_creation())
+        {
+            TaskGraphStatus status = TaskGraphStatus::failure(
+                TaskGraphErrorCode::InvalidState,
+                "A Task Graph instance is already active or starting");
+            try
+            {
+                if (diagnostics)
+                {
+                    diagnostics(status);
+                }
+            }
+            catch (...)
+            {
+                // Diagnostics cannot change active-instance publication.
+            }
+            return {std::move(status), nullptr};
+        }
 
         std::unique_ptr<TaskGraph> task_graph;
         try
@@ -1054,14 +1110,35 @@ namespace toy3d
             if (!started.succeeded())
             {
                 task_graph->shutdown(TaskGraphShutdownMode::CancelPending);
+                cancel_active_task_graph_creation();
                 return {started, nullptr};
             }
         }
         catch (const std::exception& exception)
         {
+            cancel_active_task_graph_creation();
             return {TaskGraphStatus::failure(
                 TaskGraphErrorCode::InvalidConfig, exception.what()), nullptr};
         }
+        publish_active_task_graph(*task_graph);
         return {TaskGraphStatus::success(), std::move(task_graph)};
+    }
+
+    bool TaskGraphInterface::is_running() noexcept
+    {
+        std::lock_guard<std::mutex> lock(active_task_graph_mutex);
+        return active_task_graph != nullptr;
+    }
+
+    TaskGraphInterface& TaskGraphInterface::get()
+    {
+        std::lock_guard<std::mutex> lock(active_task_graph_mutex);
+        if (active_task_graph == nullptr)
+        {
+            throw TaskGraphException(TaskGraphStatus::failure(
+                TaskGraphErrorCode::Stopped,
+                "No active Task Graph instance is running"));
+        }
+        return *active_task_graph;
     }
 }
