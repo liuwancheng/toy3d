@@ -33,17 +33,21 @@ namespace toy3d
             RHIDevice& device,
             const RHIBindingLayoutRef& binding_layout);
 
-        RHIStatus stage_shader_program(ShaderMapProgramRef shader_program);
+        RHIStatus stage_material_candidate(
+            ShaderMapProgramRef shader_program,
+            bool two_sided);
         RHIResult<RHIBindingSetRef> materialize_staged(
             RHIDevice& device,
             const RHIBindingLayoutRef& binding_layout);
-        RHIStatus commit_shader_program();
-        void discard_shader_program() noexcept;
+        RHIStatus commit_material_candidate();
+        void discard_material_candidate() noexcept;
 
         const ShaderMapProgramRef& shader_program() const noexcept
         {
             return shader_program_;
         }
+        const shader::ShaderGraphicsPassState* effective_graphics_pass_state()
+            const noexcept;
 
     private:
         RHIResult<RHIBindingSetRef> materialize_program(
@@ -52,10 +56,13 @@ namespace toy3d
             const ShaderMapProgramRef& shader_program,
             bool staged);
         bool texture_cache_matches(bool staged) const noexcept;
+        bool texture_views_match(bool staged) const noexcept;
 
         std::string shader_name_;
         ShaderMapProgramRef shader_program_;
         ShaderMapProgramRef staged_shader_program_;
+        shader::ShaderGraphicsPassState effective_graphics_pass_state_;
+        shader::ShaderGraphicsPassState staged_effective_graphics_pass_state_;
         std::unordered_map<ShaderParameterId, float> scalar_parameters_;
         std::unordered_map<ShaderParameterId, vec2> vector2_parameters_;
         std::unordered_map<ShaderParameterId, vec3> vector3_parameters_;

@@ -4,6 +4,7 @@
 #include "rendercore/shader/shader_parameter_id.h"
 #include "rendercore/texture/texture.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -83,10 +84,11 @@ namespace toy3d
         bool set_vector(ShaderParameterId parameter_id, const vec4& value);
         bool set_texture(ShaderParameterId parameter_id, TextureRef texture);
 
-        bool stage_shader_program_replacement(
-            std::shared_ptr<const ShaderMapProgram> shader_program);
-        bool publish_shader_program_replacement();
-        bool discard_shader_program_replacement();
+        bool stage_material_replacement(
+            std::shared_ptr<const ShaderMapProgram> shader_program,
+            bool two_sided);
+        bool publish_material_replacement();
+        bool discard_material_replacement();
 
         // This is an opaque FIFO-protected identity on the Game side. Only the
         // logical Rendering Thread may dereference the returned pointer.
@@ -99,10 +101,18 @@ namespace toy3d
             ShaderParameterId parameter_id,
             ShaderValueType expected_value_type) const;
         bool validate_texture_parameter(ShaderParameterId parameter_id) const;
+        bool resolve_material_replacement_publication();
 
         MaterialRef material_;
         std::shared_ptr<const ShaderMapProgram> shader_program_;
         std::shared_ptr<const ShaderMapProgram> pending_shader_program_;
+        bool two_sided_ = false;
+        bool pending_two_sided_ = false;
+        std::shared_ptr<std::atomic<bool>> replacement_commit_complete_ =
+            std::make_shared<std::atomic<bool>>(false);
+        std::shared_ptr<std::atomic<bool>> replacement_commit_succeeded_ =
+            std::make_shared<std::atomic<bool>>(false);
+        bool replacement_publication_pending_ = false;
         std::unordered_map<ShaderParameterId, float> scalar_overrides_;
         std::unordered_map<ShaderParameterId, vec2> vector2_overrides_;
         std::unordered_map<ShaderParameterId, vec3> vector3_overrides_;

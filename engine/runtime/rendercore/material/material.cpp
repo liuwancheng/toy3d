@@ -150,6 +150,7 @@ namespace toy3d
     MaterialInstance::MaterialInstance(MaterialRef material)
         : material_(std::move(material)),
           shader_program_(material_->desc().shader_program),
+          two_sided_(material_->desc().two_sided),
           material_render_proxy_(std::make_unique<MaterialRenderProxy>(*material_))
     {
     }
@@ -158,6 +159,14 @@ namespace toy3d
         : material_(std::move(other.material_)),
           shader_program_(std::move(other.shader_program_)),
           pending_shader_program_(std::move(other.pending_shader_program_)),
+          two_sided_(other.two_sided_),
+          pending_two_sided_(other.pending_two_sided_),
+          replacement_commit_complete_(
+              std::move(other.replacement_commit_complete_)),
+          replacement_commit_succeeded_(
+              std::move(other.replacement_commit_succeeded_)),
+          replacement_publication_pending_(
+              other.replacement_publication_pending_),
           scalar_overrides_(std::move(other.scalar_overrides_)),
           vector2_overrides_(std::move(other.vector2_overrides_)),
           vector3_overrides_(std::move(other.vector3_overrides_)),
@@ -169,6 +178,7 @@ namespace toy3d
     {
         other.render_proxy_used_ = false;
         other.release_enqueued_ = false;
+        other.replacement_publication_pending_ = false;
     }
 
     MaterialInstance::~MaterialInstance()
@@ -266,7 +276,8 @@ namespace toy3d
         ShaderParameterId parameter_id,
         float value)
     {
-        if (!validate_constant_parameter(
+        if (!resolve_material_replacement_publication() ||
+            !validate_constant_parameter(
                 parameter_id, ShaderValueType::Float32))
         {
             return false;
@@ -287,7 +298,8 @@ namespace toy3d
         ShaderParameterId parameter_id,
         const vec2& value)
     {
-        if (!validate_constant_parameter(
+        if (!resolve_material_replacement_publication() ||
+            !validate_constant_parameter(
                 parameter_id, ShaderValueType::Float32x2))
         {
             return false;
@@ -308,7 +320,8 @@ namespace toy3d
         ShaderParameterId parameter_id,
         const vec3& value)
     {
-        if (!validate_constant_parameter(
+        if (!resolve_material_replacement_publication() ||
+            !validate_constant_parameter(
                 parameter_id, ShaderValueType::Float32x3))
         {
             return false;
@@ -329,7 +342,8 @@ namespace toy3d
         ShaderParameterId parameter_id,
         const vec4& value)
     {
-        if (!validate_constant_parameter(
+        if (!resolve_material_replacement_publication() ||
+            !validate_constant_parameter(
                 parameter_id, ShaderValueType::Float32x4))
         {
             return false;
@@ -350,6 +364,10 @@ namespace toy3d
         ShaderParameterId parameter_id,
         TextureRef texture)
     {
+        if (!resolve_material_replacement_publication())
+        {
+            return false;
+        }
         if (!texture || !validate_texture_parameter(parameter_id))
         {
             if (!texture)
@@ -391,10 +409,12 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialInstance::stage_shader_program_replacement(
-        std::shared_ptr<const ShaderMapProgram> shader_program)
+    bool MaterialInstance::stage_material_replacement(
+        std::shared_ptr<const ShaderMapProgram> shader_program,
+        bool two_sided)
     {
-        if (!shader_program || pending_shader_program_)
+        if (!resolve_material_replacement_publication() || !shader_program ||
+            pending_shader_program_)
         {
             TOY_LOG_ERROR("Material ShaderMap replacement requires one complete candidate.");
             return false;
@@ -408,61 +428,112 @@ namespace toy3d
         }
 
         pending_shader_program_ = shader_program;
+        pending_two_sided_ = two_sided;
         render_proxy_used_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command(
-            "StageMaterialShaderProgram",
-            [proxy, shader_program = std::move(shader_program)]() noexcept
+            "StageMaterialCandidate",
+            [proxy, shader_program = std::move(shader_program), two_sided]() noexcept
             {
-                const RHIStatus status = proxy->stage_shader_program(
-                    std::move(shader_program));
+                const RHIStatus status = proxy->stage_material_candidate(
+                    std::move(shader_program), two_sided);
                 if (!status)
                 {
-                    TOY_LOG_ERROR("Material ShaderMap candidate staging failed: {}",
+                    TOY_LOG_ERROR("Material candidate staging failed: {}",
                         status.message());
                 }
             });
         return true;
     }
 
-    bool MaterialInstance::publish_shader_program_replacement()
+    bool MaterialInstance::publish_material_replacement()
     {
-        if (!pending_shader_program_)
+        if (!resolve_material_replacement_publication() ||
+            !pending_shader_program_)
         {
             TOY_LOG_ERROR("Material has no ShaderMap candidate to publish.");
             return false;
         }
-        shader_program_ = pending_shader_program_;
-        pending_shader_program_.reset();
+        replacement_commit_succeeded_->store(false, std::memory_order_relaxed);
+        replacement_commit_complete_->store(false, std::memory_order_relaxed);
+        replacement_publication_pending_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        enqueue_render_command(
-            "PublishMaterialShaderProgram",
-            [proxy]() noexcept
-            {
-                const RHIStatus status = proxy->commit_shader_program();
-                if (!status)
+        const std::shared_ptr<std::atomic<bool>> commit_complete =
+            replacement_commit_complete_;
+        const std::shared_ptr<std::atomic<bool>> commit_succeeded =
+            replacement_commit_succeeded_;
+        try
+        {
+            enqueue_render_command(
+                "PublishMaterialCandidate",
+                [proxy, commit_complete, commit_succeeded]() noexcept
                 {
-                    TOY_LOG_ERROR("Material ShaderMap candidate commit failed: {}",
-                        status.message());
-                }
-            });
+                    const RHIStatus status =
+                        proxy->commit_material_candidate();
+                    if (!status)
+                    {
+                        TOY_LOG_ERROR("Material candidate commit failed: {}",
+                            status.message());
+                    }
+                    commit_succeeded->store(
+                        status.succeeded(), std::memory_order_relaxed);
+                    // Release publishes both the RT commit result and the complete
+                    // active-state mutation before GT resolves its Shader schema.
+                    commit_complete->store(true, std::memory_order_release);
+                });
+        }
+        catch (...)
+        {
+            replacement_publication_pending_ = false;
+            throw;
+        }
         return true;
     }
 
-    bool MaterialInstance::discard_shader_program_replacement()
+    bool MaterialInstance::discard_material_replacement()
     {
-        if (!pending_shader_program_)
+        if (!resolve_material_replacement_publication() ||
+            !pending_shader_program_)
         {
             return false;
         }
         pending_shader_program_.reset();
+        pending_two_sided_ = two_sided_;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command(
-            "DiscardMaterialShaderProgram",
+            "DiscardMaterialCandidate",
             [proxy]() noexcept
             {
-                proxy->discard_shader_program();
+                proxy->discard_material_candidate();
             });
+        return true;
+    }
+
+    bool MaterialInstance::resolve_material_replacement_publication()
+    {
+        if (!replacement_publication_pending_)
+        {
+            return true;
+        }
+        // Acquire makes the RT commit and its result visible before GT changes
+        // the parameter-validation schema associated with the active Program.
+        if (!replacement_commit_complete_->load(std::memory_order_acquire))
+        {
+            TOY_LOG_ERROR(
+                "Material replacement publication is still pending on the Rendering Thread.");
+            return false;
+        }
+
+        const bool commit_succeeded =
+            replacement_commit_succeeded_->load(std::memory_order_relaxed);
+        if (commit_succeeded)
+        {
+            shader_program_ = pending_shader_program_;
+            two_sided_ = pending_two_sided_;
+        }
+        pending_shader_program_.reset();
+        pending_two_sided_ = two_sided_;
+        replacement_publication_pending_ = false;
         return true;
     }
 

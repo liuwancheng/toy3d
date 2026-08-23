@@ -105,12 +105,48 @@ namespace toy3d
                     "Material constant type is not supported by the first-stage proxy");
             }
         }
+
+        RHIStatus derive_effective_graphics_pass_state(
+            const ShaderMapProgramRef& shader_program,
+            bool two_sided,
+            shader::ShaderGraphicsPassState& effective_state)
+        {
+            if (!shader_program)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Material candidate requires a ShaderMap Program");
+            }
+            effective_state = shader_program->data().graphics_pass_state;
+            if (two_sided)
+            {
+                effective_state.cull_mode =
+                    shader::ShaderGraphicsPassState::CullMode::None;
+            }
+            if (!shader::is_valid_shader_graphics_pass_state(effective_state))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Material candidate produced an invalid effective graphics Pass state");
+            }
+            return RHIStatus::success();
+        }
     }
 
     MaterialRenderProxy::MaterialRenderProxy(const Material& material)
         : shader_name_(material.desc().shader_name),
           shader_program_(material.desc().shader_program)
     {
+        if (shader_program_)
+        {
+            effective_graphics_pass_state_ =
+                shader_program_->data().graphics_pass_state;
+            if (material.desc().two_sided)
+            {
+                effective_graphics_pass_state_.cull_mode =
+                    shader::ShaderGraphicsPassState::CullMode::None;
+            }
+        }
         scalar_parameters_ = material.desc().scalar_defaults;
         vector2_parameters_ = material.desc().vector2_defaults;
         vector3_parameters_ = material.desc().vector3_defaults;
@@ -175,18 +211,39 @@ namespace toy3d
             ? staged_texture_generations_
             : texture_generations_;
         const auto& views = staged ? staged_texture_views_ : texture_views_;
-        for (const auto& parameter : texture_parameters_)
+        if (generations.size() != views.size())
         {
-            TextureResource* const resource = parameter.second;
-            if (resource == nullptr)
+            return false;
+        }
+        for (const auto& generation : generations)
+        {
+            TextureResource* const resource = generation.first;
+            const auto view = views.find(resource);
+            if (resource == nullptr || view == views.end() ||
+                generation.second != resource->binding_generation() ||
+                view->second != resource->view_for_current_recording())
             {
                 return false;
             }
-            const auto generation = generations.find(resource);
-            const auto view = views.find(resource);
-            if (generation == generations.end() || view == views.end() ||
-                generation->second != resource->binding_generation() ||
-                view->second != resource->view_for_current_recording())
+        }
+        return true;
+    }
+
+    bool MaterialRenderProxy::texture_views_match(bool staged) const noexcept
+    {
+        const auto& views = staged ? staged_texture_views_ : texture_views_;
+        const auto& generations = staged
+            ? staged_texture_generations_
+            : texture_generations_;
+        if (views.size() != generations.size())
+        {
+            return false;
+        }
+        for (const auto& view : views)
+        {
+            TextureResource* const resource = view.first;
+            if (resource == nullptr || generations.count(resource) != 1u ||
+                view.second != resource->view_for_current_recording())
             {
                 return false;
             }
@@ -202,8 +259,9 @@ namespace toy3d
             device, binding_layout, shader_program_, false);
     }
 
-    RHIStatus MaterialRenderProxy::stage_shader_program(
-        ShaderMapProgramRef shader_program)
+    RHIStatus MaterialRenderProxy::stage_material_candidate(
+        ShaderMapProgramRef shader_program,
+        bool two_sided)
     {
         if (!shader_program || staged_shader_program_)
         {
@@ -218,7 +276,16 @@ namespace toy3d
                 "Staged ShaderMap Program does not match the Material identity");
         }
 
+        shader::ShaderGraphicsPassState effective_state;
+        const RHIStatus state_status = derive_effective_graphics_pass_state(
+            shader_program, two_sided, effective_state);
+        if (!state_status)
+        {
+            return state_status;
+        }
+
         staged_shader_program_ = std::move(shader_program);
+        staged_effective_graphics_pass_state_ = effective_state;
         staged_binding_layout_.reset();
         staged_binding_set_.reset();
         staged_texture_generations_.clear();
@@ -235,17 +302,26 @@ namespace toy3d
             device, binding_layout, staged_shader_program_, true);
     }
 
-    RHIStatus MaterialRenderProxy::commit_shader_program()
+    RHIStatus MaterialRenderProxy::commit_material_candidate()
     {
         if (!staged_shader_program_ || !staged_binding_set_ ||
-            !staged_binding_layout_)
+            !staged_binding_layout_ || staged_dirty_ ||
+            !texture_views_match(true))
         {
-            return RHIStatus::failure(
+            const RHIStatus status = RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Material ShaderMap candidate must be fully materialized before submit commit");
+                "Material candidate binding must be current and fully materialized before submit commit");
+            discard_material_candidate();
+            return status;
+        }
+
+        for (auto& generation : staged_texture_generations_)
+        {
+            generation.second = generation.first->binding_generation();
         }
 
         shader_program_ = std::move(staged_shader_program_);
+        effective_graphics_pass_state_ = staged_effective_graphics_pass_state_;
         binding_layout_ = std::move(staged_binding_layout_);
         binding_set_ = std::move(staged_binding_set_);
         texture_generations_ = std::move(staged_texture_generations_);
@@ -255,14 +331,21 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    void MaterialRenderProxy::discard_shader_program() noexcept
+    void MaterialRenderProxy::discard_material_candidate() noexcept
     {
         staged_shader_program_.reset();
+        staged_effective_graphics_pass_state_ = {};
         staged_binding_layout_.reset();
         staged_binding_set_.reset();
         staged_texture_generations_.clear();
         staged_texture_views_.clear();
         staged_dirty_ = false;
+    }
+
+    const shader::ShaderGraphicsPassState*
+    MaterialRenderProxy::effective_graphics_pass_state() const noexcept
+    {
+        return shader_program_ ? &effective_graphics_pass_state_ : nullptr;
     }
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_program(
