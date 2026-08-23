@@ -34,7 +34,7 @@
 - **THEN** `is_running()` MUST 为 false，访问 MUST fail fast 或返回明确 stopped 状态，不得自动重建
 
 ### Requirement: Active access 不是业务 service locator
-`TaskGraphInterface::get()`只返回当前active scheduler的non-owning reference。它 MAY供Core GraphTask/GraphEvent helper、RenderCommand内部transport publication和其他生命周期明确受composition root控制的基础设施入口使用；不得通过它取得Renderer、RenderScene、RenderResourceManager、RHI或其他业务service，也不得让业务模块保存该引用越过Task Graph shutdown。
+`TaskGraphInterface::get()` MUST只返回当前active scheduler的non-owning reference。它 MAY供Core GraphTask/GraphEvent helper、RenderCommand内部transport publication和其他生命周期明确受composition root控制的基础设施入口使用；不得通过它取得Renderer、RenderScene、RenderResourceManager、RHI或其他业务service，也不得让业务模块保存该引用越过Task Graph shutdown。
 
 `is_running()`只表达active publication是否存在，不保证特定NamedThread已经attach、Renderer已经Running或普通RenderCommand admission已经开放。调用方不得用它替代RenderingThread/Renderer ready handshake。
 

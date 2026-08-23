@@ -8,11 +8,13 @@
 | --- | --- | --- |
 | `SceneView` | 新增 struct/class | GT 创建的一次性相机与 viewport value；move 到 RT 后只读；不引用 CameraComponent |
 | `SceneViewFamily` | 新增 struct/class | 聚合一次 Draw 的 SceneInterface、views、output 与 show/config values；由 SceneRenderer 一次性拥有，不形成长期帧包 |
-| `ViewInfo` | 新增 class | RT-only per-view 状态；由 SceneRenderer 从 SceneView 创建，保存派生矩阵、ConvexVolume 和仅当前帧有效的可见结果 |
+| `ViewInfo` | 新增 class | RT-only per-view 状态；由 SceneRenderer 从 SceneView 创建，保存派生矩阵、ConvexVolume、ViewUniformShaderParameters 和仅当前帧有效的可见结果 |
 | `SceneRenderer` | 新增 polymorphic class | GT 基于 SceneViewFamily 创建，Draw command 独占并移入 RT；RT 读取 RenderScene、录制 pass、执行后析构 |
 | `ForwardSceneRenderer` | 新增 final class | SceneRenderer 的前向实现；依次执行 `init_views()`、`compute_view_visibility()` 与 `render_base_pass()` |
+| `MeshBatch` | 新增 value type | UE4.27 同名术语；Toy3d 中是 `ViewInfo` 当前 Draw 持有的 frame-local、Render-side non-owning mesh draw 输入，只组合可见 `StaticMeshSceneProxy` 与通过整体可绘制 gate 的 `StaticMeshRenderData`；不拥有 Asset、Proxy、Material、RenderResource 或 RHI object，也不跨帧存活。任务 8.9 已确认该名称；不能复用 `PrimitiveSceneInfo`，因为后者是 RenderScene-owned 场景注册与 Proxy ownership 节点，不应承载 per-view draw 输入。section range、`LocalVertexFactory` 与 `MaterialRenderProxy` 组合由任务 10.8 完成 |
 | `Plane` | 新增共享 math value type | 表达归一化平面及 signed-distance 测试；正半空间是 ConvexVolume 内部，不依赖 Renderer 或 RHI |
 | `ConvexVolume` | 新增共享 math value type | 保存有效 Plane 集合并执行 point/bounds 相交测试；支持 finite 与 infinite-far frustum |
+| `ViewUniformShaderParameters` | 新增 value type | ViewInfo-owned canonical View logical Binding Group 参数；由有效的 camera/matrix values 在 RT 初始化，不拥有 RHI resource、viewport 或 backend object |
 
 不得新增任何以 `Snapshot` 命名的类型。简单测试 pass SHALL 留在测试目标内部，不新增公共 test-pass 类型或运行时注册机制。
 
@@ -33,7 +35,9 @@ GT SHALL 从 Camera、viewport、Window 与 Game 状态复制构造 `SceneView` 
 - **THEN** SceneRenderer MUST 不执行，并在 logical RT command disposal 路径析构
 
 ### Requirement: init_views 创建完整 ViewInfo
-`ForwardSceneRenderer::init_views()` MUST 在 RT 为 `SceneViewFamily` 中每个 `SceneView` 创建一个 `ViewInfo`，校验非空 view rect、有效输出尺寸、正的 near plane、投影模式以及全部必要矩阵值有限，并计算 view、projection、view-projection 及剔除所需的派生矩阵。每个 `ViewInfo` MUST 重置本帧可见结果并构造自己的 `ConvexVolume`，不得复用上一帧的可见集合。
+`ForwardSceneRenderer::init_views()` MUST 在 RT 为 `SceneViewFamily` 中每个 `SceneView` 创建一个 `ViewInfo`，校验非空 view rect、有效输出尺寸、正的 near plane、投影模式以及全部必要矩阵值有限，并计算 view、projection、view-projection 及剔除所需的派生矩阵。每个 `ViewInfo` MUST 重置本帧可见结果并构造自己的 `ConvexVolume`，不得复用上一帧的可见集合。需要 View logical Binding Group 的业务 pass 录制前，`ViewUniformShaderParameters` MUST 从已经验证的 canonical ViewInfo values 初始化；它不得反向成为 CPU 矩阵和视锥校验的前置依赖。
+
+`init_views()` MUST NOT 拥有、查询或闭合 `RHIViewportContext`/`RHIFrameContext`。它只返回 CPU per-view 初始化的可诊断结果；是否已经 acquire frame 以及失败后调用 `abort_frame()` 的责任属于外层 Draw/frame orchestration。
 
 #### Scenario: 多 View 初始化
 - **WHEN** 一个 SceneViewFamily 含两个合法 SceneView
@@ -41,7 +45,7 @@ GT SHALL 从 Camera、viewport、Window 与 Game 状态复制构造 `SceneView` 
 
 #### Scenario: View 输入无效
 - **WHEN** view rect 为空、输出尺寸无效、near plane 非正、矩阵包含非有限值或有效 frustum plane 退化
-- **THEN** `init_views()` MUST 返回可诊断失败，后续 visibility、测试 pass 和业务 pass MUST NOT 录制，已 acquire frame MUST 通过 `abort_frame()` 闭合
+- **THEN** `init_views()` MUST 返回可诊断失败，后续 visibility、测试 pass 和业务 pass MUST NOT 录制；若外层 frame owner 已经 acquire frame，则外层 MUST 通过 `abort_frame()` 闭合
 
 ### Requirement: reversed-Z ConvexVolume 使用固定提取约定
 View frustum MUST 遵守引擎固定的 left-handed、column-vector、column-major storage、clip depth 0..1 reversed-Z contract。对 view-projection matrix 的行向量 `r0`、`r1`、`r2`、`r3`，`ConvexVolume` MUST 按以下公式提取平面：
@@ -145,7 +149,9 @@ begin_frame()
 
 Failure A:
 if init_views() finds invalid input or a degenerate Plane,
-skip visibility and every pass, then close the acquired frame with abort_frame().
+return a diagnostic without accessing viewport state
+→ skip visibility and every pass
+→ if the outer frame owner already acquired a frame, it closes that frame with abort_frame().
 
 Failure B:
 if one MeshBatch has incompatible ShaderVertexInput,

@@ -104,7 +104,7 @@ queue completion        = GPU 已完成，可回收 in-flight payload
 
 submit 成功但 present 为 `Suboptimal`、`OutOfDate` 或 terminal 时，business work 已经发生，因此必须先 commit resource/RHI state，再处理 presentation 状态，绝不能回滚。
 
-`init_views()` 失败时不得录制业务 pass，已 acquire 的 frame 必须通过 `abort_frame()` 闭合。VertexFactory 与 Shader vertex input 不兼容时不得创建残缺 pipeline；对应 `MeshBatch` 必须被跳过并保留可诊断错误。viewport `NotReady`/`OutOfDate` 不消费 pending uploads。
+`init_views()` 只负责 logical RT 上的 CPU per-view 校验与派生状态构造，不拥有、查询或闭合 viewport frame。它失败时必须返回可诊断结果且不得录制业务 pass；若外层 frame owner 已经 acquire frame，则外层必须通过 `abort_frame()` 闭合。VertexFactory 与 Shader vertex input 不兼容时不得创建残缺 pipeline；对应 `MeshBatch` 必须被跳过并保留可诊断错误。viewport `NotReady`/`OutOfDate` 不消费 pending uploads。
 
 ## 多次 Apply 导航
 
@@ -256,7 +256,7 @@ PrimitiveComponent::destroy_render_state()
 
 ### 6. SceneView、ViewInfo 与 visibility 使用 reversed-Z 统一约定
 
-`SceneView` 复制 camera position/orientation、projection mode、FOV、near/far 与 viewport rect，不保存 Camera、Window 或 RenderScene 引用。`ViewInfo` 在 logical RT 由 `init_views()` 构造 view、reversed-Z projection、view-projection、camera vectors、`ViewUniformShaderParameters` 与 `ConvexVolume`。
+`SceneView` 复制 camera position/orientation、projection mode、FOV、near/far 与 viewport rect，不保存 Camera、Window 或 RenderScene 引用。`ViewInfo` 在 logical RT 先由 `init_views()` 构造 view、reversed-Z projection、view-projection、camera vectors与 `ConvexVolume`；`ViewUniformShaderParameters` 在其 Type Contract 实现后由同一有效 ViewInfo 的 canonical values 初始化。`init_views()` 不依赖 primary viewport ownership，acquired-frame 的 abort 由外层 Draw/frame orchestration 负责。
 
 Toy3d 的 clip 条件固定为：
 
@@ -411,9 +411,9 @@ Terminal 路径先 latch first error、停止新 frame/init、discard recording�
 2. 按导航阶段 0 清理废弃路径，保留底层 Task Graph/RHI 基础。
 3. 建立 Task Graph active instance、RenderingThread lifecycle、RenderCommand/Fence/FrameEndSync 与最小 Renderer shell。
 4. 将这些已定型对象直接接入 `engine/runtime/engine.h/.cpp::toy3d::Engine`，移除该类对 frame/RHI 的直接执行，不新增第二层 Engine 抽象。
-5. 完成 Batch B：建立 RenderScene/Proxy/SceneView/SceneViewFamily/ViewInfo/SceneRenderer 与 visibility 框架，中间只执行配置、正式 target 构建和少量 lifecycle smoke。
+5. 完成 Batch B：建立 RenderScene/Proxy/SceneView/SceneViewFamily/ViewInfo/SceneRenderer 与 CPU visibility 框架；`init_views()` 只返回诊断，不提前拥有或闭合 viewport frame；中间只执行配置、正式 target 构建和少量 lifecycle smoke。
 6. 闭合 ShaderMap 与 RHI vertex-input metadata，再实现 VertexFactory/LocalVertexFactory 和 MeshBatch 收集。
-7. 完成 Batch C：建立 RenderResourceManager，迁移 Mesh、Texture、Material，并由 ForwardSceneRenderer Base Pass 恢复真实 Editor draw、submit 与 present。
+7. 完成 Batch C：建立 RenderResourceManager，迁移 Mesh、Texture、Material，初始化 View/Object uniform parameters，并由持有现有 `RHIViewportContext` 的外层 frame orchestration 在 `init_views()` 失败时 abort、成功时继续 Forward Base Pass、submit 与 present。
 8. 完成 bootstrap、terminal 与 normal shutdown，再进入 Batch D 集中建立 CPU visibility、single/multi-thread E2E、failure matrix 和真实 Vulkan smoke。
 
 每阶段只能回滚尚未被下游正式依赖的完整批次；不得通过重新开放旧正式入口进行局部回滚。

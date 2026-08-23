@@ -9,6 +9,7 @@
 | `PrimitiveSceneProxy` | 新增 polymorphic class | GT 构造独占 payload，RT-only 可变/读取，最终由 RenderScene/SceneInfo 销毁；不反向访问 Component |
 | `StaticMeshSceneProxy` | 新增 final class | `PrimitiveSceneProxy` 的 static-mesh 实现；保存 transform、visibility、world bounds，以及受命令排序保护的 StaticMeshRenderData 与 MaterialRenderProxy non-owning references；可见时向当前帧贡献 `MeshBatch`，不反向访问 StaticMeshComponent |
 | `PrimitiveSceneInfo` | 新增 class | RenderScene-owned RT 索引节点；拥有 Proxy 并维护场景注册关系 |
+| `PrimitiveUniformShaderParameters` | 新增 value type | PrimitiveSceneInfo/Proxy 提供的 canonical Object logical Binding Group 参数；从已复制的 object transform values 在 RT 初始化，不拥有 Game object、RHI resource 或 backend object |
 
 不新增 Proxy ID、Handle、Token、revision 或 registry 类型；GT 保存 opaque non-owning `PrimitiveSceneProxy*` 但禁止解引用。
 

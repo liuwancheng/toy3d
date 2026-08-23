@@ -62,31 +62,31 @@
 - [x] 7.2 实现 Renderer shell GT 创建、logical RT 初始化/teardown 和稳定地址，验证 GT 不读取内部可变状态。
 - [x] 7.3 实现 Renderer-owned RenderScene 创建销毁，验证 RT-only mutation thread assertions。
 - [x] 7.4 实现 World non-owning SceneInterface bind/unbind，验证 World 不包含或拥有 RenderScene。
-- [ ] 7.5 将 SceneInterface 正式收敛为无返回值 fire-and-forget 的 `add_primitive(std::unique_ptr<PrimitiveSceneProxy>)`、`update_primitive_transform(PrimitiveSceneProxy*, Matrix4, AxisAlignedBounds, bool)`、`remove_primitive(PrimitiveSceneProxy*)`，迁移已实现 `bind_scene()`/`unbind_scene()` 调用链并用 `rg` 验证不暴露 RT query、RHI 或 Renderer getter。
-- [ ] 7.6 完成 bind 期间现有 Primitive render state 补建顺序、unbind 先 destroy render state、composition-root 受控 shutdown 投递窗口、Fence drain 与 RenderScene 后 teardown 顺序；本阶段只复用一个 lifecycle smoke，不扩展独立场景测试矩阵。
+- [x] 7.5 将 SceneInterface 正式收敛为无返回值 fire-and-forget 的 `add_primitive(std::unique_ptr<PrimitiveSceneProxy>)`、`update_primitive_transform(PrimitiveSceneProxy*, Matrix4, AxisAlignedBounds, bool)`、`remove_primitive(PrimitiveSceneProxy*)`，迁移已实现 `bind_scene()`/`unbind_scene()` 调用链并用 `rg` 验证不暴露 RT query、RHI 或 Renderer getter。
+- [x] 7.6 完成 bind 期间现有 Primitive render state 补建顺序、unbind 先 destroy render state、composition-root 受控 shutdown 投递窗口、Fence drain 与 RenderScene 后 teardown 顺序；本阶段只复用一个 lifecycle smoke，不扩展独立场景测试矩阵。
 
 ## 8. Batch B — Game / Scene / View Framework
 
-- [ ] 8.1 直接在现有 `engine/runtime/engine.h/.cpp::toy3d::Engine` 接入 Platform/Window/RHISurface、Task Graph、Renderer、RenderingThread 与 FrameEndSync composition 顺序，移除 Engine 对具体 RenderScene/RHI frame 执行的直接 ownership，不新增第二个 Engine wrapper 或 service locator。
-- [ ] 8.2 实现 `PrimitiveSceneProxy`、`StaticMeshSceneProxy`、`PrimitiveSceneInfo` 与 RenderScene registration；StaticMeshSceneProxy 只保存 copied transform/visibility/world bounds 和受 FIFO 保护的 StaticMeshRenderData/MaterialRenderProxy non-owning references，不回读 Game 对象。
-- [ ] 8.3 实现 PrimitiveComponent 的 `create_render_state()`、`send_render_transform()`、`destroy_render_state()`，覆盖 registration/bind 补建、world transform 先更新 bounds、按值投递 Matrix4/AxisAlignedBounds/visible、Add 正常返回保证 transport ownership 已接受、正常 Remove 先摘除后析构，以及 terminal 竞争窗口中 Add/Remove 业务体 skip、opaque identity 不解引用和 payload 在 logical RT 析构；StaticMesh或material-slot identity变化通过destroy→create重建，MaterialInstance内部参数值变化不重建Primitive render state。
-- [ ] 8.4 实现共享 math `Plane`、`ConvexVolume` 与 left-handed、0..1 reversed-Z frustum 提取；finite 使用六面，infinite-far 使用五面，AABB 接触平面保持可见，不引入空间索引类型。
-- [ ] 8.5 实现 GT 一次性 `SceneView`、`SceneViewFamily`，确保复制 Camera/viewport/projection values 且不保存 CameraComponent、Window、World 或 RenderScene 可变引用。
-- [ ] 8.6 实现 `ViewInfo`、一次性 `SceneRenderer`、`ForwardSceneRenderer` ownership；Draw command 独占 SceneRenderer 并保证正常执行与 terminal skip/disposal 都在 logical RT 析构。
-- [ ] 8.7 完整实现 `ForwardSceneRenderer::init_views()`：校验 view rect/output/near/matrix、构造派生矩阵和 ConvexVolume、初始化 `ViewUniformShaderParameters`、为每个 View 重置独立本帧状态；失败时不录制业务 pass 并用 `abort_frame()` 闭合 acquired frame。
-- [ ] 8.8 实现 `compute_view_visibility()` 对 RenderScene 中 PrimitiveSceneInfo 的逐 View 线性 AABB 剔除，排除 disabled/invalid/removed Proxy，不实现 octree、occlusion、distance culling、LOD 或跨帧 cache。
-- [ ] 8.9 建立 visible StaticMeshSceneProxy→frame-local `MeshBatch` 收集骨架，只依赖 StaticMeshRenderData 整体可绘制 gate；暂不引入任何尚未完成名称确认的 mesh processing、draw-command、scene-texture 或收集接口类型。
-- [ ] 8.10 中间验证仅执行推荐 Windows CMake configure、`Toy3dEditor` Debug build，以及一条覆盖 World bind/unbind、Proxy add/remove、SceneRenderer terminal disposal 的 lifecycle smoke；记录不运行完整 `ctest` 的批次理由。
+- [x] 8.1 直接在现有 `engine/runtime/engine.h/.cpp::toy3d::Engine` 接入 Platform/Window/RHISurface、Task Graph、Renderer、RenderingThread 与 FrameEndSync composition 顺序，移除 Engine 对具体 RenderScene/RHI frame 执行的直接 ownership，不新增第二个 Engine wrapper 或 service locator。
+- [x] 8.2 实现 `PrimitiveSceneProxy`、`StaticMeshSceneProxy`、`PrimitiveSceneInfo` 与 RenderScene registration；StaticMeshSceneProxy 只保存 copied transform/visibility/world bounds 和受 FIFO 保护的 StaticMeshRenderData/MaterialRenderProxy non-owning references，不回读 Game 对象。
+- [x] 8.3 实现 PrimitiveComponent 的 `create_render_state()`、`send_render_transform()`、`destroy_render_state()`，覆盖 registration/bind 补建、world transform 先更新 bounds、按值投递 Matrix4/AxisAlignedBounds/visible、Add 正常返回保证 transport ownership 已接受、正常 Remove 先摘除后析构，以及 terminal 竞争窗口中 Add/Remove 业务体 skip、opaque identity 不解引用和 payload 在 logical RT 析构；StaticMesh或material-slot identity变化通过destroy→create重建，MaterialInstance内部参数值变化不重建Primitive render state。
+- [x] 8.4 实现共享 math `Plane`、`ConvexVolume` 与 left-handed、0..1 reversed-Z frustum 提取；finite 使用六面，infinite-far 使用五面，AABB 接触平面保持可见，不引入空间索引类型。
+- [x] 8.5 实现 GT 一次性 `SceneView`、`SceneViewFamily`，确保复制 Camera/viewport/projection values 且不保存 CameraComponent、Window、World 或 RenderScene 可变引用。
+- [x] 8.6 实现 `ViewInfo`、一次性 `SceneRenderer`、`ForwardSceneRenderer` ownership；Draw command 独占 SceneRenderer 并保证正常执行与 terminal skip/disposal 都在 logical RT 析构。
+- [x] 8.7 实现 `ForwardSceneRenderer::init_views()` 的 CPU per-view 阶段：校验 view rect/output/near/projection mode 与输入/派生矩阵有限性，构造 view、reversed-Z projection、view-projection、inverse matrices 和 ConvexVolume，并为每个 View 重置独立本帧可见状态；失败时返回可诊断结果且不录制后续业务 pass，本任务不 acquire、查询或 abort viewport frame。
+- [x] 8.8 实现 `compute_view_visibility()` 对 RenderScene 中 PrimitiveSceneInfo 的逐 View 线性 AABB 剔除，排除 disabled/invalid/removed Proxy，不实现 octree、occlusion、distance culling、LOD 或跨帧 cache。
+- [x] 8.9 建立 visible StaticMeshSceneProxy→frame-local `MeshBatch` 收集骨架，只依赖 StaticMeshRenderData 整体可绘制 gate；暂不引入任何尚未完成名称确认的 mesh processing、draw-command、scene-texture 或收集接口类型。
+- [x] 8.10 中间验证仅执行推荐 Windows CMake configure、`Toy3dEditor` Debug build，以及一条覆盖 World bind/unbind、Proxy add/remove、SceneRenderer terminal disposal 的 lifecycle smoke；记录不运行完整 `ctest` 的批次理由。
 
 ## 9. Batch C1 — Shader / RHI Vertex Input
 
-- [ ] 9.1 修改 ShaderMap runtime metadata，使 `ShaderMapEntryLoader` 完整保留 vertex-stage `ReflectedInterfaceVariable`，拒绝重复 logical attribute、unsupported shape、缺失 target mapping 和冲突 Program input；禁止根据 Shader 名或 hard-coded location 猜测。
-- [ ] 9.2 按 Type Contracts 实现 `ShaderVertexAttributeId`、`ShaderVertexInput`，第一阶段固定 POSITION0、NORMAL0、TEXCOORD0 与 optional COLOR0 logical attributes，并保持跨 target parity 不比较 native slot/location。
-- [ ] 9.3 按 Type Contracts 实现 `RHIShaderVertexInputReflection` 并接入 `RHIShaderDesc`、descriptor validation、shader/pipeline cache key/equality，完整携带 semantic name/index、location、scalar type和 component count。
-- [ ] 9.4 将 graphics pipeline vertex layout 与 Shader reflection compatibility validation 前移到公共 RHI；重复 location/semantic、unsupported format/shape、layout 不匹配必须在 backend native creation 前失败。
-- [ ] 9.5 Vulkan backend 使用 location/format 建立 native vertex-input state；保留 D3D11 FL11_0/SM5 semantic input-layout 和 D3D12 semantic/PSO 的可实现 contract 与测试 seam，不把 native 类型暴露到公共头文件。
-- [ ] 9.6 实现不继承 RenderResource 的 `VertexFactory`、`LocalVertexFactory` 和 `VertexStreamComponent` matching；VertexFactory 不选择 Material/Shader/permutation，不引入全局 registry、独立 permutation domain、manual vertex fetch 或 GPU Scene。
-- [ ] 9.7 中间验证只运行一个 ShaderMap vertex metadata conversion smoke、一个 LocalVertexFactory compatibility smoke，以及 `Toy3dEditor`/直接受影响 Shader target build；不运行跨后端/full renderer 测试矩阵。
+- [x] 9.1 修改 ShaderMap runtime metadata，使 `ShaderMapEntryLoader` 完整保留 vertex-stage `ReflectedInterfaceVariable`，拒绝重复 logical attribute、unsupported shape、缺失 target mapping 和冲突 Program input；禁止根据 Shader 名或 hard-coded location 猜测。
+- [x] 9.2 按 Type Contracts 实现 `ShaderVertexAttributeId`、`ShaderVertexInput`，第一阶段固定 POSITION0、NORMAL0、TEXCOORD0 与 optional COLOR0 logical attributes，并保持跨 target parity 不比较 native slot/location。
+- [x] 9.3 按 Type Contracts 实现 `RHIShaderVertexInputReflection` 并接入 `RHIShaderDesc`、descriptor validation、shader/pipeline cache key/equality，完整携带 semantic name/index、location、scalar type和 component count。
+- [x] 9.4 将 graphics pipeline vertex layout 与 Shader reflection compatibility validation 前移到公共 RHI；重复 location/semantic、unsupported format/shape、layout 不匹配必须在 backend native creation 前失败。
+- [x] 9.5 Vulkan backend 使用 location/format 建立 native vertex-input state；保留 D3D11 FL11_0/SM5 semantic input-layout 和 D3D12 semantic/PSO 的可实现 contract 与测试 seam，不把 native 类型暴露到公共头文件。
+- [x] 9.6 实现不继承 RenderResource 的 `VertexFactory`、`LocalVertexFactory` 和 `VertexStreamComponent` matching；VertexFactory 不选择 Material/Shader/permutation，不引入全局 registry、独立 permutation domain、manual vertex fetch 或 GPU Scene。
+- [x] 9.7 中间验证只运行一个 ShaderMap vertex metadata conversion smoke、一个 LocalVertexFactory compatibility smoke，以及 `Toy3dEditor`/直接受影响 Shader target build；不运行跨后端/full renderer 测试矩阵。
 
 ## 10. Batch C2 — Resource / Material / Forward Base Pass
 
@@ -96,10 +96,10 @@
 - [ ] 10.4 实现 `StaticMeshRenderData`、`PositionVertexBuffer`、`StaticMeshVertexBuffer`、optional `ColorVertexBuffer`、`StaticMeshIndexBuffer` 与 `LocalVertexFactory` 的完整 candidate gate；当前只支持单组 geometry/sections，不实现 LOD/streaming/partial residency。
 - [ ] 10.5 实现 `Texture`、`TextureDesc`、`TextureRef` 与 `TextureResource`，覆盖 stable address、initial upload、active/candidate replacement、内容更新不换 view、submit 后 binding generation 和旧 view 到 completion 保活。
 - [ ] 10.6 修改 MaterialInstance 并实现 `MaterialRenderProxy`：scalar/vector/texture setter type validation 与 FIFO、Texture 新强引用先建立、RT dirty state、可见 Draw 前按需物化、binding generation 失效和完整结构性 candidate replacement。
-- [ ] 10.7 实现 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 的 canonical matrices/camera/object transform 数据，分别归属 View/Object logical Binding Group，不在 Shader 或 Vulkan 上层手写平台翻转。
+- [ ] 10.7 按 `view-render-flow` 与 `primitive-proxy-lifecycle` Type Contracts 实现 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 的 canonical matrices/camera/object transform 数据；从 8.7 已验证的 ViewInfo 和 copied Proxy values 初始化，分别归属 View/Object logical Binding Group，不在 Shader 或 Vulkan 上层手写平台翻转。
 - [ ] 10.8 完成 `MeshBatch` 对 section range、StaticMeshRenderData、LocalVertexFactory 与 MaterialRenderProxy 的 frame-local non-owning 组合；invalid section、不可绘制 gate、ShaderVertexInput 不兼容或 Material binding 缺失时诊断并跳过对应 batch。
 - [ ] 10.9 完整实现 `ForwardSceneRenderer::render_base_pass()`：逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers，并录制 indexed draw。
-- [ ] 10.10 闭合同一业务 list 的 `record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。
+- [ ] 10.10 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
 - [ ] 10.11 中间验证仅运行直接受影响正式 target build、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke；failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
 
 ## 11. Batch C3 — Render-side Test Pass
@@ -112,7 +112,7 @@
 
 ## 12. Batch C4 — Bootstrap / Terminal / Shutdown
 
-- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
+- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.10 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
 - [ ] 12.2 实现 placeholder/device-level bootstrap context 的 create→upload/transition→finish→explicit submit→wait specified completion，全有或全无发布且保留原始失败码。
 - [ ] 12.3 实现 Renderer first-error latch 和 terminal 状态：停止新 frame/resource init、abort current recording、先清 Manager non-owning pointers，再 skip/dispose pending ownership payload。
 - [ ] 12.4 实现正常 shutdown 的 producer stop→World destroy render states→Proxy/Material/Resource release FIFO→RenderCommandFence drain→Renderer final teardown task。
