@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "format/shader_format_types.h"
+#include "rendercore/shader/shader_parameter_id.h"
 #include "rendercore/shader/shader_vertex_input.h"
 
 #include <cstdint>
@@ -17,7 +18,6 @@ namespace toy3d
         D3D12SM6
     };
 
-    using ShaderParameterId = std::uint64_t;
     using ShaderContentHash = shader::Sha256Hash;
 
     enum class ShaderValueType
