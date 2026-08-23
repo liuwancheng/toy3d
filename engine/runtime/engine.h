@@ -7,10 +7,18 @@
 #include "platform/platform_interface.h"
 #include "platform/window_interface.h"
 
+#include <memory>
+
 namespace toy3d
 {
-	class IPlatform;
-	class IWindow;
+    class FrameEndSync;
+    class IPlatform;
+    class IWindow;
+    class Renderer;
+    class RenderingThread;
+    class RHISurface;
+    class TaskGraphInterface;
+    class ThreadManager;
 
 	enum class ShaderLoadMode
 	{
@@ -24,39 +32,49 @@ namespace toy3d
 		PhysicalPath path;
 	};
 
-	class Engine
-	{
-	public:
-		Engine();
-		~Engine();
+    class Engine
+    {
+    public:
+        Engine();
+        ~Engine();
 
-		void pre_init();
+        void pre_init();
 
-		void init(void * hInstance);
+        void init(void* hInstance);
 
-		void main_loop();
+        void main_loop();
 
-		void exit();
+        void exit();
 
-		void set_shader_load_config(ShaderLoadConfig config);
+        void set_shader_load_config(ShaderLoadConfig config);
 
-		IWindow* get_window() { return window.get(); };
-	private:
-		FileStatus initialize_file_system();
+        IWindow* get_window() { return window.get(); }
 
-		double game_time = 0.0;
-		double delta_time = 0.0;
-		int frame_count = 0;
+    private:
+        FileStatus initialize_file_system();
+        bool initialize_render_framework();
+        void shutdown_render_framework();
 
-		NativePlatformFile native_platform_file;
-		std::shared_ptr<DirectoryFileStore> engine_asset_store;
-		std::shared_ptr<DirectoryFileStore> engine_shader_store;
-		std::shared_ptr<DirectoryFileStore> saved_store;
-		std::shared_ptr<DirectoryFileStore> temp_store;
-		FileSystem file_system;
-		ShaderLoadConfig shader_load_config;
-		std::unique_ptr<IPlatform> platform;
-		std::unique_ptr<IWindow> window;
-		bool engine_exited = false;
-	};
+        double game_time = 0.0;
+        double delta_time = 0.0;
+        int frame_count = 0;
+
+        NativePlatformFile native_platform_file;
+        std::shared_ptr<DirectoryFileStore> engine_asset_store;
+        std::shared_ptr<DirectoryFileStore> engine_shader_store;
+        std::shared_ptr<DirectoryFileStore> saved_store;
+        std::shared_ptr<DirectoryFileStore> temp_store;
+        FileSystem file_system;
+        ShaderLoadConfig shader_load_config;
+        std::unique_ptr<IPlatform> platform;
+        std::unique_ptr<IWindow> window;
+        std::shared_ptr<RHISurface> rhi_surface;
+        std::unique_ptr<ThreadManager> thread_manager;
+        std::unique_ptr<TaskGraphInterface> task_graph;
+        std::unique_ptr<Renderer> renderer;
+        std::unique_ptr<RenderingThread> rendering_thread;
+        std::unique_ptr<FrameEndSync> frame_end_sync;
+        bool platform_initialized = false;
+        bool engine_exited = false;
+    };
 }//toy3d

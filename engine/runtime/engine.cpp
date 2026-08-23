@@ -1,4 +1,5 @@
 #include "engine.h"
+
 #include "config/command_line_parser.h"
 #include "config/console_manager.h"
 
@@ -15,6 +16,12 @@
 
 #include "logging/logger.h"
 #include "generated/defines.h"
+#include "platform/rhi_surface_factory.h"
+#include "rendercore/frame_synchronization.h"
+#include "rendercore/rendering_thread.h"
+#include "renderscene/renderer.h"
+#include "task_graph/task_graph.h"
+#include "threading/thread_manager.h"
 
 #include <filesystem>
 #include <iostream>
@@ -48,13 +55,12 @@ namespace toy3d
 
 	}
 
-	Engine::Engine()
-	{
-	}
+    Engine::Engine() = default;
 
-	Engine::~Engine()
-	{
-	}
+    Engine::~Engine()
+    {
+        exit();
+    }
 
 	void Engine::set_shader_load_config(ShaderLoadConfig config)
 	{
@@ -122,6 +128,14 @@ namespace toy3d
 		platform = std::make_unique<AndroidPlatform>();
 	#endif
 
+        if (!platform || !platform->init())
+        {
+            TOY_LOG_ERROR("Runtime platform initialization failed.");
+            exit();
+            return;
+        }
+        platform_initialized = true;
+
 		// 2.创建窗口
 	#if WITH_WIN64
 		window = std::make_unique<Win32Window>(static_cast<HINSTANCE>(hInstance));
@@ -130,7 +144,130 @@ namespace toy3d
 	#elif WITH_ANDROID
 		window = std::make_unique<AndroidWindow>();
 	#endif
+
+        if (!window)
+        {
+            TOY_LOG_ERROR("Runtime window creation failed.");
+            exit();
+            return;
+        }
+
+        RHIResult<RHISurfaceRef> created_surface = create_rhi_surface(*window);
+        if (!created_surface.succeeded())
+        {
+            TOY_LOG_ERROR(
+                "Runtime RHI surface creation failed: {}",
+                created_surface.status().message());
+            exit();
+            return;
+        }
+        rhi_surface = std::move(created_surface).value();
+
+        if (!initialize_render_framework())
+        {
+            exit();
+        }
 	}
+
+    bool Engine::initialize_render_framework()
+    {
+        thread_manager = std::make_unique<ThreadManager>();
+
+        const bool use_rendering_thread = ConsoleManager::get_instance().get_bool(
+            "Renderer.MultiThreaded", true);
+        TaskGraphConfig task_graph_config;
+        task_graph_config.multithreaded = use_rendering_thread;
+        TaskGraphCreateResult created_task_graph = create_task_graph(
+            task_graph_config, *thread_manager);
+        if (!created_task_graph.succeeded())
+        {
+            TOY_LOG_ERROR(
+                "Runtime Task Graph creation failed: {}",
+                created_task_graph.status().message);
+            shutdown_render_framework();
+            return false;
+        }
+        task_graph = created_task_graph.take_task_graph();
+
+        const TaskGraphStatus attached =
+            task_graph->attach_to_thread(NamedThread::GameThread);
+        if (!attached.succeeded())
+        {
+            TOY_LOG_ERROR("GameThread attach failed: {}", attached.message);
+            shutdown_render_framework();
+            return false;
+        }
+
+        renderer = std::make_unique<Renderer>(*task_graph);
+        rendering_thread = std::make_unique<RenderingThread>(
+            *thread_manager,
+            *task_graph,
+            use_rendering_thread
+                ? RenderingThreadMode::MultiThread
+                : RenderingThreadMode::SingleThread);
+        const ThreadStatus started = rendering_thread->start(
+            [this]()
+            {
+                return renderer->initialize();
+            });
+        if (!started.succeeded())
+        {
+            TOY_LOG_ERROR("RenderingThread startup failed: {}", started.message);
+            shutdown_render_framework();
+            return false;
+        }
+
+        frame_end_sync = std::make_unique<FrameEndSync>(
+            ConsoleManager::get_instance().get_bool(
+                "Renderer.AllowOneFrameThreadLag", true));
+        return true;
+    }
+
+    void Engine::shutdown_render_framework()
+    {
+        frame_end_sync.reset();
+
+        if (rendering_thread)
+        {
+            if (rendering_thread->is_ready())
+            {
+                const RenderFenceWaitResult drained = flush_rendering_commands();
+                if (!drained.succeeded())
+                {
+                    TOY_LOG_ERROR(
+                        "Rendering command drain failed during shutdown: {}",
+                        drained.framework_status().message);
+                }
+            }
+
+            const ThreadStatus stopped = rendering_thread->stop(
+                [this]()
+                {
+                    return renderer != nullptr
+                        ? renderer->teardown()
+                        : ThreadStatus::success();
+                });
+            if (!stopped.succeeded())
+            {
+                TOY_LOG_ERROR("RenderingThread shutdown failed: {}", stopped.message);
+            }
+            rendering_thread.reset();
+        }
+
+        renderer.reset();
+
+        if (task_graph)
+        {
+            const TaskGraphShutdownResult stopped = task_graph->shutdown(
+                TaskGraphShutdownMode::Drain);
+            if (!stopped.succeeded())
+            {
+                TOY_LOG_ERROR("Task Graph shutdown failed: {}", stopped.status.message);
+            }
+            task_graph.reset();
+        }
+        thread_manager.reset();
+    }
 
 	FileStatus Engine::initialize_file_system()
 	{
@@ -228,13 +365,21 @@ namespace toy3d
 
 	void Engine::main_loop()
 	{
-		if (!window)
+		if (!window || !frame_end_sync)
 		{
 			return;
 		}
 		while (!window->should_close())
 		{
 			window->process_events();
+            const RenderFenceWaitResult synchronized = frame_end_sync->sync_frame();
+            if (!synchronized.succeeded())
+            {
+                TOY_LOG_ERROR(
+                    "Frame synchronization failed: {}",
+                    synchronized.framework_status().message);
+                break;
+            }
 		}
 	}
 
@@ -245,7 +390,14 @@ namespace toy3d
 			return;
 		}
 		engine_exited = true;
+		shutdown_render_framework();
+		rhi_surface.reset();
 		window.reset();
+		if (platform_initialized && platform)
+		{
+			platform->exit();
+			platform_initialized = false;
+		}
 		platform.reset();
 		// todo: resource的释放、文件系统的关闭、游戏模块的关闭等
 		Logger::get_instance().exit();

@@ -1,17 +1,10 @@
 #pragma once
 
 #include "gamescene/component/scene_component.h"
+#include "rendercore/view/scene_view.h"
 
 namespace toy3d
 {
-    enum class CameraProjectionMode
-    {
-        Perspective,
-        PerspectiveInfiniteFar,
-        Orthographic,
-        Custom
-    };
-
     class CameraComponent final : public SceneComponent
     {
     public:

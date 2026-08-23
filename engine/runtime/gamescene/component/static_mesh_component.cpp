@@ -1,14 +1,23 @@
 #include "gamescene/component/static_mesh_component.h"
 
-#include "logging/logger.h"
-
 #include <cmath>
+#include <memory>
 #include <utility>
+#include <vector>
+
+#include "logging/logger.h"
+#include "rendercore/scene/static_mesh_scene_proxy.h"
 
 namespace toy3d
 {
     void StaticMeshComponent::set_static_mesh(StaticMeshRef static_mesh)
     {
+        const bool rebuild_render_state = has_render_state();
+        if (rebuild_render_state)
+        {
+            destroy_render_state();
+        }
+
         static_mesh_ = std::move(static_mesh);
         material_overrides_.clear();
         if (static_mesh_ != nullptr)
@@ -16,6 +25,7 @@ namespace toy3d
             material_overrides_.resize(static_mesh_->material_slots().size());
         }
         update_bounds();
+        create_render_state();
     }
 
     bool StaticMeshComponent::set_material_override(
@@ -32,7 +42,14 @@ namespace toy3d
             TOY_LOG_ERROR("A StaticMesh Material override must reference a MaterialInstance.");
             return false;
         }
+
+        const bool rebuild_render_state = has_render_state();
+        if (rebuild_render_state)
+        {
+            destroy_render_state();
+        }
         material_overrides_[material_slot] = std::move(material);
+        create_render_state();
         return true;
     }
 
@@ -87,5 +104,26 @@ namespace toy3d
             world_center.x + world_extent.x,
             world_center.y + world_extent.y,
             world_center.z + world_extent.z);
+    }
+
+    std::unique_ptr<PrimitiveSceneProxy>
+    StaticMeshComponent::create_scene_proxy() const
+    {
+        if (static_mesh_ == nullptr)
+        {
+            return nullptr;
+        }
+
+        // Batch B establishes stable Proxy identity before resource representations
+        // become drawable. Null references remain explicitly unavailable to the later
+        // StaticMeshRenderData/MaterialRenderProxy ready gate.
+        std::vector<MaterialRenderProxy*> material_render_proxies(
+            static_mesh_->material_slots().size(), nullptr);
+        return std::make_unique<StaticMeshSceneProxy>(
+            world_transform(),
+            world_bounds_,
+            visible(),
+            nullptr,
+            std::move(material_render_proxies));
     }
 }

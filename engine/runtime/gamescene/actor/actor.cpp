@@ -1,8 +1,9 @@
 #include "gamescene/actor/actor.h"
 
-#include "logging/logger.h"
-
 #include <algorithm>
+
+#include "gamescene/component/primitive_component.h"
+#include "logging/logger.h"
 
 namespace toy3d
 {
@@ -116,6 +117,32 @@ namespace toy3d
         for (std::size_t index = components_.size(); index > 0; --index)
         {
             components_[index - 1]->unregister_component();
+        }
+    }
+
+    void Actor::create_render_state_for_registered_primitives()
+    {
+        for (const std::unique_ptr<ActorComponent>& component : components_)
+        {
+            PrimitiveComponent* const primitive =
+                dynamic_cast<PrimitiveComponent*>(component.get());
+            if (primitive != nullptr && primitive->is_registered())
+            {
+                primitive->create_render_state();
+            }
+        }
+    }
+
+    void Actor::destroy_render_state_for_registered_primitives()
+    {
+        for (std::size_t index = components_.size(); index > 0; --index)
+        {
+            PrimitiveComponent* const primitive =
+                dynamic_cast<PrimitiveComponent*>(components_[index - 1].get());
+            if (primitive != nullptr)
+            {
+                primitive->destroy_render_state();
+            }
         }
     }
 }

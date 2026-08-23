@@ -74,6 +74,8 @@ namespace toy3d
         void tick_actor(const WorldTickContext& context);
         void end_play(EndPlayReason reason);
         void unregister_all_components();
+        void create_render_state_for_registered_primitives();
+        void destroy_render_state_for_registered_primitives();
         void mark_pending_destroy() { pending_destroy_ = true; }
 
         World& world_;

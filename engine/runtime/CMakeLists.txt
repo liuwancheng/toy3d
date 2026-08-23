@@ -132,6 +132,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMath)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dShaderFormat)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dTaskGraph)
 
 
 target_include_directories(
@@ -241,6 +242,63 @@ if(BUILD_TESTING)
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     target_link_libraries(Toy3dGameSceneTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.GameScene COMMAND Toy3dGameSceneTests)
+
+    add_executable(Toy3dRenderingThreadTests
+        "tests/rendering_thread_tests.cpp"
+        "rendercore/render_command.cpp"
+        "rendercore/render_command.h"
+        "rendercore/render_command_internal.h"
+        "rendercore/rendering_thread.cpp"
+        "rendercore/rendering_thread.h")
+    target_compile_features(Toy3dRenderingThreadTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRenderingThreadTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_include_directories(Toy3dRenderingThreadTests
+        PRIVATE
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+    target_compile_options(Toy3dRenderingThreadTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRenderingThreadTests PRIVATE Toy3dTaskGraph Threads::Threads)
+    add_test(NAME Toy3dRuntime.RenderingThread COMMAND Toy3dRenderingThreadTests)
+
+    add_executable(Toy3dFrameSynchronizationTests
+        "tests/frame_synchronization_tests.cpp"
+        "rendercore/frame_synchronization.cpp"
+        "rendercore/frame_synchronization.h"
+        "rendercore/render_command.cpp"
+        "rendercore/render_command.h"
+        "rendercore/render_command_internal.h"
+        "rendercore/rendering_thread.cpp"
+        "rendercore/rendering_thread.h")
+    target_compile_features(Toy3dFrameSynchronizationTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dFrameSynchronizationTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_include_directories(Toy3dFrameSynchronizationTests
+        PRIVATE
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+    target_compile_options(Toy3dFrameSynchronizationTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dFrameSynchronizationTests
+        PRIVATE Toy3dTaskGraph Threads::Threads)
+    add_test(NAME Toy3dRuntime.FrameSynchronization
+        COMMAND Toy3dFrameSynchronizationTests)
+
+    add_executable(Toy3dRendererSceneOwnershipTests
+        "tests/renderer_scene_ownership_tests.cpp")
+    target_compile_features(Toy3dRendererSceneOwnershipTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRendererSceneOwnershipTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRendererSceneOwnershipTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRendererSceneOwnershipTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.RendererSceneOwnership
+        COMMAND Toy3dRendererSceneOwnershipTests)
 
     if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
         add_executable(Toy3dShaderMapEntryLoaderTests

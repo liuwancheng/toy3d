@@ -11,6 +11,8 @@
 
 namespace toy3d
 {
+    class SceneInterface;
+
     class World
     {
     public:
@@ -48,6 +50,9 @@ namespace toy3d
         void end_play();
         bool destroy_actor(Actor& actor);
         bool contains(const Actor& actor) const;
+        bool bind_scene(SceneInterface& scene);
+        bool unbind_scene();
+        SceneInterface* scene_interface() const { return scene_interface_; }
         std::size_t actor_count() const { return actors_.size(); }
         WorldLifecycleState lifecycle_state() const { return lifecycle_state_; }
         double world_time_seconds() const { return world_time_seconds_; }
@@ -67,5 +72,7 @@ namespace toy3d
         std::uint64_t frame_number_ = 0;
         bool ticking_ = false;
         bool dispatching_lifecycle_ = false;
+        // World observes the stable RenderCore façade; Renderer retains all scene ownership.
+        SceneInterface* scene_interface_ = nullptr;
     };
 }

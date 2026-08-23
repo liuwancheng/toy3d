@@ -1,16 +1,21 @@
 #include "gamescene/world/world.h"
 
-#include "logging/logger.h"
-#include "math/scalar_math.h"
-
 #include <algorithm>
 #include <limits>
+
+#include "logging/logger.h"
+#include "math/scalar_math.h"
+#include "rendercore/scene_interface.h"
 
 namespace toy3d
 {
     World::~World()
     {
         end_play();
+        if (scene_interface_ != nullptr)
+        {
+            unbind_scene();
+        }
     }
 
     void World::initialize()
@@ -176,5 +181,38 @@ namespace toy3d
             {
                 return candidate.get() == &actor;
             });
+    }
+
+    bool World::bind_scene(SceneInterface& scene)
+    {
+        if (scene_interface_ != nullptr)
+        {
+            return false;
+        }
+
+        // The pointer is made visible only to registered PrimitiveComponent lifecycle
+        // while ownership-transfer Add commands are being issued. Contract violations
+        // fail fast and therefore do not create a recoverable partial-bind branch.
+        scene_interface_ = &scene;
+        for (const std::unique_ptr<Actor>& actor : actors_)
+        {
+            actor->create_render_state_for_registered_primitives();
+        }
+        return true;
+    }
+
+    bool World::unbind_scene()
+    {
+        if (scene_interface_ == nullptr)
+        {
+            return false;
+        }
+
+        for (std::size_t index = actors_.size(); index > 0; --index)
+        {
+            actors_[index - 1]->destroy_render_state_for_registered_primitives();
+        }
+        scene_interface_ = nullptr;
+        return true;
     }
 }
