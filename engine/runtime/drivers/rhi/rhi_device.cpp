@@ -145,7 +145,7 @@ namespace toy3d
                     "Graphics pipeline color format or sample count is not supported by the device.");
             }
         }
-        if (desc.depth_stencil_format != RHIFormat::Unknown)
+        if (desc.depth_stencil_format != PixelFormat::Unknown)
         {
             const RHIFormatCapabilities format_support = format_capabilities(desc.depth_stencil_format);
             if (!rhi_has_any_flag(format_support.usage, RHIFormatUsage::DepthStencil) ||

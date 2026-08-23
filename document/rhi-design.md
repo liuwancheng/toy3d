@@ -226,6 +226,29 @@ frame slot。若最小提交、同步或 present 前的恢复步骤失败，本�
 
 ## 5. 资源与 view
 
+### 5.0 共享 PixelFormat contract
+
+Toy3d 只有一套 GPU-ready storage format：`engine/core/pixel_format/pixel_format.h` 中的 `PixelFormat`，对应 UE4.27 `EPixelFormat` 的职责。它由独立 `Toy3dPixelFormat` target 提供，供 runtime、editor、tools 和公共 RHI 共同依赖；公共 RHI 不再定义 `RHIFormat`，Asset/Editor 也不得为格式身份反向依赖 RHI。
+
+```text
+外部文件编码 / Editor source
+        ↓ import / cook
+PixelFormat + GPU-ready mip payload
+        ├─ Editor preview
+        ├─ Cook output / runtime TextureDesc
+        └─ RHI resource/view/pipeline descriptors
+                ↓ backend-local conversion
+          VkFormat / DXGI_FORMAT
+```
+
+第一阶段非目标包括 PNG/JPEG/DDS 解析、可重新 Cook source data、import/color policy 和独立 `TextureSourceFormat`。这些属于未来 Editor/Asset source layer；共享 Core 不反向依赖 Asset、RenderScene、RHI 或 backend。
+
+`PixelFormat` 是无 ownership、无生命周期和无线程可变状态的 `enum class`。共享实现只提供 block width、block height、bytes per block 与最小 row/slice pitch checked calculation；Unknown/Max、零 extent 或溢出返回无可用 metadata/`false`，调用方负责增加 asset、mip 和 target 上下文。BC、ASTC、PVRTC 等格式必须按向上取整的 block count 计算 pitch，禁止 bytes-per-texel 近似。
+
+平台差异不进入枚举：Cook profile 与 runtime format capabilities 验证完整 usage/sample 组合；Vulkan、D3D11 FL11_0 和 D3D12 backend 分别显式 switch 到 `VkFormat`/`DXGI_FORMAT`，未知或不支持映射返回 `Unsupported`，禁止数字强转。公共头文件不得出现 native format 类型。
+
+测试矩阵包括共享 metadata 与非 block-aligned pitch、公共 RHI format capability/descriptor validation、各 backend mapping/support，以及 Editor/Cook→runtime payload contract。迁移采用单批次切换：全部公共 descriptor、RenderCore 和 backend 调用点改用 `PixelFormat` 后立即删除 `RHIFormat`；删除条件是无 compatibility alias、数字强转或第二套 GPU-ready format，且 configure、受影响 targets 与定向测试通过。
+
 ### 5.1 Descriptor
 
 Buffer 和 texture 使用完整 descriptor 创建。Descriptor 至少表达：

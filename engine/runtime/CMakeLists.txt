@@ -131,6 +131,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC fmt)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMath)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dPixelFormat)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dShaderFormat)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dTaskGraph)
 
@@ -207,17 +208,17 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dRHIBindingTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.RHIBinding COMMAND Toy3dRHIBindingTests)
 
-    add_executable(Toy3dRHIFormatTests
+    add_executable(Toy3dRHIPixelFormatTests
         "tests/rhi_format_tests.cpp")
-    target_compile_features(Toy3dRHIFormatTests PRIVATE cxx_std_17)
-    set_target_properties(Toy3dRHIFormatTests PROPERTIES
+    target_compile_features(Toy3dRHIPixelFormatTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRHIPixelFormatTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_compile_options(Toy3dRHIFormatTests
+    target_compile_options(Toy3dRHIPixelFormatTests
         PRIVATE
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-    target_link_libraries(Toy3dRHIFormatTests PRIVATE Toy3dRuntime)
-    add_test(NAME Toy3dRuntime.RHIFormat COMMAND Toy3dRHIFormatTests)
+    target_link_libraries(Toy3dRHIPixelFormatTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.PixelFormat COMMAND Toy3dRHIPixelFormatTests)
 
     add_executable(Toy3dRHIViewportStatusTests
         "tests/rhi_viewport_status_tests.cpp")

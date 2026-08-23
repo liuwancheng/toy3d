@@ -21,7 +21,7 @@ namespace toy3d
 {
     class VulkanDeferredDeletionQueue;
 
-    VkFormat vulkan_format_from_rhi(RHIFormat format);
+    VkFormat vulkan_format_from_pixel_format(PixelFormat format);
     bool is_vk_depth_format(VkFormat format);
     bool is_vk_stencil_format(VkFormat format);
 
@@ -128,8 +128,8 @@ namespace toy3d
             VkDevice device,
             VkRenderPass render_pass,
             VkFramebuffer framebuffer,
-            std::vector<RHIFormat> color_formats,
-            RHIFormat depth_stencil_format,
+            std::vector<PixelFormat> color_formats,
+            PixelFormat depth_stencil_format,
             bool depth_read_only,
             bool stencil_read_only,
             std::uint32_t sample_count);
@@ -143,8 +143,8 @@ namespace toy3d
         VkDevice vk_device = VK_NULL_HANDLE;
         VkRenderPass vk_render_pass = VK_NULL_HANDLE;
         VkFramebuffer vk_framebuffer = VK_NULL_HANDLE;
-        std::vector<RHIFormat> pass_color_formats;
-        RHIFormat pass_depth_stencil_format = RHIFormat::Unknown;
+        std::vector<PixelFormat> pass_color_formats;
+        PixelFormat pass_depth_stencil_format = PixelFormat::Unknown;
         bool pass_depth_read_only = false;
         bool pass_stencil_read_only = false;
         std::uint32_t pass_sample_count = 1;

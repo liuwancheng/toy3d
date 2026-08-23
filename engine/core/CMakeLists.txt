@@ -40,6 +40,19 @@ target_include_directories(Toy3dLogging
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dLogging PUBLIC spdlog)
 
+add_library(Toy3dPixelFormat STATIC)
+target_sources(Toy3dPixelFormat
+    PRIVATE
+        "pixel_format/pixel_format.cpp"
+        "pixel_format/pixel_format.h")
+target_compile_features(Toy3dPixelFormat PUBLIC cxx_std_17)
+set_target_properties(Toy3dPixelFormat PROPERTIES
+    CXX_EXTENSIONS OFF
+    FOLDER "Engine/Core")
+target_include_directories(Toy3dPixelFormat
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+
 add_library(Toy3dMath STATIC)
 target_sources(Toy3dMath
     PRIVATE
@@ -133,6 +146,14 @@ target_include_directories(Toy3dTaskGraph
 target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
 
 if(BUILD_TESTING)
+    add_executable(Toy3dPixelFormatTests "tests/pixel_format_tests.cpp")
+    target_compile_features(Toy3dPixelFormatTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dPixelFormatTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dPixelFormatTests PRIVATE Toy3dPixelFormat)
+    add_test(NAME Toy3dCore.PixelFormat COMMAND Toy3dPixelFormatTests)
+
     add_executable(Toy3dMathTests "tests/math_tests.cpp")
     target_compile_features(Toy3dMathTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dMathTests PROPERTIES

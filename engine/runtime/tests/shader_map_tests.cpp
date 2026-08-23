@@ -181,11 +181,11 @@ namespace
 
         std::vector<toy3d::VertexStreamComponent> components = {
             {toy3d::ShaderVertexAttributeId::Position0, 0u, 0u, 12u,
-                toy3d::RHIFormat::R32G32B32Float, position_buffer},
+                toy3d::PixelFormat::R32G32B32Float, position_buffer},
             {toy3d::ShaderVertexAttributeId::Normal0, 1u, 0u, 20u,
-                toy3d::RHIFormat::R32G32B32Float, static_buffer},
+                toy3d::PixelFormat::R32G32B32Float, static_buffer},
             {toy3d::ShaderVertexAttributeId::TexCoord0, 1u, 12u, 20u,
-                toy3d::RHIFormat::R32G32Float, static_buffer}};
+                toy3d::PixelFormat::R32G32Float, static_buffer}};
         toy3d::LocalVertexFactory vertex_factory(std::move(components));
 
         const auto float_type =

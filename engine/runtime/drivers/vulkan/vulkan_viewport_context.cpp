@@ -568,7 +568,7 @@ namespace toy3d
                 "The Vulkan presentation surface has a zero extent and cannot create a swapchain yet.");
         }
 
-        const VkFormat requested_format = vulkan_format_from_rhi(viewport_desc.format);
+        const VkFormat requested_format = vulkan_format_from_pixel_format(viewport_desc.format);
         if (requested_format == VK_FORMAT_UNDEFINED)
         {
             return RHIStatus::failure(RHIErrorCode::Unsupported, "The requested RHI viewport format has no Vulkan mapping.");

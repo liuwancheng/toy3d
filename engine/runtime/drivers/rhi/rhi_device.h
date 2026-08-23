@@ -40,7 +40,7 @@ namespace toy3d
 
         virtual const RHICapabilities& capabilities() const = 0;
         virtual const RHILimits& limits() const = 0;
-        virtual RHIFormatCapabilities format_capabilities(RHIFormat format) const = 0;
+        virtual RHIFormatCapabilities format_capabilities(PixelFormat format) const = 0;
 
         virtual RHIQueue& graphics_queue() = 0;
 

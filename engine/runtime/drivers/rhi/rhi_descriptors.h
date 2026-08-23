@@ -136,7 +136,7 @@ namespace toy3d
         std::uint32_t array_layers = 1;
         std::uint32_t mip_levels = 1;
         std::uint32_t sample_count = 1;
-        RHIFormat format = RHIFormat::Unknown;
+        PixelFormat format = PixelFormat::Unknown;
         RHIResourceUsage usage = RHIResourceUsage::None;
         // Expresses access intent only; it does not select a native heap or
         // promise persistent mapping.
@@ -150,7 +150,7 @@ namespace toy3d
     {
         RHIResourceViewType type = RHIResourceViewType::ShaderResource;
         RHITextureViewDimension dimension = RHITextureViewDimension::Texture2D;
-        RHIFormat format = RHIFormat::Unknown;
+        PixelFormat format = PixelFormat::Unknown;
         RHISubresourceRange subresources;
         bool depth_read_only = false;
         bool stencil_read_only = false;
@@ -160,7 +160,7 @@ namespace toy3d
     struct RHIBufferViewDesc
     {
         RHIResourceViewType type = RHIResourceViewType::ShaderResource;
-        RHIFormat format = RHIFormat::Unknown;
+        PixelFormat format = PixelFormat::Unknown;
         std::uint64_t offset = 0;
         std::uint64_t size = 0;
         std::string debug_name;
@@ -287,7 +287,7 @@ namespace toy3d
             // reflection semantic name/index when creating their input layout.
             std::uint32_t location = 0;
             std::uint32_t binding = 0;
-            RHIFormat format = RHIFormat::Unknown;
+            PixelFormat format = PixelFormat::Unknown;
             std::uint32_t offset = 0;
         };
 
@@ -338,10 +338,10 @@ namespace toy3d
         std::vector<VertexAttribute> vertex_attributes;
         RasterizationState rasterization;
         DepthStencilState depth_stencil;
-        std::array<RHIFormat, RHI_MAX_COLOR_ATTACHMENTS> color_formats = {};
+        std::array<PixelFormat, RHI_MAX_COLOR_ATTACHMENTS> color_formats = {};
         std::array<ColorBlendAttachmentState, RHI_MAX_COLOR_ATTACHMENTS> color_blend_attachments = {};
         std::uint32_t color_attachment_count = 0;
-        RHIFormat depth_stencil_format = RHIFormat::Unknown;
+        PixelFormat depth_stencil_format = PixelFormat::Unknown;
         std::uint32_t sample_count = 1;
         std::string debug_name;
     };

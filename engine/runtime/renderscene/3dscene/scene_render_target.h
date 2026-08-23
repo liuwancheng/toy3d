@@ -13,7 +13,7 @@ namespace toy3d
     {
         bool operator<(const RenderTargetDesc& other) const;
 
-        RHIFormat format = RHIFormat::Unknown;
+        PixelFormat format = PixelFormat::Unknown;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         std::uint32_t array_layers = 1;

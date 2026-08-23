@@ -73,7 +73,7 @@ namespace toy3d
         RHITextureDesc texture_desc;
         texture_desc.width = 4;
         texture_desc.height = 4;
-        texture_desc.format = RHIFormat::R8G8B8A8UNorm;
+        texture_desc.format = PixelFormat::R8G8B8A8UNorm;
         texture_desc.usage = rhi_enum_or(RHIResourceUsage::ShaderResource, RHIResourceUsage::CopyDestination);
         texture_desc.initial_access = RHIAccess::Common;
         texture_desc.debug_name = "TestPassCheckerboardTexture";
@@ -87,7 +87,7 @@ namespace toy3d
         RHITextureViewDesc view_desc;
         view_desc.type = RHIResourceViewType::ShaderResource;
         view_desc.dimension = RHITextureViewDimension::Texture2D;
-        view_desc.format = RHIFormat::R8G8B8A8UNorm;
+        view_desc.format = PixelFormat::R8G8B8A8UNorm;
         view_desc.debug_name = "TestPassCheckerboardView";
         auto view_result = rhi_device.create_texture_view(texture, view_desc);
         if (!view_result)
@@ -164,12 +164,12 @@ namespace toy3d
         pipeline_desc.binding_layout = binding_layout;
         pipeline_desc.primitive_topology = RHIPrimitiveTopology::TriangleList;
         pipeline_desc.rasterization.cull_mode = RHICullMode::None;
-        pipeline_desc.color_formats[0] = RHIFormat::B8G8R8A8UNorm;
+        pipeline_desc.color_formats[0] = PixelFormat::B8G8R8A8UNorm;
         pipeline_desc.color_attachment_count = 1;
         pipeline_desc.depth_stencil.depth_test_enable = true;
         pipeline_desc.depth_stencil.depth_write_enable = true;
         pipeline_desc.depth_stencil.depth_compare_operation = RHICompareOperation::GreaterEqual;
-        pipeline_desc.depth_stencil_format = RHIFormat::D32Float;
+        pipeline_desc.depth_stencil_format = PixelFormat::D32Float;
         pipeline_desc.debug_name = "TestPassFullscreenPipeline";
         auto pipeline_result = rhi_device.create_graphics_pipeline(pipeline_desc);
         if (!pipeline_result)
@@ -199,7 +199,7 @@ namespace toy3d
         RHITextureDesc texture_desc;
         texture_desc.width = frame.width();
         texture_desc.height = frame.height();
-        texture_desc.format = RHIFormat::D32Float;
+        texture_desc.format = PixelFormat::D32Float;
         texture_desc.usage = RHIResourceUsage::DepthStencil;
         texture_desc.initial_access = RHIAccess::Common;
         texture_desc.clear_value = RHIClearValue::DepthZero;
@@ -213,7 +213,7 @@ namespace toy3d
         RHITextureViewDesc view_desc;
         view_desc.type = RHIResourceViewType::DepthStencil;
         view_desc.dimension = RHITextureViewDimension::Texture2D;
-        view_desc.format = RHIFormat::D32Float;
+        view_desc.format = PixelFormat::D32Float;
         view_desc.subresources.aspect = RHITextureAspect::Depth;
         view_desc.subresources.mip_count = 1;
         view_desc.subresources.layer_count = 1;

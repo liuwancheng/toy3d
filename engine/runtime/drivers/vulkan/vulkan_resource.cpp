@@ -10,59 +10,67 @@
 
 namespace toy3d
 {
-    VkFormat vulkan_format_from_rhi(RHIFormat format)
+    VkFormat vulkan_format_from_pixel_format(PixelFormat format)
     {
         switch (format)
         {
-        case RHIFormat::R8UNorm:
+        case PixelFormat::R8UNorm:
             return VK_FORMAT_R8_UNORM;
-        case RHIFormat::R8G8B8A8UNorm:
+        case PixelFormat::R8G8B8A8UNorm:
             return VK_FORMAT_R8G8B8A8_UNORM;
-        case RHIFormat::R8G8B8A8UNormSRGB:
+        case PixelFormat::R8G8B8A8UNormSRGB:
             return VK_FORMAT_R8G8B8A8_SRGB;
-        case RHIFormat::B8G8R8A8UNorm:
+        case PixelFormat::B8G8R8A8UNorm:
             return VK_FORMAT_B8G8R8A8_UNORM;
-        case RHIFormat::B8G8R8A8UNormSRGB:
+        case PixelFormat::B8G8R8A8UNormSRGB:
             return VK_FORMAT_B8G8R8A8_SRGB;
-        case RHIFormat::R16Float:
+        case PixelFormat::R16Float:
             return VK_FORMAT_R16_SFLOAT;
-        case RHIFormat::R16G16Float:
+        case PixelFormat::R16G16Float:
             return VK_FORMAT_R16G16_SFLOAT;
-        case RHIFormat::R16G16B16A16Float:
+        case PixelFormat::R16G16B16A16Float:
             return VK_FORMAT_R16G16B16A16_SFLOAT;
-        case RHIFormat::R32Float:
+        case PixelFormat::R32Float:
             return VK_FORMAT_R32_SFLOAT;
-        case RHIFormat::R32G32Float:
+        case PixelFormat::R32G32Float:
             return VK_FORMAT_R32G32_SFLOAT;
-        case RHIFormat::R32G32B32Float:
+        case PixelFormat::R32G32B32Float:
             return VK_FORMAT_R32G32B32_SFLOAT;
-        case RHIFormat::R32G32B32A32Float:
+        case PixelFormat::R32G32B32A32Float:
             return VK_FORMAT_R32G32B32A32_SFLOAT;
-        case RHIFormat::R16UInt:
+        case PixelFormat::R16UInt:
             return VK_FORMAT_R16_UINT;
-        case RHIFormat::R32UInt:
+        case PixelFormat::R32UInt:
             return VK_FORMAT_R32_UINT;
-        case RHIFormat::R8SNorm:
+        case PixelFormat::R8SNorm:
             return VK_FORMAT_R8_SNORM;
-        case RHIFormat::R8G8B8A8SNorm:
+        case PixelFormat::R8G8B8A8SNorm:
             return VK_FORMAT_R8G8B8A8_SNORM;
-        case RHIFormat::R10G10B10A2UNorm:
+        case PixelFormat::R10G10B10A2UNorm:
             return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-        case RHIFormat::R11G11B10Float:
+        case PixelFormat::R11G11B10Float:
             return VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-        case RHIFormat::BC1UNorm:
+        case PixelFormat::BC1UNorm:
             return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
-        case RHIFormat::BC2UNorm:
+        case PixelFormat::BC2UNorm:
             return VK_FORMAT_BC2_UNORM_BLOCK;
-        case RHIFormat::BC3UNorm:
+        case PixelFormat::BC3UNorm:
             return VK_FORMAT_BC3_UNORM_BLOCK;
-        case RHIFormat::D16UNorm:
+        case PixelFormat::ASTC4x4:
+            return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+        case PixelFormat::ASTC6x6:
+            return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+        case PixelFormat::ASTC8x8:
+            return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+        case PixelFormat::ASTC12x12:
+            return VK_FORMAT_ASTC_12x12_UNORM_BLOCK;
+        case PixelFormat::D16UNorm:
             return VK_FORMAT_D16_UNORM;
-        case RHIFormat::D24UNormS8UInt:
+        case PixelFormat::D24UNormS8UInt:
             return VK_FORMAT_D24_UNORM_S8_UINT;
-        case RHIFormat::D32Float:
+        case PixelFormat::D32Float:
             return VK_FORMAT_D32_SFLOAT;
-        case RHIFormat::D32FloatS8UInt:
+        case PixelFormat::D32FloatS8UInt:
             return VK_FORMAT_D32_SFLOAT_S8_UINT;
         default:
             return VK_FORMAT_UNDEFINED;
@@ -307,8 +315,8 @@ namespace toy3d
         VkDevice device,
         VkRenderPass render_pass,
         VkFramebuffer framebuffer,
-        std::vector<RHIFormat> color_formats,
-        RHIFormat depth_stencil_format,
+        std::vector<PixelFormat> color_formats,
+        PixelFormat depth_stencil_format,
         bool depth_read_only,
         bool stencil_read_only,
         std::uint32_t sample_count)
@@ -357,7 +365,7 @@ namespace toy3d
         {
             return false;
         }
-        if (pass_depth_stencil_format != RHIFormat::Unknown)
+        if (pass_depth_stencil_format != PixelFormat::Unknown)
         {
             if (pass_depth_read_only && pipeline_desc.depth_stencil.depth_write_enable)
             {

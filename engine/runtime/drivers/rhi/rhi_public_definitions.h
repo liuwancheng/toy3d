@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pixel_format/pixel_format.h"
+
 #include <cstdint>
 #include <type_traits>
 
@@ -29,45 +31,6 @@ namespace toy3d
         const Underlying flag_bits = static_cast<Underlying>(flags);
         return (static_cast<Underlying>(value) & flag_bits) == flag_bits;
     }
-
-    enum class RHIFormat : std::uint16_t
-    {
-        Unknown,
-        R8UNorm,
-        R8G8B8A8UNorm,
-        R8G8B8A8UNormSRGB,
-        B8G8R8A8UNorm,
-        B8G8R8A8UNormSRGB,
-        R16Float,
-        R16G16Float,
-        R16G16B16A16Float,
-        R32Float,
-        R32G32Float,
-        R32G32B32Float,
-        R32G32B32A32Float,
-        R16UInt,
-        R32UInt,
-        R8SNorm,
-        R8G8B8A8SNorm,
-        R10G10B10A2UNorm,
-        R11G11B10Float,
-        BC1UNorm,
-        BC2UNorm,
-        BC3UNorm,
-        UYVY,
-        PVRTC2,
-        PVRTC4,
-        ASTC4x4,
-        ASTC6x6,
-        ASTC8x8,
-        ASTC12x12,
-        HDR,
-        D16UNorm,
-        D24UNormS8UInt,
-        D32Float,
-        D32FloatS8UInt,
-        PixelFormat_Max
-    };
 
     enum class RHIResourceDimension : std::uint8_t
     {

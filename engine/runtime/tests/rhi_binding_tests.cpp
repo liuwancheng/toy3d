@@ -112,7 +112,7 @@ int main()
     pipeline.vertex_buffers.push_back({0u, 12u,
         toy3d::RHIVertexInputRate::PerVertex});
     pipeline.vertex_attributes.push_back(
-        {0u, 0u, toy3d::RHIFormat::R32G32B32Float, 0u});
+        {0u, 0u, toy3d::PixelFormat::R32G32B32Float, 0u});
     check(static_cast<bool>(toy3d::validate_graphics_pipeline_desc(pipeline)),
         "pipeline vertex layout must match shader location and float3 shape");
     const toy3d::RHIShaderVertexInputReflection& d3d_input_layout_seam =
@@ -124,7 +124,7 @@ int main()
 
     toy3d::RHIGraphicsPipelineDesc invalid_pipeline = pipeline;
     invalid_pipeline.vertex_attributes[0].format =
-        toy3d::RHIFormat::R32G32B32A32Float;
+        toy3d::PixelFormat::R32G32B32A32Float;
     invalid_pipeline.vertex_buffers[0].stride = 16u;
     check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
         "pipeline vertex format must match shader component count");
@@ -135,7 +135,7 @@ int main()
         "pipeline vertex location must exist in shader reflection");
 
     invalid_pipeline = pipeline;
-    invalid_pipeline.vertex_attributes[0].format = toy3d::RHIFormat::BC1UNorm;
+    invalid_pipeline.vertex_attributes[0].format = toy3d::PixelFormat::BC1UNorm;
     check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
         "formats without a common RHI vertex shape must fail before backend creation");
 

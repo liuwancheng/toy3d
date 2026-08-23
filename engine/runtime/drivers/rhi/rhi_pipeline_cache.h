@@ -40,12 +40,12 @@ namespace toy3d
         std::vector<RHIGraphicsPipelineDesc::VertexAttribute> vertex_attributes;
         RHIGraphicsPipelineDesc::RasterizationState rasterization;
         RHIGraphicsPipelineDesc::DepthStencilState depth_stencil;
-        std::array<RHIFormat, RHI_MAX_COLOR_ATTACHMENTS> color_formats = {};
+        std::array<PixelFormat, RHI_MAX_COLOR_ATTACHMENTS> color_formats = {};
         std::array<
             RHIGraphicsPipelineDesc::ColorBlendAttachmentState,
             RHI_MAX_COLOR_ATTACHMENTS> color_blend_attachments = {};
         std::uint32_t color_attachment_count = 0;
-        RHIFormat depth_stencil_format = RHIFormat::Unknown;
+        PixelFormat depth_stencil_format = PixelFormat::Unknown;
         std::uint32_t sample_count = 1;
 
         bool operator==(const RHIGraphicsPipelineKey& other) const;

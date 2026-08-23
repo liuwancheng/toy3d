@@ -55,6 +55,10 @@
 
 ## 资源与生命周期
 
+- runtime、editor、tools 与公共 RHI 共享 `engine/core/pixel_format/` 的 GPU-ready `PixelFormat`，对应 UE4.27 `EPixelFormat` 的职责。公共 RHI 不再定义独立格式枚举；禁止 compatibility alias、数字强转或语义重复的 `TextureFormat`。
+- `PixelFormat` 无 ownership、生命周期或线程可变状态；共享 metadata 表达 block width、block height、bytes per block 和 checked minimum pitch。BC、ASTC、PVRTC 等格式按向上取整的 block count 验证，不能按 bytes-per-texel 近似。
+- PNG/JPEG/DDS 等外部文件编码、可重新 Cook source data、import/color policy 不属于 `PixelFormat`，第一阶段不新增 `TextureSourceFormat`。Editor preview、Cook output 和 runtime descriptor 只消费已规范化的 GPU-ready payload。
+- `VkFormat`/`DXGI_FORMAT` 转换只存在于各 backend 且使用显式映射；Cook profile 与 runtime format capability 验证完整 usage/sample 组合，不支持返回可诊断的 `Unsupported`。
 - buffer/texture descriptor 表达 dimension、extent、format、mip、layer、sample count、usage、CPU access、initial access、debug name，并验证非法组合。
 - buffer 保持统一的 `RHIBuffer` 资源类型，以 usage flags 表达允许用途；只有 structured buffer 的 `structure_stride` 属于资源创建描述符，vertex stride 和 index format 属于 binding/view 语义。
 - SRV/UAV/RTV/DSV 是独立 view，描述 format、subresource range、depth/stencil 只读属性；render pass 引用 view。
@@ -122,7 +126,7 @@
 
 ## 演进顺序
 
-1. definitions、descriptor、capability/limits、错误模型。
+1. 建立共享 `Toy3dPixelFormat`，单批次迁移并删除 `RHIFormat`，以 metadata、公共 capability validation、backend mapping 和无旧 alias/第二套枚举检查作为删除门槛；随后继续 definitions、descriptor、capability/limits、错误模型。
 2. device、graphics context、queue、viewport/presentation 分层；swapchain 收入 viewport 内部。
 3. 资源/view、上传、command-list-local transition、提交状态推进、延迟销毁。
 4. graphics render pass、pipeline、binding、draw/copy 闭环。

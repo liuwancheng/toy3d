@@ -44,7 +44,7 @@ namespace toy3d
 
         const RHICapabilities& capabilities() const override;
         const RHILimits& limits() const override;
-        RHIFormatCapabilities format_capabilities(RHIFormat format) const override;
+        RHIFormatCapabilities format_capabilities(PixelFormat format) const override;
 
         RHIQueue& graphics_queue() override;
 

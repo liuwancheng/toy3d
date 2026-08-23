@@ -10,22 +10,22 @@ namespace toy3d
     {
         bool expected_stream_format(
             ShaderVertexAttributeId attribute_id,
-            RHIFormat& format,
+            PixelFormat& format,
             std::uint32_t& byte_size)
         {
             switch (attribute_id)
             {
             case ShaderVertexAttributeId::Position0:
             case ShaderVertexAttributeId::Normal0:
-                format = RHIFormat::R32G32B32Float;
+                format = PixelFormat::R32G32B32Float;
                 byte_size = 12u;
                 return true;
             case ShaderVertexAttributeId::TexCoord0:
-                format = RHIFormat::R32G32Float;
+                format = PixelFormat::R32G32Float;
                 byte_size = 8u;
                 return true;
             case ShaderVertexAttributeId::Color0:
-                format = RHIFormat::R8G8B8A8UNorm;
+                format = PixelFormat::R8G8B8A8UNorm;
                 byte_size = 4u;
                 return true;
             }
@@ -79,7 +79,7 @@ namespace toy3d
         for (const VertexStreamComponent& component : stream_components)
         {
             const RHIBufferRef buffer = component.buffer.lock();
-            RHIFormat expected_format = RHIFormat::Unknown;
+            PixelFormat expected_format = PixelFormat::Unknown;
             std::uint32_t byte_size = 0u;
             if (!buffer ||
                 !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::VertexBuffer) ||

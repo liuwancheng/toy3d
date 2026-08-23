@@ -88,7 +88,7 @@ int main()
     toy3d::RHITextureDesc texture_desc;
     texture_desc.width = 1;
     texture_desc.height = 1;
-    texture_desc.format = toy3d::RHIFormat::R8G8B8A8UNorm;
+    texture_desc.format = toy3d::PixelFormat::R8G8B8A8UNorm;
     auto foreign_texture = std::make_shared<toy3d::RHITexture>(second_device, texture_desc);
 
     toy3d::RHITextureViewDesc view_desc;

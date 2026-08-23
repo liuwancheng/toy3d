@@ -171,6 +171,43 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload region is outside the destination mip extent.");
         }
+        std::uint64_t minimum_row_pitch = 0;
+        std::uint64_t minimum_slice_pitch = 0;
+        if (!pixel_format_calculate_minimum_row_pitch(
+                destination_desc.format, desc.extent.width, minimum_row_pitch) ||
+            !pixel_format_calculate_minimum_slice_pitch(
+                destination_desc.format,
+                desc.extent.width,
+                desc.extent.height,
+                minimum_slice_pitch))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Texture upload format or block-pitch calculation is invalid.");
+        }
+        const std::uint32_t bytes_per_block =
+            pixel_format_bytes_per_block(destination_desc.format);
+        const std::uint64_t block_row_count =
+            minimum_slice_pitch / minimum_row_pitch;
+        if (desc.source.row_pitch > std::numeric_limits<std::uint64_t>::max() / block_row_count)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Texture upload slice-pitch calculation overflows.");
+        }
+        const std::uint64_t required_slice_pitch =
+            static_cast<std::uint64_t>(desc.source.row_pitch) * block_row_count;
+        if (desc.source.row_pitch < minimum_row_pitch ||
+            desc.source.row_pitch % bytes_per_block != 0 ||
+            desc.source.slice_pitch < required_slice_pitch ||
+            desc.source.slice_pitch % desc.source.row_pitch != 0 ||
+            desc.extent.depth > std::numeric_limits<std::size_t>::max() / desc.source.slice_pitch ||
+            desc.source.size < desc.source.slice_pitch * static_cast<std::size_t>(desc.extent.depth))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Texture upload source pitches or data size do not cover complete format blocks.");
+        }
         return RHIStatus::success();
     }
 

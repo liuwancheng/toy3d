@@ -17,7 +17,7 @@ namespace toy3d
         std::uint32_t stream_index = 0;
         std::uint32_t byte_offset = 0;
         std::uint32_t stride = 0;
-        RHIFormat format = RHIFormat::Unknown;
+        PixelFormat format = PixelFormat::Unknown;
         std::weak_ptr<RHIBuffer> buffer;
     };
 

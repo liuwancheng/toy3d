@@ -213,7 +213,7 @@ namespace toy3d
         {
             if (index >= result.color_attachment_count)
             {
-                result.color_formats[index] = RHIFormat::Unknown;
+                result.color_formats[index] = PixelFormat::Unknown;
                 result.color_blend_attachments[index] = {};
                 continue;
             }

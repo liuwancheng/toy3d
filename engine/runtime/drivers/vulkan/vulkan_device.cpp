@@ -191,51 +191,6 @@ namespace toy3d
             return has_instance_extension(extensions, name);
         }
 
-        VkFormat to_vk_format(RHIFormat format)
-        {
-            switch (format)
-            {
-            case RHIFormat::R8UNorm:
-                return VK_FORMAT_R8_UNORM;
-            case RHIFormat::R8G8B8A8UNorm:
-                return VK_FORMAT_R8G8B8A8_UNORM;
-            case RHIFormat::R8G8B8A8UNormSRGB:
-                return VK_FORMAT_R8G8B8A8_SRGB;
-            case RHIFormat::B8G8R8A8UNorm:
-                return VK_FORMAT_B8G8R8A8_UNORM;
-            case RHIFormat::B8G8R8A8UNormSRGB:
-                return VK_FORMAT_B8G8R8A8_SRGB;
-            case RHIFormat::R16Float:
-                return VK_FORMAT_R16_SFLOAT;
-            case RHIFormat::R16G16Float:
-                return VK_FORMAT_R16G16_SFLOAT;
-            case RHIFormat::R16G16B16A16Float:
-                return VK_FORMAT_R16G16B16A16_SFLOAT;
-            case RHIFormat::R32Float:
-                return VK_FORMAT_R32_SFLOAT;
-            case RHIFormat::R32G32Float:
-                return VK_FORMAT_R32G32_SFLOAT;
-            case RHIFormat::R32G32B32Float:
-                return VK_FORMAT_R32G32B32_SFLOAT;
-            case RHIFormat::R32G32B32A32Float:
-                return VK_FORMAT_R32G32B32A32_SFLOAT;
-            case RHIFormat::R16UInt:
-                return VK_FORMAT_R16_UINT;
-            case RHIFormat::R32UInt:
-                return VK_FORMAT_R32_UINT;
-            case RHIFormat::D16UNorm:
-                return VK_FORMAT_D16_UNORM;
-            case RHIFormat::D24UNormS8UInt:
-                return VK_FORMAT_D24_UNORM_S8_UINT;
-            case RHIFormat::D32Float:
-                return VK_FORMAT_D32_SFLOAT;
-            case RHIFormat::D32FloatS8UInt:
-                return VK_FORMAT_D32_SFLOAT_S8_UINT;
-            default:
-                return VK_FORMAT_UNDEFINED;
-            }
-        }
-
         RHIResult<VkPrimitiveTopology> to_vk_primitive_topology(RHIPrimitiveTopology topology)
         {
             switch (topology)
@@ -756,7 +711,7 @@ namespace toy3d
         return device_limits;
     }
 
-    RHIFormatCapabilities VulkanDevice::format_capabilities(RHIFormat format) const
+    RHIFormatCapabilities VulkanDevice::format_capabilities(PixelFormat format) const
     {
         RHIFormatCapabilities result;
         if (vk_physical_device == VK_NULL_HANDLE)
@@ -764,7 +719,7 @@ namespace toy3d
             return result;
         }
 
-        const VkFormat vk_format = to_vk_format(format);
+        const VkFormat vk_format = vulkan_format_from_pixel_format(format);
         if (vk_format == VK_FORMAT_UNDEFINED)
         {
             return result;
@@ -826,7 +781,7 @@ namespace toy3d
                 RHIErrorCode::Unsupported,
                 "Vulkan viewport contexts currently support only the primary surface.");
         }
-        if (desc.width == 0 || desc.height == 0 || desc.image_count < 2 || desc.format == RHIFormat::Unknown)
+        if (desc.width == 0 || desc.height == 0 || desc.image_count < 2 || desc.format == PixelFormat::Unknown)
         {
             return RHIResult<std::unique_ptr<RHIViewportContext>>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -941,7 +896,7 @@ namespace toy3d
                 "Vulkan texture creation currently supports only Unknown or Common initial access.");
         }
 
-        const VkFormat format = to_vk_format(desc.format);
+        const VkFormat format = vulkan_format_from_pixel_format(desc.format);
         if (format == VK_FORMAT_UNDEFINED)
         {
             return RHIResult<RHITextureRef>::failure(
@@ -1067,8 +1022,8 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan texture views require a texture created by the Vulkan device.");
         }
-        const VkFormat view_format = vulkan_format_from_rhi(desc.format);
-        if (view_format == VK_FORMAT_UNDEFINED || view_format != vulkan_format_from_rhi(texture->desc().format))
+        const VkFormat view_format = vulkan_format_from_pixel_format(desc.format);
+        if (view_format == VK_FORMAT_UNDEFINED || view_format != vulkan_format_from_pixel_format(texture->desc().format))
         {
             return RHIResult<RHITextureViewRef>::failure(
                 RHIErrorCode::Unsupported,
@@ -1551,7 +1506,7 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Vulkan graphics pipelines require shaders and a binding layout created by the Vulkan device.");
         }
-        if (desc.color_attachment_count == 0 && desc.depth_stencil_format == RHIFormat::Unknown)
+        if (desc.color_attachment_count == 0 && desc.depth_stencil_format == PixelFormat::Unknown)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1579,12 +1534,12 @@ namespace toy3d
         std::vector<VkAttachmentReference> attachment_references;
         std::vector<VkPipelineColorBlendAttachmentState> blend_attachments;
         attachments.reserve(desc.color_attachment_count +
-            (desc.depth_stencil_format != RHIFormat::Unknown ? 1U : 0U));
+            (desc.depth_stencil_format != PixelFormat::Unknown ? 1U : 0U));
         attachment_references.reserve(desc.color_attachment_count);
         blend_attachments.reserve(desc.color_attachment_count);
         for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
         {
-            const VkFormat format = to_vk_format(desc.color_formats[index]);
+            const VkFormat format = vulkan_format_from_pixel_format(desc.color_formats[index]);
             if (format == VK_FORMAT_UNDEFINED)
             {
                 return RHIResult<RHIGraphicsPipelineRef>::failure(
@@ -1630,10 +1585,10 @@ namespace toy3d
         }
 
         VkAttachmentReference depth_stencil_reference{};
-        const bool has_depth_stencil_attachment = desc.depth_stencil_format != RHIFormat::Unknown;
+        const bool has_depth_stencil_attachment = desc.depth_stencil_format != PixelFormat::Unknown;
         if (has_depth_stencil_attachment)
         {
-            const VkFormat format = to_vk_format(desc.depth_stencil_format);
+            const VkFormat format = vulkan_format_from_pixel_format(desc.depth_stencil_format);
             if (!is_vk_depth_format(format))
             {
                 return RHIResult<RHIGraphicsPipelineRef>::failure(
@@ -1714,7 +1669,7 @@ namespace toy3d
         }
         for (const auto& attribute : desc.vertex_attributes)
         {
-            const VkFormat format = to_vk_format(attribute.format);
+            const VkFormat format = vulkan_format_from_pixel_format(attribute.format);
             if (format == VK_FORMAT_UNDEFINED)
             {
                 vkDestroyPipelineLayout(vk_device, pipeline_layout, nullptr);

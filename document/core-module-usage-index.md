@@ -9,6 +9,7 @@
 | 文件系统 | `Toy3dFileSystem` | `file_system/file_system.h`、`native_platform_file.h` | `engine/core/tests/file_system_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
 | 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
+| GPU-ready 格式 | `Toy3dPixelFormat` | `pixel_format/pixel_format.h` | `engine/core/tests/pixel_format_tests.cpp` |
 | 线程、事件、Queue | `Toy3dThreading` | `threading/thread.h`、`event.h`、`runnable_thread.h`、`containers/queue.h` | `engine/core/tests/threading_tests.cpp`、`queue_tests.cpp` |
 | Task Graph | `Toy3dTaskGraph` | `task_graph/task_graph.h`、`graph_task.h` | `engine/core/tests/task_graph_tests.cpp`、`task_graph_scheduler_tests.cpp` |
 
@@ -68,6 +69,14 @@ forward/up rotation 使用 `quaternion.h` 中的 `try_make_rotation_from_forward
 共享平面和凸体分别使用 `math/geometry/plane.h` 与 `math/geometry/convex_volume.h`。`try_make_plane()` 生成正半空间为内部的归一化平面；`try_make_reversed_z_frustum()` 按引擎固定的 left-handed、0..1 reversed-Z contract 生成 finite 六面或 infinite-far 五面凸体。AABB 测试直接传入 minimum/maximum 值，接触平面视为相交；RenderScene 的 visibility policy 和空间索引不进入 `Toy3dMath`。
 
 Windows 上 `Toy3dMath` 通过 PUBLIC compile definition 传播 `NOMINMAX`，避免 `windows.h` 的函数式宏破坏公共 `toy3d::min/max` contract；第一方目标应通过 CMake target 链接 `Toy3dMath`，不得在调用点重新引入竞争宏策略。
+
+## PixelFormat
+
+`Toy3dPixelFormat` 是 stateless bridge，供 runtime、editor、tools 与公共 RHI 共享规范化 GPU-ready `PixelFormat`。调用方链接该 target 并包含 `pixel_format/pixel_format.h`；不得让 Asset/Editor 为使用格式而依赖公共 RHI。
+
+`pixel_format_block_width()`、`pixel_format_block_height()` 与 `pixel_format_bytes_per_block()` 返回存储 block geometry；Unknown/Max 返回 0。`pixel_format_calculate_minimum_row_pitch()` 与 `pixel_format_calculate_minimum_slice_pitch()` 对 block count 向上取整，并遵守 PVRTC 每维至少两个 blocks 的最小存储范围；非法 format、零 extent 或算术溢出返回 `false` 并把输出清零。业务层负责附加 asset/subresource 上下文形成诊断。
+
+该模块不解析 PNG/JPEG/DDS，不保存可重新 Cook 的 source data，不执行色彩转换，也不查询目标 GPU capability。Editor preview、Cook output 和 runtime `TextureDesc` 只能在 import/cook 已经生成 GPU-ready payload 后使用它；完整 format usage/sample support 仍由 Cook profile 和 `RHIDevice::format_capabilities()` 验证。`VkFormat`/`DXGI_FORMAT` 映射只存在于各 backend。
 
 ## Threading
 

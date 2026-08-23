@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -193,42 +194,6 @@ namespace toy3d
             return RHIResult<VkImageAspectFlags>::failure(
                 RHIErrorCode::InvalidArgument,
                 "Texture transition aspect is incompatible with its Vulkan format.");
-        }
-
-        RHIResult<std::uint32_t> color_format_bytes_per_texel(RHIFormat format)
-        {
-            switch (format)
-            {
-            case RHIFormat::R8UNorm:
-            case RHIFormat::R8SNorm:
-                return RHIResult<std::uint32_t>::success(1);
-            case RHIFormat::R16Float:
-            case RHIFormat::R16UInt:
-                return RHIResult<std::uint32_t>::success(2);
-            case RHIFormat::R16G16Float:
-                return RHIResult<std::uint32_t>::success(4);
-            case RHIFormat::R8G8B8A8UNorm:
-            case RHIFormat::R8G8B8A8UNormSRGB:
-            case RHIFormat::B8G8R8A8UNorm:
-            case RHIFormat::B8G8R8A8UNormSRGB:
-            case RHIFormat::R8G8B8A8SNorm:
-            case RHIFormat::R10G10B10A2UNorm:
-            case RHIFormat::R11G11B10Float:
-            case RHIFormat::R32Float:
-            case RHIFormat::R32UInt:
-                return RHIResult<std::uint32_t>::success(4);
-            case RHIFormat::R16G16B16A16Float:
-            case RHIFormat::R32G32Float:
-                return RHIResult<std::uint32_t>::success(8);
-            case RHIFormat::R32G32B32Float:
-                return RHIResult<std::uint32_t>::success(12);
-            case RHIFormat::R32G32B32A32Float:
-                return RHIResult<std::uint32_t>::success(16);
-            default:
-                return RHIResult<std::uint32_t>::failure(
-                    RHIErrorCode::Unsupported,
-                    "Vulkan texture upload currently supports only uncompressed color formats.");
-            }
         }
 
         void record_staging_buffer_barrier(VkCommandBuffer command_buffer, VkBuffer staging_buffer)
@@ -857,7 +822,7 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan texture transition before access does not match the tracked resource state.");
             }
-            const VkFormat format = vulkan_format_from_rhi(texture->desc().format);
+            const VkFormat format = vulkan_format_from_pixel_format(texture->desc().format);
             const auto aspect = to_vk_image_aspect(transition.subresources.aspect, format);
             if (!aspect)
             {
@@ -1048,7 +1013,7 @@ namespace toy3d
             destination_range,
             destination_state.value().layout,
             destination_state.value().access);
-        const VkFormat format = vulkan_format_from_rhi(source->desc().format);
+        const VkFormat format = vulkan_format_from_pixel_format(source->desc().format);
         if (is_vk_depth_format(format))
         {
             return RHIStatus::failure(
@@ -1125,31 +1090,36 @@ namespace toy3d
             destination_range,
             destination_state.value().layout,
             destination_state.value().access);
-        if (destination->desc().sample_count != 1 || is_vk_depth_format(vulkan_format_from_rhi(destination->desc().format)))
+        if (destination->desc().sample_count != 1 || is_vk_depth_format(vulkan_format_from_pixel_format(destination->desc().format)))
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
                 "Vulkan texture upload currently supports only single-sample color textures.");
         }
-        const auto bytes_per_texel = color_format_bytes_per_texel(destination->desc().format);
-        if (!bytes_per_texel)
+        const std::uint32_t block_width = pixel_format_block_width(destination->desc().format);
+        const std::uint32_t block_height = pixel_format_block_height(destination->desc().format);
+        const std::uint32_t bytes_per_block = pixel_format_bytes_per_block(destination->desc().format);
+        if (block_width == 0 || block_height == 0 || bytes_per_block == 0)
         {
-            return RHIStatus::failure(bytes_per_texel.status().code(), bytes_per_texel.status().message());
+            return RHIStatus::failure(
+                RHIErrorCode::Unsupported,
+                "Vulkan texture upload does not support the requested pixel format.");
         }
-        const std::size_t minimum_row_pitch = static_cast<std::size_t>(desc.extent.width) * bytes_per_texel.value();
-        if (desc.source.row_pitch < minimum_row_pitch || desc.source.row_pitch % bytes_per_texel.value() != 0 ||
-            desc.source.slice_pitch < desc.source.row_pitch * static_cast<std::size_t>(desc.extent.height) ||
-            desc.source.slice_pitch % desc.source.row_pitch != 0 ||
-            desc.source.size < desc.source.slice_pitch * static_cast<std::size_t>(desc.extent.depth))
+        const std::uint64_t row_length =
+            static_cast<std::uint64_t>(desc.source.row_pitch / bytes_per_block) * block_width;
+        const std::uint64_t image_height =
+            static_cast<std::uint64_t>(desc.source.slice_pitch / desc.source.row_pitch) * block_height;
+        if (row_length > std::numeric_limits<std::uint32_t>::max() ||
+            image_height > std::numeric_limits<std::uint32_t>::max())
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Vulkan texture upload source pitches or data size do not cover the requested region.");
+                "Vulkan texture upload block pitches exceed native limits.");
         }
         const auto upload = vulkan_device.upload_manager().upload(
             desc.source.data,
             desc.source.size,
-            std::max<VkDeviceSize>(4, bytes_per_texel.value()));
+            std::max<VkDeviceSize>(4, bytes_per_block));
         if (!upload)
         {
             return RHIStatus::failure(upload.status().code(), upload.status().message());
@@ -1157,8 +1127,8 @@ namespace toy3d
         record_staging_buffer_barrier(vk_command_buffer, upload.value().buffer());
         VkBufferImageCopy region{};
         region.bufferOffset = upload.value().offset;
-        region.bufferRowLength = static_cast<std::uint32_t>(desc.source.row_pitch / bytes_per_texel.value());
-        region.bufferImageHeight = static_cast<std::uint32_t>(desc.source.slice_pitch / desc.source.row_pitch);
+        region.bufferRowLength = static_cast<std::uint32_t>(row_length);
+        region.bufferImageHeight = static_cast<std::uint32_t>(image_height);
         region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         region.imageSubresource.mipLevel = desc.destination.mip;
         region.imageSubresource.baseArrayLayer = desc.destination.layer;
@@ -1238,7 +1208,7 @@ namespace toy3d
         std::vector<VkAttachmentReference> color_attachment_references;
         std::vector<VkImageView> image_views;
         std::vector<VkClearValue> clear_values;
-        std::vector<RHIFormat> color_formats;
+        std::vector<PixelFormat> color_formats;
         const std::size_t attachment_count = desc.color_attachments.size() +
             (desc.has_depth_stencil_attachment ? 1U : 0U);
         attachments.reserve(attachment_count);
@@ -1302,7 +1272,7 @@ namespace toy3d
             sample_count = texture->desc().sample_count;
 
             VkAttachmentDescription vk_attachment{};
-            vk_attachment.format = vulkan_format_from_rhi(texture->desc().format);
+            vk_attachment.format = vulkan_format_from_pixel_format(texture->desc().format);
             vk_attachment.samples = static_cast<VkSampleCountFlagBits>(texture->desc().sample_count);
             vk_attachment.loadOp = load_operation.value();
             vk_attachment.storeOp = store_operation.value();
@@ -1330,7 +1300,7 @@ namespace toy3d
         }
 
         VkAttachmentReference depth_stencil_reference{};
-        RHIFormat depth_stencil_format = RHIFormat::Unknown;
+        PixelFormat depth_stencil_format = PixelFormat::Unknown;
         if (desc.has_depth_stencil_attachment)
         {
             const RHIDepthStencilAttachmentDesc& attachment = desc.depth_stencil_attachment;
@@ -1343,7 +1313,7 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vulkan render pass requires a Vulkan depth-stencil attachment view.");
             }
-            const VkFormat vk_format = vulkan_format_from_rhi(attachment.view->desc().format);
+            const VkFormat vk_format = vulkan_format_from_pixel_format(attachment.view->desc().format);
             if (!is_vk_depth_format(vk_format))
             {
                 return RHIStatus::failure(

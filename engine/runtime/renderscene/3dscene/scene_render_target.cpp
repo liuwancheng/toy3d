@@ -26,7 +26,7 @@ namespace toy3d
     RHIStatus SceneRenderTargetMgr::allocate(RHIDevice& device)
     {
         RenderTargetDesc color_desc;
-        color_desc.format = RHIFormat::R8G8B8A8UNorm;
+        color_desc.format = PixelFormat::R8G8B8A8UNorm;
         color_desc.width = buffer_width;
         color_desc.height = buffer_height;
         color_desc.usage = RHIResourceUsage::RenderTarget;
@@ -40,7 +40,7 @@ namespace toy3d
         }
 
         RenderTargetDesc depth_desc;
-        depth_desc.format = RHIFormat::D24UNormS8UInt;
+        depth_desc.format = PixelFormat::D24UNormS8UInt;
         depth_desc.width = buffer_width;
         depth_desc.height = buffer_height;
         depth_desc.usage = RHIResourceUsage::DepthStencil;

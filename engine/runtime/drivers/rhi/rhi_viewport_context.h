@@ -65,7 +65,7 @@ namespace toy3d
         std::uint32_t width = 1;
         std::uint32_t height = 1;
         std::uint32_t image_count = 2;
-        RHIFormat format = RHIFormat::B8G8R8A8UNorm;
+        PixelFormat format = PixelFormat::B8G8R8A8UNorm;
         RHIPresentMode present_mode = RHIPresentMode::Fifo;
         std::string debug_name;
     };

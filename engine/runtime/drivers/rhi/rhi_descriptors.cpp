@@ -48,22 +48,22 @@ namespace toy3d
             return first_slot < second_end && second_slot < first_end;
         }
 
-        bool is_depth_format(RHIFormat format)
+        bool is_depth_format(PixelFormat format)
         {
-            return format == RHIFormat::D16UNorm ||
-                format == RHIFormat::D24UNormS8UInt ||
-                format == RHIFormat::D32Float ||
-                format == RHIFormat::D32FloatS8UInt;
+            return format == PixelFormat::D16UNorm ||
+                format == PixelFormat::D24UNormS8UInt ||
+                format == PixelFormat::D32Float ||
+                format == PixelFormat::D32FloatS8UInt;
         }
 
-        bool has_stencil(RHIFormat format)
+        bool has_stencil(PixelFormat format)
         {
-            return format == RHIFormat::D24UNormS8UInt ||
-                format == RHIFormat::D32FloatS8UInt;
+            return format == PixelFormat::D24UNormS8UInt ||
+                format == PixelFormat::D32FloatS8UInt;
         }
 
         bool vertex_format_shape(
-            RHIFormat format,
+            PixelFormat format,
             RHIShaderVertexInputReflection::ScalarType& scalar_type,
             std::uint32_t& component_count,
             std::uint32_t& byte_size)
@@ -71,55 +71,55 @@ namespace toy3d
             scalar_type = RHIShaderVertexInputReflection::ScalarType::Float32;
             switch (format)
             {
-            case RHIFormat::R8UNorm:
-            case RHIFormat::R8SNorm:
+            case PixelFormat::R8UNorm:
+            case PixelFormat::R8SNorm:
                 component_count = 1u;
                 byte_size = 1u;
                 return true;
-            case RHIFormat::R8G8B8A8UNorm:
-            case RHIFormat::R8G8B8A8SNorm:
-            case RHIFormat::R10G10B10A2UNorm:
+            case PixelFormat::R8G8B8A8UNorm:
+            case PixelFormat::R8G8B8A8SNorm:
+            case PixelFormat::R10G10B10A2UNorm:
                 component_count = 4u;
                 byte_size = 4u;
                 return true;
-            case RHIFormat::R11G11B10Float:
+            case PixelFormat::R11G11B10Float:
                 component_count = 3u;
                 byte_size = 4u;
                 return true;
-            case RHIFormat::R16Float:
+            case PixelFormat::R16Float:
                 component_count = 1u;
                 byte_size = 2u;
                 return true;
-            case RHIFormat::R16G16Float:
+            case PixelFormat::R16G16Float:
                 component_count = 2u;
                 byte_size = 4u;
                 return true;
-            case RHIFormat::R16G16B16A16Float:
+            case PixelFormat::R16G16B16A16Float:
                 component_count = 4u;
                 byte_size = 8u;
                 return true;
-            case RHIFormat::R32Float:
+            case PixelFormat::R32Float:
                 component_count = 1u;
                 byte_size = 4u;
                 return true;
-            case RHIFormat::R32G32Float:
+            case PixelFormat::R32G32Float:
                 component_count = 2u;
                 byte_size = 8u;
                 return true;
-            case RHIFormat::R32G32B32Float:
+            case PixelFormat::R32G32B32Float:
                 component_count = 3u;
                 byte_size = 12u;
                 return true;
-            case RHIFormat::R32G32B32A32Float:
+            case PixelFormat::R32G32B32A32Float:
                 component_count = 4u;
                 byte_size = 16u;
                 return true;
-            case RHIFormat::R16UInt:
+            case PixelFormat::R16UInt:
                 scalar_type = RHIShaderVertexInputReflection::ScalarType::UInt32;
                 component_count = 1u;
                 byte_size = 2u;
                 return true;
-            case RHIFormat::R32UInt:
+            case PixelFormat::R32UInt:
                 scalar_type = RHIShaderVertexInputReflection::ScalarType::UInt32;
                 component_count = 1u;
                 byte_size = 4u;
@@ -300,7 +300,7 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture dimensions, layers, mips, and samples must be non-zero.");
         }
-        if (desc.format == RHIFormat::Unknown)
+        if (desc.format == PixelFormat::Unknown)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture format must be specified.");
         }
@@ -437,7 +437,7 @@ namespace toy3d
         {
             return texture_status;
         }
-        if (view_desc.format == RHIFormat::Unknown)
+        if (view_desc.format == PixelFormat::Unknown)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture view format must be specified.");
         }
@@ -539,7 +539,7 @@ namespace toy3d
         }
         if (buffer_desc.structure_stride != 0)
         {
-            if (view_desc.format != RHIFormat::Unknown ||
+            if (view_desc.format != PixelFormat::Unknown ||
                 view_desc.offset % buffer_desc.structure_stride != 0 ||
                 view_desc.size % buffer_desc.structure_stride != 0)
             {
@@ -802,7 +802,7 @@ namespace toy3d
         std::set<std::uint32_t> attribute_locations;
         for (const RHIGraphicsPipelineDesc::VertexAttribute& attribute : desc.vertex_attributes)
         {
-            if (attribute.format == RHIFormat::Unknown ||
+            if (attribute.format == PixelFormat::Unknown ||
                 vertex_bindings.find(attribute.binding) == vertex_bindings.end() ||
                 !attribute_locations.emplace(attribute.location).second)
             {
@@ -860,7 +860,7 @@ namespace toy3d
         }
         for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
         {
-            if (desc.color_formats[index] == RHIFormat::Unknown)
+            if (desc.color_formats[index] == PixelFormat::Unknown)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Enabled color attachment format must be specified.");
             }
@@ -873,7 +873,7 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Graphics pipeline depth writes require depth testing to be enabled.");
         }
-        if (depth_state_enabled && desc.depth_stencil_format == RHIFormat::Unknown)
+        if (depth_state_enabled && desc.depth_stencil_format == PixelFormat::Unknown)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
