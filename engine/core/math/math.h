@@ -1,6 +1,8 @@
 #pragma once
 
 #include "math/angle.h"
+#include "math/geometry/convex_volume.h"
+#include "math/geometry/plane.h"
 #include "math/integer_vector.h"
 #include "math/matrix_construction.h"
 #include "math/matrix3.h"

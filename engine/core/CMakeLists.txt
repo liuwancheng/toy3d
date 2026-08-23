@@ -44,6 +44,10 @@ add_library(Toy3dMath STATIC)
 target_sources(Toy3dMath
     PRIVATE
         "math/angle.h"
+        "math/geometry/convex_volume.cpp"
+        "math/geometry/convex_volume.h"
+        "math/geometry/plane.cpp"
+        "math/geometry/plane.h"
         "math/integer_vector.h"
         "math/matrix3.cpp"
         "math/matrix3.h"

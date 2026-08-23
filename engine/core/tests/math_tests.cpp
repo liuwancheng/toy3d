@@ -216,6 +216,95 @@ namespace
             "Invalid projection input must fail without modifying output");
     }
 
+    void check_plane_and_convex_volume_contract()
+    {
+        toy3d::Plane plane;
+        check(toy3d::try_make_plane(
+                    toy3d::Vector4(2.0f, 0.0f, 0.0f, -2.0f),
+                    plane) &&
+                toy3d::is_nearly_equal(
+                    plane.normal(), toy3d::Vector3(1.0f, 0.0f, 0.0f)) &&
+                nearly_equal(plane.signed_distance(
+                    toy3d::Vector3(3.0f, 0.0f, 0.0f)), 2.0f),
+            "Plane construction must normalize coefficients and preserve signed distance");
+
+        const toy3d::Plane unchanged_plane = plane;
+        const float infinity = std::numeric_limits<float>::infinity();
+        check(!toy3d::try_make_plane(toy3d::Vector4(), plane) &&
+                nearly_equal(plane.signed_distance(
+                    toy3d::Vector3(3.0f, 0.0f, 0.0f)),
+                    unchanged_plane.signed_distance(
+                        toy3d::Vector3(3.0f, 0.0f, 0.0f))) &&
+                !toy3d::try_make_plane(
+                    toy3d::Vector4(infinity, 0.0f, 0.0f, 0.0f), plane) &&
+                nearly_equal(plane.signed_distance(
+                    toy3d::Vector3(3.0f, 0.0f, 0.0f)),
+                    unchanged_plane.signed_distance(
+                        toy3d::Vector3(3.0f, 0.0f, 0.0f))),
+            "Degenerate and non-finite Plane construction must fail atomically");
+
+        toy3d::PerspectiveProjectionDesc finite_desc;
+        finite_desc.vertical_fov = toy3d::Radians(toy3d::k_half_pi);
+        finite_desc.aspect = 1.0f;
+        finite_desc.near_clip = 1.0f;
+        finite_desc.far_clip = 101.0f;
+        toy3d::Matrix4 finite_projection;
+        toy3d::ConvexVolume finite_volume;
+        check(toy3d::try_make_perspective_projection(
+                    finite_desc, finite_projection) &&
+                toy3d::try_make_reversed_z_frustum(
+                    finite_projection, false, finite_volume) &&
+                finite_volume.plane_count() == 6,
+            "A finite reversed-Z frustum must contain six valid planes");
+        check(finite_volume.contains_point(
+                    toy3d::Vector3(0.0f, 0.0f, 2.0f)) &&
+                !finite_volume.contains_point(
+                    toy3d::Vector3(0.0f, 0.0f, 102.0f)) &&
+                finite_volume.intersects_axis_aligned_bounds(
+                    toy3d::Vector3(-0.25f, -0.25f, 1.5f),
+                    toy3d::Vector3(0.25f, 0.25f, 2.5f)) &&
+                !finite_volume.intersects_axis_aligned_bounds(
+                    toy3d::Vector3(-4.0f, -0.25f, 1.5f),
+                    toy3d::Vector3(-3.0f, 0.25f, 2.5f)) &&
+                finite_volume.intersects_axis_aligned_bounds(
+                    toy3d::Vector3(-2.5f, -0.25f, 1.5f),
+                    toy3d::Vector3(-1.5f, 0.25f, 2.5f)) &&
+                finite_volume.intersects_axis_aligned_bounds(
+                    toy3d::Vector3(-0.25f, -0.25f, 0.5f),
+                    toy3d::Vector3(0.25f, 0.25f, 1.0f)),
+            "Frustum AABB tests must distinguish inside, outside, intersecting, and touching bounds");
+
+        toy3d::InfinitePerspectiveProjectionDesc infinite_desc;
+        infinite_desc.vertical_fov = finite_desc.vertical_fov;
+        infinite_desc.aspect = finite_desc.aspect;
+        infinite_desc.near_clip = finite_desc.near_clip;
+        toy3d::Matrix4 infinite_projection;
+        toy3d::ConvexVolume infinite_volume;
+        check(toy3d::try_make_infinite_perspective_projection(
+                    infinite_desc, infinite_projection) &&
+                toy3d::try_make_reversed_z_frustum(
+                    infinite_projection, true, infinite_volume) &&
+                infinite_volume.plane_count() == 5 &&
+                infinite_volume.contains_point(
+                    toy3d::Vector3(0.0f, 0.0f, 1000000.0f)),
+            "An infinite reversed-Z frustum must omit Far and retain five valid planes");
+
+        const toy3d::ConvexVolume unchanged_volume = finite_volume;
+        toy3d::Matrix4 non_finite_projection = finite_projection;
+        non_finite_projection.at(0, 0) = infinity;
+        check(!toy3d::try_make_reversed_z_frustum(
+                    toy3d::Matrix4::zero(), false, finite_volume) &&
+                finite_volume.plane_count() == unchanged_volume.plane_count() &&
+                finite_volume.contains_point(
+                    toy3d::Vector3(0.0f, 0.0f, 2.0f)) &&
+                !toy3d::try_make_reversed_z_frustum(
+                    non_finite_projection, false, finite_volume) &&
+                finite_volume.plane_count() == unchanged_volume.plane_count() &&
+                finite_volume.contains_point(
+                    toy3d::Vector3(0.0f, 0.0f, 2.0f)),
+            "Invalid frustum matrices must fail without modifying the output volume");
+    }
+
     void check_scalar_contract()
     {
         check(toy3d::min(-2.0f, 3.0f) == -2.0f &&
@@ -528,6 +617,7 @@ int main()
     check_matrix_inverse_and_transform_contract();
     check_view_contract();
     check_projection_contract();
+    check_plane_and_convex_volume_contract();
     check_scalar_contract();
     check_angle_contract();
     check_vector_contract();

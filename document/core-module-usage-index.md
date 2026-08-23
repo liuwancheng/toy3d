@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 文件系统 | `Toy3dFileSystem` | `file_system/file_system.h`、`native_platform_file.h` | `engine/core/tests/file_system_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
-| 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
+| 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | 线程、事件、Queue | `Toy3dThreading` | `threading/thread.h`、`event.h`、`runnable_thread.h`、`containers/queue.h` | `engine/core/tests/threading_tests.cpp`、`queue_tests.cpp` |
 | Task Graph | `Toy3dTaskGraph` | `task_graph/task_graph.h`、`graph_task.h` | `engine/core/tests/task_graph_tests.cpp`、`task_graph_scheduler_tests.cpp` |
 
@@ -64,6 +64,8 @@ TOY_LOG_ERROR("Load failed: {}", error_message);
 TRS 使用 `Transform`，通过 `to_matrix()` 与 `try_decompose_transform()` 在值和矩阵之间转换；decomposition 只接受能以 positive-scale TRS 重建的 affine matrix，shear、mirror、zero scale 或非有限输入失败且不修改输出。position、vector 和 direction 必须分别使用对应具名函数，Camera/Light axes 使用 direction 语义避免 scale 泄漏。
 
 forward/up rotation 使用 `quaternion.h` 中的 `try_make_rotation_from_forward_up()`；正交轴只是实现细节，不公开独立 basis 值。输出为 Matrix3/Matrix4、且不属于更具体值类型的纯语义构造统一放在 `matrix_construction.h`，当前包括 orientation-based view、target-based LookAt 和 reversed-Z perspective。Transform conversion、matrix algebra、Camera policy 与 backend correction 不得进入该模块。所有 checked construction 遇到非有限、退化或非法参数时不修改输出；业务调用方负责记录对象上下文与诊断。
+
+共享平面和凸体分别使用 `math/geometry/plane.h` 与 `math/geometry/convex_volume.h`。`try_make_plane()` 生成正半空间为内部的归一化平面；`try_make_reversed_z_frustum()` 按引擎固定的 left-handed、0..1 reversed-Z contract 生成 finite 六面或 infinite-far 五面凸体。AABB 测试直接传入 minimum/maximum 值，接触平面视为相交；RenderScene 的 visibility policy 和空间索引不进入 `Toy3dMath`。
 
 Windows 上 `Toy3dMath` 通过 PUBLIC compile definition 传播 `NOMINMAX`，避免 `windows.h` 的函数式宏破坏公共 `toy3d::min/max` contract；第一方目标应通过 CMake target 链接 `Toy3dMath`，不得在调用点重新引入竞争宏策略。
 
