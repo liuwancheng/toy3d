@@ -120,6 +120,147 @@ namespace toy3d::shader
         StorageTexture
     };
 
+    // Backend-neutral Shader Pass template persisted in ShaderMap artifacts.
+    // Material policy and attachment compatibility are layered on at runtime.
+    struct ShaderGraphicsPassState
+    {
+        enum class PrimitiveTopology : std::uint8_t
+        {
+            PointList = 0u,
+            LineList = 1u,
+            LineStrip = 2u,
+            TriangleList = 3u,
+            TriangleStrip = 4u
+        };
+
+        enum class CullMode : std::uint8_t
+        {
+            None = 0u,
+            Front = 1u,
+            Back = 2u
+        };
+
+        enum class FrontFace : std::uint8_t
+        {
+            Clockwise = 0u,
+            CounterClockwise = 1u
+        };
+
+        enum class FillMode : std::uint8_t
+        {
+            Solid = 0u,
+            Wireframe = 1u
+        };
+
+        enum class CompareOperation : std::uint8_t
+        {
+            Never = 0u,
+            Less = 1u,
+            Equal = 2u,
+            LessEqual = 3u,
+            Greater = 4u,
+            NotEqual = 5u,
+            GreaterEqual = 6u,
+            Always = 7u
+        };
+
+        enum class StencilMode : std::uint8_t
+        {
+            Off = 0u,
+            FrontAndBack = 1u,
+            SeparateFaces = 2u
+        };
+
+        enum class StencilOperation : std::uint8_t
+        {
+            Keep = 0u,
+            Zero = 1u,
+            Replace = 2u,
+            IncrementClamp = 3u,
+            DecrementClamp = 4u,
+            Invert = 5u,
+            IncrementWrap = 6u,
+            DecrementWrap = 7u
+        };
+
+        enum class BlendFactor : std::uint8_t
+        {
+            Zero = 0u,
+            One = 1u,
+            SourceColor = 2u,
+            OneMinusSourceColor = 3u,
+            DestinationColor = 4u,
+            OneMinusDestinationColor = 5u,
+            SourceAlpha = 6u,
+            OneMinusSourceAlpha = 7u,
+            DestinationAlpha = 8u,
+            OneMinusDestinationAlpha = 9u,
+            ConstantColor = 10u,
+            OneMinusConstantColor = 11u,
+            SourceAlphaSaturate = 12u
+        };
+
+        enum class BlendOperation : std::uint8_t
+        {
+            Add = 0u,
+            Subtract = 1u,
+            ReverseSubtract = 2u,
+            Minimum = 3u,
+            Maximum = 4u
+        };
+
+        enum class ColorWriteMask : std::uint8_t
+        {
+            None = 0,
+            Red = 1u << 0u,
+            Green = 1u << 1u,
+            Blue = 1u << 2u,
+            Alpha = 1u << 3u,
+            RedGreen = 3u,
+            RedGreenBlue = 7u,
+            All = 15u
+        };
+
+        struct StencilFaceState
+        {
+            CompareOperation compare_operation = CompareOperation::Always;
+            StencilOperation fail_operation = StencilOperation::Keep;
+            StencilOperation depth_fail_operation = StencilOperation::Keep;
+            StencilOperation pass_operation = StencilOperation::Keep;
+        };
+
+        struct StencilState
+        {
+            StencilMode mode = StencilMode::Off;
+            std::uint8_t read_mask = 0xffu;
+            std::uint8_t write_mask = 0xffu;
+            StencilFaceState front;
+            StencilFaceState back;
+        };
+
+        struct BlendState
+        {
+            bool enabled = false;
+            BlendFactor source_color_factor = BlendFactor::One;
+            BlendFactor destination_color_factor = BlendFactor::Zero;
+            BlendOperation color_operation = BlendOperation::Add;
+            BlendFactor source_alpha_factor = BlendFactor::One;
+            BlendFactor destination_alpha_factor = BlendFactor::Zero;
+            BlendOperation alpha_operation = BlendOperation::Add;
+        };
+
+        PrimitiveTopology primitive_topology = PrimitiveTopology::TriangleList;
+        CullMode cull_mode = CullMode::Back;
+        FrontFace front_face = FrontFace::CounterClockwise;
+        FillMode fill_mode = FillMode::Solid;
+        bool depth_test_enable = true;
+        CompareOperation depth_compare_operation = CompareOperation::GreaterEqual;
+        bool depth_write_enable = true;
+        StencilState stencil;
+        BlendState blend;
+        ColorWriteMask color_write_mask = ColorWriteMask::All;
+    };
+
     enum class ShaderStageFlags : std::uint8_t
     {
         None = 0,
@@ -240,6 +381,7 @@ namespace toy3d::shader
         ShaderCompileProfile profile = ShaderCompileProfile::VulkanPortableV1;
         Sha256Hash logical_layout_hash{};
         Sha256Hash target_binding_hash{};
+        ShaderGraphicsPassState graphics_pass_state;
         Sha256Hash pass_template_hash{};
         std::uint32_t variant_id_version = shader_variant_id_version;
         std::uint32_t permutation_version = shader_permutation_version;
@@ -255,4 +397,8 @@ namespace toy3d::shader
         const std::vector<ShaderMapBinding>& bindings);
     Sha256Hash calculate_shader_stage_reflection_hash(
         const ShaderStageReflection& reflection);
+    bool is_valid_shader_graphics_pass_state(
+        const ShaderGraphicsPassState& state);
+    Sha256Hash calculate_shader_graphics_pass_state_hash(
+        const ShaderGraphicsPassState& state);
 }

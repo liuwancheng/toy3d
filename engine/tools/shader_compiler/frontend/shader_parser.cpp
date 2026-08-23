@@ -154,7 +154,7 @@ namespace toy3d::shader
 
         bool is_blend_factor(std::string_view value)
         {
-            return is_one_of(value, {"Zero", "One", "SrcColor", "OneMinusSrcColor", "DstColor", "OneMinusDstColor", "SrcAlpha", "OneMinusSrcAlpha", "DstAlpha", "OneMinusDstAlpha", "ConstantColor", "OneMinusConstantColor", "ConstantAlpha", "OneMinusConstantAlpha", "SrcAlphaSaturate"});
+            return is_one_of(value, {"Zero", "One", "SrcColor", "OneMinusSrcColor", "DstColor", "OneMinusDstColor", "SrcAlpha", "OneMinusSrcAlpha", "DstAlpha", "OneMinusDstAlpha", "ConstantColor", "OneMinusConstantColor", "SrcAlphaSaturate"});
         }
 
         bool is_blend_operation(std::string_view value)
@@ -190,6 +190,91 @@ namespace toy3d::shader
             if (state == "DepthWrite") return is_one_of(value, {"Off", "On"});
             if (state == "ColorWrite") return is_one_of(value, {"None", "R", "G", "B", "A", "RG", "RGB", "RGBA"});
             return false;
+        }
+
+        // These parser conversions use string_view because token text is only
+        // inspected while producing the owned normalized enum state.
+        ShaderGraphicsPassState::PrimitiveTopology primitive_topology_from_name(
+            std::string_view value)
+        {
+            if (value == "PointList") return ShaderGraphicsPassState::PrimitiveTopology::PointList;
+            if (value == "LineList") return ShaderGraphicsPassState::PrimitiveTopology::LineList;
+            if (value == "LineStrip") return ShaderGraphicsPassState::PrimitiveTopology::LineStrip;
+            if (value == "TriangleStrip") return ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip;
+            return ShaderGraphicsPassState::PrimitiveTopology::TriangleList;
+        }
+
+        ShaderGraphicsPassState::CullMode cull_mode_from_name(std::string_view value)
+        {
+            if (value == "Off") return ShaderGraphicsPassState::CullMode::None;
+            if (value == "Front") return ShaderGraphicsPassState::CullMode::Front;
+            return ShaderGraphicsPassState::CullMode::Back;
+        }
+
+        ShaderGraphicsPassState::CompareOperation compare_operation_from_name(
+            std::string_view value)
+        {
+            if (value == "Never") return ShaderGraphicsPassState::CompareOperation::Never;
+            if (value == "Less") return ShaderGraphicsPassState::CompareOperation::Less;
+            if (value == "Equal") return ShaderGraphicsPassState::CompareOperation::Equal;
+            if (value == "LessEqual") return ShaderGraphicsPassState::CompareOperation::LessEqual;
+            if (value == "Greater") return ShaderGraphicsPassState::CompareOperation::Greater;
+            if (value == "NotEqual") return ShaderGraphicsPassState::CompareOperation::NotEqual;
+            if (value == "GreaterEqual") return ShaderGraphicsPassState::CompareOperation::GreaterEqual;
+            return ShaderGraphicsPassState::CompareOperation::Always;
+        }
+
+        ShaderGraphicsPassState::StencilOperation stencil_operation_from_name(
+            std::string_view value)
+        {
+            if (value == "Zero") return ShaderGraphicsPassState::StencilOperation::Zero;
+            if (value == "Replace") return ShaderGraphicsPassState::StencilOperation::Replace;
+            if (value == "IncrementClamp") return ShaderGraphicsPassState::StencilOperation::IncrementClamp;
+            if (value == "DecrementClamp") return ShaderGraphicsPassState::StencilOperation::DecrementClamp;
+            if (value == "Invert") return ShaderGraphicsPassState::StencilOperation::Invert;
+            if (value == "IncrementWrap") return ShaderGraphicsPassState::StencilOperation::IncrementWrap;
+            if (value == "DecrementWrap") return ShaderGraphicsPassState::StencilOperation::DecrementWrap;
+            return ShaderGraphicsPassState::StencilOperation::Keep;
+        }
+
+        ShaderGraphicsPassState::BlendFactor blend_factor_from_name(std::string_view value)
+        {
+            if (value == "Zero") return ShaderGraphicsPassState::BlendFactor::Zero;
+            if (value == "SrcColor") return ShaderGraphicsPassState::BlendFactor::SourceColor;
+            if (value == "OneMinusSrcColor") return ShaderGraphicsPassState::BlendFactor::OneMinusSourceColor;
+            if (value == "DstColor") return ShaderGraphicsPassState::BlendFactor::DestinationColor;
+            if (value == "OneMinusDstColor") return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationColor;
+            if (value == "SrcAlpha") return ShaderGraphicsPassState::BlendFactor::SourceAlpha;
+            if (value == "OneMinusSrcAlpha") return ShaderGraphicsPassState::BlendFactor::OneMinusSourceAlpha;
+            if (value == "DstAlpha") return ShaderGraphicsPassState::BlendFactor::DestinationAlpha;
+            if (value == "OneMinusDstAlpha") return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationAlpha;
+            if (value == "ConstantColor") return ShaderGraphicsPassState::BlendFactor::ConstantColor;
+            if (value == "OneMinusConstantColor") return ShaderGraphicsPassState::BlendFactor::OneMinusConstantColor;
+            if (value == "SrcAlphaSaturate") return ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate;
+            return ShaderGraphicsPassState::BlendFactor::One;
+        }
+
+        ShaderGraphicsPassState::BlendOperation blend_operation_from_name(
+            std::string_view value)
+        {
+            if (value == "Subtract") return ShaderGraphicsPassState::BlendOperation::Subtract;
+            if (value == "ReverseSubtract") return ShaderGraphicsPassState::BlendOperation::ReverseSubtract;
+            if (value == "Min") return ShaderGraphicsPassState::BlendOperation::Minimum;
+            if (value == "Max") return ShaderGraphicsPassState::BlendOperation::Maximum;
+            return ShaderGraphicsPassState::BlendOperation::Add;
+        }
+
+        ShaderGraphicsPassState::ColorWriteMask color_write_mask_from_name(
+            std::string_view value)
+        {
+            if (value == "None") return ShaderGraphicsPassState::ColorWriteMask::None;
+            if (value == "R") return ShaderGraphicsPassState::ColorWriteMask::Red;
+            if (value == "G") return ShaderGraphicsPassState::ColorWriteMask::Green;
+            if (value == "B") return ShaderGraphicsPassState::ColorWriteMask::Blue;
+            if (value == "A") return ShaderGraphicsPassState::ColorWriteMask::Alpha;
+            if (value == "RG") return ShaderGraphicsPassState::ColorWriteMask::RedGreen;
+            if (value == "RGB") return ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue;
+            return ShaderGraphicsPassState::ColorWriteMask::All;
         }
 
         bool is_pass_state_name(std::string_view name)
@@ -527,6 +612,7 @@ namespace toy3d::shader
         {
             return false;
         }
+
         const auto kind = resource_kind_from_name(type->text);
         if (!kind)
         {
@@ -718,20 +804,38 @@ namespace toy3d::shader
                 const auto value = expect_identifier("Expected a value after Pass state '" + state_name.text + "'.");
                 if (value)
                 {
-                    if (!is_valid_pass_state_value(state_name.text, value->text))
+                    const bool valid = is_valid_pass_state_value(state_name.text, value->text);
+                    if (!valid)
                     {
                         add_error(
                             DiagnosticCode::InvalidPassState,
                             value->location,
                             "Invalid value '" + value->text + "' for Pass state '" + state_name.text + "'.");
                     }
-                    if (state_name.text == "PrimitiveTopology") pass.state.primitive_topology = value->text;
-                    else if (state_name.text == "Cull") pass.state.cull = value->text;
-                    else if (state_name.text == "FrontFace") pass.state.front_face = value->text;
-                    else if (state_name.text == "Fill") pass.state.fill = value->text;
-                    else if (state_name.text == "DepthTest") pass.state.depth_test = value->text;
-                    else if (state_name.text == "DepthWrite") pass.state.depth_write = value->text == "On";
-                    else if (state_name.text == "ColorWrite") pass.state.color_write = value->text;
+                    if (!valid) continue;
+                    if (state_name.text == "PrimitiveTopology")
+                        pass.state.primitive_topology = primitive_topology_from_name(value->text);
+                    else if (state_name.text == "Cull")
+                        pass.state.cull_mode = cull_mode_from_name(value->text);
+                    else if (state_name.text == "FrontFace")
+                        pass.state.front_face = value->text == "Clockwise"
+                            ? ShaderGraphicsPassState::FrontFace::Clockwise
+                            : ShaderGraphicsPassState::FrontFace::CounterClockwise;
+                    else if (state_name.text == "Fill")
+                        pass.state.fill_mode = value->text == "Wireframe"
+                            ? ShaderGraphicsPassState::FillMode::Wireframe
+                            : ShaderGraphicsPassState::FillMode::Solid;
+                    else if (state_name.text == "DepthTest")
+                    {
+                        pass.state.depth_test_enable = value->text != "Off";
+                        if (pass.state.depth_test_enable)
+                            pass.state.depth_compare_operation =
+                                compare_operation_from_name(value->text);
+                    }
+                    else if (state_name.text == "DepthWrite")
+                        pass.state.depth_write_enable = value->text == "On";
+                    else if (state_name.text == "ColorWrite")
+                        pass.state.color_write_mask = color_write_mask_from_name(value->text);
                 }
                 continue;
             }
@@ -756,7 +860,7 @@ namespace toy3d::shader
     {
         if (match_identifier("Off"))
         {
-            pass.state.stencil = StencilState{};
+            pass.state.stencil = ShaderGraphicsPassState::StencilState{};
             return true;
         }
         if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Stencil."))
@@ -823,14 +927,16 @@ namespace toy3d::shader
             add_error(DiagnosticCode::InvalidPassState, pass.location, "Stencil requires FrontAndBack or both Front and Back.");
             return false;
         }
-        pass.state.stencil.mode = has_front_and_back ? StencilMode::FrontAndBack : StencilMode::SeparateFaces;
+        pass.state.stencil.mode = has_front_and_back
+            ? ShaderGraphicsPassState::StencilMode::FrontAndBack
+            : ShaderGraphicsPassState::StencilMode::SeparateFaces;
         return true;
     }
 
-    bool ShaderParser::parse_stencil_face(StencilFaceState& face)
+    bool ShaderParser::parse_stencil_face(
+        ShaderGraphicsPassState::StencilFaceState& face)
     {
         const char* names[] = {"Compare", "Fail", "DepthFail", "Pass"};
-        std::string* values[] = {&face.compare, &face.fail, &face.depth_fail, &face.pass};
         for (std::size_t index = 0; index < 4; ++index)
         {
             if (!match_identifier(names[index]))
@@ -845,7 +951,15 @@ namespace toy3d::shader
             {
                 add_error(DiagnosticCode::InvalidPassState, value->location, "Invalid Stencil operation value '" + value->text + "'.");
             }
-            *values[index] = value->text;
+            if (!valid) continue;
+            if (index == 0)
+                face.compare_operation = compare_operation_from_name(value->text);
+            else if (index == 1)
+                face.fail_operation = stencil_operation_from_name(value->text);
+            else if (index == 2)
+                face.depth_fail_operation = stencil_operation_from_name(value->text);
+            else
+                face.pass_operation = stencil_operation_from_name(value->text);
         }
         return true;
     }
@@ -854,7 +968,7 @@ namespace toy3d::shader
     {
         if (match_identifier("Off"))
         {
-            pass.state.blend = BlendState{};
+            pass.state.blend = ShaderGraphicsPassState::BlendState{};
             return true;
         }
         if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Blend.")) return false;
@@ -862,13 +976,17 @@ namespace toy3d::shader
         struct BlendLine
         {
             const char* name;
-            std::string* source;
-            std::string* destination;
-            std::string* operation;
+            ShaderGraphicsPassState::BlendFactor* source;
+            ShaderGraphicsPassState::BlendFactor* destination;
+            ShaderGraphicsPassState::BlendOperation* operation;
         };
         BlendLine lines[] = {
-            {"Color", &pass.state.blend.source_color, &pass.state.blend.destination_color, &pass.state.blend.color_operation},
-            {"Alpha", &pass.state.blend.source_alpha, &pass.state.blend.destination_alpha, &pass.state.blend.alpha_operation}};
+            {"Color", &pass.state.blend.source_color_factor,
+                &pass.state.blend.destination_color_factor,
+                &pass.state.blend.color_operation},
+            {"Alpha", &pass.state.blend.source_alpha_factor,
+                &pass.state.blend.destination_alpha_factor,
+                &pass.state.blend.alpha_operation}};
         for (BlendLine& line : lines)
         {
             if (!match_identifier(line.name))
@@ -881,18 +999,27 @@ namespace toy3d::shader
             const auto operation = expect_identifier("Expected Blend operation.");
             if (source)
             {
-                if (!is_blend_factor(source->text)) add_error(DiagnosticCode::InvalidPassState, source->location, "Invalid Blend factor '" + source->text + "'.");
-                *line.source = source->text;
+                if (!is_blend_factor(source->text))
+                    add_error(DiagnosticCode::InvalidPassState, source->location,
+                        "Invalid Blend factor '" + source->text + "'.");
+                else
+                    *line.source = blend_factor_from_name(source->text);
             }
             if (destination)
             {
-                if (!is_blend_factor(destination->text)) add_error(DiagnosticCode::InvalidPassState, destination->location, "Invalid Blend factor '" + destination->text + "'.");
-                *line.destination = destination->text;
+                if (!is_blend_factor(destination->text))
+                    add_error(DiagnosticCode::InvalidPassState, destination->location,
+                        "Invalid Blend factor '" + destination->text + "'.");
+                else
+                    *line.destination = blend_factor_from_name(destination->text);
             }
             if (operation)
             {
-                if (!is_blend_operation(operation->text)) add_error(DiagnosticCode::InvalidPassState, operation->location, "Invalid Blend operation '" + operation->text + "'.");
-                *line.operation = operation->text;
+                if (!is_blend_operation(operation->text))
+                    add_error(DiagnosticCode::InvalidPassState, operation->location,
+                        "Invalid Blend operation '" + operation->text + "'.");
+                else
+                    *line.operation = blend_operation_from_name(operation->text);
             }
         }
         return expect(TokenKind::RightBrace, "Expected '}' to close Blend state.").has_value();

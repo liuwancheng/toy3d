@@ -50,7 +50,7 @@ namespace toy3d::shader
         bool parse_variant(ShaderAsset& asset);
         bool parse_pass(ShaderAsset& asset);
         bool parse_stencil_state(ShaderPass& pass);
-        bool parse_stencil_face(StencilFaceState& face);
+        bool parse_stencil_face(ShaderGraphicsPassState::StencilFaceState& face);
         bool parse_blend_state(ShaderPass& pass);
         bool parse_hlsl_block(HlslBlock& block);
         bool parse_default_value(DefaultValue& value);

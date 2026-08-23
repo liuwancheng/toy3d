@@ -87,7 +87,7 @@
 
 - Program kind 由 pragma 推断。Graphics 必须且只能有一个 vertex entry，pixel entry 可选且不得有 compute；Compute 必须且只能有一个 compute entry，不得有 vertex/pixel 或 graphics state。
 - normalized Pass 默认状态为 TriangleList、Cull Back、FrontFace CounterClockwise、Fill Solid、DepthTest GreaterEqual、DepthWrite On、Stencil Off、Blend Off、ColorWrite RGBA。省略与显式默认产生相同 Pass template hash；重复 state 报错。
-- v1 不开放 indexed color attachment blend。Blend/ColorWrite 统一应用全部 active color attachments；`Blend` 只能是 Off 或完整 block。Stencil 支持 masks 0..255，以及 FrontAndBack 或成对 Front/Back。stencil reference 和 blend constants 为 dynamic command state。
+- v1 不开放 indexed color attachment blend。Blend/ColorWrite 统一应用全部 active color attachments；`Blend` 只能是 Off 或完整 block。Stencil 支持 masks 0..255，以及 FrontAndBack 或成对 Front/Back。stencil reference 和 blend constants 为 dynamic command state。Blend factor 只保留 Vulkan、D3D11 与 D3D12 可无损映射的公共集合；v1 不提供 `ConstantAlpha`/`OneMinusConstantAlpha`，alpha 方程通过 `ConstantColor` 的 alpha 分量使用 blend constant。`Fill Wireframe` 属于可持久化的跨 API 状态，但 target/profile 缺少 non-solid fill capability 时必须明确裁剪或返回 `Unsupported`。
 - Pass pipeline state 不进入 Shader permutation key，只进入 Pass template hash 与 PSO key；attachment count/format/sample/load/store 仍由 RDG/renderscene 提供。
 - Variant 和 enum value 有稳定 ID；permutation key 按 VariantId 确定性序列化。默认 soft limit 为 256/Pass、hard limit 为 4096/Pass，项目可配置；先做 capability culling，再计数，soft warning、hard error并检测乘积溢出。
 - 可选高级路径必须显式 `Requires <Capability>`。不支持该 requirement 的 target/profile 正常裁剪；使用受限能力却未声明时 Cook 报 `MissingCapabilityRequirement`；runtime 不得请求 requirements 不满足的 Pass。

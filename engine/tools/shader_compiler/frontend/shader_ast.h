@@ -126,59 +126,11 @@ namespace toy3d::shader
         std::vector<EntryPoint> entry_points;
     };
 
-    enum class StencilMode
-    {
-        Off,
-        FrontAndBack,
-        SeparateFaces
-    };
-
-    struct StencilFaceState
-    {
-        std::string compare = "Always";
-        std::string fail = "Keep";
-        std::string depth_fail = "Keep";
-        std::string pass = "Keep";
-    };
-
-    struct StencilState
-    {
-        StencilMode mode = StencilMode::Off;
-        std::uint8_t read_mask = 0xff;
-        std::uint8_t write_mask = 0xff;
-        StencilFaceState front;
-        StencilFaceState back;
-    };
-
-    struct BlendState
-    {
-        bool enabled = false;
-        std::string source_color = "One";
-        std::string destination_color = "Zero";
-        std::string color_operation = "Add";
-        std::string source_alpha = "One";
-        std::string destination_alpha = "Zero";
-        std::string alpha_operation = "Add";
-    };
-
-    struct PassState
-    {
-        std::string primitive_topology = "TriangleList";
-        std::string cull = "Back";
-        std::string front_face = "CounterClockwise";
-        std::string fill = "Solid";
-        std::string depth_test = "GreaterEqual";
-        bool depth_write = true;
-        StencilState stencil;
-        BlendState blend;
-        std::string color_write = "RGBA";
-    };
-
     struct ShaderPass
     {
         std::string name;
         std::vector<std::string> requirements;
-        PassState state;
+        ShaderGraphicsPassState state;
         bool has_explicit_graphics_state = false;
         HlslBlock program;
         SourceLocation location;

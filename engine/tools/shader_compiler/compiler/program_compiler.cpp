@@ -50,27 +50,6 @@ namespace toy3d::shader
             return source.str();
         }
 
-        Sha256Hash hash_pass_template(const PassState& state)
-        {
-            std::ostringstream value;
-            value << state.primitive_topology << '\n' << state.cull << '\n'
-                  << state.front_face << '\n' << state.fill << '\n'
-                  << state.depth_test << '\n' << state.depth_write << '\n'
-                  << static_cast<std::uint32_t>(state.stencil.mode) << '\n'
-                  << static_cast<std::uint32_t>(state.stencil.read_mask) << '\n'
-                  << static_cast<std::uint32_t>(state.stencil.write_mask) << '\n'
-                  << state.stencil.front.compare << '\n' << state.stencil.front.fail << '\n'
-                  << state.stencil.front.depth_fail << '\n' << state.stencil.front.pass << '\n'
-                  << state.stencil.back.compare << '\n' << state.stencil.back.fail << '\n'
-                  << state.stencil.back.depth_fail << '\n' << state.stencil.back.pass << '\n'
-                  << state.blend.enabled << '\n' << state.blend.source_color << '\n'
-                  << state.blend.destination_color << '\n' << state.blend.color_operation << '\n'
-                  << state.blend.source_alpha << '\n' << state.blend.destination_alpha << '\n'
-                  << state.blend.alpha_operation << '\n' << state.color_write << '\n';
-            const std::string text = value.str();
-            return sha256(std::vector<std::uint8_t>(text.begin(), text.end()));
-        }
-
         std::vector<ParameterUsage> all_parameter_usage(
             const LogicalShaderLayout& logical_layout,
             ShaderStageFlags program_stages)
@@ -351,7 +330,9 @@ namespace toy3d::shader
         entry.profile = ShaderCompileProfile::VulkanPortableV1;
         entry.logical_layout_hash = logical.layout->logical_layout_hash;
         entry.target_binding_hash = final_mapping.layout->target_binding_hash;
-        entry.pass_template_hash = hash_pass_template(pass->state);
+        entry.graphics_pass_state = pass->state;
+        entry.pass_template_hash =
+            calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
         entry.variant_id_version = permutation.permutation->variant_id_version;
         entry.permutation_version = permutation.permutation->version;
         entry.permutation_key = permutation.permutation->key;

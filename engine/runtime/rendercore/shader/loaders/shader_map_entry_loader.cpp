@@ -164,6 +164,7 @@ namespace toy3d
             program.mapping_version = entry.mapping_version;
             program.logical_layout_hash = entry.logical_layout_hash;
             program.target_binding_hash = entry.target_binding_hash;
+            program.graphics_pass_state = entry.graphics_pass_state;
             program.pass_template_hash = entry.pass_template_hash;
             program.permutation_key = entry.permutation_key;
 

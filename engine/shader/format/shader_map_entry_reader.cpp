@@ -230,6 +230,140 @@ namespace toy3d::shader
             return value;
         }
 
+        // optional makes invalid manifests fail atomically without exposing a
+        // partially decoded graphics state to the runtime loader.
+        std::optional<ShaderGraphicsPassState> parse_graphics_pass_state(
+            const Fields& fields,
+            ShaderMapEntryReadResult& result)
+        {
+            const auto topology = parse_unsigned<std::uint32_t>(
+                fields.at("pass_primitive_topology"));
+            const auto cull = parse_unsigned<std::uint32_t>(fields.at("pass_cull_mode"));
+            const auto front_face = parse_unsigned<std::uint32_t>(fields.at("pass_front_face"));
+            const auto fill = parse_unsigned<std::uint32_t>(fields.at("pass_fill_mode"));
+            const auto depth_test = parse_unsigned<std::uint32_t>(
+                fields.at("pass_depth_test_enable"));
+            const auto depth_compare = parse_unsigned<std::uint32_t>(
+                fields.at("pass_depth_compare_operation"));
+            const auto depth_write = parse_unsigned<std::uint32_t>(
+                fields.at("pass_depth_write_enable"));
+            const auto stencil_mode = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_mode"));
+            const auto stencil_read_mask = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_read_mask"));
+            const auto stencil_write_mask = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_write_mask"));
+            const auto front_compare = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_front_compare"));
+            const auto front_fail = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_front_fail"));
+            const auto front_depth_fail = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_front_depth_fail"));
+            const auto front_pass = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_front_pass"));
+            const auto back_compare = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_back_compare"));
+            const auto back_fail = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_back_fail"));
+            const auto back_depth_fail = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_back_depth_fail"));
+            const auto back_pass = parse_unsigned<std::uint32_t>(
+                fields.at("pass_stencil_back_pass"));
+            const auto blend_enable = parse_unsigned<std::uint32_t>(
+                fields.at("pass_blend_enable"));
+            const auto source_color = parse_unsigned<std::uint32_t>(
+                fields.at("pass_source_color_factor"));
+            const auto destination_color = parse_unsigned<std::uint32_t>(
+                fields.at("pass_destination_color_factor"));
+            const auto color_operation = parse_unsigned<std::uint32_t>(
+                fields.at("pass_color_blend_operation"));
+            const auto source_alpha = parse_unsigned<std::uint32_t>(
+                fields.at("pass_source_alpha_factor"));
+            const auto destination_alpha = parse_unsigned<std::uint32_t>(
+                fields.at("pass_destination_alpha_factor"));
+            const auto alpha_operation = parse_unsigned<std::uint32_t>(
+                fields.at("pass_alpha_blend_operation"));
+            const auto color_write = parse_unsigned<std::uint32_t>(
+                fields.at("pass_color_write_mask"));
+            constexpr std::uint32_t max_blend_factor = static_cast<std::uint32_t>(
+                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate);
+            if (!topology || !cull || !front_face || !fill || !depth_test ||
+                !depth_compare || !depth_write || !stencil_mode ||
+                !stencil_read_mask || !stencil_write_mask || !front_compare ||
+                !front_fail || !front_depth_fail || !front_pass || !back_compare ||
+                !back_fail || !back_depth_fail || !back_pass || !blend_enable ||
+                !source_color || !destination_color || !color_operation ||
+                !source_alpha || !destination_alpha || !alpha_operation ||
+                !color_write || *depth_test > 1u || *depth_write > 1u ||
+                *blend_enable > 1u || *stencil_read_mask > 0xffu ||
+                *stencil_write_mask > 0xffu || *topology > 4u || *cull > 2u ||
+                *front_face > 1u || *fill > 1u || *depth_compare > 7u ||
+                *stencil_mode > 2u || *front_compare > 7u || *front_fail > 7u ||
+                *front_depth_fail > 7u || *front_pass > 7u || *back_compare > 7u ||
+                *back_fail > 7u || *back_depth_fail > 7u || *back_pass > 7u ||
+                *source_color > max_blend_factor ||
+                *destination_color > max_blend_factor || *color_operation > 4u ||
+                *source_alpha > max_blend_factor ||
+                *destination_alpha > max_blend_factor || *alpha_operation > 4u ||
+                *color_write > 15u)
+            {
+                add_error(result, "ShaderMapEntry graphics Pass state is invalid.");
+                return std::nullopt;
+            }
+
+            ShaderGraphicsPassState state;
+            state.primitive_topology =
+                static_cast<ShaderGraphicsPassState::PrimitiveTopology>(*topology);
+            state.cull_mode = static_cast<ShaderGraphicsPassState::CullMode>(*cull);
+            state.front_face = static_cast<ShaderGraphicsPassState::FrontFace>(*front_face);
+            state.fill_mode = static_cast<ShaderGraphicsPassState::FillMode>(*fill);
+            state.depth_test_enable = *depth_test != 0u;
+            state.depth_compare_operation =
+                static_cast<ShaderGraphicsPassState::CompareOperation>(*depth_compare);
+            state.depth_write_enable = *depth_write != 0u;
+            state.stencil.mode =
+                static_cast<ShaderGraphicsPassState::StencilMode>(*stencil_mode);
+            state.stencil.read_mask = static_cast<std::uint8_t>(*stencil_read_mask);
+            state.stencil.write_mask = static_cast<std::uint8_t>(*stencil_write_mask);
+            state.stencil.front.compare_operation =
+                static_cast<ShaderGraphicsPassState::CompareOperation>(*front_compare);
+            state.stencil.front.fail_operation =
+                static_cast<ShaderGraphicsPassState::StencilOperation>(*front_fail);
+            state.stencil.front.depth_fail_operation =
+                static_cast<ShaderGraphicsPassState::StencilOperation>(*front_depth_fail);
+            state.stencil.front.pass_operation =
+                static_cast<ShaderGraphicsPassState::StencilOperation>(*front_pass);
+            state.stencil.back.compare_operation =
+                static_cast<ShaderGraphicsPassState::CompareOperation>(*back_compare);
+            state.stencil.back.fail_operation =
+                static_cast<ShaderGraphicsPassState::StencilOperation>(*back_fail);
+            state.stencil.back.depth_fail_operation =
+                static_cast<ShaderGraphicsPassState::StencilOperation>(*back_depth_fail);
+            state.stencil.back.pass_operation =
+                static_cast<ShaderGraphicsPassState::StencilOperation>(*back_pass);
+            state.blend.enabled = *blend_enable != 0u;
+            state.blend.source_color_factor =
+                static_cast<ShaderGraphicsPassState::BlendFactor>(*source_color);
+            state.blend.destination_color_factor =
+                static_cast<ShaderGraphicsPassState::BlendFactor>(*destination_color);
+            state.blend.color_operation =
+                static_cast<ShaderGraphicsPassState::BlendOperation>(*color_operation);
+            state.blend.source_alpha_factor =
+                static_cast<ShaderGraphicsPassState::BlendFactor>(*source_alpha);
+            state.blend.destination_alpha_factor =
+                static_cast<ShaderGraphicsPassState::BlendFactor>(*destination_alpha);
+            state.blend.alpha_operation =
+                static_cast<ShaderGraphicsPassState::BlendOperation>(*alpha_operation);
+            state.color_write_mask =
+                static_cast<ShaderGraphicsPassState::ColorWriteMask>(*color_write);
+            if (!is_valid_shader_graphics_pass_state(state))
+            {
+                add_error(result, "ShaderMapEntry graphics Pass state is unsupported.");
+                return std::nullopt;
+            }
+            return state;
+        }
+
         std::optional<Sha256Hash> parse_hash(
             const std::string& text,
             ShaderMapEntryReadResult& result,
@@ -712,6 +846,17 @@ namespace toy3d::shader
             "shader_map_entry_version", "shader_map_key", "entry_content_hash",
             "shader_name", "pass_name", "target", "profile", "mapping_version",
             "logical_layout_hash", "target_binding_hash", "pass_template_hash",
+            "pass_primitive_topology", "pass_cull_mode", "pass_front_face",
+            "pass_fill_mode", "pass_depth_test_enable", "pass_depth_compare_operation",
+            "pass_depth_write_enable", "pass_stencil_mode", "pass_stencil_read_mask",
+            "pass_stencil_write_mask", "pass_stencil_front_compare",
+            "pass_stencil_front_fail", "pass_stencil_front_depth_fail",
+            "pass_stencil_front_pass", "pass_stencil_back_compare",
+            "pass_stencil_back_fail", "pass_stencil_back_depth_fail",
+            "pass_stencil_back_pass", "pass_blend_enable", "pass_source_color_factor",
+            "pass_destination_color_factor", "pass_color_blend_operation",
+            "pass_source_alpha_factor", "pass_destination_alpha_factor",
+            "pass_alpha_blend_operation", "pass_color_write_mask",
             "variant_id_version", "permutation_version", "permutation_key", "stage_count"};
         const auto manifest = key_value_fields(
             *manifest_text, manifest_fields, result, "ShaderMapEntry manifest");
@@ -734,6 +879,7 @@ namespace toy3d::shader
             manifest->at("pass_template_hash"), result, "pass_template_hash");
         const auto permutation_key = parse_hash(
             manifest->at("permutation_key"), result, "permutation_key");
+        const auto graphics_pass_state = parse_graphics_pass_state(*manifest, result);
         if (!entry_version || *entry_version != shader_map_entry_version ||
             manifest->at("shader_map_key") != key_text ||
             !shader_name(manifest->at("shader_name")) ||
@@ -745,6 +891,7 @@ namespace toy3d::shader
             !permutation_version || *permutation_version != shader_permutation_version ||
             !stage_count || *stage_count == 0u || *stage_count > 3u || !content_hash ||
             !logical_hash || !binding_hash || !pass_hash || !permutation_key ||
+            !graphics_pass_state ||
             hash_is_zero(*content_hash) || hash_is_zero(*logical_hash) ||
             hash_is_zero(*binding_hash) || hash_is_zero(*pass_hash) ||
             hash_is_zero(*permutation_key))
@@ -761,10 +908,17 @@ namespace toy3d::shader
         entry.mapping_version = *mapping_version;
         entry.logical_layout_hash = *logical_hash;
         entry.target_binding_hash = *binding_hash;
+        entry.graphics_pass_state = *graphics_pass_state;
         entry.pass_template_hash = *pass_hash;
         entry.variant_id_version = *variant_id_version;
         entry.permutation_version = *permutation_version;
         entry.permutation_key = *permutation_key;
+        if (calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state) !=
+            entry.pass_template_hash)
+        {
+            add_error(result, "ShaderMapEntry graphics Pass state does not match pass_template_hash.");
+            return result;
+        }
 
         const auto mapping_text = read_text(
             platform_file, *directory, "mapping.txt", maximum_metadata_size, result);

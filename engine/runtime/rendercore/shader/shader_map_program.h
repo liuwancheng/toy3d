@@ -96,6 +96,7 @@ namespace toy3d
         std::uint32_t mapping_version = 0;
         ShaderContentHash logical_layout_hash{};
         ShaderContentHash target_binding_hash{};
+        shader::ShaderGraphicsPassState graphics_pass_state;
         ShaderContentHash pass_template_hash{};
         ShaderContentHash permutation_key{};
         std::vector<ShaderMapBinding> bindings;

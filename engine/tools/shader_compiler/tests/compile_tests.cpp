@@ -634,7 +634,9 @@ namespace
         entry.pass_name = "Forward";
         entry.mapping_version = vulkan_binding_mapping_version;
         entry.logical_layout_hash[0] = 1u;
-        entry.pass_template_hash[0] = 3u;
+        entry.graphics_pass_state.cull_mode = ShaderGraphicsPassState::CullMode::Front;
+        entry.pass_template_hash =
+            calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
         entry.permutation_key[0] = 6u;
         TargetBindingLayout empty_layout;
         empty_layout.target = ShaderTarget::VulkanSpirV;
@@ -712,8 +714,10 @@ namespace
         check(read.succeeded() && read.entry &&
             read.entry->shader_name == entry.shader_name &&
             read.entry->stages.size() == entry.stages.size() &&
+            read.entry->graphics_pass_state.cull_mode ==
+                ShaderGraphicsPassState::CullMode::Front &&
             read.entry_content_hash == published.entry_content_hash,
-            "ShaderMapEntry v2 reader must reconstruct and validate a published Entry");
+            "ShaderMapEntry v3 reader must reconstruct and validate a published Entry");
         const ShaderMapEntryWriteResult duplicate = write_verified_shader_map_entry(
             platform_file, reader_entry_root, entry);
         check(duplicate.succeeded() && duplicate.cache_hit &&
@@ -766,9 +770,9 @@ namespace
             if (manifest.succeeded())
             {
                 std::string changed = manifest.value();
-                const std::size_t version = changed.find("shader_map_entry_version=2");
+                const std::size_t version = changed.find("shader_map_entry_version=3");
                 if (version != std::string::npos)
-                    changed.replace(version, std::string("shader_map_entry_version=2").size(),
+                    changed.replace(version, std::string("shader_map_entry_version=3").size(),
                         "shader_map_entry_version=999");
                 write_text(manifest_path, changed);
             }
@@ -801,6 +805,33 @@ namespace
                 "target/profile mismatches must be rejected by the ShaderMap reader");
         }
         std::filesystem::remove_all(target_fixture.first);
+
+        auto pass_state_fixture = publish_corrupt_fixture("storage_corrupt_pass_state");
+        if (pass_state_fixture.second.entry_directory)
+        {
+            // filesystem keeps corruption-fixture path composition portable across
+            // the Windows and Unix test configurations.
+            const std::filesystem::path manifest_path =
+                std::filesystem::u8path(pass_state_fixture.second.entry_directory->utf8()) /
+                "manifest.txt";
+            const toy3d::FileResult<std::string> manifest =
+                platform_file.read_text_utf8(physical_path(manifest_path));
+            if (manifest.succeeded())
+            {
+                std::string changed = manifest.value();
+                const std::size_t cull = changed.find("pass_cull_mode=1");
+                if (cull != std::string::npos)
+                    changed.replace(cull, std::string("pass_cull_mode=1").size(),
+                        "pass_cull_mode=2");
+                write_text(manifest_path, changed);
+            }
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(pass_state_fixture.first / "entries"),
+                pass_state_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
+                "graphics Pass state must strictly match pass_template_hash");
+        }
+        std::filesystem::remove_all(pass_state_fixture.first);
 
         auto dependency_fixture = publish_corrupt_fixture("storage_corrupt_dependencies");
         if (dependency_fixture.second.entry_directory)

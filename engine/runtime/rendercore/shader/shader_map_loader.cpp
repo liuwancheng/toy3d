@@ -213,6 +213,9 @@ namespace toy3d
             hash_is_zero(program.logical_layout_hash) ||
             hash_is_zero(program.target_binding_hash) ||
             hash_is_zero(program.pass_template_hash) ||
+            !shader::is_valid_shader_graphics_pass_state(program.graphics_pass_state) ||
+            shader::calculate_shader_graphics_pass_state_hash(
+                program.graphics_pass_state) != program.pass_template_hash ||
             hash_is_zero(program.permutation_key))
         {
             result.error = "ShaderMap program contains an invalid version or stable hash.";

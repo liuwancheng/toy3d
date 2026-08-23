@@ -95,6 +95,9 @@ namespace toy3d::shader
             entry.mapping_version != vulkan_binding_mapping_version || entry.stages.empty() ||
             hash_is_zero(entry.logical_layout_hash) || hash_is_zero(entry.target_binding_hash) ||
             hash_is_zero(entry.pass_template_hash) ||
+            !is_valid_shader_graphics_pass_state(entry.graphics_pass_state) ||
+            calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state) !=
+                entry.pass_template_hash ||
             entry.variant_id_version != shader_variant_id_version ||
             entry.permutation_version != shader_permutation_version ||
             hash_is_zero(entry.permutation_key))
@@ -230,6 +233,73 @@ namespace toy3d::shader
                  << "logical_layout_hash=" << sha256_to_hex(entry.logical_layout_hash) << '\n'
                  << "target_binding_hash=" << sha256_to_hex(entry.target_binding_hash) << '\n'
                  << "pass_template_hash=" << sha256_to_hex(entry.pass_template_hash) << '\n'
+                 << "pass_primitive_topology="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.primitive_topology) << '\n'
+                 << "pass_cull_mode="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.cull_mode) << '\n'
+                 << "pass_front_face="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.front_face) << '\n'
+                 << "pass_fill_mode="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.fill_mode) << '\n'
+                 << "pass_depth_test_enable="
+                 << (entry.graphics_pass_state.depth_test_enable ? 1u : 0u) << '\n'
+                 << "pass_depth_compare_operation="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.depth_compare_operation) << '\n'
+                 << "pass_depth_write_enable="
+                 << (entry.graphics_pass_state.depth_write_enable ? 1u : 0u) << '\n'
+                 << "pass_stencil_mode="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.stencil.mode) << '\n'
+                 << "pass_stencil_read_mask="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.stencil.read_mask) << '\n'
+                 << "pass_stencil_write_mask="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.stencil.write_mask) << '\n'
+                 << "pass_stencil_front_compare="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.front.compare_operation) << '\n'
+                 << "pass_stencil_front_fail="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.front.fail_operation) << '\n'
+                 << "pass_stencil_front_depth_fail="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.front.depth_fail_operation) << '\n'
+                 << "pass_stencil_front_pass="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.front.pass_operation) << '\n'
+                 << "pass_stencil_back_compare="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.back.compare_operation) << '\n'
+                 << "pass_stencil_back_fail="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.back.fail_operation) << '\n'
+                 << "pass_stencil_back_depth_fail="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.back.depth_fail_operation) << '\n'
+                 << "pass_stencil_back_pass="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.stencil.back.pass_operation) << '\n'
+                 << "pass_blend_enable="
+                 << (entry.graphics_pass_state.blend.enabled ? 1u : 0u) << '\n'
+                 << "pass_source_color_factor="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.blend.source_color_factor) << '\n'
+                 << "pass_destination_color_factor="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.blend.destination_color_factor) << '\n'
+                 << "pass_color_blend_operation="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.blend.color_operation) << '\n'
+                 << "pass_source_alpha_factor="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.blend.source_alpha_factor) << '\n'
+                 << "pass_destination_alpha_factor="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.blend.destination_alpha_factor) << '\n'
+                 << "pass_alpha_blend_operation="
+                 << static_cast<std::uint32_t>(
+                        entry.graphics_pass_state.blend.alpha_operation) << '\n'
+                 << "pass_color_write_mask="
+                 << static_cast<std::uint32_t>(entry.graphics_pass_state.color_write_mask) << '\n'
                  << "variant_id_version=" << entry.variant_id_version << '\n'
                  << "permutation_version=" << entry.permutation_version << '\n'
                  << "permutation_key=" << sha256_to_hex(entry.permutation_key) << '\n'

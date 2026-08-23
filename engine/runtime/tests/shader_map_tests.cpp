@@ -28,7 +28,9 @@ namespace
         program.mapping_version = 1;
         program.logical_layout_hash = nonzero_hash(1);
         program.target_binding_hash = nonzero_hash(2);
-        program.pass_template_hash = nonzero_hash(3);
+        program.pass_template_hash =
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(
+                program.graphics_pass_state);
         program.permutation_key = nonzero_hash(4);
 
         toy3d::ShaderMapBinding constants;

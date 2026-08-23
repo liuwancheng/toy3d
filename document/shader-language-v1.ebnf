@@ -99,7 +99,6 @@ blend_factor    = "Zero" | "One" | "SrcColor" | "OneMinusSrcColor"
                 | "DstColor" | "OneMinusDstColor" | "SrcAlpha"
                 | "OneMinusSrcAlpha" | "DstAlpha" | "OneMinusDstAlpha"
                 | "ConstantColor" | "OneMinusConstantColor"
-                | "ConstantAlpha" | "OneMinusConstantAlpha"
                 | "SrcAlphaSaturate" ;
 blend_operation = "Add" | "Subtract" | "ReverseSubtract" | "Min" | "Max" ;
 color_write_mask = "None" | "R" | "G" | "B" | "A"

@@ -44,6 +44,33 @@ namespace toy3d::shader
             });
             return stages;
         }
+
+        template<typename Enum>
+        bool enum_at_most(Enum value, Enum maximum)
+        {
+            return static_cast<std::uint32_t>(value) <=
+                static_cast<std::uint32_t>(maximum);
+        }
+
+        void append_stencil_face(
+            std::vector<std::uint8_t>& bytes,
+            const ShaderGraphicsPassState::StencilFaceState& state)
+        {
+            append_enum(bytes, state.compare_operation);
+            append_enum(bytes, state.fail_operation);
+            append_enum(bytes, state.depth_fail_operation);
+            append_enum(bytes, state.pass_operation);
+        }
+
+        bool same_stencil_face(
+            const ShaderGraphicsPassState::StencilFaceState& left,
+            const ShaderGraphicsPassState::StencilFaceState& right)
+        {
+            return left.compare_operation == right.compare_operation &&
+                left.fail_operation == right.fail_operation &&
+                left.depth_fail_operation == right.depth_fail_operation &&
+                left.pass_operation == right.pass_operation;
+        }
     }
 
     ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right)
@@ -134,6 +161,125 @@ namespace toy3d::shader
         return sha256(bytes);
     }
 
+    bool is_valid_shader_graphics_pass_state(
+        const ShaderGraphicsPassState& state)
+    {
+        const auto valid_stencil_face = [](
+            const ShaderGraphicsPassState::StencilFaceState& face)
+        {
+            return enum_at_most(
+                       face.compare_operation,
+                       ShaderGraphicsPassState::CompareOperation::Always) &&
+                enum_at_most(
+                    face.fail_operation,
+                    ShaderGraphicsPassState::StencilOperation::DecrementWrap) &&
+                enum_at_most(
+                    face.depth_fail_operation,
+                    ShaderGraphicsPassState::StencilOperation::DecrementWrap) &&
+                enum_at_most(
+                    face.pass_operation,
+                    ShaderGraphicsPassState::StencilOperation::DecrementWrap);
+        };
+        const auto valid_color_mask = [](ShaderGraphicsPassState::ColorWriteMask mask)
+        {
+            switch (mask)
+            {
+            case ShaderGraphicsPassState::ColorWriteMask::None:
+            case ShaderGraphicsPassState::ColorWriteMask::Red:
+            case ShaderGraphicsPassState::ColorWriteMask::Green:
+            case ShaderGraphicsPassState::ColorWriteMask::Blue:
+            case ShaderGraphicsPassState::ColorWriteMask::Alpha:
+            case ShaderGraphicsPassState::ColorWriteMask::RedGreen:
+            case ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue:
+            case ShaderGraphicsPassState::ColorWriteMask::All:
+                return true;
+            }
+            return false;
+        };
+        const ShaderGraphicsPassState::StencilFaceState default_stencil_face;
+        const ShaderGraphicsPassState::BlendState default_blend;
+        const bool canonical_stencil =
+            (state.stencil.mode == ShaderGraphicsPassState::StencilMode::Off &&
+             state.stencil.read_mask == 0xffu && state.stencil.write_mask == 0xffu &&
+             same_stencil_face(state.stencil.front, default_stencil_face) &&
+             same_stencil_face(state.stencil.back, default_stencil_face)) ||
+            (state.stencil.mode == ShaderGraphicsPassState::StencilMode::FrontAndBack &&
+             same_stencil_face(state.stencil.front, state.stencil.back)) ||
+            state.stencil.mode == ShaderGraphicsPassState::StencilMode::SeparateFaces;
+        const bool canonical_blend = state.blend.enabled ||
+            (state.blend.source_color_factor == default_blend.source_color_factor &&
+             state.blend.destination_color_factor == default_blend.destination_color_factor &&
+             state.blend.color_operation == default_blend.color_operation &&
+             state.blend.source_alpha_factor == default_blend.source_alpha_factor &&
+             state.blend.destination_alpha_factor == default_blend.destination_alpha_factor &&
+             state.blend.alpha_operation == default_blend.alpha_operation);
+
+        return enum_at_most(
+                   state.primitive_topology,
+                   ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip) &&
+            enum_at_most(state.cull_mode, ShaderGraphicsPassState::CullMode::Back) &&
+            enum_at_most(
+                state.front_face, ShaderGraphicsPassState::FrontFace::CounterClockwise) &&
+            enum_at_most(state.fill_mode, ShaderGraphicsPassState::FillMode::Wireframe) &&
+            enum_at_most(
+                state.depth_compare_operation,
+                ShaderGraphicsPassState::CompareOperation::Always) &&
+            enum_at_most(
+                state.stencil.mode, ShaderGraphicsPassState::StencilMode::SeparateFaces) &&
+            valid_stencil_face(state.stencil.front) &&
+            valid_stencil_face(state.stencil.back) &&
+            enum_at_most(
+                state.blend.source_color_factor,
+                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+            enum_at_most(
+                state.blend.destination_color_factor,
+                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+            enum_at_most(
+                state.blend.color_operation,
+                ShaderGraphicsPassState::BlendOperation::Maximum) &&
+            enum_at_most(
+                state.blend.source_alpha_factor,
+                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+            enum_at_most(
+                state.blend.destination_alpha_factor,
+                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+            enum_at_most(
+                state.blend.alpha_operation,
+                ShaderGraphicsPassState::BlendOperation::Maximum) &&
+            valid_color_mask(state.color_write_mask) && canonical_stencil &&
+            canonical_blend &&
+            (state.depth_test_enable ||
+             state.depth_compare_operation ==
+                 ShaderGraphicsPassState::CompareOperation::GreaterEqual);
+    }
+
+    Sha256Hash calculate_shader_graphics_pass_state_hash(
+        const ShaderGraphicsPassState& state)
+    {
+        std::vector<std::uint8_t> bytes;
+        append_enum(bytes, state.primitive_topology);
+        append_enum(bytes, state.cull_mode);
+        append_enum(bytes, state.front_face);
+        append_enum(bytes, state.fill_mode);
+        append_integer(bytes, state.depth_test_enable ? 1u : 0u);
+        append_enum(bytes, state.depth_compare_operation);
+        append_integer(bytes, state.depth_write_enable ? 1u : 0u);
+        append_enum(bytes, state.stencil.mode);
+        append_integer(bytes, state.stencil.read_mask);
+        append_integer(bytes, state.stencil.write_mask);
+        append_stencil_face(bytes, state.stencil.front);
+        append_stencil_face(bytes, state.stencil.back);
+        append_integer(bytes, state.blend.enabled ? 1u : 0u);
+        append_enum(bytes, state.blend.source_color_factor);
+        append_enum(bytes, state.blend.destination_color_factor);
+        append_enum(bytes, state.blend.color_operation);
+        append_enum(bytes, state.blend.source_alpha_factor);
+        append_enum(bytes, state.blend.destination_alpha_factor);
+        append_enum(bytes, state.blend.alpha_operation);
+        append_enum(bytes, state.color_write_mask);
+        return sha256(bytes);
+    }
+
     Sha256Hash calculate_shader_map_key(const ShaderMapEntry& entry)
     {
         std::vector<std::uint8_t> bytes;
@@ -145,6 +291,9 @@ namespace toy3d::shader
         append_integer(bytes, entry.mapping_version);
         bytes.insert(bytes.end(), entry.logical_layout_hash.begin(), entry.logical_layout_hash.end());
         bytes.insert(bytes.end(), entry.target_binding_hash.begin(), entry.target_binding_hash.end());
+        const Sha256Hash pass_state_hash =
+            calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
+        bytes.insert(bytes.end(), pass_state_hash.begin(), pass_state_hash.end());
         bytes.insert(bytes.end(), entry.pass_template_hash.begin(), entry.pass_template_hash.end());
         append_integer(bytes, entry.variant_id_version);
         append_integer(bytes, entry.permutation_version);

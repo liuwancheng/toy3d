@@ -49,6 +49,13 @@ namespace
         check(loaded.program->stages.size() == 2, "test Program must contain vertex and pixel stages");
         check(loaded.program->vertex_inputs.empty(),
             "SV_VertexID-only test Shader must not invent a logical vertex input");
+        check(loaded.program->graphics_pass_state.depth_test_enable &&
+              loaded.program->graphics_pass_state.depth_compare_operation ==
+                  toy3d::shader::ShaderGraphicsPassState::CompareOperation::GreaterEqual &&
+              toy3d::shader::calculate_shader_graphics_pass_state_hash(
+                  loaded.program->graphics_pass_state) ==
+                  loaded.program->pass_template_hash,
+            "loader must retain the verified normalized graphics Pass state");
 
         const toy3d::ShaderMapStage* vertex_stage = find_stage(
             *loaded.program, toy3d::RHIShaderStage::Vertex);
@@ -105,6 +112,12 @@ namespace
         invalid.stages.back().reflection.clear();
         check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
             "missing required stage reflection must fail runtime validation");
+
+        invalid = *loaded.program;
+        invalid.graphics_pass_state.cull_mode =
+            toy3d::shader::ShaderGraphicsPassState::CullMode::Front;
+        check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
+            "runtime validation must reject graphics state that does not match its template hash");
 
         invalid = *loaded.program;
         auto invalid_global = std::find_if(invalid.bindings.begin(), invalid.bindings.end(),
