@@ -1697,6 +1697,9 @@ namespace toy3d
                     RHIErrorCode::Unsupported,
                     "A Vulkan graphics pipeline vertex attribute format has no Vulkan mapping.");
             }
+            // Public validation has already matched this location/format to
+            // vertex-shader reflection. Vulkan consumes the location directly;
+            // semantic name/index remain available for D3D backends only.
             vertex_attributes.push_back({attribute.location, attribute.binding, format, attribute.offset});
         }
 

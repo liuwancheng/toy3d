@@ -1,7 +1,9 @@
 #include "rendercore/shader/shader_map_loader.h"
 
 #include <algorithm>
+#include <limits>
 #include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -37,6 +39,152 @@ namespace toy3d
             case RHIBindingGroup::Max: break;
             }
             return 4;
+        }
+
+        std::string normalize_interface_semantic(std::string semantic)
+        {
+            for (char& character : semantic)
+            {
+                if (character >= 'a' && character <= 'z')
+                {
+                    character = static_cast<char>(
+                        character - ('a' - 'A'));
+                }
+            }
+            return semantic;
+        }
+
+        bool validate_stage_interfaces(
+            const ShaderMapStage& stage,
+            std::string& error)
+        {
+            std::set<std::pair<bool, std::uint32_t>> stage_locations;
+            std::set<ShaderVertexAttributeId> vertex_logical_attributes;
+            for (const shader::ReflectedInterfaceVariable& variable :
+                 stage.interface_variables)
+            {
+                if (variable.location ==
+                        std::numeric_limits<std::uint32_t>::max() ||
+                    static_cast<std::uint32_t>(variable.scalar_type) >
+                        static_cast<std::uint32_t>(
+                            shader::ReflectedInterfaceVariable::ScalarType::UInt32) ||
+                    variable.component_count == 0u ||
+                    variable.component_count > 4u ||
+                    !stage_locations.emplace(
+                        variable.input, variable.location).second)
+                {
+                    error = "ShaderMap stage interface has an invalid or duplicate target mapping.";
+                    return false;
+                }
+
+                if (stage.stage != RHIShaderStage::Vertex || !variable.input)
+                {
+                    continue;
+                }
+
+                ShaderVertexInput vertex_input;
+                if (!try_make_shader_vertex_input(
+                        variable, vertex_input, error))
+                {
+                    return false;
+                }
+                if (!vertex_logical_attributes.insert(
+                        vertex_input.attribute_id).second)
+                {
+                    error = "ShaderMap vertex inputs contain a duplicate logical attribute.";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool validate_graphics_stage_interfaces(
+            const ShaderMapStage& vertex_stage,
+            const ShaderMapStage& pixel_stage,
+            std::string& error)
+        {
+            for (const shader::ReflectedInterfaceVariable& input :
+                 pixel_stage.interface_variables)
+            {
+                if (!input.input)
+                {
+                    continue;
+                }
+                const auto output = std::find_if(
+                    vertex_stage.interface_variables.begin(),
+                    vertex_stage.interface_variables.end(),
+                    [&](const shader::ReflectedInterfaceVariable& candidate) {
+                        return !candidate.input &&
+                            candidate.location == input.location;
+                    });
+                if (output == vertex_stage.interface_variables.end() ||
+                    input.scalar_type != output->scalar_type ||
+                    input.component_count != output->component_count ||
+                    (!input.semantic.empty() && !output->semantic.empty() &&
+                        normalize_interface_semantic(input.semantic) !=
+                            normalize_interface_semantic(output->semantic)))
+                {
+                    error = "ShaderMap pixel input conflicts with the vertex-stage Program output.";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool validate_program_vertex_inputs(
+            const ShaderMapProgramData& program,
+            const ShaderMapStage* vertex_stage,
+            std::string& error)
+        {
+            std::vector<ShaderVertexInput> expected_inputs;
+            std::set<ShaderVertexAttributeId> expected_attributes;
+            if (vertex_stage != nullptr)
+            {
+                for (const shader::ReflectedInterfaceVariable& reflected :
+                     vertex_stage->interface_variables)
+                {
+                    if (!reflected.input)
+                    {
+                        continue;
+                    }
+                    ShaderVertexInput expected;
+                    if (!try_make_shader_vertex_input(
+                            reflected, expected, error) ||
+                        !expected_attributes.insert(
+                            expected.attribute_id).second)
+                    {
+                        if (error.empty())
+                        {
+                            error = "ShaderMap vertex inputs contain a duplicate logical attribute.";
+                        }
+                        return false;
+                    }
+                    expected_inputs.push_back(std::move(expected));
+                }
+            }
+
+            if (program.vertex_inputs.size() != expected_inputs.size())
+            {
+                error = "ShaderMap Program vertex inputs do not match stage reflection.";
+                return false;
+            }
+            for (const ShaderVertexInput& expected : expected_inputs)
+            {
+                const auto actual = std::find_if(
+                    program.vertex_inputs.begin(),
+                    program.vertex_inputs.end(),
+                    [&](const ShaderVertexInput& candidate) {
+                        return candidate.attribute_id == expected.attribute_id;
+                    });
+                if (actual == program.vertex_inputs.end() ||
+                    !have_same_shader_vertex_input_contract(*actual, expected) ||
+                    actual->target_location != expected.target_location)
+                {
+                    error = "ShaderMap Program vertex input conflicts with stage reflection.";
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
@@ -128,13 +276,21 @@ namespace toy3d
         }
 
         RHIShaderStageFlags stage_mask = RHIShaderStageFlags::None;
+        const ShaderMapStage* vertex_stage = nullptr;
+        const ShaderMapStage* pixel_stage = nullptr;
         for (const ShaderMapStage& stage : program.stages)
         {
             RHIShaderStageFlags stage_flag = RHIShaderStageFlags::None;
             switch (stage.stage)
             {
-            case RHIShaderStage::Vertex: stage_flag = RHIShaderStageFlags::Vertex; break;
-            case RHIShaderStage::Pixel: stage_flag = RHIShaderStageFlags::Pixel; break;
+            case RHIShaderStage::Vertex:
+                stage_flag = RHIShaderStageFlags::Vertex;
+                vertex_stage = &stage;
+                break;
+            case RHIShaderStage::Pixel:
+                stage_flag = RHIShaderStageFlags::Pixel;
+                pixel_stage = &stage;
+                break;
             case RHIShaderStage::Compute: stage_flag = RHIShaderStageFlags::Compute; break;
             default:
                 result.error = "ShaderMap program contains an unsupported shader stage.";
@@ -147,6 +303,10 @@ namespace toy3d
                 return result;
             }
             stage_mask = rhi_enum_or(stage_mask, stage_flag);
+            if (!validate_stage_interfaces(stage, result.error))
+            {
+                return result;
+            }
             for (const ShaderMapBinding& reflected : stage.reflection)
             {
                 const auto expected = std::find_if(program.bindings.begin(), program.bindings.end(),
@@ -191,6 +351,17 @@ namespace toy3d
         if ((!graphics && !compute) || program.stages.empty())
         {
             result.error = "ShaderMap program has an invalid graphics/compute stage set.";
+            return result;
+        }
+        if (vertex_stage != nullptr && pixel_stage != nullptr &&
+            !validate_graphics_stage_interfaces(
+                *vertex_stage, *pixel_stage, result.error))
+        {
+            return result;
+        }
+        if (!validate_program_vertex_inputs(
+                program, vertex_stage, result.error))
+        {
             return result;
         }
         for (const ShaderMapBinding& binding : program.bindings)

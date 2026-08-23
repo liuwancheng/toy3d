@@ -23,6 +23,7 @@ namespace toy3d
         // Full bytecode equality protects the cache from a caller-supplied
         // content-hash collision without putting the bytecode in the hash path.
         std::vector<std::uint8_t> bytecode;
+        std::vector<RHIShaderVertexInputReflection> vertex_inputs;
 
         bool operator==(const RHIShaderKey& other) const;
     };

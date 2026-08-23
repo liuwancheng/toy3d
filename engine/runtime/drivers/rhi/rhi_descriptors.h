@@ -181,12 +181,31 @@ namespace toy3d
         std::uint32_t array_count = 1;
     };
 
+    struct RHIShaderVertexInputReflection
+    {
+        enum class ScalarType
+        {
+            Float32,
+            Int32,
+            UInt32
+        };
+
+        std::string semantic_name;
+        std::uint32_t semantic_index = 0;
+        std::uint32_t location = 0;
+        ScalarType scalar_type = ScalarType::Float32;
+        std::uint32_t component_count = 0;
+
+        bool operator==(const RHIShaderVertexInputReflection& other) const;
+    };
+
     struct RHIShaderDesc
     {
         RHIShaderStage stage = RHIShaderStage::Vertex;
         RHIShaderBytecode bytecode;
         std::string entry_point = "main";
         std::vector<RHIShaderBindingReflection> reflection;
+        std::vector<RHIShaderVertexInputReflection> vertex_inputs;
         std::array<std::uint64_t, 2> content_hash = {0, 0};
         std::string debug_name;
     };
@@ -263,6 +282,9 @@ namespace toy3d
 
         struct VertexAttribute
         {
+            // Location links this layout element to vertex-shader reflection.
+            // Vulkan consumes it directly; D3D backends use the linked
+            // reflection semantic name/index when creating their input layout.
             std::uint32_t location = 0;
             std::uint32_t binding = 0;
             RHIFormat format = RHIFormat::Unknown;

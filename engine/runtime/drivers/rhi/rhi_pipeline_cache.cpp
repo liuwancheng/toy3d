@@ -119,6 +119,7 @@ namespace toy3d
             key.entry_point = desc.entry_point;
             key.content_hash = desc.content_hash;
             key.bytecode = desc.bytecode.bytes;
+            key.vertex_inputs = desc.vertex_inputs;
             return key;
         }
 
@@ -129,6 +130,15 @@ namespace toy3d
             hash_combine(seed, key.entry_point);
             hash_combine(seed, key.content_hash[0]);
             hash_combine(seed, key.content_hash[1]);
+            hash_combine(seed, key.vertex_inputs.size());
+            for (const RHIShaderVertexInputReflection& input : key.vertex_inputs)
+            {
+                hash_combine(seed, input.semantic_name);
+                hash_combine(seed, input.semantic_index);
+                hash_combine(seed, input.location);
+                hash_enum(seed, input.scalar_type);
+                hash_combine(seed, input.component_count);
+            }
         }
 
         void hash_stencil_face(
@@ -162,7 +172,8 @@ namespace toy3d
             target == other.target &&
             entry_point == other.entry_point &&
             content_hash == other.content_hash &&
-            bytecode == other.bytecode;
+            bytecode == other.bytecode &&
+            vertex_inputs == other.vertex_inputs;
     }
 
     bool RHIGraphicsPipelineKey::operator==(const RHIGraphicsPipelineKey& other) const

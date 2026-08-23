@@ -1,5 +1,8 @@
 #include "rendercore/shader/shader_map.h"
 
+#include "rendercore/geometry/local_vertex_factory.h"
+#include "rendercore/shader/rhi_shader_program.h"
+
 #include <iostream>
 #include <stdexcept>
 
@@ -55,7 +58,13 @@ namespace
         vertex.binary = {1, 2, 3, 4};
         vertex.content_hash = nonzero_hash(5);
         vertex.reflection = program.bindings;
+        vertex.interface_variables.push_back({"in.var.POSITION0", "POSITION0",
+            3u, true,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u});
         program.stages.push_back(std::move(vertex));
+        program.vertex_inputs.push_back({toy3d::ShaderVertexAttributeId::Position0,
+            "POSITION", 0u,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u, 3u});
         return program;
     }
 
@@ -120,6 +129,20 @@ namespace
             "resource lookup must preserve group, type, and target binding");
         check(first.program->find_parameter_binding(999) == nullptr,
             "unknown parameter ID must return nullptr");
+
+        auto rhi_program = toy3d::build_rhi_shader_program_desc(*first.program);
+        check(rhi_program.succeeded(), rhi_program.status().message().c_str());
+        check(rhi_program.value().vertex_shader.has_value() &&
+              rhi_program.value().vertex_shader->vertex_inputs.size() == 1u,
+            "RHI Shader conversion must preserve vertex-input reflection");
+        const toy3d::RHIShaderVertexInputReflection& rhi_input =
+            rhi_program.value().vertex_shader->vertex_inputs[0];
+        check(rhi_input.semantic_name == "POSITION" &&
+              rhi_input.semantic_index == 0u && rhi_input.location == 3u &&
+              rhi_input.scalar_type ==
+                  toy3d::RHIShaderVertexInputReflection::ScalarType::Float32 &&
+              rhi_input.component_count == 3u,
+            "RHI Shader conversion must preserve semantic, location, and data shape");
     }
 
     void test_invalid_metadata_and_identity_fail()
@@ -142,6 +165,60 @@ namespace
             "ShaderPlatform mismatch must fail through ShaderMap");
     }
 
+    void test_local_vertex_factory_matches_fixed_shader_inputs()
+    {
+        toy3d::RHIBufferDesc position_desc;
+        position_desc.size = 36u;
+        position_desc.usage = toy3d::RHIResourceUsage::VertexBuffer;
+        toy3d::RHIBufferRef position_buffer =
+            std::make_shared<toy3d::RHIBuffer>(position_desc);
+
+        toy3d::RHIBufferDesc static_desc;
+        static_desc.size = 60u;
+        static_desc.usage = toy3d::RHIResourceUsage::VertexBuffer;
+        toy3d::RHIBufferRef static_buffer =
+            std::make_shared<toy3d::RHIBuffer>(static_desc);
+
+        std::vector<toy3d::VertexStreamComponent> components = {
+            {toy3d::ShaderVertexAttributeId::Position0, 0u, 0u, 12u,
+                toy3d::RHIFormat::R32G32B32Float, position_buffer},
+            {toy3d::ShaderVertexAttributeId::Normal0, 1u, 0u, 20u,
+                toy3d::RHIFormat::R32G32B32Float, static_buffer},
+            {toy3d::ShaderVertexAttributeId::TexCoord0, 1u, 12u, 20u,
+                toy3d::RHIFormat::R32G32Float, static_buffer}};
+        toy3d::LocalVertexFactory vertex_factory(std::move(components));
+
+        const auto float_type =
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
+        std::vector<toy3d::ShaderVertexInput> shader_inputs = {
+            {toy3d::ShaderVertexAttributeId::Position0,
+                "POSITION", 0u, float_type, 3u, 2u},
+            {toy3d::ShaderVertexAttributeId::Normal0,
+                "NORMAL", 0u, float_type, 3u, 0u},
+            {toy3d::ShaderVertexAttributeId::TexCoord0,
+                "TEXCOORD", 0u, float_type, 2u, 1u}};
+        std::vector<toy3d::RHIGraphicsPipelineDesc::VertexBufferLayout> layouts;
+        std::vector<toy3d::RHIGraphicsPipelineDesc::VertexAttribute> attributes;
+        std::vector<toy3d::RHIVertexBufferBinding> bindings;
+        const toy3d::RHIStatus status = vertex_factory.build_vertex_input(
+            shader_inputs, layouts, attributes, bindings);
+        check(static_cast<bool>(status), status.message().c_str());
+        check(layouts.size() == 2u && bindings.size() == 2u &&
+              attributes.size() == 3u &&
+              layouts[0].binding == 0u && layouts[1].binding == 1u &&
+              attributes[0].location == 0u &&
+              attributes[1].location == 1u &&
+              attributes[2].location == 2u,
+            "LocalVertexFactory must emit sorted pipeline layouts and draw bindings");
+
+        shader_inputs.push_back({toy3d::ShaderVertexAttributeId::Color0,
+            "COLOR", 0u, float_type, 4u, 3u});
+        check(!vertex_factory.build_vertex_input(
+                shader_inputs, layouts, attributes, bindings) &&
+              layouts.empty() && attributes.empty() && bindings.empty(),
+            "a Shader requiring absent optional COLOR0 must fail without partial output");
+    }
+
 }
 
 int main()
@@ -150,6 +227,7 @@ int main()
     {
         test_shader_map_caches_full_identity_and_indexes_parameters();
         test_invalid_metadata_and_identity_fail();
+        test_local_vertex_factory_matches_fixed_shader_inputs();
     }
     catch (const std::exception& exception)
     {

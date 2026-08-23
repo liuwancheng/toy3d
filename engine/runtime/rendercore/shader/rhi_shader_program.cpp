@@ -20,6 +20,21 @@ namespace toy3d
             return result;
         }
 
+        RHIShaderVertexInputReflection::ScalarType rhi_scalar_type(
+            shader::ReflectedInterfaceVariable::ScalarType scalar_type)
+        {
+            switch (scalar_type)
+            {
+            case shader::ReflectedInterfaceVariable::ScalarType::Float32:
+                return RHIShaderVertexInputReflection::ScalarType::Float32;
+            case shader::ReflectedInterfaceVariable::ScalarType::Int32:
+                return RHIShaderVertexInputReflection::ScalarType::Int32;
+            case shader::ReflectedInterfaceVariable::ScalarType::UInt32:
+                return RHIShaderVertexInputReflection::ScalarType::UInt32;
+            }
+            return RHIShaderVertexInputReflection::ScalarType::Float32;
+        }
+
         RHIShaderDesc make_shader_desc(
             const ShaderMapProgramData& program,
             const ShaderMapStage& stage)
@@ -40,6 +55,15 @@ namespace toy3d
             {
                 desc.reflection.push_back({binding.name, binding.group,
                     binding.target_binding, binding.type, binding.array_count});
+            }
+            if (stage.stage == RHIShaderStage::Vertex)
+            {
+                for (const ShaderVertexInput& input : program.vertex_inputs)
+                {
+                    desc.vertex_inputs.push_back({input.semantic_name,
+                        input.semantic_index, input.target_location,
+                        rhi_scalar_type(input.scalar_type), input.component_count});
+                }
             }
             return desc;
         }

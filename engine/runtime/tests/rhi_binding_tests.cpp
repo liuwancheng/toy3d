@@ -1,6 +1,8 @@
 #include "drivers/rhi/rhi_command_descriptors.h"
+#include "drivers/rhi/rhi_pipeline_cache.h"
 
 #include <iostream>
+#include <limits>
 #include <memory>
 
 namespace
@@ -44,6 +46,109 @@ namespace
 
 int main()
 {
+    toy3d::RHIShaderDesc vertex_shader;
+    vertex_shader.bytecode.bytes = {1u};
+    vertex_shader.bytecode.target = "spirv";
+    vertex_shader.content_hash = {1u, 0u};
+    vertex_shader.vertex_inputs.push_back({"POSITION", 0u, 0u,
+        toy3d::RHIShaderVertexInputReflection::ScalarType::Float32, 3u});
+    check(static_cast<bool>(toy3d::validate_shader_desc(vertex_shader)),
+        "complete vertex-input reflection must validate");
+
+    toy3d::RHIShaderDesc invalid_shader = vertex_shader;
+    invalid_shader.stage = toy3d::RHIShaderStage::Pixel;
+    check(!toy3d::validate_shader_desc(invalid_shader),
+        "non-vertex shaders must reject vertex-input reflection");
+
+    invalid_shader = vertex_shader;
+    invalid_shader.vertex_inputs.push_back({"POSITION", 0u, 1u,
+        toy3d::RHIShaderVertexInputReflection::ScalarType::Float32, 3u});
+    check(!toy3d::validate_shader_desc(invalid_shader),
+        "duplicate vertex-input semantics must fail");
+
+    invalid_shader = vertex_shader;
+    invalid_shader.vertex_inputs.push_back({"position", 0u, 1u,
+        toy3d::RHIShaderVertexInputReflection::ScalarType::Float32, 3u});
+    check(!toy3d::validate_shader_desc(invalid_shader),
+        "vertex-input semantic uniqueness must be ASCII case-insensitive");
+
+    invalid_shader = vertex_shader;
+    invalid_shader.vertex_inputs.push_back({"NORMAL", 0u, 0u,
+        toy3d::RHIShaderVertexInputReflection::ScalarType::Float32, 3u});
+    check(!toy3d::validate_shader_desc(invalid_shader),
+        "duplicate vertex-input locations must fail");
+
+    invalid_shader = vertex_shader;
+    invalid_shader.vertex_inputs[0].component_count = 0u;
+    check(!toy3d::validate_shader_desc(invalid_shader),
+        "empty vertex-input component shapes must fail");
+
+    invalid_shader = vertex_shader;
+    invalid_shader.vertex_inputs[0].location =
+        std::numeric_limits<std::uint32_t>::max();
+    check(!toy3d::validate_shader_desc(invalid_shader),
+        "sentinel vertex-input locations must fail");
+
+    toy3d::RHIShaderKey first_shader_key;
+    first_shader_key.vertex_inputs = vertex_shader.vertex_inputs;
+    toy3d::RHIShaderKey second_shader_key = first_shader_key;
+    check(first_shader_key == second_shader_key,
+        "shader cache identity must accept equal vertex-input reflection");
+    second_shader_key.vertex_inputs[0].location = 2u;
+    check(!(first_shader_key == second_shader_key),
+        "shader cache identity must include vertex-input target location");
+
+    toy3d::RHIShaderDesc pixel_shader;
+    pixel_shader.stage = toy3d::RHIShaderStage::Pixel;
+    pixel_shader.bytecode.bytes = {2u};
+    pixel_shader.bytecode.target = "spirv";
+    pixel_shader.content_hash = {2u, 0u};
+
+    toy3d::RHIGraphicsPipelineDesc pipeline;
+    pipeline.vertex_shader = std::make_shared<toy3d::RHIShader>(vertex_shader);
+    pipeline.pixel_shader = std::make_shared<toy3d::RHIShader>(pixel_shader);
+    pipeline.binding_layout = std::make_shared<toy3d::RHIBindingLayout>(
+        toy3d::RHIBindingLayoutDesc{});
+    pipeline.vertex_buffers.push_back({0u, 12u,
+        toy3d::RHIVertexInputRate::PerVertex});
+    pipeline.vertex_attributes.push_back(
+        {0u, 0u, toy3d::RHIFormat::R32G32B32Float, 0u});
+    check(static_cast<bool>(toy3d::validate_graphics_pipeline_desc(pipeline)),
+        "pipeline vertex layout must match shader location and float3 shape");
+    const toy3d::RHIShaderVertexInputReflection& d3d_input_layout_seam =
+        pipeline.vertex_shader->desc().vertex_inputs[0];
+    check(d3d_input_layout_seam.semantic_name == "POSITION" &&
+          d3d_input_layout_seam.semantic_index == 0u &&
+          pipeline.vertex_attributes[0].location == d3d_input_layout_seam.location,
+        "D3D backends must be able to recover semantic identity through the common location seam");
+
+    toy3d::RHIGraphicsPipelineDesc invalid_pipeline = pipeline;
+    invalid_pipeline.vertex_attributes[0].format =
+        toy3d::RHIFormat::R32G32B32A32Float;
+    invalid_pipeline.vertex_buffers[0].stride = 16u;
+    check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
+        "pipeline vertex format must match shader component count");
+
+    invalid_pipeline = pipeline;
+    invalid_pipeline.vertex_attributes[0].location = 1u;
+    check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
+        "pipeline vertex location must exist in shader reflection");
+
+    invalid_pipeline = pipeline;
+    invalid_pipeline.vertex_attributes[0].format = toy3d::RHIFormat::BC1UNorm;
+    check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
+        "formats without a common RHI vertex shape must fail before backend creation");
+
+    invalid_pipeline = pipeline;
+    invalid_pipeline.vertex_attributes[0].offset = 4u;
+    check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
+        "vertex attribute byte range must fit its declared stride");
+
+    invalid_pipeline = pipeline;
+    invalid_pipeline.vertex_attributes.clear();
+    check(!toy3d::validate_graphics_pipeline_desc(invalid_pipeline),
+        "pipeline vertex layout must provide every reflected shader input");
+
     toy3d::RHIBindingLayoutDesc cross_group_slots;
     cross_group_slots.entries.push_back({toy3d::RHIBindingGroup::Global, 0,
         toy3d::RHIResourceBindingType::SampledTexture,

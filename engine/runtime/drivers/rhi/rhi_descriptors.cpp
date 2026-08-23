@@ -1,7 +1,9 @@
 #include "drivers/rhi/rhi_descriptors.h"
 #include "drivers/rhi/rhi_resource.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
 #include <tuple>
 
@@ -58,6 +60,86 @@ namespace toy3d
         {
             return format == RHIFormat::D24UNormS8UInt ||
                 format == RHIFormat::D32FloatS8UInt;
+        }
+
+        bool vertex_format_shape(
+            RHIFormat format,
+            RHIShaderVertexInputReflection::ScalarType& scalar_type,
+            std::uint32_t& component_count,
+            std::uint32_t& byte_size)
+        {
+            scalar_type = RHIShaderVertexInputReflection::ScalarType::Float32;
+            switch (format)
+            {
+            case RHIFormat::R8UNorm:
+            case RHIFormat::R8SNorm:
+                component_count = 1u;
+                byte_size = 1u;
+                return true;
+            case RHIFormat::R8G8B8A8UNorm:
+            case RHIFormat::R8G8B8A8SNorm:
+            case RHIFormat::R10G10B10A2UNorm:
+                component_count = 4u;
+                byte_size = 4u;
+                return true;
+            case RHIFormat::R11G11B10Float:
+                component_count = 3u;
+                byte_size = 4u;
+                return true;
+            case RHIFormat::R16Float:
+                component_count = 1u;
+                byte_size = 2u;
+                return true;
+            case RHIFormat::R16G16Float:
+                component_count = 2u;
+                byte_size = 4u;
+                return true;
+            case RHIFormat::R16G16B16A16Float:
+                component_count = 4u;
+                byte_size = 8u;
+                return true;
+            case RHIFormat::R32Float:
+                component_count = 1u;
+                byte_size = 4u;
+                return true;
+            case RHIFormat::R32G32Float:
+                component_count = 2u;
+                byte_size = 8u;
+                return true;
+            case RHIFormat::R32G32B32Float:
+                component_count = 3u;
+                byte_size = 12u;
+                return true;
+            case RHIFormat::R32G32B32A32Float:
+                component_count = 4u;
+                byte_size = 16u;
+                return true;
+            case RHIFormat::R16UInt:
+                scalar_type = RHIShaderVertexInputReflection::ScalarType::UInt32;
+                component_count = 1u;
+                byte_size = 2u;
+                return true;
+            case RHIFormat::R32UInt:
+                scalar_type = RHIShaderVertexInputReflection::ScalarType::UInt32;
+                component_count = 1u;
+                byte_size = 4u;
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        std::string canonical_semantic_name(const std::string& semantic_name)
+        {
+            std::string result = semantic_name;
+            for (char& character : result)
+            {
+                if (character >= 'a' && character <= 'z')
+                {
+                    character = static_cast<char>(character - 'a' + 'A');
+                }
+            }
+            return result;
         }
 
         RHIFormatUsage required_format_usage(RHIResourceUsage usage)
@@ -257,6 +339,16 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "3D textures cannot have array layers.");
         }
         return RHIStatus::success();
+    }
+
+    bool RHIShaderVertexInputReflection::operator==(
+        const RHIShaderVertexInputReflection& other) const
+    {
+        return semantic_name == other.semantic_name &&
+            semantic_index == other.semantic_index &&
+            location == other.location &&
+            scalar_type == other.scalar_type &&
+            component_count == other.component_count;
     }
 
     RHIStatus validate_texture_format_capabilities(
@@ -492,6 +584,50 @@ namespace toy3d
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader reflection register must be unique within its group and resource class.");
             }
         }
+
+        if (desc.stage != RHIShaderStage::Vertex && !desc.vertex_inputs.empty())
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Only vertex shaders may contain vertex-input reflection.");
+        }
+        using SemanticKey = std::pair<std::string, std::uint32_t>;
+        std::set<SemanticKey> reflected_semantics;
+        std::set<std::uint32_t> reflected_locations;
+        for (const RHIShaderVertexInputReflection& input : desc.vertex_inputs)
+        {
+            if (input.semantic_name.empty() ||
+                input.semantic_index == std::numeric_limits<std::uint32_t>::max() ||
+                input.location == std::numeric_limits<std::uint32_t>::max())
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Shader vertex inputs require a semantic and valid semantic index and location.");
+            }
+            if (static_cast<std::uint32_t>(input.scalar_type) >
+                    static_cast<std::uint32_t>(
+                        RHIShaderVertexInputReflection::ScalarType::UInt32) ||
+                input.component_count == 0 || input.component_count > 4)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Shader vertex input scalar and component shape is unsupported.");
+            }
+            if (!reflected_semantics.emplace(
+                    canonical_semantic_name(input.semantic_name),
+                    input.semantic_index).second)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Shader vertex-input semantic and index must be unique.");
+            }
+            if (!reflected_locations.insert(input.location).second)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Shader vertex-input location must be unique.");
+            }
+        }
         return RHIStatus::success();
     }
 
@@ -630,6 +766,18 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Graphics pipeline shader stages do not match their roles.");
         }
+        const RHIStatus vertex_shader_status = validate_shader_desc(
+            desc.vertex_shader->desc());
+        if (!vertex_shader_status)
+        {
+            return vertex_shader_status;
+        }
+        const RHIStatus pixel_shader_status = validate_shader_desc(
+            desc.pixel_shader->desc());
+        if (!pixel_shader_status)
+        {
+            return pixel_shader_status;
+        }
         if (desc.color_attachment_count > desc.color_formats.size())
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Pipeline has too many color attachments.");
@@ -662,6 +810,53 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Vertex attributes require a format, an existing binding, and a unique location.");
             }
+
+            RHIShaderVertexInputReflection::ScalarType scalar_type =
+                RHIShaderVertexInputReflection::ScalarType::Float32;
+            std::uint32_t component_count = 0u;
+            std::uint32_t byte_size = 0u;
+            if (!vertex_format_shape(
+                    attribute.format, scalar_type, component_count, byte_size))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::Unsupported,
+                    "Vertex attribute format has no common RHI input shape.");
+            }
+            const auto layout = std::find_if(
+                desc.vertex_buffers.begin(), desc.vertex_buffers.end(),
+                [&](const RHIGraphicsPipelineDesc::VertexBufferLayout& candidate)
+                {
+                    return candidate.binding == attribute.binding;
+                });
+            if (attribute.offset > layout->stride ||
+                byte_size > layout->stride - attribute.offset)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vertex attribute byte range exceeds its buffer stride.");
+            }
+            const auto reflected = std::find_if(
+                desc.vertex_shader->desc().vertex_inputs.begin(),
+                desc.vertex_shader->desc().vertex_inputs.end(),
+                [&](const RHIShaderVertexInputReflection& input)
+                {
+                    return input.location == attribute.location;
+                });
+            if (reflected == desc.vertex_shader->desc().vertex_inputs.end() ||
+                reflected->scalar_type != scalar_type ||
+                reflected->component_count != component_count)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Vertex attribute location and format must match shader input reflection.");
+            }
+        }
+        if (desc.vertex_attributes.size() !=
+            desc.vertex_shader->desc().vertex_inputs.size())
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Graphics pipeline vertex layout must provide every shader vertex input exactly once.");
         }
         for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
         {

@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "format/shader_format_types.h"
+#include "rendercore/shader/shader_vertex_input.h"
 
 #include <cstdint>
 #include <string>
@@ -84,6 +85,7 @@ namespace toy3d
         std::vector<std::uint8_t> binary;
         ShaderContentHash content_hash{};
         std::vector<ShaderMapBinding> reflection;
+        std::vector<shader::ReflectedInterfaceVariable> interface_variables;
     };
 
     struct ShaderMapProgramData
@@ -98,5 +100,6 @@ namespace toy3d
         ShaderContentHash permutation_key{};
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderMapStage> stages;
+        std::vector<ShaderVertexInput> vertex_inputs;
     };
 }

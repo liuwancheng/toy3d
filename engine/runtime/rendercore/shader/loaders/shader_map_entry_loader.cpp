@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <set>
 #include <sstream>
 #include <utility>
 
@@ -223,6 +224,32 @@ namespace toy3d
                     }
                     output.reflection.push_back(convert_binding(*mapping, reflected));
                 }
+                output.interface_variables = stage.reflection.interface_variables;
+                if (output.stage == RHIShaderStage::Vertex)
+                {
+                    std::set<ShaderVertexAttributeId> attributes;
+                    for (const shader::ReflectedInterfaceVariable& reflected :
+                         output.interface_variables)
+                    {
+                        if (!reflected.input)
+                        {
+                            continue;
+                        }
+                        ShaderVertexInput vertex_input;
+                        if (!try_make_shader_vertex_input(
+                                reflected, vertex_input, error))
+                        {
+                            return std::nullopt;
+                        }
+                        if (!attributes.insert(vertex_input.attribute_id).second)
+                        {
+                            error = "ShaderMap vertex inputs contain a duplicate logical attribute.";
+                            return std::nullopt;
+                        }
+                        program.vertex_inputs.push_back(
+                            std::move(vertex_input));
+                    }
+                }
                 program.stages.push_back(std::move(output));
             }
             return program;
@@ -292,13 +319,20 @@ namespace toy3d
                 result.error = std::move(conversion_error);
                 return result;
             }
+            ShaderMapProgramLoadResult validated = validate_shader_map_program(
+                std::move(*converted), key);
+            if (!validated.succeeded())
+            {
+                result.error = std::move(validated.error);
+                return result;
+            }
             if (result.program)
             {
                 result.program.reset();
                 result.error = "ShaderMapEntry lookup returned duplicate Program identities.";
                 return result;
             }
-            result.program = std::move(converted);
+            result.program = std::move(validated.program);
         }
         if (!result.program)
         {
