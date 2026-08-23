@@ -3,10 +3,12 @@
 #include "drivers/rhi/rhi_queue.h"
 #include "rendercore/material/material.h"
 #include "rendercore/rendering_thread.h"
+#include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/texture/texture.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
 #include "renderscene/material/material_render_proxy.h"
+#include "renderscene/mesh_batch.h"
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/texture/texture_resource.h"
@@ -581,6 +583,29 @@ int main()
     check(index_binding.buffer != nullptr &&
           index_binding.format == toy3d::RHIIndexFormat::UInt16,
         "StaticMeshIndexBuffer must retain the Asset index-width contract");
+    toy3d::MaterialRenderProxy batch_material_proxy(*material);
+    toy3d::StaticMeshSceneProxy batch_scene_proxy(
+        toy3d::Matrix4::identity(),
+        static_mesh->local_bounds(),
+        true,
+        &render_data,
+        {&batch_material_proxy});
+    const toy3d::StaticMeshSection& batch_section =
+        render_data.sections().front();
+    toy3d::MeshBatch mesh_batch(
+        batch_scene_proxy,
+        render_data,
+        *render_data.vertex_factory(),
+        batch_material_proxy,
+        batch_section.first_index,
+        batch_section.index_count);
+    check(&mesh_batch.scene_proxy() == &batch_scene_proxy &&
+          &mesh_batch.render_data() == &render_data &&
+          &mesh_batch.vertex_factory() == render_data.vertex_factory() &&
+          &mesh_batch.material_render_proxy() == &batch_material_proxy &&
+          mesh_batch.first_index() == 0u &&
+          mesh_batch.index_count() == 3u,
+        "MeshBatch must compose one frame-local section with non-owning Proxy, RenderData, LocalVertexFactory, and MaterialRenderProxy references");
 
     std::vector<toy3d::ShaderVertexInput> shader_inputs(4u);
     shader_inputs[0].attribute_id = toy3d::ShaderVertexAttributeId::Position0;

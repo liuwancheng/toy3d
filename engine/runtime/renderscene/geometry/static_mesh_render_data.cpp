@@ -276,6 +276,19 @@ namespace toy3d
         , index_buffer_(static_mesh.indices())
         , sections_(static_mesh.sections())
     {
+        // C++17 get_if keeps the fixed 16/32-bit index alternatives explicit
+        // while retaining a width-independent range limit for section checks.
+        const auto* indices_u16 =
+            std::get_if<std::vector<std::uint16_t>>(&static_mesh.indices());
+        if (indices_u16 != nullptr)
+        {
+            index_count_ = indices_u16->size();
+        }
+        else if (const auto* indices_u32 =
+            std::get_if<std::vector<std::uint32_t>>(&static_mesh.indices()))
+        {
+            index_count_ = indices_u32->size();
+        }
     }
 
     RHIStatus StaticMeshRenderData::begin_init(

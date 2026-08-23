@@ -5,6 +5,7 @@
 #include "renderscene/render_resource.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -124,6 +125,7 @@ namespace toy3d
         {
             return sections_;
         }
+        std::size_t index_count() const { return index_count_; }
 
     private:
         PositionVertexBuffer position_vertex_buffer_;
@@ -132,5 +134,6 @@ namespace toy3d
         StaticMeshIndexBuffer index_buffer_;
         std::unique_ptr<LocalVertexFactory> local_vertex_factory_;
         std::vector<StaticMeshSection> sections_;
+        std::size_t index_count_ = 0;
     };
 }

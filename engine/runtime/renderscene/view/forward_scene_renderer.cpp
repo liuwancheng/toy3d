@@ -6,8 +6,10 @@
 
 #include "logging/logger.h"
 #include "math/matrix_construction.h"
+#include "rendercore/geometry/local_vertex_factory.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "renderscene/material/material_render_proxy.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
 #include "renderscene/primitive_scene_info.h"
 #include "renderscene/render_scene.h"
@@ -251,12 +253,95 @@ namespace toy3d
 
                 const StaticMeshRenderData* const render_data =
                     static_mesh_proxy->render_data();
-                if (render_data == nullptr || !render_data->is_drawable())
+                if (render_data == nullptr)
                 {
+                    TOY_LOG_ERROR(
+                        "ForwardSceneRenderer skipped a visible StaticMesh with no StaticMeshRenderData.");
+                    continue;
+                }
+                if (!render_data->is_drawable())
+                {
+                    TOY_LOG_ERROR(
+                        "ForwardSceneRenderer skipped a visible StaticMesh whose complete render-data gate is not drawable.");
                     continue;
                 }
 
-                mesh_batches.emplace_back(*static_mesh_proxy, *render_data);
+                const LocalVertexFactory* const vertex_factory =
+                    render_data->vertex_factory();
+                if (vertex_factory == nullptr)
+                {
+                    TOY_LOG_ERROR(
+                        "ForwardSceneRenderer skipped a visible StaticMesh with no LocalVertexFactory.");
+                    continue;
+                }
+
+                const std::vector<MaterialRenderProxy*>& material_proxies =
+                    static_mesh_proxy->material_render_proxies();
+                const std::vector<StaticMeshSection>& sections =
+                    render_data->sections();
+                for (std::size_t section_index = 0;
+                     section_index < sections.size();
+                     ++section_index)
+                {
+                    const StaticMeshSection& section = sections[section_index];
+                    const std::size_t first_index = section.first_index;
+                    const std::size_t index_count = section.index_count;
+                    if (index_count == 0u || index_count % 3u != 0u ||
+                        first_index > render_data->index_count() ||
+                        index_count > render_data->index_count() - first_index)
+                    {
+                        TOY_LOG_ERROR(
+                            "ForwardSceneRenderer skipped StaticMesh section {} with an invalid index range.",
+                            section_index);
+                        continue;
+                    }
+                    if (section.material_slot >= material_proxies.size())
+                    {
+                        TOY_LOG_ERROR(
+                            "ForwardSceneRenderer skipped StaticMesh section {} whose Material slot is out of range.",
+                            section_index);
+                        continue;
+                    }
+
+                    MaterialRenderProxy* const material_proxy =
+                        material_proxies[section.material_slot];
+                    if (material_proxy == nullptr ||
+                        !material_proxy->shader_program())
+                    {
+                        TOY_LOG_ERROR(
+                            "ForwardSceneRenderer skipped StaticMesh section {} with no usable Material binding.",
+                            section_index);
+                        continue;
+                    }
+
+                    std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>
+                        vertex_layouts;
+                    std::vector<RHIGraphicsPipelineDesc::VertexAttribute>
+                        vertex_attributes;
+                    std::vector<RHIVertexBufferBinding> vertex_bindings;
+                    const RHIStatus vertex_status =
+                        vertex_factory->build_vertex_input(
+                            material_proxy->shader_program()->data().vertex_inputs,
+                            vertex_layouts,
+                            vertex_attributes,
+                            vertex_bindings);
+                    if (!vertex_status)
+                    {
+                        TOY_LOG_ERROR(
+                            "ForwardSceneRenderer skipped StaticMesh section {} because LocalVertexFactory is incompatible with ShaderVertexInput: {}",
+                            section_index,
+                            vertex_status.message());
+                        continue;
+                    }
+
+                    mesh_batches.emplace_back(
+                        *static_mesh_proxy,
+                        *render_data,
+                        *vertex_factory,
+                        *material_proxy,
+                        section.first_index,
+                        section.index_count);
+                }
             }
         }
     }
