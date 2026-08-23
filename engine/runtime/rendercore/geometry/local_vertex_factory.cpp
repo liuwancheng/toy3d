@@ -61,19 +61,8 @@ namespace toy3d
     {
     }
 
-    RHIStatus LocalVertexFactory::build_vertex_input(
-        const std::vector<ShaderVertexInput>& shader_inputs,
-        std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,
-        std::vector<RHIGraphicsPipelineDesc::VertexAttribute>& vertex_attributes,
-        std::vector<RHIVertexBufferBinding>& vertex_bindings) const
+    RHIStatus LocalVertexFactory::validate_streams() const
     {
-        vertex_layouts.clear();
-        vertex_attributes.clear();
-        vertex_bindings.clear();
-        std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> built_layouts;
-        std::vector<RHIGraphicsPipelineDesc::VertexAttribute> built_attributes;
-        std::vector<RHIVertexBufferBinding> built_bindings;
-
         std::set<ShaderVertexAttributeId> available_attributes;
         std::set<std::uint32_t> available_streams;
         for (const VertexStreamComponent& component : stream_components)
@@ -135,6 +124,27 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "LocalVertexFactory requires POSITION0, NORMAL0, and TEXCOORD0 streams.");
             }
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus LocalVertexFactory::build_vertex_input(
+        const std::vector<ShaderVertexInput>& shader_inputs,
+        std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,
+        std::vector<RHIGraphicsPipelineDesc::VertexAttribute>& vertex_attributes,
+        std::vector<RHIVertexBufferBinding>& vertex_bindings) const
+    {
+        vertex_layouts.clear();
+        vertex_attributes.clear();
+        vertex_bindings.clear();
+        std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> built_layouts;
+        std::vector<RHIGraphicsPipelineDesc::VertexAttribute> built_attributes;
+        std::vector<RHIVertexBufferBinding> built_bindings;
+
+        const RHIStatus stream_status = validate_streams();
+        if (!stream_status)
+        {
+            return stream_status;
         }
 
         std::set<ShaderVertexAttributeId> matched_attributes;

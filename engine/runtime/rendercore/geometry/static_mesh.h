@@ -3,6 +3,7 @@
 #include "rendercore/geometry/axis_aligned_bounds.h"
 #include "rendercore/material/material.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <variant>
@@ -33,6 +34,7 @@ namespace toy3d
     struct StaticMeshDesc
     {
         std::vector<StaticMeshVertex> vertices;
+        std::vector<std::array<std::uint8_t, 4>> vertex_colors;
         StaticMeshIndexData indices;
         std::vector<StaticMeshSection> sections;
         std::vector<MaterialInstanceRef> material_slots;
@@ -50,6 +52,10 @@ namespace toy3d
         StaticMesh& operator=(StaticMesh&&) noexcept = delete;
 
         const std::vector<StaticMeshVertex>& vertices() const { return vertices_; }
+        const std::vector<std::array<std::uint8_t, 4>>& vertex_colors() const
+        {
+            return vertex_colors_;
+        }
         const StaticMeshIndexData& indices() const { return indices_; }
         const std::vector<StaticMeshSection>& sections() const { return sections_; }
         const std::vector<MaterialInstanceRef>& material_slots() const { return material_slots_; }
@@ -59,6 +65,7 @@ namespace toy3d
         StaticMesh(StaticMeshDesc desc, AxisAlignedBounds local_bounds);
 
         std::vector<StaticMeshVertex> vertices_;
+        std::vector<std::array<std::uint8_t, 4>> vertex_colors_;
         StaticMeshIndexData indices_;
         std::vector<StaticMeshSection> sections_;
         std::vector<MaterialInstanceRef> material_slots_;

@@ -12,6 +12,8 @@ namespace toy3d
     public:
         explicit LocalVertexFactory(std::vector<VertexStreamComponent> components);
 
+        RHIStatus validate_streams() const;
+
         RHIStatus build_vertex_input(
             const std::vector<ShaderVertexInput>& shader_inputs,
             std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,

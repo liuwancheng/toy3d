@@ -81,6 +81,13 @@ namespace toy3d
             TOY_LOG_ERROR("A StaticMesh requires vertex and index data.");
             return nullptr;
         }
+        if (!desc.vertex_colors.empty() &&
+            desc.vertex_colors.size() != desc.vertices.size())
+        {
+            TOY_LOG_ERROR(
+                "StaticMesh optional vertex colors must match the vertex count.");
+            return nullptr;
+        }
         if (desc.sections.empty() || desc.material_slots.empty())
         {
             TOY_LOG_ERROR("A StaticMesh requires at least one Section and Material slot.");
@@ -138,6 +145,7 @@ namespace toy3d
         StaticMeshDesc desc,
         AxisAlignedBounds local_bounds)
         : vertices_(std::move(desc.vertices)),
+          vertex_colors_(std::move(desc.vertex_colors)),
           indices_(std::move(desc.indices)),
           sections_(std::move(desc.sections)),
           material_slots_(std::move(desc.material_slots)),
@@ -147,6 +155,7 @@ namespace toy3d
 
     StaticMesh::StaticMesh(StaticMesh&& other) noexcept
         : vertices_(std::move(other.vertices_)),
+          vertex_colors_(std::move(other.vertex_colors_)),
           indices_(std::move(other.indices_)),
           sections_(std::move(other.sections_)),
           material_slots_(std::move(other.material_slots_)),
