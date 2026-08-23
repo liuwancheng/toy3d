@@ -11,7 +11,7 @@
 | `ViewInfo` | 新增 class | RT-only per-view 状态；由 SceneRenderer 从 SceneView 创建，保存派生矩阵、ConvexVolume、ViewUniformShaderParameters 和仅当前帧有效的可见结果 |
 | `SceneRenderer` | 新增 polymorphic class | GT 基于 SceneViewFamily 创建，Draw command 独占并移入 RT；RT 读取 RenderScene、录制 pass、执行后析构 |
 | `ForwardSceneRenderer` | 新增 final class | SceneRenderer 的前向实现；依次执行 `init_views()`、`compute_view_visibility()` 与 `render_base_pass()` |
-| `MeshBatch` | 新增 value type | UE4.27 同名术语；Toy3d 中是 `ViewInfo` 当前 Draw 持有的 frame-local、Render-side non-owning mesh draw 输入，只组合可见 `StaticMeshSceneProxy` 与通过整体可绘制 gate 的 `StaticMeshRenderData`；不拥有 Asset、Proxy、Material、RenderResource 或 RHI object，也不跨帧存活。任务 8.9 已确认该名称；不能复用 `PrimitiveSceneInfo`，因为后者是 RenderScene-owned 场景注册与 Proxy ownership 节点，不应承载 per-view draw 输入。section range、`LocalVertexFactory` 与 `MaterialRenderProxy` 组合由任务 10.8 完成 |
+| `MeshBatch` | 新增 value type | UE4.27 同名术语；Toy3d 中是 `ViewInfo` 当前 Draw 持有的 frame-local、Render-side non-owning mesh draw 输入，只组合可见 `StaticMeshSceneProxy` 与通过整体可绘制 gate 的 `StaticMeshRenderData`；不拥有 Asset、Proxy、Material、RenderResource 或 RHI object，也不跨帧存活。任务 8.9 已确认该名称；不能复用 `PrimitiveSceneInfo`，因为后者是 RenderScene-owned 场景注册与 Proxy ownership 节点，不应承载 per-view draw 输入。section range、`LocalVertexFactory` 与 `MaterialRenderProxy` 组合由任务 10.13 完成 |
 | `Plane` | 新增共享 math value type | 表达归一化平面及 signed-distance 测试；正半空间是 ConvexVolume 内部，不依赖 Renderer 或 RHI |
 | `ConvexVolume` | 新增共享 math value type | 保存有效 Plane 集合并执行 point/bounds 相交测试；支持 finite 与 infinite-far frustum |
 | `ViewUniformShaderParameters` | 新增 value type | ViewInfo-owned canonical View logical Binding Group 参数；由有效的 camera/matrix values 在 RT 初始化，不拥有 RHI resource、viewport 或 backend object |

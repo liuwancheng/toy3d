@@ -309,6 +309,32 @@ StaticMeshRenderData
 
 `Texture` 是 GT/Asset-side Texture2D asset，拥有 `TextureDesc`、CPU initial payload 和地址稳定的 `TextureResource` allocation；MaterialInstance 通过 `TextureRef` 覆盖 RT 使用期。`TextureResource` 继承 RenderResource，在 RT 保存 active/candidate RHI texture/view。内容更新不更换 view 或 binding generation；descriptor/format/mip replacement 只有在 submit 成功后发布并递增 RT-only binding generation。
 
+Texture source、Cooked payload 与 RHI resource 是三个独立层次；共享 `PixelFormat` 只统一规范化 GPU storage layout，不统一 source encoding、Cook policy 或 RHI resource usage：
+
+```text
+Texture source layer
+├─ 外部文件编码 / Editor source data
+└─ color / import / Cook policy
+        ↓ import / cook
+Cooked Texture payload
+├─ engine/core/pixel_format::PixelFormat（规范化 GPU-ready storage layout）
+├─ extent / mips / row pitch / slice pitch
+└─ GPU-ready bytes
+        ↓ TextureResource RT policy
+RHI Texture resource
+├─ 同一个 PixelFormat
+├─ RHIResourceUsage / RHIAccess / sample count / view
+└─ backend-local VkFormat / DXGI_FORMAT mapping
+```
+
+`PixelFormat` 放入 `engine/core/pixel_format/` 的独立 `Toy3dPixelFormat` target，使 runtime、editor、tools 与公共 RHI 都能依赖它而不发生 Asset→RHI 或 tools→runtime 反向依赖。现有 `RHIFormat` 在同一批次直接迁移并删除，不保留 alias、数字强转或第二套一一对应枚举；Vulkan、D3D11、D3D12 的 native format 转换仍只存在于各 backend。
+
+第一阶段不新增 `TextureSourceFormat`。PNG/JPEG/DDS 等文件编码、可重新 Cook 的 source data、色彩处理和 import policy 属于未来 Editor/Asset source 层；Editor preview 与 Cook output 可以消费已经规范化为 `PixelFormat` 的 GPU-ready payload。`TextureDesc` 不保存外部文件编码或 RHI usage，只描述规范化 Texture2D extent、`PixelFormat`、mips、逐 mip payload 与 pitch。
+
+第一阶段 Asset Texture 固定为单采样 sampled Texture2D，不表达 RenderTarget、DepthStencil 或 Storage 用途，也不新增镜像 `TextureUsage`。`TextureResource` 在 RT 将 cooked payload 转换为 `RHITextureDesc`，固定请求 `ShaderResource | CopyDestination`、`sample_count = 1` 和显式 upload/transition；RenderTarget、DepthStencil 与 Storage texture 由 RenderScene/RDG 使用公共 RHI descriptor 创建，不属于 Asset `Texture`。RHI 创建仍必须依据目标 profile 对完整 format/usage/sample 组合返回可诊断的 `Unsupported`。
+
+format metadata 必须表达 block width、block height 与 bytes per block。未压缩格式可视为 1×1 block；BC、ASTC、PVRTC 等 block-compressed format 的最小 row pitch、slice pitch 和 payload size 必须按 block count 计算并检查溢出，禁止以 bytes-per-texel 近似。Cook 只验证 cooked payload 的 GPU-ready layout 与目标 sampled-texture profile；runtime 在构造上述固定 RHI descriptor 后验证完整 format/usage/sample 组合。
+
 MaterialRenderProxy 不继承 RenderResource。普通 setter 只更新参数表和 dirty；Draw 前按需生成 frame-local constants/binding。结构性 shader/layout/render-state 变化使用完整 candidate replacement。
 
 ### 9. VertexFactory 只桥接 Shader 输入与 geometry streams

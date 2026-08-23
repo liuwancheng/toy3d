@@ -15,6 +15,7 @@ Toy3d 现有 Game/Render 传输、Engine 启动链、RenderScene、资源镜像�
 - 建立无 RHI 参数的 move-only RenderCommand、RenderingThread、RenderCommandFence、FrameEndSync 和 single-thread 等价路径；不引入 RHI Thread、route、registry 或 `RHICommandListImmediate`。
 - 建立 Renderer-owned RenderScene、World/SceneInterface、PrimitiveSceneProxy/PrimitiveSceneInfo、SceneView/SceneViewFamily、SceneRenderer/ViewInfo 与一次性 Draw 的 UE 风格边界；第一阶段由 `init_views()`、`compute_view_visibility()`、`MeshBatch` 和 `ForwardSceneRenderer::render_base_pass()` 形成显式纵向闭环，不建立临时通用 Pass Scheduler。
 - **BREAKING**：建立 RT-only、non-owning RenderResourceManager，分别规范 StaticMesh、Texture 与 Material 的 init/update/replacement/release。
+- **BREAKING**：建立 runtime、editor、tools 与公共 RHI 共享的 GPU-ready `PixelFormat`，并在同一批次迁移和删除现有 `RHIFormat`；不保留 compatibility alias，也不建立语义重复的 Asset/Render 格式枚举。
 - 建立 Shader vertex-input 到 geometry stream 的跨层闭环：HLSL vertex entry signature 是唯一逻辑 schema，Shader reflection 形成 `ShaderVertexInput`，`LocalVertexFactory` 以 `VertexStreamComponent` 匹配 StaticMesh streams，公共 RHI 通过 `RHIShaderVertexInputReflection` 让 Vulkan 使用 location、D3D11/D3D12 使用 semantic name/index；不新增 `.shader VertexLayout`，也不复制 UE 完整的 VertexFactory shader/permutation 注册体系。
 - **BREAKING**：RHI frame-end 分离业务 submit 与 presentation status，并规范 local/committed state、completion、abort 和 deferred deletion。
 - 定义 renderer bootstrap、placeholder、viewport、terminal、drain 和 shutdown 顺序。
@@ -50,7 +51,7 @@ Toy3d 现有 Game/Render 传输、Engine 启动链、RenderScene、资源镜像�
 
 ## Impact
 
-- 受影响模块：具体 `engine/runtime/engine.h/.cpp`、Core Task Graph、RenderCore bridge、GameScene、RenderScene、ShaderCompiler reflection、ShaderMapEntry/runtime loader、公共 RHI、Vulkan backend、graphics pipeline vertex layout、runtime CMake 与相关测试；不新增 Engine 模块或第二个 Engine 类型层级。
+- 受影响模块：具体 `engine/runtime/engine.h/.cpp`、Core Task Graph、共享 Core `PixelFormat`、RenderCore bridge、GameScene、RenderScene、Editor/Cook texture 路径、ShaderCompiler reflection、ShaderMapEntry/runtime loader、公共 RHI、Vulkan backend、graphics pipeline vertex layout、runtime CMake 与相关测试；不新增 Engine 模块或第二个 Engine 类型层级。
 - 旧 Game/Render transport、资源 cache/ID/revision、空壳 device command list 和 Engine 直持 RHI/SceneRendering 的路径将被迁移或删除。
 - RHI 公共接口仍须可由 Vulkan、D3D11 FL11_0、D3D12 和 `VulkanPortable v1` 实现。
 - 本 change 取代此前粗粒度规划，并成为 `document/index.md` 指向的唯一执行入口。

@@ -6,8 +6,9 @@
 
 | Type | 状态 | 职责与边界 |
 | --- | --- | --- |
-| `Texture` | 新增 class | GT/Asset-side Texture2D asset；拥有规范化 descriptor、CPU source/cooked initial payload 和地址稳定的 TextureResource allocation；不包含 RHI handle |
-| `TextureDesc` | 新增 value type | Texture 创建输入；描述第一阶段 Texture2D extent、format、mips、row/slice pitch 与 initial pixels，不包含 backend native 类型 |
+| `PixelFormat` | 新增共享 enum class | UE4.27 对应 `EPixelFormat` 的 GPU-ready pixel/vertex storage format；Toy3d 中位于 `engine/core/pixel_format/` 独立 `Toy3dPixelFormat` target，无 ownership、线程可变状态或 backend native value，供 runtime、editor、tools 与公共 RHI 按值共享。不能复用现有 `RHIFormat`，因为 Asset/Editor 依赖它会泄漏 RHI 分层；不能新增一一对应的 `TextureFormat`，因为那会复制相同 GPU-ready 语义并产生跨层转换。用户已确认以 `PixelFormat` 单轨迁移并删除 `RHIFormat`，不保留 alias |
+| `Texture` | 新增 class | GT/Asset-side Texture2D asset；拥有规范化 descriptor、CPU cooked initial payload 和地址稳定的 TextureResource allocation；不包含 RHI handle |
+| `TextureDesc` | 新增 value type | Texture 创建输入；描述第一阶段 Texture2D extent、共享 `PixelFormat`、mips、row/slice pitch 与规范化 GPU-ready initial pixels，不包含外部文件编码、RHI usage 或 backend native 类型 |
 | `TextureRef` | 新增 alias | `std::shared_ptr<const Texture>`；MaterialInstance 用它覆盖 MaterialRenderProxy/TextureResource 的 RT 使用期 |
 | `TextureResource` | 新增 RenderResource | UE 风格 Texture RT representation；RT 管理 active/candidate RHI texture/view 与 binding generation；MaterialRenderProxy non-owning 引用 |
 
@@ -16,6 +17,10 @@
 `TextureResource` 对应 UE4.27 中容易识别的 `FTextureResource` 职责；Toy3d 不使用 UObject 或 `F` 前缀。它已经继承 `RenderResource`，名称不再重复强调 render。`Texture` 与公共 RHI 的 `RHITexture` 保持明确分层：前者是 Asset/GT identity，后者只是在 RT/backend 使用的 GPU resource。
 
 第一阶段只实现 Texture2D，不实现 virtual texture、streaming、sparse/partial residency、cube、array、3D、bindless 或按 upload byte budget 调度。未来扩展这些能力时 MUST 先补充 Type Contracts/capability，不得把 backend dimension 或 sparse handle泄漏到 TextureDesc。
+
+第一阶段不新增 `TextureSourceFormat`。PNG/JPEG/DDS 等外部文件编码、可重新 Cook 的 source data、色彩处理和 import policy 属于未来 Editor/Asset source 层；Editor preview 和 Cook output MAY 使用已规范化的共享 `PixelFormat`。公共 RHI descriptors MUST 使用同一个 `PixelFormat`，native `VkFormat`/`DXGI_FORMAT` 映射 MUST 只存在于各 backend。
+
+第一阶段 Asset Texture 固定表达单采样 sampled Texture2D。`TextureDesc` MUST NOT 保存 `RHIResourceUsage`，也不得新增语义镜像的 Asset `TextureUsage`；`TextureResource` MUST 在 RT 构造使用 `ShaderResource | CopyDestination`、`sample_count = 1` 的 `RHITextureDesc`，并通过显式 upload 与 transition 到 graphics shader-resource access 完成初始化。RenderTarget、DepthStencil 与 Storage texture MUST 由 RenderScene/RDG 使用公共 RHI descriptor 创建，不得伪装为 Asset `Texture`。
 
 ## ADDED Requirements
 
@@ -31,7 +36,11 @@ Texture Asset SHALL 拥有地址稳定的 `TextureResource` allocation；GT 不�
 - **THEN** Proxy update/remove MUST 先进入 FIFO，TextureResource ownership-transfer release MUST 后进入并由 RT执行
 
 ### Requirement: TextureDesc 完整验证 Texture2D payload
-Texture 创建 MUST 验证非零 width/height、合法且受当前目标支持的 format/usage、合法 mip count 与逐 mip extent，以及每个 payload 的 row pitch、slice pitch、byte count和算术溢出。TextureDesc不得携带 `Vk*`、D3D resource、native layout/heap或 platform image object。
+Texture 创建 MUST 验证非零 width/height、合法 `PixelFormat`、合法 mip count 与逐 mip extent，以及每个 payload 的 row pitch、slice pitch、byte count和算术溢出。TextureDesc不得携带 PNG/JPEG/DDS 等外部文件编码、可重新 Cook source data、RHI usage、`Vk*`、D3D resource、native layout/heap或 platform image object。
+
+`PixelFormat` metadata MUST 提供 block width、block height 与 bytes per block。未压缩格式按 1×1 block 处理；BC、ASTC、PVRTC 等 block-compressed format 的最小 row pitch、slice pitch 与 byte count MUST 按横纵 block count 计算并检查溢出，不得假定每 texel 固定字节数。
+
+Cook MUST 按目标 sampled-texture profile 验证 cooked `PixelFormat` payload；runtime MUST 在 `TextureResource` 构造固定 RHI descriptor 后验证完整的 `PixelFormat`、`ShaderResource | CopyDestination` 和单采样组合。任一阶段不支持时 MUST 返回可诊断的 `Unsupported`，不得把 RHI usage 反向存入 Asset descriptor。
 
 第一阶段若公共 Asset format只能映射到部分 backend/profile，Cook/runtime MUST 返回可诊断 `Unsupported` 或等价失败；不得截断 mip、缩小 pitch、猜测缺失 bytes或无操作后成功。
 
@@ -43,8 +52,12 @@ Texture 创建 MUST 验证非零 width/height、合法且受当前目标支持�
 - **WHEN** extent、pitch和slice count计算超出可表示范围或 payload byte count不足
 - **THEN** validation MUST 在任何 allocation/copy前失败
 
+#### Scenario: Block-compressed row pitch
+- **WHEN** BC、ASTC 或 PVRTC payload 的 width/height 不是 block extent 的整数倍
+- **THEN** validation MUST 使用向上取整的 block count 计算最小 row/slice pitch，不得按 bytes-per-texel 截断
+
 ### Requirement: Initial upload 通过 RenderResourceManager
-新 `TextureResource` SHALL 在 RT进入 PendingUpload并由 `RenderResourceManager::record_pending_uploads()` 创建空 RHI texture/view、复制 source bytes到 RHI-owned staging、录制逐 mip upload和必要 `RHIAccess` transition。TextureResource自身不得创建 context、submit、present、flush或 wait。
+新 `TextureResource` SHALL 在 RT进入 PendingUpload并由 `RenderResourceManager::record_pending_uploads()` 创建固定为 `ShaderResource | CopyDestination`、单采样的空 RHI texture和 shader-resource view，复制 cooked bytes到 RHI-owned staging、录制逐 mip upload和必要 `RHIAccess` transition。TextureResource自身不得创建 context、submit、present、flush或 wait。
 
 当全部必要 mip recording成功、view创建有效且Material binding validation完成后，该 resource MAY 在当前同一 list的后续 test/Base Pass局部使用；长期 Ready和active publication只能在business submit成功后发生。frame abort、list discard或submit failure MUST保留可重录CPU payload。
 

@@ -5,7 +5,7 @@
 - [x] 1.3 从下一未完成 capability 起采用批次验证：Batch B/C 中间阶段只执行 CMake configure、受影响正式 target build 和少量跨模块 smoke；完整单元、failure matrix、single/multi-thread E2E 与真实 Vulkan smoke 集中到 Batch D，不再要求每个框架空壳单独建立大测试 fixture。
 - [x] 1.4 每个新增或修改模块 MUST 标明 Game side、Render side 或 stateless bridge，并通过依赖审查验证 Game side 无 RenderScene/RHI、Render side 无 Game 对象回读。
 - [x] 1.5 在对应代码 Batch 开始前，为仍涉及新增或修改运行时代码的 capability spec 补齐 `Minimal Implementation Example`，只使用已确认名称，并覆盖 owner/observer/ownership transfer、GT/RT mutable thread、主调用顺序和至少一个失败路径。
-- [ ] 1.6 新增具名类型时逐项记录 UE4.27 对应术语、Toy3d 实际职责、不能复用既有类型的原因和用户确认结果；未登记到 Type Contracts 前不得实现或写入正式测试接口。
+- [x] 1.6 新增具名类型时逐项记录 UE4.27 对应术语、Toy3d 实际职责、不能复用既有类型的原因和用户确认结果；未登记到 Type Contracts 前不得实现或写入正式测试接口。
 
 ## 2. Legacy Rendering Cleanup
 
@@ -92,15 +92,20 @@
 
 - [x] 10.1 完成 viewport business submit result、submit/present/abort contract：submit success 后即 commit，present Suboptimal/OutOfDate/terminal 不回滚；明确未产生 GPU work 的 submit failure discard，执行边界未知时锁存 terminal。
 - [x] 10.2 完成 command-list local first/current/final access、按实际 submit 顺序的 queue committed state、device ownership identity 和 completion-driven payload 回收；支持同一 list upload→transition→draw，D3D11 completion 使用 FL11_0 event query contract。
-- [ ] 10.3 实现 `RenderResource`、`RenderResourceState`、`RenderResourceManager` 的 RT-only pending collection、`record_pending_uploads()`、当前 recording 局部可用、submit 后 Ready、abort/retry、release 与 terminal clear；Manager 保持 non-owning。
-- [ ] 10.4 实现 `StaticMeshRenderData`、`PositionVertexBuffer`、`StaticMeshVertexBuffer`、optional `ColorVertexBuffer`、`StaticMeshIndexBuffer` 与 `LocalVertexFactory` 的完整 candidate gate；当前只支持单组 geometry/sections，不实现 LOD/streaming/partial residency。
-- [ ] 10.5 实现 `Texture`、`TextureDesc`、`TextureRef` 与 `TextureResource`，覆盖 stable address、initial upload、active/candidate replacement、内容更新不换 view、submit 后 binding generation 和旧 view 到 completion 保活。
-- [ ] 10.6 修改 MaterialInstance 并实现 `MaterialRenderProxy`：scalar/vector/texture setter type validation 与 FIFO、Texture 新强引用先建立、RT dirty state、可见 Draw 前按需物化、binding generation 失效和完整结构性 candidate replacement。
-- [ ] 10.7 按 `view-render-flow` 与 `primitive-proxy-lifecycle` Type Contracts 实现 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 的 canonical matrices/camera/object transform 数据；从 8.7 已验证的 ViewInfo 和 copied Proxy values 初始化，分别归属 View/Object logical Binding Group，不在 Shader 或 Vulkan 上层手写平台翻转。
-- [ ] 10.8 完成 `MeshBatch` 对 section range、StaticMeshRenderData、LocalVertexFactory 与 MaterialRenderProxy 的 frame-local non-owning 组合；invalid section、不可绘制 gate、ShaderVertexInput 不兼容或 Material binding 缺失时诊断并跳过对应 batch。
-- [ ] 10.9 完整实现 `ForwardSceneRenderer::render_base_pass()`：逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers，并录制 indexed draw。
-- [ ] 10.10 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
-- [ ] 10.11 中间验证仅运行直接受影响正式 target build、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke；failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
+- [x] 10.3 实现 `RenderResource`、`RenderResourceState`、`RenderResourceManager` 的 RT-only pending collection、`record_pending_uploads()`、当前 recording 局部可用、submit 后 Ready、abort/retry、release 与 terminal clear；Manager 保持 non-owning。
+- [x] 10.4 实现 `StaticMeshRenderData`、`PositionVertexBuffer`、`StaticMeshVertexBuffer`、optional `ColorVertexBuffer`、`StaticMeshIndexBuffer` 与 `LocalVertexFactory` 的完整 candidate gate；当前只支持单组 geometry/sections，不实现 LOD/streaming/partial residency。
+- [x] 10.5 在 `engine/core/pixel_format/` 建立独立 `Toy3dPixelFormat` CMake target 和共享 `PixelFormat` Type Contract 实现，提供跨 runtime/editor/tools/RHI 的 GPU-ready format 与 block width、block height、bytes-per-block metadata；不得依赖 Asset、RenderScene、公共 RHI 或 backend。
+- [x] 10.6 将公共 descriptors、RenderCore geometry、Vulkan backend 与全部调用点从 `RHIFormat` 迁移到共享 `PixelFormat`，并在同一批次删除 `RHIFormat`；D3D11/D3D12/Vulkan native 转换保持 backend-local 且不得依赖枚举数值相同。
+- [x] 10.7 更新 `document/rhi-design.md`、`document/core-module-usage-index.md` 与 `.codex/skills/design-rhi/references/toy3d-rhi-requirements.md`，记录 `Toy3dPixelFormat` 的用途/非目标、目录和 target、所有权/线程/错误边界、backend mapping、Editor/Cook source 分层、测试矩阵与迁移删除条件。
+- [x] 10.8 使用 `rg` 检查正式代码和文档中无 `RHIFormat` compatibility alias、格式枚举数字强转、语义重复的 `TextureFormat`/第二套 GPU-ready format；验证公共头文件不包含 `VkFormat`、`DXGI_FORMAT` 或 Editor source encoding。
+- [x] 10.9 完成 CMake configure、直接受影响正式 targets build、格式/压缩 block pitch 定向测试与 format capability validation smoke，并核对 Vulkan、D3D11 FL11_0、D3D12、`VulkanPortable v1` 映射可实现性。
+- [x] 10.10 实现 `Texture`、`TextureDesc`、`TextureRef` 与 `TextureResource`，覆盖 stable address、GPU-ready `PixelFormat` payload validation、initial upload、active/candidate replacement、内容更新不换 view、submit 后 binding generation 和旧 view 到 completion 保活；`TextureDesc` 不保存 RHI usage，第一阶段 `TextureResource` 固定构造单采样 `ShaderResource | CopyDestination` RHI Texture2D 并显式 transition，RenderTarget、DepthStencil 与 Storage texture 不进入 Asset Texture 路径。
+- [x] 10.11 修改 MaterialInstance 并实现 `MaterialRenderProxy`：scalar/vector/texture setter type validation 与 FIFO、Texture 新强引用先建立、RT dirty state、可见 Draw 前按需物化、binding generation 失效和完整结构性 candidate replacement。
+- [ ] 10.12 按 `view-render-flow` 与 `primitive-proxy-lifecycle` Type Contracts 实现 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 的 canonical matrices/camera/object transform 数据；从 8.7 已验证的 ViewInfo 和 copied Proxy values 初始化，分别归属 View/Object logical Binding Group，不在 Shader 或 Vulkan 上层手写平台翻转。
+- [ ] 10.13 完成 `MeshBatch` 对 section range、StaticMeshRenderData、LocalVertexFactory 与 MaterialRenderProxy 的 frame-local non-owning 组合；invalid section、不可绘制 gate、ShaderVertexInput 不兼容或 Material binding 缺失时诊断并跳过对应 batch。
+- [ ] 10.14 完整实现 `ForwardSceneRenderer::render_base_pass()`：逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers，并录制 indexed draw。
+- [ ] 10.15 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
+- [ ] 10.16 中间验证仅运行直接受影响正式 target build、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke；failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
 
 ## 11. Batch C3 — Render-side Test Pass
 
@@ -112,7 +117,7 @@
 
 ## 12. Batch C4 — Bootstrap / Terminal / Shutdown
 
-- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.10 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
+- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.15 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
 - [ ] 12.2 实现 placeholder/device-level bootstrap context 的 create→upload/transition→finish→explicit submit→wait specified completion，全有或全无发布且保留原始失败码。
 - [ ] 12.3 实现 Renderer first-error latch 和 terminal 状态：停止新 frame/resource init、abort current recording、先清 Manager non-owning pointers，再 skip/dispose pending ownership payload。
 - [ ] 12.4 实现正常 shutdown 的 producer stop→World destroy render states→Proxy/Material/Resource release FIFO→RenderCommandFence drain→Renderer final teardown task。
