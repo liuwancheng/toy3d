@@ -6,16 +6,20 @@ Toy3d 现有 Game/Render 传输、Engine 启动链、RenderScene、资源镜像�
 
 - 新增一个总控 `game-render-framework` capability，规定端到端一帧流程、子 capability 依赖、跨层不变量和分阶段完成门槛。
 - 新增类型治理 contract：apply 期间新增的每个第一方 class、struct、enum、alias 或其他具名类型，MUST 预先登记在所属子 Spec 的 `Type Contracts` 中，说明职责、所有权、线程、生命周期与错误语义；未登记类型不得直接实现。
+- 新增命名确认门槛：新增第一方类型在登记 `Type Contracts` 前，MUST 先确认 UE4.27 对应术语、Toy3d 实际职责和最终名称；未经确认的候选名不得进入 proposal、spec、代码或正式测试接口。
+- 新增实现示例要求：每个新增或修改运行时代码的子 capability spec MUST 包含 non-normative 的最小实现示例，说明所有权、线程归属、主要调用顺序和失败路径；示例只使用已确认名称，若与 `Type Contracts` 或 requirements 冲突以后两者为准。
 - **BREAKING**：先删除旧 frame packet/dispatcher/queue/completion、旧 RenderCommand 原型、旧资源 cache/ID/revision 和相应正式测试，不保留新旧双轨。
 - 将 `engine/runtime/engine.h` 中现有 `toy3d::Engine` 收敛为 Game Thread composition root，显式拥有并编排 Task Graph、RenderingThread controller、Renderer shell、Window/Surface 与 Game loop；不新增第二层 Engine 抽象，RHI/RenderScene 可变状态转移到 logical Rendering Thread。
 - 除具体 `toy3d::Engine` 外，其余框架职责按 Game side 与 Render side 分离；RenderCore bridge 只保存跨侧 contract，不拥有 Game 或 Render 业务可变状态。
 - **BREAKING**：Task Graph 改为 composition root 拥有的进程级唯一 active instance，并提供受生命周期约束的访问入口。
 - 建立无 RHI 参数的 move-only RenderCommand、RenderingThread、RenderCommandFence、FrameEndSync 和 single-thread 等价路径；不引入 RHI Thread、route、registry 或 `RHICommandListImmediate`。
-- 建立 Renderer-owned RenderScene、World/SceneInterface、PrimitiveSceneProxy 与一次性 SceneRenderer 的 UE 风格边界。
+- 建立 Renderer-owned RenderScene、World/SceneInterface、PrimitiveSceneProxy/PrimitiveSceneInfo、SceneView/SceneViewFamily、SceneRenderer/ViewInfo 与一次性 Draw 的 UE 风格边界；第一阶段由 `init_views()`、`compute_view_visibility()`、`MeshBatch` 和 `ForwardSceneRenderer::render_base_pass()` 形成显式纵向闭环，不建立临时通用 Pass Scheduler。
 - **BREAKING**：建立 RT-only、non-owning RenderResourceManager，分别规范 StaticMesh、Texture 与 Material 的 init/update/replacement/release。
+- 建立 Shader vertex-input 到 geometry stream 的跨层闭环：HLSL vertex entry signature 是唯一逻辑 schema，Shader reflection 形成 `ShaderVertexInput`，`LocalVertexFactory` 以 `VertexStreamComponent` 匹配 StaticMesh streams，公共 RHI 通过 `RHIShaderVertexInputReflection` 让 Vulkan 使用 location、D3D11/D3D12 使用 semantic name/index；不新增 `.shader VertexLayout`，也不复制 UE 完整的 VertexFactory shader/permutation 注册体系。
 - **BREAKING**：RHI frame-end 分离业务 submit 与 presentation status，并规范 local/committed state、completion、abort 和 deferred deletion。
 - 定义 renderer bootstrap、placeholder、viewport、terminal、drain 和 shutdown 顺序。
 - 第一阶段保持单 graphics queue、单线程录制和每 viewport Draw 一个 graphics command list；streaming、upload budget、pass 并行、RDG、async compute 与完整 headless Renderer 后置。
+- 实施节奏调整为先迁入 Scene/Proxy/View/VertexFactory/Resource/BasePass/Engine 的完整纵向框架，中间只以配置、受影响目标构建和少量 smoke 为门槛；完整 CPU visibility、single/multi-thread 端到端、failure matrix 与真实 Vulkan smoke 在纵向闭环后集中建设，避免随框架空壳线性增加测试。
 
 ## Capabilities
 
@@ -30,9 +34,9 @@ Toy3d 现有 Game/Render 传输、Engine 启动链、RenderScene、资源镜像�
 - `game-render-framework/frame-synchronization`: RenderCommandFence、FrameEndSync、frame lag、flush 与只读 terminal 传播。
 - `game-render-framework/renderer-scene-ownership`: Renderer、World、SceneInterface 与 RenderScene 的所有权边界。
 - `game-render-framework/primitive-proxy-lifecycle`: PrimitiveSceneProxy add/update/remove、stable identity 与析构顺序。
-- `game-render-framework/view-render-flow`: SceneView、ViewFamily、SceneRenderer、Draw command 与一帧 RT 执行流程。
+- `game-render-framework/view-render-flow`: SceneView、SceneViewFamily、ViewInfo、SceneRenderer、visibility、MeshBatch、Base Pass、Draw command 与一帧 RT 执行流程。
 - `game-render-framework/render-resource-manager`: RenderResource 状态、pending upload transaction、提交后发布与释放。
-- `game-render-framework/static-mesh-resources`: Mesh buffer、VertexFactory、整体 ready gate 与 replacement。
+- `game-render-framework/static-mesh-resources`: Mesh buffer、ShaderVertexInput、VertexFactory、LocalVertexFactory、vertex stream 匹配、整体 ready gate 与 replacement。
 - `game-render-framework/texture-resources`: 稳定 Texture representation、内容更新、candidate replacement 与 binding generation。
 - `game-render-framework/material-updates`: MaterialInstance、MaterialRenderProxy、普通 setter 与结构性 replacement。
 - `game-render-framework/rhi-frame-submission`: begin/end/abort、业务 submit、present 与跨后端 frame contract。
@@ -46,7 +50,7 @@ Toy3d 现有 Game/Render 传输、Engine 启动链、RenderScene、资源镜像�
 
 ## Impact
 
-- 受影响模块：具体 `engine/runtime/engine.h/.cpp`、Core Task Graph、RenderCore bridge、GameScene、RenderScene、公共 RHI、Vulkan backend、runtime CMake 与相关测试；不新增 Engine 模块或第二个 Engine 类型层级。
+- 受影响模块：具体 `engine/runtime/engine.h/.cpp`、Core Task Graph、RenderCore bridge、GameScene、RenderScene、ShaderCompiler reflection、ShaderMapEntry/runtime loader、公共 RHI、Vulkan backend、graphics pipeline vertex layout、runtime CMake 与相关测试；不新增 Engine 模块或第二个 Engine 类型层级。
 - 旧 Game/Render transport、资源 cache/ID/revision、空壳 device command list 和 Engine 直持 RHI/SceneRendering 的路径将被迁移或删除。
 - RHI 公共接口仍须可由 Vulkan、D3D11 FL11_0、D3D12 和 `VulkanPortable v1` 实现。
 - 本 change 取代此前粗粒度规划，并成为 `document/index.md` 指向的唯一执行入口。
