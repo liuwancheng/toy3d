@@ -103,9 +103,12 @@
 - [x] 10.11 修改 MaterialInstance 并实现 `MaterialRenderProxy`：scalar/vector/texture setter type validation 与 FIFO、Texture 新强引用先建立、RT dirty state、可见 Draw 前按需物化、binding generation 失效和完整结构性 candidate replacement。
 - [x] 10.12 按 `view-render-flow` 与 `primitive-proxy-lifecycle` Type Contracts 实现 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 的 canonical matrices/camera/object transform 数据；从 8.7 已验证的 ViewInfo 和 copied Proxy values 初始化，分别归属 View/Object logical Binding Group，不在 Shader 或 Vulkan 上层手写平台翻转。
 - [x] 10.13 完成 `MeshBatch` 对 section range、StaticMeshRenderData、LocalVertexFactory 与 MaterialRenderProxy 的 frame-local non-owning 组合；invalid section、不可绘制 gate、ShaderVertexInput 不兼容或 Material binding 缺失时诊断并跳过对应 batch。
-- [ ] 10.14 完整实现 `ForwardSceneRenderer::render_base_pass()`：逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers，并录制 indexed draw。
-- [ ] 10.15 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
-- [ ] 10.16 中间验证仅运行直接受影响正式 target build、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke；failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
+- [ ] 10.14 按 `material-updates` Type Contracts 实现 backend-neutral `ShaderGraphicsPassState` 及其封闭 nested enum/value 字段，将 frontend normalized Pass state 持久化到 ShaderMapEntry v3、runtime `ShaderMapProgramData`，并由实际 state 重算/严格校验 `pass_template_hash`；不得从 hash 反推 state 或把 `RHIGraphicsPipelineDesc` 泄漏到 shader format/compiler 层。
+- [ ] 10.15 让 MaterialRenderProxy active/staged candidate 原子保存 ShaderMap Program、effective graphics pass state 与 binding state；`two_sided == false` 保留 Shader Pass cull mode，`two_sided == true` 在 candidate 构建时固化 `CullMode::None`，失败保留完整旧 active state，Base Pass 不做 draw-time override。
+- [ ] 10.16 按 ShaderMap constant-member metadata 为 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 实现明确的 View/Object ABI 物化路径；未使用 group 不创建，未知 member、类型/范围/matrix stride 不兼容或资源类 binding 可诊断失败，不新增泛化 group serializer 或 raw-copy C++ struct。
+- [ ] 10.17 完整实现 `ForwardSceneRenderer::render_base_pass()`：接收外层 device、graphics context 与 color/depth attachment compatibility，自行 begin/end render pass；逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，以 Material effective state 建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers 并录制 indexed draw。未声明的 Global/Pass 保持 null，声明但无 canonical source 时诊断并跳过 batch；不得 finish、submit、present 或 wait。
+- [ ] 10.18 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
+- [ ] 10.19 将 builtin Unlit 的 DepthTest 修正为 reversed-Z `GreaterEqual` 并通过真实 View/Object matrix 路径输出 clip position；中间验证仅运行直接受影响正式 target build、ShaderMap v3/state hash、two-sided candidate、View/Object ABI、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke，failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
 
 ## 11. Batch C3 — Render-side Test Pass
 
@@ -117,7 +120,7 @@
 
 ## 12. Batch C4 — Bootstrap / Terminal / Shutdown
 
-- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.15 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
+- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.18 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
 - [ ] 12.2 实现 placeholder/device-level bootstrap context 的 create→upload/transition→finish→explicit submit→wait specified completion，全有或全无发布且保留原始失败码。
 - [ ] 12.3 实现 Renderer first-error latch 和 terminal 状态：停止新 frame/resource init、abort current recording、先清 Manager non-owning pointers，再 skip/dispose pending ownership payload。
 - [ ] 12.4 实现正常 shutdown 的 producer stop→World destroy render states→Proxy/Material/Resource release FIFO→RenderCommandFence drain→Renderer final teardown task。

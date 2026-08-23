@@ -337,6 +337,12 @@ format metadata 必须表达 block width、block height 与 bytes per block。�
 
 MaterialRenderProxy 不继承 RenderResource。普通 setter 只更新参数表和 dirty；Draw 前按需生成 frame-local constants/binding。结构性 shader/layout/render-state 变化使用完整 candidate replacement。
 
+Shader frontend 将 graphics Pass state 规范化为 backend-neutral `ShaderGraphicsPassState`，并从 ShaderMapEntry v3 经 runtime loader 完整保留到 ShaderMapProgram。`pass_template_hash` 由持久化的 template state 重算并严格互验，只标识 Shader template；它不替代实际 state，也不包含 Material policy 或 attachment compatibility。Material candidate 在发布前生成 effective state：`two_sided == false` 保留 Pass cull mode，`two_sided == true` 固化为 `CullMode::None`。Base Pass 不在 draw 时临时覆盖状态，RHI pipeline cache 由包含 effective state 与 attachment compatibility 的完整 descriptor 区分单面/双面 PSO。
+
+View/Object logical group 只通过已登记的 canonical `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 物化。RenderCore 按 ShaderMap constant-member metadata 逐字段写入 ToyShaderABI buffer，不 raw-copy C++ struct，也不新增泛化的任意 group serializer。Global/Pass 没有 canonical source 时，未声明的 group 保持 null；Program 主动声明则诊断并跳过 batch。
+
+Forward Base Pass 接收外层持有的 device、graphics context 与 attachment compatibility，自行 begin/end render pass；它不创建或 finish command list，也不 acquire、submit、present 或 wait。外层 frame orchestration 仍独占 viewport/frame/list 生命周期。
+
 ### 9. VertexFactory 只桥接 Shader 输入与 geometry streams
 
 ```text

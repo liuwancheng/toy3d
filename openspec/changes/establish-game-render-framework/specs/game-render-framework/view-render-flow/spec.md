@@ -84,7 +84,11 @@ Near   = r3 - r2
 - **THEN** Primitive MUST 只进入该 ViewInfo 的本帧可见结果
 
 ### Requirement: Forward Base Pass 消费可见 MeshBatch
-visibility 完成后，仍可见的 `StaticMeshSceneProxy` SHALL 为当前帧贡献 `MeshBatch`。`ForwardSceneRenderer::render_base_pass()` MUST 逐 View 消费这些 batch，匹配 `LocalVertexFactory` 与 `ShaderVertexInput`，解析 View、Material、Object bindings，并将前向绘制录制到当前 graphics context。
+visibility 完成后，仍可见的 `StaticMeshSceneProxy` SHALL 为当前帧贡献 `MeshBatch`。`ForwardSceneRenderer::render_base_pass()` MUST 逐 View 消费这些 batch，匹配 `LocalVertexFactory` 与 `ShaderVertexInput`，从 Material active candidate 获取 effective `ShaderGraphicsPassState`，解析 Global、View、Pass、Material、Object bindings，并将前向绘制录制到调用方提供的当前 graphics context。
+
+Base Pass MUST 使用 Shader effective state、LocalVertexFactory vertex layout 与调用方提供的 color/depth attachment format、sample count 合成完整 `RHIGraphicsPipelineDesc`。它 SHALL 自己 begin/end 对应 render pass，但 MUST NOT 创建/finish command list、submit、present、wait 或持有 viewport frame。Global/Pass group 未被 Program 声明时对应 binding set 保持 null；Program 声明了当前尚无 canonical parameter source 的 Global/Pass binding 时，当前 batch MUST 被诊断并跳过，不得伪造空 buffer 或无操作成功。
+
+View/Object constant materialization MUST 根据 ShaderMap member identity、`ShaderValueType`、offset、size 与 matrix stride 逐字段写入 ABI byte buffer；不得 raw-copy `ViewUniformShaderParameters` 或 `PrimitiveUniformShaderParameters` 的 C++ object representation。Program 未使用某组时不创建对应资源；未知成员、类型不匹配、越界或暂不支持的资源类 binding MUST 诊断并跳过当前 batch。
 
 Vertex input 不兼容、`StaticMeshRenderData` 未通过整体可绘制 gate、其他必要 render representation 当前不可用、material/shader 无效或必要 binding 缺失时，Renderer MUST 跳过对应 batch 并产生可诊断错误；不得创建残缺 pipeline、访问失效资源或无操作后报告成功。
 
@@ -95,6 +99,14 @@ Vertex input 不兼容、`StaticMeshRenderData` 未通过整体可绘制 gate、
 #### Scenario: VertexFactory 与 Shader 输入不兼容
 - **WHEN** LocalVertexFactory 缺少 ShaderVertexInput 的必要 attribute
 - **THEN** 对应 MeshBatch MUST 被跳过并记录可诊断错误，其他合法 batch MAY 继续录制
+
+#### Scenario: Program 声明暂不可提供的 Global 或 Pass binding
+- **WHEN** ShaderMap Program 声明 Global 或 Pass group 的 active binding，但当前 Base Pass 没有已登记的 canonical parameter source
+- **THEN** 对应 MeshBatch MUST 被跳过并产生可诊断错误，不得绑定空 set 后继续 draw
+
+#### Scenario: Base Pass 录制边界
+- **WHEN** 外层已提供 graphics context 与合法 color/depth attachments
+- **THEN** Base Pass MUST begin render pass、录制全部合法 batch 并 end render pass，但 MUST NOT finish、submit、present 或 wait
 
 ### Requirement: 一帧只录制一个 graphics list
 第一阶段每个 viewport Draw SHALL `begin_frame()`、创建一个 graphics context、录制 pending uploads、执行 `init_views()` 与 `compute_view_visibility()`、录制全部 graphics pass、finish 一个 immutable list 并 `end_frame()`。运行时 Base Pass 与测试构建中的简单测试 pass MUST 复用该 context 和显式顺序，不得各自提交隐藏 command list。
@@ -141,8 +153,11 @@ begin_frame()
 → test build records its local deterministic pass using the same ViewInfo result
 → visible proxy contributes frame-local MeshBatch
 → match LocalVertexFactory with ShaderVertexInput
-→ resolve View/Material/Object bindings
+→ materialize View/Material/Object bindings from ShaderMap metadata
+→ reject active Global/Pass bindings until their canonical sources are registered
+→ combine effective ShaderGraphicsPassState with attachment compatibility
 → ForwardSceneRenderer::render_base_pass()
+     → begin/end the Base Pass render pass on the injected context
 → finish immutable graphics list
 → end_frame()
 → destroy the one-shot SceneRenderer on RT

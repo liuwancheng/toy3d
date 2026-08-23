@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `MaterialInstance` | 现有修改 | GT-owned mutable overrides；拥有地址稳定但 GT 不解引用其 RT state 的 MaterialRenderProxy allocation，以及覆盖 RT 使用期的 Texture Asset 强引用；setter 不操作 RHI |
 | `MaterialRenderProxy` | 新增 class | MaterialInstance-owned stable RT representation；RT-only 参数表、dirty state、ShaderMap ref 与 Material binding cache；不继承 RenderResource，不拥有 Texture Asset，不选择 Mesh/VertexFactory |
+| `ShaderGraphicsPassState` | 新增 stateless value type | UE4.27 可识别的 Shader Pass render-state template；Toy3d 中声明于 backend-neutral Shader format 层，以封闭的 nested enum/value 字段保存 topology、rasterization、depth/stencil、blend 与 color-write state，并随 ShaderMapEntry 持久化；不包含 attachment format、sample count、RHI object 或 Material policy。不能复用 `RHIGraphicsPipelineDesc`，因为后者属于 runtime RHI 且还包含 Shader、vertex layout 与 attachment compatibility；其 nested enum 只表达 Shader format 的稳定序列化域，不泄漏 native API 数值 |
 
 沿用 Shader 系统的 `ShaderParameterId`、ShaderMap 和 RHI binding 类型；不新增普通 setter revision 或 Material resource ID。
 
@@ -76,6 +77,10 @@ blend mode、two-sided、depth policy、shading model、static switch、shader p
 
 Material/ShaderMap SHALL 提供 `ShaderVertexInput`，由 `LocalVertexFactory` 完成匹配。Material 不得创建 vertex layout，VertexFactory 不得选择 Material、ShaderMap Program 或 permutation。
 
+Shader frontend MUST 将 `.shader` Pass state 规范化为 `ShaderGraphicsPassState`，ShaderMapEntry v3 MUST 同时持久化该实际 state 与 `pass_template_hash`，reader/writer MUST 由 state 重算并严格校验 hash。`pass_template_hash` 只标识 Shader Pass template，不得替代 state，也不得包含 Material policy 或 attachment compatibility。
+
+Material candidate MUST 在发布前从 Shader template state 派生完整 effective state。`two_sided == false` 时保留 Shader Pass 的 cull mode；`two_sided == true` 时 effective cull mode MUST 为 `None`，其余字段保持 Shader Pass 值。该派生只能发生在 candidate 构建/验证阶段，Base Pass 不得在 draw 时临时覆盖 cull state。PSO 创建与缓存 MUST 使用包含 effective state 的完整 pipeline descriptor，因此同一 Shader Pass 的单面与双面 Material 不得错误复用 pipeline。
+
 #### Scenario: Static switch 修改
 - **WHEN** MaterialInstance 修改 static switch
 - **THEN** 当前 proxy MUST 保持可用，candidate 未完成前不得发布不完整 shader/binding state
@@ -83,6 +88,14 @@ Material/ShaderMap SHALL 提供 `ShaderVertexInput`，由 `LocalVertexFactory` �
 #### Scenario: Candidate vertex input 不兼容
 - **WHEN** candidate ShaderMap 的 ShaderVertexInput 与当前 StaticMesh LocalVertexFactory 不兼容
 - **THEN** 对应 combination MUST 可诊断地不可绘制，不得用旧 vertex layout 拼接新 Shader 创建残缺 pipeline
+
+#### Scenario: 双面 Material candidate
+- **WHEN** `two_sided` 为 true 且 Shader Pass template 声明 Back culling
+- **THEN** candidate MUST 保留原 `pass_template_hash` 以标识 Shader template，同时把 effective cull mode 固化为 `None`；Base Pass MUST 以该 effective state 创建或查询 PSO
+
+#### Scenario: 双面切换 candidate 失败
+- **WHEN** active Material 为单面且切换 `two_sided` 的 candidate 未完成完整验证或提交失败
+- **THEN** active ShaderMap、effective state 与 binding MUST 全部保持单面旧值，不得只发布 `CullMode::None`
 
 ## Minimal Implementation Example
 
@@ -112,6 +125,7 @@ Forward Base Pass for one visible MeshBatch:
 ViewInfo provides ViewUniformShaderParameters
 → PrimitiveSceneInfo/Proxy provides PrimitiveUniformShaderParameters
 → MaterialRenderProxy resolves override/default values
+→ read the active candidate ShaderGraphicsPassState
 → resolve TextureResource active views and binding generations
 → allocate frame-local Material constants only now
 → materialize Material logical binding
@@ -138,6 +152,13 @@ skip the MeshBatch and diagnose; do not bind an incomplete Material group.
 Failure C:
 if structural candidate validation or submit fails,
 retain the active ShaderMap/layout/render state and Material binding path.
+
+Two-sided structural candidate:
+copy the Shader Pass template state
+→ if MaterialDesc::two_sided is true, set effective cull mode to None
+→ validate the complete candidate and publish it atomically
+→ keep pass_template_hash scoped to the unmodified Shader template
+→ let the complete RHI pipeline descriptor distinguish the effective PSO.
 
 Final release:
 enqueue all StaticMeshSceneProxy material update/remove commands
