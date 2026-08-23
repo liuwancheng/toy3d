@@ -1,4 +1,7 @@
 #include "rendercore/scene_interface.h"
+#include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "rendercore/shader/primitive_uniform_shader_parameters.h"
+#include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/view/scene_view.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/render_command_internal.h"
@@ -52,6 +55,12 @@ namespace
         "SceneRenderer must support polymorphic logical-RT destruction");
     static_assert(std::is_final<toy3d::ForwardSceneRenderer>::value,
         "ForwardSceneRenderer must remain the concrete forward implementation");
+    static_assert(std::is_standard_layout<
+            toy3d::ViewUniformShaderParameters>::value,
+        "View uniform parameters must remain a standard-layout CPU value");
+    static_assert(std::is_standard_layout<
+            toy3d::PrimitiveUniformShaderParameters>::value,
+        "Primitive uniform parameters must remain a standard-layout CPU value");
 
     int failure_count = 0;
 
@@ -110,6 +119,57 @@ namespace
         mesh_desc.sections.push_back({0, 3, 0});
         mesh_desc.material_slots.push_back(material);
         return toy3d::StaticMesh::create(std::move(mesh_desc));
+    }
+
+    void test_canonical_uniform_parameter_values()
+    {
+        const toy3d::Matrix4 view_matrix(2.0f);
+        const toy3d::Matrix4 projection_matrix(3.0f);
+        const toy3d::Matrix4 view_projection_matrix(4.0f);
+        const toy3d::Matrix4 inverse_view_matrix(5.0f);
+        const toy3d::Matrix4 inverse_projection_matrix(6.0f);
+        const toy3d::Matrix4 inverse_view_projection_matrix(7.0f);
+        const toy3d::Vector3 camera_position(1.0f, 2.0f, 3.0f);
+        const toy3d::Vector3 camera_direction(0.0f, 0.0f, 1.0f);
+        const toy3d::ViewUniformShaderParameters view_parameters{
+            view_matrix,
+            projection_matrix,
+            view_projection_matrix,
+            inverse_view_matrix,
+            inverse_projection_matrix,
+            inverse_view_projection_matrix,
+            camera_position,
+            0.0f,
+            camera_direction,
+            0.0f};
+        check(view_parameters.view_matrix == view_matrix &&
+                view_parameters.projection_matrix == projection_matrix &&
+                view_parameters.view_projection_matrix ==
+                    view_projection_matrix &&
+                view_parameters.inverse_view_matrix == inverse_view_matrix &&
+                view_parameters.inverse_projection_matrix ==
+                    inverse_projection_matrix &&
+                view_parameters.inverse_view_projection_matrix ==
+                    inverse_view_projection_matrix &&
+                view_parameters.camera_position == camera_position &&
+                view_parameters.camera_direction == camera_direction &&
+                view_parameters.camera_position_padding == 0.0f &&
+                view_parameters.camera_direction_padding == 0.0f,
+            "View uniform parameters must preserve canonical matrices and camera values");
+
+        toy3d::Matrix4 object_to_world = toy3d::Matrix4::identity();
+        object_to_world.at(3, 0) = 2.0f;
+        object_to_world.at(3, 1) = 3.0f;
+        object_to_world.at(3, 2) = 4.0f;
+        const toy3d::StaticMeshSceneProxy proxy(
+            object_to_world,
+            toy3d::AxisAlignedBounds{},
+            true,
+            nullptr,
+            {});
+        check(proxy.primitive_uniform_shader_parameters().object_to_world ==
+                object_to_world,
+            "Primitive uniform parameters must initialize from copied Proxy transform values");
     }
 
     void test_renderer_lifecycle(bool multithreaded)
@@ -298,6 +358,7 @@ namespace
 
 int main()
 {
+    test_canonical_uniform_parameter_values();
     test_renderer_lifecycle(true);
     test_renderer_lifecycle(false);
 

@@ -2,6 +2,7 @@
 
 #include "math/geometry/convex_volume.h"
 #include "math/matrix4.h"
+#include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/view/scene_view.h"
 #include "renderscene/mesh_batch.h"
 
@@ -39,6 +40,10 @@ namespace toy3d
         {
             return inverse_view_projection_matrix_;
         }
+        const ViewUniformShaderParameters& view_uniform_shader_parameters() const
+        {
+            return view_uniform_shader_parameters_;
+        }
         const ConvexVolume& view_frustum() const { return view_frustum_; }
         const std::vector<PrimitiveSceneInfo*>& visible_primitives() const
         {
@@ -69,6 +74,7 @@ namespace toy3d
         Matrix4 inverse_view_matrix_;
         Matrix4 inverse_projection_matrix_;
         Matrix4 inverse_view_projection_matrix_;
+        ViewUniformShaderParameters view_uniform_shader_parameters_;
         ConvexVolume view_frustum_;
         std::vector<PrimitiveSceneInfo*> visible_primitives_;
         std::vector<MeshBatch> mesh_batches_;

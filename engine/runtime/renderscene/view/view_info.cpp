@@ -21,6 +21,17 @@ namespace toy3d
           inverse_projection_matrix_(std::move(inverse_projection_matrix)),
           inverse_view_projection_matrix_(
               std::move(inverse_view_projection_matrix)),
+          view_uniform_shader_parameters_{
+              view_matrix_,
+              projection_matrix_,
+              view_projection_matrix_,
+              inverse_view_matrix_,
+              inverse_projection_matrix_,
+              inverse_view_projection_matrix_,
+              scene_view_.camera_position(),
+              0.0f,
+              scene_view_.camera_direction(),
+              0.0f},
           view_frustum_(std::move(view_frustum))
     {}
 }

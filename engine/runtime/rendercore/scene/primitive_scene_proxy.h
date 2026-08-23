@@ -2,6 +2,7 @@
 
 #include "math/matrix4.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
+#include "rendercore/shader/primitive_uniform_shader_parameters.h"
 
 namespace toy3d
 {
@@ -18,6 +19,11 @@ namespace toy3d
         PrimitiveSceneProxy& operator=(const PrimitiveSceneProxy&) = delete;
 
         const Matrix4& world_transform() const { return world_transform_; }
+        const PrimitiveUniformShaderParameters&
+            primitive_uniform_shader_parameters() const
+        {
+            return primitive_uniform_shader_parameters_;
+        }
         const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
         bool visible() const { return visible_; }
 
@@ -36,6 +42,7 @@ namespace toy3d
             bool visible);
 
         Matrix4 world_transform_;
+        PrimitiveUniformShaderParameters primitive_uniform_shader_parameters_;
         AxisAlignedBounds world_bounds_;
         bool visible_ = true;
     };
