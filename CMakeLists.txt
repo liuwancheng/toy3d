@@ -39,3 +39,4 @@ else()
 endif()
 
 add_subdirectory(engine)
+add_subdirectory(project)
