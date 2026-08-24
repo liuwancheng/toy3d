@@ -58,6 +58,7 @@ namespace toy3d
 
         void disable_render_command_facade(TaskGraphInterface& task_graph) noexcept
         {
+            disable_render_command_execution(task_graph);
             TaskGraphInterface* expected = &task_graph;
             enabled_task_graph.compare_exchange_strong(expected, nullptr);
         }

@@ -55,6 +55,16 @@ namespace toy3d
 
     RHIStatus RHIDevice::shutdown()
     {
+        return shutdown_internal(true);
+    }
+
+    RHIStatus RHIDevice::shutdown_after_device_lost()
+    {
+        return shutdown_internal(false);
+    }
+
+    RHIStatus RHIDevice::shutdown_internal(bool wait_for_idle)
+    {
         {
             std::unique_lock<std::mutex> lock(lifecycle_mutex);
             if (shutting_down)
@@ -70,7 +80,9 @@ namespace toy3d
             });
         }
 
-        const RHIStatus wait_status = wait_idle_before_shutdown_impl();
+        const RHIStatus wait_status = wait_for_idle
+            ? wait_idle_before_shutdown_impl()
+            : RHIStatus::success();
         graphics_pipeline_cache->clear();
         const RHIStatus shutdown_status = shutdown_impl();
         {

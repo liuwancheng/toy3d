@@ -16,13 +16,18 @@
 
 #include "logging/logger.h"
 #include "generated/defines.h"
+#include "drivers/rhi/rhi_factory.h"
+#include "gamescene/world/world.h"
 #include "platform/rhi_surface_factory.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/rendering_thread.h"
+#include "rendercore/view/scene_view.h"
 #include "renderscene/renderer.h"
+#include "renderscene/view/forward_scene_renderer.h"
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <utility>
@@ -69,6 +74,27 @@ namespace toy3d
 			shader_load_config = std::move(config);
 		}
 	}
+
+    void Engine::set_world_setup_callback(
+        std::function<void(World&)> callback)
+    {
+        if (!world)
+        {
+            world_setup_callback = std::move(callback);
+        }
+    }
+
+    void Engine::set_frame_callback(
+        std::function<void(World&, double)> callback)
+    {
+        frame_callback = std::move(callback);
+    }
+
+    void Engine::set_scene_view_callback(
+        std::function<void(std::vector<SceneView>&, const Extent&)> callback)
+    {
+        scene_view_callback = std::move(callback);
+    }
 
 	void Engine::pre_init()
 	{
@@ -198,7 +224,19 @@ namespace toy3d
             return false;
         }
 
-        renderer = std::make_unique<Renderer>(*task_graph);
+        const Extent window_extent = window->get_win_size();
+        RHIViewportContextDesc viewport_desc;
+        viewport_desc.width = window_extent.width;
+        viewport_desc.height = window_extent.height;
+        viewport_desc.debug_name = "PrimaryViewport";
+        renderer = std::make_unique<Renderer>(
+            *task_graph,
+            rhi_surface,
+            std::move(viewport_desc),
+            []()
+            {
+                return create_default_rhi_device();
+            });
         rendering_thread = std::make_unique<RenderingThread>(
             *thread_manager,
             *task_graph,
@@ -219,20 +257,118 @@ namespace toy3d
 
         frame_end_sync = std::make_unique<FrameEndSync>(
             ConsoleManager::get_instance().get_bool(
-                "Renderer.AllowOneFrameThreadLag", true));
+                "Renderer.AllowOneFrameThreadLag", true),
+            [this]()
+            {
+                if (!renderer)
+                {
+                    return RenderFenceWaitResult::reached();
+                }
+                const RendererStatus renderer_status = renderer->status();
+                if (renderer_status.lifecycle_state() ==
+                    RendererLifecycleState::Terminal)
+                {
+                    return RenderFenceWaitResult::renderer_terminal(
+                        renderer_status.error_message());
+                }
+                return RenderFenceWaitResult::reached();
+            });
+        world = std::make_unique<World>();
+        if (world_setup_callback)
+        {
+            world_setup_callback(*world);
+        }
+        world->initialize();
+        if (!renderer->scene_interface() ||
+            !world->bind_scene(*renderer->scene_interface()))
+        {
+            TOY_LOG_ERROR("Runtime World could not bind the Renderer scene.");
+            shutdown_render_framework();
+            return false;
+        }
+        world->begin_play();
         return true;
+    }
+
+    void Engine::submit_frame_draw()
+    {
+        if (!window || !renderer || !renderer->scene_interface())
+        {
+            return;
+        }
+
+        const Extent extent = window->get_win_size();
+        if (extent.width == 0 || extent.height == 0)
+        {
+            return;
+        }
+
+        std::vector<SceneView> views;
+        if (scene_view_callback)
+        {
+            scene_view_callback(views, extent);
+        }
+        else
+        {
+            views.emplace_back(
+                Vector3(0.0f, 1.5f, -6.0f),
+                Quaternion::identity(),
+                Vector3(0.0f, 0.0f, 1.0f),
+                UIntVector2(0, 0),
+                UIntVector2(extent.width, extent.height),
+                UIntVector2(extent.width, extent.height),
+                CameraProjectionMode::Perspective,
+                to_radians(Degrees(60.0f)),
+                0.1f,
+                1000.0f);
+        }
+        if (views.empty())
+        {
+            TOY_LOG_ERROR("Runtime frame draw requires at least one SceneView.");
+            return;
+        }
+
+        renderer->draw_scene(
+            std::make_unique<ForwardSceneRenderer>(
+                SceneViewFamily(
+                    *renderer->scene_interface(),
+                    UIntVector2(extent.width, extent.height),
+                    std::move(views))));
     }
 
     void Engine::shutdown_render_framework()
     {
         frame_end_sync.reset();
 
+        if (world)
+        {
+            world->end_play();
+            if (world->scene_interface() != nullptr)
+            {
+                static_cast<void>(world->unbind_scene());
+            }
+            world.reset();
+        }
+
         if (rendering_thread)
         {
             if (rendering_thread->is_ready())
             {
-                const RenderFenceWaitResult drained = flush_rendering_commands();
-                if (!drained.succeeded())
+                const RenderFenceWaitResult drained = flush_rendering_commands(
+                    [this]()
+                    {
+                        if (!renderer)
+                        {
+                            return RenderFenceWaitResult::reached();
+                        }
+                        const RendererStatus renderer_status = renderer->status();
+                        return renderer_status.lifecycle_state() ==
+                                RendererLifecycleState::Terminal
+                            ? RenderFenceWaitResult::renderer_terminal(
+                                renderer_status.error_message())
+                            : RenderFenceWaitResult::reached();
+                    });
+                if (!drained.rendering_thread_reached())
                 {
                     TOY_LOG_ERROR(
                         "Rendering command drain failed during shutdown: {}",
@@ -369,15 +505,45 @@ namespace toy3d
 		{
 			return;
 		}
+        auto previous_tick = std::chrono::steady_clock::now();
 		while (!window->should_close())
 		{
+            const auto current_tick = std::chrono::steady_clock::now();
+            delta_time = std::chrono::duration<double>(
+                current_tick - previous_tick).count();
+            previous_tick = current_tick;
+            game_time += delta_time;
+            ++frame_count;
+
 			window->process_events();
+            if (world)
+            {
+                static_cast<void>(world->tick(delta_time));
+                if (frame_callback)
+                {
+                    frame_callback(*world, delta_time);
+                }
+            }
+            if (window->should_close())
+            {
+                break;
+            }
+            submit_frame_draw();
             const RenderFenceWaitResult synchronized = frame_end_sync->sync_frame();
             if (!synchronized.succeeded())
             {
-                TOY_LOG_ERROR(
-                    "Frame synchronization failed: {}",
-                    synchronized.framework_status().message);
+                if (synchronized.has_renderer_terminal())
+                {
+                    TOY_LOG_ERROR(
+                        "Renderer entered terminal state: {}",
+                        synchronized.renderer_error());
+                }
+                else
+                {
+                    TOY_LOG_ERROR(
+                        "Frame synchronization failed: {}",
+                        synchronized.framework_status().message);
+                }
                 break;
             }
 		}

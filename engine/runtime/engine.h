@@ -6,8 +6,11 @@
 #include "file_system/native_platform_file.h"
 #include "platform/platform_interface.h"
 #include "platform/window_interface.h"
+#include "rendercore/view/scene_view.h"
 
+#include <functional>
 #include <memory>
+#include <vector>
 
 namespace toy3d
 {
@@ -19,6 +22,7 @@ namespace toy3d
     class RHISurface;
     class TaskGraphInterface;
     class ThreadManager;
+    class World;
 
 	enum class ShaderLoadMode
 	{
@@ -47,6 +51,10 @@ namespace toy3d
         void exit();
 
         void set_shader_load_config(ShaderLoadConfig config);
+        void set_world_setup_callback(std::function<void(World&)> callback);
+        void set_frame_callback(std::function<void(World&, double)> callback);
+        void set_scene_view_callback(
+            std::function<void(std::vector<SceneView>&, const Extent&)> callback);
 
         IWindow* get_window() { return window.get(); }
 
@@ -54,6 +62,7 @@ namespace toy3d
         FileStatus initialize_file_system();
         bool initialize_render_framework();
         void shutdown_render_framework();
+        void submit_frame_draw();
 
         double game_time = 0.0;
         double delta_time = 0.0;
@@ -66,6 +75,10 @@ namespace toy3d
         std::shared_ptr<DirectoryFileStore> temp_store;
         FileSystem file_system;
         ShaderLoadConfig shader_load_config;
+        std::function<void(World&)> world_setup_callback;
+        std::function<void(World&, double)> frame_callback;
+        std::function<void(std::vector<SceneView>&, const Extent&)>
+            scene_view_callback;
         std::unique_ptr<IPlatform> platform;
         std::unique_ptr<IWindow> window;
         std::shared_ptr<RHISurface> rhi_surface;
@@ -74,6 +87,7 @@ namespace toy3d
         std::unique_ptr<Renderer> renderer;
         std::unique_ptr<RenderingThread> rendering_thread;
         std::unique_ptr<FrameEndSync> frame_end_sync;
+        std::unique_ptr<World> world;
         bool platform_initialized = false;
         bool engine_exited = false;
     };

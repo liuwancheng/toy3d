@@ -11,13 +11,16 @@ namespace toy3d
     class ForwardSceneRenderer;
     class PrimitiveSceneInfo;
     class PrimitiveSceneProxy;
+    class RenderResourceManager;
 
     // Renderer-owned Render-side scene. Mutable scene state and all future proxy
     // operations are restricted to the logical Rendering Thread and never read Game objects.
     class RenderScene final : public SceneInterface
     {
     public:
-        explicit RenderScene(TaskGraphInterface& task_graph);
+        RenderScene(
+            TaskGraphInterface& task_graph,
+            RenderResourceManager& resource_manager);
         ~RenderScene() override;
 
         RenderScene(const RenderScene&) = delete;
@@ -54,6 +57,7 @@ namespace toy3d
             PrimitiveSceneProxy* proxy) noexcept;
 
         TaskGraphInterface& task_graph_;
+        RenderResourceManager& resource_manager_;
         std::vector<std::unique_ptr<PrimitiveSceneInfo>> primitives_;
     };
 }

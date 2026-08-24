@@ -37,6 +37,10 @@ namespace toy3d
 
         virtual RHIStatus initialize(const RHIDeviceDesc& desc) = 0;
         RHIStatus shutdown();
+        // DeviceLost invalidates the ordinary idle-wait contract. This path still
+        // rejects new pipeline creation and releases backend state, but does not
+        // issue another native wait that could prevent finite process teardown.
+        RHIStatus shutdown_after_device_lost();
 
         virtual const RHICapabilities& capabilities() const = 0;
         virtual const RHILimits& limits() const = 0;
@@ -117,6 +121,7 @@ namespace toy3d
 
         RHIStatus begin_pipeline_creation();
         void end_pipeline_creation();
+        RHIStatus shutdown_internal(bool wait_for_idle);
 
         std::unique_ptr<RHIGraphicsPipelineCache> graphics_pipeline_cache;
         std::mutex lifecycle_mutex;

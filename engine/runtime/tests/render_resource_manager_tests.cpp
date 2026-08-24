@@ -4,14 +4,18 @@
 #include "rendercore/material/material.h"
 #include "rendercore/rendering_thread.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "rendercore/shader/primitive_uniform_shader_parameters.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/texture/texture.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
 #include "renderscene/material/material_render_proxy.h"
 #include "renderscene/mesh_batch.h"
+#include "renderscene/render_scene.h"
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/texture/texture_resource.h"
+#include "renderscene/view/forward_scene_renderer.h"
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
@@ -108,7 +112,86 @@ namespace
         toy3d::ShaderMapProgramData program_;
     };
 
-    toy3d::ShaderMapProgramRef load_material_program(
+    toy3d::ShaderMapProgramData make_view_object_program()
+    {
+        toy3d::ShaderMapProgramData program;
+        program.shader_name = "Toy3d/Test/ViewObject";
+        program.pass_name = "Forward";
+        program.mapping_version = 1;
+        program.logical_layout_hash = nonzero_hash(60u);
+        program.target_binding_hash = nonzero_hash(61u);
+        program.pass_template_hash =
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(
+                program.graphics_pass_state);
+        program.permutation_key = nonzero_hash(62u);
+
+        toy3d::ShaderMapBinding view;
+        view.parameter_id = 100u;
+        view.name = "toy_view_data";
+        view.group = toy3d::RHIBindingGroup::View;
+        view.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        view.stages = toy3d::RHIShaderStageFlags::Vertex;
+        view.target_binding = 0u;
+        view.constant_buffer_size = 416u;
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_view"), "toy_view",
+            toy3d::ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_projection"), "toy_projection",
+            toy3d::ShaderValueType::Float32x4x4, 64u, 64u, 0u, 16u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_view_projection"), "toy_view_projection",
+            toy3d::ShaderValueType::Float32x4x4, 128u, 64u, 0u, 16u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_inverse_view"), "toy_inverse_view",
+            toy3d::ShaderValueType::Float32x4x4, 192u, 64u, 0u, 16u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_inverse_projection"), "toy_inverse_projection",
+            toy3d::ShaderValueType::Float32x4x4, 256u, 64u, 0u, 16u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_inverse_view_projection"), "toy_inverse_view_projection",
+            toy3d::ShaderValueType::Float32x4x4, 320u, 64u, 0u, 16u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_camera_position"), "toy_camera_position",
+            toy3d::ShaderValueType::Float32x3, 384u, 12u, 0u, 0u});
+        view.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_camera_direction"), "toy_camera_direction",
+            toy3d::ShaderValueType::Float32x3, 400u, 12u, 0u, 0u});
+        program.bindings.push_back(view);
+
+        toy3d::ShaderMapBinding object;
+        object.parameter_id = 110u;
+        object.name = "toy_object_data";
+        object.group = toy3d::RHIBindingGroup::Object;
+        object.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        object.stages = toy3d::RHIShaderStageFlags::Vertex;
+        object.target_binding = 0u;
+        object.constant_buffer_size = 64u;
+        object.constant_members.push_back({toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Object,
+            toy3d::shader::ShaderParameterCategory::Constant, "toy_object_to_world"), "toy_object_to_world",
+            toy3d::ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u});
+        program.bindings.push_back(object);
+
+        toy3d::ShaderMapStage vertex;
+        vertex.stage = toy3d::RHIShaderStage::Vertex;
+        vertex.entry_point = "vs_main";
+        vertex.binary = {1u, 2u, 3u, 60u};
+        vertex.content_hash = nonzero_hash(63u);
+        vertex.reflection = program.bindings;
+        program.stages.push_back(std::move(vertex));
+        return program;
+    }
+
+    toy3d::ShaderMapProgramRef load_program(
         toy3d::ShaderMapProgramData program)
     {
         MaterialProgramLoader loader(program);
@@ -321,11 +404,9 @@ int main()
     } device;
     device.queue = &queue;
 
-    struct : toy3d::RHIGraphicsCommandContext
+    struct : toy3d::RHICommandContext
     {
-        std::uint32_t transition_count = 0;
-        std::uint32_t upload_count = 0;
-        std::uint32_t texture_upload_count = 0;
+        std::vector<std::uint8_t> last_buffer_upload_data;
 
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
@@ -333,9 +414,8 @@ int main()
         }
 
         toy3d::RHIStatus transition_resources(
-            const std::vector<toy3d::RHIResourceTransition>& transitions) override
+            const std::vector<toy3d::RHIResourceTransition>&) override
         {
-            transition_count += static_cast<std::uint32_t>(transitions.size());
             return toy3d::RHIStatus::success();
         }
 
@@ -346,9 +426,232 @@ int main()
         }
 
         toy3d::RHIStatus upload_buffer(
-            const toy3d::RHIBufferUploadDesc&) override
+            const toy3d::RHIBufferUploadDesc& desc) override
+        {
+            const auto* begin = static_cast<const std::uint8_t*>(
+                desc.source.data);
+            last_buffer_upload_data.assign(
+                begin, begin + desc.source.size);
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIStatus copy_texture(
+            const toy3d::RHITextureCopyDesc&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIStatus upload_texture(
+            const toy3d::RHITextureUploadDesc&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIStatus write_gpu_fence(
+            const toy3d::RHIGPUFenceRef&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIResult<toy3d::RHICommandListRef>
+        finish_recording() override
+        {
+            return toy3d::RHIResult<toy3d::RHICommandListRef>::failure(
+                toy3d::RHIErrorCode::Unsupported,
+                "The ABI materialization smoke does not finish a command list");
+        }
+    } uniform_context;
+
+    toy3d::RHIBindingLayoutDesc view_object_layout_desc;
+    view_object_layout_desc.entries.push_back({toy3d::RHIBindingGroup::View,
+        0u, toy3d::RHIResourceBindingType::UniformBuffer,
+        toy3d::RHIShaderStageFlags::Vertex, 1u});
+    view_object_layout_desc.entries.push_back({toy3d::RHIBindingGroup::Object,
+        0u, toy3d::RHIResourceBindingType::UniformBuffer,
+        toy3d::RHIShaderStageFlags::Vertex, 1u});
+    const toy3d::RHIBindingLayoutRef view_object_layout =
+        std::make_shared<toy3d::RHIBindingLayout>(
+            std::move(view_object_layout_desc));
+    const toy3d::ShaderMapProgramRef view_object_program =
+        load_program(make_view_object_program());
+
+    const toy3d::ViewUniformShaderParameters view_parameters{
+        toy3d::Matrix4(1.0f),
+        toy3d::Matrix4(2.0f),
+        toy3d::Matrix4(3.0f),
+        toy3d::Matrix4(4.0f),
+        toy3d::Matrix4(5.0f),
+        toy3d::Matrix4(6.0f),
+        toy3d::Vector3(7.0f, 8.0f, 9.0f),
+        0.0f,
+        toy3d::Vector3(10.0f, 11.0f, 12.0f),
+        0.0f};
+    const auto view_binding =
+        toy3d::materialize_view_uniform_shader_parameters(
+            device, uniform_context, view_object_layout, *view_object_program,
+            view_parameters);
+    float view_projection_diagonal = 0.0f;
+    float camera_position_x = 0.0f;
+    const bool view_bytes_complete =
+        uniform_context.last_buffer_upload_data.size() == 416u;
+    if (view_bytes_complete)
+    {
+        std::memcpy(&view_projection_diagonal,
+            uniform_context.last_buffer_upload_data.data() + 128u,
+            sizeof(float));
+        std::memcpy(&camera_position_x,
+            uniform_context.last_buffer_upload_data.data() + 384u,
+            sizeof(float));
+    }
+    check(view_binding.succeeded() && view_binding.value() != nullptr &&
+          view_binding.value()->group() == toy3d::RHIBindingGroup::View &&
+          view_bytes_complete &&
+          view_projection_diagonal == 3.0f && camera_position_x == 7.0f &&
+          uniform_context.last_buffer_upload_data[396u] == 0u,
+        "View ABI materialization must write canonical members and keep padding zero");
+
+    toy3d::Matrix4 object_to_world = toy3d::Matrix4::identity();
+    object_to_world.at(3u, 0u) = 13.0f;
+    const toy3d::PrimitiveUniformShaderParameters object_parameters{
+        object_to_world};
+    const auto object_binding =
+        toy3d::materialize_primitive_uniform_shader_parameters(
+            device, uniform_context, view_object_layout, *view_object_program,
+            object_parameters);
+    float object_translation_x = 0.0f;
+    const bool object_bytes_complete =
+        uniform_context.last_buffer_upload_data.size() == 64u;
+    if (object_bytes_complete)
+    {
+        std::memcpy(&object_translation_x,
+            uniform_context.last_buffer_upload_data.data() + 48u,
+            sizeof(float));
+    }
+    check(object_binding.succeeded() && object_binding.value() != nullptr &&
+          object_binding.value()->group() == toy3d::RHIBindingGroup::Object &&
+          object_bytes_complete &&
+          object_translation_x == 13.0f,
+        "Object ABI materialization must write the canonical object matrix");
+
+    const toy3d::ShaderMapProgramRef material_only_program =
+        load_program(make_material_program("UnusedView", 70u));
+    const std::uint32_t unused_buffer_count = device.buffer_creation_count;
+    const std::uint32_t unused_set_count = device.binding_set_creation_count;
+    const auto unused_view =
+        toy3d::materialize_view_uniform_shader_parameters(
+            device, uniform_context, view_object_layout, *material_only_program,
+            view_parameters);
+    check(unused_view.succeeded() && unused_view.value() == nullptr &&
+          device.buffer_creation_count == unused_buffer_count &&
+          device.binding_set_creation_count == unused_set_count,
+        "an unused View group must not create a buffer or binding set");
+
+    toy3d::ShaderMapProgramData invalid_view_data =
+        make_view_object_program();
+    invalid_view_data.bindings[0].constant_members[0].name =
+        "toy_unknown_view_member";
+    invalid_view_data.stages[0].reflection = invalid_view_data.bindings;
+    const toy3d::ShaderMapProgramRef invalid_view_program =
+        load_program(std::move(invalid_view_data));
+    check(!toy3d::materialize_view_uniform_shader_parameters(
+               device, uniform_context, view_object_layout,
+               *invalid_view_program,
+               view_parameters),
+        "unknown View members must fail with a diagnostic");
+
+    toy3d::ShaderMapProgramData mismatched_identity_data =
+        make_view_object_program();
+    mismatched_identity_data.bindings[0].constant_members[0].parameter_id =
+        toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant,
+            "toy_projection");
+    mismatched_identity_data.bindings[0].constant_members[1].parameter_id =
+        toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::View,
+            toy3d::shader::ShaderParameterCategory::Constant,
+            "toy_view");
+    mismatched_identity_data.stages[0].reflection =
+        mismatched_identity_data.bindings;
+    const toy3d::ShaderMapProgramRef mismatched_identity_program =
+        load_program(std::move(mismatched_identity_data));
+    check(!toy3d::materialize_view_uniform_shader_parameters(
+               device, uniform_context, view_object_layout,
+               *mismatched_identity_program,
+               view_parameters),
+        "View member names with mismatched stable identities must fail");
+
+    toy3d::ShaderMapProgramData invalid_stride_data =
+        make_view_object_program();
+    invalid_stride_data.bindings[1].constant_members[0].matrix_stride = 12u;
+    invalid_stride_data.stages[0].reflection = invalid_stride_data.bindings;
+    const toy3d::ShaderMapProgramRef invalid_stride_program =
+        load_program(std::move(invalid_stride_data));
+    check(!toy3d::materialize_primitive_uniform_shader_parameters(
+               device, uniform_context, view_object_layout,
+               *invalid_stride_program,
+               object_parameters),
+        "incompatible Object matrix stride must fail before RHI creation");
+
+    toy3d::ShaderMapProgramData resource_view_data =
+        make_view_object_program();
+    resource_view_data.bindings[0].type =
+        toy3d::RHIResourceBindingType::SampledTexture;
+    resource_view_data.bindings[0].constant_buffer_size = 0u;
+    resource_view_data.bindings[0].constant_members.clear();
+    resource_view_data.stages[0].reflection = resource_view_data.bindings;
+    const toy3d::ShaderMapProgramRef resource_view_program =
+        load_program(std::move(resource_view_data));
+    check(!toy3d::materialize_view_uniform_shader_parameters(
+               device, uniform_context, view_object_layout,
+               *resource_view_program,
+               view_parameters),
+        "View resource-class bindings without a canonical source must fail");
+
+    struct : toy3d::RHIGraphicsCommandContext
+    {
+        std::uint32_t transition_count = 0;
+        std::uint32_t upload_count = 0;
+        std::uint32_t texture_upload_count = 0;
+        std::vector<std::uint8_t> last_buffer_upload_data;
+        std::vector<std::string>* operations = nullptr;
+        toy3d::RHIDevice* command_device = nullptr;
+        bool finish_success = false;
+
+        toy3d::RHIStatus begin_recording(const std::string&) override
+        {
+            if (operations != nullptr)
+            {
+                operations->push_back("begin_recording");
+            }
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIStatus transition_resources(
+            const std::vector<toy3d::RHIResourceTransition>& transitions) override
+        {
+            transition_count += static_cast<std::uint32_t>(transitions.size());
+            if (operations != nullptr)
+            {
+                operations->push_back("transition");
+            }
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIStatus copy_buffer(
+            const toy3d::RHIBufferCopyDesc&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIStatus upload_buffer(
+            const toy3d::RHIBufferUploadDesc& desc) override
         {
             ++upload_count;
+            const auto* begin = static_cast<const std::uint8_t*>(
+                desc.source.data);
+            last_buffer_upload_data.assign(
+                begin, begin + desc.source.size);
             return toy3d::RHIStatus::success();
         }
 
@@ -374,6 +677,15 @@ int main()
         toy3d::RHIResult<toy3d::RHICommandListRef>
         finish_recording() override
         {
+            if (finish_success && command_device != nullptr)
+            {
+                if (operations != nullptr)
+                {
+                    operations->push_back("finish_recording");
+                }
+                return toy3d::RHIResult<toy3d::RHICommandListRef>::success(
+                    std::make_shared<toy3d::RHICommandList>(*command_device));
+            }
             return toy3d::RHIResult<toy3d::RHICommandListRef>::failure(
                 toy3d::RHIErrorCode::Unsupported,
                 "The manager smoke does not finish an RHI command list");
@@ -382,11 +694,19 @@ int main()
         toy3d::RHIStatus begin_render_pass(
             const toy3d::RHIRenderPassDesc&) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("begin_render_pass");
+            }
             return toy3d::RHIStatus::success();
         }
 
         toy3d::RHIStatus end_render_pass() override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("end_render_pass");
+            }
             return toy3d::RHIStatus::success();
         }
 
@@ -457,12 +777,17 @@ int main()
         int release_count = 0;
         bool retryable_failure = false;
         bool deterministic_failure = false;
+        std::vector<std::string>* operations = nullptr;
 
         toy3d::RHIStatus record_upload(
             toy3d::RHIDevice&,
             toy3d::RHIGraphicsCommandContext&) override
         {
             ++record_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("record_pending_uploads");
+            }
             if (deterministic_failure)
             {
                 return fail(toy3d::RHIStatus::failure(
@@ -481,11 +806,19 @@ int main()
         void on_recording_committed() noexcept override
         {
             ++commit_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("commit_recording");
+            }
         }
 
         void on_recording_discarded() noexcept override
         {
             ++discard_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("discard_recording");
+            }
         }
 
         void release_rhi() noexcept override
@@ -611,10 +944,10 @@ int main()
 
     std::vector<toy3d::ShaderVertexInput> shader_inputs(4u);
     shader_inputs[0].attribute_id = toy3d::ShaderVertexAttributeId::Position0;
-    shader_inputs[0].component_count = 3u;
+    shader_inputs[0].component_count = 4u;
     shader_inputs[0].target_location = 0u;
     shader_inputs[1].attribute_id = toy3d::ShaderVertexAttributeId::Normal0;
-    shader_inputs[1].component_count = 3u;
+    shader_inputs[1].component_count = 4u;
     shader_inputs[1].target_location = 1u;
     shader_inputs[2].attribute_id = toy3d::ShaderVertexAttributeId::TexCoord0;
     shader_inputs[2].component_count = 2u;
@@ -738,6 +1071,427 @@ int main()
     check(material_rendering_thread.start().succeeded(),
         "Material fixture must open the RenderCommand facade");
 
+    toy3d::RenderResourceManager frame_manager(device);
+    std::unique_ptr<toy3d::RenderScene> frame_render_scene =
+        std::make_unique<toy3d::RenderScene>(
+            *material_graph, frame_manager);
+    toy3d::RHITextureDesc present_texture_desc;
+    present_texture_desc.width = 64u;
+    present_texture_desc.height = 64u;
+    present_texture_desc.format = toy3d::PixelFormat::B8G8R8A8UNorm;
+    present_texture_desc.usage = toy3d::RHIResourceUsage::RenderTarget;
+    present_texture_desc.initial_access = toy3d::RHIAccess::Present;
+    const toy3d::RHITextureRef present_texture =
+        std::make_shared<toy3d::RHITexture>(device, present_texture_desc);
+    toy3d::RHITextureViewDesc present_view_desc;
+    present_view_desc.type = toy3d::RHIResourceViewType::RenderTarget;
+    present_view_desc.format = present_texture_desc.format;
+    present_view_desc.subresources.mip_count = 1u;
+    present_view_desc.subresources.layer_count = 1u;
+    const toy3d::RHITextureViewRef present_view =
+        std::make_shared<toy3d::RHITextureView>(
+            present_texture, present_view_desc);
+
+    toy3d::RHITextureDesc depth_texture_desc;
+    depth_texture_desc.width = 64u;
+    depth_texture_desc.height = 64u;
+    depth_texture_desc.format = toy3d::PixelFormat::D32Float;
+    depth_texture_desc.usage = toy3d::RHIResourceUsage::DepthStencil;
+    depth_texture_desc.initial_access = toy3d::RHIAccess::DepthStencilWrite;
+    const toy3d::RHITextureRef depth_texture =
+        std::make_shared<toy3d::RHITexture>(device, depth_texture_desc);
+    toy3d::RHITextureViewDesc depth_view_desc;
+    depth_view_desc.type = toy3d::RHIResourceViewType::DepthStencil;
+    depth_view_desc.format = depth_texture_desc.format;
+    depth_view_desc.subresources.aspect = toy3d::RHITextureAspect::Depth;
+    depth_view_desc.subresources.mip_count = 1u;
+    depth_view_desc.subresources.layer_count = 1u;
+    const toy3d::RHITextureViewRef depth_view =
+        std::make_shared<toy3d::RHITextureView>(
+            depth_texture, depth_view_desc);
+
+    struct : toy3d::RHIFrameContext
+    {
+        toy3d::RHITextureRef color_texture;
+        toy3d::RHITextureViewRef color_view;
+        std::unique_ptr<toy3d::RHIGraphicsCommandContext> commands;
+
+        const toy3d::RHITextureRef& present_texture() const override
+        {
+            return color_texture;
+        }
+
+        const toy3d::RHITextureViewRef& present_view() const override
+        {
+            return color_view;
+        }
+
+        std::uint32_t width() const override
+        {
+            return 64u;
+        }
+
+        std::uint32_t height() const override
+        {
+            return 64u;
+        }
+
+        toy3d::RHIResult<
+            std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
+        create_graphics_command_context() override
+        {
+            return toy3d::RHIResult<
+                std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::success(
+                    std::move(commands));
+        }
+    } frame_context_shape;
+
+    struct : toy3d::RHIViewportContext
+    {
+        std::unique_ptr<toy3d::RHIFrameContext> next_frame;
+        std::vector<std::string>* operations = nullptr;
+        std::uint32_t begin_count = 0u;
+        std::uint32_t end_count = 0u;
+        std::uint32_t abort_count = 0u;
+        bool end_success = true;
+        toy3d::RHIQueueCompletionValue next_completion_value = 42u;
+        toy3d::RHIStatus next_presentation_status =
+            toy3d::RHIStatus::success();
+
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>>
+        begin_frame() override
+        {
+            ++begin_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("begin_frame");
+            }
+            return toy3d::RHIResult<
+                std::unique_ptr<toy3d::RHIFrameContext>>::success(
+                    std::move(next_frame));
+        }
+
+        toy3d::RHIResult<toy3d::RHIFrameEndResult> end_frame(
+            std::unique_ptr<toy3d::RHIFrameContext> frame,
+            const std::vector<toy3d::RHICommandListRef>& command_lists)
+            override
+        {
+            ++end_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("end_frame");
+            }
+            if (!frame || command_lists.size() != 1u ||
+                !command_lists.front())
+            {
+                return toy3d::RHIResult<toy3d::RHIFrameEndResult>::failure(
+                    toy3d::RHIErrorCode::InvalidArgument,
+                    "Frame-owner smoke requires one immutable business list");
+            }
+            if (!end_success)
+            {
+                return toy3d::RHIResult<toy3d::RHIFrameEndResult>::failure(
+                    toy3d::RHIErrorCode::BackendFailure,
+                    "Injected frame-owner submit failure");
+            }
+            toy3d::RHIFrameEndResult result;
+            result.completion_value = next_completion_value;
+            result.presentation_status = next_presentation_status;
+            return toy3d::RHIResult<toy3d::RHIFrameEndResult>::success(
+                std::move(result));
+        }
+
+        toy3d::RHIStatus abort_frame(
+            std::unique_ptr<toy3d::RHIFrameContext> frame) override
+        {
+            ++abort_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("abort_frame");
+            }
+            return frame
+                ? toy3d::RHIStatus::success()
+                : toy3d::RHIStatus::failure(
+                    toy3d::RHIErrorCode::InvalidArgument,
+                    "Frame-owner smoke cannot abort an empty frame");
+        }
+
+        toy3d::RHIStatus request_resize(
+            std::uint32_t, std::uint32_t) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+    } frame_viewport;
+
+    const auto make_frame = [&]()
+        -> std::unique_ptr<toy3d::RHIFrameContext>
+    {
+        auto frame_context =
+            std::make_unique<decltype(frame_context_shape)>();
+        frame_context->color_texture = present_texture;
+        frame_context->color_view = present_view;
+        auto frame_commands = std::make_unique<decltype(context)>();
+        frame_commands->operations = frame_viewport.operations;
+        frame_commands->command_device = &device;
+        frame_commands->finish_success = true;
+        frame_context->commands = std::move(frame_commands);
+        return frame_context;
+    };
+    const auto make_valid_view_family = [&]()
+    {
+        std::vector<toy3d::SceneView> views;
+        views.emplace_back(
+            toy3d::Vector3(),
+            toy3d::Quaternion::identity(),
+            toy3d::Vector3(0.0f, 0.0f, 1.0f),
+            toy3d::UIntVector2(),
+            toy3d::UIntVector2(64u, 64u),
+            toy3d::UIntVector2(64u, 64u),
+            toy3d::CameraProjectionMode::Perspective,
+            toy3d::Radians(1.0f),
+            0.1f,
+            100.0f);
+        return toy3d::SceneViewFamily(
+            *frame_render_scene,
+            toy3d::UIntVector2(64u, 64u),
+            std::move(views));
+    };
+
+    decltype(ready_first) submitted_frame_resource;
+    std::vector<std::string> submitted_frame_operations;
+    submitted_frame_resource.operations = &submitted_frame_operations;
+    frame_viewport.operations = &submitted_frame_operations;
+    frame_viewport.next_frame = make_frame();
+    check(frame_manager.begin_init(submitted_frame_resource).succeeded(),
+        "frame-owner smoke must begin a pending resource transaction");
+    std::vector<toy3d::SceneView> submitted_views;
+    submitted_views.emplace_back(
+        toy3d::Vector3(),
+        toy3d::Quaternion::identity(),
+        toy3d::Vector3(0.0f, 0.0f, 1.0f),
+        toy3d::UIntVector2(),
+        toy3d::UIntVector2(64u, 64u),
+        toy3d::UIntVector2(64u, 64u),
+        toy3d::CameraProjectionMode::Perspective,
+        toy3d::Radians(1.0f),
+        0.1f,
+        100.0f);
+    toy3d::ForwardSceneRenderer submitted_frame_renderer(
+        toy3d::SceneViewFamily(
+            *frame_render_scene,
+            toy3d::UIntVector2(64u, 64u),
+            std::move(submitted_views)));
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult>
+        submitted_frame_result = submitted_frame_renderer.render_frame(
+            *frame_render_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            depth_view);
+    const std::vector<std::string> expected_submitted_operations = {
+        "begin_frame",
+        "begin_recording",
+        "record_pending_uploads",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "finish_recording",
+        "end_frame",
+        "commit_recording"};
+    check(submitted_frame_result.succeeded() &&
+          submitted_frame_result.value().completion_value == 42u &&
+          submitted_frame_resource.state() ==
+              toy3d::RenderResourceState::Ready &&
+          submitted_frame_operations == expected_submitted_operations &&
+          frame_viewport.end_count == 1u &&
+          frame_viewport.abort_count == 0u,
+        "frame owner must record uploads and Base Pass in one list, then commit only after submit");
+    check(frame_manager.release(submitted_frame_resource).succeeded(),
+        "submitted frame resource must release after the frame-owner smoke");
+
+    decltype(ready_first) submit_failed_resource;
+    std::vector<std::string> submit_failed_operations;
+    submit_failed_resource.operations = &submit_failed_operations;
+    frame_viewport.operations = &submit_failed_operations;
+    frame_viewport.next_frame = make_frame();
+    frame_viewport.end_success = false;
+    check(frame_manager.begin_init(submit_failed_resource).succeeded(),
+        "submit failure smoke must begin a retryable pending transaction");
+    toy3d::ForwardSceneRenderer submit_failed_renderer(
+        make_valid_view_family());
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult>
+        submit_failed_result = submit_failed_renderer.render_frame(
+            *frame_render_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            depth_view);
+    const std::vector<std::string> expected_submit_failed_operations = {
+        "begin_frame",
+        "begin_recording",
+        "record_pending_uploads",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "finish_recording",
+        "end_frame",
+        "discard_recording"};
+    check(!submit_failed_result &&
+          submit_failed_resource.state() ==
+              toy3d::RenderResourceState::PendingUpload &&
+          submit_failed_resource.discard_count == 1 &&
+          submit_failed_operations == expected_submit_failed_operations,
+        "submit failure must discard the recorded list transaction without publishing Ready");
+    check(frame_manager.release(submit_failed_resource).succeeded(),
+        "submit-failed resource must remain releasable after discard");
+    frame_viewport.end_success = true;
+
+    decltype(ready_first) suboptimal_present_resource;
+    std::vector<std::string> suboptimal_present_operations;
+    suboptimal_present_resource.operations = &suboptimal_present_operations;
+    frame_viewport.operations = &suboptimal_present_operations;
+    frame_viewport.next_frame = make_frame();
+    frame_viewport.next_completion_value = 43u;
+    frame_viewport.next_presentation_status =
+        toy3d::RHIStatus::failure(
+            toy3d::RHIErrorCode::Suboptimal,
+            "Injected recoverable suboptimal presentation");
+    check(frame_manager.begin_init(suboptimal_present_resource).succeeded(),
+        "Suboptimal presentation smoke must begin a pending transaction");
+    toy3d::ForwardSceneRenderer suboptimal_present_renderer(
+        make_valid_view_family());
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult>
+        suboptimal_present_result = suboptimal_present_renderer.render_frame(
+            *frame_render_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            depth_view);
+    check(suboptimal_present_result.succeeded() &&
+          suboptimal_present_result.value().completion_value == 43u &&
+          suboptimal_present_result.value().presentation_status.code() ==
+              toy3d::RHIErrorCode::Suboptimal &&
+          suboptimal_present_resource.state() ==
+              toy3d::RenderResourceState::Ready &&
+          suboptimal_present_operations == expected_submitted_operations,
+        "Suboptimal after submit must preserve completion and commit resources");
+    check(frame_manager.release(suboptimal_present_resource).succeeded(),
+        "Suboptimal-presented resource must release after commit");
+
+    decltype(ready_first) out_of_date_present_resource;
+    std::vector<std::string> out_of_date_present_operations;
+    out_of_date_present_resource.operations = &out_of_date_present_operations;
+    frame_viewport.operations = &out_of_date_present_operations;
+    frame_viewport.next_frame = make_frame();
+    frame_viewport.next_completion_value = 44u;
+    frame_viewport.next_presentation_status =
+        toy3d::RHIStatus::failure(
+            toy3d::RHIErrorCode::OutOfDate,
+            "Injected recoverable out-of-date presentation");
+    check(frame_manager.begin_init(out_of_date_present_resource).succeeded(),
+        "OutOfDate presentation smoke must begin a pending transaction");
+    toy3d::ForwardSceneRenderer out_of_date_present_renderer(
+        make_valid_view_family());
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult>
+        out_of_date_present_result =
+            out_of_date_present_renderer.render_frame(
+                *frame_render_scene,
+                device,
+                frame_manager,
+                frame_viewport,
+                depth_view);
+    check(out_of_date_present_result.succeeded() &&
+          out_of_date_present_result.value().completion_value == 44u &&
+          out_of_date_present_result.value().presentation_status.code() ==
+              toy3d::RHIErrorCode::OutOfDate &&
+          out_of_date_present_resource.state() ==
+              toy3d::RenderResourceState::Ready &&
+          out_of_date_present_operations == expected_submitted_operations,
+        "OutOfDate after submit must preserve completion and commit resources");
+    check(frame_manager.release(out_of_date_present_resource).succeeded(),
+        "OutOfDate-presented resource must release after commit");
+
+    decltype(ready_first) unknown_boundary_resource;
+    std::vector<std::string> unknown_boundary_operations;
+    unknown_boundary_resource.operations = &unknown_boundary_operations;
+    frame_viewport.operations = &unknown_boundary_operations;
+    frame_viewport.next_frame = make_frame();
+    frame_viewport.next_completion_value = 0u;
+    frame_viewport.next_presentation_status = toy3d::RHIStatus::success();
+    check(frame_manager.begin_init(unknown_boundary_resource).succeeded(),
+        "unknown submit boundary smoke must begin a pending transaction");
+    toy3d::ForwardSceneRenderer unknown_boundary_renderer(
+        make_valid_view_family());
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult>
+        unknown_boundary_result = unknown_boundary_renderer.render_frame(
+            *frame_render_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            depth_view);
+    check(unknown_boundary_result.succeeded() &&
+          unknown_boundary_result.value().completion_value == 0u &&
+          unknown_boundary_result.value().presentation_status.code() ==
+              toy3d::RHIErrorCode::BackendFailure &&
+          unknown_boundary_resource.state() ==
+              toy3d::RenderResourceState::Ready &&
+          unknown_boundary_operations == expected_submitted_operations,
+        "unknown completion metadata after submit must surface terminal presentation status without rolling back resources");
+    check(frame_manager.release(unknown_boundary_resource).succeeded(),
+        "unknown-boundary resource must release after commit");
+    frame_viewport.next_completion_value = 42u;
+    frame_viewport.next_presentation_status = toy3d::RHIStatus::success();
+
+    decltype(ready_first) aborted_frame_resource;
+    std::vector<std::string> aborted_frame_operations;
+    aborted_frame_resource.operations = &aborted_frame_operations;
+    frame_viewport.operations = &aborted_frame_operations;
+    frame_viewport.next_frame = make_frame();
+    check(frame_manager.begin_init(aborted_frame_resource).succeeded(),
+        "abort smoke must begin a retryable pending resource transaction");
+    std::vector<toy3d::SceneView> invalid_views;
+    invalid_views.emplace_back(
+        toy3d::Vector3(),
+        toy3d::Quaternion::identity(),
+        toy3d::Vector3(0.0f, 0.0f, 1.0f),
+        toy3d::UIntVector2(),
+        toy3d::UIntVector2(),
+        toy3d::UIntVector2(64u, 64u),
+        toy3d::CameraProjectionMode::Perspective,
+        toy3d::Radians(1.0f),
+        0.1f,
+        100.0f);
+    toy3d::ForwardSceneRenderer aborted_frame_renderer(
+        toy3d::SceneViewFamily(
+            *frame_render_scene,
+            toy3d::UIntVector2(64u, 64u),
+            std::move(invalid_views)));
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult>
+        aborted_frame_result = aborted_frame_renderer.render_frame(
+            *frame_render_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            depth_view);
+    const std::vector<std::string> expected_aborted_operations = {
+        "begin_frame",
+        "begin_recording",
+        "record_pending_uploads",
+        "discard_recording",
+        "abort_frame"};
+    check(!aborted_frame_result &&
+          aborted_frame_resource.state() ==
+              toy3d::RenderResourceState::PendingUpload &&
+          aborted_frame_resource.discard_count == 1 &&
+          aborted_frame_operations == expected_aborted_operations &&
+          frame_viewport.abort_count == 1u,
+        "invalid init_views after acquire must discard resource publication and abort exactly once");
+    check(frame_manager.release(aborted_frame_resource).succeeded(),
+        "aborted frame resource must remain releasable after discard");
+    frame_render_scene.reset();
+
     toy3d::ShaderMapProgramData active_program_data =
         make_material_program("Main", 20u);
     active_program_data.graphics_pass_state.cull_mode =
@@ -746,9 +1500,9 @@ int main()
         toy3d::shader::calculate_shader_graphics_pass_state_hash(
             active_program_data.graphics_pass_state);
     const toy3d::ShaderMapProgramRef active_program =
-        load_material_program(std::move(active_program_data));
+        load_program(std::move(active_program_data));
     const toy3d::ShaderMapProgramRef candidate_program =
-        load_material_program(make_material_program("Candidate", 40u));
+        load_program(make_material_program("Candidate", 40u));
     toy3d::ShaderMapProgramData incompatible_schema_program_data =
         make_material_program("IncompleteCandidate", 60u);
     incompatible_schema_program_data.bindings.front().constant_members.erase(
@@ -756,7 +1510,7 @@ int main()
     incompatible_schema_program_data.stages.front().reflection =
         incompatible_schema_program_data.bindings;
     const toy3d::ShaderMapProgramRef incompatible_schema_program =
-        load_material_program(std::move(incompatible_schema_program_data));
+        load_program(std::move(incompatible_schema_program_data));
     toy3d::MaterialDesc render_material_desc;
     render_material_desc.shader_name = "Toy3d/Test/Material";
     render_material_desc.shader_program = active_program;
@@ -807,18 +1561,19 @@ int main()
     const std::uint32_t first_material_binding_count =
         device.binding_set_creation_count;
     toy3d::RHIResult<toy3d::RHIBindingSetRef> first_material_binding =
-        material_proxy->materialize(device, material_layout);
+        material_proxy->materialize(device, context, material_layout);
     float materialized_scalar = 0.0f;
-    if (device.last_buffer_initial_data.size() >= sizeof(float))
+    if (context.last_buffer_upload_data.size() >= sizeof(float))
     {
         std::memcpy(&materialized_scalar,
-            device.last_buffer_initial_data.data(), sizeof(float));
+            context.last_buffer_upload_data.data(), sizeof(float));
     }
     check(first_material_binding.succeeded() &&
           device.binding_set_creation_count == first_material_binding_count + 1u &&
           materialized_scalar == 0.75f,
         "first visible materialization must consume the final FIFO scalar value");
-    check(material_proxy->materialize(device, material_layout).succeeded() &&
+    check(material_proxy->materialize(
+              device, context, material_layout).succeeded() &&
           device.binding_set_creation_count == first_material_binding_count + 1u,
         "unchanged Material parameters and Texture binding identity must reuse the binding");
 
@@ -833,7 +1588,8 @@ int main()
           texture_resource->active_view() == first_view &&
           texture_resource->binding_generation() == 1u,
         "same-layout Texture content update must keep view identity and binding generation");
-    check(material_proxy->materialize(device, material_layout).succeeded() &&
+    check(material_proxy->materialize(
+              device, context, material_layout).succeeded() &&
           device.binding_set_creation_count == first_material_binding_count + 1u,
         "same-view Texture content updates must not rebuild Material bindings");
 
@@ -851,7 +1607,8 @@ int main()
           texture_resource->active_view() == first_view &&
           texture_resource->binding_generation() == 1u,
         "Texture replacement candidate must be current-list eligible without replacing active before submit");
-    check(material_proxy->materialize(device, material_layout).succeeded() &&
+    check(material_proxy->materialize(
+              device, context, material_layout).succeeded() &&
           device.binding_set_creation_count == first_material_binding_count + 2u,
         "a replacement candidate view must invalidate the current-list Material binding");
     check(manager.commit_recording() &&
@@ -859,12 +1616,13 @@ int main()
           texture_resource->binding_generation() == 2u &&
           first_view != nullptr,
         "Texture replacement commit must increment generation while prior strong view references remain valid");
-    check(material_proxy->materialize(device, material_layout).succeeded() &&
+    check(material_proxy->materialize(
+              device, context, material_layout).succeeded() &&
           device.binding_set_creation_count == first_material_binding_count + 3u,
         "a committed Texture binding generation change must invalidate cached Material bindings");
 
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_candidate_binding =
-        material_proxy->materialize(device, material_layout);
+        material_proxy->materialize(device, context, material_layout);
     check(active_candidate_binding.succeeded() &&
           material_proxy->effective_graphics_pass_state() != nullptr &&
           material_proxy->effective_graphics_pass_state()->cull_mode ==
@@ -889,7 +1647,7 @@ int main()
         render_material_instance->publish_material_replacement();
     const toy3d::RHIResult<toy3d::RHIBindingSetRef>
         active_binding_after_failed_candidate =
-            material_proxy->materialize(device, material_layout);
+            material_proxy->materialize(device, context, material_layout);
     const bool old_schema_scalar_accepted =
         render_material_instance->set_scalar(11u, 0.75f);
     check(incomplete_candidate_staged && incomplete_candidate_published &&
@@ -905,7 +1663,7 @@ int main()
     check(render_material_instance->stage_material_replacement(
               candidate_program, true) &&
           material_proxy->materialize_staged(
-              device, material_layout).succeeded() &&
+              device, context, material_layout).succeeded() &&
           render_material_instance->discard_material_replacement() &&
           material_proxy->shader_program() == active_program &&
           material_proxy->effective_graphics_pass_state() != nullptr &&
@@ -916,21 +1674,23 @@ int main()
     const bool staged_two_sided = render_material_instance->stage_material_replacement(
         candidate_program, true);
     toy3d::RHIResult<toy3d::RHIBindingSetRef> staged_two_sided_binding =
-        material_proxy->materialize_staged(device, material_layout);
+        material_proxy->materialize_staged(
+            device, context, material_layout);
     check(staged_two_sided && staged_two_sided_binding.succeeded() &&
           render_material_instance->publish_material_replacement() &&
           material_proxy->shader_program() == candidate_program &&
           material_proxy->effective_graphics_pass_state() != nullptr &&
           material_proxy->effective_graphics_pass_state()->cull_mode ==
               toy3d::shader::ShaderGraphicsPassState::CullMode::None &&
-          material_proxy->materialize(device, material_layout).value() ==
+          material_proxy->materialize(
+              device, context, material_layout).value() ==
               staged_two_sided_binding.value(),
         "two-sided publication must atomically commit Program, CullMode::None, and binding");
 
     check(render_material_instance->stage_material_replacement(
               candidate_program, false) &&
           material_proxy->materialize_staged(
-              device, material_layout).succeeded() &&
+              device, context, material_layout).succeeded() &&
           render_material_instance->publish_material_replacement() &&
           material_proxy->effective_graphics_pass_state() != nullptr &&
           material_proxy->effective_graphics_pass_state()->cull_mode ==
