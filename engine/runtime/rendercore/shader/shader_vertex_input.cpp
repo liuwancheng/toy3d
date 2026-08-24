@@ -20,6 +20,20 @@ namespace toy3d
             return semantic;
         }
 
+        std::string reflected_logical_semantic(
+            const shader::ReflectedInterfaceVariable& reflected)
+        {
+            if (!reflected.semantic.empty())
+            {
+                return reflected.semantic;
+            }
+
+            const std::size_t name_separator = reflected.name.rfind('.');
+            return name_separator == std::string::npos
+                ? reflected.name
+                : reflected.name.substr(name_separator + 1u);
+        }
+
         bool resolve_attribute(
             const std::string& semantic,
             ShaderVertexAttributeId& attribute_id,
@@ -30,14 +44,14 @@ namespace toy3d
             {
                 attribute_id = ShaderVertexAttributeId::Position0;
                 semantic_name = "POSITION";
-                component_count = 3u;
+                component_count = 4u;
                 return true;
             }
             if (semantic == "NORMAL" || semantic == "NORMAL0")
             {
                 attribute_id = ShaderVertexAttributeId::Normal0;
                 semantic_name = "NORMAL";
-                component_count = 3u;
+                component_count = 4u;
                 return true;
             }
             if (semantic == "TEXCOORD" || semantic == "TEXCOORD0")
@@ -75,7 +89,7 @@ namespace toy3d
         std::string semantic_name;
         std::uint32_t expected_component_count = 0;
         if (!resolve_attribute(
-                normalize_semantic(reflected.semantic),
+                normalize_semantic(reflected_logical_semantic(reflected)),
                 attribute_id,
                 semantic_name,
                 expected_component_count))

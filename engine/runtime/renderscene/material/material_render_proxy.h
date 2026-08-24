@@ -12,6 +12,8 @@
 namespace toy3d
 {
     class Material;
+    class RHICommandContext;
+    class RenderResourceManager;
     class TextureResource;
 
     // MaterialInstance-owned stable Render-side representation. Its mutable
@@ -31,13 +33,16 @@ namespace toy3d
 
         RHIResult<RHIBindingSetRef> materialize(
             RHIDevice& device,
+            RHICommandContext& context,
             const RHIBindingLayoutRef& binding_layout);
+        RHIStatus begin_init_textures(RenderResourceManager& manager);
 
         RHIStatus stage_material_candidate(
             ShaderMapProgramRef shader_program,
             bool two_sided);
         RHIResult<RHIBindingSetRef> materialize_staged(
             RHIDevice& device,
+            RHICommandContext& context,
             const RHIBindingLayoutRef& binding_layout);
         RHIStatus commit_material_candidate();
         void discard_material_candidate() noexcept;
@@ -52,6 +57,7 @@ namespace toy3d
     private:
         RHIResult<RHIBindingSetRef> materialize_program(
             RHIDevice& device,
+            RHICommandContext& context,
             const RHIBindingLayoutRef& binding_layout,
             const ShaderMapProgramRef& shader_program,
             bool staged);
@@ -76,6 +82,7 @@ namespace toy3d
         std::unordered_map<TextureResource*, RHITextureViewRef> texture_views_;
         std::unordered_map<TextureResource*, std::uint64_t> staged_texture_generations_;
         std::unordered_map<TextureResource*, RHITextureViewRef> staged_texture_views_;
+        RenderResourceManager* resource_manager_ = nullptr;
         bool dirty_ = true;
         bool staged_dirty_ = false;
     };

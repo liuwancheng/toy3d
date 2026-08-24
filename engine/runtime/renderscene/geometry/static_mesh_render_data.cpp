@@ -96,12 +96,13 @@ namespace toy3d
     PositionVertexBuffer::PositionVertexBuffer(
         const std::vector<StaticMeshVertex>& vertices)
     {
-        initial_data_.reserve(vertices.size() * 3u);
+        initial_data_.reserve(vertices.size() * 4u);
         for (const StaticMeshVertex& vertex : vertices)
         {
             initial_data_.push_back(vertex.position.x);
             initial_data_.push_back(vertex.position.y);
             initial_data_.push_back(vertex.position.z);
+            initial_data_.push_back(1.0f);
         }
     }
 
@@ -138,12 +139,13 @@ namespace toy3d
     StaticMeshVertexBuffer::StaticMeshVertexBuffer(
         const std::vector<StaticMeshVertex>& vertices)
     {
-        initial_data_.reserve(vertices.size() * 5u);
+        initial_data_.reserve(vertices.size() * 6u);
         for (const StaticMeshVertex& vertex : vertices)
         {
             initial_data_.push_back(vertex.normal.x);
             initial_data_.push_back(vertex.normal.y);
             initial_data_.push_back(vertex.normal.z);
+            initial_data_.push_back(0.0f);
             initial_data_.push_back(vertex.uv0.x);
             initial_data_.push_back(vertex.uv0.y);
         }
@@ -294,15 +296,21 @@ namespace toy3d
     RHIStatus StaticMeshRenderData::begin_init(
         RenderResourceManager& manager)
     {
+        if (init_started_)
+        {
+            return RHIStatus::success();
+        }
         RHIStatus status = manager.begin_init(position_vertex_buffer_);
         if (!status)
         {
             return status;
         }
+        init_started_ = true;
         status = manager.begin_init(static_mesh_vertex_buffer_);
         if (!status)
         {
             manager.release(position_vertex_buffer_);
+            init_started_ = false;
             return status;
         }
         if (color_vertex_buffer_)
@@ -312,6 +320,7 @@ namespace toy3d
             {
                 manager.release(static_mesh_vertex_buffer_);
                 manager.release(position_vertex_buffer_);
+                init_started_ = false;
                 return status;
             }
         }
@@ -324,12 +333,23 @@ namespace toy3d
             }
             manager.release(static_mesh_vertex_buffer_);
             manager.release(position_vertex_buffer_);
+            init_started_ = false;
         }
         return status;
     }
 
     RHIStatus StaticMeshRenderData::prepare_current_recording()
     {
+        if (is_drawable())
+        {
+            const RHIStatus stream_status =
+                local_vertex_factory_->validate_streams();
+            if (stream_status)
+            {
+                return RHIStatus::success();
+            }
+        }
+
         local_vertex_factory_.reset();
         if (!position_vertex_buffer_.buffer() ||
             !static_mesh_vertex_buffer_.buffer() ||
@@ -344,12 +364,12 @@ namespace toy3d
         std::vector<VertexStreamComponent> components;
         components.push_back({ShaderVertexAttributeId::Position0,
             0u, 0u, position_vertex_buffer_.stride(),
-            PixelFormat::R32G32B32Float, position_vertex_buffer_.buffer()});
+            PixelFormat::R32G32B32A32Float, position_vertex_buffer_.buffer()});
         components.push_back({ShaderVertexAttributeId::Normal0,
             1u, 0u, static_mesh_vertex_buffer_.stride(),
-            PixelFormat::R32G32B32Float, static_mesh_vertex_buffer_.buffer()});
+            PixelFormat::R32G32B32A32Float, static_mesh_vertex_buffer_.buffer()});
         components.push_back({ShaderVertexAttributeId::TexCoord0,
-            1u, 12u, static_mesh_vertex_buffer_.stride(),
+            1u, 16u, static_mesh_vertex_buffer_.stride(),
             PixelFormat::R32G32Float, static_mesh_vertex_buffer_.buffer()});
         if (color_vertex_buffer_)
         {
@@ -372,6 +392,11 @@ namespace toy3d
     RHIStatus StaticMeshRenderData::release(RenderResourceManager& manager)
     {
         local_vertex_factory_.reset();
+        if (!init_started_)
+        {
+            return RHIStatus::success();
+        }
+
         RHIStatus status = manager.release(index_buffer_);
         if (color_vertex_buffer_)
         {
@@ -382,6 +407,7 @@ namespace toy3d
             status, manager.release(static_mesh_vertex_buffer_));
         status = preserve_first_failure(
             status, manager.release(position_vertex_buffer_));
+        init_started_ = false;
         return status;
     }
 

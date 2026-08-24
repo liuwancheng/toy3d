@@ -17,8 +17,8 @@ namespace toy3d
             {
             case ShaderVertexAttributeId::Position0:
             case ShaderVertexAttributeId::Normal0:
-                format = PixelFormat::R32G32B32Float;
-                byte_size = 12u;
+                format = PixelFormat::R32G32B32A32Float;
+                byte_size = 16u;
                 return true;
             case ShaderVertexAttributeId::TexCoord0:
                 format = PixelFormat::R32G32Float;
@@ -42,7 +42,7 @@ namespace toy3d
             {
             case ShaderVertexAttributeId::Position0:
             case ShaderVertexAttributeId::Normal0:
-                component_count = 3u;
+                component_count = 4u;
                 return true;
             case ShaderVertexAttributeId::TexCoord0:
                 component_count = 2u;

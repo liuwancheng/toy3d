@@ -1,6 +1,7 @@
 #include "rendercore/geometry/static_mesh.h"
 
 #include "logging/logger.h"
+#include "renderscene/geometry/static_mesh_render_data.h"
 
 #include <algorithm>
 #include <cmath>
@@ -141,6 +142,8 @@ namespace toy3d
         return std::make_shared<StaticMesh>(std::move(static_mesh));
     }
 
+    StaticMesh::~StaticMesh() = default;
+
     StaticMesh::StaticMesh(
         StaticMeshDesc desc,
         AxisAlignedBounds local_bounds)
@@ -151,6 +154,7 @@ namespace toy3d
           material_slots_(std::move(desc.material_slots)),
           local_bounds_(local_bounds)
     {
+        render_data_ = std::make_unique<StaticMeshRenderData>(*this);
     }
 
     StaticMesh::StaticMesh(StaticMesh&& other) noexcept
@@ -159,7 +163,8 @@ namespace toy3d
           indices_(std::move(other.indices_)),
           sections_(std::move(other.sections_)),
           material_slots_(std::move(other.material_slots_)),
-          local_bounds_(other.local_bounds_)
+          local_bounds_(other.local_bounds_),
+          render_data_(std::move(other.render_data_))
     {
     }
 }

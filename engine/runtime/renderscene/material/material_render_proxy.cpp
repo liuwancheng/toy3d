@@ -1,6 +1,11 @@
 #include "renderscene/material/material_render_proxy.h"
 
+#include "drivers/rhi/rhi_command_context.h"
+#include "logging/logger.h"
 #include "rendercore/material/material.h"
+#include "rendercore/shader/shader_uniform_buffer.h"
+#include "renderscene/render_resource.h"
+#include "renderscene/render_resource_manager.h"
 #include "renderscene/texture/texture_resource.h"
 
 #include <cstring>
@@ -131,6 +136,29 @@ namespace toy3d
             }
             return RHIStatus::success();
         }
+
+        RHIStatus begin_init_texture_resource(
+            TextureResource& resource,
+            RenderResourceManager& manager)
+        {
+            switch (resource.state())
+            {
+            case RenderResourceState::Uninitialized:
+                return resource.begin_init(manager);
+            case RenderResourceState::PendingUpload:
+            case RenderResourceState::Ready:
+                return RHIStatus::success();
+            case RenderResourceState::Failed:
+                return resource.failure_status();
+            case RenderResourceState::Released:
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Material texture resource was already released");
+            }
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Material texture resource has an unknown state");
+        }
     }
 
     MaterialRenderProxy::MaterialRenderProxy(const Material& material)
@@ -201,8 +229,42 @@ namespace toy3d
         TextureResource* texture_resource) noexcept
     {
         texture_parameters_[parameter_id] = texture_resource;
+        if (resource_manager_ != nullptr && texture_resource != nullptr)
+        {
+            const RHIStatus status = begin_init_texture_resource(
+                *texture_resource, *resource_manager_);
+            if (!status)
+            {
+                TOY_LOG_ERROR(
+                    "MaterialRenderProxy could not initialize a TextureResource update: {}",
+                    status.message());
+            }
+        }
         dirty_ = true;
         staged_dirty_ = staged_shader_program_ != nullptr;
+    }
+
+    RHIStatus MaterialRenderProxy::begin_init_textures(
+        RenderResourceManager& manager)
+    {
+        resource_manager_ = &manager;
+        for (const auto& texture_parameter : texture_parameters_)
+        {
+            TextureResource* const resource = texture_parameter.second;
+            if (resource == nullptr)
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::NotReady,
+                    "Material texture parameter has no TextureResource");
+            }
+            const RHIStatus status = begin_init_texture_resource(
+                *resource, manager);
+            if (!status)
+            {
+                return status;
+            }
+        }
+        return RHIStatus::success();
     }
 
     bool MaterialRenderProxy::texture_cache_matches(bool staged) const noexcept
@@ -253,10 +315,11 @@ namespace toy3d
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize(
         RHIDevice& device,
+        RHICommandContext& context,
         const RHIBindingLayoutRef& binding_layout)
     {
         return materialize_program(
-            device, binding_layout, shader_program_, false);
+            device, context, binding_layout, shader_program_, false);
     }
 
     RHIStatus MaterialRenderProxy::stage_material_candidate(
@@ -296,10 +359,11 @@ namespace toy3d
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_staged(
         RHIDevice& device,
+        RHICommandContext& context,
         const RHIBindingLayoutRef& binding_layout)
     {
         return materialize_program(
-            device, binding_layout, staged_shader_program_, true);
+            device, context, binding_layout, staged_shader_program_, true);
     }
 
     RHIStatus MaterialRenderProxy::commit_material_candidate()
@@ -350,6 +414,7 @@ namespace toy3d
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_program(
         RHIDevice& device,
+        RHICommandContext& context,
         const RHIBindingLayoutRef& binding_layout,
         const ShaderMapProgramRef& shader_program,
         bool staged)
@@ -413,19 +478,10 @@ namespace toy3d
                     }
                 }
 
-                RHIBufferDesc buffer_desc;
-                buffer_desc.size = bytes.size();
-                buffer_desc.usage = RHIResourceUsage::UniformBuffer;
-                buffer_desc.cpu_access = RHICPUAccess::Write;
-                buffer_desc.initial_access = RHIAccess::UniformBuffer;
-                buffer_desc.debug_name = desc.debug_name + " Constants";
-                RHIInitialData initial_data;
-                initial_data.data = bytes.data();
-                initial_data.size = bytes.size();
-                initial_data.consumption =
-                    RHIInitialData::Consumption::CopiedBeforeReturn;
                 RHIResult<RHIBufferRef> buffer =
-                    device.create_buffer(buffer_desc, &initial_data);
+                    create_uploaded_shader_uniform_buffer(
+                        device, context, bytes,
+                        desc.debug_name + " Constants");
                 if (!buffer)
                 {
                     return RHIResult<RHIBindingSetRef>::failure(

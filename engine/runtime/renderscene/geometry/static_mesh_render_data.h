@@ -21,7 +21,7 @@ namespace toy3d
             const std::vector<StaticMeshVertex>& vertices);
 
         const RHIBufferRef& buffer() const { return rhi_buffer_; }
-        std::uint32_t stride() const { return 12u; }
+        std::uint32_t stride() const { return 16u; }
 
     private:
         RHIStatus record_upload(
@@ -42,7 +42,7 @@ namespace toy3d
             const std::vector<StaticMeshVertex>& vertices);
 
         const RHIBufferRef& buffer() const { return rhi_buffer_; }
-        std::uint32_t stride() const { return 20u; }
+        std::uint32_t stride() const { return 24u; }
 
     private:
         RHIStatus record_upload(
@@ -135,5 +135,6 @@ namespace toy3d
         std::unique_ptr<LocalVertexFactory> local_vertex_factory_;
         std::vector<StaticMeshSection> sections_;
         std::size_t index_count_ = 0;
+        bool init_started_ = false;
     };
 }

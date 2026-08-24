@@ -114,16 +114,23 @@ namespace toy3d
             return nullptr;
         }
 
-        // Batch B establishes stable Proxy identity before resource representations
-        // become drawable. Null references remain explicitly unavailable to the later
-        // StaticMeshRenderData/MaterialRenderProxy ready gate.
-        std::vector<MaterialRenderProxy*> material_render_proxies(
-            static_mesh_->material_slots().size(), nullptr);
+        std::vector<MaterialRenderProxy*> material_render_proxies;
+        material_render_proxies.reserve(static_mesh_->material_slots().size());
+        for (std::uint32_t slot = 0u;
+             slot < static_mesh_->material_slots().size();
+             ++slot)
+        {
+            const MaterialInstanceRef material = material_for_slot(slot);
+            material_render_proxies.push_back(
+                material != nullptr
+                    ? material->material_render_proxy()
+                    : nullptr);
+        }
         return std::make_unique<StaticMeshSceneProxy>(
             world_transform(),
             world_bounds_,
             visible(),
-            nullptr,
+            static_mesh_->render_data(),
             std::move(material_render_proxies));
     }
 }

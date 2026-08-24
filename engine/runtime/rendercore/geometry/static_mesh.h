@@ -11,6 +11,8 @@
 
 namespace toy3d
 {
+    class StaticMeshRenderData;
+
     struct StaticMeshVertex
     {
         vec3 position{0.0f};
@@ -44,7 +46,7 @@ namespace toy3d
     {
     public:
         static std::shared_ptr<const StaticMesh> create(StaticMeshDesc desc);
-        ~StaticMesh() = default;
+        ~StaticMesh();
 
         StaticMesh(const StaticMesh&) = delete;
         StaticMesh& operator=(const StaticMesh&) = delete;
@@ -60,6 +62,10 @@ namespace toy3d
         const std::vector<StaticMeshSection>& sections() const { return sections_; }
         const std::vector<MaterialInstanceRef>& material_slots() const { return material_slots_; }
         const AxisAlignedBounds& local_bounds() const { return local_bounds_; }
+        StaticMeshRenderData* render_data() const noexcept
+        {
+            return render_data_.get();
+        }
 
     private:
         StaticMesh(StaticMeshDesc desc, AxisAlignedBounds local_bounds);
@@ -70,6 +76,7 @@ namespace toy3d
         std::vector<StaticMeshSection> sections_;
         std::vector<MaterialInstanceRef> material_slots_;
         AxisAlignedBounds local_bounds_;
+        std::unique_ptr<StaticMeshRenderData> render_data_;
     };
 
     using StaticMeshRef = std::shared_ptr<const StaticMesh>;

@@ -728,6 +728,7 @@ namespace toy3d
         VkFormatProperties properties{};
         vkGetPhysicalDeviceFormatProperties(vk_physical_device, vk_format, &properties);
         const VkFormatFeatureFlags features = properties.optimalTilingFeatures;
+        const VkFormatFeatureFlags buffer_features = properties.bufferFeatures;
         if ((features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0)
         {
             result.usage = rhi_enum_or(result.usage, RHIFormatUsage::Sampled);
@@ -744,7 +745,7 @@ namespace toy3d
         {
             result.usage = rhi_enum_or(result.usage, RHIFormatUsage::DepthStencil);
         }
-        if ((features & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0)
+        if ((buffer_features & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0)
         {
             result.usage = rhi_enum_or(result.usage, RHIFormatUsage::VertexBuffer);
         }

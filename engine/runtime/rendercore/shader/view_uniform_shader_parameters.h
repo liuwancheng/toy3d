@@ -1,10 +1,19 @@
 #pragma once
 
+#include "drivers/rhi/rhi_result.h"
 #include "math/matrix4.h"
 #include "math/vector3.h"
 
+#include <memory>
+
 namespace toy3d
 {
+    class RHIBindingLayout;
+    class RHIBindingSet;
+    class RHICommandContext;
+    class RHIDevice;
+    class ShaderMapProgram;
+
     // Render-side canonical values for the View logical Binding Group.
     // Shader layout metadata serializes these values later; this type is not a
     // native constant-buffer layout and must not be uploaded with raw memcpy.
@@ -21,4 +30,12 @@ namespace toy3d
         Vector3 camera_direction;
         float camera_direction_padding = 0.0f;
     };
+
+    RHIResult<std::shared_ptr<RHIBindingSet>>
+    materialize_view_uniform_shader_parameters(
+        RHIDevice& device,
+        RHICommandContext& context,
+        const std::shared_ptr<RHIBindingLayout>& binding_layout,
+        const ShaderMapProgram& shader_program,
+        const ViewUniformShaderParameters& parameters);
 }
