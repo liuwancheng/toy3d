@@ -17,39 +17,68 @@ target_include_directories(Toy3dShaderFormat
 target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dFileSystem)
 
 set(TOY3D_SHADER_MAP_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shader_map")
-set(TOY3D_TEST_SHADER_SOURCE
-    "${CMAKE_CURRENT_SOURCE_DIR}/builtin/test/test_pass.shader")
-set(TOY3D_TEST_SHADER_MAP_ROOT "${TOY3D_SHADER_MAP_OUTPUT_DIR}/test_pass")
-set(TOY3D_TEST_SHADER_WORKING_DIR "${CMAKE_BINARY_DIR}/generated/shader_work/test_pass")
-set(TOY3D_TEST_SHADER_STAMP "${TOY3D_SHADER_MAP_OUTPUT_DIR}/test_pass.stamp")
+set(TOY3D_UNLIT_SHADER_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/builtin/surface/unlit.shader")
+set(TOY3D_UNLIT_SHADER_MAP_ROOT "${TOY3D_SHADER_MAP_OUTPUT_DIR}/unlit")
+set(TOY3D_UNLIT_SHADER_WORKING_DIR "${CMAKE_BINARY_DIR}/generated/shader_work/unlit")
+set(TOY3D_UNLIT_SHADER_STAMP "${TOY3D_SHADER_MAP_OUTPUT_DIR}/unlit.stamp")
+set(TOY3D_PHONG_SHADER_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/builtin/surface/phong.shader")
+set(TOY3D_PHONG_SHADER_MAP_ROOT "${TOY3D_SHADER_MAP_OUTPUT_DIR}/phong")
+set(TOY3D_PHONG_SHADER_WORKING_DIR "${CMAKE_BINARY_DIR}/generated/shader_work/phong")
+set(TOY3D_PHONG_SHADER_STAMP "${TOY3D_SHADER_MAP_OUTPUT_DIR}/phong.stamp")
 
 add_custom_command(
-    OUTPUT "${TOY3D_TEST_SHADER_STAMP}"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${TOY3D_TEST_SHADER_MAP_ROOT}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${TOY3D_TEST_SHADER_MAP_ROOT}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${TOY3D_TEST_SHADER_WORKING_DIR}"
+    OUTPUT "${TOY3D_UNLIT_SHADER_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${TOY3D_UNLIT_SHADER_MAP_ROOT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${TOY3D_UNLIT_SHADER_MAP_ROOT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${TOY3D_UNLIT_SHADER_WORKING_DIR}"
     COMMAND $<TARGET_FILE:Toy3dShaderCompiler>
             --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
             compile-vulkan
-            "${TOY3D_TEST_SHADER_SOURCE}"
-            "/Engine/Shaders/Test/test_pass.shader"
-            "TestPass"
-            "${TOY3D_TEST_SHADER_MAP_ROOT}"
-            "${TOY3D_TEST_SHADER_WORKING_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${BINARY_ROOT_DIR}/shader/test_pass"
+            "${TOY3D_UNLIT_SHADER_SOURCE}"
+            "/Engine/Shaders/Surface/unlit.shader"
+            "Forward"
+            "${TOY3D_UNLIT_SHADER_MAP_ROOT}"
+            "${TOY3D_UNLIT_SHADER_WORKING_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${BINARY_ROOT_DIR}/shader/unlit"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}/shader"
-    COMMAND ${CMAKE_COMMAND} -E rm -f
-            "${BINARY_ROOT_DIR}/shader/test_pass.vert.spv"
-            "${BINARY_ROOT_DIR}/shader/test_pass.frag.spv"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${TOY3D_TEST_SHADER_MAP_ROOT}"
-            "${BINARY_ROOT_DIR}/shader/test_pass"
-    COMMAND ${CMAKE_COMMAND} -E touch "${TOY3D_TEST_SHADER_STAMP}"
+            "${TOY3D_UNLIT_SHADER_MAP_ROOT}"
+            "${BINARY_ROOT_DIR}/shader/unlit"
+    COMMAND ${CMAKE_COMMAND} -E touch "${TOY3D_UNLIT_SHADER_STAMP}"
     DEPENDS
         Toy3dShaderCompiler
-        "${TOY3D_TEST_SHADER_SOURCE}"
+        "${TOY3D_UNLIT_SHADER_SOURCE}"
     VERBATIM)
 
-add_custom_target(Toy3dShaders DEPENDS "${TOY3D_TEST_SHADER_STAMP}")
+add_custom_command(
+    OUTPUT "${TOY3D_PHONG_SHADER_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${TOY3D_PHONG_SHADER_MAP_ROOT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${TOY3D_PHONG_SHADER_MAP_ROOT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${TOY3D_PHONG_SHADER_WORKING_DIR}"
+    COMMAND $<TARGET_FILE:Toy3dShaderCompiler>
+            --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+            compile-vulkan
+            "${TOY3D_PHONG_SHADER_SOURCE}"
+            "/Engine/Shaders/Surface/phong.shader"
+            "Forward"
+            "${TOY3D_PHONG_SHADER_MAP_ROOT}"
+            "${TOY3D_PHONG_SHADER_WORKING_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${BINARY_ROOT_DIR}/shader/phong"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}/shader"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${TOY3D_PHONG_SHADER_MAP_ROOT}"
+            "${BINARY_ROOT_DIR}/shader/phong"
+    COMMAND ${CMAKE_COMMAND} -E touch "${TOY3D_PHONG_SHADER_STAMP}"
+    DEPENDS
+        Toy3dShaderCompiler
+        "${TOY3D_PHONG_SHADER_SOURCE}"
+    VERBATIM)
+
+add_custom_target(Toy3dShaders
+    DEPENDS
+        "${TOY3D_UNLIT_SHADER_STAMP}"
+        "${TOY3D_PHONG_SHADER_STAMP}")
 set_target_properties(Toy3dShaders PROPERTIES FOLDER "Engine")
 set(TOY3D_SHADER_MAP_OUTPUT_DIR "${TOY3D_SHADER_MAP_OUTPUT_DIR}" PARENT_SCOPE)

@@ -53,7 +53,7 @@ target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>
 
 target_compile_definitions(${TARGET_NAME}
   PRIVATE
-    "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/test_pass\"")
+    "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/unlit\"")
 
 target_link_libraries(${TARGET_NAME} Toy3dRuntime)
 

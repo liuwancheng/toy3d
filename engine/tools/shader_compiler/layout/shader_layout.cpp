@@ -282,24 +282,6 @@ namespace toy3d::shader
         return layout.has_value() && diagnostics.empty();
     }
 
-    ShaderParameterId make_shader_parameter_id(
-        BindingGroup group,
-        ShaderParameterCategory category,
-        std::string_view name)
-    {
-        std::vector<std::uint8_t> identity;
-        append_string(identity, group_name(group));
-        append_string(identity, category_name(category));
-        append_string(identity, name);
-        ShaderParameterId value = 14695981039346656037ull;
-        for (std::uint8_t byte : identity)
-        {
-            value ^= byte;
-            value *= 1099511628211ull;
-        }
-        return value;
-    }
-
     std::uint32_t structured_element_stride(ResourceElementType type)
     {
         switch (type)
@@ -394,6 +376,29 @@ namespace toy3d::shader
     {
         LogicalLayoutResult result;
         LogicalShaderLayout layout;
+
+        // View and Object constants are engine-owned canonical schemas. Keep
+        // them in every logical layout so HLSL usage, rather than a Shader-name
+        // special case, determines whether either group becomes active.
+        const std::vector<ConstantMemberInput> view_inputs = {
+            {"toy_view", ShaderValueType::Float32x4x4},
+            {"toy_projection", ShaderValueType::Float32x4x4},
+            {"toy_view_projection", ShaderValueType::Float32x4x4},
+            {"toy_inverse_view", ShaderValueType::Float32x4x4},
+            {"toy_inverse_projection", ShaderValueType::Float32x4x4},
+            {"toy_inverse_view_projection", ShaderValueType::Float32x4x4},
+            {"toy_camera_position", ShaderValueType::Float32x3},
+            {"toy_camera_direction", ShaderValueType::Float32x3}};
+        ConstantBufferPackResult view_buffer =
+            pack_constant_buffer(BindingGroup::View, view_inputs);
+        result.diagnostics.insert(
+            result.diagnostics.end(),
+            view_buffer.diagnostics.begin(), view_buffer.diagnostics.end());
+        if (view_buffer.layout)
+        {
+            layout.constant_buffers.push_back(std::move(*view_buffer.layout));
+        }
+
         std::vector<ConstantMemberInput> material_inputs;
         for (const Property& property : asset.properties)
         {
@@ -449,6 +454,18 @@ namespace toy3d::shader
                 }
                 layout.constant_buffers.push_back(std::move(*packed.layout));
             }
+        }
+
+        const std::vector<ConstantMemberInput> object_inputs = {
+            {"toy_object_to_world", ShaderValueType::Float32x4x4}};
+        ConstantBufferPackResult object_buffer =
+            pack_constant_buffer(BindingGroup::Object, object_inputs);
+        result.diagnostics.insert(
+            result.diagnostics.end(),
+            object_buffer.diagnostics.begin(), object_buffer.diagnostics.end());
+        if (object_buffer.layout)
+        {
+            layout.constant_buffers.push_back(std::move(*object_buffer.layout));
         }
 
         for (const Property& property : asset.properties)

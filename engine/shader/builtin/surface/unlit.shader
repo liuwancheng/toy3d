@@ -21,7 +21,7 @@ Shader "Toy3d/Surface/Unlit"
         Cull Back
         FrontFace CounterClockwise
         Fill Solid
-        DepthTest LessEqual
+        DepthTest GreaterEqual
         DepthWrite On
         Stencil Off
         Blend Off
@@ -31,9 +31,11 @@ Shader "Toy3d/Surface/Unlit"
         #pragma vertex vs_main
         #pragma pixel ps_main
 
-        float4 vs_main(float3 position : POSITION0) : SV_Position
+        float4 vs_main(float4 position : POSITION0) : SV_Position
         {
-            return float4(position, 1.0);
+            const float4 world_position =
+                mul(toy_object_to_world, float4(position.xyz, 1.0));
+            return mul(toy_view_projection, world_position);
         }
 
         float4 ps_main() : SV_Target0

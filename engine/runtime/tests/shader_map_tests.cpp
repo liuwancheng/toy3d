@@ -62,11 +62,11 @@ namespace
         vertex.reflection = program.bindings;
         vertex.interface_variables.push_back({"in.var.POSITION0", "POSITION0",
             3u, true,
-            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u});
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 4u});
         program.stages.push_back(std::move(vertex));
         program.vertex_inputs.push_back({toy3d::ShaderVertexAttributeId::Position0,
             "POSITION", 0u,
-            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u, 3u});
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 4u, 3u});
         return program;
     }
 
@@ -143,7 +143,7 @@ namespace
               rhi_input.semantic_index == 0u && rhi_input.location == 3u &&
               rhi_input.scalar_type ==
                   toy3d::RHIShaderVertexInputReflection::ScalarType::Float32 &&
-              rhi_input.component_count == 3u,
+              rhi_input.component_count == 4u,
             "RHI Shader conversion must preserve semantic, location, and data shape");
     }
 
@@ -170,23 +170,23 @@ namespace
     void test_local_vertex_factory_matches_fixed_shader_inputs()
     {
         toy3d::RHIBufferDesc position_desc;
-        position_desc.size = 36u;
+        position_desc.size = 48u;
         position_desc.usage = toy3d::RHIResourceUsage::VertexBuffer;
         toy3d::RHIBufferRef position_buffer =
             std::make_shared<toy3d::RHIBuffer>(position_desc);
 
         toy3d::RHIBufferDesc static_desc;
-        static_desc.size = 60u;
+        static_desc.size = 72u;
         static_desc.usage = toy3d::RHIResourceUsage::VertexBuffer;
         toy3d::RHIBufferRef static_buffer =
             std::make_shared<toy3d::RHIBuffer>(static_desc);
 
         std::vector<toy3d::VertexStreamComponent> components = {
-            {toy3d::ShaderVertexAttributeId::Position0, 0u, 0u, 12u,
-                toy3d::PixelFormat::R32G32B32Float, position_buffer},
-            {toy3d::ShaderVertexAttributeId::Normal0, 1u, 0u, 20u,
-                toy3d::PixelFormat::R32G32B32Float, static_buffer},
-            {toy3d::ShaderVertexAttributeId::TexCoord0, 1u, 12u, 20u,
+            {toy3d::ShaderVertexAttributeId::Position0, 0u, 0u, 16u,
+                toy3d::PixelFormat::R32G32B32A32Float, position_buffer},
+            {toy3d::ShaderVertexAttributeId::Normal0, 1u, 0u, 24u,
+                toy3d::PixelFormat::R32G32B32A32Float, static_buffer},
+            {toy3d::ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u,
                 toy3d::PixelFormat::R32G32Float, static_buffer}};
         toy3d::LocalVertexFactory vertex_factory(std::move(components));
 
@@ -194,9 +194,9 @@ namespace
             toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
         std::vector<toy3d::ShaderVertexInput> shader_inputs = {
             {toy3d::ShaderVertexAttributeId::Position0,
-                "POSITION", 0u, float_type, 3u, 2u},
+                "POSITION", 0u, float_type, 4u, 2u},
             {toy3d::ShaderVertexAttributeId::Normal0,
-                "NORMAL", 0u, float_type, 3u, 0u},
+                "NORMAL", 0u, float_type, 4u, 0u},
             {toy3d::ShaderVertexAttributeId::TexCoord0,
                 "TEXCOORD", 0u, float_type, 2u, 1u}};
         std::vector<toy3d::RHIGraphicsPipelineDesc::VertexBufferLayout> layouts;

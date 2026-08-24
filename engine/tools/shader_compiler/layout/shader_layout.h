@@ -111,14 +111,6 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    // v1 hashes three canonical ASCII fields, each prefixed by a little-endian
-    // uint32 byte length: BindingGroup, ShaderParameterCategory, parameter name.
-    ShaderParameterId make_shader_parameter_id(
-        BindingGroup group,
-        ShaderParameterCategory category,
-        // string_view avoids allocating a second parameter name while building
-        // its deterministic identity.
-        std::string_view name);
     std::uint32_t structured_element_stride(ResourceElementType type);
     ConstantBufferPackResult pack_constant_buffer(
         BindingGroup group,

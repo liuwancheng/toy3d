@@ -167,8 +167,40 @@ Shader "Tests/Layout"
         if (!first.layout || !reordered.layout) return;
         check(first.layout->logical_layout_hash == reordered.layout->logical_layout_hash, "independent resource source order must not change logical layout hash");
         check(first.layout->resources.size() == 6, "Properties and Resources must merge into one logical resource schema");
-        check(first.layout->constant_buffers.size() == 1, "numeric Material properties must merge into one group cbuffer");
-        check(first.layout->constant_buffers[0].members[0].offset == 0, "constant member order must follow property source order");
+        check(first.layout->constant_buffers.size() == 3,
+            "canonical View/Object schemas and numeric Material properties must produce three group cbuffers");
+        const auto view_buffer = std::find_if(
+            first.layout->constant_buffers.begin(),
+            first.layout->constant_buffers.end(),
+            [](const ConstantBufferLayout& buffer) {
+                return buffer.group == BindingGroup::View;
+            });
+        const auto material_buffer = std::find_if(
+            first.layout->constant_buffers.begin(),
+            first.layout->constant_buffers.end(),
+            [](const ConstantBufferLayout& buffer) {
+                return buffer.group == BindingGroup::Material;
+            });
+        const auto object_buffer = std::find_if(
+            first.layout->constant_buffers.begin(),
+            first.layout->constant_buffers.end(),
+            [](const ConstantBufferLayout& buffer) {
+                return buffer.group == BindingGroup::Object;
+            });
+        check(view_buffer != first.layout->constant_buffers.end() &&
+              view_buffer->members.size() == 8 &&
+              view_buffer->members[2].name == "toy_view_projection" &&
+              view_buffer->members[2].offset == 128 &&
+              view_buffer->members[2].matrix_stride == 16,
+            "canonical View schema must preserve the real view-projection ToyShaderABI path");
+        check(material_buffer != first.layout->constant_buffers.end() &&
+              material_buffer->members[0].offset == 0,
+            "constant member order must follow Material property source order");
+        check(object_buffer != first.layout->constant_buffers.end() &&
+              object_buffer->members.size() == 1 &&
+              object_buffer->members[0].name == "toy_object_to_world" &&
+              object_buffer->members[0].matrix_stride == 16,
+            "canonical Object schema must preserve the object-to-world ToyShaderABI path");
 
         std::string changed_default = shader_source_a;
         const std::size_t default_position = changed_default.find("roughness (\"Roughness\", Float) = 0.5");

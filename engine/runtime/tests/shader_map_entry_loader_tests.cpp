@@ -149,10 +149,10 @@ namespace
             "test Program must retain a vertex stage for interface corruption tests");
         invalid_vertex->interface_variables.push_back(
             {"position", "POSITION0", 0u, true,
-             toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u});
+             toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 4u});
         invalid_vertex->interface_variables.push_back(
             {"position_duplicate", "position0", 1u, true,
-             toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u});
+             toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 4u});
         check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
             "duplicate logical vertex attributes must fail runtime validation");
 
@@ -176,9 +176,9 @@ namespace
             if (stage.stage == toy3d::RHIShaderStage::Vertex)
             {
                 stage.interface_variables.push_back(
-                    {"position", "POSITION0",
+                     {"position", "POSITION0",
                      std::numeric_limits<std::uint32_t>::max(), true,
-                     toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 3u});
+                     toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 4u});
                 break;
             }
         }
@@ -223,7 +223,7 @@ namespace
         reflected.input = true;
         reflected.scalar_type =
             toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
-        reflected.component_count = 3u;
+        reflected.component_count = 4u;
 
         toy3d::ShaderVertexInput vulkan_input;
         std::string error;
@@ -234,11 +234,18 @@ namespace
                   toy3d::ShaderVertexAttributeId::Position0 &&
               vulkan_input.semantic_name == "POSITION" &&
               vulkan_input.semantic_index == 0u &&
-              vulkan_input.component_count == 3u &&
+              vulkan_input.component_count == 4u &&
               vulkan_input.target_location == 3u,
             "POSITION0 reflection must convert to the canonical runtime contract");
 
         toy3d::ShaderVertexInput other_target_input;
+        reflected.semantic.clear();
+        check(toy3d::try_make_shader_vertex_input(
+                reflected, other_target_input, error) &&
+              other_target_input.attribute_id ==
+                  toy3d::ShaderVertexAttributeId::Position0,
+            "SPIR-V interface names must provide a fallback logical vertex semantic");
+
         reflected.semantic = "NORMAL";
         check(toy3d::try_make_shader_vertex_input(
                 reflected, other_target_input, error) &&
@@ -265,7 +272,7 @@ namespace
         check(toy3d::have_same_shader_vertex_input_contract(
                 vulkan_input, other_target_input),
             "cross-target parity must ignore native target location");
-        other_target_input.component_count = 4u;
+        other_target_input.component_count = 3u;
         check(!toy3d::have_same_shader_vertex_input_contract(
                 vulkan_input, other_target_input),
             "cross-target parity must compare logical data shape");

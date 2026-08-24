@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace toy3d::shader
@@ -391,6 +392,12 @@ namespace toy3d::shader
         std::vector<ShaderCodeEntry> stages;
     };
 
+    // string_view lets compiler and runtime verify the same stable parameter
+    // identity without allocating a second copy of reflected member names.
+    ShaderParameterId make_shader_parameter_id(
+        BindingGroup group,
+        ShaderParameterCategory category,
+        std::string_view name);
     Sha256Hash calculate_target_binding_hash(
         ShaderTarget target,
         std::uint32_t mapping_version,

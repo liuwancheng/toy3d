@@ -327,6 +327,41 @@ if(BUILD_TESTING)
         COMMAND Toy3dRendererSceneOwnershipTests)
 
     if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
+        set(TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_SOURCE
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/test_pass.shader")
+        set(TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_ROOT
+            "${CMAKE_BINARY_DIR}/generated/test_fixtures/shader_map_entry_loader/test_pass")
+        set(TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_WORKING_DIR
+            "${CMAKE_BINARY_DIR}/generated/test_fixtures/shader_work/shader_map_entry_loader")
+        set(TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_STAMP
+            "${CMAKE_BINARY_DIR}/generated/test_fixtures/shader_map_entry_loader/test_pass.stamp")
+        add_custom_command(
+            OUTPUT "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_STAMP}"
+            COMMAND ${CMAKE_COMMAND} -E remove_directory
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_ROOT}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_ROOT}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_WORKING_DIR}"
+            COMMAND $<TARGET_FILE:Toy3dShaderCompiler>
+                    --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_SOURCE}"
+                    "/Engine/Tests/Shaders/test_pass.shader"
+                    "TestPass"
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_ROOT}"
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_WORKING_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E touch
+                    "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_STAMP}"
+            DEPENDS
+                Toy3dShaderCompiler
+                "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_SOURCE}"
+            VERBATIM)
+        add_custom_target(Toy3dShaderMapEntryLoaderFixture
+            DEPENDS "${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_STAMP}")
+        set_target_properties(Toy3dShaderMapEntryLoaderFixture PROPERTIES
+            FOLDER "Engine/Tests")
+
         add_executable(Toy3dShaderMapEntryLoaderTests
             "tests/shader_map_entry_loader_tests.cpp")
         target_compile_features(Toy3dShaderMapEntryLoaderTests PRIVATE cxx_std_17)
@@ -335,12 +370,13 @@ if(BUILD_TESTING)
             FOLDER "Engine/Tests")
         target_compile_definitions(Toy3dShaderMapEntryLoaderTests
             PRIVATE
-                "TOY3D_SHADER_MAP_ENTRY_TEST_ROOT=\"${TOY3D_SHADER_MAP_OUTPUT_DIR}/test_pass\"")
+                "TOY3D_SHADER_MAP_ENTRY_TEST_ROOT=\"${TOY3D_SHADER_MAP_ENTRY_LOADER_FIXTURE_ROOT}\"")
         target_compile_options(Toy3dShaderMapEntryLoaderTests
             PRIVATE
                 "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
         target_link_libraries(Toy3dShaderMapEntryLoaderTests PRIVATE Toy3dRuntime)
-        add_dependencies(Toy3dShaderMapEntryLoaderTests Toy3dShaders)
+        add_dependencies(Toy3dShaderMapEntryLoaderTests
+            Toy3dShaderMapEntryLoaderFixture)
         add_test(NAME Toy3dRuntime.ShaderMapEntryLoader COMMAND Toy3dShaderMapEntryLoaderTests)
     endif()
 endif()

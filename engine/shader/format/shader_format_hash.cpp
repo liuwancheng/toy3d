@@ -8,6 +8,33 @@ namespace toy3d::shader
 {
     namespace
     {
+        const char* group_name(BindingGroup group)
+        {
+            switch (group)
+            {
+            case BindingGroup::Global: return "Global";
+            case BindingGroup::View: return "View";
+            case BindingGroup::Pass: return "Pass";
+            case BindingGroup::Material: return "Material";
+            case BindingGroup::Object: return "Object";
+            }
+            return "Invalid";
+        }
+
+        const char* category_name(ShaderParameterCategory category)
+        {
+            switch (category)
+            {
+            case ShaderParameterCategory::Constant: return "Constant";
+            case ShaderParameterCategory::SampledTexture: return "SampledTexture";
+            case ShaderParameterCategory::Sampler: return "Sampler";
+            case ShaderParameterCategory::ReadOnlyBuffer: return "ReadOnlyBuffer";
+            case ShaderParameterCategory::StorageBuffer: return "StorageBuffer";
+            case ShaderParameterCategory::StorageTexture: return "StorageTexture";
+            }
+            return "Invalid";
+        }
+
         template<typename T>
         void append_integer(std::vector<std::uint8_t>& bytes, T value)
         {
@@ -25,7 +52,11 @@ namespace toy3d::shader
             append_integer(bytes, static_cast<std::uint32_t>(value));
         }
 
-        void append_string(std::vector<std::uint8_t>& bytes, const std::string& value)
+        // string_view allows stable hashing of owned strings and reflected
+        // names through one byte-serialization path without temporary copies.
+        void append_string(
+            std::vector<std::uint8_t>& bytes,
+            std::string_view value)
         {
             append_integer(bytes, static_cast<std::uint32_t>(value.size()));
             bytes.insert(bytes.end(), value.begin(), value.end());
@@ -71,6 +102,24 @@ namespace toy3d::shader
                 left.depth_fail_operation == right.depth_fail_operation &&
                 left.pass_operation == right.pass_operation;
         }
+    }
+
+    ShaderParameterId make_shader_parameter_id(
+        BindingGroup group,
+        ShaderParameterCategory category,
+        std::string_view name)
+    {
+        std::vector<std::uint8_t> identity;
+        append_string(identity, group_name(group));
+        append_string(identity, category_name(category));
+        append_string(identity, name);
+        ShaderParameterId value = 14695981039346656037ull;
+        for (std::uint8_t byte : identity)
+        {
+            value ^= byte;
+            value *= 1099511628211ull;
+        }
+        return value;
     }
 
     ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right)
