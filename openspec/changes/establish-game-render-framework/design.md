@@ -341,7 +341,7 @@ Shader frontend 将 graphics Pass state 规范化为 backend-neutral `ShaderGrap
 
 View/Object logical group 只通过已登记的 canonical `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 物化。RenderCore 按 ShaderMap constant-member metadata 逐字段写入 ToyShaderABI buffer，不 raw-copy C++ struct，也不新增泛化的任意 group serializer。Global/Pass 没有 canonical source 时，未声明的 group 保持 null；Program 主动声明则诊断并跳过 batch。
 
-Forward Base Pass 接收外层持有的 device、graphics context 与 attachment compatibility，自行 begin/end render pass；它不创建或 finish command list，也不 acquire、submit、present 或 wait。外层 frame orchestration 仍独占 viewport/frame/list 生命周期。
+Forward Base Pass 接收外层持有的 device、graphics context 与 attachment compatibility，自行 begin/end render pass；它不创建或 finish command list，也不 acquire、submit、present 或 wait。外层 frame orchestration 仍独占 viewport/frame/list 生命周期。第一阶段尚未提供 per-draw dynamic-state override source，因此 Base Pass 在每个 draw 前显式录制 UE/D3D 可识别的默认值：blend constants 为 white `(1, 1, 1, 1)`，stencil reference 为 `0`；Vulkan 不得依赖未初始化 dynamic state。
 
 ### 9. VertexFactory 只桥接 Shader 输入与 geometry streams
 

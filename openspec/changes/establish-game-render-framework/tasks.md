@@ -105,38 +105,36 @@
 - [x] 10.13 完成 `MeshBatch` 对 section range、StaticMeshRenderData、LocalVertexFactory 与 MaterialRenderProxy 的 frame-local non-owning 组合；invalid section、不可绘制 gate、ShaderVertexInput 不兼容或 Material binding 缺失时诊断并跳过对应 batch。
 - [x] 10.14 按 `material-updates` Type Contracts 实现 backend-neutral `ShaderGraphicsPassState` 及其封闭 nested enum/value 字段，将 frontend normalized Pass state 持久化到 ShaderMapEntry v3、runtime `ShaderMapProgramData`，并由实际 state 重算/严格校验 `pass_template_hash`；不得从 hash 反推 state 或把 `RHIGraphicsPipelineDesc` 泄漏到 shader format/compiler 层。
 - [x] 10.15 让 MaterialRenderProxy active/staged candidate 原子保存 ShaderMap Program、effective graphics pass state 与 binding state；`two_sided == false` 保留 Shader Pass cull mode，`two_sided == true` 在 candidate 构建时固化 `CullMode::None`，失败保留完整旧 active state，Base Pass 不做 draw-time override。
-- [ ] 10.16 按 ShaderMap constant-member metadata 为 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 实现明确的 View/Object ABI 物化路径；未使用 group 不创建，未知 member、类型/范围/matrix stride 不兼容或资源类 binding 可诊断失败，不新增泛化 group serializer 或 raw-copy C++ struct。
-- [ ] 10.17 完整实现 `ForwardSceneRenderer::render_base_pass()`：接收外层 device、graphics context 与 color/depth attachment compatibility，自行 begin/end render pass；逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，以 Material effective state 建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers 并录制 indexed draw。未声明的 Global/Pass 保持 null，声明但无 canonical source 时诊断并跳过 batch；不得 finish、submit、present 或 wait。
-- [ ] 10.18 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
-- [ ] 10.19 将 builtin Unlit 的 DepthTest 修正为 reversed-Z `GreaterEqual` 并通过真实 View/Object matrix 路径输出 clip position；中间验证仅运行直接受影响正式 target build、ShaderMap v3/state hash、two-sided candidate、View/Object ABI、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke，failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
+- [x] 10.16 按 ShaderMap constant-member metadata 为 `ViewUniformShaderParameters` 与 `PrimitiveUniformShaderParameters` 实现明确的 View/Object ABI 物化路径；未使用 group 不创建，未知 member、类型/范围/matrix stride 不兼容或资源类 binding 可诊断失败，不新增泛化 group serializer 或 raw-copy C++ struct。
+- [x] 10.17 完整实现 `ForwardSceneRenderer::render_base_pass()`：接收外层 device、graphics context 与 color/depth attachment compatibility，自行 begin/end render pass；逐 View 消费可见 MeshBatch，解析 Global/View/Pass/Material/Object `RHIGraphicsBindings`，以 Material effective state 建立兼容 pipeline、设置 viewport/scissor 和 vertex/index buffers 并录制 indexed draw。未声明的 Global/Pass 保持 null，声明但无 canonical source 时诊断并跳过 batch；不得 finish、submit、present 或 wait。
+- [x] 10.18 使用现有 `RHIViewportContext` contract 闭合外层 frame ownership 和同一业务 list：`begin_frame()`→`record_pending_uploads()`→`init_views()`→visibility→MeshBatch→Base Pass→finish→submit/present；begin 成功后若 `init_views()` 或后续录制前置失败，外层 frame owner MUST 跳过业务 pass 并调用 `abort_frame()`，不得把 viewport ownership 下沉到 `init_views()`；submit success 后再发布 RenderResource Ready/RHI committed state，GPU completion 只控制保活回收。该任务消费既有 viewport interface，primary viewport 的创建、长期 ownership 与 Running publication 仍由 12.1 接入。
+- [x] 10.19 将 builtin Unlit 的 DepthTest 修正为 reversed-Z `GreaterEqual` 并通过真实 View/Object matrix 路径输出 clip position；中间验证仅运行直接受影响正式 target build、ShaderMap v3/state hash、two-sided candidate、View/Object ABI、既有 RHI state/upload smoke，以及一条资源 upload+Base Pass command-recording smoke，failure matrix、single/multi-thread E2E 与真实 Vulkan 多帧留到 Batch D。
 
-## 11. Batch C3 — Render-side Test Pass
+## 11. Batch C3 — 已取消并合并到 Batch D
 
-- [ ] 11.1 盘点并迁移现有 `engine/runtime/renderscene/3dscene/pass/test_pass.cpp`，将其收敛为测试目标内部或实现文件局部的简单 pass，不新增公共 test-pass 类型、全局 pass registry 或第二套 Scene/View/Material 模型。
-- [ ] 11.2 让简单 pass 复用同一个 SceneViewFamily/ViewInfo、`init_views()`、visibility、graphics context 和 ShaderMap Loader；删除裸 SPIR-V、手写 reflection、手写 binding layout 或 backend-specific slot 路径。
-- [ ] 11.3 在 Forward Base Pass 前录制确定性 clear 或简单 indexed draw，使用同一帧可见输入和五组 logical bindings；测试记录必须能区分可见 Primitive 被消费、被剔除 Primitive 未产生 draw 和缺失 binding 被诊断。
-- [ ] 11.4 保证测试 pass、Forward Base Pass、pending uploads 串行录入同一 graphics context/list，不隐藏 submit、不等待 GPU、不改变 runtime 正式 Renderer 职责。
-- [ ] 11.5 中间验证只构建测试 pass 直接目标并运行一条确定性 command-recording smoke；真实 GPU/present、多帧、resize 和 failure injection 统一进入 Batch D。
+原独立 Render-side Test Pass 批次不再实施。Batch C2 已建立真实 Forward Base Pass，继续迁移第二套 TestPass 不能证明正式 Game→Render 链路，并会保留重复的 pipeline、binding、depth resource 与录制路径。旧 TestPass 的删除、正式 Base Pass 纵向场景和集中验证统一由 Batch D 完成；Batch C4 是下一未完成施工批次。
 
 ## 12. Batch C4 — Bootstrap / Terminal / Shutdown
 
-- [ ] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.18 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
-- [ ] 12.2 实现 placeholder/device-level bootstrap context 的 create→upload/transition→finish→explicit submit→wait specified completion，全有或全无发布且保留原始失败码。
-- [ ] 12.3 实现 Renderer first-error latch 和 terminal 状态：停止新 frame/resource init、abort current recording、先清 Manager non-owning pointers，再 skip/dispose pending ownership payload。
-- [ ] 12.4 实现正常 shutdown 的 producer stop→World destroy render states→Proxy/Material/Resource release FIFO→RenderCommandFence drain→Renderer final teardown task。
-- [ ] 12.5 实现 RT teardown 的 abort/RenderScene clear/Manager clear/queue reclaim/viewport/placeholder/device 逆序销毁，确保 in-flight RHI payload 由 completion/deferred deletion 保活。
-- [ ] 12.6 实现 DeviceLost 有限 teardown、waiter wake、RenderingThread return/join、Task Graph shutdown 和 Window 最后销毁；不得无限 wait/retry 或覆盖 first error。
-- [ ] 12.7 中间验证只运行 Renderer bootstrap 成功、正常退出和一次 terminal disposal smoke，并构建 `Toy3dEditor`；完整初始化失败矩阵留到 Batch D。
+- [x] 12.1 将 RHIDevice、RenderResourceManager、placeholder、RenderScene 和 primary viewport ownership 接入 Renderer internal domain，并把 owned primary viewport 接到 10.18 已闭合的 frame-owner policy；logical RT 完成创建后才能发布 Running 并开放普通 RenderCommand façade。
+- [x] 12.2 实现 placeholder/device-level bootstrap context 的 create→upload/transition→finish→explicit submit→wait specified completion，全有或全无发布且保留原始失败码。
+- [x] 12.3 实现 Renderer first-error latch 和 terminal 状态：停止新 frame/resource init、abort current recording、先清 Manager non-owning pointers，再 skip/dispose pending ownership payload。
+- [x] 12.4 实现正常 shutdown 的 producer stop→World destroy render states→Proxy/Material/Resource release FIFO→RenderCommandFence drain→Renderer final teardown task。
+- [x] 12.5 实现 RT teardown 的 abort/RenderScene clear/Manager clear/queue reclaim/viewport/placeholder/device 逆序销毁，确保 in-flight RHI payload 由 completion/deferred deletion 保活。
+- [x] 12.6 实现 DeviceLost 有限 teardown、waiter wake、RenderingThread return/join、Task Graph shutdown 和 Window 最后销毁；不得无限 wait/retry 或覆盖 first error。
+- [x] 12.7 中间验证只运行 Renderer bootstrap 成功、正常退出和一次 terminal disposal smoke，并构建 `Toy3dEditor`；完整初始化失败矩阵留到 Batch D。
 
 ## 13. Batch D — Concentrated Test and Independent Verification
 
-- [ ] 13.1 建立集中 CPU View/visibility 测试：finite/infinite-far reversed-Z frustum、AABB inside/outside/intersect/touching、invalid matrix/near/view rect、multi-view independent visibility 和每帧结果重置。
-- [ ] 13.2 建立 single-thread 完整场景流程：World→StaticMeshComponent→render state→Proxy/SceneInfo→resource upload→SceneViewFamily→init_views→visibility→MeshBatch→Material binding→test pass→Forward Base Pass→submit/present。
-- [ ] 13.3 用完全相同场景和 Renderer/RHI 路径建立 multi-thread 流程，只切换 RenderingThreadMode，验证 same-producer FIFO、one-frame lag、Fence helping、SceneRenderer RT 析构、Proxy/Resource release 顺序和等价命令序列。
-- [ ] 13.4 在 single/multi-thread E2E 中连续修改 transform、Camera、Material scalar/vector/texture 与 visibility，验证 frame N/N+1 数据边界、FIFO 最终值、不可见 Material 不物化和被剔除 Primitive 不产生 draw。
-- [ ] 13.5 用一套 resource transaction 流程集中覆盖 frame abort、list discard、submit 明确失败、submit 边界未知、present Suboptimal/OutOfDate、candidate replacement failure 与 GPU completion 前旧 RHI object 保活。
-- [ ] 13.6 用共享 failure-injection 流程覆盖 Engine/RenderingThread/Renderer/RHI bootstrap 各失败点、Material/VertexFactory validation、DeviceLost、pending ownership disposal 和 shutdown waiter wake；验证原始错误与逆序清理，不为每个失败点复制完整 fixture。
-- [ ] 13.7 运行真实 Vulkan 多帧 smoke：validation layer 无错误、可见对象产生 indexed draw、被剔除对象不绘制、test pass 与 Base Pass 显式有序、resize/minimize/restore 可恢复、submit/present/completion 和正常退出闭环。
-- [ ] 13.8 执行推荐 Windows Debug configure，构建 `Toy3dEditor` 和全部直接受影响测试 targets，运行 `ctest --test-dir build -C Debug --output-on-failure`，并记录实际命令、结果和未运行平台原因。
-- [ ] 13.9 用 `rg` 核对废弃清单中的旧 transport/cache/ID/revision/command-list 原型、已替换的视图族与索引缓冲命名、全部 LOD 任务、第二套 Engine 抽象、公开 test-pass 类型和未登记新增类型无正式残留；运行 `openspec validate establish-game-render-framework --strict`。
-- [ ] 13.10 将最终构建、测试、diff、Type Contracts 与三后端可实现性检查交给独立 sub-agent 使用 `verify-toy3d-build` 复核，主 agent 修复全部问题后再交付。
+- [x] 13.1 删除旧 `engine/runtime/renderscene/3dscene/` SceneRendering/TestPass 正式路径、`engine/shader/builtin/test/test_pass.shader` 及对应 runtime/editor/CMake 硬编码；ShaderMap Loader 仍需的输入迁入测试 fixture，不保留公开 test-pass 类型、运行时注册机制、第二套 Scene/View/Material 模型或独立提交路径。
+- [x] 13.2 以 `project/cube_test.cpp` 建立小型 `Toy3dCubeTest` project executable，只通过现有 Engine composition root、World/GameScene、正式 RenderCommand/Renderer façade 和 Forward Base Pass 驱动真实窗口帧；不得直接获取 RenderScene/RHI/backend、复制 Editor composition root 或引入 service locator。若实现需要新的第一方具名接口，必须先完成名称确认和唯一 Type Contract 登记。
+- [x] 13.3 为 Cube project 构造一个父节点和三个 attached child StaticMesh cubes；由 opt-in Actor Tick 更新父子 local rotation，使 attachment transform 传播、Primitive transform FIFO、visibility、MeshBatch 与 indexed draw 在连续帧中共同受测。场景使用 uniform scale，暂不为 normal transform 扩展 Object binding。
+- [x] 13.4 实现真实 Forward Phong surface shader/material：使用 POSITION0/NORMAL0、View 的 canonical camera values、Object 的 `toy_object_to_world` 和 Material 的 base color、directional-light、ambient/specular parameters；光照输入第一阶段由 project Material 提供，不伪装为尚未建立的 LightComponent→RenderScene light path，不新增 backend-specific Y flip、slot 或 shader binding。
+- [x] 13.5 用 Cube project 的完全相同场景分别建立 single-thread 与 multi-thread 完整流程：World→StaticMeshComponent→render state→Proxy/SceneInfo→resource upload→SceneViewFamily→init_views→visibility→MeshBatch→Material binding→Forward Base Pass→submit/present；只切换 `RenderingThreadMode`，验证 same-producer FIFO、one-frame lag、Fence helping、SceneRenderer RT 析构、Proxy/Resource release 顺序和等价业务命令序列。
+- [x] 13.6 在 single/multi-thread E2E 中连续修改父子 transform、Camera、Material scalar/vector/texture 与 visibility，验证 frame N/N+1 数据边界、FIFO 最终值、不可见 Material 不物化、被剔除 Primitive 不产生 draw，以及恢复可见后继续使用正式 Base Pass。
+- [x] 13.7 建立集中 CPU View/visibility 测试：finite/infinite-far reversed-Z frustum、AABB inside/outside/intersect/touching、invalid matrix/near/view rect、multi-view independent visibility 和每帧结果重置。
+- [x] 13.8 用一套 resource transaction 流程集中覆盖 frame abort、list discard、submit 明确失败、submit 边界未知、present Suboptimal/OutOfDate、candidate replacement failure 与 GPU completion 前旧 RHI object 保活。
+- [x] 13.9 用共享 failure-injection 流程覆盖 Engine/RenderingThread/Renderer/RHI bootstrap 各失败点、Material/VertexFactory validation、DeviceLost、pending ownership disposal 和 shutdown waiter wake；验证原始错误与逆序清理，不为每个失败点复制完整 fixture。
+- [x] 13.10 运行 Cube project 真实 Vulkan 多帧 smoke：validation layer 无错误、三个 attached child cubes 持续变换并产生 indexed draw、被剔除对象不绘制、resize/minimize/restore 可恢复、submit/present/completion 和正常退出闭环；同一 Shader/Material contract 必须保持 D3D11 FL11_0、D3D12 与 `VulkanPortable v1` 可实现，不比较 native slot 数字。
+- [x] 13.11 执行推荐 Windows Debug configure，构建 `Toy3dEditor`、`Toy3dCubeTest` 和全部直接受影响测试 targets，运行 `ctest --test-dir build -C Debug --output-on-failure`；再用 `rg` 核对废弃 transport/cache/ID/revision/command-list、旧 SceneRendering/TestPass、全部 LOD 任务、第二套 Engine 抽象和未登记新增类型无正式残留，并运行 `openspec validate establish-game-render-framework --strict`，记录实际结果与未运行平台原因。
+- [x] 13.12 将最终构建、测试、diff、Type Contracts 与三后端/移动 profile 可实现性检查交给独立 sub-agent 使用 `verify-toy3d-build` 复核，主 agent 修复全部问题后再交付。
