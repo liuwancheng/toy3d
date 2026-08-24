@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "application/application.h"
 #include "config/command_line_parser.h"
 #include "config/console_manager.h"
 
@@ -74,26 +75,12 @@ namespace toy3d
 			shader_load_config = std::move(config);
 		}
 	}
-
-    void Engine::set_world_setup_callback(
-        std::function<void(World&)> callback)
+    void Engine::set_application(std::unique_ptr<Application> value)
     {
         if (!world)
         {
-            world_setup_callback = std::move(callback);
+            application = std::move(value);
         }
-    }
-
-    void Engine::set_frame_callback(
-        std::function<void(World&, double)> callback)
-    {
-        frame_callback = std::move(callback);
-    }
-
-    void Engine::set_scene_view_callback(
-        std::function<void(std::vector<SceneView>&, const Extent&)> callback)
-    {
-        scene_view_callback = std::move(callback);
     }
 
 	void Engine::pre_init()
@@ -274,9 +261,17 @@ namespace toy3d
                 return RenderFenceWaitResult::reached();
             });
         world = std::make_unique<World>();
-        if (world_setup_callback)
+        if (application)
         {
-            world_setup_callback(*world);
+            // Binding starts before the project hook so a partially initialized
+            // Application still receives one shutdown callback for rollback.
+            application_bound = true;
+            if (!application->initialize(*world, *window))
+            {
+                TOY_LOG_ERROR("Application initialization failed.");
+                shutdown_render_framework();
+                return false;
+            }
         }
         world->initialize();
         if (!renderer->scene_interface() ||
@@ -304,9 +299,9 @@ namespace toy3d
         }
 
         std::vector<SceneView> views;
-        if (scene_view_callback)
+        if (application)
         {
-            scene_view_callback(views, extent);
+            application->build_scene_views(views, extent);
         }
         else
         {
@@ -342,6 +337,11 @@ namespace toy3d
 
         if (world)
         {
+            if (application_bound && application)
+            {
+                application->shutdown();
+                application_bound = false;
+            }
             world->end_play();
             if (world->scene_interface() != nullptr)
             {
@@ -519,9 +519,9 @@ namespace toy3d
             if (world)
             {
                 static_cast<void>(world->tick(delta_time));
-                if (frame_callback)
+                if (application_bound && application)
                 {
-                    frame_callback(*world, delta_time);
+                    application->tick(delta_time);
                 }
             }
             if (window->should_close())

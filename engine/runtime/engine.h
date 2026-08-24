@@ -8,12 +8,11 @@
 #include "platform/window_interface.h"
 #include "rendercore/view/scene_view.h"
 
-#include <functional>
 #include <memory>
-#include <vector>
 
 namespace toy3d
 {
+    class Application;
     class FrameEndSync;
     class IPlatform;
     class IWindow;
@@ -51,10 +50,7 @@ namespace toy3d
         void exit();
 
         void set_shader_load_config(ShaderLoadConfig config);
-        void set_world_setup_callback(std::function<void(World&)> callback);
-        void set_frame_callback(std::function<void(World&, double)> callback);
-        void set_scene_view_callback(
-            std::function<void(std::vector<SceneView>&, const Extent&)> callback);
+        void set_application(std::unique_ptr<Application> value);
 
         IWindow* get_window() { return window.get(); }
 
@@ -75,10 +71,7 @@ namespace toy3d
         std::shared_ptr<DirectoryFileStore> temp_store;
         FileSystem file_system;
         ShaderLoadConfig shader_load_config;
-        std::function<void(World&)> world_setup_callback;
-        std::function<void(World&, double)> frame_callback;
-        std::function<void(std::vector<SceneView>&, const Extent&)>
-            scene_view_callback;
+        std::unique_ptr<Application> application;
         std::unique_ptr<IPlatform> platform;
         std::unique_ptr<IWindow> window;
         std::shared_ptr<RHISurface> rhi_surface;
@@ -88,6 +81,7 @@ namespace toy3d
         std::unique_ptr<RenderingThread> rendering_thread;
         std::unique_ptr<FrameEndSync> frame_end_sync;
         std::unique_ptr<World> world;
+        bool application_bound = false;
         bool platform_initialized = false;
         bool engine_exited = false;
     };

@@ -1,4 +1,9 @@
-add_executable(Toy3dCubeTest "cube_test.cpp")
+add_executable(Toy3dCubeTest
+    "cube_actor.cpp"
+    "cube_actor.h"
+    "cube_application.cpp"
+    "cube_application.h"
+    "cube_test.cpp")
 add_dependencies(Toy3dCubeTest Toy3dShaders)
 target_compile_features(Toy3dCubeTest PRIVATE cxx_std_17)
 set_target_properties(Toy3dCubeTest PROPERTIES

@@ -25,6 +25,7 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | Shader 语言语法 | Active | `shader-language-v1.ebnf` | `.shader` v1 语法定义 |
 | Vulkan 内存 | Active | `vulkan-memory-management.md` | Vulkan/VMA、上传、completion 与延迟销毁；旧实现评估仅是历史背景 |
 | Runtime Console | Active | `console-manager-design.md` | runtime 配置变量、覆盖顺序与生命周期 |
+| Application 与验证项目 | Active | `application-design.md` | 项目侧启动策略、Engine 绑定边界与当前 Cube 案例组织 |
 
 ## 历史文档
 
