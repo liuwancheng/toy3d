@@ -2,6 +2,7 @@
 
 #include "config/command_line_parser.h"
 #include "engine.h"
+#include "logging/logger.h"
 
 #include <cstddef>
 #include <iostream>
@@ -138,6 +139,7 @@ int main(int argc, char* argv[])
     engine.set_application(std::move(application));
 
     engine.init(nullptr);
+    TOY_LOG_INFO("Toy3dCubeTest started.");
     engine.main_loop();
     engine.exit();
     return application_observer->setup_failed() ? 1 : 0;
