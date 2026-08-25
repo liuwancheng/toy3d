@@ -284,22 +284,22 @@ namespace toy3d
         VkColorComponentFlags to_vk_color_write_mask(RHIColorWriteMask mask)
         {
             VkColorComponentFlags result = 0;
-            if (rhi_has_any_flag(mask, RHIColorWriteMask::Red)) result |= VK_COLOR_COMPONENT_R_BIT;
-            if (rhi_has_any_flag(mask, RHIColorWriteMask::Green)) result |= VK_COLOR_COMPONENT_G_BIT;
-            if (rhi_has_any_flag(mask, RHIColorWriteMask::Blue)) result |= VK_COLOR_COMPONENT_B_BIT;
-            if (rhi_has_any_flag(mask, RHIColorWriteMask::Alpha)) result |= VK_COLOR_COMPONENT_A_BIT;
+            if (EnumHasAnyFlags(mask, RHIColorWriteMask::Red)) result |= VK_COLOR_COMPONENT_R_BIT;
+            if (EnumHasAnyFlags(mask, RHIColorWriteMask::Green)) result |= VK_COLOR_COMPONENT_G_BIT;
+            if (EnumHasAnyFlags(mask, RHIColorWriteMask::Blue)) result |= VK_COLOR_COMPONENT_B_BIT;
+            if (EnumHasAnyFlags(mask, RHIColorWriteMask::Alpha)) result |= VK_COLOR_COMPONENT_A_BIT;
             return result;
         }
 
         VkShaderStageFlags to_vk_shader_stage_flags(RHIShaderStageFlags stages)
         {
             VkShaderStageFlags result = 0;
-            if (rhi_has_any_flag(stages, RHIShaderStageFlags::Vertex)) result |= VK_SHADER_STAGE_VERTEX_BIT;
-            if (rhi_has_any_flag(stages, RHIShaderStageFlags::Pixel)) result |= VK_SHADER_STAGE_FRAGMENT_BIT;
-            if (rhi_has_any_flag(stages, RHIShaderStageFlags::Geometry)) result |= VK_SHADER_STAGE_GEOMETRY_BIT;
-            if (rhi_has_any_flag(stages, RHIShaderStageFlags::Hull)) result |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-            if (rhi_has_any_flag(stages, RHIShaderStageFlags::Domain)) result |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-            if (rhi_has_any_flag(stages, RHIShaderStageFlags::Compute)) result |= VK_SHADER_STAGE_COMPUTE_BIT;
+            if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Vertex)) result |= VK_SHADER_STAGE_VERTEX_BIT;
+            if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Pixel)) result |= VK_SHADER_STAGE_FRAGMENT_BIT;
+            if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Geometry)) result |= VK_SHADER_STAGE_GEOMETRY_BIT;
+            if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Hull)) result |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Domain)) result |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Compute)) result |= VK_SHADER_STAGE_COMPUTE_BIT;
             return result;
         }
 
@@ -404,32 +404,32 @@ namespace toy3d
         VkBufferUsageFlags to_vk_buffer_usage(RHIResourceUsage usage)
         {
             VkBufferUsageFlags result = 0;
-            if (rhi_has_any_flag(usage, RHIResourceUsage::VertexBuffer))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::VertexBuffer))
             {
                 result |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::IndexBuffer))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::IndexBuffer))
             {
                 result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::UniformBuffer))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::UniformBuffer))
             {
                 result |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::ShaderResource) ||
-                rhi_has_any_flag(usage, RHIResourceUsage::UnorderedAccess))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource) ||
+                EnumHasAnyFlags(usage, RHIResourceUsage::UnorderedAccess))
             {
                 result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::IndirectArguments))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::IndirectArguments))
             {
                 result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::CopySource))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::CopySource))
             {
                 result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::CopyDestination))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::CopyDestination))
             {
                 result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             }
@@ -439,27 +439,27 @@ namespace toy3d
         VkImageUsageFlags to_vk_image_usage(RHIResourceUsage usage)
         {
             VkImageUsageFlags result = 0;
-            if (rhi_has_any_flag(usage, RHIResourceUsage::ShaderResource))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource))
             {
                 result |= VK_IMAGE_USAGE_SAMPLED_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::UnorderedAccess))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::UnorderedAccess))
             {
                 result |= VK_IMAGE_USAGE_STORAGE_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::RenderTarget))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::RenderTarget))
             {
                 result |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::DepthStencil))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::DepthStencil))
             {
                 result |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::CopySource))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::CopySource))
             {
                 result |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::CopyDestination))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::CopyDestination))
             {
                 result |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             }
@@ -731,31 +731,31 @@ namespace toy3d
         const VkFormatFeatureFlags buffer_features = properties.bufferFeatures;
         if ((features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::Sampled);
+            result.usage |= RHIFormatUsage::Sampled;
         }
         if ((features & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::Storage);
+            result.usage |= RHIFormatUsage::Storage;
         }
         if ((features & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::RenderTarget);
+            result.usage |= RHIFormatUsage::RenderTarget;
         }
         if ((features & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::DepthStencil);
+            result.usage |= RHIFormatUsage::DepthStencil;
         }
         if ((buffer_features & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::VertexBuffer);
+            result.usage |= RHIFormatUsage::VertexBuffer;
         }
         if ((features & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::CopySource);
+            result.usage |= RHIFormatUsage::CopySource;
         }
         if ((features & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) != 0)
         {
-            result.usage = rhi_enum_or(result.usage, RHIFormatUsage::CopyDestination);
+            result.usage |= RHIFormatUsage::CopyDestination;
         }
         result.supported_sample_counts = VK_SAMPLE_COUNT_1_BIT;
         return result;

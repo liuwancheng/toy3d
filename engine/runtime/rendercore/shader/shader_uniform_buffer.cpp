@@ -13,9 +13,9 @@ namespace toy3d
     {
         RHIBufferDesc buffer_desc;
         buffer_desc.size = bytes.size();
-        buffer_desc.usage = rhi_enum_or(
-            RHIResourceUsage::UniformBuffer,
-            RHIResourceUsage::CopyDestination);
+        buffer_desc.usage =
+            RHIResourceUsage::UniformBuffer |
+            RHIResourceUsage::CopyDestination;
         buffer_desc.initial_access = RHIAccess::Common;
         buffer_desc.debug_name = debug_name;
         RHIResult<RHIBufferRef> buffer = device.create_buffer(buffer_desc);

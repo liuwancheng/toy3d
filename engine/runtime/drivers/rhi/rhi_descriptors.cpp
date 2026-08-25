@@ -145,29 +145,29 @@ namespace toy3d
         RHIFormatUsage required_format_usage(RHIResourceUsage usage)
         {
             RHIFormatUsage result = RHIFormatUsage::None;
-            if (rhi_has_any_flag(usage, RHIResourceUsage::ShaderResource))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource))
             {
-                result = rhi_enum_or(result, RHIFormatUsage::Sampled);
+                result |= RHIFormatUsage::Sampled;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::UnorderedAccess))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::UnorderedAccess))
             {
-                result = rhi_enum_or(result, RHIFormatUsage::Storage);
+                result |= RHIFormatUsage::Storage;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::RenderTarget))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::RenderTarget))
             {
-                result = rhi_enum_or(result, RHIFormatUsage::RenderTarget);
+                result |= RHIFormatUsage::RenderTarget;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::DepthStencil))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::DepthStencil))
             {
-                result = rhi_enum_or(result, RHIFormatUsage::DepthStencil);
+                result |= RHIFormatUsage::DepthStencil;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::CopySource))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::CopySource))
             {
-                result = rhi_enum_or(result, RHIFormatUsage::CopySource);
+                result |= RHIFormatUsage::CopySource;
             }
-            if (rhi_has_any_flag(usage, RHIResourceUsage::CopyDestination))
+            if (EnumHasAnyFlags(usage, RHIResourceUsage::CopyDestination))
             {
-                result = rhi_enum_or(result, RHIFormatUsage::CopyDestination);
+                result |= RHIFormatUsage::CopyDestination;
             }
             return result;
         }
@@ -237,9 +237,9 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer usage must not be None.");
         }
-        if (rhi_has_any_flag(
+        if (EnumHasAnyFlags(
                 desc.usage,
-                rhi_enum_or(RHIResourceUsage::RenderTarget, RHIResourceUsage::DepthStencil)))
+                RHIResourceUsage::RenderTarget | RHIResourceUsage::DepthStencil))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -253,9 +253,9 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Structured-buffer size must be a multiple of its structure stride.");
             }
-            if (!rhi_has_any_flag(
+            if (!EnumHasAnyFlags(
                     desc.usage,
-                    rhi_enum_or(RHIResourceUsage::ShaderResource, RHIResourceUsage::UnorderedAccess)))
+                    RHIResourceUsage::ShaderResource | RHIResourceUsage::UnorderedAccess))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -308,23 +308,24 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture usage must not be None.");
         }
-        if (rhi_has_any_flag(
+        if (EnumHasAnyFlags(
                 desc.usage,
-                rhi_enum_or(
-                    rhi_enum_or(RHIResourceUsage::VertexBuffer, RHIResourceUsage::IndexBuffer),
-                    rhi_enum_or(RHIResourceUsage::UniformBuffer, RHIResourceUsage::IndirectArguments))))
+                RHIResourceUsage::VertexBuffer |
+                    RHIResourceUsage::IndexBuffer |
+                    RHIResourceUsage::UniformBuffer |
+                    RHIResourceUsage::IndirectArguments))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Textures cannot use vertex, index, uniform-buffer, or indirect-argument usage.");
         }
-        if (rhi_has_any_flag(desc.usage, RHIResourceUsage::RenderTarget) && is_depth_format(desc.format))
+        if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::RenderTarget) && is_depth_format(desc.format))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Depth/stencil formats cannot use render-target usage.");
         }
-        if (rhi_has_any_flag(desc.usage, RHIResourceUsage::DepthStencil) && !is_depth_format(desc.format))
+        if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::DepthStencil) && !is_depth_format(desc.format))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -361,7 +362,7 @@ namespace toy3d
             return desc_status;
         }
         const RHIFormatUsage required_usage = required_format_usage(desc.usage);
-        if (!rhi_has_all_flags(capabilities.usage, required_usage))
+        if (!EnumHasAllFlags(capabilities.usage, required_usage))
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
@@ -458,7 +459,7 @@ namespace toy3d
             view_desc.type == RHIResourceViewType::UnorderedAccess ? RHIResourceUsage::UnorderedAccess :
             view_desc.type == RHIResourceViewType::RenderTarget ? RHIResourceUsage::RenderTarget :
             RHIResourceUsage::DepthStencil;
-        if (!rhi_has_any_flag(texture_desc.usage, required_usage))
+        if (!EnumHasAnyFlags(texture_desc.usage, required_usage))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture was not created for the requested view type.");
         }
@@ -533,7 +534,7 @@ namespace toy3d
             view_desc.type == RHIResourceViewType::ShaderResource
                 ? RHIResourceUsage::ShaderResource
                 : RHIResourceUsage::UnorderedAccess;
-        if (!rhi_has_any_flag(buffer_desc.usage, required_usage))
+        if (!EnumHasAnyFlags(buffer_desc.usage, required_usage))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer was not created for the requested view type.");
         }
@@ -648,7 +649,7 @@ namespace toy3d
             {
                 if (existing.group == entry.group &&
                     binding_register_class(existing.type) == binding_register_class(entry.type) &&
-                    rhi_has_any_flag(existing.stages, entry.stages) &&
+                    EnumHasAnyFlags(existing.stages, entry.stages) &&
                     binding_ranges_overlap(existing.slot, existing.array_count, entry.slot, entry.array_count))
                 {
                     return RHIStatus::failure(
@@ -712,7 +713,7 @@ namespace toy3d
             }
             if (value.buffer)
             {
-                if (!rhi_has_any_flag(value.buffer->desc().usage, RHIResourceUsage::UniformBuffer) ||
+                if (!EnumHasAnyFlags(value.buffer->desc().usage, RHIResourceUsage::UniformBuffer) ||
                     value.buffer_offset >= value.buffer->desc().size)
                 {
                     return RHIStatus::failure(

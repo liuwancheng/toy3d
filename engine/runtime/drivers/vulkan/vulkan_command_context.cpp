@@ -805,7 +805,7 @@ namespace toy3d
                 transition.after == RHIAccess::DepthStencilRead ||
                 transition.after == RHIAccess::DepthStencilWrite;
             if (uses_depth_stencil_access &&
-                !rhi_has_any_flag(texture->desc().usage, RHIResourceUsage::DepthStencil))
+                !EnumHasAnyFlags(texture->desc().usage, RHIResourceUsage::DepthStencil))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1593,7 +1593,7 @@ namespace toy3d
         {
             const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
             if (!buffer || !buffer->is_owned_by(vulkan_device) ||
-                !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::VertexBuffer))
+                !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::VertexBuffer))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1619,7 +1619,7 @@ namespace toy3d
         }
         const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
         if (!buffer || !buffer->is_owned_by(vulkan_device) ||
-            !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::IndexBuffer))
+            !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::IndexBuffer))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1772,7 +1772,7 @@ namespace toy3d
         std::array<bool, static_cast<std::size_t>(RHIBindingGroup::Max)> required_groups{};
         for (const RHIBindingLayoutEntry& entry : pipeline->desc().binding_layout->desc().entries)
         {
-            if (rhi_has_any_flag(entry.stages, RHIShaderStageFlags::AllGraphics))
+            if (EnumHasAnyFlags(entry.stages, RHIShaderStageFlags::AllGraphics))
             {
                 required_groups[static_cast<std::size_t>(entry.group)] = true;
             }
@@ -1849,12 +1849,14 @@ namespace toy3d
         }
 
         const VulkanGraphicsStateDirty dirty_flags = graphics_state.dirty_flags();
-        const bool pipeline_dirty = rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::Pipeline);
+        const bool pipeline_dirty = EnumHasAnyFlags(
+            dirty_flags,
+            VulkanGraphicsStateDirty::Pipeline);
         if (pipeline_dirty)
         {
             vkCmdBindPipeline(vk_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline());
         }
-        if (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::Bindings))
+        if (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::Bindings))
         {
             active_binding_packets.fill(nullptr);
             const auto layout = std::dynamic_pointer_cast<VulkanBindingLayout>(
@@ -1896,7 +1898,7 @@ namespace toy3d
                 }
             }
         }
-        if (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::VertexBuffers))
+        if (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::VertexBuffers))
         {
             for (std::size_t index = 0; index < vertex_bindings.size(); ++index)
             {
@@ -1912,7 +1914,7 @@ namespace toy3d
                 recording_command_list->retain_resource(vertex_bindings[index].buffer);
             }
         }
-        if (indexed_draw && (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::IndexBuffer)))
+        if (indexed_draw && (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::IndexBuffer)))
         {
             const RHIIndexBufferBinding& binding = graphics_state.index_buffer();
             const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
@@ -1929,7 +1931,7 @@ namespace toy3d
             vkCmdBindIndexBuffer(vk_command_buffer, buffer->buffer(), binding.offset, index_type);
             recording_command_list->retain_resource(binding.buffer);
         }
-        if (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::Viewport))
+        if (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::Viewport))
         {
             const RHIViewport& viewport = graphics_state.viewport();
             VkViewport vk_viewport{};
@@ -1941,7 +1943,7 @@ namespace toy3d
             vk_viewport.maxDepth = viewport.max_depth;
             vkCmdSetViewport(vk_command_buffer, 0, 1, &vk_viewport);
         }
-        if (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::Scissor))
+        if (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::Scissor))
         {
             const RHIRect& scissor = graphics_state.scissor();
             VkRect2D vk_scissor{};
@@ -1950,14 +1952,14 @@ namespace toy3d
             vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
         }
         if (graphics_state.has_blend_constants() &&
-            (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::BlendConstants)))
+            (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::BlendConstants)))
         {
             const vec4& constants = graphics_state.blend_constants();
             const float values[4] = {constants.x, constants.y, constants.z, constants.w};
             vkCmdSetBlendConstants(vk_command_buffer, values);
         }
         if (graphics_state.has_stencil_reference() &&
-            (pipeline_dirty || rhi_has_any_flag(dirty_flags, VulkanGraphicsStateDirty::StencilReference)))
+            (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::StencilReference)))
         {
             vkCmdSetStencilReference(
                 vk_command_buffer,

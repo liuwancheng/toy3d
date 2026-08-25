@@ -53,9 +53,9 @@ namespace toy3d
                 static_cast<std::uint32_t>(desc.mip_pixels.size());
             rhi_desc.sample_count = 1;
             rhi_desc.format = desc.format;
-            rhi_desc.usage = rhi_enum_or(
-                RHIResourceUsage::ShaderResource,
-                RHIResourceUsage::CopyDestination);
+            rhi_desc.usage =
+                RHIResourceUsage::ShaderResource |
+                RHIResourceUsage::CopyDestination;
             rhi_desc.cpu_access = RHICPUAccess::None;
             rhi_desc.initial_access = RHIAccess::Common;
             rhi_desc.debug_name = "Texture.Asset2D";

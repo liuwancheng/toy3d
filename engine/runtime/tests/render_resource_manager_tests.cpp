@@ -14,6 +14,7 @@
 #include "renderscene/render_scene.h"
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
+#include "renderscene/scene_render_targets.h"
 #include "renderscene/texture/texture_resource.h"
 #include "renderscene/view/forward_scene_renderer.h"
 #include "task_graph/task_graph.h"
@@ -658,6 +659,10 @@ int main()
         toy3d::RHIStatus copy_texture(
             const toy3d::RHITextureCopyDesc&) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("copy_texture");
+            }
             return toy3d::RHIStatus::success();
         }
 
@@ -1038,11 +1043,10 @@ int main()
           texture_resource->binding_generation() == 0u,
         "Texture initial upload must create a current-list view and record copy transitions without early publication");
     check(device.last_texture_desc.sample_count == 1u &&
-          toy3d::rhi_has_all_flags(
+          toy3d::EnumHasAllFlags(
               device.last_texture_desc.usage,
-              toy3d::rhi_enum_or(
-                  toy3d::RHIResourceUsage::ShaderResource,
-                  toy3d::RHIResourceUsage::CopyDestination)),
+              toy3d::RHIResourceUsage::ShaderResource |
+                  toy3d::RHIResourceUsage::CopyDestination),
         "TextureResource must apply the fixed sampled and copy-destination RHI policy");
     check(manager.discard_recording().succeeded() &&
           texture_resource->view_for_current_recording() == nullptr,
@@ -1079,7 +1083,9 @@ int main()
     present_texture_desc.width = 64u;
     present_texture_desc.height = 64u;
     present_texture_desc.format = toy3d::PixelFormat::B8G8R8A8UNorm;
-    present_texture_desc.usage = toy3d::RHIResourceUsage::RenderTarget;
+    present_texture_desc.usage =
+        toy3d::RHIResourceUsage::RenderTarget |
+        toy3d::RHIResourceUsage::CopyDestination;
     present_texture_desc.initial_access = toy3d::RHIAccess::Present;
     const toy3d::RHITextureRef present_texture =
         std::make_shared<toy3d::RHITexture>(device, present_texture_desc);
@@ -1091,24 +1097,6 @@ int main()
     const toy3d::RHITextureViewRef present_view =
         std::make_shared<toy3d::RHITextureView>(
             present_texture, present_view_desc);
-
-    toy3d::RHITextureDesc depth_texture_desc;
-    depth_texture_desc.width = 64u;
-    depth_texture_desc.height = 64u;
-    depth_texture_desc.format = toy3d::PixelFormat::D32Float;
-    depth_texture_desc.usage = toy3d::RHIResourceUsage::DepthStencil;
-    depth_texture_desc.initial_access = toy3d::RHIAccess::DepthStencilWrite;
-    const toy3d::RHITextureRef depth_texture =
-        std::make_shared<toy3d::RHITexture>(device, depth_texture_desc);
-    toy3d::RHITextureViewDesc depth_view_desc;
-    depth_view_desc.type = toy3d::RHIResourceViewType::DepthStencil;
-    depth_view_desc.format = depth_texture_desc.format;
-    depth_view_desc.subresources.aspect = toy3d::RHITextureAspect::Depth;
-    depth_view_desc.subresources.mip_count = 1u;
-    depth_view_desc.subresources.layer_count = 1u;
-    const toy3d::RHITextureViewRef depth_view =
-        std::make_shared<toy3d::RHITextureView>(
-            depth_texture, depth_view_desc);
 
     struct : toy3d::RHIFrameContext
     {
@@ -1281,17 +1269,23 @@ int main()
             *frame_render_scene,
             toy3d::UIntVector2(64u, 64u),
             std::move(submitted_views)));
+    toy3d::SceneRenderTargets submitted_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         submitted_frame_result = submitted_frame_renderer.render_frame(
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            depth_view);
+            submitted_scene_render_targets);
     const std::vector<std::string> expected_submitted_operations = {
         "begin_frame",
         "begin_recording",
         "record_pending_uploads",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "copy_texture",
         "transition",
         "begin_render_pass",
         "end_render_pass",
@@ -1303,6 +1297,11 @@ int main()
           submitted_frame_result.value().completion_value == 42u &&
           submitted_frame_resource.state() ==
               toy3d::RenderResourceState::Ready &&
+          submitted_scene_render_targets.scene_color_texture() != nullptr &&
+          submitted_scene_render_targets.scene_color_access() ==
+              toy3d::RHIAccess::CopySource &&
+          submitted_scene_render_targets.scene_depth_access() ==
+              toy3d::RHIAccess::DepthStencilWrite &&
           submitted_frame_operations == expected_submitted_operations &&
           frame_viewport.end_count == 1u &&
           frame_viewport.abort_count == 0u,
@@ -1320,17 +1319,23 @@ int main()
         "submit failure smoke must begin a retryable pending transaction");
     toy3d::ForwardSceneRenderer submit_failed_renderer(
         make_valid_view_family());
+    toy3d::SceneRenderTargets submit_failed_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         submit_failed_result = submit_failed_renderer.render_frame(
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            depth_view);
+            submit_failed_scene_render_targets);
     const std::vector<std::string> expected_submit_failed_operations = {
         "begin_frame",
         "begin_recording",
         "record_pending_uploads",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "copy_texture",
         "transition",
         "begin_render_pass",
         "end_render_pass",
@@ -1342,6 +1347,10 @@ int main()
           submit_failed_resource.state() ==
               toy3d::RenderResourceState::PendingUpload &&
           submit_failed_resource.discard_count == 1 &&
+          submit_failed_scene_render_targets.scene_color_access() ==
+              toy3d::RHIAccess::Common &&
+          submit_failed_scene_render_targets.scene_depth_access() ==
+              toy3d::RHIAccess::Common &&
           submit_failed_operations == expected_submit_failed_operations,
         "submit failure must discard the recorded list transaction without publishing Ready");
     check(frame_manager.release(submit_failed_resource).succeeded(),
@@ -1362,13 +1371,14 @@ int main()
         "Suboptimal presentation smoke must begin a pending transaction");
     toy3d::ForwardSceneRenderer suboptimal_present_renderer(
         make_valid_view_family());
+    toy3d::SceneRenderTargets suboptimal_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         suboptimal_present_result = suboptimal_present_renderer.render_frame(
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            depth_view);
+            suboptimal_scene_render_targets);
     check(suboptimal_present_result.succeeded() &&
           suboptimal_present_result.value().completion_value == 43u &&
           suboptimal_present_result.value().presentation_status.code() ==
@@ -1394,6 +1404,7 @@ int main()
         "OutOfDate presentation smoke must begin a pending transaction");
     toy3d::ForwardSceneRenderer out_of_date_present_renderer(
         make_valid_view_family());
+    toy3d::SceneRenderTargets out_of_date_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         out_of_date_present_result =
             out_of_date_present_renderer.render_frame(
@@ -1401,7 +1412,7 @@ int main()
                 device,
                 frame_manager,
                 frame_viewport,
-                depth_view);
+                out_of_date_scene_render_targets);
     check(out_of_date_present_result.succeeded() &&
           out_of_date_present_result.value().completion_value == 44u &&
           out_of_date_present_result.value().presentation_status.code() ==
@@ -1424,13 +1435,14 @@ int main()
         "unknown submit boundary smoke must begin a pending transaction");
     toy3d::ForwardSceneRenderer unknown_boundary_renderer(
         make_valid_view_family());
+    toy3d::SceneRenderTargets unknown_boundary_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         unknown_boundary_result = unknown_boundary_renderer.render_frame(
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            depth_view);
+            unknown_boundary_scene_render_targets);
     check(unknown_boundary_result.succeeded() &&
           unknown_boundary_result.value().completion_value == 0u &&
           unknown_boundary_result.value().presentation_status.code() ==
@@ -1468,13 +1480,14 @@ int main()
             *frame_render_scene,
             toy3d::UIntVector2(64u, 64u),
             std::move(invalid_views)));
+    toy3d::SceneRenderTargets aborted_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         aborted_frame_result = aborted_frame_renderer.render_frame(
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            depth_view);
+            aborted_scene_render_targets);
     const std::vector<std::string> expected_aborted_operations = {
         "begin_frame",
         "begin_recording",

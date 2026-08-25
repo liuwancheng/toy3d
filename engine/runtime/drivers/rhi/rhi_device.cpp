@@ -149,7 +149,7 @@ namespace toy3d
         for (std::uint32_t index = 0; index < desc.color_attachment_count; ++index)
         {
             const RHIFormatCapabilities format_support = format_capabilities(desc.color_formats[index]);
-            if (!rhi_has_any_flag(format_support.usage, RHIFormatUsage::RenderTarget) ||
+            if (!EnumHasAnyFlags(format_support.usage, RHIFormatUsage::RenderTarget) ||
                 (format_support.supported_sample_counts & desc.sample_count) == 0)
             {
                 return RHIResult<RHIGraphicsPipelineRef>::failure(
@@ -160,7 +160,7 @@ namespace toy3d
         if (desc.depth_stencil_format != PixelFormat::Unknown)
         {
             const RHIFormatCapabilities format_support = format_capabilities(desc.depth_stencil_format);
-            if (!rhi_has_any_flag(format_support.usage, RHIFormatUsage::DepthStencil) ||
+            if (!EnumHasAnyFlags(format_support.usage, RHIFormatUsage::DepthStencil) ||
                 (format_support.supported_sample_counts & desc.sample_count) == 0)
             {
                 return RHIResult<RHIGraphicsPipelineRef>::failure(
@@ -171,7 +171,7 @@ namespace toy3d
         for (const RHIGraphicsPipelineDesc::VertexAttribute& attribute : desc.vertex_attributes)
         {
             const RHIFormatCapabilities format_support = format_capabilities(attribute.format);
-            if (!rhi_has_any_flag(format_support.usage, RHIFormatUsage::VertexBuffer))
+            if (!EnumHasAnyFlags(format_support.usage, RHIFormatUsage::VertexBuffer))
             {
                 return RHIResult<RHIGraphicsPipelineRef>::failure(
                     RHIErrorCode::Unsupported,

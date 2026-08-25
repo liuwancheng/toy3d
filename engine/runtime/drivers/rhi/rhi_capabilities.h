@@ -43,6 +43,7 @@ namespace toy3d
         CopySource = 1U << 5,
         CopyDestination = 1U << 6
     };
+    ENUM_CLASS_FLAGS(RHIFormatUsage)
 
     struct RHIFormatCapabilities
     {

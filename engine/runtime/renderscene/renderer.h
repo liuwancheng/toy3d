@@ -13,6 +13,7 @@ namespace toy3d
 {
     class RenderResourceManager;
     class RenderScene;
+    class SceneRenderTargets;
     class SceneRenderer;
     class SceneInterface;
     class TaskGraphInterface;
@@ -89,12 +90,11 @@ namespace toy3d
         std::unique_ptr<RHIDevice> device_;
         std::unique_ptr<RenderResourceManager> resource_manager_;
         std::unique_ptr<RenderScene> render_scene_;
+        std::unique_ptr<SceneRenderTargets> scene_render_targets_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;
         RHITextureRef placeholder_texture_;
         RHITextureViewRef placeholder_texture_view_;
         RHISamplerRef placeholder_sampler_;
-        RHITextureRef scene_depth_texture_;
-        RHITextureViewRef scene_depth_view_;
 
         std::atomic<RendererLifecycleState> lifecycle_state_{
             RendererLifecycleState::Stopped};

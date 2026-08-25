@@ -1,37 +1,12 @@
 #pragma once
 
+#include "misc/enum_class_utils.h"
 #include "pixel_format/pixel_format.h"
 
 #include <cstdint>
-#include <type_traits>
 
 namespace toy3d
 {
-    template<typename T>
-    constexpr T rhi_enum_or(T left, T right)
-    {
-        static_assert(std::is_enum<T>::value, "RHI flag type must be an enum.");
-        using Underlying = typename std::underlying_type<T>::type;
-        return static_cast<T>(static_cast<Underlying>(left) | static_cast<Underlying>(right));
-    }
-
-    template<typename T>
-    constexpr bool rhi_has_any_flag(T value, T flags)
-    {
-        static_assert(std::is_enum<T>::value, "RHI flag type must be an enum.");
-        using Underlying = typename std::underlying_type<T>::type;
-        return (static_cast<Underlying>(value) & static_cast<Underlying>(flags)) != 0;
-    }
-
-    template<typename T>
-    constexpr bool rhi_has_all_flags(T value, T flags)
-    {
-        static_assert(std::is_enum<T>::value, "RHI flag type must be an enum.");
-        using Underlying = typename std::underlying_type<T>::type;
-        const Underlying flag_bits = static_cast<Underlying>(flags);
-        return (static_cast<Underlying>(value) & flag_bits) == flag_bits;
-    }
-
     enum class RHIResourceDimension : std::uint8_t
     {
         Buffer,
@@ -67,6 +42,7 @@ namespace toy3d
         CopySource = 1U << 8,
         CopyDestination = 1U << 9
     };
+    ENUM_CLASS_FLAGS(RHIResourceUsage)
 
     enum class RHICPUAccess : std::uint8_t
     {
@@ -102,6 +78,7 @@ namespace toy3d
         CPURead = 1U << 17,
         CPUWrite = 1U << 18
     };
+    ENUM_CLASS_FLAGS(RHIAccess)
 
     enum class RHIShaderStage : std::uint8_t
     {
@@ -125,6 +102,7 @@ namespace toy3d
         AllGraphics = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3) | (1U << 4),
         All = AllGraphics | (1U << 5)
     };
+    ENUM_CLASS_FLAGS(RHIShaderStageFlags)
 
     enum class RHIBindingGroup : std::uint8_t
     {
@@ -296,6 +274,7 @@ namespace toy3d
         Alpha = 1U << 3,
         All = Red | Green | Blue | Alpha
     };
+    ENUM_CLASS_FLAGS(RHIColorWriteMask)
 
     enum class RHICommandListState : std::uint8_t
     {

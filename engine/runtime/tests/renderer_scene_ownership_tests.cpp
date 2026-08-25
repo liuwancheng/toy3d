@@ -266,8 +266,6 @@ namespace
         PlaceholderTexture,
         PlaceholderView,
         PlaceholderSampler,
-        DepthTexture,
-        DepthView,
         CommandContext,
         QueueSubmit,
         QueueWait,
@@ -437,11 +435,9 @@ namespace
             const toy3d::RHIInitialData*) override
         {
             ++texture_create_count_;
-            if ((failure_point_ ==
+            if (failure_point_ ==
                     RendererBootstrapFailurePoint::PlaceholderTexture &&
-                 texture_create_count_ == 1u) ||
-                (failure_point_ == RendererBootstrapFailurePoint::DepthTexture &&
-                 texture_create_count_ == 2u))
+                texture_create_count_ == 1u)
             {
                 return toy3d::RHIResult<toy3d::RHITextureRef>::failure(
                     toy3d::RHIErrorCode::BackendFailure,
@@ -462,11 +458,9 @@ namespace
             const toy3d::RHITextureViewDesc& desc) override
         {
             ++texture_view_create_count_;
-            if ((failure_point_ ==
+            if (failure_point_ ==
                     RendererBootstrapFailurePoint::PlaceholderView &&
-                 texture_view_create_count_ == 1u) ||
-                (failure_point_ == RendererBootstrapFailurePoint::DepthView &&
-                 texture_view_create_count_ == 2u))
+                texture_view_create_count_ == 1u)
             {
                 return toy3d::RHIResult<toy3d::RHITextureViewRef>::failure(
                     toy3d::RHIErrorCode::BackendFailure,
@@ -939,8 +933,6 @@ namespace
             RendererBootstrapFailurePoint::PlaceholderTexture,
             RendererBootstrapFailurePoint::PlaceholderView,
             RendererBootstrapFailurePoint::PlaceholderSampler,
-            RendererBootstrapFailurePoint::DepthTexture,
-            RendererBootstrapFailurePoint::DepthView,
             RendererBootstrapFailurePoint::CommandContext,
             RendererBootstrapFailurePoint::QueueSubmit,
             RendererBootstrapFailurePoint::QueueWait,

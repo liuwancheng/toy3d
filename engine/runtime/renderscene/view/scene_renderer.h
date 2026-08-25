@@ -12,6 +12,7 @@ namespace toy3d
     class RenderResourceManager;
     class Renderer;
     class RHIDevice;
+    class SceneRenderTargets;
 
     // GT-created one-shot owner transferred into a Draw command. All render-side
     // mutation and destruction happens on the logical Rendering Thread.
@@ -33,7 +34,7 @@ namespace toy3d
             RHIDevice& device,
             RenderResourceManager& resource_manager,
             RHIViewportContext& viewport,
-            const RHITextureViewRef& depth_stencil_view) = 0;
+            SceneRenderTargets& scene_render_targets) = 0;
 
     protected:
         const SceneViewFamily& view_family() const { return view_family_; }

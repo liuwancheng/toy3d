@@ -46,10 +46,10 @@ int main()
 
     const RHITextureDesc scene_color = make_texture_desc(
         PixelFormat::R16G16B16A16Float,
-        rhi_enum_or(RHIResourceUsage::RenderTarget, RHIResourceUsage::ShaderResource));
+        RHIResourceUsage::RenderTarget | RHIResourceUsage::ShaderResource);
     RHIFormatCapabilities scene_color_support;
-    scene_color_support.usage = rhi_enum_or(
-        RHIFormatUsage::RenderTarget, RHIFormatUsage::Sampled);
+    scene_color_support.usage =
+        RHIFormatUsage::RenderTarget | RHIFormatUsage::Sampled;
     check(static_cast<bool>(validate_texture_format_capabilities(
         scene_color, scene_color_support)),
         "RGBA16F must validate when render-target and sampled usage are both supported");
@@ -78,10 +78,10 @@ int main()
 
     const RHITextureDesc scene_depth = make_texture_desc(
         PixelFormat::D24UNormS8UInt,
-        rhi_enum_or(RHIResourceUsage::DepthStencil, RHIResourceUsage::ShaderResource));
+        RHIResourceUsage::DepthStencil | RHIResourceUsage::ShaderResource);
     RHIFormatCapabilities scene_depth_support;
-    scene_depth_support.usage = rhi_enum_or(
-        RHIFormatUsage::DepthStencil, RHIFormatUsage::Sampled);
+    scene_depth_support.usage =
+        RHIFormatUsage::DepthStencil | RHIFormatUsage::Sampled;
     check(static_cast<bool>(validate_texture_format_capabilities(
         scene_depth, scene_depth_support)),
         "D24S8 must validate when depth-stencil and sampled usage are both supported");

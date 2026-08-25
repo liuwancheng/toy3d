@@ -299,13 +299,13 @@ namespace toy3d
                 result.error = "ShaderMap program contains an unsupported shader stage.";
                 return result;
             }
-            if (rhi_has_any_flag(stage_mask, stage_flag) || stage.entry_point.empty() ||
+            if (EnumHasAnyFlags(stage_mask, stage_flag) || stage.entry_point.empty() ||
                 stage.binary.empty() || hash_is_zero(stage.content_hash))
             {
                 result.error = "ShaderMap program contains an invalid or duplicate stage.";
                 return result;
             }
-            stage_mask = rhi_enum_or(stage_mask, stage_flag);
+            stage_mask |= stage_flag;
             if (!validate_stage_interfaces(stage, result.error))
             {
                 return result;
@@ -322,7 +322,7 @@ namespace toy3d
                     expected->array_count != reflected.array_count ||
                     expected->constant_buffer_size != reflected.constant_buffer_size ||
                     expected->constant_members.size() != reflected.constant_members.size() ||
-                    !rhi_has_any_flag(expected->stages, stage_flag))
+                    !EnumHasAnyFlags(expected->stages, stage_flag))
                 {
                     result.error = "ShaderMap stage reflection does not match the Program binding layout.";
                     return result;
@@ -349,7 +349,8 @@ namespace toy3d
         }
 
         const bool graphics = stage_mask == RHIShaderStageFlags::Vertex ||
-            stage_mask == rhi_enum_or(RHIShaderStageFlags::Vertex, RHIShaderStageFlags::Pixel);
+            stage_mask ==
+                (RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel);
         const bool compute = stage_mask == RHIShaderStageFlags::Compute;
         if ((!graphics && !compute) || program.stages.empty())
         {
@@ -382,7 +383,7 @@ namespace toy3d
                 if (stage.stage == RHIShaderStage::Vertex) stage_flag = RHIShaderStageFlags::Vertex;
                 else if (stage.stage == RHIShaderStage::Pixel) stage_flag = RHIShaderStageFlags::Pixel;
                 else if (stage.stage == RHIShaderStage::Compute) stage_flag = RHIShaderStageFlags::Compute;
-                if (!rhi_has_any_flag(binding.stages, stage_flag)) continue;
+                if (!EnumHasAnyFlags(binding.stages, stage_flag)) continue;
                 const bool reflected = std::any_of(
                     stage.reflection.begin(), stage.reflection.end(),
                     [&](const ShaderMapBinding& value) {

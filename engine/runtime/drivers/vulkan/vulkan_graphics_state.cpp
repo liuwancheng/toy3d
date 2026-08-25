@@ -1,15 +1,9 @@
 #include "drivers/vulkan/vulkan_graphics_state.h"
 
-#include <type_traits>
 #include <utility>
 
 namespace toy3d
 {
-    namespace
-    {
-        using DirtyUnderlying = std::underlying_type<VulkanGraphicsStateDirty>::type;
-    }
-
     void VulkanGraphicsState::reset()
     {
         graphics_pipeline.reset();
@@ -88,9 +82,7 @@ namespace toy3d
 
     void VulkanGraphicsState::clear_dirty_flags(VulkanGraphicsStateDirty flags)
     {
-        const DirtyUnderlying current = static_cast<DirtyUnderlying>(state_dirty_flags);
-        const DirtyUnderlying cleared = static_cast<DirtyUnderlying>(flags);
-        state_dirty_flags = static_cast<VulkanGraphicsStateDirty>(current & ~cleared);
+        state_dirty_flags &= ~flags;
     }
 
     const RHIGraphicsPipelineRef& VulkanGraphicsState::pipeline() const
@@ -160,8 +152,6 @@ namespace toy3d
 
     void VulkanGraphicsState::mark_dirty(VulkanGraphicsStateDirty flags)
     {
-        state_dirty_flags = static_cast<VulkanGraphicsStateDirty>(
-            static_cast<DirtyUnderlying>(state_dirty_flags) |
-            static_cast<DirtyUnderlying>(flags));
+        state_dirty_flags |= flags;
     }
 }

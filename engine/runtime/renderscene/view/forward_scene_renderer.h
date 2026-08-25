@@ -8,6 +8,7 @@ namespace toy3d
     class RHIGraphicsCommandContext;
     class RHIStatus;
     class RenderResourceManager;
+    class SceneRenderTargets;
     struct RHIRenderPassDesc;
 
     class ForwardSceneRenderer final : public SceneRenderer
@@ -17,15 +18,14 @@ namespace toy3d
         ~ForwardSceneRenderer() override = default;
 
         // Render-side frame owner. Renderer supplies borrowed domain objects;
-        // primary viewport and depth-resource ownership remain outside this
-        // one-shot SceneRenderer. The injected depth view must already be
-        // committed or current-list eligible for DepthStencilWrite access.
+        // presentation ownership remains in the viewport, while scene
+        // attachments are held by Renderer-owned SceneRenderTargets.
         RHIResult<RHIFrameEndResult> render_frame(
             RenderScene& render_scene,
             RHIDevice& device,
             RenderResourceManager& resource_manager,
             RHIViewportContext& viewport,
-            const RHITextureViewRef& depth_stencil_view) override;
+            SceneRenderTargets& scene_render_targets) override;
 
     private:
         bool init_views();

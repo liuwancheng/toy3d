@@ -22,6 +22,7 @@
 #include "renderscene/primitive_scene_info.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/render_resource_manager.h"
+#include "renderscene/scene_render_targets.h"
 
 namespace toy3d
 {
@@ -186,13 +187,11 @@ namespace toy3d
             case Source::Blue: return RHIColorWriteMask::Blue;
             case Source::Alpha: return RHIColorWriteMask::Alpha;
             case Source::RedGreen:
-                return rhi_enum_or(
-                    RHIColorWriteMask::Red, RHIColorWriteMask::Green);
+                return RHIColorWriteMask::Red | RHIColorWriteMask::Green;
             case Source::RedGreenBlue:
-                return rhi_enum_or(
-                    rhi_enum_or(
-                        RHIColorWriteMask::Red, RHIColorWriteMask::Green),
-                    RHIColorWriteMask::Blue);
+                return RHIColorWriteMask::Red |
+                    RHIColorWriteMask::Green |
+                    RHIColorWriteMask::Blue;
             case Source::All: return RHIColorWriteMask::All;
             }
             return RHIColorWriteMask::All;
@@ -330,7 +329,7 @@ namespace toy3d
         RHIDevice& device,
         RenderResourceManager& resource_manager,
         RHIViewportContext& viewport,
-        const RHITextureViewRef& depth_stencil_view)
+        SceneRenderTargets& scene_render_targets)
     {
         RHIResult<std::unique_ptr<RHIFrameContext>> frame_result =
             viewport.begin_frame();
@@ -388,22 +387,19 @@ namespace toy3d
                     failure.code(), failure.message());
             };
 
-        if (!frame->present_texture() || !frame->present_view() ||
-            !depth_stencil_view || !depth_stencil_view->texture())
+        if (!frame->present_texture() || !frame->present_view())
         {
             return abort_recording(RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Forward frame requires present and depth-stencil attachments."));
+                "Forward frame requires present attachments."));
         }
         if (!frame->present_texture()->is_owned_by(device) ||
             !frame->present_view()->is_owned_by(device) ||
-            !depth_stencil_view->is_owned_by(device) ||
-            !depth_stencil_view->texture()->is_owned_by(device) ||
             frame->present_view()->texture() != frame->present_texture())
         {
             return abort_recording(RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Forward frame attachments must belong to the injected device and current frame."));
+                "Forward frame present attachments must belong to the injected device and current frame."));
         }
         if (view_family().output_size() !=
             UIntVector2(frame->width(), frame->height()))
@@ -411,6 +407,37 @@ namespace toy3d
             return abort_recording(RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
                 "Forward frame View family output does not match the acquired frame extent."));
+        }
+        RHIStatus status = scene_render_targets.ensure_extent(
+            device,
+            frame->width(),
+            frame->height(),
+            frame->present_texture()->desc().format);
+        if (!status)
+        {
+            return abort_recording(status);
+        }
+        const bool scene_targets_complete =
+            scene_render_targets.scene_color_texture() &&
+            scene_render_targets.scene_color_view() &&
+            scene_render_targets.scene_color_shader_resource_view() &&
+            scene_render_targets.scene_depth_texture() &&
+            scene_render_targets.scene_depth_view() &&
+            scene_render_targets.scene_depth_shader_resource_view();
+        const bool scene_targets_owned = scene_targets_complete &&
+            scene_render_targets.scene_color_texture()->is_owned_by(device) &&
+            scene_render_targets.scene_color_view()->is_owned_by(device) &&
+            scene_render_targets.scene_color_shader_resource_view()
+                ->is_owned_by(device) &&
+            scene_render_targets.scene_depth_texture()->is_owned_by(device) &&
+            scene_render_targets.scene_depth_view()->is_owned_by(device) &&
+            scene_render_targets.scene_depth_shader_resource_view()
+                ->is_owned_by(device);
+        if (!scene_targets_owned)
+        {
+            return abort_recording(RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Forward frame requires complete SceneRenderTargets owned by the injected device."));
         }
 
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result =
@@ -428,7 +455,7 @@ namespace toy3d
                 "Viewport frame created no graphics command context."));
         }
 
-        RHIStatus status = context->begin_recording("ForwardSceneRenderer");
+        status = context->begin_recording("ForwardSceneRenderer");
         if (!status)
         {
             return abort_recording(status);
@@ -450,13 +477,38 @@ namespace toy3d
         compute_view_visibility(render_scene);
         collect_mesh_batches();
 
-        RHIResourceTransition present_to_render_target;
-        present_to_render_target.resource = frame->present_texture();
-        present_to_render_target.subresources =
-            frame->present_view()->desc().subresources;
-        present_to_render_target.before = RHIAccess::Present;
-        present_to_render_target.after = RHIAccess::RenderTarget;
-        status = context->transition_resources({present_to_render_target});
+        std::vector<RHIResourceTransition> scene_attachment_transitions;
+        if (scene_render_targets.scene_color_access() != RHIAccess::RenderTarget)
+        {
+            RHIResourceTransition scene_color_to_render_target;
+            scene_color_to_render_target.resource =
+                scene_render_targets.scene_color_texture();
+            scene_color_to_render_target.subresources =
+                scene_render_targets.scene_color_view()->desc().subresources;
+            scene_color_to_render_target.before =
+                scene_render_targets.scene_color_access();
+            scene_color_to_render_target.after = RHIAccess::RenderTarget;
+            scene_attachment_transitions.push_back(
+                std::move(scene_color_to_render_target));
+        }
+        if (scene_render_targets.scene_depth_access() !=
+            RHIAccess::DepthStencilWrite)
+        {
+            RHIResourceTransition scene_depth_to_write;
+            scene_depth_to_write.resource =
+                scene_render_targets.scene_depth_texture();
+            scene_depth_to_write.subresources =
+                scene_render_targets.scene_depth_view()->desc().subresources;
+            scene_depth_to_write.before =
+                scene_render_targets.scene_depth_access();
+            scene_depth_to_write.after = RHIAccess::DepthStencilWrite;
+            scene_attachment_transitions.push_back(
+                std::move(scene_depth_to_write));
+        }
+        if (!scene_attachment_transitions.empty())
+        {
+            status = context->transition_resources(scene_attachment_transitions);
+        }
         if (!status)
         {
             return abort_recording(status);
@@ -464,14 +516,15 @@ namespace toy3d
 
         RHIRenderPassDesc pass_desc;
         RHIColorAttachmentDesc color_attachment;
-        color_attachment.view = frame->present_view();
+        color_attachment.view = scene_render_targets.scene_color_view();
         color_attachment.load = RHILoadOperation::Clear;
         color_attachment.store = RHIStoreOperation::Store;
         color_attachment.clear_value =
             RHIClearValue::color_value(vec4(0.0F, 0.0F, 0.0F, 1.0F));
         pass_desc.color_attachments.push_back(std::move(color_attachment));
         pass_desc.has_depth_stencil_attachment = true;
-        pass_desc.depth_stencil_attachment.view = depth_stencil_view;
+        pass_desc.depth_stencil_attachment.view =
+            scene_render_targets.scene_depth_view();
         pass_desc.depth_stencil_attachment.depth_load =
             RHILoadOperation::Clear;
         pass_desc.depth_stencil_attachment.depth_store =
@@ -484,6 +537,73 @@ namespace toy3d
             RHIClearValue::DepthZero;
         pass_desc.debug_name = "ForwardBasePass";
         status = render_base_pass(device, *context, pass_desc);
+        if (!status)
+        {
+            return abort_recording(status);
+        }
+
+        std::vector<RHIResourceTransition> backbuffer_copy_transitions;
+        RHIResourceTransition scene_color_to_copy_source;
+        scene_color_to_copy_source.resource =
+            scene_render_targets.scene_color_texture();
+        scene_color_to_copy_source.subresources =
+            scene_render_targets.scene_color_view()->desc().subresources;
+        scene_color_to_copy_source.before = RHIAccess::RenderTarget;
+        scene_color_to_copy_source.after = RHIAccess::CopySource;
+        backbuffer_copy_transitions.push_back(
+            std::move(scene_color_to_copy_source));
+
+        RHIResourceTransition present_to_copy_destination;
+        present_to_copy_destination.resource = frame->present_texture();
+        present_to_copy_destination.subresources =
+            frame->present_view()->desc().subresources;
+        present_to_copy_destination.before = RHIAccess::Present;
+        present_to_copy_destination.after = RHIAccess::CopyDestination;
+        backbuffer_copy_transitions.push_back(
+            std::move(present_to_copy_destination));
+
+        status = context->transition_resources(backbuffer_copy_transitions);
+        if (!status)
+        {
+            return abort_recording(status);
+        }
+
+        RHITextureCopyDesc scene_color_copy;
+        scene_color_copy.source.texture =
+            scene_render_targets.scene_color_texture();
+        scene_color_copy.destination.texture = frame->present_texture();
+        scene_color_copy.extent = {frame->width(), frame->height(), 1u};
+        status = context->copy_texture(scene_color_copy);
+        if (!status)
+        {
+            return abort_recording(status);
+        }
+
+        RHIResourceTransition backbuffer_to_ui_render_target;
+        backbuffer_to_ui_render_target.resource = frame->present_texture();
+        backbuffer_to_ui_render_target.subresources =
+            frame->present_view()->desc().subresources;
+        backbuffer_to_ui_render_target.before = RHIAccess::CopyDestination;
+        backbuffer_to_ui_render_target.after = RHIAccess::RenderTarget;
+        status = context->transition_resources({backbuffer_to_ui_render_target});
+        if (!status)
+        {
+            return abort_recording(status);
+        }
+
+        RHIRenderPassDesc ui_pass_desc;
+        RHIColorAttachmentDesc ui_color_attachment;
+        ui_color_attachment.view = frame->present_view();
+        ui_color_attachment.load = RHILoadOperation::Load;
+        ui_color_attachment.store = RHIStoreOperation::Store;
+        ui_pass_desc.color_attachments.push_back(
+            std::move(ui_color_attachment));
+        ui_pass_desc.debug_name = "UIOverlayPass";
+        status = context->begin_render_pass(ui_pass_desc);
+        if (status)
+        {
+            status = context->end_render_pass();
+        }
         if (!status)
         {
             return abort_recording(status);
@@ -561,6 +681,9 @@ namespace toy3d
                 submitted_result.presentation_status = commit_status;
             }
         }
+        scene_render_targets.publish_submitted_access(
+            RHIAccess::CopySource,
+            RHIAccess::DepthStencilWrite);
         return RHIResult<RHIFrameEndResult>::success(
             std::move(submitted_result));
     }

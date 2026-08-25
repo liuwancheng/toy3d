@@ -30,11 +30,11 @@ namespace toy3d
         {
             RHIShaderStageFlags result = RHIShaderStageFlags::None;
             if (shader::has_stage(stages, shader::ShaderStageFlags::Vertex))
-                result = rhi_enum_or(result, RHIShaderStageFlags::Vertex);
+                result |= RHIShaderStageFlags::Vertex;
             if (shader::has_stage(stages, shader::ShaderStageFlags::Pixel))
-                result = rhi_enum_or(result, RHIShaderStageFlags::Pixel);
+                result |= RHIShaderStageFlags::Pixel;
             if (shader::has_stage(stages, shader::ShaderStageFlags::Compute))
-                result = rhi_enum_or(result, RHIShaderStageFlags::Compute);
+                result |= RHIShaderStageFlags::Compute;
             return result;
         }
 

@@ -33,7 +33,7 @@ namespace toy3d
 
             RHIBufferDesc desc;
             desc.size = static_cast<std::uint64_t>(initial_data_size);
-            desc.usage = rhi_enum_or(usage, RHIResourceUsage::CopyDestination);
+            desc.usage = usage | RHIResourceUsage::CopyDestination;
             desc.initial_access = RHIAccess::Common;
             desc.debug_name = debug_name;
             RHIResult<RHIBufferRef> created = device.create_buffer(desc);

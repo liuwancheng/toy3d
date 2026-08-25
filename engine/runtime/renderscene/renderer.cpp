@@ -11,6 +11,7 @@
 #include "rendercore/render_command_internal.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/render_scene.h"
+#include "renderscene/scene_render_targets.h"
 #include "renderscene/view/scene_renderer.h"
 #include "task_graph/task_graph_interface.h"
 
@@ -59,6 +60,7 @@ namespace toy3d
         assert(!device_);
         assert(!resource_manager_);
         assert(!render_scene_);
+        assert(!scene_render_targets_);
         assert(!primary_viewport_);
     }
 
@@ -110,12 +112,13 @@ namespace toy3d
         resource_manager_ = std::make_unique<RenderResourceManager>(*device_);
         render_scene_ = std::make_unique<RenderScene>(
             task_graph_, *resource_manager_);
+        scene_render_targets_ = std::make_unique<SceneRenderTargets>();
 
         RHITextureDesc placeholder_desc;
         placeholder_desc.format = PixelFormat::R8G8B8A8UNorm;
-        placeholder_desc.usage = rhi_enum_or(
-            RHIResourceUsage::ShaderResource,
-            RHIResourceUsage::CopyDestination);
+        placeholder_desc.usage =
+            RHIResourceUsage::ShaderResource |
+            RHIResourceUsage::CopyDestination;
         placeholder_desc.initial_access = RHIAccess::Common;
         placeholder_desc.debug_name = "RendererWhitePlaceholder";
         RHIResult<RHITextureRef> placeholder_result =
@@ -152,34 +155,6 @@ namespace toy3d
         }
         placeholder_sampler_ = std::move(sampler_result).value();
 
-        RHITextureDesc depth_desc;
-        depth_desc.width = viewport_desc_.width;
-        depth_desc.height = viewport_desc_.height;
-        depth_desc.format = PixelFormat::D32Float;
-        depth_desc.usage = RHIResourceUsage::DepthStencil;
-        depth_desc.initial_access = RHIAccess::Common;
-        depth_desc.clear_value = RHIClearValue::DepthZero;
-        depth_desc.debug_name = "RendererSceneDepth";
-        RHIResult<RHITextureRef> depth_result = device_->create_texture(depth_desc);
-        if (!depth_result)
-        {
-            return fail_startup(depth_result.status());
-        }
-        scene_depth_texture_ = std::move(depth_result).value();
-
-        RHITextureViewDesc depth_view_desc;
-        depth_view_desc.type = RHIResourceViewType::DepthStencil;
-        depth_view_desc.format = depth_desc.format;
-        depth_view_desc.subresources.aspect = RHITextureAspect::Depth;
-        depth_view_desc.debug_name = "RendererSceneDepthView";
-        RHIResult<RHITextureViewRef> depth_view_result =
-            device_->create_texture_view(scene_depth_texture_, depth_view_desc);
-        if (!depth_view_result)
-        {
-            return fail_startup(depth_view_result.status());
-        }
-        scene_depth_view_ = std::move(depth_view_result).value();
-
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result =
             device_->create_graphics_command_context();
         if (!context_result)
@@ -202,13 +177,8 @@ namespace toy3d
             placeholder_to_copy.resource = placeholder_texture_;
             placeholder_to_copy.before = RHIAccess::Common;
             placeholder_to_copy.after = RHIAccess::CopyDestination;
-            RHIResourceTransition depth_to_write;
-            depth_to_write.resource = scene_depth_texture_;
-            depth_to_write.subresources.aspect = RHITextureAspect::Depth;
-            depth_to_write.before = RHIAccess::Common;
-            depth_to_write.after = RHIAccess::DepthStencilWrite;
             step_status = context->transition_resources(
-                {placeholder_to_copy, depth_to_write});
+                {placeholder_to_copy});
         }
 
         const std::array<std::uint8_t, 4> white_pixel = {255, 255, 255, 255};
@@ -346,7 +316,8 @@ namespace toy3d
             {
                 if (lifecycle_state_.load() != RendererLifecycleState::Running ||
                     !render_scene_ || !resource_manager_ || !device_ ||
-                    !primary_viewport_ || !scene_depth_view_ || !scene_renderer)
+                    !primary_viewport_ || !scene_render_targets_ ||
+                    !scene_renderer)
                 {
                     TOY_LOG_ERROR(
                         "Renderer Draw requires a complete Running domain and a SceneRenderer.");
@@ -367,7 +338,7 @@ namespace toy3d
                 RHIResult<RHIFrameEndResult> frame_result =
                     scene_renderer->render_frame(
                         *render_scene_, *device_, *resource_manager_,
-                        *primary_viewport_, scene_depth_view_);
+                        *primary_viewport_, *scene_render_targets_);
                 if (!frame_result)
                 {
                     if (!rhi_is_recoverable_viewport_status(frame_result.status()))
@@ -434,148 +405,18 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "Renderer frame extent update requires a complete domain");
         }
-        if (scene_depth_texture_ &&
-            scene_depth_texture_->desc().width == width &&
-            scene_depth_texture_->desc().height == height)
+        if (viewport_desc_.width == width && viewport_desc_.height == height)
         {
             return RHIStatus::success();
         }
-
-        const RHIStatus idle = device_->graphics_queue().wait_idle();
-        if (!idle)
-        {
-            return idle;
-        }
         const RHIStatus resize_status =
             primary_viewport_->request_resize(width, height);
-        if (!resize_status)
+        if (resize_status)
         {
-            return resize_status;
+            viewport_desc_.width = width;
+            viewport_desc_.height = height;
         }
-
-        RHITextureDesc depth_desc;
-        depth_desc.width = width;
-        depth_desc.height = height;
-        depth_desc.format = PixelFormat::D32Float;
-        depth_desc.usage = RHIResourceUsage::DepthStencil;
-        depth_desc.initial_access = RHIAccess::Common;
-        depth_desc.clear_value = RHIClearValue::DepthZero;
-        depth_desc.debug_name = "RendererSceneDepth";
-        RHIResult<RHITextureRef> depth_result =
-            device_->create_texture(depth_desc);
-        if (!depth_result)
-        {
-            return depth_result.status();
-        }
-        RHITextureRef resized_depth_texture = std::move(depth_result).value();
-        if (!resized_depth_texture)
-        {
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer resize created no scene depth texture");
-        }
-
-        RHITextureViewDesc depth_view_desc;
-        depth_view_desc.type = RHIResourceViewType::DepthStencil;
-        depth_view_desc.format = depth_desc.format;
-        depth_view_desc.subresources.aspect = RHITextureAspect::Depth;
-        depth_view_desc.debug_name = "RendererSceneDepthView";
-        RHIResult<RHITextureViewRef> depth_view_result =
-            device_->create_texture_view(resized_depth_texture, depth_view_desc);
-        if (!depth_view_result)
-        {
-            return depth_view_result.status();
-        }
-        RHITextureViewRef resized_depth_view =
-            std::move(depth_view_result).value();
-        if (!resized_depth_view)
-        {
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer resize created no scene depth view");
-        }
-
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result =
-            device_->create_graphics_command_context();
-        if (!context_result)
-        {
-            return context_result.status();
-        }
-        std::unique_ptr<RHIGraphicsCommandContext> context =
-            std::move(context_result).value();
-        if (!context)
-        {
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer resize created no depth transition context");
-        }
-        RHIStatus status = context->begin_recording("RendererResizeDepth");
-        if (status)
-        {
-            RHIResourceTransition depth_to_write;
-            depth_to_write.resource = resized_depth_texture;
-            depth_to_write.subresources.aspect = RHITextureAspect::Depth;
-            depth_to_write.before = RHIAccess::Common;
-            depth_to_write.after = RHIAccess::DepthStencilWrite;
-            status = context->transition_resources({depth_to_write});
-        }
-
-        RHICommandListRef command_list;
-        if (status)
-        {
-            RHIResult<RHICommandListRef> finished =
-                context->finish_recording();
-            if (!finished)
-            {
-                status = finished.status();
-            }
-            else
-            {
-                command_list = std::move(finished).value();
-                if (!command_list)
-                {
-                    status = RHIStatus::failure(
-                        RHIErrorCode::BackendFailure,
-                        "Renderer resize depth transition finished without a command list");
-                }
-            }
-        }
-
-        RHIQueueCompletionValue completion_value = 0u;
-        if (status)
-        {
-            RHISubmitInfo submit_info;
-            submit_info.command_lists.push_back(std::move(command_list));
-            submit_info.debug_name = "RendererResizeDepth";
-            RHIResult<RHISubmitResult> submitted =
-                device_->graphics_queue().submit(submit_info);
-            if (!submitted)
-            {
-                status = submitted.status();
-            }
-            else
-            {
-                completion_value = submitted.value().completion_value;
-                if (completion_value == 0u)
-                {
-                    status = RHIStatus::failure(
-                        RHIErrorCode::BackendFailure,
-                        "Renderer resize depth transition submit returned no completion value");
-                }
-            }
-        }
-        if (status)
-        {
-            status = device_->graphics_queue().wait_for_value(completion_value);
-        }
-        if (!status)
-        {
-            return status;
-        }
-
-        scene_depth_view_ = std::move(resized_depth_view);
-        scene_depth_texture_ = std::move(resized_depth_texture);
-        return RHIStatus::success();
+        return resize_status;
     }
 
     ThreadStatus Renderer::fail_startup(const RHIStatus& failure)
@@ -637,6 +478,11 @@ namespace toy3d
     {
         published_scene_interface_.store(nullptr);
         render_scene_.reset();
+        if (scene_render_targets_)
+        {
+            scene_render_targets_->release();
+            scene_render_targets_.reset();
+        }
         if (resource_manager_)
         {
             const RHIStatus cleared = resource_manager_->clear_for_terminal();
@@ -656,8 +502,6 @@ namespace toy3d
             }
         }
         primary_viewport_.reset();
-        scene_depth_view_.reset();
-        scene_depth_texture_.reset();
         placeholder_sampler_.reset();
         placeholder_texture_view_.reset();
         placeholder_texture_.reset();

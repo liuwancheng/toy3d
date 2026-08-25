@@ -71,7 +71,7 @@ namespace toy3d
             PixelFormat expected_format = PixelFormat::Unknown;
             std::uint32_t byte_size = 0u;
             if (!buffer ||
-                !rhi_has_any_flag(buffer->desc().usage, RHIResourceUsage::VertexBuffer) ||
+                !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::VertexBuffer) ||
                 !expected_stream_format(
                     component.attribute_id, expected_format, byte_size) ||
                 component.format != expected_format || component.stride == 0u ||

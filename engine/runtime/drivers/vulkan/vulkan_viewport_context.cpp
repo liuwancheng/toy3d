@@ -717,7 +717,9 @@ namespace toy3d
             texture_desc.width = extent.width;
             texture_desc.height = extent.height;
             texture_desc.format = viewport_desc.format;
-            texture_desc.usage = rhi_enum_or(RHIResourceUsage::RenderTarget, RHIResourceUsage::CopyDestination);
+            texture_desc.usage =
+                RHIResourceUsage::RenderTarget |
+                RHIResourceUsage::CopyDestination;
             texture_desc.initial_access = RHIAccess::Present;
             texture_desc.debug_name = viewport_desc.debug_name + ".Image" + std::to_string(index);
             RHITextureRef texture = std::make_shared<VulkanTexture>(

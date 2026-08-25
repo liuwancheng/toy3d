@@ -63,8 +63,8 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer copy range is outside a resource.");
         }
-        if (!rhi_has_any_flag(desc.source->desc().usage, RHIResourceUsage::CopySource) ||
-            !rhi_has_any_flag(desc.destination->desc().usage, RHIResourceUsage::CopyDestination))
+        if (!EnumHasAnyFlags(desc.source->desc().usage, RHIResourceUsage::CopySource) ||
+            !EnumHasAnyFlags(desc.destination->desc().usage, RHIResourceUsage::CopyDestination))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer copy resources are missing copy usage flags.");
         }
@@ -91,7 +91,7 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload range is outside the destination buffer.");
         }
-        if (!rhi_has_any_flag(destination_desc.usage, RHIResourceUsage::CopyDestination))
+        if (!EnumHasAnyFlags(destination_desc.usage, RHIResourceUsage::CopyDestination))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer upload destination is missing CopyDestination usage.");
         }
@@ -115,8 +115,8 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy subresource is outside a texture.");
         }
-        if (!rhi_has_any_flag(source_desc.usage, RHIResourceUsage::CopySource) ||
-            !rhi_has_any_flag(destination_desc.usage, RHIResourceUsage::CopyDestination))
+        if (!EnumHasAnyFlags(source_desc.usage, RHIResourceUsage::CopySource) ||
+            !EnumHasAnyFlags(destination_desc.usage, RHIResourceUsage::CopyDestination))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture copy resources are missing copy usage flags.");
         }
@@ -158,7 +158,7 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload destination subresource is outside the texture.");
         }
-        if (!rhi_has_any_flag(destination_desc.usage, RHIResourceUsage::CopyDestination))
+        if (!EnumHasAnyFlags(destination_desc.usage, RHIResourceUsage::CopyDestination))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture upload destination is missing CopyDestination usage.");
         }

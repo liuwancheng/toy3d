@@ -20,6 +20,7 @@ namespace toy3d
         StencilReference = 1U << 7,
         All = 0xffffffffU
     };
+    ENUM_CLASS_FLAGS(VulkanGraphicsStateDirty)
 
     // Mutable state belongs to one command context. It is intentionally not an
     // RHI resource and must never be shared by parallel pass recorders.
