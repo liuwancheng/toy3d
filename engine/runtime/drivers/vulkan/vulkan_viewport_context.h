@@ -10,6 +10,7 @@
 #endif
 #include <vulkan/vulkan.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -18,6 +19,21 @@ namespace toy3d
 {
     class VulkanCommandList;
     class VulkanDevice;
+    class VulkanGenerationPublicationTracker;
+
+    struct VulkanViewportObservation
+    {
+        std::uint64_t generation_publication_id = 0;
+        std::uint64_t rejected_generation_construction_count = 0;
+        std::size_t active_generation_count = 0;
+        std::size_t retired_generation_count = 0;
+        std::size_t frame_slot_count = 0;
+        std::size_t image_state_count = 0;
+        std::size_t pending_present_fence_count = 0;
+        std::uint64_t fallback_queue_drain_count = 0;
+        std::uint64_t discarded_semaphore_count = 0;
+        bool swapchain_maintenance1_enabled = false;
+    };
 
     class VulkanViewportContext final : public RHIViewportContext
     {
@@ -34,6 +50,7 @@ namespace toy3d
             const std::vector<RHICommandListRef>& command_lists) override;
         RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) override;
         RHIStatus request_resize(std::uint32_t width, std::uint32_t height) override;
+        VulkanViewportObservation observation_snapshot() const;
 
         // Backend-only entry point used by the frame context. Command buffers
         // are allocated from the active frame slot and submitted by end_frame.
@@ -42,10 +59,16 @@ namespace toy3d
 
     private:
         struct FrameSlot;
+        struct SwapchainImagePresentationState;
+        struct SwapchainGeneration;
 
         RHIStatus recreate_swapchain();
-        RHIStatus create_swapchain(VkSwapchainKHR old_swapchain);
-        void destroy_swapchain();
+        RHIStatus create_swapchain(
+            VkSwapchainKHR old_swapchain,
+            std::unique_ptr<SwapchainGeneration>& generation);
+        void destroy_generation(SwapchainGeneration& generation);
+        RHIStatus retire_generation(std::unique_ptr<SwapchainGeneration> generation);
+        RHIStatus collect_retired_generations();
         RHIStatus submit_active_frame(const std::vector<VulkanCommandList*>& command_lists);
         RHIStatus present_active_image();
         RHIStatus abort_active_frame();
@@ -58,18 +81,13 @@ namespace toy3d
         VulkanDevice& vulkan_device;
         RHISurfaceRef viewport_surface;
         RHIViewportContextDesc viewport_desc;
-        VkSwapchainKHR vk_swapchain = VK_NULL_HANDLE;
-        VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
-        VkExtent2D swapchain_extent{};
-        std::vector<VkImage> swapchain_images;
-        std::vector<VkImageView> swapchain_image_views;
-        std::vector<RHITextureRef> present_textures;
-        std::vector<RHITextureViewRef> present_views;
-        std::vector<FrameSlot> frame_slots;
-        std::vector<VkFence> image_fences;
-        std::uint32_t current_frame_slot = 0;
+        std::unique_ptr<SwapchainGeneration> active_generation;
+        std::vector<std::unique_ptr<SwapchainGeneration>> retired_generations;
+        std::unique_ptr<VulkanGenerationPublicationTracker> publication_tracker;
         std::uint32_t active_image_index = 0;
         std::uint64_t active_frame_id = 0;
+        std::uint64_t fallback_queue_drain_count = 0;
+        std::uint64_t discarded_semaphore_count = 0;
         bool frame_active = false;
         RHIStatus presentation_failure;
         bool resize_pending = false;

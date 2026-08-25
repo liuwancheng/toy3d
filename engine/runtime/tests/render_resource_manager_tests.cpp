@@ -1103,6 +1103,8 @@ int main()
         toy3d::RHITextureRef color_texture;
         toy3d::RHITextureViewRef color_view;
         std::unique_ptr<toy3d::RHIGraphicsCommandContext> commands;
+        std::uint32_t frame_width = 64u;
+        std::uint32_t frame_height = 64u;
 
         const toy3d::RHITextureRef& present_texture() const override
         {
@@ -1116,12 +1118,12 @@ int main()
 
         std::uint32_t width() const override
         {
-            return 64u;
+            return frame_width;
         }
 
         std::uint32_t height() const override
         {
-            return 64u;
+            return frame_height;
         }
 
         toy3d::RHIResult<
@@ -1456,11 +1458,61 @@ int main()
     frame_viewport.next_completion_value = 42u;
     frame_viewport.next_presentation_status = toy3d::RHIStatus::success();
 
+    decltype(ready_first) resize_race_resource;
+    std::vector<std::string> resize_race_operations;
+    resize_race_resource.operations = &resize_race_operations;
+    frame_viewport.operations = &resize_race_operations;
+    frame_viewport.next_frame = make_frame();
+    const std::uint32_t abort_count_before_resize_race =
+        frame_viewport.abort_count;
+    check(frame_manager.begin_init(resize_race_resource).succeeded(),
+        "resize-race smoke must begin a retryable pending resource transaction");
+    std::vector<toy3d::SceneView> resized_views;
+    resized_views.emplace_back(
+        toy3d::Vector3(),
+        toy3d::Quaternion::identity(),
+        toy3d::Vector3(0.0f, 0.0f, 1.0f),
+        toy3d::UIntVector2(),
+        toy3d::UIntVector2(128u, 64u),
+        toy3d::UIntVector2(128u, 64u),
+        toy3d::CameraProjectionMode::Perspective,
+        toy3d::Radians(1.0f),
+        0.1f,
+        100.0f);
+    toy3d::ForwardSceneRenderer resize_race_renderer(
+        toy3d::SceneViewFamily(
+            *frame_render_scene,
+            toy3d::UIntVector2(128u, 64u),
+            std::move(resized_views)));
+    toy3d::SceneRenderTargets resize_race_scene_render_targets;
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult> resize_race_result =
+        resize_race_renderer.render_frame(
+            *frame_render_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            resize_race_scene_render_targets);
+    const std::vector<std::string> expected_resize_race_operations = {
+        "begin_frame",
+        "abort_frame"};
+    check(!resize_race_result &&
+          resize_race_result.status().code() == toy3d::RHIErrorCode::OutOfDate &&
+          resize_race_resource.state() ==
+              toy3d::RenderResourceState::PendingUpload &&
+          resize_race_resource.discard_count == 0 &&
+          resize_race_operations == expected_resize_race_operations &&
+          frame_viewport.abort_count == abort_count_before_resize_race + 1u,
+        "a resize extent race must abort acquired work and remain recoverable");
+    check(frame_manager.release(resize_race_resource).succeeded(),
+        "resize-race resource must remain releasable after abort");
+
     decltype(ready_first) aborted_frame_resource;
     std::vector<std::string> aborted_frame_operations;
     aborted_frame_resource.operations = &aborted_frame_operations;
     frame_viewport.operations = &aborted_frame_operations;
     frame_viewport.next_frame = make_frame();
+    const std::uint32_t abort_count_before_invalid_views =
+        frame_viewport.abort_count;
     check(frame_manager.begin_init(aborted_frame_resource).succeeded(),
         "abort smoke must begin a retryable pending resource transaction");
     std::vector<toy3d::SceneView> invalid_views;
@@ -1499,7 +1551,7 @@ int main()
               toy3d::RenderResourceState::PendingUpload &&
           aborted_frame_resource.discard_count == 1 &&
           aborted_frame_operations == expected_aborted_operations &&
-          frame_viewport.abort_count == 1u,
+          frame_viewport.abort_count == abort_count_before_invalid_views + 1u,
         "invalid init_views after acquire must discard resource publication and abort exactly once");
     check(frame_manager.release(aborted_frame_resource).succeeded(),
         "aborted frame resource must remain releasable after discard");

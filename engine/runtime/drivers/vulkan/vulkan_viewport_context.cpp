@@ -4,7 +4,9 @@
 #include "drivers/vulkan/vulkan_device.h"
 #include "drivers/vulkan/vulkan_resource.h"
 #include "drivers/vulkan/vulkan_queue.h"
+#include "drivers/vulkan/vulkan_presentation_lifecycle.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
+#include "logging/logger.h"
 
 #include <algorithm>
 #include <set>
@@ -153,7 +155,6 @@ namespace toy3d
     struct VulkanViewportContext::FrameSlot
     {
         VkSemaphore image_available = VK_NULL_HANDLE;
-        VkSemaphore render_finished = VK_NULL_HANDLE;
         VkFence completion_fence = VK_NULL_HANDLE;
         VkCommandPool command_pool = VK_NULL_HANDLE;
         VkCommandBuffer present_command_buffer = VK_NULL_HANDLE;
@@ -170,6 +171,40 @@ namespace toy3d
         std::vector<VulkanRenderPassResourcesRef> submitted_render_pass_resources;
     };
 
+    struct VulkanViewportContext::SwapchainImagePresentationState
+    {
+        VkSemaphore render_finished = VK_NULL_HANDLE;
+        VkFence image_fence = VK_NULL_HANDLE;
+        VkFence present_fence = VK_NULL_HANDLE;
+    };
+
+    struct VulkanViewportContext::SwapchainGeneration
+    {
+        explicit SwapchainGeneration(VulkanViewportContext& viewport)
+            : owner(viewport)
+        {
+        }
+
+        ~SwapchainGeneration()
+        {
+            owner.destroy_generation(*this);
+        }
+
+        VulkanViewportContext& owner;
+        VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+        VkFormat format = VK_FORMAT_UNDEFINED;
+        VkExtent2D extent{};
+        std::vector<VkImage> images;
+        std::vector<VkImageView> image_views;
+        std::vector<RHITextureRef> present_textures;
+        std::vector<RHITextureViewRef> present_views;
+        std::vector<FrameSlot> frame_slots;
+        std::vector<SwapchainImagePresentationState> image_states;
+        std::vector<VkFence> deferred_present_fences;
+        std::unique_ptr<VulkanGenerationLifecycle> lifecycle;
+        std::uint32_t current_frame_slot = 0;
+    };
+
     VulkanViewportContext::VulkanViewportContext(
         VulkanDevice& device,
         RHISurfaceRef surface,
@@ -177,6 +212,8 @@ namespace toy3d
         : vulkan_device(device)
         , viewport_surface(std::move(surface))
         , viewport_desc(std::move(desc))
+        , publication_tracker(
+            std::make_unique<VulkanGenerationPublicationTracker>())
     {
     }
 
@@ -187,12 +224,9 @@ namespace toy3d
             vkDeviceWaitIdle(vulkan_device.device());
             vulkan_device.graphics_queue().completed_value();
         }
-        const VkSwapchainKHR old_swapchain = vk_swapchain;
-        destroy_swapchain();
-        if (old_swapchain != VK_NULL_HANDLE && vulkan_device.device() != VK_NULL_HANDLE)
-        {
-            vkDestroySwapchainKHR(vulkan_device.device(), old_swapchain, nullptr);
-        }
+        active_generation.reset();
+        retired_generations.clear();
+        publication_tracker->shutdown();
     }
 
     RHIResult<std::unique_ptr<RHIFrameContext>> VulkanViewportContext::begin_frame()
@@ -209,7 +243,14 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "A Vulkan viewport context already has an active frame.");
         }
-        if (resize_pending || vk_swapchain == VK_NULL_HANDLE)
+        const RHIStatus retirement_status = collect_retired_generations();
+        if (!retirement_status)
+        {
+            latch_presentation_failure(retirement_status);
+            return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
+                retirement_status.code(), retirement_status.message());
+        }
+        if (resize_pending || !active_generation)
         {
             const RHIStatus status = recreate_swapchain();
             if (!status)
@@ -219,7 +260,7 @@ namespace toy3d
             }
         }
 
-        FrameSlot& slot = frame_slots[current_frame_slot];
+        FrameSlot& slot = active_generation->frame_slots[active_generation->current_frame_slot];
         RHIStatus status = make_vulkan_status(
             vkWaitForFences(vulkan_device.device(), 1, &slot.completion_fence, VK_TRUE, UINT64_MAX),
             "vkWaitForFences");
@@ -244,9 +285,9 @@ namespace toy3d
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
 
-        VkResult result = vkAcquireNextImageKHR(
+        VkResult result = vulkan_device.presentation_native_api().acquire_next_image(
             vulkan_device.device(),
-            vk_swapchain,
+            active_generation->swapchain,
             UINT64_MAX,
             slot.image_available,
             VK_NULL_HANDLE,
@@ -264,7 +305,9 @@ namespace toy3d
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(status.code(), status.message());
         }
 
-        const VkFence image_fence = image_fences[active_image_index];
+        SwapchainImagePresentationState& image_state =
+            active_generation->image_states[active_image_index];
+        const VkFence image_fence = image_state.image_fence;
         if (image_fence != VK_NULL_HANDLE && image_fence != slot.completion_fence)
         {
             status = make_vulkan_status(
@@ -280,16 +323,80 @@ namespace toy3d
             }
         }
 
+        const bool present_fence_pending =
+            active_generation->lifecycle->image_state(
+                active_image_index).present_fence_pending;
+        if (image_state.present_fence != VK_NULL_HANDLE && present_fence_pending)
+        {
+            const VkResult fence_status = vkGetFenceStatus(
+                vulkan_device.device(), image_state.present_fence);
+            if (fence_status == VK_NOT_READY)
+            {
+                active_generation->deferred_present_fences.push_back(
+                    image_state.present_fence);
+                image_state.present_fence = VK_NULL_HANDLE;
+                VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+                status = make_vulkan_status(
+                    vulkan_device.presentation_native_api().create_fence(
+                        vulkan_device.device(), &fence_info, &image_state.present_fence),
+                    "vkCreateFence");
+                if (!status)
+                {
+                    latch_incomplete_active_frame_failure(
+                        status, "Vulkan present-fence replacement");
+                    return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
+                        presentation_failure.code(), presentation_failure.message());
+                }
+                // Bound the retained fence lifetime without blocking the
+                // rendering thread or the platform resize message pump.
+                active_generation->lifecycle->require_queue_drain();
+                resize_pending = true;
+            }
+            else if (fence_status != VK_SUCCESS)
+            {
+                status = make_vulkan_status(fence_status, "vkGetFenceStatus");
+                latch_incomplete_active_frame_failure(
+                    status, "Vulkan present-fence status");
+                return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
+                    presentation_failure.code(), presentation_failure.message());
+            }
+            else
+            {
+                const RHIStatus reset_status = make_vulkan_status(
+                    vkResetFences(
+                        vulkan_device.device(), 1, &image_state.present_fence),
+                    "vkResetFences");
+                if (!reset_status)
+                {
+                    vkDestroyFence(
+                        vulkan_device.device(), image_state.present_fence, nullptr);
+                    image_state.present_fence = VK_NULL_HANDLE;
+                    active_generation->lifecycle->require_queue_drain();
+                    TOY_LOG_WARN(
+                        "{}; continuing with shared-queue generation retirement.",
+                        reset_status.message());
+                }
+            }
+        }
+        // Reacquiring the same image is the Vulkan 1.1 proof that WSI has
+        // finished waiting on this image's render_finished semaphore.
+        status = active_generation->lifecycle->record_acquire(active_image_index);
+        if (!status)
+        {
+            latch_incomplete_active_frame_failure(status, "Vulkan image reacquire");
+            return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
+                presentation_failure.code(), presentation_failure.message());
+        }
         ++active_frame_id;
         frame_active = true;
         resize_pending = result == VK_SUBOPTIMAL_KHR;
         return RHIResult<std::unique_ptr<RHIFrameContext>>::success(
             std::make_unique<VulkanFrameContext>(
                 *this,
-                present_textures[active_image_index],
-                present_views[active_image_index],
-                swapchain_extent.width,
-                swapchain_extent.height));
+                active_generation->present_textures[active_image_index],
+                active_generation->present_views[active_image_index],
+                active_generation->extent.width,
+                active_generation->extent.height));
     }
 
     RHIResult<RHIFrameEndResult> VulkanViewportContext::end_frame(
@@ -405,7 +512,7 @@ namespace toy3d
             return RHIResult<RHIFrameEndResult>::failure(status.code(), status.message());
         }
 
-        FrameSlot& slot = frame_slots[current_frame_slot];
+        FrameSlot& slot = active_generation->frame_slots[active_generation->current_frame_slot];
         slot.submitted_command_lists.insert(
             slot.submitted_command_lists.end(), command_lists.begin(), command_lists.end());
         for (const VulkanCommandList* command_list : vulkan_command_lists)
@@ -498,7 +605,7 @@ namespace toy3d
     RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
         VulkanViewportContext::create_graphics_command_context()
     {
-        if (!frame_active || frame_slots.empty())
+        if (!frame_active || !active_generation || active_generation->frame_slots.empty())
         {
             return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -508,7 +615,7 @@ namespace toy3d
             std::make_unique<VulkanGraphicsCommandContext>(
                 vulkan_device,
                 *this,
-                frame_slots[current_frame_slot].command_pool,
+                active_generation->frame_slots[active_generation->current_frame_slot].command_pool,
                 active_frame_id));
     }
 
@@ -519,37 +626,49 @@ namespace toy3d
             viewport_desc.width = pending_width;
             viewport_desc.height = pending_height;
         }
-        RHIStatus status = make_vulkan_status(vkDeviceWaitIdle(vulkan_device.device()), "vkDeviceWaitIdle");
+        const VkSwapchainKHR old_swapchain = active_generation
+            ? active_generation->swapchain
+            : VK_NULL_HANDLE;
+        std::unique_ptr<SwapchainGeneration> new_generation;
+        RHIStatus status = create_swapchain(old_swapchain, new_generation);
         if (!status)
         {
+            publication_tracker->reject_construction();
             return status;
         }
-        vulkan_device.graphics_queue().completed_value();
 
-        const VkSwapchainKHR old_swapchain = vk_swapchain;
-        destroy_swapchain();
-        status = create_swapchain(old_swapchain);
-        if (!status)
+        std::unique_ptr<SwapchainGeneration> old_generation = std::move(active_generation);
+        active_generation = std::move(new_generation);
+        publication_tracker->publish(
+            static_cast<std::uint32_t>(active_generation->images.size()));
+        if (old_generation)
         {
-            if (old_swapchain != VK_NULL_HANDLE)
+            status = retire_generation(std::move(old_generation));
+            if (!status)
             {
-                vkDestroySwapchainKHR(vulkan_device.device(), old_swapchain, nullptr);
+                return status;
             }
-            return status;
-        }
-        if (old_swapchain != VK_NULL_HANDLE)
-        {
-            vkDestroySwapchainKHR(vulkan_device.device(), old_swapchain, nullptr);
         }
         pending_width = 0;
         pending_height = 0;
         resize_pending = false;
-        current_frame_slot = 0;
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanViewportContext::create_swapchain(VkSwapchainKHR old_swapchain)
+    RHIStatus VulkanViewportContext::create_swapchain(
+        VkSwapchainKHR old_swapchain,
+        std::unique_ptr<SwapchainGeneration>& output_generation)
     {
+        auto generation = std::make_unique<SwapchainGeneration>(*this);
+        VkSwapchainKHR& vk_swapchain = generation->swapchain;
+        VkExtent2D& swapchain_extent = generation->extent;
+        std::vector<VkImage>& swapchain_images = generation->images;
+        std::vector<VkImageView>& swapchain_image_views = generation->image_views;
+        std::vector<RHITextureRef>& present_textures = generation->present_textures;
+        std::vector<RHITextureViewRef>& present_views = generation->present_views;
+        std::vector<FrameSlot>& frame_slots = generation->frame_slots;
+        std::vector<SwapchainImagePresentationState>& image_presentation_states =
+            generation->image_states;
         VkSurfaceCapabilitiesKHR capabilities{};
         RHIStatus status = make_vulkan_status(
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
@@ -674,7 +793,10 @@ namespace toy3d
         create_info.presentMode = requested_present_mode;
         create_info.clipped = VK_TRUE;
         create_info.oldSwapchain = old_swapchain;
-        status = make_vulkan_status(vkCreateSwapchainKHR(vulkan_device.device(), &create_info, nullptr, &vk_swapchain), "vkCreateSwapchainKHR");
+        status = make_vulkan_status(
+            vulkan_device.presentation_native_api().create_swapchain(
+                vulkan_device.device(), &create_info, &vk_swapchain),
+            "vkCreateSwapchainKHR");
         if (!status)
         {
             vk_swapchain = VK_NULL_HANDLE;
@@ -707,7 +829,10 @@ namespace toy3d
             view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             view_info.subresourceRange.levelCount = 1;
             view_info.subresourceRange.layerCount = 1;
-            status = make_vulkan_status(vkCreateImageView(vulkan_device.device(), &view_info, nullptr, &swapchain_image_views[index]), "vkCreateImageView");
+            status = make_vulkan_status(
+                vulkan_device.presentation_native_api().create_image_view(
+                    vulkan_device.device(), &view_info, &swapchain_image_views[index]),
+                "vkCreateImageView");
             if (!status)
             {
                 return status;
@@ -743,23 +868,24 @@ namespace toy3d
                 false));
         }
 
-        frame_slots.resize(actual_image_count);
+        frame_slots.resize(vulkan_frame_slot_count(actual_image_count));
         for (FrameSlot& slot : frame_slots)
         {
             VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-            status = make_vulkan_status(vkCreateSemaphore(vulkan_device.device(), &semaphore_info, nullptr, &slot.image_available), "vkCreateSemaphore");
-            if (!status)
-            {
-                return status;
-            }
-            status = make_vulkan_status(vkCreateSemaphore(vulkan_device.device(), &semaphore_info, nullptr, &slot.render_finished), "vkCreateSemaphore");
+            status = make_vulkan_status(
+                vulkan_device.presentation_native_api().create_semaphore(
+                    vulkan_device.device(), &semaphore_info, &slot.image_available),
+                "vkCreateSemaphore");
             if (!status)
             {
                 return status;
             }
             VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
             fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            status = make_vulkan_status(vkCreateFence(vulkan_device.device(), &fence_info, nullptr, &slot.completion_fence), "vkCreateFence");
+            status = make_vulkan_status(
+                vulkan_device.presentation_native_api().create_fence(
+                    vulkan_device.device(), &fence_info, &slot.completion_fence),
+                "vkCreateFence");
             if (!status)
             {
                 return status;
@@ -767,7 +893,10 @@ namespace toy3d
             VkCommandPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
             pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             pool_info.queueFamilyIndex = vulkan_device.graphics_queue_family_index();
-            status = make_vulkan_status(vkCreateCommandPool(vulkan_device.device(), &pool_info, nullptr, &slot.command_pool), "vkCreateCommandPool");
+            status = make_vulkan_status(
+                vulkan_device.presentation_native_api().create_command_pool(
+                    vulkan_device.device(), &pool_info, &slot.command_pool),
+                "vkCreateCommandPool");
             if (!status)
             {
                 return status;
@@ -783,12 +912,48 @@ namespace toy3d
             }
         }
 
-        image_fences.assign(actual_image_count, VK_NULL_HANDLE);
+        image_presentation_states.resize(actual_image_count);
+        generation->lifecycle = std::make_unique<VulkanGenerationLifecycle>(
+            actual_image_count,
+            vulkan_device.swapchain_maintenance1_enabled());
+        for (SwapchainImagePresentationState& image_state : image_presentation_states)
+        {
+            VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+            status = make_vulkan_status(
+                vulkan_device.presentation_native_api().create_semaphore(
+                    vulkan_device.device(), &semaphore_info, &image_state.render_finished),
+                "vkCreateSemaphore");
+            if (!status)
+            {
+                return status;
+            }
+            if (vulkan_device.swapchain_maintenance1_enabled())
+            {
+                VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+                status = make_vulkan_status(
+                    vulkan_device.presentation_native_api().create_fence(
+                        vulkan_device.device(), &fence_info, &image_state.present_fence),
+                    "vkCreateFence");
+                if (!status)
+                {
+                    return status;
+                }
+            }
+        }
+        generation->format = format_it->format;
+        output_generation = std::move(generation);
         return RHIStatus::success();
     }
 
-    void VulkanViewportContext::destroy_swapchain()
+    void VulkanViewportContext::destroy_generation(SwapchainGeneration& generation)
     {
+        std::vector<RHITextureViewRef>& present_views = generation.present_views;
+        std::vector<RHITextureRef>& present_textures = generation.present_textures;
+        std::vector<VkImageView>& swapchain_image_views = generation.image_views;
+        std::vector<FrameSlot>& frame_slots = generation.frame_slots;
+        std::vector<SwapchainImagePresentationState>& image_presentation_states =
+            generation.image_states;
+        std::vector<VkImage>& swapchain_images = generation.images;
         present_views.clear();
         present_textures.clear();
         const VkDevice device = vulkan_device.device();
@@ -810,10 +975,6 @@ namespace toy3d
             {
                 vkDestroySemaphore(device, slot.image_available, nullptr);
             }
-            if (slot.render_finished != VK_NULL_HANDLE)
-            {
-                vkDestroySemaphore(device, slot.render_finished, nullptr);
-            }
             if (slot.completion_fence != VK_NULL_HANDLE)
             {
                 vkDestroyFence(device, slot.completion_fence, nullptr);
@@ -824,15 +985,141 @@ namespace toy3d
             }
         }
         frame_slots.clear();
-        image_fences.clear();
+        for (SwapchainImagePresentationState& image_state : image_presentation_states)
+        {
+            if (device != VK_NULL_HANDLE && image_state.render_finished != VK_NULL_HANDLE)
+            {
+                vkDestroySemaphore(device, image_state.render_finished, nullptr);
+            }
+            if (device != VK_NULL_HANDLE && image_state.present_fence != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(device, image_state.present_fence, nullptr);
+            }
+        }
+        image_presentation_states.clear();
+        for (VkFence fence : generation.deferred_present_fences)
+        {
+            if (device != VK_NULL_HANDLE && fence != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(device, fence, nullptr);
+            }
+        }
+        generation.deferred_present_fences.clear();
         swapchain_images.clear();
-        vk_swapchain = VK_NULL_HANDLE;
+        if (generation.swapchain != VK_NULL_HANDLE && device != VK_NULL_HANDLE)
+        {
+            vkDestroySwapchainKHR(device, generation.swapchain, nullptr);
+        }
+        generation.swapchain = VK_NULL_HANDLE;
+    }
+
+    RHIStatus VulkanViewportContext::retire_generation(
+        std::unique_ptr<SwapchainGeneration> generation)
+    {
+        if (!generation)
+        {
+            return RHIStatus::success();
+        }
+        const VulkanGenerationRetirementMode retirement_mode =
+            generation->lifecycle->retirement_mode();
+        if (retirement_mode == VulkanGenerationRetirementMode::DestroyImmediately)
+        {
+            return RHIStatus::success();
+        }
+        if (retirement_mode == VulkanGenerationRetirementMode::WaitPresentFences)
+        {
+            retired_generations.push_back(std::move(generation));
+            return collect_retired_generations();
+        }
+
+        ++fallback_queue_drain_count;
+        const RHIStatus status = vulkan_device.graphics_queue().wait_idle();
+        if (!status)
+        {
+            // Keep ownership until terminal cleanup; a failed queue wait does
+            // not prove that this generation's WSI objects are safe to destroy.
+            retired_generations.push_back(std::move(generation));
+            return status;
+        }
+        vulkan_device.release_completed_work(
+            vulkan_device.graphics_queue().completed_value());
+        return RHIStatus::success();
+    }
+
+    RHIStatus VulkanViewportContext::collect_retired_generations()
+    {
+        auto generation = retired_generations.begin();
+        while (generation != retired_generations.end())
+        {
+            bool ready = true;
+            for (std::uint32_t image_index = 0;
+                 image_index < (*generation)->lifecycle->image_count();
+                 ++image_index)
+            {
+                if (!(*generation)->lifecycle->image_state(
+                        image_index).present_fence_pending)
+                {
+                    continue;
+                }
+                const VkResult result = vkGetFenceStatus(
+                    vulkan_device.device(),
+                    (*generation)->image_states[image_index].present_fence);
+                if (result == VK_NOT_READY)
+                {
+                    ready = false;
+                    break;
+                }
+                if (result != VK_SUCCESS)
+                {
+                    return make_vulkan_status(result, "vkGetFenceStatus");
+                }
+            }
+            if (!ready)
+            {
+                ++generation;
+                continue;
+            }
+            generation = retired_generations.erase(generation);
+        }
+        return RHIStatus::success();
+    }
+
+    VulkanViewportObservation VulkanViewportContext::observation_snapshot() const
+    {
+        VulkanViewportObservation observation;
+        const VulkanGenerationPublicationObservation publication =
+            publication_tracker->observation();
+        observation.generation_publication_id = publication.publication_id;
+        observation.rejected_generation_construction_count =
+            publication.rejected_construction_count;
+        observation.active_generation_count = publication.active_generation_count;
+        observation.retired_generation_count = retired_generations.size();
+        observation.fallback_queue_drain_count = fallback_queue_drain_count;
+        observation.discarded_semaphore_count = discarded_semaphore_count;
+        observation.swapchain_maintenance1_enabled =
+            vulkan_device.swapchain_maintenance1_enabled();
+        if (active_generation)
+        {
+            observation.frame_slot_count = publication.frame_slot_count;
+            observation.image_state_count = publication.image_state_count;
+            observation.pending_present_fence_count =
+                active_generation->lifecycle->pending_present_fence_count();
+        }
+        for (const auto& generation : retired_generations)
+        {
+            observation.pending_present_fence_count +=
+                generation->lifecycle->pending_present_fence_count();
+        }
+        return observation;
     }
 
     RHIStatus VulkanViewportContext::submit_active_frame(const std::vector<VulkanCommandList*>& command_lists)
     {
-        FrameSlot& slot = frame_slots[current_frame_slot];
-        const auto active_texture = std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
+        FrameSlot& slot = active_generation->frame_slots[active_generation->current_frame_slot];
+        SwapchainImagePresentationState& image_state =
+            active_generation->image_states[active_image_index];
+        const auto active_texture = std::dynamic_pointer_cast<VulkanTexture>(
+            active_generation->present_textures[active_image_index]);
         if (!active_texture)
         {
             return latch_incomplete_active_frame_failure(RHIStatus::failure(
@@ -867,7 +1154,7 @@ namespace toy3d
             barrier.srcAccessMask = source_access;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = swapchain_images[active_image_index];
+            barrier.image = active_generation->images[active_image_index];
             barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             barrier.subresourceRange.levelCount = 1;
             barrier.subresourceRange.layerCount = 1;
@@ -908,22 +1195,26 @@ namespace toy3d
             *active_texture,
             slot.image_available,
             wait_stage,
-            slot.render_finished,
+            image_state.render_finished,
             slot.completion_fence);
         if (!submit_result)
         {
             // image_available may remain signaled and the acquired image was
             // not returned to the presentation engine. Retrying this viewport
             // would reuse synchronization with an unknown state.
+            const RHIStatus lifecycle_failure =
+                active_generation->lifecycle->record_submit_failure(
+                    active_image_index,
+                    submit_result.status());
             latch_incomplete_active_frame_failure(
-                submit_result.status(),
+                lifecycle_failure,
                 "Vulkan viewport submission");
             const VkFence discarded_fence = slot.completion_fence;
-            for (VkFence& image_fence : image_fences)
+            for (SwapchainImagePresentationState& presentation_state : active_generation->image_states)
             {
-                if (image_fence == discarded_fence)
+                if (presentation_state.image_fence == discarded_fence)
                 {
-                    image_fence = VK_NULL_HANDLE;
+                    presentation_state.image_fence = VK_NULL_HANDLE;
                 }
             }
             vkDestroyFence(vulkan_device.device(), discarded_fence, nullptr);
@@ -931,7 +1222,8 @@ namespace toy3d
             VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
             fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
             const RHIStatus fence_status = make_vulkan_status(
-                vkCreateFence(vulkan_device.device(), &fence_info, nullptr, &slot.completion_fence),
+                vulkan_device.presentation_native_api().create_fence(
+                    vulkan_device.device(), &fence_info, &slot.completion_fence),
                 "vkCreateFence");
             if (!fence_status)
             {
@@ -943,38 +1235,47 @@ namespace toy3d
         slot.completion_value = submit_result.value().completion_value;
         if (slot.completion_value != 0)
         {
-            image_fences[active_image_index] = slot.completion_fence;
+            image_state.image_fence = slot.completion_fence;
+            active_generation->lifecycle->record_submit_success(
+                active_image_index);
         }
         return RHIStatus::success();
     }
 
     RHIStatus VulkanViewportContext::present_active_image()
     {
-        FrameSlot& slot = frame_slots[current_frame_slot];
+        SwapchainImagePresentationState& image_state =
+            active_generation->image_states[active_image_index];
         VkPresentInfoKHR present_info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present_info.waitSemaphoreCount = 1;
-        present_info.pWaitSemaphores = &slot.render_finished;
+        present_info.pWaitSemaphores = &image_state.render_finished;
         present_info.swapchainCount = 1;
-        present_info.pSwapchains = &vk_swapchain;
+        present_info.pSwapchains = &active_generation->swapchain;
         present_info.pImageIndices = &active_image_index;
-        const VkResult result = vkQueuePresentKHR(vulkan_device.graphics_queue_handle(), &present_info);
-        if (result == VK_SUBOPTIMAL_KHR)
+        VulkanSwapchainPresentFenceInfo present_fence_info;
+        if (image_state.present_fence != VK_NULL_HANDLE)
         {
-            resize_pending = true;
-            return RHIStatus::failure(
-                RHIErrorCode::Suboptimal,
-                "vkQueuePresentKHR completed with a suboptimal swapchain; recreation is pending.");
+            present_fence_info.swapchain_count = 1;
+            present_fence_info.fences = &image_state.present_fence;
+            present_info.pNext = &present_fence_info;
         }
-        if (result == VK_ERROR_OUT_OF_DATE_KHR)
+        const VkResult result = vulkan_device.presentation_native_api().queue_present(
+            vulkan_device.graphics_queue_handle(), &present_info);
+        const VulkanPresentTransition transition =
+            active_generation->lifecycle->record_present_result(
+                active_image_index,
+                result,
+                image_state.present_fence != VK_NULL_HANDLE);
+        if (transition.phase == VulkanImagePresentationPhase::DiscardAfterGraphics)
         {
-            resize_pending = true;
+            ++discarded_semaphore_count;
         }
-        const RHIStatus status = make_vulkan_status(result, "vkQueuePresentKHR");
-        if (!status && !rhi_is_recoverable_viewport_status(status))
+        resize_pending = resize_pending || transition.recreate_required;
+        if (transition.terminal)
         {
-            latch_presentation_failure(status);
+            latch_presentation_failure(transition.status);
         }
-        return status;
+        return transition.status;
     }
 
     RHIStatus VulkanViewportContext::abort_active_frame()
@@ -983,7 +1284,8 @@ namespace toy3d
         if (status)
         {
             const auto active_texture =
-                std::dynamic_pointer_cast<VulkanTexture>(present_textures[active_image_index]);
+                std::dynamic_pointer_cast<VulkanTexture>(
+                    active_generation->present_textures[active_image_index]);
             if (!active_texture)
             {
                 status = latch_incomplete_active_frame_failure(RHIStatus::failure(
@@ -1034,6 +1336,8 @@ namespace toy3d
     void VulkanViewportContext::finish_active_frame()
     {
         frame_active = false;
-        current_frame_slot = (current_frame_slot + 1U) % static_cast<std::uint32_t>(frame_slots.size());
+        active_generation->current_frame_slot =
+            (active_generation->current_frame_slot + 1U) %
+            static_cast<std::uint32_t>(active_generation->frame_slots.size());
     }
 }

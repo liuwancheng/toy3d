@@ -405,8 +405,8 @@ namespace toy3d
             UIntVector2(frame->width(), frame->height()))
         {
             return abort_recording(RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Forward frame View family output does not match the acquired frame extent."));
+                RHIErrorCode::OutOfDate,
+                "Forward frame View family output does not yet match the acquired frame extent."));
         }
         RHIStatus status = scene_render_targets.ensure_extent(
             device,

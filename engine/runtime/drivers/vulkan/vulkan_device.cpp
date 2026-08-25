@@ -2,6 +2,7 @@
 #include "drivers/vulkan/vulkan_command_context.h"
 #include "drivers/vulkan/vulkan_deferred_deletion.h"
 #include "drivers/vulkan/vulkan_memory_manager.h"
+#include "drivers/vulkan/vulkan_presentation_lifecycle.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
 #include "drivers/vulkan/vulkan_queue.h"
 #include "drivers/vulkan/vulkan_resource.h"
@@ -637,11 +638,13 @@ namespace toy3d
         }
         upload_manager_instance = std::make_unique<VulkanUploadManager>(*memory_manager_instance);
         deletion_queue = std::make_unique<VulkanDeferredDeletionQueue>();
+        presentation_api = std::make_unique<VulkanPresentationNativeApiDefault>();
         queue = std::make_unique<VulkanQueue>(
             *this,
             vk_device,
             vk_graphics_queue,
-            *upload_manager_instance);
+            *upload_manager_instance,
+            *presentation_api);
         initialized = true;
         return RHIStatus::success();
     }
@@ -663,6 +666,7 @@ namespace toy3d
     RHIStatus VulkanDevice::shutdown_impl()
     {
         queue.reset();
+        presentation_api.reset();
         if (deletion_queue && vk_device != VK_NULL_HANDLE)
         {
             deletion_queue->release_all(vk_device);
@@ -697,6 +701,8 @@ namespace toy3d
         primary_rhi_surface.reset();
         device_capabilities = {};
         device_limits = {};
+        maintenance1_instance_extensions_enabled = false;
+        maintenance1_enabled = false;
         initialized = false;
         return RHIStatus::success();
     }
@@ -1853,6 +1859,16 @@ namespace toy3d
         return *deletion_queue;
     }
 
+    VulkanPresentationNativeApi& VulkanDevice::presentation_native_api()
+    {
+        return *presentation_api;
+    }
+
+    bool VulkanDevice::swapchain_maintenance1_enabled() const
+    {
+        return maintenance1_enabled;
+    }
+
     VulkanDeviceObservation VulkanDevice::observation_snapshot() const
     {
         VulkanDeviceObservation observation;
@@ -1928,6 +1944,20 @@ namespace toy3d
 #else
         return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device does not support this platform.");
 #endif
+
+        const bool has_surface_capabilities2 = has_instance_extension(
+            available_extensions,
+            VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+        const bool has_surface_maintenance1 = has_instance_extension(
+            available_extensions,
+            vulkan_surface_maintenance1_extension_name);
+        maintenance1_instance_extensions_enabled =
+            has_surface_capabilities2 && has_surface_maintenance1;
+        if (maintenance1_instance_extensions_enabled)
+        {
+            extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+            extensions.push_back(vulkan_surface_maintenance1_extension_name);
+        }
 
         VkInstanceCreateFlags instance_flags = 0;
 #if WITH_MAC
@@ -2194,6 +2224,29 @@ namespace toy3d
         enabled_features.fragmentStoresAndAtomics = available_features.fragmentStoresAndAtomics;
 
         std::vector<const char*> extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        VulkanSwapchainMaintenance1Features available_maintenance1;
+        VulkanSwapchainMaintenance1Features enabled_maintenance1;
+        const bool has_swapchain_maintenance1 =
+            maintenance1_instance_extensions_enabled &&
+            has_device_extension(
+                vk_physical_device,
+                vulkan_swapchain_maintenance1_extension_name);
+        if (has_swapchain_maintenance1)
+        {
+            VkPhysicalDeviceFeatures2 features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+            features2.pNext = &available_maintenance1;
+            vkGetPhysicalDeviceFeatures2(vk_physical_device, &features2);
+            maintenance1_enabled = vulkan_swapchain_maintenance1_gate(
+                maintenance1_instance_extensions_enabled,
+                true,
+                has_swapchain_maintenance1,
+                available_maintenance1.swapchain_maintenance1 == VK_TRUE);
+            if (maintenance1_enabled)
+            {
+                enabled_maintenance1.swapchain_maintenance1 = VK_TRUE;
+                extensions.push_back(vulkan_swapchain_maintenance1_extension_name);
+            }
+        }
 #if WITH_MAC
         if (has_device_extension(vk_physical_device, portability_subset_extension_name))
         {
@@ -2206,8 +2259,28 @@ namespace toy3d
         create_info.pEnabledFeatures = &enabled_features;
         create_info.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
         create_info.ppEnabledExtensionNames = extensions.data();
+        create_info.pNext = maintenance1_enabled ? &enabled_maintenance1 : nullptr;
 
-        const RHIStatus status = make_vulkan_status(vkCreateDevice(vk_physical_device, &create_info, nullptr, &vk_device), "vkCreateDevice");
+        VkResult create_result = vkCreateDevice(
+            vk_physical_device, &create_info, nullptr, &vk_device);
+        if (create_result != VK_SUCCESS && maintenance1_enabled)
+        {
+            maintenance1_enabled = false;
+            extensions.erase(
+                std::remove(
+                    extensions.begin(),
+                    extensions.end(),
+                    vulkan_swapchain_maintenance1_extension_name),
+                extensions.end());
+            create_info.enabledExtensionCount =
+                static_cast<std::uint32_t>(extensions.size());
+            create_info.ppEnabledExtensionNames = extensions.data();
+            create_info.pNext = nullptr;
+            vk_device = VK_NULL_HANDLE;
+            create_result = vkCreateDevice(
+                vk_physical_device, &create_info, nullptr, &vk_device);
+        }
+        const RHIStatus status = make_vulkan_status(create_result, "vkCreateDevice");
         if (!status)
         {
             return status;

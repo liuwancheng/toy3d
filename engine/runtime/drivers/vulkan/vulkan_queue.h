@@ -18,6 +18,7 @@ namespace toy3d
 {
     class RHIDevice;
     class VulkanCommandList;
+    class VulkanPresentationNativeApi;
     class VulkanTexture;
     class VulkanUploadManager;
     // Owns submission ordering and completion serials for one native queue.
@@ -30,7 +31,8 @@ namespace toy3d
             const RHIDevice& owner,
             VkDevice device,
             VkQueue queue,
-            VulkanUploadManager& upload_manager);
+            VulkanUploadManager& upload_manager,
+            VulkanPresentationNativeApi& presentation_api);
         ~VulkanQueue() override;
 
         RHIQueueCompletionValue completed_value() const override;
@@ -76,6 +78,7 @@ namespace toy3d
         VkDevice vk_device = VK_NULL_HANDLE;
         VkQueue vk_queue = VK_NULL_HANDLE;
         VulkanUploadManager& upload_manager;
+        VulkanPresentationNativeApi& native_api;
         mutable std::mutex queue_mutex;
         mutable std::deque<PendingSubmission> pending_submissions;
         mutable RHIQueueCompletionValue last_completed_value = 0;

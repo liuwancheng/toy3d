@@ -1,6 +1,7 @@
 #include "drivers/vulkan/vulkan_queue.h"
 
 #include "drivers/vulkan/vulkan_command_context.h"
+#include "drivers/vulkan/vulkan_presentation_lifecycle.h"
 #include "drivers/vulkan/vulkan_resource.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
 
@@ -28,11 +29,13 @@ namespace toy3d
         const RHIDevice& owner,
         VkDevice device,
         VkQueue queue,
-        VulkanUploadManager& manager)
+        VulkanUploadManager& manager,
+        VulkanPresentationNativeApi& presentation_api)
         : owner_device(owner)
         , vk_device(device)
         , vk_queue(queue)
         , upload_manager(manager)
+        , native_api(presentation_api)
     {
     }
 
@@ -40,7 +43,7 @@ namespace toy3d
     {
         if (vk_queue != VK_NULL_HANDLE)
         {
-            vkQueueWaitIdle(vk_queue);
+            native_api.queue_wait_idle(vk_queue);
         }
         std::lock_guard<std::mutex> lock(queue_mutex);
         release_pending_submissions_locked();
@@ -91,7 +94,7 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::NotReady, "Vulkan queue is not initialized.");
         }
         std::lock_guard<std::mutex> lock(queue_mutex);
-        const RHIStatus status = make_queue_status(vkQueueWaitIdle(vk_queue), "vkQueueWaitIdle");
+        const RHIStatus status = make_queue_status(native_api.queue_wait_idle(vk_queue), "vkQueueWaitIdle");
         if (status)
         {
             last_completed_value = next_completion_value - 1;
@@ -156,7 +159,7 @@ namespace toy3d
 
         VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
         VkFence fence = VK_NULL_HANDLE;
-        const VkResult result = vkCreateFence(vk_device, &fence_info, nullptr, &fence);
+        const VkResult result = native_api.create_fence(vk_device, &fence_info, &fence);
         if (result != VK_SUCCESS)
         {
             const RHIStatus status = make_queue_status(result, "vkCreateFence");
@@ -275,7 +278,7 @@ namespace toy3d
                     state_status.code(), state_status.message());
             }
         }
-        const VkResult result = vkQueueSubmit(vk_queue, 1, &submit_info, completion_fence);
+        const VkResult result = native_api.queue_submit(vk_queue, 1, &submit_info, completion_fence);
         if (result != VK_SUCCESS)
         {
             if (owns_fence)
