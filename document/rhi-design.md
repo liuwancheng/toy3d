@@ -208,6 +208,22 @@ public:
 并携带有效 `completion_value`；`presentation_status` 独立表达 Success、Suboptimal、OutOfDate 或 terminal。
 submit 成功后，present 的任何结果都不得回滚已经发布的资源状态或 in-flight ownership。
 
+公共 queue completion 与后端 presentation completion 是两个不同的完成域。`RHIQueueCompletionValue`
+或 Vulkan submit fence 只证明 graphics submission 和其捕获的 command list、resource、descriptor、upload
+payload 已完成，不能证明 WSI 已消费 present wait semaphore。Vulkan frame slot 只承担 CPU/GPU 周转：
+acquire semaphore、submit fence、command pool 与提交 payload 归属于 slot；swapchain image identity、
+`render_finished` semaphore、image fence 和可选 present fence 归属于 backend-private per-image
+presentation state。frame slot index、swapchain image index、逻辑 frame id 和 queue completion value 禁止互换。
+
+VulkanPortable v1 不要求 WSI completion extension。无扩展时，成功 present 后只有同 generation、同 image
+再次成功 acquire，才能证明该 image 的 `render_finished` semaphore 可复用；submit fence signal 本身不足以
+复用或销毁它。swapchain 以 backend-private generation 事务式重建，新 generation 完整构造成功后才发布。
+若旧 generation 无法再通过 reacquire 获得 WSI completion proof，当前单一 shared graphics/present queue
+基线允许在 retirement 边界调用该 queue 的 `wait_idle()` 后销毁旧 presentation objects；常规 recreate
+不得调用 device idle。`vkDeviceWaitIdle()` 只保留给 shutdown 或 terminal cleanup。可选
+`VK_EXT_swapchain_maintenance1` 只有在 instance/device extension 依赖和 feature 全部启用时，才可用
+present fence 异步证明 WSI completion；缺失任一依赖必须保持 Vulkan 1.1 fallback 和相同公共错误语义。
+
 Swapchain 是各后端 `RHIViewportContext` 的内部 presentation 组件，不建立公共 `RHISwapchain` 或 `RHIDevice::create_swapchain()` 平行路径。`begin_frame()` 返回当前 presentation texture/view，`end_frame()` 统一完成 submit 和 present；image index、frame slot、acquire/present 同步对象及原生 swapchain 均不得泄漏到 renderscene。Out-of-date、suboptimal、surface lost、device lost 和延迟 resize 由 viewport 内部处理并通过可诊断结果反馈。
 
 viewport status 中 `NotReady`、`OutOfDate` 与 `Suboptimal` 分别表达暂时无可用 extent、需要重建、
