@@ -30,7 +30,8 @@ if(APPLE)
     file(GLOB_RECURSE PLATFORM_HEADER_FILES 
          "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.h")
     file(GLOB_RECURSE PLATFORM_SOURCE_FILES 
-         "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.cpp")
+         "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.cpp"
+         "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.mm")
 elseif(WIN32)
     file(GLOB_RECURSE PLATFORM_HEADER_FILES 
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/win/*.h")
@@ -114,7 +115,15 @@ if(TOY3D_ENABLE_VULKAN_RHI)
     endif()
 endif()
 
-set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${TARGET_NAME} PROPERTIES
+    CXX_STANDARD 17
+    CXX_EXTENSIONS OFF)
+if(APPLE)
+    set_target_properties(${TARGET_NAME} PROPERTIES
+        OBJCXX_STANDARD 17
+        OBJCXX_STANDARD_REQUIRED ON
+        OBJCXX_EXTENSIONS OFF)
+endif()
 set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Engine")
 
 # being a cross-platform target, we enforce standards conformance on MSVC
@@ -136,6 +145,14 @@ target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dPixelFormat)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dShaderFormat)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dTaskGraph)
+if(APPLE)
+    find_library(TOY3D_COCOA_FRAMEWORK Cocoa REQUIRED)
+    find_library(TOY3D_QUARTZ_CORE_FRAMEWORK QuartzCore REQUIRED)
+    target_link_libraries(${TARGET_NAME}
+        PRIVATE
+            "${TOY3D_COCOA_FRAMEWORK}"
+            "${TOY3D_QUARTZ_CORE_FRAMEWORK}")
+endif()
 
 
 target_include_directories(

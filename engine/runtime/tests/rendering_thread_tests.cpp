@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -34,10 +35,12 @@ namespace
 
     std::unique_ptr<toy3d::TaskGraphInterface> create_graph(
         toy3d::ThreadManager& thread_manager,
-        bool multithreaded)
+        bool multithreaded,
+        std::uint32_t max_tasks_in_flight = 256u)
     {
         toy3d::TaskGraphCreateResult created = toy3d::create_task_graph(
-            {multithreaded ? 1u : 0u, 256, multithreaded}, thread_manager);
+            {multithreaded ? 1u : 0u, max_tasks_in_flight, multithreaded},
+            thread_manager);
         check(created.succeeded(), "RenderingThread fixture must create Task Graph");
         if (!created.succeeded())
         {
@@ -300,9 +303,12 @@ namespace
 
     void test_multi_thread_render_command_transport()
     {
+        constexpr int command_count = 4096;
+        constexpr std::uint32_t task_capacity =
+            static_cast<std::uint32_t>(command_count) * 2u;
         toy3d::ThreadManager thread_manager;
         std::unique_ptr<toy3d::TaskGraphInterface> graph =
-            create_graph(thread_manager, true);
+            create_graph(thread_manager, true, task_capacity);
         if (!graph)
         {
             return;
@@ -322,7 +328,6 @@ namespace
         check(rendering_thread.start().succeeded(),
             "multi-thread RenderCommand fixture must start RenderingThread");
 
-        constexpr int command_count = 4096;
         std::vector<int> fifo;
         fifo.reserve(command_count);
         toy3d::Event fifo_complete(toy3d::EventMode::ManualReset);
@@ -398,11 +403,16 @@ namespace
             "move-only command payload must execute and be destroyed on logical RT");
 
         toy3d::TaskGraphStatus worker_status;
+        toy3d::Event worker_started(toy3d::EventMode::ManualReset);
+        // A GameThread GraphEvent wait may help the worker queue. Wait until the
+        // real worker owns this task so the test observes the intended producer.
         toy3d::GraphEventRef worker_complete = toy3d::dispatch_graph_task(
             *graph,
             "IllegalRenderCommandWorkerProducer",
-            [&worker_status](toy3d::NamedThread, const toy3d::GraphEventRef&)
+            [&worker_status, &worker_started](
+                toy3d::NamedThread, const toy3d::GraphEventRef&)
             {
+                worker_started.trigger();
                 try
                 {
                     toy3d::enqueue_render_command(
@@ -413,6 +423,8 @@ namespace
                     worker_status = exception.status();
                 }
             });
+        check(worker_started.wait_for(2s),
+            "worker producer fixture must begin on an AnyWorker before GT pumps waits");
         check(graph->wait_until_task_completes(
                 worker_complete, toy3d::NamedThread::GameThread).succeeded(),
             "worker producer fixture must complete");

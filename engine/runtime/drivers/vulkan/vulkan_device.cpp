@@ -22,10 +22,6 @@
 #include <string>
 #include <vector>
 
-#if WITH_MAC
-#include <GLFW/glfw3.h>
-#endif
-
 namespace toy3d
 {
     namespace
@@ -1929,18 +1925,8 @@ namespace toy3d
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #elif WITH_MAC
-        std::uint32_t glfw_extension_count = 0;
-        const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
-        if (glfw_extensions == nullptr || glfw_extension_count == 0)
-        {
-            const char* glfw_error = nullptr;
-            glfwGetError(&glfw_error);
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                std::string("GLFW did not provide the Vulkan surface extensions required by macOS") +
-                    (glfw_error ? std::string(": ") + glfw_error : std::string(".")));
-        }
-        extensions.assign(glfw_extensions, glfw_extensions + glfw_extension_count);
+        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+        extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #else
         return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device does not support this platform.");
 #endif
@@ -2106,28 +2092,19 @@ namespace toy3d
         create_info.hwnd = reinterpret_cast<HWND>(desc.window_handle);
         return make_vulkan_status(vkCreateWin32SurfaceKHR(vk_instance, &create_info, nullptr, &primary_surface), "vkCreateWin32SurfaceKHR");
 #elif WITH_MAC
-        if (desc.platform != RHISurfacePlatform::Glfw)
+        if (desc.platform != RHISurfacePlatform::MacOS)
         {
             return RHIStatus::failure(
                 RHIErrorCode::Unsupported,
-                "The macOS Vulkan backend requires a GLFW-backed surface.");
+                "The macOS Vulkan backend requires a main-thread Metal presentation layer.");
         }
-        auto* glfw_window = static_cast<GLFWwindow*>(desc.window_handle);
-        const VkResult result = glfwCreateWindowSurface(
-            vk_instance,
-            glfw_window,
-            nullptr,
-            &primary_surface);
-        if (result != VK_SUCCESS)
-        {
-            const char* glfw_error = nullptr;
-            glfwGetError(&glfw_error);
-            const std::string operation = glfw_error
-                ? std::string("glfwCreateWindowSurface: ") + glfw_error
-                : std::string("glfwCreateWindowSurface");
-            return make_vulkan_status(result, operation.c_str());
-        }
-        return RHIStatus::success();
+        VkMetalSurfaceCreateInfoEXT create_info{
+            VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT};
+        create_info.pLayer = static_cast<const CAMetalLayer*>(desc.window_handle);
+        return make_vulkan_status(
+            vkCreateMetalSurfaceEXT(
+                vk_instance, &create_info, nullptr, &primary_surface),
+            "vkCreateMetalSurfaceEXT");
 #else
         (void)desc;
         return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device does not support this platform.");

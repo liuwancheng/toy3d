@@ -3,6 +3,7 @@
 #include "input/input_system.h"
 #include "logging/logger.h"
 #include "mac_input.h"
+#include "mac_metal_layer.h"
 
 namespace toy3d
 {
@@ -72,6 +73,15 @@ namespace toy3d
             glfwTerminate();
             return false;
         }
+        metal_layer = attach_metal_layer(glfw_window);
+        if (metal_layer == nullptr)
+        {
+            TOY_LOG_ERROR("Failed to attach the macOS Metal presentation layer on the main thread.");
+            glfwDestroyWindow(glfw_window);
+            glfw_window = nullptr;
+            glfwTerminate();
+            return false;
+        }
         glfwSetWindowUserPointer(glfw_window, this);
         glfwSetFramebufferSizeCallback(glfw_window, frame_buffer_size_cb);
 
@@ -91,6 +101,7 @@ namespace toy3d
     {
         if (glfw_window != nullptr)
         {
+            metal_layer = nullptr;
             glfwDestroyWindow(glfw_window);
             glfw_window = nullptr;
         }

@@ -305,6 +305,7 @@ namespace toy3d
     {
         Unknown,
         Win32,
+        MacOS,
         Glfw
     };
 
@@ -317,7 +318,7 @@ namespace toy3d
     };
 
     // Stores platform window identity without exposing graphics-backend types.
-    // Vulkan, D3D10, and D3D12 translate the opaque handles in their own
+    // Vulkan, D3D11, and D3D12 translate the opaque handles in their own
     // platform-specific surface creation code.
     class RHISurface : public RHIObject
     {

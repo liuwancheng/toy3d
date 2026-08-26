@@ -28,25 +28,20 @@ case "${generator}" in
     Xcode)
         build_dir="${script_dir}/build/macos-xcode"
         cache_file="${build_dir}/CMakeCache.txt"
+        xcode_no_sign_config="${script_dir}/cmake/xcode_no_sign.xcconfig"
         if [[ -f "${cache_file}" ]] && ! grep -q '^CMAKE_CXX_COMPILER:' "${cache_file}"; then
             echo "Removing incomplete Xcode configuration: ${build_dir}"
             cmake -E remove_directory "${build_dir}"
         fi
-        cmake \
+        XCODE_XCCONFIG_FILE="${xcode_no_sign_config}" cmake \
             -S "${script_dir}" \
             -B "${build_dir}" \
             -G "Xcode" \
-            -DTOY3D_ENABLE_VULKAN_RHI=ON \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
-        cmake \
+            -DTOY3D_ENABLE_VULKAN_RHI=ON
+        XCODE_XCCONFIG_FILE="${xcode_no_sign_config}" cmake \
             --build "${build_dir}" \
             --config "${configuration}" \
-            --target Toy3dEditor \
-            -- \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
+            --target Toy3dEditor
         ;;
     "Unix Makefiles")
         build_dir="${script_dir}/build/macos-make"

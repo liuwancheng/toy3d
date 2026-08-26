@@ -226,6 +226,8 @@ present fence 异步证明 WSI completion；缺失任一依赖必须保持 Vulka
 
 Swapchain 是各后端 `RHIViewportContext` 的内部 presentation 组件，不建立公共 `RHISwapchain` 或 `RHIDevice::create_swapchain()` 平行路径。`begin_frame()` 返回当前 presentation texture/view，`end_frame()` 统一完成 submit 和 present；image index、frame slot、acquire/present 同步对象及原生 swapchain 均不得泄漏到 renderscene。Out-of-date、suboptimal、surface lost、device lost 和延迟 resize 由 viewport 内部处理并通过可诊断结果反馈。
 
+`RHISurface` 只携带 platform kind 与不透明平台 presentation handle。平台层必须在窗口所属线程完成原生窗口对象及其 presentation layer 的准备；backend 只消费已准备的 handle 创建图形 API surface。macOS 的 `CAMetalLayer` 由 `MacWindow` 在 main thread 挂接，Vulkan Rendering Thread 只调用 `vkCreateMetalSurfaceEXT`，不得通过后台线程修改 `NSView`/`CALayer`。Win32 的 `HWND` 创建与消息处理仍属于 main thread，而 `vkCreateWin32SurfaceKHR` 可在 Rendering Thread 消费该稳定 handle。
+
 viewport status 中 `NotReady`、`OutOfDate` 与 `Suboptimal` 分别表达暂时无可用 extent、需要重建、
 以及本帧完成但后续应重建，caller 可将它们作为 recoverable frame outcome。不可恢复的 submit、
 同步或 surface failure 保持 `DeviceLost`、`BackendFailure` 等原始诊断，不得降格为 `NotReady`

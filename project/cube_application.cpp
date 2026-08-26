@@ -14,6 +14,9 @@
 #if WITH_WIN64
 #include "platform/win/win32_window.h"
 #include <windows.h>
+#elif WITH_MAC
+#include "platform/mac/mac_window.h"
+#include <GLFW/glfw3.h>
 #endif
 
 #include <array>
@@ -212,13 +215,49 @@ namespace
         return false;
     }
 
-    void apply_automated_window_event(
+#if WITH_WIN64
+    bool report_win32_window_result(BOOL result, const char* operation)
+    {
+        if (result != FALSE)
+        {
+            return true;
+        }
+        std::cerr << "Failed to " << operation
+                  << " the Win32 Cube window: error "
+                  << GetLastError() << '\n';
+        return false;
+    }
+#elif WITH_MAC
+    void clear_glfw_error()
+    {
+        // The next query must describe only the automated operation under test.
+        static_cast<void>(glfwGetError(nullptr));
+    }
+
+    bool report_glfw_window_result(const char* operation)
+    {
+        const char* glfw_error = nullptr;
+        if (glfwGetError(&glfw_error) == GLFW_NO_ERROR)
+        {
+            return true;
+        }
+        std::cerr << "Failed to " << operation
+                  << " the macOS Cube window: "
+                  << (glfw_error != nullptr
+                          ? glfw_error
+                          : "unknown GLFW error")
+                  << '\n';
+        return false;
+    }
+#endif
+
+    bool apply_automated_window_event(
         toy3d::IWindow* window,
         std::uint64_t frame_number)
     {
         if (window == nullptr)
         {
-            return;
+            return false;
         }
 
 #if WITH_WIN64
@@ -226,42 +265,78 @@ namespace
         if (win32_window == nullptr ||
             win32_window->get_native_hwnd() == nullptr)
         {
-            return;
+            return false;
         }
 
         HWND const hwnd = win32_window->get_native_hwnd();
         if (frame_number == 30u)
         {
-            SetWindowPos(
-                hwnd,
-                nullptr,
-                0,
-                0,
-                960,
-                540,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-            return;
+            return report_win32_window_result(
+                SetWindowPos(
+                    hwnd,
+                    nullptr,
+                    0,
+                    0,
+                    960,
+                    540,
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE),
+                "resize");
         }
         if (frame_number == 60u)
         {
             ShowWindow(hwnd, SW_MINIMIZE);
-            return;
+            return true;
         }
         if (frame_number == 90u)
         {
             ShowWindow(hwnd, SW_RESTORE);
-            SetWindowPos(
-                hwnd,
-                nullptr,
-                0,
-                0,
-                800,
-                600,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            return report_win32_window_result(
+                SetWindowPos(
+                    hwnd,
+                    nullptr,
+                    0,
+                    0,
+                    800,
+                    600,
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE),
+                "restore and resize");
+        }
+#elif WITH_MAC
+        auto* const mac_window = dynamic_cast<toy3d::MacWindow*>(window);
+        if (mac_window == nullptr || mac_window->get_glfw_window() == nullptr)
+        {
+            return false;
+        }
+
+        GLFWwindow* const glfw_window = mac_window->get_glfw_window();
+        if (frame_number == 30u)
+        {
+            clear_glfw_error();
+            glfwSetWindowSize(glfw_window, 960, 540);
+            return report_glfw_window_result("resize");
+        }
+        if (frame_number == 60u)
+        {
+            clear_glfw_error();
+            glfwIconifyWindow(glfw_window);
+            return report_glfw_window_result("minimize");
+        }
+        if (frame_number == 90u)
+        {
+            clear_glfw_error();
+            glfwRestoreWindow(glfw_window);
+            if (!report_glfw_window_result("restore"))
+            {
+                return false;
+            }
+            clear_glfw_error();
+            glfwSetWindowSize(glfw_window, 800, 600);
+            return report_glfw_window_result("restore and resize");
         }
 #else
         static_cast<void>(frame_number);
 #endif
+        return true;
     }
 }
 
@@ -295,9 +370,12 @@ void CubeApplication::on_tick(double delta_time)
     static_cast<void>(delta_time);
 
     const float time = static_cast<float>(world().world_time_seconds());
-    if (automated_window_events_)
+    if (automated_window_events_ &&
+        !apply_automated_window_event(&window(), world().frame_number()))
     {
-        apply_automated_window_event(&window(), world().frame_number());
+        setup_failed_ = true;
+        window().close();
+        return;
     }
     camera_x_ = 0.45f * std::sin(time * 0.55f);
     if (material_instance_)

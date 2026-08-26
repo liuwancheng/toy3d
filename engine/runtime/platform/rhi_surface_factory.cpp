@@ -38,8 +38,8 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "macOS RHI surface requires a MacWindow.");
         }
-        desc.platform = RHISurfacePlatform::Glfw;
-        desc.window_handle = static_cast<void*>(mac_window->get_glfw_window());
+        desc.platform = RHISurfacePlatform::MacOS;
+        desc.window_handle = mac_window->get_metal_layer();
 #elif WITH_ANDROID
         auto* android_window = dynamic_cast<AndroidWindow*>(&window);
         if (android_window == nullptr)

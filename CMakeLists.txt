@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.19 FATAL_ERROR)
 
 project(toy3d VERSION 1.0.0)
 
+if(APPLE)
+  enable_language(OBJC OBJCXX)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_SHARED_LIBS OFF)

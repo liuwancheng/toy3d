@@ -1,0 +1,4 @@
+// CMake 3.23 emits an empty identity for compiler-id command-line targets.
+// Xcode 15 accepts those probes only when signing is disabled explicitly.
+CODE_SIGNING_ALLOWED = NO
+CODE_SIGNING_REQUIRED = NO
