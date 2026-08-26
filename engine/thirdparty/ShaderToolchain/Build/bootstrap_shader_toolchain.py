@@ -227,7 +227,7 @@ def locate_artifacts(sources, builds, host, host_config):
         reflect_debug_candidates = ["Debug/spirv-reflect-static.lib", "Debug/lib/spirv-reflect-static.lib"]
     else:
         dxc_library_candidates = ["lib/libdxcompiler.dylib", "bin/libdxcompiler.dylib"]
-        reflect_candidates = ["libspirv-reflect.a", "lib/libspirv-reflect.a"]
+        reflect_candidates = ["libspirv-reflect-static.a", "lib/libspirv-reflect-static.a"]
     artifacts = {
         "dxc": find_artifact(builds / "dxc", [f"Release/bin/{dxc_name}", f"bin/{dxc_name}"], "DXC"),
         "dxc_library": find_artifact(
@@ -280,7 +280,8 @@ def validate_bundle(bundle_root, host):
         for name, (profile_name, source) in shaders.items():
             source_path = validation_root / f"{name}.hlsl"
             output_path = validation_root / f"{name}.spv"
-            source_path.write_text(source, encoding="utf-8", newline="\n")
+            with source_path.open("w", encoding="utf-8", newline="\n") as source_file:
+                source_file.write(source)
             run([
                 dxc_path, "-spirv", "-fspv-target-env=vulkan1.1", "-fvk-use-dx-layout", "-Zpc",
                 "-E", "main", "-T", profile_name, "-O3", "-Fo", output_path, source_path
@@ -405,7 +406,8 @@ def create_bundle(lock, sources, builds, bundle_root, host, host_config):
         f"dxil_validator.license={deferred['dxil_validator_license']}",
     ])
     manifest_path = bundle_root / "Toy3dShaderToolchain.manifest"
-    manifest_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    with manifest_path.open("w", encoding="utf-8", newline="\n") as manifest_file:
+        manifest_file.write("\n".join(lines) + "\n")
     validate_bundle(bundle_root, host)
     print(f"[Toy3dShaderToolchain] Bundle ready: {bundle_root}")
     print(f"[Toy3dShaderToolchain] Manifest: {manifest_path}")
