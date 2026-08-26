@@ -1,6 +1,14 @@
 name: build
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'master'
+    paths-ignore:
+      - '*.md'
+  pull_request:
+    paths-ignore:
+      - '*.md'
 
 jobs:
   build:
@@ -22,6 +30,9 @@ jobs:
       shell: bash
       run: |
         mv Vulkan-Headers ~/Vulkan-Headers
+    - name: install deps for tests
+      run: sudo apt update && sudo apt install -y xorg-dev
+      if: matrix.os == 'ubuntu'
     - name: build main
       shell: bash
       run: |
@@ -64,3 +75,23 @@ jobs:
         export VULKAN_SDK=~/Vulkan-Headers
         git -C ~/Vulkan-Headers checkout vulkan-sdk-1.3.268
         test/run_tests.sh
+    - name: build 1.3.296
+      shell: bash
+      run: |
+        export VULKAN_SDK=~/Vulkan-Headers
+        git -C ~/Vulkan-Headers checkout vulkan-sdk-1.3.296
+        test/run_tests.sh
+  android:
+    name: android
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: build android arm64
+      shell: bash
+      run: |
+        cmake -S . -B _build/android \
+          -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_ROOT}/build/cmake/android.toolchain.cmake" \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=21 \
+          -DVOLK_STATIC_DEFINES=VK_USE_PLATFORM_ANDROID_KHR
+        cmake --build _build/android
