@@ -18,7 +18,7 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | Core Math | Active | `core-math-design.md` | 数学类型、坐标、矩阵、Transform 与迁移 contract |
 | 线程与 Task Graph | Active | `threading-task-graph-design.md` | 共享线程、Queue、GraphTask、Named Thread 与同步 contract |
 | GameScene | Active | `gamescene-design.md` | World、Actor、Component、注册与 GameScene 生命周期 |
-| Game/Render 多线程与 Renderer Foundation | Active | `../openspec/changes/establish-game-render-framework/` | 1 个总控与 17 个子 capability specs、主 design 和 tasks 是当前框架开发与验收的唯一执行入口；change 归档后应切换到合并后的主 specs |
+| Game/Render 多线程与 Renderer Foundation | Active | `../openspec/specs/game-render-framework/` | 1 个总控与 17 个子 capability specs 是当前框架行为 contract 的唯一规范入口；已完成 change 的设计与任务记录位于 OpenSpec archive |
 | RHI | Active | `rhi-design.md` | 公共 RHI、资源、命令、同步、后端与上层边界 |
 | RHI Binding 聚合 | Active | `rhi-binding-aggregation-design.md` | 五个逻辑 Binding Group 的跨后端聚合 contract |
 | Shader 系统 | Active | `shader-system-design.md` | Shader 语言、编译、反射、ShaderMap、Binding ABI 与运行时加载 |

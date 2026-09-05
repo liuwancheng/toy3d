@@ -31,5 +31,5 @@
 ## 6. 验证
 
 - [x] 6.1 重新配置并构建受影响 runtime、Editor 和 Vulkan 定向测试 targets，运行受影响 CTest。
-- [ ] 6.2 在 validation layer 下执行正常多帧、两个 slots/至少三张 images、resize、minimize/restore、连续 `OutOfDate`、abort、正常 shutdown 和 terminal teardown smoke，确认无 semaphore/fence 复用或 in-flight destruction 错误。
+- [x] 6.2 在 validation layer 下执行正常多帧、两个 slots/至少三张 images、resize、minimize/restore、连续 `OutOfDate`、abort、正常 shutdown 和 terminal teardown smoke，确认无 semaphore/fence 复用或 in-flight destruction 错误。
 - [x] 6.3 由独立 sub-agent 使用 `verify-toy3d-build` 复核配置、构建、测试、文档/代码命名残留和 Vulkan smoke；修复其发现的问题后再交付。
