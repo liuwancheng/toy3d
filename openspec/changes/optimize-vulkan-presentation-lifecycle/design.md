@@ -1,92 +1,165 @@
 ## Context
 
-本 change 只修改 Render Thread 上的 Vulkan viewport backend。公共 `RHIViewportContext` 继续隐藏 swapchain、image index、frame slot、semaphore 与 fence。
+本 change 只修改 Render Thread 上的 Vulkan backend。公共 `RHIViewportContext` 继续隐藏 swapchain、image index、frame slot、semaphore 与 fence，submit 成功事实和 presentation status 仍通过 `RHIFrameEndResult` 分开表达。
 
-当前实现中一个 `FrameSlot` 同时拥有 acquire semaphore、`render_finished` semaphore、submit fence 和 command pool。slot fence 可以退休 command pool、acquire semaphore 与 GPU payload，但不能证明 WSI 已消费 `render_finished`。`recreate_swapchain()` 目前直接调用 `vkDeviceWaitIdle()`。
+当前实现的同步原则是正确的：frame slot 负责 CPU/GPU 周转，swapchain image 负责 WSI presentation，graphics submit fence 不能单独证明 WSI 已消费 present wait semaphore。问题在于该原则被表达为一组与 native owner 平行的 lifecycle、generation、publication 和 native API wrapper 类型，理解一次 present 需要同时跟踪多个对象及两份 per-image state。
 
-VulkanPortable v1 固定 Vulkan 1.1，只有一个同时支持 graphics 与 present 的 queue family。timeline semaphore、Synchronization2 和任何 WSI extension 都不能成为基线条件。
+UE4.27 的 `FVulkanViewport + FVulkanSwapChain` 提供了更直接的职责命名。本 change 借用该分层和 `ImageAcquired`/`RenderingDone` 术语，但不照搬 UE4.27 的 Fatal/check 错误模型、RHI Thread 历史路径或常规 recreate 的 device-wide idle。
+
+VulkanPortable v1 基线仍为 Vulkan 1.1。第一阶段只使用一个同时支持 graphics 与 present 的 queue family；timeline semaphore、Synchronization2、present wait、独立 present queue、async compute 和 pass 并行均不在本 change 范围内。
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- 正确区分 graphics completion、WSI presentation completion、frame slot 与 swapchain image 的生命周期。
-- 正常帧和常规 resize/`OutOfDate` recreate 不调用 `vkDeviceWaitIdle()`。
-- 用有限且可审计的同步对象实现 Vulkan 1.1 fallback；在支持时利用 present fence 异步退休旧 generation。
-- 将 CPU ahead 限制为最多两个 frame slot，同时不把 surface image 数量等同于 CPU in-flight 深度。
+- 用稳定的 owner 类型直接表达 viewport、swapchain、swapchain image 和 frame slot 的职责。
+- 保留 per-image rendering-done semaphore、frame-slot completion 和 submit/present 错误边界。
+- 删除只为机制或测试形状存在、且没有形成完整验证闭环的 wrapper、tracker 和镜像状态。
+- 正常帧不等待 queue/device idle；recreate 只等待当前 shared graphics/present queue。
+- 保持最多两个 frame slots，且不把 swapchain image 数量等同于 CPU frame-ahead 深度。
 
 **Non-Goals:**
 
-- 不改变任何公共 RHI viewport、completion value 或 D3D11/D3D12 contract。
-- 不引入 timeline semaphore、Synchronization2、present wait、async compute、多 queue ownership transfer、RHI thread 或 render graph。
-- 不实现 `VK_EXT_swapchain_maintenance1` 的 deferred memory allocation、release images、present mode switching 或 scaling 功能。
-- 不在本 change 优化 acquire semaphore 的 pipeline wait stage；当前保守 stage 保持不变。
+- 不改变公共 RHI viewport、queue completion、RenderScene 或 D3D11/D3D12 contract。
+- 不保留或重新包装 `VK_EXT_swapchain_maintenance1`、present fence 和异步 retired-generation 机制。
+- 不新增通用 `VulkanNativeApi`、测试专用公共接口、RHI thread、render graph 或多 queue ownership transfer。
+- 不优化 acquire semaphore 的 pipeline wait stage，也不实现 delayed acquire。
 
-## Decisions
+## Type And Naming Decisions
 
-### 1. Frame slot 与 image presentation state 分离
+以下名称是本 change 的正式 backend-private type contract：
 
-每个 `FrameSlot` 只拥有 `image_available` acquire semaphore、`completion_fence`、completion value、command pool、present transition command buffer，以及与 submit completion 绑定的 command-list、resource、upload 与 descriptor 强引用。
+| 类型 | 状态 | 稳定职责 |
+| --- | --- | --- |
+| `VulkanViewportContext` | 保留 | 实现公共 `RHIViewportContext`；拥有 active frame、frame-slot 轮转、业务 submit、abort、resize pending 和 terminal status |
+| `VulkanSwapchain` | 新增 | 拥有一个 native `VkSwapchainKHR` 及其 image/view/RHI wrapper；执行 image acquire、present 和完整构造/销毁 |
+| `VulkanSwapchainImage` | 新增，backend-private | 表达一张稳定 swapchain image 的 native/RHI 身份、per-image `rendering_done` semaphore 与上次 graphics 使用 fence |
+| `VulkanFrameSlot` | 由 `FrameSlot` 重命名，backend-private | 表达 CPU/GPU frame-ahead 周转域；拥有 `image_acquired` semaphore、`submission_fence`、command pool 和提交 payload |
 
-每个 `SwapchainImagePresentationState` 隶属于一个 swapchain generation，只拥有一个长期存在的 `render_finished` semaphore、`image_fence`，以及可选的 `present_fence` 和 presentation state。
+`VulkanSwapchainImage::last_submission_fence` 是 non-owning handle，只指向当前 viewport 中某个 `VulkanFrameSlot::submission_fence`；swapchain/frame slots 的销毁前必须先完成 shared-queue drain。`VulkanSwapchainImage` 不拥有该 fence，也不得销毁它。
 
-同一 image 在被再次 acquire 前不能再次提交 present，因此一个 image 一个 `render_finished` semaphore 已经足够。禁止将 submit completion fence 当作该 semaphore 可复用的依据。
+删除以下不再表达独立长期职责的名称：
 
-### 2. 明确 present 结果状态机
-
-| 事件 | semaphore / image 状态 |
+| 删除名称 | 收敛位置 |
 | --- | --- |
-| submit 成功，`vkQueuePresentKHR` 返回 `VK_SUCCESS` 或 `VK_SUBOPTIMAL_KHR` | WSI 持有 `render_finished`；无扩展时等待同 image 的下一次成功 acquire，扩展路径等待 present fence。 |
-| submit 成功，`vkQueuePresentKHR` 返回 `VK_ERROR_OUT_OF_DATE_KHR` 或不可恢复错误 | 不假定 WSI 已消费 `render_finished`；该 semaphore 只能在对应 submit fence 完成后销毁，禁止复用。不可恢复错误锁存为 terminal failure。 |
-| submit 失败 | acquire semaphore、fence 或 acquired image 的状态不能安全重试；锁存 terminal failure 并禁止复用不确定对象。 |
-| abort frame | 提交最小的 transition/present 闭环以消费 acquire synchronization；若该闭环任一步失败，锁存 terminal failure。 |
+| `SwapchainGeneration` | 一个 `VulkanSwapchain` 实例天然代表一代 native swapchain |
+| `SwapchainImagePresentationState`、`VulkanImageLifecycleState` | 合并为 `VulkanSwapchainImage` |
+| `VulkanImagePresentationPhase` | 由成功路径、recreate pending 和 terminal 控制流表达 |
+| `VulkanPresentTransition` | `VulkanSwapchain::present()` 直接返回 `RHIStatus` |
+| `VulkanGenerationRetirementMode` | recreate 固定使用 shared-queue idle，无运行时退休策略选择 |
+| `VulkanGenerationLifecycle` | image ownership 与 present 结果处理收回 `VulkanSwapchain`/`VulkanViewportContext` |
+| `VulkanGenerationPublicationTracker` | observation 直接读取实际 owner，历史计数作为 viewport 普通字段 |
+| `VulkanPresentationNativeApi`、`VulkanPresentationNativeApiDefault` | 职责 owner 直接调用 Vulkan API |
 
-`VK_SUBOPTIMAL_KHR` 表示本帧 present 成功且下一帧应重建；它不改变 WSI wait semaphore 的退休规则。
+成员命名采用 UE4.27 易识别术语并遵守 Toy3d snake_case：
 
-### 3. Extension capability gate 完全封装在 Vulkan backend
+| 当前成员 | 新成员 |
+| --- | --- |
+| `image_available` | `image_acquired` |
+| `completion_fence` | `submission_fence` |
+| `render_finished` | `rendering_done` |
+| `active_generation` | `swapchain` |
+| `current_frame_slot` | 保留 |
+| `active_image_index` | 保留 |
 
-`VK_EXT_swapchain_maintenance1` 不是 core Vulkan feature。快路径仅在以下全部满足时启用：
+## Ownership
 
-1. instance 启用 `VK_KHR_get_surface_capabilities2` 与 `VK_EXT_surface_maintenance1`；
-2. device 启用 `VK_KHR_swapchain` 与 `VK_EXT_swapchain_maintenance1`；
-3. Vulkan 1.1 基线满足 properties2 的 core 依赖；
-4. `vkGetPhysicalDeviceFeatures2` 查询到 `VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT::swapchainMaintenance1`，并在 `VkDeviceCreateInfo::pNext` 中显式启用它。
+```text
+VulkanDevice
+└─ VulkanQueue
 
-能力枚举、instance/device 创建和 feature 链全部位于 `VulkanDevice`；viewport 只读取 backend-private capability。启用失败或未支持时必须无痕回退 Vulkan 1.1 路径。
+VulkanViewportContext
+├─ unique_ptr<VulkanSwapchain> swapchain
+├─ vector<VulkanFrameSlot> frame_slots
+├─ current_frame_slot
+├─ active_image_index
+├─ resize_pending
+└─ presentation_failure
 
-快路径为每次已成功提交给 WSI 的 present 关联 `VkSwapchainPresentFenceInfoEXT` 中的 fence；只有该 fence signal 后才能异步退休相应 generation 的 presentation objects。
+VulkanSwapchain
+├─ VkSwapchainKHR
+├─ VkFormat / VkExtent2D
+└─ vector<VulkanSwapchainImage>
+   ├─ VkImage / VkImageView
+   ├─ RHITextureRef / RHITextureViewRef
+   ├─ VkSemaphore rendering_done
+   └─ VkFence last_submission_fence (non-owning)
+```
 
-### 4. Transactional generation create 与 retirement
+`VulkanViewportContext` 是 frame orchestration owner；`VulkanSwapchain` 是 WSI object owner；`VulkanQueue` 是 native submit ordering 和 completion owner。三者不得通过新的 manager 或 global singleton 复制彼此状态。
 
-`VulkanSwapchainGeneration` 是 viewport-private 对象，含 native swapchain、images/views、presentation states、frame slots 与仍在 WSI 中的 present 记录。
+## Normal Frame
 
-创建新 generation 时先在临时对象中完成所有 native object 与 RHI wrapper 的构造，成功后才替换 active generation。创建失败时保留旧 generation 的可诊断状态和安全回收路径，禁止发布半初始化对象。
+`begin_frame()`：
 
-新 generation 将旧 handle 传给 `VkSwapchainCreateInfoKHR::oldSwapchain`。旧 generation 的 graphics-local payload 按 submit completion 退休；其 image view、semaphore 与 native swapchain 只在所有相关 presentation state 达到安全退休条件后销毁。
+1. 若已锁存 terminal failure，直接返回原始诊断。
+2. 若 `resize_pending` 或尚无 swapchain，在干净边界执行同步 recreate。
+3. 等待当前 `VulkanFrameSlot::submission_fence`，释放该 slot 的 command lists/resources/uploads/descriptors，reset command pool。
+4. 调用 `VulkanSwapchain::acquire_image(frame_slot.image_acquired)`。
+5. 若 acquired image 的 `last_submission_fence` 指向另一 slot 且尚未完成，等待该 fence。
+6. 返回只暴露公共 texture/view 和 frame-local command context 的 `RHIFrameContext`。
 
-无 extension 时，recreate 后不能再通过 acquire 旧 generation 的 image 获得 WSI proof。因此只在即将销毁该旧 generation 时调用当前 shared graphics/present queue 的 `VulkanQueue::wait_idle()`。这是一条有界、单 queue 的 fallback，禁止改写为 `vkDeviceWaitIdle()`。未来引入独立 present queue 前，必须扩展为等待全部曾向旧 generation 提交 graphics/present 的队列，不能隐式沿用本假设。
+`end_frame()`：
 
-`vkDeviceWaitIdle()` 仅允许用于 shutdown、device loss 或已锁存 terminal failure 后的最终资源清理。
+1. 在 native submit 前验证 frame、device、viewport、command-list identity/state 和 local resource state。
+2. submit 业务 command buffer 与 backend present-transition command buffer；等待 `image_acquired`，signal acquired image 的 `rendering_done`，并使用当前 slot 的 `submission_fence`。
+3. submit 成功后设置 image 的 non-owning `last_submission_fence`，保留 GPU payload 并发布 queue committed state。
+4. `VulkanSwapchain::present()` 等待 acquired image 的 `rendering_done`。
+5. 返回有效 completion value 和独立 presentation status；present 失败不得回滚已成功的业务 submit。
 
-### 5. 独立 frame-in-flight 上界
+同一 image 的 `rendering_done` 只在该 image 后续再次成功 acquire 后复用。不同 image 的 semaphore 和上次提交 fence 独立维护；frame slot index、image index、逻辑 frame id 和 queue completion value 不得互换。
 
-generation 创建时分配 `slot_count = min(max_frames_in_flight, actual_image_count)`，其中 `max_frames_in_flight` 是 viewport-private 常量 `2`。image presentation state 始终按实际 image identity 管理；不能因 surface 返回三个 image 而允许三个 CPU frame ahead。
+## Synchronous Swapchain Recreation
 
-### 6. 观测与测试
+recreate 仅在没有 active acquired frame 的 `begin_frame()` 边界执行：
 
-viewport observation 至少报告 active/retired generation 数、slot 数、每 image presentation state、pending present fence 数、fallback queue drain 次数、不可复用 semaphore 销毁次数和 extension-enabled 状态。Vulkan 定向测试通过 backend-private native-call seam 覆盖状态机，不要求真实窗口；真实 Vulkan smoke 覆盖 validation layer 与 resize。
+1. 查询 surface capabilities；zero extent 返回 `NotReady`，不销毁当前 owner。
+2. 等待当前 shared graphics/present queue idle。等待失败时保留现有 owner 供 terminal cleanup，并锁存原始 terminal 诊断。
+3. 在局部 `std::unique_ptr<VulkanSwapchain>` 中创建 replacement；factory 必须以 RAII 回收部分创建的 native objects。
+4. replacement 的 swapchain、images/views、RHI wrappers 和 per-image semaphores 全部成功后才发布。
+5. 销毁旧 `VulkanSwapchain`，按 `min(max_frames_in_flight, actual_image_count)` 重建 `VulkanFrameSlot`，再清除 `resize_pending`。
+
+常规 recreate 禁止调用 `vkDeviceWaitIdle()`。当前 shared-queue 假设写入 backend contract；未来支持独立 present queue 时，必须重新设计为等待所有使用旧 swapchain 的 graphics/present queues，不能沿用本路径。
+
+该同步方案只可能在 resize、`Suboptimal` 或 `OutOfDate` 后停顿，正常 frame 不增加 idle wait。`VK_EXT_swapchain_maintenance1`、present fence、`retired_generations` 和 deferred present fence 全部删除；若真实性能数据证明 live resize stall 不可接受，再用独立 change 恢复异步 retirement。
+
+## Failure Model
+
+| 边界 | 行为 |
+| --- | --- |
+| acquire `OutOfDate` | 不产生 frame，保持 `resize_pending`，后续干净边界 recreate |
+| acquire `Suboptimal` | 本帧可继续，设置 `resize_pending` |
+| submit 失败 | 业务未成功提交；acquired synchronization 状态不可继续复用，锁存 terminal |
+| submit 成功、present `Suboptimal`/`OutOfDate` | 外层 frame result 成功并保留 completion；先 commit 业务状态，再设置 `resize_pending` |
+| submit 成功、present terminal | 外层仍表达业务已提交；先 commit，再进入 terminal |
+| recording 失败 | `abort_frame()` 以最小 transition/submit/present 闭合 acquire；闭环失败即 terminal |
+| recreate queue wait 或构造失败 | 不发布半初始化 replacement；保留原始诊断并按 recoverable/terminal 分类处理 |
+
+## Native API And Tests
+
+`VulkanPresentationNativeApi` 删除。`VulkanQueue` 直接调用 `vkQueueSubmit`/`vkQueueWaitIdle`，`VulkanSwapchain` 直接调用 swapchain/acquire/present 和其对象创建销毁 API，`VulkanViewportContext` 只直接调用 frame-slot fence/command-pool API。
+
+测试按行为边界组织：
+
+- 纯结果映射测试覆盖 `VK_SUCCESS`、`VK_SUBOPTIMAL_KHR`、`VK_ERROR_OUT_OF_DATE_KHR`、`VK_ERROR_DEVICE_LOST` 和内存错误，不为此新增 public/backend virtual interface。
+- frame-slot/image 交错测试验证两个 slots 与三个 images 不混用 identity，且 `last_submission_fence` 只作为 non-owning 上次 graphics 使用记录。
+- viewport/public fake 覆盖 submit/present 分离和 abort normalization。
+- 真实 Vulkan validation smoke 覆盖正常多帧、resize、minimize/restore、连续 out-of-date 和 shutdown。
+
+如果未来需要创建失败或驱动返回值的完整故障注入，应先证明纯函数和真实 smoke 无法覆盖，再设计能驱动真实 `VulkanSwapchain`/`VulkanViewportContext` 的 backend-wide dispatch；禁止重新引入只验证 mock 自身的部分 wrapper。
 
 ## Risks / Trade-offs
 
-- extension 依赖横跨 instance、device 与 feature chain：以单一 backend-private capability gate 统一判断，避免 viewport 自行探测。
-- 无扩展 resize 仍可能有一次 queue-level stall：它只作用于当前 graphics/present queue，且仅在 retirement 边界发生；正常 frame 无 idle。
-- present 失败的 WSI 是否消费 semaphore 不可由 submit fence 推断：失败状态表强制仅销毁或 terminal failure。
-- 两个 slot 在某些吞吐场景会少于 image-count slot：先以交互延迟为默认，后续依据 profile 决定是否开放 backend policy。
+- resize 时 shared queue idle 可能造成短暂停顿；这是方案 A 为降低第一阶段实现复杂度接受的明确代价，正常帧不受影响。
+- 删除 maintenance1 会失去异步旧 swapchain retirement；恢复条件必须是真实 profile/用户体验证据，而不是扩展可用性本身。
+- direct Vulkan calls 降低细粒度错误注入能力；以结果映射测试、公共 fake 和真实 validation smoke 组合覆盖，避免为测试泄漏机制性接口。
+- `VulkanSwapchainImage::last_submission_fence` 是 non-owning；销毁顺序和 queue drain 必须由注释、断言和测试共同固定。
 
 ## Migration Plan
 
-1. 在设计文档与定向测试中建立 per-image state 和 present-result 真值表。
-2. 将 FrameSlot 的 `render_finished` 迁移到每 image state，接入同 image reacquire retirement 和失败只销毁路径。
-3. 引入 transactional generation，对无扩展 recreate 使用 `VulkanQueue::wait_idle()` 退休旧 generation，删除正常路径的 device idle。
-4. 在 `VulkanDevice` 接入完整 extension/feature capability gate；在可用设备上加入 present-fence retirement。
-5. 在 validation layer、resize/minimize/restore、extension enabled/disabled 和 shutdown 上完成验证；acquire wait-stage 优化留给后续独立 change。
+1. 先更新 Active RHI/Vulkan 内存文档，登记方案 A、正式类型名、shared-queue recreate 和 maintenance1 删除边界。
+2. 新增 `VulkanSwapchain`/`VulkanSwapchainImage`，迁移 native swapchain、image/view、per-image semaphore 与 acquire/present 实现。
+3. 将 `FrameSlot` 重命名为 `VulkanFrameSlot`，迁移 `image_acquired`、`submission_fence` 和 payload ownership；保持公共 frame API 不变。
+4. 将 recreate 改为干净边界 shared-queue idle + replacement publication，删除 retired generations、present fences 和 lifecycle/tracker 状态。
+5. 删除 `VulkanPresentationNativeApi`，让 queue/swapchain/viewport 各自直接调用职责内 Vulkan API，并移除 device 中的 wrapper ownership/accessor。
+6. 删除 `vulkan_presentation_lifecycle.*` 和旧 mock/tracker 测试，建立新的 swapchain、viewport status 与真实 Vulkan validation 覆盖。

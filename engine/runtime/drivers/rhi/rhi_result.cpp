@@ -26,7 +26,18 @@ namespace toy3d
 
     RHIStatus RHIStatus::failure(RHIErrorCode code, std::string message)
     {
-        TOY_LOG_ERROR("RHI failure [{}]: {}", error_code_name(code), message);
+        if (code == RHIErrorCode::NotReady)
+        {
+            TOY_LOG_DEBUG("RHI recoverable status [{}]: {}", error_code_name(code), message);
+        }
+        else if (code == RHIErrorCode::OutOfDate || code == RHIErrorCode::Suboptimal)
+        {
+            TOY_LOG_INFO("RHI recoverable status [{}]: {}", error_code_name(code), message);
+        }
+        else
+        {
+            TOY_LOG_ERROR("RHI failure [{}]: {}", error_code_name(code), message);
+        }
         return RHIStatus(code, std::move(message));
     }
 }

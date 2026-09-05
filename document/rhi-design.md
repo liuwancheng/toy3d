@@ -210,19 +210,23 @@ submit 成功后，present 的任何结果都不得回滚已经发布的资源�
 
 公共 queue completion 与后端 presentation completion 是两个不同的完成域。`RHIQueueCompletionValue`
 或 Vulkan submit fence 只证明 graphics submission 和其捕获的 command list、resource、descriptor、upload
-payload 已完成，不能证明 WSI 已消费 present wait semaphore。Vulkan frame slot 只承担 CPU/GPU 周转：
-acquire semaphore、submit fence、command pool 与提交 payload 归属于 slot；swapchain image identity、
-`render_finished` semaphore、image fence 和可选 present fence 归属于 backend-private per-image
-presentation state。frame slot index、swapchain image index、逻辑 frame id 和 queue completion value 禁止互换。
+payload 已完成，不能单独证明 WSI 已消费 present wait semaphore。Vulkan backend 使用
+`VulkanViewportContext + VulkanSwapchain` 作为唯一 presentation owner 链：viewport 管理公共 frame 编排、
+`VulkanFrameSlot`、submit/abort、resize pending 与 terminal status；swapchain 管理 `VkSwapchainKHR`、
+`VulkanSwapchainImage`、acquire 和 present。`VulkanFrameSlot` 拥有 `image_acquired` semaphore、
+`submission_fence`、command pool、present-transition command buffer 与提交 payload；每个
+`VulkanSwapchainImage` 拥有 image/view、RHI texture/view 与 `rendering_done` semaphore，并以 non-owning
+`last_submission_fence` 记录上次 graphics 使用。frame slot index、swapchain image index、逻辑 frame id
+和 queue completion value 禁止互换，slot 数固定为 `min(2, actual_image_count)`。
 
-VulkanPortable v1 不要求 WSI completion extension。无扩展时，成功 present 后只有同 generation、同 image
-再次成功 acquire，才能证明该 image 的 `render_finished` semaphore 可复用；submit fence signal 本身不足以
-复用或销毁它。swapchain 以 backend-private generation 事务式重建，新 generation 完整构造成功后才发布。
-若旧 generation 无法再通过 reacquire 获得 WSI completion proof，当前单一 shared graphics/present queue
-基线允许在 retirement 边界调用该 queue 的 `wait_idle()` 后销毁旧 presentation objects；常规 recreate
-不得调用 device idle。`vkDeviceWaitIdle()` 只保留给 shutdown 或 terminal cleanup。可选
-`VK_EXT_swapchain_maintenance1` 只有在 instance/device extension 依赖和 feature 全部启用时，才可用
-present fence 异步证明 WSI completion；缺失任一依赖必须保持 Vulkan 1.1 fallback 和相同公共错误语义。
+VulkanPortable v1 不要求 WSI completion extension。正常运行中，成功 present 后只有同一 swapchain image
+再次成功 acquire，才能证明该 image 的 `rendering_done` semaphore 可复用；submit fence signal 本身不足以
+证明 WSI completion。resize、`Suboptimal` 或 `OutOfDate` 只在没有 active acquired frame 的后续
+`begin_frame()` 边界重建：zero extent 返回 `NotReady`；其余路径先等待当前 shared graphics/present queue
+idle，再在局部 `unique_ptr` 中完整构造 replacement，成功后才发布并销毁旧 swapchain。常规 recreate
+不得调用 `vkDeviceWaitIdle()`；该调用只保留给 shutdown 或 terminal cleanup。第一阶段删除
+`VK_EXT_swapchain_maintenance1`、present fence、retired generations 与异步 retirement；未来若引入独立
+present queue，必须重新设计为等待所有使用旧 swapchain 的 graphics/present queues。
 
 Swapchain 是各后端 `RHIViewportContext` 的内部 presentation 组件，不建立公共 `RHISwapchain` 或 `RHIDevice::create_swapchain()` 平行路径。`begin_frame()` 返回当前 presentation texture/view，`end_frame()` 统一完成 submit 和 present；image index、frame slot、acquire/present 同步对象及原生 swapchain 均不得泄漏到 renderscene。Out-of-date、suboptimal、surface lost、device lost 和延迟 resize 由 viewport 内部处理并通过可诊断结果反馈。
 
@@ -754,6 +758,11 @@ Profile 是版本化的离线编译和验证基线，不等于 backend。平台�
 RHI pipeline 与 viewport 映射遵守 Shader 系统的统一约定：left-handed、+Z forward、column-vector、column-major、clip depth 0..1、reversed-Z（clear 0.0、默认 `GreaterEqual`）和公共 CounterClockwise front face。Vulkan 1.1 backend 使用 negative viewport height 处理 Y 时，必须同步修正 native front-face mapping；上层和 Shader 不做 backend-specific Y flip。
 
 所有初始化、创建、map/update、acquire、submit、present 和 resize 操作返回可检查结果。Assert 只用于内部不变量，不能替代 Release 错误路径。
+
+`NotReady`、`OutOfDate` 与 `Suboptimal` 是可恢复 viewport status，创建这些 status 时不得记录为
+RHI error：`NotReady` 使用 debug，`OutOfDate`/`Suboptimal` 使用 info。`DeviceLost`、
+`BackendFailure`、`OutOfMemory` 及调用 contract 错误继续记录 error。日志级别不得改变
+`RHIStatus` 返回值、恢复判断或 submit/present 分离语义。
 
 第一阶段规定：
 

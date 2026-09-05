@@ -94,8 +94,8 @@ if(TOY3D_ENABLE_VULKAN_RHI)
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_graphics_state.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_memory_manager.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_memory_manager.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_presentation_lifecycle.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_presentation_lifecycle.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_swapchain.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_swapchain.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_upload_manager.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_upload_manager.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_queue.cpp"
@@ -252,18 +252,18 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dRuntime.RHIViewportStatus COMMAND Toy3dRHIViewportStatusTests)
 
     if(TOY3D_ENABLE_VULKAN_RHI)
-        add_executable(Toy3dVulkanPresentationLifecycleTests
-            "tests/vulkan_presentation_lifecycle_tests.cpp")
-        target_compile_features(Toy3dVulkanPresentationLifecycleTests PRIVATE cxx_std_17)
-        set_target_properties(Toy3dVulkanPresentationLifecycleTests PROPERTIES
+        add_executable(Toy3dVulkanSwapchainTests
+            "tests/vulkan_swapchain_tests.cpp")
+        target_compile_features(Toy3dVulkanSwapchainTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dVulkanSwapchainTests PROPERTIES
             CXX_EXTENSIONS OFF
             FOLDER "Engine/Tests")
-        target_compile_options(Toy3dVulkanPresentationLifecycleTests
+        target_compile_options(Toy3dVulkanSwapchainTests
             PRIVATE
                 "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-        target_link_libraries(Toy3dVulkanPresentationLifecycleTests PRIVATE Toy3dRuntime)
-        add_test(NAME Toy3dRuntime.VulkanPresentationLifecycle
-            COMMAND Toy3dVulkanPresentationLifecycleTests)
+        target_link_libraries(Toy3dVulkanSwapchainTests PRIVATE Toy3dRuntime)
+        add_test(NAME Toy3dRuntime.VulkanSwapchain
+            COMMAND Toy3dVulkanSwapchainTests)
     endif()
 
     add_executable(Toy3dRHIResourceStateTests

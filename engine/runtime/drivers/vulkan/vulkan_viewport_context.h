@@ -19,20 +19,34 @@ namespace toy3d
 {
     class VulkanCommandList;
     class VulkanDevice;
-    class VulkanGenerationPublicationTracker;
+    class VulkanRenderPassResources;
+    class VulkanSwapchain;
+    class VulkanUploadPage;
+
+    struct VulkanFrameSlot
+    {
+        VkSemaphore image_acquired = VK_NULL_HANDLE;
+        VkFence submission_fence = VK_NULL_HANDLE;
+        VkCommandPool command_pool = VK_NULL_HANDLE;
+        VkCommandBuffer present_transition_command_buffer = VK_NULL_HANDLE;
+        RHIQueueCompletionValue completion_value = 0;
+        std::vector<RHICommandListRef> submitted_command_lists;
+        std::vector<RHIResourceRef> submitted_resources;
+        std::vector<std::shared_ptr<VulkanUploadPage>> submitted_upload_pages;
+        std::vector<RHITextureViewRef> submitted_texture_views;
+        std::vector<RHIGraphicsPipelineRef> submitted_graphics_pipelines;
+        std::vector<RHIBindingSetRef> submitted_binding_sets;
+        std::vector<std::shared_ptr<VulkanRenderPassResources>>
+            submitted_render_pass_resources;
+    };
 
     struct VulkanViewportObservation
     {
-        std::uint64_t generation_publication_id = 0;
-        std::uint64_t rejected_generation_construction_count = 0;
-        std::size_t active_generation_count = 0;
-        std::size_t retired_generation_count = 0;
+        std::uint64_t swapchain_publication_id = 0;
+        std::uint64_t rejected_swapchain_construction_count = 0;
         std::size_t frame_slot_count = 0;
-        std::size_t image_state_count = 0;
-        std::size_t pending_present_fence_count = 0;
-        std::uint64_t fallback_queue_drain_count = 0;
-        std::uint64_t discarded_semaphore_count = 0;
-        bool swapchain_maintenance1_enabled = false;
+        std::size_t swapchain_image_count = 0;
+        std::uint64_t recreate_queue_idle_count = 0;
     };
 
     class VulkanViewportContext final : public RHIViewportContext
@@ -52,23 +66,15 @@ namespace toy3d
         RHIStatus request_resize(std::uint32_t width, std::uint32_t height) override;
         VulkanViewportObservation observation_snapshot() const;
 
-        // Backend-only entry point used by the frame context. Command buffers
-        // are allocated from the active frame slot and submitted by end_frame.
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
             create_graphics_command_context();
 
     private:
-        struct FrameSlot;
-        struct SwapchainImagePresentationState;
-        struct SwapchainGeneration;
-
         RHIStatus recreate_swapchain();
-        RHIStatus create_swapchain(
-            VkSwapchainKHR old_swapchain,
-            std::unique_ptr<SwapchainGeneration>& generation);
-        void destroy_generation(SwapchainGeneration& generation);
-        RHIStatus retire_generation(std::unique_ptr<SwapchainGeneration> generation);
-        RHIStatus collect_retired_generations();
+        RHIStatus create_frame_slots(
+            std::uint32_t count,
+            std::vector<VulkanFrameSlot>& output_slots);
+        void destroy_frame_slots(std::vector<VulkanFrameSlot>& slots);
         RHIStatus submit_active_frame(const std::vector<VulkanCommandList*>& command_lists);
         RHIStatus present_active_image();
         RHIStatus abort_active_frame();
@@ -81,13 +87,14 @@ namespace toy3d
         VulkanDevice& vulkan_device;
         RHISurfaceRef viewport_surface;
         RHIViewportContextDesc viewport_desc;
-        std::unique_ptr<SwapchainGeneration> active_generation;
-        std::vector<std::unique_ptr<SwapchainGeneration>> retired_generations;
-        std::unique_ptr<VulkanGenerationPublicationTracker> publication_tracker;
+        std::unique_ptr<VulkanSwapchain> swapchain;
+        std::vector<VulkanFrameSlot> frame_slots;
+        std::uint32_t current_frame_slot = 0;
         std::uint32_t active_image_index = 0;
         std::uint64_t active_frame_id = 0;
-        std::uint64_t fallback_queue_drain_count = 0;
-        std::uint64_t discarded_semaphore_count = 0;
+        std::uint64_t swapchain_publication_id = 0;
+        std::uint64_t rejected_swapchain_construction_count = 0;
+        std::uint64_t recreate_queue_idle_count = 0;
         bool frame_active = false;
         RHIStatus presentation_failure;
         bool resize_pending = false;

@@ -281,17 +281,18 @@ completed_value advances
 
 viewport presentation 另有独立的 WSI 生命周期，不能并入 queue completion 模型。frame slot 的 submit
 fence/`completion_value` 只退休 graphics payload；每个 swapchain image 的 backend-private presentation state
-独占 `render_finished` semaphore、image fence 与可选 present fence。成功 present 后，无扩展的
-VulkanPortable v1 路径只在再次 acquire 同 generation 的同一 image 时复用该 semaphore；submit completion
+独占 `rendering_done` semaphore 与 non-owning `last_submission_fence`。成功 present 后，无扩展的
+VulkanPortable v1 路径只在当前 swapchain 再次 acquire 同一 image 时复用该 semaphore；submit completion
 不能单独证明 WSI 已消费 wait semaphore。frame slot 数按 `min(2, actual_image_count)` 限制 CPU ahead，
 但 per-image state 始终按全部实际 swapchain image 建立，两者不是同一索引域。
 
-swapchain image/view、per-image semaphore/fence 和 frame slots 共同归入 viewport-private generation。
-新 generation 在临时对象中完整创建后才替换 active generation，构造失败不得发布半初始化资源。
-旧 generation 的 graphics payload 先按 submit completion 退休；presentation objects 还必须等待 WSI proof。
-可选 `VK_EXT_swapchain_maintenance1` present fence 可提供异步 proof；VulkanPortable v1 fallback 在当前
-shared graphics/present queue 基线下只于 generation retirement 边界调用 `VulkanQueue::wait_idle()`。
-常规 resize/`OutOfDate` recreate 禁止 `vkDeviceWaitIdle()`，device idle 仅用于 shutdown 或 terminal cleanup。
+presentation 使用 `VulkanViewportContext + VulkanSwapchain` 唯一 owner 链，不再建立 generation 或
+retired owner。viewport 持有最多两个 `VulkanFrameSlot`；swapchain 持有全部 `VulkanSwapchainImage`。
+resize、`Suboptimal` 或 `OutOfDate` 后，仅在无 active acquired frame 的 `begin_frame()` 边界先等待 shared
+graphics/present queue idle，再完整创建并发布 replacement；zero extent 保持旧 owner 并返回 `NotReady`。
+方案 A 不启用 `VK_EXT_swapchain_maintenance1`、present fence 或异步 retirement。常规 recreate 禁止
+`vkDeviceWaitIdle()`，device idle 仅用于 shutdown 或 terminal cleanup。未来支持独立 present queue 时，
+必须重新设计为等待所有使用旧 swapchain 的 queue，不能直接沿用 shared-queue 路径。
 
 公共类型统一命名为：
 

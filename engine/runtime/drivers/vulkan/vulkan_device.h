@@ -21,7 +21,6 @@ namespace toy3d
     class VulkanBindingPacket;
     class VulkanBindingSet;
     class VulkanDeferredDeletionQueue;
-    class VulkanPresentationNativeApi;
     class VulkanQueue;
 
     struct VulkanDeviceObservation
@@ -95,8 +94,6 @@ namespace toy3d
         VulkanMemoryManager& memory_manager();
         VulkanUploadManager& upload_manager();
         VulkanDeferredDeletionQueue& deferred_deletion_queue();
-        VulkanPresentationNativeApi& presentation_native_api();
-        bool swapchain_maintenance1_enabled() const;
         VulkanDeviceObservation observation_snapshot() const;
         void release_completed_work(RHIQueueCompletionValue completed_value);
 
@@ -129,10 +126,7 @@ namespace toy3d
         std::unique_ptr<VulkanMemoryManager> memory_manager_instance;
         std::unique_ptr<VulkanUploadManager> upload_manager_instance;
         std::unique_ptr<VulkanDeferredDeletionQueue> deletion_queue;
-        std::unique_ptr<VulkanPresentationNativeApi> presentation_api;
         std::unique_ptr<VulkanQueue> queue;
-        bool maintenance1_instance_extensions_enabled = false;
-        bool maintenance1_enabled = false;
         bool initialized = false;
     };
 
