@@ -79,6 +79,16 @@ namespace toy3d
         }
     }
 
+    void IInputDevice::clear_pressed_state() noexcept
+    {
+        for (auto& entry : key_status)
+        {
+            entry.second = KeyStatus::None;
+        }
+        prev_key_status = key_status;
+        press_count.clear();
+    }
+
     /////////////////////////////////////////////////////////////////////////////
     /////////////////////////// 键盘设备实现 /////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////
@@ -120,6 +130,14 @@ namespace toy3d
         prev_y = y;
         x = _x;
         y = _y;
+    }
+
+    void MouseDevice::clear_pressed_state() noexcept
+    {
+        IInputDevice::clear_pressed_state();
+        wheel_delta = 0;
+        prev_x = x;
+        prev_y = y;
     }
 
 

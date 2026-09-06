@@ -97,9 +97,14 @@ namespace toy3d
             error = "Shader vertex input uses an unsupported logical attribute.";
             return false;
         }
+        const bool supported_position_shape =
+            attribute_id == ShaderVertexAttributeId::Position0 &&
+            (reflected.component_count == 2u ||
+             reflected.component_count == expected_component_count);
         if (reflected.scalar_type !=
                 shader::ReflectedInterfaceVariable::ScalarType::Float32 ||
-            reflected.component_count != expected_component_count)
+            (!supported_position_shape &&
+             reflected.component_count != expected_component_count))
         {
             error = "Shader vertex input uses an unsupported scalar/component shape.";
             return false;

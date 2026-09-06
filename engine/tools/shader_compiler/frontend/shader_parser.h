@@ -43,6 +43,8 @@ namespace toy3d::shader
         std::optional<Token> expect_identifier(std::string message);
         bool parse_properties(ShaderAsset& asset);
         bool parse_property(ShaderAsset& asset);
+        bool parse_parameters(ShaderAsset& asset);
+        bool parse_parameter_group(ShaderAsset& asset);
         bool parse_resources(ShaderAsset& asset);
         bool parse_resource_group(ShaderAsset& asset);
         bool parse_resource_type(Resource& resource);

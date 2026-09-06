@@ -100,6 +100,8 @@ namespace toy3d
         
         // 设置鼠标滚轮回调
         glfwSetScrollCallback(glfw_window, AndroidPlatformInput::mousewheel_callback);
+        glfwSetCharCallback(glfw_window, AndroidPlatformInput::text_callback);
+        glfwSetWindowFocusCallback(glfw_window, AndroidPlatformInput::focus_callback);
 
         InputSystem::get_instance().init();
 
@@ -185,7 +187,7 @@ namespace toy3d
             return; // 如果没有找到对应的键码，直接返回
         }
        
-        KeyEvent event;
+        MouseButtonEvent event;
         event.key_code = key_code;
         if (action == GLFW_PRESS) 
         {
@@ -202,6 +204,11 @@ namespace toy3d
             mouse->set_key_status(key_code, KeyStatus::Released);
             event.type = InputEventType::MouseButtonReleased;
         }
+        double x = 0.0;
+        double y = 0.0;
+        glfwGetCursorPos(window, &x, &y);
+        event.x = static_cast<int>(x);
+        event.y = static_cast<int>(y);
         InputSystem::get_instance().process_event(event);
     }
 
@@ -230,8 +237,24 @@ namespace toy3d
         
         MouseWheelEvent event;
         event.type = InputEventType::MouseWheel;
-        event.delta = xoffset + yoffset;
+        event.delta_x = static_cast<float>(xoffset);
+        event.delta_y = static_cast<float>(yoffset);
         
+        InputSystem::get_instance().process_event(event);
+    }
+
+    void AndroidPlatformInput::text_callback(GLFWwindow*, unsigned int code_point)
+    {
+        TextInputEvent event(code_point);
+        if (event.valid())
+        {
+            InputSystem::get_instance().process_event(event);
+        }
+    }
+
+    void AndroidPlatformInput::focus_callback(GLFWwindow*, int focused)
+    {
+        WindowFocusEvent event(focused == GLFW_TRUE);
         InputSystem::get_instance().process_event(event);
     }
 }// namespace toy3d

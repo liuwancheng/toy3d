@@ -7,7 +7,6 @@ namespace toy3d
     class RHIDevice;
     class RHIGraphicsCommandContext;
     class RHIStatus;
-    class RenderResourceManager;
     class SceneRenderTargets;
     struct RHIRenderPassDesc;
 
@@ -17,19 +16,14 @@ namespace toy3d
         explicit ForwardSceneRenderer(SceneViewFamily view_family);
         ~ForwardSceneRenderer() override = default;
 
-        // Render-side frame owner. Renderer supplies borrowed domain objects;
-        // presentation ownership remains in the viewport, while scene
-        // attachments are held by Renderer-owned SceneRenderTargets.
-        RHIResult<RHIFrameEndResult> render_frame(
-            RenderScene& render_scene,
-            RHIDevice& device,
-            RenderResourceManager& resource_manager,
-            RHIViewportContext& viewport,
-            SceneRenderTargets& scene_render_targets) override;
-
     private:
         struct PreparedBasePass;
 
+        RHIStatus render_scene_passes(
+            RenderScene& render_scene,
+            RHIDevice& device,
+            RHIGraphicsCommandContext& context,
+            SceneRenderTargets& scene_render_targets) override;
         bool init_views();
         void compute_view_visibility(const RenderScene& render_scene);
         void collect_mesh_batches();
@@ -41,6 +35,5 @@ namespace toy3d
         RHIStatus execute_base_pass(
             RHIGraphicsCommandContext& context,
             const PreparedBasePass& prepared_pass);
-        void render(RenderScene& render_scene) noexcept override;
     };
 }

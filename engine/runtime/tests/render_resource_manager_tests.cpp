@@ -10,10 +10,12 @@
 #include "rendercore/texture/texture.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
 #include "renderscene/material/material_render_proxy.h"
+#include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
+#include "renderscene/renderer_frame.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/texture/texture_resource.h"
 #include "renderscene/view/forward_scene_renderer.h"
@@ -227,6 +229,65 @@ namespace
         return program;
     }
 
+    toy3d::ShaderMapProgramData make_tonemap_program()
+    {
+        toy3d::ShaderMapProgramData program;
+        program.shader_name = "Toy3d/PostProcess/Tonemap";
+        program.pass_name = "Tonemap";
+        program.mapping_version = 1u;
+        program.logical_layout_hash = nonzero_hash(70u);
+        program.target_binding_hash = nonzero_hash(71u);
+        program.pass_template_hash =
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(
+                program.graphics_pass_state);
+        program.permutation_key = nonzero_hash(72u);
+
+        toy3d::ShaderMapBinding constants;
+        constants.parameter_id = 200u;
+        constants.name = "toy_pass_data";
+        constants.group = toy3d::RHIBindingGroup::Pass;
+        constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        constants.stages = toy3d::RHIShaderStageFlags::Pixel;
+        constants.target_binding = 0u;
+        constants.constant_buffer_size = 16u;
+        constants.constant_members.push_back({201u, "exposure_ev",
+            toy3d::ShaderValueType::Float32, 0u, 4u, 0u, 0u});
+        program.bindings.push_back(constants);
+
+        toy3d::ShaderMapBinding texture;
+        texture.parameter_id = 202u;
+        texture.name = "scene_color";
+        texture.group = toy3d::RHIBindingGroup::Pass;
+        texture.type = toy3d::RHIResourceBindingType::SampledTexture;
+        texture.stages = toy3d::RHIShaderStageFlags::Pixel;
+        texture.target_binding = 1u;
+        program.bindings.push_back(texture);
+
+        toy3d::ShaderMapBinding sampler;
+        sampler.parameter_id = 203u;
+        sampler.name = "scene_sampler";
+        sampler.group = toy3d::RHIBindingGroup::Pass;
+        sampler.type = toy3d::RHIResourceBindingType::Sampler;
+        sampler.stages = toy3d::RHIShaderStageFlags::Pixel;
+        sampler.target_binding = 2u;
+        program.bindings.push_back(sampler);
+
+        toy3d::ShaderMapStage vertex;
+        vertex.stage = toy3d::RHIShaderStage::Vertex;
+        vertex.entry_point = "vs_main";
+        vertex.binary = {1u, 2u, 3u, 70u};
+        vertex.content_hash = nonzero_hash(73u);
+        program.stages.push_back(std::move(vertex));
+        toy3d::ShaderMapStage pixel;
+        pixel.stage = toy3d::RHIShaderStage::Pixel;
+        pixel.entry_point = "ps_main";
+        pixel.binary = {4u, 3u, 2u, 70u};
+        pixel.content_hash = nonzero_hash(74u);
+        pixel.reflection = program.bindings;
+        program.stages.push_back(std::move(pixel));
+        return program;
+    }
+
     toy3d::ShaderMapProgramRef load_program(
         toy3d::ShaderMapProgramData program)
     {
@@ -240,6 +301,26 @@ namespace
         toy3d::ShaderMapProgramResult result = shader_map.find_or_load(key);
         check(result.succeeded(), result.error.c_str());
         return result.program;
+    }
+    toy3d::RHIResult<toy3d::RHIFrameEndResult> render_test_frame(
+        toy3d::ForwardSceneRenderer& scene_renderer,
+        toy3d::RenderScene& render_scene,
+        toy3d::RHIDevice& device,
+        toy3d::RenderResourceManager& resource_manager,
+        toy3d::RHIViewportContext& viewport,
+        toy3d::SceneRenderTargets& scene_render_targets,
+        toy3d::TonemapPassResources& tonemap_pass_resources)
+    {
+        return toy3d::render_viewport_frame(
+            scene_renderer,
+            nullptr,
+            render_scene,
+            device,
+            resource_manager,
+            viewport,
+            scene_render_targets,
+            tonemap_pass_resources,
+            nullptr);
     }
 }
 
@@ -393,11 +474,10 @@ int main()
         }
 
         toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler_impl(
-            const toy3d::RHISamplerDesc&) override
+            const toy3d::RHISamplerDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHISamplerRef>::failure(
-                toy3d::RHIErrorCode::Unsupported,
-                "The resource smoke creates no samplers");
+            return toy3d::RHIResult<toy3d::RHISamplerRef>::success(
+                std::make_shared<toy3d::RHISampler>(*this, desc));
         }
 
         toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(
@@ -497,6 +577,12 @@ int main()
         std::numeric_limits<std::uint32_t>::max();
     device.test_limits.max_sampler_anisotropy =
         std::numeric_limits<std::uint32_t>::max();
+    const toy3d::ShaderMapProgramRef tonemap_program =
+        load_program(make_tonemap_program());
+    toy3d::TonemapPassResources tonemap_resources;
+    check(tonemap_program &&
+          tonemap_resources.initialize(device, *tonemap_program).succeeded(),
+        "frame-owner smoke requires initialized Tonemap resources");
 
     struct UniformContext final : toy3d::RHICommandContext
     {
@@ -863,6 +949,10 @@ int main()
 
         toy3d::RHIStatus draw(const toy3d::RHIDrawArgs&) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("draw");
+            }
             return toy3d::RHIStatus::success();
         }
 
@@ -1392,12 +1482,14 @@ int main()
             std::move(submitted_views)));
     toy3d::SceneRenderTargets submitted_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
-        submitted_frame_result = submitted_frame_renderer.render_frame(
+        submitted_frame_result = render_test_frame(
+            submitted_frame_renderer,
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            submitted_scene_render_targets);
+            submitted_scene_render_targets,
+            tonemap_resources);
     const std::vector<std::string> expected_submitted_operations = {
         "begin_frame",
         "begin_recording",
@@ -1406,9 +1498,12 @@ int main()
         "begin_render_pass",
         "end_render_pass",
         "transition",
-        "copy_texture",
+        "transition",
+        "upload_buffer",
         "transition",
         "begin_render_pass",
+        "set_graphics_pipeline",
+        "draw",
         "end_render_pass",
         "transition",
         "finish_recording",
@@ -1420,7 +1515,7 @@ int main()
               toy3d::RenderResourceState::Ready &&
           submitted_scene_render_targets.scene_color_texture() != nullptr &&
           submitted_scene_render_targets.scene_color_access() ==
-              toy3d::RHIAccess::CopySource &&
+              toy3d::RHIAccess::ShaderResourceGraphics &&
           submitted_scene_render_targets.scene_depth_access() ==
               toy3d::RHIAccess::DepthStencilWrite &&
           submitted_frame_operations == expected_submitted_operations &&
@@ -1506,12 +1601,14 @@ int main()
         make_base_pass_view_family());
     toy3d::SceneRenderTargets base_pass_draw_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> base_pass_draw_result =
-        base_pass_draw_renderer.render_frame(
+        render_test_frame(
+            base_pass_draw_renderer,
             *base_pass_scene,
             device,
             frame_manager,
             frame_viewport,
-            base_pass_draw_targets);
+            base_pass_draw_targets,
+            tonemap_resources);
     const auto first_upload = std::find(
         base_pass_draw_operations.begin(),
         base_pass_draw_operations.end(),
@@ -1524,14 +1621,22 @@ int main()
         base_pass_draw_operations.begin(),
         base_pass_draw_operations.end(),
         "draw_indexed");
+    const auto first_end_pass = first_begin_pass ==
+            base_pass_draw_operations.end()
+        ? base_pass_draw_operations.end()
+        : std::find(
+            first_begin_pass,
+            base_pass_draw_operations.end(),
+            "end_render_pass");
     check(base_pass_draw_result.succeeded() &&
           first_upload != base_pass_draw_operations.end() &&
           first_begin_pass != base_pass_draw_operations.end() &&
+          first_end_pass != base_pass_draw_operations.end() &&
           first_upload < first_begin_pass &&
           std::find(
               first_begin_pass,
-              base_pass_draw_operations.end(),
-              "device_create") == base_pass_draw_operations.end() &&
+              first_end_pass,
+              "device_create") == first_end_pass &&
           draw_command != base_pass_draw_operations.end() &&
           frame_viewport.end_count == 2u,
         "Base Pass prepare uploads must precede execute and one prepared draw must reach the same frame list");
@@ -1552,12 +1657,14 @@ int main()
         make_base_pass_view_family());
     toy3d::SceneRenderTargets draw_failed_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> draw_failed_result =
-        draw_failed_renderer.render_frame(
+        render_test_frame(
+            draw_failed_renderer,
             *base_pass_scene,
             device,
             frame_manager,
             frame_viewport,
-            draw_failed_targets);
+            draw_failed_targets,
+            tonemap_resources);
     const auto failed_draw = std::find(
         draw_failed_operations.begin(),
         draw_failed_operations.end(),
@@ -1598,12 +1705,14 @@ int main()
         make_base_pass_view_family());
     toy3d::SceneRenderTargets invalid_pass_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> invalid_pass_result =
-        invalid_pass_renderer.render_frame(
+        render_test_frame(
+            invalid_pass_renderer,
             *base_pass_scene,
             device,
             frame_manager,
             frame_viewport,
-            invalid_pass_targets);
+            invalid_pass_targets,
+            tonemap_resources);
     device.return_invalid_depth_view = false;
     device.operations = nullptr;
     check(!invalid_pass_result &&
@@ -1639,12 +1748,14 @@ int main()
         make_valid_view_family());
     toy3d::SceneRenderTargets submit_failed_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
-        submit_failed_result = submit_failed_renderer.render_frame(
+        submit_failed_result = render_test_frame(
+            submit_failed_renderer,
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            submit_failed_scene_render_targets);
+            submit_failed_scene_render_targets,
+            tonemap_resources);
     const std::vector<std::string> expected_submit_failed_operations = {
         "begin_frame",
         "begin_recording",
@@ -1653,9 +1764,12 @@ int main()
         "begin_render_pass",
         "end_render_pass",
         "transition",
-        "copy_texture",
+        "transition",
+        "upload_buffer",
         "transition",
         "begin_render_pass",
+        "set_graphics_pipeline",
+        "draw",
         "end_render_pass",
         "transition",
         "finish_recording",
@@ -1691,12 +1805,14 @@ int main()
         make_valid_view_family());
     toy3d::SceneRenderTargets suboptimal_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
-        suboptimal_present_result = suboptimal_present_renderer.render_frame(
+        suboptimal_present_result = render_test_frame(
+            suboptimal_present_renderer,
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            suboptimal_scene_render_targets);
+            suboptimal_scene_render_targets,
+            tonemap_resources);
     check(suboptimal_present_result.succeeded() &&
           suboptimal_present_result.value().completion_value == 43u &&
           suboptimal_present_result.value().presentation_status.code() ==
@@ -1725,12 +1841,14 @@ int main()
     toy3d::SceneRenderTargets out_of_date_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
         out_of_date_present_result =
-            out_of_date_present_renderer.render_frame(
+            render_test_frame(
+                out_of_date_present_renderer,
                 *frame_render_scene,
                 device,
                 frame_manager,
                 frame_viewport,
-                out_of_date_scene_render_targets);
+                out_of_date_scene_render_targets,
+                tonemap_resources);
     check(out_of_date_present_result.succeeded() &&
           out_of_date_present_result.value().completion_value == 44u &&
           out_of_date_present_result.value().presentation_status.code() ==
@@ -1755,12 +1873,14 @@ int main()
         make_valid_view_family());
     toy3d::SceneRenderTargets unknown_boundary_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
-        unknown_boundary_result = unknown_boundary_renderer.render_frame(
+        unknown_boundary_result = render_test_frame(
+            unknown_boundary_renderer,
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            unknown_boundary_scene_render_targets);
+            unknown_boundary_scene_render_targets,
+            tonemap_resources);
     check(unknown_boundary_result.succeeded() &&
           unknown_boundary_result.value().completion_value == 0u &&
           unknown_boundary_result.value().presentation_status.code() ==
@@ -1802,12 +1922,14 @@ int main()
             std::move(resized_views)));
     toy3d::SceneRenderTargets resize_race_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> resize_race_result =
-        resize_race_renderer.render_frame(
+        render_test_frame(
+            resize_race_renderer,
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            resize_race_scene_render_targets);
+            resize_race_scene_render_targets,
+            tonemap_resources);
     const std::vector<std::string> expected_resize_race_operations = {
         "begin_frame",
         "abort_frame"};
@@ -1850,12 +1972,14 @@ int main()
             std::move(invalid_views)));
     toy3d::SceneRenderTargets aborted_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult>
-        aborted_frame_result = aborted_frame_renderer.render_frame(
+        aborted_frame_result = render_test_frame(
+            aborted_frame_renderer,
             *frame_render_scene,
             device,
             frame_manager,
             frame_viewport,
-            aborted_scene_render_targets);
+            aborted_scene_render_targets,
+            tonemap_resources);
     const std::vector<std::string> expected_aborted_operations = {
         "begin_frame",
         "begin_recording",

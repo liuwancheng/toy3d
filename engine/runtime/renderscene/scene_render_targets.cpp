@@ -11,18 +11,13 @@ namespace toy3d
     RHIStatus SceneRenderTargets::ensure_extent(
         RHIDevice& device,
         std::uint32_t width,
-        std::uint32_t height,
-        PixelFormat scene_color_format)
+        std::uint32_t height)
     {
         if (width == 0u || height == 0u)
         {
             return RHIStatus::failure( RHIErrorCode::InvalidArgument, "SceneRenderTargets extent must be non-empty.");
         }
-        if (scene_color_format == PixelFormat::Unknown)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "SceneRenderTargets requires a known SceneColor format.");
-        }
-        if (matches(width, height, scene_color_format))
+        if (matches(width, height))
         {
             return RHIStatus::success();
         }
@@ -36,7 +31,7 @@ namespace toy3d
             }
         }
         release();
-        return create_targets(device, width, height, scene_color_format);
+        return create_targets(device, width, height);
     }
 
     void SceneRenderTargets::release() noexcept
@@ -97,14 +92,14 @@ namespace toy3d
         scene_depth_access_ = scene_depth_access;
     }
 
-    bool SceneRenderTargets::matches(std::uint32_t width, std::uint32_t height, PixelFormat scene_color_format) const noexcept
+    bool SceneRenderTargets::matches(std::uint32_t width, std::uint32_t height) const noexcept
     {
         return scene_color_texture_ && scene_color_view_ &&
             scene_color_shader_resource_view_ && scene_depth_texture_ &&
             scene_depth_view_ && scene_depth_shader_resource_view_ &&
             scene_color_texture_->desc().width == width &&
             scene_color_texture_->desc().height == height &&
-            scene_color_texture_->desc().format == scene_color_format &&
+            scene_color_texture_->desc().format == PixelFormat::R16G16B16A16Float &&
             scene_depth_texture_->desc().width == width &&
             scene_depth_texture_->desc().height == height;
     }
@@ -112,14 +107,15 @@ namespace toy3d
     RHIStatus SceneRenderTargets::create_targets(
         RHIDevice& device,
         std::uint32_t width,
-        std::uint32_t height,
-        PixelFormat scene_color_format)
+        std::uint32_t height)
     {
         RHITextureDesc color_desc;
         color_desc.width = width;
         color_desc.height = height;
-        color_desc.format = scene_color_format;
-        color_desc.usage = RHIResourceUsage::RenderTarget | RHIResourceUsage::ShaderResource | RHIResourceUsage::CopySource;
+        color_desc.format = PixelFormat::R16G16B16A16Float;
+        color_desc.usage =
+            RHIResourceUsage::RenderTarget |
+            RHIResourceUsage::ShaderResource;
         color_desc.initial_access = RHIAccess::Common;
         color_desc.clear_value = RHIClearValue::color_value(vec4(0.0F, 0.0F, 0.0F, 1.0F));
         color_desc.debug_name = "SceneRenderTargets.SceneColor";

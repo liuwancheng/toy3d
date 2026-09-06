@@ -26,6 +26,9 @@ namespace toy3d
 
         virtual bool on_initialize() = 0;
         virtual void on_tick(double) {}
+        // Called only while the GT Dear ImGui frame is active. Applications
+        // may build widgets through ImGui core but receive no renderer service.
+        virtual void on_build_ui() {}
         virtual void on_build_scene_views(
             std::vector<SceneView>& views,
             const Extent& extent) const = 0;
@@ -36,6 +39,7 @@ namespace toy3d
 
         bool initialize(World& world, IWindow& window);
         void tick(double delta_time);
+        void build_ui();
         void build_scene_views(
             std::vector<SceneView>& views,
             const Extent& extent) const;

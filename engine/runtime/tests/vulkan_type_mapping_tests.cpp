@@ -37,6 +37,25 @@ int main()
     require(!invalid_topology && invalid_topology.status().code() == RHIErrorCode::InvalidArgument,
         "Unknown topology must fail with InvalidArgument.");
 
+    const auto counter_clockwise = to_vk_front_face(RHIFrontFace::CounterClockwise);
+    const auto clockwise = to_vk_front_face(RHIFrontFace::Clockwise);
+    require(counter_clockwise && counter_clockwise.value() == VK_FRONT_FACE_CLOCKWISE &&
+            clockwise && clockwise.value() == VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        "Negative-height Vulkan viewports must reverse native front-face winding.");
+
+    RHIViewport public_viewport;
+    public_viewport.x = 13.0F;
+    public_viewport.y = 17.0F;
+    public_viewport.width = 640.0F;
+    public_viewport.height = 360.0F;
+    public_viewport.min_depth = 0.25F;
+    public_viewport.max_depth = 0.75F;
+    const VkViewport native_viewport = to_vk_viewport(public_viewport);
+    require(native_viewport.x == 13.0F && native_viewport.y == 377.0F &&
+            native_viewport.width == 640.0F && native_viewport.height == -360.0F &&
+            native_viewport.minDepth == 0.25F && native_viewport.maxDepth == 0.75F,
+        "Vulkan viewports must apply the backend-owned negative-height Y transform.");
+
     const auto unsupported_samples = to_vk_sample_count(3);
     require(!unsupported_samples && unsupported_samples.status().code() == RHIErrorCode::Unsupported,
         "Unsupported sample counts must remain diagnostic.");

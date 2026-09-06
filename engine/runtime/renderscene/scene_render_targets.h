@@ -23,8 +23,7 @@ namespace toy3d
         RHIStatus ensure_extent(
             RHIDevice& device,
             std::uint32_t width,
-            std::uint32_t height,
-            PixelFormat scene_color_format);
+            std::uint32_t height);
         void release() noexcept;
 
         const RHITextureRef& scene_color_texture() const noexcept;
@@ -40,14 +39,12 @@ namespace toy3d
     private:
         bool matches(
             std::uint32_t width,
-            std::uint32_t height,
-            PixelFormat scene_color_format) const noexcept;
+            std::uint32_t height) const noexcept;
 
         RHIStatus create_targets(
             RHIDevice& device,
             std::uint32_t width,
-            std::uint32_t height,
-            PixelFormat scene_color_format);
+            std::uint32_t height);
 
         RHITextureRef scene_color_texture_;
         RHITextureViewRef scene_color_view_;

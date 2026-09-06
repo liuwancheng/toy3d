@@ -63,8 +63,54 @@ void InputSystem::update()
     }
 }
 
-void InputSystem::process_event(InputEvent& event) 
+void InputSystem::process_event(const InputEvent& event)
 {
+    if (event.type == InputEventType::WindowFocus)
+    {
+        const WindowFocusEvent& focus_event =
+            static_cast<const WindowFocusEvent&>(event);
+        if (!focus_event.focused)
+        {
+            clear_pressed_state();
+        }
+    }
+
+    if (event.type == InputEventType::TextInput)
+    {
+        const TextInputEvent& text_event =
+            static_cast<const TextInputEvent&>(event);
+        if (!text_event.valid())
+        {
+            return;
+        }
+    }
+
+    // UI observes the physical fact before capture decides whether gameplay
+    // callbacks receive it. Release and focus state were already committed.
+    if (event_sink_)
+    {
+        event_sink_(event);
+    }
+
+    const bool is_mouse_event =
+        event.type == InputEventType::MouseButtonPressed ||
+        event.type == InputEventType::MouseButtonReleased ||
+        event.type == InputEventType::MouseButtonHold ||
+        event.type == InputEventType::MouseButtonDoubleClick ||
+        event.type == InputEventType::MouseMove ||
+        event.type == InputEventType::MouseWheel;
+    const bool is_keyboard_event =
+        event.type == InputEventType::KeyPressed ||
+        event.type == InputEventType::KeyReleased ||
+        event.type == InputEventType::KeyHold ||
+        event.type == InputEventType::KeyDoubleClick;
+    if ((is_mouse_event && capture_policy_.mouse) ||
+        (is_keyboard_event && capture_policy_.keyboard) ||
+        (event.type == InputEventType::TextInput && capture_policy_.text))
+    {
+        return;
+    }
+
     for (auto& context : active_mapping_contexts) 
     {
         if (!context->is_active()) continue;
@@ -95,7 +141,6 @@ void InputSystem::process_event(InputEvent& event)
                     const MouseMoveEvent& mouse_event = static_cast<const MouseMoveEvent&>(event);
                     if (binding.input_state == KeyStatus::Hold) 
                     {
-                        event.scale = binding.scale;
                         binding.callback(event);
                     }
                 }
@@ -105,13 +150,36 @@ void InputSystem::process_event(InputEvent& event)
                     const MouseWheelEvent& mouse_event = static_cast<const MouseWheelEvent&>(event);
                     if (binding.input_state == KeyStatus::Hold) 
                     {
-                        event.scale = binding.scale;
-                        binding.callback(event);
+                        InputEvent scaled_event = event;
+                        scaled_event.scale = binding.scale;
+                        binding.callback(scaled_event);
                     }
                 }
 
             }
         }
+    }
+}
+
+void InputSystem::set_event_sink(EventSink sink)
+{
+    event_sink_ = std::move(sink);
+}
+
+void InputSystem::set_capture_policy(CapturePolicy policy) noexcept
+{
+    capture_policy_ = policy;
+}
+
+void InputSystem::clear_pressed_state() noexcept
+{
+    if (keyboard_device)
+    {
+        keyboard_device->clear_pressed_state();
+    }
+    if (mouse_device)
+    {
+        mouse_device->clear_pressed_state();
     }
 }
 

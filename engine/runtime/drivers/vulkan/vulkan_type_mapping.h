@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drivers/rhi/rhi_command_descriptors.h"
 #include "drivers/rhi/rhi_descriptors.h"
 
 #if WITH_WIN64
@@ -31,6 +32,7 @@ namespace toy3d
     RHIResult<VkVertexInputRate> to_vk_vertex_input_rate(RHIVertexInputRate input_rate);
     RHIResult<VkCullModeFlags> to_vk_cull_mode(RHICullMode cull_mode);
     RHIResult<VkFrontFace> to_vk_front_face(RHIFrontFace front_face);
+    VkViewport to_vk_viewport(const RHIViewport& viewport);
     RHIResult<VkBlendFactor> to_vk_blend_factor(RHIBlendFactor factor);
     RHIResult<VkBlendOp> to_vk_blend_operation(RHIBlendOperation operation);
     VkColorComponentFlags to_vk_color_write_mask(RHIColorWriteMask mask);

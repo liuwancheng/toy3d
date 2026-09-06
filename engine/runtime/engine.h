@@ -22,6 +22,11 @@ namespace toy3d
     class TaskGraphInterface;
     class ThreadManager;
     class World;
+    class ImGuiSystem;
+    class ShaderMap;
+    class ShaderMapLoader;
+    class ShaderMapProgram;
+    struct ImGuiDrawData;
 
 	enum class ShaderLoadMode
 	{
@@ -56,9 +61,10 @@ namespace toy3d
 
     private:
         FileStatus initialize_file_system();
+        bool initialize_builtin_shader_programs();
         bool initialize_render_framework();
         void shutdown_render_framework();
-        void submit_frame_draw();
+        void submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data);
 
         double game_time = 0.0;
         double delta_time = 0.0;
@@ -71,6 +77,10 @@ namespace toy3d
         std::shared_ptr<DirectoryFileStore> temp_store;
         FileSystem file_system;
         ShaderLoadConfig shader_load_config;
+        std::unique_ptr<ShaderMapLoader> builtin_shader_loader;
+        std::unique_ptr<ShaderMap> builtin_shader_map;
+        std::shared_ptr<const ShaderMapProgram> tonemap_shader_program;
+        std::shared_ptr<const ShaderMapProgram> imgui_shader_program;
         std::unique_ptr<Application> application;
         std::unique_ptr<IPlatform> platform;
         std::unique_ptr<IWindow> window;
@@ -81,6 +91,7 @@ namespace toy3d
         std::unique_ptr<RenderingThread> rendering_thread;
         std::unique_ptr<FrameEndSync> frame_end_sync;
         std::unique_ptr<World> world;
+        std::unique_ptr<ImGuiSystem> imgui_system;
         bool application_bound = false;
         bool platform_initialized = false;
         bool engine_exited = false;

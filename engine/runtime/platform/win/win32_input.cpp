@@ -101,6 +101,51 @@ namespace toy3d
 
         switch (message) 
         {
+            case WM_SETFOCUS:
+            case WM_KILLFOCUS:
+            {
+                if (message == WM_KILLFOCUS)
+                {
+                    pending_high_surrogate_ = 0;
+                }
+                WindowFocusEvent event(message == WM_SETFOCUS);
+                InputSystem::get_instance().process_event(event);
+                break;
+            }
+
+            case WM_CHAR:
+            {
+                const wchar_t code_unit = static_cast<wchar_t>(wParam);
+                if (code_unit >= 0xD800 && code_unit <= 0xDBFF)
+                {
+                    pending_high_surrogate_ = code_unit;
+                    break;
+                }
+
+                std::uint32_t code_point = static_cast<std::uint32_t>(code_unit);
+                if (code_unit >= 0xDC00 && code_unit <= 0xDFFF)
+                {
+                    if (pending_high_surrogate_ == 0)
+                    {
+                        break;
+                    }
+                    code_point = 0x10000u +
+                        ((static_cast<std::uint32_t>(pending_high_surrogate_) - 0xD800u) << 10u) +
+                        (static_cast<std::uint32_t>(code_unit) - 0xDC00u);
+                }
+                else if (pending_high_surrogate_ != 0)
+                {
+                    pending_high_surrogate_ = 0;
+                }
+                pending_high_surrogate_ = 0;
+                TextInputEvent event(code_point);
+                if (event.valid())
+                {
+                    InputSystem::get_instance().process_event(event);
+                }
+                break;
+            }
+
             case WM_KEYDOWN:
             case WM_SYSKEYDOWN:
             {
@@ -171,7 +216,8 @@ namespace toy3d
                 
                     MouseWheelEvent event;
                     event.type = InputEventType::MouseWheel;
-                    event.delta = delta;
+                    event.delta_y = static_cast<float>(delta) /
+                        static_cast<float>(WHEEL_DELTA);
                     //event.timestamp = GetTickCount64() / 1000.0;
                 
                     InputSystem::get_instance().process_event(event);
@@ -190,6 +236,9 @@ namespace toy3d
                 
                     MouseButtonEvent event;
                     event.type = InputEventType::MouseButtonPressed;
+                    event.key_code = key_code;
+                    event.x = GET_X_LPARAM(lParam);
+                    event.y = GET_Y_LPARAM(lParam);
                     //event.timestamp = GetTickCount64() / 1000.0;
                 
                     InputSystem::get_instance().process_event(event);
@@ -207,6 +256,9 @@ namespace toy3d
                 
                     MouseButtonEvent event;
                     event.type = InputEventType::MouseButtonReleased;
+                    event.key_code = key_code;
+                    event.x = GET_X_LPARAM(lParam);
+                    event.y = GET_Y_LPARAM(lParam);
                     //event.timestamp = GetTickCount64() / 1000.0;
                 
                     InputSystem::get_instance().process_event(event);

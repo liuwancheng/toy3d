@@ -26,11 +26,14 @@ namespace toy3d::shader
             case DiagnosticCode::InvalidVersion: return "InvalidVersion";
             case DiagnosticCode::DuplicateSection: return "DuplicateSection";
             case DiagnosticCode::DuplicateProperty: return "DuplicateProperty";
+            case DiagnosticCode::DuplicateParameter: return "DuplicateParameter";
             case DiagnosticCode::DuplicateResource: return "DuplicateResource";
             case DiagnosticCode::DuplicateVariant: return "DuplicateVariant";
             case DiagnosticCode::DuplicatePass: return "DuplicatePass";
             case DiagnosticCode::InvalidPassName: return "InvalidPassName";
             case DiagnosticCode::InvalidPropertyType: return "InvalidPropertyType";
+            case DiagnosticCode::InvalidParameterGroup: return "InvalidParameterGroup";
+            case DiagnosticCode::InvalidParameterType: return "InvalidParameterType";
             case DiagnosticCode::InvalidShaderName: return "InvalidShaderName";
             case DiagnosticCode::ReservedIdentifier: return "ReservedIdentifier";
             case DiagnosticCode::IdentifierConflict: return "IdentifierConflict";

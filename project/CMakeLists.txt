@@ -35,7 +35,7 @@ target_compile_options(Toy3dCubeTest
 target_compile_definitions(Toy3dCubeTest
     PRIVATE
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
-target_link_libraries(Toy3dCubeTest PRIVATE Toy3dRuntime)
+target_link_libraries(Toy3dCubeTest PRIVATE Toy3dRuntime imgui)
 
 set(TOY3D_CUBE_TEST_POST_BUILD_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}"

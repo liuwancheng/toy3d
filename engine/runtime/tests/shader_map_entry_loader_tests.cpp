@@ -246,7 +246,17 @@ namespace
                   toy3d::ShaderVertexAttributeId::Position0,
             "SPIR-V interface names must provide a fallback logical vertex semantic");
 
+        reflected.semantic = "POSITION0";
+        reflected.component_count = 2u;
+        check(toy3d::try_make_shader_vertex_input(
+                reflected, other_target_input, error) &&
+              other_target_input.attribute_id ==
+                  toy3d::ShaderVertexAttributeId::Position0 &&
+              other_target_input.component_count == 2u,
+            "UI position reflection must support a float2 POSITION0 contract");
+
         reflected.semantic = "NORMAL";
+        reflected.component_count = 4u;
         check(toy3d::try_make_shader_vertex_input(
                 reflected, other_target_input, error) &&
               other_target_input.attribute_id ==

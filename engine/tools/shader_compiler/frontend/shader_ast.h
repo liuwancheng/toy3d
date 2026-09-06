@@ -90,6 +90,15 @@ namespace toy3d::shader
         SourceLocation location;
     };
 
+    struct Parameter
+    {
+        BindingGroup group = BindingGroup::Pass;
+        std::string name;
+        ShaderValueType type = ShaderValueType::Float32;
+        DefaultValue default_value;
+        SourceLocation location;
+    };
+
     enum class VariantType
     {
         Boolean,
@@ -141,6 +150,7 @@ namespace toy3d::shader
         std::string name;
         std::uint32_t version = 0;
         std::vector<Property> properties;
+        std::vector<Parameter> parameters;
         std::vector<Resource> resources;
         std::vector<Variant> variants;
         std::vector<HlslBlock> includes;

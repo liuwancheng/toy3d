@@ -9,7 +9,7 @@
 本文中的产品边界已经确认：
 
 - 使用类似 Unity ShaderLab、但范围更小的 `.shader` 容器；
-- `Properties` 自动生成 Material 参数布局和 HLSL 声明；
+- `Properties` 自动生成 Material 参数布局和 HLSL 声明；`Parameters` 为非Material的受控数值参数提供同一ToyShaderABI路径；
 - `Pass` 可以声明跨 API 的 raster、depth/stencil、blend 等 PSO 模板状态；
 - attachment、load/store、transition、资源依赖和执行顺序仍属于 renderscene/RDG；
 - `Global`、`View`、`Pass`、`Material`、`Object` 是稳定的逻辑 Binding Group；
@@ -35,10 +35,10 @@
 #### 语言、资产身份与 include
 
 - `.shader Version 1` 是 language major。后续 v1 revision 可以增加不改变旧源码语义的可选关键词或类型；旧 compiler 遇到新功能报 `UnsupportedLanguageFeature`。未知关键词始终报错。改变旧语义、packing 或默认行为时升级 language/ABI major。
-- `Version` 必须是 Shader block 第一项；之后顶层 section 顺序无关。`Properties`、`Resources`、`Variants` 各最多一次，`HLSLINCLUDE` 与 `Pass` 可多次，至少一个 `Pass`；Pass 源码顺序保留。
+- `Version` 必须是 Shader block 第一项；之后顶层 section 顺序无关。`Properties`、`Parameters`、`Resources`、`Variants` 各最多一次，`HLSLINCLUDE` 与 `Pass` 可多次，至少一个 `Pass`；Pass 源码顺序保留。
 - `Shader "Toy3d/..."` 的逻辑名是公开身份，文件虚拟路径只用于 include、cache 和 diagnostics。逻辑名由 `/` 分隔的 ASCII `[A-Za-z_][A-Za-z0-9_]*` 段组成，大小写敏感；Cook 拒绝完全重复和仅大小写不同的冲突。
 - Pass 名称非空、在 Shader 内唯一且大小写敏感。稳定 `ShaderPassId` 不受 Pass 重排影响；重命名视为删除旧 Pass 并新增 Pass。
-- Properties、Resources、engine schema 与 Variants 生成的 HLSL 名称位于同一冲突域；`toy3d_`/`TOY3D_` 前缀保留。冲突直接报错，不自动改名。
+- Properties、Parameters、Resources、engine schema 与 Variants 生成的 HLSL 名称位于同一冲突域；`toy3d_`/`TOY3D_` 前缀保留。冲突直接报错，不自动改名。
 - include 只接受规范化虚拟绝对路径。v1 允许 `/Engine/ShaderIncludes/`，未来允许 `/Project/ShaderIncludes/`；禁止本机绝对路径、相对路径、`..`、反斜杠、系统/CWD fallback。`/Generated/` 只能由 compiler 注入，用户不得直接 include。
 - compiler 依次注入 `/Generated/ToyShaderPrelude.hlsli`、`/Generated/ToyBindings.hlsli`、Shader `HLSLINCLUDE` 和 Pass `HLSLPROGRAM`。generated 内容进入 compile key；Editor/Debug 可落盘 shadow copy，并用 `#line` 映射虚拟路径。
 - include cycle 报完整链；最大深度默认 64，可配置降低；依赖图保存虚拟路径与 SHA-256。
@@ -51,7 +51,7 @@
 - 同一 Binding Group 的普通数值参数自动合并为一个 constant buffer，绝不跨 Global、View、Pass、Material、Object 合并。每 group 最大 16 KiB，超限报 `ConstantBufferSizeLimitExceeded`，v1 不自动分页。
 - packing 采用 HLSL/D3D 16-byte register 规则：`float3 + float` 可共享 register，成员不得跨 16-byte 边界，数组元素 stride 至少 16 bytes，矩阵每列占一个 16-byte register，buffer 总大小向上对齐到 16 bytes，所有 padding 清零。
 - CPU/GPU 权威格式是 byte buffer 加 layout metadata，禁止直接 `memcpy` 任意 C++ struct。内置 C++ 类型以后通过生成代码或 `static_assert` 验证。backend upload alignment（例如 D3D12 256 bytes）不改变成员 ABI。
-- ToyShaderABI 标量为 Float32、Int32、UInt32；逻辑 Bool 使用 UInt32，false=0、true=1。内部 ABI 支持固定数组和 2x2 至 4x4 column-major matrix；`.shader Properties` v1 不开放数组，只公开 Matrix4x4。
+- ToyShaderABI 标量为 Float32、Int32、UInt32；逻辑 Bool 使用 UInt32，false=0、true=1。内部 ABI 支持固定数组和 2x2 至 4x4 column-major matrix；`.shader Properties` v1 不开放数组，只公开 Matrix4x4。`.shader Parameters` 首阶段只开放Pass group的Float、Float2、Float3、Float4与Float4x4，不开放数组或struct。
 - Vulkan 使用 DX-compatible relaxed cbuffer layout、显式 offset、reflection 与 `spirv-val --target-env vulkan1.1` 三重验证。reflection 是验证与 native mapping 来源，不是逻辑 schema 权威；binary 中出现 schema 未登记资源是错误。
 
 #### 资源、Sampler 与 StructuredBuffer
@@ -546,7 +546,26 @@ Sampler preset 固定为 PointClamp、PointWrap、LinearClamp、LinearWrap、Tri
 
 属性使用稳定 `ShaderParameterId`，算法见 1.1。重命名视为删除旧参数并新增参数，旧 override 作为 orphan 暂存；后续只增加显式 alias 迁移机制。
 
-### 5.4 `Resources`
+### 5.4 `Parameters`
+
+Renderer-owned、非Material的逐Pass数值常量通过独立section声明：
+
+```hlsl
+Parameters
+{
+    Pass
+    {
+        exposure_ev : Float = 0.0
+        projection : Float4x4
+    }
+}
+```
+
+首阶段只允许`Pass` Binding Group，以及`Float`、`Float2`、`Float3`、`Float4`和`Float4x4`。默认值可省略，省略时发布全零字节；显式默认值必须具有与类型完全一致的有限数值分量。成员按源码顺序打包，同一Shader的Pass参数自动聚合为一个ToyShaderABI constant buffer，并继续遵守每group 16 KiB上限。
+
+`Parameters`不提供Inspector元数据或MaterialInstance override，因此不能替代`Properties`；它也不声明texture、sampler或buffer，因此不能替代`Resources`。`Global`、`View`和`Object`的常量仍来自引擎固定schema。首阶段不开放自定义Material参数、数组、struct、多个自定义constant buffer、native `cbuffer`、`register`或descriptor set语法。
+
+### 5.5 `Resources`
 
 非材质资源通过逻辑分组声明：
 
@@ -568,7 +587,7 @@ Resources
 
 `Resources` 类型是封闭、可扩展的 Toy type schema，完整 v1 清单以 EBNF 为准，不接受任意 HLSL type text或 user-defined struct。`Global`、`View`、`Object` 的公共常量数据由引擎 `.hlsli` 和对应 schema 提供，避免每个 Shader 重复声明。高级 Shader 可以声明额外受控资源，但所有资源仍必须进入确定性布局编译和 reflection 验证。
 
-### 5.5 `Variants`
+### 5.6 `Variants`
 
 第一阶段提供有类型的 permutation domain：
 
@@ -602,7 +621,7 @@ Variant ABI v1 固定如下：
 - compiler-owned `/Generated/ToyShaderPrelude.hlsli` 只由 typed selection 生成。bool 输出 `TOY3D_VARIANT_<VariantName>` 为 0/1；enum 输出同名 selected-value macro，并为每个 option 输出 `TOY3D_VARIANT_<VariantName>_<OptionName>`。enum option 按 `ShaderEnumValueId` 排序后分配从 0 开始的 dense integer，因此源码重排不改变 generated HLSL。所有生成 macro 必须检查完整名称 collision；用户源码不得定义或声明保留的 `TOY3D_` 前缀。
 - `ShaderProgramCompileInput` 和 CLI 只接受 `name=value` typed selection；缺省使用 schema default，不接受调用方注入自由形式 permutation prelude。`ShaderMapEntry` 必须分别保存 Variant ID algorithm version、permutation ABI version 与 key，ShaderMap key、package record 和 runtime 查询都使用该身份。
 
-### 5.6 `Pass`
+### 5.7 `Pass`
 
 Shader `Pass` 是一个 Shader Program 与跨 API PSO 模板，不是 RDG pass。一个 `Pass` 至少描述：
 
@@ -645,7 +664,7 @@ queue selection
 
 Pass state 省略时规范化为 TriangleList、Cull Back、FrontFace CounterClockwise、Fill Solid、DepthTest GreaterEqual、DepthWrite On、Stencil Off、Blend Off、ColorWrite RGBA。省略与显式默认产生相同 template hash，重复 state 是错误。v1 的 Blend/ColorWrite 统一作用于所有 active color attachments，不支持 indexed/independent blend；Stencil reference 和 blend constants 保持 dynamic state。
 
-### 5.7 HLSL block 与 pragma
+### 5.8 HLSL block 与 pragma
 
 第一阶段支持：
 
@@ -659,14 +678,14 @@ graphics pass 必须且只能声明一个 vertex，pixel 可选，不得声明 c
 
 `HLSLINCLUDE` 定义 Shader 内多个 Pass 共享的 HLSL，`HLSLPROGRAM` 定义当前 Pass 的 HLSL。Frontend 合并公共 block、当前 Pass block、generated include 和外部 include，并使用 `#line` 保持诊断映射。
 
-## 6. Properties 与 Resources 自动生成
+## 6. Properties、Parameters 与 Resources 自动生成
 
 ### 6.1 生成流程
 
 以一个使用 `View + Material + Object` 的 graphics pass 为例：
 
-1. Frontend 解析 `Properties`、`Resources`、Pass 和 entry；
-2. 参数布局器按 ToyShaderABI 打包 Material 数值属性；
+1. Frontend 解析 `Properties`、`Parameters`、`Resources`、Pass 和 entry；
+2. 参数布局器按 ToyShaderABI 分组打包 Material 数值属性、Pass数值参数与引擎固定schema；
 3. Binding Layout Compiler 收集当前 Program 需要的所有逻辑 Binding；
 4. 根据 target 分别生成 D3D stage/register-class mapping 与 Vulkan four-set mapping；
 5. 为每个 target 生成带显式 `register()`、必要 `packoffset()` 和目标 Binding decoration 的虚拟 `.hlsli`；

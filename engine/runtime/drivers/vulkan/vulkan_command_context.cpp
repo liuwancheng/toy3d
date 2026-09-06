@@ -1839,13 +1839,7 @@ namespace toy3d
         if (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::Viewport))
         {
             const RHIViewport& viewport = graphics_state.viewport();
-            VkViewport vk_viewport{};
-            vk_viewport.x = viewport.x;
-            vk_viewport.y = viewport.y;
-            vk_viewport.width = viewport.width;
-            vk_viewport.height = viewport.height;
-            vk_viewport.minDepth = viewport.min_depth;
-            vk_viewport.maxDepth = viewport.max_depth;
+            const VkViewport vk_viewport = to_vk_viewport(viewport);
             vkCmdSetViewport(vk_command_buffer, 0, 1, &vk_viewport);
         }
         if (pipeline_dirty || EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::Scissor))

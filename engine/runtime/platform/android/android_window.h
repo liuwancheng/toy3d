@@ -12,6 +12,8 @@ namespace toy3d
         ~AndroidWindow();
 
         void resize(uint32_t _width, uint32_t _height) final;
+        Extent get_display_size() const final;
+        Extent get_framebuffer_size() const final;
         bool should_close() final;
         void process_events() final;
         void close() final;

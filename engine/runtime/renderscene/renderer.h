@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_device.h"
 #include "threading/threading_types.h"
+#include "ui/imgui_draw_data.h"
 
 #include <atomic>
 #include <functional>
@@ -17,6 +18,9 @@ namespace toy3d
     class SceneRenderer;
     class SceneInterface;
     class TaskGraphInterface;
+    class TonemapPassResources;
+    class ShaderMapProgram;
+    class ImGuiRenderer;
 
     enum class RendererLifecycleState
     {
@@ -56,7 +60,10 @@ namespace toy3d
             TaskGraphInterface& task_graph,
             RHISurfaceRef primary_surface,
             RHIViewportContextDesc viewport_desc,
-            std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory);
+            std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
+            std::shared_ptr<const ShaderMapProgram> tonemap_program = nullptr,
+            std::shared_ptr<const ShaderMapProgram> imgui_program = nullptr,
+            std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr);
         ~Renderer();
 
         Renderer(const Renderer&) = delete;
@@ -66,7 +73,9 @@ namespace toy3d
 
         ThreadStatus initialize();
         ThreadStatus teardown();
-        void draw_scene(std::unique_ptr<SceneRenderer> scene_renderer);
+        void draw_frame(
+            std::unique_ptr<SceneRenderer> scene_renderer,
+            std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr);
         RendererStatus status() const;
         // Published only between successful logical-RT initialize and teardown.
         // The pointer is non-owning and exposes no concrete RenderScene state to GT.
@@ -78,6 +87,9 @@ namespace toy3d
         RHIStatus ensure_primary_frame_extent(
             std::uint32_t width,
             std::uint32_t height);
+        RHIResult<RHIFrameEndResult> render_frame(
+            SceneRenderer& scene_renderer,
+            const ImGuiDrawData* ui_draw_data);
         void enter_terminal(const RHIStatus& failure) noexcept;
         void append_secondary_diagnostic(const RHIStatus& failure) noexcept;
         void release_domain(bool terminal) noexcept;
@@ -86,11 +98,16 @@ namespace toy3d
         RHISurfaceRef primary_surface_input_;
         RHIViewportContextDesc viewport_desc_;
         std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory_;
+        std::shared_ptr<const ShaderMapProgram> tonemap_program_input_;
+        std::shared_ptr<const ShaderMapProgram> imgui_program_input_;
+        std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas_input_;
 
         std::unique_ptr<RHIDevice> device_;
         std::unique_ptr<RenderResourceManager> resource_manager_;
         std::unique_ptr<RenderScene> render_scene_;
         std::unique_ptr<SceneRenderTargets> scene_render_targets_;
+        std::unique_ptr<TonemapPassResources> tonemap_pass_resources_;
+        std::unique_ptr<ImGuiRenderer> imgui_renderer_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;
         RHITextureRef placeholder_texture_;
         RHITextureViewRef placeholder_texture_view_;

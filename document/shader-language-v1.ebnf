@@ -5,9 +5,10 @@
 
 shader          = "Shader", shader_name, "{", "Version", "1",
                   { top_level_item }, "}" ;
-top_level_item  = properties | resources | variants | hlsl_include | pass ;
+top_level_item  = properties | parameters | resources | variants
+                | hlsl_include | pass ;
 
-(* Properties, Resources and Variants may each occur at most once.
+(* Properties, Parameters, Resources and Variants may each occur at most once.
    HLSLINCLUDE and Pass may occur multiple times. At least one Pass is required.
    These cardinality rules are semantic constraints rather than EBNF syntax. *)
 
@@ -21,6 +22,15 @@ numeric_property_type = "Float" | "Float2" | "Float3" | "Float4"
                       | "Color" | "Matrix4x4" ;
 texture_property_type = "Texture2D" | "TextureCube" ;
 sampler_property_type = "Sampler" | "ComparisonSampler" ;
+
+parameters      = "Parameters", "{", { parameter_group }, "}" ;
+parameter_group = "Pass", "{", { parameter }, "}" ;
+parameter       = identifier, ":", parameter_type,
+                  [ "=", numeric_default_value ] ;
+parameter_type  = "Float" | "Float2" | "Float3" | "Float4"
+                | "Float4x4" ;
+numeric_default_value = number
+                      | "(", number, { ",", number }, ")" ;
 
 resources       = "Resources", "{", { resource_group }, "}" ;
 resource_group  = binding_group, "{", { resource }, "}" ;
@@ -128,6 +138,9 @@ shader_name     = string ;
    - comments use // or slash-star syntax;
    - ENDHLSL ends a raw block only as the first non-whitespace token on its own
      source line;
+   - Parameters v1 only accepts the Pass group; omitted parameter defaults are
+     zero-initialized; arrays, structs and native cbuffer/register/set syntax
+     are not part of v1;
    - duplicate sections, duplicate Pass state, unknown keywords, invalid masks,
      invalid resource element types, and a Shader without Pass are errors;
    - typed Texture/Buffer element types require target format support;

@@ -14,6 +14,7 @@ namespace toy3d
         virtual const char* get_device_name() const = 0;
     public:
         virtual void update();
+        virtual void clear_pressed_state() noexcept;
 
         virtual void set_key_status(KeyCode key_code, KeyStatus status);
         virtual KeyStatus get_key_status(KeyCode key_code) const;
@@ -50,6 +51,7 @@ namespace toy3d
 
         void process_mouse_move(int _x, int _y);
         void process_mouse_wheel(int delta){wheel_delta = delta;};
+        void clear_pressed_state() noexcept override;
         
         void get_mouse_pos(int& out_x, int& out_y) const { out_x = x; out_y = y; };
         void get_mouse_delta(int& dx, int& dy) const { dx = x - prev_x; dy = y - prev_y; };

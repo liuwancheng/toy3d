@@ -105,6 +105,23 @@ namespace toy3d
         properties.extent.height = _height;
     }
 
+    Extent Win32Window::get_display_size() const
+    {
+        RECT client_rect{};
+        if (hWnd != nullptr && GetClientRect(hWnd, &client_rect) != FALSE)
+        {
+            return {
+                static_cast<std::uint32_t>(client_rect.right - client_rect.left),
+                static_cast<std::uint32_t>(client_rect.bottom - client_rect.top)};
+        }
+        return properties.extent;
+    }
+
+    Extent Win32Window::get_framebuffer_size() const
+    {
+        return get_display_size();
+    }
+
     void Win32Window::create_window()
     {
         // 获取配置文件中的窗口标题和大小

@@ -21,6 +21,7 @@ public:
 protected:
     bool on_initialize() override;
     void on_tick(double delta_time) override;
+    void on_build_ui() override;
     void on_build_scene_views(
         std::vector<toy3d::SceneView>& views,
         const toy3d::Extent& extent) const override;
@@ -35,6 +36,9 @@ private:
     toy3d::StaticMeshRef mesh_;
     toy3d::Actor* actor_ = nullptr;
     float camera_x_ = 0.0f;
+    bool animate_camera_ = true;
+    bool animate_material_ = true;
+    bool show_diagnostics_ = false;
     bool setup_failed_ = false;
     bool actor_destroyed_ = false;
     bool material_released_ = false;

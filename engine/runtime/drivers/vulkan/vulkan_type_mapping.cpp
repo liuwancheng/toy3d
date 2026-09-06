@@ -116,12 +116,28 @@ namespace toy3d
 
     RHIResult<VkFrontFace> to_vk_front_face(RHIFrontFace front_face)
     {
+        // The Vulkan backend uses a negative viewport height to preserve the
+        // public D3D-style clip-space Y convention. That viewport transform
+        // reverses native framebuffer winding, so front-face mapping must be
+        // reversed here as part of the same backend-only coordinate policy.
         switch (front_face)
         {
-        case RHIFrontFace::CounterClockwise: return RHIResult<VkFrontFace>::success(VK_FRONT_FACE_COUNTER_CLOCKWISE);
-        case RHIFrontFace::Clockwise: return RHIResult<VkFrontFace>::success(VK_FRONT_FACE_CLOCKWISE);
+        case RHIFrontFace::CounterClockwise: return RHIResult<VkFrontFace>::success(VK_FRONT_FACE_CLOCKWISE);
+        case RHIFrontFace::Clockwise: return RHIResult<VkFrontFace>::success(VK_FRONT_FACE_COUNTER_CLOCKWISE);
         }
         return RHIResult<VkFrontFace>::failure(RHIErrorCode::InvalidArgument, "Unknown RHI front-face winding.");
+    }
+
+    VkViewport to_vk_viewport(const RHIViewport& viewport)
+    {
+        VkViewport result{};
+        result.x = viewport.x;
+        result.y = viewport.y + viewport.height;
+        result.width = viewport.width;
+        result.height = -viewport.height;
+        result.minDepth = viewport.min_depth;
+        result.maxDepth = viewport.max_depth;
+        return result;
     }
 
     RHIResult<VkBlendFactor> to_vk_blend_factor(RHIBlendFactor factor)

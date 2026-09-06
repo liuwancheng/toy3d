@@ -52,6 +52,14 @@ Shader "Tests/Layout"
         base_color_texture ("Base Color Texture", Texture2D) = "white"
         material_sampler ("Material Sampler", Sampler) = LinearWrap
     }
+    Parameters
+    {
+        Pass
+        {
+            exposure_ev : Float = 0.0
+            projection : Float4x4
+        }
+    }
     Resources
     {
         Pass
@@ -85,6 +93,14 @@ Shader "Tests/Layout"
         roughness ("Roughness", Float) = 0.5
         material_sampler ("Material Sampler", Sampler) = LinearWrap
         base_color_texture ("Base Color Texture", Texture2D) = "white"
+    }
+    Parameters
+    {
+        Pass
+        {
+            exposure_ev : Float = 0.0
+            projection : Float4x4
+        }
     }
     Resources
     {
@@ -167,8 +183,8 @@ Shader "Tests/Layout"
         if (!first.layout || !reordered.layout) return;
         check(first.layout->logical_layout_hash == reordered.layout->logical_layout_hash, "independent resource source order must not change logical layout hash");
         check(first.layout->resources.size() == 6, "Properties and Resources must merge into one logical resource schema");
-        check(first.layout->constant_buffers.size() == 3,
-            "canonical View/Object schemas and numeric Material properties must produce three group cbuffers");
+        check(first.layout->constant_buffers.size() == 4,
+            "canonical View/Object, Pass Parameters and numeric Material properties must produce four group cbuffers");
         const auto view_buffer = std::find_if(
             first.layout->constant_buffers.begin(),
             first.layout->constant_buffers.end(),
@@ -187,6 +203,12 @@ Shader "Tests/Layout"
             [](const ConstantBufferLayout& buffer) {
                 return buffer.group == BindingGroup::Object;
             });
+        const auto pass_buffer = std::find_if(
+            first.layout->constant_buffers.begin(),
+            first.layout->constant_buffers.end(),
+            [](const ConstantBufferLayout& buffer) {
+                return buffer.group == BindingGroup::Pass;
+            });
         check(view_buffer != first.layout->constant_buffers.end() &&
               view_buffer->members.size() == 8 &&
               view_buffer->members[2].name == "toy_view_projection" &&
@@ -201,6 +223,23 @@ Shader "Tests/Layout"
               object_buffer->members[0].name == "toy_object_to_world" &&
               object_buffer->members[0].matrix_stride == 16,
             "canonical Object schema must preserve the object-to-world ToyShaderABI path");
+        check(pass_buffer != first.layout->constant_buffers.end() &&
+              pass_buffer->members.size() == 2 &&
+              pass_buffer->members[0].name == "exposure_ev" &&
+              pass_buffer->members[0].offset == 0 &&
+              pass_buffer->members[1].name == "projection" &&
+              pass_buffer->members[1].offset == 16 &&
+              pass_buffer->members[1].matrix_stride == 16,
+            "Pass Parameters must pack in source order into one ToyShaderABI constant buffer");
+        if (pass_buffer != first.layout->constant_buffers.end())
+        {
+            check(pass_buffer->members[0].default_value.size() == 4 &&
+                  pass_buffer->members[1].default_value.size() == 64 &&
+                  std::all_of(pass_buffer->members[1].default_value.begin(),
+                      pass_buffer->members[1].default_value.end(),
+                      [](std::uint8_t value) { return value == 0; }),
+                "omitted Pass parameter defaults must publish zero-initialized bytes");
+        }
 
         std::string changed_default = shader_source_a;
         const std::size_t default_position = changed_default.find("roughness (\"Roughness\", Float) = 0.5");
@@ -242,6 +281,7 @@ Shader "Tests/Layout"
         const LogicalLayoutResult logical = compile_source(shader_source_a);
         if (!logical.layout) return;
         const std::vector<ParameterUsage> usage = {
+            {"exposure_ev", ShaderStageFlags::Pixel},
             {"base_color", ShaderStageFlags::Pixel},
             {"base_color_texture", ShaderStageFlags::Pixel},
             {"material_sampler", ShaderStageFlags::Pixel},
@@ -251,13 +291,13 @@ Shader "Tests/Layout"
         const ActiveLayoutResult active = build_active_layout(*logical.layout, usage);
         check(active.succeeded(), "known Program usage must build an active layout");
         if (!active.layout) return;
-        check(active.layout->bindings.size() == 6, "one used cbuffer plus five used resources must remain active");
-        const ActiveBinding* cbuffer = nullptr;
+        check(active.layout->bindings.size() == 7, "two used cbuffers plus five used resources must remain active");
+        std::size_t constant_buffer_count = 0;
         for (const ActiveBinding& binding : active.layout->bindings)
         {
-            if (binding.constant_buffer) cbuffer = &binding;
+            if (binding.constant_buffer) ++constant_buffer_count;
         }
-        check(cbuffer && cbuffer->constant_buffer->members.size() == 2, "using one cbuffer member must retain the complete group cbuffer");
+        check(constant_buffer_count == 2, "using a member must retain each complete logical group cbuffer");
 
         const TargetBindingResult d3d = allocate_target_bindings(*active.layout, ShaderTarget::D3D11Dxbc, TargetBindingLimits::d3d11_sm5());
         const TargetBindingResult d3d12 = allocate_target_bindings(*active.layout, ShaderTarget::D3D12Dxil, TargetBindingLimits::d3d12_sm6());
@@ -286,7 +326,8 @@ Shader "Tests/Layout"
         check(material_texture != vulkan.layout->bindings.end() && material_texture->descriptor_set == 2, "Material resources must map to Vulkan set 2");
         if (scene_texture != vulkan.layout->bindings.end())
         {
-            check(scene_texture->descriptor_binding == 0, "each Vulkan set must allocate binding numbers from zero");
+            check(scene_texture->descriptor_binding == 1,
+                "Pass resources must follow the Pass constant buffer in a compact Vulkan set");
         }
 
         const BindingCodegenResult d3d_hlsl = generate_binding_hlsl(*logical.layout, *d3d.layout, ShaderStageFlags::Pixel);

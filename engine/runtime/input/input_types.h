@@ -51,7 +51,9 @@ namespace toy3d
         MouseButtonDoubleClick,
 
         MouseMove,
-        MouseWheel
+        MouseWheel,
+        TextInput,
+        WindowFocus
     };
 
     enum class KeyStatus 
@@ -65,39 +67,69 @@ namespace toy3d
     
     struct InputEvent 
     {
-        float scale; // 用于Axis绑定的持续变化数据
-        InputEventType type;
+        float scale = 0.0F; // 用于Axis绑定的持续变化数据
+        InputEventType type = InputEventType::KeyPressed;
     };
     
     // 键盘事件
     struct KeyEvent : InputEvent 
     {
-        KeyCode key_code; // 键码
+        KeyCode key_code = KeyCode::MAX; // 键码
     };
     
     // 鼠标点击事件
     struct MouseButtonEvent : InputEvent 
     {
-        KeyCode key_code; // 键码
-        int x;
-        int y;
+        KeyCode key_code = KeyCode::MAX; // 键码
+        int x = 0;
+        int y = 0;
     };
     
     // 鼠标移动事件
     struct MouseMoveEvent : InputEvent 
     {
-        int x;
-        int y;
-        int delta_x;
-        int delta_y;
+        int x = 0;
+        int y = 0;
+        int delta_x = 0;
+        int delta_y = 0;
     };
     
     // 鼠标滚轮事件
     struct MouseWheelEvent : InputEvent 
     {
-        int x;
-        int y;
-        int delta;
+        int x = 0;
+        int y = 0;
+        float delta_x = 0.0F;
+        float delta_y = 0.0F;
+    };
+
+    constexpr bool is_unicode_scalar(std::uint32_t code_point) noexcept
+    {
+        return code_point <= 0x10FFFFu &&
+            !(code_point >= 0xD800u && code_point <= 0xDFFFu);
+    }
+
+    struct TextInputEvent : InputEvent
+    {
+        explicit TextInputEvent(std::uint32_t value = 0u)
+            : code_point(value)
+        {
+            type = InputEventType::TextInput;
+        }
+
+        bool valid() const noexcept { return is_unicode_scalar(code_point); }
+        std::uint32_t code_point = 0u;
+    };
+
+    struct WindowFocusEvent : InputEvent
+    {
+        explicit WindowFocusEvent(bool value = false)
+            : focused(value)
+        {
+            type = InputEventType::WindowFocus;
+        }
+
+        bool focused = false;
     };
     
 } // namespace toy3d

@@ -632,11 +632,13 @@ execute 只接收当前 graphics context 和该不可变准备值，负责 begin
 状态和录制 draw；它不得回读准备源或调用任何 device creation。prepare 与 execute 必须使用
 同一个 recording context，因此 upload 严格先于消费它的 draw。
 
-第一阶段由 `SceneRenderer` 显式决定 transition、prepare、execute、finish 和 frame closure，
-仍保持单 viewport、单 graphics context、单 immutable business command list。任一阶段失败由
-外层 frame owner discard 当前 RenderResource recording 并调用 `abort_frame()`。当前不建立
-通用 `RenderPass` 基类、Pass Scheduler 或 command packet hierarchy；后续 RDG 位于
-renderscene，形成真实资源依赖后再统一承担声明、调度和 barrier 规划。
+第一阶段由 Renderer frame orchestration 显式决定 viewport acquisition、pending upload、最终输出
+transition、finish 和 frame closure，仍保持单 viewport、单 graphics context、单 immutable business
+command list。`SceneRenderer` 只在注入的同一 context 中执行 View/visibility、prepare 和 scene pass
+recording，不拥有一次性UI payload，也不调用Tonemap、ImGui、present或submit。任一阶段失败由外层
+frame owner discard 当前 RenderResource recording并调用 `abort_frame()`。当前不建立通用
+`RenderPass` 基类、Pass Scheduler或command packet hierarchy；后续RDG位于renderscene，形成真实
+资源依赖后再统一承担声明、调度和barrier规划。
 
 ### 13.2 GlobalShader pass
 

@@ -1,6 +1,7 @@
 #include "layout/shader_layout.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <type_traits>
@@ -450,6 +451,47 @@ namespace toy3d::shader
                     if (property != asset.properties.end())
                     {
                         write_numeric_default(member, property->default_value);
+                    }
+                }
+                layout.constant_buffers.push_back(std::move(*packed.layout));
+            }
+        }
+
+        std::vector<ConstantMemberInput> pass_inputs;
+        for (const Parameter& parameter : asset.parameters)
+        {
+            const std::uint32_t expected_count = value_component_count(parameter.type);
+            if (parameter.default_value.kind != DefaultValueKind::None &&
+                (parameter.default_value.kind != DefaultValueKind::Numbers ||
+                 parameter.default_value.numbers.size() != expected_count))
+            {
+                add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue,
+                    parameter.default_value.location,
+                    "Parameter '" + parameter.name + "' requires exactly " +
+                    std::to_string(expected_count) + " numeric default component(s).");
+            }
+            if (std::any_of(parameter.default_value.numbers.begin(), parameter.default_value.numbers.end(),
+                [](double value) { return !std::isfinite(value); }))
+            {
+                add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue,
+                    parameter.default_value.location,
+                    "Parameter '" + parameter.name + "' default must be finite.");
+            }
+            pass_inputs.push_back({parameter.name, parameter.type, 1u, parameter.location});
+        }
+        if (!pass_inputs.empty())
+        {
+            ConstantBufferPackResult packed = pack_constant_buffer(BindingGroup::Pass, pass_inputs);
+            result.diagnostics.insert(result.diagnostics.end(), packed.diagnostics.begin(), packed.diagnostics.end());
+            if (packed.layout)
+            {
+                for (ShaderConstantMember& member : packed.layout->members)
+                {
+                    const auto parameter = std::find_if(asset.parameters.begin(), asset.parameters.end(),
+                        [&](const Parameter& candidate) { return candidate.name == member.name; });
+                    if (parameter != asset.parameters.end())
+                    {
+                        write_numeric_default(member, parameter->default_value);
                     }
                 }
                 layout.constant_buffers.push_back(std::move(*packed.layout));

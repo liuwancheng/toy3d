@@ -14,6 +14,8 @@ namespace toy3d
         void process_events() final;
         void close() final;
         void resize(uint32_t _width, uint32_t _height) final;
+        Extent get_display_size() const final;
+        Extent get_framebuffer_size() const final;
         
         HWND get_native_hwnd() const{ return hWnd;}
         HINSTANCE get_native_hinstance() const { return hInstance; }

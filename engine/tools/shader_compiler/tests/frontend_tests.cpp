@@ -67,6 +67,7 @@ namespace
         check(asset.name == "Tests/FrontendValid", "Shader name must be preserved");
         check(asset.version == 1, "Shader version must be parsed");
         check(asset.properties.size() == 3, "all Properties must be parsed");
+        check(asset.parameters.size() == 2, "all Pass Parameters must be parsed");
         check(asset.resources.size() == 4, "all Resources must be parsed");
         check(asset.variants.size() == 2, "all Variants must be parsed");
         check(asset.includes.size() == 1, "HLSLINCLUDE must be captured");
@@ -149,6 +150,10 @@ int main()
     test_error("compute_graphics_state.shader", toy3d::shader::DiagnosticCode::InvalidPassState);
     test_error("invalid_shader_name.shader", toy3d::shader::DiagnosticCode::InvalidShaderName);
     test_error("reserved_identifier.shader", toy3d::shader::DiagnosticCode::ReservedIdentifier);
+    test_error("duplicate_parameters.shader", toy3d::shader::DiagnosticCode::DuplicateSection);
+    test_error("invalid_parameter_group.shader", toy3d::shader::DiagnosticCode::InvalidParameterGroup);
+    test_error("invalid_parameter_type.shader", toy3d::shader::DiagnosticCode::InvalidParameterType);
+    test_error("parameter_identifier_conflict.shader", toy3d::shader::DiagnosticCode::IdentifierConflict);
 
     if (failure_count != 0)
     {

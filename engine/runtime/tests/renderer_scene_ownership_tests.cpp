@@ -1,6 +1,7 @@
 #include "rendercore/scene_interface.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/shader/primitive_uniform_shader_parameters.h"
+#include "rendercore/shader/shader_map.h"
 #include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/view/scene_view.h"
 #include "rendercore/frame_synchronization.h"
@@ -33,6 +34,97 @@
 
 namespace
 {
+    toy3d::ShaderContentHash nonzero_hash(std::uint8_t value)
+    {
+        toy3d::ShaderContentHash hash{};
+        hash[0] = value;
+        return hash;
+    }
+
+    class RendererProgramLoader final : public toy3d::ShaderMapLoader
+    {
+    public:
+        explicit RendererProgramLoader(toy3d::ShaderMapProgramData program)
+            : program_(std::move(program))
+        {}
+
+        toy3d::ShaderMapProgramLoadResult load_program(
+            const toy3d::ShaderMapProgramKey&) const override
+        {
+            return {program_, {}};
+        }
+
+    private:
+        toy3d::ShaderMapProgramData program_;
+    };
+
+    toy3d::ShaderMapProgramRef make_tonemap_program()
+    {
+        toy3d::ShaderMapProgramData program;
+        program.shader_name = "Toy3d/PostProcess/Tonemap";
+        program.pass_name = "Tonemap";
+        program.mapping_version = 1u;
+        program.logical_layout_hash = nonzero_hash(1u);
+        program.target_binding_hash = nonzero_hash(2u);
+        program.pass_template_hash =
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(
+                program.graphics_pass_state);
+        program.permutation_key = nonzero_hash(3u);
+
+        toy3d::ShaderMapBinding constants;
+        constants.parameter_id = 1u;
+        constants.name = "toy_pass_data";
+        constants.group = toy3d::RHIBindingGroup::Pass;
+        constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        constants.stages = toy3d::RHIShaderStageFlags::Pixel;
+        constants.target_binding = 0u;
+        constants.constant_buffer_size = 16u;
+        constants.constant_members.push_back({2u, "exposure_ev",
+            toy3d::ShaderValueType::Float32, 0u, 4u, 0u, 0u});
+        program.bindings.push_back(constants);
+
+        toy3d::ShaderMapBinding texture;
+        texture.parameter_id = 3u;
+        texture.name = "scene_color";
+        texture.group = toy3d::RHIBindingGroup::Pass;
+        texture.type = toy3d::RHIResourceBindingType::SampledTexture;
+        texture.stages = toy3d::RHIShaderStageFlags::Pixel;
+        texture.target_binding = 1u;
+        program.bindings.push_back(texture);
+
+        toy3d::ShaderMapBinding sampler;
+        sampler.parameter_id = 4u;
+        sampler.name = "scene_sampler";
+        sampler.group = toy3d::RHIBindingGroup::Pass;
+        sampler.type = toy3d::RHIResourceBindingType::Sampler;
+        sampler.stages = toy3d::RHIShaderStageFlags::Pixel;
+        sampler.target_binding = 2u;
+        program.bindings.push_back(sampler);
+
+        toy3d::ShaderMapStage vertex;
+        vertex.stage = toy3d::RHIShaderStage::Vertex;
+        vertex.entry_point = "vs_main";
+        vertex.binary = {1u, 2u, 3u, 4u};
+        vertex.content_hash = nonzero_hash(4u);
+        program.stages.push_back(std::move(vertex));
+        toy3d::ShaderMapStage pixel;
+        pixel.stage = toy3d::RHIShaderStage::Pixel;
+        pixel.entry_point = "ps_main";
+        pixel.binary = {4u, 3u, 2u, 1u};
+        pixel.content_hash = nonzero_hash(5u);
+        pixel.reflection = program.bindings;
+        program.stages.push_back(std::move(pixel));
+
+        RendererProgramLoader loader(program);
+        toy3d::ShaderMap shader_map(loader);
+        toy3d::ShaderMapProgramKey key;
+        key.shader_name = program.shader_name;
+        key.pass_name = program.pass_name;
+        key.platform = program.platform;
+        key.permutation_key = program.permutation_key;
+        return shader_map.find_or_load(key).program;
+    }
+
     template<typename MemberDescription, typename MemberDescription::type Member>
     struct PrivateMemberAccess
     {
@@ -538,24 +630,24 @@ namespace
 
     protected:
         toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(
-            const toy3d::RHIShaderDesc&) override
+            const toy3d::RHIShaderDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(
-                toy3d::RHIErrorCode::Unsupported, "unused test shader");
+            return toy3d::RHIResult<toy3d::RHIShaderRef>::success(
+                std::make_shared<toy3d::RHIShader>(*this, desc));
         }
         toy3d::RHIResult<toy3d::RHIBindingLayoutRef>
         create_binding_layout_impl(
-            const toy3d::RHIBindingLayoutDesc&) override
+            const toy3d::RHIBindingLayoutDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::failure(
-                toy3d::RHIErrorCode::Unsupported, "unused test layout");
+            return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::success(
+                std::make_shared<toy3d::RHIBindingLayout>(*this, desc));
         }
         toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>
         create_graphics_pipeline_impl(
-            const toy3d::RHIGraphicsPipelineDesc&) override
+            const toy3d::RHIGraphicsPipelineDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::failure(
-                toy3d::RHIErrorCode::Unsupported, "unused test pipeline");
+            return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::success(
+                std::make_shared<toy3d::RHIGraphicsPipeline>(*this, desc));
         }
         bool is_initialized_impl() const override
         {
@@ -953,6 +1045,8 @@ namespace
 
     void test_renderer_bootstrap_failures()
     {
+        const toy3d::ShaderMapProgramRef tonemap_program =
+            make_tonemap_program();
         const std::vector<RendererBootstrapFailurePoint> failure_points = {
             RendererBootstrapFailurePoint::DeviceFactory,
             RendererBootstrapFailurePoint::DeviceInitialize,
@@ -1002,7 +1096,8 @@ namespace
                         std::unique_ptr<toy3d::RHIDevice>>::success(
                             std::make_unique<RendererTestDevice>(
                                 failure_point));
-                });
+                },
+                tonemap_program);
             toy3d::RenderingThread rendering_thread(
                 thread_manager,
                 *graph,
@@ -1031,6 +1126,8 @@ namespace
 
     void test_renderer_lifecycle(bool multithreaded, bool inject_terminal)
     {
+        const toy3d::ShaderMapProgramRef tonemap_program =
+            make_tonemap_program();
         toy3d::ThreadManager thread_manager;
         std::unique_ptr<toy3d::TaskGraphInterface> graph =
             create_graph(thread_manager, multithreaded);
@@ -1057,7 +1154,8 @@ namespace
                 return toy3d::RHIResult<
                     std::unique_ptr<toy3d::RHIDevice>>::success(
                         std::make_unique<RendererTestDevice>());
-            });
+            },
+            tonemap_program);
         toy3d::Renderer* const stable_address = &renderer;
         {
         toy3d::RenderingThread rendering_thread(
@@ -1213,7 +1311,7 @@ namespace
                 toy3d::Radians(1.0f),
                 0.1f,
                 100.0f);
-            renderer.draw_scene(
+            renderer.draw_frame(
                 std::make_unique<toy3d::ForwardSceneRenderer>(
                     toy3d::SceneViewFamily(
                         *scene_interface,

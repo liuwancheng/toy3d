@@ -4,11 +4,22 @@
 #include "input_device.h"
 #include "input_binding.h"
 
+#include <functional>
+
 namespace toy3d {
 
 class InputSystem 
 {
 public:
+    struct CapturePolicy
+    {
+        bool mouse = false;
+        bool keyboard = false;
+        bool text = false;
+    };
+
+    using EventSink = std::function<void(const InputEvent&)>;
+
     static InputSystem& get_instance() 
     {
         static InputSystem instance;
@@ -33,7 +44,10 @@ public:
     
     
     // 事件处理
-    void process_event(InputEvent& event);
+    void process_event(const InputEvent& event);
+    void set_event_sink(EventSink sink);
+    void set_capture_policy(CapturePolicy policy) noexcept;
+    void clear_pressed_state() noexcept;
     
     // 用于绑定持续行为的函数 (类似UE的Axis映射)
     template<typename callback>
@@ -55,6 +69,8 @@ private:
     
     std::unordered_map<std::string, InputBindingContext> binding_contexts;
     std::vector<InputBindingContext*> active_mapping_contexts;
+    EventSink event_sink_;
+    CapturePolicy capture_policy_;
     
     void sort_active_mapping_contexts();
 };

@@ -142,7 +142,7 @@ target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>
 # Link dependencies    
 target_link_libraries(${TARGET_NAME} PRIVATE tinyobjloader stb)
 target_link_libraries(${TARGET_NAME} PUBLIC glfw)
-target_link_libraries(${TARGET_NAME} PUBLIC imgui)
+target_link_libraries(${TARGET_NAME} PRIVATE imgui)
 target_link_libraries(${TARGET_NAME} PUBLIC ${vulkan_lib})
 target_link_libraries(${TARGET_NAME} PUBLIC vma)
 target_link_libraries(${TARGET_NAME} PUBLIC glm::glm)
@@ -210,6 +210,30 @@ if(BUILD_TESTING)
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     target_link_libraries(Toy3dConsoleManagerTests PRIVATE Toy3dFileSystem Threads::Threads)
     add_test(NAME Toy3dRuntime.ConsoleManager COMMAND Toy3dConsoleManagerTests)
+
+    add_executable(Toy3dImGuiSystemTests
+        "tests/imgui_system_tests.cpp")
+    target_compile_features(Toy3dImGuiSystemTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dImGuiSystemTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dImGuiSystemTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dImGuiSystemTests PRIVATE Toy3dRuntime imgui)
+    add_test(NAME Toy3dRuntime.ImGuiSystem COMMAND Toy3dImGuiSystemTests)
+
+    add_executable(Toy3dTonemapPassTests
+        "tests/tonemap_pass_tests.cpp")
+    target_compile_features(Toy3dTonemapPassTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dTonemapPassTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dTonemapPassTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dTonemapPassTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.TonemapPass COMMAND Toy3dTonemapPassTests)
 
     add_executable(Toy3dShaderMapTests
         "tests/shader_map_tests.cpp")

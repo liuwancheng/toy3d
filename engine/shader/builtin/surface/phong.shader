@@ -90,7 +90,7 @@ Shader "Toy3d/Surface/Phong"
                     (ambient_color.rgb +
                      directional_light_color.rgb * diffuse_term) +
                 specular_color.rgb * (specular_term * specular_intensity);
-            return float4(saturate(lit_color), base_color.a);
+            return float4(max(lit_color, 0.0), base_color.a);
         }
         ENDHLSL
     }

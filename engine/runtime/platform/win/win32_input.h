@@ -14,7 +14,14 @@ namespace toy3d
         virtual void exit() override;
 
         virtual void update() override;
+        PlatformInputCapabilities capabilities() const noexcept override
+        {
+            return {true, true, true, true, true};
+        }
 
         void process_win32_msg(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+
+    private:
+        wchar_t pending_high_surrogate_ = 0;
     };
 } // namespace toy3d

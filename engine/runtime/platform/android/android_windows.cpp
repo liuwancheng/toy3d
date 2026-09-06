@@ -72,6 +72,32 @@ namespace toy3d
         IWindow::resize(_width, _height);
     }
 
+    Extent AndroidWindow::get_display_size() const
+    {
+        int width = 0;
+        int height = 0;
+        if (glfw_window != nullptr)
+        {
+            glfwGetWindowSize(glfw_window, &width, &height);
+        }
+        return {
+            width > 0 ? static_cast<std::uint32_t>(width) : 0u,
+            height > 0 ? static_cast<std::uint32_t>(height) : 0u};
+    }
+
+    Extent AndroidWindow::get_framebuffer_size() const
+    {
+        int width = 0;
+        int height = 0;
+        if (glfw_window != nullptr)
+        {
+            glfwGetFramebufferSize(glfw_window, &width, &height);
+        }
+        return {
+            width > 0 ? static_cast<std::uint32_t>(width) : 0u,
+            height > 0 ? static_cast<std::uint32_t>(height) : 0u};
+    }
+
     bool AndroidWindow::should_close()
     {
         return glfwWindowShouldClose(glfw_window);

@@ -8,6 +8,14 @@ Shader "Tests/FrontendValid"
         roughness ("Roughness", Range(0.0, 1.0)) = 0.5
         source_texture ("Source", Texture2D) = "white"
     }
+    Parameters
+    {
+        Pass
+        {
+            exposure_ev : Float = 0.0
+            projection : Float4x4
+        }
+    }
 
     Resources
     {

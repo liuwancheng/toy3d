@@ -42,6 +42,16 @@ namespace toy3d::shader
             return std::nullopt;
         }
 
+        std::optional<ShaderValueType> parameter_type_from_name(std::string_view name)
+        {
+            if (name == "Float") return ShaderValueType::Float32;
+            if (name == "Float2") return ShaderValueType::Float32x2;
+            if (name == "Float3") return ShaderValueType::Float32x3;
+            if (name == "Float4") return ShaderValueType::Float32x4;
+            if (name == "Float4x4") return ShaderValueType::Float32x4x4;
+            return std::nullopt;
+        }
+
         std::optional<ResourceKind> resource_kind_from_name(std::string_view name)
         {
             if (name == "Texture2D") return ResourceKind::Texture2D;
@@ -342,6 +352,7 @@ namespace toy3d::shader
         }
 
         bool has_properties = false;
+        bool has_parameters = false;
         bool has_resources = false;
         bool has_variants = false;
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
@@ -354,6 +365,15 @@ namespace toy3d::shader
                 }
                 has_properties = true;
                 parse_properties(asset);
+            }
+            else if (match_identifier("Parameters"))
+            {
+                if (has_parameters)
+                {
+                    add_error(DiagnosticCode::DuplicateSection, peek().location, "Parameters may only be declared once.");
+                }
+                has_parameters = true;
+                parse_parameters(asset);
             }
             else if (match_identifier("Resources"))
             {
@@ -603,6 +623,84 @@ namespace toy3d::shader
             }
         }
         return expect(TokenKind::RightBrace, "Expected '}' to close the resource Binding Group.").has_value();
+    }
+
+    bool ShaderParser::parse_parameters(ShaderAsset& asset)
+    {
+        if (!expect(TokenKind::LeftBrace, "Expected '{' after Parameters."))
+        {
+            return false;
+        }
+        while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+        {
+            parse_parameter_group(asset);
+        }
+        return expect(TokenKind::RightBrace, "Expected '}' to close Parameters.").has_value();
+    }
+
+    bool ShaderParser::parse_parameter_group(ShaderAsset& asset)
+    {
+        const auto group_token = expect_identifier("Expected the Pass parameter Binding Group.");
+        if (!group_token)
+        {
+            consume();
+            return false;
+        }
+        const bool valid_group = group_token->text == "Pass";
+        if (!valid_group)
+        {
+            add_error(DiagnosticCode::InvalidParameterGroup, group_token->location,
+                "Parameters v1 only supports the Pass Binding Group.");
+        }
+        expect(TokenKind::LeftBrace, "Expected '{' after the parameter Binding Group.");
+        while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+        {
+            const auto name = expect_identifier("Expected a parameter name.");
+            if (!name)
+            {
+                consume();
+                continue;
+            }
+            Parameter parameter;
+            parameter.name = name->text;
+            parameter.location = name->location;
+            validate_identifier(asset, *name, "parameter");
+            const bool duplicate = contains_name(asset.parameters, parameter.name);
+            if (duplicate)
+            {
+                add_error(DiagnosticCode::DuplicateParameter, name->location,
+                    "Duplicate parameter '" + parameter.name + "'.");
+            }
+            expect(TokenKind::Colon, "Expected ':' after the parameter name.");
+            const auto type = expect_identifier("Expected a parameter type.");
+            if (type)
+            {
+                const auto parsed_type = parameter_type_from_name(type->text);
+                if (!parsed_type)
+                {
+                    add_error(DiagnosticCode::InvalidParameterType, type->location,
+                        "Parameters v1 does not support type '" + type->text + "'.");
+                }
+                else
+                {
+                    parameter.type = *parsed_type;
+                }
+            }
+            if (match(TokenKind::Equal))
+            {
+                parse_default_value(parameter.default_value);
+                if (parameter.default_value.kind != DefaultValueKind::Numbers)
+                {
+                    add_error(DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
+                        "Parameter defaults must be numeric.");
+                }
+            }
+            if (!duplicate && valid_group)
+            {
+                asset.parameters.push_back(std::move(parameter));
+            }
+        }
+        return expect(TokenKind::RightBrace, "Expected '}' to close the parameter Binding Group.").has_value();
     }
 
     bool ShaderParser::parse_resource_type(Resource& resource)
@@ -1189,6 +1287,7 @@ namespace toy3d::shader
             add_error(DiagnosticCode::ReservedIdentifier, token.location, "Identifier '" + token.text + "' uses a reserved Toy3d prefix.");
         }
         const bool conflict = (category != "property" && contains_name(asset.properties, token.text)) ||
+            (category != "parameter" && contains_name(asset.parameters, token.text)) ||
             (category != "resource" && contains_name(asset.resources, token.text)) ||
             (category != "variant" && contains_name(asset.variants, token.text));
         if (conflict)

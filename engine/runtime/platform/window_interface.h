@@ -39,9 +39,9 @@ namespace toy3d
     class IWindow
     {
     public:
-        IWindow(){};
+        IWindow() = default;
 
-        virtual ~IWindow(){};
+        virtual ~IWindow() = default;
 
         virtual bool should_close() = 0;
 
@@ -54,8 +54,10 @@ namespace toy3d
 			properties.extent.width = _width;
 			properties.extent.height = _height;
 		};
+        virtual Extent get_display_size() const { return properties.extent; }
+        virtual Extent get_framebuffer_size() const { return properties.extent; }
     public:
-        Extent get_win_size(){return properties.extent;};
+        Extent get_win_size() const {return properties.extent;};
 
         Vsync get_vsync(){return properties.vsync;};
 

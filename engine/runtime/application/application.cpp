@@ -46,6 +46,11 @@ namespace toy3d
         on_tick(delta_time);
     }
 
+    void Application::build_ui()
+    {
+        on_build_ui();
+    }
+
     void Application::build_scene_views(
         std::vector<SceneView>& views,
         const Extent& extent) const

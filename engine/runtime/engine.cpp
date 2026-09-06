@@ -22,11 +22,14 @@
 #include "platform/rhi_surface_factory.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/rendering_thread.h"
+#include "rendercore/shader/loaders/shader_map_entry_loader.h"
+#include "rendercore/shader/shader_map.h"
 #include "rendercore/view/scene_view.h"
 #include "renderscene/renderer.h"
 #include "renderscene/view/forward_scene_renderer.h"
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
+#include "ui/imgui_system.h"
 
 #include <chrono>
 #include <filesystem>
@@ -165,6 +168,23 @@ namespace toy3d
             return;
         }
 
+        const bool enable_imgui = ConsoleManager::get_instance().get_bool(
+            "Renderer.EnableImGui", true);
+        if (enable_imgui)
+        {
+            imgui_system = std::make_unique<ImGuiSystem>();
+            const ImGuiSystemStatus imgui_status =
+                imgui_system->initialize(*window);
+            if (!imgui_status.succeeded())
+            {
+                TOY_LOG_ERROR(
+                    "Runtime ImGui initialization failed: {}",
+                    imgui_status.message);
+                exit();
+                return;
+            }
+        }
+
         RHIResult<RHISurfaceRef> created_surface = create_rhi_surface(*window);
         if (!created_surface.succeeded())
         {
@@ -175,6 +195,12 @@ namespace toy3d
             return;
         }
         rhi_surface = std::move(created_surface).value();
+
+        if (!initialize_builtin_shader_programs())
+        {
+            exit();
+            return;
+        }
 
         if (!initialize_render_framework())
         {
@@ -223,7 +249,13 @@ namespace toy3d
             []()
             {
                 return create_default_rhi_device();
-            });
+            },
+            tonemap_shader_program,
+            imgui_shader_program,
+            imgui_system
+                ? std::make_unique<ImGuiFontAtlasData>(
+                    imgui_system->font_atlas())
+                : nullptr);
         rendering_thread = std::make_unique<RenderingThread>(
             *thread_manager,
             *task_graph,
@@ -285,7 +317,7 @@ namespace toy3d
         return true;
     }
 
-    void Engine::submit_frame_draw()
+    void Engine::submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data)
     {
         if (!window || !renderer || !renderer->scene_interface())
         {
@@ -323,12 +355,13 @@ namespace toy3d
             return;
         }
 
-        renderer->draw_scene(
+        renderer->draw_frame(
             std::make_unique<ForwardSceneRenderer>(
                 SceneViewFamily(
                     *renderer->scene_interface(),
                     UIntVector2(extent.width, extent.height),
-                    std::move(views))));
+                    std::move(views))),
+            std::move(ui_draw_data));
     }
 
     void Engine::shutdown_render_framework()
@@ -403,6 +436,79 @@ namespace toy3d
             task_graph.reset();
         }
         thread_manager.reset();
+        imgui_shader_program.reset();
+        tonemap_shader_program.reset();
+        builtin_shader_map.reset();
+        builtin_shader_loader.reset();
+        imgui_system.reset();
+    }
+
+    bool Engine::initialize_builtin_shader_programs()
+    {
+#if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
+        const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
+        auto shader_root = native_platform_file.join_relative(
+            deployment_root, "shader");
+        if (!shader_root.succeeded())
+        {
+            TOY_LOG_ERROR(
+                "Built-in ShaderMap root could not be resolved: {}",
+                shader_root.status().message);
+            return false;
+        }
+        auto output_root = native_platform_file.join_relative(
+            shader_root.value(), "output");
+        if (!output_root.succeeded())
+        {
+            TOY_LOG_ERROR(
+                "Built-in output ShaderMap root could not be resolved: {}",
+                output_root.status().message);
+            return false;
+        }
+
+        builtin_shader_loader = std::make_unique<ShaderMapEntryLoader>(
+            output_root.value());
+        builtin_shader_map = std::make_unique<ShaderMap>(
+            *builtin_shader_loader);
+
+        ShaderMapProgramKey tonemap_key;
+        tonemap_key.shader_name = "Toy3d/PostProcess/Tonemap";
+        tonemap_key.pass_name = "Tonemap";
+        tonemap_key.platform = ShaderPlatform::VulkanPortableV1;
+        ShaderMapProgramResult tonemap =
+            builtin_shader_map->find_or_load(tonemap_key);
+        if (!tonemap.succeeded())
+        {
+            TOY_LOG_ERROR(
+                "Built-in Tonemap ShaderMap Program failed to load: {}",
+                tonemap.error);
+            return false;
+        }
+        tonemap_shader_program = std::move(tonemap.program);
+
+        if (imgui_system)
+        {
+            ShaderMapProgramKey imgui_key;
+            imgui_key.shader_name = "Toy3d/UI/ImGui";
+            imgui_key.pass_name = "ImGui";
+            imgui_key.platform = ShaderPlatform::VulkanPortableV1;
+            ShaderMapProgramResult imgui =
+                builtin_shader_map->find_or_load(imgui_key);
+            if (!imgui.succeeded())
+            {
+                TOY_LOG_ERROR(
+                    "Built-in ImGui ShaderMap Program failed to load: {}",
+                    imgui.error);
+                return false;
+            }
+            imgui_shader_program = std::move(imgui.program);
+        }
+        return true;
+#else
+        TOY_LOG_ERROR(
+            "Built-in output ShaderMap loading requires a supported runtime loader.");
+        return false;
+#endif
     }
 
 	FileStatus Engine::initialize_file_system()
@@ -528,7 +634,26 @@ namespace toy3d
             {
                 break;
             }
-            submit_frame_draw();
+            std::unique_ptr<ImGuiDrawData> ui_draw_data;
+            if (imgui_system && imgui_system->begin_frame(*window, delta_time))
+            {
+                if (application_bound && application)
+                {
+                    application->build_ui();
+                }
+                ImGuiSnapshotResult ui_result = imgui_system->end_frame();
+                if (!ui_result.succeeded())
+                {
+                    TOY_LOG_ERROR(
+                        "Runtime UI frame was rejected: {}",
+                        ui_result.diagnostic);
+                }
+                else
+                {
+                    ui_draw_data = std::move(ui_result.draw_data);
+                }
+            }
+            submit_frame_draw(std::move(ui_draw_data));
             const RenderFenceWaitResult synchronized = frame_end_sync->sync_frame();
             if (!synchronized.succeeded())
             {

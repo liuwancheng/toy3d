@@ -21,7 +21,6 @@
 #include "renderscene/geometry/static_mesh_render_data.h"
 #include "renderscene/primitive_scene_info.h"
 #include "renderscene/render_scene.h"
-#include "renderscene/render_resource_manager.h"
 #include "renderscene/scene_render_targets.h"
 
 namespace toy3d
@@ -341,99 +340,12 @@ namespace toy3d
         : SceneRenderer(std::move(view_family))
     {}
 
-    RHIResult<RHIFrameEndResult> ForwardSceneRenderer::render_frame(
+    RHIStatus ForwardSceneRenderer::render_scene_passes(
         RenderScene& render_scene,
         RHIDevice& device,
-        RenderResourceManager& resource_manager,
-        RHIViewportContext& viewport,
+        RHIGraphicsCommandContext& context,
         SceneRenderTargets& scene_render_targets)
     {
-        RHIResult<std::unique_ptr<RHIFrameContext>> frame_result =
-            viewport.begin_frame();
-        if (!frame_result)
-        {
-            return RHIResult<RHIFrameEndResult>::failure(
-                frame_result.status().code(),
-                frame_result.status().message());
-        }
-
-        std::unique_ptr<RHIFrameContext> frame =
-            std::move(frame_result).value();
-        if (!frame)
-        {
-            return RHIResult<RHIFrameEndResult>::failure(
-                RHIErrorCode::BackendFailure,
-                "Viewport begin_frame succeeded without a frame context.");
-        }
-
-        bool resource_recording_started = false;
-        const auto abort_recording =
-            [&resource_manager, &viewport, &frame,
-             &resource_recording_started](const RHIStatus& failure)
-                -> RHIResult<RHIFrameEndResult>
-            {
-                RHIStatus discard_status = RHIStatus::success();
-                if (resource_recording_started)
-                {
-                    discard_status =
-                        resource_manager.discard_recording();
-                    if (!discard_status)
-                    {
-                        TOY_LOG_ERROR(
-                            "Forward frame could not discard its RenderResource recording after '{}': {}",
-                            failure.message(), discard_status.message());
-                    }
-                }
-
-                const RHIStatus abort_status =
-                    viewport.abort_frame(std::move(frame));
-                if (!abort_status)
-                {
-                    TOY_LOG_ERROR(
-                        "Forward frame abort failed after '{}': {}",
-                        failure.message(), abort_status.message());
-                    return RHIResult<RHIFrameEndResult>::failure(
-                        abort_status.code(), abort_status.message());
-                }
-                if (!discard_status)
-                {
-                    return RHIResult<RHIFrameEndResult>::failure(
-                        discard_status.code(), discard_status.message());
-                }
-                return RHIResult<RHIFrameEndResult>::failure(
-                    failure.code(), failure.message());
-            };
-
-        if (!frame->present_texture() || !frame->present_view())
-        {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Forward frame requires present attachments."));
-        }
-        if (!frame->present_texture()->is_owned_by(device) ||
-            !frame->present_view()->is_owned_by(device) ||
-            frame->present_view()->texture() != frame->present_texture())
-        {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Forward frame present attachments must belong to the injected device and current frame."));
-        }
-        if (view_family().output_size() !=
-            UIntVector2(frame->width(), frame->height()))
-        {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::OutOfDate,
-                "Forward frame View family output does not yet match the acquired frame extent."));
-        }
-        RHIStatus status = scene_render_targets.ensure_extent(
-            device,
-            frame->width(),
-            frame->height(),
-            frame->present_texture()->desc().format);
-        if (!status)
-        {
-            return abort_recording(status);
-        }
         const bool scene_targets_complete =
             scene_render_targets.scene_color_texture() &&
             scene_render_targets.scene_color_view() &&
@@ -452,43 +364,15 @@ namespace toy3d
                 ->is_owned_by(device);
         if (!scene_targets_owned)
         {
-            return abort_recording(RHIStatus::failure(
+            return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Forward frame requires complete SceneRenderTargets owned by the injected device."));
-        }
-
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result =
-            frame->create_graphics_command_context();
-        if (!context_result)
-        {
-            return abort_recording(context_result.status());
-        }
-        std::unique_ptr<RHIGraphicsCommandContext> context =
-            std::move(context_result).value();
-        if (!context)
-        {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Viewport frame created no graphics command context."));
-        }
-
-        status = context->begin_recording("ForwardSceneRenderer");
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        resource_recording_started = true;
-        status = resource_manager.record_pending_uploads(*context);
-        if (!status)
-        {
-            return abort_recording(status);
+                "Forward scene passes require complete SceneRenderTargets owned by the injected device.");
         }
         if (!init_views())
         {
-            return abort_recording(RHIStatus::failure(
+            return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Forward frame rejected its SceneViewFamily inputs."));
+                "Forward scene passes rejected their SceneViewFamily inputs.");
         }
 
         compute_view_visibility(render_scene);
@@ -524,11 +408,12 @@ namespace toy3d
         }
         if (!scene_attachment_transitions.empty())
         {
-            status = context->transition_resources(scene_attachment_transitions);
-        }
-        if (!status)
-        {
-            return abort_recording(status);
+            const RHIStatus transition_status =
+                context.transition_resources(scene_attachment_transitions);
+            if (!transition_status)
+            {
+                return transition_status;
+            }
         }
 
         RHIRenderPassDesc pass_desc;
@@ -554,162 +439,13 @@ namespace toy3d
             RHIClearValue::DepthZero;
         pass_desc.debug_name = "ForwardBasePass";
         PreparedBasePass prepared_base_pass;
-        status = prepare_base_pass(
-            device, *context, pass_desc, prepared_base_pass);
+        RHIStatus status = prepare_base_pass(
+            device, context, pass_desc, prepared_base_pass);
         if (!status)
         {
-            return abort_recording(status);
+            return status;
         }
-        status = execute_base_pass(*context, prepared_base_pass);
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        std::vector<RHIResourceTransition> backbuffer_copy_transitions;
-        RHIResourceTransition scene_color_to_copy_source;
-        scene_color_to_copy_source.resource =
-            scene_render_targets.scene_color_texture();
-        scene_color_to_copy_source.subresources =
-            scene_render_targets.scene_color_view()->desc().subresources;
-        scene_color_to_copy_source.before = RHIAccess::RenderTarget;
-        scene_color_to_copy_source.after = RHIAccess::CopySource;
-        backbuffer_copy_transitions.push_back(
-            std::move(scene_color_to_copy_source));
-
-        RHIResourceTransition present_to_copy_destination;
-        present_to_copy_destination.resource = frame->present_texture();
-        present_to_copy_destination.subresources =
-            frame->present_view()->desc().subresources;
-        present_to_copy_destination.before = RHIAccess::Present;
-        present_to_copy_destination.after = RHIAccess::CopyDestination;
-        backbuffer_copy_transitions.push_back(
-            std::move(present_to_copy_destination));
-
-        status = context->transition_resources(backbuffer_copy_transitions);
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        RHITextureCopyDesc scene_color_copy;
-        scene_color_copy.source.texture =
-            scene_render_targets.scene_color_texture();
-        scene_color_copy.destination.texture = frame->present_texture();
-        scene_color_copy.extent = {frame->width(), frame->height(), 1u};
-        status = context->copy_texture(scene_color_copy);
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        RHIResourceTransition backbuffer_to_ui_render_target;
-        backbuffer_to_ui_render_target.resource = frame->present_texture();
-        backbuffer_to_ui_render_target.subresources =
-            frame->present_view()->desc().subresources;
-        backbuffer_to_ui_render_target.before = RHIAccess::CopyDestination;
-        backbuffer_to_ui_render_target.after = RHIAccess::RenderTarget;
-        status = context->transition_resources({backbuffer_to_ui_render_target});
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        RHIRenderPassDesc ui_pass_desc;
-        RHIColorAttachmentDesc ui_color_attachment;
-        ui_color_attachment.view = frame->present_view();
-        ui_color_attachment.load = RHILoadOperation::Load;
-        ui_color_attachment.store = RHIStoreOperation::Store;
-        ui_pass_desc.color_attachments.push_back(
-            std::move(ui_color_attachment));
-        ui_pass_desc.debug_name = "UIOverlayPass";
-        status = context->begin_render_pass(ui_pass_desc);
-        if (status)
-        {
-            status = context->end_render_pass();
-        }
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        RHIResourceTransition render_target_to_present;
-        render_target_to_present.resource = frame->present_texture();
-        render_target_to_present.subresources =
-            frame->present_view()->desc().subresources;
-        render_target_to_present.before = RHIAccess::RenderTarget;
-        render_target_to_present.after = RHIAccess::Present;
-        status = context->transition_resources({render_target_to_present});
-        if (!status)
-        {
-            return abort_recording(status);
-        }
-
-        RHIResult<RHICommandListRef> command_list_result =
-            context->finish_recording();
-        if (!command_list_result)
-        {
-            return abort_recording(command_list_result.status());
-        }
-        RHICommandListRef command_list =
-            std::move(command_list_result).value();
-        if (!command_list)
-        {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Forward frame finished without an immutable command list."));
-        }
-
-        RHIResult<RHIFrameEndResult> end_result = viewport.end_frame(
-            std::move(frame), {std::move(command_list)});
-        if (!end_result)
-        {
-            const RHIStatus discard_status =
-                resource_manager.discard_recording();
-            if (!discard_status)
-            {
-                TOY_LOG_ERROR(
-                    "Forward frame submit failed and its RenderResource recording could not be discarded: {}",
-                    discard_status.message());
-                return RHIResult<RHIFrameEndResult>::failure(
-                    discard_status.code(), discard_status.message());
-            }
-            return RHIResult<RHIFrameEndResult>::failure(
-                end_result.status().code(), end_result.status().message());
-        }
-
-        RHIFrameEndResult submitted_result =
-            std::move(end_result).value();
-        if (submitted_result.completion_value == 0u)
-        {
-            // end_frame outer success has already established submit truth, so
-            // an invalid completion is terminal metadata rather than a reason
-            // to report the business work as unsubmitted.
-            submitted_result.presentation_status = RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Forward frame submit returned an invalid completion value.");
-        }
-        const RHIStatus commit_status = resource_manager.commit_recording();
-        if (!commit_status)
-        {
-            // Business work is already submitted. Preserve that truth and its
-            // completion value while surfacing a terminal status; never roll
-            // the resource/RHI transaction back after native submit.
-            TOY_LOG_ERROR(
-                "Forward frame submitted but RenderResource publication failed: {}",
-                commit_status.message());
-            if (submitted_result.presentation_status.succeeded() ||
-                rhi_is_recoverable_viewport_status(
-                    submitted_result.presentation_status))
-            {
-                submitted_result.presentation_status = commit_status;
-            }
-        }
-        scene_render_targets.publish_submitted_access(
-            RHIAccess::CopySource,
-            RHIAccess::DepthStencilWrite);
-        return RHIResult<RHIFrameEndResult>::success(
-            std::move(submitted_result));
+        return execute_base_pass(context, prepared_base_pass);
     }
 
     bool ForwardSceneRenderer::init_views()
@@ -1335,13 +1071,4 @@ namespace toy3d
         return status ? end_status : status;
     }
 
-    void ForwardSceneRenderer::render(RenderScene& render_scene) noexcept
-    {
-        if (!init_views())
-        {
-            return;
-        }
-        compute_view_visibility(render_scene);
-        collect_mesh_batches();
-    }
 }
