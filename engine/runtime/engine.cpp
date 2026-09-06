@@ -23,12 +23,14 @@
 #include "platform/rhi_surface_factory.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/rendering_thread.h"
-#include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/global_shader_type_registry.h"
+#include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/view/scene_view.h"
+#include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/renderer.h"
-#include "renderscene/renderer_builtin_shaders.h"
+#include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/view/forward_scene_renderer.h"
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
@@ -409,9 +411,31 @@ namespace toy3d
             return false;
         }
 
-        const std::vector<const GlobalShaderType*> required_types =
-            required_renderer_global_shader_types(imgui_system != nullptr);
-        GlobalShaderMapResult loaded = GlobalShaderMap::load(*builtin_shader_map, shader_platform, required_types);
+        GlobalShaderTypeRegistryResult registered_types = GlobalShaderTypeRegistry::get().freeze();
+        if (!registered_types.succeeded())
+        {
+            TOY_LOG_ERROR("Global Shader type registration failed: {}", registered_types.error);
+            return false;
+        }
+
+        GlobalShaderRequirements requirements(registered_types.types);
+        std::string requirement_error;
+        if (!requirements.add(tonemap_global_shader_type(), requirement_error))
+        {
+            TOY_LOG_ERROR("Tonemap Global Shader requirement failed: {}", requirement_error);
+            return false;
+        }
+        if (imgui_system != nullptr)
+        {
+            if (!requirements.add(imgui_global_shader_type(), requirement_error))
+            {
+                TOY_LOG_ERROR("ImGui Global Shader requirement failed: {}", requirement_error);
+                return false;
+            }
+        }
+
+        GlobalShaderMapResult loaded =
+            GlobalShaderMap::load(*builtin_shader_map, shader_platform, requirements.types());
         if (!loaded.succeeded())
         {
             TOY_LOG_ERROR("Built-in GlobalShaderMap failed to load: {}", loaded.error);

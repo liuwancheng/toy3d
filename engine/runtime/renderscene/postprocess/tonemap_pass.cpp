@@ -8,6 +8,7 @@
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
+#include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/shader/shader_uniform_buffer.h"
 
@@ -35,6 +36,8 @@ namespace toy3d
 
     namespace
     {
+        const GlobalShaderTypeRegistration tonemap_global_shader_registration(tonemap_global_shader_type());
+
         const ShaderMapBinding* find_binding(const ShaderMapProgram& program, const char* name,
                                              RHIResourceBindingType type)
         {

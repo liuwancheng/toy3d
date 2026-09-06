@@ -1,7 +1,7 @@
 #include "config/render_backend_shader_platform.h"
 #include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/global_shader_type_registry.h"
 #include "renderscene/postprocess/tonemap_pass.h"
-#include "renderscene/renderer_builtin_shaders.h"
 #include "renderscene/ui/imgui_renderer.h"
 
 #include <cstdint>
@@ -261,14 +261,65 @@ int main()
     check(!platform_mismatch.succeeded() && platform_mismatch.shader_map == nullptr,
           "a Program from another platform must never enter the frozen map");
 
-    const std::vector<const toy3d::GlobalShaderType*> without_imgui =
-        toy3d::required_renderer_global_shader_types(false);
-    const std::vector<const toy3d::GlobalShaderType*> with_imgui = toy3d::required_renderer_global_shader_types(true);
-    check(without_imgui.size() == 1 && without_imgui[0] == &toy3d::tonemap_global_shader_type(),
-          "Tonemap must always be in the explicit Renderer required set");
-    check(with_imgui.size() == 2 && with_imgui[0] == &toy3d::tonemap_global_shader_type() &&
-              with_imgui[1] == &toy3d::imgui_global_shader_type(),
-          "enabled ImGui must be added to the explicit required set");
+    toy3d::GlobalShaderTypeRegistry duplicate_registry;
+    const toy3d::GlobalShaderTypeRegistration first_duplicate_registration(duplicate_registry, type);
+    const toy3d::GlobalShaderTypeRegistration second_duplicate_registration(duplicate_registry, equal_type);
+    toy3d::GlobalShaderTypeRegistryResult duplicate_registration = duplicate_registry.freeze();
+    check(!duplicate_registration.succeeded() && duplicate_registration.error.find("Duplicate") != std::string::npos,
+          "duplicate automatic Global Shader registration must fail registry freeze");
+
+    toy3d::GlobalShaderTypeRegistry late_registry;
+    const toy3d::GlobalShaderTypeRegistration initial_registration(late_registry, type);
+    check(late_registry.freeze().succeeded(), "a valid isolated Global Shader registry must freeze successfully");
+    const toy3d::GlobalShaderTypeRegistration late_registration(late_registry, different_type);
+    toy3d::GlobalShaderTypeRegistryResult late_registration_result = late_registry.freeze();
+    check(!late_registration_result.succeeded() &&
+              late_registration_result.error.find("after registry freeze") != std::string::npos,
+          "Global Shader registration after registry freeze must be rejected diagnostically");
+
+    toy3d::GlobalShaderTypeRegistryResult registered_types = toy3d::GlobalShaderTypeRegistry::get().freeze();
+    bool found_registered_tonemap = false;
+    bool found_registered_imgui = false;
+    for (const toy3d::GlobalShaderType* registered_type : registered_types.types)
+    {
+        found_registered_tonemap |= registered_type == &toy3d::tonemap_global_shader_type();
+        found_registered_imgui |= registered_type == &toy3d::imgui_global_shader_type();
+    }
+    check(registered_types.succeeded() && found_registered_tonemap && found_registered_imgui,
+          "built-in Global Shader types must register automatically before Engine initialization");
+    bool registration_order_is_stable = true;
+    for (std::size_t index = 1; index < registered_types.types.size(); ++index)
+    {
+        registration_order_is_stable &=
+            registered_types.types[index - 1]->type_name() < registered_types.types[index]->type_name();
+    }
+    check(registration_order_is_stable,
+          "Global Shader registry snapshots must not depend on translation-unit initialization order");
+
+    std::string requirement_error;
+    toy3d::GlobalShaderRequirements disabled_requirements(registered_types.types);
+    check(disabled_requirements.add(toy3d::tonemap_global_shader_type(), requirement_error) &&
+              disabled_requirements.add(toy3d::tonemap_global_shader_type(), requirement_error) &&
+              disabled_requirements.types().size() == 1 &&
+              disabled_requirements.types()[0] == &toy3d::tonemap_global_shader_type(),
+          "Global Shader requirements must select registered types idempotently");
+    check(!disabled_requirements.add(type, requirement_error) &&
+              requirement_error.find("not registered") != std::string::npos,
+          "Global Shader requirements must reject descriptors outside the frozen registry");
+    check(disabled_requirements.add(toy3d::tonemap_global_shader_type(), requirement_error) &&
+              requirement_error.empty(),
+          "a successful Global Shader requirement must clear a prior diagnostic");
+
+    toy3d::GlobalShaderRequirements enabled_requirements(registered_types.types);
+    check(enabled_requirements.add(toy3d::tonemap_global_shader_type(), requirement_error) &&
+              enabled_requirements.add(toy3d::imgui_global_shader_type(), requirement_error) &&
+              enabled_requirements.types().size() == 2 &&
+              enabled_requirements.types()[0] == &toy3d::tonemap_global_shader_type() &&
+              enabled_requirements.types()[1] == &toy3d::imgui_global_shader_type(),
+          "enabled ImGui must be selected explicitly from registered Global Shader types");
+
+    const std::vector<const toy3d::GlobalShaderType*>& without_imgui = disabled_requirements.types();
+    const std::vector<const toy3d::GlobalShaderType*>& with_imgui = enabled_requirements.types();
 
     CollectionLoader disabled_loader({make_program_for_type(toy3d::tonemap_global_shader_type(), 30),
                                       make_program_for_type(toy3d::imgui_global_shader_type(), 40)});
