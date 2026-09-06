@@ -6,6 +6,7 @@ namespace toy3d
 {
     class RHIDevice;
     class RHIGraphicsCommandContext;
+    class RHIShaderProgramCache;
     class RHIStatus;
     class SceneRenderTargets;
     struct RHIRenderPassDesc;
@@ -22,6 +23,7 @@ namespace toy3d
         RHIStatus render_scene_passes(
             RenderScene& render_scene,
             RHIDevice& device,
+            RHIShaderProgramCache& shader_program_cache,
             RHIGraphicsCommandContext& context,
             SceneRenderTargets& scene_render_targets) override;
         bool init_views();
@@ -29,6 +31,7 @@ namespace toy3d
         void collect_mesh_batches();
         RHIStatus prepare_base_pass(
             RHIDevice& device,
+            RHIShaderProgramCache& shader_program_cache,
             RHIGraphicsCommandContext& context,
             const RHIRenderPassDesc& pass_desc,
             PreparedBasePass& prepared_pass);

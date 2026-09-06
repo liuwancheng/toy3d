@@ -334,7 +334,7 @@ namespace
     {
         toy3d::shader::ShaderCompileRequestInput input;
         input.target = toy3d::shader::ShaderTarget::VulkanSpirV;
-        input.profile = toy3d::shader::ShaderCompileProfile::VulkanPortableV1;
+        input.profile = toy3d::shader::ShaderCompileProfile::VulkanES31;
         input.stage = toy3d::shader::ShaderStageFlags::Vertex;
         input.entry_point = "vs_main";
         input.source_virtual_path = "/Engine/Shaders/Tests/Compile.shader";

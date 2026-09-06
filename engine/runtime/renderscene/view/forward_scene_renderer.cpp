@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -14,8 +13,9 @@
 #include "rendercore/geometry/local_vertex_factory.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/shader/rhi_shader_program.h"
+#include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/primitive_uniform_shader_parameters.h"
+#include "rendercore/shader/shader_graphics_state.h"
 #include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "renderscene/material/material_render_proxy.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
@@ -39,229 +39,6 @@ namespace toy3d
                 }
             }
             return false;
-        }
-
-        RHIPrimitiveTopology to_rhi_primitive_topology(
-            shader::ShaderGraphicsPassState::PrimitiveTopology topology)
-        {
-            using Source = shader::ShaderGraphicsPassState::PrimitiveTopology;
-            switch (topology)
-            {
-            case Source::PointList: return RHIPrimitiveTopology::PointList;
-            case Source::LineList: return RHIPrimitiveTopology::LineList;
-            case Source::LineStrip: return RHIPrimitiveTopology::LineStrip;
-            case Source::TriangleList: return RHIPrimitiveTopology::TriangleList;
-            case Source::TriangleStrip: return RHIPrimitiveTopology::TriangleStrip;
-            }
-            return RHIPrimitiveTopology::TriangleList;
-        }
-
-        RHICullMode to_rhi_cull_mode(
-            shader::ShaderGraphicsPassState::CullMode mode)
-        {
-            using Source = shader::ShaderGraphicsPassState::CullMode;
-            switch (mode)
-            {
-            case Source::None: return RHICullMode::None;
-            case Source::Front: return RHICullMode::Front;
-            case Source::Back: return RHICullMode::Back;
-            }
-            return RHICullMode::Back;
-        }
-
-        RHIFrontFace to_rhi_front_face(
-            shader::ShaderGraphicsPassState::FrontFace face)
-        {
-            using Source = shader::ShaderGraphicsPassState::FrontFace;
-            switch (face)
-            {
-            case Source::Clockwise: return RHIFrontFace::Clockwise;
-            case Source::CounterClockwise: return RHIFrontFace::CounterClockwise;
-            }
-            return RHIFrontFace::CounterClockwise;
-        }
-
-        RHIPolygonMode to_rhi_polygon_mode(
-            shader::ShaderGraphicsPassState::FillMode mode)
-        {
-            using Source = shader::ShaderGraphicsPassState::FillMode;
-            switch (mode)
-            {
-            case Source::Solid: return RHIPolygonMode::Fill;
-            case Source::Wireframe: return RHIPolygonMode::Line;
-            }
-            return RHIPolygonMode::Fill;
-        }
-
-        RHICompareOperation to_rhi_compare_operation(
-            shader::ShaderGraphicsPassState::CompareOperation operation)
-        {
-            using Source = shader::ShaderGraphicsPassState::CompareOperation;
-            switch (operation)
-            {
-            case Source::Never: return RHICompareOperation::Never;
-            case Source::Less: return RHICompareOperation::Less;
-            case Source::Equal: return RHICompareOperation::Equal;
-            case Source::LessEqual: return RHICompareOperation::LessEqual;
-            case Source::Greater: return RHICompareOperation::Greater;
-            case Source::NotEqual: return RHICompareOperation::NotEqual;
-            case Source::GreaterEqual: return RHICompareOperation::GreaterEqual;
-            case Source::Always: return RHICompareOperation::Always;
-            }
-            return RHICompareOperation::Always;
-        }
-
-        RHIStencilOperation to_rhi_stencil_operation(
-            shader::ShaderGraphicsPassState::StencilOperation operation)
-        {
-            using Source = shader::ShaderGraphicsPassState::StencilOperation;
-            switch (operation)
-            {
-            case Source::Keep: return RHIStencilOperation::Keep;
-            case Source::Zero: return RHIStencilOperation::Zero;
-            case Source::Replace: return RHIStencilOperation::Replace;
-            case Source::IncrementClamp: return RHIStencilOperation::IncrementClamp;
-            case Source::DecrementClamp: return RHIStencilOperation::DecrementClamp;
-            case Source::Invert: return RHIStencilOperation::Invert;
-            case Source::IncrementWrap: return RHIStencilOperation::IncrementWrap;
-            case Source::DecrementWrap: return RHIStencilOperation::DecrementWrap;
-            }
-            return RHIStencilOperation::Keep;
-        }
-
-        RHIBlendFactor to_rhi_blend_factor(
-            shader::ShaderGraphicsPassState::BlendFactor factor)
-        {
-            using Source = shader::ShaderGraphicsPassState::BlendFactor;
-            switch (factor)
-            {
-            case Source::Zero: return RHIBlendFactor::Zero;
-            case Source::One: return RHIBlendFactor::One;
-            case Source::SourceColor: return RHIBlendFactor::SourceColor;
-            case Source::OneMinusSourceColor:
-                return RHIBlendFactor::OneMinusSourceColor;
-            case Source::DestinationColor: return RHIBlendFactor::DestinationColor;
-            case Source::OneMinusDestinationColor:
-                return RHIBlendFactor::OneMinusDestinationColor;
-            case Source::SourceAlpha: return RHIBlendFactor::SourceAlpha;
-            case Source::OneMinusSourceAlpha:
-                return RHIBlendFactor::OneMinusSourceAlpha;
-            case Source::DestinationAlpha: return RHIBlendFactor::DestinationAlpha;
-            case Source::OneMinusDestinationAlpha:
-                return RHIBlendFactor::OneMinusDestinationAlpha;
-            case Source::ConstantColor: return RHIBlendFactor::ConstantColor;
-            case Source::OneMinusConstantColor:
-                return RHIBlendFactor::OneMinusConstantColor;
-            case Source::SourceAlphaSaturate:
-                return RHIBlendFactor::SourceAlphaSaturate;
-            }
-            return RHIBlendFactor::One;
-        }
-
-        RHIBlendOperation to_rhi_blend_operation(
-            shader::ShaderGraphicsPassState::BlendOperation operation)
-        {
-            using Source = shader::ShaderGraphicsPassState::BlendOperation;
-            switch (operation)
-            {
-            case Source::Add: return RHIBlendOperation::Add;
-            case Source::Subtract: return RHIBlendOperation::Subtract;
-            case Source::ReverseSubtract:
-                return RHIBlendOperation::ReverseSubtract;
-            case Source::Minimum: return RHIBlendOperation::Min;
-            case Source::Maximum: return RHIBlendOperation::Max;
-            }
-            return RHIBlendOperation::Add;
-        }
-
-        RHIColorWriteMask to_rhi_color_write_mask(
-            shader::ShaderGraphicsPassState::ColorWriteMask mask)
-        {
-            using Source = shader::ShaderGraphicsPassState::ColorWriteMask;
-            switch (mask)
-            {
-            case Source::None: return RHIColorWriteMask::None;
-            case Source::Red: return RHIColorWriteMask::Red;
-            case Source::Green: return RHIColorWriteMask::Green;
-            case Source::Blue: return RHIColorWriteMask::Blue;
-            case Source::Alpha: return RHIColorWriteMask::Alpha;
-            case Source::RedGreen:
-                return RHIColorWriteMask::Red | RHIColorWriteMask::Green;
-            case Source::RedGreenBlue:
-                return RHIColorWriteMask::Red |
-                    RHIColorWriteMask::Green |
-                    RHIColorWriteMask::Blue;
-            case Source::All: return RHIColorWriteMask::All;
-            }
-            return RHIColorWriteMask::All;
-        }
-
-        void apply_stencil_face_state(
-            const shader::ShaderGraphicsPassState::StencilFaceState& source,
-            RHIGraphicsPipelineDesc::StencilFaceState& destination)
-        {
-            destination.compare_operation =
-                to_rhi_compare_operation(source.compare_operation);
-            destination.fail_operation =
-                to_rhi_stencil_operation(source.fail_operation);
-            destination.depth_fail_operation =
-                to_rhi_stencil_operation(source.depth_fail_operation);
-            destination.pass_operation =
-                to_rhi_stencil_operation(source.pass_operation);
-        }
-
-        void apply_graphics_pass_state(
-            const shader::ShaderGraphicsPassState& source,
-            RHIGraphicsPipelineDesc& destination)
-        {
-            destination.primitive_topology =
-                to_rhi_primitive_topology(source.primitive_topology);
-            destination.rasterization.polygon_mode =
-                to_rhi_polygon_mode(source.fill_mode);
-            destination.rasterization.cull_mode =
-                to_rhi_cull_mode(source.cull_mode);
-            destination.rasterization.front_face =
-                to_rhi_front_face(source.front_face);
-            destination.depth_stencil.depth_test_enable =
-                source.depth_test_enable;
-            destination.depth_stencil.depth_write_enable =
-                source.depth_write_enable;
-            destination.depth_stencil.depth_compare_operation =
-                to_rhi_compare_operation(source.depth_compare_operation);
-            destination.depth_stencil.stencil_test_enable =
-                source.stencil.mode !=
-                shader::ShaderGraphicsPassState::StencilMode::Off;
-            destination.depth_stencil.stencil_read_mask =
-                source.stencil.read_mask;
-            destination.depth_stencil.stencil_write_mask =
-                source.stencil.write_mask;
-            apply_stencil_face_state(
-                source.stencil.front, destination.depth_stencil.front_face);
-            apply_stencil_face_state(
-                source.stencil.back, destination.depth_stencil.back_face);
-
-            RHIGraphicsPipelineDesc::ColorBlendAttachmentState blend;
-            blend.blend_enable = source.blend.enabled;
-            blend.source_color_factor =
-                to_rhi_blend_factor(source.blend.source_color_factor);
-            blend.destination_color_factor =
-                to_rhi_blend_factor(source.blend.destination_color_factor);
-            blend.color_operation =
-                to_rhi_blend_operation(source.blend.color_operation);
-            blend.source_alpha_factor =
-                to_rhi_blend_factor(source.blend.source_alpha_factor);
-            blend.destination_alpha_factor =
-                to_rhi_blend_factor(source.blend.destination_alpha_factor);
-            blend.alpha_operation =
-                to_rhi_blend_operation(source.blend.alpha_operation);
-            blend.color_write_mask =
-                to_rhi_color_write_mask(source.color_write_mask);
-            for (std::uint32_t index = 0;
-                 index < destination.color_attachment_count;
-                 ++index)
-            {
-                destination.color_blend_attachments[index] = blend;
-            }
         }
 
         RHIStatus apply_attachment_compatibility(
@@ -343,6 +120,7 @@ namespace toy3d
     RHIStatus ForwardSceneRenderer::render_scene_passes(
         RenderScene& render_scene,
         RHIDevice& device,
+        RHIShaderProgramCache& shader_program_cache,
         RHIGraphicsCommandContext& context,
         SceneRenderTargets& scene_render_targets)
     {
@@ -440,7 +218,8 @@ namespace toy3d
         pass_desc.debug_name = "ForwardBasePass";
         PreparedBasePass prepared_base_pass;
         RHIStatus status = prepare_base_pass(
-            device, context, pass_desc, prepared_base_pass);
+            device, shader_program_cache, context, pass_desc,
+            prepared_base_pass);
         if (!status)
         {
             return status;
@@ -785,6 +564,7 @@ namespace toy3d
 
     RHIStatus ForwardSceneRenderer::prepare_base_pass(
         RHIDevice& device,
+        RHIShaderProgramCache& shader_program_cache,
         RHIGraphicsCommandContext& context,
         const RHIRenderPassDesc& pass_desc,
         PreparedBasePass& prepared_pass)
@@ -809,8 +589,6 @@ namespace toy3d
             return pass_validation;
         }
 
-        std::unordered_map<const ShaderMapProgram*, RHIShaderProgram>
-            rhi_programs;
         PreparedBasePass result;
         result.pass_desc = pass_desc;
         for (std::size_t view_index = 0;
@@ -876,24 +654,17 @@ namespace toy3d
                     continue;
                 }
 
-                auto cached_program = rhi_programs.find(shader_program.get());
-                if (cached_program == rhi_programs.end())
+                RHIResult<RHIShaderProgramRef> cached_program =
+                    shader_program_cache.find_or_create(shader_program);
+                if (!cached_program)
                 {
-                    RHIResult<RHIShaderProgram> created_program =
-                        create_rhi_shader_program(device, *shader_program);
-                    if (!created_program)
-                    {
-                        TOY_LOG_ERROR(
-                            "Forward Base Pass skipped View {} MeshBatch {} because its RHI Shader Program could not be created: {}",
-                            view_index, batch_index,
-                            created_program.status().message());
-                        continue;
-                    }
-                    cached_program = rhi_programs.emplace(
-                        shader_program.get(),
-                        std::move(created_program).value()).first;
+                    TOY_LOG_ERROR(
+                        "Forward Base Pass skipped View {} MeshBatch {} because its RHI Shader Program could not be created: {}",
+                        view_index, batch_index,
+                        cached_program.status().message());
+                    continue;
                 }
-                const RHIShaderProgram& program = cached_program->second;
+                const RHIShaderProgram& program = *cached_program.value();
 
                 std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>
                     vertex_layouts;
@@ -932,7 +703,18 @@ namespace toy3d
                         view_index, batch_index, batch_status.message());
                     continue;
                 }
-                apply_graphics_pass_state(*effective_state, pipeline_desc);
+                RHIResult<RHIGraphicsPipelineDesc> shader_pipeline =
+                    build_shader_graphics_pipeline_desc(
+                        pipeline_desc, *effective_state);
+                if (!shader_pipeline)
+                {
+                    TOY_LOG_ERROR(
+                        "Forward Base Pass skipped View {} MeshBatch {} because its Shader graphics state is invalid: {}",
+                        view_index, batch_index,
+                        shader_pipeline.status().message());
+                    continue;
+                }
+                pipeline_desc = std::move(shader_pipeline).value();
 
                 RHIResult<RHIGraphicsPipelineRef> pipeline =
                     device.create_graphics_pipeline(pipeline_desc);

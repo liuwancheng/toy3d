@@ -239,7 +239,7 @@ namespace toy3d::shader
         {
             if (limits.max_bound_descriptor_sets < 4u)
             {
-                result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::BindingLimitExceeded, {}, "VulkanPortable v1 requires four bound descriptor sets."});
+                result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::BindingLimitExceeded, {}, "Vulkan ES3.1 profile requires four bound descriptor sets."});
             }
             std::vector<const ActiveBinding*> bindings;
             for (const ActiveBinding& binding : active_layout.bindings) bindings.push_back(&binding);

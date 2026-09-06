@@ -245,7 +245,7 @@ namespace toy3d
             {
                 return RHIResult<RHITextureViewRef>::failure(
                     RHIErrorCode::Unsupported,
-                    "VulkanPortable v1 does not require separate depth and stencil layouts; "
+                    "Vulkan ES3.1 profile does not require separate depth and stencil layouts; "
                     "mixed read-only and writable aspects are unsupported by this backend path.");
             }
         }

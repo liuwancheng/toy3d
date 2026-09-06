@@ -6,6 +6,15 @@
 
 namespace toy3d
 {
+    const char* configured_rhi_backend_name()
+    {
+#if defined(TOY3D_ENABLE_VULKAN_RHI) && TOY3D_ENABLE_VULKAN_RHI
+        return "Vulkan";
+#else
+        return "";
+#endif
+    }
+
     RHIResult<std::unique_ptr<RHIDevice>> create_default_rhi_device()
     {
 #if defined(TOY3D_ENABLE_VULKAN_RHI) && TOY3D_ENABLE_VULKAN_RHI

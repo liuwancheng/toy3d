@@ -91,7 +91,7 @@ namespace toy3d::shader
         ShaderMapEntryWriteResult result;
         if (shader_map_root.empty() || entry.shader_name.empty() || entry.pass_name.empty() ||
             entry.target != ShaderTarget::VulkanSpirV ||
-            entry.profile != ShaderCompileProfile::VulkanPortableV1 ||
+            entry.profile != ShaderCompileProfile::VulkanES31 ||
             entry.mapping_version != vulkan_binding_mapping_version || entry.stages.empty() ||
             hash_is_zero(entry.logical_layout_hash) || hash_is_zero(entry.target_binding_hash) ||
             hash_is_zero(entry.pass_template_hash) ||

@@ -1229,7 +1229,7 @@ namespace toy3d
             {
                 return RHIStatus::failure(
                     RHIErrorCode::Unsupported,
-                    "VulkanPortable v1 does not require separate depth and stencil layouts; "
+                    "Vulkan ES3.1 profile does not require separate depth and stencil layouts; "
                     "mixed read-only and writable depth-stencil aspects are unsupported by this backend path.");
             }
             const bool read_only = attachment.view->desc().depth_read_only &&

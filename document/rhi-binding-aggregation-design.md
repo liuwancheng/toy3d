@@ -4,7 +4,7 @@
 
 本文定义 Shader Runtime 收尾阶段的公共 Binding 聚合 contract。它细化
 `rhi-design.md` 已确认的逻辑 Binding Group 与后端 physical binding 分层，解决
-`VulkanPortable v1` 中 Global 与 View 必须共享 physical set 0，而运行时仍需要按不同
+`Vulkan ES3.1 profile` 中 Global 与 View 必须共享 physical set 0，而运行时仍需要按不同
 所有权和更新频率维护二者的问题。
 
 本文已确认并完成首个 Vulkan vertical slice 的代码、产物和自动测试闭环。实现删除旧入口后
@@ -146,7 +146,7 @@ D3D12 backend 可按 pipeline layout 把一个或多个 logical groups materiali
 table/root bindings。descriptor allocation 与组成它的 logical sets 一并由 command list 保活
 到 fence completion。公共接口不固定 register space、descriptor heap offset 或 root parameter。
 
-### 5.3 VulkanPortable v1 与移动端
+### 5.3 Vulkan ES3.1 profile 与移动端
 
 默认 profile 保持 Vulkan 1.1、SPIR-V 1.3 和最多四个 bound descriptor sets。Global+View
 共享 set 0 是 profile contract，不依赖 descriptor indexing、update-after-bind 或其他可选

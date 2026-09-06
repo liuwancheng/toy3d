@@ -266,7 +266,7 @@ namespace toy3d
                 result.error = "ShaderMap resource binding contains constant-buffer metadata.";
                 return result;
             }
-            if (program.platform == ShaderPlatform::VulkanPortableV1)
+            if (program.platform == ShaderPlatform::VulkanES31)
             {
                 const std::uint32_t set = vulkan_portable_set(binding.group);
                 if (set >= 4 ||

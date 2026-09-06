@@ -235,7 +235,7 @@ payload 已完成，不能单独证明 WSI 已消费 present wait semaphore。Vu
 `last_submission_fence` 记录上次 graphics 使用。frame slot index、swapchain image index、逻辑 frame id
 和 queue completion value 禁止互换，slot 数固定为 `min(2, actual_image_count)`。
 
-VulkanPortable v1 不要求 WSI completion extension。正常运行中，成功 present 后只有同一 swapchain image
+Vulkan ES3.1 profile 不要求 WSI completion extension。正常运行中，成功 present 后只有同一 swapchain image
 再次成功 acquire，才能证明该 image 的 `rendering_done` semaphore 可复用；submit fence signal 本身不足以
 证明 WSI completion。resize、`Suboptimal` 或 `OutOfDate` 只在没有 active acquired frame 的后续
 `begin_frame()` 边界重建：zero extent 返回 `NotReady`；其余路径先等待当前 shared graphics/present queue
@@ -527,7 +527,7 @@ struct RHIGraphicsBindings
 
 映射规则：
 
-- Vulkan backend 将多个 logical group 按 profile 打包到 physical descriptor sets；logical group 与 descriptor set 不一一对应。`VulkanPortable v1` 固定 set 0=Global+View、set 1=Pass、set 2=Material、set 3=Object；
+- Vulkan backend 将多个 logical group 按 profile 打包到 physical descriptor sets；logical group 与 descriptor set 不一一对应。`Vulkan ES3.1 profile` 固定 set 0=Global+View、set 1=Pass、set 2=Material、set 3=Object；
 - D3D12 可编译为 descriptor table、root CBV 或 root constants；
 - D3D11 展开为各 shader stage 的 CBV/SRV/UAV/sampler slot。
 
@@ -783,7 +783,7 @@ RHI 只接收这些类型编译后的结果：shader bytecode、binding layout/s
 
 ### 15.1 Platform Profile 与移动端边界
 
-Profile 是版本化的离线编译和验证基线，不等于 backend。平台配置选择默认 profile；runtime 仍以实际 `RHICapabilities`、`RHILimits` 和 format support 复核 ShaderPackage 的 requirements。默认 `VulkanPortable v1` 固定为 Vulkan 1.1、SPIR-V 1.3、最多四个 bound descriptor sets，且不默认依赖可选 device feature。
+Profile 是版本化的离线编译和验证基线，不等于 backend。平台配置选择默认 profile；runtime 仍以实际 `RHICapabilities`、`RHILimits` 和 format support 复核 ShaderPackage 的 requirements。默认 `Vulkan ES3.1 profile` 固定为 Vulkan 1.1、SPIR-V 1.3、最多四个 bound descriptor sets，且不默认依赖可选 device feature。
 
 高于 portable 基线的功能必须由独立 profile 或 `Requires <Capability>` 显式声明，禁止根据当前桌面 GPU 自动提高 Cook 输出要求。Cook 和 runtime 都验证 sampler、sampled image、uniform/storage buffer、storage image 的 per-stage 与 pipeline-layout limits；错误需报告 group、stage、resource class、required 和 supported。ShaderPackage/ShaderCodeLibrary 保存 required capabilities/limits，不兼容时返回可诊断的 `UnsupportedCapability`。
 

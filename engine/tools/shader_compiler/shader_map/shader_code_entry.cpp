@@ -77,7 +77,7 @@ namespace toy3d::shader
     {
         ShaderCodeEntryWriteResult result;
         if (entry_root.empty() || binary.empty() || request.target != ShaderTarget::VulkanSpirV ||
-            request.profile != ShaderCompileProfile::VulkanPortableV1 ||
+            request.profile != ShaderCompileProfile::VulkanES31 ||
             target_layout.target != request.target ||
             target_layout.mapping_version != vulkan_binding_mapping_version ||
             target_layout.target_binding_hash != request.target_binding_hash ||

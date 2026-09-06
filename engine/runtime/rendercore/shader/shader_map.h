@@ -54,7 +54,7 @@ namespace toy3d
         {
             std::string shader_name;
             std::string pass_name;
-            ShaderPlatform platform = ShaderPlatform::VulkanPortableV1;
+            ShaderPlatform platform = ShaderPlatform::VulkanES31;
             ShaderContentHash permutation_key{};
 
             bool operator==(const ProgramKey& other) const;

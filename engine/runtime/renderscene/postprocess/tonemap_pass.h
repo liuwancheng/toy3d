@@ -2,7 +2,9 @@
 
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
-#include "rendercore/shader/rhi_shader_program.h"
+#include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/rhi_shader_program_cache.h"
+#include "rendercore/shader/global_shader_type.h"
 
 #include <cstdint>
 
@@ -20,6 +22,7 @@ namespace toy3d
     // CPU reference for deterministic numeric tests and future golden-image
     // tooling. Runtime pixels are produced by the matching shader path.
     float tonemap_sdr_channel_reference(float linear_value, float exposure_ev);
+    const GlobalShaderType& tonemap_global_shader_type();
 
     struct TonemapPassTarget
     {
@@ -41,7 +44,8 @@ namespace toy3d
 
         RHIStatus initialize(
             RHIDevice& device,
-            const ShaderMapProgram& shader_program);
+            RHIShaderProgramCache& shader_program_cache,
+            const GlobalShaderMap& global_shader_map);
         void release() noexcept;
 
         RHIStatus render(
@@ -59,7 +63,7 @@ namespace toy3d
         const ShaderMapBinding* scene_color_binding_ = nullptr;
         const ShaderMapBinding* scene_sampler_binding_ = nullptr;
         const ShaderMapProgram* shader_program_ = nullptr;
-        RHIShaderProgram rhi_program_;
+        RHIShaderProgramRef rhi_program_;
         RHISamplerRef sampler_;
         RHIGraphicsPipelineRef pipeline_;
     };

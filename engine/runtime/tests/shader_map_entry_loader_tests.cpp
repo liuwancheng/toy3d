@@ -85,14 +85,14 @@ namespace
             *loaded.program, "view_texture");
         check(texture && sampler, "test Program must expose texture and sampler bindings");
         check(texture->group == toy3d::RHIBindingGroup::Material && texture->target_binding == 0,
-            "texture must use VulkanPortable Material binding 0");
+            "texture must use Vulkan ES3.1 Material binding 0");
         check(sampler->group == toy3d::RHIBindingGroup::Material && sampler->target_binding == 1,
-            "sampler must use VulkanPortable Material binding 1");
+            "sampler must use Vulkan ES3.1 Material binding 1");
         check(global_texture && view_texture &&
               global_texture->group == toy3d::RHIBindingGroup::Global &&
               view_texture->group == toy3d::RHIBindingGroup::View &&
               global_texture->target_binding == 0 && view_texture->target_binding == 1,
-            "Global and View must use compact VulkanPortable set 0 bindings");
+            "Global and View must use compact Vulkan ES3.1 set 0 bindings");
 
         toy3d::ShaderMap shader_map(loader);
         toy3d::ShaderMapProgramResult mapped = shader_map.find_or_load(key);

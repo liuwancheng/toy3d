@@ -27,8 +27,4 @@ namespace toy3d
 
     RHIResult<RHIShaderProgramDesc> build_rhi_shader_program_desc(
         const ShaderMapProgram& program);
-
-    RHIResult<RHIShaderProgram> create_rhi_shader_program(
-        RHIDevice& device,
-        const ShaderMapProgram& program);
 }

@@ -247,6 +247,42 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dShaderMapTests PRIVATE Toy3dRuntime Threads::Threads)
     add_test(NAME Toy3dRuntime.ShaderMap COMMAND Toy3dShaderMapTests)
 
+    add_executable(Toy3dShaderGraphicsStateTests
+        "tests/shader_graphics_state_tests.cpp")
+    target_compile_features(Toy3dShaderGraphicsStateTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dShaderGraphicsStateTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dShaderGraphicsStateTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dShaderGraphicsStateTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.ShaderGraphicsState COMMAND Toy3dShaderGraphicsStateTests)
+
+    add_executable(Toy3dRHIShaderProgramCacheTests
+        "tests/rhi_shader_program_cache_tests.cpp")
+    target_compile_features(Toy3dRHIShaderProgramCacheTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRHIShaderProgramCacheTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRHIShaderProgramCacheTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRHIShaderProgramCacheTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.RHIShaderProgramCache COMMAND Toy3dRHIShaderProgramCacheTests)
+
+    add_executable(Toy3dGlobalShaderMapTests
+        "tests/global_shader_map_tests.cpp")
+    target_compile_features(Toy3dGlobalShaderMapTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dGlobalShaderMapTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dGlobalShaderMapTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dGlobalShaderMapTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.GlobalShaderMap COMMAND Toy3dGlobalShaderMapTests)
+
     add_executable(Toy3dRHIBindingTests
         "tests/rhi_binding_tests.cpp")
     target_compile_features(Toy3dRHIBindingTests PRIVATE cxx_std_17)

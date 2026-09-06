@@ -13,7 +13,7 @@ namespace toy3d::shader
     struct ShaderCompileRequestInput
     {
         ShaderTarget target = ShaderTarget::VulkanSpirV;
-        ShaderCompileProfile profile = ShaderCompileProfile::VulkanPortableV1;
+        ShaderCompileProfile profile = ShaderCompileProfile::VulkanES31;
         ShaderStageFlags stage = ShaderStageFlags::None;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
         std::string entry_point;

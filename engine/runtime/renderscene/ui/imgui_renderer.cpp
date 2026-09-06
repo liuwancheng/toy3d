@@ -16,6 +16,46 @@
 
 namespace toy3d
 {
+    const GlobalShaderType& imgui_global_shader_type()
+    {
+        static const GlobalShaderType type(
+            "ImGuiGlobalShader",
+            "Toy3d/UI/ImGui",
+            "ImGui",
+            shader::default_shader_permutation_key,
+            GlobalShaderType::ProgramKind::Graphics,
+            RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel,
+            {
+                GlobalShaderBindingRequirement(
+                    shader::make_shader_parameter_id(
+                        shader::BindingGroup::Pass,
+                        shader::ShaderParameterCategory::Constant,
+                        ""),
+                    RHIBindingGroup::Pass,
+                    RHIResourceBindingType::UniformBuffer,
+                    1,
+                    RHIShaderStageFlags::Vertex),
+                GlobalShaderBindingRequirement(
+                    shader::make_shader_parameter_id(
+                        shader::BindingGroup::Pass,
+                        shader::ShaderParameterCategory::SampledTexture,
+                        "font_texture"),
+                    RHIBindingGroup::Pass,
+                    RHIResourceBindingType::SampledTexture,
+                    1,
+                    RHIShaderStageFlags::Pixel),
+                GlobalShaderBindingRequirement(
+                    shader::make_shader_parameter_id(
+                        shader::BindingGroup::Pass,
+                        shader::ShaderParameterCategory::Sampler,
+                        "font_sampler"),
+                    RHIBindingGroup::Pass,
+                    RHIResourceBindingType::Sampler,
+                    1,
+                    RHIShaderStageFlags::Pixel)});
+        return type;
+    }
+
     namespace
     {
         const ShaderMapBinding* find_binding(
@@ -117,7 +157,8 @@ namespace toy3d
 
     RHIStatus ImGuiRenderer::initialize(
         RHIDevice& device,
-        const ShaderMapProgram& shader_program,
+        RHIShaderProgramCache& shader_program_cache,
+        const GlobalShaderMap& global_shader_map,
         const ImGuiFontAtlasData& font_atlas)
     {
         if (initialized() || !font_atlas.valid())
@@ -126,22 +167,23 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument,
                 "ImGuiRenderer requires a valid one-time font atlas.");
         }
-        const ShaderMapProgramData& data = shader_program.data();
-        if (data.shader_name != "Toy3d/UI/ImGui" ||
-            data.pass_name != "ImGui" ||
-            data.platform != ShaderPlatform::VulkanPortableV1)
+        const ShaderMapProgramResult found = global_shader_map.find(
+            imgui_global_shader_type());
+        if (!found.succeeded())
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "ImGui ShaderMap Program identity or platform is invalid.");
+                "ImGui Global Shader lookup failed: " + found.error);
         }
+        const ShaderMapProgramRef& shader_program = found.program;
+        const ShaderMapProgramData& data = shader_program->data();
 
         const ShaderMapBinding* constant_buffer = find_binding(
-            shader_program, "toy_pass_data", RHIResourceBindingType::UniformBuffer);
+            *shader_program, "toy_pass_data", RHIResourceBindingType::UniformBuffer);
         const ShaderMapBinding* font_texture = find_binding(
-            shader_program, "font_texture", RHIResourceBindingType::SampledTexture);
+            *shader_program, "font_texture", RHIResourceBindingType::SampledTexture);
         const ShaderMapBinding* font_sampler = find_binding(
-            shader_program, "font_sampler", RHIResourceBindingType::Sampler);
+            *shader_program, "font_sampler", RHIResourceBindingType::Sampler);
         const ShaderMapBinding::ConstantMember* projection =
             constant_buffer != nullptr
             ? find_member(*constant_buffer, "projection")
@@ -158,8 +200,8 @@ namespace toy3d
                 "ImGui ShaderMap Program does not match the required Pass binding schema.");
         }
 
-        RHIResult<RHIShaderProgram> created_program =
-            create_rhi_shader_program(device, shader_program);
+        RHIResult<RHIShaderProgramRef> created_program =
+            shader_program_cache.find_or_create(shader_program);
         if (!created_program) return created_program.status();
 
         RHITextureDesc font_desc;
@@ -192,9 +234,9 @@ namespace toy3d
         if (!created_sampler) return created_sampler.status();
 
         RHIGraphicsPipelineDesc pipeline_desc;
-        pipeline_desc.vertex_shader = created_program.value().vertex_shader;
-        pipeline_desc.pixel_shader = created_program.value().pixel_shader;
-        pipeline_desc.binding_layout = created_program.value().binding_layout;
+        pipeline_desc.vertex_shader = created_program.value()->vertex_shader;
+        pipeline_desc.pixel_shader = created_program.value()->pixel_shader;
+        pipeline_desc.binding_layout = created_program.value()->binding_layout;
         pipeline_desc.primitive_topology = RHIPrimitiveTopology::TriangleList;
         pipeline_desc.rasterization.cull_mode = RHICullMode::None;
         pipeline_desc.depth_stencil.depth_test_enable = false;
@@ -249,7 +291,7 @@ namespace toy3d
             device.create_graphics_pipeline(pipeline_desc);
         if (!created_pipeline) return created_pipeline.status();
 
-        shader_program_ = &shader_program;
+        shader_program_ = shader_program.get();
         constant_buffer_binding_ = constant_buffer;
         projection_binding_ = projection;
         font_texture_binding_ = font_texture;
@@ -308,7 +350,7 @@ namespace toy3d
         font_sampler_.reset();
         font_texture_view_.reset();
         font_texture_.reset();
-        rhi_program_ = {};
+        rhi_program_.reset();
         font_sampler_binding_ = nullptr;
         font_texture_binding_ = nullptr;
         projection_binding_ = nullptr;
@@ -456,7 +498,7 @@ namespace toy3d
                 device, context, constants, "ImGuiPassConstants");
         if (!uniform_buffer) return uniform_buffer.status();
         RHIBindingSetDesc binding_desc;
-        binding_desc.layout = rhi_program_.binding_layout;
+        binding_desc.layout = rhi_program_->binding_layout;
         binding_desc.group = RHIBindingGroup::Pass;
         binding_desc.debug_name = "ImGuiPassBindings";
         RHIBindingValue constants_value;
@@ -577,8 +619,9 @@ namespace toy3d
 
     bool ImGuiRenderer::initialized() const noexcept
     {
-        return shader_program_ != nullptr && rhi_program_.vertex_shader &&
-            rhi_program_.pixel_shader && rhi_program_.binding_layout &&
+        return shader_program_ != nullptr && rhi_program_ &&
+            rhi_program_->vertex_shader && rhi_program_->pixel_shader &&
+            rhi_program_->binding_layout &&
             font_texture_ && font_texture_view_ && font_sampler_ && pipeline_;
     }
 

@@ -1,6 +1,7 @@
 #include "rendercore/scene_interface.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/shader/primitive_uniform_shader_parameters.h"
+#include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/view/scene_view.h"
@@ -15,6 +16,8 @@
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/renderer.h"
+#include "renderscene/postprocess/tonemap_pass.h"
+#include "renderscene/ui/imgui_renderer.h"
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_queue.h"
 #include "task_graph/task_graph.h"
@@ -45,20 +48,133 @@ namespace
     {
     public:
         explicit RendererProgramLoader(toy3d::ShaderMapProgramData program)
-            : program_(std::move(program))
+            : programs_{std::move(program)}
+        {}
+
+        explicit RendererProgramLoader(
+            std::vector<toy3d::ShaderMapProgramData> programs)
+            : programs_(std::move(programs))
         {}
 
         toy3d::ShaderMapProgramLoadResult load_program(
-            const toy3d::ShaderMapProgramKey&) const override
+            const toy3d::ShaderMapProgramKey& key) const override
         {
-            return {program_, {}};
+            for (const toy3d::ShaderMapProgramData& program : programs_)
+            {
+                if (program.shader_name == key.shader_name &&
+                    program.pass_name == key.pass_name &&
+                    program.platform == key.platform &&
+                    program.permutation_key == key.permutation_key)
+                {
+                    return {program, {}};
+                }
+            }
+            return {{}, "injected missing Renderer Global Shader"};
         }
 
     private:
-        toy3d::ShaderMapProgramData program_;
+        std::vector<toy3d::ShaderMapProgramData> programs_;
     };
 
-    toy3d::ShaderMapProgramRef make_tonemap_program()
+    toy3d::ShaderMapProgramData make_imgui_program()
+    {
+        toy3d::ShaderMapProgramData program;
+        program.shader_name = "Toy3d/UI/ImGui";
+        program.pass_name = "ImGui";
+        program.mapping_version = 1u;
+        program.logical_layout_hash = nonzero_hash(10u);
+        program.target_binding_hash = nonzero_hash(11u);
+        program.pass_template_hash =
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(
+                program.graphics_pass_state);
+        program.permutation_key =
+            toy3d::shader::default_shader_permutation_key;
+
+        toy3d::ShaderMapBinding constants;
+        constants.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::Constant,
+            "");
+        constants.name = "toy_pass_data";
+        constants.group = toy3d::RHIBindingGroup::Pass;
+        constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        constants.stages = toy3d::RHIShaderStageFlags::Vertex;
+        constants.target_binding = 0u;
+        constants.constant_buffer_size = 64u;
+        constants.constant_members.push_back({10u, "projection",
+            toy3d::ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u});
+        program.bindings.push_back(constants);
+
+        toy3d::ShaderMapBinding texture;
+        texture.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::SampledTexture,
+            "font_texture");
+        texture.name = "font_texture";
+        texture.group = toy3d::RHIBindingGroup::Pass;
+        texture.type = toy3d::RHIResourceBindingType::SampledTexture;
+        texture.stages = toy3d::RHIShaderStageFlags::Pixel;
+        texture.target_binding = 1u;
+        program.bindings.push_back(texture);
+
+        toy3d::ShaderMapBinding sampler;
+        sampler.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::Sampler,
+            "font_sampler");
+        sampler.name = "font_sampler";
+        sampler.group = toy3d::RHIBindingGroup::Pass;
+        sampler.type = toy3d::RHIResourceBindingType::Sampler;
+        sampler.stages = toy3d::RHIShaderStageFlags::Pixel;
+        sampler.target_binding = 2u;
+        program.bindings.push_back(sampler);
+
+        toy3d::ShaderMapStage vertex;
+        vertex.stage = toy3d::RHIShaderStage::Vertex;
+        vertex.entry_point = "vs_main";
+        vertex.binary = {1u, 2u, 3u, 10u};
+        vertex.content_hash = nonzero_hash(12u);
+        vertex.reflection.push_back(constants);
+        vertex.interface_variables.push_back({
+            "in.var.POSITION0", "POSITION0", 0u, true,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+            2u});
+        vertex.interface_variables.push_back({
+            "in.var.TEXCOORD0", "TEXCOORD0", 1u, true,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+            2u});
+        vertex.interface_variables.push_back({
+            "in.var.COLOR0", "COLOR0", 2u, true,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+            4u});
+        program.stages.push_back(std::move(vertex));
+        program.vertex_inputs.push_back({
+            toy3d::ShaderVertexAttributeId::Position0,
+            "POSITION", 0u,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+            2u, 0u});
+        program.vertex_inputs.push_back({
+            toy3d::ShaderVertexAttributeId::TexCoord0,
+            "TEXCOORD", 0u,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+            2u, 1u});
+        program.vertex_inputs.push_back({
+            toy3d::ShaderVertexAttributeId::Color0,
+            "COLOR", 0u,
+            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+            4u, 2u});
+        toy3d::ShaderMapStage pixel;
+        pixel.stage = toy3d::RHIShaderStage::Pixel;
+        pixel.entry_point = "ps_main";
+        pixel.binary = {4u, 3u, 2u, 10u};
+        pixel.content_hash = nonzero_hash(13u);
+        pixel.reflection = {texture, sampler};
+        program.stages.push_back(std::move(pixel));
+        return program;
+    }
+
+    std::shared_ptr<const toy3d::GlobalShaderMap> make_global_shader_map(
+        bool include_imgui = false)
     {
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/PostProcess/Tonemap";
@@ -69,10 +185,14 @@ namespace
         program.pass_template_hash =
             toy3d::shader::calculate_shader_graphics_pass_state_hash(
                 program.graphics_pass_state);
-        program.permutation_key = nonzero_hash(3u);
+        program.permutation_key =
+            toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding constants;
-        constants.parameter_id = 1u;
+        constants.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::Constant,
+            "");
         constants.name = "toy_pass_data";
         constants.group = toy3d::RHIBindingGroup::Pass;
         constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
@@ -84,7 +204,10 @@ namespace
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
-        texture.parameter_id = 3u;
+        texture.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::SampledTexture,
+            "scene_color");
         texture.name = "scene_color";
         texture.group = toy3d::RHIBindingGroup::Pass;
         texture.type = toy3d::RHIResourceBindingType::SampledTexture;
@@ -93,7 +216,10 @@ namespace
         program.bindings.push_back(texture);
 
         toy3d::ShaderMapBinding sampler;
-        sampler.parameter_id = 4u;
+        sampler.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::Sampler,
+            "scene_sampler");
         sampler.name = "scene_sampler";
         sampler.group = toy3d::RHIBindingGroup::Pass;
         sampler.type = toy3d::RHIResourceBindingType::Sampler;
@@ -115,14 +241,36 @@ namespace
         pixel.reflection = program.bindings;
         program.stages.push_back(std::move(pixel));
 
-        RendererProgramLoader loader(program);
+        std::vector<toy3d::ShaderMapProgramData> programs;
+        programs.push_back(std::move(program));
+        if (include_imgui)
+        {
+            programs.push_back(make_imgui_program());
+        }
+        RendererProgramLoader loader(std::move(programs));
         toy3d::ShaderMap shader_map(loader);
-        toy3d::ShaderMapProgramKey key;
-        key.shader_name = program.shader_name;
-        key.pass_name = program.pass_name;
-        key.platform = program.platform;
-        key.permutation_key = program.permutation_key;
-        return shader_map.find_or_load(key).program;
+        toy3d::GlobalShaderMapResult result = toy3d::GlobalShaderMap::load(
+            shader_map,
+            toy3d::ShaderPlatform::VulkanES31,
+            include_imgui
+                ? std::vector<const toy3d::GlobalShaderType*>{
+                    &toy3d::tonemap_global_shader_type(),
+                    &toy3d::imgui_global_shader_type()}
+                : std::vector<const toy3d::GlobalShaderType*>{
+                    &toy3d::tonemap_global_shader_type()});
+        return result.shader_map;
+    }
+
+    std::shared_ptr<const toy3d::GlobalShaderMap> make_empty_global_shader_map()
+    {
+        RendererProgramLoader loader(
+            std::vector<toy3d::ShaderMapProgramData>{});
+        toy3d::ShaderMap shader_map(loader);
+        toy3d::GlobalShaderMapResult result = toy3d::GlobalShaderMap::load(
+            shader_map,
+            toy3d::ShaderPlatform::VulkanES31,
+            {});
+        return result.shader_map;
     }
 
     template<typename MemberDescription, typename MemberDescription::type Member>
@@ -182,7 +330,8 @@ namespace
             toy3d::RHISurfaceRef,
             toy3d::RHIViewportContextDesc,
             std::function<toy3d::RHIResult<
-                std::unique_ptr<toy3d::RHIDevice>>()>>::value,
+                std::unique_ptr<toy3d::RHIDevice>>()>,
+            std::shared_ptr<const toy3d::GlobalShaderMap>>::value,
         "Engine must provide Renderer bootstrap inputs without owning RHI state");
     static_assert(!std::is_copy_constructible<toy3d::Renderer>::value,
         "Renderer ownership must remain unique");
@@ -357,6 +506,10 @@ namespace
         None,
         DeviceFactory,
         DeviceInitialize,
+        MissingGlobalShader,
+        ShaderProgram,
+        BindingLayout,
+        PassPipeline,
         PlaceholderTexture,
         PlaceholderView,
         PlaceholderSampler,
@@ -364,6 +517,13 @@ namespace
         QueueSubmit,
         QueueWait,
         Viewport
+    };
+
+    struct RendererDeviceProbe
+    {
+        bool validation_enabled = false;
+        std::uint32_t wait_idle_before_shutdown_count = 0u;
+        std::uint32_t shutdown_count = 0u;
     };
 
     class RendererTestQueue final : public toy3d::RHIQueue
@@ -463,9 +623,13 @@ namespace
     public:
         explicit RendererTestDevice(
             RendererBootstrapFailurePoint failure_point =
-                RendererBootstrapFailurePoint::None)
+                RendererBootstrapFailurePoint::None,
+            std::shared_ptr<RendererDeviceProbe> probe = nullptr,
+            bool fail_shutdown = false)
             : queue_(failure_point),
-              failure_point_(failure_point)
+              failure_point_(failure_point),
+              probe_(std::move(probe)),
+              fail_shutdown_(fail_shutdown)
         {
             limits_.max_color_attachments =
                 std::numeric_limits<std::uint32_t>::max();
@@ -486,6 +650,10 @@ namespace
         toy3d::RHIStatus initialize(
             const toy3d::RHIDeviceDesc& desc) override
         {
+            if (probe_)
+            {
+                probe_->validation_enabled = desc.enable_validation;
+            }
             if (failure_point_ ==
                 RendererBootstrapFailurePoint::DeviceInitialize)
             {
@@ -632,6 +800,12 @@ namespace
         toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(
             const toy3d::RHIShaderDesc& desc) override
         {
+            if (failure_point_ == RendererBootstrapFailurePoint::ShaderProgram)
+            {
+                return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(
+                    toy3d::RHIErrorCode::BackendFailure,
+                    "injected Renderer bootstrap Shader Program failure");
+            }
             return toy3d::RHIResult<toy3d::RHIShaderRef>::success(
                 std::make_shared<toy3d::RHIShader>(*this, desc));
         }
@@ -639,6 +813,12 @@ namespace
         create_binding_layout_impl(
             const toy3d::RHIBindingLayoutDesc& desc) override
         {
+            if (failure_point_ == RendererBootstrapFailurePoint::BindingLayout)
+            {
+                return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::failure(
+                    toy3d::RHIErrorCode::BackendFailure,
+                    "injected Renderer bootstrap binding layout failure");
+            }
             return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::success(
                 std::make_shared<toy3d::RHIBindingLayout>(*this, desc));
         }
@@ -646,6 +826,12 @@ namespace
         create_graphics_pipeline_impl(
             const toy3d::RHIGraphicsPipelineDesc& desc) override
         {
+            if (failure_point_ == RendererBootstrapFailurePoint::PassPipeline)
+            {
+                return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::failure(
+                    toy3d::RHIErrorCode::BackendFailure,
+                    "injected Renderer bootstrap Pass pipeline failure");
+            }
             return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::success(
                 std::make_shared<toy3d::RHIGraphicsPipeline>(*this, desc));
         }
@@ -655,11 +841,25 @@ namespace
         }
         toy3d::RHIStatus wait_idle_before_shutdown_impl() override
         {
+            if (probe_)
+            {
+                ++probe_->wait_idle_before_shutdown_count;
+            }
             return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus shutdown_impl() override
         {
+            if (probe_)
+            {
+                ++probe_->shutdown_count;
+            }
             initialized_ = false;
+            if (fail_shutdown_)
+            {
+                return toy3d::RHIStatus::failure(
+                    toy3d::RHIErrorCode::BackendFailure,
+                    "injected secondary terminal shutdown diagnostic");
+            }
             return toy3d::RHIStatus::success();
         }
 
@@ -669,6 +869,8 @@ namespace
         toy3d::RHILimits limits_;
         RendererBootstrapFailurePoint failure_point_ =
             RendererBootstrapFailurePoint::None;
+        std::shared_ptr<RendererDeviceProbe> probe_;
+        bool fail_shutdown_ = false;
         std::uint32_t texture_create_count_ = 0u;
         std::uint32_t texture_view_create_count_ = 0u;
         bool initialized_ = false;
@@ -1045,11 +1247,15 @@ namespace
 
     void test_renderer_bootstrap_failures()
     {
-        const toy3d::ShaderMapProgramRef tonemap_program =
-            make_tonemap_program();
+        const std::shared_ptr<const toy3d::GlobalShaderMap> global_shader_map =
+            make_global_shader_map();
         const std::vector<RendererBootstrapFailurePoint> failure_points = {
             RendererBootstrapFailurePoint::DeviceFactory,
             RendererBootstrapFailurePoint::DeviceInitialize,
+            RendererBootstrapFailurePoint::MissingGlobalShader,
+            RendererBootstrapFailurePoint::ShaderProgram,
+            RendererBootstrapFailurePoint::BindingLayout,
+            RendererBootstrapFailurePoint::PassPipeline,
             RendererBootstrapFailurePoint::PlaceholderTexture,
             RendererBootstrapFailurePoint::PlaceholderView,
             RendererBootstrapFailurePoint::PlaceholderSampler,
@@ -1097,7 +1303,9 @@ namespace
                             std::make_unique<RendererTestDevice>(
                                 failure_point));
                 },
-                tonemap_program);
+                failure_point == RendererBootstrapFailurePoint::MissingGlobalShader
+                    ? make_empty_global_shader_map()
+                    : global_shader_map);
             toy3d::RenderingThread rendering_thread(
                 thread_manager,
                 *graph,
@@ -1108,26 +1316,110 @@ namespace
                     return renderer.initialize();
                 });
             const toy3d::RendererStatus renderer_status = renderer.status();
+            const toy3d::RHIErrorCode expected_error_code =
+                failure_point ==
+                    RendererBootstrapFailurePoint::MissingGlobalShader
+                ? toy3d::RHIErrorCode::InvalidArgument
+                : toy3d::RHIErrorCode::BackendFailure;
             check(!started.succeeded() &&
                     started.code == toy3d::ThreadErrorCode::InitFailed &&
                     !rendering_thread.is_ready() &&
                     renderer.scene_interface() == nullptr &&
                     renderer_status.lifecycle_state() ==
                         toy3d::RendererLifecycleState::Terminal &&
-                    renderer_status.error_code() ==
-                        toy3d::RHIErrorCode::BackendFailure &&
+                    renderer_status.error_code() == expected_error_code &&
                     !renderer_status.error_message().empty(),
-                "Renderer bootstrap failures must preserve the original diagnostic and publish no SceneInterface");
+                "Renderer bootstrap failure point " +
+                    std::to_string(static_cast<int>(failure_point)) +
+                    " must preserve the original diagnostic and publish no SceneInterface; actual: " +
+                    renderer_status.error_message());
             }
 
             shutdown_graph(graph);
         }
     }
 
+    void test_renderer_imgui_bootstrap()
+    {
+        for (const bool include_imgui_shader : {false, true})
+        {
+            toy3d::ThreadManager thread_manager;
+            std::unique_ptr<toy3d::TaskGraphInterface> graph =
+                create_graph(thread_manager, false);
+            if (!graph)
+            {
+                return;
+            }
+
+            toy3d::RHISurfaceDesc surface_desc;
+            surface_desc.platform = toy3d::RHISurfacePlatform::Glfw;
+            surface_desc.window_handle = reinterpret_cast<void*>(1);
+            surface_desc.debug_name = "RendererImGuiBootstrapSurface";
+            toy3d::RHIViewportContextDesc viewport_desc;
+            viewport_desc.width = 64u;
+            viewport_desc.height = 64u;
+            viewport_desc.debug_name = "RendererImGuiBootstrapViewport";
+            auto font_atlas = std::make_unique<toy3d::ImGuiFontAtlasData>();
+            font_atlas->rgba_pixels = {255u, 255u, 255u, 255u};
+            font_atlas->width = 1u;
+            font_atlas->height = 1u;
+            font_atlas->row_pitch = 4u;
+
+            {
+            toy3d::Renderer renderer(
+                *graph,
+                std::make_shared<toy3d::RHISurface>(std::move(surface_desc)),
+                std::move(viewport_desc),
+                []()
+                {
+                    return toy3d::RHIResult<
+                        std::unique_ptr<toy3d::RHIDevice>>::success(
+                            std::make_unique<RendererTestDevice>());
+                },
+                make_global_shader_map(include_imgui_shader),
+                std::move(font_atlas));
+            toy3d::RenderingThread rendering_thread(
+                thread_manager,
+                *graph,
+                toy3d::RenderingThreadMode::SingleThread);
+            const toy3d::ThreadStatus started = rendering_thread.start(
+                [&renderer]()
+                {
+                    return renderer.initialize();
+                });
+            if (!include_imgui_shader)
+            {
+                check(!started.succeeded() &&
+                        renderer.scene_interface() == nullptr &&
+                        renderer.status().error_message().find(
+                            "ImGuiGlobalShader") != std::string::npos,
+                    "enabled ImGui must fail atomically when its Global Shader type is absent");
+            }
+            else
+            {
+                check(started.succeeded() &&
+                        renderer.scene_interface() != nullptr,
+                    "enabled ImGui must publish only after Program and font bootstrap both complete; actual: " +
+                        renderer.status().error_message());
+                const toy3d::ThreadStatus stopped = rendering_thread.stop(
+                    [&renderer]()
+                    {
+                        return renderer.teardown();
+                    });
+                check(stopped.succeeded(),
+                    "enabled ImGui Renderer domain must teardown cleanly");
+            }
+            }
+            shutdown_graph(graph);
+        }
+    }
+
     void test_renderer_lifecycle(bool multithreaded, bool inject_terminal)
     {
-        const toy3d::ShaderMapProgramRef tonemap_program =
-            make_tonemap_program();
+        const std::shared_ptr<const toy3d::GlobalShaderMap> global_shader_map =
+            make_global_shader_map();
+        const std::shared_ptr<RendererDeviceProbe> device_probe =
+            std::make_shared<RendererDeviceProbe>();
         toy3d::ThreadManager thread_manager;
         std::unique_ptr<toy3d::TaskGraphInterface> graph =
             create_graph(thread_manager, multithreaded);
@@ -1149,13 +1441,16 @@ namespace
             *graph,
             std::make_shared<toy3d::RHISurface>(std::move(surface_desc)),
             std::move(viewport_desc),
-            []()
+            [device_probe, inject_terminal]()
             {
                 return toy3d::RHIResult<
                     std::unique_ptr<toy3d::RHIDevice>>::success(
-                        std::make_unique<RendererTestDevice>());
+                        std::make_unique<RendererTestDevice>(
+                            RendererBootstrapFailurePoint::None,
+                            device_probe,
+                            inject_terminal));
             },
-            tonemap_program);
+            global_shader_map);
         toy3d::Renderer* const stable_address = &renderer;
         {
         toy3d::RenderingThread rendering_thread(
@@ -1361,6 +1656,8 @@ namespace
             });
         check(stopped.succeeded(),
             "RenderingThread stop must teardown Renderer before returning");
+        check(global_shader_map.use_count() == 1,
+            "Renderer must release its GlobalShaderMap reference during logical RT teardown before Engine-owner release");
         check(renderer.scene_interface() == nullptr,
             "Renderer must withdraw SceneInterface publication after teardown");
         check(renderer.status().lifecycle_state() ==
@@ -1370,6 +1667,22 @@ namespace
             "Renderer teardown must preserve sticky Terminal or publish normal Stopped");
         check(&renderer == stable_address,
             "GT-owned Renderer shell address must remain stable for its full lifetime");
+        check(device_probe->shutdown_count == 1u,
+            "Renderer teardown must issue exactly one bounded device shutdown");
+#if !defined(NDEBUG)
+        check(device_probe->validation_enabled,
+            "Debug Renderer bootstrap must enable the backend-independent RHI validation contract");
+#endif
+        if (inject_terminal)
+        {
+            check(device_probe->wait_idle_before_shutdown_count == 0u,
+                "DeviceLost teardown must not enter the device wait-idle path");
+            check(renderer.status().error_code() ==
+                    toy3d::RHIErrorCode::DeviceLost &&
+                  renderer.status().secondary_diagnostic().find(
+                    "secondary terminal shutdown") != std::string::npos,
+                "secondary cleanup failure must not replace the first DeviceLost error");
+        }
         }
         }
 
@@ -1382,6 +1695,7 @@ int main()
     test_canonical_uniform_parameter_values();
     test_cpu_view_and_visibility();
     test_renderer_bootstrap_failures();
+    test_renderer_imgui_bootstrap();
     test_renderer_lifecycle(true, false);
     test_renderer_lifecycle(false, true);
 

@@ -94,7 +94,7 @@ namespace toy3d::shader
 
             ShaderCompileRequestInput request_input;
             request_input.target = ShaderTarget::VulkanSpirV;
-            request_input.profile = ShaderCompileProfile::VulkanPortableV1;
+            request_input.profile = ShaderCompileProfile::VulkanES31;
             request_input.stage = stage;
             request_input.debug_mode = input.debug_mode;
             request_input.entry_point = entry.name;
@@ -327,7 +327,7 @@ namespace toy3d::shader
         entry.shader_name = asset.name;
         entry.pass_name = pass->name;
         entry.target = ShaderTarget::VulkanSpirV;
-        entry.profile = ShaderCompileProfile::VulkanPortableV1;
+        entry.profile = ShaderCompileProfile::VulkanES31;
         entry.logical_layout_hash = logical.layout->logical_layout_hash;
         entry.target_binding_hash = final_mapping.layout->target_binding_hash;
         entry.graphics_pass_state = pass->state;

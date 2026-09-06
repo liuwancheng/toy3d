@@ -9,6 +9,7 @@ namespace toy3d
     class RenderResourceManager;
     class RenderScene;
     class RHIDevice;
+    class RHIShaderProgramCache;
     class SceneRenderer;
     class SceneRenderTargets;
     class TonemapPassResources;
@@ -21,6 +22,7 @@ namespace toy3d
         const ImGuiDrawData* ui_draw_data,
         RenderScene& render_scene,
         RHIDevice& device,
+        RHIShaderProgramCache& shader_program_cache,
         RenderResourceManager& resource_manager,
         RHIViewportContext& viewport,
         SceneRenderTargets& scene_render_targets,

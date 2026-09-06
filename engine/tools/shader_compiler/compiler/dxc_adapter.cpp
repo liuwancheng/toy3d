@@ -26,7 +26,7 @@ namespace toy3d::shader
             diagnostics.push_back({DiagnosticSeverity::Error, code,
                 {request.source_virtual_path, 0, 1, 1},
                 message + " [stage=" + std::to_string(static_cast<std::uint32_t>(request.stage)) +
-                    ", entry=" + request.entry_point + ", target=VulkanPortableV1]"});
+                    ", entry=" + request.entry_point + ", target=VulkanES31]"});
         }
 
         bool is_spirv_1_3_or_older(const std::vector<std::uint8_t>& binary)
@@ -56,7 +56,7 @@ namespace toy3d::shader
         std::vector<Diagnostic>& diagnostics)
     {
         if (request.target != ShaderTarget::VulkanSpirV ||
-            request.profile != ShaderCompileProfile::VulkanPortableV1 ||
+            request.profile != ShaderCompileProfile::VulkanES31 ||
             profile_name(request.stage) == nullptr)
         {
             add_error(diagnostics, DiagnosticCode::InvalidCompileRequest, request,

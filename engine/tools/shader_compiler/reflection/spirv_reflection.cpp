@@ -166,13 +166,13 @@ namespace toy3d::shader
     {
         SpirvReflectionResult result;
         if (request.target != ShaderTarget::VulkanSpirV ||
-            request.profile != ShaderCompileProfile::VulkanPortableV1 ||
+            request.profile != ShaderCompileProfile::VulkanES31 ||
             expected_layout.target != ShaderTarget::VulkanSpirV ||
             expected_layout.mapping_version != vulkan_binding_mapping_version ||
             expected_layout.target_binding_hash != request.target_binding_hash)
         {
             add_error(result.diagnostics, DiagnosticCode::ReflectionMismatch, request,
-                "SPIR-V reflection requires the current VulkanPortable mapping version.");
+                "SPIR-V reflection requires the current Vulkan ES3.1 profile mapping version.");
             return result;
         }
 

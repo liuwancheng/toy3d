@@ -44,7 +44,7 @@ namespace toy3d
             desc.bytecode.bytes = stage.binary;
             switch (program.platform)
             {
-            case ShaderPlatform::VulkanPortableV1: desc.bytecode.target = "spirv"; break;
+            case ShaderPlatform::VulkanES31: desc.bytecode.target = "spirv"; break;
             case ShaderPlatform::D3D11SM5: desc.bytecode.target = "dxbc"; break;
             case ShaderPlatform::D3D12SM6: desc.bytecode.target = "dxil"; break;
             }
@@ -98,43 +98,4 @@ namespace toy3d
         return RHIResult<RHIShaderProgramDesc>::success(std::move(result));
     }
 
-    RHIResult<RHIShaderProgram> create_rhi_shader_program(
-        RHIDevice& device,
-        const ShaderMapProgram& program)
-    {
-        auto desc_result = build_rhi_shader_program_desc(program);
-        if (!desc_result)
-        {
-            return RHIResult<RHIShaderProgram>::failure(
-                desc_result.status().code(), desc_result.status().message());
-        }
-        RHIShaderProgramDesc desc = std::move(desc_result).value();
-        RHIShaderProgram result;
-        auto layout = device.create_binding_layout(desc.binding_layout);
-        if (!layout)
-        {
-            return RHIResult<RHIShaderProgram>::failure(
-                layout.status().code(), layout.status().message());
-        }
-        result.binding_layout = std::move(layout).value();
-
-        // optional stage descriptors let one helper skip absent stages while
-        // preserving identical creation and error propagation for present ones.
-        const auto create_stage = [&](const std::optional<RHIShaderDesc>& shader_desc,
-                                      RHIShaderRef& output) -> RHIStatus {
-            if (!shader_desc) return RHIStatus::success();
-            auto shader = device.create_shader(*shader_desc);
-            if (!shader) return shader.status();
-            output = std::move(shader).value();
-            return RHIStatus::success();
-        };
-        RHIStatus status = create_stage(desc.vertex_shader, result.vertex_shader);
-        if (status) status = create_stage(desc.pixel_shader, result.pixel_shader);
-        if (status) status = create_stage(desc.compute_shader, result.compute_shader);
-        if (!status)
-        {
-            return RHIResult<RHIShaderProgram>::failure(status.code(), status.message());
-        }
-        return RHIResult<RHIShaderProgram>::success(std::move(result));
-    }
 }

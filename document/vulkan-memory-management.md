@@ -282,7 +282,7 @@ completed_value advances
 viewport presentation 另有独立的 WSI 生命周期，不能并入 queue completion 模型。frame slot 的 submit
 fence/`completion_value` 只退休 graphics payload；每个 swapchain image 的 backend-private presentation state
 独占 `rendering_done` semaphore 与 non-owning `last_submission_fence`。成功 present 后，无扩展的
-VulkanPortable v1 路径只在当前 swapchain 再次 acquire 同一 image 时复用该 semaphore；submit completion
+Vulkan ES3.1 profile 路径只在当前 swapchain 再次 acquire 同一 image 时复用该 semaphore；submit completion
 不能单独证明 WSI 已消费 wait semaphore。frame slot 数按 `min(2, actual_image_count)` 限制 CPU ahead，
 但 per-image state 始终按全部实际 swapchain image 建立，两者不是同一索引域。
 

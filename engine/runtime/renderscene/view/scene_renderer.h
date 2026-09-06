@@ -11,6 +11,7 @@ namespace toy3d
     class RenderScene;
     class RHIDevice;
     class RHIGraphicsCommandContext;
+    class RHIShaderProgramCache;
     class SceneRenderTargets;
 
     // GT-created one-shot owner transferred into a Draw command. All render-side
@@ -36,6 +37,7 @@ namespace toy3d
         virtual RHIStatus render_scene_passes(
             RenderScene& render_scene,
             RHIDevice& device,
+            RHIShaderProgramCache& shader_program_cache,
             RHIGraphicsCommandContext& context,
             SceneRenderTargets& scene_render_targets) = 0;
 

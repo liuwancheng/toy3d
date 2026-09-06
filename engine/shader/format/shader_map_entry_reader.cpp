@@ -885,7 +885,7 @@ namespace toy3d::shader
             !shader_name(manifest->at("shader_name")) ||
             !safe_scalar(manifest->at("pass_name")) ||
             !target || *target != static_cast<std::uint32_t>(ShaderTarget::VulkanSpirV) ||
-            !profile || *profile != static_cast<std::uint32_t>(ShaderCompileProfile::VulkanPortableV1) ||
+            !profile || *profile != static_cast<std::uint32_t>(ShaderCompileProfile::VulkanES31) ||
             !mapping_version || *mapping_version != vulkan_binding_mapping_version ||
             !variant_id_version || *variant_id_version != shader_variant_id_version ||
             !permutation_version || *permutation_version != shader_permutation_version ||

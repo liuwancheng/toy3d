@@ -5,6 +5,8 @@
 #include "rendercore/rendering_thread.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/shader/primitive_uniform_shader_parameters.h"
+#include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/texture/texture.h"
@@ -240,10 +242,14 @@ namespace
         program.pass_template_hash =
             toy3d::shader::calculate_shader_graphics_pass_state_hash(
                 program.graphics_pass_state);
-        program.permutation_key = nonzero_hash(72u);
+        program.permutation_key =
+            toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding constants;
-        constants.parameter_id = 200u;
+        constants.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::Constant,
+            "");
         constants.name = "toy_pass_data";
         constants.group = toy3d::RHIBindingGroup::Pass;
         constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
@@ -255,7 +261,10 @@ namespace
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
-        texture.parameter_id = 202u;
+        texture.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::SampledTexture,
+            "scene_color");
         texture.name = "scene_color";
         texture.group = toy3d::RHIBindingGroup::Pass;
         texture.type = toy3d::RHIResourceBindingType::SampledTexture;
@@ -264,7 +273,10 @@ namespace
         program.bindings.push_back(texture);
 
         toy3d::ShaderMapBinding sampler;
-        sampler.parameter_id = 203u;
+        sampler.parameter_id = toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Pass,
+            toy3d::shader::ShaderParameterCategory::Sampler,
+            "scene_sampler");
         sampler.name = "scene_sampler";
         sampler.group = toy3d::RHIBindingGroup::Pass;
         sampler.type = toy3d::RHIResourceBindingType::Sampler;
@@ -302,6 +314,19 @@ namespace
         check(result.succeeded(), result.error.c_str());
         return result.program;
     }
+
+    std::shared_ptr<const toy3d::GlobalShaderMap> load_tonemap_global_map()
+    {
+        toy3d::ShaderMapProgramData program = make_tonemap_program();
+        MaterialProgramLoader loader(program);
+        toy3d::ShaderMap shader_map(loader);
+        toy3d::GlobalShaderMapResult result = toy3d::GlobalShaderMap::load(
+            shader_map,
+            toy3d::ShaderPlatform::VulkanES31,
+            {&toy3d::tonemap_global_shader_type()});
+        check(result.succeeded(), result.error.c_str());
+        return result.shader_map;
+    }
     toy3d::RHIResult<toy3d::RHIFrameEndResult> render_test_frame(
         toy3d::ForwardSceneRenderer& scene_renderer,
         toy3d::RenderScene& render_scene,
@@ -311,11 +336,13 @@ namespace
         toy3d::SceneRenderTargets& scene_render_targets,
         toy3d::TonemapPassResources& tonemap_pass_resources)
     {
+        toy3d::RHIShaderProgramCache shader_program_cache(device);
         return toy3d::render_viewport_frame(
             scene_renderer,
             nullptr,
             render_scene,
             device,
+            shader_program_cache,
             resource_manager,
             viewport,
             scene_render_targets,
@@ -577,11 +604,13 @@ int main()
         std::numeric_limits<std::uint32_t>::max();
     device.test_limits.max_sampler_anisotropy =
         std::numeric_limits<std::uint32_t>::max();
-    const toy3d::ShaderMapProgramRef tonemap_program =
-        load_program(make_tonemap_program());
+    const std::shared_ptr<const toy3d::GlobalShaderMap> global_shader_map =
+        load_tonemap_global_map();
     toy3d::TonemapPassResources tonemap_resources;
-    check(tonemap_program &&
-          tonemap_resources.initialize(device, *tonemap_program).succeeded(),
+    toy3d::RHIShaderProgramCache tonemap_program_cache(device);
+    check(global_shader_map &&
+          tonemap_resources.initialize(
+              device, tonemap_program_cache, *global_shader_map).succeeded(),
         "frame-owner smoke requires initialized Tonemap resources");
 
     struct UniformContext final : toy3d::RHICommandContext

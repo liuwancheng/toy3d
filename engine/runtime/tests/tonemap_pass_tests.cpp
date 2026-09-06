@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <type_traits>
 
 namespace
 {
@@ -20,6 +21,22 @@ namespace
 
 int main()
 {
+    using TonemapInitializeSignature = toy3d::RHIStatus (
+        toy3d::TonemapPassResources::*)(
+            toy3d::RHIDevice&,
+            toy3d::RHIShaderProgramCache&,
+            const toy3d::GlobalShaderMap&);
+    static_assert(std::is_same<
+            decltype(&toy3d::TonemapPassResources::initialize),
+            TonemapInitializeSignature>::value,
+        "Tonemap initialization must consume the frozen GlobalShaderMap and Renderer-owned Program cache");
+
+    const toy3d::GlobalShaderType& shader_type =
+        toy3d::tonemap_global_shader_type();
+    check(shader_type.type_name() == "TonemapGlobalShader" &&
+          shader_type.binding_requirements().size() == 3u,
+        "Tonemap must expose one stable Global Shader type with its complete required binding schema");
+
     using toy3d::tonemap_sdr_channel_reference;
     const float black = tonemap_sdr_channel_reference(0.0F, 0.0F);
     const float middle = tonemap_sdr_channel_reference(0.18F, 0.0F);

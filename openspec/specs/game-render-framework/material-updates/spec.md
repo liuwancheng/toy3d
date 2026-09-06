@@ -41,7 +41,7 @@ frame-local constants、descriptor/physical packet 和最终 RHI binding MUST �
 ### Requirement: Material 只填充五组 binding 中的 Material group
 Forward Base Pass MUST 分别解析 Global、View、Pass、Material、Object 五个 logical Binding Group：View 使用 `ViewUniformShaderParameters`，Object 使用 `PrimitiveUniformShaderParameters`，Material 使用 `MaterialRenderProxy` 的物化结果。MaterialRenderProxy MUST NOT 写入 View/Object group，也不得感知 Vulkan physical set、D3D register/root mapping 或 backend descriptor 类型。
 
-最终 Draw SHALL 通过现有 `RHIGraphicsBindings` 原子提供所需 logical groups；VulkanPortable v1 的 Global+View physical set 0 聚合和 D3D11/D3D12 native mapping继续由 RHI/backend 处理。
+最终 Draw SHALL 通过现有 `RHIGraphicsBindings` 原子提供所需 logical groups；Vulkan ES3.1 profile 的 Global+View physical set 0 聚合和 D3D11/D3D12 native mapping继续由 RHI/backend 处理。
 
 #### Scenario: Material group 缺失
 - **WHEN** 当前 ShaderMap Program 要求 Material group 而 MaterialRenderProxy 无法生成完整 binding

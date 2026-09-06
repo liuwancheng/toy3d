@@ -26,7 +26,7 @@
 #### 平台、profile 与工具链
 
 - 正式 target 为 Vulkan、D3D11、D3D12。D3D11 使用 FXC/`D3DCompile` 生成 SM5 DXBC；D3D12 使用 DXC 生成 SM6 DXIL；Vulkan 使用 DXC 生成 SPIR-V。
-- 默认 `VulkanPortable v1` 固定为 Vulkan 1.1 与 SPIR-V 1.3，不默认依赖可选 device feature。Cook 必须按 profile 的最低能力和 limits 验证，不能根据开发机 GPU 自动提高要求；runtime 加载时再次复核 package 的 required capabilities/limits。
+- 默认 `Vulkan ES3.1 profile` 固定为 Vulkan 1.1 与 SPIR-V 1.3，不默认依赖可选 device feature。Cook 必须按 profile 的最低能力和 limits 验证，不能根据开发机 GPU 自动提高要求；runtime 加载时再次复核 package 的 required capabilities/limits。
 - 上层只通过 capability、limits、format support 与版本化 profile 选择功能路径，禁止散布 `if Vulkan`、`if Android` 等判断。所有新 RHI、Shader、资源格式、Binding 和 Pipeline 设计必须评估移动端。
 - 编译服务采用统一 compile request 与 target-specific compiler adapter，不使用 HLSLCC、ShaderConductor 或运行时跨编译链。
 - Toy3d 自建 DXC、SPIR-V Tools、SPIRV-Reflect 与 Toy3dShaderCompiler；`d3dcompiler_47.dll` 和 DXIL validator 使用锁定的 Microsoft 官方二进制。两类内容共同组成带版本、构建参数、SHA-256、license 与 compiler identity manifest 的 `Toy3dShaderToolchain` bundle。
@@ -67,7 +67,7 @@
 - 五个逻辑 Binding Group 固定为 Global、View、Pass、Material、Object；逻辑 group 表示身份、所有权和更新频率，不等于 descriptor set 或寄存器空间。
 - 布局分为 logical schema、active Program layout、target-specific native mapping。完整 schema 保留全部参数/default；Program 只给实际使用的独立资源分配 binding。一个 group 的 cbuffer 只要有任一成员使用就保留完整 buffer 和稳定 offset，整个 group 未使用才不占 binding。
 - D3D11/D3D12 按 stage、register class、group 固定顺序、`ShaderParameterId` 从 0 紧凑分配。Vulkan 独立生成 set/binding。
-- `VulkanPortable v1` 使用四个 physical sets：set 0=Global+View，set 1=Pass，set 2=Material，set 3=Object。每个 set 内按 logical group、descriptor type、`ShaderParameterId` 从 0 连续分配；禁止 `0/256/512/768` class-base 预留。
+- `Vulkan ES3.1 profile` 使用四个 physical sets：set 0=Global+View，set 1=Pass，set 2=Material，set 3=Object。每个 set 内按 logical group、descriptor type、`ShaderParameterId` 从 0 连续分配；禁止 `0/256/512/768` class-base 预留。
 - package 保存 target-specific mapping。跨 target reflection parity 比较逻辑身份、类型、array count、constant offset/stride 与 stage visibility，不比较 native slot/set/binding 数字。
 - Cook 同时验证 per-stage 和 pipeline-layout 的 sampler、sampled image、uniform buffer、storage resource limits，并在错误中报告 group、stage、resource class、required 与 supported。
 
@@ -112,7 +112,7 @@ Shader 数据沿用容易识别的 UE 风格术语，但职责以 Toy3d 本文�
 - `ShaderMapProgram`：经 `ShaderMap` 公共语义验证并建立参数索引后的不可变 CPU 对象；
 - `RHIShaderProgram`：由 Render Thread 基于 `ShaderMapProgram` 创建的 RHI Shader 与 Binding Layout 组合，不由 `ShaderMap` 持有。
 
-`ShaderMapProgramKey` 是精确逻辑查询身份，由 Shader 名、Pass 名、`ShaderPlatform` 与必选 permutation key 组成。`ShaderPlatform` 对应 UE `EShaderPlatform` 的目标能力概念，当前取值为 `VulkanPortableV1`、`D3D11SM5` 与 `D3D12SM6`；公开查询不再同时接收可形成非法组合的 binary format/profile。具体 binary format 由 `ShaderPlatform` 确定。当前不引入额外 `ShaderMapProgramId` 或 generation 索引；Program 内容 hash 保存在 `ShaderMapProgramData` 中，待 DDC 或热重载需要精确编译身份时再形成独立类型。
+`ShaderMapProgramKey` 是精确逻辑查询身份，由 Shader 名、Pass 名、`ShaderPlatform` 与必选 permutation key 组成。`ShaderPlatform` 对应 UE `EShaderPlatform` 的目标能力概念，当前取值为 `VulkanES31`、`D3D11SM5` 与 `D3D12SM6`；公开查询不再同时接收可形成非法组合的 binary format/profile。具体 binary format 由 `ShaderPlatform` 确定。当前不引入额外 `ShaderMapProgramId` 或 generation 索引；Program 内容 hash 保存在 `ShaderMapProgramData` 中，待 DDC 或热重载需要精确编译身份时再形成独立类型。
 
 Loader 负责来源格式、边界、版本、manifest/hash 与索引验证；`ShaderMap` 是运行时公共语义的唯一守门人，负责验证请求身份、stage 组合、binding/reflection 与 constant layout。只有成功 Program 进入缓存，失败不做 negative cache。Program 发布后不可原地修改；未来热重载创建新对象并替换 current 引用，失败保留 last-known-good，旧对象仅因 Game/Render Thread 或 RHI/PSO 引用继续存活。
 
@@ -1180,7 +1180,7 @@ enum class RHIShaderBinaryFormat
 | 原生 Binding | 四个 physical sets 内紧凑 `set/binding` | target/stage-local `b/t/s/u` slot | target/stage-local `b/t/s/u` register，root mapping 由后端生成 |
 | Debug info | SPIR-V debug/source mapping | DXBC debug info | DXIL debug info/PDB or embedded |
 
-Vulkan backend 按 `VulkanPortable v1` 将五个逻辑 group 打包到四个 physical sets，并在 set 内紧凑分配。D3D12 backend 可以生成 root signature，但 root parameter 不进入 ShaderPackage 公共 schema。D3D11 SM5 支持 compute/UAV/storage；具体 limits 与 format support 仍通过 capability/profile 验证。
+Vulkan backend 按 `Vulkan ES3.1 profile` 将五个逻辑 group 打包到四个 physical sets，并在 set 内紧凑分配。D3D12 backend 可以生成 root signature，但 root parameter 不进入 ShaderPackage 公共 schema。D3D11 SM5 支持 compute/UAV/storage；具体 limits 与 format support 仍通过 capability/profile 验证。
 
 ## 18. 错误模型与验证
 
@@ -1276,7 +1276,7 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 
 - 阶段 0 的 Shader 目录与 target 骨架已完成：已建立 `engine/tools/shader_compiler/`、`engine/shader/builtin/`、`engine/shader/include/`、`engine/runtime/rendercore/shader/`、`Toy3dShaderCompilerCore`、`Toy3dShaderCompiler` 和正式 `Toy3dShaders` target；已实现 SHA-256、`ShaderParameterId`、ToyShaderABI version contract，以及 `engine/thirdparty/ShaderToolchain/` 下锁定版本、按 host 分包的预编译工具链。ShaderCodeLibrary/package format 仍未完成。
 - 阶段 1 的当前范围已完成：已有 `.shader` tokenizer、parser、AST、源码位置 diagnostics、`#pragma vertex/pixel/compute` 提取、基础 PSO state 校验及合法/非法语料测试。
-- 阶段 2 的核心 compiler contract 已完成：已有 constant-buffer packer、parameter schema 与 logical layout hash、active-resource 裁剪、D3D11/D3D12 register allocator、VulkanPortable 四 set allocator、target binding hash，以及 D3D/Vulkan generated binding HLSL。当前测试覆盖 packing、matrix/array stride、默认值、确定性排序、binding limits、target mapping 和 generated HLSL。
+- 阶段 2 的核心 compiler contract 已完成：已有 constant-buffer packer、parameter schema 与 logical layout hash、active-resource 裁剪、D3D11/D3D12 register allocator、Vulkan ES3.1 profile 四 set allocator、target binding hash，以及 D3D/Vulkan generated binding HLSL。当前测试覆盖 packing、matrix/array stride、默认值、确定性排序、binding limits、target mapping 和 generated HLSL。
 - 阶段 3 的 compiler-side Vulkan slice 已闭环：已有版本化 `ShaderCompileRequest`、target/profile/stage/debug/compiler identity 校验、logical/target layout identity、稳定 compile key，以及只允许 `/Engine/ShaderIncludes/` 的虚拟 include resolver。resolver 已支持传递依赖 SHA-256、确定性依赖排序、`#line`、缺失文件、非法路径、include cycle 和最大深度诊断；用户 HLSL 不能直接 include compiler-owned `/Generated/` 路径。`Toy3dShaderToolchain` manifest v1 reader、显式或可执行文件相对 bundle discovery、host platform/artifact SHA-256/compiler identity 校验、跨 Windows/POSIX 的无 shell 子进程执行，以及 Vulkan DXC adapter 已完成；adapter 固定 Vulkan 1.1、SPIR-V 1.3 上限、DX-compatible cbuffer layout、column-major、stage profile 和 Debug/Development/Shipping 参数，并在 reflection 前强制执行 `spirv-val --target-env vulkan1.1`。最终 SPIR-V 通过 SPIRV-Reflect 提取并验证 logical/native reflection，成功后才以 compile key 分目录原子发布 `ShaderCodeEntry`。共享 lock 已锁定 DXC `v1.8.2505.1`（`b106a961d09221b3c5bdb37be45b679257da08b8`）、SPIRV-Tools `vulkan-sdk-1.4.313.0`（`a62abcb402009b9ca5975e6167c09f237f630e0e`）、SPIRV-Headers（`aa6cef192b8e693916eb713e7a9ccadf06062ceb`）和 SPIRV-Reflect（`c6c0f5c9796bdef40c55065d82e0df67c38a29a4`）；Windows x64 正式 bundle 已发布，macOS x64/arm64 发布逻辑已建立但仍需对应硬件验证和提交产物。
 
 阶段 3 的 DXC/SPIR-V/reflection/`ShaderCodeEntry` slice 当前已完成代码侧闭环：
@@ -1287,7 +1287,7 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 4. SPIRV-Reflect 从最终 SPIR-V 提取 resource kind、constant member type/offset/array stride/matrix stride、stage interface、compute thread-group size 和 Vulkan `set/binding`；校验 stage/entry、parameter identity、group、resource category/kind、array count、active binding 完整性、mapping version、target binding hash，以及 32-bit interface/`RelaxedPrecision` 约束。
 5. `compile_vulkan_shader_code_entry()` 串联 compile、`spirv-val`、reflection/parity 与 `ShaderCodeEntry` publication。staging 完整写出 manifest、SPIR-V、reflection 和 dependency hash 后才 rename 到 compile-key 目录；compile、validation、reflection 或 parity 任一步失败都不发布最终目录。真实 DXC 集成测试覆盖 cbuffer `float3 + float`、matrix stride、array stride、Texture/Sampler、native mapping mismatch 和失败不发布路径。
 6. ShaderMap compiler orchestration 已串联 Pass entry、logical layout、active-resource discovery、最终 target mapping、generated HLSL、各 stage compile/reflection 与 `ShaderMapEntry`。Vulkan 使用 discovery/final 两遍编译：第一遍允许 reflection 中缺少被优化掉的声明并收集真实 stage usage，第二遍按紧凑 mapping 重编译且要求严格 parity；共享 Pass 源码的每个 stage 都声明完整 Vulkan Program binding 集，最终 stage visibility 只取最终 SPIR-V reflection。
-7. ShaderMap-level validation 已合并 vertex/pixel/compute stage，检查 vertex output/pixel input 的 location、semantic、32-bit scalar type/component count，检查 compute thread-group size，并通过最终 allocator 复核 VulkanPortable per-stage/pipeline limits。`compile-vulkan` CLI 可从 `.shader` 与 Pass 直接生成原子发布的 `ShaderMapEntry`，Entry 保存 Shader/Pass identity、Pass template hash、logical/target hash、紧凑 mapping、各 stage `ShaderCodeEntry`/reflection/binary/dependency hash。
+7. ShaderMap-level validation 已合并 vertex/pixel/compute stage，检查 vertex output/pixel input 的 location、semantic、32-bit scalar type/component count，检查 compute thread-group size，并通过最终 allocator 复核 Vulkan ES3.1 profile per-stage/pipeline limits。`compile-vulkan` CLI 可从 `.shader` 与 Pass 直接生成原子发布的 `ShaderMapEntry`，Entry 保存 Shader/Pass identity、Pass template hash、logical/target hash、紧凑 mapping、各 stage `ShaderCodeEntry`/reflection/binary/dependency hash。
 8. Variant ABI slice 已完成：已锁定并实现 `ShaderVariantId`、`ShaderEnumValueId`、permutation ABI v1、确定性 SHA-256 key 和 compiler-owned macro contract。Program compile input 与 `compile-vulkan --variant name=value` 使用 typed selection，未选择项使用 schema default，未知、重复和非法 value 诊断失败；调用方不再向 Program compiler 注入自由形式 prelude。`ShaderMapEntry` format 已升至 v2，并保存 Variant ID/permutation version 与 key；golden tests 覆盖 ID/key、声明重排、默认/显式选择、错误路径和真实 DXC Program compile。
 9. ShaderMap reader/cache-hit slice 已完成：v2 reader 严格解析 manifest、mapping、stage reflection/dependencies/binary，限制文件大小和 record count，重算 target binding、reflection、binary、`shader_map_key` 与 `entry_content_hash`。首次发布仍使用 owned staging 与 no-replace rename；已有合法同内容 Entry 和并发发布返回 cache hit，损坏 Entry 或同 key 不同内容诊断失败且不覆盖。测试覆盖真实 reflected Program round-trip、重复/并发 publication、binary/dependency/version/target/profile 损坏和超限 metadata。
 10. ShaderMapEntry Loader slice 已完成代码侧闭环：`engine/runtime/rendercore/shader/` 定义 `ShaderMapLoader`、`ShaderMapProgramData`、运行时一致性校验和 RHI descriptor/object 转换；`ShaderMapEntryLoader` 位于 Runtime RenderCore，Editor 只提交 `ShaderLoadConfig`，不再拥有 Loader 实现或链接 `Toy3dShaderCompilerCore`。`engine/shader/format/` 的中立 `Toy3dShaderFormat` target 统一持有 ShaderMapEntry types、hash、SHA-256 与严格 reader，Compiler 与 Runtime 单向依赖该 contract。test pass 只按完整 `ShaderMapProgramKey` 请求 Program，shader binary、entry point、reflection、content hash 和 `RHIBindingLayoutDesc` 全部来自已验证 Entry；旧裸 `.spv`、手写 reflection/hash/Binding Layout 和 GLSL 构建链已删除。`RHIDevice::create_shader()` 与 `create_binding_layout()` 已迁移到公共 NVI validation 后再进入 backend hook；Vulkan pipeline layout 固定为四个 physical sets。
@@ -1318,7 +1318,7 @@ Variant ABI slice 完成后的独立验证重新运行 Windows x64 Debug CMake c
 
 ShaderMap reader/cache-hit slice 完成后的独立验证再次完成 Windows x64 Debug configure、上述五个目标构建和 CTest 5/5。验证确认 `Toy3dShaderCompiler.Compile` 实际使用正式 Windows x64 toolchain 执行 DXC、`spirv-val`、SPIR-V reflection、真实 Program Entry round-trip，并无条件覆盖 reader/cache hit、并发 publication、cache conflict、损坏与超限输入测试。未覆盖范围为非 Debug 配置、macOS/Linux/Android、D3D11/D3D12、移动端 Vulkan profile、压力型多轮并发和 sanitizer。
 
-ShaderMapEntry 开发加载 slice 完成后的独立验证重新配置 Windows x64 Debug，并用 `Toy3dShaders --clean-first` 强制执行真实 DXC、`spirv-val`、reflection、Entry publication 与部署；随后 `Toy3dEditor`、ShaderMapEntry 加载测试、三个 Shader compiler 测试、FileSystem 测试和 ConsoleManager 测试均构建成功，CTest 6/6 通过。生成目录与 `bin/shader/test_pass/` 的 10 个文件按相对路径和 SHA-256 完全一致；manifest 为 VulkanPortable v1，Material texture/sampler 为 set 2、binding 0/1。独立验证首次发现历史 `bin/shader/test_pass.vert.spv` 与 `test_pass.frag.spv` 未被迁移清理，修复部署命令后复验确认两者均不存在。未覆盖实际 Editor/Vulkan 窗口运行、Release、macOS、移动端 Vulkan、D3D11 与 D3D12。
+ShaderMapEntry 开发加载 slice 完成后的独立验证重新配置 Windows x64 Debug，并用 `Toy3dShaders --clean-first` 强制执行真实 DXC、`spirv-val`、reflection、Entry publication 与部署；随后 `Toy3dEditor`、ShaderMapEntry 加载测试、三个 Shader compiler 测试、FileSystem 测试和 ConsoleManager 测试均构建成功，CTest 6/6 通过。生成目录与 `bin/shader/test_pass/` 的 10 个文件按相对路径和 SHA-256 完全一致；manifest 为 Vulkan ES3.1 profile，Material texture/sampler 为 set 2、binding 0/1。独立验证首次发现历史 `bin/shader/test_pass.vert.spv` 与 `test_pass.frag.spv` 未被迁移清理，修复部署命令后复验确认两者均不存在。未覆盖实际 Editor/Vulkan 窗口运行、Release、macOS、移动端 Vulkan、D3D11 与 D3D12。
 
 ShaderMap 原型 slice 完成后的独立验证重新配置 Windows x64 Debug，构建当时的 Runtime ShaderMap、ShaderMapEntry 加载、`Toy3dEditor` 与三个 Shader compiler 测试目标均成功，CTest 7/7 通过。ShaderMap 测试覆盖完整 identity cache hit、constant/resource parameter ID 查询、越界 constant metadata 和 target/profile mismatch；ShaderMapEntry 加载测试继续验证真实 Entry reader 与 RHI Program 转换。当前线程 contract 不承诺并发调用 Loader。该轮未运行 Editor GUI 或真实 render/present 冒烟，也未覆盖非 Debug、macOS、Android/移动端 Vulkan、其他 UNIX、D3D11 与 D3D12。
 
@@ -1344,7 +1344,7 @@ ShaderMap 原型 slice 完成后的独立验证重新配置 Windows x64 Debug，
 - 受控 resource type schema、logical binding records 与 active-resource rules；
 - toolchain bundle manifest、source build、bootstrap 与离线验证脚本；
 - ShaderPackage section format、reader/writer 边界与 corrupt-input tests；
-- RHI capability/profile、D3D11 SM5 limits 与 VulkanPortable four-set mapping contract。
+- RHI capability/profile、D3D11 SM5 limits 与 Vulkan ES3.1 profile four-set mapping contract。
 
 并行工作不得自行改变语言、ABI、ID algorithm、target mapping 或 package major；发现 contract 不足时先回到本文追加确认。每个小批次只合并可独立验证的 vertical slice。
 
@@ -1386,7 +1386,7 @@ ShaderMap 原型 slice 完成后的独立验证重新配置 Windows x64 Debug，
 5. 分别实现 D3D11/D3D12 stage-local register allocator 和 Vulkan 四 set 紧凑 binding allocator，并版本化 target mapping；
 6. 在 `engine/tools/shader_compiler/codegen/` 为 D3D 和 Vulkan 分别生成带 `register()`、`packoffset()`、`#line` 及所需 target decoration 的虚拟 `.hlsli`；
 7. 分别计算 logical layout hash、target binding hash，以及包含 mapping version 的 target compile cache key；
-8. 对 packing、数组、matrix、冲突、D3D11 SM5 limits 和 VulkanPortable limits 编写测试。
+8. 对 packing、数组、matrix、冲突、D3D11 SM5 limits 和 Vulkan ES3.1 profile limits 编写测试。
 
 验收：相同逻辑 schema 与 permutation 始终产生相同 generated HLSL 和 layout hash；不同声明顺序经过确定性排序后按规定得到一致或明确不同的结果。
 

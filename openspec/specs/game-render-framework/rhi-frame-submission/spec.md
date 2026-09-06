@@ -73,9 +73,9 @@ acquire成功后的resource recording、`init_views()`、visibility、pass或`fi
 - **THEN** viewport/device MUST terminal，后续不得复用状态未知对象
 
 ### Requirement: 跨后端实现
-contract MUST 可由 Vulkan、D3D12、D3D11 FL11_0 与 VulkanPortable v1 实现；swapchain、semaphore、fence、queue family、immediate context 等原生细节不得泄漏到 RenderScene。
+contract MUST 可由 Vulkan、D3D12、D3D11 FL11_0 与 Vulkan ES3.1 profile 实现；swapchain、semaphore、fence、queue family、immediate context 等原生细节不得泄漏到 RenderScene。
 
-Vulkan SHALL把graphics queue submit与present作为两个结果边界，semaphore/fence保持backend私有。D3D12 SHALL分别映射command queue execute、DXGI present和fence value。D3D11 SHALL在RT queue submit阶段串行执行deferred/immutable packet、独立调用DXGI present，并使用FL11_0 event query或等价GPU signal生成completion。VulkanPortable v1不得依赖Vulkan 1.2+或可选同步特性。
+Vulkan SHALL把graphics queue submit与present作为两个结果边界，semaphore/fence保持backend私有。D3D12 SHALL分别映射command queue execute、DXGI present和fence value。D3D11 SHALL在RT queue submit阶段串行执行deferred/immutable packet、独立调用DXGI present，并使用FL11_0 event query或等价GPU signal生成completion。Vulkan ES3.1 profile不得依赖Vulkan 1.2+或可选同步特性。
 
 #### Scenario: D3D11 frame submit
 - **WHEN** D3D11 backend 提交录制单元

@@ -2,7 +2,9 @@
 
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
-#include "rendercore/shader/rhi_shader_program.h"
+#include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/rhi_shader_program_cache.h"
+#include "rendercore/shader/global_shader_type.h"
 #include "ui/imgui_draw_data.h"
 
 #include <cstddef>
@@ -15,6 +17,8 @@ namespace toy3d
     class RHIDevice;
     class RHIGraphicsCommandContext;
     class ShaderMapProgram;
+
+    const GlobalShaderType& imgui_global_shader_type();
 
     struct ImGuiPassTarget
     {
@@ -38,7 +42,8 @@ namespace toy3d
 
         RHIStatus initialize(
             RHIDevice& device,
-            const ShaderMapProgram& shader_program,
+            RHIShaderProgramCache& shader_program_cache,
+            const GlobalShaderMap& global_shader_map,
             const ImGuiFontAtlasData& font_atlas);
         RHIStatus record_font_upload(
             RHIGraphicsCommandContext& context,
@@ -84,7 +89,7 @@ namespace toy3d
         const ShaderMapBinding* font_texture_binding_ = nullptr;
         const ShaderMapBinding* font_sampler_binding_ = nullptr;
         const ShaderMapProgram* shader_program_ = nullptr;
-        RHIShaderProgram rhi_program_;
+        RHIShaderProgramRef rhi_program_;
         RHITextureRef font_texture_;
         RHITextureViewRef font_texture_view_;
         RHISamplerRef font_sampler_;

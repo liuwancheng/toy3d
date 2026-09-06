@@ -17,9 +17,10 @@ namespace toy3d
     class SceneRenderTargets;
     class SceneRenderer;
     class SceneInterface;
+    class GlobalShaderMap;
+    class RHIShaderProgramCache;
     class TaskGraphInterface;
     class TonemapPassResources;
-    class ShaderMapProgram;
     class ImGuiRenderer;
 
     enum class RendererLifecycleState
@@ -61,8 +62,7 @@ namespace toy3d
             RHISurfaceRef primary_surface,
             RHIViewportContextDesc viewport_desc,
             std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
-            std::shared_ptr<const ShaderMapProgram> tonemap_program = nullptr,
-            std::shared_ptr<const ShaderMapProgram> imgui_program = nullptr,
+            std::shared_ptr<const GlobalShaderMap> global_shader_map,
             std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr);
         ~Renderer();
 
@@ -98,11 +98,11 @@ namespace toy3d
         RHISurfaceRef primary_surface_input_;
         RHIViewportContextDesc viewport_desc_;
         std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory_;
-        std::shared_ptr<const ShaderMapProgram> tonemap_program_input_;
-        std::shared_ptr<const ShaderMapProgram> imgui_program_input_;
+        std::shared_ptr<const GlobalShaderMap> global_shader_map_input_;
         std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas_input_;
 
         std::unique_ptr<RHIDevice> device_;
+        std::unique_ptr<RHIShaderProgramCache> shader_program_cache_;
         std::unique_ptr<RenderResourceManager> resource_manager_;
         std::unique_ptr<RenderScene> render_scene_;
         std::unique_ptr<SceneRenderTargets> scene_render_targets_;

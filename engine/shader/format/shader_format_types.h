@@ -66,7 +66,7 @@ namespace toy3d::shader
 
     enum class ShaderCompileProfile
     {
-        VulkanPortableV1,
+        VulkanES31,
         D3D11FeatureLevel11_0,
         D3D12ShaderModel6
     };
@@ -284,7 +284,7 @@ namespace toy3d::shader
     {
         std::uint32_t version = shader_compile_request_version;
         ShaderTarget target = ShaderTarget::VulkanSpirV;
-        ShaderCompileProfile profile = ShaderCompileProfile::VulkanPortableV1;
+        ShaderCompileProfile profile = ShaderCompileProfile::VulkanES31;
         ShaderStageFlags stage = ShaderStageFlags::None;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
         std::string entry_point;
@@ -379,7 +379,7 @@ namespace toy3d::shader
         std::string shader_name;
         std::string pass_name;
         ShaderTarget target = ShaderTarget::VulkanSpirV;
-        ShaderCompileProfile profile = ShaderCompileProfile::VulkanPortableV1;
+        ShaderCompileProfile profile = ShaderCompileProfile::VulkanES31;
         Sha256Hash logical_layout_hash{};
         Sha256Hash target_binding_hash{};
         ShaderGraphicsPassState graphics_pass_state;

@@ -71,7 +71,7 @@ namespace
         toy3d::ShaderMapProgramKey key;
         key.shader_name = "Toy3d/Surface/Phong";
         key.pass_name = "Forward";
-        key.platform = toy3d::ShaderPlatform::VulkanPortableV1;
+        key.platform = toy3d::ShaderPlatform::VulkanES31;
 
         toy3d::ShaderMapProgramResult loaded = shader_map.find_or_load(key);
         if (!loaded.succeeded())

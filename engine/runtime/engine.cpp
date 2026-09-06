@@ -3,6 +3,7 @@
 #include "application/application.h"
 #include "config/command_line_parser.h"
 #include "config/console_manager.h"
+#include "config/render_backend_shader_platform.h"
 
 #if WITH_WIN64
 #include "platform/win/win32_platform.h"
@@ -23,9 +24,11 @@
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/rendering_thread.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
+#include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/view/scene_view.h"
 #include "renderscene/renderer.h"
+#include "renderscene/renderer_builtin_shaders.h"
 #include "renderscene/view/forward_scene_renderer.h"
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
@@ -250,8 +253,7 @@ namespace toy3d
             {
                 return create_default_rhi_device();
             },
-            tonemap_shader_program,
-            imgui_shader_program,
+            global_shader_map,
             imgui_system
                 ? std::make_unique<ImGuiFontAtlasData>(
                     imgui_system->font_atlas())
@@ -424,6 +426,9 @@ namespace toy3d
         }
 
         renderer.reset();
+        global_shader_map.reset();
+        builtin_shader_map.reset();
+        builtin_shader_loader.reset();
 
         if (task_graph)
         {
@@ -436,10 +441,6 @@ namespace toy3d
             task_graph.reset();
         }
         thread_manager.reset();
-        imgui_shader_program.reset();
-        tonemap_shader_program.reset();
-        builtin_shader_map.reset();
-        builtin_shader_loader.reset();
         imgui_system.reset();
     }
 
@@ -471,38 +472,31 @@ namespace toy3d
         builtin_shader_map = std::make_unique<ShaderMap>(
             *builtin_shader_loader);
 
-        ShaderMapProgramKey tonemap_key;
-        tonemap_key.shader_name = "Toy3d/PostProcess/Tonemap";
-        tonemap_key.pass_name = "Tonemap";
-        tonemap_key.platform = ShaderPlatform::VulkanPortableV1;
-        ShaderMapProgramResult tonemap =
-            builtin_shader_map->find_or_load(tonemap_key);
-        if (!tonemap.succeeded())
+        ShaderPlatform shader_platform = ShaderPlatform::D3D11SM5;
+        std::string platform_error;
+        if (!try_get_shader_platform_for_backend(
+                configured_rhi_backend_name(),
+                shader_platform,
+                platform_error))
         {
             TOY_LOG_ERROR(
-                "Built-in Tonemap ShaderMap Program failed to load: {}",
-                tonemap.error);
+                "Built-in Shader platform selection failed: {}",
+                platform_error);
             return false;
         }
-        tonemap_shader_program = std::move(tonemap.program);
 
-        if (imgui_system)
+        const std::vector<const GlobalShaderType*> required_types =
+            required_renderer_global_shader_types(imgui_system != nullptr);
+        GlobalShaderMapResult loaded = GlobalShaderMap::load(
+            *builtin_shader_map, shader_platform, required_types);
+        if (!loaded.succeeded())
         {
-            ShaderMapProgramKey imgui_key;
-            imgui_key.shader_name = "Toy3d/UI/ImGui";
-            imgui_key.pass_name = "ImGui";
-            imgui_key.platform = ShaderPlatform::VulkanPortableV1;
-            ShaderMapProgramResult imgui =
-                builtin_shader_map->find_or_load(imgui_key);
-            if (!imgui.succeeded())
-            {
-                TOY_LOG_ERROR(
-                    "Built-in ImGui ShaderMap Program failed to load: {}",
-                    imgui.error);
-                return false;
-            }
-            imgui_shader_program = std::move(imgui.program);
+            TOY_LOG_ERROR(
+                "Built-in GlobalShaderMap failed to load: {}",
+                loaded.error);
+            return false;
         }
+        global_shader_map = std::move(loaded.shader_map);
         return true;
 #else
         TOY_LOG_ERROR(

@@ -54,7 +54,7 @@ Loader MUST 拒绝重复 logical attribute、unsupported scalar/component shape�
 ### Requirement: RHI vertex reflection 可由三后端等价实现
 `RHIShaderVertexInputReflection` MUST 同时携带 semantic name/index、location、scalar type 与 component count，且不得包含 `Vk*`、D3D input-layout object、root-signature 或其他 native 类型。Vulkan backend SHALL 使用 location 与 format 建立 native vertex-input state；D3D11/D3D12 backend SHALL 使用 semantic name/index、format 和 vertex bytecode建立 input layout/PSO。跨 target parity MUST 比较 logical attribute identity 与数据形状，不比较 native location、register 或 slot 数字。
 
-公共 validation MUST 在进入 backend pipeline creation 前拒绝重复 location/semantic、unsupported format/shape 和 Shader input 与 pipeline vertex layout 不匹配。VulkanPortable v1 不依赖额外 feature；各 backend 不支持的 format MUST 返回 `Unsupported` 或等价可诊断失败，不得无操作成功。
+公共 validation MUST 在进入 backend pipeline creation 前拒绝重复 location/semantic、unsupported format/shape 和 Shader input 与 pipeline vertex layout 不匹配。Vulkan ES3.1 profile 不依赖额外 feature；各 backend 不支持的 format MUST 返回 `Unsupported` 或等价可诊断失败，不得无操作成功。
 
 #### Scenario: Vulkan 与 D3D native mapping 不同
 - **WHEN** 同一 ShaderVertexInput 在 Vulkan 使用 location 0、在 D3D 使用 POSITION0 semantic

@@ -23,6 +23,7 @@ namespace toy3d
     class ThreadManager;
     class World;
     class ImGuiSystem;
+    class GlobalShaderMap;
     class ShaderMap;
     class ShaderMapLoader;
     class ShaderMapProgram;
@@ -79,8 +80,7 @@ namespace toy3d
         ShaderLoadConfig shader_load_config;
         std::unique_ptr<ShaderMapLoader> builtin_shader_loader;
         std::unique_ptr<ShaderMap> builtin_shader_map;
-        std::shared_ptr<const ShaderMapProgram> tonemap_shader_program;
-        std::shared_ptr<const ShaderMapProgram> imgui_shader_program;
+        std::shared_ptr<const GlobalShaderMap> global_shader_map;
         std::unique_ptr<Application> application;
         std::unique_ptr<IPlatform> platform;
         std::unique_ptr<IWindow> window;

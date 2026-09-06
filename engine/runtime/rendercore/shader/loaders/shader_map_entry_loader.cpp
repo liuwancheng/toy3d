@@ -152,15 +152,15 @@ namespace toy3d
             std::string& error)
         {
             if (entry.target != shader::ShaderTarget::VulkanSpirV ||
-                entry.profile != shader::ShaderCompileProfile::VulkanPortableV1)
+                entry.profile != shader::ShaderCompileProfile::VulkanES31)
             {
-                error = "ShaderMapEntry loader only supports VulkanPortable v1 entries.";
+                error = "ShaderMapEntry loader only supports Vulkan ES3.1 profile entries.";
                 return std::nullopt;
             }
             ShaderMapProgramData program;
             program.shader_name = entry.shader_name;
             program.pass_name = entry.pass_name;
-            program.platform = ShaderPlatform::VulkanPortableV1;
+            program.platform = ShaderPlatform::VulkanES31;
             program.mapping_version = entry.mapping_version;
             program.logical_layout_hash = entry.logical_layout_hash;
             program.target_binding_hash = entry.target_binding_hash;
@@ -278,7 +278,7 @@ namespace toy3d
         const ShaderMapProgramKey& key) const
     {
         ShaderMapProgramLoadResult result;
-        if (key.platform != ShaderPlatform::VulkanPortableV1)
+        if (key.platform != ShaderPlatform::VulkanES31)
         {
             result.error = "ShaderMapEntry loader does not support the requested ShaderPlatform.";
             return result;

@@ -8,7 +8,7 @@
 
 - 支持 Vulkan、D3D11、D3D12；D3D11 基线为 Feature Level 11_0 与 Shader Model 5.0，不支持 D3D10、Feature Level 10.x 或 Shader Model 4；公共接口禁止原生类型和后端名称分支。
 - 所有公共能力同时评估桌面和移动端。上层只依据 capability、limits、format support 与版本化 profile 选择路径，禁止散布 `if Vulkan`、`if Android` 等判断。
-- 默认 Vulkan profile 为 `VulkanPortable v1`，基线为 Vulkan 1.1 与 SPIR-V 1.3；Cook 和 runtime 都必须验证 required capabilities/limits。
+- 默认 Vulkan profile 为 `Vulkan ES3.1 profile`，基线为 Vulkan 1.1 与 SPIR-V 1.3；Cook 和 runtime 都必须验证 required capabilities/limits。
 - 第一阶段只实现 graphics、单线程录制、单 graphics queue。
 - 接口必须允许后续无破坏性接入 compute 和 pass 级多线程录制。
 - 单个 pass 内不做并行；多 GPU、ray tracing、VRS、bindless、RDG、RHI thread、async compute 均非第一阶段目标。
@@ -93,7 +93,7 @@
 
 - `RHIBindingLayout` 使用 resource type、shader stage、当前 target binding、array count，不暴露 descriptor set/heap/root parameter；target binding 不是资产级跨后端 ABI。
 - `RHIBindingGroup` 只表达资源更新频率和所有权分组，不等于 descriptor set，也不创建公共物理寄存器命名空间。Shader compiler 为每个 target 独立生成紧凑 native mapping：D3D11/D3D12 按 stage 与 register class 分配，Vulkan 按 physical set 与 descriptor type 分配。公共 parity 只比较逻辑身份、类型、数组、offset 与 stage visibility，不比较不同 target 的 native slot 数字。
-- 五个逻辑组固定为 Global、View、Pass、Material、Object。`VulkanPortable v1` 使用四个 physical sets：set 0 合并 Global 与 View，set 1 为 Pass，set 2 为 Material，set 3 为 Object；每个 set 内 binding 从 0 连续紧凑分配。
+- 五个逻辑组固定为 Global、View、Pass、Material、Object。`Vulkan ES3.1 profile` 使用四个 physical sets：set 0 合并 Global 与 View，set 1 为 Pass，set 2 为 Material，set 3 为 Object；每个 set 内 binding 从 0 连续紧凑分配。
 - sampler descriptor 只包含三后端共有的 filter、address mode、LOD、anisotropy、comparison 和固定 border color 语义；后端在创建前检查 capability 与 limits。
 - shader 输入包含 stage、目标字节码、entry point、reflection 和稳定 content hash。
 - pipeline descriptor 是完整不可变值；cache key 覆盖全部兼容状态，hash 命中后做 equality 校验。

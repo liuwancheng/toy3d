@@ -632,7 +632,12 @@ namespace toy3d
         {
             return status;
         }
-        return create_debug_messenger();
+        status = create_debug_messenger();
+        if (status)
+        {
+            TOY_LOG_INFO("Vulkan validation layer enabled.");
+        }
+        return status;
     }
 
     RHIStatus VulkanDevice::create_debug_messenger()

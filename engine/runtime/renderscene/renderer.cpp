@@ -9,6 +9,8 @@
 #include "logging/logger.h"
 #include "rendercore/render_command.h"
 #include "rendercore/render_command_internal.h"
+#include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/rhi_shader_program_cache.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/renderer_frame.h"
 #include "renderscene/postprocess/tonemap_pass.h"
@@ -50,15 +52,13 @@ namespace toy3d
         RHISurfaceRef primary_surface,
         RHIViewportContextDesc viewport_desc,
         std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
-        std::shared_ptr<const ShaderMapProgram> tonemap_program,
-        std::shared_ptr<const ShaderMapProgram> imgui_program,
+        std::shared_ptr<const GlobalShaderMap> global_shader_map,
         std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas)
         : task_graph_(task_graph),
           primary_surface_input_(std::move(primary_surface)),
           viewport_desc_(std::move(viewport_desc)),
           device_factory_(std::move(device_factory)),
-          tonemap_program_input_(std::move(tonemap_program)),
-          imgui_program_input_(std::move(imgui_program)),
+          global_shader_map_input_(std::move(global_shader_map)),
           imgui_font_atlas_input_(std::move(imgui_font_atlas))
     {
     }
@@ -67,12 +67,14 @@ namespace toy3d
     {
         // Engine must run logical-RT teardown before destroying the stable GT shell.
         assert(!device_);
+        assert(!shader_program_cache_);
         assert(!resource_manager_);
         assert(!render_scene_);
         assert(!scene_render_targets_);
         assert(!tonemap_pass_resources_);
         assert(!imgui_renderer_);
         assert(!primary_viewport_);
+        assert(!global_shader_map_input_);
     }
 
     ThreadStatus Renderer::initialize()
@@ -91,11 +93,12 @@ namespace toy3d
                 ThreadErrorCode::InvalidState,
                 "Renderer can initialize only from Stopped");
         }
-        if (!primary_surface_input_ || !device_factory_)
+        if (!primary_surface_input_ || !device_factory_ ||
+            !global_shader_map_input_)
         {
             return fail_startup(RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Renderer bootstrap requires a surface and device factory"));
+                "Renderer bootstrap requires a surface, device factory, and frozen GlobalShaderMap"));
         }
 
         RHIResult<std::unique_ptr<RHIDevice>> created_device = device_factory_();
@@ -113,42 +116,40 @@ namespace toy3d
 
         RHIDeviceDesc device_desc;
         device_desc.primary_surface = primary_surface_input_;
+#if !defined(NDEBUG)
+        // Debug builds enable the backend-independent RHI validation contract
+        // so backend smoke tests exercise their diagnostic layers.
+        device_desc.enable_validation = true;
+#endif
         device_desc.debug_name = "RendererDevice";
         RHIStatus step_status = device_->initialize(device_desc);
         if (!step_status)
         {
             return fail_startup(step_status);
         }
+        shader_program_cache_ =
+            std::make_unique<RHIShaderProgramCache>(*device_);
+
+        resource_manager_ = std::make_unique<RenderResourceManager>(*device_);
+        render_scene_ = std::make_unique<RenderScene>(
+            task_graph_, *resource_manager_);
+        scene_render_targets_ = std::make_unique<SceneRenderTargets>();
+
         if (imgui_font_atlas_input_)
         {
-            if (!imgui_program_input_)
-            {
-                return fail_startup(RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Renderer ImGui bootstrap requires its ShaderMap Program"));
-            }
             imgui_renderer_ = std::make_unique<ImGuiRenderer>();
             step_status = imgui_renderer_->initialize(
-                *device_, *imgui_program_input_, *imgui_font_atlas_input_);
+                *device_, *shader_program_cache_, *global_shader_map_input_,
+                *imgui_font_atlas_input_);
             if (!step_status)
             {
                 return fail_startup(step_status);
             }
         }
 
-        resource_manager_ = std::make_unique<RenderResourceManager>(*device_);
-        render_scene_ = std::make_unique<RenderScene>(
-            task_graph_, *resource_manager_);
-        scene_render_targets_ = std::make_unique<SceneRenderTargets>();
-        if (!tonemap_program_input_)
-        {
-            return fail_startup(RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Renderer bootstrap requires the Tonemap ShaderMap Program"));
-        }
         tonemap_pass_resources_ = std::make_unique<TonemapPassResources>();
         step_status = tonemap_pass_resources_->initialize(
-            *device_, *tonemap_program_input_);
+            *device_, *shader_program_cache_, *global_shader_map_input_);
         if (!step_status)
         {
             return fail_startup(step_status);
@@ -363,22 +364,20 @@ namespace toy3d
         const ImGuiDrawData* ui_draw_data,
         RenderScene& render_scene,
         RHIDevice& device,
+        RHIShaderProgramCache& shader_program_cache,
         RenderResourceManager& resource_manager,
         RHIViewportContext& viewport,
         SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources,
         ImGuiRenderer* imgui_renderer)
     {
-        RHIResult<std::unique_ptr<RHIFrameContext>> frame_result =
-            viewport.begin_frame();
+        RHIResult<std::unique_ptr<RHIFrameContext>> frame_result = viewport.begin_frame();
         if (!frame_result)
         {
-            return RHIResult<RHIFrameEndResult>::failure(
-                frame_result.status().code(), frame_result.status().message());
+            return RHIResult<RHIFrameEndResult>::failure(frame_result.status().code(), frame_result.status().message());
         }
 
-        std::unique_ptr<RHIFrameContext> frame =
-            std::move(frame_result).value();
+        std::unique_ptr<RHIFrameContext> frame = std::move(frame_result).value();
         if (!frame)
         {
             return RHIResult<RHIFrameEndResult>::failure(
@@ -387,8 +386,7 @@ namespace toy3d
         }
 
         bool resource_recording_started = false;
-        const auto abort_recording =
-            [&resource_manager, &viewport, &frame,
+        const auto abort_recording = [&resource_manager, &viewport, &frame,
              &resource_recording_started, imgui_renderer](
                 const RHIStatus& failure) -> RHIResult<RHIFrameEndResult>
             {
@@ -408,23 +406,18 @@ namespace toy3d
                     }
                 }
 
-                const RHIStatus abort_status =
-                    viewport.abort_frame(std::move(frame));
+                const RHIStatus abort_status = viewport.abort_frame(std::move(frame));
                 if (!abort_status)
                 {
-                    TOY_LOG_ERROR(
-                        "Renderer frame abort failed after '{}': {}",
+                    TOY_LOG_ERROR("Renderer frame abort failed after '{}': {}",
                         failure.message(), abort_status.message());
-                    return RHIResult<RHIFrameEndResult>::failure(
-                        abort_status.code(), abort_status.message());
+                    return RHIResult<RHIFrameEndResult>::failure(abort_status.code(), abort_status.message());
                 }
                 if (!discard_status)
                 {
-                    return RHIResult<RHIFrameEndResult>::failure(
-                        discard_status.code(), discard_status.message());
+                    return RHIResult<RHIFrameEndResult>::failure(discard_status.code(), discard_status.message());
                 }
-                return RHIResult<RHIFrameEndResult>::failure(
-                    failure.code(), failure.message());
+                return RHIResult<RHIFrameEndResult>::failure(failure.code(), failure.message());
             };
 
         if (!frame->present_texture() || !frame->present_view())
@@ -484,7 +477,8 @@ namespace toy3d
         }
 
         status = scene_renderer.render_scene_passes(
-            render_scene, device, *context, scene_render_targets);
+            render_scene, device, shader_program_cache, *context,
+            scene_render_targets);
         if (!status)
         {
             return abort_recording(status);
@@ -645,6 +639,7 @@ namespace toy3d
             ui_draw_data,
             *render_scene_,
             *device_,
+            *shader_program_cache_,
             *resource_manager_,
             *primary_viewport_,
             *scene_render_targets_,
@@ -828,6 +823,15 @@ namespace toy3d
             scene_render_targets_->release();
             scene_render_targets_.reset();
         }
+        if (resource_manager_)
+        {
+            const RHIStatus cleared = resource_manager_->clear_for_terminal();
+            if (!cleared)
+            {
+                append_secondary_diagnostic(cleared);
+            }
+            resource_manager_.reset();
+        }
         if (tonemap_pass_resources_)
         {
             tonemap_pass_resources_->release();
@@ -839,15 +843,15 @@ namespace toy3d
             imgui_renderer_.reset();
         }
         imgui_font_atlas_input_.reset();
-        if (resource_manager_)
+        if (shader_program_cache_)
         {
-            const RHIStatus cleared = resource_manager_->clear_for_terminal();
-            if (!cleared)
-            {
-                append_secondary_diagnostic(cleared);
-            }
-            resource_manager_.reset();
+            shader_program_cache_->clear();
+            shader_program_cache_.reset();
         }
+
+        placeholder_sampler_.reset();
+        placeholder_texture_view_.reset();
+        placeholder_texture_.reset();
 
         if (device_ && !terminal)
         {
@@ -858,9 +862,6 @@ namespace toy3d
             }
         }
         primary_viewport_.reset();
-        placeholder_sampler_.reset();
-        placeholder_texture_view_.reset();
-        placeholder_texture_.reset();
         if (device_)
         {
             RHIErrorCode primary_error = RHIErrorCode::None;
@@ -878,5 +879,6 @@ namespace toy3d
             }
             device_.reset();
         }
+        global_shader_map_input_.reset();
     }
 }

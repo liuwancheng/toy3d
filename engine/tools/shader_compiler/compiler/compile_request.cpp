@@ -32,7 +32,7 @@ namespace toy3d::shader
 
         bool target_matches_profile(ShaderTarget target, ShaderCompileProfile profile)
         {
-            return (target == ShaderTarget::VulkanSpirV && profile == ShaderCompileProfile::VulkanPortableV1) ||
+            return (target == ShaderTarget::VulkanSpirV && profile == ShaderCompileProfile::VulkanES31) ||
                 (target == ShaderTarget::D3D11Dxbc && profile == ShaderCompileProfile::D3D11FeatureLevel11_0) ||
                 (target == ShaderTarget::D3D12Dxil && profile == ShaderCompileProfile::D3D12ShaderModel6);
         }

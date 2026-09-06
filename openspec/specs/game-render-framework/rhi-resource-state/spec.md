@@ -85,7 +85,7 @@ D3D11 completion MUST 使用 FL11_0 event query 或等价 GPU 信号，不得把
 ### Requirement: 三后端保持同一公共状态语义
 Vulkan backend SHALL 把公共 access 转换为 image layout、pipeline stage 与 access barrier；D3D12 backend SHALL 转换为 resource state/barrier；D3D11 backend SHALL 跟踪逻辑 access 并在需要时解除 SRV/RTV/UAV 等冲突绑定。转换 MUST 集中在 backend，公共枚举不得依赖 native 数值相同强制转换。
 
-任一 backend 不支持所需 access、format usage 或安全 reconciliation 时 MUST 返回 `Unsupported` 或等价可诊断错误，不得无操作后成功。`VulkanPortable v1` 路径不得依赖 Vulkan 1.2+ 或可选同步特性抬高移动端基线。
+任一 backend 不支持所需 access、format usage 或安全 reconciliation 时 MUST 返回 `Unsupported` 或等价可诊断错误，不得无操作后成功。`Vulkan ES3.1 profile` 路径不得依赖 Vulkan 1.2+ 或可选同步特性抬高移动端基线。
 
 #### Scenario: D3D11 隐式状态 API
 - **WHEN** 公共 transition 从 `RHIAccess::ShaderResourceGraphics` 切换到 `RHIAccess::RenderTarget`
