@@ -14,29 +14,24 @@ namespace toy3d::shader
         {
             const auto parsed = VirtualPath::parse(path);
             return parsed.succeeded() && parsed.value().utf8() == path &&
-                parsed.value().utf8().size() >
-                std::char_traits<char>::length(engine_shader_include_root) &&
-                parsed.value().utf8().compare(
-                    0,
-                    std::char_traits<char>::length(engine_shader_include_root),
-                    engine_shader_include_root) == 0;
+                   parsed.value().utf8().size() > std::char_traits<char>::length(engine_shader_include_root) &&
+                   parsed.value().utf8().compare(0, std::char_traits<char>::length(engine_shader_include_root),
+                                                 engine_shader_include_root) == 0;
         }
-    }
+    } // namespace
 
     bool ShaderSourceLoadResult::succeeded() const
     {
         return source.has_value() && error.empty();
     }
 
-    RegisteredShaderSourceProvider::RegisteredShaderSourceProvider(
-        std::vector<VirtualIncludeFile> files)
+    RegisteredShaderSourceProvider::RegisteredShaderSourceProvider(std::vector<VirtualIncludeFile> files)
     {
         for (VirtualIncludeFile& file : files)
         {
             if (!is_allowed_include_path(file.virtual_path))
             {
-                validation_error_ =
-                    "Include files must use a normalized /Engine/ShaderIncludes/ virtual path.";
+                validation_error_ = "Include files must use a normalized /Engine/ShaderIncludes/ virtual path.";
                 continue;
             }
             ShaderSourceRecord record;
@@ -51,8 +46,7 @@ namespace toy3d::shader
         }
     }
 
-    ShaderSourceLoadResult RegisteredShaderSourceProvider::load(
-        const std::string& virtual_path) const
+    ShaderSourceLoadResult RegisteredShaderSourceProvider::load(const std::string& virtual_path) const
     {
         ShaderSourceLoadResult result;
         if (!validation_error_.empty())
@@ -62,8 +56,7 @@ namespace toy3d::shader
         }
         if (!is_allowed_include_path(virtual_path))
         {
-            result.error =
-                "Includes must use a normalized /Engine/ShaderIncludes/ virtual path.";
+            result.error = "Includes must use a normalized /Engine/ShaderIncludes/ virtual path.";
             return result;
         }
         const auto found = files_.find(virtual_path);
@@ -80,4 +73,4 @@ namespace toy3d::shader
     {
         return validation_error_;
     }
-}
+} // namespace toy3d::shader

@@ -9,25 +9,23 @@ namespace toy3d
 {
     class Actor;
     class World;
-}
+} // namespace toy3d
 
 class CubeApplication final : public toy3d::Application
 {
-public:
+  public:
     CubeApplication(bool automated_window_events, bool auto_close);
 
     bool setup_failed() const { return setup_failed_; }
 
-protected:
+  protected:
     bool on_initialize() override;
     void on_tick(double delta_time) override;
     void on_build_ui() override;
-    void on_build_scene_views(
-        std::vector<toy3d::SceneView>& views,
-        const toy3d::Extent& extent) const override;
+    void on_build_scene_views(std::vector<toy3d::SceneView>& views, const toy3d::Extent& extent) const override;
     void on_shutdown() override;
 
-private:
+  private:
     bool release_scene_resources();
 
     toy3d::TextureRef warm_tint_texture_;

@@ -1,251 +1,243 @@
 #include "input_system.h"
 
-namespace toy3d 
+namespace toy3d
 {
 
-bool InputSystem::init() 
-{
-    keyboard_device = std::make_shared<KeyboardDevice>();
-    mouse_device = std::make_shared<MouseDevice>();
-    
-    return true;
-}
-
-void InputSystem::exit()
-{
-	// 清理输入设备
-	keyboard_device.reset();
-	mouse_device.reset();
-
-	// 清理绑定上下文
-	binding_contexts.clear();
-	active_mapping_contexts.clear();
-}
-
-void InputSystem::update() 
-{    
-    // 更新设备状态
-    keyboard_device->update();
-    mouse_device->update();
-    
-    // 处理持续按住的按键(Hold)事件
-    for (auto& context : active_mapping_contexts) 
+    bool InputSystem::init()
     {
-        if (!context->is_active()) continue;
-        
-        for (auto& [action_name, action] : context->get_actions()) 
+        keyboard_device = std::make_shared<KeyboardDevice>();
+        mouse_device = std::make_shared<MouseDevice>();
+
+        return true;
+    }
+
+    void InputSystem::exit()
+    {
+        // 清理输入设备
+        keyboard_device.reset();
+        mouse_device.reset();
+
+        // 清理绑定上下文
+        binding_contexts.clear();
+        active_mapping_contexts.clear();
+    }
+
+    void InputSystem::update()
+    {
+        // 更新设备状态
+        keyboard_device->update();
+        mouse_device->update();
+
+        // 处理持续按住的按键(Hold)事件
+        for (auto& context : active_mapping_contexts)
         {
-            for (auto& binding : action.get_bindings()) 
-            {                
-                // 处理按键保持按住(Hold)的情况
-                if (binding.input_state == KeyStatus::Hold) 
+            if (!context->is_active())
+                continue;
+
+            for (auto& [action_name, action] : context->get_actions())
+            {
+                for (auto& binding : action.get_bindings())
                 {
-                    if (keyboard_device->is_key_hold(binding.key_code)) 
+                    // 处理按键保持按住(Hold)的情况
+                    if (binding.input_state == KeyStatus::Hold)
                     {
-                        KeyEvent event;
-                        event.key_code = binding.key_code;
-                        event.scale = binding.scale;
-                        binding.callback(event);
+                        if (keyboard_device->is_key_hold(binding.key_code))
+                        {
+                            KeyEvent event;
+                            event.key_code = binding.key_code;
+                            event.scale = binding.scale;
+                            binding.callback(event);
+                        }
                     }
-                }
-                else if (binding.input_state == KeyStatus::DoubleClick) 
-                {
-                    // 处理双击事件
-                    if (keyboard_device->is_key_double_click(binding.key_code)) 
+                    else if (binding.input_state == KeyStatus::DoubleClick)
                     {
-                        KeyEvent event;
-                        event.key_code = binding.key_code;
-                        binding.callback(event);
+                        // 处理双击事件
+                        if (keyboard_device->is_key_double_click(binding.key_code))
+                        {
+                            KeyEvent event;
+                            event.key_code = binding.key_code;
+                            binding.callback(event);
+                        }
                     }
                 }
             }
         }
     }
-}
 
-void InputSystem::process_event(const InputEvent& event)
-{
-    if (event.type == InputEventType::WindowFocus)
+    void InputSystem::process_event(const InputEvent& event)
     {
-        const WindowFocusEvent& focus_event =
-            static_cast<const WindowFocusEvent&>(event);
-        if (!focus_event.focused)
+        if (event.type == InputEventType::WindowFocus)
         {
-            clear_pressed_state();
+            const WindowFocusEvent& focus_event = static_cast<const WindowFocusEvent&>(event);
+            if (!focus_event.focused)
+            {
+                clear_pressed_state();
+            }
         }
-    }
 
-    if (event.type == InputEventType::TextInput)
-    {
-        const TextInputEvent& text_event =
-            static_cast<const TextInputEvent&>(event);
-        if (!text_event.valid())
+        if (event.type == InputEventType::TextInput)
+        {
+            const TextInputEvent& text_event = static_cast<const TextInputEvent&>(event);
+            if (!text_event.valid())
+            {
+                return;
+            }
+        }
+
+        // UI observes the physical fact before capture decides whether gameplay
+        // callbacks receive it. Release and focus state were already committed.
+        if (event_sink_)
+        {
+            event_sink_(event);
+        }
+
+        const bool is_mouse_event =
+            event.type == InputEventType::MouseButtonPressed || event.type == InputEventType::MouseButtonReleased ||
+            event.type == InputEventType::MouseButtonHold || event.type == InputEventType::MouseButtonDoubleClick ||
+            event.type == InputEventType::MouseMove || event.type == InputEventType::MouseWheel;
+        const bool is_keyboard_event =
+            event.type == InputEventType::KeyPressed || event.type == InputEventType::KeyReleased ||
+            event.type == InputEventType::KeyHold || event.type == InputEventType::KeyDoubleClick;
+        if ((is_mouse_event && capture_policy_.mouse) || (is_keyboard_event && capture_policy_.keyboard) ||
+            (event.type == InputEventType::TextInput && capture_policy_.text))
         {
             return;
         }
-    }
 
-    // UI observes the physical fact before capture decides whether gameplay
-    // callbacks receive it. Release and focus state were already committed.
-    if (event_sink_)
-    {
-        event_sink_(event);
-    }
-
-    const bool is_mouse_event =
-        event.type == InputEventType::MouseButtonPressed ||
-        event.type == InputEventType::MouseButtonReleased ||
-        event.type == InputEventType::MouseButtonHold ||
-        event.type == InputEventType::MouseButtonDoubleClick ||
-        event.type == InputEventType::MouseMove ||
-        event.type == InputEventType::MouseWheel;
-    const bool is_keyboard_event =
-        event.type == InputEventType::KeyPressed ||
-        event.type == InputEventType::KeyReleased ||
-        event.type == InputEventType::KeyHold ||
-        event.type == InputEventType::KeyDoubleClick;
-    if ((is_mouse_event && capture_policy_.mouse) ||
-        (is_keyboard_event && capture_policy_.keyboard) ||
-        (event.type == InputEventType::TextInput && capture_policy_.text))
-    {
-        return;
-    }
-
-    for (auto& context : active_mapping_contexts) 
-    {
-        if (!context->is_active()) continue;
-        
-        for (auto& [action_name, action] : context->get_actions()) 
+        for (auto& context : active_mapping_contexts)
         {
-            // 处理绑定事件
-            for (auto& binding : action.get_bindings()) 
-            {
-                bool should_trigger = false;
-                
-                // 根据事件类型和触发条件判断是否应该触发回调
-                if (event.type == InputEventType::KeyPressed && binding.input_state == KeyStatus::Pressed
-                || event.type == InputEventType::KeyReleased && binding.input_state == KeyStatus::Released
-                || event.type == InputEventType::MouseButtonPressed && binding.input_state == KeyStatus::Pressed
-                || event.type == InputEventType::MouseButtonReleased && binding.input_state == KeyStatus::Released) 
-                {
-                    const KeyEvent& key_event = static_cast<const KeyEvent&>(event);
-                    should_trigger = (key_event.key_code == binding.key_code);
-                    if (should_trigger && binding.callback) 
-                    {
-                        binding.callback(event);
-                    }
-                }
-                else if (event.type == InputEventType::MouseMove) 
-                {
-                    // 处理鼠标移动事件
-                    const MouseMoveEvent& mouse_event = static_cast<const MouseMoveEvent&>(event);
-                    if (binding.input_state == KeyStatus::Hold) 
-                    {
-                        binding.callback(event);
-                    }
-                }
-                else if (event.type == InputEventType::MouseWheel) 
-                {
-                    // 处理鼠标滚动事件
-                    const MouseWheelEvent& mouse_event = static_cast<const MouseWheelEvent&>(event);
-                    if (binding.input_state == KeyStatus::Hold) 
-                    {
-                        InputEvent scaled_event = event;
-                        scaled_event.scale = binding.scale;
-                        binding.callback(scaled_event);
-                    }
-                }
+            if (!context->is_active())
+                continue;
 
+            for (auto& [action_name, action] : context->get_actions())
+            {
+                // 处理绑定事件
+                for (auto& binding : action.get_bindings())
+                {
+                    bool should_trigger = false;
+
+                    // 根据事件类型和触发条件判断是否应该触发回调
+                    if (event.type == InputEventType::KeyPressed && binding.input_state == KeyStatus::Pressed ||
+                        event.type == InputEventType::KeyReleased && binding.input_state == KeyStatus::Released ||
+                        event.type == InputEventType::MouseButtonPressed && binding.input_state == KeyStatus::Pressed ||
+                        event.type == InputEventType::MouseButtonReleased && binding.input_state == KeyStatus::Released)
+                    {
+                        const KeyEvent& key_event = static_cast<const KeyEvent&>(event);
+                        should_trigger = (key_event.key_code == binding.key_code);
+                        if (should_trigger && binding.callback)
+                        {
+                            binding.callback(event);
+                        }
+                    }
+                    else if (event.type == InputEventType::MouseMove)
+                    {
+                        // 处理鼠标移动事件
+                        const MouseMoveEvent& mouse_event = static_cast<const MouseMoveEvent&>(event);
+                        if (binding.input_state == KeyStatus::Hold)
+                        {
+                            binding.callback(event);
+                        }
+                    }
+                    else if (event.type == InputEventType::MouseWheel)
+                    {
+                        // 处理鼠标滚动事件
+                        const MouseWheelEvent& mouse_event = static_cast<const MouseWheelEvent&>(event);
+                        if (binding.input_state == KeyStatus::Hold)
+                        {
+                            InputEvent scaled_event = event;
+                            scaled_event.scale = binding.scale;
+                            binding.callback(scaled_event);
+                        }
+                    }
+                }
             }
         }
     }
-}
 
-void InputSystem::set_event_sink(EventSink sink)
-{
-    event_sink_ = std::move(sink);
-}
-
-void InputSystem::set_capture_policy(CapturePolicy policy) noexcept
-{
-    capture_policy_ = policy;
-}
-
-void InputSystem::clear_pressed_state() noexcept
-{
-    if (keyboard_device)
+    void InputSystem::set_event_sink(EventSink sink)
     {
-        keyboard_device->clear_pressed_state();
+        event_sink_ = std::move(sink);
     }
-    if (mouse_device)
+
+    void InputSystem::set_capture_policy(CapturePolicy policy) noexcept
     {
-        mouse_device->clear_pressed_state();
+        capture_policy_ = policy;
     }
-}
 
-InputBindingContext& InputSystem::create_binding_context(const std::string& name, int priority)
-{
-    // Structured binding exposes the iterator returned by emplace together with
-    // its insertion flag; only the iterator is needed for the stored context.
-    auto [iter, inserted] = binding_contexts.emplace(name, InputBindingContext(name, priority));
-    return iter->second;
-}
-
-void InputSystem::remove_binding_context(const std::string& name)
-{
-    auto it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-                           [&name](const InputBindingContext* context) {
-                               return context->get_name() == name;
-                           });
-    
-    if (it != active_mapping_contexts.end()) {
-        active_mapping_contexts.erase(it);
-    }
-    
-    binding_contexts.erase(name);
-}
-
-void InputSystem::activate_context(const std::string& name, bool activate)
-{
-    auto it = binding_contexts.find(name);
-    if (it == binding_contexts.end()) return;
-    
-    it->second.set_active(activate);
-    
-    if (activate)
+    void InputSystem::clear_pressed_state() noexcept
     {
-        // 确保上下文只添加一次
-        auto active_it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-                                    [&name](const InputBindingContext* context) {
-                                        return context->get_name() == name;
-                                    });
-        
-        if (active_it == active_mapping_contexts.end()) {
-            active_mapping_contexts.push_back(&it->second);
-            sort_active_mapping_contexts();
+        if (keyboard_device)
+        {
+            keyboard_device->clear_pressed_state();
+        }
+        if (mouse_device)
+        {
+            mouse_device->clear_pressed_state();
         }
     }
-    else
+
+    InputBindingContext& InputSystem::create_binding_context(const std::string& name, int priority)
     {
-        // 移除上下文
-        auto active_it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-                                    [&name](const InputBindingContext* context) {
-                                        return context->get_name() == name;
-                                    });
-        
-        if (active_it != active_mapping_contexts.end()) {
-            active_mapping_contexts.erase(active_it);
+        // Structured binding exposes the iterator returned by emplace together with
+        // its insertion flag; only the iterator is needed for the stored context.
+        auto [iter, inserted] = binding_contexts.emplace(name, InputBindingContext(name, priority));
+        return iter->second;
+    }
+
+    void InputSystem::remove_binding_context(const std::string& name)
+    {
+        auto it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
+                               [&name](const InputBindingContext* context) { return context->get_name() == name; });
+
+        if (it != active_mapping_contexts.end())
+        {
+            active_mapping_contexts.erase(it);
+        }
+
+        binding_contexts.erase(name);
+    }
+
+    void InputSystem::activate_context(const std::string& name, bool activate)
+    {
+        auto it = binding_contexts.find(name);
+        if (it == binding_contexts.end())
+            return;
+
+        it->second.set_active(activate);
+
+        if (activate)
+        {
+            // 确保上下文只添加一次
+            auto active_it =
+                std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
+                             [&name](const InputBindingContext* context) { return context->get_name() == name; });
+
+            if (active_it == active_mapping_contexts.end())
+            {
+                active_mapping_contexts.push_back(&it->second);
+                sort_active_mapping_contexts();
+            }
+        }
+        else
+        {
+            // 移除上下文
+            auto active_it =
+                std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
+                             [&name](const InputBindingContext* context) { return context->get_name() == name; });
+
+            if (active_it != active_mapping_contexts.end())
+            {
+                active_mapping_contexts.erase(active_it);
+            }
         }
     }
-}
 
-void InputSystem::sort_active_mapping_contexts()
-{
-    // 按优先级排序，优先级高的在前面
-    std::sort(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-              [](const InputBindingContext* a, const InputBindingContext* b) {
-                  return a->get_priority() > b->get_priority();
-              });
-}
+    void InputSystem::sort_active_mapping_contexts()
+    {
+        // 按优先级排序，优先级高的在前面
+        std::sort(active_mapping_contexts.begin(), active_mapping_contexts.end(),
+                  [](const InputBindingContext* a, const InputBindingContext* b)
+                  { return a->get_priority() > b->get_priority(); });
+    }
 
 } // namespace toy3d

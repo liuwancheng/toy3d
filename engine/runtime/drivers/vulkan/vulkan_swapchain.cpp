@@ -34,10 +34,8 @@ namespace toy3d
             {
                 code = RHIErrorCode::OutOfMemory;
             }
-            return RHIStatus::failure(
-                code,
-                std::string(operation) + " failed with VkResult " +
-                    std::to_string(static_cast<int>(result)) + ".");
+            return RHIStatus::failure(code, std::string(operation) + " failed with VkResult " +
+                                                std::to_string(static_cast<int>(result)) + ".");
         }
 
         VkPresentModeKHR to_vk_present_mode(RHIPresentMode mode)
@@ -53,7 +51,7 @@ namespace toy3d
                 return VK_PRESENT_MODE_FIFO_KHR;
             }
         }
-    }
+    } // namespace
 
     RHIStatus map_vulkan_acquire_result(VkResult result)
     {
@@ -71,15 +69,9 @@ namespace toy3d
         return std::min(max_frames_in_flight, actual_image_count);
     }
 
-    VulkanSwapchain::VulkanSwapchain(
-        const RHIDevice& owner,
-        VkPhysicalDevice physical_device,
-        VkDevice device,
-        VkSurfaceKHR surface)
-        : owner_device(owner)
-        , vk_physical_device(physical_device)
-        , vk_device(device)
-        , vk_surface(surface)
+    VulkanSwapchain::VulkanSwapchain(const RHIDevice& owner, VkPhysicalDevice physical_device, VkDevice device,
+                                     VkSurfaceKHR surface)
+        : owner_device(owner), vk_physical_device(physical_device), vk_device(device), vk_surface(surface)
     {
     }
 
@@ -106,35 +98,26 @@ namespace toy3d
         }
     }
 
-    RHIResult<std::unique_ptr<VulkanSwapchain>> VulkanSwapchain::create(
-        const RHIDevice& owner,
-        VkPhysicalDevice physical_device,
-        VkDevice device,
-        VkSurfaceKHR surface,
-        const RHIViewportContextDesc& desc,
-        VkSwapchainKHR old_swapchain)
+    RHIResult<std::unique_ptr<VulkanSwapchain>> VulkanSwapchain::create(const RHIDevice& owner,
+                                                                        VkPhysicalDevice physical_device,
+                                                                        VkDevice device, VkSurfaceKHR surface,
+                                                                        const RHIViewportContextDesc& desc,
+                                                                        VkSwapchainKHR old_swapchain)
     {
-        auto swapchain = std::make_unique<VulkanSwapchain>(
-            owner, physical_device, device, surface);
+        auto swapchain = std::make_unique<VulkanSwapchain>(owner, physical_device, device, surface);
         const RHIStatus status = swapchain->initialize(desc, old_swapchain);
         if (!status)
         {
-            return RHIResult<std::unique_ptr<VulkanSwapchain>>::failure(
-                status.code(), status.message());
+            return RHIResult<std::unique_ptr<VulkanSwapchain>>::failure(status.code(), status.message());
         }
         return RHIResult<std::unique_ptr<VulkanSwapchain>>::success(std::move(swapchain));
     }
 
-    RHIStatus VulkanSwapchain::initialize(
-        const RHIViewportContextDesc& desc,
-        VkSwapchainKHR old_swapchain)
+    RHIStatus VulkanSwapchain::initialize(const RHIViewportContextDesc& desc, VkSwapchainKHR old_swapchain)
     {
         VkSurfaceCapabilitiesKHR capabilities{};
         RHIStatus status = make_swapchain_status(
-            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                vk_physical_device,
-                vk_surface,
-                &capabilities),
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physical_device, vk_surface, &capabilities),
             "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
         if (!status)
         {
@@ -150,18 +133,13 @@ namespace toy3d
         const VkFormat requested_format = vulkan_format_from_pixel_format(desc.format);
         if (requested_format == VK_FORMAT_UNDEFINED)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "The requested RHI viewport format has no Vulkan mapping.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "The requested RHI viewport format has no Vulkan mapping.");
         }
 
         std::uint32_t format_count = 0;
         status = make_swapchain_status(
-            vkGetPhysicalDeviceSurfaceFormatsKHR(
-                vk_physical_device,
-                vk_surface,
-                &format_count,
-                nullptr),
+            vkGetPhysicalDeviceSurfaceFormatsKHR(vk_physical_device, vk_surface, &format_count, nullptr),
             "vkGetPhysicalDeviceSurfaceFormatsKHR");
         if (!status)
         {
@@ -169,48 +147,33 @@ namespace toy3d
         }
         std::vector<VkSurfaceFormatKHR> formats(format_count);
         status = make_swapchain_status(
-            vkGetPhysicalDeviceSurfaceFormatsKHR(
-                vk_physical_device,
-                vk_surface,
-                &format_count,
-                formats.data()),
+            vkGetPhysicalDeviceSurfaceFormatsKHR(vk_physical_device, vk_surface, &format_count, formats.data()),
             "vkGetPhysicalDeviceSurfaceFormatsKHR");
         if (!status)
         {
             return status;
         }
-        const auto format_it = std::find_if(
-            formats.begin(), formats.end(), [requested_format](const VkSurfaceFormatKHR& surface_format)
-            {
-                return surface_format.format == requested_format;
-            });
+        const auto format_it =
+            std::find_if(formats.begin(), formats.end(), [requested_format](const VkSurfaceFormatKHR& surface_format)
+                         { return surface_format.format == requested_format; });
         if (format_it == formats.end())
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "The primary surface does not support the requested viewport format.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "The primary surface does not support the requested viewport format.");
         }
 
         std::uint32_t present_mode_count = 0;
         status = make_swapchain_status(
-            vkGetPhysicalDeviceSurfacePresentModesKHR(
-                vk_physical_device,
-                vk_surface,
-                &present_mode_count,
-                nullptr),
+            vkGetPhysicalDeviceSurfacePresentModesKHR(vk_physical_device, vk_surface, &present_mode_count, nullptr),
             "vkGetPhysicalDeviceSurfacePresentModesKHR");
         if (!status)
         {
             return status;
         }
         std::vector<VkPresentModeKHR> present_modes(present_mode_count);
-        status = make_swapchain_status(
-            vkGetPhysicalDeviceSurfacePresentModesKHR(
-                vk_physical_device,
-                vk_surface,
-                &present_mode_count,
-                present_modes.data()),
-            "vkGetPhysicalDeviceSurfacePresentModesKHR");
+        status = make_swapchain_status(vkGetPhysicalDeviceSurfacePresentModesKHR(
+                                           vk_physical_device, vk_surface, &present_mode_count, present_modes.data()),
+                                       "vkGetPhysicalDeviceSurfacePresentModesKHR");
         if (!status)
         {
             return status;
@@ -218,9 +181,8 @@ namespace toy3d
         const VkPresentModeKHR present_mode = to_vk_present_mode(desc.present_mode);
         if (std::find(present_modes.begin(), present_modes.end(), present_mode) == present_modes.end())
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "The primary surface does not support the requested present mode.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "The primary surface does not support the requested present mode.");
         }
 
         VkExtent2D extent = capabilities.currentExtent;
@@ -228,10 +190,9 @@ namespace toy3d
         {
             // std::clamp applies Vulkan's inclusive surface limits directly and
             // keeps both dimensions on the same readable C++17 path.
-            extent.width = std::clamp(
-                desc.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-            extent.height = std::clamp(
-                desc.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+            extent.width = std::clamp(desc.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+            extent.height =
+                std::clamp(desc.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
         }
         if (extent.width == 0 || extent.height == 0)
         {
@@ -249,17 +210,14 @@ namespace toy3d
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         if ((capabilities.supportedUsageFlags & required_usage) != required_usage)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "The primary surface does not support the required presentation image usage.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "The primary surface does not support the required presentation image usage.");
         }
 
         VkCompositeAlphaFlagBitsKHR composite_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         constexpr VkCompositeAlphaFlagBitsKHR alpha_candidates[] = {
-            VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
-            VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
-            VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
+            VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+            VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
         for (VkCompositeAlphaFlagBitsKHR candidate : alpha_candidates)
         {
             if ((capabilities.supportedCompositeAlpha & candidate) != 0)
@@ -283,9 +241,8 @@ namespace toy3d
         create_info.presentMode = present_mode;
         create_info.clipped = VK_TRUE;
         create_info.oldSwapchain = old_swapchain;
-        status = make_swapchain_status(
-            vkCreateSwapchainKHR(vk_device, &create_info, nullptr, &vk_swapchain),
-            "vkCreateSwapchainKHR");
+        status = make_swapchain_status(vkCreateSwapchainKHR(vk_device, &create_info, nullptr, &vk_swapchain),
+                                       "vkCreateSwapchainKHR");
         if (!status)
         {
             vk_swapchain = VK_NULL_HANDLE;
@@ -293,19 +250,16 @@ namespace toy3d
         }
 
         std::uint32_t actual_image_count = 0;
-        status = make_swapchain_status(
-            vkGetSwapchainImagesKHR(
-                vk_device, vk_swapchain, &actual_image_count, nullptr),
-            "vkGetSwapchainImagesKHR");
+        status = make_swapchain_status(vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &actual_image_count, nullptr),
+                                       "vkGetSwapchainImagesKHR");
         if (!status)
         {
             return status;
         }
         std::vector<VkImage> images(actual_image_count);
-        status = make_swapchain_status(
-            vkGetSwapchainImagesKHR(
-                vk_device, vk_swapchain, &actual_image_count, images.data()),
-            "vkGetSwapchainImagesKHR");
+        status =
+            make_swapchain_status(vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &actual_image_count, images.data()),
+                                  "vkGetSwapchainImagesKHR");
         if (!status)
         {
             return status;
@@ -327,9 +281,7 @@ namespace toy3d
             view_info.subresourceRange.levelCount = 1;
             view_info.subresourceRange.layerCount = 1;
             status = make_swapchain_status(
-                vkCreateImageView(
-                    vk_device, &view_info, nullptr, &swapchain_image.image_view),
-                "vkCreateImageView");
+                vkCreateImageView(vk_device, &view_info, nullptr, &swapchain_image.image_view), "vkCreateImageView");
             if (!status)
             {
                 return status;
@@ -339,33 +291,24 @@ namespace toy3d
             texture_desc.width = extent.width;
             texture_desc.height = extent.height;
             texture_desc.format = desc.format;
-            texture_desc.usage =
-                RHIResourceUsage::RenderTarget | RHIResourceUsage::CopyDestination;
+            texture_desc.usage = RHIResourceUsage::RenderTarget | RHIResourceUsage::CopyDestination;
             texture_desc.initial_access = RHIAccess::Present;
             texture_desc.debug_name = desc.debug_name + ".Image" + std::to_string(index);
-            swapchain_image.texture = std::make_shared<VulkanTexture>(
-                owner_device,
-                std::move(texture_desc),
-                swapchain_image.image,
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                RHIAccess::Present);
+            swapchain_image.texture =
+                std::make_shared<VulkanTexture>(owner_device, std::move(texture_desc), swapchain_image.image,
+                                                VK_IMAGE_LAYOUT_UNDEFINED, RHIAccess::Present);
 
             RHITextureViewDesc view_desc;
             view_desc.type = RHIResourceViewType::RenderTarget;
             view_desc.dimension = RHITextureViewDimension::Texture2D;
             view_desc.format = desc.format;
             view_desc.debug_name = desc.debug_name + ".View" + std::to_string(index);
-            swapchain_image.view = std::make_shared<VulkanTextureView>(
-                swapchain_image.texture,
-                std::move(view_desc),
-                vk_device,
-                swapchain_image.image_view,
-                false);
+            swapchain_image.view = std::make_shared<VulkanTextureView>(swapchain_image.texture, std::move(view_desc),
+                                                                       vk_device, swapchain_image.image_view, false);
 
             VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             status = make_swapchain_status(
-                vkCreateSemaphore(
-                    vk_device, &semaphore_info, nullptr, &swapchain_image.rendering_done),
+                vkCreateSemaphore(vk_device, &semaphore_info, nullptr, &swapchain_image.rendering_done),
                 "vkCreateSemaphore");
             if (!status)
             {
@@ -378,13 +321,8 @@ namespace toy3d
     RHIResult<VulkanAcquireResult> VulkanSwapchain::acquire_image(VkSemaphore image_acquired)
     {
         std::uint32_t image_index = 0;
-        const VkResult result = vkAcquireNextImageKHR(
-            vk_device,
-            vk_swapchain,
-            UINT64_MAX,
-            image_acquired,
-            VK_NULL_HANDLE,
-            &image_index);
+        const VkResult result =
+            vkAcquireNextImageKHR(vk_device, vk_swapchain, UINT64_MAX, image_acquired, VK_NULL_HANDLE, &image_index);
         const RHIStatus status = map_vulkan_acquire_result(result);
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
         {
@@ -399,16 +337,12 @@ namespace toy3d
         return RHIResult<VulkanAcquireResult>::success({image_index, status});
     }
 
-    RHIStatus VulkanSwapchain::present(
-        VkQueue queue,
-        std::uint32_t image_index,
-        VkSemaphore rendering_done)
+    RHIStatus VulkanSwapchain::present(VkQueue queue, std::uint32_t image_index, VkSemaphore rendering_done)
     {
         if (image_index >= swapchain_images.size() || rendering_done == VK_NULL_HANDLE)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan swapchain present requires a valid image and rendering semaphore.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Vulkan swapchain present requires a valid image and rendering semaphore.");
         }
         VkPresentInfoKHR present_info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present_info.waitSemaphoreCount = 1;
@@ -448,4 +382,4 @@ namespace toy3d
     {
         return swapchain_images.at(image_index);
     }
-}
+} // namespace toy3d

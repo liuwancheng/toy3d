@@ -21,11 +21,7 @@ namespace toy3d
         Matrix4 object_to_world;
     };
 
-    RHIResult<std::shared_ptr<RHIBindingSet>>
-    materialize_primitive_uniform_shader_parameters(
-        RHIDevice& device,
-        RHICommandContext& context,
-        const std::shared_ptr<RHIBindingLayout>& binding_layout,
-        const ShaderMapProgram& shader_program,
-        const PrimitiveUniformShaderParameters& parameters);
-}
+    RHIResult<std::shared_ptr<RHIBindingSet>> materialize_primitive_uniform_shader_parameters(
+        RHIDevice& device, RHICommandContext& context, const std::shared_ptr<RHIBindingLayout>& binding_layout,
+        const ShaderMapProgram& shader_program, const PrimitiveUniformShaderParameters& parameters);
+} // namespace toy3d

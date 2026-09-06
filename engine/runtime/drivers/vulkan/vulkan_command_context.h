@@ -33,7 +33,7 @@ namespace toy3d
     // queue completion. Viewport frame-slot pools remain viewport-owned.
     class VulkanCommandPool final
     {
-    public:
+      public:
         VulkanCommandPool(VkDevice device, VkCommandPool command_pool);
         ~VulkanCommandPool();
 
@@ -42,7 +42,7 @@ namespace toy3d
 
         VkCommandPool handle() const { return vk_command_pool; }
 
-    private:
+      private:
         VkDevice vk_device = VK_NULL_HANDLE;
         VkCommandPool vk_command_pool = VK_NULL_HANDLE;
     };
@@ -51,18 +51,11 @@ namespace toy3d
     // identity whose slot owns its native command buffer.
     class VulkanCommandList final : public RHICommandList
     {
-    public:
-        VulkanCommandList(
-            const RHIDevice& device,
-            VulkanViewportContext& owner,
-            VkCommandBuffer command_buffer,
-            std::uint64_t frame_id,
-            std::string debug_name);
-        VulkanCommandList(
-            const RHIDevice& device,
-            std::shared_ptr<VulkanCommandPool> command_pool,
-            VkCommandBuffer command_buffer,
-            std::string debug_name);
+      public:
+        VulkanCommandList(const RHIDevice& device, VulkanViewportContext& owner, VkCommandBuffer command_buffer,
+                          std::uint64_t frame_id, std::string debug_name);
+        VulkanCommandList(const RHIDevice& device, std::shared_ptr<VulkanCommandPool> command_pool,
+                          VkCommandBuffer command_buffer, std::string debug_name);
 
         VkCommandBuffer command_buffer() const;
         bool is_device_level() const;
@@ -82,19 +75,13 @@ namespace toy3d
         const std::vector<std::shared_ptr<VulkanRenderPassResources>>& retained_render_pass_resources() const;
 
         RHIAccess tracked_buffer_access(const std::shared_ptr<VulkanBuffer>& buffer) const;
-        RHIResult<VulkanTextureSubresourceState> tracked_texture_state(
-            const std::shared_ptr<VulkanTexture>& texture,
-            const RHISubresourceRange& range) const;
-        bool try_get_tracked_texture_state(
-            const std::shared_ptr<VulkanTexture>& texture,
-            VkImageLayout& layout,
-            RHIAccess& access) const;
+        RHIResult<VulkanTextureSubresourceState> tracked_texture_state(const std::shared_ptr<VulkanTexture>& texture,
+                                                                       const RHISubresourceRange& range) const;
+        bool try_get_tracked_texture_state(const std::shared_ptr<VulkanTexture>& texture, VkImageLayout& layout,
+                                           RHIAccess& access) const;
         void track_buffer_transition(const std::shared_ptr<VulkanBuffer>& buffer, RHIAccess access);
-        void track_texture_transition(
-            const std::shared_ptr<VulkanTexture>& texture,
-            const RHISubresourceRange& range,
-            VkImageLayout layout,
-            RHIAccess access);
+        void track_texture_transition(const std::shared_ptr<VulkanTexture>& texture, const RHISubresourceRange& range,
+                                      VkImageLayout layout, RHIAccess access);
         RHIStatus validate_committed_resource_states() const;
         bool has_state_overlap(const VulkanCommandList& other) const;
         void commit_resource_states() const;
@@ -103,7 +90,7 @@ namespace toy3d
         RHIStatus close_by_context();
         RHIStatus mark_submitted_by_viewport();
 
-    private:
+      private:
         struct BufferState
         {
             std::shared_ptr<VulkanBuffer> resource;
@@ -142,24 +129,16 @@ namespace toy3d
 
     class VulkanGraphicsCommandContext final : public RHIGraphicsCommandContext
     {
-    public:
-        VulkanGraphicsCommandContext(
-            const RHIDevice& owner,
-            VkDevice device,
-            VulkanUploadManager& upload_manager,
-            VulkanViewportContext& viewport,
-            VkCommandPool command_pool,
-            std::uint64_t frame_id);
-        VulkanGraphicsCommandContext(
-            const RHIDevice& owner,
-            VkDevice device,
-            VulkanUploadManager& upload_manager,
-            std::shared_ptr<VulkanCommandPool> command_pool);
+      public:
+        VulkanGraphicsCommandContext(const RHIDevice& owner, VkDevice device, VulkanUploadManager& upload_manager,
+                                     VulkanViewportContext& viewport, VkCommandPool command_pool,
+                                     std::uint64_t frame_id);
+        VulkanGraphicsCommandContext(const RHIDevice& owner, VkDevice device, VulkanUploadManager& upload_manager,
+                                     std::shared_ptr<VulkanCommandPool> command_pool);
         ~VulkanGraphicsCommandContext() override = default;
 
         RHIStatus begin_recording(const std::string& debug_name) override;
-        RHIStatus transition_resources(
-            const std::vector<RHIResourceTransition>& transitions) override;
+        RHIStatus transition_resources(const std::vector<RHIResourceTransition>& transitions) override;
         RHIStatus copy_buffer(const RHIBufferCopyDesc& desc) override;
         RHIStatus upload_buffer(const RHIBufferUploadDesc& desc) override;
         RHIStatus copy_texture(const RHITextureCopyDesc& desc) override;
@@ -169,23 +148,20 @@ namespace toy3d
 
         RHIStatus begin_render_pass(const RHIRenderPassDesc& desc) override;
         RHIStatus end_render_pass() override;
-        RHIStatus set_graphics_pipeline(
-            const RHIGraphicsPipelineRef& pipeline) override;
+        RHIStatus set_graphics_pipeline(const RHIGraphicsPipelineRef& pipeline) override;
         RHIStatus set_viewport(const RHIViewport& viewport) override;
         RHIStatus set_scissor(const RHIRect& rect) override;
         RHIStatus set_blend_constants(const vec4& constants) override;
         RHIStatus set_stencil_reference(std::uint8_t reference) override;
-        RHIStatus set_vertex_buffers(
-            const std::vector<RHIVertexBufferBinding>& bindings) override;
+        RHIStatus set_vertex_buffers(const std::vector<RHIVertexBufferBinding>& bindings) override;
         RHIStatus set_index_buffer(const RHIIndexBufferBinding& binding) override;
         RHIStatus draw(const RHIDrawArgs& args) override;
         RHIStatus draw_indexed(const RHIDrawIndexedArgs& args) override;
 
-    protected:
-        RHIStatus bind_graphics_bindings_impl(
-            const RHIGraphicsBindings& bindings) override;
+      protected:
+        RHIStatus bind_graphics_bindings_impl(const RHIGraphicsBindings& bindings) override;
 
-    private:
+      private:
         RHIStatus require_recording() const;
         RHIStatus flush_graphics_state(bool indexed_draw);
         RHIStatus unsupported_while_recording(const char* operation) const;
@@ -201,14 +177,11 @@ namespace toy3d
         std::shared_ptr<VulkanCommandList> recording_command_list;
         std::shared_ptr<VulkanRenderPassResources> active_render_pass;
         VulkanGraphicsState graphics_state;
-        std::array<std::shared_ptr<VulkanBindingPacket>,
-            VulkanBindingLayout::physical_set_count> active_binding_packets{};
+        std::array<std::shared_ptr<VulkanBindingPacket>, VulkanBindingLayout::physical_set_count>
+            active_binding_packets{};
     };
 
-    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
-        create_vulkan_graphics_command_context(
-            const RHIDevice& owner,
-            VkDevice device,
-            std::uint32_t graphics_queue_family,
-            VulkanUploadManager& upload_manager);
-}
+    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_vulkan_graphics_command_context(
+        const RHIDevice& owner, VkDevice device, std::uint32_t graphics_queue_family,
+        VulkanUploadManager& upload_manager);
+} // namespace toy3d

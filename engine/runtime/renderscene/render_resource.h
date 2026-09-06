@@ -21,7 +21,7 @@ namespace toy3d
     // logical Rendering Thread; GPU submission and completion remain RHI duties.
     class RenderResource
     {
-    public:
+      public:
         RenderResource() = default;
         virtual ~RenderResource();
 
@@ -30,33 +30,25 @@ namespace toy3d
         RenderResource(RenderResource&&) = delete;
         RenderResource& operator=(RenderResource&&) = delete;
 
-        RenderResourceState state() const
-        {
-            return state_;
-        }
+        RenderResourceState state() const { return state_; }
 
-        const RHIStatus& failure_status() const
-        {
-            return failure_status_;
-        }
+        const RHIStatus& failure_status() const { return failure_status_; }
 
-    protected:
+      protected:
         // Derived resources use this only for deterministic resource-local
         // failures. Frame abort and explicit no-submit failures remain retryable.
         RHIStatus fail(RHIStatus status);
 
-        virtual RHIStatus record_upload(
-            RHIDevice& device,
-            RHIGraphicsCommandContext& context) = 0;
+        virtual RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) = 0;
         virtual void on_recording_committed() noexcept = 0;
         virtual void on_recording_discarded() noexcept = 0;
         virtual void release_rhi() noexcept = 0;
 
-    private:
+      private:
         friend class RenderResourceManager;
 
         RenderResourceManager* pending_manager_ = nullptr;
         RenderResourceState state_ = RenderResourceState::Uninitialized;
         RHIStatus failure_status_;
     };
-}
+} // namespace toy3d

@@ -2,13 +2,10 @@
 
 namespace toy3d
 {
-	bool AndroidPlatform::init()
-	{
-		return true;
-	}
+    bool AndroidPlatform::init()
+    {
+        return true;
+    }
 
-	void AndroidPlatform::exit()
-	{
-
-	}
-}
+    void AndroidPlatform::exit() {}
+} // namespace toy3d

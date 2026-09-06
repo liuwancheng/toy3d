@@ -8,7 +8,7 @@ namespace toy3d
 {
     class VirtualPath
     {
-    public:
+      public:
         VirtualPath() = default;
 
         static FileResult<VirtualPath> parse(std::string utf8_path);
@@ -22,14 +22,11 @@ namespace toy3d
             return lhs.utf8_path_ == rhs.utf8_path_;
         }
 
-        friend bool operator!=(const VirtualPath& lhs, const VirtualPath& rhs)
-        {
-            return !(lhs == rhs);
-        }
+        friend bool operator!=(const VirtualPath& lhs, const VirtualPath& rhs) { return !(lhs == rhs); }
 
-    private:
+      private:
         explicit VirtualPath(std::string utf8_path);
 
         std::string utf8_path_;
     };
-}
+} // namespace toy3d

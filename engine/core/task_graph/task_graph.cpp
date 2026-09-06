@@ -102,26 +102,21 @@ namespace toy3d
                 return 1;
             }
             const std::uint32_t available = logical_threads - 2;
-            return available < maximum_automatic_workers
-                ? available
-                : maximum_automatic_workers;
+            return available < maximum_automatic_workers ? available : maximum_automatic_workers;
         }
 
         bool all_tasks_complete(const GraphEventArray& tasks)
         {
-            return std::all_of(
-                tasks.begin(), tasks.end(), [](const GraphEventRef& task)
-            {
-                return task && task->is_complete();
-            });
+            return std::all_of(tasks.begin(), tasks.end(),
+                               [](const GraphEventRef& task) { return task && task->is_complete(); });
         }
-    }
+    } // namespace
 
     class TaskGraph;
 
     class TaskGraphWorkerRunnable final : public Runnable
     {
-    public:
+      public:
         TaskGraphWorkerRunnable(TaskGraph& task_graph, std::uint32_t worker_index)
             : task_graph_(task_graph), worker_index_(worker_index)
         {
@@ -132,21 +127,16 @@ namespace toy3d
         void stop() override;
         void exit() override;
 
-    private:
+      private:
         TaskGraph& task_graph_;
         std::uint32_t worker_index_ = 0;
     };
 
     class TaskGraph final : public TaskGraphInterface
     {
-    public:
-        TaskGraph(
-            TaskGraphConfig config,
-            ThreadManager& thread_manager,
-            TaskGraphDiagnostics diagnostics)
-            : config_(config),
-              thread_manager_(thread_manager),
-              diagnostics_(std::move(diagnostics)),
+      public:
+        TaskGraph(TaskGraphConfig config, ThreadManager& thread_manager, TaskGraphDiagnostics diagnostics)
+            : config_(config), thread_manager_(thread_manager), diagnostics_(std::move(diagnostics)),
               worker_thread_count_(select_worker_count(config)),
               worker_queue_(round_up_queue_capacity(config.max_tasks_in_flight))
         {
@@ -156,9 +146,8 @@ namespace toy3d
         {
             if (!shutdown_complete_.load())
             {
-                report(TaskGraphStatus::failure(
-                    TaskGraphErrorCode::InvalidState,
-                    "Task Graph was destroyed before explicit shutdown"));
+                report(TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                                "Task Graph was destroyed before explicit shutdown"));
                 shutdown(TaskGraphShutdownMode::CancelPending);
             }
         }
@@ -168,18 +157,15 @@ namespace toy3d
             worker_threads_.reserve(worker_thread_count_);
             for (std::uint32_t index = 0; index < worker_thread_count_; ++index)
             {
-                RunnableThreadCreateResult created = RunnableThread::create(
-                    thread_manager_,
-                    std::make_unique<TaskGraphWorkerRunnable>(*this, index),
-                    {"TaskGraphWorker" + std::to_string(index)});
+                RunnableThreadCreateResult created =
+                    RunnableThread::create(thread_manager_, std::make_unique<TaskGraphWorkerRunnable>(*this, index),
+                                           {"TaskGraphWorker" + std::to_string(index)});
                 if (!created.succeeded())
                 {
                     worker_stop_requested_.store(true);
                     worker_queue_.stop();
                     stop_and_join_workers();
-                    return TaskGraphStatus::failure(
-                        TaskGraphErrorCode::ThreadCreateFailed,
-                        created.status().message);
+                    return TaskGraphStatus::failure(TaskGraphErrorCode::ThreadCreateFailed, created.status().message);
                 }
                 worker_threads_.push_back(created.take_thread());
             }
@@ -197,15 +183,10 @@ namespace toy3d
 
         NamedThread get_render_thread() const override
         {
-            return config_.multithreaded
-                ? NamedThread::RenderingThread
-                : NamedThread::GameThread;
+            return config_.multithreaded ? NamedThread::RenderingThread : NamedThread::GameThread;
         }
 
-        std::uint32_t get_num_worker_threads() const override
-        {
-            return worker_thread_count_;
-        }
+        std::uint32_t get_num_worker_threads() const override { return worker_thread_count_; }
 
         bool is_thread_processing_tasks(NamedThread thread) const override
         {
@@ -226,37 +207,28 @@ namespace toy3d
 
         TaskGraphStatus attach_to_thread(NamedThread current_thread) override
         {
-            if (current_thread != NamedThread::GameThread
-                && current_thread != NamedThread::RenderingThread)
+            if (current_thread != NamedThread::GameThread && current_thread != NamedThread::RenderingThread)
             {
-                return failure(
-                    TaskGraphErrorCode::InvalidCaller,
-                    "Only GameThread or RenderingThread can be attached externally");
+                return failure(TaskGraphErrorCode::InvalidCaller,
+                               "Only GameThread or RenderingThread can be attached externally");
             }
-            if (!config_.multithreaded
-                && current_thread == NamedThread::RenderingThread)
+            if (!config_.multithreaded && current_thread == NamedThread::RenderingThread)
             {
-                return failure(
-                    TaskGraphErrorCode::InvalidCaller,
-                    "Single-thread Task Graph maps rendering work to GameThread");
+                return failure(TaskGraphErrorCode::InvalidCaller,
+                               "Single-thread Task Graph maps rendering work to GameThread");
             }
             if (tls_graph_ != nullptr)
             {
-                return failure(
-                    TaskGraphErrorCode::InvalidState,
-                    "The current thread is already attached to a Task Graph");
+                return failure(TaskGraphErrorCode::InvalidState,
+                               "The current thread is already attached to a Task Graph");
             }
 
             std::unique_lock<std::mutex> lock(binding_mutex_);
-            std::thread::id& binding = current_thread == NamedThread::GameThread
-                ? game_thread_id_
-                : render_thread_id_;
+            std::thread::id& binding = current_thread == NamedThread::GameThread ? game_thread_id_ : render_thread_id_;
             if (binding != std::thread::id{})
             {
                 lock.unlock();
-                return failure(
-                    TaskGraphErrorCode::InvalidState,
-                    "The requested Named Thread already has an owner");
+                return failure(TaskGraphErrorCode::InvalidState, "The requested Named Thread already has an owner");
             }
             binding = std::this_thread::get_id();
             tls_graph_ = this;
@@ -272,9 +244,8 @@ namespace toy3d
                 return 0;
             }
 
-            std::atomic<bool>& processing = current_thread == NamedThread::GameThread
-                ? game_processing_
-                : render_processing_;
+            std::atomic<bool>& processing =
+                current_thread == NamedThread::GameThread ? game_processing_ : render_processing_;
             processing.store(true);
             std::uint64_t processed = 0;
             while (process_one_named_task(current_thread))
@@ -292,15 +263,11 @@ namespace toy3d
                 return;
             }
 
-            std::atomic<bool>& return_requested = current_thread == NamedThread::GameThread
-                ? game_return_requested_
-                : render_return_requested_;
-            std::atomic<bool>& processing = current_thread == NamedThread::GameThread
-                ? game_processing_
-                : render_processing_;
-            Event& wake_event = current_thread == NamedThread::GameThread
-                ? game_wake_event_
-                : render_wake_event_;
+            std::atomic<bool>& return_requested =
+                current_thread == NamedThread::GameThread ? game_return_requested_ : render_return_requested_;
+            std::atomic<bool>& processing =
+                current_thread == NamedThread::GameThread ? game_processing_ : render_processing_;
+            Event& wake_event = current_thread == NamedThread::GameThread ? game_wake_event_ : render_wake_event_;
             if (return_requested.exchange(false))
             {
                 return;
@@ -331,29 +298,23 @@ namespace toy3d
             }
             else
             {
-                failure(TaskGraphErrorCode::InvalidCaller,
-                    "request_return requires a Named Thread target");
+                failure(TaskGraphErrorCode::InvalidCaller, "request_return requires a Named Thread target");
             }
         }
 
-        TaskWaitResult wait_until_tasks_complete(
-            const GraphEventArray& tasks,
-            NamedThread current_thread) override
+        TaskWaitResult wait_until_tasks_complete(const GraphEventArray& tasks, NamedThread current_thread) override
         {
             for (const GraphEventRef& task : tasks)
             {
                 if (!task)
                 {
-                    return {failure(
-                        TaskGraphErrorCode::InvalidGraphEvent,
-                        "Task Graph wait received a null GraphEvent")};
+                    return {
+                        failure(TaskGraphErrorCode::InvalidGraphEvent, "Task Graph wait received a null GraphEvent")};
                 }
-                if (tls_current_task_ != nullptr
-                    && tls_current_task_->get_completion_event() == task)
+                if (tls_current_task_ != nullptr && tls_current_task_->get_completion_event() == task)
                 {
-                    return {failure(
-                        TaskGraphErrorCode::DeadlockRisk,
-                        "A GraphTask cannot wait for its own completion event")};
+                    return {failure(TaskGraphErrorCode::DeadlockRisk,
+                                    "A GraphTask cannot wait for its own completion event")};
                 }
             }
             if (tasks.empty())
@@ -368,9 +329,8 @@ namespace toy3d
             }
             else if (known_thread != current_thread)
             {
-                return {failure(
-                    TaskGraphErrorCode::InvalidCaller,
-                    "Task Graph wait caller does not own the supplied Named Thread")};
+                return {failure(TaskGraphErrorCode::InvalidCaller,
+                                "Task Graph wait caller does not own the supplied Named Thread")};
             }
 
             auto completed_event = std::make_shared<Event>(EventMode::ManualReset);
@@ -404,9 +364,8 @@ namespace toy3d
                 {
                     if (single_thread_cannot_make_progress(current_thread))
                     {
-                        return {failure(
-                            TaskGraphErrorCode::DeadlockRisk,
-                            "Single-thread Task Graph wait has no runnable work")};
+                        return {failure(TaskGraphErrorCode::DeadlockRisk,
+                                        "Single-thread Task Graph wait has no runnable work")};
                     }
                     completed_event->wait_for(wait_poll_interval);
                 }
@@ -419,24 +378,17 @@ namespace toy3d
             {
                 if (task->get_outcome() == TaskOutcome::Failed)
                 {
-                    return {failure(
-                        TaskGraphErrorCode::TaskFailed,
-                        "At least one waited GraphTask failed")};
+                    return {failure(TaskGraphErrorCode::TaskFailed, "At least one waited GraphTask failed")};
                 }
                 if (task->get_outcome() == TaskOutcome::Cancelled)
                 {
-                    return {failure(
-                        TaskGraphErrorCode::Cancelled,
-                        "At least one waited GraphTask was cancelled")};
+                    return {failure(TaskGraphErrorCode::Cancelled, "At least one waited GraphTask was cancelled")};
                 }
             }
             return {TaskGraphStatus::success()};
         }
 
-        void trigger_event_when_tasks_complete(
-            Event& event,
-            const GraphEventArray& tasks,
-            NamedThread) override
+        void trigger_event_when_tasks_complete(Event& event, const GraphEventArray& tasks, NamedThread) override
         {
             if (tasks.empty())
             {
@@ -456,9 +408,7 @@ namespace toy3d
             {
                 if (!task)
                 {
-                    failure(
-                        TaskGraphErrorCode::InvalidGraphEvent,
-                        "Completion trigger received a null GraphEvent");
+                    failure(TaskGraphErrorCode::InvalidGraphEvent, "Completion trigger received a null GraphEvent");
                     completed();
                 }
                 else if (!task->add_subsequent(completed))
@@ -486,10 +436,9 @@ namespace toy3d
             if (!shutdown_started_.compare_exchange_strong(expected, true))
             {
                 return shutdown_complete_.load()
-                    ? TaskGraphShutdownResult{TaskGraphStatus::success()}
-                    : TaskGraphShutdownResult{failure(
-                        TaskGraphErrorCode::InvalidState,
-                        "Task Graph shutdown is already in progress")};
+                           ? TaskGraphShutdownResult{TaskGraphStatus::success()}
+                           : TaskGraphShutdownResult{failure(TaskGraphErrorCode::InvalidState,
+                                                             "Task Graph shutdown is already in progress")};
             }
             unpublish_active_task_graph(*this);
             accepting_tasks_.store(false);
@@ -521,9 +470,8 @@ namespace toy3d
         {
             if (tls_graph_ != nullptr)
             {
-                return ThreadStatus::failure(
-                    ThreadErrorCode::InvalidState,
-                    "Task Graph worker thread already has a binding");
+                return ThreadStatus::failure(ThreadErrorCode::InvalidState,
+                                             "Task Graph worker thread already has a binding");
             }
             tls_graph_ = this;
             tls_thread_ = NamedThread::AnyWorker;
@@ -545,10 +493,7 @@ namespace toy3d
             return 0;
         }
 
-        void wake_workers()
-        {
-            worker_queue_.wake_all();
-        }
+        void wake_workers() { worker_queue_.wake_all(); }
 
         void clear_worker_binding()
         {
@@ -560,45 +505,39 @@ namespace toy3d
             }
         }
 
-    private:
+      private:
         friend class TaskGraphWorkerRunnable;
 
         BaseGraphTask* accept_task(std::unique_ptr<BaseGraphTask> task) override
         {
             if (!task)
             {
-                throw TaskGraphException(failure(
-                    TaskGraphErrorCode::InvalidState,
-                    "Task Graph cannot accept a null task"));
+                throw TaskGraphException(
+                    failure(TaskGraphErrorCode::InvalidState, "Task Graph cannot accept a null task"));
             }
             if (!accepting_tasks_.load())
             {
-                throw TaskGraphException(failure(
-                    TaskGraphErrorCode::Stopped,
-                    "Task Graph no longer accepts tasks"));
+                throw TaskGraphException(failure(TaskGraphErrorCode::Stopped, "Task Graph no longer accepts tasks"));
             }
             if (!target_is_available(task->get_desired_thread()))
             {
-                throw TaskGraphException(failure(
-                    TaskGraphErrorCode::TargetUnavailable,
-                    "GraphTask target Named Thread is not attached"));
+                throw TaskGraphException(
+                    failure(TaskGraphErrorCode::TargetUnavailable, "GraphTask target Named Thread is not attached"));
             }
 
             std::unique_lock<std::mutex> lock(tasks_mutex_);
             if (!accepting_tasks_.load())
             {
-                TaskGraphStatus status = TaskGraphStatus::failure(
-                    TaskGraphErrorCode::Stopped,
-                    "Task Graph stopped while accepting a task");
+                TaskGraphStatus status =
+                    TaskGraphStatus::failure(TaskGraphErrorCode::Stopped, "Task Graph stopped while accepting a task");
                 lock.unlock();
                 report(status);
                 throw TaskGraphException(std::move(status));
             }
             if (outstanding_tasks_ >= config_.max_tasks_in_flight)
             {
-                TaskGraphStatus status = TaskGraphStatus::failure(
-                    TaskGraphErrorCode::Overloaded,
-                    "Task Graph reached max_tasks_in_flight");
+                TaskGraphStatus status =
+                    TaskGraphStatus::failure(TaskGraphErrorCode::Overloaded, "Task Graph reached max_tasks_in_flight");
                 lock.unlock();
                 report(status);
                 throw TaskGraphException(std::move(status));
@@ -661,9 +600,8 @@ namespace toy3d
             }
             if (!enqueued)
             {
-                TaskGraphStatus status = TaskGraphStatus::failure(
-                    TaskGraphErrorCode::Overloaded,
-                    "Task Graph ready queue rejected an accepted task");
+                TaskGraphStatus status = TaskGraphStatus::failure(TaskGraphErrorCode::Overloaded,
+                                                                  "Task Graph ready queue rejected an accepted task");
                 lock.unlock();
                 report(status);
                 throw TaskGraphException(std::move(status));
@@ -672,9 +610,8 @@ namespace toy3d
 
         NamedThread map_target(NamedThread desired_thread) const
         {
-            if (!config_.multithreaded
-                && (desired_thread == NamedThread::AnyWorker
-                    || desired_thread == NamedThread::RenderingThread))
+            if (!config_.multithreaded &&
+                (desired_thread == NamedThread::AnyWorker || desired_thread == NamedThread::RenderingThread))
             {
                 return NamedThread::GameThread;
             }
@@ -703,14 +640,11 @@ namespace toy3d
 
         TaskGraphStatus validate_named_thread_caller(NamedThread current_thread) const
         {
-            if ((current_thread != NamedThread::GameThread
-                    && current_thread != NamedThread::RenderingThread)
-                || tls_graph_ != this
-                || tls_thread_ != current_thread)
+            if ((current_thread != NamedThread::GameThread && current_thread != NamedThread::RenderingThread) ||
+                tls_graph_ != this || tls_thread_ != current_thread)
             {
-                return failure(
-                    TaskGraphErrorCode::InvalidCaller,
-                    "Only the attached owner can pump a Named Thread queue");
+                return failure(TaskGraphErrorCode::InvalidCaller,
+                               "Only the attached owner can pump a Named Thread queue");
             }
             return TaskGraphStatus::success();
         }
@@ -816,15 +750,13 @@ namespace toy3d
             }
             catch (const std::exception& exception)
             {
-                report(TaskGraphStatus::failure(
-                    TaskGraphErrorCode::InvalidState,
-                    std::string("Task Graph executor failure: ") + exception.what()));
+                report(TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                                std::string("Task Graph executor failure: ") + exception.what()));
             }
             catch (...)
             {
-                report(TaskGraphStatus::failure(
-                    TaskGraphErrorCode::InvalidState,
-                    "Unknown Task Graph executor failure"));
+                report(
+                    TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState, "Unknown Task Graph executor failure"));
             }
             if (current_thread == NamedThread::AnyWorker)
             {
@@ -871,15 +803,14 @@ namespace toy3d
                 }
                 catch (const std::exception& exception)
                 {
-                    report(TaskGraphStatus::failure(
-                        TaskGraphErrorCode::InvalidState,
-                        std::string("Task cancellation callback failed: ") + exception.what()));
+                    report(TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                                    std::string("Task cancellation callback failed: ") +
+                                                        exception.what()));
                 }
                 catch (...)
                 {
-                    report(TaskGraphStatus::failure(
-                        TaskGraphErrorCode::InvalidState,
-                        "Unknown Task cancellation callback failure"));
+                    report(TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                                    "Unknown Task cancellation callback failure"));
                 }
             }
             tasks_condition_.notify_all();
@@ -902,9 +833,8 @@ namespace toy3d
                 {
                     if (single_thread_cannot_make_progress(current_thread))
                     {
-                        return failure(
-                            TaskGraphErrorCode::DeadlockRisk,
-                            "Single-thread Task Graph drain has no runnable work");
+                        return failure(TaskGraphErrorCode::DeadlockRisk,
+                                       "Single-thread Task Graph drain has no runnable work");
                     }
                     std::unique_lock<std::mutex> lock(tasks_mutex_);
                     tasks_condition_.wait_for(lock, wait_poll_interval);
@@ -919,9 +849,7 @@ namespace toy3d
                 return false;
             }
             std::lock_guard<std::mutex> lock(tasks_mutex_);
-            return outstanding_tasks_ != 0
-                && running_tasks_ == 0
-                && game_ready_count_.load() == 0;
+            return outstanding_tasks_ != 0 && running_tasks_ == 0 && game_ready_count_.load() == 0;
         }
 
         void wait_for_running_tasks()
@@ -955,9 +883,7 @@ namespace toy3d
             }
         }
 
-        TaskGraphStatus failure(
-            TaskGraphErrorCode code,
-            std::string message) const
+        TaskGraphStatus failure(TaskGraphErrorCode code, std::string message) const
         {
             TaskGraphStatus status = TaskGraphStatus::failure(code, std::move(message));
             report(status);
@@ -1043,9 +969,7 @@ namespace toy3d
         task_graph_.clear_worker_binding();
     }
 
-    TaskGraphCreateResult::TaskGraphCreateResult(
-        TaskGraphStatus status,
-        std::unique_ptr<TaskGraphInterface> task_graph)
+    TaskGraphCreateResult::TaskGraphCreateResult(TaskGraphStatus status, std::unique_ptr<TaskGraphInterface> task_graph)
         : status_(std::move(status)), task_graph_(std::move(task_graph))
     {
     }
@@ -1065,28 +989,25 @@ namespace toy3d
         return std::move(task_graph_);
     }
 
-    TaskGraphCreateResult create_task_graph(
-        TaskGraphConfig config,
-        ThreadManager& thread_manager,
-        TaskGraphDiagnostics diagnostics)
+    TaskGraphCreateResult create_task_graph(TaskGraphConfig config, ThreadManager& thread_manager,
+                                            TaskGraphDiagnostics diagnostics)
     {
         if (config.max_tasks_in_flight < 2)
         {
-            return {TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidConfig,
-                "Task Graph max_tasks_in_flight must be at least two"), nullptr};
+            return {TaskGraphStatus::failure(TaskGraphErrorCode::InvalidConfig,
+                                             "Task Graph max_tasks_in_flight must be at least two"),
+                    nullptr};
         }
         if (config.multithreaded && config.worker_thread_count > 1024)
         {
-            return {TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidConfig,
-                "Task Graph worker_thread_count exceeds the supported limit"), nullptr};
+            return {TaskGraphStatus::failure(TaskGraphErrorCode::InvalidConfig,
+                                             "Task Graph worker_thread_count exceeds the supported limit"),
+                    nullptr};
         }
         if (!reserve_active_task_graph_creation())
         {
-            TaskGraphStatus status = TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidState,
-                "A Task Graph instance is already active or starting");
+            TaskGraphStatus status = TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                                              "A Task Graph instance is already active or starting");
             try
             {
                 if (diagnostics)
@@ -1104,8 +1025,7 @@ namespace toy3d
         std::unique_ptr<TaskGraph> task_graph;
         try
         {
-            task_graph = std::make_unique<TaskGraph>(
-                config, thread_manager, std::move(diagnostics));
+            task_graph = std::make_unique<TaskGraph>(config, thread_manager, std::move(diagnostics));
             const TaskGraphStatus started = task_graph->start_workers();
             if (!started.succeeded())
             {
@@ -1117,8 +1037,7 @@ namespace toy3d
         catch (const std::exception& exception)
         {
             cancel_active_task_graph_creation();
-            return {TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidConfig, exception.what()), nullptr};
+            return {TaskGraphStatus::failure(TaskGraphErrorCode::InvalidConfig, exception.what()), nullptr};
         }
         publish_active_task_graph(*task_graph);
         return {TaskGraphStatus::success(), std::move(task_graph)};
@@ -1135,10 +1054,9 @@ namespace toy3d
         std::lock_guard<std::mutex> lock(active_task_graph_mutex);
         if (active_task_graph == nullptr)
         {
-            throw TaskGraphException(TaskGraphStatus::failure(
-                TaskGraphErrorCode::Stopped,
-                "No active Task Graph instance is running"));
+            throw TaskGraphException(
+                TaskGraphStatus::failure(TaskGraphErrorCode::Stopped, "No active Task Graph instance is running"));
         }
         return *active_task_graph;
     }
-}
+} // namespace toy3d

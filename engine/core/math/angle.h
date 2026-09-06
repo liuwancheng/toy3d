@@ -8,24 +8,15 @@ namespace toy3d
 {
     class Radians
     {
-    public:
+      public:
         constexpr Radians() = default;
         explicit constexpr Radians(float value) : value_(value) {}
 
-        constexpr float value() const
-        {
-            return value_;
-        }
+        constexpr float value() const { return value_; }
 
-        constexpr Radians operator+() const
-        {
-            return *this;
-        }
+        constexpr Radians operator+() const { return *this; }
 
-        constexpr Radians operator-() const
-        {
-            return Radians(-value_);
-        }
+        constexpr Radians operator-() const { return Radians(-value_); }
 
         constexpr Radians& operator+=(Radians other)
         {
@@ -51,30 +42,21 @@ namespace toy3d
             return *this;
         }
 
-    private:
+      private:
         float value_ = 0.0f;
     };
 
     class Degrees
     {
-    public:
+      public:
         constexpr Degrees() = default;
         explicit constexpr Degrees(float value) : value_(value) {}
 
-        constexpr float value() const
-        {
-            return value_;
-        }
+        constexpr float value() const { return value_; }
 
-        constexpr Degrees operator+() const
-        {
-            return *this;
-        }
+        constexpr Degrees operator+() const { return *this; }
 
-        constexpr Degrees operator-() const
-        {
-            return Degrees(-value_);
-        }
+        constexpr Degrees operator-() const { return Degrees(-value_); }
 
         constexpr Degrees& operator+=(Degrees other)
         {
@@ -100,7 +82,7 @@ namespace toy3d
             return *this;
         }
 
-    private:
+      private:
         float value_ = 0.0f;
     };
 
@@ -194,18 +176,12 @@ namespace toy3d
         return is_finite(value.value());
     }
 
-    inline bool is_nearly_equal(
-        Radians left,
-        Radians right,
-        float tolerance = k_default_float_tolerance)
+    inline bool is_nearly_equal(Radians left, Radians right, float tolerance = k_default_float_tolerance)
     {
         return is_nearly_equal(left.value(), right.value(), tolerance);
     }
 
-    inline bool is_nearly_equal(
-        Degrees left,
-        Degrees right,
-        float tolerance = k_default_float_tolerance)
+    inline bool is_nearly_equal(Degrees left, Degrees right, float tolerance = k_default_float_tolerance)
     {
         return is_nearly_equal(left.value(), right.value(), tolerance);
     }
@@ -224,4 +200,4 @@ namespace toy3d
     {
         return std::tan(value.value());
     }
-}
+} // namespace toy3d

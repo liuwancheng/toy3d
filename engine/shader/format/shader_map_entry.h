@@ -27,8 +27,7 @@ namespace toy3d::shader
     Sha256Hash calculate_shader_map_key(const ShaderMapEntry& entry);
     Sha256Hash calculate_shader_map_entry_content_hash(const ShaderMapEntry& entry);
 
-    ShaderMapEntryReadResult read_verified_shader_map_entry(
-        const PlatformFile& platform_file,
-        const PhysicalPath& shader_map_root,
-        const Sha256Hash& shader_map_key);
-}
+    ShaderMapEntryReadResult read_verified_shader_map_entry(const PlatformFile& platform_file,
+                                                            const PhysicalPath& shader_map_root,
+                                                            const Sha256Hash& shader_map_key);
+} // namespace toy3d::shader

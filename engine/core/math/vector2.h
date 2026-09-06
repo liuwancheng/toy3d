@@ -14,19 +14,11 @@ namespace toy3d
 
         constexpr Vector2() = default;
         explicit constexpr Vector2(float value) : x(value), y(value) {}
-        constexpr Vector2(float x_value, float y_value)
-            : x(x_value), y(y_value)
-        {}
+        constexpr Vector2(float x_value, float y_value) : x(x_value), y(y_value) {}
 
-        constexpr float* data()
-        {
-            return &x;
-        }
+        constexpr float* data() { return &x; }
 
-        constexpr const float* data() const
-        {
-            return &x;
-        }
+        constexpr const float* data() const { return &x; }
 
         constexpr Vector2& operator+=(const Vector2& other)
         {
@@ -71,14 +63,10 @@ namespace toy3d
         }
     };
 
-    static_assert(sizeof(Vector2) == sizeof(float) * 2,
-        "Vector2 must contain exactly two contiguous floats.");
-    static_assert(alignof(Vector2) == alignof(float),
-        "Vector2 must retain scalar alignment.");
-    static_assert(std::is_standard_layout<Vector2>::value,
-        "Vector2 must be standard-layout.");
-    static_assert(std::is_trivially_copyable<Vector2>::value,
-        "Vector2 must be trivially copyable.");
+    static_assert(sizeof(Vector2) == sizeof(float) * 2, "Vector2 must contain exactly two contiguous floats.");
+    static_assert(alignof(Vector2) == alignof(float), "Vector2 must retain scalar alignment.");
+    static_assert(std::is_standard_layout<Vector2>::value, "Vector2 must be standard-layout.");
+    static_assert(std::is_trivially_copyable<Vector2>::value, "Vector2 must be trivially copyable.");
 
     constexpr Vector2 operator+(Vector2 value)
     {
@@ -165,20 +153,15 @@ namespace toy3d
         return is_finite(value.x) && is_finite(value.y);
     }
 
-    inline bool is_nearly_equal(
-        const Vector2& left,
-        const Vector2& right,
-        float tolerance = k_default_float_tolerance)
+    inline bool is_nearly_equal(const Vector2& left, const Vector2& right, float tolerance = k_default_float_tolerance)
     {
-        return is_nearly_equal(left.x, right.x, tolerance) &&
-            is_nearly_equal(left.y, right.y, tolerance);
+        return is_nearly_equal(left.x, right.x, tolerance) && is_nearly_equal(left.y, right.y, tolerance);
     }
 
     inline bool try_normalize(const Vector2& value, Vector2& result)
     {
         const float value_length_squared = length_squared(value);
-        if (!is_finite(value) ||
-            !is_finite(value_length_squared) ||
+        if (!is_finite(value) || !is_finite(value_length_squared) ||
             value_length_squared <= k_normalization_tolerance_squared)
         {
             return false;
@@ -203,9 +186,8 @@ namespace toy3d
     inline Vector2 normalize_unchecked(const Vector2& value)
     {
         const float value_length_squared = length_squared(value);
-        assert(is_finite(value) &&
-            is_finite(value_length_squared) &&
-            value_length_squared > k_normalization_tolerance_squared);
+        assert(is_finite(value) && is_finite(value_length_squared) &&
+               value_length_squared > k_normalization_tolerance_squared);
         return value * inverse_sqrt(value_length_squared);
     }
-}
+} // namespace toy3d

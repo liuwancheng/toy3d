@@ -12,21 +12,17 @@
 
 namespace toy3d
 {
-    template<typename TaskType>
-    class GraphTask final : public BaseGraphTask
+    template <typename TaskType> class GraphTask final : public BaseGraphTask
     {
-    public:
+      public:
         class Constructor final
         {
-        public:
-            template<typename... Args>
-            GraphEventRef construct_and_dispatch_when_ready(Args&&... args)
+          public:
+            template <typename... Args> GraphEventRef construct_and_dispatch_when_ready(Args&&... args)
             {
                 validate_prerequisites();
-                std::unique_ptr<GraphTask> task = std::make_unique<GraphTask>(
-                    task_graph_, std::forward<Args>(args)...);
-                GraphTask* accepted = static_cast<GraphTask*>(
-                    task_graph_.accept_task(std::move(task)));
+                std::unique_ptr<GraphTask> task = std::make_unique<GraphTask>(task_graph_, std::forward<Args>(args)...);
+                GraphTask* accepted = static_cast<GraphTask*>(task_graph_.accept_task(std::move(task)));
                 GraphEventRef completion_event = accepted->get_completion_event();
                 try
                 {
@@ -40,14 +36,11 @@ namespace toy3d
                 return completion_event;
             }
 
-            template<typename... Args>
-            GraphTask* construct_and_hold(Args&&... args)
+            template <typename... Args> GraphTask* construct_and_hold(Args&&... args)
             {
                 validate_prerequisites();
-                std::unique_ptr<GraphTask> task = std::make_unique<GraphTask>(
-                    task_graph_, std::forward<Args>(args)...);
-                GraphTask* accepted = static_cast<GraphTask*>(
-                    task_graph_.accept_task(std::move(task)));
+                std::unique_ptr<GraphTask> task = std::make_unique<GraphTask>(task_graph_, std::forward<Args>(args)...);
+                GraphTask* accepted = static_cast<GraphTask*>(task_graph_.accept_task(std::move(task)));
                 try
                 {
                     accepted->dispatch(prerequisites_, false);
@@ -60,37 +53,31 @@ namespace toy3d
                 return accepted;
             }
 
-        private:
+          private:
             friend class GraphTask;
 
             void validate_prerequisites() const
             {
                 if (prerequisites_.size() >= std::numeric_limits<std::uint32_t>::max())
                 {
-                    throw TaskGraphException(TaskGraphStatus::failure(
-                        TaskGraphErrorCode::InvalidPrerequisite,
-                        "Graph task has too many prerequisites"));
+                    throw TaskGraphException(TaskGraphStatus::failure(TaskGraphErrorCode::InvalidPrerequisite,
+                                                                      "Graph task has too many prerequisites"));
                 }
                 for (const GraphEventRef& prerequisite : prerequisites_)
                 {
                     if (!prerequisite)
                     {
-                        throw TaskGraphException(TaskGraphStatus::failure(
-                            TaskGraphErrorCode::InvalidPrerequisite,
-                            "Graph task prerequisite cannot be null"));
+                        throw TaskGraphException(TaskGraphStatus::failure(TaskGraphErrorCode::InvalidPrerequisite,
+                                                                          "Graph task prerequisite cannot be null"));
                     }
                 }
             }
 
-            Constructor(
-                TaskGraphInterface& task_graph,
-                GraphEventArray prerequisites,
-                NamedThread current_thread)
-                : task_graph_(task_graph),
-                  prerequisites_(std::move(prerequisites))
+            Constructor(TaskGraphInterface& task_graph, GraphEventArray prerequisites, NamedThread current_thread)
+                : task_graph_(task_graph), prerequisites_(std::move(prerequisites))
             {
-                if (current_thread != NamedThread::Unknown
-                    && task_graph_.get_current_thread_if_known() != current_thread)
+                if (current_thread != NamedThread::Unknown &&
+                    task_graph_.get_current_thread_if_known() != current_thread)
                 {
                     throw TaskGraphException(TaskGraphStatus::failure(
                         TaskGraphErrorCode::InvalidCaller,
@@ -102,31 +89,22 @@ namespace toy3d
             GraphEventArray prerequisites_;
         };
 
-        template<typename... Args>
+        template <typename... Args>
         explicit GraphTask(TaskGraphInterface& task_graph, Args&&... args)
             : BaseGraphTask(task_graph), task_(std::forward<Args>(args)...)
         {
-            initialize_routing(
-                task_.get_desired_thread(),
-                task_.get_priority(),
-                task_.get_subsequents_mode());
+            initialize_routing(task_.get_desired_thread(), task_.get_priority(), task_.get_subsequents_mode());
         }
 
-        static Constructor create_task(
-            TaskGraphInterface& task_graph,
-            const GraphEventArray* prerequisites = nullptr,
-            NamedThread current_thread = NamedThread::Unknown)
+        static Constructor create_task(TaskGraphInterface& task_graph, const GraphEventArray* prerequisites = nullptr,
+                                       NamedThread current_thread = NamedThread::Unknown)
         {
-            return Constructor(
-                task_graph,
-                prerequisites != nullptr ? *prerequisites : GraphEventArray{},
-                current_thread);
+            return Constructor(task_graph, prerequisites != nullptr ? *prerequisites : GraphEventArray{},
+                               current_thread);
         }
 
-    private:
-        void execute_task(
-            NamedThread current_thread,
-            const GraphEventRef& completion_event) override
+      private:
+        void execute_task(NamedThread current_thread, const GraphEventRef& completion_event) override
         {
             task_.do_task(current_thread, completion_event);
         }
@@ -134,15 +112,10 @@ namespace toy3d
         TaskType task_;
     };
 
-    using GraphTaskFunction = std::function<void(
-        NamedThread current_thread,
-        const GraphEventRef& completion_event)>;
+    using GraphTaskFunction = std::function<void(NamedThread current_thread, const GraphEventRef& completion_event)>;
 
-    GraphEventRef dispatch_graph_task(
-        TaskGraphInterface& task_graph,
-        std::string debug_name,
-        GraphTaskFunction function,
-        NamedThread desired_thread = NamedThread::AnyWorker,
-        const GraphEventArray* prerequisites = nullptr,
-        SubsequentsMode mode = SubsequentsMode::TrackSubsequents);
-}
+    GraphEventRef dispatch_graph_task(TaskGraphInterface& task_graph, std::string debug_name,
+                                      GraphTaskFunction function, NamedThread desired_thread = NamedThread::AnyWorker,
+                                      const GraphEventArray* prerequisites = nullptr,
+                                      SubsequentsMode mode = SubsequentsMode::TrackSubsequents);
+} // namespace toy3d

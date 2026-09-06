@@ -17,11 +17,11 @@ namespace toy3d
         }
     };
 
-    class IPlatformInput 
+    class IPlatformInput
     {
-    public:
-		IPlatformInput() {};
-		virtual ~IPlatformInput() {};
+      public:
+        IPlatformInput() {};
+        virtual ~IPlatformInput() {};
 
         virtual bool init() = 0;
         virtual void exit() = 0;

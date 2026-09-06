@@ -20,47 +20,32 @@ namespace toy3d
     // state is accessed only on the logical Rendering Thread.
     class MaterialRenderProxy final
     {
-    public:
+      public:
         explicit MaterialRenderProxy(const Material& material);
 
         void set_scalar(ShaderParameterId parameter_id, float value) noexcept;
         void set_vector(ShaderParameterId parameter_id, const vec2& value) noexcept;
         void set_vector(ShaderParameterId parameter_id, const vec3& value) noexcept;
         void set_vector(ShaderParameterId parameter_id, const vec4& value) noexcept;
-        void set_texture(
-            ShaderParameterId parameter_id,
-            TextureResource* texture_resource) noexcept;
+        void set_texture(ShaderParameterId parameter_id, TextureResource* texture_resource) noexcept;
 
-        RHIResult<RHIBindingSetRef> materialize(
-            RHIDevice& device,
-            RHICommandContext& context,
-            const RHIBindingLayoutRef& binding_layout);
+        RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context,
+                                                const RHIBindingLayoutRef& binding_layout);
         RHIStatus begin_init_textures(RenderResourceManager& manager);
 
-        RHIStatus stage_material_candidate(
-            ShaderMapProgramRef shader_program,
-            bool two_sided);
-        RHIResult<RHIBindingSetRef> materialize_staged(
-            RHIDevice& device,
-            RHICommandContext& context,
-            const RHIBindingLayoutRef& binding_layout);
+        RHIStatus stage_material_candidate(ShaderMapProgramRef shader_program, bool two_sided);
+        RHIResult<RHIBindingSetRef> materialize_staged(RHIDevice& device, RHICommandContext& context,
+                                                       const RHIBindingLayoutRef& binding_layout);
         RHIStatus commit_material_candidate();
         void discard_material_candidate() noexcept;
 
-        const ShaderMapProgramRef& shader_program() const noexcept
-        {
-            return shader_program_;
-        }
-        const shader::ShaderGraphicsPassState* effective_graphics_pass_state()
-            const noexcept;
+        const ShaderMapProgramRef& shader_program() const noexcept { return shader_program_; }
+        const shader::ShaderGraphicsPassState* effective_graphics_pass_state() const noexcept;
 
-    private:
-        RHIResult<RHIBindingSetRef> materialize_program(
-            RHIDevice& device,
-            RHICommandContext& context,
-            const RHIBindingLayoutRef& binding_layout,
-            const ShaderMapProgramRef& shader_program,
-            bool staged);
+      private:
+        RHIResult<RHIBindingSetRef> materialize_program(RHIDevice& device, RHICommandContext& context,
+                                                        const RHIBindingLayoutRef& binding_layout,
+                                                        const ShaderMapProgramRef& shader_program, bool staged);
         bool texture_cache_matches(bool staged) const noexcept;
         bool texture_views_match(bool staged) const noexcept;
 
@@ -86,4 +71,4 @@ namespace toy3d
         bool dirty_ = true;
         bool staged_dirty_ = false;
     };
-}
+} // namespace toy3d

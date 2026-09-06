@@ -296,4 +296,4 @@ namespace toy3d
     constexpr std::uint32_t RHI_ALL_MIPS = 0xffffffffU;
     constexpr std::uint32_t RHI_ALL_LAYERS = 0xffffffffU;
     constexpr std::uint32_t RHI_MAX_COLOR_ATTACHMENTS = 8U;
-}
+} // namespace toy3d

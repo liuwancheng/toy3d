@@ -18,8 +18,6 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    BindingCodegenResult generate_binding_hlsl(
-        const LogicalShaderLayout& logical_layout,
-        const TargetBindingLayout& target_layout,
-        ShaderStageFlags stage);
-}
+    BindingCodegenResult generate_binding_hlsl(const LogicalShaderLayout& logical_layout,
+                                               const TargetBindingLayout& target_layout, ShaderStageFlags stage);
+} // namespace toy3d::shader

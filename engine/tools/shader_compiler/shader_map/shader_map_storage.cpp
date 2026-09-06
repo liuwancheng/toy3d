@@ -9,21 +9,19 @@ namespace toy3d::shader
 
     bool ShaderEntryStagingResult::succeeded() const
     {
-        return staging_directory.has_value() && final_directory.has_value() &&
-            status.succeeded();
+        return staging_directory.has_value() && final_directory.has_value() && status.succeeded();
     }
 
-    ShaderEntryStagingResult create_shader_entry_staging_directory(
-        PlatformFile& platform_file,
-        const PhysicalPath& entry_root,
-        const std::string& key)
+    ShaderEntryStagingResult create_shader_entry_staging_directory(PlatformFile& platform_file,
+                                                                   const PhysicalPath& entry_root,
+                                                                   const std::string& key)
     {
         ShaderEntryStagingResult result;
         result.status = platform_file.create_directories(entry_root);
-        if (!result.status.succeeded()) return result;
+        if (!result.status.succeeded())
+            return result;
 
-        const FileResult<PhysicalPath> final_directory =
-            platform_file.join_relative(entry_root, key);
+        const FileResult<PhysicalPath> final_directory = platform_file.join_relative(entry_root, key);
         if (!final_directory.succeeded())
         {
             result.status = final_directory.status();
@@ -31,8 +29,7 @@ namespace toy3d::shader
         }
         result.final_directory = final_directory.value();
 
-        const FileResult<bool> final_exists =
-            platform_file.exists(*result.final_directory);
+        const FileResult<bool> final_exists = platform_file.exists(*result.final_directory);
         if (!final_exists.succeeded())
         {
             result.status = final_exists.status();
@@ -49,9 +46,8 @@ namespace toy3d::shader
 
         for (std::uint32_t attempt = 0; attempt < maximum_staging_attempts; ++attempt)
         {
-            const FileResult<PhysicalPath> candidate = platform_file.join_relative(
-                entry_root,
-                key + ".tmp." + std::to_string(attempt));
+            const FileResult<PhysicalPath> candidate =
+                platform_file.join_relative(entry_root, key + ".tmp." + std::to_string(attempt));
             if (!candidate.succeeded())
             {
                 result.status = candidate.status();
@@ -63,7 +59,8 @@ namespace toy3d::shader
                 result.staging_directory = candidate.value();
                 return result;
             }
-            if (result.status.code != FileErrorCode::AlreadyExists) return result;
+            if (result.status.code != FileErrorCode::AlreadyExists)
+                return result;
         }
 
         result.status.code = FileErrorCode::AlreadyExists;
@@ -73,20 +70,16 @@ namespace toy3d::shader
         return result;
     }
 
-    FileStatus publish_shader_entry_directory(
-        PlatformFile& platform_file,
-        const PhysicalPath& staging_directory,
-        const PhysicalPath& final_directory)
+    FileStatus publish_shader_entry_directory(PlatformFile& platform_file, const PhysicalPath& staging_directory,
+                                              const PhysicalPath& final_directory)
     {
         return platform_file.rename_no_replace(staging_directory, final_directory);
     }
 
-    FileStatus cleanup_shader_entry_staging_directory(
-        PlatformFile& platform_file,
-        const PhysicalPath& staging_directory)
+    FileStatus cleanup_shader_entry_staging_directory(PlatformFile& platform_file,
+                                                      const PhysicalPath& staging_directory)
     {
-        const FileResult<std::uintmax_t> removed =
-            platform_file.remove_directory_tree(staging_directory);
+        const FileResult<std::uintmax_t> removed = platform_file.remove_directory_tree(staging_directory);
         return removed.succeeded() ? FileStatus::success() : removed.status();
     }
-}
+} // namespace toy3d::shader

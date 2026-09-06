@@ -11,20 +11,15 @@
 
 namespace toy3d
 {
-    RHIResult<RHIBindingLayoutRef> create_vulkan_binding_layout(
-        const RHIDevice& owner,
-        VkDevice device,
-        const RHIBindingLayoutDesc& desc)
+    RHIResult<RHIBindingLayoutRef> create_vulkan_binding_layout(const RHIDevice& owner, VkDevice device,
+                                                                const RHIBindingLayoutDesc& desc)
     {
         if (device == VK_NULL_HANDLE)
         {
             return RHIResult<RHIBindingLayoutRef>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan binding-layout creation requires a valid logical device.");
+                RHIErrorCode::NotReady, "Vulkan binding-layout creation requires a valid logical device.");
         }
-        std::array<
-            std::vector<VkDescriptorSetLayoutBinding>,
-            VulkanBindingLayout::physical_set_count> group_bindings;
+        std::array<std::vector<VkDescriptorSetLayoutBinding>, VulkanBindingLayout::physical_set_count> group_bindings;
         std::vector<VulkanBindingLayout::NativeBinding> native_bindings;
         std::set<std::pair<std::uint32_t, std::uint32_t>> occupied_bindings;
         native_bindings.reserve(desc.entries.size());
@@ -34,19 +29,16 @@ namespace toy3d
             if (group_index >= group_bindings.size())
             {
                 return RHIResult<RHIBindingLayoutRef>::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Vulkan binding layout contains an invalid binding group.");
+                    RHIErrorCode::InvalidArgument, "Vulkan binding layout contains an invalid binding group.");
             }
             const VkDescriptorType descriptor_type = to_vk_descriptor_type(entry.type);
             if (descriptor_type == VK_DESCRIPTOR_TYPE_MAX_ENUM)
             {
                 return RHIResult<RHIBindingLayoutRef>::failure(
-                    RHIErrorCode::Unsupported,
-                    "Vulkan binding layout contains an unsupported resource type.");
+                    RHIErrorCode::Unsupported, "Vulkan binding layout contains an unsupported resource type.");
             }
             const std::uint32_t native_binding = entry.slot;
-            if (!occupied_bindings.emplace(
-                    static_cast<std::uint32_t>(group_index), native_binding).second)
+            if (!occupied_bindings.emplace(static_cast<std::uint32_t>(group_index), native_binding).second)
             {
                 return RHIResult<RHIBindingLayoutRef>::failure(
                     RHIErrorCode::InvalidArgument,
@@ -61,9 +53,7 @@ namespace toy3d
             native_bindings.push_back({entry.group, entry.slot, entry.type, native_binding});
         }
 
-        std::array<
-            VkDescriptorSetLayout,
-            VulkanBindingLayout::physical_set_count> descriptor_set_layouts{};
+        std::array<VkDescriptorSetLayout, VulkanBindingLayout::physical_set_count> descriptor_set_layouts{};
         for (std::size_t group_index = 0; group_index < group_bindings.size(); ++group_index)
         {
             VkDescriptorSetLayoutCreateInfo create_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -94,8 +84,7 @@ namespace toy3d
         if (!layout)
         {
             return RHIResult<RHIBindingSetRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan binding set requires a layout created by the Vulkan device.");
+                RHIErrorCode::InvalidArgument, "Vulkan binding set requires a layout created by the Vulkan device.");
         }
         for (const RHIBindingLayoutEntry& entry : desc.layout->desc().entries)
         {
@@ -147,52 +136,40 @@ namespace toy3d
             else
             {
                 return RHIResult<RHIBindingSetRef>::failure(
-                    RHIErrorCode::Unsupported,
-                    "Vulkan buffer-view and storage bindings are not implemented yet.");
+                    RHIErrorCode::Unsupported, "Vulkan buffer-view and storage bindings are not implemented yet.");
             }
         }
-        return RHIResult<RHIBindingSetRef>::success(
-            std::make_shared<VulkanBindingSet>(desc));
+        return RHIResult<RHIBindingSetRef>::success(std::make_shared<VulkanBindingSet>(desc));
     }
 
     RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_vulkan_binding_packet(
-        const RHIDevice& owner,
-        VkDevice device,
-        const std::shared_ptr<VulkanBindingLayout>& layout,
-        std::uint32_t physical_set,
-        const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets)
+        const RHIDevice& owner, VkDevice device, const std::shared_ptr<VulkanBindingLayout>& layout,
+        std::uint32_t physical_set, const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets)
     {
         if (device == VK_NULL_HANDLE)
         {
             return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan binding-packet materialization requires a valid logical device.");
+                RHIErrorCode::NotReady, "Vulkan binding-packet materialization requires a valid logical device.");
         }
-        if (!layout || logical_sets.empty() ||
-            physical_set >= VulkanBindingLayout::physical_set_count)
+        if (!layout || logical_sets.empty() || physical_set >= VulkanBindingLayout::physical_set_count)
         {
             return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
                 RHIErrorCode::InvalidArgument,
                 "Vulkan binding packet requires a layout, valid physical set, and logical sets.");
         }
-        if (!layout->is_owned_by(owner) ||
-            std::any_of(logical_sets.begin(), logical_sets.end(), [&owner](
-                const std::shared_ptr<VulkanBindingSet>& logical_set)
-            {
-                return !logical_set || !logical_set->is_owned_by(owner);
-            }))
+        if (!layout->is_owned_by(owner) || std::any_of(logical_sets.begin(), logical_sets.end(),
+                                                       [&owner](const std::shared_ptr<VulkanBindingSet>& logical_set)
+                                                       { return !logical_set || !logical_set->is_owned_by(owner); }))
         {
             return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan binding packet cannot combine objects from different devices.");
+                RHIErrorCode::InvalidArgument, "Vulkan binding packet cannot combine objects from different devices.");
         }
 
         std::size_t binding_value_count = 0;
         std::map<VkDescriptorType, std::uint32_t> descriptor_counts;
         for (const std::shared_ptr<VulkanBindingSet>& logical_set : logical_sets)
         {
-            if (!logical_set ||
-                !(logical_set->layout()->desc() == layout->desc()) ||
+            if (!logical_set || !(logical_set->layout()->desc() == layout->desc()) ||
                 VulkanBindingLayout::physical_set(logical_set->group()) != physical_set)
             {
                 return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
@@ -221,12 +198,10 @@ namespace toy3d
         pool_info.pPoolSizes = pool_sizes.data();
         VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
         RHIStatus status = vulkan_status_from_result(
-            vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool),
-            "vkCreateDescriptorPool");
+            vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool), "vkCreateDescriptorPool");
         if (!status)
         {
-            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                status.code(), status.message());
+            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(status.code(), status.message());
         }
 
         const RHIBindingGroup representative_group = logical_sets.front()->group();
@@ -236,14 +211,12 @@ namespace toy3d
         allocate_info.descriptorSetCount = 1;
         allocate_info.pSetLayouts = &set_layout;
         VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
-        status = vulkan_status_from_result(
-            vkAllocateDescriptorSets(device, &allocate_info, &descriptor_set),
-            "vkAllocateDescriptorSets");
+        status = vulkan_status_from_result(vkAllocateDescriptorSets(device, &allocate_info, &descriptor_set),
+                                           "vkAllocateDescriptorSets");
         if (!status)
         {
             vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
-            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                status.code(), status.message());
+            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(status.code(), status.message());
         }
 
         std::vector<VkDescriptorBufferInfo> buffer_infos;
@@ -262,9 +235,8 @@ namespace toy3d
                 if (value.buffer)
                 {
                     const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
-                    const std::uint64_t range = value.buffer_size == 0
-                        ? value.buffer->desc().size - value.buffer_offset
-                        : value.buffer_size;
+                    const std::uint64_t range =
+                        value.buffer_size == 0 ? value.buffer->desc().size - value.buffer_offset : value.buffer_size;
                     buffer_infos.push_back({buffer->buffer(), value.buffer_offset, range});
                     buffer_info = &buffer_infos.back();
                 }
@@ -272,33 +244,30 @@ namespace toy3d
                 {
                     type = RHIResourceBindingType::SampledTexture;
                     const auto view = std::dynamic_pointer_cast<VulkanTextureView>(value.texture_view);
-                    image_infos.push_back({
-                        VK_NULL_HANDLE, view->image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+                    image_infos.push_back(
+                        {VK_NULL_HANDLE, view->image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
                     image_info = &image_infos.back();
                 }
                 else if (value.sampler)
                 {
                     type = RHIResourceBindingType::Sampler;
                     const auto sampler = std::dynamic_pointer_cast<VulkanSampler>(value.sampler);
-                    image_infos.push_back({
-                        sampler->sampler(), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED});
+                    image_infos.push_back({sampler->sampler(), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED});
                     image_info = &image_infos.back();
                 }
                 else
                 {
                     vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
                     return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                        RHIErrorCode::Unsupported,
-                        "Vulkan buffer-view and storage bindings are not implemented yet.");
+                        RHIErrorCode::Unsupported, "Vulkan buffer-view and storage bindings are not implemented yet.");
                 }
 
-                const auto native_binding = layout->native_binding(
-                    logical_set->group(), type, value.slot);
+                const auto native_binding = layout->native_binding(logical_set->group(), type, value.slot);
                 if (!native_binding)
                 {
                     vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
-                    return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                        native_binding.status().code(), native_binding.status().message());
+                    return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(native_binding.status().code(),
+                                                                                    native_binding.status().message());
                 }
                 VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
                 write.dstSet = descriptor_set;
@@ -313,7 +282,6 @@ namespace toy3d
         }
         vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
         return RHIResult<std::shared_ptr<VulkanBindingPacket>>::success(
-            std::make_shared<VulkanBindingPacket>(
-                device, descriptor_pool, descriptor_set, logical_sets));
+            std::make_shared<VulkanBindingPacket>(device, descriptor_pool, descriptor_set, logical_sets));
     }
-}
+} // namespace toy3d

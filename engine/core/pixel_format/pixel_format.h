@@ -50,13 +50,8 @@ namespace toy3d
     std::uint32_t pixel_format_block_height(PixelFormat format) noexcept;
     std::uint32_t pixel_format_bytes_per_block(PixelFormat format) noexcept;
     bool pixel_format_is_block_compressed(PixelFormat format) noexcept;
-    bool pixel_format_calculate_minimum_row_pitch(
-        PixelFormat format,
-        std::uint32_t width,
-        std::uint64_t& row_pitch) noexcept;
-    bool pixel_format_calculate_minimum_slice_pitch(
-        PixelFormat format,
-        std::uint32_t width,
-        std::uint32_t height,
-        std::uint64_t& slice_pitch) noexcept;
-}
+    bool pixel_format_calculate_minimum_row_pitch(PixelFormat format, std::uint32_t width,
+                                                  std::uint64_t& row_pitch) noexcept;
+    bool pixel_format_calculate_minimum_slice_pitch(PixelFormat format, std::uint32_t width, std::uint32_t height,
+                                                    std::uint64_t& slice_pitch) noexcept;
+} // namespace toy3d

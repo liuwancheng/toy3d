@@ -7,8 +7,7 @@ namespace toy3d::shader
 {
     namespace
     {
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
+        template <typename T> void append_integer(std::vector<std::uint8_t>& bytes, T value)
         {
             using Unsigned = std::make_unsigned_t<T>;
             const Unsigned converted = static_cast<Unsigned>(value);
@@ -33,10 +32,10 @@ namespace toy3d::shader
         bool target_matches_profile(ShaderTarget target, ShaderCompileProfile profile)
         {
             return (target == ShaderTarget::VulkanSpirV && profile == ShaderCompileProfile::VulkanES31) ||
-                (target == ShaderTarget::D3D11Dxbc && profile == ShaderCompileProfile::D3D11FeatureLevel11_0) ||
-                (target == ShaderTarget::D3D12Dxil && profile == ShaderCompileProfile::D3D12ShaderModel6);
+                   (target == ShaderTarget::D3D11Dxbc && profile == ShaderCompileProfile::D3D11FeatureLevel11_0) ||
+                   (target == ShaderTarget::D3D12Dxil && profile == ShaderCompileProfile::D3D12ShaderModel6);
         }
-    }
+    } // namespace
 
     bool ShaderCompileRequestResult::succeeded() const
     {
@@ -49,20 +48,22 @@ namespace toy3d::shader
         const SourceLocation location{input.source_virtual_path, 0, 1, 1};
         if (!has_single_stage(input.stage) || input.entry_point.empty() || input.source_virtual_path.empty())
         {
-            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, location,
-                "Compile request requires one stage, a non-empty entry point, and a virtual source path."});
+            result.diagnostics.push_back(
+                {DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, location,
+                 "Compile request requires one stage, a non-empty entry point, and a virtual source path."});
         }
         if (!target_matches_profile(input.target, input.profile))
         {
             result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, location,
-                "Shader target and compile profile do not match."});
+                                          "Shader target and compile profile do not match."});
         }
         if (input.compiler_identity.empty())
         {
             result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::CompilerUnavailable, location,
-                "The locked Shader compiler identity is unavailable."});
+                                          "The locked Shader compiler identity is unavailable."});
         }
-        if (!result.diagnostics.empty()) return result;
+        if (!result.diagnostics.empty())
+            return result;
 
         std::ostringstream source;
         source << "#line 1 \"/Generated/ToyShaderPrelude.hlsli\"\n" << input.generated_prelude << '\n';
@@ -72,12 +73,13 @@ namespace toy3d::shader
         if (input.source_provider == nullptr)
         {
             result.diagnostics.push_back({DiagnosticSeverity::Error,
-                DiagnosticCode::InvalidCompileRequest, {input.source_virtual_path, 0, 1, 1},
-                "Shader compilation requires an injected ShaderSourceProvider."});
+                                          DiagnosticCode::InvalidCompileRequest,
+                                          {input.source_virtual_path, 0, 1, 1},
+                                          "Shader compilation requires an injected ShaderSourceProvider."});
             return result;
         }
-        IncludeResolveResult resolved = resolve_shader_includes(
-            source.str(), input.source_virtual_path, *input.source_provider);
+        IncludeResolveResult resolved =
+            resolve_shader_includes(source.str(), input.source_virtual_path, *input.source_provider);
         if (!resolved.succeeded())
         {
             result.diagnostics = std::move(resolved.diagnostics);
@@ -118,4 +120,4 @@ namespace toy3d::shader
         result.request = std::move(request);
         return result;
     }
-}
+} // namespace toy3d::shader

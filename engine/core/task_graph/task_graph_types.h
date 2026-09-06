@@ -58,19 +58,11 @@ namespace toy3d
         TaskGraphErrorCode code = TaskGraphErrorCode::None;
         std::string message;
 
-        bool succeeded() const
-        {
-            return code == TaskGraphErrorCode::None;
-        }
+        bool succeeded() const { return code == TaskGraphErrorCode::None; }
 
-        static TaskGraphStatus success()
-        {
-            return {};
-        }
+        static TaskGraphStatus success() { return {}; }
 
-        static TaskGraphStatus failure(
-            TaskGraphErrorCode error_code,
-            std::string error_message)
+        static TaskGraphStatus failure(TaskGraphErrorCode error_code, std::string error_message)
         {
             return {error_code, std::move(error_message)};
         }
@@ -80,10 +72,7 @@ namespace toy3d
     {
         TaskGraphStatus status;
 
-        bool succeeded() const
-        {
-            return status.succeeded();
-        }
+        bool succeeded() const { return status.succeeded(); }
     };
 
     enum class TaskGraphShutdownMode
@@ -96,26 +85,20 @@ namespace toy3d
     {
         TaskGraphStatus status;
 
-        bool succeeded() const
-        {
-            return status.succeeded();
-        }
+        bool succeeded() const { return status.succeeded(); }
     };
 
     class TaskGraphException final : public std::runtime_error
     {
-    public:
+      public:
         explicit TaskGraphException(TaskGraphStatus status)
             : std::runtime_error(status.message), status_(std::move(status))
         {
         }
 
-        const TaskGraphStatus& status() const
-        {
-            return status_;
-        }
+        const TaskGraphStatus& status() const { return status_; }
 
-    private:
+      private:
         TaskGraphStatus status_;
     };
-}
+} // namespace toy3d

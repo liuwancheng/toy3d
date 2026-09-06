@@ -13,23 +13,17 @@ namespace toy3d
     // are protected by Proxy update/remove/release FIFO ordering.
     class StaticMeshSceneProxy final : public PrimitiveSceneProxy
     {
-    public:
-        StaticMeshSceneProxy(
-            Matrix4 world_transform,
-            AxisAlignedBounds world_bounds,
-            bool visible,
-            StaticMeshRenderData* render_data,
-            std::vector<MaterialRenderProxy*> material_render_proxies);
+      public:
+        StaticMeshSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
+                             StaticMeshRenderData* render_data,
+                             std::vector<MaterialRenderProxy*> material_render_proxies);
         ~StaticMeshSceneProxy() override = default;
 
         StaticMeshRenderData* render_data() const { return render_data_; }
-        const std::vector<MaterialRenderProxy*>& material_render_proxies() const
-        {
-            return material_render_proxies_;
-        }
+        const std::vector<MaterialRenderProxy*>& material_render_proxies() const { return material_render_proxies_; }
 
-    private:
+      private:
         StaticMeshRenderData* render_data_ = nullptr;
         std::vector<MaterialRenderProxy*> material_render_proxies_;
     };
-}
+} // namespace toy3d

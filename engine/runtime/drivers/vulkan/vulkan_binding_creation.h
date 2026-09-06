@@ -19,15 +19,10 @@ namespace toy3d
     class VulkanBindingPacket;
     class VulkanBindingSet;
 
-    RHIResult<RHIBindingLayoutRef> create_vulkan_binding_layout(
-        const RHIDevice& owner,
-        VkDevice device,
-        const RHIBindingLayoutDesc& desc);
+    RHIResult<RHIBindingLayoutRef> create_vulkan_binding_layout(const RHIDevice& owner, VkDevice device,
+                                                                const RHIBindingLayoutDesc& desc);
     RHIResult<RHIBindingSetRef> create_vulkan_binding_set(const RHIBindingSetDesc& desc);
     RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_vulkan_binding_packet(
-        const RHIDevice& owner,
-        VkDevice device,
-        const std::shared_ptr<VulkanBindingLayout>& layout,
-        std::uint32_t physical_set,
-        const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets);
-}
+        const RHIDevice& owner, VkDevice device, const std::shared_ptr<VulkanBindingLayout>& layout,
+        std::uint32_t physical_set, const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets);
+} // namespace toy3d

@@ -22,22 +22,18 @@ namespace toy3d
 
     class TaskGraphCreateResult final
     {
-    public:
-        TaskGraphCreateResult(
-            TaskGraphStatus status,
-            std::unique_ptr<TaskGraphInterface> task_graph);
+      public:
+        TaskGraphCreateResult(TaskGraphStatus status, std::unique_ptr<TaskGraphInterface> task_graph);
 
         bool succeeded() const;
         const TaskGraphStatus& status() const;
         std::unique_ptr<TaskGraphInterface> take_task_graph();
 
-    private:
+      private:
         TaskGraphStatus status_;
         std::unique_ptr<TaskGraphInterface> task_graph_;
     };
 
-    TaskGraphCreateResult create_task_graph(
-        TaskGraphConfig config,
-        ThreadManager& thread_manager,
-        TaskGraphDiagnostics diagnostics = {});
-}
+    TaskGraphCreateResult create_task_graph(TaskGraphConfig config, ThreadManager& thread_manager,
+                                            TaskGraphDiagnostics diagnostics = {});
+} // namespace toy3d

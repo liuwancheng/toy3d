@@ -2,13 +2,10 @@
 
 namespace toy3d
 {
-	bool MacPlatform::init()
-	{
-		return true;
-	}
+    bool MacPlatform::init()
+    {
+        return true;
+    }
 
-	void MacPlatform::exit()
-	{
-
-	}
-}
+    void MacPlatform::exit() {}
+} // namespace toy3d

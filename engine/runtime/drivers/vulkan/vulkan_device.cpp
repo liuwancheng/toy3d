@@ -35,18 +35,16 @@ namespace toy3d
         constexpr VkInstanceCreateFlags enumerate_portability_flag = 0x00000001;
 #endif
 
-        VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(
-            VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
-            VkDebugUtilsMessageTypeFlagsEXT message_types,
-            const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
-            void*)
+        VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+                                                             VkDebugUtilsMessageTypeFlagsEXT message_types,
+                                                             const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+                                                             void*)
         {
             const char* message = callback_data && callback_data->pMessage
-                ? callback_data->pMessage
-                : "Vulkan validation emitted an empty message.";
-            const char* message_id = callback_data && callback_data->pMessageIdName
-                ? callback_data->pMessageIdName
-                : "unknown";
+                                      ? callback_data->pMessage
+                                      : "Vulkan validation emitted an empty message.";
+            const char* message_id =
+                callback_data && callback_data->pMessageIdName ? callback_data->pMessageIdName : "unknown";
 
             try
             {
@@ -76,15 +74,12 @@ namespace toy3d
 
         VkDebugUtilsMessengerCreateInfoEXT make_debug_messenger_create_info()
         {
-            VkDebugUtilsMessengerCreateInfoEXT create_info{
-                VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+            VkDebugUtilsMessengerCreateInfoEXT create_info{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
             create_info.messageSeverity =
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-            create_info.messageType =
-                VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+            create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
             create_info.pfnUserCallback = vulkan_debug_callback;
             return create_info;
         }
@@ -98,30 +93,25 @@ namespace toy3d
             }
             if (GetLastError() != ERROR_ENVVAR_NOT_FOUND)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "Failed to query the VK_LAYER_PATH environment variable.");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "Failed to query the VK_LAYER_PATH environment variable.");
             }
             if (!SetEnvironmentVariableA("VK_LAYER_PATH", TOY3D_VK_LAYER_PATH))
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "Failed to configure VK_LAYER_PATH for the bundled validation layer.");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "Failed to configure VK_LAYER_PATH for the bundled validation layer.");
             }
 #elif WITH_MAC
-            if (std::getenv("VK_ICD_FILENAMES") == nullptr &&
-                setenv("VK_ICD_FILENAMES", TOY3D_VK_ICD_PATH, 0) != 0)
+            if (std::getenv("VK_ICD_FILENAMES") == nullptr && setenv("VK_ICD_FILENAMES", TOY3D_VK_ICD_PATH, 0) != 0)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "Failed to configure VK_ICD_FILENAMES for the bundled MoltenVK ICD.");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "Failed to configure VK_ICD_FILENAMES for the bundled MoltenVK ICD.");
             }
             if (enable_validation && std::getenv("VK_LAYER_PATH") == nullptr &&
                 setenv("VK_LAYER_PATH", TOY3D_VK_LAYER_PATH, 0) != 0)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "Failed to configure VK_LAYER_PATH for the bundled validation layer.");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "Failed to configure VK_LAYER_PATH for the bundled validation layer.");
             }
 #endif
             return RHIStatus::success();
@@ -146,44 +136,27 @@ namespace toy3d
             {
                 code = RHIErrorCode::OutOfDate;
             }
-            return RHIStatus::failure(
-                code,
-                std::string(operation) + " failed with VkResult " + std::to_string(static_cast<int>(result)) + ".");
+            return RHIStatus::failure(code, std::string(operation) + " failed with VkResult " +
+                                                std::to_string(static_cast<int>(result)) + ".");
         }
 
-        bool has_instance_extension(
-            const std::vector<VkExtensionProperties>& extensions,
-            const char* name)
+        bool has_instance_extension(const std::vector<VkExtensionProperties>& extensions, const char* name)
         {
-            return std::any_of(
-                extensions.begin(),
-                extensions.end(),
-                [name](const VkExtensionProperties& extension)
-                {
-                    return std::strcmp(extension.extensionName, name) == 0;
-                });
+            return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties& extension)
+                               { return std::strcmp(extension.extensionName, name) == 0; });
         }
 
-        bool has_device_extension(
-            VkPhysicalDevice physical_device,
-            const char* name)
+        bool has_device_extension(VkPhysicalDevice physical_device, const char* name)
         {
             std::uint32_t extension_count = 0;
-            if (vkEnumerateDeviceExtensionProperties(
-                    physical_device,
-                    nullptr,
-                    &extension_count,
-                    nullptr) != VK_SUCCESS)
+            if (vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extension_count, nullptr) != VK_SUCCESS)
             {
                 return false;
             }
 
             std::vector<VkExtensionProperties> extensions(extension_count);
-            if (vkEnumerateDeviceExtensionProperties(
-                    physical_device,
-                    nullptr,
-                    &extension_count,
-                    extensions.data()) != VK_SUCCESS)
+            if (vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extension_count, extensions.data()) !=
+                VK_SUCCESS)
             {
                 return false;
             }
@@ -191,7 +164,7 @@ namespace toy3d
             return has_instance_extension(extensions, name);
         }
 
-    }
+    } // namespace
 
     VulkanDevice::VulkanDevice() = default;
 
@@ -255,11 +228,7 @@ namespace toy3d
         }
         upload_manager_instance = std::make_unique<VulkanUploadManager>(*memory_manager_instance);
         deletion_queue = std::make_unique<VulkanDeferredDeletionQueue>();
-        queue = std::make_unique<VulkanQueue>(
-            *this,
-            vk_device,
-            vk_graphics_queue,
-            *upload_manager_instance);
+        queue = std::make_unique<VulkanQueue>(*this, vk_device, vk_graphics_queue, *upload_manager_instance);
         initialized = true;
         return RHIStatus::success();
     }
@@ -385,58 +354,39 @@ namespace toy3d
     }
 
     RHIResult<std::unique_ptr<RHIViewportContext>> VulkanDevice::create_viewport_context_impl(
-        const RHISurfaceRef& surface,
-        const RHIViewportContextDesc& desc)
+        const RHISurfaceRef& surface, const RHIViewportContextDesc& desc)
     {
         if (surface != primary_rhi_surface || primary_surface == VK_NULL_HANDLE)
         {
             return RHIResult<std::unique_ptr<RHIViewportContext>>::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan viewport contexts currently support only the primary surface.");
+                RHIErrorCode::Unsupported, "Vulkan viewport contexts currently support only the primary surface.");
         }
-        return RHIResult<std::unique_ptr<RHIViewportContext>>::success(
-            std::make_unique<VulkanViewportContext>(
-                *this,
-                vk_physical_device,
-                vk_device,
-                primary_surface,
-                graphics_queue_family,
-                *queue,
-                *upload_manager_instance,
-                *deletion_queue,
-                surface,
-                desc));
+        return RHIResult<std::unique_ptr<RHIViewportContext>>::success(std::make_unique<VulkanViewportContext>(
+            *this, vk_physical_device, vk_device, primary_surface, graphics_queue_family, *queue,
+            *upload_manager_instance, *deletion_queue, surface, desc));
     }
 
-    RHIResult<RHIBufferRef> VulkanDevice::create_buffer_impl(
-        const RHIBufferDesc& desc,
-        const RHIInitialData* initial_data)
+    RHIResult<RHIBufferRef> VulkanDevice::create_buffer_impl(const RHIBufferDesc& desc,
+                                                             const RHIInitialData* initial_data)
     {
-        return create_vulkan_buffer(
-            *this, vk_device, *memory_manager_instance,
-            *deletion_queue, desc, initial_data);
+        return create_vulkan_buffer(*this, vk_device, *memory_manager_instance, *deletion_queue, desc, initial_data);
     }
 
-    RHIResult<RHITextureRef> VulkanDevice::create_texture_impl(
-        const RHITextureDesc& desc,
-        const RHIInitialData* initial_data)
+    RHIResult<RHITextureRef> VulkanDevice::create_texture_impl(const RHITextureDesc& desc,
+                                                               const RHIInitialData* initial_data)
     {
-        return create_vulkan_texture(
-            *this, vk_physical_device, vk_device,
-            *memory_manager_instance, *deletion_queue,
-            desc, initial_data);
+        return create_vulkan_texture(*this, vk_physical_device, vk_device, *memory_manager_instance, *deletion_queue,
+                                     desc, initial_data);
     }
 
-    RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(
-        const RHIBufferRef& buffer,
-        const RHIBufferViewDesc& desc)
+    RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(const RHIBufferRef& buffer,
+                                                                      const RHIBufferViewDesc& desc)
     {
         return create_vulkan_buffer_view(buffer, desc);
     }
 
-    RHIResult<RHITextureViewRef> VulkanDevice::create_texture_view_impl(
-        const RHITextureRef& texture,
-        const RHITextureViewDesc& desc)
+    RHIResult<RHITextureViewRef> VulkanDevice::create_texture_view_impl(const RHITextureRef& texture,
+                                                                        const RHITextureViewDesc& desc)
     {
         return create_vulkan_texture_view(vk_device, texture, desc);
     }
@@ -446,8 +396,7 @@ namespace toy3d
         return create_vulkan_shader(*this, vk_device, desc);
     }
 
-    RHIResult<RHIBindingLayoutRef> VulkanDevice::create_binding_layout_impl(
-        const RHIBindingLayoutDesc& desc)
+    RHIResult<RHIBindingLayoutRef> VulkanDevice::create_binding_layout_impl(const RHIBindingLayoutDesc& desc)
     {
         return create_vulkan_binding_layout(*this, vk_device, desc);
     }
@@ -457,31 +406,25 @@ namespace toy3d
         return create_vulkan_sampler(*this, vk_device, desc);
     }
 
-    RHIResult<RHIBindingSetRef> VulkanDevice::create_binding_set_impl(
-        const RHIBindingSetDesc& desc)
+    RHIResult<RHIBindingSetRef> VulkanDevice::create_binding_set_impl(const RHIBindingSetDesc& desc)
     {
         return create_vulkan_binding_set(desc);
     }
 
-    RHIResult<RHIGraphicsPipelineRef> VulkanDevice::create_graphics_pipeline_impl(
-        const RHIGraphicsPipelineDesc& desc)
+    RHIResult<RHIGraphicsPipelineRef> VulkanDevice::create_graphics_pipeline_impl(const RHIGraphicsPipelineDesc& desc)
     {
         return create_vulkan_graphics_pipeline(*this, vk_device, desc);
     }
 
-    RHIResult<RHIGPUFenceRef> VulkanDevice::create_gpu_fence_impl(
-        const std::string& debug_name)
+    RHIResult<RHIGPUFenceRef> VulkanDevice::create_gpu_fence_impl(const std::string& debug_name)
     {
         return create_vulkan_gpu_fence(debug_name);
     }
 
     RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanDevice::create_graphics_command_context_impl()
     {
-        return create_vulkan_graphics_command_context(
-            *this,
-            vk_device,
-            graphics_queue_family,
-            *upload_manager_instance);
+        return create_vulkan_graphics_command_context(*this, vk_device, graphics_queue_family,
+                                                      *upload_manager_instance);
     }
 
     VulkanDeviceObservation VulkanDevice::observation_snapshot() const
@@ -540,9 +483,7 @@ namespace toy3d
 
         VkInstanceCreateFlags instance_flags = 0;
 #if WITH_MAC
-        if (has_instance_extension(
-                available_extensions,
-                VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+        if (has_instance_extension(available_extensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
         {
             extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
         }
@@ -552,21 +493,18 @@ namespace toy3d
             instance_flags |= enumerate_portability_flag;
         }
 #endif
-        std::sort(extensions.begin(), extensions.end(), [](const char* lhs, const char* rhs)
-        {
-            return std::strcmp(lhs, rhs) < 0;
-        });
-        extensions.erase(
-            std::unique(extensions.begin(), extensions.end(), [](const char* lhs, const char* rhs)
-            {
-                return std::strcmp(lhs, rhs) == 0;
-            }),
-            extensions.end());
+        std::sort(extensions.begin(), extensions.end(),
+                  [](const char* lhs, const char* rhs) { return std::strcmp(lhs, rhs) < 0; });
+        extensions.erase(std::unique(extensions.begin(), extensions.end(),
+                                     [](const char* lhs, const char* rhs) { return std::strcmp(lhs, rhs) == 0; }),
+                         extensions.end());
         for (const char* extension : extensions)
         {
             if (!has_instance_extension(available_extensions, extension))
             {
-                return RHIStatus::failure(RHIErrorCode::Unsupported, std::string("Required Vulkan instance extension is unavailable: ") + extension);
+                return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                          std::string("Required Vulkan instance extension is unavailable: ") +
+                                              extension);
             }
         }
 
@@ -577,9 +515,8 @@ namespace toy3d
             constexpr const char* validation_layer = "VK_LAYER_KHRONOS_validation";
             if (!has_instance_extension(available_extensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::Unsupported,
-                    "Vulkan validation logging requires VK_EXT_debug_utils.");
+                return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                          "Vulkan validation logging requires VK_EXT_debug_utils.");
             }
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             std::uint32_t layer_count = 0;
@@ -594,13 +531,9 @@ namespace toy3d
             {
                 return make_vulkan_status(result, "vkEnumerateInstanceLayerProperties");
             }
-            const bool layer_found = std::any_of(
-                available_layers.begin(),
-                available_layers.end(),
-                [](const VkLayerProperties& layer)
-                {
-                    return std::strcmp(layer.layerName, "VK_LAYER_KHRONOS_validation") == 0;
-                });
+            const bool layer_found =
+                std::any_of(available_layers.begin(), available_layers.end(), [](const VkLayerProperties& layer)
+                            { return std::strcmp(layer.layerName, "VK_LAYER_KHRONOS_validation") == 0; });
             if (!layer_found)
             {
                 return RHIStatus::failure(RHIErrorCode::Unsupported, "VK_LAYER_KHRONOS_validation is unavailable.");
@@ -625,9 +558,8 @@ namespace toy3d
         create_info.ppEnabledLayerNames = layers.empty() ? nullptr : layers.data();
         create_info.pNext = desc.enable_validation ? &debug_create_info : nullptr;
 
-        RHIStatus status = make_vulkan_status(
-            vkCreateInstance(&create_info, nullptr, &vk_instance),
-            "vkCreateInstance");
+        RHIStatus status =
+            make_vulkan_status(vkCreateInstance(&create_info, nullptr, &vk_instance), "vkCreateInstance");
         if (!status || !desc.enable_validation)
         {
             return status;
@@ -646,15 +578,12 @@ namespace toy3d
             vkGetInstanceProcAddr(vk_instance, "vkCreateDebugUtilsMessengerEXT"));
         if (!create_messenger)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "vkCreateDebugUtilsMessengerEXT is unavailable.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported, "vkCreateDebugUtilsMessengerEXT is unavailable.");
         }
 
         const VkDebugUtilsMessengerCreateInfoEXT create_info = make_debug_messenger_create_info();
-        return make_vulkan_status(
-            create_messenger(vk_instance, &create_info, nullptr, &vk_debug_messenger),
-            "vkCreateDebugUtilsMessengerEXT");
+        return make_vulkan_status(create_messenger(vk_instance, &create_info, nullptr, &vk_debug_messenger),
+                                  "vkCreateDebugUtilsMessengerEXT");
     }
 
     void VulkanDevice::destroy_debug_messenger()
@@ -688,21 +617,18 @@ namespace toy3d
         VkWin32SurfaceCreateInfoKHR create_info{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
         create_info.hinstance = reinterpret_cast<HINSTANCE>(desc.application_handle);
         create_info.hwnd = reinterpret_cast<HWND>(desc.window_handle);
-        return make_vulkan_status(vkCreateWin32SurfaceKHR(vk_instance, &create_info, nullptr, &primary_surface), "vkCreateWin32SurfaceKHR");
+        return make_vulkan_status(vkCreateWin32SurfaceKHR(vk_instance, &create_info, nullptr, &primary_surface),
+                                  "vkCreateWin32SurfaceKHR");
 #elif WITH_MAC
         if (desc.platform != RHISurfacePlatform::MacOS)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "The macOS Vulkan backend requires a main-thread Metal presentation layer.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "The macOS Vulkan backend requires a main-thread Metal presentation layer.");
         }
-        VkMetalSurfaceCreateInfoEXT create_info{
-            VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT};
+        VkMetalSurfaceCreateInfoEXT create_info{VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT};
         create_info.pLayer = static_cast<const CAMetalLayer*>(desc.window_handle);
-        return make_vulkan_status(
-            vkCreateMetalSurfaceEXT(
-                vk_instance, &create_info, nullptr, &primary_surface),
-            "vkCreateMetalSurfaceEXT");
+        return make_vulkan_status(vkCreateMetalSurfaceEXT(vk_instance, &create_info, nullptr, &primary_surface),
+                                  "vkCreateMetalSurfaceEXT");
 #else
         (void)desc;
         return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device does not support this platform.");
@@ -774,9 +700,8 @@ namespace toy3d
 
         if (vk_physical_device == VK_NULL_HANDLE)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "No Vulkan device provides one queue family with graphics and present support.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "No Vulkan device provides one queue family with graphics and present support.");
         }
         return RHIStatus::success();
     }
@@ -813,8 +738,7 @@ namespace toy3d
         create_info.ppEnabledExtensionNames = extensions.data();
         create_info.pNext = nullptr;
 
-        const VkResult create_result = vkCreateDevice(
-            vk_physical_device, &create_info, nullptr, &vk_device);
+        const VkResult create_result = vkCreateDevice(vk_physical_device, &create_info, nullptr, &vk_device);
         const RHIStatus status = make_vulkan_status(create_result, "vkCreateDevice");
         if (!status)
         {
@@ -850,9 +774,8 @@ namespace toy3d
         device_limits.max_texture_array_layers = properties.limits.maxImageArrayLayers;
         device_limits.max_uniform_buffer_size = properties.limits.maxUniformBufferRange;
         device_limits.max_binding_slots_per_group = properties.limits.maxPerStageDescriptorUniformBuffers;
-        device_limits.max_sampler_anisotropy = features.samplerAnisotropy
-            ? static_cast<std::uint32_t>(properties.limits.maxSamplerAnisotropy)
-            : 1U;
+        device_limits.max_sampler_anisotropy =
+            features.samplerAnisotropy ? static_cast<std::uint32_t>(properties.limits.maxSamplerAnisotropy) : 1U;
         device_limits.uniform_buffer_offset_alignment = properties.limits.minUniformBufferOffsetAlignment;
         device_limits.storage_buffer_offset_alignment = properties.limits.minStorageBufferOffsetAlignment;
         device_limits.texture_upload_alignment = properties.limits.optimalBufferCopyOffsetAlignment;
@@ -862,4 +785,4 @@ namespace toy3d
     {
         return RHIResult<std::unique_ptr<RHIDevice>>::success(std::make_unique<VulkanDevice>());
     }
-}
+} // namespace toy3d

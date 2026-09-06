@@ -21,8 +21,7 @@ namespace toy3d
         return create_vulkan_device();
 #else
         return RHIResult<std::unique_ptr<RHIDevice>>::failure(
-            RHIErrorCode::Unsupported,
-            "No RHI backend is enabled. Configure with TOY3D_ENABLE_VULKAN_RHI=ON.");
+            RHIErrorCode::Unsupported, "No RHI backend is enabled. Configure with TOY3D_ENABLE_VULKAN_RHI=ON.");
 #endif
     }
-}
+} // namespace toy3d

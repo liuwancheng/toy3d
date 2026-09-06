@@ -43,10 +43,8 @@ namespace toy3d
     VkSamplerAddressMode to_vk_address_mode(RHIAddressMode mode);
     VkCompareOp to_vk_compare_operation(RHICompareOperation operation);
     VkStencilOp to_vk_stencil_operation(RHIStencilOperation operation);
-    VkStencilOpState to_vk_stencil_face(
-        const RHIGraphicsPipelineDesc::StencilFaceState& face,
-        std::uint8_t read_mask,
-        std::uint8_t write_mask);
+    VkStencilOpState to_vk_stencil_face(const RHIGraphicsPipelineDesc::StencilFaceState& face, std::uint8_t read_mask,
+                                        std::uint8_t write_mask);
     VkBorderColor to_vk_border_color(RHIBorderColor color);
     VkBufferUsageFlags to_vk_buffer_usage(RHIResourceUsage usage);
     VkImageUsageFlags to_vk_image_usage(RHIResourceUsage usage);
@@ -57,4 +55,4 @@ namespace toy3d
     RHIResult<VkAttachmentLoadOp> to_vk_load_operation(RHILoadOperation operation);
     RHIResult<VkAttachmentStoreOp> to_vk_store_operation(RHIStoreOperation operation);
     RHIStatus get_vulkan_access_state(RHIAccess access, VulkanAccessState& state);
-}
+} // namespace toy3d

@@ -12,42 +12,26 @@ namespace toy3d
 
     class RHIObject
     {
-    public:
-        explicit RHIObject(std::string debug_name = {})
-            : RHIObject(nullptr, std::move(debug_name))
-        {
-        }
+      public:
+        explicit RHIObject(std::string debug_name = {}) : RHIObject(nullptr, std::move(debug_name)) {}
 
-        RHIObject(const RHIDevice& owner, std::string debug_name = {})
-            : RHIObject(&owner, std::move(debug_name))
-        {
-        }
+        RHIObject(const RHIDevice& owner, std::string debug_name = {}) : RHIObject(&owner, std::move(debug_name)) {}
 
         virtual ~RHIObject() = default;
 
-        const std::string& debug_name() const
-        {
-            return object_debug_name;
-        }
+        const std::string& debug_name() const { return object_debug_name; }
 
-        const RHIDevice* owner_device() const
-        {
-            return owning_device;
-        }
+        const RHIDevice* owner_device() const { return owning_device; }
 
-        bool is_owned_by(const RHIDevice& device) const
-        {
-            return owning_device == &device;
-        }
+        bool is_owned_by(const RHIDevice& device) const { return owning_device == &device; }
 
-    protected:
+      protected:
         RHIObject(const RHIDevice* owner, std::string debug_name)
-            : owning_device(owner)
-            , object_debug_name(std::move(debug_name))
+            : owning_device(owner), object_debug_name(std::move(debug_name))
         {
         }
 
-    private:
+      private:
         // The creating device address is stable for the device lifetime and
         // cannot be replaced after construction. Null is reserved for
         // platform surfaces and descriptor-only test objects created before a
@@ -58,234 +42,164 @@ namespace toy3d
 
     class RHIResource : public RHIObject
     {
-    public:
+      public:
         using RHIObject::RHIObject;
         ~RHIResource() override = default;
     };
 
     class RHIBuffer : public RHIResource
     {
-    public:
-        explicit RHIBuffer(RHIBufferDesc desc)
-            : RHIResource(desc.debug_name)
-            , resource_desc(std::move(desc))
-        {
-        }
+      public:
+        explicit RHIBuffer(RHIBufferDesc desc) : RHIResource(desc.debug_name), resource_desc(std::move(desc)) {}
 
         RHIBuffer(const RHIDevice& owner, RHIBufferDesc desc)
-            : RHIResource(owner, desc.debug_name)
-            , resource_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), resource_desc(std::move(desc))
         {
         }
 
-        const RHIBufferDesc& desc() const
-        {
-            return resource_desc;
-        }
+        const RHIBufferDesc& desc() const { return resource_desc; }
 
-    private:
+      private:
         RHIBufferDesc resource_desc;
     };
 
     class RHITexture : public RHIResource
     {
-    public:
-        explicit RHITexture(RHITextureDesc desc)
-            : RHIResource(desc.debug_name)
-            , resource_desc(std::move(desc))
-        {
-        }
+      public:
+        explicit RHITexture(RHITextureDesc desc) : RHIResource(desc.debug_name), resource_desc(std::move(desc)) {}
 
         RHITexture(const RHIDevice& owner, RHITextureDesc desc)
-            : RHIResource(owner, desc.debug_name)
-            , resource_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), resource_desc(std::move(desc))
         {
         }
 
-        const RHITextureDesc& desc() const
-        {
-            return resource_desc;
-        }
+        const RHITextureDesc& desc() const { return resource_desc; }
 
-    private:
+      private:
         RHITextureDesc resource_desc;
     };
 
     class RHITextureView : public RHIObject
     {
-    public:
-        RHITextureView(
-            std::shared_ptr<RHITexture> texture,
-            RHITextureViewDesc desc)
-            : RHIObject(texture ? texture->owner_device() : nullptr, desc.debug_name)
-            , viewed_texture(std::move(texture))
-            , view_desc(std::move(desc))
+      public:
+        RHITextureView(std::shared_ptr<RHITexture> texture, RHITextureViewDesc desc)
+            : RHIObject(texture ? texture->owner_device() : nullptr, desc.debug_name),
+              viewed_texture(std::move(texture)), view_desc(std::move(desc))
         {
         }
 
-        const std::shared_ptr<RHITexture>& texture() const
-        {
-            return viewed_texture;
-        }
+        const std::shared_ptr<RHITexture>& texture() const { return viewed_texture; }
 
-        const RHITextureViewDesc& desc() const
-        {
-            return view_desc;
-        }
+        const RHITextureViewDesc& desc() const { return view_desc; }
 
-    private:
+      private:
         std::shared_ptr<RHITexture> viewed_texture;
         RHITextureViewDesc view_desc;
     };
 
     class RHIBufferView : public RHIObject
     {
-    public:
-        RHIBufferView(
-            std::shared_ptr<RHIBuffer> buffer,
-            RHIBufferViewDesc desc)
-            : RHIObject(buffer ? buffer->owner_device() : nullptr, desc.debug_name)
-            , viewed_buffer(std::move(buffer))
-            , view_desc(std::move(desc))
+      public:
+        RHIBufferView(std::shared_ptr<RHIBuffer> buffer, RHIBufferViewDesc desc)
+            : RHIObject(buffer ? buffer->owner_device() : nullptr, desc.debug_name), viewed_buffer(std::move(buffer)),
+              view_desc(std::move(desc))
         {
         }
 
-        const std::shared_ptr<RHIBuffer>& buffer() const
-        {
-            return viewed_buffer;
-        }
+        const std::shared_ptr<RHIBuffer>& buffer() const { return viewed_buffer; }
 
-        const RHIBufferViewDesc& desc() const
-        {
-            return view_desc;
-        }
+        const RHIBufferViewDesc& desc() const { return view_desc; }
 
-    private:
+      private:
         std::shared_ptr<RHIBuffer> viewed_buffer;
         RHIBufferViewDesc view_desc;
     };
 
     class RHIShader : public RHIObject
     {
-    public:
-        explicit RHIShader(RHIShaderDesc desc)
-            : RHIObject(desc.debug_name)
-            , shader_desc(std::move(desc))
-        {
-        }
+      public:
+        explicit RHIShader(RHIShaderDesc desc) : RHIObject(desc.debug_name), shader_desc(std::move(desc)) {}
 
         RHIShader(const RHIDevice& owner, RHIShaderDesc desc)
-            : RHIObject(owner, desc.debug_name)
-            , shader_desc(std::move(desc))
+            : RHIObject(owner, desc.debug_name), shader_desc(std::move(desc))
         {
         }
 
-        const RHIShaderDesc& desc() const
-        {
-            return shader_desc;
-        }
+        const RHIShaderDesc& desc() const { return shader_desc; }
 
-    private:
+      private:
         RHIShaderDesc shader_desc;
     };
 
     class RHIBindingLayout : public RHIObject
     {
-    public:
-        explicit RHIBindingLayout(RHIBindingLayoutDesc desc)
-            : RHIObject(desc.debug_name)
-            , layout_desc(std::move(desc))
+      public:
+        explicit RHIBindingLayout(RHIBindingLayoutDesc desc) : RHIObject(desc.debug_name), layout_desc(std::move(desc))
         {
         }
 
         RHIBindingLayout(const RHIDevice& owner, RHIBindingLayoutDesc desc)
-            : RHIObject(owner, desc.debug_name)
-            , layout_desc(std::move(desc))
+            : RHIObject(owner, desc.debug_name), layout_desc(std::move(desc))
         {
         }
 
-        const RHIBindingLayoutDesc& desc() const
-        {
-            return layout_desc;
-        }
+        const RHIBindingLayoutDesc& desc() const { return layout_desc; }
 
-    private:
+      private:
         RHIBindingLayoutDesc layout_desc;
     };
 
     class RHISampler : public RHIObject
     {
-    public:
-        explicit RHISampler(RHISamplerDesc desc)
-            : RHIObject(desc.debug_name)
-            , sampler_desc(std::move(desc))
-        {
-        }
+      public:
+        explicit RHISampler(RHISamplerDesc desc) : RHIObject(desc.debug_name), sampler_desc(std::move(desc)) {}
 
         RHISampler(const RHIDevice& owner, RHISamplerDesc desc)
-            : RHIObject(owner, desc.debug_name)
-            , sampler_desc(std::move(desc))
+            : RHIObject(owner, desc.debug_name), sampler_desc(std::move(desc))
         {
         }
 
-        const RHISamplerDesc& desc() const
-        {
-            return sampler_desc;
-        }
+        const RHISamplerDesc& desc() const { return sampler_desc; }
 
-    private:
+      private:
         RHISamplerDesc sampler_desc;
     };
 
     class RHIGraphicsPipeline : public RHIObject
     {
-    public:
+      public:
         explicit RHIGraphicsPipeline(RHIGraphicsPipelineDesc desc)
-            : RHIObject(desc.debug_name)
-            , pipeline_desc(std::move(desc))
+            : RHIObject(desc.debug_name), pipeline_desc(std::move(desc))
         {
         }
 
         RHIGraphicsPipeline(const RHIDevice& owner, RHIGraphicsPipelineDesc desc)
-            : RHIObject(owner, desc.debug_name)
-            , pipeline_desc(std::move(desc))
+            : RHIObject(owner, desc.debug_name), pipeline_desc(std::move(desc))
         {
         }
 
-        const RHIGraphicsPipelineDesc& desc() const
-        {
-            return pipeline_desc;
-        }
+        const RHIGraphicsPipelineDesc& desc() const { return pipeline_desc; }
 
-    private:
+      private:
         RHIGraphicsPipelineDesc pipeline_desc;
     };
 
     class RHIBindingSet : public RHIObject
     {
-    public:
+      public:
         explicit RHIBindingSet(RHIBindingSetDesc desc)
-            : RHIObject(desc.layout ? desc.layout->owner_device() : nullptr, desc.debug_name)
-            , binding_set_desc(std::move(desc))
+            : RHIObject(desc.layout ? desc.layout->owner_device() : nullptr, desc.debug_name),
+              binding_set_desc(std::move(desc))
         {
         }
 
-        RHIBindingGroup group() const
-        {
-            return binding_set_desc.group;
-        }
+        RHIBindingGroup group() const { return binding_set_desc.group; }
 
-        const std::shared_ptr<RHIBindingLayout>& layout() const
-        {
-            return binding_set_desc.layout;
-        }
+        const std::shared_ptr<RHIBindingLayout>& layout() const { return binding_set_desc.layout; }
 
-        const RHIBindingSetDesc& desc() const
-        {
-            return binding_set_desc;
-        }
+        const RHIBindingSetDesc& desc() const { return binding_set_desc; }
 
-    private:
+      private:
         RHIBindingSetDesc binding_set_desc;
     };
 
@@ -294,7 +208,7 @@ namespace toy3d
     // swapchain acquire or present synchronization.
     class RHIGPUFence : public RHIObject
     {
-    public:
+      public:
         using RHIObject::RHIObject;
         ~RHIGPUFence() override = default;
 
@@ -322,21 +236,14 @@ namespace toy3d
     // platform-specific surface creation code.
     class RHISurface : public RHIObject
     {
-    public:
-        explicit RHISurface(RHISurfaceDesc desc)
-            : RHIObject(desc.debug_name)
-            , surface_desc(std::move(desc))
-        {
-        }
+      public:
+        explicit RHISurface(RHISurfaceDesc desc) : RHIObject(desc.debug_name), surface_desc(std::move(desc)) {}
 
         ~RHISurface() override = default;
 
-        const RHISurfaceDesc& desc() const
-        {
-            return surface_desc;
-        }
+        const RHISurfaceDesc& desc() const { return surface_desc; }
 
-    private:
+      private:
         RHISurfaceDesc surface_desc;
     };
 
@@ -354,4 +261,4 @@ namespace toy3d
     using RHISurfaceRef = std::shared_ptr<RHISurface>;
 
     RHIStatus validate_surface_desc(const RHISurfaceDesc& desc);
-}
+} // namespace toy3d

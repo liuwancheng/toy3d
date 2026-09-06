@@ -10,9 +10,7 @@
 
 namespace toy3d::shader
 {
-    using ShaderProcessRunner = std::function<ProcessResult(
-        const PhysicalPath&,
-        const std::vector<std::string>&)>;
+    using ShaderProcessRunner = std::function<ProcessResult(const PhysicalPath&, const std::vector<std::string>&)>;
 
     struct DxcInvocation
     {
@@ -31,16 +29,13 @@ namespace toy3d::shader
 
     // optional rejects invalid profiles before an incomplete DXC process
     // invocation can be launched.
-    std::optional<DxcInvocation> build_vulkan_dxc_invocation(
-        const ShaderCompileRequest& request,
-        const PhysicalPath& source_path,
-        const PhysicalPath& output_path,
-        std::vector<Diagnostic>& diagnostics);
+    std::optional<DxcInvocation> build_vulkan_dxc_invocation(const ShaderCompileRequest& request,
+                                                             const PhysicalPath& source_path,
+                                                             const PhysicalPath& output_path,
+                                                             std::vector<Diagnostic>& diagnostics);
 
-    ShaderCompilerOutput compile_vulkan_shader(
-        const ShaderCompileRequest& request,
-        const DiscoveredShaderToolchain& toolchain,
-        PlatformFile& platform_file,
-        const PhysicalPath& working_directory,
-        const ShaderProcessRunner& process_runner = run_process);
-}
+    ShaderCompilerOutput compile_vulkan_shader(const ShaderCompileRequest& request,
+                                               const DiscoveredShaderToolchain& toolchain, PlatformFile& platform_file,
+                                               const PhysicalPath& working_directory,
+                                               const ShaderProcessRunner& process_runner = run_process);
+} // namespace toy3d::shader

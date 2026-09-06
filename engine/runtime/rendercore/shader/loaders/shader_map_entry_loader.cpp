@@ -19,10 +19,14 @@ namespace toy3d
         {
             switch (stage)
             {
-            case shader::ShaderStageFlags::Vertex: return RHIShaderStage::Vertex;
-            case shader::ShaderStageFlags::Pixel: return RHIShaderStage::Pixel;
-            case shader::ShaderStageFlags::Compute: return RHIShaderStage::Compute;
-            default: return RHIShaderStage::Vertex;
+            case shader::ShaderStageFlags::Vertex:
+                return RHIShaderStage::Vertex;
+            case shader::ShaderStageFlags::Pixel:
+                return RHIShaderStage::Pixel;
+            case shader::ShaderStageFlags::Compute:
+                return RHIShaderStage::Compute;
+            default:
+                return RHIShaderStage::Vertex;
             }
         }
 
@@ -42,17 +46,21 @@ namespace toy3d
         {
             switch (group)
             {
-            case shader::BindingGroup::Global: return RHIBindingGroup::Global;
-            case shader::BindingGroup::View: return RHIBindingGroup::View;
-            case shader::BindingGroup::Pass: return RHIBindingGroup::Pass;
-            case shader::BindingGroup::Material: return RHIBindingGroup::Material;
-            case shader::BindingGroup::Object: return RHIBindingGroup::Object;
+            case shader::BindingGroup::Global:
+                return RHIBindingGroup::Global;
+            case shader::BindingGroup::View:
+                return RHIBindingGroup::View;
+            case shader::BindingGroup::Pass:
+                return RHIBindingGroup::Pass;
+            case shader::BindingGroup::Material:
+                return RHIBindingGroup::Material;
+            case shader::BindingGroup::Object:
+                return RHIBindingGroup::Object;
             }
             return RHIBindingGroup::Max;
         }
 
-        std::optional<RHIResourceBindingType> to_rhi_type(
-            shader::ShaderParameterCategory category)
+        std::optional<RHIResourceBindingType> to_rhi_type(shader::ShaderParameterCategory category)
         {
             switch (category)
             {
@@ -76,37 +84,55 @@ namespace toy3d
         {
             switch (type)
             {
-            case shader::ShaderValueType::Float32: return ShaderValueType::Float32;
-            case shader::ShaderValueType::Float32x2: return ShaderValueType::Float32x2;
-            case shader::ShaderValueType::Float32x3: return ShaderValueType::Float32x3;
-            case shader::ShaderValueType::Float32x4: return ShaderValueType::Float32x4;
-            case shader::ShaderValueType::Int32: return ShaderValueType::Int32;
-            case shader::ShaderValueType::Int32x2: return ShaderValueType::Int32x2;
-            case shader::ShaderValueType::Int32x3: return ShaderValueType::Int32x3;
-            case shader::ShaderValueType::Int32x4: return ShaderValueType::Int32x4;
-            case shader::ShaderValueType::UInt32: return ShaderValueType::UInt32;
-            case shader::ShaderValueType::UInt32x2: return ShaderValueType::UInt32x2;
-            case shader::ShaderValueType::UInt32x3: return ShaderValueType::UInt32x3;
-            case shader::ShaderValueType::UInt32x4: return ShaderValueType::UInt32x4;
-            case shader::ShaderValueType::Float32x2x2: return ShaderValueType::Float32x2x2;
-            case shader::ShaderValueType::Float32x2x3: return ShaderValueType::Float32x2x3;
-            case shader::ShaderValueType::Float32x2x4: return ShaderValueType::Float32x2x4;
-            case shader::ShaderValueType::Float32x3x2: return ShaderValueType::Float32x3x2;
-            case shader::ShaderValueType::Float32x3x3: return ShaderValueType::Float32x3x3;
-            case shader::ShaderValueType::Float32x3x4: return ShaderValueType::Float32x3x4;
-            case shader::ShaderValueType::Float32x4x2: return ShaderValueType::Float32x4x2;
-            case shader::ShaderValueType::Float32x4x3: return ShaderValueType::Float32x4x3;
-            case shader::ShaderValueType::Float32x4x4: return ShaderValueType::Float32x4x4;
+            case shader::ShaderValueType::Float32:
+                return ShaderValueType::Float32;
+            case shader::ShaderValueType::Float32x2:
+                return ShaderValueType::Float32x2;
+            case shader::ShaderValueType::Float32x3:
+                return ShaderValueType::Float32x3;
+            case shader::ShaderValueType::Float32x4:
+                return ShaderValueType::Float32x4;
+            case shader::ShaderValueType::Int32:
+                return ShaderValueType::Int32;
+            case shader::ShaderValueType::Int32x2:
+                return ShaderValueType::Int32x2;
+            case shader::ShaderValueType::Int32x3:
+                return ShaderValueType::Int32x3;
+            case shader::ShaderValueType::Int32x4:
+                return ShaderValueType::Int32x4;
+            case shader::ShaderValueType::UInt32:
+                return ShaderValueType::UInt32;
+            case shader::ShaderValueType::UInt32x2:
+                return ShaderValueType::UInt32x2;
+            case shader::ShaderValueType::UInt32x3:
+                return ShaderValueType::UInt32x3;
+            case shader::ShaderValueType::UInt32x4:
+                return ShaderValueType::UInt32x4;
+            case shader::ShaderValueType::Float32x2x2:
+                return ShaderValueType::Float32x2x2;
+            case shader::ShaderValueType::Float32x2x3:
+                return ShaderValueType::Float32x2x3;
+            case shader::ShaderValueType::Float32x2x4:
+                return ShaderValueType::Float32x2x4;
+            case shader::ShaderValueType::Float32x3x2:
+                return ShaderValueType::Float32x3x2;
+            case shader::ShaderValueType::Float32x3x3:
+                return ShaderValueType::Float32x3x3;
+            case shader::ShaderValueType::Float32x3x4:
+                return ShaderValueType::Float32x3x4;
+            case shader::ShaderValueType::Float32x4x2:
+                return ShaderValueType::Float32x4x2;
+            case shader::ShaderValueType::Float32x4x3:
+                return ShaderValueType::Float32x4x3;
+            case shader::ShaderValueType::Float32x4x4:
+                return ShaderValueType::Float32x4x4;
             }
             return ShaderValueType::Float32;
         }
 
-        bool same_reflected_layout(
-            const shader::ReflectedBinding& left,
-            const shader::ReflectedBinding& right)
+        bool same_reflected_layout(const shader::ReflectedBinding& left, const shader::ReflectedBinding& right)
         {
-            if (left.array_count != right.array_count ||
-                left.constant_buffer_size != right.constant_buffer_size ||
+            if (left.array_count != right.array_count || left.constant_buffer_size != right.constant_buffer_size ||
                 left.constant_members.size() != right.constant_members.size())
             {
                 return false;
@@ -115,9 +141,8 @@ namespace toy3d
             {
                 const shader::ReflectedConstantMember& a = left.constant_members[index];
                 const shader::ReflectedConstantMember& b = right.constant_members[index];
-                if (a.parameter_id != b.parameter_id || a.name != b.name || a.type != b.type ||
-                    a.offset != b.offset || a.size != b.size ||
-                    a.array_stride != b.array_stride || a.matrix_stride != b.matrix_stride)
+                if (a.parameter_id != b.parameter_id || a.name != b.name || a.type != b.type || a.offset != b.offset ||
+                    a.size != b.size || a.array_stride != b.array_stride || a.matrix_stride != b.matrix_stride)
                 {
                     return false;
                 }
@@ -125,9 +150,8 @@ namespace toy3d
             return true;
         }
 
-        ShaderMapBinding convert_binding(
-            const shader::ShaderMapBinding& binding,
-            const shader::ReflectedBinding& reflected)
+        ShaderMapBinding convert_binding(const shader::ShaderMapBinding& binding,
+                                         const shader::ReflectedBinding& reflected)
         {
             ShaderMapBinding result;
             result.parameter_id = binding.binding_id;
@@ -140,16 +164,14 @@ namespace toy3d
             result.constant_buffer_size = reflected.constant_buffer_size;
             for (const shader::ReflectedConstantMember& member : reflected.constant_members)
             {
-                result.constant_members.push_back({member.parameter_id, member.name,
-                    to_shader_value_type(member.type), member.offset, member.size,
-                    member.array_stride, member.matrix_stride});
+                result.constant_members.push_back({member.parameter_id, member.name, to_shader_value_type(member.type),
+                                                   member.offset, member.size, member.array_stride,
+                                                   member.matrix_stride});
             }
             return result;
         }
 
-        std::optional<ShaderMapProgramData> convert_entry(
-            const shader::ShaderMapEntry& entry,
-            std::string& error)
+        std::optional<ShaderMapProgramData> convert_entry(const shader::ShaderMapEntry& entry, std::string& error)
         {
             if (entry.target != shader::ShaderTarget::VulkanSpirV ||
                 entry.profile != shader::ShaderCompileProfile::VulkanES31)
@@ -184,12 +206,12 @@ namespace toy3d
                 const shader::ReflectedBinding* reflected_layout = nullptr;
                 for (const shader::ShaderCodeEntry& stage : entry.stages)
                 {
-                    const auto reflected = std::find_if(
-                        stage.reflection.bindings.begin(), stage.reflection.bindings.end(),
-                        [&](const shader::ReflectedBinding& value) {
-                            return value.parameter_id == binding.binding_id;
-                        });
-                    if (reflected == stage.reflection.bindings.end()) continue;
+                    const auto reflected =
+                        std::find_if(stage.reflection.bindings.begin(), stage.reflection.bindings.end(),
+                                     [&](const shader::ReflectedBinding& value)
+                                     { return value.parameter_id == binding.binding_id; });
+                    if (reflected == stage.reflection.bindings.end())
+                        continue;
                     if (reflected_layout && !same_reflected_layout(*reflected_layout, *reflected))
                     {
                         error = "ShaderMap entry has inconsistent reflected binding metadata.";
@@ -215,9 +237,8 @@ namespace toy3d
                 for (const shader::ReflectedBinding& reflected : stage.reflection.bindings)
                 {
                     const auto mapping = std::find_if(entry.bindings.begin(), entry.bindings.end(),
-                        [&](const shader::ShaderMapBinding& binding) {
-                            return binding.binding_id == reflected.parameter_id;
-                        });
+                                                      [&](const shader::ShaderMapBinding& binding)
+                                                      { return binding.binding_id == reflected.parameter_id; });
                     if (mapping == entry.bindings.end() || !to_rhi_type(mapping->category))
                     {
                         error = "ShaderMap reflection has no supported target mapping.";
@@ -229,16 +250,14 @@ namespace toy3d
                 if (output.stage == RHIShaderStage::Vertex)
                 {
                     std::set<ShaderVertexAttributeId> attributes;
-                    for (const shader::ReflectedInterfaceVariable& reflected :
-                         output.interface_variables)
+                    for (const shader::ReflectedInterfaceVariable& reflected : output.interface_variables)
                     {
                         if (!reflected.input)
                         {
                             continue;
                         }
                         ShaderVertexInput vertex_input;
-                        if (!try_make_shader_vertex_input(
-                                reflected, vertex_input, error))
+                        if (!try_make_shader_vertex_input(reflected, vertex_input, error))
                         {
                             return std::nullopt;
                         }
@@ -247,8 +266,7 @@ namespace toy3d
                             error = "ShaderMap vertex inputs contain a duplicate logical attribute.";
                             return std::nullopt;
                         }
-                        program.vertex_inputs.push_back(
-                            std::move(vertex_input));
+                        program.vertex_inputs.push_back(std::move(vertex_input));
                     }
                 }
                 program.stages.push_back(std::move(output));
@@ -256,26 +274,22 @@ namespace toy3d
             return program;
         }
 
-        std::string diagnostics_text(
-            const std::vector<std::string>& diagnostics)
+        std::string diagnostics_text(const std::vector<std::string>& diagnostics)
         {
             std::ostringstream stream;
             for (std::size_t index = 0; index < diagnostics.size(); ++index)
             {
-                if (index != 0) stream << ' ';
+                if (index != 0)
+                    stream << ' ';
                 stream << diagnostics[index];
             }
             return stream.str();
         }
-    }
+    } // namespace
 
-    ShaderMapEntryLoader::ShaderMapEntryLoader(PhysicalPath entry_root)
-        : entry_root_(std::move(entry_root))
-    {
-    }
+    ShaderMapEntryLoader::ShaderMapEntryLoader(PhysicalPath entry_root) : entry_root_(std::move(entry_root)) {}
 
-    ShaderMapProgramLoadResult ShaderMapEntryLoader::load_program(
-        const ShaderMapProgramKey& key) const
+    ShaderMapProgramLoadResult ShaderMapEntryLoader::load_program(const ShaderMapProgramKey& key) const
     {
         ShaderMapProgramLoadResult result;
         if (key.platform != ShaderPlatform::VulkanES31)
@@ -286,29 +300,28 @@ namespace toy3d
         const auto entries = platform_file_.enumerate_directory(entry_root_);
         if (!entries.succeeded())
         {
-            result.error = "Unable to enumerate ShaderMapEntry root: " +
-                entries.status().message;
+            result.error = "Unable to enumerate ShaderMapEntry root: " + entries.status().message;
             return result;
         }
 
         for (const DirectoryEntry& directory : entries.value())
         {
-            if (directory.type != FileType::Directory) continue;
+            if (directory.type != FileType::Directory)
+                continue;
             // filesystem extracts the final host directory component for cache
             // discovery without duplicating platform separator rules.
             const std::string name = std::filesystem::path(directory.path.utf8()).filename().string();
             const auto entry_key = shader::sha256_from_hex(name);
-            if (!entry_key) continue;
-            shader::ShaderMapEntryReadResult read = shader::read_verified_shader_map_entry(
-                platform_file_, entry_root_, *entry_key);
+            if (!entry_key)
+                continue;
+            shader::ShaderMapEntryReadResult read =
+                shader::read_verified_shader_map_entry(platform_file_, entry_root_, *entry_key);
             if (!read.succeeded())
             {
-                result.error = "ShaderMapEntry verification failed: " +
-                    diagnostics_text(read.diagnostics);
+                result.error = "ShaderMapEntry verification failed: " + diagnostics_text(read.diagnostics);
                 return result;
             }
-            if (read.entry->shader_name != key.shader_name ||
-                read.entry->pass_name != key.pass_name ||
+            if (read.entry->shader_name != key.shader_name || read.entry->pass_name != key.pass_name ||
                 read.entry->permutation_key != key.permutation_key)
             {
                 continue;
@@ -320,8 +333,7 @@ namespace toy3d
                 result.error = std::move(conversion_error);
                 return result;
             }
-            ShaderMapProgramLoadResult validated = validate_shader_map_program(
-                std::move(*converted), key);
+            ShaderMapProgramLoadResult validated = validate_shader_map_program(std::move(*converted), key);
             if (!validated.succeeded())
             {
                 result.error = std::move(validated.error);
@@ -341,4 +353,4 @@ namespace toy3d
         }
         return result;
     }
-}
+} // namespace toy3d

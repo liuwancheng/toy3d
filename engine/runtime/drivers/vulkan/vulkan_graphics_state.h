@@ -26,7 +26,7 @@ namespace toy3d
     // RHI resource and must never be shared by parallel pass recorders.
     class VulkanGraphicsState final
     {
-    public:
+      public:
         void reset();
         void set_pipeline(RHIGraphicsPipelineRef pipeline);
         void set_graphics_bindings(RHIGraphicsBindings bindings);
@@ -54,7 +54,7 @@ namespace toy3d
         bool has_blend_constants() const;
         bool has_stencil_reference() const;
 
-    private:
+      private:
         void mark_dirty(VulkanGraphicsStateDirty flags);
 
         RHIGraphicsPipelineRef graphics_pipeline;
@@ -72,4 +72,4 @@ namespace toy3d
         bool stencil_reference_set = false;
         VulkanGraphicsStateDirty state_dirty_flags = VulkanGraphicsStateDirty::All;
     };
-}
+} // namespace toy3d

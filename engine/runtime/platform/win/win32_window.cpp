@@ -10,7 +10,7 @@ namespace toy3d
 
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
-         if (s_win_instance)
+        if (s_win_instance)
         {
             switch (uMsg)
             {
@@ -25,7 +25,7 @@ namespace toy3d
             case WM_SIZE:
                 // 窗口大小改变时更新尺寸
                 s_win_instance->resize(LOWORD(lParam), HIWORD(lParam));
-                //LOG_DEBUG("Window resized: {}x{}", s_win_instance->m_width, s_win_instance->m_height);
+                // LOG_DEBUG("Window resized: {}x{}", s_win_instance->m_width, s_win_instance->m_height);
                 return 0;
             }
         }
@@ -42,13 +42,13 @@ namespace toy3d
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
-    Win32Window::Win32Window(HINSTANCE instance):IWindow()
+    Win32Window::Win32Window(HINSTANCE instance) : IWindow()
     {
         if (instance == nullptr)
         {
             hInstance = GetModuleHandle(nullptr);
         }
-        else 
+        else
         {
             hInstance = instance;
         }
@@ -58,10 +58,10 @@ namespace toy3d
 
         // 初始化InputSystem
         platform_input = std::make_unique<Win32PlatformInput>();
-        if (!platform_input->init()) 
+        if (!platform_input->init())
         {
-            //LOG_ERROR("Failed to initialize platform input system");
-            return ;
+            // LOG_ERROR("Failed to initialize platform input system");
+            return;
         }
     }
 
@@ -86,7 +86,7 @@ namespace toy3d
     void Win32Window::process_events()
     {
         MSG msg;
-        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) 
+        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
@@ -110,9 +110,8 @@ namespace toy3d
         RECT client_rect{};
         if (hWnd != nullptr && GetClientRect(hWnd, &client_rect) != FALSE)
         {
-            return {
-                static_cast<std::uint32_t>(client_rect.right - client_rect.left),
-                static_cast<std::uint32_t>(client_rect.bottom - client_rect.top)};
+            return {static_cast<std::uint32_t>(client_rect.right - client_rect.left),
+                    static_cast<std::uint32_t>(client_rect.bottom - client_rect.top)};
         }
         return properties.extent;
     }
@@ -129,28 +128,15 @@ namespace toy3d
         properties.title = console.get_string("Window.Title", "toy3d");
         const int configured_width = console.get_int("Window.Width", 1280);
         const int configured_height = console.get_int("Window.Height", 720);
-        properties.extent.width = configured_width > 0
-            ? static_cast<std::uint32_t>(configured_width)
-            : 1U;
-        properties.extent.height = configured_height > 0
-            ? static_cast<std::uint32_t>(configured_height)
-            : 1U;
+        properties.extent.width = configured_width > 0 ? static_cast<std::uint32_t>(configured_width) : 1U;
+        properties.extent.height = configured_height > 0 ? static_cast<std::uint32_t>(configured_height) : 1U;
         properties.vsync = console.get_bool("Renderer.VSync", true) ? Vsync::ON : Vsync::OFF;
-        properties.mode = console.get_bool("Window.Fullscreen", false)
-            ? Mode::Fullscreen
-            : Mode::Default;
+        properties.mode = console.get_bool("Window.Fullscreen", false) ? Mode::Fullscreen : Mode::Default;
 
-    
-        HICON hIcon = static_cast<HICON>(::LoadImage(hInstance,
-            MAKEINTRESOURCE(IDI_TOY3D_ICON),
-            IMAGE_ICON,
-            128, 128,
-            LR_DEFAULTCOLOR));
-        HICON hIconSm = static_cast<HICON>(::LoadImage(hInstance,
-            MAKEINTRESOURCE(IDI_TOY3D_ICON),
-            IMAGE_ICON,
-            32, 32,
-            LR_DEFAULTCOLOR));
+        HICON hIcon = static_cast<HICON>(
+            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 128, 128, LR_DEFAULTCOLOR));
+        HICON hIconSm = static_cast<HICON>(
+            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
 
         // 创建窗口类
         WNDCLASSEX wc = {};
@@ -166,53 +152,42 @@ namespace toy3d
         wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
         wc.lpszMenuName = nullptr;
         wc.lpszClassName = "Win32Window";
-    
+
         if (!RegisterClassEx(&wc))
         {
-            //LOG_ERROR("Failed to register window class");
-            return ;
+            // LOG_ERROR("Failed to register window class");
+            return;
         }
 
         // 调整窗口大小，使客户区达到指定尺寸
-        RECT windowRect = {
-            0,
-            0,
-            static_cast<LONG>(properties.extent.width),
-            static_cast<LONG>(properties.extent.height)};
+        RECT windowRect = {0, 0, static_cast<LONG>(properties.extent.width),
+                           static_cast<LONG>(properties.extent.height)};
         AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
 
         // 创建窗口
-        hWnd = CreateWindowEx(
-            0,                          // 扩展样式
-            "Win32Window",        // 窗口类名
-            properties.title.c_str(),  // 窗口标题
-            WS_OVERLAPPEDWINDOW,        // 窗口样式
-            CW_USEDEFAULT,              // X 位置
-            CW_USEDEFAULT,              // Y 位置
-            windowRect.right - windowRect.left,  // 宽度
-            windowRect.bottom - windowRect.top,  // 高度
-            nullptr,                    // 父窗口
-            nullptr,                    // 菜单
-            hInstance,                 // 实例句柄
-            this                        // 附加参数
+        hWnd = CreateWindowEx(0,                                  // 扩展样式
+                              "Win32Window",                      // 窗口类名
+                              properties.title.c_str(),           // 窗口标题
+                              WS_OVERLAPPEDWINDOW,                // 窗口样式
+                              CW_USEDEFAULT,                      // X 位置
+                              CW_USEDEFAULT,                      // Y 位置
+                              windowRect.right - windowRect.left, // 宽度
+                              windowRect.bottom - windowRect.top, // 高度
+                              nullptr,                            // 父窗口
+                              nullptr,                            // 菜单
+                              hInstance,                          // 实例句柄
+                              this                                // 附加参数
         );
 
         if (!hWnd)
         {
-            //LOG_ERROR("Failed to create window");
+            // LOG_ERROR("Failed to create window");
 
             DWORD error = GetLastError();
             LPVOID lpMsgBuf;
 
-            FormatMessage(
-                FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                FORMAT_MESSAGE_FROM_SYSTEM |
-                FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL,
-                error,
-                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                (LPTSTR)&lpMsgBuf,
-                0, NULL);
+            FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                          NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&lpMsgBuf, 0, NULL);
 
             // 输出错误信息到控制台或调试窗口
             OutputDebugString((LPCTSTR)lpMsgBuf);
@@ -220,7 +195,7 @@ namespace toy3d
 
             // 释放消息缓冲区
             LocalFree(lpMsgBuf);
-            return ;
+            return;
         }
 
         // 显示窗口
@@ -230,7 +205,7 @@ namespace toy3d
 
     void Win32Window::destroy_window()
     {
-        if (hWnd) 
+        if (hWnd)
         {
             DestroyWindow(hWnd);
             hWnd = nullptr;

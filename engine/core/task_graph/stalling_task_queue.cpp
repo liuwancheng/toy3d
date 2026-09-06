@@ -19,9 +19,8 @@ namespace toy3d
         // Count reservation happens before queue publication so a racing consumer cannot
         // underflow the ready count after acquiring a just-published task.
         ready_count_.fetch_add(1);
-        const bool enqueued = priority == TaskPriority::High
-            ? high_priority_queue_.try_enqueue(task)
-            : normal_priority_queue_.try_enqueue(task);
+        const bool enqueued = priority == TaskPriority::High ? high_priority_queue_.try_enqueue(task)
+                                                             : normal_priority_queue_.try_enqueue(task);
         if (!enqueued)
         {
             ready_count_.fetch_sub(1);
@@ -36,13 +35,10 @@ namespace toy3d
         return true;
     }
 
-    bool StallingTaskQueue::try_dequeue(
-        BaseGraphTask*& task,
-        std::uint32_t& high_priority_streak)
+    bool StallingTaskQueue::try_dequeue(BaseGraphTask*& task, std::uint32_t& high_priority_streak)
     {
         task = nullptr;
-        if (high_priority_streak >= maximum_high_priority_streak
-            && normal_priority_queue_.try_dequeue(task))
+        if (high_priority_streak >= maximum_high_priority_streak && normal_priority_queue_.try_dequeue(task))
         {
             high_priority_streak = 0;
             ready_count_.fetch_sub(1);
@@ -63,9 +59,7 @@ namespace toy3d
         return false;
     }
 
-    bool StallingTaskQueue::wait_dequeue(
-        BaseGraphTask*& task,
-        std::uint32_t& high_priority_streak)
+    bool StallingTaskQueue::wait_dequeue(BaseGraphTask*& task, std::uint32_t& high_priority_streak)
     {
         for (;;)
         {
@@ -86,9 +80,7 @@ namespace toy3d
                 return true;
             }
             sleep_condition_.wait(lock, [this, observed_generation]()
-            {
-                return stopped_.load() || wake_generation_ != observed_generation;
-            });
+                                  { return stopped_.load() || wake_generation_ != observed_generation; });
         }
     }
 
@@ -115,4 +107,4 @@ namespace toy3d
     {
         return ready_count_.load();
     }
-}
+} // namespace toy3d

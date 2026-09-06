@@ -128,10 +128,8 @@ namespace toy3d
         }
     }
 
-    bool pixel_format_calculate_minimum_row_pitch(
-        PixelFormat format,
-        std::uint32_t width,
-        std::uint64_t& row_pitch) noexcept
+    bool pixel_format_calculate_minimum_row_pitch(PixelFormat format, std::uint32_t width,
+                                                  std::uint64_t& row_pitch) noexcept
     {
         row_pitch = 0;
         const std::uint32_t block_width = pixel_format_block_width(format);
@@ -140,10 +138,8 @@ namespace toy3d
         {
             return false;
         }
-        std::uint64_t block_count =
-            (static_cast<std::uint64_t>(width) + block_width - 1U) / block_width;
-        if ((format == PixelFormat::PVRTC2 || format == PixelFormat::PVRTC4) &&
-            block_count < 2U)
+        std::uint64_t block_count = (static_cast<std::uint64_t>(width) + block_width - 1U) / block_width;
+        if ((format == PixelFormat::PVRTC2 || format == PixelFormat::PVRTC4) && block_count < 2U)
         {
             // PVRTC images reserve at least two blocks along each dimension,
             // even when their logical extent fits in one block.
@@ -157,24 +153,18 @@ namespace toy3d
         return true;
     }
 
-    bool pixel_format_calculate_minimum_slice_pitch(
-        PixelFormat format,
-        std::uint32_t width,
-        std::uint32_t height,
-        std::uint64_t& slice_pitch) noexcept
+    bool pixel_format_calculate_minimum_slice_pitch(PixelFormat format, std::uint32_t width, std::uint32_t height,
+                                                    std::uint64_t& slice_pitch) noexcept
     {
         slice_pitch = 0;
         std::uint64_t row_pitch = 0;
         const std::uint32_t block_height = pixel_format_block_height(format);
-        if (height == 0 || block_height == 0 ||
-            !pixel_format_calculate_minimum_row_pitch(format, width, row_pitch))
+        if (height == 0 || block_height == 0 || !pixel_format_calculate_minimum_row_pitch(format, width, row_pitch))
         {
             return false;
         }
-        std::uint64_t row_count =
-            (static_cast<std::uint64_t>(height) + block_height - 1U) / block_height;
-        if ((format == PixelFormat::PVRTC2 || format == PixelFormat::PVRTC4) &&
-            row_count < 2U)
+        std::uint64_t row_count = (static_cast<std::uint64_t>(height) + block_height - 1U) / block_height;
+        if ((format == PixelFormat::PVRTC2 || format == PixelFormat::PVRTC4) && row_count < 2U)
         {
             row_count = 2U;
         }
@@ -185,4 +175,4 @@ namespace toy3d
         slice_pitch = row_count * row_pitch;
         return true;
     }
-}
+} // namespace toy3d

@@ -15,10 +15,10 @@ namespace toy3d
     // updates remain in Actor/Component tick rather than a World-wide callback.
     class Application
     {
-    public:
+      public:
         virtual ~Application() = default;
 
-    protected:
+      protected:
         World& world();
         const World& world() const;
         IWindow& window();
@@ -29,20 +29,16 @@ namespace toy3d
         // Called only while the GT Dear ImGui frame is active. Applications
         // may build widgets through ImGui core but receive no renderer service.
         virtual void on_build_ui() {}
-        virtual void on_build_scene_views(
-            std::vector<SceneView>& views,
-            const Extent& extent) const = 0;
+        virtual void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const = 0;
         virtual void on_shutdown() {}
 
-    private:
+      private:
         friend class Engine;
 
         bool initialize(World& world, IWindow& window);
         void tick(double delta_time);
         void build_ui();
-        void build_scene_views(
-            std::vector<SceneView>& views,
-            const Extent& extent) const;
+        void build_scene_views(std::vector<SceneView>& views, const Extent& extent) const;
         void shutdown();
 
         // Engine owns both observers and keeps them alive for the complete
@@ -50,4 +46,4 @@ namespace toy3d
         World* world_ = nullptr;
         IWindow* window_ = nullptr;
     };
-}
+} // namespace toy3d

@@ -28,7 +28,7 @@ namespace toy3d
 
     class VulkanDevice final : public RHIDevice
     {
-    public:
+      public:
         VulkanDevice();
         ~VulkanDevice() override;
 
@@ -45,40 +45,29 @@ namespace toy3d
 
         VulkanDeviceObservation observation_snapshot() const;
 
-    protected:
+      protected:
         RHIResult<std::unique_ptr<RHIViewportContext>> create_viewport_context_impl(
-            const RHISurfaceRef& surface,
-            const RHIViewportContextDesc& desc) override;
-        RHIResult<RHIBufferRef> create_buffer_impl(
-            const RHIBufferDesc& desc,
-            const RHIInitialData* initial_data) override;
-        RHIResult<RHITextureRef> create_texture_impl(
-            const RHITextureDesc& desc,
-            const RHIInitialData* initial_data) override;
-        RHIResult<RHIBufferViewRef> create_buffer_view_impl(
-            const RHIBufferRef& buffer,
-            const RHIBufferViewDesc& desc) override;
-        RHIResult<RHITextureViewRef> create_texture_view_impl(
-            const RHITextureRef& texture,
-            const RHITextureViewDesc& desc) override;
+            const RHISurfaceRef& surface, const RHIViewportContextDesc& desc) override;
+        RHIResult<RHIBufferRef> create_buffer_impl(const RHIBufferDesc& desc,
+                                                   const RHIInitialData* initial_data) override;
+        RHIResult<RHITextureRef> create_texture_impl(const RHITextureDesc& desc,
+                                                     const RHIInitialData* initial_data) override;
+        RHIResult<RHIBufferViewRef> create_buffer_view_impl(const RHIBufferRef& buffer,
+                                                            const RHIBufferViewDesc& desc) override;
+        RHIResult<RHITextureViewRef> create_texture_view_impl(const RHITextureRef& texture,
+                                                              const RHITextureViewDesc& desc) override;
         RHIResult<RHIShaderRef> create_shader_impl(const RHIShaderDesc& desc) override;
-        RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(
-            const RHIBindingLayoutDesc& desc) override;
-        RHIResult<RHISamplerRef> create_sampler_impl(
-            const RHISamplerDesc& desc) override;
-        RHIResult<RHIBindingSetRef> create_binding_set_impl(
-            const RHIBindingSetDesc& desc) override;
-        RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
-            const RHIGraphicsPipelineDesc& desc) override;
-        RHIResult<RHIGPUFenceRef> create_gpu_fence_impl(
-            const std::string& debug_name) override;
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
-            create_graphics_command_context_impl() override;
+        RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(const RHIBindingLayoutDesc& desc) override;
+        RHIResult<RHISamplerRef> create_sampler_impl(const RHISamplerDesc& desc) override;
+        RHIResult<RHIBindingSetRef> create_binding_set_impl(const RHIBindingSetDesc& desc) override;
+        RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(const RHIGraphicsPipelineDesc& desc) override;
+        RHIResult<RHIGPUFenceRef> create_gpu_fence_impl(const std::string& debug_name) override;
+        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context_impl() override;
         bool is_initialized_impl() const override;
         RHIStatus wait_idle_before_shutdown_impl() override;
         RHIStatus shutdown_impl() override;
 
-    private:
+      private:
         RHIStatus create_instance(const RHIDeviceDesc& desc);
         RHIStatus create_debug_messenger();
         void destroy_debug_messenger();
@@ -105,4 +94,4 @@ namespace toy3d
     };
 
     RHIResult<std::unique_ptr<RHIDevice>> create_vulkan_device();
-}
+} // namespace toy3d

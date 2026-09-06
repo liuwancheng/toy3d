@@ -13,15 +13,13 @@ namespace toy3d
             {
                 if (character >= 'a' && character <= 'z')
                 {
-                    character = static_cast<char>(
-                        character - ('a' - 'A'));
+                    character = static_cast<char>(character - ('a' - 'A'));
                 }
             }
             return semantic;
         }
 
-        std::string reflected_logical_semantic(
-            const shader::ReflectedInterfaceVariable& reflected)
+        std::string reflected_logical_semantic(const shader::ReflectedInterfaceVariable& reflected)
         {
             if (!reflected.semantic.empty())
             {
@@ -29,16 +27,11 @@ namespace toy3d
             }
 
             const std::size_t name_separator = reflected.name.rfind('.');
-            return name_separator == std::string::npos
-                ? reflected.name
-                : reflected.name.substr(name_separator + 1u);
+            return name_separator == std::string::npos ? reflected.name : reflected.name.substr(name_separator + 1u);
         }
 
-        bool resolve_attribute(
-            const std::string& semantic,
-            ShaderVertexAttributeId& attribute_id,
-            std::string& semantic_name,
-            std::uint32_t& component_count)
+        bool resolve_attribute(const std::string& semantic, ShaderVertexAttributeId& attribute_id,
+                               std::string& semantic_name, std::uint32_t& component_count)
         {
             if (semantic == "POSITION" || semantic == "POSITION0")
             {
@@ -70,41 +63,31 @@ namespace toy3d
             }
             return false;
         }
-    }
+    } // namespace
 
-    bool try_make_shader_vertex_input(
-        const shader::ReflectedInterfaceVariable& reflected,
-        ShaderVertexInput& output,
-        std::string& error)
+    bool try_make_shader_vertex_input(const shader::ReflectedInterfaceVariable& reflected, ShaderVertexInput& output,
+                                      std::string& error)
     {
-        if (!reflected.input ||
-            reflected.location == std::numeric_limits<std::uint32_t>::max())
+        if (!reflected.input || reflected.location == std::numeric_limits<std::uint32_t>::max())
         {
             error = "Shader vertex input requires a valid target location.";
             return false;
         }
 
-        ShaderVertexAttributeId attribute_id =
-            ShaderVertexAttributeId::Position0;
+        ShaderVertexAttributeId attribute_id = ShaderVertexAttributeId::Position0;
         std::string semantic_name;
         std::uint32_t expected_component_count = 0;
-        if (!resolve_attribute(
-                normalize_semantic(reflected_logical_semantic(reflected)),
-                attribute_id,
-                semantic_name,
-                expected_component_count))
+        if (!resolve_attribute(normalize_semantic(reflected_logical_semantic(reflected)), attribute_id, semantic_name,
+                               expected_component_count))
         {
             error = "Shader vertex input uses an unsupported logical attribute.";
             return false;
         }
         const bool supported_position_shape =
             attribute_id == ShaderVertexAttributeId::Position0 &&
-            (reflected.component_count == 2u ||
-             reflected.component_count == expected_component_count);
-        if (reflected.scalar_type !=
-                shader::ReflectedInterfaceVariable::ScalarType::Float32 ||
-            (!supported_position_shape &&
-             reflected.component_count != expected_component_count))
+            (reflected.component_count == 2u || reflected.component_count == expected_component_count);
+        if (reflected.scalar_type != shader::ReflectedInterfaceVariable::ScalarType::Float32 ||
+            (!supported_position_shape && reflected.component_count != expected_component_count))
         {
             error = "Shader vertex input uses an unsupported scalar/component shape.";
             return false;
@@ -122,16 +105,12 @@ namespace toy3d
         return true;
     }
 
-    bool have_same_shader_vertex_input_contract(
-        const ShaderVertexInput& left,
-        const ShaderVertexInput& right)
+    bool have_same_shader_vertex_input_contract(const ShaderVertexInput& left, const ShaderVertexInput& right)
     {
         // Cross-target parity compares logical identity and data shape; native
         // location belongs to each target mapping and is deliberately excluded.
-        return left.attribute_id == right.attribute_id &&
-            left.semantic_name == right.semantic_name &&
-            left.semantic_index == right.semantic_index &&
-            left.scalar_type == right.scalar_type &&
-            left.component_count == right.component_count;
+        return left.attribute_id == right.attribute_id && left.semantic_name == right.semantic_name &&
+               left.semantic_index == right.semantic_index && left.scalar_type == right.scalar_type &&
+               left.component_count == right.component_count;
     }
-}
+} // namespace toy3d

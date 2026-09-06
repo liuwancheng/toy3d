@@ -15,7 +15,7 @@ namespace toy3d
 
     class StallingTaskQueue final
     {
-    public:
+      public:
         explicit StallingTaskQueue(std::size_t capacity);
 
         StallingTaskQueue(const StallingTaskQueue&) = delete;
@@ -29,7 +29,7 @@ namespace toy3d
         void stop();
         std::size_t ready_count() const;
 
-    private:
+      private:
         static constexpr std::uint32_t maximum_high_priority_streak = 8;
 
         detail::BoundedMpmcQueue<BaseGraphTask*> high_priority_queue_;
@@ -40,4 +40,4 @@ namespace toy3d
         std::condition_variable sleep_condition_;
         std::uint64_t wake_generation_ = 0;
     };
-}
+} // namespace toy3d

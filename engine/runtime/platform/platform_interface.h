@@ -5,9 +5,9 @@ namespace toy3d
 {
     class IPlatform
     {
-    public:
-        IPlatform(){};
-        virtual ~IPlatform(){};
+      public:
+        IPlatform() {};
+        virtual ~IPlatform() {};
 
         virtual bool init() = 0;
         virtual void exit() = 0;

@@ -31,7 +31,7 @@ namespace toy3d::shader
                 bytes.push_back(static_cast<std::uint8_t>(value >> shift));
             }
         }
-    }
+    } // namespace
 
     Sha256Hash sha256(const std::vector<std::uint8_t>& input)
     {
@@ -44,9 +44,8 @@ namespace toy3d::shader
         }
         append_u64_big_endian(bytes, bit_count);
 
-        std::array<std::uint32_t, 8> state = {
-            0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
-            0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u};
+        std::array<std::uint32_t, 8> state = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+                                              0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u};
         for (std::size_t block = 0; block < bytes.size(); block += 64u)
         {
             std::array<std::uint32_t, 64> words{};
@@ -54,14 +53,16 @@ namespace toy3d::shader
             {
                 const std::size_t offset = block + index * 4u;
                 words[index] = (static_cast<std::uint32_t>(bytes[offset]) << 24u) |
-                    (static_cast<std::uint32_t>(bytes[offset + 1u]) << 16u) |
-                    (static_cast<std::uint32_t>(bytes[offset + 2u]) << 8u) |
-                    static_cast<std::uint32_t>(bytes[offset + 3u]);
+                               (static_cast<std::uint32_t>(bytes[offset + 1u]) << 16u) |
+                               (static_cast<std::uint32_t>(bytes[offset + 2u]) << 8u) |
+                               static_cast<std::uint32_t>(bytes[offset + 3u]);
             }
             for (std::size_t index = 16u; index < words.size(); ++index)
             {
-                const std::uint32_t s0 = rotate_right(words[index - 15u], 7u) ^ rotate_right(words[index - 15u], 18u) ^ (words[index - 15u] >> 3u);
-                const std::uint32_t s1 = rotate_right(words[index - 2u], 17u) ^ rotate_right(words[index - 2u], 19u) ^ (words[index - 2u] >> 10u);
+                const std::uint32_t s0 = rotate_right(words[index - 15u], 7u) ^ rotate_right(words[index - 15u], 18u) ^
+                                         (words[index - 15u] >> 3u);
+                const std::uint32_t s1 = rotate_right(words[index - 2u], 17u) ^ rotate_right(words[index - 2u], 19u) ^
+                                         (words[index - 2u] >> 10u);
                 words[index] = words[index - 16u] + s0 + words[index - 7u] + s1;
             }
 
@@ -131,21 +132,27 @@ namespace toy3d::shader
 
     std::optional<Sha256Hash> sha256_from_hex(const std::string& text)
     {
-        if (text.size() != Sha256Hash{}.size() * 2u) return std::nullopt;
+        if (text.size() != Sha256Hash{}.size() * 2u)
+            return std::nullopt;
         Sha256Hash result{};
-        const auto value = [](char character) -> int {
-            if (character >= '0' && character <= '9') return character - '0';
-            if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-            if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+        const auto value = [](char character) -> int
+        {
+            if (character >= '0' && character <= '9')
+                return character - '0';
+            if (character >= 'a' && character <= 'f')
+                return character - 'a' + 10;
+            if (character >= 'A' && character <= 'F')
+                return character - 'A' + 10;
             return -1;
         };
         for (std::size_t index = 0; index < result.size(); ++index)
         {
             const int high = value(text[index * 2u]);
             const int low = value(text[index * 2u + 1u]);
-            if (high < 0 || low < 0) return std::nullopt;
+            if (high < 0 || low < 0)
+                return std::nullopt;
             result[index] = static_cast<std::uint8_t>((high << 4) | low);
         }
         return result;
     }
-}
+} // namespace toy3d::shader

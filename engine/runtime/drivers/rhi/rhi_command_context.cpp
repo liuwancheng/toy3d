@@ -2,8 +2,7 @@
 
 namespace toy3d
 {
-    RHIStatus RHIGraphicsCommandContext::bind_graphics_bindings(
-        const RHIGraphicsBindings& bindings)
+    RHIStatus RHIGraphicsCommandContext::bind_graphics_bindings(const RHIGraphicsBindings& bindings)
     {
         const RHIStatus validation = validate_graphics_bindings(bindings);
         if (!validation)
@@ -12,4 +11,4 @@ namespace toy3d
         }
         return bind_graphics_bindings_impl(bindings);
     }
-}
+} // namespace toy3d

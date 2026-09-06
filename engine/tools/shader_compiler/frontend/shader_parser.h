@@ -25,12 +25,12 @@ namespace toy3d::shader
 
     class ShaderParser
     {
-    public:
+      public:
         ShaderParser(std::string_view source, std::string path);
 
         ParseResult parse();
 
-    private:
+      private:
         // Parser optionals distinguish a missing/invalid token or number from a
         // valid zero value and keep one-token lookahead explicitly nullable.
         const Token& peek();
@@ -68,4 +68,4 @@ namespace toy3d::shader
         std::vector<Diagnostic> parser_diagnostics;
         std::size_t copied_tokenizer_diagnostics = 0;
     };
-}
+} // namespace toy3d::shader

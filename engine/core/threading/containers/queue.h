@@ -17,10 +17,9 @@ namespace toy3d
         Mpsc
     };
 
-    template<typename T, QueueMode Mode = QueueMode::Spsc>
-    class Queue final
+    template <typename T, QueueMode Mode = QueueMode::Spsc> class Queue final
     {
-    public:
+      public:
         Queue()
         {
             Node* dummy = new Node();
@@ -87,15 +86,12 @@ namespace toy3d
             return tail_->next.load(std::memory_order_acquire) == nullptr;
         }
 
-    private:
+      private:
         struct Node
         {
             Node() = default;
 
-            explicit Node(T node_value)
-                : value(std::move(node_value))
-            {
-            }
+            explicit Node(T node_value) : value(std::move(node_value)) {}
 
             std::atomic<Node*> next{nullptr};
             // std::optional lets the dummy node exist without requiring T to be default constructible.
@@ -105,14 +101,11 @@ namespace toy3d
         void assert_consumer_thread() const
         {
 #ifndef NDEBUG
-            const std::size_t current_thread =
-                std::hash<std::thread::id>{}(std::this_thread::get_id());
+            const std::size_t current_thread = std::hash<std::thread::id>{}(std::this_thread::get_id());
             std::size_t expected = 0;
-            if (!consumer_thread_.compare_exchange_strong(
-                    expected, current_thread, std::memory_order_relaxed))
+            if (!consumer_thread_.compare_exchange_strong(expected, current_thread, std::memory_order_relaxed))
             {
-                assert(expected == current_thread &&
-                    "Queue dequeue and is_empty require one owner consumer");
+                assert(expected == current_thread && "Queue dequeue and is_empty require one owner consumer");
             }
 #endif
         }
@@ -123,4 +116,4 @@ namespace toy3d
         mutable std::atomic<std::size_t> consumer_thread_{0};
 #endif
     };
-}
+} // namespace toy3d

@@ -51,9 +51,7 @@ namespace toy3d
         on_build_ui();
     }
 
-    void Application::build_scene_views(
-        std::vector<SceneView>& views,
-        const Extent& extent) const
+    void Application::build_scene_views(std::vector<SceneView>& views, const Extent& extent) const
     {
         on_build_scene_views(views, extent);
     }
@@ -68,4 +66,4 @@ namespace toy3d
         window_ = nullptr;
         world_ = nullptr;
     }
-}
+} // namespace toy3d

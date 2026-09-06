@@ -9,30 +9,24 @@ namespace toy3d
 {
     class ImGuiTextureId final
     {
-    public:
+      public:
         constexpr ImGuiTextureId() noexcept = default;
-        explicit constexpr ImGuiTextureId(std::uint64_t value) noexcept
-            : value_(value)
-        {}
+        explicit constexpr ImGuiTextureId(std::uint64_t value) noexcept : value_(value) {}
 
         constexpr std::uint64_t value() const noexcept { return value_; }
         constexpr bool valid() const noexcept { return value_ != 0u; }
 
-        friend constexpr bool operator==(
-            ImGuiTextureId left,
-            ImGuiTextureId right) noexcept
+        friend constexpr bool operator==(ImGuiTextureId left, ImGuiTextureId right) noexcept
         {
             return left.value_ == right.value_;
         }
 
-        friend constexpr bool operator!=(
-            ImGuiTextureId left,
-            ImGuiTextureId right) noexcept
+        friend constexpr bool operator!=(ImGuiTextureId left, ImGuiTextureId right) noexcept
         {
             return !(left == right);
         }
 
-    private:
+      private:
         std::uint64_t value_ = 0u;
     };
 
@@ -103,4 +97,4 @@ namespace toy3d
 
         bool succeeded() const noexcept { return diagnostic.empty(); }
     };
-}
+} // namespace toy3d

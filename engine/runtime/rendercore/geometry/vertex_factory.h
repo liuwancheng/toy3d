@@ -25,13 +25,12 @@ namespace toy3d
     // resources and does not choose shaders, materials, permutations, or state.
     class VertexFactory
     {
-    public:
+      public:
         virtual ~VertexFactory() = default;
 
-        virtual RHIStatus build_vertex_input(
-            const std::vector<ShaderVertexInput>& shader_inputs,
-            std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,
-            std::vector<RHIGraphicsPipelineDesc::VertexAttribute>& vertex_attributes,
-            std::vector<RHIVertexBufferBinding>& vertex_bindings) const = 0;
+        virtual RHIStatus build_vertex_input(const std::vector<ShaderVertexInput>& shader_inputs,
+                                             std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,
+                                             std::vector<RHIGraphicsPipelineDesc::VertexAttribute>& vertex_attributes,
+                                             std::vector<RHIVertexBufferBinding>& vertex_bindings) const = 0;
     };
-}
+} // namespace toy3d

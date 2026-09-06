@@ -19,8 +19,7 @@ namespace toy3d
     // It keeps logical identity/shape separate from the current target location.
     struct ShaderVertexInput
     {
-        ShaderVertexAttributeId attribute_id =
-            ShaderVertexAttributeId::Position0;
+        ShaderVertexAttributeId attribute_id = ShaderVertexAttributeId::Position0;
         std::string semantic_name;
         std::uint32_t semantic_index = 0;
         shader::ReflectedInterfaceVariable::ScalarType scalar_type =
@@ -29,12 +28,8 @@ namespace toy3d
         std::uint32_t target_location = 0;
     };
 
-    bool try_make_shader_vertex_input(
-        const shader::ReflectedInterfaceVariable& reflected,
-        ShaderVertexInput& output,
-        std::string& error);
+    bool try_make_shader_vertex_input(const shader::ReflectedInterfaceVariable& reflected, ShaderVertexInput& output,
+                                      std::string& error);
 
-    bool have_same_shader_vertex_input_contract(
-        const ShaderVertexInput& left,
-        const ShaderVertexInput& right);
-}
+    bool have_same_shader_vertex_input_contract(const ShaderVertexInput& left, const ShaderVertexInput& right);
+} // namespace toy3d

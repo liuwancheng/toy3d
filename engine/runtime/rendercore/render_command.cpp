@@ -30,25 +30,21 @@ namespace toy3d
                     return "Unknown";
                 }
             }
-        }
+        } // namespace
 
-        TaskGraphStatus enable_render_command_facade(
-            TaskGraphInterface& task_graph) noexcept
+        TaskGraphStatus enable_render_command_facade(TaskGraphInterface& task_graph) noexcept
         {
             TaskGraphInterface* expected = nullptr;
-            if (enabled_task_graph.compare_exchange_strong(expected, &task_graph)
-                || expected == &task_graph)
+            if (enabled_task_graph.compare_exchange_strong(expected, &task_graph) || expected == &task_graph)
             {
                 execution_allowed.store(true);
                 return TaskGraphStatus::success();
             }
-            return TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidState,
-                "RenderCommand facade is already bound to another Task Graph");
+            return TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                            "RenderCommand facade is already bound to another Task Graph");
         }
 
-        void disable_render_command_execution(
-            TaskGraphInterface& task_graph) noexcept
+        void disable_render_command_execution(TaskGraphInterface& task_graph) noexcept
         {
             if (enabled_task_graph.load() == &task_graph)
             {
@@ -73,11 +69,8 @@ namespace toy3d
             return execution_allowed.load();
         }
 
-        TaskGraphStatus make_render_command_failure(
-            TaskGraphErrorCode code,
-            const char* reason,
-            const char* command_name,
-            NamedThread current_thread)
+        TaskGraphStatus make_render_command_failure(TaskGraphErrorCode code, const char* reason,
+                                                    const char* command_name, NamedThread current_thread)
         {
             std::string message = reason != nullptr ? reason : "RenderCommand failure";
             message += "; command=";
@@ -86,5 +79,5 @@ namespace toy3d
             message += get_thread_name(current_thread);
             return TaskGraphStatus::failure(code, std::move(message));
         }
-    }
-}
+    } // namespace render_command_detail
+} // namespace toy3d

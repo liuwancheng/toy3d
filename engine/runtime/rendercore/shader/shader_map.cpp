@@ -11,10 +11,9 @@ namespace toy3d
         {
             seed ^= value + 0x9e3779b9u + (seed << 6u) + (seed >> 2u);
         }
-    }
+    } // namespace
 
-    ShaderMapProgram::ShaderMapProgram(ShaderMapProgramData data)
-        : data_(std::move(data))
+    ShaderMapProgram::ShaderMapProgram(ShaderMapProgramData data) : data_(std::move(data))
     {
         for (const ShaderMapBinding& binding : data_.bindings)
         {
@@ -50,8 +49,7 @@ namespace toy3d
         return data_;
     }
 
-    const ShaderParameterBinding* ShaderMapProgram::find_parameter_binding(
-        ShaderParameterId parameter_id) const
+    const ShaderParameterBinding* ShaderMapProgram::find_parameter_binding(ShaderParameterId parameter_id) const
     {
         const auto found = parameter_bindings_.find(parameter_id);
         return found == parameter_bindings_.end() ? nullptr : &found->second;
@@ -62,16 +60,12 @@ namespace toy3d
         return program != nullptr && error.empty();
     }
 
-    ShaderMap::ShaderMap(ShaderMapLoader& loader)
-        : loader_(loader)
-    {
-    }
+    ShaderMap::ShaderMap(ShaderMapLoader& loader) : loader_(loader) {}
 
     bool ShaderMap::ProgramKey::operator==(const ProgramKey& other) const
     {
-        return shader_name == other.shader_name && pass_name == other.pass_name &&
-            platform == other.platform &&
-            permutation_key == other.permutation_key;
+        return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
+               permutation_key == other.permutation_key;
     }
 
     std::size_t ShaderMap::ProgramKeyHash::operator()(const ProgramKey& key) const
@@ -86,11 +80,9 @@ namespace toy3d
         return result;
     }
 
-    ShaderMap::ProgramKey ShaderMap::make_key(
-        const ShaderMapProgramData& program)
+    ShaderMap::ProgramKey ShaderMap::make_key(const ShaderMapProgramData& program)
     {
-        return {program.shader_name, program.pass_name, program.platform,
-            program.permutation_key};
+        return {program.shader_name, program.pass_name, program.platform, program.permutation_key};
     }
 
     ShaderMap::ProgramKey ShaderMap::make_key(const ShaderMapProgramKey& key)
@@ -111,8 +103,7 @@ namespace toy3d
         {
             return {nullptr, std::move(loaded.error)};
         }
-        ShaderMapProgramLoadResult validated = validate_shader_map_program(
-            std::move(*loaded.program), key);
+        ShaderMapProgramLoadResult validated = validate_shader_map_program(std::move(*loaded.program), key);
         if (!validated.succeeded())
         {
             return {nullptr, std::move(validated.error)};
@@ -125,9 +116,8 @@ namespace toy3d
             return {existing->second, {}};
         }
         ShaderMapProgram program_value(std::move(*validated.program));
-        ShaderMapProgramRef program = std::make_shared<ShaderMapProgram>(
-            std::move(program_value));
+        ShaderMapProgramRef program = std::make_shared<ShaderMapProgram>(std::move(program_value));
         programs_.emplace(storage_key, program);
         return {std::move(program), {}};
     }
-}
+} // namespace toy3d

@@ -24,9 +24,7 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    IncludeResolveResult resolve_shader_includes(
-        const std::string& source,
-        const std::string& source_virtual_path,
-        const ShaderSourceProvider& source_provider,
-        std::uint32_t max_depth = default_max_include_depth);
-}
+    IncludeResolveResult resolve_shader_includes(const std::string& source, const std::string& source_virtual_path,
+                                                 const ShaderSourceProvider& source_provider,
+                                                 std::uint32_t max_depth = default_max_include_depth);
+} // namespace toy3d::shader

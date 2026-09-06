@@ -19,9 +19,7 @@ namespace
             ++failure_count;
             return {};
         }
-        return std::string(
-            std::istreambuf_iterator<char>(input),
-            std::istreambuf_iterator<char>());
+        return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
     }
 
     void check(bool condition, const std::string& message)
@@ -33,9 +31,7 @@ namespace
         }
     }
 
-    bool contains_diagnostic(
-        const toy3d::shader::ParseResult& result,
-        toy3d::shader::DiagnosticCode code)
+    bool contains_diagnostic(const toy3d::shader::ParseResult& result, toy3d::shader::DiagnosticCode code)
     {
         for (const toy3d::shader::Diagnostic& diagnostic : result.diagnostics)
         {
@@ -76,23 +72,24 @@ namespace
         {
             check(asset.passes[0].program.entry_points.size() == 2, "graphics entry points must be extracted");
             const toy3d::shader::ShaderPass& pass = asset.passes[0];
-            check(pass.state.stencil.mode ==
-                    toy3d::shader::ShaderGraphicsPassState::StencilMode::FrontAndBack,
-                "structured Stencil state must be parsed");
+            check(pass.state.stencil.mode == toy3d::shader::ShaderGraphicsPassState::StencilMode::FrontAndBack,
+                  "structured Stencil state must be parsed");
             check(pass.state.stencil.read_mask == 127, "Stencil read mask must be parsed");
             check(pass.state.stencil.front.depth_fail_operation ==
-                    toy3d::shader::ShaderGraphicsPassState::StencilOperation::Replace,
-                "Stencil face operations must be parsed");
+                      toy3d::shader::ShaderGraphicsPassState::StencilOperation::Replace,
+                  "Stencil face operations must be parsed");
             check(pass.state.blend.enabled, "structured Blend state must be enabled");
             check(pass.state.blend.source_color_factor ==
-                    toy3d::shader::ShaderGraphicsPassState::BlendFactor::SourceAlpha,
-                "Blend factors must be parsed");
-            check(pass.state.color_write_mask ==
-                    toy3d::shader::ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue,
-                "single-target ColorWrite mask must be parsed");
-            check(asset.resources[0].kind == toy3d::shader::ResourceKind::Texture2D, "resource kind must be strongly typed");
-            check(asset.resources[0].element_type == toy3d::shader::ResourceElementType::Float4, "resource element type must be strongly typed");
-            check(asset.resources[2].kind == toy3d::shader::ResourceKind::ComparisonSampler, "ComparisonSampler must remain distinct from a regular Sampler");
+                      toy3d::shader::ShaderGraphicsPassState::BlendFactor::SourceAlpha,
+                  "Blend factors must be parsed");
+            check(pass.state.color_write_mask == toy3d::shader::ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue,
+                  "single-target ColorWrite mask must be parsed");
+            check(asset.resources[0].kind == toy3d::shader::ResourceKind::Texture2D,
+                  "resource kind must be strongly typed");
+            check(asset.resources[0].element_type == toy3d::shader::ResourceElementType::Float4,
+                  "resource element type must be strongly typed");
+            check(asset.resources[2].kind == toy3d::shader::ResourceKind::ComparisonSampler,
+                  "ComparisonSampler must remain distinct from a regular Sampler");
         }
     }
 
@@ -110,28 +107,25 @@ namespace
         check(result.succeeded(), "graphics Pass may omit the pixel entry point");
         if (result.asset && !result.asset->passes.empty())
         {
-            const toy3d::shader::ShaderGraphicsPassState& state =
-                result.asset->passes[0].state;
+            const toy3d::shader::ShaderGraphicsPassState& state = result.asset->passes[0].state;
             check(state.depth_test_enable && state.depth_compare_operation ==
-                    toy3d::shader::ShaderGraphicsPassState::CompareOperation::GreaterEqual,
-                "omitted Pass state must normalize to reversed-Z defaults");
+                                                 toy3d::shader::ShaderGraphicsPassState::CompareOperation::GreaterEqual,
+                  "omitted Pass state must normalize to reversed-Z defaults");
             check(state.depth_write_enable, "omitted DepthWrite must normalize to On");
         }
     }
 
     void test_diagnostic_formatting()
     {
-        const toy3d::shader::Diagnostic diagnostic{
-            toy3d::shader::DiagnosticSeverity::Error,
-            toy3d::shader::DiagnosticCode::IncludeCycle,
-            {"/Engine/Test.shader", 0, 12, 7},
-            "include cycle detected"};
-        check(
-            toy3d::shader::format_diagnostic(diagnostic) ==
-                "/Engine/Test.shader:12:7: error [IncludeCycle]: include cycle detected",
-            "diagnostics must use the shared stable display format");
+        const toy3d::shader::Diagnostic diagnostic{toy3d::shader::DiagnosticSeverity::Error,
+                                                   toy3d::shader::DiagnosticCode::IncludeCycle,
+                                                   {"/Engine/Test.shader", 0, 12, 7},
+                                                   "include cycle detected"};
+        check(toy3d::shader::format_diagnostic(diagnostic) ==
+                  "/Engine/Test.shader:12:7: error [IncludeCycle]: include cycle detected",
+              "diagnostics must use the shared stable display format");
     }
-}
+} // namespace
 
 int main()
 {

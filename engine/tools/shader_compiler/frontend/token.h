@@ -32,4 +32,4 @@ namespace toy3d::shader
         std::string text;
         SourceLocation location;
     };
-}
+} // namespace toy3d::shader

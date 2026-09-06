@@ -18,10 +18,9 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    SpirvReflectionResult reflect_and_validate_spirv(
-        const std::vector<std::uint8_t>& binary,
-        const ShaderCompileRequest& request,
-        const TargetBindingLayout& expected_layout,
-        bool require_all_expected_bindings = true);
+    SpirvReflectionResult reflect_and_validate_spirv(const std::vector<std::uint8_t>& binary,
+                                                     const ShaderCompileRequest& request,
+                                                     const TargetBindingLayout& expected_layout,
+                                                     bool require_all_expected_bindings = true);
 
-}
+} // namespace toy3d::shader

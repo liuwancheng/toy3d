@@ -4,17 +4,14 @@
 
 namespace toy3d
 {
-    ShaderCodeLibraryLoader::ShaderCodeLibraryLoader(PhysicalPath library_path)
-        : library_path_(std::move(library_path))
+    ShaderCodeLibraryLoader::ShaderCodeLibraryLoader(PhysicalPath library_path) : library_path_(std::move(library_path))
     {
     }
 
-    ShaderMapProgramLoadResult ShaderCodeLibraryLoader::load_program(
-        const ShaderMapProgramKey&) const
+    ShaderMapProgramLoadResult ShaderCodeLibraryLoader::load_program(const ShaderMapProgramKey&) const
     {
         ShaderMapProgramLoadResult result;
-        result.error = "ShaderCodeLibrary loading is not implemented for '" +
-            library_path_.utf8() + "'.";
+        result.error = "ShaderCodeLibrary loading is not implemented for '" + library_path_.utf8() + "'.";
         return result;
     }
-}
+} // namespace toy3d

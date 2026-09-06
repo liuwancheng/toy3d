@@ -41,43 +41,25 @@ namespace toy3d
 
         RHIClearValue() = default;
 
-        explicit RHIClearValue(const vec4& value)
-            : value_type(Type::Color)
-            , color(value)
-        {
-        }
+        explicit RHIClearValue(const vec4& value) : value_type(Type::Color), color(value) {}
 
         RHIClearValue(float depth_value, std::uint32_t stencil_value)
-            : value_type(Type::DepthStencil)
-            , depth(depth_value)
-            , stencil(stencil_value)
+            : value_type(Type::DepthStencil), depth(depth_value), stencil(stencil_value)
         {
         }
 
-        static RHIClearValue none()
-        {
-            return {};
-        }
+        static RHIClearValue none() { return {}; }
 
-        static RHIClearValue color_value(const vec4& value)
-        {
-            return RHIClearValue(value);
-        }
+        static RHIClearValue color_value(const vec4& value) { return RHIClearValue(value); }
 
         static RHIClearValue depth_stencil_value(float depth, std::uint32_t stencil)
         {
             return RHIClearValue(depth, stencil);
         }
 
-        Type type() const
-        {
-            return value_type;
-        }
+        Type type() const { return value_type; }
 
-        const vec4& get_clear_color() const
-        {
-            return color;
-        }
+        const vec4& get_clear_color() const { return color; }
 
         void get_clear_depth_stencil(float& out_depth, std::uint32_t& out_stencil) const
         {
@@ -347,28 +329,17 @@ namespace toy3d
     };
 
     RHIStatus validate_buffer_desc(const RHIBufferDesc& desc);
-    RHIStatus validate_buffer_initial_data(
-        const RHIBufferDesc& desc,
-        const RHIInitialData& initial_data);
+    RHIStatus validate_buffer_initial_data(const RHIBufferDesc& desc, const RHIInitialData& initial_data);
     RHIStatus validate_texture_desc(const RHITextureDesc& desc);
-    RHIStatus validate_texture_format_capabilities(
-        const RHITextureDesc& desc,
-        const RHIFormatCapabilities& capabilities);
-    RHIStatus validate_texture_subresource_range(
-        const RHITextureDesc& texture_desc,
-        const RHISubresourceRange& range);
-    RHIStatus validate_texture_initial_data(
-        const RHITextureDesc& desc,
-        const RHIInitialData& initial_data);
-    RHIStatus validate_texture_view_desc(
-        const RHITextureDesc& texture_desc,
-        const RHITextureViewDesc& view_desc);
-    RHIStatus validate_buffer_view_desc(
-        const RHIBufferDesc& buffer_desc,
-        const RHIBufferViewDesc& view_desc);
+    RHIStatus validate_texture_format_capabilities(const RHITextureDesc& desc,
+                                                   const RHIFormatCapabilities& capabilities);
+    RHIStatus validate_texture_subresource_range(const RHITextureDesc& texture_desc, const RHISubresourceRange& range);
+    RHIStatus validate_texture_initial_data(const RHITextureDesc& desc, const RHIInitialData& initial_data);
+    RHIStatus validate_texture_view_desc(const RHITextureDesc& texture_desc, const RHITextureViewDesc& view_desc);
+    RHIStatus validate_buffer_view_desc(const RHIBufferDesc& buffer_desc, const RHIBufferViewDesc& view_desc);
     RHIStatus validate_shader_desc(const RHIShaderDesc& desc);
     RHIStatus validate_binding_layout_desc(const RHIBindingLayoutDesc& desc);
     RHIStatus validate_sampler_desc(const RHISamplerDesc& desc);
     RHIStatus validate_binding_set_desc(const RHIBindingSetDesc& desc);
     RHIStatus validate_graphics_pipeline_desc(const RHIGraphicsPipelineDesc& desc);
-}
+} // namespace toy3d

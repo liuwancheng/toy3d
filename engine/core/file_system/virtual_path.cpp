@@ -62,12 +62,10 @@ namespace toy3d
                     }
                     code_point = (code_point << 6u) | (next & 0x3fu);
                 }
-                const bool overlong =
-                    (continuation_count == 1 && code_point < 0x80u) ||
-                    (continuation_count == 2 && code_point < 0x800u) ||
-                    (continuation_count == 3 && code_point < 0x10000u);
-                if (overlong || code_point > 0x10ffffu ||
-                    (code_point >= 0xd800u && code_point <= 0xdfffu))
+                const bool overlong = (continuation_count == 1 && code_point < 0x80u) ||
+                                      (continuation_count == 2 && code_point < 0x800u) ||
+                                      (continuation_count == 3 && code_point < 0x10000u);
+                if (overlong || code_point > 0x10ffffu || (code_point >= 0xd800u && code_point <= 0xdfffu))
                 {
                     return false;
                 }
@@ -75,37 +73,33 @@ namespace toy3d
             }
             return true;
         }
-    }
+    } // namespace
 
-    VirtualPath::VirtualPath(std::string utf8_path)
-        : utf8_path_(std::move(utf8_path))
-    {
-    }
+    VirtualPath::VirtualPath(std::string utf8_path) : utf8_path_(std::move(utf8_path)) {}
 
     FileResult<VirtualPath> VirtualPath::parse(std::string utf8_path)
     {
         if (utf8_path.empty() || utf8_path.front() != '/')
         {
-            return FileResult<VirtualPath>(invalid_virtual_path(
-                utf8_path, "virtual path must be absolute and start with '/'"));
+            return FileResult<VirtualPath>(
+                invalid_virtual_path(utf8_path, "virtual path must be absolute and start with '/'"));
         }
         if (!is_valid_utf8(utf8_path) || utf8_path.find('\0') != std::string::npos)
         {
-            return FileResult<VirtualPath>(invalid_virtual_path(
-                utf8_path, "virtual path must be valid UTF-8 without embedded nulls"));
+            return FileResult<VirtualPath>(
+                invalid_virtual_path(utf8_path, "virtual path must be valid UTF-8 without embedded nulls"));
         }
         if (utf8_path.find('\\') != std::string::npos)
         {
-            return FileResult<VirtualPath>(invalid_virtual_path(
-                utf8_path, "virtual path must use '/' separators"));
+            return FileResult<VirtualPath>(invalid_virtual_path(utf8_path, "virtual path must use '/' separators"));
         }
         if (utf8_path.size() > 1 && utf8_path.back() == '/')
         {
             utf8_path.pop_back();
             if (utf8_path.back() == '/')
             {
-                return FileResult<VirtualPath>(invalid_virtual_path(
-                    utf8_path, "virtual path must not contain empty segments"));
+                return FileResult<VirtualPath>(
+                    invalid_virtual_path(utf8_path, "virtual path must not contain empty segments"));
             }
         }
 
@@ -116,14 +110,14 @@ namespace toy3d
             const std::size_t segment_end = separator == std::string::npos ? utf8_path.size() : separator;
             if (segment_end == segment_start)
             {
-                return FileResult<VirtualPath>(invalid_virtual_path(
-                    utf8_path, "virtual path must not contain empty segments"));
+                return FileResult<VirtualPath>(
+                    invalid_virtual_path(utf8_path, "virtual path must not contain empty segments"));
             }
             const std::string segment = utf8_path.substr(segment_start, segment_end - segment_start);
             if (segment == "." || segment == "..")
             {
-                return FileResult<VirtualPath>(invalid_virtual_path(
-                    utf8_path, "virtual path must not contain dot segments"));
+                return FileResult<VirtualPath>(
+                    invalid_virtual_path(utf8_path, "virtual path must not contain dot segments"));
             }
             if (separator == std::string::npos)
             {
@@ -148,4 +142,4 @@ namespace toy3d
     {
         return utf8_path_ == "/";
     }
-}
+} // namespace toy3d

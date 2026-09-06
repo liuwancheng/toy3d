@@ -7,20 +7,14 @@ namespace toy3d
 {
     class StaticMeshActor final : public Actor
     {
-    public:
+      public:
         explicit StaticMeshActor(World& world);
         ~StaticMeshActor() override = default;
 
-        StaticMeshComponent& static_mesh_component()
-        {
-            return *static_mesh_component_;
-        }
-        const StaticMeshComponent& static_mesh_component() const
-        {
-            return *static_mesh_component_;
-        }
+        StaticMeshComponent& static_mesh_component() { return *static_mesh_component_; }
+        const StaticMeshComponent& static_mesh_component() const { return *static_mesh_component_; }
 
-    private:
+      private:
         StaticMeshComponent* static_mesh_component_ = nullptr;
     };
-}
+} // namespace toy3d

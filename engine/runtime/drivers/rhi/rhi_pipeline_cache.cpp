@@ -10,91 +10,71 @@ namespace toy3d
 {
     namespace
     {
-        template<typename T>
-        void hash_combine(std::size_t& seed, const T& value)
+        template <typename T> void hash_combine(std::size_t& seed, const T& value)
         {
             seed ^= std::hash<T>{}(value) + 0x9e3779b9U + (seed << 6U) + (seed >> 2U);
         }
 
-        template<typename T>
-        void hash_enum(std::size_t& seed, T value)
+        template <typename T> void hash_enum(std::size_t& seed, T value)
         {
             using Underlying = typename std::underlying_type<T>::type;
             hash_combine(seed, static_cast<Underlying>(value));
         }
 
-        bool equal_vertex_buffer_layout(
-            const RHIGraphicsPipelineDesc::VertexBufferLayout& left,
-            const RHIGraphicsPipelineDesc::VertexBufferLayout& right)
+        bool equal_vertex_buffer_layout(const RHIGraphicsPipelineDesc::VertexBufferLayout& left,
+                                        const RHIGraphicsPipelineDesc::VertexBufferLayout& right)
         {
-            return left.binding == right.binding &&
-                left.stride == right.stride &&
-                left.input_rate == right.input_rate;
+            return left.binding == right.binding && left.stride == right.stride && left.input_rate == right.input_rate;
         }
 
-        bool equal_vertex_attribute(
-            const RHIGraphicsPipelineDesc::VertexAttribute& left,
-            const RHIGraphicsPipelineDesc::VertexAttribute& right)
+        bool equal_vertex_attribute(const RHIGraphicsPipelineDesc::VertexAttribute& left,
+                                    const RHIGraphicsPipelineDesc::VertexAttribute& right)
         {
-            return left.location == right.location &&
-                left.binding == right.binding &&
-                left.format == right.format &&
-                left.offset == right.offset;
+            return left.location == right.location && left.binding == right.binding && left.format == right.format &&
+                   left.offset == right.offset;
         }
 
-        bool equal_rasterization_state(
-            const RHIGraphicsPipelineDesc::RasterizationState& left,
-            const RHIGraphicsPipelineDesc::RasterizationState& right)
+        bool equal_rasterization_state(const RHIGraphicsPipelineDesc::RasterizationState& left,
+                                       const RHIGraphicsPipelineDesc::RasterizationState& right)
         {
-            return left.polygon_mode == right.polygon_mode &&
-                left.cull_mode == right.cull_mode &&
-                left.front_face == right.front_face &&
-                left.depth_clamp_enable == right.depth_clamp_enable;
+            return left.polygon_mode == right.polygon_mode && left.cull_mode == right.cull_mode &&
+                   left.front_face == right.front_face && left.depth_clamp_enable == right.depth_clamp_enable;
         }
 
-        bool equal_stencil_face_state(
-            const RHIGraphicsPipelineDesc::StencilFaceState& left,
-            const RHIGraphicsPipelineDesc::StencilFaceState& right)
+        bool equal_stencil_face_state(const RHIGraphicsPipelineDesc::StencilFaceState& left,
+                                      const RHIGraphicsPipelineDesc::StencilFaceState& right)
         {
             return left.fail_operation == right.fail_operation &&
-                left.depth_fail_operation == right.depth_fail_operation &&
-                left.pass_operation == right.pass_operation &&
-                left.compare_operation == right.compare_operation;
+                   left.depth_fail_operation == right.depth_fail_operation &&
+                   left.pass_operation == right.pass_operation && left.compare_operation == right.compare_operation;
         }
 
-        bool equal_depth_stencil_state(
-            const RHIGraphicsPipelineDesc::DepthStencilState& left,
-            const RHIGraphicsPipelineDesc::DepthStencilState& right)
+        bool equal_depth_stencil_state(const RHIGraphicsPipelineDesc::DepthStencilState& left,
+                                       const RHIGraphicsPipelineDesc::DepthStencilState& right)
         {
             return left.depth_test_enable == right.depth_test_enable &&
-                left.depth_write_enable == right.depth_write_enable &&
-                left.depth_compare_operation == right.depth_compare_operation &&
-                left.stencil_test_enable == right.stencil_test_enable &&
-                left.stencil_read_mask == right.stencil_read_mask &&
-                left.stencil_write_mask == right.stencil_write_mask &&
-                equal_stencil_face_state(left.front_face, right.front_face) &&
-                equal_stencil_face_state(left.back_face, right.back_face);
+                   left.depth_write_enable == right.depth_write_enable &&
+                   left.depth_compare_operation == right.depth_compare_operation &&
+                   left.stencil_test_enable == right.stencil_test_enable &&
+                   left.stencil_read_mask == right.stencil_read_mask &&
+                   left.stencil_write_mask == right.stencil_write_mask &&
+                   equal_stencil_face_state(left.front_face, right.front_face) &&
+                   equal_stencil_face_state(left.back_face, right.back_face);
         }
 
-        bool equal_color_blend_attachment(
-            const RHIGraphicsPipelineDesc::ColorBlendAttachmentState& left,
-            const RHIGraphicsPipelineDesc::ColorBlendAttachmentState& right)
+        bool equal_color_blend_attachment(const RHIGraphicsPipelineDesc::ColorBlendAttachmentState& left,
+                                          const RHIGraphicsPipelineDesc::ColorBlendAttachmentState& right)
         {
-            return left.blend_enable == right.blend_enable &&
-                left.source_color_factor == right.source_color_factor &&
-                left.destination_color_factor == right.destination_color_factor &&
-                left.color_operation == right.color_operation &&
-                left.source_alpha_factor == right.source_alpha_factor &&
-                left.destination_alpha_factor == right.destination_alpha_factor &&
-                left.alpha_operation == right.alpha_operation &&
-                left.color_write_mask == right.color_write_mask;
+            return left.blend_enable == right.blend_enable && left.source_color_factor == right.source_color_factor &&
+                   left.destination_color_factor == right.destination_color_factor &&
+                   left.color_operation == right.color_operation &&
+                   left.source_alpha_factor == right.source_alpha_factor &&
+                   left.destination_alpha_factor == right.destination_alpha_factor &&
+                   left.alpha_operation == right.alpha_operation && left.color_write_mask == right.color_write_mask;
         }
 
-        template<typename T, typename EqualFunction>
-        bool equal_vectors(
-            const std::vector<T>& left,
-            const std::vector<T>& right,
-            EqualFunction equal_function)
+        template <typename T, typename EqualFunction>
+        bool equal_vectors(const std::vector<T>& left, const std::vector<T>& right, EqualFunction equal_function)
         {
             if (left.size() != right.size())
             {
@@ -141,9 +121,7 @@ namespace toy3d
             }
         }
 
-        void hash_stencil_face(
-            std::size_t& seed,
-            const RHIGraphicsPipelineDesc::StencilFaceState& state)
+        void hash_stencil_face(std::size_t& seed, const RHIGraphicsPipelineDesc::StencilFaceState& state)
         {
             hash_enum(seed, state.fail_operation);
             hash_enum(seed, state.depth_fail_operation);
@@ -151,9 +129,7 @@ namespace toy3d
             hash_enum(seed, state.compare_operation);
         }
 
-        void hash_blend_attachment(
-            std::size_t& seed,
-            const RHIGraphicsPipelineDesc::ColorBlendAttachmentState& state)
+        void hash_blend_attachment(std::size_t& seed, const RHIGraphicsPipelineDesc::ColorBlendAttachmentState& state)
         {
             hash_combine(seed, state.blend_enable);
             hash_enum(seed, state.source_color_factor);
@@ -164,40 +140,31 @@ namespace toy3d
             hash_enum(seed, state.alpha_operation);
             hash_enum(seed, state.color_write_mask);
         }
-    }
+    } // namespace
 
     bool RHIShaderKey::operator==(const RHIShaderKey& other) const
     {
-        return stage == other.stage &&
-            target == other.target &&
-            entry_point == other.entry_point &&
-            content_hash == other.content_hash &&
-            bytecode == other.bytecode &&
-            vertex_inputs == other.vertex_inputs;
+        return stage == other.stage && target == other.target && entry_point == other.entry_point &&
+               content_hash == other.content_hash && bytecode == other.bytecode && vertex_inputs == other.vertex_inputs;
     }
 
     bool RHIGraphicsPipelineKey::operator==(const RHIGraphicsPipelineKey& other) const
     {
-        if (!(vertex_shader == other.vertex_shader) ||
-            !(pixel_shader == other.pixel_shader) ||
-            !(binding_layout == other.binding_layout) ||
-            primitive_topology != other.primitive_topology ||
+        if (!(vertex_shader == other.vertex_shader) || !(pixel_shader == other.pixel_shader) ||
+            !(binding_layout == other.binding_layout) || primitive_topology != other.primitive_topology ||
             !equal_vectors(vertex_buffers, other.vertex_buffers, equal_vertex_buffer_layout) ||
             !equal_vectors(vertex_attributes, other.vertex_attributes, equal_vertex_attribute) ||
             !equal_rasterization_state(rasterization, other.rasterization) ||
             !equal_depth_stencil_state(depth_stencil, other.depth_stencil) ||
             color_attachment_count != other.color_attachment_count ||
-            depth_stencil_format != other.depth_stencil_format ||
-            sample_count != other.sample_count)
+            depth_stencil_format != other.depth_stencil_format || sample_count != other.sample_count)
         {
             return false;
         }
         for (std::uint32_t index = 0; index < color_attachment_count; ++index)
         {
             if (color_formats[index] != other.color_formats[index] ||
-                !equal_color_blend_attachment(
-                    color_blend_attachments[index],
-                    other.color_blend_attachments[index]))
+                !equal_color_blend_attachment(color_blend_attachments[index], other.color_blend_attachments[index]))
             {
                 return false;
             }
@@ -205,8 +172,7 @@ namespace toy3d
         return true;
     }
 
-    RHIGraphicsPipelineDesc canonicalize_graphics_pipeline_desc(
-        const RHIGraphicsPipelineDesc& desc)
+    RHIGraphicsPipelineDesc canonicalize_graphics_pipeline_desc(const RHIGraphicsPipelineDesc& desc)
     {
         RHIGraphicsPipelineDesc result = desc;
         for (std::uint32_t index = 0; index < RHI_MAX_COLOR_ATTACHMENTS; ++index)
@@ -239,8 +205,7 @@ namespace toy3d
         return result;
     }
 
-    RHIGraphicsPipelineKey make_graphics_pipeline_key(
-        const RHIGraphicsPipelineDesc& canonical_desc)
+    RHIGraphicsPipelineKey make_graphics_pipeline_key(const RHIGraphicsPipelineDesc& canonical_desc)
     {
         RHIGraphicsPipelineKey key;
         key.vertex_shader = make_shader_key(canonical_desc.vertex_shader);
@@ -312,13 +277,10 @@ namespace toy3d
 
     class RHIGraphicsPipelineCache::Impl final
     {
-    public:
+      public:
         struct Entry
         {
-            explicit Entry(RHIGraphicsPipelineKey pipeline_key)
-                : key(std::move(pipeline_key))
-            {
-            }
+            explicit Entry(RHIGraphicsPipelineKey pipeline_key) : key(std::move(pipeline_key)) {}
 
             RHIGraphicsPipelineKey key;
             RHIGraphicsPipelineRef pipeline;
@@ -331,16 +293,12 @@ namespace toy3d
         std::unordered_map<std::size_t, std::vector<std::shared_ptr<Entry>>> entries;
     };
 
-    RHIGraphicsPipelineCache::RHIGraphicsPipelineCache()
-        : implementation(std::make_unique<Impl>())
-    {
-    }
+    RHIGraphicsPipelineCache::RHIGraphicsPipelineCache() : implementation(std::make_unique<Impl>()) {}
 
     RHIGraphicsPipelineCache::~RHIGraphicsPipelineCache() = default;
 
-    RHIResult<RHIGraphicsPipelineRef> RHIGraphicsPipelineCache::get_or_create(
-        const RHIGraphicsPipelineDesc& desc,
-        const CreateFunction& create_function)
+    RHIResult<RHIGraphicsPipelineRef> RHIGraphicsPipelineCache::get_or_create(const RHIGraphicsPipelineDesc& desc,
+                                                                              const CreateFunction& create_function)
     {
         RHIGraphicsPipelineDesc canonical_desc = canonicalize_graphics_pipeline_desc(desc);
         RHIGraphicsPipelineKey key = make_graphics_pipeline_key(canonical_desc);
@@ -374,25 +332,22 @@ namespace toy3d
                 {
                     return RHIResult<RHIGraphicsPipelineRef>::success(entry->pipeline);
                 }
-                return RHIResult<RHIGraphicsPipelineRef>::failure(
-                    entry->creation_status.code(),
-                    entry->creation_status.message());
+                return RHIResult<RHIGraphicsPipelineRef>::failure(entry->creation_status.code(),
+                                                                  entry->creation_status.message());
             }
         }
 
         if (!create_pipeline)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
-                RHIErrorCode::BackendFailure,
-                "Graphics pipeline cache entered an invalid creation state.");
+                RHIErrorCode::BackendFailure, "Graphics pipeline cache entered an invalid creation state.");
         }
 
         RHIResult<RHIGraphicsPipelineRef> result = create_function(canonical_desc);
         if (result && !result.value())
         {
             result = RHIResult<RHIGraphicsPipelineRef>::failure(
-                RHIErrorCode::BackendFailure,
-                "Backend returned a null graphics pipeline after successful creation.");
+                RHIErrorCode::BackendFailure, "Backend returned a null graphics pipeline after successful creation.");
         }
         {
             std::lock_guard<std::mutex> lock(implementation->mutex);
@@ -435,4 +390,4 @@ namespace toy3d
             retired_entries.swap(implementation->entries);
         }
     }
-}
+} // namespace toy3d

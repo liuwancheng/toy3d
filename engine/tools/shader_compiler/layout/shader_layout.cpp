@@ -34,25 +34,38 @@ namespace toy3d::shader
             {
             case ShaderValueType::Float32:
             case ShaderValueType::Int32:
-            case ShaderValueType::UInt32: return {4, 4, 0, 0};
+            case ShaderValueType::UInt32:
+                return {4, 4, 0, 0};
             case ShaderValueType::Float32x2:
             case ShaderValueType::Int32x2:
-            case ShaderValueType::UInt32x2: return {8, 8, 0, 0};
+            case ShaderValueType::UInt32x2:
+                return {8, 8, 0, 0};
             case ShaderValueType::Float32x3:
             case ShaderValueType::Int32x3:
-            case ShaderValueType::UInt32x3: return {4, 12, 0, 0};
+            case ShaderValueType::UInt32x3:
+                return {4, 12, 0, 0};
             case ShaderValueType::Float32x4:
             case ShaderValueType::Int32x4:
-            case ShaderValueType::UInt32x4: return {16, 16, 0, 0};
-            case ShaderValueType::Float32x2x2: return {16, 32, 2, 2};
-            case ShaderValueType::Float32x2x3: return {16, 48, 2, 3};
-            case ShaderValueType::Float32x2x4: return {16, 64, 2, 4};
-            case ShaderValueType::Float32x3x2: return {16, 32, 3, 2};
-            case ShaderValueType::Float32x3x3: return {16, 48, 3, 3};
-            case ShaderValueType::Float32x3x4: return {16, 64, 3, 4};
-            case ShaderValueType::Float32x4x2: return {16, 32, 4, 2};
-            case ShaderValueType::Float32x4x3: return {16, 48, 4, 3};
-            case ShaderValueType::Float32x4x4: return {16, 64, 4, 4};
+            case ShaderValueType::UInt32x4:
+                return {16, 16, 0, 0};
+            case ShaderValueType::Float32x2x2:
+                return {16, 32, 2, 2};
+            case ShaderValueType::Float32x2x3:
+                return {16, 48, 2, 3};
+            case ShaderValueType::Float32x2x4:
+                return {16, 64, 2, 4};
+            case ShaderValueType::Float32x3x2:
+                return {16, 32, 3, 2};
+            case ShaderValueType::Float32x3x3:
+                return {16, 48, 3, 3};
+            case ShaderValueType::Float32x3x4:
+                return {16, 64, 3, 4};
+            case ShaderValueType::Float32x4x2:
+                return {16, 32, 4, 2};
+            case ShaderValueType::Float32x4x3:
+                return {16, 48, 4, 3};
+            case ShaderValueType::Float32x4x4:
+                return {16, 64, 4, 4};
             }
             return {};
         }
@@ -61,11 +74,16 @@ namespace toy3d::shader
         {
             switch (group)
             {
-            case BindingGroup::Global: return "Global";
-            case BindingGroup::View: return "View";
-            case BindingGroup::Pass: return "Pass";
-            case BindingGroup::Material: return "Material";
-            case BindingGroup::Object: return "Object";
+            case BindingGroup::Global:
+                return "Global";
+            case BindingGroup::View:
+                return "View";
+            case BindingGroup::Pass:
+                return "Pass";
+            case BindingGroup::Material:
+                return "Material";
+            case BindingGroup::Object:
+                return "Object";
             }
             return "Invalid";
         }
@@ -74,18 +92,23 @@ namespace toy3d::shader
         {
             switch (category)
             {
-            case ShaderParameterCategory::Constant: return "Constant";
-            case ShaderParameterCategory::SampledTexture: return "SampledTexture";
-            case ShaderParameterCategory::Sampler: return "Sampler";
-            case ShaderParameterCategory::ReadOnlyBuffer: return "ReadOnlyBuffer";
-            case ShaderParameterCategory::StorageBuffer: return "StorageBuffer";
-            case ShaderParameterCategory::StorageTexture: return "StorageTexture";
+            case ShaderParameterCategory::Constant:
+                return "Constant";
+            case ShaderParameterCategory::SampledTexture:
+                return "SampledTexture";
+            case ShaderParameterCategory::Sampler:
+                return "Sampler";
+            case ShaderParameterCategory::ReadOnlyBuffer:
+                return "ReadOnlyBuffer";
+            case ShaderParameterCategory::StorageBuffer:
+                return "StorageBuffer";
+            case ShaderParameterCategory::StorageTexture:
+                return "StorageTexture";
             }
             return "Invalid";
         }
 
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
+        template <typename T> void append_integer(std::vector<std::uint8_t>& bytes, T value)
         {
             using Unsigned = std::make_unsigned_t<T>;
             const Unsigned unsigned_value = static_cast<Unsigned>(value);
@@ -95,8 +118,7 @@ namespace toy3d::shader
             }
         }
 
-        template<typename T>
-        void append_enum(std::vector<std::uint8_t>& bytes, T value)
+        template <typename T> void append_enum(std::vector<std::uint8_t>& bytes, T value)
         {
             append_integer(bytes, static_cast<std::uint32_t>(value));
         }
@@ -119,7 +141,8 @@ namespace toy3d::shader
         {
             append_enum(bytes, value.kind);
             append_integer(bytes, static_cast<std::uint32_t>(value.numbers.size()));
-            for (double number : value.numbers) append_double(bytes, number);
+            for (double number : value.numbers)
+                append_double(bytes, number);
             append_string(bytes, value.text);
         }
 
@@ -128,28 +151,34 @@ namespace toy3d::shader
             switch (type)
             {
             case PropertyType::Float:
-            case PropertyType::Range: return ShaderValueType::Float32;
-            case PropertyType::Float2: return ShaderValueType::Float32x2;
-            case PropertyType::Float3: return ShaderValueType::Float32x3;
+            case PropertyType::Range:
+                return ShaderValueType::Float32;
+            case PropertyType::Float2:
+                return ShaderValueType::Float32x2;
+            case PropertyType::Float3:
+                return ShaderValueType::Float32x3;
             case PropertyType::Float4:
-            case PropertyType::Color: return ShaderValueType::Float32x4;
-            case PropertyType::Matrix4x4: return ShaderValueType::Float32x4x4;
-            default: return std::nullopt;
+            case PropertyType::Color:
+                return ShaderValueType::Float32x4;
+            case PropertyType::Matrix4x4:
+                return ShaderValueType::Float32x4x4;
+            default:
+                return std::nullopt;
             }
         }
 
         std::uint32_t value_component_count(ShaderValueType type)
         {
             const ValueTypeInfo info = value_type_info(type);
-            if (info.matrix_columns != 0) return info.matrix_rows * info.matrix_columns;
+            if (info.matrix_columns != 0)
+                return info.matrix_rows * info.matrix_columns;
             return info.size / 4u;
         }
 
         bool is_sampler_preset(std::string_view value)
         {
-            return value == "PointClamp" || value == "PointWrap" || value == "LinearClamp" ||
-                value == "LinearWrap" || value == "TrilinearClamp" || value == "TrilinearWrap" ||
-                value == "ShadowCompareClamp";
+            return value == "PointClamp" || value == "PointWrap" || value == "LinearClamp" || value == "LinearWrap" ||
+                   value == "TrilinearClamp" || value == "TrilinearWrap" || value == "ShadowCompareClamp";
         }
 
         std::optional<ShaderParameterCategory> resource_category(ResourceKind kind)
@@ -185,10 +214,14 @@ namespace toy3d::shader
         {
             switch (type)
             {
-            case PropertyType::TextureCube: return ResourceKind::TextureCube;
-            case PropertyType::Sampler: return ResourceKind::Sampler;
-            case PropertyType::ComparisonSampler: return ResourceKind::ComparisonSampler;
-            default: return ResourceKind::Texture2D;
+            case PropertyType::TextureCube:
+                return ResourceKind::TextureCube;
+            case PropertyType::Sampler:
+                return ResourceKind::Sampler;
+            case PropertyType::ComparisonSampler:
+                return ResourceKind::ComparisonSampler;
+            default:
+                return ResourceKind::Texture2D;
             }
         }
 
@@ -262,11 +295,12 @@ namespace toy3d::shader
             }
         }
 
-        void add_error(std::vector<Diagnostic>& diagnostics, DiagnosticCode code, const SourceLocation& location, std::string message)
+        void add_error(std::vector<Diagnostic>& diagnostics, DiagnosticCode code, const SourceLocation& location,
+                       std::string message)
         {
             diagnostics.push_back({DiagnosticSeverity::Error, code, location, std::move(message)});
         }
-    }
+    } // namespace
 
     bool ConstantBufferPackResult::succeeded() const
     {
@@ -289,33 +323,38 @@ namespace toy3d::shader
         {
         case ResourceElementType::Float:
         case ResourceElementType::Int:
-        case ResourceElementType::UInt: return 4;
+        case ResourceElementType::UInt:
+            return 4;
         case ResourceElementType::Float2:
         case ResourceElementType::Int2:
-        case ResourceElementType::UInt2: return 8;
+        case ResourceElementType::UInt2:
+            return 8;
         case ResourceElementType::Float3:
         case ResourceElementType::Float4:
         case ResourceElementType::Int3:
         case ResourceElementType::Int4:
         case ResourceElementType::UInt3:
-        case ResourceElementType::UInt4: return 16;
+        case ResourceElementType::UInt4:
+            return 16;
         case ResourceElementType::Float2x2:
         case ResourceElementType::Float3x2:
-        case ResourceElementType::Float4x2: return 32;
+        case ResourceElementType::Float4x2:
+            return 32;
         case ResourceElementType::Float2x3:
         case ResourceElementType::Float3x3:
-        case ResourceElementType::Float4x3: return 48;
+        case ResourceElementType::Float4x3:
+            return 48;
         case ResourceElementType::Float2x4:
         case ResourceElementType::Float3x4:
-        case ResourceElementType::Float4x4: return 64;
-        case ResourceElementType::None: return 0;
+        case ResourceElementType::Float4x4:
+            return 64;
+        case ResourceElementType::None:
+            return 0;
         }
         return 0;
     }
 
-    ConstantBufferPackResult pack_constant_buffer(
-        BindingGroup group,
-        const std::vector<ConstantMemberInput>& inputs)
+    ConstantBufferPackResult pack_constant_buffer(BindingGroup group, const std::vector<ConstantMemberInput>& inputs)
     {
         ConstantBufferPackResult result;
         ConstantBufferLayout layout;
@@ -329,14 +368,16 @@ namespace toy3d::shader
             member.parameter_id = make_shader_parameter_id(group, ShaderParameterCategory::Constant, input.name);
             if (member.parameter_id == 0)
             {
-                add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, input.location, "ShaderParameterId 0 is reserved as invalid.");
+                add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, input.location,
+                          "ShaderParameterId 0 is reserved as invalid.");
             }
-            const bool duplicate_id = std::any_of(layout.members.begin(), layout.members.end(), [&](const ShaderConstantMember& existing) {
-                return existing.parameter_id == member.parameter_id;
-            });
+            const bool duplicate_id =
+                std::any_of(layout.members.begin(), layout.members.end(), [&](const ShaderConstantMember& existing)
+                            { return existing.parameter_id == member.parameter_id; });
             if (duplicate_id)
             {
-                add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, input.location, "Constant member ShaderParameterId collides with an earlier member.");
+                add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, input.location,
+                          "Constant member ShaderParameterId collides with an earlier member.");
             }
             member.name = input.name;
             member.type = input.type;
@@ -365,10 +406,12 @@ namespace toy3d::shader
         if (layout.size > max_constant_buffer_size)
         {
             const SourceLocation location = inputs.empty() ? SourceLocation{} : inputs.back().location;
-            add_error(result.diagnostics, DiagnosticCode::ConstantBufferSizeLimitExceeded, location, "Constant buffer exceeds the ToyShaderABI 16 KiB group limit.");
+            add_error(result.diagnostics, DiagnosticCode::ConstantBufferSizeLimitExceeded, location,
+                      "Constant buffer exceeds the ToyShaderABI 16 KiB group limit.");
             return result;
         }
-        if (!result.diagnostics.empty()) return result;
+        if (!result.diagnostics.empty())
+            return result;
         result.layout = std::move(layout);
         return result;
     }
@@ -390,11 +433,9 @@ namespace toy3d::shader
             {"toy_inverse_view_projection", ShaderValueType::Float32x4x4},
             {"toy_camera_position", ShaderValueType::Float32x3},
             {"toy_camera_direction", ShaderValueType::Float32x3}};
-        ConstantBufferPackResult view_buffer =
-            pack_constant_buffer(BindingGroup::View, view_inputs);
-        result.diagnostics.insert(
-            result.diagnostics.end(),
-            view_buffer.diagnostics.begin(), view_buffer.diagnostics.end());
+        ConstantBufferPackResult view_buffer = pack_constant_buffer(BindingGroup::View, view_inputs);
+        result.diagnostics.insert(result.diagnostics.end(), view_buffer.diagnostics.begin(),
+                                  view_buffer.diagnostics.end());
         if (view_buffer.layout)
         {
             layout.constant_buffers.push_back(std::move(*view_buffer.layout));
@@ -407,33 +448,43 @@ namespace toy3d::shader
             if (value_type)
             {
                 const std::uint32_t expected_count = value_component_count(*value_type);
-                if (property.default_value.kind != DefaultValueKind::Numbers || property.default_value.numbers.size() != expected_count)
+                if (property.default_value.kind != DefaultValueKind::Numbers ||
+                    property.default_value.numbers.size() != expected_count)
                 {
-                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location, "Property '" + property.name + "' requires exactly " + std::to_string(expected_count) + " numeric default component(s).");
+                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location,
+                              "Property '" + property.name + "' requires exactly " + std::to_string(expected_count) +
+                                  " numeric default component(s).");
                 }
                 if (property.type == PropertyType::Range && property.default_value.numbers.size() == 1u &&
                     ((property.range_min && property.default_value.numbers[0] < *property.range_min) ||
                      (property.range_max && property.default_value.numbers[0] > *property.range_max)))
                 {
-                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location, "Range property default must be within its declared bounds.");
+                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location,
+                              "Range property default must be within its declared bounds.");
                 }
                 material_inputs.push_back({property.name, *value_type, 1u, property.location});
             }
             else if (property.type == PropertyType::Texture2D || property.type == PropertyType::TextureCube)
             {
-                if (property.default_value.kind != DefaultValueKind::String && property.default_value.kind != DefaultValueKind::Identifier)
+                if (property.default_value.kind != DefaultValueKind::String &&
+                    property.default_value.kind != DefaultValueKind::Identifier)
                 {
-                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location, "Texture property default must be an asset or builtin texture name.");
+                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location,
+                              "Texture property default must be an asset or builtin texture name.");
                 }
             }
             else
             {
-                const bool valid_preset = property.default_value.kind == DefaultValueKind::Identifier && is_sampler_preset(property.default_value.text);
-                const bool comparison_matches = property.type != PropertyType::ComparisonSampler || property.default_value.text == "ShadowCompareClamp";
-                const bool regular_matches = property.type != PropertyType::Sampler || property.default_value.text != "ShadowCompareClamp";
+                const bool valid_preset = property.default_value.kind == DefaultValueKind::Identifier &&
+                                          is_sampler_preset(property.default_value.text);
+                const bool comparison_matches = property.type != PropertyType::ComparisonSampler ||
+                                                property.default_value.text == "ShadowCompareClamp";
+                const bool regular_matches =
+                    property.type != PropertyType::Sampler || property.default_value.text != "ShadowCompareClamp";
                 if (!valid_preset || !comparison_matches || !regular_matches)
                 {
-                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location, "Sampler property default is not valid for its sampler type.");
+                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location,
+                              "Sampler property default is not valid for its sampler type.");
                 }
             }
         }
@@ -445,9 +496,9 @@ namespace toy3d::shader
             {
                 for (ShaderConstantMember& member : packed.layout->members)
                 {
-                    const auto property = std::find_if(asset.properties.begin(), asset.properties.end(), [&](const Property& candidate) {
-                        return candidate.name == member.name;
-                    });
+                    const auto property =
+                        std::find_if(asset.properties.begin(), asset.properties.end(),
+                                     [&](const Property& candidate) { return candidate.name == member.name; });
                     if (property != asset.properties.end())
                     {
                         write_numeric_default(member, property->default_value);
@@ -465,17 +516,15 @@ namespace toy3d::shader
                 (parameter.default_value.kind != DefaultValueKind::Numbers ||
                  parameter.default_value.numbers.size() != expected_count))
             {
-                add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue,
-                    parameter.default_value.location,
-                    "Parameter '" + parameter.name + "' requires exactly " +
-                    std::to_string(expected_count) + " numeric default component(s).");
+                add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
+                          "Parameter '" + parameter.name + "' requires exactly " + std::to_string(expected_count) +
+                              " numeric default component(s).");
             }
             if (std::any_of(parameter.default_value.numbers.begin(), parameter.default_value.numbers.end(),
-                [](double value) { return !std::isfinite(value); }))
+                            [](double value) { return !std::isfinite(value); }))
             {
-                add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue,
-                    parameter.default_value.location,
-                    "Parameter '" + parameter.name + "' default must be finite.");
+                add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
+                          "Parameter '" + parameter.name + "' default must be finite.");
             }
             pass_inputs.push_back({parameter.name, parameter.type, 1u, parameter.location});
         }
@@ -487,8 +536,9 @@ namespace toy3d::shader
             {
                 for (ShaderConstantMember& member : packed.layout->members)
                 {
-                    const auto parameter = std::find_if(asset.parameters.begin(), asset.parameters.end(),
-                        [&](const Parameter& candidate) { return candidate.name == member.name; });
+                    const auto parameter =
+                        std::find_if(asset.parameters.begin(), asset.parameters.end(),
+                                     [&](const Parameter& candidate) { return candidate.name == member.name; });
                     if (parameter != asset.parameters.end())
                     {
                         write_numeric_default(member, parameter->default_value);
@@ -498,13 +548,10 @@ namespace toy3d::shader
             }
         }
 
-        const std::vector<ConstantMemberInput> object_inputs = {
-            {"toy_object_to_world", ShaderValueType::Float32x4x4}};
-        ConstantBufferPackResult object_buffer =
-            pack_constant_buffer(BindingGroup::Object, object_inputs);
-        result.diagnostics.insert(
-            result.diagnostics.end(),
-            object_buffer.diagnostics.begin(), object_buffer.diagnostics.end());
+        const std::vector<ConstantMemberInput> object_inputs = {{"toy_object_to_world", ShaderValueType::Float32x4x4}};
+        ConstantBufferPackResult object_buffer = pack_constant_buffer(BindingGroup::Object, object_inputs);
+        result.diagnostics.insert(result.diagnostics.end(), object_buffer.diagnostics.begin(),
+                                  object_buffer.diagnostics.end());
         if (object_buffer.layout)
         {
             layout.constant_buffers.push_back(std::move(*object_buffer.layout));
@@ -521,8 +568,9 @@ namespace toy3d::shader
             resource.group = BindingGroup::Material;
             resource.resource_kind = property_resource_kind(property.type);
             resource.category = *resource_category(resource.resource_kind);
-            resource.element_type = resource.category == ShaderParameterCategory::SampledTexture ?
-                ResourceElementType::Float4 : ResourceElementType::None;
+            resource.element_type = resource.category == ShaderParameterCategory::SampledTexture
+                                        ? ResourceElementType::Float4
+                                        : ResourceElementType::None;
             resource.default_value = property.default_value;
             resource.location = property.location;
             resource.parameter_id = make_shader_parameter_id(resource.group, resource.category, resource.name);
@@ -541,29 +589,36 @@ namespace toy3d::shader
             resource.parameter_id = make_shader_parameter_id(resource.group, resource.category, resource.name);
             layout.resources.push_back(std::move(resource));
         }
-        std::sort(layout.resources.begin(), layout.resources.end(), [](const ShaderResourceParameter& left, const ShaderResourceParameter& right) {
-            if (left.group != right.group) return left.group < right.group;
-            if (left.category != right.category) return left.category < right.category;
-            return left.parameter_id < right.parameter_id;
-        });
+        std::sort(layout.resources.begin(), layout.resources.end(),
+                  [](const ShaderResourceParameter& left, const ShaderResourceParameter& right)
+                  {
+                      if (left.group != right.group)
+                          return left.group < right.group;
+                      if (left.category != right.category)
+                          return left.category < right.category;
+                      return left.parameter_id < right.parameter_id;
+                  });
 
         std::unordered_map<ShaderParameterId, std::string> identities;
         for (const ConstantBufferLayout& buffer : layout.constant_buffers)
         {
             for (const ShaderConstantMember& member : buffer.members)
             {
-                identities.emplace(member.parameter_id, std::string(group_name(buffer.group)) + "/Constant/" + member.name);
+                identities.emplace(member.parameter_id,
+                                   std::string(group_name(buffer.group)) + "/Constant/" + member.name);
             }
         }
         for (const ShaderResourceParameter& resource : layout.resources)
         {
-            const std::string identity = std::string(group_name(resource.group)) + "/" + category_name(resource.category) + "/" + resource.name;
+            const std::string identity =
+                std::string(group_name(resource.group)) + "/" + category_name(resource.category) + "/" + resource.name;
             // Structured binding names both map insertion results directly;
             // this keeps the collision branch tied to the returned iterator.
             const auto [found, inserted] = identities.emplace(resource.parameter_id, identity);
             if (!inserted && found->second != identity)
             {
-                add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, resource.location, "ShaderParameterId collision between '" + found->second + "' and '" + identity + "'.");
+                add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, resource.location,
+                          "ShaderParameterId collision between '" + found->second + "' and '" + identity + "'.");
             }
         }
         if (!result.diagnostics.empty())
@@ -580,9 +635,11 @@ namespace toy3d::shader
             append_string(schema_bytes, property.display_name);
             append_enum(schema_bytes, property.type);
             append_integer(schema_bytes, static_cast<std::uint8_t>(property.range_min.has_value()));
-            if (property.range_min) append_double(schema_bytes, *property.range_min);
+            if (property.range_min)
+                append_double(schema_bytes, *property.range_min);
             append_integer(schema_bytes, static_cast<std::uint8_t>(property.range_max.has_value()));
-            if (property.range_max) append_double(schema_bytes, *property.range_max);
+            if (property.range_max)
+                append_double(schema_bytes, *property.range_max);
             append_default_value(schema_bytes, property.default_value);
         }
         layout.parameter_schema_hash = sha256(schema_bytes);
@@ -593,9 +650,8 @@ namespace toy3d::shader
         return result;
     }
 
-    ActiveLayoutResult build_active_layout(
-        const LogicalShaderLayout& logical_layout,
-        const std::vector<ParameterUsage>& usage)
+    ActiveLayoutResult build_active_layout(const LogicalShaderLayout& logical_layout,
+                                           const std::vector<ParameterUsage>& usage)
     {
         ActiveLayoutResult result;
         ActiveShaderLayout active;
@@ -613,16 +669,16 @@ namespace toy3d::shader
             {
                 known_names.insert(member.name);
                 const auto found = usage_by_name.find(member.name);
-                if (found != usage_by_name.end()) stages |= found->second;
+                if (found != usage_by_name.end())
+                    stages |= found->second;
             }
             if (stages != ShaderStageFlags::None)
             {
                 ActiveBinding binding;
                 binding.binding_id = make_shader_parameter_id(buffer.group, ShaderParameterCategory::Constant, "");
                 binding.name = std::string("toy_") + group_name(buffer.group) + "_data";
-                std::transform(binding.name.begin(), binding.name.end(), binding.name.begin(), [](unsigned char value) {
-                    return static_cast<char>(value >= 'A' && value <= 'Z' ? value - 'A' + 'a' : value);
-                });
+                std::transform(binding.name.begin(), binding.name.end(), binding.name.begin(), [](unsigned char value)
+                               { return static_cast<char>(value >= 'A' && value <= 'Z' ? value - 'A' + 'a' : value); });
                 binding.group = buffer.group;
                 binding.category = ShaderParameterCategory::Constant;
                 binding.stages = stages;
@@ -634,18 +690,22 @@ namespace toy3d::shader
         {
             known_names.insert(resource.name);
             const auto found = usage_by_name.find(resource.name);
-            if (found == usage_by_name.end() || found->second == ShaderStageFlags::None) continue;
-            active.bindings.push_back({resource.parameter_id, resource.name, resource.group, resource.category, found->second, nullptr, &resource});
+            if (found == usage_by_name.end() || found->second == ShaderStageFlags::None)
+                continue;
+            active.bindings.push_back({resource.parameter_id, resource.name, resource.group, resource.category,
+                                       found->second, nullptr, &resource});
         }
         for (const ParameterUsage& entry : usage)
         {
             if (known_names.find(entry.name) == known_names.end())
             {
-                add_error(result.diagnostics, DiagnosticCode::UnknownParameterUsage, {}, "Program usage references unknown Shader parameter '" + entry.name + "'.");
+                add_error(result.diagnostics, DiagnosticCode::UnknownParameterUsage, {},
+                          "Program usage references unknown Shader parameter '" + entry.name + "'.");
             }
         }
-        if (!result.diagnostics.empty()) return result;
+        if (!result.diagnostics.empty())
+            return result;
         result.layout = std::move(active);
         return result;
     }
-}
+} // namespace toy3d::shader

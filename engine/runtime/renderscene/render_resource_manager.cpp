@@ -12,22 +12,19 @@ namespace toy3d
     {
         RHIStatus invalid_caller_status()
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResourceManager is mutable only on its logical Rendering Thread");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResourceManager is mutable only on its logical Rendering Thread");
         }
 
         RHIStatus terminal_status()
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResourceManager no longer accepts work after terminal clear");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResourceManager no longer accepts work after terminal clear");
         }
-    }
+    } // namespace
 
     RenderResourceManager::RenderResourceManager(RHIDevice& device)
-        : owner_thread_id_(std::this_thread::get_id())
-        , device_(device)
+        : owner_thread_id_(std::this_thread::get_id()), device_(device)
     {
     }
 
@@ -48,12 +45,10 @@ namespace toy3d
         {
             return terminal_status();
         }
-        if (resource.state_ != RenderResourceState::Uninitialized ||
-            resource.pending_manager_ != nullptr)
+        if (resource.state_ != RenderResourceState::Uninitialized || resource.pending_manager_ != nullptr)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResource begin_init requires an uninitialized resource");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResource begin_init requires an uninitialized resource");
         }
 
         resource.pending_manager_ = this;
@@ -73,12 +68,10 @@ namespace toy3d
         {
             return terminal_status();
         }
-        if (resource.state_ != RenderResourceState::Ready ||
-            resource.pending_manager_ != nullptr)
+        if (resource.state_ != RenderResourceState::Ready || resource.pending_manager_ != nullptr)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResource begin_update requires a Ready resource without pending work");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResource begin_update requires a Ready resource without pending work");
         }
 
         // Ready remains the published long-term state while the manager's
@@ -89,8 +82,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus RenderResourceManager::record_pending_uploads(
-        RHIGraphicsCommandContext& context)
+    RHIStatus RenderResourceManager::record_pending_uploads(RHIGraphicsCommandContext& context)
     {
         if (!is_on_owner_thread())
         {
@@ -102,9 +94,8 @@ namespace toy3d
         }
         if (!recording_resources_.empty() || recording_failed_)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResourceManager recording must be committed or discarded before reuse");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResourceManager recording must be committed or discarded before reuse");
         }
 
         // RT-only mutation makes this value snapshot stable for the duration of
@@ -117,9 +108,8 @@ namespace toy3d
                  resource->state_ != RenderResourceState::Ready))
             {
                 recording_failed_ = true;
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "RenderResourceManager pending collection invariant was violated");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "RenderResourceManager pending collection invariant was violated");
             }
 
             const RHIStatus recorded = resource->record_upload(device_, context);
@@ -131,10 +121,8 @@ namespace toy3d
                 resource->on_recording_discarded();
                 const bool deterministic_update_failure =
                     resource->state_ == RenderResourceState::Ready &&
-                    (recorded.code() == RHIErrorCode::InvalidArgument ||
-                     recorded.code() == RHIErrorCode::Unsupported);
-                if (resource->state_ == RenderResourceState::Failed ||
-                    deterministic_update_failure)
+                    (recorded.code() == RHIErrorCode::InvalidArgument || recorded.code() == RHIErrorCode::Unsupported);
+                if (resource->state_ == RenderResourceState::Failed || deterministic_update_failure)
                 {
                     remove_pending(resource);
                     resource->pending_manager_ = nullptr;
@@ -149,9 +137,8 @@ namespace toy3d
                 remove_pending(resource);
                 resource->pending_manager_ = nullptr;
                 recording_failed_ = true;
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "RenderResource changed long-term state during upload recording");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "RenderResource changed long-term state during upload recording");
             }
 
             recording_resources_.push_back(resource);
@@ -171,9 +158,8 @@ namespace toy3d
         }
         if (recording_failed_)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "A failed RenderResource recording can only be discarded");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "A failed RenderResource recording can only be discarded");
         }
 
         for (RenderResource* const resource : recording_resources_)
@@ -182,9 +168,8 @@ namespace toy3d
                 (resource->state_ != RenderResourceState::PendingUpload &&
                  resource->state_ != RenderResourceState::Ready))
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::BackendFailure,
-                    "RenderResourceManager cannot commit an invalid recording entry");
+                return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                          "RenderResourceManager cannot commit an invalid recording entry");
             }
         }
 
@@ -242,16 +227,12 @@ namespace toy3d
         }
         if (resource.state_ == RenderResourceState::Released)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResource has already been released");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "RenderResource has already been released");
         }
-        if (resource.pending_manager_ != nullptr &&
-            resource.pending_manager_ != this)
+        if (resource.pending_manager_ != nullptr && resource.pending_manager_ != this)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Pending RenderResource belongs to another manager");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pending RenderResource belongs to another manager");
         }
 
         if (remove_recording(&resource))
@@ -309,16 +290,13 @@ namespace toy3d
 
     void RenderResourceManager::remove_pending(RenderResource* resource)
     {
-        pending_resources_.erase(
-            std::remove(
-                pending_resources_.begin(), pending_resources_.end(), resource),
-            pending_resources_.end());
+        pending_resources_.erase(std::remove(pending_resources_.begin(), pending_resources_.end(), resource),
+                                 pending_resources_.end());
     }
 
     bool RenderResourceManager::remove_recording(RenderResource* resource)
     {
-        const auto found = std::find(
-            recording_resources_.begin(), recording_resources_.end(), resource);
+        const auto found = std::find(recording_resources_.begin(), recording_resources_.end(), resource);
         if (found == recording_resources_.end())
         {
             return false;
@@ -326,4 +304,4 @@ namespace toy3d
         recording_resources_.erase(found);
         return true;
     }
-}
+} // namespace toy3d

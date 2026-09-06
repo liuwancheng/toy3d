@@ -34,7 +34,7 @@ namespace toy3d::shader
 
     class ShaderSourceProvider
     {
-    public:
+      public:
         virtual ~ShaderSourceProvider() = default;
         virtual const std::string& validation_error() const = 0;
         virtual ShaderSourceLoadResult load(const std::string& virtual_path) const = 0;
@@ -42,13 +42,13 @@ namespace toy3d::shader
 
     class RegisteredShaderSourceProvider final : public ShaderSourceProvider
     {
-    public:
+      public:
         explicit RegisteredShaderSourceProvider(std::vector<VirtualIncludeFile> files);
         const std::string& validation_error() const override;
         ShaderSourceLoadResult load(const std::string& virtual_path) const override;
 
-    private:
+      private:
         std::unordered_map<std::string, ShaderSourceRecord> files_;
         std::string validation_error_;
     };
-}
+} // namespace toy3d::shader

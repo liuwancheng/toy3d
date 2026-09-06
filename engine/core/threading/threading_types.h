@@ -23,15 +23,9 @@ namespace toy3d
         ThreadErrorCode code = ThreadErrorCode::None;
         std::string message;
 
-        bool succeeded() const
-        {
-            return code == ThreadErrorCode::None;
-        }
+        bool succeeded() const { return code == ThreadErrorCode::None; }
 
-        static ThreadStatus success()
-        {
-            return {};
-        }
+        static ThreadStatus success() { return {}; }
 
         static ThreadStatus failure(ThreadErrorCode error_code, std::string error_message)
         {
@@ -55,4 +49,4 @@ namespace toy3d
         ThreadStatus status;
         std::uint32_t return_code = 0;
     };
-}
+} // namespace toy3d

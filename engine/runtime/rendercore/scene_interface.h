@@ -14,22 +14,18 @@ namespace toy3d
     // Renderer, RHI, or backend state to Game-side callers.
     class SceneInterface
     {
-    public:
+      public:
         SceneInterface() = default;
         virtual ~SceneInterface() = 0;
 
         SceneInterface(const SceneInterface&) = delete;
         SceneInterface& operator=(const SceneInterface&) = delete;
 
-        virtual void add_primitive(
-            std::unique_ptr<PrimitiveSceneProxy> proxy) = 0;
-        virtual void update_primitive_transform(
-            PrimitiveSceneProxy* proxy,
-            Matrix4 world_transform,
-            AxisAlignedBounds world_bounds,
-            bool visible) = 0;
+        virtual void add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy) = 0;
+        virtual void update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
+                                                AxisAlignedBounds world_bounds, bool visible) = 0;
         virtual void remove_primitive(PrimitiveSceneProxy* proxy) = 0;
     };
 
     inline SceneInterface::~SceneInterface() = default;
-}
+} // namespace toy3d

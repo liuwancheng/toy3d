@@ -46,39 +46,27 @@ namespace toy3d
 
     class FileSystem
     {
-    public:
+      public:
         FileStatus add_mount(const FileMountDesc& descriptor);
         FileStatus freeze();
         bool frozen() const;
 
         FileResult<FileStat> stat(const VirtualPath& path) const;
-        FileResult<std::unique_ptr<FileHandle>> open(
-            const VirtualPath& path,
-            FileOpenMode mode) const;
+        FileResult<std::unique_ptr<FileHandle>> open(const VirtualPath& path, FileOpenMode mode) const;
         FileResult<std::vector<std::uint8_t>> read_binary(
-            const VirtualPath& path,
-            std::size_t maximum_size = default_maximum_file_read_size) const;
-        FileResult<std::string> read_text_utf8(
-            const VirtualPath& path,
-            std::size_t maximum_size = default_maximum_file_read_size) const;
-        FileStatus write_binary(
-            const VirtualPath& path,
-            const std::vector<std::uint8_t>& bytes,
-            FileWriteMode mode);
-        FileStatus write_binary_atomic(
-            const VirtualPath& path,
-            const std::vector<std::uint8_t>& bytes,
-            FilePublishMode mode);
-        FileResult<std::vector<VirtualDirectoryEntry>> enumerate(
-            const VirtualPath& path) const;
+            const VirtualPath& path, std::size_t maximum_size = default_maximum_file_read_size) const;
+        FileResult<std::string> read_text_utf8(const VirtualPath& path,
+                                               std::size_t maximum_size = default_maximum_file_read_size) const;
+        FileStatus write_binary(const VirtualPath& path, const std::vector<std::uint8_t>& bytes, FileWriteMode mode);
+        FileStatus write_binary_atomic(const VirtualPath& path, const std::vector<std::uint8_t>& bytes,
+                                       FilePublishMode mode);
+        FileResult<std::vector<VirtualDirectoryEntry>> enumerate(const VirtualPath& path) const;
         FileStatus create_directories(const VirtualPath& path);
         FileStatus remove_file(const VirtualPath& path);
         FileStatus remove_empty_directory(const VirtualPath& path);
-        FileStatus rename_no_replace(
-            const VirtualPath& source,
-            const VirtualPath& destination);
+        FileStatus rename_no_replace(const VirtualPath& source, const VirtualPath& destination);
 
-    private:
+      private:
         struct RegisteredMount
         {
             FileMountDesc descriptor;
@@ -90,12 +78,10 @@ namespace toy3d
             StorePath path;
         };
 
-        FileResult<std::vector<RoutedLayer>> route_read(
-            const VirtualPath& path,
-            bool enumeration) const;
+        FileResult<std::vector<RoutedLayer>> route_read(const VirtualPath& path, bool enumeration) const;
         FileResult<RoutedLayer> route_write(const VirtualPath& path) const;
 
         std::vector<RegisteredMount> mounts_;
         bool frozen_ = false;
     };
-}
+} // namespace toy3d

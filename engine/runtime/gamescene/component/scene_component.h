@@ -18,7 +18,7 @@ namespace toy3d
 
     class SceneComponent : public ActorComponent
     {
-    public:
+      public:
         explicit SceneComponent(Actor& owner);
         virtual ~SceneComponent();
 
@@ -34,10 +34,10 @@ namespace toy3d
         bool set_local_transform(const Transform& transform);
         bool attach_to(SceneComponent* new_parent, AttachmentRule rule);
 
-    protected:
+      protected:
         virtual void on_world_transform_updated() {}
 
-    private:
+      private:
         static bool validate_transform(const Transform& transform);
         bool would_create_cycle(const SceneComponent& new_parent) const;
         void update_component_to_world();
@@ -48,4 +48,4 @@ namespace toy3d
         Matrix4 world_transform_;
         Quaternion world_rotation_;
     };
-}
+} // namespace toy3d

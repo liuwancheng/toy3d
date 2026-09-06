@@ -30,7 +30,7 @@ namespace toy3d
 
     class ImGuiSystem final
     {
-    public:
+      public:
         ImGuiSystem() = default;
         ~ImGuiSystem();
 
@@ -44,7 +44,7 @@ namespace toy3d
         const ImGuiFontAtlasData& font_atlas() const noexcept;
         bool initialized() const noexcept { return context_ != nullptr; }
 
-    private:
+      private:
         void process_input_event(const InputEvent& event);
         ImGuiSnapshotResult snapshot(const ImDrawData& source) const;
 
@@ -52,4 +52,4 @@ namespace toy3d
         ImGuiFontAtlasData font_atlas_;
         bool frame_active_ = false;
     };
-}
+} // namespace toy3d

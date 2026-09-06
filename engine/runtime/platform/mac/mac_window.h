@@ -8,7 +8,7 @@ namespace toy3d
 {
     class MacWindow : public IWindow
     {
-    public:
+      public:
         MacWindow();
         ~MacWindow() final;
 
@@ -21,13 +21,15 @@ namespace toy3d
 
         GLFWwindow* get_glfw_window() const { return glfw_window; }
         void* get_metal_layer() const { return metal_layer; }
-    private:
+
+      private:
         bool create_glfw_window();
         void destroy_glfw_window();
-    private:
+
+      private:
         GLFWwindow* glfw_window = nullptr;
         // The Cocoa content view retains this platform presentation layer. The
         // Renderer releases its surface before MacWindow destroys the view.
         void* metal_layer = nullptr;
     };
-}
+} // namespace toy3d

@@ -16,16 +16,14 @@ namespace toy3d
         return result;
     }
 
-    RenderFenceWaitResult RenderFenceWaitResult::framework_failure(
-        TaskGraphStatus status)
+    RenderFenceWaitResult RenderFenceWaitResult::framework_failure(TaskGraphStatus status)
     {
         RenderFenceWaitResult result;
         result.framework_status_ = std::move(status);
         return result;
     }
 
-    RenderFenceWaitResult RenderFenceWaitResult::renderer_terminal(
-        std::string error_message)
+    RenderFenceWaitResult RenderFenceWaitResult::renderer_terminal(std::string error_message)
     {
         RenderFenceWaitResult result;
         result.rendering_thread_reached_ = true;
@@ -36,9 +34,7 @@ namespace toy3d
 
     bool RenderFenceWaitResult::succeeded() const noexcept
     {
-        return rendering_thread_reached_
-            && framework_status_.succeeded()
-            && !renderer_terminal_;
+        return rendering_thread_reached_ && framework_status_.succeeded() && !renderer_terminal_;
     }
 
     bool RenderFenceWaitResult::rendering_thread_reached() const noexcept
@@ -63,33 +59,28 @@ namespace toy3d
 
     TaskGraphStatus RenderCommandFence::begin_fence()
     {
-        TaskGraphInterface* task_graph =
-            render_command_detail::get_render_command_task_graph();
+        TaskGraphInterface* task_graph = render_command_detail::get_render_command_task_graph();
         if (task_graph == nullptr)
         {
-            return TaskGraphStatus::failure(
-                TaskGraphErrorCode::Stopped,
-                "RenderCommandFence cannot begin while the render facade is closed");
+            return TaskGraphStatus::failure(TaskGraphErrorCode::Stopped,
+                                            "RenderCommandFence cannot begin while the render facade is closed");
         }
         if (task_graph->get_current_thread_if_known() != NamedThread::GameThread)
         {
-            return TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidCaller,
-                "RenderCommandFence must begin on the GameThread");
+            return TaskGraphStatus::failure(TaskGraphErrorCode::InvalidCaller,
+                                            "RenderCommandFence must begin on the GameThread");
         }
         if (completion_event_ && !completion_event_->is_complete())
         {
-            return TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidState,
-                "RenderCommandFence cannot begin again before its prior wait completes");
+            return TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                            "RenderCommandFence cannot begin again before its prior wait completes");
         }
 
         try
         {
             const NamedThread logical_render_thread = task_graph->get_render_thread();
             GraphEventRef completion = dispatch_graph_task(
-                *task_graph,
-                "RenderCommandFence",
+                *task_graph, "RenderCommandFence",
                 [logical_render_thread](NamedThread current_thread, const GraphEventRef&)
                 {
                     if (current_thread != logical_render_thread)
@@ -99,9 +90,7 @@ namespace toy3d
                             "RenderCommandFence executed outside the logical RenderingThread"));
                     }
                 },
-                NamedThread::RenderingThread,
-                nullptr,
-                SubsequentsMode::TrackSubsequents);
+                NamedThread::RenderingThread, nullptr, SubsequentsMode::TrackSubsequents);
             task_graph_ = task_graph;
             completion_event_ = std::move(completion);
             return TaskGraphStatus::success();
@@ -112,19 +101,16 @@ namespace toy3d
         }
         catch (const std::exception& exception)
         {
-            return TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidState, exception.what());
+            return TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState, exception.what());
         }
         catch (...)
         {
-            return TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidState,
-                "unknown exception while beginning RenderCommandFence");
+            return TaskGraphStatus::failure(TaskGraphErrorCode::InvalidState,
+                                            "unknown exception while beginning RenderCommandFence");
         }
     }
 
-    RenderFenceWaitResult RenderCommandFence::wait(
-        const std::function<RenderFenceWaitResult()>& status_provider) const
+    RenderFenceWaitResult RenderCommandFence::wait(const std::function<RenderFenceWaitResult()>& status_provider) const
     {
         if (!completion_event_)
         {
@@ -134,8 +120,7 @@ namespace toy3d
                 try
                 {
                     result = status_provider();
-                    if (result.framework_status().succeeded()
-                        && !result.has_renderer_terminal())
+                    if (result.framework_status().succeeded() && !result.has_renderer_terminal())
                     {
                         result = RenderFenceWaitResult::reached();
                     }
@@ -143,29 +128,24 @@ namespace toy3d
                 catch (const std::exception& exception)
                 {
                     return RenderFenceWaitResult::framework_failure(
-                        TaskGraphStatus::failure(
-                            TaskGraphErrorCode::TaskFailed, exception.what()));
+                        TaskGraphStatus::failure(TaskGraphErrorCode::TaskFailed, exception.what()));
                 }
                 catch (...)
                 {
-                    return RenderFenceWaitResult::framework_failure(
-                        TaskGraphStatus::failure(
-                            TaskGraphErrorCode::TaskFailed,
-                            "render status provider threw an unknown exception"));
+                    return RenderFenceWaitResult::framework_failure(TaskGraphStatus::failure(
+                        TaskGraphErrorCode::TaskFailed, "render status provider threw an unknown exception"));
                 }
             }
             return result;
         }
         if (task_graph_ == nullptr)
         {
-            return RenderFenceWaitResult::framework_failure(
-                TaskGraphStatus::failure(
-                    TaskGraphErrorCode::InvalidState,
-                    "RenderCommandFence lost its Task Graph before wait"));
+            return RenderFenceWaitResult::framework_failure(TaskGraphStatus::failure(
+                TaskGraphErrorCode::InvalidState, "RenderCommandFence lost its Task Graph before wait"));
         }
 
-        const TaskWaitResult waited = task_graph_->wait_until_task_completes(
-            completion_event_, NamedThread::GameThread);
+        const TaskWaitResult waited =
+            task_graph_->wait_until_task_completes(completion_event_, NamedThread::GameThread);
         if (!waited.succeeded())
         {
             return RenderFenceWaitResult::framework_failure(waited.status);
@@ -178,8 +158,7 @@ namespace toy3d
         try
         {
             RenderFenceWaitResult result = status_provider();
-            if (result.framework_status().succeeded()
-                && !result.has_renderer_terminal())
+            if (result.framework_status().succeeded() && !result.has_renderer_terminal())
             {
                 return RenderFenceWaitResult::reached();
             }
@@ -188,15 +167,12 @@ namespace toy3d
         catch (const std::exception& exception)
         {
             return RenderFenceWaitResult::framework_failure(
-                TaskGraphStatus::failure(
-                    TaskGraphErrorCode::TaskFailed, exception.what()));
+                TaskGraphStatus::failure(TaskGraphErrorCode::TaskFailed, exception.what()));
         }
         catch (...)
         {
-            return RenderFenceWaitResult::framework_failure(
-                TaskGraphStatus::failure(
-                    TaskGraphErrorCode::TaskFailed,
-                    "render status provider threw an unknown exception"));
+            return RenderFenceWaitResult::framework_failure(TaskGraphStatus::failure(
+                TaskGraphErrorCode::TaskFailed, "render status provider threw an unknown exception"));
         }
     }
 
@@ -205,11 +181,8 @@ namespace toy3d
         return !completion_event_ || completion_event_->is_complete();
     }
 
-    FrameEndSync::FrameEndSync(
-        bool allow_one_frame_thread_lag,
-        std::function<RenderFenceWaitResult()> status_provider)
-        : allow_one_frame_thread_lag_(allow_one_frame_thread_lag),
-          status_provider_(std::move(status_provider))
+    FrameEndSync::FrameEndSync(bool allow_one_frame_thread_lag, std::function<RenderFenceWaitResult()> status_provider)
+        : allow_one_frame_thread_lag_(allow_one_frame_thread_lag), status_provider_(std::move(status_provider))
     {
     }
 
@@ -227,8 +200,7 @@ namespace toy3d
         return fences_[fence_index_].wait(status_provider_);
     }
 
-    RenderFenceWaitResult flush_rendering_commands(
-        const std::function<RenderFenceWaitResult()>& status_provider)
+    RenderFenceWaitResult flush_rendering_commands(const std::function<RenderFenceWaitResult()>& status_provider)
     {
         RenderCommandFence fence;
         const TaskGraphStatus begun = fence.begin_fence();
@@ -238,4 +210,4 @@ namespace toy3d
         }
         return fence.wait(status_provider);
     }
-}
+} // namespace toy3d

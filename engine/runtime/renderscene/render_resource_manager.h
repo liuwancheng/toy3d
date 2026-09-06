@@ -15,7 +15,7 @@ namespace toy3d
     // strictly non-owning and are never an Asset cache or identity registry.
     class RenderResourceManager final
     {
-    public:
+      public:
         explicit RenderResourceManager(RHIDevice& device);
         ~RenderResourceManager();
 
@@ -26,14 +26,13 @@ namespace toy3d
 
         RHIStatus begin_init(RenderResource& resource);
         RHIStatus begin_update(RenderResource& resource);
-        RHIStatus record_pending_uploads(
-            RHIGraphicsCommandContext& context);
+        RHIStatus record_pending_uploads(RHIGraphicsCommandContext& context);
         RHIStatus commit_recording();
         RHIStatus discard_recording();
         RHIStatus release(RenderResource& resource);
         RHIStatus clear_for_terminal();
 
-    private:
+      private:
         bool is_on_owner_thread() const;
         void remove_pending(RenderResource* resource);
         bool remove_recording(RenderResource* resource);
@@ -45,4 +44,4 @@ namespace toy3d
         bool recording_failed_ = false;
         bool terminal_ = false;
     };
-}
+} // namespace toy3d

@@ -20,8 +20,7 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    ShaderMapEntryWriteResult write_verified_shader_map_entry(
-        PlatformFile& platform_file,
-        const PhysicalPath& shader_map_root,
-        const ShaderMapEntry& entry);
-}
+    ShaderMapEntryWriteResult write_verified_shader_map_entry(PlatformFile& platform_file,
+                                                              const PhysicalPath& shader_map_root,
+                                                              const ShaderMapEntry& entry);
+} // namespace toy3d::shader

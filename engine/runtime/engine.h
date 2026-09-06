@@ -29,21 +29,21 @@ namespace toy3d
     class ShaderMapProgram;
     struct ImGuiDrawData;
 
-	enum class ShaderLoadMode
-	{
-		ShaderMapEntry,
-		ShaderCodeLibrary
-	};
+    enum class ShaderLoadMode
+    {
+        ShaderMapEntry,
+        ShaderCodeLibrary
+    };
 
-	struct ShaderLoadConfig
-	{
-		ShaderLoadMode mode = ShaderLoadMode::ShaderCodeLibrary;
-		PhysicalPath path;
-	};
+    struct ShaderLoadConfig
+    {
+        ShaderLoadMode mode = ShaderLoadMode::ShaderCodeLibrary;
+        PhysicalPath path;
+    };
 
     class Engine
     {
-    public:
+      public:
         Engine();
         ~Engine();
 
@@ -60,7 +60,7 @@ namespace toy3d
 
         IWindow* get_window() { return window.get(); }
 
-    private:
+      private:
         FileStatus initialize_file_system();
         bool initialize_builtin_shader_programs();
         bool initialize_render_framework();
@@ -96,4 +96,4 @@ namespace toy3d
         bool platform_initialized = false;
         bool engine_exited = false;
     };
-}//toy3d
+} // namespace toy3d

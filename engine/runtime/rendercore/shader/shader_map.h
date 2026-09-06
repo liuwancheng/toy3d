@@ -11,7 +11,7 @@ namespace toy3d
 {
     class ShaderMapProgram final
     {
-    public:
+      public:
         ShaderMapProgram(const ShaderMapProgram&) = delete;
         ShaderMapProgram& operator=(const ShaderMapProgram&) = delete;
         // ShaderMap moves validated program data into make_shared; the data
@@ -20,10 +20,9 @@ namespace toy3d
         ShaderMapProgram& operator=(ShaderMapProgram&&) noexcept = default;
 
         const ShaderMapProgramData& data() const;
-        const ShaderParameterBinding* find_parameter_binding(
-            ShaderParameterId parameter_id) const;
+        const ShaderParameterBinding* find_parameter_binding(ShaderParameterId parameter_id) const;
 
-    private:
+      private:
         friend class ShaderMap;
 
         explicit ShaderMapProgram(ShaderMapProgramData data);
@@ -44,12 +43,12 @@ namespace toy3d
 
     class ShaderMap final
     {
-    public:
+      public:
         explicit ShaderMap(ShaderMapLoader& loader);
 
         ShaderMapProgramResult find_or_load(const ShaderMapProgramKey& key);
 
-    private:
+      private:
         struct ProgramKey
         {
             std::string shader_name;
@@ -71,4 +70,4 @@ namespace toy3d
         ShaderMapLoader& loader_;
         std::unordered_map<ProgramKey, ShaderMapProgramRef, ProgramKeyHash> programs_;
     };
-}
+} // namespace toy3d

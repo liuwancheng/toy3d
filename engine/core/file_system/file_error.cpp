@@ -11,4 +11,4 @@ namespace toy3d
     {
         return {};
     }
-}
+} // namespace toy3d

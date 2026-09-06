@@ -12,11 +12,16 @@ namespace toy3d::shader
         {
             switch (group)
             {
-            case BindingGroup::Global: return "Global";
-            case BindingGroup::View: return "View";
-            case BindingGroup::Pass: return "Pass";
-            case BindingGroup::Material: return "Material";
-            case BindingGroup::Object: return "Object";
+            case BindingGroup::Global:
+                return "Global";
+            case BindingGroup::View:
+                return "View";
+            case BindingGroup::Pass:
+                return "Pass";
+            case BindingGroup::Material:
+                return "Material";
+            case BindingGroup::Object:
+                return "Object";
             }
             return "Invalid";
         }
@@ -25,18 +30,23 @@ namespace toy3d::shader
         {
             switch (category)
             {
-            case ShaderParameterCategory::Constant: return "Constant";
-            case ShaderParameterCategory::SampledTexture: return "SampledTexture";
-            case ShaderParameterCategory::Sampler: return "Sampler";
-            case ShaderParameterCategory::ReadOnlyBuffer: return "ReadOnlyBuffer";
-            case ShaderParameterCategory::StorageBuffer: return "StorageBuffer";
-            case ShaderParameterCategory::StorageTexture: return "StorageTexture";
+            case ShaderParameterCategory::Constant:
+                return "Constant";
+            case ShaderParameterCategory::SampledTexture:
+                return "SampledTexture";
+            case ShaderParameterCategory::Sampler:
+                return "Sampler";
+            case ShaderParameterCategory::ReadOnlyBuffer:
+                return "ReadOnlyBuffer";
+            case ShaderParameterCategory::StorageBuffer:
+                return "StorageBuffer";
+            case ShaderParameterCategory::StorageTexture:
+                return "StorageTexture";
             }
             return "Invalid";
         }
 
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
+        template <typename T> void append_integer(std::vector<std::uint8_t>& bytes, T value)
         {
             using Unsigned = std::make_unsigned_t<T>;
             const Unsigned converted = static_cast<Unsigned>(value);
@@ -46,17 +56,14 @@ namespace toy3d::shader
             }
         }
 
-        template<typename T>
-        void append_enum(std::vector<std::uint8_t>& bytes, T value)
+        template <typename T> void append_enum(std::vector<std::uint8_t>& bytes, T value)
         {
             append_integer(bytes, static_cast<std::uint32_t>(value));
         }
 
         // string_view allows stable hashing of owned strings and reflected
         // names through one byte-serialization path without temporary copies.
-        void append_string(
-            std::vector<std::uint8_t>& bytes,
-            std::string_view value)
+        void append_string(std::vector<std::uint8_t>& bytes, std::string_view value)
         {
             append_integer(bytes, static_cast<std::uint32_t>(value.size()));
             bytes.insert(bytes.end(), value.begin(), value.end());
@@ -69,23 +76,22 @@ namespace toy3d::shader
             {
                 stages.push_back(&stage);
             }
-            std::sort(stages.begin(), stages.end(), [](const auto* left, const auto* right) {
-                return static_cast<std::uint32_t>(left->request.stage) <
-                    static_cast<std::uint32_t>(right->request.stage);
-            });
+            std::sort(stages.begin(), stages.end(),
+                      [](const auto* left, const auto* right)
+                      {
+                          return static_cast<std::uint32_t>(left->request.stage) <
+                                 static_cast<std::uint32_t>(right->request.stage);
+                      });
             return stages;
         }
 
-        template<typename Enum>
-        bool enum_at_most(Enum value, Enum maximum)
+        template <typename Enum> bool enum_at_most(Enum value, Enum maximum)
         {
-            return static_cast<std::uint32_t>(value) <=
-                static_cast<std::uint32_t>(maximum);
+            return static_cast<std::uint32_t>(value) <= static_cast<std::uint32_t>(maximum);
         }
 
-        void append_stencil_face(
-            std::vector<std::uint8_t>& bytes,
-            const ShaderGraphicsPassState::StencilFaceState& state)
+        void append_stencil_face(std::vector<std::uint8_t>& bytes,
+                                 const ShaderGraphicsPassState::StencilFaceState& state)
         {
             append_enum(bytes, state.compare_operation);
             append_enum(bytes, state.fail_operation);
@@ -93,21 +99,17 @@ namespace toy3d::shader
             append_enum(bytes, state.pass_operation);
         }
 
-        bool same_stencil_face(
-            const ShaderGraphicsPassState::StencilFaceState& left,
-            const ShaderGraphicsPassState::StencilFaceState& right)
+        bool same_stencil_face(const ShaderGraphicsPassState::StencilFaceState& left,
+                               const ShaderGraphicsPassState::StencilFaceState& right)
         {
-            return left.compare_operation == right.compare_operation &&
-                left.fail_operation == right.fail_operation &&
-                left.depth_fail_operation == right.depth_fail_operation &&
-                left.pass_operation == right.pass_operation;
+            return left.compare_operation == right.compare_operation && left.fail_operation == right.fail_operation &&
+                   left.depth_fail_operation == right.depth_fail_operation &&
+                   left.pass_operation == right.pass_operation;
         }
-    }
+    } // namespace
 
-    ShaderParameterId make_shader_parameter_id(
-        BindingGroup group,
-        ShaderParameterCategory category,
-        std::string_view name)
+    ShaderParameterId make_shader_parameter_id(BindingGroup group, ShaderParameterCategory category,
+                                               std::string_view name)
     {
         std::vector<std::uint8_t> identity;
         append_string(identity, group_name(group));
@@ -124,8 +126,7 @@ namespace toy3d::shader
 
     ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right)
     {
-        return static_cast<ShaderStageFlags>(
-            static_cast<std::uint8_t>(left) | static_cast<std::uint8_t>(right));
+        return static_cast<ShaderStageFlags>(static_cast<std::uint8_t>(left) | static_cast<std::uint8_t>(right));
     }
 
     ShaderStageFlags& operator|=(ShaderStageFlags& left, ShaderStageFlags right)
@@ -139,10 +140,8 @@ namespace toy3d::shader
         return (static_cast<std::uint8_t>(flags) & static_cast<std::uint8_t>(stage)) != 0;
     }
 
-    Sha256Hash calculate_target_binding_hash(
-        ShaderTarget target,
-        std::uint32_t mapping_version,
-        const std::vector<ShaderMapBinding>& bindings)
+    Sha256Hash calculate_target_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
+                                             const std::vector<ShaderMapBinding>& bindings)
     {
         std::vector<std::uint8_t> bytes;
         append_enum(bytes, target);
@@ -162,8 +161,7 @@ namespace toy3d::shader
         return sha256(bytes);
     }
 
-    Sha256Hash calculate_shader_stage_reflection_hash(
-        const ShaderStageReflection& reflection)
+    Sha256Hash calculate_shader_stage_reflection_hash(const ShaderStageReflection& reflection)
     {
         std::vector<std::uint8_t> bytes;
         append_enum(bytes, reflection.stage);
@@ -175,8 +173,8 @@ namespace toy3d::shader
             append_string(bytes, binding.name);
             append_enum(bytes, binding.group);
             append_enum(bytes, binding.category);
-            append_integer(bytes, binding.resource_kind ?
-                static_cast<std::uint32_t>(*binding.resource_kind) : 0xffffffffu);
+            append_integer(bytes,
+                           binding.resource_kind ? static_cast<std::uint32_t>(*binding.resource_kind) : 0xffffffffu);
             append_enum(bytes, binding.stages);
             append_integer(bytes, binding.array_count);
             append_integer(bytes, binding.descriptor_set);
@@ -210,24 +208,14 @@ namespace toy3d::shader
         return sha256(bytes);
     }
 
-    bool is_valid_shader_graphics_pass_state(
-        const ShaderGraphicsPassState& state)
+    bool is_valid_shader_graphics_pass_state(const ShaderGraphicsPassState& state)
     {
-        const auto valid_stencil_face = [](
-            const ShaderGraphicsPassState::StencilFaceState& face)
+        const auto valid_stencil_face = [](const ShaderGraphicsPassState::StencilFaceState& face)
         {
-            return enum_at_most(
-                       face.compare_operation,
-                       ShaderGraphicsPassState::CompareOperation::Always) &&
-                enum_at_most(
-                    face.fail_operation,
-                    ShaderGraphicsPassState::StencilOperation::DecrementWrap) &&
-                enum_at_most(
-                    face.depth_fail_operation,
-                    ShaderGraphicsPassState::StencilOperation::DecrementWrap) &&
-                enum_at_most(
-                    face.pass_operation,
-                    ShaderGraphicsPassState::StencilOperation::DecrementWrap);
+            return enum_at_most(face.compare_operation, ShaderGraphicsPassState::CompareOperation::Always) &&
+                   enum_at_most(face.fail_operation, ShaderGraphicsPassState::StencilOperation::DecrementWrap) &&
+                   enum_at_most(face.depth_fail_operation, ShaderGraphicsPassState::StencilOperation::DecrementWrap) &&
+                   enum_at_most(face.pass_operation, ShaderGraphicsPassState::StencilOperation::DecrementWrap);
         };
         const auto valid_color_mask = [](ShaderGraphicsPassState::ColorWriteMask mask)
         {
@@ -248,62 +236,43 @@ namespace toy3d::shader
         const ShaderGraphicsPassState::StencilFaceState default_stencil_face;
         const ShaderGraphicsPassState::BlendState default_blend;
         const bool canonical_stencil =
-            (state.stencil.mode == ShaderGraphicsPassState::StencilMode::Off &&
-             state.stencil.read_mask == 0xffu && state.stencil.write_mask == 0xffu &&
-             same_stencil_face(state.stencil.front, default_stencil_face) &&
+            (state.stencil.mode == ShaderGraphicsPassState::StencilMode::Off && state.stencil.read_mask == 0xffu &&
+             state.stencil.write_mask == 0xffu && same_stencil_face(state.stencil.front, default_stencil_face) &&
              same_stencil_face(state.stencil.back, default_stencil_face)) ||
             (state.stencil.mode == ShaderGraphicsPassState::StencilMode::FrontAndBack &&
              same_stencil_face(state.stencil.front, state.stencil.back)) ||
             state.stencil.mode == ShaderGraphicsPassState::StencilMode::SeparateFaces;
-        const bool canonical_blend = state.blend.enabled ||
-            (state.blend.source_color_factor == default_blend.source_color_factor &&
-             state.blend.destination_color_factor == default_blend.destination_color_factor &&
-             state.blend.color_operation == default_blend.color_operation &&
-             state.blend.source_alpha_factor == default_blend.source_alpha_factor &&
-             state.blend.destination_alpha_factor == default_blend.destination_alpha_factor &&
-             state.blend.alpha_operation == default_blend.alpha_operation);
+        const bool canonical_blend =
+            state.blend.enabled || (state.blend.source_color_factor == default_blend.source_color_factor &&
+                                    state.blend.destination_color_factor == default_blend.destination_color_factor &&
+                                    state.blend.color_operation == default_blend.color_operation &&
+                                    state.blend.source_alpha_factor == default_blend.source_alpha_factor &&
+                                    state.blend.destination_alpha_factor == default_blend.destination_alpha_factor &&
+                                    state.blend.alpha_operation == default_blend.alpha_operation);
 
-        return enum_at_most(
-                   state.primitive_topology,
-                   ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip) &&
-            enum_at_most(state.cull_mode, ShaderGraphicsPassState::CullMode::Back) &&
-            enum_at_most(
-                state.front_face, ShaderGraphicsPassState::FrontFace::CounterClockwise) &&
-            enum_at_most(state.fill_mode, ShaderGraphicsPassState::FillMode::Wireframe) &&
-            enum_at_most(
-                state.depth_compare_operation,
-                ShaderGraphicsPassState::CompareOperation::Always) &&
-            enum_at_most(
-                state.stencil.mode, ShaderGraphicsPassState::StencilMode::SeparateFaces) &&
-            valid_stencil_face(state.stencil.front) &&
-            valid_stencil_face(state.stencil.back) &&
-            enum_at_most(
-                state.blend.source_color_factor,
-                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
-            enum_at_most(
-                state.blend.destination_color_factor,
-                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
-            enum_at_most(
-                state.blend.color_operation,
-                ShaderGraphicsPassState::BlendOperation::Maximum) &&
-            enum_at_most(
-                state.blend.source_alpha_factor,
-                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
-            enum_at_most(
-                state.blend.destination_alpha_factor,
-                ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
-            enum_at_most(
-                state.blend.alpha_operation,
-                ShaderGraphicsPassState::BlendOperation::Maximum) &&
-            valid_color_mask(state.color_write_mask) && canonical_stencil &&
-            canonical_blend &&
-            (state.depth_test_enable ||
-             state.depth_compare_operation ==
-                 ShaderGraphicsPassState::CompareOperation::GreaterEqual);
+        return enum_at_most(state.primitive_topology, ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip) &&
+               enum_at_most(state.cull_mode, ShaderGraphicsPassState::CullMode::Back) &&
+               enum_at_most(state.front_face, ShaderGraphicsPassState::FrontFace::CounterClockwise) &&
+               enum_at_most(state.fill_mode, ShaderGraphicsPassState::FillMode::Wireframe) &&
+               enum_at_most(state.depth_compare_operation, ShaderGraphicsPassState::CompareOperation::Always) &&
+               enum_at_most(state.stencil.mode, ShaderGraphicsPassState::StencilMode::SeparateFaces) &&
+               valid_stencil_face(state.stencil.front) && valid_stencil_face(state.stencil.back) &&
+               enum_at_most(state.blend.source_color_factor,
+                            ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+               enum_at_most(state.blend.destination_color_factor,
+                            ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+               enum_at_most(state.blend.color_operation, ShaderGraphicsPassState::BlendOperation::Maximum) &&
+               enum_at_most(state.blend.source_alpha_factor,
+                            ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+               enum_at_most(state.blend.destination_alpha_factor,
+                            ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate) &&
+               enum_at_most(state.blend.alpha_operation, ShaderGraphicsPassState::BlendOperation::Maximum) &&
+               valid_color_mask(state.color_write_mask) && canonical_stencil && canonical_blend &&
+               (state.depth_test_enable ||
+                state.depth_compare_operation == ShaderGraphicsPassState::CompareOperation::GreaterEqual);
     }
 
-    Sha256Hash calculate_shader_graphics_pass_state_hash(
-        const ShaderGraphicsPassState& state)
+    Sha256Hash calculate_shader_graphics_pass_state_hash(const ShaderGraphicsPassState& state)
     {
         std::vector<std::uint8_t> bytes;
         append_enum(bytes, state.primitive_topology);
@@ -340,8 +309,7 @@ namespace toy3d::shader
         append_integer(bytes, entry.mapping_version);
         bytes.insert(bytes.end(), entry.logical_layout_hash.begin(), entry.logical_layout_hash.end());
         bytes.insert(bytes.end(), entry.target_binding_hash.begin(), entry.target_binding_hash.end());
-        const Sha256Hash pass_state_hash =
-            calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
+        const Sha256Hash pass_state_hash = calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
         bytes.insert(bytes.end(), pass_state_hash.begin(), pass_state_hash.end());
         bytes.insert(bytes.end(), entry.pass_template_hash.begin(), entry.pass_template_hash.end());
         append_integer(bytes, entry.variant_id_version);
@@ -350,10 +318,9 @@ namespace toy3d::shader
         for (const ShaderCodeEntry* stage : sorted_stages(entry))
         {
             append_enum(bytes, stage->request.stage);
-            bytes.insert(bytes.end(), stage->request.compile_key.begin(),
-                stage->request.compile_key.end());
+            bytes.insert(bytes.end(), stage->request.compile_key.begin(), stage->request.compile_key.end());
             bytes.insert(bytes.end(), stage->reflection.reflection_hash.begin(),
-                stage->reflection.reflection_hash.end());
+                         stage->reflection.reflection_hash.end());
             const Sha256Hash binary_hash = sha256(stage->binary);
             bytes.insert(bytes.end(), binary_hash.begin(), binary_hash.end());
         }
@@ -384,10 +351,9 @@ namespace toy3d::shader
             for (const ShaderDependency& dependency : stage->request.dependencies)
             {
                 append_string(bytes, dependency.virtual_path);
-                bytes.insert(bytes.end(), dependency.content_hash.begin(),
-                    dependency.content_hash.end());
+                bytes.insert(bytes.end(), dependency.content_hash.begin(), dependency.content_hash.end());
             }
         }
         return sha256(bytes);
     }
-}
+} // namespace toy3d::shader

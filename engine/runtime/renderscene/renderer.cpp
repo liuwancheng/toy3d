@@ -47,19 +47,14 @@ namespace toy3d
         return secondary_diagnostic_;
     }
 
-    Renderer::Renderer(
-        TaskGraphInterface& task_graph,
-        RHISurfaceRef primary_surface,
-        RHIViewportContextDesc viewport_desc,
-        std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
-        std::shared_ptr<const GlobalShaderMap> global_shader_map,
-        std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas)
-        : task_graph_(task_graph),
-          primary_surface_input_(std::move(primary_surface)),
-          viewport_desc_(std::move(viewport_desc)),
-          device_factory_(std::move(device_factory)),
-          global_shader_map_input_(std::move(global_shader_map)),
-          imgui_font_atlas_input_(std::move(imgui_font_atlas))
+    Renderer::Renderer(TaskGraphInterface& task_graph, RHISurfaceRef primary_surface,
+                       RHIViewportContextDesc viewport_desc,
+                       std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
+                       std::shared_ptr<const GlobalShaderMap> global_shader_map,
+                       std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas)
+        : task_graph_(task_graph), primary_surface_input_(std::move(primary_surface)),
+          viewport_desc_(std::move(viewport_desc)), device_factory_(std::move(device_factory)),
+          global_shader_map_input_(std::move(global_shader_map)), imgui_font_atlas_input_(std::move(imgui_font_atlas))
     {
     }
 
@@ -81,20 +76,15 @@ namespace toy3d
     {
         if (!is_on_logical_rendering_thread())
         {
-            return ThreadStatus::failure(
-                ThreadErrorCode::InvalidCaller,
-                "Renderer must initialize on the logical Rendering Thread");
+            return ThreadStatus::failure(ThreadErrorCode::InvalidCaller,
+                                         "Renderer must initialize on the logical Rendering Thread");
         }
         RendererLifecycleState expected = RendererLifecycleState::Stopped;
-        if (!lifecycle_state_.compare_exchange_strong(
-                expected, RendererLifecycleState::Starting))
+        if (!lifecycle_state_.compare_exchange_strong(expected, RendererLifecycleState::Starting))
         {
-            return ThreadStatus::failure(
-                ThreadErrorCode::InvalidState,
-                "Renderer can initialize only from Stopped");
+            return ThreadStatus::failure(ThreadErrorCode::InvalidState, "Renderer can initialize only from Stopped");
         }
-        if (!primary_surface_input_ || !device_factory_ ||
-            !global_shader_map_input_)
+        if (!primary_surface_input_ || !device_factory_ || !global_shader_map_input_)
         {
             return fail_startup(RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -109,9 +99,8 @@ namespace toy3d
         device_ = std::move(created_device).value();
         if (!device_)
         {
-            return fail_startup(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer device factory succeeded without a device"));
+            return fail_startup(
+                RHIStatus::failure(RHIErrorCode::BackendFailure, "Renderer device factory succeeded without a device"));
         }
 
         RHIDeviceDesc device_desc;
@@ -127,20 +116,17 @@ namespace toy3d
         {
             return fail_startup(step_status);
         }
-        shader_program_cache_ =
-            std::make_unique<RHIShaderProgramCache>(*device_);
+        shader_program_cache_ = std::make_unique<RHIShaderProgramCache>(*device_);
 
         resource_manager_ = std::make_unique<RenderResourceManager>(*device_);
-        render_scene_ = std::make_unique<RenderScene>(
-            task_graph_, *resource_manager_);
+        render_scene_ = std::make_unique<RenderScene>(task_graph_, *resource_manager_);
         scene_render_targets_ = std::make_unique<SceneRenderTargets>();
 
         if (imgui_font_atlas_input_)
         {
             imgui_renderer_ = std::make_unique<ImGuiRenderer>();
-            step_status = imgui_renderer_->initialize(
-                *device_, *shader_program_cache_, *global_shader_map_input_,
-                *imgui_font_atlas_input_);
+            step_status = imgui_renderer_->initialize(*device_, *shader_program_cache_, *global_shader_map_input_,
+                                                      *imgui_font_atlas_input_);
             if (!step_status)
             {
                 return fail_startup(step_status);
@@ -148,8 +134,7 @@ namespace toy3d
         }
 
         tonemap_pass_resources_ = std::make_unique<TonemapPassResources>();
-        step_status = tonemap_pass_resources_->initialize(
-            *device_, *shader_program_cache_, *global_shader_map_input_);
+        step_status = tonemap_pass_resources_->initialize(*device_, *shader_program_cache_, *global_shader_map_input_);
         if (!step_status)
         {
             return fail_startup(step_status);
@@ -157,13 +142,10 @@ namespace toy3d
 
         RHITextureDesc placeholder_desc;
         placeholder_desc.format = PixelFormat::R8G8B8A8UNorm;
-        placeholder_desc.usage =
-            RHIResourceUsage::ShaderResource |
-            RHIResourceUsage::CopyDestination;
+        placeholder_desc.usage = RHIResourceUsage::ShaderResource | RHIResourceUsage::CopyDestination;
         placeholder_desc.initial_access = RHIAccess::Common;
         placeholder_desc.debug_name = "RendererWhitePlaceholder";
-        RHIResult<RHITextureRef> placeholder_result =
-            device_->create_texture(placeholder_desc);
+        RHIResult<RHITextureRef> placeholder_result = device_->create_texture(placeholder_desc);
         if (!placeholder_result)
         {
             return fail_startup(placeholder_result.status());
@@ -175,8 +157,7 @@ namespace toy3d
         placeholder_view_desc.format = placeholder_desc.format;
         placeholder_view_desc.debug_name = "RendererWhitePlaceholderView";
         RHIResult<RHITextureViewRef> placeholder_view_result =
-            device_->create_texture_view(
-                placeholder_texture_, placeholder_view_desc);
+            device_->create_texture_view(placeholder_texture_, placeholder_view_desc);
         if (!placeholder_view_result)
         {
             return fail_startup(placeholder_view_result.status());
@@ -188,8 +169,7 @@ namespace toy3d
         sampler_desc.address_v = RHIAddressMode::ClampToEdge;
         sampler_desc.address_w = RHIAddressMode::ClampToEdge;
         sampler_desc.debug_name = "RendererPlaceholderSampler";
-        RHIResult<RHISamplerRef> sampler_result =
-            device_->create_sampler(sampler_desc);
+        RHIResult<RHISamplerRef> sampler_result = device_->create_sampler(sampler_desc);
         if (!sampler_result)
         {
             return fail_startup(sampler_result.status());
@@ -202,13 +182,11 @@ namespace toy3d
         {
             return fail_startup(context_result.status());
         }
-        std::unique_ptr<RHIGraphicsCommandContext> context =
-            std::move(context_result).value();
+        std::unique_ptr<RHIGraphicsCommandContext> context = std::move(context_result).value();
         if (!context)
         {
-            return fail_startup(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer bootstrap created no command context"));
+            return fail_startup(
+                RHIStatus::failure(RHIErrorCode::BackendFailure, "Renderer bootstrap created no command context"));
         }
 
         step_status = context->begin_recording("RendererBootstrap");
@@ -218,8 +196,7 @@ namespace toy3d
             placeholder_to_copy.resource = placeholder_texture_;
             placeholder_to_copy.before = RHIAccess::Common;
             placeholder_to_copy.after = RHIAccess::CopyDestination;
-            step_status = context->transition_resources(
-                {placeholder_to_copy});
+            step_status = context->transition_resources({placeholder_to_copy});
         }
 
         const std::array<std::uint8_t, 4> white_pixel = {255, 255, 255, 255};
@@ -244,8 +221,7 @@ namespace toy3d
         }
         if (step_status && imgui_renderer_)
         {
-            step_status = imgui_renderer_->record_font_upload(
-                *context, *imgui_font_atlas_input_);
+            step_status = imgui_renderer_->record_font_upload(*context, *imgui_font_atlas_input_);
         }
 
         RHICommandListRef command_list;
@@ -261,9 +237,8 @@ namespace toy3d
                 command_list = std::move(finished).value();
                 if (!command_list)
                 {
-                    step_status = RHIStatus::failure(
-                        RHIErrorCode::BackendFailure,
-                        "Renderer bootstrap finished without a command list");
+                    step_status = RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                                     "Renderer bootstrap finished without a command list");
                 }
             }
         }
@@ -274,8 +249,7 @@ namespace toy3d
             RHISubmitInfo submit_info;
             submit_info.command_lists.push_back(std::move(command_list));
             submit_info.debug_name = "RendererBootstrap";
-            RHIResult<RHISubmitResult> submitted =
-                device_->graphics_queue().submit(submit_info);
+            RHIResult<RHISubmitResult> submitted = device_->graphics_queue().submit(submit_info);
             if (!submitted)
             {
                 step_status = submitted.status();
@@ -285,16 +259,14 @@ namespace toy3d
                 bootstrap_completion = submitted.value().completion_value;
                 if (bootstrap_completion == 0)
                 {
-                    step_status = RHIStatus::failure(
-                        RHIErrorCode::BackendFailure,
-                        "Renderer bootstrap submit returned no completion value");
+                    step_status = RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                                     "Renderer bootstrap submit returned no completion value");
                 }
             }
         }
         if (step_status)
         {
-            step_status =
-                device_->graphics_queue().wait_for_value(bootstrap_completion);
+            step_status = device_->graphics_queue().wait_for_value(bootstrap_completion);
         }
         if (!step_status)
         {
@@ -315,9 +287,8 @@ namespace toy3d
         primary_viewport_ = std::move(viewport_result).value();
         if (!primary_viewport_)
         {
-            return fail_startup(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer bootstrap created no primary viewport"));
+            return fail_startup(
+                RHIStatus::failure(RHIErrorCode::BackendFailure, "Renderer bootstrap created no primary viewport"));
         }
 
         published_scene_interface_.store(render_scene_.get());
@@ -329,20 +300,17 @@ namespace toy3d
     {
         if (!is_on_logical_rendering_thread())
         {
-            return ThreadStatus::failure(
-                ThreadErrorCode::InvalidCaller,
-                "Renderer must teardown on the logical Rendering Thread");
+            return ThreadStatus::failure(ThreadErrorCode::InvalidCaller,
+                                         "Renderer must teardown on the logical Rendering Thread");
         }
         const RendererLifecycleState state = lifecycle_state_.load();
-        if (state == RendererLifecycleState::Stopped ||
-            state == RendererLifecycleState::Starting ||
+        if (state == RendererLifecycleState::Stopped || state == RendererLifecycleState::Starting ||
             state == RendererLifecycleState::Stopping ||
-            (state == RendererLifecycleState::Terminal && !device_ &&
-                !resource_manager_ && !render_scene_ && !primary_viewport_))
+            (state == RendererLifecycleState::Terminal && !device_ && !resource_manager_ && !render_scene_ &&
+             !primary_viewport_))
         {
-            return ThreadStatus::failure(
-                ThreadErrorCode::InvalidState,
-                "Renderer is not in a teardown-ready lifecycle state");
+            return ThreadStatus::failure(ThreadErrorCode::InvalidState,
+                                         "Renderer is not in a teardown-ready lifecycle state");
         }
 
         const bool terminal = state == RendererLifecycleState::Terminal;
@@ -360,16 +328,10 @@ namespace toy3d
     }
 
     RHIResult<RHIFrameEndResult> render_viewport_frame(
-        SceneRenderer& scene_renderer,
-        const ImGuiDrawData* ui_draw_data,
-        RenderScene& render_scene,
-        RHIDevice& device,
-        RHIShaderProgramCache& shader_program_cache,
-        RenderResourceManager& resource_manager,
-        RHIViewportContext& viewport,
-        SceneRenderTargets& scene_render_targets,
-        TonemapPassResources& tonemap_pass_resources,
-        ImGuiRenderer* imgui_renderer)
+        SceneRenderer& scene_renderer, const ImGuiDrawData* ui_draw_data, RenderScene& render_scene, RHIDevice& device,
+        RHIShaderProgramCache& shader_program_cache, RenderResourceManager& resource_manager,
+        RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
+        TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer)
     {
         RHIResult<std::unique_ptr<RHIFrameContext>> frame_result = viewport.begin_frame();
         if (!frame_result)
@@ -380,88 +342,77 @@ namespace toy3d
         std::unique_ptr<RHIFrameContext> frame = std::move(frame_result).value();
         if (!frame)
         {
-            return RHIResult<RHIFrameEndResult>::failure(
-                RHIErrorCode::BackendFailure,
-                "Viewport begin_frame succeeded without a frame context.");
+            return RHIResult<RHIFrameEndResult>::failure(RHIErrorCode::BackendFailure,
+                                                         "Viewport begin_frame succeeded without a frame context.");
         }
 
         bool resource_recording_started = false;
-        const auto abort_recording = [&resource_manager, &viewport, &frame,
-             &resource_recording_started, imgui_renderer](
-                const RHIStatus& failure) -> RHIResult<RHIFrameEndResult>
+        const auto abort_recording = [&resource_manager, &viewport, &frame, &resource_recording_started,
+                                      imgui_renderer](const RHIStatus& failure) -> RHIResult<RHIFrameEndResult>
+        {
+            if (imgui_renderer != nullptr)
             {
-                if (imgui_renderer != nullptr)
-                {
-                    imgui_renderer->discard_frame_recording();
-                }
-                RHIStatus discard_status = RHIStatus::success();
-                if (resource_recording_started)
-                {
-                    discard_status = resource_manager.discard_recording();
-                    if (!discard_status)
-                    {
-                        TOY_LOG_ERROR(
-                            "Renderer frame could not discard its RenderResource recording after '{}': {}",
-                            failure.message(), discard_status.message());
-                    }
-                }
-
-                const RHIStatus abort_status = viewport.abort_frame(std::move(frame));
-                if (!abort_status)
-                {
-                    TOY_LOG_ERROR("Renderer frame abort failed after '{}': {}",
-                        failure.message(), abort_status.message());
-                    return RHIResult<RHIFrameEndResult>::failure(abort_status.code(), abort_status.message());
-                }
+                imgui_renderer->discard_frame_recording();
+            }
+            RHIStatus discard_status = RHIStatus::success();
+            if (resource_recording_started)
+            {
+                discard_status = resource_manager.discard_recording();
                 if (!discard_status)
                 {
-                    return RHIResult<RHIFrameEndResult>::failure(discard_status.code(), discard_status.message());
+                    TOY_LOG_ERROR("Renderer frame could not discard its RenderResource recording after '{}': {}",
+                                  failure.message(), discard_status.message());
                 }
-                return RHIResult<RHIFrameEndResult>::failure(failure.code(), failure.message());
-            };
+            }
+
+            const RHIStatus abort_status = viewport.abort_frame(std::move(frame));
+            if (!abort_status)
+            {
+                TOY_LOG_ERROR("Renderer frame abort failed after '{}': {}", failure.message(), abort_status.message());
+                return RHIResult<RHIFrameEndResult>::failure(abort_status.code(), abort_status.message());
+            }
+            if (!discard_status)
+            {
+                return RHIResult<RHIFrameEndResult>::failure(discard_status.code(), discard_status.message());
+            }
+            return RHIResult<RHIFrameEndResult>::failure(failure.code(), failure.message());
+        };
 
         if (!frame->present_texture() || !frame->present_view())
         {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Renderer frame requires present attachments."));
+            return abort_recording(
+                RHIStatus::failure(RHIErrorCode::InvalidArgument, "Renderer frame requires present attachments."));
         }
-        if (!frame->present_texture()->is_owned_by(device) ||
-            !frame->present_view()->is_owned_by(device) ||
+        if (!frame->present_texture()->is_owned_by(device) || !frame->present_view()->is_owned_by(device) ||
             frame->present_view()->texture() != frame->present_texture())
         {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Renderer frame present attachments must belong to its device and current frame."));
+            return abort_recording(
+                RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                   "Renderer frame present attachments must belong to its device and current frame."));
         }
-        if (scene_renderer.output_size() !=
-            UIntVector2(frame->width(), frame->height()))
+        if (scene_renderer.output_size() != UIntVector2(frame->width(), frame->height()))
         {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::OutOfDate,
-                "Renderer frame View family output does not match the acquired frame extent."));
+            return abort_recording(
+                RHIStatus::failure(RHIErrorCode::OutOfDate,
+                                   "Renderer frame View family output does not match the acquired frame extent."));
         }
 
-        RHIStatus status = scene_render_targets.ensure_extent(
-            device, frame->width(), frame->height());
+        RHIStatus status = scene_render_targets.ensure_extent(device, frame->width(), frame->height());
         if (!status)
         {
             return abort_recording(status);
         }
 
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result =
-            frame->create_graphics_command_context();
+        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result = frame->create_graphics_command_context();
         if (!context_result)
         {
             return abort_recording(context_result.status());
         }
-        std::unique_ptr<RHIGraphicsCommandContext> context =
-            std::move(context_result).value();
+        std::unique_ptr<RHIGraphicsCommandContext> context = std::move(context_result).value();
         if (!context)
         {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Viewport frame created no graphics command context."));
+            return abort_recording(RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                                      "Viewport frame created no graphics command context."));
         }
 
         status = context->begin_recording("RendererFrame");
@@ -476,31 +427,25 @@ namespace toy3d
             return abort_recording(status);
         }
 
-        status = scene_renderer.render_scene_passes(
-            render_scene, device, shader_program_cache, *context,
-            scene_render_targets);
+        status = scene_renderer.render_scene_passes(render_scene, device, shader_program_cache, *context,
+                                                    scene_render_targets);
         if (!status)
         {
             return abort_recording(status);
         }
 
         RHIResourceTransition scene_color_to_shader_resource;
-        scene_color_to_shader_resource.resource =
-            scene_render_targets.scene_color_texture();
+        scene_color_to_shader_resource.resource = scene_render_targets.scene_color_texture();
         scene_color_to_shader_resource.subresources =
-            scene_render_targets.scene_color_shader_resource_view()
-                ->desc().subresources;
+            scene_render_targets.scene_color_shader_resource_view()->desc().subresources;
         scene_color_to_shader_resource.before = RHIAccess::RenderTarget;
-        scene_color_to_shader_resource.after =
-            RHIAccess::ShaderResourceGraphics;
+        scene_color_to_shader_resource.after = RHIAccess::ShaderResourceGraphics;
         RHIResourceTransition present_to_render_target;
         present_to_render_target.resource = frame->present_texture();
-        present_to_render_target.subresources =
-            frame->present_view()->desc().subresources;
+        present_to_render_target.subresources = frame->present_view()->desc().subresources;
         present_to_render_target.before = RHIAccess::Present;
         present_to_render_target.after = RHIAccess::RenderTarget;
-        status = context->transition_resources(
-            {scene_color_to_shader_resource, present_to_render_target});
+        status = context->transition_resources({scene_color_to_shader_resource, present_to_render_target});
         if (!status)
         {
             return abort_recording(status);
@@ -510,10 +455,9 @@ namespace toy3d
         tonemap_target.color_view = frame->present_view();
         tonemap_target.width = frame->width();
         tonemap_target.height = frame->height();
-        status = tonemap_pass_resources.render(
-            device, *context,
-            scene_render_targets.scene_color_shader_resource_view(),
-            tonemap_target, TonemapParameters{});
+        status =
+            tonemap_pass_resources.render(device, *context, scene_render_targets.scene_color_shader_resource_view(),
+                                          tonemap_target, TonemapParameters{});
         if (!status)
         {
             return abort_recording(status);
@@ -524,17 +468,15 @@ namespace toy3d
         {
             if (imgui_renderer == nullptr)
             {
-                return abort_recording(RHIStatus::failure(
-                    RHIErrorCode::Unsupported,
-                    "ImGui RHI rendering is not initialized for this frame."));
+                return abort_recording(RHIStatus::failure(RHIErrorCode::Unsupported,
+                                                          "ImGui RHI rendering is not initialized for this frame."));
             }
             ImGuiPassTarget imgui_target;
             imgui_target.color_view = frame->present_view();
             imgui_target.width = frame->width();
             imgui_target.height = frame->height();
             imgui_target.load = RHILoadOperation::Load;
-            status = imgui_renderer->render(
-                device, *context, *ui_draw_data, imgui_target);
+            status = imgui_renderer->render(device, *context, *ui_draw_data, imgui_target);
             if (!status)
             {
                 return abort_recording(status);
@@ -543,8 +485,7 @@ namespace toy3d
 
         RHIResourceTransition render_target_to_present;
         render_target_to_present.resource = frame->present_texture();
-        render_target_to_present.subresources =
-            frame->present_view()->desc().subresources;
+        render_target_to_present.subresources = frame->present_view()->desc().subresources;
         render_target_to_present.before = RHIAccess::RenderTarget;
         render_target_to_present.after = RHIAccess::Present;
         status = context->transition_resources({render_target_to_present});
@@ -553,59 +494,48 @@ namespace toy3d
             return abort_recording(status);
         }
 
-        RHIResult<RHICommandListRef> command_list_result =
-            context->finish_recording();
+        RHIResult<RHICommandListRef> command_list_result = context->finish_recording();
         if (!command_list_result)
         {
             return abort_recording(command_list_result.status());
         }
-        RHICommandListRef command_list =
-            std::move(command_list_result).value();
+        RHICommandListRef command_list = std::move(command_list_result).value();
         if (!command_list)
         {
-            return abort_recording(RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer frame finished without an immutable command list."));
+            return abort_recording(RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                                      "Renderer frame finished without an immutable command list."));
         }
 
-        RHIResult<RHIFrameEndResult> end_result = viewport.end_frame(
-            std::move(frame), {std::move(command_list)});
+        RHIResult<RHIFrameEndResult> end_result = viewport.end_frame(std::move(frame), {std::move(command_list)});
         if (!end_result)
         {
             if (imgui_renderer != nullptr)
             {
                 imgui_renderer->discard_frame_recording();
             }
-            const RHIStatus discard_status =
-                resource_manager.discard_recording();
+            const RHIStatus discard_status = resource_manager.discard_recording();
             if (!discard_status)
             {
                 TOY_LOG_ERROR(
                     "Renderer frame submit failed and its RenderResource recording could not be discarded: {}",
                     discard_status.message());
-                return RHIResult<RHIFrameEndResult>::failure(
-                    discard_status.code(), discard_status.message());
+                return RHIResult<RHIFrameEndResult>::failure(discard_status.code(), discard_status.message());
             }
-            return RHIResult<RHIFrameEndResult>::failure(
-                end_result.status().code(), end_result.status().message());
+            return RHIResult<RHIFrameEndResult>::failure(end_result.status().code(), end_result.status().message());
         }
 
         RHIFrameEndResult submitted_result = std::move(end_result).value();
         if (submitted_result.completion_value == 0u)
         {
             submitted_result.presentation_status = RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "Renderer frame submit returned an invalid completion value.");
+                RHIErrorCode::BackendFailure, "Renderer frame submit returned an invalid completion value.");
         }
         if (has_ui)
         {
             const RHIStatus ui_publish_status =
-                imgui_renderer->publish_frame_submission(
-                    submitted_result.completion_value);
-            if (!ui_publish_status &&
-                (submitted_result.presentation_status.succeeded() ||
-                 rhi_is_recoverable_viewport_status(
-                     submitted_result.presentation_status)))
+                imgui_renderer->publish_frame_submission(submitted_result.completion_value);
+            if (!ui_publish_status && (submitted_result.presentation_status.succeeded() ||
+                                       rhi_is_recoverable_viewport_status(submitted_result.presentation_status)))
             {
                 submitted_result.presentation_status = ui_publish_status;
             }
@@ -613,63 +543,43 @@ namespace toy3d
         const RHIStatus commit_status = resource_manager.commit_recording();
         if (!commit_status)
         {
-            TOY_LOG_ERROR(
-                "Renderer frame submitted but RenderResource publication failed: {}",
-                commit_status.message());
+            TOY_LOG_ERROR("Renderer frame submitted but RenderResource publication failed: {}",
+                          commit_status.message());
             if (submitted_result.presentation_status.succeeded() ||
-                rhi_is_recoverable_viewport_status(
-                    submitted_result.presentation_status))
+                rhi_is_recoverable_viewport_status(submitted_result.presentation_status))
             {
                 submitted_result.presentation_status = commit_status;
             }
         }
-        scene_render_targets.publish_submitted_access(
-            RHIAccess::ShaderResourceGraphics,
-            RHIAccess::DepthStencilWrite);
-        return RHIResult<RHIFrameEndResult>::success(
-            std::move(submitted_result));
+        scene_render_targets.publish_submitted_access(RHIAccess::ShaderResourceGraphics, RHIAccess::DepthStencilWrite);
+        return RHIResult<RHIFrameEndResult>::success(std::move(submitted_result));
     }
 
-    RHIResult<RHIFrameEndResult> Renderer::render_frame(
-        SceneRenderer& scene_renderer,
-        const ImGuiDrawData* ui_draw_data)
+    RHIResult<RHIFrameEndResult> Renderer::render_frame(SceneRenderer& scene_renderer,
+                                                        const ImGuiDrawData* ui_draw_data)
     {
-        return render_viewport_frame(
-            scene_renderer,
-            ui_draw_data,
-            *render_scene_,
-            *device_,
-            *shader_program_cache_,
-            *resource_manager_,
-            *primary_viewport_,
-            *scene_render_targets_,
-            *tonemap_pass_resources_,
-            imgui_renderer_.get());
+        return render_viewport_frame(scene_renderer, ui_draw_data, *render_scene_, *device_, *shader_program_cache_,
+                                     *resource_manager_, *primary_viewport_, *scene_render_targets_,
+                                     *tonemap_pass_resources_, imgui_renderer_.get());
     }
 
-    void Renderer::draw_frame(
-        std::unique_ptr<SceneRenderer> scene_renderer,
-        std::unique_ptr<ImGuiDrawData> ui_draw_data)
+    void Renderer::draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
+                              std::unique_ptr<ImGuiDrawData> ui_draw_data)
     {
         enqueue_render_command(
             "DrawFrame",
-            [this,
-             scene_renderer = std::move(scene_renderer),
+            [this, scene_renderer = std::move(scene_renderer),
              ui_draw_data = std::move(ui_draw_data)]() mutable noexcept
             {
-                if (lifecycle_state_.load() != RendererLifecycleState::Running ||
-                    !render_scene_ || !resource_manager_ || !device_ ||
-                    !primary_viewport_ || !scene_render_targets_ ||
-                    !scene_renderer)
+                if (lifecycle_state_.load() != RendererLifecycleState::Running || !render_scene_ ||
+                    !resource_manager_ || !device_ || !primary_viewport_ || !scene_render_targets_ || !scene_renderer)
                 {
-                    TOY_LOG_ERROR(
-                        "Renderer Draw requires a complete Running domain and a SceneRenderer.");
+                    TOY_LOG_ERROR("Renderer Draw requires a complete Running domain and a SceneRenderer.");
                     return;
                 }
 
                 const UIntVector2 output_size = scene_renderer->output_size();
-                const RHIStatus extent_status =
-                    ensure_primary_frame_extent(output_size.x, output_size.y);
+                const RHIStatus extent_status = ensure_primary_frame_extent(output_size.x, output_size.y);
                 if (!extent_status)
                 {
                     enter_terminal(extent_status);
@@ -677,8 +587,7 @@ namespace toy3d
                     return;
                 }
 
-                RHIResult<RHIFrameEndResult> frame_result =
-                    render_frame(*scene_renderer, ui_draw_data.get());
+                RHIResult<RHIFrameEndResult> frame_result = render_frame(*scene_renderer, ui_draw_data.get());
                 if (!frame_result)
                 {
                     if (!rhi_is_recoverable_viewport_status(frame_result.status()))
@@ -688,10 +597,8 @@ namespace toy3d
                 }
                 else
                 {
-                    const RHIStatus& presentation_status =
-                        frame_result.value().presentation_status;
-                    if (!presentation_status.succeeded() &&
-                        !rhi_is_recoverable_viewport_status(presentation_status))
+                    const RHIStatus& presentation_status = frame_result.value().presentation_status;
+                    if (!presentation_status.succeeded() && !rhi_is_recoverable_viewport_status(presentation_status))
                     {
                         enter_terminal(presentation_status);
                     }
@@ -719,38 +626,30 @@ namespace toy3d
     bool Renderer::is_on_logical_rendering_thread() const
     {
         const NamedThread current_thread = task_graph_.get_current_thread_if_known();
-        return current_thread != NamedThread::Unknown &&
-            current_thread == task_graph_.get_render_thread();
+        return current_thread != NamedThread::Unknown && current_thread == task_graph_.get_render_thread();
     }
 
-    RHIStatus Renderer::ensure_primary_frame_extent(
-        std::uint32_t width,
-        std::uint32_t height)
+    RHIStatus Renderer::ensure_primary_frame_extent(std::uint32_t width, std::uint32_t height)
     {
         if (!is_on_logical_rendering_thread())
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Renderer frame extent updates must run on the logical Rendering Thread");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Renderer frame extent updates must run on the logical Rendering Thread");
         }
         if (width == 0u || height == 0u)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Renderer frame extent must be non-empty");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Renderer frame extent must be non-empty");
         }
         if (!device_ || !primary_viewport_)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Renderer frame extent update requires a complete domain");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Renderer frame extent update requires a complete domain");
         }
         if (viewport_desc_.width == width && viewport_desc_.height == height)
         {
             return RHIStatus::success();
         }
-        const RHIStatus resize_status =
-            primary_viewport_->request_resize(width, height);
+        const RHIStatus resize_status = primary_viewport_->request_resize(width, height);
         if (resize_status)
         {
             viewport_desc_.width = width;
@@ -763,8 +662,7 @@ namespace toy3d
     {
         enter_terminal(failure);
         release_domain(true);
-        return ThreadStatus::failure(
-            ThreadErrorCode::InitFailed, failure.message());
+        return ThreadStatus::failure(ThreadErrorCode::InitFailed, failure.message());
     }
 
     void Renderer::enter_terminal(const RHIStatus& failure) noexcept
@@ -869,10 +767,9 @@ namespace toy3d
                 std::lock_guard<std::mutex> lock(status_mutex_);
                 primary_error = first_error_code_;
             }
-            const RHIStatus shutdown_status =
-                terminal && primary_error == RHIErrorCode::DeviceLost
-                ? device_->shutdown_after_device_lost()
-                : device_->shutdown();
+            const RHIStatus shutdown_status = terminal && primary_error == RHIErrorCode::DeviceLost
+                                                  ? device_->shutdown_after_device_lost()
+                                                  : device_->shutdown();
             if (!shutdown_status)
             {
                 append_secondary_diagnostic(shutdown_status);
@@ -881,4 +778,4 @@ namespace toy3d
         }
         global_shader_map_input_.reset();
     }
-}
+} // namespace toy3d

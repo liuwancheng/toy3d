@@ -18,7 +18,7 @@ namespace toy3d::shader
 
     class Tokenizer
     {
-    public:
+      public:
         // string_view scans caller-owned source without copying it; the caller
         // keeps that source alive for the tokenizer lifetime.
         Tokenizer(std::string_view source, std::string path);
@@ -27,7 +27,7 @@ namespace toy3d::shader
         RawBlock consume_raw_block(std::string_view terminator);
         const std::vector<Diagnostic>& diagnostics() const;
 
-    private:
+      private:
         bool at_end() const;
         char current() const;
         char peek_character(std::size_t lookahead = 1) const;
@@ -47,4 +47,4 @@ namespace toy3d::shader
         std::size_t column = 1;
         std::vector<Diagnostic> tokenizer_diagnostics;
     };
-}
+} // namespace toy3d::shader

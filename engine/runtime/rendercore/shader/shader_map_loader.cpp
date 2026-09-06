@@ -13,18 +13,13 @@ namespace toy3d
     {
         bool hash_is_zero(const ShaderContentHash& hash)
         {
-            return std::all_of(hash.begin(), hash.end(),
-                [](std::uint8_t byte) { return byte == 0u; });
+            return std::all_of(hash.begin(), hash.end(), [](std::uint8_t byte) { return byte == 0u; });
         }
 
-        bool key_matches(
-            const ShaderMapProgramData& program,
-            const ShaderMapProgramKey& key)
+        bool key_matches(const ShaderMapProgramData& program, const ShaderMapProgramKey& key)
         {
-            return program.shader_name == key.shader_name &&
-                program.pass_name == key.pass_name &&
-                program.platform == key.platform &&
-                program.permutation_key == key.permutation_key;
+            return program.shader_name == key.shader_name && program.pass_name == key.pass_name &&
+                   program.platform == key.platform && program.permutation_key == key.permutation_key;
         }
 
         std::uint32_t vulkan_portable_set(RHIBindingGroup group)
@@ -32,11 +27,16 @@ namespace toy3d
             switch (group)
             {
             case RHIBindingGroup::Global:
-            case RHIBindingGroup::View: return 0;
-            case RHIBindingGroup::Pass: return 1;
-            case RHIBindingGroup::Material: return 2;
-            case RHIBindingGroup::Object: return 3;
-            case RHIBindingGroup::Max: break;
+            case RHIBindingGroup::View:
+                return 0;
+            case RHIBindingGroup::Pass:
+                return 1;
+            case RHIBindingGroup::Material:
+                return 2;
+            case RHIBindingGroup::Object:
+                return 3;
+            case RHIBindingGroup::Max:
+                break;
             }
             return 4;
         }
@@ -47,31 +47,23 @@ namespace toy3d
             {
                 if (character >= 'a' && character <= 'z')
                 {
-                    character = static_cast<char>(
-                        character - ('a' - 'A'));
+                    character = static_cast<char>(character - ('a' - 'A'));
                 }
             }
             return semantic;
         }
 
-        bool validate_stage_interfaces(
-            const ShaderMapStage& stage,
-            std::string& error)
+        bool validate_stage_interfaces(const ShaderMapStage& stage, std::string& error)
         {
             std::set<std::pair<bool, std::uint32_t>> stage_locations;
             std::set<ShaderVertexAttributeId> vertex_logical_attributes;
-            for (const shader::ReflectedInterfaceVariable& variable :
-                 stage.interface_variables)
+            for (const shader::ReflectedInterfaceVariable& variable : stage.interface_variables)
             {
-                if (variable.location ==
-                        std::numeric_limits<std::uint32_t>::max() ||
+                if (variable.location == std::numeric_limits<std::uint32_t>::max() ||
                     static_cast<std::uint32_t>(variable.scalar_type) >
-                        static_cast<std::uint32_t>(
-                            shader::ReflectedInterfaceVariable::ScalarType::UInt32) ||
-                    variable.component_count == 0u ||
-                    variable.component_count > 4u ||
-                    !stage_locations.emplace(
-                        variable.input, variable.location).second)
+                        static_cast<std::uint32_t>(shader::ReflectedInterfaceVariable::ScalarType::UInt32) ||
+                    variable.component_count == 0u || variable.component_count > 4u ||
+                    !stage_locations.emplace(variable.input, variable.location).second)
                 {
                     error = "ShaderMap stage interface has an invalid or duplicate target mapping.";
                     return false;
@@ -83,13 +75,11 @@ namespace toy3d
                 }
 
                 ShaderVertexInput vertex_input;
-                if (!try_make_shader_vertex_input(
-                        variable, vertex_input, error))
+                if (!try_make_shader_vertex_input(variable, vertex_input, error))
                 {
                     return false;
                 }
-                if (!vertex_logical_attributes.insert(
-                        vertex_input.attribute_id).second)
+                if (!vertex_logical_attributes.insert(vertex_input.attribute_id).second)
                 {
                     error = "ShaderMap vertex inputs contain a duplicate logical attribute.";
                     return false;
@@ -98,31 +88,23 @@ namespace toy3d
             return true;
         }
 
-        bool validate_graphics_stage_interfaces(
-            const ShaderMapStage& vertex_stage,
-            const ShaderMapStage& pixel_stage,
-            std::string& error)
+        bool validate_graphics_stage_interfaces(const ShaderMapStage& vertex_stage, const ShaderMapStage& pixel_stage,
+                                                std::string& error)
         {
-            for (const shader::ReflectedInterfaceVariable& input :
-                 pixel_stage.interface_variables)
+            for (const shader::ReflectedInterfaceVariable& input : pixel_stage.interface_variables)
             {
                 if (!input.input)
                 {
                     continue;
                 }
-                const auto output = std::find_if(
-                    vertex_stage.interface_variables.begin(),
-                    vertex_stage.interface_variables.end(),
-                    [&](const shader::ReflectedInterfaceVariable& candidate) {
-                        return !candidate.input &&
-                            candidate.location == input.location;
-                    });
-                if (output == vertex_stage.interface_variables.end() ||
-                    input.scalar_type != output->scalar_type ||
+                const auto output =
+                    std::find_if(vertex_stage.interface_variables.begin(), vertex_stage.interface_variables.end(),
+                                 [&](const shader::ReflectedInterfaceVariable& candidate)
+                                 { return !candidate.input && candidate.location == input.location; });
+                if (output == vertex_stage.interface_variables.end() || input.scalar_type != output->scalar_type ||
                     input.component_count != output->component_count ||
                     (!input.semantic.empty() && !output->semantic.empty() &&
-                        normalize_interface_semantic(input.semantic) !=
-                            normalize_interface_semantic(output->semantic)))
+                     normalize_interface_semantic(input.semantic) != normalize_interface_semantic(output->semantic)))
                 {
                     error = "ShaderMap pixel input conflicts with the vertex-stage Program output.";
                     return false;
@@ -131,27 +113,22 @@ namespace toy3d
             return true;
         }
 
-        bool validate_program_vertex_inputs(
-            const ShaderMapProgramData& program,
-            const ShaderMapStage* vertex_stage,
-            std::string& error)
+        bool validate_program_vertex_inputs(const ShaderMapProgramData& program, const ShaderMapStage* vertex_stage,
+                                            std::string& error)
         {
             std::vector<ShaderVertexInput> expected_inputs;
             std::set<ShaderVertexAttributeId> expected_attributes;
             if (vertex_stage != nullptr)
             {
-                for (const shader::ReflectedInterfaceVariable& reflected :
-                     vertex_stage->interface_variables)
+                for (const shader::ReflectedInterfaceVariable& reflected : vertex_stage->interface_variables)
                 {
                     if (!reflected.input)
                     {
                         continue;
                     }
                     ShaderVertexInput expected;
-                    if (!try_make_shader_vertex_input(
-                            reflected, expected, error) ||
-                        !expected_attributes.insert(
-                            expected.attribute_id).second)
+                    if (!try_make_shader_vertex_input(reflected, expected, error) ||
+                        !expected_attributes.insert(expected.attribute_id).second)
                     {
                         if (error.empty())
                         {
@@ -170,12 +147,9 @@ namespace toy3d
             }
             for (const ShaderVertexInput& expected : expected_inputs)
             {
-                const auto actual = std::find_if(
-                    program.vertex_inputs.begin(),
-                    program.vertex_inputs.end(),
-                    [&](const ShaderVertexInput& candidate) {
-                        return candidate.attribute_id == expected.attribute_id;
-                    });
+                const auto actual = std::find_if(program.vertex_inputs.begin(), program.vertex_inputs.end(),
+                                                 [&](const ShaderVertexInput& candidate)
+                                                 { return candidate.attribute_id == expected.attribute_id; });
                 if (actual == program.vertex_inputs.end() ||
                     !have_same_shader_vertex_input_contract(*actual, expected) ||
                     actual->target_location != expected.target_location)
@@ -186,20 +160,17 @@ namespace toy3d
             }
             return true;
         }
-    }
+    } // namespace
 
     bool ShaderMapProgramLoadResult::succeeded() const
     {
         return program.has_value() && error.empty();
     }
 
-    ShaderMapProgramLoadResult validate_shader_map_program(
-        ShaderMapProgramData program,
-        const ShaderMapProgramKey& key)
+    ShaderMapProgramLoadResult validate_shader_map_program(ShaderMapProgramData program, const ShaderMapProgramKey& key)
     {
         ShaderMapProgramLoadResult result;
-        if (key.shader_name.empty() || key.pass_name.empty() ||
-            hash_is_zero(key.permutation_key))
+        if (key.shader_name.empty() || key.pass_name.empty() || hash_is_zero(key.permutation_key))
         {
             result.error = "ShaderMap key requires shader/pass names and a permutation key.";
             return result;
@@ -209,13 +180,11 @@ namespace toy3d
             result.error = "ShaderMap program identity, platform, or permutation does not match the key.";
             return result;
         }
-        if (program.mapping_version == 0 ||
-            hash_is_zero(program.logical_layout_hash) ||
-            hash_is_zero(program.target_binding_hash) ||
-            hash_is_zero(program.pass_template_hash) ||
+        if (program.mapping_version == 0 || hash_is_zero(program.logical_layout_hash) ||
+            hash_is_zero(program.target_binding_hash) || hash_is_zero(program.pass_template_hash) ||
             !shader::is_valid_shader_graphics_pass_state(program.graphics_pass_state) ||
-            shader::calculate_shader_graphics_pass_state_hash(
-                program.graphics_pass_state) != program.pass_template_hash ||
+            shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state) !=
+                program.pass_template_hash ||
             hash_is_zero(program.permutation_key))
         {
             result.error = "ShaderMap program contains an invalid version or stable hash.";
@@ -227,8 +196,7 @@ namespace toy3d
         std::set<ShaderParameterId> parameter_ids;
         for (const ShaderMapBinding& binding : program.bindings)
         {
-            if (binding.parameter_id == 0 || binding.name.empty() ||
-                binding.group >= RHIBindingGroup::Max ||
+            if (binding.parameter_id == 0 || binding.name.empty() || binding.group >= RHIBindingGroup::Max ||
                 static_cast<std::uint32_t>(binding.type) >
                     static_cast<std::uint32_t>(RHIResourceBindingType::StorageBuffer) ||
                 binding.stages == RHIShaderStageFlags::None || binding.array_count == 0 ||
@@ -253,8 +221,7 @@ namespace toy3d
                             static_cast<std::uint32_t>(ShaderValueType::Float32x4x4) ||
                         member.offset > binding.constant_buffer_size ||
                         member.size > binding.constant_buffer_size - member.offset ||
-                        !parameter_ids.insert(member.parameter_id).second ||
-                        !member_names.insert(member.name).second)
+                        !parameter_ids.insert(member.parameter_id).second || !member_names.insert(member.name).second)
                     {
                         result.error = "ShaderMap constant-buffer member metadata is invalid or duplicate.";
                         return result;
@@ -269,8 +236,7 @@ namespace toy3d
             if (program.platform == ShaderPlatform::VulkanES31)
             {
                 const std::uint32_t set = vulkan_portable_set(binding.group);
-                if (set >= 4 ||
-                    !vulkan_bindings.emplace(set, binding.target_binding).second)
+                if (set >= 4 || !vulkan_bindings.emplace(set, binding.target_binding).second)
                 {
                     result.error = "ShaderMap program contains a duplicate Vulkan set/binding.";
                     return result;
@@ -294,13 +260,15 @@ namespace toy3d
                 stage_flag = RHIShaderStageFlags::Pixel;
                 pixel_stage = &stage;
                 break;
-            case RHIShaderStage::Compute: stage_flag = RHIShaderStageFlags::Compute; break;
+            case RHIShaderStage::Compute:
+                stage_flag = RHIShaderStageFlags::Compute;
+                break;
             default:
                 result.error = "ShaderMap program contains an unsupported shader stage.";
                 return result;
             }
-            if (EnumHasAnyFlags(stage_mask, stage_flag) || stage.entry_point.empty() ||
-                stage.binary.empty() || hash_is_zero(stage.content_hash))
+            if (EnumHasAnyFlags(stage_mask, stage_flag) || stage.entry_point.empty() || stage.binary.empty() ||
+                hash_is_zero(stage.content_hash))
             {
                 result.error = "ShaderMap program contains an invalid or duplicate stage.";
                 return result;
@@ -312,10 +280,9 @@ namespace toy3d
             }
             for (const ShaderMapBinding& reflected : stage.reflection)
             {
-                const auto expected = std::find_if(program.bindings.begin(), program.bindings.end(),
-                    [&](const ShaderMapBinding& binding) {
-                        return binding.parameter_id == reflected.parameter_id;
-                    });
+                const auto expected =
+                    std::find_if(program.bindings.begin(), program.bindings.end(), [&](const ShaderMapBinding& binding)
+                                 { return binding.parameter_id == reflected.parameter_id; });
                 if (expected == program.bindings.end() || expected->name != reflected.name ||
                     expected->group != reflected.group || expected->type != reflected.type ||
                     expected->target_binding != reflected.target_binding ||
@@ -329,10 +296,8 @@ namespace toy3d
                 }
                 for (std::size_t index = 0; index < expected->constant_members.size(); ++index)
                 {
-                    const ShaderMapBinding::ConstantMember& expected_member =
-                        expected->constant_members[index];
-                    const ShaderMapBinding::ConstantMember& reflected_member =
-                        reflected.constant_members[index];
+                    const ShaderMapBinding::ConstantMember& expected_member = expected->constant_members[index];
+                    const ShaderMapBinding::ConstantMember& reflected_member = reflected.constant_members[index];
                     if (expected_member.parameter_id != reflected_member.parameter_id ||
                         expected_member.name != reflected_member.name ||
                         expected_member.type != reflected_member.type ||
@@ -349,8 +314,7 @@ namespace toy3d
         }
 
         const bool graphics = stage_mask == RHIShaderStageFlags::Vertex ||
-            stage_mask ==
-                (RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel);
+                              stage_mask == (RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel);
         const bool compute = stage_mask == RHIShaderStageFlags::Compute;
         if ((!graphics && !compute) || program.stages.empty())
         {
@@ -358,13 +322,11 @@ namespace toy3d
             return result;
         }
         if (vertex_stage != nullptr && pixel_stage != nullptr &&
-            !validate_graphics_stage_interfaces(
-                *vertex_stage, *pixel_stage, result.error))
+            !validate_graphics_stage_interfaces(*vertex_stage, *pixel_stage, result.error))
         {
             return result;
         }
-        if (!validate_program_vertex_inputs(
-                program, vertex_stage, result.error))
+        if (!validate_program_vertex_inputs(program, vertex_stage, result.error))
         {
             return result;
         }
@@ -380,15 +342,17 @@ namespace toy3d
             for (const ShaderMapStage& stage : program.stages)
             {
                 RHIShaderStageFlags stage_flag = RHIShaderStageFlags::None;
-                if (stage.stage == RHIShaderStage::Vertex) stage_flag = RHIShaderStageFlags::Vertex;
-                else if (stage.stage == RHIShaderStage::Pixel) stage_flag = RHIShaderStageFlags::Pixel;
-                else if (stage.stage == RHIShaderStage::Compute) stage_flag = RHIShaderStageFlags::Compute;
-                if (!EnumHasAnyFlags(binding.stages, stage_flag)) continue;
-                const bool reflected = std::any_of(
-                    stage.reflection.begin(), stage.reflection.end(),
-                    [&](const ShaderMapBinding& value) {
-                        return value.parameter_id == binding.parameter_id;
-                    });
+                if (stage.stage == RHIShaderStage::Vertex)
+                    stage_flag = RHIShaderStageFlags::Vertex;
+                else if (stage.stage == RHIShaderStage::Pixel)
+                    stage_flag = RHIShaderStageFlags::Pixel;
+                else if (stage.stage == RHIShaderStage::Compute)
+                    stage_flag = RHIShaderStageFlags::Compute;
+                if (!EnumHasAnyFlags(binding.stages, stage_flag))
+                    continue;
+                const bool reflected =
+                    std::any_of(stage.reflection.begin(), stage.reflection.end(), [&](const ShaderMapBinding& value)
+                                { return value.parameter_id == binding.parameter_id; });
                 if (!reflected)
                 {
                     result.error = "ShaderMap binding is missing from a required stage reflection.";
@@ -399,4 +363,4 @@ namespace toy3d
         result.program = std::move(program);
         return result;
     }
-}
+} // namespace toy3d

@@ -5,40 +5,40 @@
 
 namespace toy3d
 {
-	enum class Mode
-	{
-		Headless,
+    enum class Mode
+    {
+        Headless,
 
-		Fullscreen,
-		FullscreenBorderless,
-		FullscreenStretch,
-		Default
-	};
+        Fullscreen,
+        FullscreenBorderless,
+        FullscreenStretch,
+        Default
+    };
 
-	enum class Vsync
-	{
-		OFF,
-		ON,
-		Default
-	};
+    enum class Vsync
+    {
+        OFF,
+        ON,
+        Default
+    };
 
-	struct Extent
-	{
-		uint32_t width;
-		uint32_t height;
-	};
+    struct Extent
+    {
+        uint32_t width;
+        uint32_t height;
+    };
 
-	struct Properties
-	{
-		std::string title     = "toy3d";
-		Mode        mode      = Mode::Default;
-		Vsync       vsync     = Vsync::Default;
-		Extent      extent    = {1280, 720};
-	};
+    struct Properties
+    {
+        std::string title = "toy3d";
+        Mode mode = Mode::Default;
+        Vsync vsync = Vsync::Default;
+        Extent extent = {1280, 720};
+    };
 
     class IWindow
     {
-    public:
+      public:
         IWindow() = default;
 
         virtual ~IWindow() = default;
@@ -50,22 +50,24 @@ namespace toy3d
         virtual void close() = 0;
 
         virtual void resize(uint32_t _width, uint32_t _height)
-		{
-			properties.extent.width = _width;
-			properties.extent.height = _height;
-		};
+        {
+            properties.extent.width = _width;
+            properties.extent.height = _height;
+        };
         virtual Extent get_display_size() const { return properties.extent; }
         virtual Extent get_framebuffer_size() const { return properties.extent; }
-    public:
-        Extent get_win_size() const {return properties.extent;};
 
-        Vsync get_vsync(){return properties.vsync;};
+      public:
+        Extent get_win_size() const { return properties.extent; };
 
-        Mode get_mode(){return properties.mode;};
+        Vsync get_vsync() { return properties.vsync; };
 
-		IPlatformInput* get_platform_input() const { return platform_input.get();}
-    protected:
+        Mode get_mode() { return properties.mode; };
+
+        IPlatformInput* get_platform_input() const { return platform_input.get(); }
+
+      protected:
         Properties properties;
-		std::unique_ptr<IPlatformInput> platform_input;
+        std::unique_ptr<IPlatformInput> platform_input;
     };
-}// namespace toy3d
+} // namespace toy3d

@@ -28,7 +28,7 @@ namespace toy3d
     // representation has a stable address, but its mutable state is RT-only.
     class Texture
     {
-    public:
+      public:
         static std::shared_ptr<const Texture> create(TextureDesc desc);
         // The caller must hold the final TextureRef. Normal return transfers
         // that ownership to a RenderCommand and clears the caller reference.
@@ -44,12 +44,9 @@ namespace toy3d
 
         // This pointer is an opaque cross-side identity. GT callers must not
         // read or mutate TextureResource state through it.
-        TextureResource* texture_resource() const noexcept
-        {
-            return texture_resource_.get();
-        }
+        TextureResource* texture_resource() const noexcept { return texture_resource_.get(); }
 
-    private:
+      private:
         explicit Texture(TextureDesc desc);
 
         TextureDesc desc_;
@@ -57,4 +54,4 @@ namespace toy3d
     };
 
     using TextureRef = std::shared_ptr<const Texture>;
-}
+} // namespace toy3d

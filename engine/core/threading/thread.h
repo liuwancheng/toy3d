@@ -14,7 +14,7 @@ namespace toy3d
 
     class Thread final
     {
-    public:
+      public:
         Thread(ThreadManager& thread_manager, std::string name, ThreadFunction function);
         ~Thread();
 
@@ -25,7 +25,7 @@ namespace toy3d
         void join();
         std::thread::id get_thread_id() const;
 
-    private:
+      private:
         std::unique_ptr<RunnableThread> thread_;
     };
-}
+} // namespace toy3d

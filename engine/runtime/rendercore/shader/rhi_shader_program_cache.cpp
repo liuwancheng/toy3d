@@ -10,18 +10,15 @@ namespace toy3d
     {
         void hash_combine(std::size_t& seed, std::size_t value)
         {
-            seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
-                (seed << 6U) + (seed >> 2U);
+            seed ^= value + static_cast<std::size_t>(0x9e3779b9U) + (seed << 6U) + (seed >> 2U);
         }
 
-        template<typename T>
-        void hash_scalar(std::size_t& seed, T value)
+        template <typename T> void hash_scalar(std::size_t& seed, T value)
         {
             hash_combine(seed, std::hash<T>{}(value));
         }
 
-        template<typename T>
-        void hash_enum(std::size_t& seed, T value)
+        template <typename T> void hash_enum(std::size_t& seed, T value)
         {
             using Underlying = typename std::underlying_type<T>::type;
             hash_scalar(seed, static_cast<Underlying>(value));
@@ -34,43 +31,35 @@ namespace toy3d
                 hash_scalar(seed, byte);
             }
         }
-    }
+    } // namespace
 
     bool RHIShaderProgramKey::Binding::operator==(const Binding& other) const
     {
-        return parameter_id == other.parameter_id &&
-            group == other.group && type == other.type &&
-            stages == other.stages && target_binding == other.target_binding &&
-            array_count == other.array_count &&
-            constant_buffer_size == other.constant_buffer_size;
+        return parameter_id == other.parameter_id && group == other.group && type == other.type &&
+               stages == other.stages && target_binding == other.target_binding && array_count == other.array_count &&
+               constant_buffer_size == other.constant_buffer_size;
     }
 
-    bool RHIShaderProgramKey::StageBinding::operator==(
-        const StageBinding& other) const
+    bool RHIShaderProgramKey::StageBinding::operator==(const StageBinding& other) const
     {
-        return group == other.group && type == other.type &&
-            target_binding == other.target_binding &&
-            array_count == other.array_count;
+        return group == other.group && type == other.type && target_binding == other.target_binding &&
+               array_count == other.array_count;
     }
 
     bool RHIShaderProgramKey::Stage::operator==(const Stage& other) const
     {
-        return stage == other.stage && entry_point == other.entry_point &&
-            content_hash == other.content_hash && reflection == other.reflection;
+        return stage == other.stage && entry_point == other.entry_point && content_hash == other.content_hash &&
+               reflection == other.reflection;
     }
 
-    bool RHIShaderProgramKey::VertexInput::operator==(
-        const VertexInput& other) const
+    bool RHIShaderProgramKey::VertexInput::operator==(const VertexInput& other) const
     {
-        return semantic_name == other.semantic_name &&
-            semantic_index == other.semantic_index &&
-            target_location == other.target_location &&
-            scalar_type == other.scalar_type &&
-            component_count == other.component_count;
+        return semantic_name == other.semantic_name && semantic_index == other.semantic_index &&
+               target_location == other.target_location && scalar_type == other.scalar_type &&
+               component_count == other.component_count;
     }
 
-    RHIShaderProgramKey RHIShaderProgramKey::from_program(
-        const ShaderMapProgramData& program)
+    RHIShaderProgramKey RHIShaderProgramKey::from_program(const ShaderMapProgramData& program)
     {
         RHIShaderProgramKey key;
         key.shader_name = program.shader_name;
@@ -128,17 +117,13 @@ namespace toy3d
 
     bool RHIShaderProgramKey::operator==(const RHIShaderProgramKey& other) const
     {
-        return shader_name == other.shader_name && pass_name == other.pass_name &&
-            platform == other.platform && permutation_key == other.permutation_key &&
-            mapping_version == other.mapping_version &&
-            logical_layout_hash == other.logical_layout_hash &&
-            target_binding_hash == other.target_binding_hash &&
-            bindings == other.bindings && stages == other.stages &&
-            vertex_inputs == other.vertex_inputs;
+        return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
+               permutation_key == other.permutation_key && mapping_version == other.mapping_version &&
+               logical_layout_hash == other.logical_layout_hash && target_binding_hash == other.target_binding_hash &&
+               bindings == other.bindings && stages == other.stages && vertex_inputs == other.vertex_inputs;
     }
 
-    std::size_t RHIShaderProgramKeyHash::operator()(
-        const RHIShaderProgramKey& key) const
+    std::size_t RHIShaderProgramKeyHash::operator()(const RHIShaderProgramKey& key) const
     {
         std::size_t result = 0;
         hash_scalar(result, key.shader_name);
@@ -182,60 +167,45 @@ namespace toy3d
         return result;
     }
 
-    RHIShaderProgramCache::RHIShaderProgramCache(RHIDevice& device)
-        : device_(device)
-    {
-    }
+    RHIShaderProgramCache::RHIShaderProgramCache(RHIDevice& device) : device_(device) {}
 
-    RHIResult<RHIShaderProgramRef> RHIShaderProgramCache::find_or_create(
-        const ShaderMapProgramRef& program)
+    RHIResult<RHIShaderProgramRef> RHIShaderProgramCache::find_or_create(const ShaderMapProgramRef& program)
     {
         if (!program)
         {
-            return RHIResult<RHIShaderProgramRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "RHI Shader Program cache requires a non-null CPU Program.");
+            return RHIResult<RHIShaderProgramRef>::failure(RHIErrorCode::InvalidArgument,
+                                                           "RHI Shader Program cache requires a non-null CPU Program.");
         }
 
-        RHIShaderProgramKey key =
-            RHIShaderProgramKey::from_program(program->data());
+        RHIShaderProgramKey key = RHIShaderProgramKey::from_program(program->data());
         const auto found = programs_.find(key);
         if (found != programs_.end())
         {
             return RHIResult<RHIShaderProgramRef>::success(found->second);
         }
 
-        RHIResult<RHIShaderProgramDesc> built =
-            build_rhi_shader_program_desc(*program);
+        RHIResult<RHIShaderProgramDesc> built = build_rhi_shader_program_desc(*program);
         if (!built)
         {
             return RHIResult<RHIShaderProgramRef>::failure(
-                built.status().code(),
-                "RHI Shader Program descriptor build failed for " +
-                    program->data().shader_name + "/" +
-                    program->data().pass_name + ": " +
-                    built.status().message());
+                built.status().code(), "RHI Shader Program descriptor build failed for " + program->data().shader_name +
+                                           "/" + program->data().pass_name + ": " + built.status().message());
         }
         RHIShaderProgramDesc desc = std::move(built).value();
         RHIShaderProgram candidate;
 
-        RHIResult<RHIBindingLayoutRef> layout =
-            device_.create_binding_layout(desc.binding_layout);
+        RHIResult<RHIBindingLayoutRef> layout = device_.create_binding_layout(desc.binding_layout);
         if (!layout)
         {
             return RHIResult<RHIShaderProgramRef>::failure(
-                layout.status().code(),
-                "RHI Shader Program binding layout creation failed for " +
-                    program->data().shader_name + "/" +
-                    program->data().pass_name + ": " +
-                    layout.status().message());
+                layout.status().code(), "RHI Shader Program binding layout creation failed for " +
+                                            program->data().shader_name + "/" + program->data().pass_name + ": " +
+                                            layout.status().message());
         }
         candidate.binding_layout = std::move(layout).value();
 
-        const auto create_stage = [this, &program](
-            const std::optional<RHIShaderDesc>& shader_desc,
-            const char* stage_name,
-            RHIShaderRef& output) -> RHIStatus
+        const auto create_stage = [this, &program](const std::optional<RHIShaderDesc>& shader_desc,
+                                                   const char* stage_name, RHIShaderRef& output) -> RHIStatus
         {
             if (!shader_desc)
             {
@@ -244,38 +214,30 @@ namespace toy3d
             RHIResult<RHIShaderRef> created = device_.create_shader(*shader_desc);
             if (!created)
             {
-                return RHIStatus::failure(
-                    created.status().code(),
-                    "RHI Shader Program " + std::string(stage_name) +
-                        " stage creation failed for " +
-                        program->data().shader_name + "/" +
-                        program->data().pass_name + ": " +
-                        created.status().message());
+                return RHIStatus::failure(created.status().code(),
+                                          "RHI Shader Program " + std::string(stage_name) +
+                                              " stage creation failed for " + program->data().shader_name + "/" +
+                                              program->data().pass_name + ": " + created.status().message());
             }
             output = std::move(created).value();
             return RHIStatus::success();
         };
 
-        RHIStatus status = create_stage(
-            desc.vertex_shader, "vertex", candidate.vertex_shader);
+        RHIStatus status = create_stage(desc.vertex_shader, "vertex", candidate.vertex_shader);
         if (status)
         {
-            status = create_stage(
-                desc.pixel_shader, "pixel", candidate.pixel_shader);
+            status = create_stage(desc.pixel_shader, "pixel", candidate.pixel_shader);
         }
         if (status)
         {
-            status = create_stage(
-                desc.compute_shader, "compute", candidate.compute_shader);
+            status = create_stage(desc.compute_shader, "compute", candidate.compute_shader);
         }
         if (!status)
         {
-            return RHIResult<RHIShaderProgramRef>::failure(
-                status.code(), status.message());
+            return RHIResult<RHIShaderProgramRef>::failure(status.code(), status.message());
         }
 
-        RHIShaderProgramRef published =
-            std::make_shared<const RHIShaderProgram>(std::move(candidate));
+        RHIShaderProgramRef published = std::make_shared<const RHIShaderProgram>(std::move(candidate));
         programs_.emplace(std::move(key), published);
         return RHIResult<RHIShaderProgramRef>::success(std::move(published));
     }
@@ -289,4 +251,4 @@ namespace toy3d
     {
         return programs_.size();
     }
-}
+} // namespace toy3d

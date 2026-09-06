@@ -13,12 +13,9 @@ namespace toy3d::shader
     // optional when a grammar conversion has no valid value to return.
     namespace
     {
-        template<typename Collection>
-        bool contains_name(const Collection& values, const std::string& name)
+        template <typename Collection> bool contains_name(const Collection& values, const std::string& name)
         {
-            return std::any_of(values.begin(), values.end(), [&](const auto& value) {
-                return value.name == name;
-            });
+            return std::any_of(values.begin(), values.end(), [&](const auto& value) { return value.name == name; });
         }
 
         bool is_one_of(std::string_view value, std::initializer_list<std::string_view> choices)
@@ -28,74 +25,127 @@ namespace toy3d::shader
 
         std::optional<PropertyType> property_type_from_name(std::string_view name)
         {
-            if (name == "Float") return PropertyType::Float;
-            if (name == "Float2") return PropertyType::Float2;
-            if (name == "Float3") return PropertyType::Float3;
-            if (name == "Float4") return PropertyType::Float4;
-            if (name == "Color") return PropertyType::Color;
-            if (name == "Matrix4x4") return PropertyType::Matrix4x4;
-            if (name == "Range") return PropertyType::Range;
-            if (name == "Texture2D") return PropertyType::Texture2D;
-            if (name == "TextureCube") return PropertyType::TextureCube;
-            if (name == "Sampler") return PropertyType::Sampler;
-            if (name == "ComparisonSampler") return PropertyType::ComparisonSampler;
+            if (name == "Float")
+                return PropertyType::Float;
+            if (name == "Float2")
+                return PropertyType::Float2;
+            if (name == "Float3")
+                return PropertyType::Float3;
+            if (name == "Float4")
+                return PropertyType::Float4;
+            if (name == "Color")
+                return PropertyType::Color;
+            if (name == "Matrix4x4")
+                return PropertyType::Matrix4x4;
+            if (name == "Range")
+                return PropertyType::Range;
+            if (name == "Texture2D")
+                return PropertyType::Texture2D;
+            if (name == "TextureCube")
+                return PropertyType::TextureCube;
+            if (name == "Sampler")
+                return PropertyType::Sampler;
+            if (name == "ComparisonSampler")
+                return PropertyType::ComparisonSampler;
             return std::nullopt;
         }
 
         std::optional<ShaderValueType> parameter_type_from_name(std::string_view name)
         {
-            if (name == "Float") return ShaderValueType::Float32;
-            if (name == "Float2") return ShaderValueType::Float32x2;
-            if (name == "Float3") return ShaderValueType::Float32x3;
-            if (name == "Float4") return ShaderValueType::Float32x4;
-            if (name == "Float4x4") return ShaderValueType::Float32x4x4;
+            if (name == "Float")
+                return ShaderValueType::Float32;
+            if (name == "Float2")
+                return ShaderValueType::Float32x2;
+            if (name == "Float3")
+                return ShaderValueType::Float32x3;
+            if (name == "Float4")
+                return ShaderValueType::Float32x4;
+            if (name == "Float4x4")
+                return ShaderValueType::Float32x4x4;
             return std::nullopt;
         }
 
         std::optional<ResourceKind> resource_kind_from_name(std::string_view name)
         {
-            if (name == "Texture2D") return ResourceKind::Texture2D;
-            if (name == "Texture2DArray") return ResourceKind::Texture2DArray;
-            if (name == "Texture3D") return ResourceKind::Texture3D;
-            if (name == "TextureCube") return ResourceKind::TextureCube;
-            if (name == "Texture2DMS") return ResourceKind::Texture2DMS;
-            if (name == "Sampler") return ResourceKind::Sampler;
-            if (name == "ComparisonSampler") return ResourceKind::ComparisonSampler;
-            if (name == "Buffer") return ResourceKind::Buffer;
-            if (name == "ByteAddressBuffer") return ResourceKind::ByteAddressBuffer;
-            if (name == "StructuredBuffer") return ResourceKind::StructuredBuffer;
-            if (name == "RWBuffer") return ResourceKind::RWBuffer;
-            if (name == "RWByteAddressBuffer") return ResourceKind::RWByteAddressBuffer;
-            if (name == "RWStructuredBuffer") return ResourceKind::RWStructuredBuffer;
-            if (name == "RWTexture2D") return ResourceKind::RWTexture2D;
-            if (name == "RWTexture2DArray") return ResourceKind::RWTexture2DArray;
-            if (name == "RWTexture3D") return ResourceKind::RWTexture3D;
+            if (name == "Texture2D")
+                return ResourceKind::Texture2D;
+            if (name == "Texture2DArray")
+                return ResourceKind::Texture2DArray;
+            if (name == "Texture3D")
+                return ResourceKind::Texture3D;
+            if (name == "TextureCube")
+                return ResourceKind::TextureCube;
+            if (name == "Texture2DMS")
+                return ResourceKind::Texture2DMS;
+            if (name == "Sampler")
+                return ResourceKind::Sampler;
+            if (name == "ComparisonSampler")
+                return ResourceKind::ComparisonSampler;
+            if (name == "Buffer")
+                return ResourceKind::Buffer;
+            if (name == "ByteAddressBuffer")
+                return ResourceKind::ByteAddressBuffer;
+            if (name == "StructuredBuffer")
+                return ResourceKind::StructuredBuffer;
+            if (name == "RWBuffer")
+                return ResourceKind::RWBuffer;
+            if (name == "RWByteAddressBuffer")
+                return ResourceKind::RWByteAddressBuffer;
+            if (name == "RWStructuredBuffer")
+                return ResourceKind::RWStructuredBuffer;
+            if (name == "RWTexture2D")
+                return ResourceKind::RWTexture2D;
+            if (name == "RWTexture2DArray")
+                return ResourceKind::RWTexture2DArray;
+            if (name == "RWTexture3D")
+                return ResourceKind::RWTexture3D;
             return std::nullopt;
         }
 
         std::optional<ResourceElementType> resource_element_type_from_name(std::string_view name)
         {
-            if (name == "Float") return ResourceElementType::Float;
-            if (name == "Float2") return ResourceElementType::Float2;
-            if (name == "Float3") return ResourceElementType::Float3;
-            if (name == "Float4") return ResourceElementType::Float4;
-            if (name == "Int") return ResourceElementType::Int;
-            if (name == "Int2") return ResourceElementType::Int2;
-            if (name == "Int3") return ResourceElementType::Int3;
-            if (name == "Int4") return ResourceElementType::Int4;
-            if (name == "UInt") return ResourceElementType::UInt;
-            if (name == "UInt2") return ResourceElementType::UInt2;
-            if (name == "UInt3") return ResourceElementType::UInt3;
-            if (name == "UInt4") return ResourceElementType::UInt4;
-            if (name == "Float2x2") return ResourceElementType::Float2x2;
-            if (name == "Float2x3") return ResourceElementType::Float2x3;
-            if (name == "Float2x4") return ResourceElementType::Float2x4;
-            if (name == "Float3x2") return ResourceElementType::Float3x2;
-            if (name == "Float3x3") return ResourceElementType::Float3x3;
-            if (name == "Float3x4") return ResourceElementType::Float3x4;
-            if (name == "Float4x2") return ResourceElementType::Float4x2;
-            if (name == "Float4x3") return ResourceElementType::Float4x3;
-            if (name == "Float4x4") return ResourceElementType::Float4x4;
+            if (name == "Float")
+                return ResourceElementType::Float;
+            if (name == "Float2")
+                return ResourceElementType::Float2;
+            if (name == "Float3")
+                return ResourceElementType::Float3;
+            if (name == "Float4")
+                return ResourceElementType::Float4;
+            if (name == "Int")
+                return ResourceElementType::Int;
+            if (name == "Int2")
+                return ResourceElementType::Int2;
+            if (name == "Int3")
+                return ResourceElementType::Int3;
+            if (name == "Int4")
+                return ResourceElementType::Int4;
+            if (name == "UInt")
+                return ResourceElementType::UInt;
+            if (name == "UInt2")
+                return ResourceElementType::UInt2;
+            if (name == "UInt3")
+                return ResourceElementType::UInt3;
+            if (name == "UInt4")
+                return ResourceElementType::UInt4;
+            if (name == "Float2x2")
+                return ResourceElementType::Float2x2;
+            if (name == "Float2x3")
+                return ResourceElementType::Float2x3;
+            if (name == "Float2x4")
+                return ResourceElementType::Float2x4;
+            if (name == "Float3x2")
+                return ResourceElementType::Float3x2;
+            if (name == "Float3x3")
+                return ResourceElementType::Float3x3;
+            if (name == "Float3x4")
+                return ResourceElementType::Float3x4;
+            if (name == "Float4x2")
+                return ResourceElementType::Float4x2;
+            if (name == "Float4x3")
+                return ResourceElementType::Float4x3;
+            if (name == "Float4x4")
+                return ResourceElementType::Float4x4;
             return std::nullopt;
         }
 
@@ -121,7 +171,7 @@ namespace toy3d::shader
         bool requires_element_type(ResourceKind kind)
         {
             return kind != ResourceKind::Sampler && kind != ResourceKind::ComparisonSampler &&
-                kind != ResourceKind::ByteAddressBuffer && kind != ResourceKind::RWByteAddressBuffer;
+                   kind != ResourceKind::ByteAddressBuffer && kind != ResourceKind::RWByteAddressBuffer;
         }
 
         bool allows_matrix_element(ResourceKind kind)
@@ -131,22 +181,27 @@ namespace toy3d::shader
 
         bool valid_shader_name(std::string_view name)
         {
-            if (name.empty() || name.front() == '/' || name.back() == '/') return false;
+            if (name.empty() || name.front() == '/' || name.back() == '/')
+                return false;
             std::size_t segment_start = 0;
             while (segment_start < name.size())
             {
                 const std::size_t segment_end = name.find('/', segment_start);
                 const std::size_t end = segment_end == std::string_view::npos ? name.size() : segment_end;
-                if (end == segment_start) return false;
+                if (end == segment_start)
+                    return false;
                 const char first = name[segment_start];
-                if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_')) return false;
+                if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_'))
+                    return false;
                 for (std::size_t index = segment_start + 1; index < end; ++index)
                 {
                     const char value = name[index];
                     if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
-                        (value >= '0' && value <= '9') || value == '_')) return false;
+                          (value >= '0' && value <= '9') || value == '_'))
+                        return false;
                 }
-                if (segment_end == std::string_view::npos) break;
+                if (segment_end == std::string_view::npos)
+                    break;
                 segment_start = segment_end + 1;
             }
             return true;
@@ -154,17 +209,21 @@ namespace toy3d::shader
 
         bool is_stencil_compare(std::string_view value)
         {
-            return is_one_of(value, {"Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual", "Always"});
+            return is_one_of(value,
+                             {"Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual", "Always"});
         }
 
         bool is_stencil_operation(std::string_view value)
         {
-            return is_one_of(value, {"Keep", "Zero", "Replace", "IncrementClamp", "DecrementClamp", "Invert", "IncrementWrap", "DecrementWrap"});
+            return is_one_of(value, {"Keep", "Zero", "Replace", "IncrementClamp", "DecrementClamp", "Invert",
+                                     "IncrementWrap", "DecrementWrap"});
         }
 
         bool is_blend_factor(std::string_view value)
         {
-            return is_one_of(value, {"Zero", "One", "SrcColor", "OneMinusSrcColor", "DstColor", "OneMinusDstColor", "SrcAlpha", "OneMinusSrcAlpha", "DstAlpha", "OneMinusDstAlpha", "ConstantColor", "OneMinusConstantColor", "SrcAlphaSaturate"});
+            return is_one_of(value, {"Zero", "One", "SrcColor", "OneMinusSrcColor", "DstColor", "OneMinusDstColor",
+                                     "SrcAlpha", "OneMinusSrcAlpha", "DstAlpha", "OneMinusDstAlpha", "ConstantColor",
+                                     "OneMinusConstantColor", "SrcAlphaSaturate"});
         }
 
         bool is_blend_operation(std::string_view value)
@@ -174,133 +233,185 @@ namespace toy3d::shader
 
         std::optional<BindingGroup> binding_group_from_name(std::string_view name)
         {
-            if (name == "Global") return BindingGroup::Global;
-            if (name == "View") return BindingGroup::View;
-            if (name == "Pass") return BindingGroup::Pass;
-            if (name == "Material") return BindingGroup::Material;
-            if (name == "Object") return BindingGroup::Object;
+            if (name == "Global")
+                return BindingGroup::Global;
+            if (name == "View")
+                return BindingGroup::View;
+            if (name == "Pass")
+                return BindingGroup::Pass;
+            if (name == "Material")
+                return BindingGroup::Material;
+            if (name == "Object")
+                return BindingGroup::Object;
             return std::nullopt;
         }
 
         std::optional<ShaderStage> stage_from_pragma(std::string_view name)
         {
-            if (name == "vertex") return ShaderStage::Vertex;
-            if (name == "pixel") return ShaderStage::Pixel;
-            if (name == "compute") return ShaderStage::Compute;
+            if (name == "vertex")
+                return ShaderStage::Vertex;
+            if (name == "pixel")
+                return ShaderStage::Pixel;
+            if (name == "compute")
+                return ShaderStage::Compute;
             return std::nullopt;
         }
 
         bool is_valid_pass_state_value(std::string_view state, std::string_view value)
         {
-            if (state == "PrimitiveTopology") return is_one_of(value, {"PointList", "LineList", "LineStrip", "TriangleList", "TriangleStrip"});
-            if (state == "Cull") return is_one_of(value, {"Off", "Front", "Back"});
-            if (state == "FrontFace") return is_one_of(value, {"Clockwise", "CounterClockwise"});
-            if (state == "Fill") return is_one_of(value, {"Solid", "Wireframe"});
-            if (state == "DepthTest") return is_one_of(value, {"Off", "Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual", "Always"});
-            if (state == "DepthWrite") return is_one_of(value, {"Off", "On"});
-            if (state == "ColorWrite") return is_one_of(value, {"None", "R", "G", "B", "A", "RG", "RGB", "RGBA"});
+            if (state == "PrimitiveTopology")
+                return is_one_of(value, {"PointList", "LineList", "LineStrip", "TriangleList", "TriangleStrip"});
+            if (state == "Cull")
+                return is_one_of(value, {"Off", "Front", "Back"});
+            if (state == "FrontFace")
+                return is_one_of(value, {"Clockwise", "CounterClockwise"});
+            if (state == "Fill")
+                return is_one_of(value, {"Solid", "Wireframe"});
+            if (state == "DepthTest")
+                return is_one_of(value, {"Off", "Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual",
+                                         "GreaterEqual", "Always"});
+            if (state == "DepthWrite")
+                return is_one_of(value, {"Off", "On"});
+            if (state == "ColorWrite")
+                return is_one_of(value, {"None", "R", "G", "B", "A", "RG", "RGB", "RGBA"});
             return false;
         }
 
         // These parser conversions use string_view because token text is only
         // inspected while producing the owned normalized enum state.
-        ShaderGraphicsPassState::PrimitiveTopology primitive_topology_from_name(
-            std::string_view value)
+        ShaderGraphicsPassState::PrimitiveTopology primitive_topology_from_name(std::string_view value)
         {
-            if (value == "PointList") return ShaderGraphicsPassState::PrimitiveTopology::PointList;
-            if (value == "LineList") return ShaderGraphicsPassState::PrimitiveTopology::LineList;
-            if (value == "LineStrip") return ShaderGraphicsPassState::PrimitiveTopology::LineStrip;
-            if (value == "TriangleStrip") return ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip;
+            if (value == "PointList")
+                return ShaderGraphicsPassState::PrimitiveTopology::PointList;
+            if (value == "LineList")
+                return ShaderGraphicsPassState::PrimitiveTopology::LineList;
+            if (value == "LineStrip")
+                return ShaderGraphicsPassState::PrimitiveTopology::LineStrip;
+            if (value == "TriangleStrip")
+                return ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip;
             return ShaderGraphicsPassState::PrimitiveTopology::TriangleList;
         }
 
         ShaderGraphicsPassState::CullMode cull_mode_from_name(std::string_view value)
         {
-            if (value == "Off") return ShaderGraphicsPassState::CullMode::None;
-            if (value == "Front") return ShaderGraphicsPassState::CullMode::Front;
+            if (value == "Off")
+                return ShaderGraphicsPassState::CullMode::None;
+            if (value == "Front")
+                return ShaderGraphicsPassState::CullMode::Front;
             return ShaderGraphicsPassState::CullMode::Back;
         }
 
-        ShaderGraphicsPassState::CompareOperation compare_operation_from_name(
-            std::string_view value)
+        ShaderGraphicsPassState::CompareOperation compare_operation_from_name(std::string_view value)
         {
-            if (value == "Never") return ShaderGraphicsPassState::CompareOperation::Never;
-            if (value == "Less") return ShaderGraphicsPassState::CompareOperation::Less;
-            if (value == "Equal") return ShaderGraphicsPassState::CompareOperation::Equal;
-            if (value == "LessEqual") return ShaderGraphicsPassState::CompareOperation::LessEqual;
-            if (value == "Greater") return ShaderGraphicsPassState::CompareOperation::Greater;
-            if (value == "NotEqual") return ShaderGraphicsPassState::CompareOperation::NotEqual;
-            if (value == "GreaterEqual") return ShaderGraphicsPassState::CompareOperation::GreaterEqual;
+            if (value == "Never")
+                return ShaderGraphicsPassState::CompareOperation::Never;
+            if (value == "Less")
+                return ShaderGraphicsPassState::CompareOperation::Less;
+            if (value == "Equal")
+                return ShaderGraphicsPassState::CompareOperation::Equal;
+            if (value == "LessEqual")
+                return ShaderGraphicsPassState::CompareOperation::LessEqual;
+            if (value == "Greater")
+                return ShaderGraphicsPassState::CompareOperation::Greater;
+            if (value == "NotEqual")
+                return ShaderGraphicsPassState::CompareOperation::NotEqual;
+            if (value == "GreaterEqual")
+                return ShaderGraphicsPassState::CompareOperation::GreaterEqual;
             return ShaderGraphicsPassState::CompareOperation::Always;
         }
 
-        ShaderGraphicsPassState::StencilOperation stencil_operation_from_name(
-            std::string_view value)
+        ShaderGraphicsPassState::StencilOperation stencil_operation_from_name(std::string_view value)
         {
-            if (value == "Zero") return ShaderGraphicsPassState::StencilOperation::Zero;
-            if (value == "Replace") return ShaderGraphicsPassState::StencilOperation::Replace;
-            if (value == "IncrementClamp") return ShaderGraphicsPassState::StencilOperation::IncrementClamp;
-            if (value == "DecrementClamp") return ShaderGraphicsPassState::StencilOperation::DecrementClamp;
-            if (value == "Invert") return ShaderGraphicsPassState::StencilOperation::Invert;
-            if (value == "IncrementWrap") return ShaderGraphicsPassState::StencilOperation::IncrementWrap;
-            if (value == "DecrementWrap") return ShaderGraphicsPassState::StencilOperation::DecrementWrap;
+            if (value == "Zero")
+                return ShaderGraphicsPassState::StencilOperation::Zero;
+            if (value == "Replace")
+                return ShaderGraphicsPassState::StencilOperation::Replace;
+            if (value == "IncrementClamp")
+                return ShaderGraphicsPassState::StencilOperation::IncrementClamp;
+            if (value == "DecrementClamp")
+                return ShaderGraphicsPassState::StencilOperation::DecrementClamp;
+            if (value == "Invert")
+                return ShaderGraphicsPassState::StencilOperation::Invert;
+            if (value == "IncrementWrap")
+                return ShaderGraphicsPassState::StencilOperation::IncrementWrap;
+            if (value == "DecrementWrap")
+                return ShaderGraphicsPassState::StencilOperation::DecrementWrap;
             return ShaderGraphicsPassState::StencilOperation::Keep;
         }
 
         ShaderGraphicsPassState::BlendFactor blend_factor_from_name(std::string_view value)
         {
-            if (value == "Zero") return ShaderGraphicsPassState::BlendFactor::Zero;
-            if (value == "SrcColor") return ShaderGraphicsPassState::BlendFactor::SourceColor;
-            if (value == "OneMinusSrcColor") return ShaderGraphicsPassState::BlendFactor::OneMinusSourceColor;
-            if (value == "DstColor") return ShaderGraphicsPassState::BlendFactor::DestinationColor;
-            if (value == "OneMinusDstColor") return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationColor;
-            if (value == "SrcAlpha") return ShaderGraphicsPassState::BlendFactor::SourceAlpha;
-            if (value == "OneMinusSrcAlpha") return ShaderGraphicsPassState::BlendFactor::OneMinusSourceAlpha;
-            if (value == "DstAlpha") return ShaderGraphicsPassState::BlendFactor::DestinationAlpha;
-            if (value == "OneMinusDstAlpha") return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationAlpha;
-            if (value == "ConstantColor") return ShaderGraphicsPassState::BlendFactor::ConstantColor;
-            if (value == "OneMinusConstantColor") return ShaderGraphicsPassState::BlendFactor::OneMinusConstantColor;
-            if (value == "SrcAlphaSaturate") return ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate;
+            if (value == "Zero")
+                return ShaderGraphicsPassState::BlendFactor::Zero;
+            if (value == "SrcColor")
+                return ShaderGraphicsPassState::BlendFactor::SourceColor;
+            if (value == "OneMinusSrcColor")
+                return ShaderGraphicsPassState::BlendFactor::OneMinusSourceColor;
+            if (value == "DstColor")
+                return ShaderGraphicsPassState::BlendFactor::DestinationColor;
+            if (value == "OneMinusDstColor")
+                return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationColor;
+            if (value == "SrcAlpha")
+                return ShaderGraphicsPassState::BlendFactor::SourceAlpha;
+            if (value == "OneMinusSrcAlpha")
+                return ShaderGraphicsPassState::BlendFactor::OneMinusSourceAlpha;
+            if (value == "DstAlpha")
+                return ShaderGraphicsPassState::BlendFactor::DestinationAlpha;
+            if (value == "OneMinusDstAlpha")
+                return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationAlpha;
+            if (value == "ConstantColor")
+                return ShaderGraphicsPassState::BlendFactor::ConstantColor;
+            if (value == "OneMinusConstantColor")
+                return ShaderGraphicsPassState::BlendFactor::OneMinusConstantColor;
+            if (value == "SrcAlphaSaturate")
+                return ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate;
             return ShaderGraphicsPassState::BlendFactor::One;
         }
 
-        ShaderGraphicsPassState::BlendOperation blend_operation_from_name(
-            std::string_view value)
+        ShaderGraphicsPassState::BlendOperation blend_operation_from_name(std::string_view value)
         {
-            if (value == "Subtract") return ShaderGraphicsPassState::BlendOperation::Subtract;
-            if (value == "ReverseSubtract") return ShaderGraphicsPassState::BlendOperation::ReverseSubtract;
-            if (value == "Min") return ShaderGraphicsPassState::BlendOperation::Minimum;
-            if (value == "Max") return ShaderGraphicsPassState::BlendOperation::Maximum;
+            if (value == "Subtract")
+                return ShaderGraphicsPassState::BlendOperation::Subtract;
+            if (value == "ReverseSubtract")
+                return ShaderGraphicsPassState::BlendOperation::ReverseSubtract;
+            if (value == "Min")
+                return ShaderGraphicsPassState::BlendOperation::Minimum;
+            if (value == "Max")
+                return ShaderGraphicsPassState::BlendOperation::Maximum;
             return ShaderGraphicsPassState::BlendOperation::Add;
         }
 
-        ShaderGraphicsPassState::ColorWriteMask color_write_mask_from_name(
-            std::string_view value)
+        ShaderGraphicsPassState::ColorWriteMask color_write_mask_from_name(std::string_view value)
         {
-            if (value == "None") return ShaderGraphicsPassState::ColorWriteMask::None;
-            if (value == "R") return ShaderGraphicsPassState::ColorWriteMask::Red;
-            if (value == "G") return ShaderGraphicsPassState::ColorWriteMask::Green;
-            if (value == "B") return ShaderGraphicsPassState::ColorWriteMask::Blue;
-            if (value == "A") return ShaderGraphicsPassState::ColorWriteMask::Alpha;
-            if (value == "RG") return ShaderGraphicsPassState::ColorWriteMask::RedGreen;
-            if (value == "RGB") return ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue;
+            if (value == "None")
+                return ShaderGraphicsPassState::ColorWriteMask::None;
+            if (value == "R")
+                return ShaderGraphicsPassState::ColorWriteMask::Red;
+            if (value == "G")
+                return ShaderGraphicsPassState::ColorWriteMask::Green;
+            if (value == "B")
+                return ShaderGraphicsPassState::ColorWriteMask::Blue;
+            if (value == "A")
+                return ShaderGraphicsPassState::ColorWriteMask::Alpha;
+            if (value == "RG")
+                return ShaderGraphicsPassState::ColorWriteMask::RedGreen;
+            if (value == "RGB")
+                return ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue;
             return ShaderGraphicsPassState::ColorWriteMask::All;
         }
 
         bool is_pass_state_name(std::string_view name)
         {
-            return is_one_of(name, {
-                "PrimitiveTopology", "Cull", "FrontFace", "Fill", "DepthTest",
-                "DepthWrite", "Stencil", "Blend", "ColorWrite"});
+            return is_one_of(name, {"PrimitiveTopology", "Cull", "FrontFace", "Fill", "DepthTest", "DepthWrite",
+                                    "Stencil", "Blend", "ColorWrite"});
         }
-    }
+    } // namespace
 
     bool ParseResult::succeeded() const
     {
-        return asset.has_value() && std::none_of(
-            diagnostics.begin(), diagnostics.end(), [](const Diagnostic& diagnostic) {
-                return diagnostic.severity == DiagnosticSeverity::Error;
-            });
+        return asset.has_value() &&
+               std::none_of(diagnostics.begin(), diagnostics.end(), [](const Diagnostic& diagnostic)
+                            { return diagnostic.severity == DiagnosticSeverity::Error; });
     }
 
     ParseResult parse_shader(std::string_view source, std::string path)
@@ -308,10 +419,7 @@ namespace toy3d::shader
         return ShaderParser(source, std::move(path)).parse();
     }
 
-    ShaderParser::ShaderParser(std::string_view source, std::string path)
-        : tokenizer(source, std::move(path))
-    {
-    }
+    ShaderParser::ShaderParser(std::string_view source, std::string path) : tokenizer(source, std::move(path)) {}
 
     ParseResult ShaderParser::parse()
     {
@@ -330,7 +438,8 @@ namespace toy3d::shader
             asset.name = name->text;
             if (!valid_shader_name(asset.name))
             {
-                add_error(DiagnosticCode::InvalidShaderName, name->location, "Shader name must contain slash-separated ASCII identifier segments.");
+                add_error(DiagnosticCode::InvalidShaderName, name->location,
+                          "Shader name must contain slash-separated ASCII identifier segments.");
             }
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the Shader name.");
@@ -343,7 +452,8 @@ namespace toy3d::shader
         {
             if (version->text != "1")
             {
-                add_error(DiagnosticCode::InvalidVersion, version->location, "Only Shader asset Version 1 is supported.");
+                add_error(DiagnosticCode::InvalidVersion, version->location,
+                          "Only Shader asset Version 1 is supported.");
             }
             else
             {
@@ -361,7 +471,8 @@ namespace toy3d::shader
             {
                 if (has_properties)
                 {
-                    add_error(DiagnosticCode::DuplicateSection, peek().location, "Properties may only be declared once.");
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "Properties may only be declared once.");
                 }
                 has_properties = true;
                 parse_properties(asset);
@@ -370,7 +481,8 @@ namespace toy3d::shader
             {
                 if (has_parameters)
                 {
-                    add_error(DiagnosticCode::DuplicateSection, peek().location, "Parameters may only be declared once.");
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "Parameters may only be declared once.");
                 }
                 has_parameters = true;
                 parse_parameters(asset);
@@ -379,7 +491,8 @@ namespace toy3d::shader
             {
                 if (has_resources)
                 {
-                    add_error(DiagnosticCode::DuplicateSection, peek().location, "Resources may only be declared once.");
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "Resources may only be declared once.");
                 }
                 has_resources = true;
                 parse_resources(asset);
@@ -406,10 +519,8 @@ namespace toy3d::shader
             else
             {
                 const Token unexpected = consume();
-                add_error(
-                    DiagnosticCode::UnexpectedToken,
-                    unexpected.location,
-                    "Unknown Shader field '" + unexpected.text + "'.");
+                add_error(DiagnosticCode::UnexpectedToken, unexpected.location,
+                          "Unknown Shader field '" + unexpected.text + "'.");
             }
         }
         expect(TokenKind::RightBrace, "Expected '}' to close the Shader asset.");
@@ -419,7 +530,8 @@ namespace toy3d::shader
         }
         if (asset.passes.empty())
         {
-            add_error(DiagnosticCode::MissingEntryPoint, asset.location, "Shader asset must contain at least one Pass.");
+            add_error(DiagnosticCode::MissingEntryPoint, asset.location,
+                      "Shader asset must contain at least one Pass.");
         }
 
         copy_tokenizer_diagnostics();
@@ -537,7 +649,8 @@ namespace toy3d::shader
             const auto parsed_type = property_type_from_name(type->text);
             if (!parsed_type)
             {
-                add_error(DiagnosticCode::InvalidPropertyType, type->location, "Unknown property type '" + type->text + "'.");
+                add_error(DiagnosticCode::InvalidPropertyType, type->location,
+                          "Unknown property type '" + type->text + "'.");
             }
             else
             {
@@ -551,7 +664,8 @@ namespace toy3d::shader
                     expect(TokenKind::RightParenthesis, "Expected ')' after Range bounds.");
                     if (property.range_min && property.range_max && *property.range_min > *property.range_max)
                     {
-                        add_error(DiagnosticCode::InvalidPropertyType, type->location, "Range minimum cannot exceed its maximum.");
+                        add_error(DiagnosticCode::InvalidPropertyType, type->location,
+                                  "Range minimum cannot exceed its maximum.");
                     }
                 }
             }
@@ -590,7 +704,8 @@ namespace toy3d::shader
         const auto group = binding_group_from_name(group_token->text);
         if (!group)
         {
-            add_error(DiagnosticCode::InvalidResourceGroup, group_token->location, "Unknown Binding Group '" + group_token->text + "'.");
+            add_error(DiagnosticCode::InvalidResourceGroup, group_token->location,
+                      "Unknown Binding Group '" + group_token->text + "'.");
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the resource Binding Group.");
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
@@ -609,7 +724,8 @@ namespace toy3d::shader
             const bool duplicate = contains_name(asset.resources, resource.name);
             if (duplicate)
             {
-                add_error(DiagnosticCode::DuplicateResource, name->location, "Duplicate resource '" + resource.name + "'.");
+                add_error(DiagnosticCode::DuplicateResource, name->location,
+                          "Duplicate resource '" + resource.name + "'.");
             }
             expect(TokenKind::Colon, "Expected ':' after the resource name.");
             parse_resource_type(resource);
@@ -650,7 +766,7 @@ namespace toy3d::shader
         if (!valid_group)
         {
             add_error(DiagnosticCode::InvalidParameterGroup, group_token->location,
-                "Parameters v1 only supports the Pass Binding Group.");
+                      "Parameters v1 only supports the Pass Binding Group.");
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the parameter Binding Group.");
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
@@ -669,7 +785,7 @@ namespace toy3d::shader
             if (duplicate)
             {
                 add_error(DiagnosticCode::DuplicateParameter, name->location,
-                    "Duplicate parameter '" + parameter.name + "'.");
+                          "Duplicate parameter '" + parameter.name + "'.");
             }
             expect(TokenKind::Colon, "Expected ':' after the parameter name.");
             const auto type = expect_identifier("Expected a parameter type.");
@@ -679,7 +795,7 @@ namespace toy3d::shader
                 if (!parsed_type)
                 {
                     add_error(DiagnosticCode::InvalidParameterType, type->location,
-                        "Parameters v1 does not support type '" + type->text + "'.");
+                              "Parameters v1 does not support type '" + type->text + "'.");
                 }
                 else
                 {
@@ -692,7 +808,7 @@ namespace toy3d::shader
                 if (parameter.default_value.kind != DefaultValueKind::Numbers)
                 {
                     add_error(DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
-                        "Parameter defaults must be numeric.");
+                              "Parameter defaults must be numeric.");
                 }
             }
             if (!duplicate && valid_group)
@@ -714,17 +830,17 @@ namespace toy3d::shader
         const auto kind = resource_kind_from_name(type->text);
         if (!kind)
         {
-            add_error(DiagnosticCode::InvalidResourceType, type->location, "Unknown resource type '" + type->text + "'.");
+            add_error(DiagnosticCode::InvalidResourceType, type->location,
+                      "Unknown resource type '" + type->text + "'.");
             return false;
         }
         resource.kind = *kind;
         const bool has_element = match(TokenKind::LeftAngle);
         if (requires_element_type(*kind) != has_element)
         {
-            add_error(
-                DiagnosticCode::InvalidResourceType,
-                type->location,
-                requires_element_type(*kind) ? "Resource type requires an element type." : "Resource type does not accept an element type.");
+            add_error(DiagnosticCode::InvalidResourceType, type->location,
+                      requires_element_type(*kind) ? "Resource type requires an element type."
+                                                   : "Resource type does not accept an element type.");
             if (!has_element)
             {
                 return false;
@@ -741,7 +857,8 @@ namespace toy3d::shader
             const auto parsed_element = resource_element_type_from_name(element->text);
             if (!parsed_element || (is_matrix(*parsed_element) && !allows_matrix_element(*kind)))
             {
-                add_error(DiagnosticCode::InvalidResourceType, element->location, "Resource element type '" + element->text + "' is not supported by this resource kind.");
+                add_error(DiagnosticCode::InvalidResourceType, element->location,
+                          "Resource element type '" + element->text + "' is not supported by this resource kind.");
             }
             else
             {
@@ -794,7 +911,8 @@ namespace toy3d::shader
                 variant.default_value = value->text;
                 if (!is_one_of(value->text, {"true", "false"}))
                 {
-                    add_error(DiagnosticCode::InvalidVariant, value->location, "Bool variant default must be true or false.");
+                    add_error(DiagnosticCode::InvalidVariant, value->location,
+                              "Bool variant default must be true or false.");
                 }
             }
         }
@@ -807,9 +925,11 @@ namespace toy3d::shader
                 const auto option = expect_identifier("Expected an enum variant option.");
                 if (option)
                 {
-                    if (std::find(variant.options.begin(), variant.options.end(), option->text) != variant.options.end())
+                    if (std::find(variant.options.begin(), variant.options.end(), option->text) !=
+                        variant.options.end())
                     {
-                        add_error(DiagnosticCode::InvalidVariant, option->location, "Duplicate enum variant option '" + option->text + "'.");
+                        add_error(DiagnosticCode::InvalidVariant, option->location,
+                                  "Duplicate enum variant option '" + option->text + "'.");
                     }
                     variant.options.push_back(option->text);
                 }
@@ -825,7 +945,8 @@ namespace toy3d::shader
                 variant.default_value = value->text;
                 if (std::find(variant.options.begin(), variant.options.end(), value->text) == variant.options.end())
                 {
-                    add_error(DiagnosticCode::InvalidVariant, value->location, "Enum variant default is not one of its options.");
+                    add_error(DiagnosticCode::InvalidVariant, value->location,
+                              "Enum variant default is not one of its options.");
                 }
             }
         }
@@ -874,7 +995,8 @@ namespace toy3d::shader
             {
                 if (has_program)
                 {
-                    add_error(DiagnosticCode::DuplicateSection, peek().location, "Pass may only contain one HLSLPROGRAM block.");
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "Pass may only contain one HLSLPROGRAM block.");
                 }
                 has_program = true;
                 parse_hlsl_block(pass.program);
@@ -887,7 +1009,8 @@ namespace toy3d::shader
                 pass.has_explicit_graphics_state = true;
                 if (!declared_states.insert(state_name.text).second)
                 {
-                    add_error(DiagnosticCode::DuplicatePassState, state_name.location, "Pass state '" + state_name.text + "' is declared more than once.");
+                    add_error(DiagnosticCode::DuplicatePassState, state_name.location,
+                              "Pass state '" + state_name.text + "' is declared more than once.");
                 }
                 if (state_name.text == "Stencil")
                 {
@@ -905,30 +1028,27 @@ namespace toy3d::shader
                     const bool valid = is_valid_pass_state_value(state_name.text, value->text);
                     if (!valid)
                     {
-                        add_error(
-                            DiagnosticCode::InvalidPassState,
-                            value->location,
-                            "Invalid value '" + value->text + "' for Pass state '" + state_name.text + "'.");
+                        add_error(DiagnosticCode::InvalidPassState, value->location,
+                                  "Invalid value '" + value->text + "' for Pass state '" + state_name.text + "'.");
                     }
-                    if (!valid) continue;
+                    if (!valid)
+                        continue;
                     if (state_name.text == "PrimitiveTopology")
                         pass.state.primitive_topology = primitive_topology_from_name(value->text);
                     else if (state_name.text == "Cull")
                         pass.state.cull_mode = cull_mode_from_name(value->text);
                     else if (state_name.text == "FrontFace")
                         pass.state.front_face = value->text == "Clockwise"
-                            ? ShaderGraphicsPassState::FrontFace::Clockwise
-                            : ShaderGraphicsPassState::FrontFace::CounterClockwise;
+                                                    ? ShaderGraphicsPassState::FrontFace::Clockwise
+                                                    : ShaderGraphicsPassState::FrontFace::CounterClockwise;
                     else if (state_name.text == "Fill")
-                        pass.state.fill_mode = value->text == "Wireframe"
-                            ? ShaderGraphicsPassState::FillMode::Wireframe
-                            : ShaderGraphicsPassState::FillMode::Solid;
+                        pass.state.fill_mode = value->text == "Wireframe" ? ShaderGraphicsPassState::FillMode::Wireframe
+                                                                          : ShaderGraphicsPassState::FillMode::Solid;
                     else if (state_name.text == "DepthTest")
                     {
                         pass.state.depth_test_enable = value->text != "Off";
                         if (pass.state.depth_test_enable)
-                            pass.state.depth_compare_operation =
-                                compare_operation_from_name(value->text);
+                            pass.state.depth_compare_operation = compare_operation_from_name(value->text);
                     }
                     else if (state_name.text == "DepthWrite")
                         pass.state.depth_write_enable = value->text == "On";
@@ -939,7 +1059,8 @@ namespace toy3d::shader
             }
 
             const Token unexpected = consume();
-            add_error(DiagnosticCode::InvalidPassState, unexpected.location, "Unknown Pass field '" + unexpected.text + "'.");
+            add_error(DiagnosticCode::InvalidPassState, unexpected.location,
+                      "Unknown Pass field '" + unexpected.text + "'.");
         }
         expect(TokenKind::RightBrace, "Expected '}' to close the Pass.");
         if (!has_program)
@@ -980,7 +1101,8 @@ namespace toy3d::shader
             }
             if (!fields.insert(field->text).second)
             {
-                add_error(DiagnosticCode::InvalidPassState, field->location, "Stencil field '" + field->text + "' is declared more than once.");
+                add_error(DiagnosticCode::InvalidPassState, field->location,
+                          "Stencil field '" + field->text + "' is declared more than once.");
             }
             if (field->text == "ReadMask" || field->text == "WriteMask")
             {
@@ -991,10 +1113,13 @@ namespace toy3d::shader
                     const unsigned long parsed = std::strtoul(value->text.c_str(), &end, 10);
                     if (*end != '\0' || parsed > std::numeric_limits<std::uint8_t>::max())
                     {
-                        add_error(DiagnosticCode::InvalidPassState, value->location, "Stencil mask must be an integer from 0 through 255.");
+                        add_error(DiagnosticCode::InvalidPassState, value->location,
+                                  "Stencil mask must be an integer from 0 through 255.");
                     }
-                    else if (field->text == "ReadMask") pass.state.stencil.read_mask = static_cast<std::uint8_t>(parsed);
-                    else pass.state.stencil.write_mask = static_cast<std::uint8_t>(parsed);
+                    else if (field->text == "ReadMask")
+                        pass.state.stencil.read_mask = static_cast<std::uint8_t>(parsed);
+                    else
+                        pass.state.stencil.write_mask = static_cast<std::uint8_t>(parsed);
                 }
                 continue;
             }
@@ -1017,39 +1142,43 @@ namespace toy3d::shader
                 expect(TokenKind::RightBrace, "Expected '}' after Stencil face operations.");
                 continue;
             }
-            add_error(DiagnosticCode::InvalidPassState, field->location, "Unknown Stencil field '" + field->text + "'.");
+            add_error(DiagnosticCode::InvalidPassState, field->location,
+                      "Unknown Stencil field '" + field->text + "'.");
         }
         expect(TokenKind::RightBrace, "Expected '}' to close Stencil state.");
         if (has_front_and_back == (has_front || has_back) || (!has_front_and_back && !(has_front && has_back)))
         {
-            add_error(DiagnosticCode::InvalidPassState, pass.location, "Stencil requires FrontAndBack or both Front and Back.");
+            add_error(DiagnosticCode::InvalidPassState, pass.location,
+                      "Stencil requires FrontAndBack or both Front and Back.");
             return false;
         }
-        pass.state.stencil.mode = has_front_and_back
-            ? ShaderGraphicsPassState::StencilMode::FrontAndBack
-            : ShaderGraphicsPassState::StencilMode::SeparateFaces;
+        pass.state.stencil.mode = has_front_and_back ? ShaderGraphicsPassState::StencilMode::FrontAndBack
+                                                     : ShaderGraphicsPassState::StencilMode::SeparateFaces;
         return true;
     }
 
-    bool ShaderParser::parse_stencil_face(
-        ShaderGraphicsPassState::StencilFaceState& face)
+    bool ShaderParser::parse_stencil_face(ShaderGraphicsPassState::StencilFaceState& face)
     {
         const char* names[] = {"Compare", "Fail", "DepthFail", "Pass"};
         for (std::size_t index = 0; index < 4; ++index)
         {
             if (!match_identifier(names[index]))
             {
-                add_error(DiagnosticCode::InvalidPassState, peek().location, "Expected Stencil operation field '" + std::string(names[index]) + "'.");
+                add_error(DiagnosticCode::InvalidPassState, peek().location,
+                          "Expected Stencil operation field '" + std::string(names[index]) + "'.");
                 return false;
             }
             const auto value = expect_identifier("Expected a Stencil operation value.");
-            if (!value) return false;
+            if (!value)
+                return false;
             const bool valid = index == 0 ? is_stencil_compare(value->text) : is_stencil_operation(value->text);
             if (!valid)
             {
-                add_error(DiagnosticCode::InvalidPassState, value->location, "Invalid Stencil operation value '" + value->text + "'.");
+                add_error(DiagnosticCode::InvalidPassState, value->location,
+                          "Invalid Stencil operation value '" + value->text + "'.");
             }
-            if (!valid) continue;
+            if (!valid)
+                continue;
             if (index == 0)
                 face.compare_operation = compare_operation_from_name(value->text);
             else if (index == 1)
@@ -1069,7 +1198,8 @@ namespace toy3d::shader
             pass.state.blend = ShaderGraphicsPassState::BlendState{};
             return true;
         }
-        if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Blend.")) return false;
+        if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Blend."))
+            return false;
         pass.state.blend.enabled = true;
         struct BlendLine
         {
@@ -1078,18 +1208,16 @@ namespace toy3d::shader
             ShaderGraphicsPassState::BlendFactor* destination;
             ShaderGraphicsPassState::BlendOperation* operation;
         };
-        BlendLine lines[] = {
-            {"Color", &pass.state.blend.source_color_factor,
-                &pass.state.blend.destination_color_factor,
-                &pass.state.blend.color_operation},
-            {"Alpha", &pass.state.blend.source_alpha_factor,
-                &pass.state.blend.destination_alpha_factor,
-                &pass.state.blend.alpha_operation}};
+        BlendLine lines[] = {{"Color", &pass.state.blend.source_color_factor,
+                              &pass.state.blend.destination_color_factor, &pass.state.blend.color_operation},
+                             {"Alpha", &pass.state.blend.source_alpha_factor,
+                              &pass.state.blend.destination_alpha_factor, &pass.state.blend.alpha_operation}};
         for (BlendLine& line : lines)
         {
             if (!match_identifier(line.name))
             {
-                add_error(DiagnosticCode::InvalidPassState, peek().location, "Expected Blend field '" + std::string(line.name) + "'.");
+                add_error(DiagnosticCode::InvalidPassState, peek().location,
+                          "Expected Blend field '" + std::string(line.name) + "'.");
                 break;
             }
             const auto source = expect_identifier("Expected source Blend factor.");
@@ -1099,7 +1227,7 @@ namespace toy3d::shader
             {
                 if (!is_blend_factor(source->text))
                     add_error(DiagnosticCode::InvalidPassState, source->location,
-                        "Invalid Blend factor '" + source->text + "'.");
+                              "Invalid Blend factor '" + source->text + "'.");
                 else
                     *line.source = blend_factor_from_name(source->text);
             }
@@ -1107,7 +1235,7 @@ namespace toy3d::shader
             {
                 if (!is_blend_factor(destination->text))
                     add_error(DiagnosticCode::InvalidPassState, destination->location,
-                        "Invalid Blend factor '" + destination->text + "'.");
+                              "Invalid Blend factor '" + destination->text + "'.");
                 else
                     *line.destination = blend_factor_from_name(destination->text);
             }
@@ -1115,7 +1243,7 @@ namespace toy3d::shader
             {
                 if (!is_blend_operation(operation->text))
                     add_error(DiagnosticCode::InvalidPassState, operation->location,
-                        "Invalid Blend operation '" + operation->text + "'.");
+                              "Invalid Blend operation '" + operation->text + "'.");
                 else
                     *line.operation = blend_operation_from_name(operation->text);
             }
@@ -1127,7 +1255,8 @@ namespace toy3d::shader
     {
         if (lookahead)
         {
-            add_error(DiagnosticCode::UnexpectedToken, lookahead->location, "Internal parser state prevented raw HLSL capture.");
+            add_error(DiagnosticCode::UnexpectedToken, lookahead->location,
+                      "Internal parser state prevented raw HLSL capture.");
             return false;
         }
         RawBlock raw = tokenizer.consume_raw_block("ENDHLSL");
@@ -1177,7 +1306,8 @@ namespace toy3d::shader
                 return true;
             }
         }
-        add_error(DiagnosticCode::InvalidDefaultValue, peek().location, "Expected a property or resource default value.");
+        add_error(DiagnosticCode::InvalidDefaultValue, peek().location,
+                  "Expected a property or resource default value.");
         return false;
     }
 
@@ -1214,32 +1344,28 @@ namespace toy3d::shader
         {
             const std::size_t first = line_text.find_first_not_of(" \t");
             if (first != std::string::npos && line_text.compare(first, 7, "#pragma") == 0 &&
-                line_text.size() > first + 7 &&
-                (line_text[first + 7] == ' ' || line_text[first + 7] == '\t'))
+                line_text.size() > first + 7 && (line_text[first + 7] == ' ' || line_text[first + 7] == '\t'))
             {
                 std::istringstream pragma(line_text.substr(first + 7));
                 std::string stage_name;
                 std::string entry_name;
                 std::string trailing;
                 pragma >> stage_name >> entry_name >> trailing;
-                const SourceLocation location{
-                    block.location.path,
-                    block.location.offset,
-                    line_number,
-                    first + 1};
+                const SourceLocation location{block.location.path, block.location.offset, line_number, first + 1};
                 const auto stage = stage_from_pragma(stage_name);
                 if (!stage || entry_name.empty() || !trailing.empty())
                 {
-                    add_error(DiagnosticCode::UnknownPragma, location, "Expected '#pragma vertex|pixel|compute entry_name'.");
+                    add_error(DiagnosticCode::UnknownPragma, location,
+                              "Expected '#pragma vertex|pixel|compute entry_name'.");
                 }
                 else
                 {
-                    const bool duplicate = std::any_of(block.entry_points.begin(), block.entry_points.end(), [&](const EntryPoint& entry) {
-                        return entry.stage == *stage;
-                    });
+                    const bool duplicate = std::any_of(block.entry_points.begin(), block.entry_points.end(),
+                                                       [&](const EntryPoint& entry) { return entry.stage == *stage; });
                     if (duplicate)
                     {
-                        add_error(DiagnosticCode::DuplicateEntryPoint, location, "Shader stage pragma is declared more than once.");
+                        add_error(DiagnosticCode::DuplicateEntryPoint, location,
+                                  "Shader stage pragma is declared more than once.");
                     }
                     else
                     {
@@ -1253,30 +1379,31 @@ namespace toy3d::shader
 
     void ShaderParser::validate_program(ShaderPass& pass)
     {
-        const bool has_vertex = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(), [](const EntryPoint& entry) {
-            return entry.stage == ShaderStage::Vertex;
-        });
-        const bool has_pixel = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(), [](const EntryPoint& entry) {
-            return entry.stage == ShaderStage::Pixel;
-        });
-        const bool has_compute = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(), [](const EntryPoint& entry) {
-            return entry.stage == ShaderStage::Compute;
-        });
+        const bool has_vertex = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
+                                            [](const EntryPoint& entry) { return entry.stage == ShaderStage::Vertex; });
+        const bool has_pixel = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
+                                           [](const EntryPoint& entry) { return entry.stage == ShaderStage::Pixel; });
+        const bool has_compute =
+            std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
+                        [](const EntryPoint& entry) { return entry.stage == ShaderStage::Compute; });
         if (has_compute && (has_vertex || has_pixel))
         {
-            add_error(DiagnosticCode::MixedProgramStages, pass.program.location, "A Pass cannot mix compute and graphics entry points.");
+            add_error(DiagnosticCode::MixedProgramStages, pass.program.location,
+                      "A Pass cannot mix compute and graphics entry points.");
         }
         else if (has_compute)
         {
             if (pass.has_explicit_graphics_state)
             {
-                add_error(DiagnosticCode::InvalidPassState, pass.location, "Compute Pass cannot declare graphics pipeline state.");
+                add_error(DiagnosticCode::InvalidPassState, pass.location,
+                          "Compute Pass cannot declare graphics pipeline state.");
             }
             return;
         }
         else if (!has_vertex)
         {
-            add_error(DiagnosticCode::MissingEntryPoint, pass.program.location, "Graphics Pass requires a vertex pragma; pixel is optional.");
+            add_error(DiagnosticCode::MissingEntryPoint, pass.program.location,
+                      "Graphics Pass requires a vertex pragma; pixel is optional.");
         }
     }
 
@@ -1284,15 +1411,18 @@ namespace toy3d::shader
     {
         if (token.text.rfind("toy3d_", 0) == 0 || token.text.rfind("TOY3D_", 0) == 0)
         {
-            add_error(DiagnosticCode::ReservedIdentifier, token.location, "Identifier '" + token.text + "' uses a reserved Toy3d prefix.");
+            add_error(DiagnosticCode::ReservedIdentifier, token.location,
+                      "Identifier '" + token.text + "' uses a reserved Toy3d prefix.");
         }
         const bool conflict = (category != "property" && contains_name(asset.properties, token.text)) ||
-            (category != "parameter" && contains_name(asset.parameters, token.text)) ||
-            (category != "resource" && contains_name(asset.resources, token.text)) ||
-            (category != "variant" && contains_name(asset.variants, token.text));
+                              (category != "parameter" && contains_name(asset.parameters, token.text)) ||
+                              (category != "resource" && contains_name(asset.resources, token.text)) ||
+                              (category != "variant" && contains_name(asset.variants, token.text));
         if (conflict)
         {
-            add_error(DiagnosticCode::IdentifierConflict, token.location, "The " + std::string(category) + " identifier '" + token.text + "' conflicts with another generated HLSL identifier.");
+            add_error(DiagnosticCode::IdentifierConflict, token.location,
+                      "The " + std::string(category) + " identifier '" + token.text +
+                          "' conflicts with another generated HLSL identifier.");
         }
     }
 
@@ -1310,4 +1440,4 @@ namespace toy3d::shader
             ++copied_tokenizer_diagnostics;
         }
     }
-}
+} // namespace toy3d::shader

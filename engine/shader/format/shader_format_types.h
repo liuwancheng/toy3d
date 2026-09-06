@@ -23,10 +23,8 @@ namespace toy3d::shader
     constexpr std::uint32_t vulkan_binding_mapping_version = 1;
     constexpr std::uint32_t max_constant_buffer_size = 16u * 1024u;
     constexpr Sha256Hash default_shader_permutation_key = {
-        0x7d, 0x45, 0x04, 0x65, 0xce, 0xb4, 0x90, 0x83,
-        0x70, 0x8a, 0x69, 0x70, 0x82, 0x7f, 0x0e, 0x0b,
-        0x11, 0x6e, 0xd2, 0x85, 0x07, 0x2a, 0x95, 0xb4,
-        0x51, 0xe5, 0x5f, 0x58, 0x3f, 0x56, 0xda, 0x8d};
+        0x7d, 0x45, 0x04, 0x65, 0xce, 0xb4, 0x90, 0x83, 0x70, 0x8a, 0x69, 0x70, 0x82, 0x7f, 0x0e, 0x0b,
+        0x11, 0x6e, 0xd2, 0x85, 0x07, 0x2a, 0x95, 0xb4, 0x51, 0xe5, 0x5f, 0x58, 0x3f, 0x56, 0xda, 0x8d};
 
     enum class BindingGroup
     {
@@ -394,18 +392,11 @@ namespace toy3d::shader
 
     // string_view lets compiler and runtime verify the same stable parameter
     // identity without allocating a second copy of reflected member names.
-    ShaderParameterId make_shader_parameter_id(
-        BindingGroup group,
-        ShaderParameterCategory category,
-        std::string_view name);
-    Sha256Hash calculate_target_binding_hash(
-        ShaderTarget target,
-        std::uint32_t mapping_version,
-        const std::vector<ShaderMapBinding>& bindings);
-    Sha256Hash calculate_shader_stage_reflection_hash(
-        const ShaderStageReflection& reflection);
-    bool is_valid_shader_graphics_pass_state(
-        const ShaderGraphicsPassState& state);
-    Sha256Hash calculate_shader_graphics_pass_state_hash(
-        const ShaderGraphicsPassState& state);
-}
+    ShaderParameterId make_shader_parameter_id(BindingGroup group, ShaderParameterCategory category,
+                                               std::string_view name);
+    Sha256Hash calculate_target_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
+                                             const std::vector<ShaderMapBinding>& bindings);
+    Sha256Hash calculate_shader_stage_reflection_hash(const ShaderStageReflection& reflection);
+    bool is_valid_shader_graphics_pass_state(const ShaderGraphicsPassState& state);
+    Sha256Hash calculate_shader_graphics_pass_state_hash(const ShaderGraphicsPassState& state);
+} // namespace toy3d::shader

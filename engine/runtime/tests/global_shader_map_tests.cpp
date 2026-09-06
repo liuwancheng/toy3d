@@ -24,11 +24,8 @@ namespace
         }
     }
 
-    toy3d::ShaderMapProgramData make_program(
-        const std::string& shader_name,
-        const std::string& pass_name,
-        toy3d::ShaderPlatform platform =
-            toy3d::ShaderPlatform::VulkanES31)
+    toy3d::ShaderMapProgramData make_program(const std::string& shader_name, const std::string& pass_name,
+                                             toy3d::ShaderPlatform platform = toy3d::ShaderPlatform::VulkanES31)
     {
         toy3d::ShaderMapProgramData program;
         program.shader_name = shader_name;
@@ -38,8 +35,7 @@ namespace
         program.logical_layout_hash[0] = 1;
         program.target_binding_hash[0] = 2;
         program.pass_template_hash =
-            toy3d::shader::calculate_shader_graphics_pass_state_hash(
-                program.graphics_pass_state);
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state);
         program.permutation_key = toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding binding;
@@ -69,21 +65,15 @@ namespace
 
     class CollectionLoader final : public toy3d::ShaderMapLoader
     {
-    public:
-        explicit CollectionLoader(
-            std::vector<toy3d::ShaderMapProgramData> programs)
-            : programs_(std::move(programs))
-        {
-        }
+      public:
+        explicit CollectionLoader(std::vector<toy3d::ShaderMapProgramData> programs) : programs_(std::move(programs)) {}
 
-        toy3d::ShaderMapProgramLoadResult load_program(
-            const toy3d::ShaderMapProgramKey& key) const override
+        toy3d::ShaderMapProgramLoadResult load_program(const toy3d::ShaderMapProgramKey& key) const override
         {
             ++load_count;
             for (const toy3d::ShaderMapProgramData& program : programs_)
             {
-                if (program.shader_name == key.shader_name &&
-                    program.pass_name == key.pass_name)
+                if (program.shader_name == key.shader_name && program.pass_name == key.pass_name)
                 {
                     return {program, {}};
                 }
@@ -93,52 +83,36 @@ namespace
 
         mutable std::uint32_t load_count = 0;
 
-    private:
+      private:
         std::vector<toy3d::ShaderMapProgramData> programs_;
     };
 
-    toy3d::GlobalShaderType make_type(
-        std::string type_name,
-        std::string shader_name,
-        std::string pass_name,
-        toy3d::RHIShaderStageFlags stages =
-            toy3d::RHIShaderStageFlags::Vertex |
-            toy3d::RHIShaderStageFlags::Pixel,
-        toy3d::ShaderParameterId parameter_id = 10)
+    toy3d::GlobalShaderType make_type(std::string type_name, std::string shader_name, std::string pass_name,
+                                      toy3d::RHIShaderStageFlags stages = toy3d::RHIShaderStageFlags::Vertex |
+                                                                          toy3d::RHIShaderStageFlags::Pixel,
+                                      toy3d::ShaderParameterId parameter_id = 10)
     {
         std::vector<toy3d::GlobalShaderBindingRequirement> bindings;
-        bindings.emplace_back(
-            parameter_id,
-            toy3d::RHIBindingGroup::Pass,
-            toy3d::RHIResourceBindingType::SampledTexture,
-            1,
-            toy3d::RHIShaderStageFlags::Pixel);
-        return toy3d::GlobalShaderType(
-            std::move(type_name), std::move(shader_name),
-            std::move(pass_name),
-            toy3d::shader::default_shader_permutation_key,
-            toy3d::GlobalShaderType::ProgramKind::Graphics,
-            stages, std::move(bindings));
+        bindings.emplace_back(parameter_id, toy3d::RHIBindingGroup::Pass, toy3d::RHIResourceBindingType::SampledTexture,
+                              1, toy3d::RHIShaderStageFlags::Pixel);
+        return toy3d::GlobalShaderType(std::move(type_name), std::move(shader_name), std::move(pass_name),
+                                       toy3d::shader::default_shader_permutation_key,
+                                       toy3d::GlobalShaderType::ProgramKind::Graphics, stages, std::move(bindings));
     }
 
-    toy3d::ShaderMapProgramData make_program_for_type(
-        const toy3d::GlobalShaderType& type,
-        std::uint8_t hash_seed)
+    toy3d::ShaderMapProgramData make_program_for_type(const toy3d::GlobalShaderType& type, std::uint8_t hash_seed)
     {
         toy3d::ShaderMapProgramData program;
         program.shader_name = type.shader_name();
         program.pass_name = type.pass_name();
         program.mapping_version = 1;
         program.logical_layout_hash[0] = hash_seed;
-        program.target_binding_hash[0] =
-            static_cast<std::uint8_t>(hash_seed + 1u);
+        program.target_binding_hash[0] = static_cast<std::uint8_t>(hash_seed + 1u);
         program.pass_template_hash =
-            toy3d::shader::calculate_shader_graphics_pass_state_hash(
-                program.graphics_pass_state);
+            toy3d::shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state);
         program.permutation_key = type.permutation_key();
         std::uint32_t target_binding = 0;
-        for (const toy3d::GlobalShaderBindingRequirement& requirement :
-             type.binding_requirements())
+        for (const toy3d::GlobalShaderBindingRequirement& requirement : type.binding_requirements())
         {
             toy3d::ShaderMapBinding binding;
             binding.parameter_id = requirement.parameter_id();
@@ -161,18 +135,15 @@ namespace
             program.bindings.push_back(binding);
         }
 
-        const auto append_stage = [&program, hash_seed](
-            toy3d::RHIShaderStage stage,
-            toy3d::RHIShaderStageFlags stage_flag,
-            const char* entry_point,
-            std::uint8_t offset)
+        const auto append_stage = [&program, hash_seed](toy3d::RHIShaderStage stage,
+                                                        toy3d::RHIShaderStageFlags stage_flag, const char* entry_point,
+                                                        std::uint8_t offset)
         {
             toy3d::ShaderMapStage result;
             result.stage = stage;
             result.entry_point = entry_point;
             result.binary = {hash_seed, offset, 2, 3};
-            result.content_hash[0] =
-                static_cast<std::uint8_t>(hash_seed + offset);
+            result.content_hash[0] = static_cast<std::uint8_t>(hash_seed + offset);
             for (const toy3d::ShaderMapBinding& binding : program.bindings)
             {
                 if (EnumHasAnyFlags(binding.stages, stage_flag))
@@ -184,191 +155,135 @@ namespace
         };
         if (EnumHasAnyFlags(type.required_stages(), toy3d::RHIShaderStageFlags::Vertex))
         {
-            append_stage(toy3d::RHIShaderStage::Vertex,
-                toy3d::RHIShaderStageFlags::Vertex, "vs_main", 2);
+            append_stage(toy3d::RHIShaderStage::Vertex, toy3d::RHIShaderStageFlags::Vertex, "vs_main", 2);
         }
         if (EnumHasAnyFlags(type.required_stages(), toy3d::RHIShaderStageFlags::Pixel))
         {
-            append_stage(toy3d::RHIShaderStage::Pixel,
-                toy3d::RHIShaderStageFlags::Pixel, "ps_main", 3);
+            append_stage(toy3d::RHIShaderStage::Pixel, toy3d::RHIShaderStageFlags::Pixel, "ps_main", 3);
         }
         return program;
     }
-}
+} // namespace
 
 int main()
 {
     static_assert(!std::is_default_constructible<toy3d::GlobalShaderType>::value,
-        "GlobalShaderType must always carry an explicit immutable contract");
-    static_assert(!std::is_default_constructible<
-        toy3d::GlobalShaderBindingRequirement>::value,
-        "GlobalShaderBindingRequirement must not manufacture an empty binding");
+                  "GlobalShaderType must always carry an explicit immutable contract");
+    static_assert(!std::is_default_constructible<toy3d::GlobalShaderBindingRequirement>::value,
+                  "GlobalShaderBindingRequirement must not manufacture an empty binding");
 
-    toy3d::ShaderPlatform selected_platform =
-        toy3d::ShaderPlatform::VulkanES31;
+    toy3d::ShaderPlatform selected_platform = toy3d::ShaderPlatform::VulkanES31;
     std::string platform_error;
-    check(toy3d::try_get_shader_platform_for_backend(
-              "Vulkan", selected_platform, platform_error) &&
-          selected_platform == toy3d::ShaderPlatform::VulkanES31,
-        "Vulkan backend configuration must select VulkanES31");
-    check(toy3d::try_get_shader_platform_for_backend(
-              "D3D11", selected_platform, platform_error) &&
-          selected_platform == toy3d::ShaderPlatform::D3D11SM5,
-        "D3D11 backend configuration must select D3D11SM5");
-    check(toy3d::try_get_shader_platform_for_backend(
-              "D3D12", selected_platform, platform_error) &&
-          selected_platform == toy3d::ShaderPlatform::D3D12SM6,
-        "D3D12 backend configuration must select D3D12SM6");
-    check(!toy3d::try_get_shader_platform_for_backend(
-              "", selected_platform, platform_error) &&
-          platform_error.find("No RHI backend") != std::string::npos,
-        "a build without an enabled backend must fail diagnostically");
-    check(!toy3d::try_get_shader_platform_for_backend(
-              "Metal", selected_platform, platform_error) &&
-          platform_error.find("Metal") != std::string::npos,
-        "an unmapped backend must fail without guessing a ShaderPlatform");
+    check(toy3d::try_get_shader_platform_for_backend("Vulkan", selected_platform, platform_error) &&
+              selected_platform == toy3d::ShaderPlatform::VulkanES31,
+          "Vulkan backend configuration must select VulkanES31");
+    check(toy3d::try_get_shader_platform_for_backend("D3D11", selected_platform, platform_error) &&
+              selected_platform == toy3d::ShaderPlatform::D3D11SM5,
+          "D3D11 backend configuration must select D3D11SM5");
+    check(toy3d::try_get_shader_platform_for_backend("D3D12", selected_platform, platform_error) &&
+              selected_platform == toy3d::ShaderPlatform::D3D12SM6,
+          "D3D12 backend configuration must select D3D12SM6");
+    check(!toy3d::try_get_shader_platform_for_backend("", selected_platform, platform_error) &&
+              platform_error.find("No RHI backend") != std::string::npos,
+          "a build without an enabled backend must fail diagnostically");
+    check(!toy3d::try_get_shader_platform_for_backend("Metal", selected_platform, platform_error) &&
+              platform_error.find("Metal") != std::string::npos,
+          "an unmapped backend must fail without guessing a ShaderPlatform");
 
-    const toy3d::GlobalShaderType type = make_type(
-        "TestGlobalShader", "Toy3d/Test/Global", "Main");
-    const toy3d::GlobalShaderType equal_type = make_type(
-        "TestGlobalShader", "Toy3d/Test/Global", "Main");
-    const toy3d::GlobalShaderType different_type = make_type(
-        "TestGlobalShader", "Toy3d/Test/Global", "Other");
+    const toy3d::GlobalShaderType type = make_type("TestGlobalShader", "Toy3d/Test/Global", "Main");
+    const toy3d::GlobalShaderType equal_type = make_type("TestGlobalShader", "Toy3d/Test/Global", "Main");
+    const toy3d::GlobalShaderType different_type = make_type("TestGlobalShader", "Toy3d/Test/Global", "Other");
     check(type == equal_type && !(type == different_type),
-        "Global Shader descriptor equality must cover its stable contract");
+          "Global Shader descriptor equality must cover its stable contract");
 
     CollectionLoader loader({make_program("Toy3d/Test/Global", "Main")});
     toy3d::ShaderMap shader_map(loader);
-    toy3d::GlobalShaderMapResult loaded = toy3d::GlobalShaderMap::load(
-        shader_map,
-        toy3d::ShaderPlatform::VulkanES31,
-        {&type});
+    toy3d::GlobalShaderMapResult loaded =
+        toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&type});
     check(loaded.succeeded() && loaded.shader_map->size() == 1,
-        "a matching required set must freeze as one complete GlobalShaderMap");
+          "a matching required set must freeze as one complete GlobalShaderMap");
     if (loaded.succeeded())
     {
-        const toy3d::ShaderMapProgramResult found =
-            loaded.shader_map->find(equal_type);
-        check(found.succeeded() && found.program != nullptr,
-            "frozen map must support typed immutable lookup");
+        const toy3d::ShaderMapProgramResult found = loaded.shader_map->find(equal_type);
+        check(found.succeeded() && found.program != nullptr, "frozen map must support typed immutable lookup");
         check(!loaded.shader_map->find(different_type).succeeded(),
-            "same type name with a different descriptor must fail lookup");
+              "same type name with a different descriptor must fail lookup");
     }
 
-    toy3d::GlobalShaderMapResult loaded_again = toy3d::GlobalShaderMap::load(
-        shader_map,
-        toy3d::ShaderPlatform::VulkanES31,
-        {&type});
+    toy3d::GlobalShaderMapResult loaded_again =
+        toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&type});
     check(loaded_again.succeeded() && loader.load_count == 1,
-        "GlobalShaderMap must reuse the process ShaderMap CPU cache");
+          "GlobalShaderMap must reuse the process ShaderMap CPU cache");
 
     std::shared_ptr<const toy3d::GlobalShaderMap> descriptor_lifetime_map;
     {
-        const toy3d::GlobalShaderType local_type = make_type(
-            "TestGlobalShader", "Toy3d/Test/Global", "Main");
+        const toy3d::GlobalShaderType local_type = make_type("TestGlobalShader", "Toy3d/Test/Global", "Main");
         toy3d::GlobalShaderMapResult local_loaded =
-            toy3d::GlobalShaderMap::load(
-                shader_map,
-                toy3d::ShaderPlatform::VulkanES31,
-                {&local_type});
+            toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&local_type});
         descriptor_lifetime_map = std::move(local_loaded.shader_map);
     }
-    check(descriptor_lifetime_map &&
-          descriptor_lifetime_map->find(equal_type).succeeded(),
-        "frozen GlobalShaderMap must own type descriptors by value rather than retaining caller pointers");
+    check(descriptor_lifetime_map && descriptor_lifetime_map->find(equal_type).succeeded(),
+          "frozen GlobalShaderMap must own type descriptors by value rather than retaining caller pointers");
 
-    toy3d::GlobalShaderMapResult duplicate = toy3d::GlobalShaderMap::load(
-        shader_map,
-        toy3d::ShaderPlatform::VulkanES31,
-        {&type, &equal_type});
+    toy3d::GlobalShaderMapResult duplicate =
+        toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&type, &equal_type});
     check(!duplicate.succeeded() && duplicate.shader_map == nullptr &&
-          duplicate.error.find("Duplicate") != std::string::npos,
-        "duplicate stable type names must reject the entire candidate");
+              duplicate.error.find("Duplicate") != std::string::npos,
+          "duplicate stable type names must reject the entire candidate");
 
-    const toy3d::GlobalShaderType missing_type = make_type(
-        "MissingGlobalShader", "Toy3d/Test/Missing", "Main");
-    toy3d::GlobalShaderMapResult missing = toy3d::GlobalShaderMap::load(
-        shader_map,
-        toy3d::ShaderPlatform::VulkanES31,
-        {&type, &missing_type});
+    const toy3d::GlobalShaderType missing_type = make_type("MissingGlobalShader", "Toy3d/Test/Missing", "Main");
+    toy3d::GlobalShaderMapResult missing =
+        toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&type, &missing_type});
     check(!missing.succeeded() && missing.shader_map == nullptr &&
-          missing.error.find("MissingGlobalShader") != std::string::npos,
-        "one missing required type must publish no partial map");
+              missing.error.find("MissingGlobalShader") != std::string::npos,
+          "one missing required type must publish no partial map");
 
-    const toy3d::GlobalShaderType wrong_stages = make_type(
-        "WrongStages", "Toy3d/Test/Global", "Main",
-        toy3d::RHIShaderStageFlags::Vertex);
+    const toy3d::GlobalShaderType wrong_stages =
+        make_type("WrongStages", "Toy3d/Test/Global", "Main", toy3d::RHIShaderStageFlags::Vertex);
     toy3d::GlobalShaderMapResult stage_mismatch =
-        toy3d::GlobalShaderMap::load(
-            shader_map,
-            toy3d::ShaderPlatform::VulkanES31,
-            {&wrong_stages});
-    check(!stage_mismatch.succeeded() &&
-          stage_mismatch.error.find("exact stages") != std::string::npos,
-        "required stage mismatch must reject the candidate");
+        toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&wrong_stages});
+    check(!stage_mismatch.succeeded() && stage_mismatch.error.find("exact stages") != std::string::npos,
+          "required stage mismatch must reject the candidate");
 
-    const toy3d::GlobalShaderType wrong_binding = make_type(
-        "WrongBinding", "Toy3d/Test/Global", "Main",
-        toy3d::RHIShaderStageFlags::Vertex |
-            toy3d::RHIShaderStageFlags::Pixel,
-        999);
+    const toy3d::GlobalShaderType wrong_binding =
+        make_type("WrongBinding", "Toy3d/Test/Global", "Main",
+                  toy3d::RHIShaderStageFlags::Vertex | toy3d::RHIShaderStageFlags::Pixel, 999);
     toy3d::GlobalShaderMapResult binding_mismatch =
-        toy3d::GlobalShaderMap::load(
-            shader_map,
-            toy3d::ShaderPlatform::VulkanES31,
-            {&wrong_binding});
-    check(!binding_mismatch.succeeded() &&
-          binding_mismatch.error.find("binding requirement") != std::string::npos,
-        "required logical binding mismatch must reject the candidate");
+        toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&wrong_binding});
+    check(!binding_mismatch.succeeded() && binding_mismatch.error.find("binding requirement") != std::string::npos,
+          "required logical binding mismatch must reject the candidate");
 
-    CollectionLoader platform_loader({make_program(
-        "Toy3d/Test/Platform", "Main", toy3d::ShaderPlatform::D3D11SM5)});
+    CollectionLoader platform_loader({make_program("Toy3d/Test/Platform", "Main", toy3d::ShaderPlatform::D3D11SM5)});
     toy3d::ShaderMap platform_shader_map(platform_loader);
-    const toy3d::GlobalShaderType platform_type = make_type(
-        "PlatformGlobalShader", "Toy3d/Test/Platform", "Main");
+    const toy3d::GlobalShaderType platform_type = make_type("PlatformGlobalShader", "Toy3d/Test/Platform", "Main");
     toy3d::GlobalShaderMapResult platform_mismatch =
-        toy3d::GlobalShaderMap::load(
-            platform_shader_map,
-            toy3d::ShaderPlatform::VulkanES31,
-            {&platform_type});
+        toy3d::GlobalShaderMap::load(platform_shader_map, toy3d::ShaderPlatform::VulkanES31, {&platform_type});
     check(!platform_mismatch.succeeded() && platform_mismatch.shader_map == nullptr,
-        "a Program from another platform must never enter the frozen map");
+          "a Program from another platform must never enter the frozen map");
 
     const std::vector<const toy3d::GlobalShaderType*> without_imgui =
         toy3d::required_renderer_global_shader_types(false);
-    const std::vector<const toy3d::GlobalShaderType*> with_imgui =
-        toy3d::required_renderer_global_shader_types(true);
-    check(without_imgui.size() == 1 &&
-          without_imgui[0] == &toy3d::tonemap_global_shader_type(),
-        "Tonemap must always be in the explicit Renderer required set");
-    check(with_imgui.size() == 2 &&
-          with_imgui[0] == &toy3d::tonemap_global_shader_type() &&
-          with_imgui[1] == &toy3d::imgui_global_shader_type(),
-        "enabled ImGui must be added to the explicit required set");
+    const std::vector<const toy3d::GlobalShaderType*> with_imgui = toy3d::required_renderer_global_shader_types(true);
+    check(without_imgui.size() == 1 && without_imgui[0] == &toy3d::tonemap_global_shader_type(),
+          "Tonemap must always be in the explicit Renderer required set");
+    check(with_imgui.size() == 2 && with_imgui[0] == &toy3d::tonemap_global_shader_type() &&
+              with_imgui[1] == &toy3d::imgui_global_shader_type(),
+          "enabled ImGui must be added to the explicit required set");
 
-    CollectionLoader disabled_loader({
-        make_program_for_type(toy3d::tonemap_global_shader_type(), 30),
-        make_program_for_type(toy3d::imgui_global_shader_type(), 40)});
+    CollectionLoader disabled_loader({make_program_for_type(toy3d::tonemap_global_shader_type(), 30),
+                                      make_program_for_type(toy3d::imgui_global_shader_type(), 40)});
     toy3d::ShaderMap disabled_shader_map(disabled_loader);
-    toy3d::GlobalShaderMapResult disabled_map = toy3d::GlobalShaderMap::load(
-        disabled_shader_map,
-        toy3d::ShaderPlatform::VulkanES31,
-        without_imgui);
-    check(disabled_map.succeeded() && disabled_loader.load_count == 1,
-        "disabled ImGui must not issue ShaderMap I/O");
+    toy3d::GlobalShaderMapResult disabled_map =
+        toy3d::GlobalShaderMap::load(disabled_shader_map, toy3d::ShaderPlatform::VulkanES31, without_imgui);
+    check(disabled_map.succeeded() && disabled_loader.load_count == 1, "disabled ImGui must not issue ShaderMap I/O");
 
-    CollectionLoader enabled_missing_loader({
-        make_program_for_type(toy3d::tonemap_global_shader_type(), 50)});
+    CollectionLoader enabled_missing_loader({make_program_for_type(toy3d::tonemap_global_shader_type(), 50)});
     toy3d::ShaderMap enabled_missing_shader_map(enabled_missing_loader);
     toy3d::GlobalShaderMapResult enabled_missing =
-        toy3d::GlobalShaderMap::load(
-            enabled_missing_shader_map,
-            toy3d::ShaderPlatform::VulkanES31,
-            with_imgui);
-    check(!enabled_missing.succeeded() &&
-          enabled_missing.shader_map == nullptr &&
-          enabled_missing.error.find("ImGuiGlobalShader") != std::string::npos,
-        "enabled ImGui load failure must reject the whole required set");
+        toy3d::GlobalShaderMap::load(enabled_missing_shader_map, toy3d::ShaderPlatform::VulkanES31, with_imgui);
+    check(!enabled_missing.succeeded() && enabled_missing.shader_map == nullptr &&
+              enabled_missing.error.find("ImGuiGlobalShader") != std::string::npos,
+          "enabled ImGui load failure must reject the whole required set");
 
     if (failure_count != 0)
     {

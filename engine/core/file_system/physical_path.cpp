@@ -56,12 +56,10 @@ namespace toy3d
                     }
                     code_point = (code_point << 6u) | (next & 0x3fu);
                 }
-                const bool overlong =
-                    (continuation_count == 1 && code_point < 0x80u) ||
-                    (continuation_count == 2 && code_point < 0x800u) ||
-                    (continuation_count == 3 && code_point < 0x10000u);
-                if (overlong || code_point > 0x10ffffu ||
-                    (code_point >= 0xd800u && code_point <= 0xdfffu))
+                const bool overlong = (continuation_count == 1 && code_point < 0x80u) ||
+                                      (continuation_count == 2 && code_point < 0x800u) ||
+                                      (continuation_count == 3 && code_point < 0x10000u);
+                if (overlong || code_point > 0x10ffffu || (code_point >= 0xd800u && code_point <= 0xdfffu))
                 {
                     return false;
                 }
@@ -69,11 +67,10 @@ namespace toy3d
             }
             return true;
         }
-    }
+    } // namespace
 
     PhysicalPath::PhysicalPath(std::string utf8_path)
-        : utf8_path_(std::move(utf8_path)),
-          valid_(is_valid_utf8_path(utf8_path_))
+        : utf8_path_(std::move(utf8_path)), valid_(is_valid_utf8_path(utf8_path_))
     {
     }
 
@@ -91,4 +88,4 @@ namespace toy3d
     {
         return valid_;
     }
-}
+} // namespace toy3d

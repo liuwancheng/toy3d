@@ -38,8 +38,7 @@ namespace toy3d
         std::vector<RHITextureViewRef> submitted_texture_views;
         std::vector<RHIGraphicsPipelineRef> submitted_graphics_pipelines;
         std::vector<RHIBindingSetRef> submitted_binding_sets;
-        std::vector<std::shared_ptr<VulkanRenderPassResources>>
-            submitted_render_pass_resources;
+        std::vector<std::shared_ptr<VulkanRenderPassResources>> submitted_render_pass_resources;
     };
 
     struct VulkanViewportObservation
@@ -53,44 +52,31 @@ namespace toy3d
 
     class VulkanViewportContext final : public RHIViewportContext
     {
-    public:
-        VulkanViewportContext(
-            const RHIDevice& owner,
-            VkPhysicalDevice physical_device,
-            VkDevice device,
-            VkSurfaceKHR surface,
-            std::uint32_t graphics_queue_family,
-            VulkanQueue& graphics_queue,
-            VulkanUploadManager& upload_manager,
-            VulkanDeferredDeletionQueue& deletion_queue,
-            RHISurfaceRef rhi_surface,
-            RHIViewportContextDesc desc);
+      public:
+        VulkanViewportContext(const RHIDevice& owner, VkPhysicalDevice physical_device, VkDevice device,
+                              VkSurfaceKHR surface, std::uint32_t graphics_queue_family, VulkanQueue& graphics_queue,
+                              VulkanUploadManager& upload_manager, VulkanDeferredDeletionQueue& deletion_queue,
+                              RHISurfaceRef rhi_surface, RHIViewportContextDesc desc);
         ~VulkanViewportContext() override;
 
         RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() override;
-        RHIResult<RHIFrameEndResult> end_frame(
-            std::unique_ptr<RHIFrameContext> frame,
-            const std::vector<RHICommandListRef>& command_lists) override;
+        RHIResult<RHIFrameEndResult> end_frame(std::unique_ptr<RHIFrameContext> frame,
+                                               const std::vector<RHICommandListRef>& command_lists) override;
         RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) override;
         RHIStatus request_resize(std::uint32_t width, std::uint32_t height) override;
         VulkanViewportObservation observation_snapshot() const;
 
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
-            create_graphics_command_context();
+        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context();
 
-    private:
+      private:
         RHIStatus recreate_swapchain();
-        RHIStatus create_frame_slots(
-            std::uint32_t count,
-            std::vector<VulkanFrameSlot>& output_slots);
+        RHIStatus create_frame_slots(std::uint32_t count, std::vector<VulkanFrameSlot>& output_slots);
         void destroy_frame_slots(std::vector<VulkanFrameSlot>& slots);
         RHIStatus submit_active_frame(const std::vector<VulkanCommandList*>& command_lists);
         RHIStatus present_active_image();
         RHIStatus abort_active_frame();
         RHIStatus latch_presentation_failure(const RHIStatus& status);
-        RHIStatus latch_incomplete_active_frame_failure(
-            const RHIStatus& status,
-            const char* operation);
+        RHIStatus latch_incomplete_active_frame_failure(const RHIStatus& status, const char* operation);
         void finish_active_frame();
 
         const RHIDevice& owner_device;
@@ -117,4 +103,4 @@ namespace toy3d
         std::uint32_t pending_width = 0;
         std::uint32_t pending_height = 0;
     };
-}
+} // namespace toy3d

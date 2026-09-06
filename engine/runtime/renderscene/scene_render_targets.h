@@ -13,17 +13,14 @@ namespace toy3d
     // owned by RHIViewportContext; Forward passes write these offscreen targets.
     class SceneRenderTargets final
     {
-    public:
+      public:
         SceneRenderTargets() = default;
         ~SceneRenderTargets() = default;
 
         SceneRenderTargets(const SceneRenderTargets&) = delete;
         SceneRenderTargets& operator=(const SceneRenderTargets&) = delete;
 
-        RHIStatus ensure_extent(
-            RHIDevice& device,
-            std::uint32_t width,
-            std::uint32_t height);
+        RHIStatus ensure_extent(RHIDevice& device, std::uint32_t width, std::uint32_t height);
         void release() noexcept;
 
         const RHITextureRef& scene_color_texture() const noexcept;
@@ -34,17 +31,12 @@ namespace toy3d
         const RHITextureViewRef& scene_depth_shader_resource_view() const noexcept;
         RHIAccess scene_color_access() const noexcept;
         RHIAccess scene_depth_access() const noexcept;
-        void publish_submitted_access( RHIAccess scene_color_access,RHIAccess scene_depth_access) noexcept;
+        void publish_submitted_access(RHIAccess scene_color_access, RHIAccess scene_depth_access) noexcept;
 
-    private:
-        bool matches(
-            std::uint32_t width,
-            std::uint32_t height) const noexcept;
+      private:
+        bool matches(std::uint32_t width, std::uint32_t height) const noexcept;
 
-        RHIStatus create_targets(
-            RHIDevice& device,
-            std::uint32_t width,
-            std::uint32_t height);
+        RHIStatus create_targets(RHIDevice& device, std::uint32_t width, std::uint32_t height);
 
         RHITextureRef scene_color_texture_;
         RHITextureViewRef scene_color_view_;
@@ -55,4 +47,4 @@ namespace toy3d
         RHIAccess scene_color_access_ = RHIAccess::Common;
         RHIAccess scene_depth_access_ = RHIAccess::Common;
     };
-}
+} // namespace toy3d

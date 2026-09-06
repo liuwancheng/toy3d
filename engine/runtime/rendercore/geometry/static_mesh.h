@@ -29,9 +29,7 @@ namespace toy3d
 
     // A mesh owns exactly one index width. variant keeps that choice explicit
     // without maintaining two arrays or exposing an untyped byte buffer.
-    using StaticMeshIndexData = std::variant<
-        std::vector<std::uint16_t>,
-        std::vector<std::uint32_t>>;
+    using StaticMeshIndexData = std::variant<std::vector<std::uint16_t>, std::vector<std::uint32_t>>;
 
     struct StaticMeshDesc
     {
@@ -44,7 +42,7 @@ namespace toy3d
 
     class StaticMesh
     {
-    public:
+      public:
         static std::shared_ptr<const StaticMesh> create(StaticMeshDesc desc);
         ~StaticMesh();
 
@@ -54,20 +52,14 @@ namespace toy3d
         StaticMesh& operator=(StaticMesh&&) noexcept = delete;
 
         const std::vector<StaticMeshVertex>& vertices() const { return vertices_; }
-        const std::vector<std::array<std::uint8_t, 4>>& vertex_colors() const
-        {
-            return vertex_colors_;
-        }
+        const std::vector<std::array<std::uint8_t, 4>>& vertex_colors() const { return vertex_colors_; }
         const StaticMeshIndexData& indices() const { return indices_; }
         const std::vector<StaticMeshSection>& sections() const { return sections_; }
         const std::vector<MaterialInstanceRef>& material_slots() const { return material_slots_; }
         const AxisAlignedBounds& local_bounds() const { return local_bounds_; }
-        StaticMeshRenderData* render_data() const noexcept
-        {
-            return render_data_.get();
-        }
+        StaticMeshRenderData* render_data() const noexcept { return render_data_.get(); }
 
-    private:
+      private:
         StaticMesh(StaticMeshDesc desc, AxisAlignedBounds local_bounds);
 
         std::vector<StaticMeshVertex> vertices_;
@@ -80,4 +72,4 @@ namespace toy3d
     };
 
     using StaticMeshRef = std::shared_ptr<const StaticMesh>;
-}
+} // namespace toy3d

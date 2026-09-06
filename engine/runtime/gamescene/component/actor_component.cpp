@@ -67,4 +67,4 @@ namespace toy3d
         registered_ = false;
         initialized_ = false;
     }
-}
+} // namespace toy3d

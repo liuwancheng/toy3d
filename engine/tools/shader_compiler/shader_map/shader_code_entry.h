@@ -20,13 +20,12 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    ShaderCodeEntryWriteResult write_verified_shader_code_entry(
-        PlatformFile& platform_file,
-        const PhysicalPath& entry_root,
-        const ShaderCompileRequest& request,
-        const TargetBindingLayout& target_layout,
-        const ShaderStageReflection& reflection,
-        const std::vector<std::uint8_t>& binary);
+    ShaderCodeEntryWriteResult write_verified_shader_code_entry(PlatformFile& platform_file,
+                                                                const PhysicalPath& entry_root,
+                                                                const ShaderCompileRequest& request,
+                                                                const TargetBindingLayout& target_layout,
+                                                                const ShaderStageReflection& reflection,
+                                                                const std::vector<std::uint8_t>& binary);
 
     std::string serialize_shader_stage_reflection(const ShaderStageReflection& reflection);
-}
+} // namespace toy3d::shader

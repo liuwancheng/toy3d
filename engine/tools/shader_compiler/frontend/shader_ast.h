@@ -157,4 +157,4 @@ namespace toy3d::shader
         std::vector<ShaderPass> passes;
         SourceLocation location;
     };
-}
+} // namespace toy3d::shader

@@ -48,22 +48,16 @@ namespace toy3d
         return true;
     }
 
-    bool SpotLightComponent::set_cone_angles(
-        float inner_angle_degrees,
-        float outer_angle_degrees)
+    bool SpotLightComponent::set_cone_angles(float inner_angle_degrees, float outer_angle_degrees)
     {
-        if (!is_finite(inner_angle_degrees) ||
-            !is_finite(outer_angle_degrees) ||
-            inner_angle_degrees < 0.0f ||
-            inner_angle_degrees > outer_angle_degrees ||
-            outer_angle_degrees >= 90.0f)
+        if (!is_finite(inner_angle_degrees) || !is_finite(outer_angle_degrees) || inner_angle_degrees < 0.0f ||
+            inner_angle_degrees > outer_angle_degrees || outer_angle_degrees >= 90.0f)
         {
-            TOY_LOG_ERROR(
-                "A SpotLight requires 0 <= inner angle <= outer angle < 90 degrees.");
+            TOY_LOG_ERROR("A SpotLight requires 0 <= inner angle <= outer angle < 90 degrees.");
             return false;
         }
         inner_angle_degrees_ = inner_angle_degrees;
         outer_angle_degrees_ = outer_angle_degrees;
         return true;
     }
-}
+} // namespace toy3d

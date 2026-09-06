@@ -8,14 +8,11 @@
 
 namespace toy3d
 {
-    RHIStatus SceneRenderTargets::ensure_extent(
-        RHIDevice& device,
-        std::uint32_t width,
-        std::uint32_t height)
+    RHIStatus SceneRenderTargets::ensure_extent(RHIDevice& device, std::uint32_t width, std::uint32_t height)
     {
         if (width == 0u || height == 0u)
         {
-            return RHIStatus::failure( RHIErrorCode::InvalidArgument, "SceneRenderTargets extent must be non-empty.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "SceneRenderTargets extent must be non-empty.");
         }
         if (matches(width, height))
         {
@@ -86,7 +83,8 @@ namespace toy3d
         return scene_depth_access_;
     }
 
-    void SceneRenderTargets::publish_submitted_access(RHIAccess scene_color_access, RHIAccess scene_depth_access) noexcept
+    void SceneRenderTargets::publish_submitted_access(RHIAccess scene_color_access,
+                                                      RHIAccess scene_depth_access) noexcept
     {
         scene_color_access_ = scene_color_access;
         scene_depth_access_ = scene_depth_access;
@@ -94,28 +92,20 @@ namespace toy3d
 
     bool SceneRenderTargets::matches(std::uint32_t width, std::uint32_t height) const noexcept
     {
-        return scene_color_texture_ && scene_color_view_ &&
-            scene_color_shader_resource_view_ && scene_depth_texture_ &&
-            scene_depth_view_ && scene_depth_shader_resource_view_ &&
-            scene_color_texture_->desc().width == width &&
-            scene_color_texture_->desc().height == height &&
-            scene_color_texture_->desc().format == PixelFormat::R16G16B16A16Float &&
-            scene_depth_texture_->desc().width == width &&
-            scene_depth_texture_->desc().height == height;
+        return scene_color_texture_ && scene_color_view_ && scene_color_shader_resource_view_ && scene_depth_texture_ &&
+               scene_depth_view_ && scene_depth_shader_resource_view_ && scene_color_texture_->desc().width == width &&
+               scene_color_texture_->desc().height == height &&
+               scene_color_texture_->desc().format == PixelFormat::R16G16B16A16Float &&
+               scene_depth_texture_->desc().width == width && scene_depth_texture_->desc().height == height;
     }
 
-    RHIStatus SceneRenderTargets::create_targets(
-        RHIDevice& device,
-        std::uint32_t width,
-        std::uint32_t height)
+    RHIStatus SceneRenderTargets::create_targets(RHIDevice& device, std::uint32_t width, std::uint32_t height)
     {
         RHITextureDesc color_desc;
         color_desc.width = width;
         color_desc.height = height;
         color_desc.format = PixelFormat::R16G16B16A16Float;
-        color_desc.usage =
-            RHIResourceUsage::RenderTarget |
-            RHIResourceUsage::ShaderResource;
+        color_desc.usage = RHIResourceUsage::RenderTarget | RHIResourceUsage::ShaderResource;
         color_desc.initial_access = RHIAccess::Common;
         color_desc.clear_value = RHIClearValue::color_value(vec4(0.0F, 0.0F, 0.0F, 1.0F));
         color_desc.debug_name = "SceneRenderTargets.SceneColor";
@@ -128,9 +118,8 @@ namespace toy3d
         if (!scene_color_texture_)
         {
             release();
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "SceneRenderTargets created no SceneColor texture.");
+            return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                      "SceneRenderTargets created no SceneColor texture.");
         }
 
         RHITextureViewDesc color_view_desc;
@@ -139,7 +128,8 @@ namespace toy3d
         color_view_desc.subresources.mip_count = 1u;
         color_view_desc.subresources.layer_count = 1u;
         color_view_desc.debug_name = "SceneRenderTargets.SceneColorRTV";
-        RHIResult<RHITextureViewRef> color_view_result = device.create_texture_view(scene_color_texture_, color_view_desc);
+        RHIResult<RHITextureViewRef> color_view_result =
+            device.create_texture_view(scene_color_texture_, color_view_desc);
         if (!color_view_result)
         {
             release();
@@ -149,9 +139,8 @@ namespace toy3d
         if (!scene_color_view_)
         {
             release();
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "SceneRenderTargets created no SceneColor render-target view.");
+            return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                      "SceneRenderTargets created no SceneColor render-target view.");
         }
 
         RHITextureViewDesc color_srv_desc;
@@ -160,7 +149,8 @@ namespace toy3d
         color_srv_desc.subresources.mip_count = 1u;
         color_srv_desc.subresources.layer_count = 1u;
         color_srv_desc.debug_name = "SceneRenderTargets.SceneColorSRV";
-        RHIResult<RHITextureViewRef> color_srv_result = device.create_texture_view(scene_color_texture_, color_srv_desc);
+        RHIResult<RHITextureViewRef> color_srv_result =
+            device.create_texture_view(scene_color_texture_, color_srv_desc);
         if (!color_srv_result)
         {
             release();
@@ -170,9 +160,8 @@ namespace toy3d
         if (!scene_color_shader_resource_view_)
         {
             release();
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "SceneRenderTargets created no SceneColor shader-resource view.");
+            return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                      "SceneRenderTargets created no SceneColor shader-resource view.");
         }
 
         RHITextureDesc depth_desc;
@@ -193,9 +182,8 @@ namespace toy3d
         if (!scene_depth_texture_)
         {
             release();
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "SceneRenderTargets created no SceneDepth texture.");
+            return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                      "SceneRenderTargets created no SceneDepth texture.");
         }
 
         RHITextureViewDesc depth_view_desc;
@@ -205,7 +193,8 @@ namespace toy3d
         depth_view_desc.subresources.mip_count = 1u;
         depth_view_desc.subresources.layer_count = 1u;
         depth_view_desc.debug_name = "SceneRenderTargets.SceneDepthDSV";
-        RHIResult<RHITextureViewRef> depth_view_result = device.create_texture_view(scene_depth_texture_, depth_view_desc);
+        RHIResult<RHITextureViewRef> depth_view_result =
+            device.create_texture_view(scene_depth_texture_, depth_view_desc);
         if (!depth_view_result)
         {
             release();
@@ -215,9 +204,7 @@ namespace toy3d
         if (!scene_depth_view_)
         {
             release();
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "SceneRenderTargets created no SceneDepth view.");
+            return RHIStatus::failure(RHIErrorCode::BackendFailure, "SceneRenderTargets created no SceneDepth view.");
         }
 
         RHITextureViewDesc depth_srv_desc;
@@ -227,7 +214,8 @@ namespace toy3d
         depth_srv_desc.subresources.mip_count = 1u;
         depth_srv_desc.subresources.layer_count = 1u;
         depth_srv_desc.debug_name = "SceneRenderTargets.SceneDepthSRV";
-        RHIResult<RHITextureViewRef> depth_srv_result = device.create_texture_view(scene_depth_texture_, depth_srv_desc);
+        RHIResult<RHITextureViewRef> depth_srv_result =
+            device.create_texture_view(scene_depth_texture_, depth_srv_desc);
         if (!depth_srv_result)
         {
             release();
@@ -237,13 +225,12 @@ namespace toy3d
         if (!scene_depth_shader_resource_view_)
         {
             release();
-            return RHIStatus::failure(
-                RHIErrorCode::BackendFailure,
-                "SceneRenderTargets created no SceneDepth shader-resource view.");
+            return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                      "SceneRenderTargets created no SceneDepth shader-resource view.");
         }
 
         scene_color_access_ = RHIAccess::Common;
         scene_depth_access_ = RHIAccess::Common;
         return RHIStatus::success();
     }
-}
+} // namespace toy3d

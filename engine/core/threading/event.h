@@ -15,7 +15,7 @@ namespace toy3d
 
     class Event final
     {
-    public:
+      public:
         explicit Event(EventMode mode = EventMode::AutoReset);
 
         void trigger();
@@ -23,7 +23,7 @@ namespace toy3d
         void wait();
         bool wait_for(std::chrono::milliseconds timeout);
 
-    private:
+      private:
         bool consume_signal_locked();
 
         EventMode mode_ = EventMode::AutoReset;
@@ -33,4 +33,4 @@ namespace toy3d
     };
 
     using EventRef = std::shared_ptr<Event>;
-}
+} // namespace toy3d

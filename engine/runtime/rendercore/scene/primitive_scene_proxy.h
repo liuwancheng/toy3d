@@ -12,38 +12,31 @@ namespace toy3d
     // its pointer only as an opaque identity protected by RenderCommand FIFO order.
     class PrimitiveSceneProxy
     {
-    public:
+      public:
         virtual ~PrimitiveSceneProxy() = default;
 
         PrimitiveSceneProxy(const PrimitiveSceneProxy&) = delete;
         PrimitiveSceneProxy& operator=(const PrimitiveSceneProxy&) = delete;
 
         const Matrix4& world_transform() const { return world_transform_; }
-        const PrimitiveUniformShaderParameters&
-            primitive_uniform_shader_parameters() const
+        const PrimitiveUniformShaderParameters& primitive_uniform_shader_parameters() const
         {
             return primitive_uniform_shader_parameters_;
         }
         const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
         bool visible() const { return visible_; }
 
-    protected:
-        PrimitiveSceneProxy(
-            Matrix4 world_transform,
-            AxisAlignedBounds world_bounds,
-            bool visible);
+      protected:
+        PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible);
 
-    private:
+      private:
         friend class RenderScene;
 
-        void update_transform(
-            Matrix4 world_transform,
-            AxisAlignedBounds world_bounds,
-            bool visible);
+        void update_transform(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible);
 
         Matrix4 world_transform_;
         PrimitiveUniformShaderParameters primitive_uniform_shader_parameters_;
         AxisAlignedBounds world_bounds_;
         bool visible_ = true;
     };
-}
+} // namespace toy3d

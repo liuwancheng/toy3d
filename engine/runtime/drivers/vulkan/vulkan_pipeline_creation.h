@@ -12,8 +12,6 @@
 
 namespace toy3d
 {
-    RHIResult<RHIGraphicsPipelineRef> create_vulkan_graphics_pipeline(
-        const RHIDevice& owner,
-        VkDevice device,
-        const RHIGraphicsPipelineDesc& desc);
+    RHIResult<RHIGraphicsPipelineRef> create_vulkan_graphics_pipeline(const RHIDevice& owner, VkDevice device,
+                                                                      const RHIGraphicsPipelineDesc& desc);
 }

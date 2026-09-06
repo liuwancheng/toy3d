@@ -23,4 +23,4 @@ namespace toy3d
         double world_time_seconds = 0.0;
         std::uint64_t frame_number = 0;
     };
-}
+} // namespace toy3d

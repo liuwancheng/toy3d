@@ -7,14 +7,13 @@ namespace toy3d
 {
     class ShaderMapEntryLoader final : public ShaderMapLoader
     {
-    public:
+      public:
         explicit ShaderMapEntryLoader(PhysicalPath entry_root);
 
-        ShaderMapProgramLoadResult load_program(
-            const ShaderMapProgramKey& key) const override;
+        ShaderMapProgramLoadResult load_program(const ShaderMapProgramKey& key) const override;
 
-    private:
+      private:
         NativePlatformFile platform_file_;
         PhysicalPath entry_root_;
     };
-}
+} // namespace toy3d

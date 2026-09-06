@@ -12,8 +12,7 @@ namespace toy3d::shader
     // directly to the stable hash input without temporary strings.
     namespace
     {
-        template<typename T>
-        void append_integer(std::vector<std::uint8_t>& bytes, T value)
+        template <typename T> void append_integer(std::vector<std::uint8_t>& bytes, T value)
         {
             using Unsigned = std::make_unsigned_t<T>;
             const Unsigned unsigned_value = static_cast<Unsigned>(value);
@@ -40,31 +39,23 @@ namespace toy3d::shader
             return value;
         }
 
-        void add_error(
-            ShaderPermutationResult& result,
-            DiagnosticCode code,
-            const SourceLocation& location,
-            std::string message)
+        void add_error(ShaderPermutationResult& result, DiagnosticCode code, const SourceLocation& location,
+                       std::string message)
         {
-            result.diagnostics.push_back(
-                {DiagnosticSeverity::Error, code, location, std::move(message)});
+            result.diagnostics.push_back({DiagnosticSeverity::Error, code, location, std::move(message)});
         }
 
-        void add_macro(
-            std::map<std::string, std::uint32_t>& macros,
-            const std::string& name,
-            std::uint32_t value,
-            ShaderPermutationResult& result,
-            const SourceLocation& location)
+        void add_macro(std::map<std::string, std::uint32_t>& macros, const std::string& name, std::uint32_t value,
+                       ShaderPermutationResult& result, const SourceLocation& location)
         {
             const bool inserted = macros.emplace(name, value).second;
             if (!inserted)
             {
                 add_error(result, DiagnosticCode::VariantIdCollision, location,
-                    "Generated Variant macro name collides: " + name + ".");
+                          "Generated Variant macro name collides: " + name + ".");
             }
         }
-    }
+    } // namespace
 
     bool ShaderPermutationResult::succeeded() const
     {
@@ -79,9 +70,7 @@ namespace toy3d::shader
         return fnv1a64(identity);
     }
 
-    ShaderEnumValueId make_shader_enum_value_id(
-        ShaderVariantId variant_id,
-        std::string_view option_name)
+    ShaderEnumValueId make_shader_enum_value_id(ShaderVariantId variant_id, std::string_view option_name)
     {
         std::vector<std::uint8_t> identity;
         append_string(identity, "Toy3dShaderVariantValue");
@@ -90,9 +79,8 @@ namespace toy3d::shader
         return fnv1a64(identity);
     }
 
-    ShaderPermutationResult resolve_shader_permutation(
-        const ShaderAsset& asset,
-        const std::vector<ShaderVariantSelection>& selections)
+    ShaderPermutationResult resolve_shader_permutation(const ShaderAsset& asset,
+                                                       const std::vector<ShaderVariantSelection>& selections)
     {
         ShaderPermutationResult result;
         std::map<std::string, std::string> selected_values;
@@ -101,27 +89,28 @@ namespace toy3d::shader
             if (selection.name.empty() || selection.value.empty())
             {
                 add_error(result, DiagnosticCode::InvalidVariantSelection, asset.location,
-                    "Variant selections require non-empty name and value fields.");
+                          "Variant selections require non-empty name and value fields.");
                 continue;
             }
             if (!selected_values.emplace(selection.name, selection.value).second)
             {
                 add_error(result, DiagnosticCode::InvalidVariantSelection, asset.location,
-                    "Duplicate Variant selection '" + selection.name + "'.");
+                          "Duplicate Variant selection '" + selection.name + "'.");
             }
         }
 
         for (const auto& selection : selected_values)
         {
             const auto found = std::find_if(asset.variants.begin(), asset.variants.end(),
-                [&](const Variant& variant) { return variant.name == selection.first; });
+                                            [&](const Variant& variant) { return variant.name == selection.first; });
             if (found == asset.variants.end())
             {
                 add_error(result, DiagnosticCode::InvalidVariantSelection, asset.location,
-                    "Unknown Variant selection '" + selection.first + "'.");
+                          "Unknown Variant selection '" + selection.first + "'.");
             }
         }
-        if (!result.diagnostics.empty()) return result;
+        if (!result.diagnostics.empty())
+            return result;
 
         struct ResolvedVariant
         {
@@ -138,12 +127,11 @@ namespace toy3d::shader
             ResolvedVariant item;
             item.schema = &variant;
             item.id = make_shader_variant_id(variant.name);
-            const bool variant_inserted =
-                variant_identities.emplace(item.id, variant.name).second;
+            const bool variant_inserted = variant_identities.emplace(item.id, variant.name).second;
             if (item.id == 0 || !variant_inserted)
             {
                 add_error(result, DiagnosticCode::VariantIdCollision, variant.location,
-                    "ShaderVariantId collision for Variant '" + variant.name + "'.");
+                          "ShaderVariantId collision for Variant '" + variant.name + "'.");
                 continue;
             }
             const auto selected = selected_values.find(variant.name);
@@ -153,40 +141,37 @@ namespace toy3d::shader
                 if (item.value != "false" && item.value != "true")
                 {
                     add_error(result, DiagnosticCode::InvalidVariantSelection, variant.location,
-                        "Boolean Variant '" + variant.name + "' requires true or false.");
+                              "Boolean Variant '" + variant.name + "' requires true or false.");
                 }
             }
             else
             {
-                if (std::find(variant.options.begin(), variant.options.end(), item.value) ==
-                    variant.options.end())
+                if (std::find(variant.options.begin(), variant.options.end(), item.value) == variant.options.end())
                 {
                     add_error(result, DiagnosticCode::InvalidVariantSelection, variant.location,
-                        "Enum Variant '" + variant.name + "' has no value '" + item.value + "'.");
+                              "Enum Variant '" + variant.name + "' has no value '" + item.value + "'.");
                 }
                 for (const std::string& option : variant.options)
                 {
                     const ShaderEnumValueId option_id = make_shader_enum_value_id(item.id, option);
                     const std::string identity = variant.name + "/" + option;
-                    const bool enum_inserted =
-                        enum_identities.emplace(option_id, identity).second;
+                    const bool enum_inserted = enum_identities.emplace(option_id, identity).second;
                     if (option_id == 0 || !enum_inserted)
                     {
                         add_error(result, DiagnosticCode::VariantIdCollision, variant.location,
-                            "ShaderEnumValueId collision for Variant value '" + identity + "'.");
+                                  "ShaderEnumValueId collision for Variant value '" + identity + "'.");
                     }
                     item.options.emplace_back(option_id, option);
                 }
                 std::sort(item.options.begin(), item.options.end(),
-                    [](const auto& left, const auto& right) { return left.first < right.first; });
+                          [](const auto& left, const auto& right) { return left.first < right.first; });
             }
             resolved.push_back(std::move(item));
         }
-        if (!result.diagnostics.empty()) return result;
+        if (!result.diagnostics.empty())
+            return result;
         std::sort(resolved.begin(), resolved.end(),
-            [](const ResolvedVariant& left, const ResolvedVariant& right) {
-                return left.id < right.id;
-            });
+                  [](const ResolvedVariant& left, const ResolvedVariant& right) { return left.id < right.id; });
 
         ShaderPermutation permutation;
         std::map<std::string, std::uint32_t> macros;
@@ -199,8 +184,7 @@ namespace toy3d::shader
             {
                 record.kind = ShaderPermutationValueKind::Boolean;
                 record.boolean_value = item.value == "true";
-                add_macro(macros, macro_name, record.boolean_value ? 1u : 0u,
-                    result, item.schema->location);
+                add_macro(macros, macro_name, record.boolean_value ? 1u : 0u, result, item.schema->location);
             }
             else
             {
@@ -210,8 +194,7 @@ namespace toy3d::shader
                 {
                     const auto& option = item.options[index];
                     const std::uint32_t dense_index = static_cast<std::uint32_t>(index);
-                    add_macro(macros, macro_name + "_" + option.second, dense_index,
-                        result, item.schema->location);
+                    add_macro(macros, macro_name + "_" + option.second, dense_index, result, item.schema->location);
                     if (option.second == item.value)
                     {
                         record.enum_value_id = option.first;
@@ -222,7 +205,8 @@ namespace toy3d::shader
             }
             permutation.records.push_back(record);
         }
-        if (!result.diagnostics.empty()) return result;
+        if (!result.diagnostics.empty())
+            return result;
 
         std::vector<std::uint8_t> key_bytes;
         append_integer(key_bytes, permutation.variant_id_version);
@@ -240,12 +224,12 @@ namespace toy3d::shader
         permutation.key = sha256(key_bytes);
 
         std::ostringstream prelude;
-        prelude << "// Toy3d Shader Variant ID v" << permutation.variant_id_version
-                << ", permutation ABI v" << permutation.version << '\n';
+        prelude << "// Toy3d Shader Variant ID v" << permutation.variant_id_version << ", permutation ABI v"
+                << permutation.version << '\n';
         for (const auto& macro : macros)
             prelude << "#define " << macro.first << ' ' << macro.second << '\n';
         permutation.generated_prelude = prelude.str();
         result.permutation = std::move(permutation);
         return result;
     }
-}
+} // namespace toy3d::shader

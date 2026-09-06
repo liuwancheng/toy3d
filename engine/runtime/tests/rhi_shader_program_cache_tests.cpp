@@ -59,8 +59,7 @@ namespace
         input.semantic_name = "POSITION";
         input.semantic_index = 0;
         input.target_location = 3;
-        input.scalar_type =
-            toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
+        input.scalar_type = toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
         input.component_count = 3;
         program.vertex_inputs.push_back(input);
         return program;
@@ -68,25 +67,18 @@ namespace
 
     struct ConstantHash
     {
-        std::size_t operator()(const toy3d::RHIShaderProgramKey&) const
-        {
-            return 0;
-        }
+        std::size_t operator()(const toy3d::RHIShaderProgramKey&) const { return 0; }
     };
 
     class TestQueue final : public toy3d::RHIQueue
     {
-    public:
+      public:
         toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
-        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
-        {
-            return toy3d::RHIStatus::success();
-        }
+        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
         toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
 
-    protected:
-        toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(
-            const toy3d::RHISubmitInfo&) override
+      protected:
+        toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(const toy3d::RHISubmitInfo&) override
         {
             return toy3d::RHIResult<toy3d::RHISubmitResult>::success({1});
         }
@@ -94,7 +86,7 @@ namespace
 
     class ShaderProgramDevice final : public toy3d::RHIDevice
     {
-    public:
+      public:
         ShaderProgramDevice()
         {
             device_capabilities.compute_dispatch = true;
@@ -106,15 +98,9 @@ namespace
             initialized = true;
             return toy3d::RHIStatus::success();
         }
-        const toy3d::RHICapabilities& capabilities() const override
-        {
-            return device_capabilities;
-        }
+        const toy3d::RHICapabilities& capabilities() const override { return device_capabilities; }
         const toy3d::RHILimits& limits() const override { return device_limits; }
-        toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override
-        {
-            return {};
-        }
+        toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override { return {}; }
         toy3d::RHIQueue& graphics_queue() override { return queue; }
 
         int layout_create_count = 0;
@@ -124,48 +110,43 @@ namespace
         toy3d::RHIErrorCode injected_code = toy3d::RHIErrorCode::Unsupported;
         std::vector<std::weak_ptr<toy3d::RHIShader>> created_shaders;
 
-    protected:
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIViewportContext>>
-            create_viewport_context_impl(
-                const toy3d::RHISurfaceRef&,
-                const toy3d::RHIViewportContextDesc&) override
+      protected:
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIViewportContext>> create_viewport_context_impl(
+            const toy3d::RHISurfaceRef&, const toy3d::RHIViewportContextDesc&) override
         {
             return unsupported<std::unique_ptr<toy3d::RHIViewportContext>>();
         }
-        toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer_impl(
-            const toy3d::RHIBufferDesc&, const toy3d::RHIInitialData*) override
+        toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer_impl(const toy3d::RHIBufferDesc&,
+                                                                 const toy3d::RHIInitialData*) override
         {
             return unsupported<toy3d::RHIBufferRef>();
         }
-        toy3d::RHIResult<toy3d::RHITextureRef> create_texture_impl(
-            const toy3d::RHITextureDesc&, const toy3d::RHIInitialData*) override
+        toy3d::RHIResult<toy3d::RHITextureRef> create_texture_impl(const toy3d::RHITextureDesc&,
+                                                                   const toy3d::RHIInitialData*) override
         {
             return unsupported<toy3d::RHITextureRef>();
         }
-        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view_impl(
-            const toy3d::RHIBufferRef&, const toy3d::RHIBufferViewDesc&) override
+        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view_impl(const toy3d::RHIBufferRef&,
+                                                                          const toy3d::RHIBufferViewDesc&) override
         {
             return unsupported<toy3d::RHIBufferViewRef>();
         }
-        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view_impl(
-            const toy3d::RHITextureRef&, const toy3d::RHITextureViewDesc&) override
+        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view_impl(const toy3d::RHITextureRef&,
+                                                                            const toy3d::RHITextureViewDesc&) override
         {
             return unsupported<toy3d::RHITextureViewRef>();
         }
-        toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(
-            const toy3d::RHIShaderDesc& desc) override
+        toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(const toy3d::RHIShaderDesc& desc) override
         {
             ++shader_create_count;
             if (fail_shader_call == shader_create_count)
             {
-                return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(
-                    injected_code, "Injected Shader creation failure.");
+                return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(injected_code,
+                                                                      "Injected Shader creation failure.");
             }
-            toy3d::RHIShaderRef shader =
-                std::make_shared<toy3d::RHIShader>(*this, desc);
+            toy3d::RHIShaderRef shader = std::make_shared<toy3d::RHIShader>(*this, desc);
             created_shaders.push_back(shader);
-            return toy3d::RHIResult<toy3d::RHIShaderRef>::success(
-                std::move(shader));
+            return toy3d::RHIResult<toy3d::RHIShaderRef>::success(std::move(shader));
         }
         toy3d::RHIResult<toy3d::RHIBindingLayoutRef> create_binding_layout_impl(
             const toy3d::RHIBindingLayoutDesc& desc) override
@@ -173,19 +154,17 @@ namespace
             ++layout_create_count;
             if (fail_layout)
             {
-                return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::failure(
-                    injected_code, "Injected layout creation failure.");
+                return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::failure(injected_code,
+                                                                             "Injected layout creation failure.");
             }
             return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::success(
                 std::make_shared<toy3d::RHIBindingLayout>(*this, desc));
         }
-        toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler_impl(
-            const toy3d::RHISamplerDesc&) override
+        toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler_impl(const toy3d::RHISamplerDesc&) override
         {
             return unsupported<toy3d::RHISamplerRef>();
         }
-        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(
-            const toy3d::RHIBindingSetDesc&) override
+        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(const toy3d::RHIBindingSetDesc&) override
         {
             return unsupported<toy3d::RHIBindingSetRef>();
         }
@@ -194,33 +173,27 @@ namespace
         {
             return unsupported<toy3d::RHIGraphicsPipelineRef>();
         }
-        toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence_impl(
-            const std::string&) override
+        toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence_impl(const std::string&) override
         {
             return unsupported<toy3d::RHIGPUFenceRef>();
         }
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
-            create_graphics_command_context_impl() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>> create_graphics_command_context_impl()
+            override
         {
             return unsupported<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>();
         }
         bool is_initialized_impl() const override { return initialized; }
-        toy3d::RHIStatus wait_idle_before_shutdown_impl() override
-        {
-            return toy3d::RHIStatus::success();
-        }
+        toy3d::RHIStatus wait_idle_before_shutdown_impl() override { return toy3d::RHIStatus::success(); }
         toy3d::RHIStatus shutdown_impl() override
         {
             initialized = false;
             return toy3d::RHIStatus::success();
         }
 
-    private:
-        template<typename T>
-        toy3d::RHIResult<T> unsupported()
+      private:
+        template <typename T> toy3d::RHIResult<T> unsupported()
         {
-            return toy3d::RHIResult<T>::failure(
-                toy3d::RHIErrorCode::Unsupported, "Unused fake-device operation.");
+            return toy3d::RHIResult<T>::failure(toy3d::RHIErrorCode::Unsupported, "Unused fake-device operation.");
         }
 
         TestQueue queue;
@@ -231,35 +204,27 @@ namespace
 
     class ProgramLoader final : public toy3d::ShaderMapLoader
     {
-    public:
-        explicit ProgramLoader(toy3d::ShaderMapProgramData program)
-            : program_(std::move(program))
-        {
-        }
+      public:
+        explicit ProgramLoader(toy3d::ShaderMapProgramData program) : program_(std::move(program)) {}
 
-        toy3d::ShaderMapProgramLoadResult load_program(
-            const toy3d::ShaderMapProgramKey&) const override
+        toy3d::ShaderMapProgramLoadResult load_program(const toy3d::ShaderMapProgramKey&) const override
         {
             return {program_, {}};
         }
 
-    private:
+      private:
         toy3d::ShaderMapProgramData program_;
     };
 
-    toy3d::ShaderMapProgramRef load_program(
-        const std::string& shader_name,
-        const std::string& pass_name,
-        std::uint8_t hash_seed)
+    toy3d::ShaderMapProgramRef load_program(const std::string& shader_name, const std::string& pass_name,
+                                            std::uint8_t hash_seed)
     {
         toy3d::ShaderMapProgramData data;
         data.shader_name = shader_name;
         data.pass_name = pass_name;
         data.logical_layout_hash[0] = hash_seed;
         data.target_binding_hash[0] = static_cast<std::uint8_t>(hash_seed + 1u);
-        data.pass_template_hash =
-            toy3d::shader::calculate_shader_graphics_pass_state_hash(
-                data.graphics_pass_state);
+        data.pass_template_hash = toy3d::shader::calculate_shader_graphics_pass_state_hash(data.graphics_pass_state);
         data.permutation_key = toy3d::shader::default_shader_permutation_key;
         data.mapping_version = 1;
 
@@ -287,15 +252,14 @@ namespace
         check(loaded.succeeded(), loaded.error.c_str());
         return loaded.program;
     }
-}
+} // namespace
 
 int main()
 {
     const toy3d::ShaderMapProgramData source = make_program();
-    const toy3d::RHIShaderProgramKey baseline =
-        toy3d::RHIShaderProgramKey::from_program(source);
+    const toy3d::RHIShaderProgramKey baseline = toy3d::RHIShaderProgramKey::from_program(source);
     check(baseline == toy3d::RHIShaderProgramKey::from_program(source),
-        "equivalent complete programs must produce equal keys");
+          "equivalent complete programs must produce equal keys");
 
     const auto differs = [&baseline](toy3d::ShaderMapProgramData changed)
     {
@@ -350,83 +314,69 @@ int main()
     changed.stages[0].reflection[0].name = "another_reflection_debug_name";
     changed.stages[0].binary = {9, 9};
     check(baseline == toy3d::RHIShaderProgramKey::from_program(changed),
-        "debug names, storage addresses and binary containers must not replace stable identity");
+          "debug names, storage addresses and binary containers must not replace stable identity");
 
     changed = source;
     changed.pass_name += "Collision";
-    const toy3d::RHIShaderProgramKey collision_key =
-        toy3d::RHIShaderProgramKey::from_program(changed);
+    const toy3d::RHIShaderProgramKey collision_key = toy3d::RHIShaderProgramKey::from_program(changed);
     std::unordered_map<toy3d::RHIShaderProgramKey, int, ConstantHash> collided;
     collided.emplace(baseline, 1);
     collided.emplace(collision_key, 2);
-    check(collided.size() == 2 && collided.at(baseline) == 1 &&
-          collided.at(collision_key) == 2,
-        "full equality must distinguish keys after a forced container hash collision");
+    check(collided.size() == 2 && collided.at(baseline) == 1 && collided.at(collision_key) == 2,
+          "full equality must distinguish keys after a forced container hash collision");
 
-    toy3d::ShaderMapProgramRef program =
-        load_program("Toy3d/Test/CacheRuntime", "Main", 10);
+    toy3d::ShaderMapProgramRef program = load_program("Toy3d/Test/CacheRuntime", "Main", 10);
     ShaderProgramDevice device;
     check(device.initialize({}).succeeded(), "fake device must initialize");
     toy3d::RHIShaderProgramCache cache(device);
     auto first = cache.find_or_create(program);
     auto second = cache.find_or_create(program);
-    check(first.succeeded() && second.succeeded() &&
-          first.value() == second.value(),
-        "cache hit must return the same immutable Program ref");
-    check(device.layout_create_count == 1 && device.shader_create_count == 2 &&
-          cache.size() == 1,
-        "cache hit must create one layout and each stage only once");
+    check(first.succeeded() && second.succeeded() && first.value() == second.value(),
+          "cache hit must return the same immutable Program ref");
+    check(device.layout_create_count == 1 && device.shader_create_count == 2 && cache.size() == 1,
+          "cache hit must create one layout and each stage only once");
 
-    toy3d::ShaderMapProgramRef other_program =
-        load_program("Toy3d/Test/CacheRuntime", "Other", 20);
+    toy3d::ShaderMapProgramRef other_program = load_program("Toy3d/Test/CacheRuntime", "Other", 20);
     auto other = cache.find_or_create(other_program);
     check(other.succeeded() && other.value() != first.value() && cache.size() == 2,
-        "different complete Program identity must not alias a cache entry");
+          "different complete Program identity must not alias a cache entry");
 
     ShaderProgramDevice layout_failure_device;
-    check(layout_failure_device.initialize({}).succeeded(),
-        "layout-failure device must initialize");
+    check(layout_failure_device.initialize({}).succeeded(), "layout-failure device must initialize");
     layout_failure_device.fail_layout = true;
     layout_failure_device.injected_code = toy3d::RHIErrorCode::OutOfMemory;
     toy3d::RHIShaderProgramCache layout_failure_cache(layout_failure_device);
     auto layout_failure = layout_failure_cache.find_or_create(program);
-    check(!layout_failure.succeeded() &&
-          layout_failure.status().code() == toy3d::RHIErrorCode::OutOfMemory &&
-          layout_failure_cache.size() == 0 &&
-          layout_failure_device.shader_create_count == 0,
-        "layout failure must preserve the RHI code and publish no partial entry");
+    check(!layout_failure.succeeded() && layout_failure.status().code() == toy3d::RHIErrorCode::OutOfMemory &&
+              layout_failure_cache.size() == 0 && layout_failure_device.shader_create_count == 0,
+          "layout failure must preserve the RHI code and publish no partial entry");
     layout_failure_device.fail_layout = false;
     auto layout_retry = layout_failure_cache.find_or_create(program);
     check(layout_retry.succeeded() && layout_failure_device.layout_create_count == 2,
-        "layout failure must not become a negative cache hit");
+          "layout failure must not become a negative cache hit");
 
     for (int failed_stage_call = 1; failed_stage_call <= 2; ++failed_stage_call)
     {
         ShaderProgramDevice stage_failure_device;
-        check(stage_failure_device.initialize({}).succeeded(),
-            "stage-failure device must initialize");
+        check(stage_failure_device.initialize({}).succeeded(), "stage-failure device must initialize");
         stage_failure_device.fail_shader_call = failed_stage_call;
         stage_failure_device.injected_code = toy3d::RHIErrorCode::Unsupported;
         toy3d::RHIShaderProgramCache stage_failure_cache(stage_failure_device);
         auto stage_failure = stage_failure_cache.find_or_create(program);
-        check(!stage_failure.succeeded() &&
-              stage_failure.status().code() == toy3d::RHIErrorCode::Unsupported &&
-              stage_failure_cache.size() == 0,
-            "stage failure must preserve the RHI code and publish no partial entry");
+        check(!stage_failure.succeeded() && stage_failure.status().code() == toy3d::RHIErrorCode::Unsupported &&
+                  stage_failure_cache.size() == 0,
+              "stage failure must preserve the RHI code and publish no partial entry");
         for (const auto& created_shader : stage_failure_device.created_shaders)
         {
-            check(created_shader.expired(),
-                "unpublished stage refs must be released after candidate failure");
+            check(created_shader.expired(), "unpublished stage refs must be released after candidate failure");
         }
         stage_failure_device.fail_shader_call = 0;
         auto stage_retry = stage_failure_cache.find_or_create(program);
-        check(stage_retry.succeeded(),
-            "stage failure must not become a negative cache hit");
+        check(stage_retry.succeeded(), "stage failure must not become a negative cache hit");
     }
 
     cache.clear();
-    check(cache.size() == 0,
-        "clear must release all cache-owned CPU Program wrappers before device shutdown");
+    check(cache.size() == 0, "clear must release all cache-owned CPU Program wrappers before device shutdown");
 
     if (failure_count != 0)
     {

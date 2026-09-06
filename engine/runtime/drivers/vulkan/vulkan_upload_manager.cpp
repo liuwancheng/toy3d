@@ -7,13 +7,10 @@
 
 namespace toy3d
 {
-    VulkanUploadPage::VulkanUploadPage(
-        VulkanMemoryManager& memory_manager,
-        VulkanAllocatedBuffer allocated_buffer,
-        VkDeviceSize capacity)
-        : memory_manager_instance(&memory_manager)
-        , allocated_buffer(std::move(allocated_buffer))
-        , page_capacity(capacity)
+    VulkanUploadPage::VulkanUploadPage(VulkanMemoryManager& memory_manager, VulkanAllocatedBuffer allocated_buffer,
+                                       VkDeviceSize capacity)
+        : memory_manager_instance(&memory_manager), allocated_buffer(std::move(allocated_buffer)),
+          page_capacity(capacity)
     {
     }
 
@@ -85,28 +82,21 @@ namespace toy3d
         return page ? page->buffer() : VK_NULL_HANDLE;
     }
 
-    VulkanUploadManager::VulkanUploadManager(VulkanMemoryManager& memory_manager)
-        : memory_manager(memory_manager)
-    {
-    }
+    VulkanUploadManager::VulkanUploadManager(VulkanMemoryManager& memory_manager) : memory_manager(memory_manager) {}
 
-    RHIResult<VulkanUploadAllocation> VulkanUploadManager::upload(
-        const void* source_data,
-        std::size_t source_size,
-        VkDeviceSize alignment)
+    RHIResult<VulkanUploadAllocation> VulkanUploadManager::upload(const void* source_data, std::size_t source_size,
+                                                                  VkDeviceSize alignment)
     {
         if (source_data == nullptr || source_size == 0)
         {
-            return RHIResult<VulkanUploadAllocation>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan upload requires non-empty source data.");
+            return RHIResult<VulkanUploadAllocation>::failure(RHIErrorCode::InvalidArgument,
+                                                              "Vulkan upload requires non-empty source data.");
         }
         const VkDeviceSize size = static_cast<VkDeviceSize>(source_size);
         if (static_cast<std::size_t>(size) != source_size)
         {
-            return RHIResult<VulkanUploadAllocation>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan upload size exceeds VkDeviceSize.");
+            return RHIResult<VulkanUploadAllocation>::failure(RHIErrorCode::InvalidArgument,
+                                                              "Vulkan upload size exceeds VkDeviceSize.");
         }
 
         const bool dedicated = size > default_page_size / 2;
@@ -135,10 +125,9 @@ namespace toy3d
                 return RHIResult<VulkanUploadAllocation>::success(std::move(allocation));
             }
             current_page = std::move(page.value());
-            manager_stats.peak_managed_page_count = std::max(
-                manager_stats.peak_managed_page_count,
-                (current_page ? std::size_t{1} : std::size_t{0}) +
-                    pending_pages.size() + available_pages.size());
+            manager_stats.peak_managed_page_count =
+                std::max(manager_stats.peak_managed_page_count, (current_page ? std::size_t{1} : std::size_t{0}) +
+                                                                    pending_pages.size() + available_pages.size());
         }
 
         VkDeviceSize offset = 0;
@@ -159,16 +148,14 @@ namespace toy3d
                     return RHIResult<VulkanUploadAllocation>::failure(page.status().code(), page.status().message());
                 }
                 current_page = std::move(page.value());
-                manager_stats.peak_managed_page_count = std::max(
-                    manager_stats.peak_managed_page_count,
-                    (current_page ? std::size_t{1} : std::size_t{0}) +
-                        pending_pages.size() + available_pages.size());
+                manager_stats.peak_managed_page_count =
+                    std::max(manager_stats.peak_managed_page_count, (current_page ? std::size_t{1} : std::size_t{0}) +
+                                                                        pending_pages.size() + available_pages.size());
             }
             if (!current_page->try_allocate(size, alignment, offset))
             {
                 return RHIResult<VulkanUploadAllocation>::failure(
-                    RHIErrorCode::OutOfMemory,
-                    "A fresh Vulkan upload page could not satisfy the allocation.");
+                    RHIErrorCode::OutOfMemory, "A fresh Vulkan upload page could not satisfy the allocation.");
             }
         }
 
@@ -187,9 +174,8 @@ namespace toy3d
             VulkanUploadAllocation{current_page, offset, size, destination});
     }
 
-    void VulkanUploadManager::mark_submitted(
-        const std::vector<std::shared_ptr<VulkanUploadPage>>& pages,
-        RHIQueueCompletionValue completion_value)
+    void VulkanUploadManager::mark_submitted(const std::vector<std::shared_ptr<VulkanUploadPage>>& pages,
+                                             RHIQueueCompletionValue completion_value)
     {
         if (completion_value == 0)
         {
@@ -253,18 +239,17 @@ namespace toy3d
         auto buffer = memory_manager.create_buffer(buffer_info, VulkanAllocationUsage::CpuUpload, "Vulkan upload page");
         if (!buffer)
         {
-            return RHIResult<std::shared_ptr<VulkanUploadPage>>::failure(
-                buffer.status().code(), buffer.status().message());
+            return RHIResult<std::shared_ptr<VulkanUploadPage>>::failure(buffer.status().code(),
+                                                                         buffer.status().message());
         }
         if (buffer.value().allocation.mapped_data == nullptr)
         {
             memory_manager.destroy_buffer(buffer.value());
             return RHIResult<std::shared_ptr<VulkanUploadPage>>::failure(
-                RHIErrorCode::BackendFailure,
-                "VMA created an upload page without a persistent mapping.");
+                RHIErrorCode::BackendFailure, "VMA created an upload page without a persistent mapping.");
         }
         ++manager_stats.total_page_creations;
         return RHIResult<std::shared_ptr<VulkanUploadPage>>::success(
             std::make_shared<VulkanUploadPage>(memory_manager, std::move(buffer.value()), capacity));
     }
-}
+} // namespace toy3d

@@ -22,34 +22,29 @@ namespace toy3d
 
     class GlobalShaderMap final
     {
-    public:
+      public:
         GlobalShaderMap(GlobalShaderMap&&) noexcept = default;
         GlobalShaderMap& operator=(GlobalShaderMap&&) noexcept = default;
         GlobalShaderMap(const GlobalShaderMap&) = delete;
         GlobalShaderMap& operator=(const GlobalShaderMap&) = delete;
 
-        static GlobalShaderMapResult load(
-            ShaderMap& shader_map,
-            ShaderPlatform platform,
-            const std::vector<const GlobalShaderType*>& required_types);
+        static GlobalShaderMapResult load(ShaderMap& shader_map, ShaderPlatform platform,
+                                          const std::vector<const GlobalShaderType*>& required_types);
 
         ShaderMapProgramResult find(const GlobalShaderType& type) const;
         ShaderPlatform platform() const { return platform_; }
         std::size_t size() const { return programs_.size(); }
 
-    private:
+      private:
         struct Entry
         {
             GlobalShaderType type;
             ShaderMapProgramRef program;
         };
 
-        explicit GlobalShaderMap(ShaderPlatform platform)
-            : platform_(platform)
-        {
-        }
+        explicit GlobalShaderMap(ShaderPlatform platform) : platform_(platform) {}
 
         ShaderPlatform platform_;
         std::unordered_map<std::string, Entry> programs_;
     };
-}
+} // namespace toy3d

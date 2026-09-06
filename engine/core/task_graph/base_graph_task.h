@@ -13,7 +13,7 @@ namespace toy3d
 
     class BaseGraphTask
     {
-    public:
+      public:
         virtual ~BaseGraphTask();
 
         BaseGraphTask(const BaseGraphTask&) = delete;
@@ -27,22 +27,16 @@ namespace toy3d
         void execute(NamedThread current_thread);
         void cancel();
 
-    protected:
+      protected:
         explicit BaseGraphTask(TaskGraphInterface& task_graph);
 
-        void initialize_routing(
-            NamedThread desired_thread,
-            TaskPriority priority,
-            SubsequentsMode subsequents_mode);
+        void initialize_routing(NamedThread desired_thread, TaskPriority priority, SubsequentsMode subsequents_mode);
 
-    private:
-        template<typename TaskType>
-        friend class GraphTask;
+      private:
+        template <typename TaskType> friend class GraphTask;
 
         void dispatch(const GraphEventArray& prerequisites, bool unlock_immediately);
-        virtual void execute_task(
-            NamedThread current_thread,
-            const GraphEventRef& completion_event) = 0;
+        virtual void execute_task(NamedThread current_thread, const GraphEventRef& completion_event) = 0;
 
         TaskGraphInterface& task_graph_;
         GraphEventRef completion_event_;
@@ -56,4 +50,4 @@ namespace toy3d
         SubsequentsMode subsequents_mode_ = SubsequentsMode::TrackSubsequents;
         bool routing_initialized_ = false;
     };
-}
+} // namespace toy3d

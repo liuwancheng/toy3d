@@ -5,8 +5,8 @@ namespace toy3d
 {
     class Win32Platform : public IPlatform
     {
-    public:
-        Win32Platform():IPlatform() {};
+      public:
+        Win32Platform() : IPlatform() {};
         virtual ~Win32Platform() {};
 
         virtual bool init() override;

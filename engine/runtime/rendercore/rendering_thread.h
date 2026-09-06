@@ -24,12 +24,9 @@ namespace toy3d
     // Rendering Thread selected at construction. It owns an OS thread only in MultiThread mode.
     class RenderingThread final
     {
-    public:
-        RenderingThread(
-            ThreadManager& thread_manager,
-            TaskGraphInterface& task_graph,
-            RenderingThreadMode mode,
-            std::function<std::unique_ptr<Thread>(std::function<void()>)> thread_factory = {});
+      public:
+        RenderingThread(ThreadManager& thread_manager, TaskGraphInterface& task_graph, RenderingThreadMode mode,
+                        std::function<std::unique_ptr<Thread>(std::function<void()>)> thread_factory = {});
         ~RenderingThread();
 
         RenderingThread(const RenderingThread&) = delete;
@@ -42,10 +39,8 @@ namespace toy3d
         RenderingThreadMode get_mode() const noexcept;
         std::thread::id get_thread_id() const noexcept;
 
-    private:
-        ThreadStatus run_callback(
-            const std::function<ThreadStatus()>& callback,
-            const char* phase) const noexcept;
+      private:
+        ThreadStatus run_callback(const std::function<ThreadStatus()>& callback, const char* phase) const noexcept;
 
         ThreadManager& thread_manager_;
         TaskGraphInterface& task_graph_;
@@ -55,4 +50,4 @@ namespace toy3d
         std::atomic<bool> ready_{false};
         bool started_ = false;
     };
-}
+} // namespace toy3d

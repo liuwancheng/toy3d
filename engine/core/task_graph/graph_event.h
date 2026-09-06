@@ -20,18 +20,16 @@ namespace toy3d
 
     class GraphEvent final : public std::enable_shared_from_this<GraphEvent>
     {
-    public:
+      public:
         static GraphEventRef create_graph_event();
 
         bool is_complete() const;
         TaskOutcome get_outcome() const;
-        void wait(
-            TaskGraphInterface& task_graph,
-            NamedThread current_thread = NamedThread::Unknown) const;
+        void wait(TaskGraphInterface& task_graph, NamedThread current_thread = NamedThread::Unknown) const;
 
         void dont_complete_until(GraphEventRef event);
 
-    private:
+      private:
         friend class BaseGraphTask;
         friend class TaskGraph;
 
@@ -48,4 +46,4 @@ namespace toy3d
         std::vector<std::function<void()>> subsequents_;
         GraphEventArray completion_dependencies_;
     };
-}
+} // namespace toy3d

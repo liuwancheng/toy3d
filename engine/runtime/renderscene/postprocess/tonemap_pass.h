@@ -35,29 +35,23 @@ namespace toy3d
 
     class TonemapPassResources final
     {
-    public:
+      public:
         TonemapPassResources() = default;
         ~TonemapPassResources() = default;
 
         TonemapPassResources(const TonemapPassResources&) = delete;
         TonemapPassResources& operator=(const TonemapPassResources&) = delete;
 
-        RHIStatus initialize(
-            RHIDevice& device,
-            RHIShaderProgramCache& shader_program_cache,
-            const GlobalShaderMap& global_shader_map);
+        RHIStatus initialize(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+                             const GlobalShaderMap& global_shader_map);
         void release() noexcept;
 
-        RHIStatus render(
-            RHIDevice& device,
-            RHIGraphicsCommandContext& context,
-            const RHITextureViewRef& scene_color,
-            const TonemapPassTarget& target,
-            const TonemapParameters& parameters) const;
+        RHIStatus render(RHIDevice& device, RHIGraphicsCommandContext& context, const RHITextureViewRef& scene_color,
+                         const TonemapPassTarget& target, const TonemapParameters& parameters) const;
 
         bool initialized() const noexcept;
 
-    private:
+      private:
         const ShaderMapBinding* constant_buffer_binding_ = nullptr;
         const ShaderMapBinding::ConstantMember* exposure_binding_ = nullptr;
         const ShaderMapBinding* scene_color_binding_ = nullptr;
@@ -67,4 +61,4 @@ namespace toy3d
         RHISamplerRef sampler_;
         RHIGraphicsPipelineRef pipeline_;
     };
-}
+} // namespace toy3d

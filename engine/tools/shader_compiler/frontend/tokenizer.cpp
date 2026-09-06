@@ -20,11 +20,9 @@ namespace toy3d::shader
             const unsigned char character = static_cast<unsigned char>(value);
             return std::isalnum(character) != 0 || value == '_';
         }
-    }
+    } // namespace
 
-    Tokenizer::Tokenizer(std::string_view source, std::string path)
-        : source_text(source)
-        , source_path(std::move(path))
+    Tokenizer::Tokenizer(std::string_view source, std::string path) : source_text(source), source_path(std::move(path))
     {
     }
 
@@ -55,22 +53,31 @@ namespace toy3d::shader
         advance();
         switch (character)
         {
-        case '{': return Token{TokenKind::LeftBrace, "{", start};
-        case '}': return Token{TokenKind::RightBrace, "}", start};
-        case '(': return Token{TokenKind::LeftParenthesis, "(", start};
-        case ')': return Token{TokenKind::RightParenthesis, ")", start};
-        case '<': return Token{TokenKind::LeftAngle, "<", start};
-        case '>': return Token{TokenKind::RightAngle, ">", start};
-        case ':': return Token{TokenKind::Colon, ":", start};
-        case ',': return Token{TokenKind::Comma, ",", start};
-        case '=': return Token{TokenKind::Equal, "=", start};
-        case '-': return Token{TokenKind::Minus, "-", start};
-        case '+': return Token{TokenKind::Plus, "+", start};
+        case '{':
+            return Token{TokenKind::LeftBrace, "{", start};
+        case '}':
+            return Token{TokenKind::RightBrace, "}", start};
+        case '(':
+            return Token{TokenKind::LeftParenthesis, "(", start};
+        case ')':
+            return Token{TokenKind::RightParenthesis, ")", start};
+        case '<':
+            return Token{TokenKind::LeftAngle, "<", start};
+        case '>':
+            return Token{TokenKind::RightAngle, ">", start};
+        case ':':
+            return Token{TokenKind::Colon, ":", start};
+        case ',':
+            return Token{TokenKind::Comma, ",", start};
+        case '=':
+            return Token{TokenKind::Equal, "=", start};
+        case '-':
+            return Token{TokenKind::Minus, "-", start};
+        case '+':
+            return Token{TokenKind::Plus, "+", start};
         default:
-            add_error(
-                DiagnosticCode::UnexpectedCharacter,
-                start,
-                std::string("Unexpected character '") + character + "'.");
+            add_error(DiagnosticCode::UnexpectedCharacter, start,
+                      std::string("Unexpected character '") + character + "'.");
             return Token{TokenKind::Invalid, std::string(1, character), start};
         }
     }
@@ -95,18 +102,17 @@ namespace toy3d::shader
             const std::size_t line_start = position;
             std::size_t first_non_space = line_start;
             while (first_non_space < source_text.size() &&
-                (source_text[first_non_space] == ' ' || source_text[first_non_space] == '\t'))
+                   (source_text[first_non_space] == ' ' || source_text[first_non_space] == '\t'))
             {
                 ++first_non_space;
             }
 
             const std::size_t remaining = source_text.size() - first_non_space;
-            if (remaining >= terminator.size() &&
-                source_text.substr(first_non_space, terminator.size()) == terminator)
+            if (remaining >= terminator.size() && source_text.substr(first_non_space, terminator.size()) == terminator)
             {
                 std::size_t after = first_non_space + terminator.size();
                 while (after < source_text.size() &&
-                    (source_text[after] == ' ' || source_text[after] == '\t' || source_text[after] == '\r'))
+                       (source_text[after] == ' ' || source_text[after] == '\t' || source_text[after] == '\r'))
                 {
                     ++after;
                 }
@@ -137,10 +143,8 @@ namespace toy3d::shader
         }
 
         result.text = std::string(source_text.substr(content_start));
-        add_error(
-            DiagnosticCode::UnterminatedHlslBlock,
-            result.location,
-            "HLSL block is missing an ENDHLSL terminator on its own line.");
+        add_error(DiagnosticCode::UnterminatedHlslBlock, result.location,
+                  "HLSL block is missing an ENDHLSL terminator on its own line.");
         return result;
     }
 
@@ -307,7 +311,6 @@ namespace toy3d::shader
 
     void Tokenizer::add_error(DiagnosticCode code, const SourceLocation& at, std::string message)
     {
-        tokenizer_diagnostics.push_back(
-            Diagnostic{DiagnosticSeverity::Error, code, at, std::move(message)});
+        tokenizer_diagnostics.push_back(Diagnostic{DiagnosticSeverity::Error, code, at, std::move(message)});
     }
-}
+} // namespace toy3d::shader

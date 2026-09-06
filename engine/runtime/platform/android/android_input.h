@@ -5,22 +5,21 @@
 
 namespace toy3d
 {
-    class AndroidPlatformInput : public IPlatformInput 
+    class AndroidPlatformInput : public IPlatformInput
     {
-    public:
-        AndroidPlatformInput(GLFWwindow* window) :IPlatformInput(), glfw_window(window) {}
-        virtual ~AndroidPlatformInput(){};
-    public:        
+      public:
+        AndroidPlatformInput(GLFWwindow* window) : IPlatformInput(), glfw_window(window) {}
+        virtual ~AndroidPlatformInput() {};
+
+      public:
         bool init() override;
         void exit() override;
         void update() override;
-        PlatformInputCapabilities capabilities() const noexcept override
-        {
-            return {true, true, true, true, true};
-        }
-    private:
+        PlatformInputCapabilities capabilities() const noexcept override { return {true, true, true, true, true}; }
+
+      private:
         GLFWwindow* glfw_window = nullptr;
-        
+
         // GLFW回调函数
         static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
         static void mousebutton_callback(GLFWwindow* window, int button, int action, int mods);

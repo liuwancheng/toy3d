@@ -15,7 +15,7 @@ namespace
             std::exit(EXIT_FAILURE);
         }
     }
-}
+} // namespace
 
 int main()
 {
@@ -38,19 +38,19 @@ int main()
     VulkanDevice device;
     const RHIStatus first_initialize = device.initialize(device_desc);
     require(!first_initialize && first_initialize.code() == RHIErrorCode::Unsupported,
-        "A platform-mismatched surface must fail after Vulkan instance setup.");
+            "A platform-mismatched surface must fail after Vulkan instance setup.");
 
     RHIBufferDesc buffer_desc;
     buffer_desc.size = 16;
     buffer_desc.usage = RHIResourceUsage::VertexBuffer;
     const auto rejected_creation = device.create_buffer(buffer_desc);
     require(!rejected_creation && rejected_creation.status().code() == RHIErrorCode::NotReady,
-        "A partially initialized Vulkan device must return to the uninitialized frontend state.");
+            "A partially initialized Vulkan device must return to the uninitialized frontend state.");
 
     const RHIStatus second_initialize = device.initialize(device_desc);
     require(!second_initialize && second_initialize.code() == RHIErrorCode::Unsupported,
-        "Vulkan partial-initialization cleanup must permit a second initialization attempt.");
+            "Vulkan partial-initialization cleanup must permit a second initialization attempt.");
     require(static_cast<bool>(device.shutdown()),
-        "Vulkan shutdown must remain idempotent after partial-initialization cleanup.");
+            "Vulkan shutdown must remain idempotent after partial-initialization cleanup.");
     return EXIT_SUCCESS;
 }

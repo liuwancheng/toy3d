@@ -10,13 +10,10 @@ namespace toy3d
 {
     class GlobalShaderBindingRequirement final
     {
-    public:
-        GlobalShaderBindingRequirement(
-            ShaderParameterId parameter_id,
-            RHIBindingGroup group,
-            RHIResourceBindingType type,
-            std::uint32_t array_count,
-            RHIShaderStageFlags stages);
+      public:
+        GlobalShaderBindingRequirement(ShaderParameterId parameter_id, RHIBindingGroup group,
+                                       RHIResourceBindingType type, std::uint32_t array_count,
+                                       RHIShaderStageFlags stages);
 
         ShaderParameterId parameter_id() const { return parameter_id_; }
         RHIBindingGroup group() const { return group_; }
@@ -26,7 +23,7 @@ namespace toy3d
 
         bool operator==(const GlobalShaderBindingRequirement& other) const;
 
-    private:
+      private:
         ShaderParameterId parameter_id_ = 0;
         RHIBindingGroup group_ = RHIBindingGroup::Material;
         RHIResourceBindingType type_ = RHIResourceBindingType::UniformBuffer;
@@ -36,21 +33,17 @@ namespace toy3d
 
     class GlobalShaderType final
     {
-    public:
+      public:
         enum class ProgramKind
         {
             Graphics,
             Compute
         };
 
-        GlobalShaderType(
-            std::string type_name,
-            std::string shader_name,
-            std::string pass_name,
-            ShaderContentHash permutation_key,
-            ProgramKind program_kind,
-            RHIShaderStageFlags required_stages,
-            std::vector<GlobalShaderBindingRequirement> binding_requirements);
+        GlobalShaderType(std::string type_name, std::string shader_name, std::string pass_name,
+                         ShaderContentHash permutation_key, ProgramKind program_kind,
+                         RHIShaderStageFlags required_stages,
+                         std::vector<GlobalShaderBindingRequirement> binding_requirements);
 
         const std::string& type_name() const { return type_name_; }
         const std::string& shader_name() const { return shader_name_; }
@@ -58,15 +51,14 @@ namespace toy3d
         const ShaderContentHash& permutation_key() const { return permutation_key_; }
         ProgramKind program_kind() const { return program_kind_; }
         RHIShaderStageFlags required_stages() const { return required_stages_; }
-        const std::vector<GlobalShaderBindingRequirement>&
-            binding_requirements() const
+        const std::vector<GlobalShaderBindingRequirement>& binding_requirements() const
         {
             return binding_requirements_;
         }
 
         bool operator==(const GlobalShaderType& other) const;
 
-    private:
+      private:
         std::string type_name_;
         std::string shader_name_;
         std::string pass_name_;
@@ -75,4 +67,4 @@ namespace toy3d
         RHIShaderStageFlags required_stages_ = RHIShaderStageFlags::None;
         std::vector<GlobalShaderBindingRequirement> binding_requirements_;
     };
-}
+} // namespace toy3d

@@ -22,16 +22,15 @@ namespace toy3d
 
     class RunnableThreadCreateResult final
     {
-    public:
+      public:
         bool succeeded() const;
         const ThreadStatus& status() const;
         std::unique_ptr<RunnableThread> take_thread();
 
-    private:
+      private:
         friend class RunnableThread;
 
-        RunnableThreadCreateResult(
-            ThreadStatus status, std::unique_ptr<RunnableThread> thread);
+        RunnableThreadCreateResult(ThreadStatus status, std::unique_ptr<RunnableThread> thread);
 
         ThreadStatus status_;
         std::unique_ptr<RunnableThread> thread_;
@@ -39,18 +38,13 @@ namespace toy3d
 
     class RunnableThread final
     {
-    public:
-        static RunnableThreadCreateResult create(
-            ThreadManager& thread_manager,
-            std::unique_ptr<Runnable> runnable,
-            RunnableThreadConfig config);
+      public:
+        static RunnableThreadCreateResult create(ThreadManager& thread_manager, std::unique_ptr<Runnable> runnable,
+                                                 RunnableThreadConfig config);
 
         // Public only so std::make_unique can build the factory-owned object without raw new.
         // Callers use create(), which performs and reports the init handshake.
-        RunnableThread(
-            ThreadManager& thread_manager,
-            std::unique_ptr<Runnable> runnable,
-            RunnableThreadConfig config);
+        RunnableThread(ThreadManager& thread_manager, std::unique_ptr<Runnable> runnable, RunnableThreadConfig config);
         ~RunnableThread();
 
         RunnableThread(const RunnableThread&) = delete;
@@ -65,7 +59,7 @@ namespace toy3d
         RunnableThreadState get_state() const;
         ThreadExecutionResult get_result() const;
 
-    private:
+      private:
         void thread_entry();
         void publish_init(ThreadStatus status);
         void record_exception(const char* phase);
@@ -87,4 +81,4 @@ namespace toy3d
 
         mutable std::mutex join_mutex_;
     };
-}
+} // namespace toy3d

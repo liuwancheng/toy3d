@@ -7,13 +7,12 @@ namespace toy3d
 {
     class ShaderCodeLibraryLoader final : public ShaderMapLoader
     {
-    public:
+      public:
         explicit ShaderCodeLibraryLoader(PhysicalPath library_path);
 
-        ShaderMapProgramLoadResult load_program(
-            const ShaderMapProgramKey& key) const override;
+        ShaderMapProgramLoadResult load_program(const ShaderMapProgramKey& key) const override;
 
-    private:
+      private:
         PhysicalPath library_path_;
     };
-}
+} // namespace toy3d

@@ -8,8 +8,7 @@
 
 namespace toy3d
 {
-    RunnableThreadCreateResult::RunnableThreadCreateResult(
-        ThreadStatus status, std::unique_ptr<RunnableThread> thread)
+    RunnableThreadCreateResult::RunnableThreadCreateResult(ThreadStatus status, std::unique_ptr<RunnableThread> thread)
         : status_(std::move(status)), thread_(std::move(thread))
     {
     }
@@ -29,27 +28,24 @@ namespace toy3d
         return std::move(thread_);
     }
 
-    RunnableThreadCreateResult RunnableThread::create(
-        ThreadManager& thread_manager,
-        std::unique_ptr<Runnable> runnable,
-        RunnableThreadConfig config)
+    RunnableThreadCreateResult RunnableThread::create(ThreadManager& thread_manager, std::unique_ptr<Runnable> runnable,
+                                                      RunnableThreadConfig config)
     {
         if (!runnable)
         {
-            return {ThreadStatus::failure(
-                ThreadErrorCode::InvalidConfig, "RunnableThread requires a runnable"), nullptr};
+            return {ThreadStatus::failure(ThreadErrorCode::InvalidConfig, "RunnableThread requires a runnable"),
+                    nullptr};
         }
         if (config.name.empty())
         {
-            return {ThreadStatus::failure(
-                ThreadErrorCode::InvalidConfig, "RunnableThread requires a non-empty name"), nullptr};
+            return {ThreadStatus::failure(ThreadErrorCode::InvalidConfig, "RunnableThread requires a non-empty name"),
+                    nullptr};
         }
 
         std::unique_ptr<RunnableThread> created;
         try
         {
-            created = std::make_unique<RunnableThread>(
-                thread_manager, std::move(runnable), std::move(config));
+            created = std::make_unique<RunnableThread>(thread_manager, std::move(runnable), std::move(config));
         }
         catch (const std::exception& exception)
         {
@@ -57,8 +53,8 @@ namespace toy3d
         }
         catch (...)
         {
-            return {ThreadStatus::failure(
-                ThreadErrorCode::CreateFailed, "unknown exception while creating thread"), nullptr};
+            return {ThreadStatus::failure(ThreadErrorCode::CreateFailed, "unknown exception while creating thread"),
+                    nullptr};
         }
 
         {
@@ -75,10 +71,8 @@ namespace toy3d
         return {ThreadStatus::success(), std::move(created)};
     }
 
-    RunnableThread::RunnableThread(
-        ThreadManager& thread_manager,
-        std::unique_ptr<Runnable> runnable,
-        RunnableThreadConfig config)
+    RunnableThread::RunnableThread(ThreadManager& thread_manager, std::unique_ptr<Runnable> runnable,
+                                   RunnableThreadConfig config)
         : thread_manager_(thread_manager), runnable_(std::move(runnable)), name_(std::move(config.name))
     {
         if (!runnable_ || name_.empty())
@@ -105,8 +99,7 @@ namespace toy3d
         if (joinable())
         {
             thread_manager_.report(ThreadStatus::failure(
-                ThreadErrorCode::NotJoined,
-                "thread '" + name_ + "' was destroyed before wait_for_completion"));
+                ThreadErrorCode::NotJoined, "thread '" + name_ + "' was destroyed before wait_for_completion"));
             request_stop();
             wait_for_completion();
         }
@@ -143,8 +136,7 @@ namespace toy3d
         // the target detects an accidental self-join, and the target must never block on it.
         if (std::this_thread::get_id() == thread_id_)
         {
-            return ThreadStatus::failure(
-                ThreadErrorCode::InvalidCaller, "a thread cannot wait for itself");
+            return ThreadStatus::failure(ThreadErrorCode::InvalidCaller, "a thread cannot wait for itself");
         }
 
         std::lock_guard<std::mutex> join_lock(join_mutex_);
@@ -213,8 +205,7 @@ namespace toy3d
         }
         catch (...)
         {
-            init_status = ThreadStatus::failure(
-                ThreadErrorCode::UnhandledException, "unhandled exception during init");
+            init_status = ThreadStatus::failure(ThreadErrorCode::UnhandledException, "unhandled exception during init");
         }
 
         if (!init_status.succeeded())
@@ -261,9 +252,7 @@ namespace toy3d
             std::lock_guard<std::mutex> lock(state_mutex_);
             init_status_ = status;
             result_.status = std::move(status);
-            state_ = result_.status.succeeded()
-                ? RunnableThreadState::Running
-                : RunnableThreadState::Failed;
+            state_ = result_.status.succeeded() ? RunnableThreadState::Running : RunnableThreadState::Failed;
             init_complete_ = true;
         }
         init_condition_.notify_all();
@@ -274,10 +263,9 @@ namespace toy3d
         std::lock_guard<std::mutex> lock(state_mutex_);
         if (result_.status.succeeded())
         {
-            result_.status = ThreadStatus::failure(
-                ThreadErrorCode::UnhandledException,
-                std::string("unhandled exception during ") + phase);
+            result_.status = ThreadStatus::failure(ThreadErrorCode::UnhandledException,
+                                                   std::string("unhandled exception during ") + phase);
         }
         state_ = RunnableThreadState::Failed;
     }
-}
+} // namespace toy3d

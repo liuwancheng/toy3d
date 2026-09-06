@@ -12,11 +12,9 @@ namespace toy3d
 {
     class VulkanUploadPage final
     {
-    public:
-        VulkanUploadPage(
-            VulkanMemoryManager& memory_manager,
-            VulkanAllocatedBuffer allocated_buffer,
-            VkDeviceSize capacity);
+      public:
+        VulkanUploadPage(VulkanMemoryManager& memory_manager, VulkanAllocatedBuffer allocated_buffer,
+                         VkDeviceSize capacity);
         ~VulkanUploadPage();
 
         VulkanUploadPage(const VulkanUploadPage&) = delete;
@@ -32,7 +30,7 @@ namespace toy3d
         RHIQueueCompletionValue retire_value() const;
         void reset();
 
-    private:
+      private:
         VulkanMemoryManager* memory_manager_instance = nullptr;
         VulkanAllocatedBuffer allocated_buffer;
         VkDeviceSize page_capacity = 0;
@@ -69,25 +67,22 @@ namespace toy3d
 
     class VulkanUploadManager final
     {
-    public:
+      public:
         explicit VulkanUploadManager(VulkanMemoryManager& memory_manager);
         ~VulkanUploadManager() = default;
 
         VulkanUploadManager(const VulkanUploadManager&) = delete;
         VulkanUploadManager& operator=(const VulkanUploadManager&) = delete;
 
-        RHIResult<VulkanUploadAllocation> upload(
-            const void* source_data,
-            std::size_t source_size,
-            VkDeviceSize alignment);
-        void mark_submitted(
-            const std::vector<std::shared_ptr<VulkanUploadPage>>& pages,
-            RHIQueueCompletionValue completion_value);
+        RHIResult<VulkanUploadAllocation> upload(const void* source_data, std::size_t source_size,
+                                                 VkDeviceSize alignment);
+        void mark_submitted(const std::vector<std::shared_ptr<VulkanUploadPage>>& pages,
+                            RHIQueueCompletionValue completion_value);
         void release_completed(RHIQueueCompletionValue completed_value);
         VulkanUploadManagerStats statistics() const;
         void shutdown();
 
-    private:
+      private:
         RHIResult<std::shared_ptr<VulkanUploadPage>> create_page(VkDeviceSize capacity);
 
         static constexpr VkDeviceSize default_page_size = 16ULL * 1024ULL * 1024ULL;
@@ -97,4 +92,4 @@ namespace toy3d
         std::vector<std::shared_ptr<VulkanUploadPage>> available_pages;
         VulkanUploadManagerStats manager_stats;
     };
-}
+} // namespace toy3d

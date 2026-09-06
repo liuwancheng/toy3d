@@ -65,10 +65,8 @@ namespace toy3d::shader
     };
 
     std::string shader_toolchain_host_platform();
-    FileResult<PhysicalPath> shader_toolchain_root_for_executable(
-        const PlatformFile& platform_file,
-        const PhysicalPath& executable_path);
-    ToolchainDiscoveryResult discover_shader_toolchain(
-        const PlatformFile& platform_file,
-        const PhysicalPath& explicit_bundle_root);
-}
+    FileResult<PhysicalPath> shader_toolchain_root_for_executable(const PlatformFile& platform_file,
+                                                                  const PhysicalPath& executable_path);
+    ToolchainDiscoveryResult discover_shader_toolchain(const PlatformFile& platform_file,
+                                                       const PhysicalPath& explicit_bundle_root);
+} // namespace toy3d::shader

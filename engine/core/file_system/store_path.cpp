@@ -62,12 +62,10 @@ namespace toy3d
                     }
                     code_point = (code_point << 6u) | (next & 0x3fu);
                 }
-                const bool overlong =
-                    (continuation_count == 1 && code_point < 0x80u) ||
-                    (continuation_count == 2 && code_point < 0x800u) ||
-                    (continuation_count == 3 && code_point < 0x10000u);
-                if (overlong || code_point > 0x10ffffu ||
-                    (code_point >= 0xd800u && code_point <= 0xdfffu))
+                const bool overlong = (continuation_count == 1 && code_point < 0x80u) ||
+                                      (continuation_count == 2 && code_point < 0x800u) ||
+                                      (continuation_count == 3 && code_point < 0x10000u);
+                if (overlong || code_point > 0x10ffffu || (code_point >= 0xd800u && code_point <= 0xdfffu))
                 {
                     return false;
                 }
@@ -75,33 +73,29 @@ namespace toy3d
             }
             return true;
         }
-    }
+    } // namespace
 
-    StorePath::StorePath(std::string utf8_path)
-        : utf8_path_(std::move(utf8_path))
-    {
-    }
+    StorePath::StorePath(std::string utf8_path) : utf8_path_(std::move(utf8_path)) {}
 
     FileResult<StorePath> StorePath::parse(std::string utf8_path)
     {
         if (!is_valid_utf8(utf8_path) || utf8_path.find('\0') != std::string::npos)
         {
-            return FileResult<StorePath>(invalid_store_path(
-                utf8_path, "store path must be valid UTF-8 without embedded nulls"));
+            return FileResult<StorePath>(
+                invalid_store_path(utf8_path, "store path must be valid UTF-8 without embedded nulls"));
         }
-        if ((!utf8_path.empty() && utf8_path.front() == '/') ||
-            utf8_path.find('\\') != std::string::npos)
+        if ((!utf8_path.empty() && utf8_path.front() == '/') || utf8_path.find('\\') != std::string::npos)
         {
-            return FileResult<StorePath>(invalid_store_path(
-                utf8_path, "store path must be relative and use '/' separators"));
+            return FileResult<StorePath>(
+                invalid_store_path(utf8_path, "store path must be relative and use '/' separators"));
         }
         if (!utf8_path.empty() && utf8_path.back() == '/')
         {
             utf8_path.pop_back();
             if (!utf8_path.empty() && utf8_path.back() == '/')
             {
-                return FileResult<StorePath>(invalid_store_path(
-                    utf8_path, "store path must not contain empty segments"));
+                return FileResult<StorePath>(
+                    invalid_store_path(utf8_path, "store path must not contain empty segments"));
             }
         }
 
@@ -109,18 +103,16 @@ namespace toy3d
         while (segment_start < utf8_path.size())
         {
             const std::size_t separator = utf8_path.find('/', segment_start);
-            const std::size_t segment_end =
-                separator == std::string::npos ? utf8_path.size() : separator;
+            const std::size_t segment_end = separator == std::string::npos ? utf8_path.size() : separator;
             if (segment_end == segment_start)
             {
-                return FileResult<StorePath>(invalid_store_path(
-                    utf8_path, "store path must not contain empty segments"));
+                return FileResult<StorePath>(
+                    invalid_store_path(utf8_path, "store path must not contain empty segments"));
             }
             const std::string segment = utf8_path.substr(segment_start, segment_end - segment_start);
             if (segment == "." || segment == "..")
             {
-                return FileResult<StorePath>(invalid_store_path(
-                    utf8_path, "store path must not contain dot segments"));
+                return FileResult<StorePath>(invalid_store_path(utf8_path, "store path must not contain dot segments"));
             }
             if (separator == std::string::npos)
             {
@@ -153,4 +145,4 @@ namespace toy3d
     {
         return utf8_path_.empty();
     }
-}
+} // namespace toy3d

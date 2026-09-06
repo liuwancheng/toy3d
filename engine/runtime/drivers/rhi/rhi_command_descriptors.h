@@ -165,4 +165,4 @@ namespace toy3d
     RHIStatus validate_graphics_bindings(const RHIGraphicsBindings& bindings);
     RHIStatus validate_draw_args(const RHIDrawArgs& args);
     RHIStatus validate_draw_indexed_args(const RHIDrawIndexedArgs& args);
-}
+} // namespace toy3d

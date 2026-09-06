@@ -79,4 +79,4 @@ namespace toy3d::shader
     const char* diagnostic_severity_name(DiagnosticSeverity severity);
     const char* diagnostic_code_name(DiagnosticCode code);
     std::string format_diagnostic(const Diagnostic& diagnostic);
-}
+} // namespace toy3d::shader

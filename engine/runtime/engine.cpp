@@ -41,31 +41,27 @@
 
 namespace toy3d
 {
-	namespace
-	{
-		FileStatus add_directory_mount(
-			FileSystem& file_system,
-			const char* virtual_root,
-			const std::shared_ptr<DirectoryFileStore>& store,
-			MountAccess access,
-			bool allow_enumeration,
-			const char* debug_name)
-		{
-			auto parsed_root = VirtualPath::parse(virtual_root);
-			if (!parsed_root.succeeded())
-			{
-				return parsed_root.status();
-			}
-			FileMountDesc descriptor;
-			descriptor.virtual_root = parsed_root.value();
-			descriptor.store = store;
-			descriptor.access = access;
-			descriptor.allow_enumeration = allow_enumeration;
-			descriptor.debug_name = debug_name;
-			return file_system.add_mount(descriptor);
-		}
+    namespace
+    {
+        FileStatus add_directory_mount(FileSystem& file_system, const char* virtual_root,
+                                       const std::shared_ptr<DirectoryFileStore>& store, MountAccess access,
+                                       bool allow_enumeration, const char* debug_name)
+        {
+            auto parsed_root = VirtualPath::parse(virtual_root);
+            if (!parsed_root.succeeded())
+            {
+                return parsed_root.status();
+            }
+            FileMountDesc descriptor;
+            descriptor.virtual_root = parsed_root.value();
+            descriptor.store = store;
+            descriptor.access = access;
+            descriptor.allow_enumeration = allow_enumeration;
+            descriptor.debug_name = debug_name;
+            return file_system.add_mount(descriptor);
+        }
 
-	}
+    } // namespace
 
     Engine::Engine() = default;
 
@@ -74,13 +70,13 @@ namespace toy3d
         exit();
     }
 
-	void Engine::set_shader_load_config(ShaderLoadConfig config)
-	{
-		if (!window)
-		{
-			shader_load_config = std::move(config);
-		}
-	}
+    void Engine::set_shader_load_config(ShaderLoadConfig config)
+    {
+        if (!window)
+        {
+            shader_load_config = std::move(config);
+        }
+    }
     void Engine::set_application(std::unique_ptr<Application> value)
     {
         if (!world)
@@ -89,63 +85,56 @@ namespace toy3d
         }
     }
 
-	void Engine::pre_init()
-	{
-		// 初始化日志系统
-		LogConfig log_config;
-		log_config.logger_name = "Toy3dRuntime";
-		// filesystem composes the platform-native saved/log path without manual
-		// separator handling at the runtime composition root.
-		log_config.log_directory = std::filesystem::path(ENGINE_SAVED_ROOT) / "logs";
-		log_config.file_name = "toy3d.log";
-		std::string log_error;
-		if (!Logger::get_instance().init(log_config, &log_error))
-		{
-			std::cerr << "Failed to initialize Toy3d logging: " << log_error << '\n';
-		}
+    void Engine::pre_init()
+    {
+        // 初始化日志系统
+        LogConfig log_config;
+        log_config.logger_name = "Toy3dRuntime";
+        // filesystem composes the platform-native saved/log path without manual
+        // separator handling at the runtime composition root.
+        log_config.log_directory = std::filesystem::path(ENGINE_SAVED_ROOT) / "logs";
+        log_config.file_name = "toy3d.log";
+        std::string log_error;
+        if (!Logger::get_instance().init(log_config, &log_error))
+        {
+            std::cerr << "Failed to initialize Toy3d logging: " << log_error << '\n';
+        }
 
-		// 1. Initialize the shared file system.
-		const FileStatus file_system_status = initialize_file_system();
-		if (!file_system_status.succeeded())
-		{
-			TOY_LOG_ERROR(
-				"Runtime file system initialization failed during {}: {}",
-				file_system_status.operation,
-				file_system_status.message);
-			return;
-		}
-		// 2. Load engine configuration.
-		auto config_path = VirtualPath::parse("/Engine/config/engine_config.ini");
-		if (!config_path.succeeded())
-		{
-			TOY_LOG_ERROR("The built-in engine config path is invalid.");
-			return;
-		}
-		const FileStatus config_status = ConsoleManager::get_instance().load_config(
-			file_system,
-			config_path.value());
-		if (!config_status.succeeded())
-		{
-			TOY_LOG_ERROR(
-				"Failed to load {}: {}",
-				config_path.value().utf8(),
-				config_status.message);
-		}
-		// 3. Apply command-line configuration overrides.
-		CommandLineParser::get_instance().apply_config();
-	}
+        // 1. Initialize the shared file system.
+        const FileStatus file_system_status = initialize_file_system();
+        if (!file_system_status.succeeded())
+        {
+            TOY_LOG_ERROR("Runtime file system initialization failed during {}: {}", file_system_status.operation,
+                          file_system_status.message);
+            return;
+        }
+        // 2. Load engine configuration.
+        auto config_path = VirtualPath::parse("/Engine/config/engine_config.ini");
+        if (!config_path.succeeded())
+        {
+            TOY_LOG_ERROR("The built-in engine config path is invalid.");
+            return;
+        }
+        const FileStatus config_status = ConsoleManager::get_instance().load_config(file_system, config_path.value());
+        if (!config_status.succeeded())
+        {
+            TOY_LOG_ERROR("Failed to load {}: {}", config_path.value().utf8(), config_status.message);
+        }
+        // 3. Apply command-line configuration overrides.
+        CommandLineParser::get_instance().apply_config();
+    }
 
-	void Engine::init(void* hInstance)
-	{
-		pre_init();
-		// 1.创建平台
-	#if WITH_WIN64
-		platform = std::make_unique<Win32Platform>();
-	#elif WITH_MAC
-		platform = std::make_unique<MacPlatform>();
-	#elif WITH_ANDROID
-		platform = std::make_unique<AndroidPlatform>();
-	#endif
+    void Engine::init(void* hInstance)
+    {
+        pre_init();
+        // 1.创建平台
+#if WITH_WIN64
+        platform = std::make_unique<Win32Platform>();
+#elif WITH_MAC
+        platform = std::make_unique<MacPlatform>();
+#elif WITH_ANDROID
+        platform = std::make_unique<AndroidPlatform>();
+#endif
 
         if (!platform || !platform->init())
         {
@@ -155,14 +144,14 @@ namespace toy3d
         }
         platform_initialized = true;
 
-		// 2.创建窗口
-	#if WITH_WIN64
-		window = std::make_unique<Win32Window>(static_cast<HINSTANCE>(hInstance));
-	#elif WITH_MAC
-		window = std::make_unique<MacWindow>();
-	#elif WITH_ANDROID
-		window = std::make_unique<AndroidWindow>();
-	#endif
+        // 2.创建窗口
+#if WITH_WIN64
+        window = std::make_unique<Win32Window>(static_cast<HINSTANCE>(hInstance));
+#elif WITH_MAC
+        window = std::make_unique<MacWindow>();
+#elif WITH_ANDROID
+        window = std::make_unique<AndroidWindow>();
+#endif
 
         if (!window)
         {
@@ -171,18 +160,14 @@ namespace toy3d
             return;
         }
 
-        const bool enable_imgui = ConsoleManager::get_instance().get_bool(
-            "Renderer.EnableImGui", true);
+        const bool enable_imgui = ConsoleManager::get_instance().get_bool("Renderer.EnableImGui", true);
         if (enable_imgui)
         {
             imgui_system = std::make_unique<ImGuiSystem>();
-            const ImGuiSystemStatus imgui_status =
-                imgui_system->initialize(*window);
+            const ImGuiSystemStatus imgui_status = imgui_system->initialize(*window);
             if (!imgui_status.succeeded())
             {
-                TOY_LOG_ERROR(
-                    "Runtime ImGui initialization failed: {}",
-                    imgui_status.message);
+                TOY_LOG_ERROR("Runtime ImGui initialization failed: {}", imgui_status.message);
                 exit();
                 return;
             }
@@ -191,9 +176,7 @@ namespace toy3d
         RHIResult<RHISurfaceRef> created_surface = create_rhi_surface(*window);
         if (!created_surface.succeeded())
         {
-            TOY_LOG_ERROR(
-                "Runtime RHI surface creation failed: {}",
-                created_surface.status().message());
+            TOY_LOG_ERROR("Runtime RHI surface creation failed: {}", created_surface.status().message());
             exit();
             return;
         }
@@ -209,30 +192,25 @@ namespace toy3d
         {
             exit();
         }
-	}
+    }
 
     bool Engine::initialize_render_framework()
     {
         thread_manager = std::make_unique<ThreadManager>();
 
-        const bool use_rendering_thread = ConsoleManager::get_instance().get_bool(
-            "Renderer.MultiThreaded", true);
+        const bool use_rendering_thread = ConsoleManager::get_instance().get_bool("Renderer.MultiThreaded", true);
         TaskGraphConfig task_graph_config;
         task_graph_config.multithreaded = use_rendering_thread;
-        TaskGraphCreateResult created_task_graph = create_task_graph(
-            task_graph_config, *thread_manager);
+        TaskGraphCreateResult created_task_graph = create_task_graph(task_graph_config, *thread_manager);
         if (!created_task_graph.succeeded())
         {
-            TOY_LOG_ERROR(
-                "Runtime Task Graph creation failed: {}",
-                created_task_graph.status().message);
+            TOY_LOG_ERROR("Runtime Task Graph creation failed: {}", created_task_graph.status().message);
             shutdown_render_framework();
             return false;
         }
         task_graph = created_task_graph.take_task_graph();
 
-        const TaskGraphStatus attached =
-            task_graph->attach_to_thread(NamedThread::GameThread);
+        const TaskGraphStatus attached = task_graph->attach_to_thread(NamedThread::GameThread);
         if (!attached.succeeded())
         {
             TOY_LOG_ERROR("GameThread attach failed: {}", attached.message);
@@ -246,29 +224,13 @@ namespace toy3d
         viewport_desc.height = window_extent.height;
         viewport_desc.debug_name = "PrimaryViewport";
         renderer = std::make_unique<Renderer>(
-            *task_graph,
-            rhi_surface,
-            std::move(viewport_desc),
-            []()
-            {
-                return create_default_rhi_device();
-            },
+            *task_graph, rhi_surface, std::move(viewport_desc), []() { return create_default_rhi_device(); },
             global_shader_map,
-            imgui_system
-                ? std::make_unique<ImGuiFontAtlasData>(
-                    imgui_system->font_atlas())
-                : nullptr);
-        rendering_thread = std::make_unique<RenderingThread>(
-            *thread_manager,
-            *task_graph,
-            use_rendering_thread
-                ? RenderingThreadMode::MultiThread
-                : RenderingThreadMode::SingleThread);
-        const ThreadStatus started = rendering_thread->start(
-            [this]()
-            {
-                return renderer->initialize();
-            });
+            imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr);
+        rendering_thread = std::make_unique<RenderingThread>(*thread_manager, *task_graph,
+                                                             use_rendering_thread ? RenderingThreadMode::MultiThread
+                                                                                  : RenderingThreadMode::SingleThread);
+        const ThreadStatus started = rendering_thread->start([this]() { return renderer->initialize(); });
         if (!started.succeeded())
         {
             TOY_LOG_ERROR("RenderingThread startup failed: {}", started.message);
@@ -277,8 +239,7 @@ namespace toy3d
         }
 
         frame_end_sync = std::make_unique<FrameEndSync>(
-            ConsoleManager::get_instance().get_bool(
-                "Renderer.AllowOneFrameThreadLag", true),
+            ConsoleManager::get_instance().get_bool("Renderer.AllowOneFrameThreadLag", true),
             [this]()
             {
                 if (!renderer)
@@ -286,11 +247,9 @@ namespace toy3d
                     return RenderFenceWaitResult::reached();
                 }
                 const RendererStatus renderer_status = renderer->status();
-                if (renderer_status.lifecycle_state() ==
-                    RendererLifecycleState::Terminal)
+                if (renderer_status.lifecycle_state() == RendererLifecycleState::Terminal)
                 {
-                    return RenderFenceWaitResult::renderer_terminal(
-                        renderer_status.error_message());
+                    return RenderFenceWaitResult::renderer_terminal(renderer_status.error_message());
                 }
                 return RenderFenceWaitResult::reached();
             });
@@ -308,8 +267,7 @@ namespace toy3d
             }
         }
         world->initialize();
-        if (!renderer->scene_interface() ||
-            !world->bind_scene(*renderer->scene_interface()))
+        if (!renderer->scene_interface() || !world->bind_scene(*renderer->scene_interface()))
         {
             TOY_LOG_ERROR("Runtime World could not bind the Renderer scene.");
             shutdown_render_framework();
@@ -339,17 +297,10 @@ namespace toy3d
         }
         else
         {
-            views.emplace_back(
-                Vector3(0.0f, 1.5f, -6.0f),
-                Quaternion::identity(),
-                Vector3(0.0f, 0.0f, 1.0f),
-                UIntVector2(0, 0),
-                UIntVector2(extent.width, extent.height),
-                UIntVector2(extent.width, extent.height),
-                CameraProjectionMode::Perspective,
-                to_radians(Degrees(60.0f)),
-                0.1f,
-                1000.0f);
+            views.emplace_back(Vector3(0.0f, 1.5f, -6.0f), Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
+                               UIntVector2(0, 0), UIntVector2(extent.width, extent.height),
+                               UIntVector2(extent.width, extent.height), CameraProjectionMode::Perspective,
+                               to_radians(Degrees(60.0f)), 0.1f, 1000.0f);
         }
         if (views.empty())
         {
@@ -358,11 +309,8 @@ namespace toy3d
         }
 
         renderer->draw_frame(
-            std::make_unique<ForwardSceneRenderer>(
-                SceneViewFamily(
-                    *renderer->scene_interface(),
-                    UIntVector2(extent.width, extent.height),
-                    std::move(views))),
+            std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
+                *renderer->scene_interface(), UIntVector2(extent.width, extent.height), std::move(views))),
             std::move(ui_draw_data));
     }
 
@@ -397,27 +345,19 @@ namespace toy3d
                             return RenderFenceWaitResult::reached();
                         }
                         const RendererStatus renderer_status = renderer->status();
-                        return renderer_status.lifecycle_state() ==
-                                RendererLifecycleState::Terminal
-                            ? RenderFenceWaitResult::renderer_terminal(
-                                renderer_status.error_message())
-                            : RenderFenceWaitResult::reached();
+                        return renderer_status.lifecycle_state() == RendererLifecycleState::Terminal
+                                   ? RenderFenceWaitResult::renderer_terminal(renderer_status.error_message())
+                                   : RenderFenceWaitResult::reached();
                     });
                 if (!drained.rendering_thread_reached())
                 {
-                    TOY_LOG_ERROR(
-                        "Rendering command drain failed during shutdown: {}",
-                        drained.framework_status().message);
+                    TOY_LOG_ERROR("Rendering command drain failed during shutdown: {}",
+                                  drained.framework_status().message);
                 }
             }
 
             const ThreadStatus stopped = rendering_thread->stop(
-                [this]()
-                {
-                    return renderer != nullptr
-                        ? renderer->teardown()
-                        : ThreadStatus::success();
-                });
+                [this]() { return renderer != nullptr ? renderer->teardown() : ThreadStatus::success(); });
             if (!stopped.succeeded())
             {
                 TOY_LOG_ERROR("RenderingThread shutdown failed: {}", stopped.message);
@@ -432,8 +372,7 @@ namespace toy3d
 
         if (task_graph)
         {
-            const TaskGraphShutdownResult stopped = task_graph->shutdown(
-                TaskGraphShutdownMode::Drain);
+            const TaskGraphShutdownResult stopped = task_graph->shutdown(TaskGraphShutdownMode::Drain);
             if (!stopped.succeeded())
             {
                 TOY_LOG_ERROR("Task Graph shutdown failed: {}", stopped.status.message);
@@ -448,174 +387,156 @@ namespace toy3d
     {
 #if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
         const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
-        auto shader_root = native_platform_file.join_relative(
-            deployment_root, "shader");
+        auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
         if (!shader_root.succeeded())
         {
-            TOY_LOG_ERROR(
-                "Built-in ShaderMap root could not be resolved: {}",
-                shader_root.status().message);
+            TOY_LOG_ERROR("Built-in ShaderMap root could not be resolved: {}", shader_root.status().message);
             return false;
         }
-        auto output_root = native_platform_file.join_relative(
-            shader_root.value(), "output");
+        auto output_root = native_platform_file.join_relative(shader_root.value(), "output");
         if (!output_root.succeeded())
         {
-            TOY_LOG_ERROR(
-                "Built-in output ShaderMap root could not be resolved: {}",
-                output_root.status().message);
+            TOY_LOG_ERROR("Built-in output ShaderMap root could not be resolved: {}", output_root.status().message);
             return false;
         }
 
-        builtin_shader_loader = std::make_unique<ShaderMapEntryLoader>(
-            output_root.value());
-        builtin_shader_map = std::make_unique<ShaderMap>(
-            *builtin_shader_loader);
+        builtin_shader_loader = std::make_unique<ShaderMapEntryLoader>(output_root.value());
+        builtin_shader_map = std::make_unique<ShaderMap>(*builtin_shader_loader);
 
         ShaderPlatform shader_platform = ShaderPlatform::D3D11SM5;
         std::string platform_error;
-        if (!try_get_shader_platform_for_backend(
-                configured_rhi_backend_name(),
-                shader_platform,
-                platform_error))
+        if (!try_get_shader_platform_for_backend(configured_rhi_backend_name(), shader_platform, platform_error))
         {
-            TOY_LOG_ERROR(
-                "Built-in Shader platform selection failed: {}",
-                platform_error);
+            TOY_LOG_ERROR("Built-in Shader platform selection failed: {}", platform_error);
             return false;
         }
 
         const std::vector<const GlobalShaderType*> required_types =
             required_renderer_global_shader_types(imgui_system != nullptr);
-        GlobalShaderMapResult loaded = GlobalShaderMap::load(
-            *builtin_shader_map, shader_platform, required_types);
+        GlobalShaderMapResult loaded = GlobalShaderMap::load(*builtin_shader_map, shader_platform, required_types);
         if (!loaded.succeeded())
         {
-            TOY_LOG_ERROR(
-                "Built-in GlobalShaderMap failed to load: {}",
-                loaded.error);
+            TOY_LOG_ERROR("Built-in GlobalShaderMap failed to load: {}", loaded.error);
             return false;
         }
         global_shader_map = std::move(loaded.shader_map);
         return true;
 #else
-        TOY_LOG_ERROR(
-            "Built-in output ShaderMap loading requires a supported runtime loader.");
+        TOY_LOG_ERROR("Built-in output ShaderMap loading requires a supported runtime loader.");
         return false;
 #endif
     }
 
-	FileStatus Engine::initialize_file_system()
-	{
-		if (file_system.frozen())
-		{
-			return FileStatus::success();
-		}
-		const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
-		const PhysicalPath saved_root(ENGINE_SAVED_ROOT);
-		auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
-		if (!shader_root.succeeded())
-		{
-			return shader_root.status();
-		}
-		auto asset_root = native_platform_file.join_relative(deployment_root, "asset");
-		if (!asset_root.succeeded())
-		{
-			return asset_root.status();
-		}
-		auto temp_root = native_platform_file.join_relative(saved_root, "temp");
-		if (!temp_root.succeeded())
-		{
-			return temp_root.status();
-		}
+    FileStatus Engine::initialize_file_system()
+    {
+        if (file_system.frozen())
+        {
+            return FileStatus::success();
+        }
+        const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
+        const PhysicalPath saved_root(ENGINE_SAVED_ROOT);
+        auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
+        if (!shader_root.succeeded())
+        {
+            return shader_root.status();
+        }
+        auto asset_root = native_platform_file.join_relative(deployment_root, "asset");
+        if (!asset_root.succeeded())
+        {
+            return asset_root.status();
+        }
+        auto temp_root = native_platform_file.join_relative(saved_root, "temp");
+        if (!temp_root.succeeded())
+        {
+            return temp_root.status();
+        }
 
-		FileStatus status = native_platform_file.create_directories(saved_root);
-		if (!status.succeeded())
-		{
-			return status;
-		}
-		status = native_platform_file.create_directories(temp_root.value());
-		if (!status.succeeded())
-		{
-			return status;
-		}
+        FileStatus status = native_platform_file.create_directories(saved_root);
+        if (!status.succeeded())
+        {
+            return status;
+        }
+        status = native_platform_file.create_directories(temp_root.value());
+        if (!status.succeeded())
+        {
+            return status;
+        }
 
-		auto create_store = [this](
-			const PhysicalPath& root,
-			bool writable,
-			const char* debug_name)
-		{
-			DirectoryFileStoreDesc descriptor;
-			descriptor.physical_root = root;
-			descriptor.writable = writable;
-			descriptor.symlink_policy = DirectorySymlinkPolicy::Deny;
-			descriptor.debug_name = debug_name;
-			return DirectoryFileStore::create(native_platform_file, descriptor);
-		};
+        auto create_store = [this](const PhysicalPath& root, bool writable, const char* debug_name)
+        {
+            DirectoryFileStoreDesc descriptor;
+            descriptor.physical_root = root;
+            descriptor.writable = writable;
+            descriptor.symlink_policy = DirectorySymlinkPolicy::Deny;
+            descriptor.debug_name = debug_name;
+            return DirectoryFileStore::create(native_platform_file, descriptor);
+        };
 
-		auto engine_assets = create_store(asset_root.value(), false, "RuntimeEngineAssets");
-		if (!engine_assets.succeeded())
-		{
-			return engine_assets.status();
-		}
-		engine_asset_store = engine_assets.value();
-		auto engine_shaders = create_store(shader_root.value(), false, "RuntimeEngineShaders");
-		if (!engine_shaders.succeeded())
-		{
-			return engine_shaders.status();
-		}
-		engine_shader_store = engine_shaders.value();
-		auto saved = create_store(saved_root, true, "RuntimeSaved");
-		if (!saved.succeeded())
-		{
-			return saved.status();
-		}
-		saved_store = saved.value();
-		auto temp = create_store(temp_root.value(), true, "RuntimeTemp");
-		if (!temp.succeeded())
-		{
-			return temp.status();
-		}
-		temp_store = temp.value();
+        auto engine_assets = create_store(asset_root.value(), false, "RuntimeEngineAssets");
+        if (!engine_assets.succeeded())
+        {
+            return engine_assets.status();
+        }
+        engine_asset_store = engine_assets.value();
+        auto engine_shaders = create_store(shader_root.value(), false, "RuntimeEngineShaders");
+        if (!engine_shaders.succeeded())
+        {
+            return engine_shaders.status();
+        }
+        engine_shader_store = engine_shaders.value();
+        auto saved = create_store(saved_root, true, "RuntimeSaved");
+        if (!saved.succeeded())
+        {
+            return saved.status();
+        }
+        saved_store = saved.value();
+        auto temp = create_store(temp_root.value(), true, "RuntimeTemp");
+        if (!temp.succeeded())
+        {
+            return temp.status();
+        }
+        temp_store = temp.value();
 
-		status = add_directory_mount(
-			file_system, "/Engine", engine_asset_store, MountAccess::ReadOnly, true, "Engine");
-		if (!status.succeeded()) return status;
-		status = add_directory_mount(
-			file_system, "/Engine/Shader", engine_shader_store, MountAccess::ReadOnly, true, "EngineShader");
-		if (!status.succeeded()) return status;
-		status = add_directory_mount(
-			file_system, "/Project", engine_asset_store, MountAccess::ReadOnly, true, "Project");
-		if (!status.succeeded()) return status;
-		status = add_directory_mount(
-			file_system, "/Saved", saved_store, MountAccess::ReadWrite, true, "Saved");
-		if (!status.succeeded()) return status;
-		status = add_directory_mount(
-			file_system, "/Temp", temp_store, MountAccess::ReadWrite, true, "Temp");
-		if (!status.succeeded()) return status;
-		status = file_system.freeze();
-		if (!status.succeeded()) return status;
+        status = add_directory_mount(file_system, "/Engine", engine_asset_store, MountAccess::ReadOnly, true, "Engine");
+        if (!status.succeeded())
+            return status;
+        status = add_directory_mount(file_system, "/Engine/Shader", engine_shader_store, MountAccess::ReadOnly, true,
+                                     "EngineShader");
+        if (!status.succeeded())
+            return status;
+        status =
+            add_directory_mount(file_system, "/Project", engine_asset_store, MountAccess::ReadOnly, true, "Project");
+        if (!status.succeeded())
+            return status;
+        status = add_directory_mount(file_system, "/Saved", saved_store, MountAccess::ReadWrite, true, "Saved");
+        if (!status.succeeded())
+            return status;
+        status = add_directory_mount(file_system, "/Temp", temp_store, MountAccess::ReadWrite, true, "Temp");
+        if (!status.succeeded())
+            return status;
+        status = file_system.freeze();
+        if (!status.succeeded())
+            return status;
 
-		return FileStatus::success();
-	}
+        return FileStatus::success();
+    }
 
-	void Engine::main_loop()
-	{
-		if (!window || !frame_end_sync)
-		{
-			return;
-		}
+    void Engine::main_loop()
+    {
+        if (!window || !frame_end_sync)
+        {
+            return;
+        }
         auto previous_tick = std::chrono::steady_clock::now();
-		while (!window->should_close())
-		{
+        while (!window->should_close())
+        {
             const auto current_tick = std::chrono::steady_clock::now();
-            delta_time = std::chrono::duration<double>(
-                current_tick - previous_tick).count();
+            delta_time = std::chrono::duration<double>(current_tick - previous_tick).count();
             previous_tick = current_tick;
             game_time += delta_time;
             ++frame_count;
 
-			window->process_events();
+            window->process_events();
             if (world)
             {
                 static_cast<void>(world->tick(delta_time));
@@ -638,9 +559,7 @@ namespace toy3d
                 ImGuiSnapshotResult ui_result = imgui_system->end_frame();
                 if (!ui_result.succeeded())
                 {
-                    TOY_LOG_ERROR(
-                        "Runtime UI frame was rejected: {}",
-                        ui_result.diagnostic);
+                    TOY_LOG_ERROR("Runtime UI frame was rejected: {}", ui_result.diagnostic);
                 }
                 else
                 {
@@ -653,39 +572,35 @@ namespace toy3d
             {
                 if (synchronized.has_renderer_terminal())
                 {
-                    TOY_LOG_ERROR(
-                        "Renderer entered terminal state: {}",
-                        synchronized.renderer_error());
+                    TOY_LOG_ERROR("Renderer entered terminal state: {}", synchronized.renderer_error());
                 }
                 else
                 {
-                    TOY_LOG_ERROR(
-                        "Frame synchronization failed: {}",
-                        synchronized.framework_status().message);
+                    TOY_LOG_ERROR("Frame synchronization failed: {}", synchronized.framework_status().message);
                 }
                 break;
             }
-		}
-	}
+        }
+    }
 
-	void Engine::exit()
-	{
-		if (engine_exited)
-		{
-			return;
-		}
-		engine_exited = true;
-		shutdown_render_framework();
-		rhi_surface.reset();
-		window.reset();
-		if (platform_initialized && platform)
-		{
-			platform->exit();
-			platform_initialized = false;
-		}
-		platform.reset();
-		// todo: resource的释放、文件系统的关闭、游戏模块的关闭等
-		Logger::get_instance().exit();
-	}
+    void Engine::exit()
+    {
+        if (engine_exited)
+        {
+            return;
+        }
+        engine_exited = true;
+        shutdown_render_framework();
+        rhi_surface.reset();
+        window.reset();
+        if (platform_initialized && platform)
+        {
+            platform->exit();
+            platform_initialized = false;
+        }
+        platform.reset();
+        // todo: resource的释放、文件系统的关闭、游戏模块的关闭等
+        Logger::get_instance().exit();
+    }
 
-}
+} // namespace toy3d

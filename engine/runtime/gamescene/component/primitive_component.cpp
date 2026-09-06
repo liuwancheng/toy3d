@@ -61,11 +61,7 @@ namespace toy3d
             return;
         }
 
-        scene->update_primitive_transform(
-            scene_proxy_,
-            world_transform(),
-            world_bounds_,
-            visible_);
+        scene->update_primitive_transform(scene_proxy_, world_transform(), world_bounds_, visible_);
     }
 
     void PrimitiveComponent::destroy_render_state()
@@ -96,4 +92,4 @@ namespace toy3d
         update_bounds();
         send_render_transform();
     }
-}
+} // namespace toy3d

@@ -50,4 +50,4 @@ namespace toy3d
         RHIFormatUsage usage = RHIFormatUsage::None;
         std::uint32_t supported_sample_counts = 1U;
     };
-}
+} // namespace toy3d

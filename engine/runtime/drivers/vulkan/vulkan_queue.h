@@ -25,12 +25,8 @@ namespace toy3d
     // represented by the public RHISubmitInfo contract.
     class VulkanQueue final : public RHIQueue
     {
-    public:
-        VulkanQueue(
-            const RHIDevice& owner,
-            VkDevice device,
-            VkQueue queue,
-            VulkanUploadManager& upload_manager);
+      public:
+        VulkanQueue(const RHIDevice& owner, VkDevice device, VkQueue queue, VulkanUploadManager& upload_manager);
         ~VulkanQueue() override;
 
         RHIQueueCompletionValue completed_value() const override;
@@ -38,19 +34,16 @@ namespace toy3d
         RHIStatus wait_idle() override;
 
         VkQueue native_handle() const;
-        RHIResult<RHISubmitResult> submit_viewport(
-            const std::vector<VulkanCommandList*>& command_lists,
-            const std::vector<VkCommandBuffer>& command_buffers,
-            VulkanTexture& presentation_texture,
-            VkSemaphore wait_semaphore,
-            VkPipelineStageFlags wait_stage,
-            VkSemaphore signal_semaphore,
-            VkFence completion_fence);
+        RHIResult<RHISubmitResult> submit_viewport(const std::vector<VulkanCommandList*>& command_lists,
+                                                   const std::vector<VkCommandBuffer>& command_buffers,
+                                                   VulkanTexture& presentation_texture, VkSemaphore wait_semaphore,
+                                                   VkPipelineStageFlags wait_stage, VkSemaphore signal_semaphore,
+                                                   VkFence completion_fence);
 
-    protected:
+      protected:
         RHIResult<RHISubmitResult> submit_impl(const RHISubmitInfo& info) override;
 
-    private:
+      private:
         struct PendingSubmission
         {
             RHIQueueCompletionValue completion_value = 0;
@@ -59,16 +52,12 @@ namespace toy3d
             std::vector<RHICommandListRef> retained_command_lists;
         };
 
-        RHIResult<RHISubmitResult> submit_native(
-            const std::vector<VkCommandBuffer>& command_buffers,
-            VkSemaphore wait_semaphore,
-            VkPipelineStageFlags wait_stage,
-            VkSemaphore signal_semaphore,
-            VkFence completion_fence,
-            bool owns_fence,
-            const std::vector<VulkanCommandList*>& command_lists,
-            VulkanTexture* presentation_texture,
-            std::vector<RHICommandListRef> retained_command_lists = {});
+        RHIResult<RHISubmitResult> submit_native(const std::vector<VkCommandBuffer>& command_buffers,
+                                                 VkSemaphore wait_semaphore, VkPipelineStageFlags wait_stage,
+                                                 VkSemaphore signal_semaphore, VkFence completion_fence,
+                                                 bool owns_fence, const std::vector<VulkanCommandList*>& command_lists,
+                                                 VulkanTexture* presentation_texture,
+                                                 std::vector<RHICommandListRef> retained_command_lists = {});
         void update_completed_value_locked() const;
         void release_pending_submissions_locked();
 
@@ -81,4 +70,4 @@ namespace toy3d
         mutable RHIQueueCompletionValue last_completed_value = 0;
         RHIQueueCompletionValue next_completion_value = 1;
     };
-}
+} // namespace toy3d

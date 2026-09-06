@@ -7,7 +7,7 @@ namespace toy3d
 {
     class LightComponent : public SceneComponent
     {
-    public:
+      public:
         ~LightComponent() override = default;
 
         bool enabled() const { return enabled_; }
@@ -22,10 +22,10 @@ namespace toy3d
         int render_priority() const { return render_priority_; }
         void set_render_priority(int render_priority);
 
-    protected:
+      protected:
         explicit LightComponent(Actor& owner) : SceneComponent(owner) {}
 
-    private:
+      private:
         bool enabled_ = true;
         Vector3 color_{1.0f};
         float intensity_ = 1.0f;
@@ -34,36 +34,36 @@ namespace toy3d
 
     class DirectionalLightComponent final : public LightComponent
     {
-    public:
+      public:
         explicit DirectionalLightComponent(Actor& owner) : LightComponent(owner) {}
         ~DirectionalLightComponent() override = default;
     };
 
     class LocalLightComponent : public LightComponent
     {
-    public:
+      public:
         ~LocalLightComponent() override = default;
 
         float range() const { return range_; }
         bool set_range(float range);
 
-    protected:
+      protected:
         explicit LocalLightComponent(Actor& owner) : LightComponent(owner) {}
 
-    private:
+      private:
         float range_ = 10.0f;
     };
 
     class PointLightComponent final : public LocalLightComponent
     {
-    public:
+      public:
         explicit PointLightComponent(Actor& owner) : LocalLightComponent(owner) {}
         ~PointLightComponent() override = default;
     };
 
     class SpotLightComponent final : public LocalLightComponent
     {
-    public:
+      public:
         explicit SpotLightComponent(Actor& owner) : LocalLightComponent(owner) {}
         ~SpotLightComponent() override = default;
 
@@ -71,8 +71,8 @@ namespace toy3d
         float outer_angle_degrees() const { return outer_angle_degrees_; }
         bool set_cone_angles(float inner_angle_degrees, float outer_angle_degrees);
 
-    private:
+      private:
         float inner_angle_degrees_ = 20.0f;
         float outer_angle_degrees_ = 30.0f;
     };
-}
+} // namespace toy3d

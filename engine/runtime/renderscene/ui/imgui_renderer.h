@@ -33,37 +33,28 @@ namespace toy3d
 
     class ImGuiRenderer final
     {
-    public:
+      public:
         ImGuiRenderer() = default;
         ~ImGuiRenderer() = default;
 
         ImGuiRenderer(const ImGuiRenderer&) = delete;
         ImGuiRenderer& operator=(const ImGuiRenderer&) = delete;
 
-        RHIStatus initialize(
-            RHIDevice& device,
-            RHIShaderProgramCache& shader_program_cache,
-            const GlobalShaderMap& global_shader_map,
-            const ImGuiFontAtlasData& font_atlas);
-        RHIStatus record_font_upload(
-            RHIGraphicsCommandContext& context,
-            const ImGuiFontAtlasData& font_atlas);
+        RHIStatus initialize(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+                             const GlobalShaderMap& global_shader_map, const ImGuiFontAtlasData& font_atlas);
+        RHIStatus record_font_upload(RHIGraphicsCommandContext& context, const ImGuiFontAtlasData& font_atlas);
         void publish_bootstrap_complete() noexcept;
         void release() noexcept;
 
-        RHIStatus render(
-            RHIDevice& device,
-            RHIGraphicsCommandContext& context,
-            const ImGuiDrawData& draw_data,
-            const ImGuiPassTarget& target);
-        RHIStatus publish_frame_submission(
-            RHIQueueCompletionValue completion_value) noexcept;
+        RHIStatus render(RHIDevice& device, RHIGraphicsCommandContext& context, const ImGuiDrawData& draw_data,
+                         const ImGuiPassTarget& target);
+        RHIStatus publish_frame_submission(RHIQueueCompletionValue completion_value) noexcept;
         void discard_frame_recording() noexcept;
 
         bool initialized() const noexcept;
         bool ready() const noexcept;
 
-    private:
+      private:
         struct BufferPage
         {
             RHIBufferRef vertex_buffer;
@@ -76,13 +67,10 @@ namespace toy3d
             bool recording = false;
         };
 
-        RHIResult<std::size_t> acquire_buffer_page(
-            RHIDevice& device,
-            std::size_t vertex_bytes,
-            std::size_t index_bytes);
+        RHIResult<std::size_t> acquire_buffer_page(RHIDevice& device, std::size_t vertex_bytes,
+                                                   std::size_t index_bytes);
 
-        static constexpr std::size_t INVALID_PAGE_INDEX =
-            std::numeric_limits<std::size_t>::max();
+        static constexpr std::size_t INVALID_PAGE_INDEX = std::numeric_limits<std::size_t>::max();
 
         const ShaderMapBinding* constant_buffer_binding_ = nullptr;
         const ShaderMapBinding::ConstantMember* projection_binding_ = nullptr;
@@ -98,4 +86,4 @@ namespace toy3d
         std::size_t recording_page_index_ = INVALID_PAGE_INDEX;
         bool bootstrap_complete_ = false;
     };
-}
+} // namespace toy3d

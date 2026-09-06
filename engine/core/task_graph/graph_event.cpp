@@ -29,9 +29,7 @@ namespace toy3d
         return outcome_.load(std::memory_order_relaxed);
     }
 
-    void GraphEvent::wait(
-        TaskGraphInterface& task_graph,
-        NamedThread current_thread) const
+    void GraphEvent::wait(TaskGraphInterface& task_graph, NamedThread current_thread) const
     {
         GraphEventRef self = std::const_pointer_cast<GraphEvent>(shared_from_this());
         task_graph.wait_until_tasks_complete({std::move(self)}, current_thread);
@@ -72,8 +70,7 @@ namespace toy3d
         std::lock_guard<std::mutex> lock(mutex_);
         if (!accepting_completion_dependencies_)
         {
-            throw std::logic_error(
-                "dont_complete_until is only valid while the owning task executes");
+            throw std::logic_error("dont_complete_until is only valid while the owning task executes");
         }
         completion_dependencies_.push_back(std::move(event));
     }
@@ -153,4 +150,4 @@ namespace toy3d
             std::rethrow_exception(first_failure);
         }
     }
-}
+} // namespace toy3d

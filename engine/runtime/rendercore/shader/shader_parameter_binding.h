@@ -29,4 +29,4 @@ namespace toy3d
     // A reflected parameter is exactly one binding category. variant preserves
     // that closed choice without a nullable base pointer or manual type tag.
     using ShaderParameterBinding = std::variant<ShaderConstantBinding, ShaderResourceBinding>;
-}
+} // namespace toy3d

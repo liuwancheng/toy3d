@@ -33,4 +33,4 @@ namespace toy3d
     using mat4x3 = glm::mat4x3;
     using quat = glm::quat;
     using color = glm::vec4;
-}
+} // namespace toy3d

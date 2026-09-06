@@ -52,11 +52,8 @@ namespace toy3d::shader
     };
 
     ShaderVariantId make_shader_variant_id(std::string_view name);
-    ShaderEnumValueId make_shader_enum_value_id(
-        ShaderVariantId variant_id,
-        std::string_view option_name);
+    ShaderEnumValueId make_shader_enum_value_id(ShaderVariantId variant_id, std::string_view option_name);
 
-    ShaderPermutationResult resolve_shader_permutation(
-        const ShaderAsset& asset,
-        const std::vector<ShaderVariantSelection>& selections);
-}
+    ShaderPermutationResult resolve_shader_permutation(const ShaderAsset& asset,
+                                                       const std::vector<ShaderVariantSelection>& selections);
+} // namespace toy3d::shader

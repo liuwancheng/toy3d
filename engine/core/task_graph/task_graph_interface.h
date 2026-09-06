@@ -10,12 +10,11 @@ namespace toy3d
 {
     class BaseGraphTask;
 
-    template<typename TaskType>
-    class GraphTask;
+    template <typename TaskType> class GraphTask;
 
     class TaskGraphInterface
     {
-    public:
+      public:
         virtual ~TaskGraphInterface() = default;
 
         // The composition root retains ownership. These accessors only expose the
@@ -33,32 +32,27 @@ namespace toy3d
         virtual void process_thread_until_request_return(NamedThread current_thread) = 0;
         virtual void request_return(NamedThread current_thread) = 0;
 
-        virtual TaskWaitResult wait_until_tasks_complete(
-            const GraphEventArray& tasks,
-            NamedThread current_thread = NamedThread::Unknown) = 0;
-        virtual void trigger_event_when_tasks_complete(
-            Event& event,
-            const GraphEventArray& tasks,
-            NamedThread current_thread = NamedThread::Unknown) = 0;
+        virtual TaskWaitResult wait_until_tasks_complete(const GraphEventArray& tasks,
+                                                         NamedThread current_thread = NamedThread::Unknown) = 0;
+        virtual void trigger_event_when_tasks_complete(Event& event, const GraphEventArray& tasks,
+                                                       NamedThread current_thread = NamedThread::Unknown) = 0;
 
         virtual void wake_named_thread(NamedThread thread) = 0;
         virtual TaskGraphShutdownResult shutdown(TaskGraphShutdownMode mode) = 0;
 
-        TaskWaitResult wait_until_task_completes(
-            const GraphEventRef& task,
-            NamedThread current_thread = NamedThread::Unknown)
+        TaskWaitResult wait_until_task_completes(const GraphEventRef& task,
+                                                 NamedThread current_thread = NamedThread::Unknown)
         {
             return wait_until_tasks_complete({task}, current_thread);
         }
 
-    private:
+      private:
         friend class BaseGraphTask;
 
-        template<typename TaskType>
-        friend class GraphTask;
+        template <typename TaskType> friend class GraphTask;
 
         virtual BaseGraphTask* accept_task(std::unique_ptr<BaseGraphTask> task) = 0;
         virtual void abandon_task(BaseGraphTask& task) noexcept = 0;
         virtual void queue_task(BaseGraphTask& task) = 0;
     };
-}
+} // namespace toy3d

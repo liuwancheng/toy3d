@@ -19,20 +19,12 @@ namespace toy3d
             }
             return RHIStatus::failure(
                 result == VK_ERROR_DEVICE_LOST ? RHIErrorCode::DeviceLost : RHIErrorCode::BackendFailure,
-                std::string(operation) + " failed with VkResult " +
-                    std::to_string(static_cast<int>(result)) + ".");
+                std::string(operation) + " failed with VkResult " + std::to_string(static_cast<int>(result)) + ".");
         }
-    }
+    } // namespace
 
-    VulkanQueue::VulkanQueue(
-        const RHIDevice& owner,
-        VkDevice device,
-        VkQueue queue,
-        VulkanUploadManager& manager)
-        : owner_device(owner)
-        , vk_device(device)
-        , vk_queue(queue)
-        , upload_manager(manager)
+    VulkanQueue::VulkanQueue(const RHIDevice& owner, VkDevice device, VkQueue queue, VulkanUploadManager& manager)
+        : owner_device(owner), vk_device(device), vk_queue(queue), upload_manager(manager)
     {
     }
 
@@ -59,9 +51,8 @@ namespace toy3d
         update_completed_value_locked();
         if (value == 0 || value >= next_completion_value)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan queue wait requires a submitted completion value.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Vulkan queue wait requires a submitted completion value.");
         }
         if (value <= last_completed_value)
         {
@@ -72,8 +63,7 @@ namespace toy3d
             if (submission.completion_value == value)
             {
                 const RHIStatus status = make_queue_status(
-                    vkWaitForFences(vk_device, 1, &submission.fence, VK_TRUE, UINT64_MAX),
-                    "vkWaitForFences");
+                    vkWaitForFences(vk_device, 1, &submission.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences");
                 if (status)
                 {
                     update_completed_value_locked();
@@ -110,9 +100,7 @@ namespace toy3d
     {
         if (vk_device == VK_NULL_HANDLE || vk_queue == VK_NULL_HANDLE)
         {
-            return RHIResult<RHISubmitResult>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan queue is not initialized.");
+            return RHIResult<RHISubmitResult>::failure(RHIErrorCode::NotReady, "Vulkan queue is not initialized.");
         }
         std::vector<VkCommandBuffer> command_buffers;
         std::vector<std::shared_ptr<VulkanCommandList>> vulkan_command_lists;
@@ -124,21 +112,20 @@ namespace toy3d
             const auto vulkan_command_list = std::dynamic_pointer_cast<VulkanCommandList>(command_list);
             if (!vulkan_command_list)
             {
-                return RHIResult<RHISubmitResult>::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Vulkan queue requires Vulkan command lists.");
+                return RHIResult<RHISubmitResult>::failure(RHIErrorCode::InvalidArgument,
+                                                           "Vulkan queue requires Vulkan command lists.");
             }
             if (!vulkan_command_list->is_owned_by(owner_device))
             {
                 return RHIResult<RHISubmitResult>::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Vulkan queue received a command list created by another device.");
+                    RHIErrorCode::InvalidArgument, "Vulkan queue received a command list created by another device.");
             }
             if (!vulkan_command_list->is_device_level())
             {
                 return RHIResult<RHISubmitResult>::failure(
                     RHIErrorCode::InvalidArgument,
-                    "Vulkan generic queue submission accepts only device-level command lists; viewport lists must be submitted by their viewport context.");
+                    "Vulkan generic queue submission accepts only device-level command "
+                    "lists; viewport lists must be submitted by their viewport context.");
             }
             for (const auto& previous : vulkan_command_lists)
             {
@@ -162,67 +149,44 @@ namespace toy3d
             const RHIStatus status = make_queue_status(result, "vkCreateFence");
             return RHIResult<RHISubmitResult>::failure(status.code(), status.message());
         }
-        auto submit_result = submit_native(
-            command_buffers,
-            VK_NULL_HANDLE,
-            0,
-            VK_NULL_HANDLE,
-            fence,
-            true,
-            state_command_lists,
-            nullptr,
-            info.command_lists);
+        auto submit_result = submit_native(command_buffers, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, fence, true,
+                                           state_command_lists, nullptr, info.command_lists);
         return submit_result;
     }
 
-    RHIResult<RHISubmitResult> VulkanQueue::submit_viewport(
-        const std::vector<VulkanCommandList*>& command_lists,
-        const std::vector<VkCommandBuffer>& command_buffers,
-        VulkanTexture& presentation_texture,
-        VkSemaphore wait_semaphore,
-        VkPipelineStageFlags wait_stage,
-        VkSemaphore signal_semaphore,
-        VkFence completion_fence)
+    RHIResult<RHISubmitResult> VulkanQueue::submit_viewport(const std::vector<VulkanCommandList*>& command_lists,
+                                                            const std::vector<VkCommandBuffer>& command_buffers,
+                                                            VulkanTexture& presentation_texture,
+                                                            VkSemaphore wait_semaphore, VkPipelineStageFlags wait_stage,
+                                                            VkSemaphore signal_semaphore, VkFence completion_fence)
     {
         if (wait_semaphore == VK_NULL_HANDLE || signal_semaphore == VK_NULL_HANDLE ||
             completion_fence == VK_NULL_HANDLE || wait_stage == 0)
         {
             return RHIResult<RHISubmitResult>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan viewport submission requires valid synchronization objects.");
+                RHIErrorCode::InvalidArgument, "Vulkan viewport submission requires valid synchronization objects.");
         }
-        return submit_native(
-            command_buffers,
-            wait_semaphore,
-            wait_stage,
-            signal_semaphore,
-            completion_fence,
-            false,
-            command_lists,
-            &presentation_texture);
+        return submit_native(command_buffers, wait_semaphore, wait_stage, signal_semaphore, completion_fence, false,
+                             command_lists, &presentation_texture);
     }
 
-    RHIResult<RHISubmitResult> VulkanQueue::submit_native(
-        const std::vector<VkCommandBuffer>& command_buffers,
-        VkSemaphore wait_semaphore,
-        VkPipelineStageFlags wait_stage,
-        VkSemaphore signal_semaphore,
-        VkFence completion_fence,
-        bool owns_fence,
-        const std::vector<VulkanCommandList*>& command_lists,
-        VulkanTexture* presentation_texture,
-        std::vector<RHICommandListRef> retained_command_lists)
+    RHIResult<RHISubmitResult> VulkanQueue::submit_native(const std::vector<VkCommandBuffer>& command_buffers,
+                                                          VkSemaphore wait_semaphore, VkPipelineStageFlags wait_stage,
+                                                          VkSemaphore signal_semaphore, VkFence completion_fence,
+                                                          bool owns_fence,
+                                                          const std::vector<VulkanCommandList*>& command_lists,
+                                                          VulkanTexture* presentation_texture,
+                                                          std::vector<RHICommandListRef> retained_command_lists)
     {
-        if (vk_device == VK_NULL_HANDLE || vk_queue == VK_NULL_HANDLE ||
-            command_buffers.empty() || completion_fence == VK_NULL_HANDLE)
+        if (vk_device == VK_NULL_HANDLE || vk_queue == VK_NULL_HANDLE || command_buffers.empty() ||
+            completion_fence == VK_NULL_HANDLE)
         {
             if (owns_fence && completion_fence != VK_NULL_HANDLE && vk_device != VK_NULL_HANDLE)
             {
                 vkDestroyFence(vk_device, completion_fence, nullptr);
             }
             return RHIResult<RHISubmitResult>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan queue submission requires initialized handles and command buffers.");
+                RHIErrorCode::NotReady, "Vulkan queue submission requires initialized handles and command buffers.");
         }
 
         VkSubmitInfo submit_info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -241,16 +205,14 @@ namespace toy3d
         }
 
         std::lock_guard<std::mutex> lock(queue_mutex);
-        if (presentation_texture != nullptr &&
-            !presentation_texture->is_owned_by(owner_device))
+        if (presentation_texture != nullptr && !presentation_texture->is_owned_by(owner_device))
         {
             if (owns_fence)
             {
                 vkDestroyFence(vk_device, completion_fence, nullptr);
             }
-            return RHIResult<RHISubmitResult>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan queue presentation texture belongs to another device.");
+            return RHIResult<RHISubmitResult>::failure(RHIErrorCode::InvalidArgument,
+                                                       "Vulkan queue presentation texture belongs to another device.");
         }
         for (const VulkanCommandList* command_list : command_lists)
         {
@@ -271,8 +233,7 @@ namespace toy3d
                 {
                     vkDestroyFence(vk_device, completion_fence, nullptr);
                 }
-                return RHIResult<RHISubmitResult>::failure(
-                    state_status.code(), state_status.message());
+                return RHIResult<RHISubmitResult>::failure(state_status.code(), state_status.message());
             }
         }
         const VkResult result = vkQueueSubmit(vk_queue, 1, &submit_info, completion_fence);
@@ -300,13 +261,11 @@ namespace toy3d
                     texture->mark_used(completion_value);
                 }
             }
-            upload_manager.mark_submitted(
-                command_list->retained_upload_pages(), completion_value);
+            upload_manager.mark_submitted(command_list->retained_upload_pages(), completion_value);
         }
         if (presentation_texture != nullptr)
         {
-            presentation_texture->set_state(
-                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
+            presentation_texture->set_state(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, RHIAccess::Present);
             presentation_texture->mark_used(completion_value);
         }
         pending_submissions.push_back(
@@ -353,4 +312,4 @@ namespace toy3d
         }
         pending_submissions.clear();
     }
-}
+} // namespace toy3d

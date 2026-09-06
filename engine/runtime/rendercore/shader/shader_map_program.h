@@ -103,4 +103,4 @@ namespace toy3d
         std::vector<ShaderMapStage> stages;
         std::vector<ShaderVertexInput> vertex_inputs;
     };
-}
+} // namespace toy3d

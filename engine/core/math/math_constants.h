@@ -6,8 +6,7 @@ namespace toy3d
 {
     // C++17 inline variables keep header-defined constants ODR-safe while
     // making one immutable value available to every Toy3dMath caller.
-    inline constexpr float k_positive_infinity =
-        std::numeric_limits<float>::infinity();
+    inline constexpr float k_positive_infinity = std::numeric_limits<float>::infinity();
     inline constexpr float k_negative_infinity = -k_positive_infinity;
     inline constexpr float k_pi = 3.14159265358979323846f;
     inline constexpr float k_inverse_pi = 1.0f / k_pi;
@@ -30,4 +29,4 @@ namespace toy3d
     inline constexpr float DEG2RAD = k_degrees_to_radians;
     inline constexpr float RAD2DEG = k_radians_to_degrees;
     inline constexpr float EPSILON = k_default_float_tolerance;
-}
+} // namespace toy3d

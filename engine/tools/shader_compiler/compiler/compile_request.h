@@ -39,4 +39,4 @@ namespace toy3d::shader
     };
 
     ShaderCompileRequestResult build_shader_compile_request(const ShaderCompileRequestInput& input);
-}
+} // namespace toy3d::shader

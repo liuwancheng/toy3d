@@ -11,24 +11,17 @@ namespace toy3d
 {
     namespace
     {
-        RHIStatus record_buffer_upload(
-            RHIDevice& device,
-            RHIGraphicsCommandContext& context,
-            const void* initial_data,
-            std::size_t initial_data_size,
-            RHIResourceUsage usage,
-            RHIAccess final_access,
-            const char* debug_name,
-            RHIBufferRef& out_buffer,
-            bool& out_deterministic_failure)
+        RHIStatus record_buffer_upload(RHIDevice& device, RHIGraphicsCommandContext& context, const void* initial_data,
+                                       std::size_t initial_data_size, RHIResourceUsage usage, RHIAccess final_access,
+                                       const char* debug_name, RHIBufferRef& out_buffer,
+                                       bool& out_deterministic_failure)
         {
             out_deterministic_failure = false;
             if (initial_data == nullptr || initial_data_size == 0u)
             {
                 out_deterministic_failure = true;
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "StaticMesh buffer upload requires a non-empty initial payload");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "StaticMesh buffer upload requires a non-empty initial payload");
             }
 
             RHIBufferDesc desc;
@@ -39,9 +32,8 @@ namespace toy3d
             RHIResult<RHIBufferRef> created = device.create_buffer(desc);
             if (!created)
             {
-                out_deterministic_failure =
-                    created.status().code() == RHIErrorCode::InvalidArgument ||
-                    created.status().code() == RHIErrorCode::Unsupported;
+                out_deterministic_failure = created.status().code() == RHIErrorCode::InvalidArgument ||
+                                            created.status().code() == RHIErrorCode::Unsupported;
                 return created.status();
             }
             RHIBufferRef candidate = std::move(created).value();
@@ -85,16 +77,13 @@ namespace toy3d
             std::vector<float>().swap(payload);
         }
 
-        RHIStatus preserve_first_failure(
-            const RHIStatus& first,
-            const RHIStatus& next)
+        RHIStatus preserve_first_failure(const RHIStatus& first, const RHIStatus& next)
         {
             return first.succeeded() ? next : first;
         }
-    }
+    } // namespace
 
-    PositionVertexBuffer::PositionVertexBuffer(
-        const std::vector<StaticMeshVertex>& vertices)
+    PositionVertexBuffer::PositionVertexBuffer(const std::vector<StaticMeshVertex>& vertices)
     {
         initial_data_.reserve(vertices.size() * 4u);
         for (const StaticMeshVertex& vertex : vertices)
@@ -106,17 +95,12 @@ namespace toy3d
         }
     }
 
-    RHIStatus PositionVertexBuffer::record_upload(
-        RHIDevice& device,
-        RHIGraphicsCommandContext& context)
+    RHIStatus PositionVertexBuffer::record_upload(RHIDevice& device, RHIGraphicsCommandContext& context)
     {
         bool deterministic_failure = false;
         const RHIStatus status = record_buffer_upload(
-            device, context, initial_data_.data(),
-            initial_data_.size() * sizeof(float),
-            RHIResourceUsage::VertexBuffer, RHIAccess::VertexBuffer,
-            "StaticMesh.PositionVertexBuffer", rhi_buffer_,
-            deterministic_failure);
+            device, context, initial_data_.data(), initial_data_.size() * sizeof(float), RHIResourceUsage::VertexBuffer,
+            RHIAccess::VertexBuffer, "StaticMesh.PositionVertexBuffer", rhi_buffer_, deterministic_failure);
         return !status && deterministic_failure ? fail(status) : status;
     }
 
@@ -136,8 +120,7 @@ namespace toy3d
         release_float_payload(initial_data_);
     }
 
-    StaticMeshVertexBuffer::StaticMeshVertexBuffer(
-        const std::vector<StaticMeshVertex>& vertices)
+    StaticMeshVertexBuffer::StaticMeshVertexBuffer(const std::vector<StaticMeshVertex>& vertices)
     {
         initial_data_.reserve(vertices.size() * 6u);
         for (const StaticMeshVertex& vertex : vertices)
@@ -151,17 +134,12 @@ namespace toy3d
         }
     }
 
-    RHIStatus StaticMeshVertexBuffer::record_upload(
-        RHIDevice& device,
-        RHIGraphicsCommandContext& context)
+    RHIStatus StaticMeshVertexBuffer::record_upload(RHIDevice& device, RHIGraphicsCommandContext& context)
     {
         bool deterministic_failure = false;
         const RHIStatus status = record_buffer_upload(
-            device, context, initial_data_.data(),
-            initial_data_.size() * sizeof(float),
-            RHIResourceUsage::VertexBuffer, RHIAccess::VertexBuffer,
-            "StaticMesh.StaticMeshVertexBuffer", rhi_buffer_,
-            deterministic_failure);
+            device, context, initial_data_.data(), initial_data_.size() * sizeof(float), RHIResourceUsage::VertexBuffer,
+            RHIAccess::VertexBuffer, "StaticMesh.StaticMeshVertexBuffer", rhi_buffer_, deterministic_failure);
         return !status && deterministic_failure ? fail(status) : status;
     }
 
@@ -181,23 +159,18 @@ namespace toy3d
         release_float_payload(initial_data_);
     }
 
-    ColorVertexBuffer::ColorVertexBuffer(
-        std::vector<std::array<std::uint8_t, 4>> colors)
+    ColorVertexBuffer::ColorVertexBuffer(std::vector<std::array<std::uint8_t, 4>> colors)
         : initial_data_(std::move(colors))
     {
     }
 
-    RHIStatus ColorVertexBuffer::record_upload(
-        RHIDevice& device,
-        RHIGraphicsCommandContext& context)
+    RHIStatus ColorVertexBuffer::record_upload(RHIDevice& device, RHIGraphicsCommandContext& context)
     {
         bool deterministic_failure = false;
-        const RHIStatus status = record_buffer_upload(
-            device, context, initial_data_.data(),
-            initial_data_.size() * sizeof(initial_data_[0]),
-            RHIResourceUsage::VertexBuffer, RHIAccess::VertexBuffer,
-            "StaticMesh.ColorVertexBuffer", rhi_buffer_,
-            deterministic_failure);
+        const RHIStatus status =
+            record_buffer_upload(device, context, initial_data_.data(), initial_data_.size() * sizeof(initial_data_[0]),
+                                 RHIResourceUsage::VertexBuffer, RHIAccess::VertexBuffer,
+                                 "StaticMesh.ColorVertexBuffer", rhi_buffer_, deterministic_failure);
         return !status && deterministic_failure ? fail(status) : status;
     }
 
@@ -217,39 +190,30 @@ namespace toy3d
         std::vector<std::array<std::uint8_t, 4>>().swap(initial_data_);
     }
 
-    StaticMeshIndexBuffer::StaticMeshIndexBuffer(
-        const StaticMeshIndexData& indices)
+    StaticMeshIndexBuffer::StaticMeshIndexBuffer(const StaticMeshIndexData& indices)
     {
         // The fixed two-width variant is decoded explicitly so the RHI binding
         // format and copied byte payload always describe the same index width.
-        if (const auto* indices_u16 =
-            std::get_if<std::vector<std::uint16_t>>(&indices))
+        if (const auto* indices_u16 = std::get_if<std::vector<std::uint16_t>>(&indices))
         {
             format_ = RHIIndexFormat::UInt16;
             initial_data_.resize(indices_u16->size() * sizeof(std::uint16_t));
-            std::memcpy(
-                initial_data_.data(), indices_u16->data(), initial_data_.size());
+            std::memcpy(initial_data_.data(), indices_u16->data(), initial_data_.size());
         }
-        else if (const auto* indices_u32 =
-            std::get_if<std::vector<std::uint32_t>>(&indices))
+        else if (const auto* indices_u32 = std::get_if<std::vector<std::uint32_t>>(&indices))
         {
             format_ = RHIIndexFormat::UInt32;
             initial_data_.resize(indices_u32->size() * sizeof(std::uint32_t));
-            std::memcpy(
-                initial_data_.data(), indices_u32->data(), initial_data_.size());
+            std::memcpy(initial_data_.data(), indices_u32->data(), initial_data_.size());
         }
     }
 
-    RHIStatus StaticMeshIndexBuffer::record_upload(
-        RHIDevice& device,
-        RHIGraphicsCommandContext& context)
+    RHIStatus StaticMeshIndexBuffer::record_upload(RHIDevice& device, RHIGraphicsCommandContext& context)
     {
         bool deterministic_failure = false;
         const RHIStatus status = record_buffer_upload(
-            device, context, initial_data_.data(), initial_data_.size(),
-            RHIResourceUsage::IndexBuffer, RHIAccess::IndexBuffer,
-            "StaticMesh.StaticMeshIndexBuffer", rhi_buffer_,
-            deterministic_failure);
+            device, context, initial_data_.data(), initial_data_.size(), RHIResourceUsage::IndexBuffer,
+            RHIAccess::IndexBuffer, "StaticMesh.StaticMeshIndexBuffer", rhi_buffer_, deterministic_failure);
         return !status && deterministic_failure ? fail(status) : status;
     }
 
@@ -270,31 +234,26 @@ namespace toy3d
     }
 
     StaticMeshRenderData::StaticMeshRenderData(const StaticMesh& static_mesh)
-        : position_vertex_buffer_(static_mesh.vertices())
-        , static_mesh_vertex_buffer_(static_mesh.vertices())
-        , color_vertex_buffer_(static_mesh.vertex_colors().empty()
-            ? nullptr
-            : std::make_unique<ColorVertexBuffer>(static_mesh.vertex_colors()))
-        , index_buffer_(static_mesh.indices())
-        , sections_(static_mesh.sections())
+        : position_vertex_buffer_(static_mesh.vertices()), static_mesh_vertex_buffer_(static_mesh.vertices()),
+          color_vertex_buffer_(static_mesh.vertex_colors().empty()
+                                   ? nullptr
+                                   : std::make_unique<ColorVertexBuffer>(static_mesh.vertex_colors())),
+          index_buffer_(static_mesh.indices()), sections_(static_mesh.sections())
     {
         // C++17 get_if keeps the fixed 16/32-bit index alternatives explicit
         // while retaining a width-independent range limit for section checks.
-        const auto* indices_u16 =
-            std::get_if<std::vector<std::uint16_t>>(&static_mesh.indices());
+        const auto* indices_u16 = std::get_if<std::vector<std::uint16_t>>(&static_mesh.indices());
         if (indices_u16 != nullptr)
         {
             index_count_ = indices_u16->size();
         }
-        else if (const auto* indices_u32 =
-            std::get_if<std::vector<std::uint32_t>>(&static_mesh.indices()))
+        else if (const auto* indices_u32 = std::get_if<std::vector<std::uint32_t>>(&static_mesh.indices()))
         {
             index_count_ = indices_u32->size();
         }
     }
 
-    RHIStatus StaticMeshRenderData::begin_init(
-        RenderResourceManager& manager)
+    RHIStatus StaticMeshRenderData::begin_init(RenderResourceManager& manager)
     {
         if (init_started_)
         {
@@ -342,8 +301,7 @@ namespace toy3d
     {
         if (is_drawable())
         {
-            const RHIStatus stream_status =
-                local_vertex_factory_->validate_streams();
+            const RHIStatus stream_status = local_vertex_factory_->validate_streams();
             if (stream_status)
             {
                 return RHIStatus::success();
@@ -351,35 +309,27 @@ namespace toy3d
         }
 
         local_vertex_factory_.reset();
-        if (!position_vertex_buffer_.buffer() ||
-            !static_mesh_vertex_buffer_.buffer() ||
-            !index_buffer_.buffer() ||
+        if (!position_vertex_buffer_.buffer() || !static_mesh_vertex_buffer_.buffer() || !index_buffer_.buffer() ||
             (color_vertex_buffer_ && !color_vertex_buffer_->buffer()))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::NotReady,
-                "StaticMeshRenderData requires every candidate buffer in the current recording");
+            return RHIStatus::failure(RHIErrorCode::NotReady,
+                                      "StaticMeshRenderData requires every candidate buffer in the current recording");
         }
 
         std::vector<VertexStreamComponent> components;
-        components.push_back({ShaderVertexAttributeId::Position0,
-            0u, 0u, position_vertex_buffer_.stride(),
-            PixelFormat::R32G32B32A32Float, position_vertex_buffer_.buffer()});
-        components.push_back({ShaderVertexAttributeId::Normal0,
-            1u, 0u, static_mesh_vertex_buffer_.stride(),
-            PixelFormat::R32G32B32A32Float, static_mesh_vertex_buffer_.buffer()});
-        components.push_back({ShaderVertexAttributeId::TexCoord0,
-            1u, 16u, static_mesh_vertex_buffer_.stride(),
-            PixelFormat::R32G32Float, static_mesh_vertex_buffer_.buffer()});
+        components.push_back({ShaderVertexAttributeId::Position0, 0u, 0u, position_vertex_buffer_.stride(),
+                              PixelFormat::R32G32B32A32Float, position_vertex_buffer_.buffer()});
+        components.push_back({ShaderVertexAttributeId::Normal0, 1u, 0u, static_mesh_vertex_buffer_.stride(),
+                              PixelFormat::R32G32B32A32Float, static_mesh_vertex_buffer_.buffer()});
+        components.push_back({ShaderVertexAttributeId::TexCoord0, 1u, 16u, static_mesh_vertex_buffer_.stride(),
+                              PixelFormat::R32G32Float, static_mesh_vertex_buffer_.buffer()});
         if (color_vertex_buffer_)
         {
-            components.push_back({ShaderVertexAttributeId::Color0,
-                2u, 0u, color_vertex_buffer_->stride(),
-                PixelFormat::R8G8B8A8UNorm, color_vertex_buffer_->buffer()});
+            components.push_back({ShaderVertexAttributeId::Color0, 2u, 0u, color_vertex_buffer_->stride(),
+                                  PixelFormat::R8G8B8A8UNorm, color_vertex_buffer_->buffer()});
         }
 
-        auto candidate = std::make_unique<LocalVertexFactory>(
-            std::move(components));
+        auto candidate = std::make_unique<LocalVertexFactory>(std::move(components));
         const RHIStatus validation = candidate->validate_streams();
         if (!validation)
         {
@@ -400,24 +350,19 @@ namespace toy3d
         RHIStatus status = manager.release(index_buffer_);
         if (color_vertex_buffer_)
         {
-            status = preserve_first_failure(
-                status, manager.release(*color_vertex_buffer_));
+            status = preserve_first_failure(status, manager.release(*color_vertex_buffer_));
         }
-        status = preserve_first_failure(
-            status, manager.release(static_mesh_vertex_buffer_));
-        status = preserve_first_failure(
-            status, manager.release(position_vertex_buffer_));
+        status = preserve_first_failure(status, manager.release(static_mesh_vertex_buffer_));
+        status = preserve_first_failure(status, manager.release(position_vertex_buffer_));
         init_started_ = false;
         return status;
     }
 
     bool StaticMeshRenderData::is_drawable() const
     {
-        return local_vertex_factory_ != nullptr &&
-            position_vertex_buffer_.buffer() != nullptr &&
-            static_mesh_vertex_buffer_.buffer() != nullptr &&
-            index_buffer_.buffer() != nullptr &&
-            (!color_vertex_buffer_ || color_vertex_buffer_->buffer() != nullptr);
+        return local_vertex_factory_ != nullptr && position_vertex_buffer_.buffer() != nullptr &&
+               static_mesh_vertex_buffer_.buffer() != nullptr && index_buffer_.buffer() != nullptr &&
+               (!color_vertex_buffer_ || color_vertex_buffer_->buffer() != nullptr);
     }
 
     RHIIndexBufferBinding StaticMeshRenderData::index_buffer_binding() const
@@ -427,4 +372,4 @@ namespace toy3d
         binding.format = index_buffer_.format();
         return binding;
     }
-}
+} // namespace toy3d

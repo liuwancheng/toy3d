@@ -19,13 +19,15 @@ namespace toy3d::shader
 #if defined(_WIN32)
         std::wstring utf8_to_wide(const std::string& value)
         {
-            if (value.empty()) return {};
+            if (value.empty())
+                return {};
             const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-                static_cast<int>(value.size()), nullptr, 0);
-            if (count <= 0) return {};
+                                                  static_cast<int>(value.size()), nullptr, 0);
+            if (count <= 0)
+                return {};
             std::wstring result(static_cast<std::size_t>(count), L'\0');
-            if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-                static_cast<int>(value.size()), result.data(), count) != count)
+            if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                                    result.data(), count) != count)
             {
                 return {};
             }
@@ -34,7 +36,8 @@ namespace toy3d::shader
 
         std::wstring quote_argument(const std::wstring& argument)
         {
-            if (argument.find_first_of(L" \t\"") == std::wstring::npos) return argument;
+            if (argument.find_first_of(L" \t\"") == std::wstring::npos)
+                return argument;
             std::wstring result = L"\"";
             std::size_t backslashes = 0;
             for (const wchar_t character : argument)
@@ -61,23 +64,23 @@ namespace toy3d::shader
             return result;
         }
 #endif
-    }
+    } // namespace
 
-    ProcessResult run_process(
-        const PhysicalPath& executable,
-        const std::vector<std::string>& arguments)
+    ProcessResult run_process(const PhysicalPath& executable, const std::vector<std::string>& arguments)
     {
         ProcessResult result;
 #if defined(_WIN32)
         // filesystem performs the UTF-8 to native Windows path conversion used
         // by CreateProcessW without a second custom conversion path.
         const std::wstring application = std::filesystem::u8path(executable.utf8()).wstring();
-        if (application.empty()) return result;
+        if (application.empty())
+            return result;
         std::wstring command_line = quote_argument(application);
         for (const std::string& argument : arguments)
         {
             const std::wstring wide = utf8_to_wide(argument);
-            if (!argument.empty() && wide.empty()) return result;
+            if (!argument.empty() && wide.empty())
+                return result;
             command_line.push_back(L' ');
             command_line += quote_argument(wide);
         }
@@ -87,7 +90,8 @@ namespace toy3d::shader
         attributes.bInheritHandle = TRUE;
         HANDLE read_handle = nullptr;
         HANDLE write_handle = nullptr;
-        if (!CreatePipe(&read_handle, &write_handle, &attributes, 0)) return result;
+        if (!CreatePipe(&read_handle, &write_handle, &attributes, 0))
+            return result;
         if (!SetHandleInformation(read_handle, HANDLE_FLAG_INHERIT, 0))
         {
             CloseHandle(read_handle);
@@ -102,7 +106,7 @@ namespace toy3d::shader
         startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
         PROCESS_INFORMATION process{};
         result.launched = CreateProcessW(application.c_str(), command_line.data(), nullptr, nullptr, TRUE,
-            CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) != FALSE;
+                                         CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) != FALSE;
         CloseHandle(write_handle);
         if (!result.launched)
         {
@@ -111,19 +115,22 @@ namespace toy3d::shader
         }
         std::array<char, 4096> buffer{};
         DWORD read_count = 0;
-        while (ReadFile(read_handle, buffer.data(), static_cast<DWORD>(buffer.size()), &read_count, nullptr) && read_count != 0)
+        while (ReadFile(read_handle, buffer.data(), static_cast<DWORD>(buffer.size()), &read_count, nullptr) &&
+               read_count != 0)
         {
             result.output.append(buffer.data(), read_count);
         }
         CloseHandle(read_handle);
         WaitForSingleObject(process.hProcess, INFINITE);
         DWORD exit_code = 0;
-        if (GetExitCodeProcess(process.hProcess, &exit_code)) result.exit_code = static_cast<int>(exit_code);
+        if (GetExitCodeProcess(process.hProcess, &exit_code))
+            result.exit_code = static_cast<int>(exit_code);
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
 #else
         int pipe_handles[2]{};
-        if (pipe(pipe_handles) != 0) return result;
+        if (pipe(pipe_handles) != 0)
+            return result;
         const pid_t process = fork();
         if (process < 0)
         {
@@ -143,7 +150,8 @@ namespace toy3d::shader
             storage.insert(storage.end(), arguments.begin(), arguments.end());
             std::vector<char*> argv;
             argv.reserve(storage.size() + 1u);
-            for (std::string& item : storage) argv.push_back(item.data());
+            for (std::string& item : storage)
+                argv.push_back(item.data());
             argv.push_back(nullptr);
             execv(argv.front(), argv.data());
             _exit(errno == ENOENT ? 127 : 126);
@@ -160,10 +168,12 @@ namespace toy3d::shader
         int status = 0;
         if (waitpid(process, &status, 0) >= 0)
         {
-            if (WIFEXITED(status)) result.exit_code = WEXITSTATUS(status);
-            else if (WIFSIGNALED(status)) result.exit_code = 128 + WTERMSIG(status);
+            if (WIFEXITED(status))
+                result.exit_code = WEXITSTATUS(status);
+            else if (WIFSIGNALED(status))
+                result.exit_code = 128 + WTERMSIG(status);
         }
 #endif
         return result;
     }
-}
+} // namespace toy3d::shader

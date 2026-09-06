@@ -14,9 +14,7 @@ namespace toy3d
 
     // Render-side Shader ABI helper. Upload and access transitions are recorded
     // into the caller-owned command context; this function never submits.
-    RHIResult<RHIBufferRef> create_uploaded_shader_uniform_buffer(
-        RHIDevice& device,
-        RHICommandContext& context,
-        const std::vector<std::uint8_t>& bytes,
-        const std::string& debug_name);
-}
+    RHIResult<RHIBufferRef> create_uploaded_shader_uniform_buffer(RHIDevice& device, RHICommandContext& context,
+                                                                  const std::vector<std::uint8_t>& bytes,
+                                                                  const std::string& debug_name);
+} // namespace toy3d

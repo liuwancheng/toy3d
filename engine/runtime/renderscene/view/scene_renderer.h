@@ -18,7 +18,7 @@ namespace toy3d
     // mutation and destruction happens on the logical Rendering Thread.
     class SceneRenderer
     {
-    public:
+      public:
         explicit SceneRenderer(SceneViewFamily view_family);
         virtual ~SceneRenderer();
 
@@ -27,26 +27,21 @@ namespace toy3d
         SceneRenderer(SceneRenderer&&) = delete;
         SceneRenderer& operator=(SceneRenderer&&) = delete;
 
-        UIntVector2 output_size() const
-        {
-            return view_family_.output_size();
-        }
+        UIntVector2 output_size() const { return view_family_.output_size(); }
 
         // Renderer frame orchestration calls this on the logical Rendering
         // Thread after it has begun the shared graphics recording.
-        virtual RHIStatus render_scene_passes(
-            RenderScene& render_scene,
-            RHIDevice& device,
-            RHIShaderProgramCache& shader_program_cache,
-            RHIGraphicsCommandContext& context,
-            SceneRenderTargets& scene_render_targets) = 0;
+        virtual RHIStatus render_scene_passes(RenderScene& render_scene, RHIDevice& device,
+                                              RHIShaderProgramCache& shader_program_cache,
+                                              RHIGraphicsCommandContext& context,
+                                              SceneRenderTargets& scene_render_targets) = 0;
 
-    protected:
+      protected:
         const SceneViewFamily& view_family() const { return view_family_; }
         std::vector<ViewInfo>& view_infos() { return view_infos_; }
 
-    private:
+      private:
         SceneViewFamily view_family_;
         std::vector<ViewInfo> view_infos_;
     };
-}
+} // namespace toy3d

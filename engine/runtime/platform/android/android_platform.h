@@ -5,8 +5,8 @@ namespace toy3d
 {
     class AndroidPlatform : public IPlatform
     {
-    public:
-        AndroidPlatform() :IPlatform() {};
+      public:
+        AndroidPlatform() : IPlatform() {};
         virtual ~AndroidPlatform() {};
 
         virtual bool init();

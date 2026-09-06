@@ -16,19 +16,17 @@ namespace toy3d
     {
         if (status.succeeded())
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResource cannot enter Failed with a success status");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResource cannot enter Failed with a success status");
         }
         if (state_ != RenderResourceState::PendingUpload)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "RenderResource can enter Failed only while PendingUpload");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "RenderResource can enter Failed only while PendingUpload");
         }
 
         failure_status_ = status;
         state_ = RenderResourceState::Failed;
         return status;
     }
-}
+} // namespace toy3d

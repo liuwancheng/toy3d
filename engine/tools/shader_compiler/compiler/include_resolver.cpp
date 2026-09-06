@@ -28,12 +28,14 @@ namespace toy3d::shader
             while (begin < path.size())
             {
                 const std::size_t end = path.find('/', begin);
-                const std::string_view segment = path.substr(begin, end == std::string_view::npos ? path.size() - begin : end - begin);
+                const std::string_view segment =
+                    path.substr(begin, end == std::string_view::npos ? path.size() - begin : end - begin);
                 if (segment.empty() || segment == "." || segment == "..")
                 {
                     return false;
                 }
-                if (end == std::string_view::npos) break;
+                if (end == std::string_view::npos)
+                    break;
                 begin = end + 1;
             }
             return true;
@@ -66,21 +68,23 @@ namespace toy3d::shader
 
         class Resolver
         {
-        public:
+          public:
             Resolver(const ShaderSourceProvider& source_provider, std::uint32_t max_depth)
                 : source_provider_(source_provider), max_depth_(max_depth)
             {
                 if (!source_provider_.validation_error().empty())
                 {
                     diagnostics_.push_back({DiagnosticSeverity::Error,
-                        DiagnosticCode::InvalidIncludePath, {},
-                        source_provider_.validation_error()});
+                                            DiagnosticCode::InvalidIncludePath,
+                                            {},
+                                            source_provider_.validation_error()});
                 }
             }
 
             std::optional<std::string> resolve(const std::string& source, const std::string& path)
             {
-                if (!diagnostics_.empty()) return std::nullopt;
+                if (!diagnostics_.empty())
+                    return std::nullopt;
                 stack_.push_back(path);
                 std::optional<std::string> result = resolve_source(source, path, 0);
                 stack_.pop_back();
@@ -95,19 +99,16 @@ namespace toy3d::shader
                 {
                     result.push_back({dependency.first, dependency.second});
                 }
-                std::sort(result.begin(), result.end(), [](const ShaderDependency& left, const ShaderDependency& right) {
-                    return left.virtual_path < right.virtual_path;
-                });
+                std::sort(result.begin(), result.end(), [](const ShaderDependency& left, const ShaderDependency& right)
+                          { return left.virtual_path < right.virtual_path; });
                 return result;
             }
 
-            std::vector<Diagnostic> take_diagnostics()
-            {
-                return std::move(diagnostics_);
-            }
+            std::vector<Diagnostic> take_diagnostics() { return std::move(diagnostics_); }
 
-        private:
-            std::optional<std::string> resolve_source(const std::string& source, const std::string& path, std::uint32_t depth)
+          private:
+            std::optional<std::string> resolve_source(const std::string& source, const std::string& path,
+                                                      std::uint32_t depth)
             {
                 std::istringstream input(source);
                 std::ostringstream output;
@@ -125,21 +126,22 @@ namespace toy3d::shader
                     const SourceLocation location{path, 0, line_number, 1};
                     if (!has_valid_include_path(*include_path))
                     {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, location,
-                            "Includes must use a normalized /Engine/ShaderIncludes/ virtual path."});
+                        diagnostics_.push_back(
+                            {DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, location,
+                             "Includes must use a normalized /Engine/ShaderIncludes/ virtual path."});
                         return std::nullopt;
                     }
                     const ShaderSourceLoadResult loaded = source_provider_.load(*include_path);
                     if (!loaded.succeeded())
                     {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::IncludeNotFound, location,
-                            loaded.error});
+                        diagnostics_.push_back(
+                            {DiagnosticSeverity::Error, DiagnosticCode::IncludeNotFound, location, loaded.error});
                         return std::nullopt;
                     }
                     if (depth >= max_depth_)
                     {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::IncludeDepthExceeded, location,
-                            "Shader include depth exceeds the configured limit."});
+                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::IncludeDepthExceeded,
+                                                location, "Shader include depth exceeds the configured limit."});
                         return std::nullopt;
                     }
                     if (std::find(stack_.begin(), stack_.end(), *include_path) != stack_.end())
@@ -147,20 +149,23 @@ namespace toy3d::shader
                         std::string chain;
                         for (const std::string& item : stack_)
                         {
-                            if (!chain.empty()) chain += " -> ";
+                            if (!chain.empty())
+                                chain += " -> ";
                             chain += item;
                         }
                         chain += " -> " + *include_path;
                         diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::IncludeCycle, location,
-                            "Shader include cycle: " + chain});
+                                                "Shader include cycle: " + chain});
                         return std::nullopt;
                     }
                     const ShaderSourceRecord& file = *loaded.source;
                     dependencies_[file.virtual_path] = file.content_hash;
                     stack_.push_back(file.virtual_path);
-                    const std::optional<std::string> expanded = resolve_source(file.source, file.virtual_path, depth + 1);
+                    const std::optional<std::string> expanded =
+                        resolve_source(file.source, file.virtual_path, depth + 1);
                     stack_.pop_back();
-                    if (!expanded) return std::nullopt;
+                    if (!expanded)
+                        return std::nullopt;
                     output << "#line 1 \"" << file.virtual_path << "\"\n" << *expanded;
                     output << "#line " << (line_number + 1) << " \"" << path << "\"\n";
                     ++line_number;
@@ -174,24 +179,23 @@ namespace toy3d::shader
             std::vector<std::string> stack_;
             std::vector<Diagnostic> diagnostics_;
         };
-    }
+    } // namespace
 
     bool IncludeResolveResult::succeeded() const
     {
         return source.has_value() && diagnostics.empty();
     }
 
-    IncludeResolveResult resolve_shader_includes(
-        const std::string& source,
-        const std::string& source_virtual_path,
-        const ShaderSourceProvider& source_provider,
-        std::uint32_t max_depth)
+    IncludeResolveResult resolve_shader_includes(const std::string& source, const std::string& source_virtual_path,
+                                                 const ShaderSourceProvider& source_provider, std::uint32_t max_depth)
     {
         IncludeResolveResult result;
         if (max_depth == 0)
         {
-            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::IncludeDepthExceeded,
-                {source_virtual_path, 0, 1, 1}, "Shader include depth limit must be greater than zero."});
+            result.diagnostics.push_back({DiagnosticSeverity::Error,
+                                          DiagnosticCode::IncludeDepthExceeded,
+                                          {source_virtual_path, 0, 1, 1},
+                                          "Shader include depth limit must be greater than zero."});
             return result;
         }
         Resolver resolver(source_provider, max_depth);
@@ -200,4 +204,4 @@ namespace toy3d::shader
         result.diagnostics = resolver.take_diagnostics();
         return result;
     }
-}
+} // namespace toy3d::shader

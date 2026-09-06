@@ -5,8 +5,7 @@
 
 namespace toy3d
 {
-    std::vector<const GlobalShaderType*> required_renderer_global_shader_types(
-        bool enable_imgui)
+    std::vector<const GlobalShaderType*> required_renderer_global_shader_types(bool enable_imgui)
     {
         std::vector<const GlobalShaderType*> result;
         result.push_back(&tonemap_global_shader_type());
@@ -16,4 +15,4 @@ namespace toy3d
         }
         return result;
     }
-}
+} // namespace toy3d

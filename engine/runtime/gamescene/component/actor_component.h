@@ -9,7 +9,7 @@ namespace toy3d
 
     class ActorComponent
     {
-    public:
+      public:
         explicit ActorComponent(Actor& owner);
         virtual ~ActorComponent() = default;
 
@@ -22,14 +22,14 @@ namespace toy3d
         bool is_initialized() const { return initialized_; }
         bool has_begun_play() const { return begun_play_; }
 
-    protected:
+      protected:
         virtual void on_register() {}
         virtual void on_initialize() {}
         virtual void on_begin_play() {}
         virtual void on_end_play(EndPlayReason) {}
         virtual void on_unregister() {}
 
-    private:
+      private:
         friend class Actor;
 
         void register_component();
@@ -43,4 +43,4 @@ namespace toy3d
         bool initialized_ = false;
         bool begun_play_ = false;
     };
-}
+} // namespace toy3d

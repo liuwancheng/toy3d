@@ -23,14 +23,15 @@ namespace toy3d
 
         if (!config.console_output && !config.file_output)
         {
-            if (error_message) *error_message = "Logger requires at least one output sink.";
+            if (error_message)
+                *error_message = "Logger requires at least one output sink.";
             return false;
         }
-        if (config.file_output &&
-            (config.log_directory.empty() || config.file_name.empty() ||
-             config.max_file_size == 0 || config.max_file_count == 0))
+        if (config.file_output && (config.log_directory.empty() || config.file_name.empty() ||
+                                   config.max_file_size == 0 || config.max_file_count == 0))
         {
-            if (error_message) *error_message = "Logger file output configuration is incomplete.";
+            if (error_message)
+                *error_message = "Logger file output configuration is incomplete.";
             return false;
         }
 
@@ -52,8 +53,8 @@ namespace toy3d
                 {
                     if (error_message)
                     {
-                        *error_message = "Failed to create log directory '" +
-                            config.log_directory.string() + "': " + directory_error.message();
+                        *error_message = "Failed to create log directory '" + config.log_directory.string() +
+                                         "': " + directory_error.message();
                     }
                     return false;
                 }
@@ -76,24 +77,40 @@ namespace toy3d
         {
             spd_logger.reset();
             logger_name.clear();
-            if (error_message) *error_message = error.what();
+            if (error_message)
+                *error_message = error.what();
             return false;
         }
     }
 
     void Logger::set_level(Level level)
     {
-        if (!spd_logger) return;
+        if (!spd_logger)
+            return;
 
         switch (level)
         {
-            case Level::TOY_TRACE: spd_logger->set_level(spdlog::level::trace); break;
-            case Level::TOY_DEBUG: spd_logger->set_level(spdlog::level::debug); break;
-            case Level::TOY_INFO: spd_logger->set_level(spdlog::level::info); break;
-            case Level::TOY_WARN: spd_logger->set_level(spdlog::level::warn); break;
-            case Level::TOY_ERROR: spd_logger->set_level(spdlog::level::err); break;
-            case Level::TOY_CRITICAL: spd_logger->set_level(spdlog::level::critical); break;
-            case Level::TOY_OFF: spd_logger->set_level(spdlog::level::off); break;
+        case Level::TOY_TRACE:
+            spd_logger->set_level(spdlog::level::trace);
+            break;
+        case Level::TOY_DEBUG:
+            spd_logger->set_level(spdlog::level::debug);
+            break;
+        case Level::TOY_INFO:
+            spd_logger->set_level(spdlog::level::info);
+            break;
+        case Level::TOY_WARN:
+            spd_logger->set_level(spdlog::level::warn);
+            break;
+        case Level::TOY_ERROR:
+            spd_logger->set_level(spdlog::level::err);
+            break;
+        case Level::TOY_CRITICAL:
+            spd_logger->set_level(spdlog::level::critical);
+            break;
+        case Level::TOY_OFF:
+            spd_logger->set_level(spdlog::level::off);
+            break;
         }
     }
 
@@ -107,4 +124,4 @@ namespace toy3d
         }
         logger_name.clear();
     }
-}
+} // namespace toy3d

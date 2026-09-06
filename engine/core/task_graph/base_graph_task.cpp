@@ -12,10 +12,8 @@ namespace toy3d
 {
     class GraphTaskDependencyGate final
     {
-    public:
-        GraphTaskDependencyGate(
-            std::uint32_t lock_count,
-            std::function<void()> ready_callback)
+      public:
+        GraphTaskDependencyGate(std::uint32_t lock_count, std::function<void()> ready_callback)
             : remaining_locks_(lock_count), ready_callback_(std::move(ready_callback))
         {
         }
@@ -49,16 +47,13 @@ namespace toy3d
             ready_callback_ = {};
         }
 
-    private:
+      private:
         std::atomic<std::uint32_t> remaining_locks_{0};
         std::mutex callback_mutex_;
         std::function<void()> ready_callback_;
     };
 
-    BaseGraphTask::BaseGraphTask(TaskGraphInterface& task_graph)
-        : task_graph_(task_graph)
-    {
-    }
+    BaseGraphTask::BaseGraphTask(TaskGraphInterface& task_graph) : task_graph_(task_graph) {}
 
     BaseGraphTask::~BaseGraphTask()
     {
@@ -68,10 +63,8 @@ namespace toy3d
         }
     }
 
-    void BaseGraphTask::initialize_routing(
-        NamedThread desired_thread,
-        TaskPriority priority,
-        SubsequentsMode subsequents_mode)
+    void BaseGraphTask::initialize_routing(NamedThread desired_thread, TaskPriority priority,
+                                           SubsequentsMode subsequents_mode)
     {
         if (routing_initialized_)
         {
@@ -92,9 +85,7 @@ namespace toy3d
         routing_initialized_ = true;
     }
 
-    void BaseGraphTask::dispatch(
-        const GraphEventArray& prerequisites,
-        bool unlock_immediately)
+    void BaseGraphTask::dispatch(const GraphEventArray& prerequisites, bool unlock_immediately)
     {
         if (!routing_initialized_)
         {
@@ -118,15 +109,11 @@ namespace toy3d
 
         prerequisites_ = prerequisites;
         dependency_gate_ = std::make_shared<GraphTaskDependencyGate>(
-            static_cast<std::uint32_t>(prerequisites_.size()) + 1,
-            [this]() { task_graph_.queue_task(*this); });
+            static_cast<std::uint32_t>(prerequisites_.size()) + 1, [this]() { task_graph_.queue_task(*this); });
         const std::shared_ptr<GraphTaskDependencyGate> dependency_gate = dependency_gate_;
         for (const GraphEventRef& prerequisite : prerequisites_)
         {
-            const bool registered = prerequisite->add_subsequent([dependency_gate]()
-            {
-                dependency_gate->release();
-            });
+            const bool registered = prerequisite->add_subsequent([dependency_gate]() { dependency_gate->release(); });
             if (!registered)
             {
                 dependency_gate->release();
@@ -145,12 +132,10 @@ namespace toy3d
         {
             throw std::logic_error("Graph task must be dispatched before unlock");
         }
-        if (current_thread != NamedThread::Unknown
-            && task_graph_.get_current_thread_if_known() != current_thread)
+        if (current_thread != NamedThread::Unknown && task_graph_.get_current_thread_if_known() != current_thread)
         {
             throw TaskGraphException(TaskGraphStatus::failure(
-                TaskGraphErrorCode::InvalidCaller,
-                "GraphTask unlock caller does not own the supplied Named Thread"));
+                TaskGraphErrorCode::InvalidCaller, "GraphTask unlock caller does not own the supplied Named Thread"));
         }
         if (unlocked_.exchange(true))
         {
@@ -214,4 +199,4 @@ namespace toy3d
             completion_event_->publish_completion(TaskOutcome::Cancelled);
         }
     }
-}
+} // namespace toy3d

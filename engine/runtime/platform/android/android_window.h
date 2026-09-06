@@ -7,7 +7,7 @@ namespace toy3d
 {
     class AndroidWindow : public IWindow
     {
-    public:
+      public:
         AndroidWindow();
         ~AndroidWindow();
 
@@ -18,11 +18,13 @@ namespace toy3d
         void process_events() final;
         void close() final;
 
-        GLFWwindow* get_glfw_window(){return glfw_window;}
-    private:
+        GLFWwindow* get_glfw_window() { return glfw_window; }
+
+      private:
         void create_glfw_window();
         void destroy_glfw_window();
-    private:
+
+      private:
         GLFWwindow* glfw_window = nullptr;
     };
-}
+} // namespace toy3d

@@ -43,30 +43,22 @@ namespace toy3d
 
     class VulkanSwapchain final
     {
-    public:
-        VulkanSwapchain(
-            const RHIDevice& owner,
-            VkPhysicalDevice physical_device,
-            VkDevice device,
-            VkSurfaceKHR surface);
+      public:
+        VulkanSwapchain(const RHIDevice& owner, VkPhysicalDevice physical_device, VkDevice device,
+                        VkSurfaceKHR surface);
         ~VulkanSwapchain();
 
         VulkanSwapchain(const VulkanSwapchain&) = delete;
         VulkanSwapchain& operator=(const VulkanSwapchain&) = delete;
 
-        static RHIResult<std::unique_ptr<VulkanSwapchain>> create(
-            const RHIDevice& owner,
-            VkPhysicalDevice physical_device,
-            VkDevice device,
-            VkSurfaceKHR surface,
-            const RHIViewportContextDesc& desc,
-            VkSwapchainKHR old_swapchain);
+        static RHIResult<std::unique_ptr<VulkanSwapchain>> create(const RHIDevice& owner,
+                                                                  VkPhysicalDevice physical_device, VkDevice device,
+                                                                  VkSurfaceKHR surface,
+                                                                  const RHIViewportContextDesc& desc,
+                                                                  VkSwapchainKHR old_swapchain);
 
         RHIResult<VulkanAcquireResult> acquire_image(VkSemaphore image_acquired);
-        RHIStatus present(
-            VkQueue queue,
-            std::uint32_t image_index,
-            VkSemaphore rendering_done);
+        RHIStatus present(VkQueue queue, std::uint32_t image_index, VkSemaphore rendering_done);
 
         VkSwapchainKHR native_handle() const;
         VkExtent2D extent() const;
@@ -75,10 +67,8 @@ namespace toy3d
         VulkanSwapchainImage& image(std::uint32_t image_index);
         const VulkanSwapchainImage& image(std::uint32_t image_index) const;
 
-    private:
-        RHIStatus initialize(
-            const RHIViewportContextDesc& desc,
-            VkSwapchainKHR old_swapchain);
+      private:
+        RHIStatus initialize(const RHIViewportContextDesc& desc, VkSwapchainKHR old_swapchain);
 
         const RHIDevice& owner_device;
         VkPhysicalDevice vk_physical_device = VK_NULL_HANDLE;
@@ -89,4 +79,4 @@ namespace toy3d
         VkExtent2D swapchain_extent{};
         std::vector<VulkanSwapchainImage> swapchain_images;
     };
-}
+} // namespace toy3d

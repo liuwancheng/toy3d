@@ -23,14 +23,14 @@ namespace toy3d
 
     class ThreadManager final
     {
-    public:
+      public:
         explicit ThreadManager(ThreadDiagnosticsSink diagnostics_sink = {});
 
         ThreadInfo get_thread(std::thread::id id) const;
         std::string get_thread_name(std::thread::id id) const;
         void for_each_thread(const std::function<void(const ThreadInfo&)>& function) const;
 
-    private:
+      private:
         friend class RunnableThread;
 
         void add_thread(RunnableThread& thread);
@@ -41,4 +41,4 @@ namespace toy3d
         std::unordered_map<std::thread::id, RunnableThread*> threads_;
         ThreadDiagnosticsSink diagnostics_sink_;
     };
-}
+} // namespace toy3d

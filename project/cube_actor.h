@@ -10,14 +10,14 @@ namespace toy3d
     class SceneComponent;
     class StaticMeshComponent;
     class World;
-}
+} // namespace toy3d
 
 class CubeActor final : public toy3d::Actor
 {
-public:
+  public:
     CubeActor(toy3d::World& world, toy3d::StaticMeshRef mesh);
 
-private:
+  private:
     void tick(const toy3d::WorldTickContext& context) override;
 
     toy3d::StaticMeshRef mesh_;

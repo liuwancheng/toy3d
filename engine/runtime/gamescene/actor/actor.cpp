@@ -25,13 +25,9 @@ namespace toy3d
 
     bool Actor::owns_component(const ActorComponent& component) const
     {
-        return std::any_of(
-            components_.begin(),
-            components_.end(),
-            [&component](const std::unique_ptr<ActorComponent>& candidate)
-            {
-                return candidate.get() == &component;
-            });
+        return std::any_of(components_.begin(), components_.end(),
+                           [&component](const std::unique_ptr<ActorComponent>& candidate)
+                           { return candidate.get() == &component; });
     }
 
     void Actor::register_all_components()
@@ -124,8 +120,7 @@ namespace toy3d
     {
         for (const std::unique_ptr<ActorComponent>& component : components_)
         {
-            PrimitiveComponent* const primitive =
-                dynamic_cast<PrimitiveComponent*>(component.get());
+            PrimitiveComponent* const primitive = dynamic_cast<PrimitiveComponent*>(component.get());
             if (primitive != nullptr && primitive->is_registered())
             {
                 primitive->create_render_state();
@@ -137,12 +132,11 @@ namespace toy3d
     {
         for (std::size_t index = components_.size(); index > 0; --index)
         {
-            PrimitiveComponent* const primitive =
-                dynamic_cast<PrimitiveComponent*>(components_[index - 1].get());
+            PrimitiveComponent* const primitive = dynamic_cast<PrimitiveComponent*>(components_[index - 1].get());
             if (primitive != nullptr)
             {
                 primitive->destroy_render_state();
             }
         }
     }
-}
+} // namespace toy3d

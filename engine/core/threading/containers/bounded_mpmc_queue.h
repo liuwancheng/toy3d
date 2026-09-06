@@ -13,22 +13,19 @@ namespace toy3d
 {
     namespace detail
     {
-        template<typename T, typename Sequence = std::size_t>
-        class BoundedMpmcQueue final
+        template <typename T, typename Sequence = std::size_t> class BoundedMpmcQueue final
         {
             static_assert(std::is_pointer<T>::value,
-                "BoundedMpmcQueue is an internal Task Graph queue for task pointers");
-            static_assert(std::is_unsigned<Sequence>::value,
-                "BoundedMpmcQueue sequence counters must be unsigned");
+                          "BoundedMpmcQueue is an internal Task Graph queue for task pointers");
+            static_assert(std::is_unsigned<Sequence>::value, "BoundedMpmcQueue sequence counters must be unsigned");
 
-        public:
+          public:
             explicit BoundedMpmcQueue(std::size_t capacity)
                 : capacity_(capacity), mask_(capacity - 1), cells_(create_cells(capacity))
             {
                 for (std::size_t index = 0; index < capacity_; ++index)
                 {
-                    cells_[index].sequence.store(
-                        static_cast<Sequence>(index), std::memory_order_relaxed);
+                    cells_[index].sequence.store(static_cast<Sequence>(index), std::memory_order_relaxed);
                 }
             }
 
@@ -46,8 +43,7 @@ namespace toy3d
                     if (distance == 0)
                     {
                         const Sequence next = static_cast<Sequence>(position + 1);
-                        if (enqueue_position_.compare_exchange_weak(
-                                position, next, std::memory_order_relaxed))
+                        if (enqueue_position_.compare_exchange_weak(position, next, std::memory_order_relaxed))
                         {
                             cell.value = value;
                             cell.sequence.store(next, std::memory_order_release);
@@ -77,14 +73,11 @@ namespace toy3d
                     if (distance == 0)
                     {
                         const Sequence next = expected;
-                        if (dequeue_position_.compare_exchange_weak(
-                                position, next, std::memory_order_relaxed))
+                        if (dequeue_position_.compare_exchange_weak(position, next, std::memory_order_relaxed))
                         {
                             value = cell.value;
                             cell.value = nullptr;
-                            cell.sequence.store(
-                                static_cast<Sequence>(position + capacity_),
-                                std::memory_order_release);
+                            cell.sequence.store(static_cast<Sequence>(position + capacity_), std::memory_order_release);
                             return true;
                         }
                     }
@@ -99,12 +92,9 @@ namespace toy3d
                 }
             }
 
-            std::size_t capacity() const
-            {
-                return capacity_;
-            }
+            std::size_t capacity() const { return capacity_; }
 
-        private:
+          private:
             struct Cell
             {
                 std::atomic<Sequence> sequence{0};
@@ -113,21 +103,17 @@ namespace toy3d
 
             static std::unique_ptr<Cell[]> create_cells(std::size_t capacity)
             {
-                const std::size_t maximum_capacity =
-                    static_cast<std::size_t>(std::numeric_limits<Sequence>::max()) / 2;
-                if (capacity < 2 || (capacity & (capacity - 1)) != 0 ||
-                    capacity > maximum_capacity)
+                const std::size_t maximum_capacity = static_cast<std::size_t>(std::numeric_limits<Sequence>::max()) / 2;
+                if (capacity < 2 || (capacity & (capacity - 1)) != 0 || capacity > maximum_capacity)
                 {
-                    throw std::invalid_argument(
-                        "BoundedMpmcQueue capacity must be a supported power of two");
+                    throw std::invalid_argument("BoundedMpmcQueue capacity must be a supported power of two");
                 }
                 return std::make_unique<Cell[]>(capacity);
             }
 
             static bool is_behind(Sequence distance)
             {
-                constexpr Sequence half_range =
-                    static_cast<Sequence>(std::numeric_limits<Sequence>::max() / 2 + 1);
+                constexpr Sequence half_range = static_cast<Sequence>(std::numeric_limits<Sequence>::max() / 2 + 1);
                 return distance >= half_range;
             }
 
@@ -139,5 +125,5 @@ namespace toy3d
             alignas(cache_line_size) std::atomic<Sequence> enqueue_position_{0};
             alignas(cache_line_size) std::atomic<Sequence> dequeue_position_{0};
         };
-    }
-}
+    } // namespace detail
+} // namespace toy3d

@@ -112,11 +112,8 @@ namespace toy3d::shader
     };
 
     std::uint32_t structured_element_stride(ResourceElementType type);
-    ConstantBufferPackResult pack_constant_buffer(
-        BindingGroup group,
-        const std::vector<ConstantMemberInput>& members);
+    ConstantBufferPackResult pack_constant_buffer(BindingGroup group, const std::vector<ConstantMemberInput>& members);
     LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset);
-    ActiveLayoutResult build_active_layout(
-        const LogicalShaderLayout& logical_layout,
-        const std::vector<ParameterUsage>& usage);
-}
+    ActiveLayoutResult build_active_layout(const LogicalShaderLayout& logical_layout,
+                                           const std::vector<ParameterUsage>& usage);
+} // namespace toy3d::shader

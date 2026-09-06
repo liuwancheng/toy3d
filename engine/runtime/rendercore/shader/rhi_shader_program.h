@@ -25,6 +25,5 @@ namespace toy3d
         RHIBindingLayoutRef binding_layout;
     };
 
-    RHIResult<RHIShaderProgramDesc> build_rhi_shader_program_desc(
-        const ShaderMapProgram& program);
-}
+    RHIResult<RHIShaderProgramDesc> build_rhi_shader_program_desc(const ShaderMapProgram& program);
+} // namespace toy3d

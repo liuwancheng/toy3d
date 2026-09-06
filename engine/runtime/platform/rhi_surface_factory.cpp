@@ -23,9 +23,8 @@ namespace toy3d
         auto* win32_window = dynamic_cast<Win32Window*>(&window);
         if (win32_window == nullptr)
         {
-            return RHIResult<RHISurfaceRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Windows RHI surface requires a Win32Window.");
+            return RHIResult<RHISurfaceRef>::failure(RHIErrorCode::InvalidArgument,
+                                                     "Windows RHI surface requires a Win32Window.");
         }
         desc.platform = RHISurfacePlatform::Win32;
         desc.window_handle = static_cast<void*>(win32_window->get_native_hwnd());
@@ -34,9 +33,8 @@ namespace toy3d
         auto* mac_window = dynamic_cast<MacWindow*>(&window);
         if (mac_window == nullptr)
         {
-            return RHIResult<RHISurfaceRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "macOS RHI surface requires a MacWindow.");
+            return RHIResult<RHISurfaceRef>::failure(RHIErrorCode::InvalidArgument,
+                                                     "macOS RHI surface requires a MacWindow.");
         }
         desc.platform = RHISurfacePlatform::MacOS;
         desc.window_handle = mac_window->get_metal_layer();
@@ -44,27 +42,22 @@ namespace toy3d
         auto* android_window = dynamic_cast<AndroidWindow*>(&window);
         if (android_window == nullptr)
         {
-            return RHIResult<RHISurfaceRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Android RHI surface requires an AndroidWindow.");
+            return RHIResult<RHISurfaceRef>::failure(RHIErrorCode::InvalidArgument,
+                                                     "Android RHI surface requires an AndroidWindow.");
         }
         desc.platform = RHISurfacePlatform::Glfw;
         desc.window_handle = static_cast<void*>(android_window->get_glfw_window());
 #else
         (void)window;
-        return RHIResult<RHISurfaceRef>::failure(
-            RHIErrorCode::Unsupported,
-            "This platform does not provide an RHI surface factory.");
+        return RHIResult<RHISurfaceRef>::failure(RHIErrorCode::Unsupported,
+                                                 "This platform does not provide an RHI surface factory.");
 #endif
 
         const RHIStatus validation = validate_surface_desc(desc);
         if (!validation)
         {
-            return RHIResult<RHISurfaceRef>::failure(
-                validation.code(),
-                validation.message());
+            return RHIResult<RHISurfaceRef>::failure(validation.code(), validation.message());
         }
-        return RHIResult<RHISurfaceRef>::success(
-            std::make_shared<RHISurface>(std::move(desc)));
+        return RHIResult<RHISurfaceRef>::success(std::make_shared<RHISurface>(std::move(desc)));
     }
-}
+} // namespace toy3d

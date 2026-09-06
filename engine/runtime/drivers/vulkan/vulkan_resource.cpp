@@ -12,18 +12,12 @@
 namespace toy3d
 {
 
-    VulkanBuffer::VulkanBuffer(
-        const RHIDevice& owner,
-        RHIBufferDesc desc,
-        VulkanMemoryManager& memory_manager,
-        VulkanDeferredDeletionQueue& deletion_queue,
-        VulkanAllocatedBuffer allocated_buffer,
-        RHIAccess initial_access)
-        : RHIBuffer(owner, std::move(desc))
-        , memory_manager_instance(&memory_manager)
-        , deletion_queue_instance(&deletion_queue)
-        , allocated_buffer(std::move(allocated_buffer))
-        , resource_access(initial_access == RHIAccess::Unknown ? RHIAccess::Common : initial_access)
+    VulkanBuffer::VulkanBuffer(const RHIDevice& owner, RHIBufferDesc desc, VulkanMemoryManager& memory_manager,
+                               VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer,
+                               RHIAccess initial_access)
+        : RHIBuffer(owner, std::move(desc)), memory_manager_instance(&memory_manager),
+          deletion_queue_instance(&deletion_queue), allocated_buffer(std::move(allocated_buffer)),
+          resource_access(initial_access == RHIAccess::Unknown ? RHIAccess::Common : initial_access)
     {
     }
 
@@ -41,12 +35,8 @@ namespace toy3d
 
         auto payload = std::make_shared<VulkanAllocatedBuffer>(std::move(allocated_buffer));
         VulkanMemoryManager* const memory_manager = memory_manager_instance;
-        const RHIStatus status = deletion_queue_instance->enqueue(
-            last_use_value,
-            [memory_manager, payload](VkDevice)
-            {
-                memory_manager->destroy_buffer(*payload);
-            });
+        const RHIStatus status = deletion_queue_instance->enqueue(last_use_value, [memory_manager, payload](VkDevice)
+                                                                  { memory_manager->destroy_buffer(*payload); });
         if (!status)
         {
             TOY_LOG_ERROR("Failed to defer Vulkan buffer deletion: {}", status.message());
@@ -79,33 +69,21 @@ namespace toy3d
         return last_use_value;
     }
 
-    VulkanTexture::VulkanTexture(
-        const RHIDevice& owner,
-        RHITextureDesc desc,
-        VulkanMemoryManager& memory_manager,
-        VulkanDeferredDeletionQueue& deletion_queue,
-        VulkanAllocatedImage allocated_image,
-        VkImageLayout initial_layout,
-        RHIAccess initial_access)
-        : RHITexture(owner, std::move(desc))
-        , memory_manager_instance(&memory_manager)
-        , deletion_queue_instance(&deletion_queue)
-        , allocated_image(std::move(allocated_image))
-        , initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    VulkanTexture::VulkanTexture(const RHIDevice& owner, RHITextureDesc desc, VulkanMemoryManager& memory_manager,
+                                 VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedImage allocated_image,
+                                 VkImageLayout initial_layout, RHIAccess initial_access)
+        : RHITexture(owner, std::move(desc)), memory_manager_instance(&memory_manager),
+          deletion_queue_instance(&deletion_queue), allocated_image(std::move(allocated_image)),
+          initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
     {
         subresource_states.assign(
             static_cast<std::size_t>(this->desc().mip_levels) * this->desc().array_layers * 2U,
             {initial_layout, initial_access == RHIAccess::Unknown ? RHIAccess::Common : initial_access});
     }
 
-    VulkanTexture::VulkanTexture(
-        const RHIDevice& owner,
-        RHITextureDesc desc,
-        VkImage external_image,
-        VkImageLayout initial_layout,
-        RHIAccess initial_access)
-        : RHITexture(owner, std::move(desc))
-        , initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    VulkanTexture::VulkanTexture(const RHIDevice& owner, RHITextureDesc desc, VkImage external_image,
+                                 VkImageLayout initial_layout, RHIAccess initial_access)
+        : RHITexture(owner, std::move(desc)), initial_layout_is_undefined(initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
     {
         allocated_image.image = external_image;
         subresource_states.assign(
@@ -127,12 +105,8 @@ namespace toy3d
 
         auto payload = std::make_shared<VulkanAllocatedImage>(std::move(allocated_image));
         VulkanMemoryManager* const memory_manager = memory_manager_instance;
-        const RHIStatus status = deletion_queue_instance->enqueue(
-            last_use_value,
-            [memory_manager, payload](VkDevice)
-            {
-                memory_manager->destroy_image(*payload);
-            });
+        const RHIStatus status = deletion_queue_instance->enqueue(last_use_value, [memory_manager, payload](VkDevice)
+                                                                  { memory_manager->destroy_image(*payload); });
         if (!status)
         {
             TOY_LOG_ERROR("Failed to defer Vulkan image deletion: {}", status.message());
@@ -166,27 +140,20 @@ namespace toy3d
         initial_layout_is_undefined = false;
     }
 
-    VulkanTextureSubresourceState VulkanTexture::subresource_state(
-        RHITextureAspect aspect,
-        std::uint32_t mip,
-        std::uint32_t layer) const
+    VulkanTextureSubresourceState VulkanTexture::subresource_state(RHITextureAspect aspect, std::uint32_t mip,
+                                                                   std::uint32_t layer) const
     {
         const std::size_t plane = aspect == RHITextureAspect::Stencil ? 1U : 0U;
-        const std::size_t index =
-            (static_cast<std::size_t>(layer) * desc().mip_levels + mip) * 2U + plane;
+        const std::size_t index = (static_cast<std::size_t>(layer) * desc().mip_levels + mip) * 2U + plane;
         return subresource_states[index];
     }
 
-    void VulkanTexture::set_subresource_state(
-        RHITextureAspect aspect,
-        std::uint32_t mip,
-        std::uint32_t layer,
-        VulkanTextureSubresourceState state)
+    void VulkanTexture::set_subresource_state(RHITextureAspect aspect, std::uint32_t mip, std::uint32_t layer,
+                                              VulkanTextureSubresourceState state)
     {
         const auto set_plane = [&](std::size_t plane)
         {
-            const std::size_t index =
-                (static_cast<std::size_t>(layer) * desc().mip_levels + mip) * 2U + plane;
+            const std::size_t index = (static_cast<std::size_t>(layer) * desc().mip_levels + mip) * 2U + plane;
             subresource_states[index] = state;
         };
         set_plane(aspect == RHITextureAspect::Stencil ? 1U : 0U);
@@ -207,16 +174,10 @@ namespace toy3d
         return last_use_value;
     }
 
-    VulkanTextureView::VulkanTextureView(
-        std::shared_ptr<RHITexture> texture,
-        RHITextureViewDesc desc,
-        VkDevice device,
-        VkImageView image_view,
-        bool owns_image_view)
-        : RHITextureView(std::move(texture), std::move(desc))
-        , vk_device(device)
-        , vk_image_view(image_view)
-        , owns_vk_image_view(owns_image_view)
+    VulkanTextureView::VulkanTextureView(std::shared_ptr<RHITexture> texture, RHITextureViewDesc desc, VkDevice device,
+                                         VkImageView image_view, bool owns_image_view)
+        : RHITextureView(std::move(texture), std::move(desc)), vk_device(device), vk_image_view(image_view),
+          owns_vk_image_view(owns_image_view)
     {
     }
 
@@ -233,23 +194,15 @@ namespace toy3d
         return vk_image_view;
     }
 
-    VulkanRenderPassResources::VulkanRenderPassResources(
-        VkDevice device,
-        VkRenderPass render_pass,
-        VkFramebuffer framebuffer,
-        std::vector<PixelFormat> color_formats,
-        PixelFormat depth_stencil_format,
-        bool depth_read_only,
-        bool stencil_read_only,
-        std::uint32_t sample_count)
-        : vk_device(device)
-        , vk_render_pass(render_pass)
-        , vk_framebuffer(framebuffer)
-        , pass_color_formats(std::move(color_formats))
-        , pass_depth_stencil_format(depth_stencil_format)
-        , pass_depth_read_only(depth_read_only)
-        , pass_stencil_read_only(stencil_read_only)
-        , pass_sample_count(sample_count)
+    VulkanRenderPassResources::VulkanRenderPassResources(VkDevice device, VkRenderPass render_pass,
+                                                         VkFramebuffer framebuffer,
+                                                         std::vector<PixelFormat> color_formats,
+                                                         PixelFormat depth_stencil_format, bool depth_read_only,
+                                                         bool stencil_read_only, std::uint32_t sample_count)
+        : vk_device(device), vk_render_pass(render_pass), vk_framebuffer(framebuffer),
+          pass_color_formats(std::move(color_formats)), pass_depth_stencil_format(depth_stencil_format),
+          pass_depth_read_only(depth_read_only), pass_stencil_read_only(stencil_read_only),
+          pass_sample_count(sample_count)
     {
     }
 
@@ -309,14 +262,9 @@ namespace toy3d
         return true;
     }
 
-    VulkanShader::VulkanShader(
-        const RHIDevice& owner,
-        RHIShaderDesc desc,
-        VkDevice device,
-        VkShaderModule shader_module)
-        : RHIShader(owner, std::move(desc))
-        , vk_device(device)
-        , vk_shader_module(shader_module)
+    VulkanShader::VulkanShader(const RHIDevice& owner, RHIShaderDesc desc, VkDevice device,
+                               VkShaderModule shader_module)
+        : RHIShader(owner, std::move(desc)), vk_device(device), vk_shader_module(shader_module)
     {
     }
 
@@ -334,15 +282,11 @@ namespace toy3d
     }
 
     VulkanBindingLayout::VulkanBindingLayout(
-        const RHIDevice& owner,
-        RHIBindingLayoutDesc desc,
-        VkDevice device,
+        const RHIDevice& owner, RHIBindingLayoutDesc desc, VkDevice device,
         std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
         std::vector<NativeBinding> native_bindings)
-        : RHIBindingLayout(owner, std::move(desc))
-        , vk_device(device)
-        , vk_descriptor_set_layouts(descriptor_set_layouts)
-        , binding_mappings(std::move(native_bindings))
+        : RHIBindingLayout(owner, std::move(desc)), vk_device(device),
+          vk_descriptor_set_layouts(descriptor_set_layouts), binding_mappings(std::move(native_bindings))
     {
     }
 
@@ -366,11 +310,16 @@ namespace toy3d
         switch (group)
         {
         case RHIBindingGroup::Global:
-        case RHIBindingGroup::View: return 0;
-        case RHIBindingGroup::Pass: return 1;
-        case RHIBindingGroup::Material: return 2;
-        case RHIBindingGroup::Object: return 3;
-        case RHIBindingGroup::Max: break;
+        case RHIBindingGroup::View:
+            return 0;
+        case RHIBindingGroup::Pass:
+            return 1;
+        case RHIBindingGroup::Material:
+            return 2;
+        case RHIBindingGroup::Object:
+            return 3;
+        case RHIBindingGroup::Max:
+            break;
         }
         return static_cast<std::uint32_t>(physical_set_count);
     }
@@ -378,15 +327,11 @@ namespace toy3d
     VkDescriptorSetLayout VulkanBindingLayout::descriptor_set_layout(RHIBindingGroup group) const
     {
         const std::uint32_t set = physical_set(group);
-        return set < vk_descriptor_set_layouts.size()
-            ? vk_descriptor_set_layouts[set]
-            : VK_NULL_HANDLE;
+        return set < vk_descriptor_set_layouts.size() ? vk_descriptor_set_layouts[set] : VK_NULL_HANDLE;
     }
 
-    RHIResult<std::uint32_t> VulkanBindingLayout::native_binding(
-        RHIBindingGroup group,
-        RHIResourceBindingType type,
-        std::uint32_t slot) const
+    RHIResult<std::uint32_t> VulkanBindingLayout::native_binding(RHIBindingGroup group, RHIResourceBindingType type,
+                                                                 std::uint32_t slot) const
     {
         for (const NativeBinding& mapping : binding_mappings)
         {
@@ -395,25 +340,18 @@ namespace toy3d
                 return RHIResult<std::uint32_t>::success(mapping.binding);
             }
         }
-        return RHIResult<std::uint32_t>::failure(
-            RHIErrorCode::InvalidArgument,
-            "Vulkan binding layout has no matching native binding.");
+        return RHIResult<std::uint32_t>::failure(RHIErrorCode::InvalidArgument,
+                                                 "Vulkan binding layout has no matching native binding.");
     }
 
-    const std::array<VkDescriptorSetLayout, VulkanBindingLayout::physical_set_count>&
-        VulkanBindingLayout::descriptor_set_layouts() const
+    const std::array<VkDescriptorSetLayout, VulkanBindingLayout::physical_set_count>& VulkanBindingLayout::
+        descriptor_set_layouts() const
     {
         return vk_descriptor_set_layouts;
     }
 
-    VulkanSampler::VulkanSampler(
-        const RHIDevice& owner,
-        RHISamplerDesc desc,
-        VkDevice device,
-        VkSampler sampler)
-        : RHISampler(owner, std::move(desc))
-        , vk_device(device)
-        , vk_sampler(sampler)
+    VulkanSampler::VulkanSampler(const RHIDevice& owner, RHISamplerDesc desc, VkDevice device, VkSampler sampler)
+        : RHISampler(owner, std::move(desc)), vk_device(device), vk_sampler(sampler)
     {
     }
 
@@ -430,20 +368,13 @@ namespace toy3d
         return vk_sampler;
     }
 
-    VulkanBindingSet::VulkanBindingSet(RHIBindingSetDesc desc)
-        : RHIBindingSet(std::move(desc))
-    {
-    }
+    VulkanBindingSet::VulkanBindingSet(RHIBindingSetDesc desc) : RHIBindingSet(std::move(desc)) {}
 
-    VulkanBindingPacket::VulkanBindingPacket(
-        VkDevice device,
-        VkDescriptorPool descriptor_pool,
-        VkDescriptorSet descriptor_set,
-        std::vector<std::shared_ptr<VulkanBindingSet>> logical_sets)
-        : vk_device(device)
-        , vk_descriptor_pool(descriptor_pool)
-        , vk_descriptor_set(descriptor_set)
-        , source_sets(std::move(logical_sets))
+    VulkanBindingPacket::VulkanBindingPacket(VkDevice device, VkDescriptorPool descriptor_pool,
+                                             VkDescriptorSet descriptor_set,
+                                             std::vector<std::shared_ptr<VulkanBindingSet>> logical_sets)
+        : vk_device(device), vk_descriptor_pool(descriptor_pool), vk_descriptor_set(descriptor_set),
+          source_sets(std::move(logical_sets))
     {
     }
 
@@ -460,18 +391,12 @@ namespace toy3d
         return vk_descriptor_set;
     }
 
-    VulkanGraphicsPipeline::VulkanGraphicsPipeline(
-        const RHIDevice& owner,
-        RHIGraphicsPipelineDesc desc,
-        VkDevice device,
-        VkRenderPass compatibility_render_pass,
-        VkPipelineLayout pipeline_layout,
-        VkPipeline pipeline)
-        : RHIGraphicsPipeline(owner, std::move(desc))
-        , vk_device(device)
-        , vk_compatibility_render_pass(compatibility_render_pass)
-        , vk_pipeline_layout(pipeline_layout)
-        , vk_pipeline(pipeline)
+    VulkanGraphicsPipeline::VulkanGraphicsPipeline(const RHIDevice& owner, RHIGraphicsPipelineDesc desc,
+                                                   VkDevice device, VkRenderPass compatibility_render_pass,
+                                                   VkPipelineLayout pipeline_layout, VkPipeline pipeline)
+        : RHIGraphicsPipeline(owner, std::move(desc)), vk_device(device),
+          vk_compatibility_render_pass(compatibility_render_pass), vk_pipeline_layout(pipeline_layout),
+          vk_pipeline(pipeline)
     {
     }
 
@@ -509,4 +434,4 @@ namespace toy3d
     {
         return render_pass.is_compatible_with(desc());
     }
-}
+} // namespace toy3d

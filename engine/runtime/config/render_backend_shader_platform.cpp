@@ -2,10 +2,8 @@
 
 namespace toy3d
 {
-    bool try_get_shader_platform_for_backend(
-        const std::string& backend_name,
-        ShaderPlatform& output,
-        std::string& error)
+    bool try_get_shader_platform_for_backend(const std::string& backend_name, ShaderPlatform& output,
+                                             std::string& error)
     {
         if (backend_name == "Vulkan")
         {
@@ -26,10 +24,8 @@ namespace toy3d
             return true;
         }
 
-        error = backend_name.empty()
-            ? "No RHI backend is enabled for built-in Shader selection."
-            : "RHI backend '" + backend_name +
-                "' has no configured ShaderPlatform mapping.";
+        error = backend_name.empty() ? "No RHI backend is enabled for built-in Shader selection."
+                                     : "RHI backend '" + backend_name + "' has no configured ShaderPlatform mapping.";
         return false;
     }
-}
+} // namespace toy3d

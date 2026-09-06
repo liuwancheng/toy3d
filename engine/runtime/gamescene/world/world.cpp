@@ -74,10 +74,7 @@ namespace toy3d
 
         world_time_seconds_ += delta_seconds;
         ++frame_number_;
-        const WorldTickContext context{
-            delta_seconds,
-            world_time_seconds_,
-            frame_number_};
+        const WorldTickContext context{delta_seconds, world_time_seconds_, frame_number_};
 
         ticking_ = true;
         const std::size_t actor_count_at_tick_start = actors_.size();
@@ -116,13 +113,8 @@ namespace toy3d
 
     World::ActorStorage::iterator World::find_actor(Actor& actor)
     {
-        return std::find_if(
-            actors_.begin(),
-            actors_.end(),
-            [&actor](const std::unique_ptr<Actor>& candidate)
-            {
-                return candidate.get() == &actor;
-            });
+        return std::find_if(actors_.begin(), actors_.end(),
+                            [&actor](const std::unique_ptr<Actor>& candidate) { return candidate.get() == &actor; });
     }
 
     bool World::destroy_actor(Actor& actor)
@@ -174,13 +166,8 @@ namespace toy3d
 
     bool World::contains(const Actor& actor) const
     {
-        return std::any_of(
-            actors_.begin(),
-            actors_.end(),
-            [&actor](const std::unique_ptr<Actor>& candidate)
-            {
-                return candidate.get() == &actor;
-            });
+        return std::any_of(actors_.begin(), actors_.end(),
+                           [&actor](const std::unique_ptr<Actor>& candidate) { return candidate.get() == &actor; });
     }
 
     bool World::bind_scene(SceneInterface& scene)
@@ -215,4 +202,4 @@ namespace toy3d
         scene_interface_ = nullptr;
         return true;
     }
-}
+} // namespace toy3d

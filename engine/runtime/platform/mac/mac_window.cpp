@@ -13,7 +13,7 @@ namespace toy3d
         win->resize(width, height);
     }
 
-    MacWindow::MacWindow(): IWindow()
+    MacWindow::MacWindow() : IWindow()
     {
         // 初始化窗口
         if (!create_glfw_window())
@@ -23,10 +23,10 @@ namespace toy3d
 
         // 初始化InputSystem
         platform_input = std::make_unique<MacPlatformInput>(glfw_window);
-        if (!platform_input->init()) 
+        if (!platform_input->init())
         {
-            //LOG_ERROR("Failed to initialize platform input system");
-            return ;
+            // LOG_ERROR("Failed to initialize platform input system");
+            return;
         }
     }
 
@@ -42,16 +42,10 @@ namespace toy3d
         properties.title = console.get_string("Window.Title", "toy3d");
         const int configured_width = console.get_int("Window.Width", 1280);
         const int configured_height = console.get_int("Window.Height", 720);
-        properties.extent.width = configured_width > 0
-            ? static_cast<std::uint32_t>(configured_width)
-            : 1U;
-        properties.extent.height = configured_height > 0
-            ? static_cast<std::uint32_t>(configured_height)
-            : 1U;
+        properties.extent.width = configured_width > 0 ? static_cast<std::uint32_t>(configured_width) : 1U;
+        properties.extent.height = configured_height > 0 ? static_cast<std::uint32_t>(configured_height) : 1U;
         properties.vsync = console.get_bool("Renderer.VSync", true) ? Vsync::ON : Vsync::OFF;
-        properties.mode = console.get_bool("Window.Fullscreen", false)
-            ? Mode::Fullscreen
-            : Mode::Default;
+        properties.mode = console.get_bool("Window.Fullscreen", false) ? Mode::Fullscreen : Mode::Default;
 
         // glfw init
         if (glfwInit() != GLFW_TRUE)
@@ -64,7 +58,8 @@ namespace toy3d
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfw_window = glfwCreateWindow(properties.extent.width, properties.extent.height, properties.title.c_str(), nullptr, nullptr);
+        glfw_window = glfwCreateWindow(properties.extent.width, properties.extent.height, properties.title.c_str(),
+                                       nullptr, nullptr);
         if (glfw_window == nullptr)
         {
             const char* error = nullptr;
@@ -88,9 +83,7 @@ namespace toy3d
         int framebuffer_width = 0;
         int framebuffer_height = 0;
         glfwGetFramebufferSize(glfw_window, &framebuffer_width, &framebuffer_height);
-        resize(
-            static_cast<uint32_t>(framebuffer_width),
-            static_cast<uint32_t>(framebuffer_height));
+        resize(static_cast<uint32_t>(framebuffer_width), static_cast<uint32_t>(framebuffer_height));
 
         glfwSetInputMode(glfw_window, GLFW_STICKY_KEYS, 1);
         glfwSetInputMode(glfw_window, GLFW_STICKY_MOUSE_BUTTONS, 1);
@@ -121,9 +114,8 @@ namespace toy3d
         {
             glfwGetWindowSize(glfw_window, &width, &height);
         }
-        return {
-            width > 0 ? static_cast<std::uint32_t>(width) : 0u,
-            height > 0 ? static_cast<std::uint32_t>(height) : 0u};
+        return {width > 0 ? static_cast<std::uint32_t>(width) : 0u,
+                height > 0 ? static_cast<std::uint32_t>(height) : 0u};
     }
 
     Extent MacWindow::get_framebuffer_size() const
@@ -134,9 +126,8 @@ namespace toy3d
         {
             glfwGetFramebufferSize(glfw_window, &width, &height);
         }
-        return {
-            width > 0 ? static_cast<std::uint32_t>(width) : 0u,
-            height > 0 ? static_cast<std::uint32_t>(height) : 0u};
+        return {width > 0 ? static_cast<std::uint32_t>(width) : 0u,
+                height > 0 ? static_cast<std::uint32_t>(height) : 0u};
     }
 
     bool MacWindow::should_close()
@@ -156,4 +147,4 @@ namespace toy3d
             glfwSetWindowShouldClose(glfw_window, true);
         }
     }
-}
+} // namespace toy3d

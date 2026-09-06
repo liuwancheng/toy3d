@@ -11,17 +11,17 @@ namespace toy3d
         win->resize(width, height);
     }
 
-    AndroidWindow::AndroidWindow(): IWindow()
+    AndroidWindow::AndroidWindow() : IWindow()
     {
         // 初始化窗口
         create_glfw_window();
 
         // 初始化InputSystem
         platform_input = std::make_unique<AndroidPlatformInput>(glfw_window);
-        if (!platform_input->init()) 
+        if (!platform_input->init())
         {
-            //LOG_ERROR("Failed to initialize platform input system");
-            return ;
+            // LOG_ERROR("Failed to initialize platform input system");
+            return;
         }
     }
 
@@ -37,23 +37,18 @@ namespace toy3d
         properties.title = console.get_string("Window.Title", "toy3d");
         const int configured_width = console.get_int("Window.Width", 1280);
         const int configured_height = console.get_int("Window.Height", 720);
-        properties.extent.width = configured_width > 0
-            ? static_cast<std::uint32_t>(configured_width)
-            : 1U;
-        properties.extent.height = configured_height > 0
-            ? static_cast<std::uint32_t>(configured_height)
-            : 1U;
+        properties.extent.width = configured_width > 0 ? static_cast<std::uint32_t>(configured_width) : 1U;
+        properties.extent.height = configured_height > 0 ? static_cast<std::uint32_t>(configured_height) : 1U;
         properties.vsync = console.get_bool("Renderer.VSync", true) ? Vsync::ON : Vsync::OFF;
-        properties.mode = console.get_bool("Window.Fullscreen", false)
-            ? Mode::Fullscreen
-            : Mode::Default;
+        properties.mode = console.get_bool("Window.Fullscreen", false) ? Mode::Fullscreen : Mode::Default;
 
         // glfw init
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfw_window = glfwCreateWindow(properties.extent.width, properties.extent.height, properties.title.c_str(), nullptr, nullptr);
+        glfw_window = glfwCreateWindow(properties.extent.width, properties.extent.height, properties.title.c_str(),
+                                       nullptr, nullptr);
         glfwSetWindowUserPointer(glfw_window, this);
         glfwSetFramebufferSizeCallback(glfw_window, frame_buffer_size_cb);
 
@@ -61,11 +56,11 @@ namespace toy3d
         glfwSetInputMode(glfw_window, GLFW_STICKY_MOUSE_BUTTONS, 1);
     }
 
-	void AndroidWindow::destroy_glfw_window()
-	{
+    void AndroidWindow::destroy_glfw_window()
+    {
         glfwDestroyWindow(glfw_window);
         glfwTerminate();
-	}
+    }
 
     void AndroidWindow::resize(uint32_t _width, uint32_t _height)
     {
@@ -80,9 +75,8 @@ namespace toy3d
         {
             glfwGetWindowSize(glfw_window, &width, &height);
         }
-        return {
-            width > 0 ? static_cast<std::uint32_t>(width) : 0u,
-            height > 0 ? static_cast<std::uint32_t>(height) : 0u};
+        return {width > 0 ? static_cast<std::uint32_t>(width) : 0u,
+                height > 0 ? static_cast<std::uint32_t>(height) : 0u};
     }
 
     Extent AndroidWindow::get_framebuffer_size() const
@@ -93,9 +87,8 @@ namespace toy3d
         {
             glfwGetFramebufferSize(glfw_window, &width, &height);
         }
-        return {
-            width > 0 ? static_cast<std::uint32_t>(width) : 0u,
-            height > 0 ? static_cast<std::uint32_t>(height) : 0u};
+        return {width > 0 ? static_cast<std::uint32_t>(width) : 0u,
+                height > 0 ? static_cast<std::uint32_t>(height) : 0u};
     }
 
     bool AndroidWindow::should_close()
@@ -110,6 +103,6 @@ namespace toy3d
 
     void AndroidWindow::close()
     {
-		  glfwSetWindowShouldClose(glfw_window, true);
+        glfwSetWindowShouldClose(glfw_window, true);
     }
-}
+} // namespace toy3d

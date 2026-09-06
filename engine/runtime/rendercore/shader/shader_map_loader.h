@@ -19,13 +19,11 @@ namespace toy3d
 
     class ShaderMapLoader
     {
-    public:
+      public:
         virtual ~ShaderMapLoader() = default;
-        virtual ShaderMapProgramLoadResult load_program(
-            const ShaderMapProgramKey& key) const = 0;
+        virtual ShaderMapProgramLoadResult load_program(const ShaderMapProgramKey& key) const = 0;
     };
 
-    ShaderMapProgramLoadResult validate_shader_map_program(
-        ShaderMapProgramData program,
-        const ShaderMapProgramKey& key);
-}
+    ShaderMapProgramLoadResult validate_shader_map_program(ShaderMapProgramData program,
+                                                           const ShaderMapProgramKey& key);
+} // namespace toy3d

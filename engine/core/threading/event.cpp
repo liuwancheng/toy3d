@@ -2,10 +2,7 @@
 
 namespace toy3d
 {
-    Event::Event(EventMode mode)
-        : mode_(mode)
-    {
-    }
+    Event::Event(EventMode mode) : mode_(mode) {}
 
     void Event::trigger()
     {
@@ -55,4 +52,4 @@ namespace toy3d
         }
         return true;
     }
-}
+} // namespace toy3d

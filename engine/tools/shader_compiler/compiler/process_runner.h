@@ -14,7 +14,5 @@ namespace toy3d::shader
         std::string output;
     };
 
-    ProcessResult run_process(
-        const PhysicalPath& executable,
-        const std::vector<std::string>& arguments);
-}
+    ProcessResult run_process(const PhysicalPath& executable, const std::vector<std::string>& arguments);
+} // namespace toy3d::shader

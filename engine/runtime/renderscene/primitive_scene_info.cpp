@@ -7,12 +7,10 @@
 
 namespace toy3d
 {
-    PrimitiveSceneInfo::PrimitiveSceneInfo(
-        std::unique_ptr<PrimitiveSceneProxy> proxy)
-        : proxy_(std::move(proxy))
+    PrimitiveSceneInfo::PrimitiveSceneInfo(std::unique_ptr<PrimitiveSceneProxy> proxy) : proxy_(std::move(proxy))
     {
         assert(proxy_ != nullptr);
     }
 
     PrimitiveSceneInfo::~PrimitiveSceneInfo() = default;
-}
+} // namespace toy3d

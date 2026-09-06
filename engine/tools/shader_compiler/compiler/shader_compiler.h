@@ -16,11 +16,7 @@ namespace toy3d::shader
     };
 
     VulkanShaderCodeEntryResult compile_vulkan_shader_code_entry(
-        const ShaderCompileRequest& request,
-        const TargetBindingLayout& target_layout,
-        const DiscoveredShaderToolchain& toolchain,
-        PlatformFile& platform_file,
-        const PhysicalPath& working_directory,
-        const PhysicalPath& entry_root,
-        const ShaderProcessRunner& process_runner = run_process);
-}
+        const ShaderCompileRequest& request, const TargetBindingLayout& target_layout,
+        const DiscoveredShaderToolchain& toolchain, PlatformFile& platform_file, const PhysicalPath& working_directory,
+        const PhysicalPath& entry_root, const ShaderProcessRunner& process_runner = run_process);
+} // namespace toy3d::shader

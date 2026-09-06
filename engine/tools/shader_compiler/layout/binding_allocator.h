@@ -74,10 +74,8 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    TargetBindingResult allocate_target_bindings(
-        const ActiveShaderLayout& active_layout,
-        ShaderTarget target,
-        const TargetBindingLimits& limits);
+    TargetBindingResult allocate_target_bindings(const ActiveShaderLayout& active_layout, ShaderTarget target,
+                                                 const TargetBindingLimits& limits);
 
     Sha256Hash calculate_target_binding_hash(const TargetBindingLayout& layout);
-}
+} // namespace toy3d::shader

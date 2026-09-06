@@ -43,7 +43,7 @@ namespace toy3d
 
     class Material
     {
-    public:
+      public:
         static std::shared_ptr<const Material> create(MaterialDesc desc);
         ~Material() = default;
 
@@ -54,7 +54,7 @@ namespace toy3d
 
         const MaterialDesc& desc() const { return desc_; }
 
-    private:
+      private:
         explicit Material(MaterialDesc desc);
 
         MaterialDesc desc_;
@@ -64,7 +64,7 @@ namespace toy3d
 
     class MaterialInstance
     {
-    public:
+      public:
         static std::shared_ptr<MaterialInstance> create(MaterialRef material);
         // The caller must hold the final MaterialInstance reference. A used
         // Render-side representation is destroyed by the accepted command.
@@ -84,9 +84,7 @@ namespace toy3d
         bool set_vector(ShaderParameterId parameter_id, const vec4& value);
         bool set_texture(ShaderParameterId parameter_id, TextureRef texture);
 
-        bool stage_material_replacement(
-            std::shared_ptr<const ShaderMapProgram> shader_program,
-            bool two_sided);
+        bool stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program, bool two_sided);
         bool publish_material_replacement();
         bool discard_material_replacement();
 
@@ -94,12 +92,10 @@ namespace toy3d
         // logical Rendering Thread may dereference the returned pointer.
         MaterialRenderProxy* material_render_proxy() noexcept;
 
-    private:
+      private:
         explicit MaterialInstance(MaterialRef material);
 
-        bool validate_constant_parameter(
-            ShaderParameterId parameter_id,
-            ShaderValueType expected_value_type) const;
+        bool validate_constant_parameter(ShaderParameterId parameter_id, ShaderValueType expected_value_type) const;
         bool validate_texture_parameter(ShaderParameterId parameter_id) const;
         bool resolve_material_replacement_publication();
 
@@ -108,10 +104,8 @@ namespace toy3d
         std::shared_ptr<const ShaderMapProgram> pending_shader_program_;
         bool two_sided_ = false;
         bool pending_two_sided_ = false;
-        std::shared_ptr<std::atomic<bool>> replacement_commit_complete_ =
-            std::make_shared<std::atomic<bool>>(false);
-        std::shared_ptr<std::atomic<bool>> replacement_commit_succeeded_ =
-            std::make_shared<std::atomic<bool>>(false);
+        std::shared_ptr<std::atomic<bool>> replacement_commit_complete_ = std::make_shared<std::atomic<bool>>(false);
+        std::shared_ptr<std::atomic<bool>> replacement_commit_succeeded_ = std::make_shared<std::atomic<bool>>(false);
         bool replacement_publication_pending_ = false;
         std::unordered_map<ShaderParameterId, float> scalar_overrides_;
         std::unordered_map<ShaderParameterId, vec2> vector2_overrides_;
@@ -124,4 +118,4 @@ namespace toy3d
     };
 
     using MaterialInstanceRef = std::shared_ptr<MaterialInstance>;
-}
+} // namespace toy3d

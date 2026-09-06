@@ -69,8 +69,7 @@ namespace toy3d
         std::vector<Stage> stages;
         std::vector<VertexInput> vertex_inputs;
 
-        static RHIShaderProgramKey from_program(
-            const ShaderMapProgramData& program);
+        static RHIShaderProgramKey from_program(const ShaderMapProgramData& program);
         bool operator==(const RHIShaderProgramKey& other) const;
     };
 
@@ -83,7 +82,7 @@ namespace toy3d
 
     class RHIShaderProgramCache final
     {
-    public:
+      public:
         // The Renderer owns this cache on logical RT and guarantees that the
         // referenced device outlives the cache and every returned Program ref.
         explicit RHIShaderProgramCache(RHIDevice& device);
@@ -91,16 +90,12 @@ namespace toy3d
         RHIShaderProgramCache(const RHIShaderProgramCache&) = delete;
         RHIShaderProgramCache& operator=(const RHIShaderProgramCache&) = delete;
 
-        RHIResult<RHIShaderProgramRef> find_or_create(
-            const ShaderMapProgramRef& program);
+        RHIResult<RHIShaderProgramRef> find_or_create(const ShaderMapProgramRef& program);
         void clear();
         std::size_t size() const;
 
-    private:
+      private:
         RHIDevice& device_;
-        std::unordered_map<
-            RHIShaderProgramKey,
-            RHIShaderProgramRef,
-            RHIShaderProgramKeyHash> programs_;
+        std::unordered_map<RHIShaderProgramKey, RHIShaderProgramRef, RHIShaderProgramKeyHash> programs_;
     };
-}
+} // namespace toy3d

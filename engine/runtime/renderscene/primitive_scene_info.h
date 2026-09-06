@@ -10,9 +10,8 @@ namespace toy3d
     // Game-side observer other than the Proxy's opaque address.
     class PrimitiveSceneInfo final
     {
-    public:
-        explicit PrimitiveSceneInfo(
-            std::unique_ptr<PrimitiveSceneProxy> proxy);
+      public:
+        explicit PrimitiveSceneInfo(std::unique_ptr<PrimitiveSceneProxy> proxy);
         ~PrimitiveSceneInfo();
 
         PrimitiveSceneInfo(const PrimitiveSceneInfo&) = delete;
@@ -20,7 +19,7 @@ namespace toy3d
 
         PrimitiveSceneProxy* proxy() const { return proxy_.get(); }
 
-    private:
+      private:
         std::unique_ptr<PrimitiveSceneProxy> proxy_;
     };
-}
+} // namespace toy3d

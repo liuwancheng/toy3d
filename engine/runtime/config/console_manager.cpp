@@ -24,7 +24,7 @@ namespace toy3d
             const std::size_t last = value.find_last_not_of(" \t");
             value = value.substr(first, last - first + 1);
         }
-    }
+    } // namespace
 
     ConsoleManager& ConsoleManager::get_instance()
     {
@@ -32,9 +32,7 @@ namespace toy3d
         return instance;
     }
 
-    FileStatus ConsoleManager::load_config(
-        FileSystem& file_system,
-        const VirtualPath& path)
+    FileStatus ConsoleManager::load_config(FileSystem& file_system, const VirtualPath& path)
     {
         auto text = file_system.read_text_utf8(path);
         if (!text.succeeded())
@@ -50,9 +48,7 @@ namespace toy3d
         while (offset <= source.size())
         {
             const std::size_t newline = source.find('\n', offset);
-            line = source.substr(
-                offset,
-                newline == std::string::npos ? std::string::npos : newline - offset);
+            line = source.substr(offset, newline == std::string::npos ? std::string::npos : newline - offset);
             if (!line.empty() && line.back() == '\r')
             {
                 line.pop_back();
@@ -61,7 +57,8 @@ namespace toy3d
 
             if (line.empty() || line[0] == ';' || line[0] == '#')
             {
-                if (newline == std::string::npos) break;
+                if (newline == std::string::npos)
+                    break;
                 offset = newline + 1;
                 continue;
             }
@@ -70,7 +67,8 @@ namespace toy3d
             {
                 section = line.substr(1, line.size() - 2);
                 trim(section);
-                if (newline == std::string::npos) break;
+                if (newline == std::string::npos)
+                    break;
                 offset = newline + 1;
                 continue;
             }
@@ -100,7 +98,8 @@ namespace toy3d
                 }
             }
 
-            if (newline == std::string::npos) break;
+            if (newline == std::string::npos)
+                break;
             offset = newline + 1;
         }
 
@@ -115,9 +114,7 @@ namespace toy3d
         values_[key] = value;
     }
 
-    std::string ConsoleManager::get_string(
-        const std::string& key,
-        const std::string& default_value) const
+    std::string ConsoleManager::get_string(const std::string& key, const std::string& default_value) const
     {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         const auto found = values_.find(key);
@@ -127,7 +124,8 @@ namespace toy3d
     int ConsoleManager::get_int(const std::string& key, int default_value) const
     {
         const std::string value = get_string(key);
-        if (value.empty()) return default_value;
+        if (value.empty())
+            return default_value;
         try
         {
             return std::stoi(value);
@@ -141,7 +139,8 @@ namespace toy3d
     float ConsoleManager::get_float(const std::string& key, float default_value) const
     {
         const std::string value = get_string(key);
-        if (value.empty()) return default_value;
+        if (value.empty())
+            return default_value;
         try
         {
             return std::stof(value);
@@ -155,23 +154,22 @@ namespace toy3d
     bool ConsoleManager::get_bool(const std::string& key, bool default_value) const
     {
         std::string value = get_string(key);
-        if (value.empty()) return default_value;
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character)
-        {
-            return static_cast<char>(std::tolower(character));
-        });
-        if (value == "true" || value == "1" || value == "yes" || value == "on") return true;
-        if (value == "false" || value == "0" || value == "no" || value == "off") return false;
+        if (value.empty())
+            return default_value;
+        std::transform(value.begin(), value.end(), value.begin(),
+                       [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (value == "true" || value == "1" || value == "yes" || value == "on")
+            return true;
+        if (value == "false" || value == "0" || value == "no" || value == "off")
+            return false;
         return default_value;
     }
 
-    void ConsoleManager::parse_resolution(
-        const std::string& value,
-        int& width,
-        int& height) const
+    void ConsoleManager::parse_resolution(const std::string& value, int& width, int& height) const
     {
         const std::size_t separator = value.find('x');
-        if (separator == std::string::npos) return;
+        if (separator == std::string::npos)
+            return;
         try
         {
             width = std::stoi(value.substr(0, separator));
@@ -189,4 +187,4 @@ namespace toy3d
         std::unique_lock<std::shared_mutex> lock(mutex_);
         values_.clear();
     }
-}
+} // namespace toy3d

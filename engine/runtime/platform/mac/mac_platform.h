@@ -5,8 +5,8 @@ namespace toy3d
 {
     class MacPlatform : public IPlatform
     {
-    public:
-        MacPlatform() :IPlatform() {};
+      public:
+        MacPlatform() : IPlatform() {};
         virtual ~MacPlatform() {};
 
         virtual bool init();

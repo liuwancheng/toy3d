@@ -154,4 +154,4 @@ namespace toy3d
     {
         state_dirty_flags |= flags;
     }
-}
+} // namespace toy3d

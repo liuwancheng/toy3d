@@ -1,0 +1,5 @@
+# Third-party, generated, and build outputs retain their upstream/generated form.
+engine/thirdparty/**
+engine/runtime/generated/**
+build/**
+bin/**

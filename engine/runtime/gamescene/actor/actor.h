@@ -15,7 +15,7 @@ namespace toy3d
 
     class Actor
     {
-    public:
+      public:
         explicit Actor(World& world) : world_(world) {}
         virtual ~Actor();
 
@@ -31,14 +31,12 @@ namespace toy3d
         void set_tick_enabled(bool enabled) { tick_enabled_ = enabled; }
         SceneComponent* root_component() const { return root_component_; }
 
-        template<typename Component, typename... Args>
-        Component& create_component(Args&&... args)
+        template <typename Component, typename... Args> Component& create_component(Args&&... args)
         {
             static_assert(std::is_base_of<ActorComponent, Component>::value,
-                "Component must derive from ActorComponent");
+                          "Component must derive from ActorComponent");
 
-            auto component = std::make_unique<Component>(
-                *this, std::forward<Args>(args)...);
+            auto component = std::make_unique<Component>(*this, std::forward<Args>(args)...);
             Component& result = *component;
             components_.push_back(std::move(component));
             if (registered_)
@@ -58,13 +56,13 @@ namespace toy3d
 
         bool set_root_component(SceneComponent* component);
 
-    protected:
+      protected:
         virtual void on_initialize() {}
         virtual void on_begin_play() {}
         virtual void tick(const WorldTickContext&) {}
         virtual void on_end_play(EndPlayReason) {}
 
-    private:
+      private:
         friend class World;
 
         bool owns_component(const ActorComponent& component) const;
@@ -87,4 +85,4 @@ namespace toy3d
         bool pending_destroy_ = false;
         bool tick_enabled_ = false;
     };
-}
+} // namespace toy3d

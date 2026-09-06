@@ -1,0 +1,29 @@
+# Repository-wide C/C++ formatting policy. Keep ordinary declarations and calls
+# on one line whenever they fit; let clang-format wrap only when the 120-column
+# limit or C++ grammar requires it.
+BasedOnStyle: Microsoft
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+BreakBeforeBraces: Allman
+PointerAlignment: Left
+# Namespace scopes are visual ownership boundaries in this codebase. Indent
+# their contents so declarations do not visually blend with global scope.
+NamespaceIndentation: All
+
+# Pack short argument and parameter lists instead of expanding every element
+# merely because a list spans more than one syntactic construct.
+BinPackArguments: true
+BinPackParameters: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+
+# Include ordering is a separate architectural decision. A formatting-only
+# change must not create unrelated include-order diffs.
+SortIncludes: Never

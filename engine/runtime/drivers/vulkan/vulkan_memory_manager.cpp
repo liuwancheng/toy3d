@@ -33,22 +33,19 @@ namespace toy3d
                 break;
             case VulkanAllocationUsage::CpuUpload:
                 create_info.flags =
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                    VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
                 create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
                 create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
                 break;
             case VulkanAllocationUsage::CpuReadback:
-                create_info.flags =
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                    VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
                 create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
                 create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
                 break;
             }
             return create_info;
         }
-    }
+    } // namespace
 
     VulkanMemoryManager::~VulkanMemoryManager()
     {
@@ -59,13 +56,9 @@ namespace toy3d
     {
         if (vma_allocator != VK_NULL_HANDLE)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan memory manager is already initialized.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Vulkan memory manager is already initialized.");
         }
-        if (desc.instance == VK_NULL_HANDLE ||
-            desc.physical_device == VK_NULL_HANDLE ||
-            desc.device == VK_NULL_HANDLE)
+        if (desc.instance == VK_NULL_HANDLE || desc.physical_device == VK_NULL_HANDLE || desc.device == VK_NULL_HANDLE)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -82,10 +75,9 @@ namespace toy3d
         if (result != VK_SUCCESS)
         {
             vma_allocator = VK_NULL_HANDLE;
-            return RHIStatus::failure(
-                allocation_error_code(result),
-                "vmaCreateAllocator failed with VkResult " +
-                    std::to_string(static_cast<int>(result)) + ".");
+            return RHIStatus::failure(allocation_error_code(result), "vmaCreateAllocator failed with VkResult " +
+                                                                         std::to_string(static_cast<int>(result)) +
+                                                                         ".");
         }
         manager_stats = {};
         return RHIStatus::success();
@@ -100,16 +92,14 @@ namespace toy3d
         }
     }
 
-    RHIResult<VulkanAllocatedBuffer> VulkanMemoryManager::create_buffer(
-        const VkBufferCreateInfo& buffer_info,
-        VulkanAllocationUsage allocation_usage,
-        const char* debug_name)
+    RHIResult<VulkanAllocatedBuffer> VulkanMemoryManager::create_buffer(const VkBufferCreateInfo& buffer_info,
+                                                                        VulkanAllocationUsage allocation_usage,
+                                                                        const char* debug_name)
     {
         if (vma_allocator == VK_NULL_HANDLE)
         {
-            return RHIResult<VulkanAllocatedBuffer>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan memory manager is not initialized.");
+            return RHIResult<VulkanAllocatedBuffer>::failure(RHIErrorCode::NotReady,
+                                                             "Vulkan memory manager is not initialized.");
         }
         if (buffer_info.sType != VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO || buffer_info.size == 0)
         {
@@ -118,24 +108,17 @@ namespace toy3d
                 "Vulkan buffer allocation requires a valid create info and non-zero size.");
         }
 
-        const VmaAllocationCreateInfo allocation_create_info =
-            make_allocation_create_info(allocation_usage);
+        const VmaAllocationCreateInfo allocation_create_info = make_allocation_create_info(allocation_usage);
         VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
         VmaAllocationInfo allocation_info{};
-        const VkResult result = vmaCreateBuffer(
-            vma_allocator,
-            &buffer_info,
-            &allocation_create_info,
-            &buffer,
-            &allocation,
-            &allocation_info);
+        const VkResult result = vmaCreateBuffer(vma_allocator, &buffer_info, &allocation_create_info, &buffer,
+                                                &allocation, &allocation_info);
         if (result != VK_SUCCESS)
         {
-            return RHIResult<VulkanAllocatedBuffer>::failure(
-                allocation_error_code(result),
-                "vmaCreateBuffer failed with VkResult " +
-                    std::to_string(static_cast<int>(result)) + ".");
+            return RHIResult<VulkanAllocatedBuffer>::failure(allocation_error_code(result),
+                                                             "vmaCreateBuffer failed with VkResult " +
+                                                                 std::to_string(static_cast<int>(result)) + ".");
         }
 
         if (debug_name != nullptr && debug_name[0] != '\0')
@@ -154,8 +137,7 @@ namespace toy3d
         ++manager_stats.active_buffer_allocations;
         manager_stats.active_buffer_bytes += allocation_info.size;
         manager_stats.peak_active_bytes = std::max(
-            manager_stats.peak_active_bytes,
-            manager_stats.active_buffer_bytes + manager_stats.active_image_bytes);
+            manager_stats.peak_active_bytes, manager_stats.active_buffer_bytes + manager_stats.active_image_bytes);
         return RHIResult<VulkanAllocatedBuffer>::success(std::move(allocated_buffer));
     }
 
@@ -175,17 +157,15 @@ namespace toy3d
                 --manager_stats.active_buffer_allocations;
             }
             manager_stats.active_buffer_bytes = allocation_size <= manager_stats.active_buffer_bytes
-                ? manager_stats.active_buffer_bytes - allocation_size
-                : 0;
+                                                    ? manager_stats.active_buffer_bytes - allocation_size
+                                                    : 0;
         }
         buffer.buffer = VK_NULL_HANDLE;
         buffer.allocation = {};
     }
 
-    RHIStatus VulkanMemoryManager::flush_allocation(
-        const VulkanAllocation& allocation,
-        VkDeviceSize offset,
-        VkDeviceSize size)
+    RHIStatus VulkanMemoryManager::flush_allocation(const VulkanAllocation& allocation, VkDeviceSize offset,
+                                                    VkDeviceSize size)
     {
         if (vma_allocator == VK_NULL_HANDLE || allocation.handle == VK_NULL_HANDLE)
         {
@@ -194,53 +174,41 @@ namespace toy3d
         const VkResult result = vmaFlushAllocation(vma_allocator, allocation.handle, offset, size);
         if (result != VK_SUCCESS)
         {
-            return RHIStatus::failure(
-                allocation_error_code(result),
-                "vmaFlushAllocation failed with VkResult " +
-                    std::to_string(static_cast<int>(result)) + ".");
+            return RHIStatus::failure(allocation_error_code(result), "vmaFlushAllocation failed with VkResult " +
+                                                                         std::to_string(static_cast<int>(result)) +
+                                                                         ".");
         }
         return RHIStatus::success();
     }
 
-    RHIResult<VulkanAllocatedImage> VulkanMemoryManager::create_image(
-        const VkImageCreateInfo& image_info,
-        VulkanAllocationUsage allocation_usage,
-        const char* debug_name)
+    RHIResult<VulkanAllocatedImage> VulkanMemoryManager::create_image(const VkImageCreateInfo& image_info,
+                                                                      VulkanAllocationUsage allocation_usage,
+                                                                      const char* debug_name)
     {
         if (vma_allocator == VK_NULL_HANDLE)
         {
-            return RHIResult<VulkanAllocatedImage>::failure(
-                RHIErrorCode::NotReady,
-                "Vulkan memory manager is not initialized.");
+            return RHIResult<VulkanAllocatedImage>::failure(RHIErrorCode::NotReady,
+                                                            "Vulkan memory manager is not initialized.");
         }
-        if (image_info.sType != VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO ||
-            image_info.extent.width == 0 ||
-            image_info.extent.height == 0 ||
-            image_info.extent.depth == 0)
+        if (image_info.sType != VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO || image_info.extent.width == 0 ||
+            image_info.extent.height == 0 || image_info.extent.depth == 0)
         {
             return RHIResult<VulkanAllocatedImage>::failure(
                 RHIErrorCode::InvalidArgument,
                 "Vulkan image allocation requires a valid create info and non-zero extent.");
         }
 
-        const VmaAllocationCreateInfo allocation_create_info =
-            make_allocation_create_info(allocation_usage);
+        const VmaAllocationCreateInfo allocation_create_info = make_allocation_create_info(allocation_usage);
         VkImage image = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
         VmaAllocationInfo allocation_info{};
-        const VkResult result = vmaCreateImage(
-            vma_allocator,
-            &image_info,
-            &allocation_create_info,
-            &image,
-            &allocation,
-            &allocation_info);
+        const VkResult result =
+            vmaCreateImage(vma_allocator, &image_info, &allocation_create_info, &image, &allocation, &allocation_info);
         if (result != VK_SUCCESS)
         {
-            return RHIResult<VulkanAllocatedImage>::failure(
-                allocation_error_code(result),
-                "vmaCreateImage failed with VkResult " +
-                    std::to_string(static_cast<int>(result)) + ".");
+            return RHIResult<VulkanAllocatedImage>::failure(allocation_error_code(result),
+                                                            "vmaCreateImage failed with VkResult " +
+                                                                std::to_string(static_cast<int>(result)) + ".");
         }
 
         if (debug_name != nullptr && debug_name[0] != '\0')
@@ -259,8 +227,7 @@ namespace toy3d
         ++manager_stats.active_image_allocations;
         manager_stats.active_image_bytes += allocation_info.size;
         manager_stats.peak_active_bytes = std::max(
-            manager_stats.peak_active_bytes,
-            manager_stats.active_buffer_bytes + manager_stats.active_image_bytes);
+            manager_stats.peak_active_bytes, manager_stats.active_buffer_bytes + manager_stats.active_image_bytes);
         return RHIResult<VulkanAllocatedImage>::success(std::move(allocated_image));
     }
 
@@ -280,8 +247,8 @@ namespace toy3d
                 --manager_stats.active_image_allocations;
             }
             manager_stats.active_image_bytes = allocation_size <= manager_stats.active_image_bytes
-                ? manager_stats.active_image_bytes - allocation_size
-                : 0;
+                                                   ? manager_stats.active_image_bytes - allocation_size
+                                                   : 0;
         }
         image.image = VK_NULL_HANDLE;
         image.allocation = {};
@@ -296,4 +263,4 @@ namespace toy3d
     {
         return manager_stats;
     }
-}
+} // namespace toy3d

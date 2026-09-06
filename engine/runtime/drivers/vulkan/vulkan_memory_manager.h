@@ -48,8 +48,7 @@ namespace toy3d
         VulkanAllocatedBuffer& operator=(const VulkanAllocatedBuffer&) = delete;
 
         VulkanAllocatedBuffer(VulkanAllocatedBuffer&& other) noexcept
-            : buffer(std::exchange(other.buffer, VK_NULL_HANDLE))
-            , allocation(other.allocation)
+            : buffer(std::exchange(other.buffer, VK_NULL_HANDLE)), allocation(other.allocation)
         {
             other.allocation = {};
         }
@@ -67,8 +66,7 @@ namespace toy3d
         VulkanAllocatedImage& operator=(const VulkanAllocatedImage&) = delete;
 
         VulkanAllocatedImage(VulkanAllocatedImage&& other) noexcept
-            : image(std::exchange(other.image, VK_NULL_HANDLE))
-            , allocation(other.allocation)
+            : image(std::exchange(other.image, VK_NULL_HANDLE)), allocation(other.allocation)
         {
             other.allocation = {};
         }
@@ -94,7 +92,7 @@ namespace toy3d
 
     class VulkanMemoryManager final
     {
-    public:
+      public:
         VulkanMemoryManager() = default;
         ~VulkanMemoryManager();
 
@@ -104,27 +102,22 @@ namespace toy3d
         RHIStatus initialize(const VulkanMemoryManagerDesc& desc);
         void shutdown();
 
-        RHIResult<VulkanAllocatedBuffer> create_buffer(
-            const VkBufferCreateInfo& buffer_info,
-            VulkanAllocationUsage allocation_usage,
-            const char* debug_name = nullptr);
+        RHIResult<VulkanAllocatedBuffer> create_buffer(const VkBufferCreateInfo& buffer_info,
+                                                       VulkanAllocationUsage allocation_usage,
+                                                       const char* debug_name = nullptr);
         void destroy_buffer(VulkanAllocatedBuffer& buffer);
-        RHIStatus flush_allocation(
-            const VulkanAllocation& allocation,
-            VkDeviceSize offset,
-            VkDeviceSize size);
+        RHIStatus flush_allocation(const VulkanAllocation& allocation, VkDeviceSize offset, VkDeviceSize size);
 
-        RHIResult<VulkanAllocatedImage> create_image(
-            const VkImageCreateInfo& image_info,
-            VulkanAllocationUsage allocation_usage,
-            const char* debug_name = nullptr);
+        RHIResult<VulkanAllocatedImage> create_image(const VkImageCreateInfo& image_info,
+                                                     VulkanAllocationUsage allocation_usage,
+                                                     const char* debug_name = nullptr);
         void destroy_image(VulkanAllocatedImage& image);
 
         bool is_initialized() const;
         VulkanMemoryManagerStats statistics() const;
 
-    private:
+      private:
         VmaAllocator vma_allocator = VK_NULL_HANDLE;
         VulkanMemoryManagerStats manager_stats;
     };
-}
+} // namespace toy3d

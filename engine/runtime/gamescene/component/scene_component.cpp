@@ -30,20 +30,16 @@ namespace toy3d
 
     bool SceneComponent::validate_transform(const Transform& transform)
     {
-        if (!is_finite(transform.translation) ||
-            !is_finite(transform.rotation) ||
-            !is_finite(transform.scale))
+        if (!is_finite(transform.translation) || !is_finite(transform.rotation) || !is_finite(transform.scale))
         {
             TOY_LOG_ERROR("Scene transform values must be finite.");
             return false;
         }
 
-        if (transform.scale.x <= k_default_float_tolerance ||
-            transform.scale.y <= k_default_float_tolerance ||
+        if (transform.scale.x <= k_default_float_tolerance || transform.scale.y <= k_default_float_tolerance ||
             transform.scale.z <= k_default_float_tolerance)
         {
-            TOY_LOG_ERROR(
-                "Scene transform scale must be positive and greater than the default float tolerance.");
+            TOY_LOG_ERROR("Scene transform scale must be positive and greater than the default float tolerance.");
             return false;
         }
 
@@ -65,15 +61,12 @@ namespace toy3d
         }
 
         local_transform_ = transform;
-        local_transform_.rotation = normalize_unchecked(
-            local_transform_.rotation);
+        local_transform_.rotation = normalize_unchecked(local_transform_.rotation);
         update_component_to_world();
         return true;
     }
 
-    bool SceneComponent::attach_to(
-        SceneComponent* new_parent,
-        AttachmentRule rule)
+    bool SceneComponent::attach_to(SceneComponent* new_parent, AttachmentRule rule)
     {
         if (new_parent == this)
         {
@@ -102,18 +95,15 @@ namespace toy3d
             if (new_parent != nullptr)
             {
                 Matrix4 inverse_parent;
-                if (!try_inverse(
-                        new_parent->world_transform_, inverse_parent))
+                if (!try_inverse(new_parent->world_transform_, inverse_parent))
                 {
-                    TOY_LOG_ERROR(
-                        "KeepWorld requires an invertible parent world transform.");
+                    TOY_LOG_ERROR("KeepWorld requires an invertible parent world transform.");
                     return false;
                 }
                 relative_matrix = inverse_parent * world_transform_;
             }
 
-            if (!try_decompose_transform(
-                    relative_matrix, new_local_transform))
+            if (!try_decompose_transform(relative_matrix, new_local_transform))
             {
                 TOY_LOG_ERROR(
                     "KeepWorld would require shear or a transform that cannot be represented as positive-scale TRS.");
@@ -157,8 +147,7 @@ namespace toy3d
         if (parent_ != nullptr)
         {
             world_transform_ = parent_->world_transform_ * local_matrix;
-            world_rotation_ = normalize_unchecked(
-                parent_->world_rotation_ * local_transform_.rotation);
+            world_rotation_ = normalize_unchecked(parent_->world_rotation_ * local_transform_.rotation);
         }
         else
         {
@@ -181,4 +170,4 @@ namespace toy3d
         }
     }
 
-}
+} // namespace toy3d

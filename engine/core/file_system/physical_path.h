@@ -6,7 +6,7 @@ namespace toy3d
 {
     class PhysicalPath
     {
-    public:
+      public:
         PhysicalPath() = default;
         explicit PhysicalPath(std::string utf8_path);
 
@@ -19,13 +19,10 @@ namespace toy3d
             return lhs.utf8_path_ == rhs.utf8_path_;
         }
 
-        friend bool operator!=(const PhysicalPath& lhs, const PhysicalPath& rhs)
-        {
-            return !(lhs == rhs);
-        }
+        friend bool operator!=(const PhysicalPath& lhs, const PhysicalPath& rhs) { return !(lhs == rhs); }
 
-    private:
+      private:
         std::string utf8_path_;
         bool valid_ = true;
     };
-}
+} // namespace toy3d

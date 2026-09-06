@@ -37,11 +37,8 @@ namespace toy3d
             return BindingRegisterClass::ShaderResource;
         }
 
-        bool binding_ranges_overlap(
-            std::uint32_t first_slot,
-            std::uint32_t first_count,
-            std::uint32_t second_slot,
-            std::uint32_t second_count)
+        bool binding_ranges_overlap(std::uint32_t first_slot, std::uint32_t first_count, std::uint32_t second_slot,
+                                    std::uint32_t second_count)
         {
             const std::uint64_t first_end = static_cast<std::uint64_t>(first_slot) + first_count;
             const std::uint64_t second_end = static_cast<std::uint64_t>(second_slot) + second_count;
@@ -50,23 +47,17 @@ namespace toy3d
 
         bool is_depth_format(PixelFormat format)
         {
-            return format == PixelFormat::D16UNorm ||
-                format == PixelFormat::D24UNormS8UInt ||
-                format == PixelFormat::D32Float ||
-                format == PixelFormat::D32FloatS8UInt;
+            return format == PixelFormat::D16UNorm || format == PixelFormat::D24UNormS8UInt ||
+                   format == PixelFormat::D32Float || format == PixelFormat::D32FloatS8UInt;
         }
 
         bool has_stencil(PixelFormat format)
         {
-            return format == PixelFormat::D24UNormS8UInt ||
-                format == PixelFormat::D32FloatS8UInt;
+            return format == PixelFormat::D24UNormS8UInt || format == PixelFormat::D32FloatS8UInt;
         }
 
-        bool vertex_format_shape(
-            PixelFormat format,
-            RHIShaderVertexInputReflection::ScalarType& scalar_type,
-            std::uint32_t& component_count,
-            std::uint32_t& byte_size)
+        bool vertex_format_shape(PixelFormat format, RHIShaderVertexInputReflection::ScalarType& scalar_type,
+                                 std::uint32_t& component_count, std::uint32_t& byte_size)
         {
             scalar_type = RHIShaderVertexInputReflection::ScalarType::Float32;
             switch (format)
@@ -174,16 +165,12 @@ namespace toy3d
 
         RHIResult<RHIResourceBindingType> binding_value_type(const RHIBindingValue& value)
         {
-            const std::uint32_t populated_fields =
-                (value.buffer ? 1U : 0U) +
-                (value.buffer_view ? 1U : 0U) +
-                (value.texture_view ? 1U : 0U) +
-                (value.sampler ? 1U : 0U);
+            const std::uint32_t populated_fields = (value.buffer ? 1U : 0U) + (value.buffer_view ? 1U : 0U) +
+                                                   (value.texture_view ? 1U : 0U) + (value.sampler ? 1U : 0U);
             if (populated_fields != 1)
             {
-                return RHIResult<RHIResourceBindingType>::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "A binding value must contain exactly one resource.");
+                return RHIResult<RHIResourceBindingType>::failure(RHIErrorCode::InvalidArgument,
+                                                                  "A binding value must contain exactly one resource.");
             }
             if (value.buffer)
             {
@@ -195,17 +182,17 @@ namespace toy3d
             }
             if (value.texture_view)
             {
-                return RHIResult<RHIResourceBindingType>::success(
-                    value.texture_view->desc().type == RHIResourceViewType::UnorderedAccess
-                        ? RHIResourceBindingType::StorageTexture
-                        : RHIResourceBindingType::SampledTexture);
+                return RHIResult<RHIResourceBindingType>::success(value.texture_view->desc().type ==
+                                                                          RHIResourceViewType::UnorderedAccess
+                                                                      ? RHIResourceBindingType::StorageTexture
+                                                                      : RHIResourceBindingType::SampledTexture);
             }
-            return RHIResult<RHIResourceBindingType>::success(
-                value.buffer_view->desc().type == RHIResourceViewType::UnorderedAccess
-                    ? RHIResourceBindingType::StorageBuffer
-                    : RHIResourceBindingType::ReadOnlyBuffer);
+            return RHIResult<RHIResourceBindingType>::success(value.buffer_view->desc().type ==
+                                                                      RHIResourceViewType::UnorderedAccess
+                                                                  ? RHIResourceBindingType::StorageBuffer
+                                                                  : RHIResourceBindingType::ReadOnlyBuffer);
         }
-    }
+    } // namespace
 
     const RHIClearValue RHIClearValue::None = RHIClearValue::none();
     const RHIClearValue RHIClearValue::Black = RHIClearValue::color_value(vec4(0.0F));
@@ -215,11 +202,8 @@ namespace toy3d
 
     bool RHIBindingLayoutEntry::operator==(const RHIBindingLayoutEntry& other) const
     {
-        return group == other.group &&
-            slot == other.slot &&
-            type == other.type &&
-            stages == other.stages &&
-            array_count == other.array_count;
+        return group == other.group && slot == other.slot && type == other.type && stages == other.stages &&
+               array_count == other.array_count;
     }
 
     bool RHIBindingLayoutDesc::operator==(const RHIBindingLayoutDesc& other) const
@@ -237,37 +221,28 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer usage must not be None.");
         }
-        if (EnumHasAnyFlags(
-                desc.usage,
-                RHIResourceUsage::RenderTarget | RHIResourceUsage::DepthStencil))
+        if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::RenderTarget | RHIResourceUsage::DepthStencil))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Buffers cannot use render-target or depth-stencil usage.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Buffers cannot use render-target or depth-stencil usage.");
         }
         if (desc.structure_stride != 0)
         {
             if (desc.structure_stride > desc.size || desc.size % desc.structure_stride != 0)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Structured-buffer size must be a multiple of its structure stride.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Structured-buffer size must be a multiple of its structure stride.");
             }
-            if (!EnumHasAnyFlags(
-                    desc.usage,
-                    RHIResourceUsage::ShaderResource | RHIResourceUsage::UnorderedAccess))
+            if (!EnumHasAnyFlags(desc.usage, RHIResourceUsage::ShaderResource | RHIResourceUsage::UnorderedAccess))
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Structured buffers require shader-resource or unordered-access usage.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Structured buffers require shader-resource or unordered-access usage.");
             }
         }
         return RHIStatus::success();
     }
 
-    RHIStatus validate_buffer_initial_data(
-        const RHIBufferDesc& desc,
-        const RHIInitialData& initial_data)
+    RHIStatus validate_buffer_initial_data(const RHIBufferDesc& desc, const RHIInitialData& initial_data)
     {
         const RHIStatus desc_status = validate_buffer_desc(desc);
         if (!desc_status)
@@ -276,15 +251,18 @@ namespace toy3d
         }
         if (initial_data.data == nullptr || initial_data.size == 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer initial data and size must be specified together.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Buffer initial data and size must be specified together.");
         }
         if (initial_data.size > desc.size)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer initial data exceeds the destination buffer size.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Buffer initial data exceeds the destination buffer size.");
         }
         if (initial_data.row_pitch != 0 || initial_data.slice_pitch != 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer initial data cannot specify row or slice pitch.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Buffer initial data cannot specify row or slice pitch.");
         }
         return RHIStatus::success();
     }
@@ -295,10 +273,11 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture descriptor cannot use Buffer dimension.");
         }
-        if (desc.width == 0 || desc.height == 0 || desc.depth == 0 ||
-            desc.array_layers == 0 || desc.mip_levels == 0 || desc.sample_count == 0)
+        if (desc.width == 0 || desc.height == 0 || desc.depth == 0 || desc.array_layers == 0 || desc.mip_levels == 0 ||
+            desc.sample_count == 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture dimensions, layers, mips, and samples must be non-zero.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture dimensions, layers, mips, and samples must be non-zero.");
         }
         if (desc.format == PixelFormat::Unknown)
         {
@@ -308,32 +287,26 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture usage must not be None.");
         }
-        if (EnumHasAnyFlags(
-                desc.usage,
-                RHIResourceUsage::VertexBuffer |
-                    RHIResourceUsage::IndexBuffer |
-                    RHIResourceUsage::UniformBuffer |
-                    RHIResourceUsage::IndirectArguments))
+        if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::VertexBuffer | RHIResourceUsage::IndexBuffer |
+                                            RHIResourceUsage::UniformBuffer | RHIResourceUsage::IndirectArguments))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Textures cannot use vertex, index, uniform-buffer, or indirect-argument usage.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Textures cannot use vertex, index, uniform-buffer, or indirect-argument usage.");
         }
         if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::RenderTarget) && is_depth_format(desc.format))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Depth/stencil formats cannot use render-target usage.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Depth/stencil formats cannot use render-target usage.");
         }
         if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::DepthStencil) && !is_depth_format(desc.format))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Depth-stencil usage requires a depth/stencil format.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Depth-stencil usage requires a depth/stencil format.");
         }
         if (desc.sample_count > 1 && desc.mip_levels > 1)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Multisampled textures cannot have multiple mip levels.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Multisampled textures cannot have multiple mip levels.");
         }
         if (desc.dimension == RHIResourceDimension::Texture3D && desc.array_layers != 1)
         {
@@ -342,19 +315,15 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    bool RHIShaderVertexInputReflection::operator==(
-        const RHIShaderVertexInputReflection& other) const
+    bool RHIShaderVertexInputReflection::operator==(const RHIShaderVertexInputReflection& other) const
     {
-        return semantic_name == other.semantic_name &&
-            semantic_index == other.semantic_index &&
-            location == other.location &&
-            scalar_type == other.scalar_type &&
-            component_count == other.component_count;
+        return semantic_name == other.semantic_name && semantic_index == other.semantic_index &&
+               location == other.location && scalar_type == other.scalar_type &&
+               component_count == other.component_count;
     }
 
-    RHIStatus validate_texture_format_capabilities(
-        const RHITextureDesc& desc,
-        const RHIFormatCapabilities& capabilities)
+    RHIStatus validate_texture_format_capabilities(const RHITextureDesc& desc,
+                                                   const RHIFormatCapabilities& capabilities)
     {
         const RHIStatus desc_status = validate_texture_desc(desc);
         if (!desc_status)
@@ -364,50 +333,38 @@ namespace toy3d
         const RHIFormatUsage required_usage = required_format_usage(desc.usage);
         if (!EnumHasAllFlags(capabilities.usage, required_usage))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "Texture format does not support every requested usage.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "Texture format does not support every requested usage.");
         }
         if ((capabilities.supported_sample_counts & desc.sample_count) == 0)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "Texture format does not support the requested sample count.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "Texture format does not support the requested sample count.");
         }
         return RHIStatus::success();
     }
 
-    RHIStatus validate_texture_subresource_range(
-        const RHITextureDesc& texture_desc,
-        const RHISubresourceRange& range)
+    RHIStatus validate_texture_subresource_range(const RHITextureDesc& texture_desc, const RHISubresourceRange& range)
     {
-        if (range.first_mip >= texture_desc.mip_levels ||
-            range.first_layer >= texture_desc.array_layers)
+        if (range.first_mip >= texture_desc.mip_levels || range.first_layer >= texture_desc.array_layers)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Texture subresource range begins outside the texture.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture subresource range begins outside the texture.");
         }
-        const std::uint32_t mip_count = range.mip_count == RHI_ALL_MIPS
-            ? texture_desc.mip_levels - range.first_mip
-            : range.mip_count;
-        const std::uint32_t layer_count = range.layer_count == RHI_ALL_LAYERS
-            ? texture_desc.array_layers - range.first_layer
-            : range.layer_count;
-        if (mip_count == 0 || layer_count == 0 ||
-            mip_count > texture_desc.mip_levels - range.first_mip ||
+        const std::uint32_t mip_count =
+            range.mip_count == RHI_ALL_MIPS ? texture_desc.mip_levels - range.first_mip : range.mip_count;
+        const std::uint32_t layer_count =
+            range.layer_count == RHI_ALL_LAYERS ? texture_desc.array_layers - range.first_layer : range.layer_count;
+        if (mip_count == 0 || layer_count == 0 || mip_count > texture_desc.mip_levels - range.first_mip ||
             layer_count > texture_desc.array_layers - range.first_layer)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Texture subresource range extends outside the texture.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture subresource range extends outside the texture.");
         }
         return RHIStatus::success();
     }
 
-    RHIStatus validate_texture_initial_data(
-        const RHITextureDesc& desc,
-        const RHIInitialData& initial_data)
+    RHIStatus validate_texture_initial_data(const RHITextureDesc& desc, const RHIInitialData& initial_data)
     {
         const RHIStatus desc_status = validate_texture_desc(desc);
         if (!desc_status)
@@ -416,22 +373,23 @@ namespace toy3d
         }
         if (initial_data.data == nullptr || initial_data.size == 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture initial data and size must be specified together.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture initial data and size must be specified together.");
         }
         if (initial_data.row_pitch == 0 || initial_data.slice_pitch == 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture initial data requires row and slice pitch.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture initial data requires row and slice pitch.");
         }
         if (initial_data.slice_pitch > initial_data.size)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture slice pitch exceeds the provided data size.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture slice pitch exceeds the provided data size.");
         }
         return RHIStatus::success();
     }
 
-    RHIStatus validate_texture_view_desc(
-        const RHITextureDesc& texture_desc,
-        const RHITextureViewDesc& view_desc)
+    RHIStatus validate_texture_view_desc(const RHITextureDesc& texture_desc, const RHITextureViewDesc& view_desc)
     {
         const RHIStatus texture_status = validate_texture_desc(texture_desc);
         if (!texture_status)
@@ -444,31 +402,29 @@ namespace toy3d
         }
         if (view_desc.format != texture_desc.format)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::Unsupported,
-                "Texture views currently require the texture's public format; backend typeless storage remains internal.");
+            return RHIStatus::failure(RHIErrorCode::Unsupported, "Texture views currently require the texture's public "
+                                                                 "format; backend typeless storage remains internal.");
         }
-        const RHIStatus range_status = validate_texture_subresource_range(
-            texture_desc, view_desc.subresources);
+        const RHIStatus range_status = validate_texture_subresource_range(texture_desc, view_desc.subresources);
         if (!range_status)
         {
             return range_status;
         }
         const RHIResourceUsage required_usage =
-            view_desc.type == RHIResourceViewType::ShaderResource ? RHIResourceUsage::ShaderResource :
-            view_desc.type == RHIResourceViewType::UnorderedAccess ? RHIResourceUsage::UnorderedAccess :
-            view_desc.type == RHIResourceViewType::RenderTarget ? RHIResourceUsage::RenderTarget :
-            RHIResourceUsage::DepthStencil;
+            view_desc.type == RHIResourceViewType::ShaderResource    ? RHIResourceUsage::ShaderResource
+            : view_desc.type == RHIResourceViewType::UnorderedAccess ? RHIResourceUsage::UnorderedAccess
+            : view_desc.type == RHIResourceViewType::RenderTarget    ? RHIResourceUsage::RenderTarget
+                                                                     : RHIResourceUsage::DepthStencil;
         if (!EnumHasAnyFlags(texture_desc.usage, required_usage))
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture was not created for the requested view type.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture was not created for the requested view type.");
         }
         if (view_desc.type != RHIResourceViewType::DepthStencil &&
             (view_desc.depth_read_only || view_desc.stencil_read_only))
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Depth/stencil read-only flags are valid only for depth-stencil views.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Depth/stencil read-only flags are valid only for depth-stencil views.");
         }
         const bool depth_format = is_depth_format(view_desc.format);
         if (view_desc.type == RHIResourceViewType::RenderTarget ||
@@ -483,9 +439,8 @@ namespace toy3d
         }
         else if (view_desc.type == RHIResourceViewType::DepthStencil)
         {
-            const RHITextureAspect required_aspect = has_stencil(view_desc.format)
-                ? RHITextureAspect::DepthStencil
-                : RHITextureAspect::Depth;
+            const RHITextureAspect required_aspect =
+                has_stencil(view_desc.format) ? RHITextureAspect::DepthStencil : RHITextureAspect::Depth;
             if (!depth_format || view_desc.subresources.aspect != required_aspect)
             {
                 return RHIStatus::failure(
@@ -497,23 +452,18 @@ namespace toy3d
         {
             if (view_desc.subresources.aspect != RHITextureAspect::Depth)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Sampled depth/stencil textures expose a depth-only shader-resource view.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Sampled depth/stencil textures expose a depth-only shader-resource view.");
             }
         }
         else if (view_desc.subresources.aspect != RHITextureAspect::Color)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Color texture views require the color aspect.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Color texture views require the color aspect.");
         }
         return RHIStatus::success();
     }
 
-    RHIStatus validate_buffer_view_desc(
-        const RHIBufferDesc& buffer_desc,
-        const RHIBufferViewDesc& view_desc)
+    RHIStatus validate_buffer_view_desc(const RHIBufferDesc& buffer_desc, const RHIBufferViewDesc& view_desc)
     {
         const RHIStatus buffer_status = validate_buffer_desc(buffer_desc);
         if (!buffer_status)
@@ -523,25 +473,25 @@ namespace toy3d
         if (view_desc.type != RHIResourceViewType::ShaderResource &&
             view_desc.type != RHIResourceViewType::UnorderedAccess)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffers only support shader-resource and unordered-access views.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Buffers only support shader-resource and unordered-access views.");
         }
         if (view_desc.size == 0 || view_desc.offset > buffer_desc.size ||
             view_desc.size > buffer_desc.size - view_desc.offset)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer view range is outside the buffer.");
         }
-        const RHIResourceUsage required_usage =
-            view_desc.type == RHIResourceViewType::ShaderResource
-                ? RHIResourceUsage::ShaderResource
-                : RHIResourceUsage::UnorderedAccess;
+        const RHIResourceUsage required_usage = view_desc.type == RHIResourceViewType::ShaderResource
+                                                    ? RHIResourceUsage::ShaderResource
+                                                    : RHIResourceUsage::UnorderedAccess;
         if (!EnumHasAnyFlags(buffer_desc.usage, required_usage))
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Buffer was not created for the requested view type.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Buffer was not created for the requested view type.");
         }
         if (buffer_desc.structure_stride != 0)
         {
-            if (view_desc.format != PixelFormat::Unknown ||
-                view_desc.offset % buffer_desc.structure_stride != 0 ||
+            if (view_desc.format != PixelFormat::Unknown || view_desc.offset % buffer_desc.structure_stride != 0 ||
                 view_desc.size % buffer_desc.structure_stride != 0)
             {
                 return RHIStatus::failure(
@@ -568,7 +518,8 @@ namespace toy3d
         }
         if (desc.content_hash[0] == 0 && desc.content_hash[1] == 0)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader content hash must be stable and non-zero.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Shader content hash must be stable and non-zero.");
         }
 
         using BindingKey = std::tuple<RHIBindingGroup, BindingRegisterClass, std::uint32_t>;
@@ -577,28 +528,28 @@ namespace toy3d
         {
             if (binding.name.empty() || binding.array_count == 0)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader reflection bindings require a name and non-zero array count.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Shader reflection bindings require a name and non-zero array count.");
             }
-            if (!reflected_bindings.emplace(
-                    binding.group, binding_register_class(binding.type), binding.slot).second)
+            if (!reflected_bindings.emplace(binding.group, binding_register_class(binding.type), binding.slot).second)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Shader reflection register must be unique within its group and resource class.");
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Shader reflection register must be unique within its group and resource class.");
             }
         }
 
         if (desc.stage != RHIShaderStage::Vertex && !desc.vertex_inputs.empty())
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Only vertex shaders may contain vertex-input reflection.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Only vertex shaders may contain vertex-input reflection.");
         }
         using SemanticKey = std::pair<std::string, std::uint32_t>;
         std::set<SemanticKey> reflected_semantics;
         std::set<std::uint32_t> reflected_locations;
         for (const RHIShaderVertexInputReflection& input : desc.vertex_inputs)
         {
-            if (input.semantic_name.empty() ||
-                input.semantic_index == std::numeric_limits<std::uint32_t>::max() ||
+            if (input.semantic_name.empty() || input.semantic_index == std::numeric_limits<std::uint32_t>::max() ||
                 input.location == std::numeric_limits<std::uint32_t>::max())
             {
                 return RHIStatus::failure(
@@ -606,27 +557,21 @@ namespace toy3d
                     "Shader vertex inputs require a semantic and valid semantic index and location.");
             }
             if (static_cast<std::uint32_t>(input.scalar_type) >
-                    static_cast<std::uint32_t>(
-                        RHIShaderVertexInputReflection::ScalarType::UInt32) ||
+                    static_cast<std::uint32_t>(RHIShaderVertexInputReflection::ScalarType::UInt32) ||
                 input.component_count == 0 || input.component_count > 4)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Shader vertex input scalar and component shape is unsupported.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Shader vertex input scalar and component shape is unsupported.");
             }
-            if (!reflected_semantics.emplace(
-                    canonical_semantic_name(input.semantic_name),
-                    input.semantic_index).second)
+            if (!reflected_semantics.emplace(canonical_semantic_name(input.semantic_name), input.semantic_index).second)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Shader vertex-input semantic and index must be unique.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Shader vertex-input semantic and index must be unique.");
             }
             if (!reflected_locations.insert(input.location).second)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Shader vertex-input location must be unique.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Shader vertex-input location must be unique.");
             }
         }
         return RHIStatus::success();
@@ -643,7 +588,8 @@ namespace toy3d
             }
             if (entry.stages == RHIShaderStageFlags::None)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding must be visible to at least one shader stage.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Binding must be visible to at least one shader stage.");
             }
             for (const RHIBindingLayoutEntry& existing : bindings)
             {
@@ -654,7 +600,8 @@ namespace toy3d
                 {
                     return RHIStatus::failure(
                         RHIErrorCode::InvalidArgument,
-                        "Binding register ranges must not overlap within one logical group, shader stages, and resource class.");
+                        "Binding register ranges must not overlap within one logical group, shader "
+                        "stages, and resource class.");
                 }
             }
             bindings.push_back(entry);
@@ -664,8 +611,8 @@ namespace toy3d
 
     RHIStatus validate_sampler_desc(const RHISamplerDesc& desc)
     {
-        if (!std::isfinite(desc.mip_lod_bias) || !std::isfinite(desc.min_lod) ||
-            !std::isfinite(desc.max_lod) || desc.min_lod > desc.max_lod)
+        if (!std::isfinite(desc.mip_lod_bias) || !std::isfinite(desc.min_lod) || !std::isfinite(desc.max_lod) ||
+            desc.min_lod > desc.max_lod)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Sampler LOD values are invalid.");
         }
@@ -702,12 +649,11 @@ namespace toy3d
             }
             if (!matching_entry || value.array_index >= matching_entry->array_count)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Binding value does not match its layout group, slot, type, or array range.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Binding value does not match its layout group, slot, type, or array range.");
             }
-            if (!supplied_bindings.emplace(
-                    binding_register_class(value_type.value()), value.slot, value.array_index).second)
+            if (!supplied_bindings.emplace(binding_register_class(value_type.value()), value.slot, value.array_index)
+                     .second)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding set contains a duplicate value.");
             }
@@ -720,19 +666,18 @@ namespace toy3d
                         RHIErrorCode::InvalidArgument,
                         "Uniform-buffer binding requires UniformBuffer usage and a valid offset.");
                 }
-                const std::uint64_t range = value.buffer_size == 0
-                    ? value.buffer->desc().size - value.buffer_offset
-                    : value.buffer_size;
+                const std::uint64_t range =
+                    value.buffer_size == 0 ? value.buffer->desc().size - value.buffer_offset : value.buffer_size;
                 if (range == 0 || range > value.buffer->desc().size - value.buffer_offset)
                 {
-                    return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Uniform-buffer binding range is invalid.");
+                    return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                              "Uniform-buffer binding range is invalid.");
                 }
             }
             else if ((value.buffer_offset != 0 || value.buffer_size != 0))
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Buffer offset and size are valid only for direct uniform-buffer bindings.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Buffer offset and size are valid only for direct uniform-buffer bindings.");
             }
         }
 
@@ -744,12 +689,11 @@ namespace toy3d
             }
             for (std::uint32_t array_index = 0; array_index < entry.array_count; ++array_index)
             {
-                if (supplied_bindings.find(std::make_tuple(
-                        binding_register_class(entry.type), entry.slot, array_index)) == supplied_bindings.end())
+                if (supplied_bindings.find(std::make_tuple(binding_register_class(entry.type), entry.slot,
+                                                           array_index)) == supplied_bindings.end())
                 {
-                    return RHIStatus::failure(
-                        RHIErrorCode::InvalidArgument,
-                        "Binding set must provide every binding declared for its group.");
+                    return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                              "Binding set must provide every binding declared for its group.");
                 }
             }
         }
@@ -760,21 +704,21 @@ namespace toy3d
     {
         if (!desc.vertex_shader || !desc.pixel_shader || !desc.binding_layout)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Graphics pipeline requires vertex shader, pixel shader, and binding layout.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Graphics pipeline requires vertex shader, pixel shader, and binding layout.");
         }
         if (desc.vertex_shader->desc().stage != RHIShaderStage::Vertex ||
             desc.pixel_shader->desc().stage != RHIShaderStage::Pixel)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Graphics pipeline shader stages do not match their roles.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Graphics pipeline shader stages do not match their roles.");
         }
-        const RHIStatus vertex_shader_status = validate_shader_desc(
-            desc.vertex_shader->desc());
+        const RHIStatus vertex_shader_status = validate_shader_desc(desc.vertex_shader->desc());
         if (!vertex_shader_status)
         {
             return vertex_shader_status;
         }
-        const RHIStatus pixel_shader_status = validate_shader_desc(
-            desc.pixel_shader->desc());
+        const RHIStatus pixel_shader_status = validate_shader_desc(desc.pixel_shader->desc());
         if (!pixel_shader_status)
         {
             return pixel_shader_status;
@@ -783,21 +727,18 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Pipeline has too many color attachments.");
         }
-        if (desc.sample_count == 0 ||
-            (desc.sample_count & (desc.sample_count - 1U)) != 0)
+        if (desc.sample_count == 0 || (desc.sample_count & (desc.sample_count - 1U)) != 0)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Pipeline sample count must be a non-zero power of two.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pipeline sample count must be a non-zero power of two.");
         }
         std::set<std::uint32_t> vertex_bindings;
         for (const RHIGraphicsPipelineDesc::VertexBufferLayout& layout : desc.vertex_buffers)
         {
             if (layout.stride == 0 || !vertex_bindings.emplace(layout.binding).second)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Vertex-buffer layouts require a non-zero stride and unique binding index.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Vertex-buffer layouts require a non-zero stride and unique binding index.");
             }
         }
         std::set<std::uint32_t> attribute_locations;
@@ -816,44 +757,30 @@ namespace toy3d
                 RHIShaderVertexInputReflection::ScalarType::Float32;
             std::uint32_t component_count = 0u;
             std::uint32_t byte_size = 0u;
-            if (!vertex_format_shape(
-                    attribute.format, scalar_type, component_count, byte_size))
+            if (!vertex_format_shape(attribute.format, scalar_type, component_count, byte_size))
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::Unsupported,
-                    "Vertex attribute format has no common RHI input shape.");
+                return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                          "Vertex attribute format has no common RHI input shape.");
             }
-            const auto layout = std::find_if(
-                desc.vertex_buffers.begin(), desc.vertex_buffers.end(),
-                [&](const RHIGraphicsPipelineDesc::VertexBufferLayout& candidate)
-                {
-                    return candidate.binding == attribute.binding;
-                });
-            if (attribute.offset > layout->stride ||
-                byte_size > layout->stride - attribute.offset)
+            const auto layout = std::find_if(desc.vertex_buffers.begin(), desc.vertex_buffers.end(),
+                                             [&](const RHIGraphicsPipelineDesc::VertexBufferLayout& candidate)
+                                             { return candidate.binding == attribute.binding; });
+            if (attribute.offset > layout->stride || byte_size > layout->stride - attribute.offset)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Vertex attribute byte range exceeds its buffer stride.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Vertex attribute byte range exceeds its buffer stride.");
             }
             const auto reflected = std::find_if(
-                desc.vertex_shader->desc().vertex_inputs.begin(),
-                desc.vertex_shader->desc().vertex_inputs.end(),
-                [&](const RHIShaderVertexInputReflection& input)
-                {
-                    return input.location == attribute.location;
-                });
-            if (reflected == desc.vertex_shader->desc().vertex_inputs.end() ||
-                reflected->scalar_type != scalar_type ||
+                desc.vertex_shader->desc().vertex_inputs.begin(), desc.vertex_shader->desc().vertex_inputs.end(),
+                [&](const RHIShaderVertexInputReflection& input) { return input.location == attribute.location; });
+            if (reflected == desc.vertex_shader->desc().vertex_inputs.end() || reflected->scalar_type != scalar_type ||
                 reflected->component_count != component_count)
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Vertex attribute location and format must match shader input reflection.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Vertex attribute location and format must match shader input reflection.");
             }
         }
-        if (desc.vertex_attributes.size() !=
-            desc.vertex_shader->desc().vertex_inputs.size())
+        if (desc.vertex_attributes.size() != desc.vertex_shader->desc().vertex_inputs.size())
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -863,23 +790,23 @@ namespace toy3d
         {
             if (desc.color_formats[index] == PixelFormat::Unknown)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Enabled color attachment format must be specified.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Enabled color attachment format must be specified.");
             }
         }
         const bool depth_state_enabled = desc.depth_stencil.depth_test_enable ||
-            desc.depth_stencil.depth_write_enable || desc.depth_stencil.stencil_test_enable;
+                                         desc.depth_stencil.depth_write_enable ||
+                                         desc.depth_stencil.stencil_test_enable;
         if (desc.depth_stencil.depth_write_enable && !desc.depth_stencil.depth_test_enable)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Graphics pipeline depth writes require depth testing to be enabled.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Graphics pipeline depth writes require depth testing to be enabled.");
         }
         if (depth_state_enabled && desc.depth_stencil_format == PixelFormat::Unknown)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Enabled depth/stencil state requires a depth-stencil attachment format.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Enabled depth/stencil state requires a depth-stencil attachment format.");
         }
         return RHIStatus::success();
     }
-}
+} // namespace toy3d

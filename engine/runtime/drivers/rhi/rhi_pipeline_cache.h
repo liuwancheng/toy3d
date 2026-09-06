@@ -41,9 +41,8 @@ namespace toy3d
         RHIGraphicsPipelineDesc::RasterizationState rasterization;
         RHIGraphicsPipelineDesc::DepthStencilState depth_stencil;
         std::array<PixelFormat, RHI_MAX_COLOR_ATTACHMENTS> color_formats = {};
-        std::array<
-            RHIGraphicsPipelineDesc::ColorBlendAttachmentState,
-            RHI_MAX_COLOR_ATTACHMENTS> color_blend_attachments = {};
+        std::array<RHIGraphicsPipelineDesc::ColorBlendAttachmentState, RHI_MAX_COLOR_ATTACHMENTS>
+            color_blend_attachments = {};
         std::uint32_t color_attachment_count = 0;
         PixelFormat depth_stencil_format = PixelFormat::Unknown;
         std::uint32_t sample_count = 1;
@@ -51,19 +50,16 @@ namespace toy3d
         bool operator==(const RHIGraphicsPipelineKey& other) const;
     };
 
-    RHIGraphicsPipelineDesc canonicalize_graphics_pipeline_desc(
-        const RHIGraphicsPipelineDesc& desc);
-    RHIGraphicsPipelineKey make_graphics_pipeline_key(
-        const RHIGraphicsPipelineDesc& canonical_desc);
+    RHIGraphicsPipelineDesc canonicalize_graphics_pipeline_desc(const RHIGraphicsPipelineDesc& desc);
+    RHIGraphicsPipelineKey make_graphics_pipeline_key(const RHIGraphicsPipelineDesc& canonical_desc);
     // Used only to select an in-memory bucket. Persistent backend cache files
     // must use their own versioned serialization of RHIGraphicsPipelineKey.
     std::size_t hash_graphics_pipeline_key(const RHIGraphicsPipelineKey& key);
 
     class RHIGraphicsPipelineCache final
     {
-    public:
-        using CreateFunction = std::function<
-            RHIResult<RHIGraphicsPipelineRef>(const RHIGraphicsPipelineDesc&)>;
+      public:
+        using CreateFunction = std::function<RHIResult<RHIGraphicsPipelineRef>(const RHIGraphicsPipelineDesc&)>;
 
         RHIGraphicsPipelineCache();
         ~RHIGraphicsPipelineCache();
@@ -71,15 +67,14 @@ namespace toy3d
         RHIGraphicsPipelineCache(const RHIGraphicsPipelineCache&) = delete;
         RHIGraphicsPipelineCache& operator=(const RHIGraphicsPipelineCache&) = delete;
 
-    private:
+      private:
         friend class RHIDevice;
 
-        RHIResult<RHIGraphicsPipelineRef> get_or_create(
-            const RHIGraphicsPipelineDesc& desc,
-            const CreateFunction& create_function);
+        RHIResult<RHIGraphicsPipelineRef> get_or_create(const RHIGraphicsPipelineDesc& desc,
+                                                        const CreateFunction& create_function);
         void clear();
 
         class Impl;
         std::unique_ptr<Impl> implementation;
     };
-}
+} // namespace toy3d

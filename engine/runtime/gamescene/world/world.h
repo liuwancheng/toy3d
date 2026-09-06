@@ -15,21 +15,18 @@ namespace toy3d
 
     class World
     {
-    public:
+      public:
         World() = default;
         ~World();
 
         World(const World&) = delete;
         World& operator=(const World&) = delete;
 
-        template<typename ActorType = Actor, typename... Args>
-        ActorType& spawn_actor(Args&&... args)
+        template <typename ActorType = Actor, typename... Args> ActorType& spawn_actor(Args&&... args)
         {
-            static_assert(std::is_base_of<Actor, ActorType>::value,
-                "ActorType must derive from Actor");
+            static_assert(std::is_base_of<Actor, ActorType>::value, "ActorType must derive from Actor");
 
-            auto actor = std::make_unique<ActorType>(
-                *this, std::forward<Args>(args)...);
+            auto actor = std::make_unique<ActorType>(*this, std::forward<Args>(args)...);
             ActorType& result = *actor;
             actors_.push_back(std::move(actor));
             result.register_all_components();
@@ -59,7 +56,7 @@ namespace toy3d
         std::uint64_t frame_number() const { return frame_number_; }
         bool is_ticking() const { return ticking_; }
 
-    private:
+      private:
         using ActorStorage = std::vector<std::unique_ptr<Actor>>;
 
         ActorStorage::iterator find_actor(Actor& actor);
@@ -75,4 +72,4 @@ namespace toy3d
         // World observes the stable RenderCore façade; Renderer retains all scene ownership.
         SceneInterface* scene_interface_ = nullptr;
     };
-}
+} // namespace toy3d

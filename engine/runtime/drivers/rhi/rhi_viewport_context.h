@@ -14,14 +14,11 @@ namespace toy3d
 {
     inline bool rhi_is_recoverable_viewport_status(const RHIStatus& status)
     {
-        return status.code() == RHIErrorCode::NotReady ||
-            status.code() == RHIErrorCode::OutOfDate ||
-            status.code() == RHIErrorCode::Suboptimal;
+        return status.code() == RHIErrorCode::NotReady || status.code() == RHIErrorCode::OutOfDate ||
+               status.code() == RHIErrorCode::Suboptimal;
     }
 
-    inline RHIStatus rhi_normalize_incomplete_acquired_frame_status(
-        const RHIStatus& status,
-        const char* operation)
+    inline RHIStatus rhi_normalize_incomplete_acquired_frame_status(const RHIStatus& status, const char* operation)
     {
         // Once a backend has acquired presentation ownership, a failure to
         // discharge that ownership cannot be retried as an ordinary viewport
@@ -31,15 +28,12 @@ namespace toy3d
         {
             return status;
         }
-        return RHIStatus::failure(
-            RHIErrorCode::BackendFailure,
-            std::string(operation) +
-                " could not complete an acquired viewport frame: " + status.message());
+        return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                  std::string(operation) +
+                                      " could not complete an acquired viewport frame: " + status.message());
     }
 
-    inline RHIStatus rhi_normalize_submitted_presentation_status(
-        const RHIStatus& status,
-        const char* operation)
+    inline RHIStatus rhi_normalize_submitted_presentation_status(const RHIStatus& status, const char* operation)
     {
         // A successful business submit has already consumed the acquired
         // synchronization. NotReady cannot describe that presentation
@@ -49,10 +43,9 @@ namespace toy3d
         {
             return status;
         }
-        return RHIStatus::failure(
-            RHIErrorCode::BackendFailure,
-            std::string(operation) +
-                " returned NotReady after business work was submitted: " + status.message());
+        return RHIStatus::failure(RHIErrorCode::BackendFailure,
+                                  std::string(operation) +
+                                      " returned NotReady after business work was submitted: " + status.message());
     }
 
     struct RHIFrameEndResult
@@ -77,7 +70,7 @@ namespace toy3d
     // private to the viewport implementation.
     class RHIFrameContext
     {
-    public:
+      public:
         RHIFrameContext() = default;
         virtual ~RHIFrameContext() = default;
 
@@ -92,8 +85,7 @@ namespace toy3d
 
         // Recording contexts are frame-local so their allocators can be
         // recycled only after this frame's queue completion value has completed.
-        virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
-            create_graphics_command_context() = 0;
+        virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context() = 0;
     };
 
     // Owns the presentation lifecycle for one native surface. RenderScene
@@ -101,7 +93,7 @@ namespace toy3d
     // swapchain image directly.
     class RHIViewportContext : public RHIObject
     {
-    public:
+      public:
         explicit RHIViewportContext(const RHIDevice& owner, std::string debug_name = {})
             : RHIObject(owner, std::move(debug_name))
         {
@@ -115,9 +107,8 @@ namespace toy3d
 
         // Outer success is the business-submit truth. Presentation status is
         // reported separately because present cannot roll submitted work back.
-        virtual RHIResult<RHIFrameEndResult> end_frame(
-            std::unique_ptr<RHIFrameContext> frame,
-            const std::vector<RHICommandListRef>& command_lists) = 0;
+        virtual RHIResult<RHIFrameEndResult> end_frame(std::unique_ptr<RHIFrameContext> frame,
+                                                       const std::vector<RHICommandListRef>& command_lists) = 0;
 
         // Consumes an acquired frame after recording cannot continue. The
         // backend must discharge acquire synchronization without submitting
@@ -127,8 +118,6 @@ namespace toy3d
 
         // Resize is deferred until a later begin_frame() can safely replace
         // all in-flight presentation images.
-        virtual RHIStatus request_resize(
-            std::uint32_t width,
-            std::uint32_t height) = 0;
+        virtual RHIStatus request_resize(std::uint32_t width, std::uint32_t height) = 0;
     };
-}
+} // namespace toy3d

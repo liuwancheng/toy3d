@@ -28,8 +28,7 @@ namespace toy3d
         return get_thread(id).name;
     }
 
-    void ThreadManager::for_each_thread(
-        const std::function<void(const ThreadInfo&)>& function) const
+    void ThreadManager::for_each_thread(const std::function<void(const ThreadInfo&)>& function) const
     {
         std::vector<ThreadInfo> snapshot;
         {
@@ -37,8 +36,7 @@ namespace toy3d
             snapshot.reserve(threads_.size());
             for (const auto& entry : threads_)
             {
-                snapshot.push_back(
-                    {entry.first, entry.second->get_thread_name(), entry.second->get_state()});
+                snapshot.push_back({entry.first, entry.second->get_thread_name(), entry.second->get_state()});
             }
         }
 
@@ -79,4 +77,4 @@ namespace toy3d
             // Diagnostics must never make thread cleanup fail or terminate the process.
         }
     }
-}
+} // namespace toy3d

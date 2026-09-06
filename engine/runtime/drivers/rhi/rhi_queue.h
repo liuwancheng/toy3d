@@ -20,7 +20,7 @@ namespace toy3d
 
     class RHIQueue
     {
-    public:
+      public:
         RHIQueue() = default;
         virtual ~RHIQueue() = default;
 
@@ -33,11 +33,10 @@ namespace toy3d
         virtual RHIStatus wait_for_value(RHIQueueCompletionValue value) = 0;
         virtual RHIStatus wait_idle() = 0;
 
-    protected:
-        virtual RHIResult<RHISubmitResult> submit_impl(
-            const RHISubmitInfo& info) = 0;
+      protected:
+        virtual RHIResult<RHISubmitResult> submit_impl(const RHISubmitInfo& info) = 0;
 
-    private:
+      private:
         std::mutex submission_mutex;
     };
-}
+} // namespace toy3d

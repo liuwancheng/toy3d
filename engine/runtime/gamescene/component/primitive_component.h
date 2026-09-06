@@ -11,7 +11,7 @@ namespace toy3d
 
     class PrimitiveComponent : public SceneComponent
     {
-    public:
+      public:
         ~PrimitiveComponent() override;
 
         const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
@@ -23,7 +23,7 @@ namespace toy3d
         void send_render_transform();
         void destroy_render_state();
 
-    protected:
+      protected:
         explicit PrimitiveComponent(Actor& owner) : SceneComponent(owner) {}
 
         void on_register() override;
@@ -34,8 +34,8 @@ namespace toy3d
 
         AxisAlignedBounds world_bounds_;
 
-    private:
+      private:
         PrimitiveSceneProxy* scene_proxy_ = nullptr;
         bool visible_ = true;
     };
-}
+} // namespace toy3d

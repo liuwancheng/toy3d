@@ -9,6 +9,5 @@ namespace toy3d
     // pass attachment compatibility, vertex input, shaders and layout remain
     // exactly as supplied by the caller in base_desc.
     RHIResult<RHIGraphicsPipelineDesc> build_shader_graphics_pipeline_desc(
-        const RHIGraphicsPipelineDesc& base_desc,
-        const shader::ShaderGraphicsPassState& shader_state);
-}
+        const RHIGraphicsPipelineDesc& base_desc, const shader::ShaderGraphicsPassState& shader_state);
+} // namespace toy3d

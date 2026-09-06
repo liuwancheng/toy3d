@@ -9,4 +9,4 @@ namespace toy3d
         vec3 minimum{0.0f};
         vec3 maximum{0.0f};
     };
-}
+} // namespace toy3d

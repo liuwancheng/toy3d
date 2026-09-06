@@ -31,11 +31,7 @@ namespace toy3d
         float camera_direction_padding = 0.0f;
     };
 
-    RHIResult<std::shared_ptr<RHIBindingSet>>
-    materialize_view_uniform_shader_parameters(
-        RHIDevice& device,
-        RHICommandContext& context,
-        const std::shared_ptr<RHIBindingLayout>& binding_layout,
-        const ShaderMapProgram& shader_program,
-        const ViewUniformShaderParameters& parameters);
-}
+    RHIResult<std::shared_ptr<RHIBindingSet>> materialize_view_uniform_shader_parameters(
+        RHIDevice& device, RHICommandContext& context, const std::shared_ptr<RHIBindingLayout>& binding_layout,
+        const ShaderMapProgram& shader_program, const ViewUniformShaderParameters& parameters);
+} // namespace toy3d

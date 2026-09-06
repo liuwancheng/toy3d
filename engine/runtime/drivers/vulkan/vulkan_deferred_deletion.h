@@ -21,7 +21,7 @@ namespace toy3d
     // objects only after the associated queue completion value has completed.
     class VulkanDeferredDeletionQueue final
     {
-    public:
+      public:
         using DeletionCallback = std::function<void(VkDevice)>;
 
         RHIStatus enqueue(RHIQueueCompletionValue retire_value, DeletionCallback callback);
@@ -29,7 +29,7 @@ namespace toy3d
         void release_all(VkDevice device);
         std::size_t pending_count() const;
 
-    private:
+      private:
         struct Entry
         {
             RHIQueueCompletionValue retire_value = 0;
@@ -38,4 +38,4 @@ namespace toy3d
 
         std::vector<Entry> entries;
     };
-}
+} // namespace toy3d

@@ -14,32 +14,22 @@ namespace toy3d
     // the logical Rendering Thread; the Asset owns this allocation.
     class TextureResource final : public RenderResource
     {
-    public:
+      public:
         explicit TextureResource(const TextureDesc& initial_desc);
 
         RHIStatus begin_init(RenderResourceManager& manager);
-        RHIStatus update(
-            TextureDesc desc,
-            RenderResourceManager& manager);
+        RHIStatus update(TextureDesc desc, RenderResourceManager& manager);
         RHIStatus release(RenderResourceManager& manager);
 
         const RHITextureViewRef& view_for_current_recording() const noexcept;
-        const RHITextureViewRef& active_view() const noexcept
-        {
-            return active_view_;
-        }
-        std::uint64_t binding_generation() const noexcept
-        {
-            return binding_generation_;
-        }
+        const RHITextureViewRef& active_view() const noexcept { return active_view_; }
+        std::uint64_t binding_generation() const noexcept { return binding_generation_; }
 
-    private:
+      private:
         friend class Texture;
 
         void release_from_owner_manager() noexcept;
-        RHIStatus record_upload(
-            RHIDevice& device,
-            RHIGraphicsCommandContext& context) override;
+        RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) override;
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
         void release_rhi() noexcept override;
@@ -58,4 +48,4 @@ namespace toy3d
         bool pending_replacement_ = false;
         bool deterministic_recording_failure_ = false;
     };
-}
+} // namespace toy3d

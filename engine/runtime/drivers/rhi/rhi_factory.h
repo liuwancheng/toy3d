@@ -8,4 +8,4 @@ namespace toy3d
     // modules only receive the public RHIDevice abstraction.
     const char* configured_rhi_backend_name();
     RHIResult<std::unique_ptr<RHIDevice>> create_default_rhi_device();
-}
+} // namespace toy3d
