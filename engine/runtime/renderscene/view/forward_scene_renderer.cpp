@@ -320,6 +320,23 @@ namespace toy3d
         }
     }
 
+    struct ForwardSceneRenderer::PreparedBasePass
+    {
+        struct Draw
+        {
+            RHIViewport viewport;
+            RHIRect scissor;
+            RHIGraphicsPipelineRef pipeline;
+            std::vector<RHIVertexBufferBinding> vertex_bindings;
+            RHIIndexBufferBinding index_binding;
+            RHIGraphicsBindings bindings;
+            RHIDrawIndexedArgs draw_args;
+        };
+
+        RHIRenderPassDesc pass_desc;
+        std::vector<Draw> draws;
+    };
+
     ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family)
         : SceneRenderer(std::move(view_family))
     {}
@@ -536,7 +553,14 @@ namespace toy3d
         pass_desc.depth_stencil_attachment.clear_value =
             RHIClearValue::DepthZero;
         pass_desc.debug_name = "ForwardBasePass";
-        status = render_base_pass(device, *context, pass_desc);
+        PreparedBasePass prepared_base_pass;
+        status = prepare_base_pass(
+            device, *context, pass_desc, prepared_base_pass);
+        if (!status)
+        {
+            return abort_recording(status);
+        }
+        status = execute_base_pass(*context, prepared_base_pass);
         if (!status)
         {
             return abort_recording(status);
@@ -1023,10 +1047,11 @@ namespace toy3d
         }
     }
 
-    RHIStatus ForwardSceneRenderer::render_base_pass(
+    RHIStatus ForwardSceneRenderer::prepare_base_pass(
         RHIDevice& device,
         RHIGraphicsCommandContext& context,
-        const RHIRenderPassDesc& pass_desc)
+        const RHIRenderPassDesc& pass_desc,
+        PreparedBasePass& prepared_pass)
     {
         if (pass_desc.color_attachments.empty() ||
             !pass_desc.has_depth_stencil_attachment)
@@ -1050,14 +1075,8 @@ namespace toy3d
 
         std::unordered_map<const ShaderMapProgram*, RHIShaderProgram>
             rhi_programs;
-        std::vector<RHIViewport> prepared_viewports;
-        std::vector<RHIRect> prepared_scissors;
-        std::vector<RHIGraphicsPipelineRef> prepared_pipelines;
-        std::vector<std::vector<RHIVertexBufferBinding>>
-            prepared_vertex_bindings;
-        std::vector<RHIIndexBufferBinding> prepared_index_bindings;
-        std::vector<RHIGraphicsBindings> prepared_bindings;
-        std::vector<RHIDrawIndexedArgs> prepared_draw_args;
+        PreparedBasePass result;
+        result.pass_desc = pass_desc;
         for (std::size_t view_index = 0;
              view_index < view_infos().size();
              ++view_index)
@@ -1242,39 +1261,43 @@ namespace toy3d
                 RHIDrawIndexedArgs draw_args;
                 draw_args.index_count = mesh_batch.index_count();
                 draw_args.first_index = mesh_batch.first_index();
-                prepared_viewports.push_back(viewport);
-                prepared_scissors.push_back(scissor);
-                prepared_pipelines.push_back(
-                    std::move(pipeline).value());
-                prepared_vertex_bindings.push_back(
-                    std::move(vertex_bindings));
-                prepared_index_bindings.push_back(
-                    mesh_batch.render_data().index_buffer_binding());
-                prepared_bindings.push_back(std::move(bindings));
-                prepared_draw_args.push_back(draw_args);
+                PreparedBasePass::Draw draw;
+                draw.viewport = viewport;
+                draw.scissor = scissor;
+                draw.pipeline = std::move(pipeline).value();
+                draw.vertex_bindings = std::move(vertex_bindings);
+                draw.index_binding =
+                    mesh_batch.render_data().index_buffer_binding();
+                draw.bindings = std::move(bindings);
+                draw.draw_args = draw_args;
+                result.draws.push_back(std::move(draw));
             }
         }
 
-        RHIStatus status = context.begin_render_pass(pass_desc);
+        prepared_pass = std::move(result);
+        return RHIStatus::success();
+    }
+
+    RHIStatus ForwardSceneRenderer::execute_base_pass(
+        RHIGraphicsCommandContext& context,
+        const PreparedBasePass& prepared_pass)
+    {
+        RHIStatus status =
+            context.begin_render_pass(prepared_pass.pass_desc);
         if (!status)
         {
             return status;
         }
-        for (std::size_t draw_index = 0;
-             draw_index < prepared_draw_args.size() && status;
-             ++draw_index)
+        for (const PreparedBasePass::Draw& draw : prepared_pass.draws)
         {
-            status = context.set_graphics_pipeline(
-                prepared_pipelines[draw_index]);
+            status = context.set_graphics_pipeline(draw.pipeline);
             if (status)
             {
-                status = context.set_viewport(
-                    prepared_viewports[draw_index]);
+                status = context.set_viewport(draw.viewport);
             }
             if (status)
             {
-                status = context.set_scissor(
-                    prepared_scissors[draw_index]);
+                status = context.set_scissor(draw.scissor);
             }
             if (status)
             {
@@ -1288,22 +1311,23 @@ namespace toy3d
             if (status)
             {
                 status = context.set_vertex_buffers(
-                    prepared_vertex_bindings[draw_index]);
+                    draw.vertex_bindings);
             }
             if (status)
             {
-                status = context.set_index_buffer(
-                    prepared_index_bindings[draw_index]);
+                status = context.set_index_buffer(draw.index_binding);
             }
             if (status)
             {
-                status = context.bind_graphics_bindings(
-                    prepared_bindings[draw_index]);
+                status = context.bind_graphics_bindings(draw.bindings);
             }
             if (status)
             {
-                status = context.draw_indexed(
-                    prepared_draw_args[draw_index]);
+                status = context.draw_indexed(draw.draw_args);
+            }
+            if (!status)
+            {
+                break;
             }
         }
 

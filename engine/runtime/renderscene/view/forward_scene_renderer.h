@@ -28,13 +28,19 @@ namespace toy3d
             SceneRenderTargets& scene_render_targets) override;
 
     private:
+        struct PreparedBasePass;
+
         bool init_views();
         void compute_view_visibility(const RenderScene& render_scene);
         void collect_mesh_batches();
-        RHIStatus render_base_pass(
+        RHIStatus prepare_base_pass(
             RHIDevice& device,
             RHIGraphicsCommandContext& context,
-            const RHIRenderPassDesc& pass_desc);
+            const RHIRenderPassDesc& pass_desc,
+            PreparedBasePass& prepared_pass);
+        RHIStatus execute_base_pass(
+            RHIGraphicsCommandContext& context,
+            const PreparedBasePass& prepared_pass);
         void render(RenderScene& render_scene) noexcept override;
     };
 }

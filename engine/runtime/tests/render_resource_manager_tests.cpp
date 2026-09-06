@@ -20,6 +20,7 @@
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
+#include <algorithm>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -193,6 +194,39 @@ namespace
         return program;
     }
 
+    toy3d::ShaderMapProgramData make_base_pass_program()
+    {
+        toy3d::ShaderMapProgramData program = make_view_object_program();
+        program.vertex_inputs = {
+            {toy3d::ShaderVertexAttributeId::Position0, "POSITION", 0u,
+                toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+                4u, 0u},
+            {toy3d::ShaderVertexAttributeId::Normal0, "NORMAL", 0u,
+                toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+                4u, 1u},
+            {toy3d::ShaderVertexAttributeId::TexCoord0, "TEXCOORD", 0u,
+                toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+                2u, 2u}};
+        program.stages.front().interface_variables = {
+            {"in.var.POSITION0", "POSITION0", 0u, true,
+                toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+                4u},
+            {"in.var.NORMAL0", "NORMAL0", 1u, true,
+                toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+                4u},
+            {"in.var.TEXCOORD0", "TEXCOORD0", 2u, true,
+                toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32,
+                2u}};
+
+        toy3d::ShaderMapStage pixel;
+        pixel.stage = toy3d::RHIShaderStage::Pixel;
+        pixel.entry_point = "ps_main";
+        pixel.binary = {4u, 3u, 2u, 1u};
+        pixel.content_hash = nonzero_hash(64u);
+        program.stages.push_back(std::move(pixel));
+        return program;
+    }
+
     toy3d::ShaderMapProgramRef load_program(
         toy3d::ShaderMapProgramData program)
     {
@@ -248,6 +282,8 @@ int main()
         std::vector<std::uint8_t> last_buffer_initial_data;
         std::uint32_t buffer_creation_count = 0;
         std::uint32_t binding_set_creation_count = 0;
+        bool return_invalid_depth_view = false;
+        std::vector<std::string>* operations = nullptr;
 
         toy3d::RHIStatus initialize(const toy3d::RHIDeviceDesc&) override
         {
@@ -299,6 +335,10 @@ int main()
             const toy3d::RHIInitialData* initial_data) override
         {
             ++buffer_creation_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
             last_buffer_initial_data.clear();
             if (initial_data != nullptr && initial_data->data != nullptr)
             {
@@ -315,6 +355,10 @@ int main()
             const toy3d::RHITextureDesc& desc,
             const toy3d::RHIInitialData*) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
             last_texture_desc = desc;
             return toy3d::RHIResult<toy3d::RHITextureRef>::success(
                 std::make_shared<toy3d::RHITexture>(*this, desc));
@@ -333,8 +377,19 @@ int main()
             const toy3d::RHITextureRef& texture,
             const toy3d::RHITextureViewDesc& desc) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
+            toy3d::RHITextureViewDesc result_desc = desc;
+            if (return_invalid_depth_view &&
+                desc.type == toy3d::RHIResourceViewType::DepthStencil)
+            {
+                result_desc.subresources.mip_count = 0u;
+            }
             return toy3d::RHIResult<toy3d::RHITextureViewRef>::success(
-                std::make_shared<toy3d::RHITextureView>(texture, desc));
+                std::make_shared<toy3d::RHITextureView>(
+                    texture, std::move(result_desc)));
         }
 
         toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler_impl(
@@ -349,6 +404,10 @@ int main()
             const toy3d::RHIBindingSetDesc& desc) override
         {
             ++binding_set_creation_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
             return toy3d::RHIResult<toy3d::RHIBindingSetRef>::success(
                 std::make_shared<toy3d::RHIBindingSet>(desc));
         }
@@ -372,29 +431,38 @@ int main()
 
     protected:
         toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(
-            const toy3d::RHIShaderDesc&) override
+            const toy3d::RHIShaderDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(
-                toy3d::RHIErrorCode::Unsupported,
-                "The resource smoke creates no shaders");
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
+            return toy3d::RHIResult<toy3d::RHIShaderRef>::success(
+                std::make_shared<toy3d::RHIShader>(*this, desc));
         }
 
         toy3d::RHIResult<toy3d::RHIBindingLayoutRef>
         create_binding_layout_impl(
-            const toy3d::RHIBindingLayoutDesc&) override
+            const toy3d::RHIBindingLayoutDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::failure(
-                toy3d::RHIErrorCode::Unsupported,
-                "The resource smoke creates no binding layouts");
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
+            return toy3d::RHIResult<toy3d::RHIBindingLayoutRef>::success(
+                std::make_shared<toy3d::RHIBindingLayout>(*this, desc));
         }
 
         toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>
         create_graphics_pipeline_impl(
-            const toy3d::RHIGraphicsPipelineDesc&) override
+            const toy3d::RHIGraphicsPipelineDesc& desc) override
         {
-            return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::failure(
-                toy3d::RHIErrorCode::Unsupported,
-                "The resource smoke creates no pipelines");
+            if (operations != nullptr)
+            {
+                operations->push_back("device_create");
+            }
+            return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::success(
+                std::make_shared<toy3d::RHIGraphicsPipeline>(*this, desc));
         }
 
         bool is_initialized_impl() const override
@@ -647,6 +715,7 @@ int main()
         std::vector<std::string>* operations = nullptr;
         toy3d::RHIDevice* command_device = nullptr;
         bool finish_success = false;
+        bool fail_draw_indexed = false;
 
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
@@ -678,6 +747,10 @@ int main()
             const toy3d::RHIBufferUploadDesc& desc) override
         {
             ++upload_count;
+            if (operations != nullptr)
+            {
+                operations->push_back("upload_buffer");
+            }
             const auto* begin = static_cast<const std::uint8_t*>(
                 desc.source.data);
             last_buffer_upload_data.assign(
@@ -747,6 +820,10 @@ int main()
         toy3d::RHIStatus set_graphics_pipeline(
             const toy3d::RHIGraphicsPipelineRef&) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("set_graphics_pipeline");
+            }
             return toy3d::RHIStatus::success();
         }
 
@@ -792,6 +869,16 @@ int main()
         toy3d::RHIStatus draw_indexed(
             const toy3d::RHIDrawIndexedArgs&) override
         {
+            if (operations != nullptr)
+            {
+                operations->push_back("draw_indexed");
+            }
+            if (fail_draw_indexed)
+            {
+                return toy3d::RHIStatus::failure(
+                    toy3d::RHIErrorCode::BackendFailure,
+                    "Injected Base Pass draw failure");
+            }
             return toy3d::RHIStatus::success();
         }
 
@@ -1244,7 +1331,7 @@ int main()
         }
     } frame_viewport(device);
 
-    const auto make_frame = [&]()
+    const auto make_frame = [&](bool fail_draw_indexed = false)
         -> std::unique_ptr<toy3d::RHIFrameContext>
     {
         auto frame_context =
@@ -1255,6 +1342,7 @@ int main()
         frame_commands->operations = frame_viewport.operations;
         frame_commands->command_device = &device;
         frame_commands->finish_success = true;
+        frame_commands->fail_draw_indexed = fail_draw_indexed;
         frame_context->commands = std::move(frame_commands);
         return frame_context;
     };
@@ -1341,6 +1429,203 @@ int main()
         "frame owner must record uploads and Base Pass in one list, then commit only after submit");
     check(frame_manager.release(submitted_frame_resource).succeeded(),
         "submitted frame resource must release after the frame-owner smoke");
+
+    const toy3d::ShaderMapProgramRef base_pass_program =
+        load_program(make_base_pass_program());
+    toy3d::MaterialDesc base_pass_material_desc;
+    base_pass_material_desc.shader_name = "Toy3d/Test/ViewObject";
+    base_pass_material_desc.shader_program = base_pass_program;
+    const toy3d::MaterialRef base_pass_material =
+        toy3d::Material::create(std::move(base_pass_material_desc));
+    toy3d::MaterialInstanceRef base_pass_material_instance =
+        toy3d::MaterialInstance::create(base_pass_material);
+    toy3d::StaticMeshDesc base_pass_mesh_desc;
+    base_pass_mesh_desc.vertices = {
+        {{-0.5f, -0.5f, 4.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+        {{0.5f, -0.5f, 4.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+        {{0.0f, 0.5f, 4.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 1.0f}}};
+    base_pass_mesh_desc.indices =
+        std::vector<std::uint16_t>{0u, 1u, 2u};
+    base_pass_mesh_desc.sections.push_back({0u, 3u, 0u});
+    base_pass_mesh_desc.material_slots.push_back(
+        base_pass_material_instance);
+    const toy3d::StaticMeshRef base_pass_mesh =
+        toy3d::StaticMesh::create(std::move(base_pass_mesh_desc));
+    toy3d::StaticMeshRenderData base_pass_render_data(*base_pass_mesh);
+    check(base_pass_render_data.begin_init(frame_manager).succeeded() &&
+          frame_manager.record_pending_uploads(context).succeeded() &&
+          base_pass_render_data.prepare_current_recording().succeeded() &&
+          frame_manager.commit_recording().succeeded(),
+        "Base Pass operation-order fixture must publish drawable mesh buffers");
+
+    auto base_pass_material_proxy =
+        std::make_unique<toy3d::MaterialRenderProxy>(
+            *base_pass_material);
+
+    std::unique_ptr<toy3d::RenderScene> base_pass_scene =
+        std::make_unique<toy3d::RenderScene>(
+            *material_graph, frame_manager);
+    base_pass_scene->add_primitive(
+        std::make_unique<toy3d::StaticMeshSceneProxy>(
+            toy3d::Matrix4::identity(),
+            base_pass_mesh->local_bounds(),
+            true,
+            &base_pass_render_data,
+            std::vector<toy3d::MaterialRenderProxy*>{
+                base_pass_material_proxy.get()}));
+
+    const auto make_base_pass_view_family = [&]()
+    {
+        std::vector<toy3d::SceneView> views;
+        views.emplace_back(
+            toy3d::Vector3(),
+            toy3d::Quaternion::identity(),
+            toy3d::Vector3(0.0f, 0.0f, 1.0f),
+            toy3d::UIntVector2(),
+            toy3d::UIntVector2(64u, 64u),
+            toy3d::UIntVector2(64u, 64u),
+            toy3d::CameraProjectionMode::Perspective,
+            toy3d::Radians(1.0f),
+            0.1f,
+            100.0f);
+        return toy3d::SceneViewFamily(
+            *base_pass_scene,
+            toy3d::UIntVector2(64u, 64u),
+            std::move(views));
+    };
+
+    decltype(ready_first) base_pass_draw_resource;
+    std::vector<std::string> base_pass_draw_operations;
+    base_pass_draw_resource.operations = &base_pass_draw_operations;
+    frame_viewport.operations = &base_pass_draw_operations;
+    device.operations = &base_pass_draw_operations;
+    frame_viewport.next_frame = make_frame();
+    check(frame_manager.begin_init(base_pass_draw_resource).succeeded(),
+        "Base Pass draw smoke must begin a pending resource transaction");
+    toy3d::ForwardSceneRenderer base_pass_draw_renderer(
+        make_base_pass_view_family());
+    toy3d::SceneRenderTargets base_pass_draw_targets;
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult> base_pass_draw_result =
+        base_pass_draw_renderer.render_frame(
+            *base_pass_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            base_pass_draw_targets);
+    const auto first_upload = std::find(
+        base_pass_draw_operations.begin(),
+        base_pass_draw_operations.end(),
+        "upload_buffer");
+    const auto first_begin_pass = std::find(
+        base_pass_draw_operations.begin(),
+        base_pass_draw_operations.end(),
+        "begin_render_pass");
+    const auto draw_command = std::find(
+        base_pass_draw_operations.begin(),
+        base_pass_draw_operations.end(),
+        "draw_indexed");
+    check(base_pass_draw_result.succeeded() &&
+          first_upload != base_pass_draw_operations.end() &&
+          first_begin_pass != base_pass_draw_operations.end() &&
+          first_upload < first_begin_pass &&
+          std::find(
+              first_begin_pass,
+              base_pass_draw_operations.end(),
+              "device_create") == base_pass_draw_operations.end() &&
+          draw_command != base_pass_draw_operations.end() &&
+          frame_viewport.end_count == 2u,
+        "Base Pass prepare uploads must precede execute and one prepared draw must reach the same frame list");
+    check(frame_manager.release(base_pass_draw_resource).succeeded(),
+        "successful Base Pass draw resource must be releasable");
+
+    decltype(ready_first) draw_failed_resource;
+    std::vector<std::string> draw_failed_operations;
+    draw_failed_resource.operations = &draw_failed_operations;
+    frame_viewport.operations = &draw_failed_operations;
+    device.operations = &draw_failed_operations;
+    frame_viewport.next_frame = make_frame(true);
+    const std::uint32_t abort_count_before_draw_failure =
+        frame_viewport.abort_count;
+    check(frame_manager.begin_init(draw_failed_resource).succeeded(),
+        "draw-failure smoke must begin a pending resource transaction");
+    toy3d::ForwardSceneRenderer draw_failed_renderer(
+        make_base_pass_view_family());
+    toy3d::SceneRenderTargets draw_failed_targets;
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult> draw_failed_result =
+        draw_failed_renderer.render_frame(
+            *base_pass_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            draw_failed_targets);
+    const auto failed_draw = std::find(
+        draw_failed_operations.begin(),
+        draw_failed_operations.end(),
+        "draw_indexed");
+    const auto end_after_failed_draw = failed_draw ==
+            draw_failed_operations.end()
+        ? draw_failed_operations.end()
+        : std::find(
+            failed_draw,
+            draw_failed_operations.end(),
+            "end_render_pass");
+    check(!draw_failed_result &&
+          draw_failed_result.status().code() ==
+              toy3d::RHIErrorCode::BackendFailure &&
+          end_after_failed_draw != draw_failed_operations.end() &&
+          draw_failed_resource.state() ==
+              toy3d::RenderResourceState::PendingUpload &&
+          draw_failed_resource.discard_count == 1 &&
+          frame_viewport.abort_count ==
+              abort_count_before_draw_failure + 1u &&
+          draw_failed_operations.back() == "abort_frame",
+        "a draw failure must preserve its error, end the pass, discard publication, and abort exactly once");
+    check(frame_manager.release(draw_failed_resource).succeeded(),
+        "draw-failed Base Pass resource must remain releasable");
+
+    decltype(ready_first) invalid_pass_resource;
+    std::vector<std::string> invalid_pass_operations;
+    invalid_pass_resource.operations = &invalid_pass_operations;
+    frame_viewport.operations = &invalid_pass_operations;
+    device.operations = &invalid_pass_operations;
+    frame_viewport.next_frame = make_frame();
+    device.return_invalid_depth_view = true;
+    const std::uint32_t abort_count_before_invalid_pass =
+        frame_viewport.abort_count;
+    check(frame_manager.begin_init(invalid_pass_resource).succeeded(),
+        "invalid-pass smoke must begin a pending resource transaction");
+    toy3d::ForwardSceneRenderer invalid_pass_renderer(
+        make_base_pass_view_family());
+    toy3d::SceneRenderTargets invalid_pass_targets;
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult> invalid_pass_result =
+        invalid_pass_renderer.render_frame(
+            *base_pass_scene,
+            device,
+            frame_manager,
+            frame_viewport,
+            invalid_pass_targets);
+    device.return_invalid_depth_view = false;
+    device.operations = nullptr;
+    check(!invalid_pass_result &&
+          invalid_pass_result.status().code() ==
+              toy3d::RHIErrorCode::InvalidArgument &&
+          std::find(
+              invalid_pass_operations.begin(),
+              invalid_pass_operations.end(),
+              "begin_render_pass") == invalid_pass_operations.end() &&
+          invalid_pass_resource.state() ==
+              toy3d::RenderResourceState::PendingUpload &&
+          invalid_pass_resource.discard_count == 1 &&
+          frame_viewport.abort_count ==
+              abort_count_before_invalid_pass + 1u &&
+          invalid_pass_operations.back() == "abort_frame",
+        "invalid prepare input must not begin a render pass and must discard and abort exactly once");
+    check(frame_manager.release(invalid_pass_resource).succeeded(),
+        "invalid-pass resource must remain releasable");
+    check(base_pass_render_data.release(frame_manager).succeeded(),
+        "Base Pass operation-order mesh resources must release cleanly");
+    base_pass_scene.reset();
+    base_pass_material_proxy.reset();
 
     decltype(ready_first) submit_failed_resource;
     std::vector<std::string> submit_failed_operations;

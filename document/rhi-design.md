@@ -606,21 +606,37 @@ Pipeline 创建入口采用 non-virtual interface。公共 `RHIDevice::create_gr
 
 ### 13.1 Pass 职责
 
-Render pass 分为资源声明和命令执行：
+当前显式 Renderer 的业务 Pass 分为连续的 prepare 与 execute。prepare 是 draw 前资源
+物化阶段，可以显式使用 Renderer 注入的 `RHIDevice&` 与当前
+`RHIGraphicsCommandContext&`：它读取 View、Material、Proxy、MeshBatch 等 Render-side
+状态，创建或查询 shader、pipeline、binding，并在同一个 recording 中录制 draw 所需的
+uniform upload。prepare 不创建或结束 context，不 submit、present、wait，也不开始 RHI
+render pass。
 
 ```cpp
-class RenderPass
-{
-public:
-    virtual ~RenderPass() = default;
-    virtual void setup(RenderPassBuilder& builder) = 0;
-    virtual RHIResult execute(RenderPassContext& context) = 0;
-};
+RHIStatus prepare_base_pass(
+    RHIDevice& device,
+    RHIGraphicsCommandContext& context,
+    const RHIRenderPassDesc& pass_desc,
+    PreparedBasePass& prepared_pass);
+
+RHIStatus execute_base_pass(
+    RHIGraphicsCommandContext& context,
+    const PreparedBasePass& prepared_pass);
 ```
 
-`setup()` 声明资源 read/write、attachment、load/store/clear 和预期 access。Scheduler 计算 pass 顺序和 transition。`execute()` 只录制当前 pass 的命令，不直接 submit，不访问 swapchain，不等待 device idle。
+prepare 的帧内结果只保存 render-pass descriptor、dynamic state、pipeline、vertex/index
+binding、graphics binding 和 draw arguments 等值与 RHI 强引用；不得保存 device、viewport、
+queue、frame context、RenderScene、Material、Proxy 或 MeshBatch 指针，也不得跨帧缓存。
+execute 只接收当前 graphics context 和该不可变准备值，负责 begin/end render pass、设置
+状态和录制 draw；它不得回读准备源或调用任何 device creation。prepare 与 execute 必须使用
+同一个 recording context，因此 upload 严格先于消费它的 draw。
 
-第一阶段 scheduler 串行运行即可，但每个 pass 应生成独立、结束后不可修改的 command list。后续可在 pass 之间并行录制，并按依赖拓扑提交。
+第一阶段由 `SceneRenderer` 显式决定 transition、prepare、execute、finish 和 frame closure，
+仍保持单 viewport、单 graphics context、单 immutable business command list。任一阶段失败由
+外层 frame owner discard 当前 RenderResource recording 并调用 `abort_frame()`。当前不建立
+通用 `RenderPass` 基类、Pass Scheduler 或 command packet hierarchy；后续 RDG 位于
+renderscene，形成真实资源依赖后再统一承担声明、调度和 barrier 规划。
 
 ### 13.2 GlobalShader pass
 
