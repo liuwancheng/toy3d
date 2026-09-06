@@ -18,10 +18,12 @@
 namespace toy3d
 {
     class VulkanCommandList;
-    class VulkanDevice;
+    class VulkanDeferredDeletionQueue;
+    class VulkanQueue;
     class VulkanRenderPassResources;
     class VulkanSwapchain;
     class VulkanUploadPage;
+    class VulkanUploadManager;
 
     struct VulkanFrameSlot
     {
@@ -53,8 +55,15 @@ namespace toy3d
     {
     public:
         VulkanViewportContext(
-            VulkanDevice& device,
-            RHISurfaceRef surface,
+            const RHIDevice& owner,
+            VkPhysicalDevice physical_device,
+            VkDevice device,
+            VkSurfaceKHR surface,
+            std::uint32_t graphics_queue_family,
+            VulkanQueue& graphics_queue,
+            VulkanUploadManager& upload_manager,
+            VulkanDeferredDeletionQueue& deletion_queue,
+            RHISurfaceRef rhi_surface,
             RHIViewportContextDesc desc);
         ~VulkanViewportContext() override;
 
@@ -84,7 +93,14 @@ namespace toy3d
             const char* operation);
         void finish_active_frame();
 
-        VulkanDevice& vulkan_device;
+        const RHIDevice& owner_device;
+        VkPhysicalDevice vk_physical_device = VK_NULL_HANDLE;
+        VkDevice vk_device = VK_NULL_HANDLE;
+        VkSurfaceKHR vk_surface = VK_NULL_HANDLE;
+        std::uint32_t graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
+        VulkanQueue& graphics_queue;
+        VulkanUploadManager& upload_manager;
+        VulkanDeferredDeletionQueue& deletion_queue;
         RHISurfaceRef viewport_surface;
         RHIViewportContextDesc viewport_desc;
         std::unique_ptr<VulkanSwapchain> swapchain;

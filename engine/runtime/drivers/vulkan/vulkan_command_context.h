@@ -20,12 +20,12 @@
 
 namespace toy3d
 {
-    class VulkanDevice;
     class VulkanBuffer;
     class VulkanGraphicsPipeline;
     class VulkanBindingPacket;
     class VulkanRenderPassResources;
     class VulkanTexture;
+    class VulkanUploadManager;
     class VulkanUploadPage;
     class VulkanViewportContext;
 
@@ -144,12 +144,16 @@ namespace toy3d
     {
     public:
         VulkanGraphicsCommandContext(
-            VulkanDevice& device,
+            const RHIDevice& owner,
+            VkDevice device,
+            VulkanUploadManager& upload_manager,
             VulkanViewportContext& viewport,
             VkCommandPool command_pool,
             std::uint64_t frame_id);
         VulkanGraphicsCommandContext(
-            VulkanDevice& device,
+            const RHIDevice& owner,
+            VkDevice device,
+            VulkanUploadManager& upload_manager,
             std::shared_ptr<VulkanCommandPool> command_pool);
         ~VulkanGraphicsCommandContext() override = default;
 
@@ -186,7 +190,9 @@ namespace toy3d
         RHIStatus flush_graphics_state(bool indexed_draw);
         RHIStatus unsupported_while_recording(const char* operation) const;
 
-        VulkanDevice& vulkan_device;
+        const RHIDevice& owner_device;
+        VkDevice vk_device = VK_NULL_HANDLE;
+        VulkanUploadManager& upload_manager;
         VulkanViewportContext* viewport_context = nullptr;
         std::shared_ptr<VulkanCommandPool> owned_command_pool;
         VkCommandPool vk_command_pool = VK_NULL_HANDLE;
@@ -198,4 +204,11 @@ namespace toy3d
         std::array<std::shared_ptr<VulkanBindingPacket>,
             VulkanBindingLayout::physical_set_count> active_binding_packets{};
     };
+
+    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
+        create_vulkan_graphics_command_context(
+            const RHIDevice& owner,
+            VkDevice device,
+            std::uint32_t graphics_queue_family,
+            VulkanUploadManager& upload_manager);
 }

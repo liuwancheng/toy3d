@@ -21,10 +21,6 @@ namespace toy3d
 {
     class VulkanDeferredDeletionQueue;
 
-    VkFormat vulkan_format_from_pixel_format(PixelFormat format);
-    bool is_vk_depth_format(VkFormat format);
-    bool is_vk_stencil_format(VkFormat format);
-
     struct VulkanTextureSubresourceState
     {
         VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;

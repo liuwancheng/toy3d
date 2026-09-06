@@ -142,6 +142,8 @@ namespace
         public toy3d::RHIGraphicsCommandContext
     {
     public:
+        using toy3d::RHIGraphicsCommandContext::RHIGraphicsCommandContext;
+
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
             command_list_ = std::make_shared<RendererTestCommandList>();
@@ -331,6 +333,8 @@ namespace
     class RendererTestViewport final : public toy3d::RHIViewportContext
     {
     public:
+        using toy3d::RHIViewportContext::RHIViewportContext;
+
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>>
         begin_frame() override
         {
@@ -371,6 +375,20 @@ namespace
             : queue_(failure_point),
               failure_point_(failure_point)
         {
+            limits_.max_color_attachments =
+                std::numeric_limits<std::uint32_t>::max();
+            limits_.max_vertex_buffers =
+                std::numeric_limits<std::uint32_t>::max();
+            limits_.max_texture_dimension_2d =
+                std::numeric_limits<std::uint32_t>::max();
+            limits_.max_texture_array_layers =
+                std::numeric_limits<std::uint32_t>::max();
+            limits_.max_uniform_buffer_size =
+                std::numeric_limits<std::uint32_t>::max();
+            limits_.max_binding_slots_per_group =
+                std::numeric_limits<std::uint32_t>::max();
+            limits_.max_sampler_anisotropy =
+                std::numeric_limits<std::uint32_t>::max();
         }
 
         toy3d::RHIStatus initialize(
@@ -401,14 +419,22 @@ namespace
         toy3d::RHIFormatCapabilities format_capabilities(
             toy3d::PixelFormat) const override
         {
-            return {};
+            toy3d::RHIFormatCapabilities result;
+            result.usage = toy3d::RHIFormatUsage::Sampled |
+                toy3d::RHIFormatUsage::Storage |
+                toy3d::RHIFormatUsage::RenderTarget |
+                toy3d::RHIFormatUsage::DepthStencil |
+                toy3d::RHIFormatUsage::VertexBuffer |
+                toy3d::RHIFormatUsage::CopySource |
+                toy3d::RHIFormatUsage::CopyDestination;
+            return result;
         }
         toy3d::RHIQueue& graphics_queue() override
         {
             return queue_;
         }
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIViewportContext>>
-        create_viewport_context(
+        create_viewport_context_impl(
             const toy3d::RHISurfaceRef&,
             const toy3d::RHIViewportContextDesc&) override
         {
@@ -421,16 +447,16 @@ namespace
             }
             return toy3d::RHIResult<
                 std::unique_ptr<toy3d::RHIViewportContext>>::success(
-                    std::make_unique<RendererTestViewport>());
+                    std::make_unique<RendererTestViewport>(*this));
         }
-        toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer(
+        toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer_impl(
             const toy3d::RHIBufferDesc&,
             const toy3d::RHIInitialData*) override
         {
             return toy3d::RHIResult<toy3d::RHIBufferRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "unused test buffer");
         }
-        toy3d::RHIResult<toy3d::RHITextureRef> create_texture(
+        toy3d::RHIResult<toy3d::RHITextureRef> create_texture_impl(
             const toy3d::RHITextureDesc& desc,
             const toy3d::RHIInitialData*) override
         {
@@ -446,14 +472,14 @@ namespace
             return toy3d::RHIResult<toy3d::RHITextureRef>::success(
                 std::make_shared<toy3d::RHITexture>(*this, desc));
         }
-        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view(
+        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view_impl(
             const toy3d::RHIBufferRef&,
             const toy3d::RHIBufferViewDesc&) override
         {
             return toy3d::RHIResult<toy3d::RHIBufferViewRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "unused test buffer view");
         }
-        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view(
+        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view_impl(
             const toy3d::RHITextureRef& texture,
             const toy3d::RHITextureViewDesc& desc) override
         {
@@ -469,7 +495,7 @@ namespace
             return toy3d::RHIResult<toy3d::RHITextureViewRef>::success(
                 std::make_shared<toy3d::RHITextureView>(texture, desc));
         }
-        toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler(
+        toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler_impl(
             const toy3d::RHISamplerDesc& desc) override
         {
             if (failure_point_ ==
@@ -482,20 +508,20 @@ namespace
             return toy3d::RHIResult<toy3d::RHISamplerRef>::success(
                 std::make_shared<toy3d::RHISampler>(*this, desc));
         }
-        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set(
+        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(
             const toy3d::RHIBindingSetDesc&) override
         {
             return toy3d::RHIResult<toy3d::RHIBindingSetRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "unused test binding set");
         }
-        toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence(
+        toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence_impl(
             const std::string&) override
         {
             return toy3d::RHIResult<toy3d::RHIGPUFenceRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "unused test fence");
         }
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
-        create_graphics_command_context() override
+        create_graphics_command_context_impl() override
         {
             if (failure_point_ ==
                 RendererBootstrapFailurePoint::CommandContext)
@@ -507,7 +533,7 @@ namespace
             }
             return toy3d::RHIResult<
                 std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::success(
-                    std::make_unique<RendererTestCommandContext>());
+                    std::make_unique<RendererTestCommandContext>(*this));
         }
 
     protected:

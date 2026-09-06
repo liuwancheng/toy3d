@@ -1,7 +1,7 @@
 #include "drivers/vulkan/vulkan_viewport_context.h"
 
 #include "drivers/vulkan/vulkan_command_context.h"
-#include "drivers/vulkan/vulkan_device.h"
+#include "drivers/vulkan/vulkan_deferred_deletion.h"
 #include "drivers/vulkan/vulkan_queue.h"
 #include "drivers/vulkan/vulkan_resource.h"
 #include "drivers/vulkan/vulkan_swapchain.h"
@@ -113,12 +113,26 @@ namespace toy3d
     }
 
     VulkanViewportContext::VulkanViewportContext(
-        VulkanDevice& device,
-        RHISurfaceRef surface,
+        const RHIDevice& owner,
+        VkPhysicalDevice physical_device,
+        VkDevice device,
+        VkSurfaceKHR surface,
+        std::uint32_t queue_family,
+        VulkanQueue& queue,
+        VulkanUploadManager& uploads,
+        VulkanDeferredDeletionQueue& deletions,
+        RHISurfaceRef rhi_surface,
         RHIViewportContextDesc desc)
-        : RHIViewportContext(device, desc.debug_name)
-        , vulkan_device(device)
-        , viewport_surface(std::move(surface))
+        : RHIViewportContext(owner, desc.debug_name)
+        , owner_device(owner)
+        , vk_physical_device(physical_device)
+        , vk_device(device)
+        , vk_surface(surface)
+        , graphics_queue_family(queue_family)
+        , graphics_queue(queue)
+        , upload_manager(uploads)
+        , deletion_queue(deletions)
+        , viewport_surface(std::move(rhi_surface))
         , viewport_desc(std::move(desc))
         , resize_pending(true)
         , pending_width(viewport_desc.width)
@@ -128,10 +142,10 @@ namespace toy3d
 
     VulkanViewportContext::~VulkanViewportContext()
     {
-        if (vulkan_device.device() != VK_NULL_HANDLE)
+        if (vk_device != VK_NULL_HANDLE)
         {
-            vkDeviceWaitIdle(vulkan_device.device());
-            vulkan_device.graphics_queue().completed_value();
+            vkDeviceWaitIdle(vk_device);
+            graphics_queue.completed_value();
         }
         destroy_frame_slots(frame_slots);
         swapchain.reset();
@@ -164,7 +178,7 @@ namespace toy3d
         VulkanFrameSlot& slot = frame_slots[current_frame_slot];
         RHIStatus status = make_viewport_status(
             vkWaitForFences(
-                vulkan_device.device(), 1, &slot.submission_fence, VK_TRUE, UINT64_MAX),
+                vk_device, 1, &slot.submission_fence, VK_TRUE, UINT64_MAX),
             "vkWaitForFences");
         if (!status)
         {
@@ -172,8 +186,9 @@ namespace toy3d
             return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
                 status.code(), status.message());
         }
-        vulkan_device.release_completed_work(
-            vulkan_device.graphics_queue().completed_value());
+        const RHIQueueCompletionValue completed_value = graphics_queue.completed_value();
+        upload_manager.release_completed(completed_value);
+        deletion_queue.release_completed(vk_device, completed_value);
         slot.submitted_command_lists.clear();
         slot.submitted_resources.clear();
         slot.submitted_upload_pages.clear();
@@ -182,7 +197,7 @@ namespace toy3d
         slot.submitted_binding_sets.clear();
         slot.submitted_render_pass_resources.clear();
         status = make_viewport_status(
-            vkResetCommandPool(vulkan_device.device(), slot.command_pool, 0),
+            vkResetCommandPool(vk_device, slot.command_pool, 0),
             "vkResetCommandPool");
         if (!status)
         {
@@ -212,7 +227,7 @@ namespace toy3d
         {
             status = make_viewport_status(
                 vkWaitForFences(
-                    vulkan_device.device(),
+                    vk_device,
                     1,
                     &acquired_image.last_submission_fence,
                     VK_TRUE,
@@ -293,7 +308,7 @@ namespace toy3d
             }
             auto* vulkan_list = dynamic_cast<VulkanCommandList*>(command_list.get());
             if (!command_list || !unique_lists.emplace(command_list.get()).second ||
-                vulkan_list == nullptr || !vulkan_list->is_owned_by(vulkan_device) ||
+                vulkan_list == nullptr || !vulkan_list->is_owned_by(owner_device) ||
                 !vulkan_list->belongs_to(*this, active_frame_id) ||
                 vulkan_list->state() != RHICommandListState::Closed)
             {
@@ -435,7 +450,9 @@ namespace toy3d
         }
         return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::success(
             std::make_unique<VulkanGraphicsCommandContext>(
-                vulkan_device,
+                owner_device,
+                vk_device,
+                upload_manager,
                 *this,
                 frame_slots[current_frame_slot].command_pool,
                 active_frame_id));
@@ -446,8 +463,8 @@ namespace toy3d
         VkSurfaceCapabilitiesKHR capabilities{};
         RHIStatus status = make_viewport_status(
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                vulkan_device.physical_device(),
-                vulkan_device.primary_surface_handle(),
+                vk_physical_device,
+                vk_surface,
                 &capabilities),
             "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
         if (!status)
@@ -465,20 +482,24 @@ namespace toy3d
         if (swapchain)
         {
             ++recreate_queue_idle_count;
-            status = vulkan_device.graphics_queue().wait_idle();
+            status = graphics_queue.wait_idle();
             if (!status)
             {
                 return status;
             }
-            vulkan_device.release_completed_work(
-                vulkan_device.graphics_queue().completed_value());
+            const RHIQueueCompletionValue completed_value = graphics_queue.completed_value();
+            upload_manager.release_completed(completed_value);
+            deletion_queue.release_completed(vk_device, completed_value);
         }
 
         RHIViewportContextDesc replacement_desc = viewport_desc;
         replacement_desc.width = pending_width;
         replacement_desc.height = pending_height;
         auto replacement_result = VulkanSwapchain::create(
-            vulkan_device,
+            owner_device,
+            vk_physical_device,
+            vk_device,
+            vk_surface,
             replacement_desc,
             swapchain ? swapchain->native_handle() : VK_NULL_HANDLE);
         if (!replacement_result)
@@ -526,7 +547,7 @@ namespace toy3d
             VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             RHIStatus status = make_viewport_status(
                 vkCreateSemaphore(
-                    vulkan_device.device(), &semaphore_info, nullptr, &slot.image_acquired),
+                    vk_device, &semaphore_info, nullptr, &slot.image_acquired),
                 "vkCreateSemaphore");
             if (!status)
             {
@@ -536,7 +557,7 @@ namespace toy3d
             fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
             status = make_viewport_status(
                 vkCreateFence(
-                    vulkan_device.device(), &fence_info, nullptr, &slot.submission_fence),
+                    vk_device, &fence_info, nullptr, &slot.submission_fence),
                 "vkCreateFence");
             if (!status)
             {
@@ -545,10 +566,10 @@ namespace toy3d
             VkCommandPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
             pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
                 VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            pool_info.queueFamilyIndex = vulkan_device.graphics_queue_family_index();
+            pool_info.queueFamilyIndex = graphics_queue_family;
             status = make_viewport_status(
                 vkCreateCommandPool(
-                    vulkan_device.device(), &pool_info, nullptr, &slot.command_pool),
+                    vk_device, &pool_info, nullptr, &slot.command_pool),
                 "vkCreateCommandPool");
             if (!status)
             {
@@ -561,7 +582,7 @@ namespace toy3d
             command_info.commandBufferCount = 1;
             status = make_viewport_status(
                 vkAllocateCommandBuffers(
-                    vulkan_device.device(),
+                    vk_device,
                     &command_info,
                     &slot.present_transition_command_buffer),
                 "vkAllocateCommandBuffers");
@@ -575,7 +596,7 @@ namespace toy3d
 
     void VulkanViewportContext::destroy_frame_slots(std::vector<VulkanFrameSlot>& slots)
     {
-        const VkDevice device = vulkan_device.device();
+        const VkDevice device = vk_device;
         for (VulkanFrameSlot& slot : slots)
         {
             if (device != VK_NULL_HANDLE && slot.image_acquired != VK_NULL_HANDLE)
@@ -673,7 +694,7 @@ namespace toy3d
             return latch_incomplete_active_frame_failure(status, "vkEndCommandBuffer");
         }
         status = make_viewport_status(
-            vkResetFences(vulkan_device.device(), 1, &slot.submission_fence),
+            vkResetFences(vk_device, 1, &slot.submission_fence),
             "vkResetFences");
         if (!status)
         {
@@ -687,7 +708,7 @@ namespace toy3d
             command_buffers.push_back(command_list->command_buffer());
         }
         command_buffers.push_back(slot.present_transition_command_buffer);
-        auto& queue = static_cast<VulkanQueue&>(vulkan_device.graphics_queue());
+        VulkanQueue& queue = graphics_queue;
         const auto submit_result = queue.submit_viewport(
             command_lists,
             command_buffers,
@@ -699,7 +720,7 @@ namespace toy3d
         if (!submit_result)
         {
             image.last_submission_fence = VK_NULL_HANDLE;
-            vkDestroyFence(vulkan_device.device(), slot.submission_fence, nullptr);
+            vkDestroyFence(vk_device, slot.submission_fence, nullptr);
             slot.submission_fence = VK_NULL_HANDLE;
             return latch_incomplete_active_frame_failure(
                 submit_result.status(), "Vulkan viewport submission");
@@ -713,7 +734,7 @@ namespace toy3d
     {
         VulkanSwapchainImage& image = swapchain->image(active_image_index);
         const RHIStatus status = swapchain->present(
-            vulkan_device.graphics_queue_handle(),
+            graphics_queue.native_handle(),
             active_image_index,
             image.rendering_done);
         if (status.code() == RHIErrorCode::Suboptimal ||

@@ -142,6 +142,14 @@ resource、view、shader、binding、pipeline、fence、viewport 和 device-leve
 
 所有创建类别共享同一个 RAII admission。shutdown 先关闭 admission，拒绝新创建并等待在途创建离开，再执行 ordinary idle policy、清理 frontend cache 和 backend state；`shutdown_after_device_lost()` 复用相同 admission，但不再次调用 native idle wait。descriptor/能力错误、`NotReady`、`DeviceLost`、`Unsupported`、`OutOfMemory` 与 `BackendFailure` 必须保持可诊断分类。
 
+#### 4.1.1 Vulkan backend implementation 边界
+
+`VulkanDevice` 是 `RHIDevice` 的唯一 Vulkan facade、native device 生命周期 owner 和 backend composition root。它拥有 instance、primary surface、physical/logical device，以及 queue、memory、upload 和 deferred-deletion 服务；上层与 renderscene 不得持有其他 Vulkan 根对象。
+
+`VulkanDevice` 不作为 backend 内部 service locator。RHI→Vulkan 转换集中在 `vulkan_type_mapping.*`；resource/view/shader/sampler、binding layout/set/physical packet 和 graphics pipeline 的原生创建分别位于窄 creation modules。`VulkanDevice::create_*_impl()` 只传入 owner identity、native handle、descriptor 与所需 manager，并原样返回结果。creation module 不接收 frontend `initialized` 状态、不调用公共 `create_*()`，也不重复 lifecycle、capability 或公共 descriptor policy；需要原生 handle 的函数只防御 `VK_NULL_HANDLE` 等 Vulkan API 前置条件。
+
+`VulkanGraphicsCommandContext`、`VulkanViewportContext` 和 `VulkanSwapchain` 通过构造函数逐项获得实际依赖，不保存 `VulkanDevice&`，也不通过 device accessor 查找服务。逐项注入的 owner identity 只用于跨对象归属校验，不能反向取得 device 服务；所有 native handle 和 non-owning service reference 的生命周期都严格短于 owning `VulkanDevice`。不得用 `VulkanDeviceServices`、第二个 device wrapper、static mutable state 或新旧双轨 creation path 缩短参数列表。
+
 ### 4.2 Command context 与 command list
 
 创建和执行必须分离。公共 command context 分为通用、graphics 和预留 compute 三层：

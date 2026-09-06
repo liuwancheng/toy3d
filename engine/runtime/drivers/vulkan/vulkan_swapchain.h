@@ -18,8 +18,6 @@
 
 namespace toy3d
 {
-    class VulkanDevice;
-
     struct VulkanSwapchainImage
     {
         VkImage image = VK_NULL_HANDLE;
@@ -46,14 +44,21 @@ namespace toy3d
     class VulkanSwapchain final
     {
     public:
-        explicit VulkanSwapchain(VulkanDevice& device);
+        VulkanSwapchain(
+            const RHIDevice& owner,
+            VkPhysicalDevice physical_device,
+            VkDevice device,
+            VkSurfaceKHR surface);
         ~VulkanSwapchain();
 
         VulkanSwapchain(const VulkanSwapchain&) = delete;
         VulkanSwapchain& operator=(const VulkanSwapchain&) = delete;
 
         static RHIResult<std::unique_ptr<VulkanSwapchain>> create(
-            VulkanDevice& device,
+            const RHIDevice& owner,
+            VkPhysicalDevice physical_device,
+            VkDevice device,
+            VkSurfaceKHR surface,
             const RHIViewportContextDesc& desc,
             VkSwapchainKHR old_swapchain);
 
@@ -75,7 +80,10 @@ namespace toy3d
             const RHIViewportContextDesc& desc,
             VkSwapchainKHR old_swapchain);
 
-        VulkanDevice& vulkan_device;
+        const RHIDevice& owner_device;
+        VkPhysicalDevice vk_physical_device = VK_NULL_HANDLE;
+        VkDevice vk_device = VK_NULL_HANDLE;
+        VkSurfaceKHR vk_surface = VK_NULL_HANDLE;
         VkSwapchainKHR vk_swapchain = VK_NULL_HANDLE;
         VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
         VkExtent2D swapchain_extent{};

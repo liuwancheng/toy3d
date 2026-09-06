@@ -84,18 +84,26 @@ if(TOY3D_ENABLE_VULKAN_RHI)
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_device.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_device.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_binding_creation.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_binding_creation.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_command_context.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_command_context.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_deferred_deletion.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_deferred_deletion.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource_creation.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource_creation.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_graphics_state.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_graphics_state.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_memory_manager.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_memory_manager.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_pipeline_creation.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_pipeline_creation.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_swapchain.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_swapchain.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_type_mapping.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_type_mapping.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_upload_manager.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_upload_manager.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_queue.cpp"
@@ -264,6 +272,32 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dRuntime.RHIViewportStatus COMMAND Toy3dRHIViewportStatusTests)
 
     if(TOY3D_ENABLE_VULKAN_RHI)
+        add_executable(Toy3dVulkanTypeMappingTests
+            "tests/vulkan_type_mapping_tests.cpp")
+        target_compile_features(Toy3dVulkanTypeMappingTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dVulkanTypeMappingTests PROPERTIES
+            CXX_EXTENSIONS OFF
+            FOLDER "Engine/Tests")
+        target_compile_options(Toy3dVulkanTypeMappingTests
+            PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_link_libraries(Toy3dVulkanTypeMappingTests PRIVATE Toy3dRuntime)
+        add_test(NAME Toy3dRuntime.VulkanTypeMapping
+            COMMAND Toy3dVulkanTypeMappingTests)
+
+        add_executable(Toy3dVulkanDeviceLifecycleTests
+            "tests/vulkan_device_lifecycle_tests.cpp")
+        target_compile_features(Toy3dVulkanDeviceLifecycleTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dVulkanDeviceLifecycleTests PROPERTIES
+            CXX_EXTENSIONS OFF
+            FOLDER "Engine/Tests")
+        target_compile_options(Toy3dVulkanDeviceLifecycleTests
+            PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_link_libraries(Toy3dVulkanDeviceLifecycleTests PRIVATE Toy3dRuntime)
+        add_test(NAME Toy3dRuntime.VulkanDeviceLifecycle
+            COMMAND Toy3dVulkanDeviceLifecycleTests)
+
         add_executable(Toy3dVulkanSwapchainTests
             "tests/vulkan_swapchain_tests.cpp")
         target_compile_features(Toy3dVulkanSwapchainTests PRIVATE cxx_std_17)

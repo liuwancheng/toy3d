@@ -1,6 +1,7 @@
 #include "drivers/vulkan/vulkan_resource.h"
 
 #include "drivers/vulkan/vulkan_deferred_deletion.h"
+#include "drivers/vulkan/vulkan_type_mapping.h"
 
 #include "logging/logger.h"
 
@@ -10,85 +11,6 @@
 
 namespace toy3d
 {
-    VkFormat vulkan_format_from_pixel_format(PixelFormat format)
-    {
-        switch (format)
-        {
-        case PixelFormat::R8UNorm:
-            return VK_FORMAT_R8_UNORM;
-        case PixelFormat::R8G8B8A8UNorm:
-            return VK_FORMAT_R8G8B8A8_UNORM;
-        case PixelFormat::R8G8B8A8UNormSRGB:
-            return VK_FORMAT_R8G8B8A8_SRGB;
-        case PixelFormat::B8G8R8A8UNorm:
-            return VK_FORMAT_B8G8R8A8_UNORM;
-        case PixelFormat::B8G8R8A8UNormSRGB:
-            return VK_FORMAT_B8G8R8A8_SRGB;
-        case PixelFormat::R16Float:
-            return VK_FORMAT_R16_SFLOAT;
-        case PixelFormat::R16G16Float:
-            return VK_FORMAT_R16G16_SFLOAT;
-        case PixelFormat::R16G16B16A16Float:
-            return VK_FORMAT_R16G16B16A16_SFLOAT;
-        case PixelFormat::R32Float:
-            return VK_FORMAT_R32_SFLOAT;
-        case PixelFormat::R32G32Float:
-            return VK_FORMAT_R32G32_SFLOAT;
-        case PixelFormat::R32G32B32Float:
-            return VK_FORMAT_R32G32B32_SFLOAT;
-        case PixelFormat::R32G32B32A32Float:
-            return VK_FORMAT_R32G32B32A32_SFLOAT;
-        case PixelFormat::R16UInt:
-            return VK_FORMAT_R16_UINT;
-        case PixelFormat::R32UInt:
-            return VK_FORMAT_R32_UINT;
-        case PixelFormat::R8SNorm:
-            return VK_FORMAT_R8_SNORM;
-        case PixelFormat::R8G8B8A8SNorm:
-            return VK_FORMAT_R8G8B8A8_SNORM;
-        case PixelFormat::R10G10B10A2UNorm:
-            return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-        case PixelFormat::R11G11B10Float:
-            return VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-        case PixelFormat::BC1UNorm:
-            return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
-        case PixelFormat::BC2UNorm:
-            return VK_FORMAT_BC2_UNORM_BLOCK;
-        case PixelFormat::BC3UNorm:
-            return VK_FORMAT_BC3_UNORM_BLOCK;
-        case PixelFormat::ASTC4x4:
-            return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
-        case PixelFormat::ASTC6x6:
-            return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
-        case PixelFormat::ASTC8x8:
-            return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
-        case PixelFormat::ASTC12x12:
-            return VK_FORMAT_ASTC_12x12_UNORM_BLOCK;
-        case PixelFormat::D16UNorm:
-            return VK_FORMAT_D16_UNORM;
-        case PixelFormat::D24UNormS8UInt:
-            return VK_FORMAT_D24_UNORM_S8_UINT;
-        case PixelFormat::D32Float:
-            return VK_FORMAT_D32_SFLOAT;
-        case PixelFormat::D32FloatS8UInt:
-            return VK_FORMAT_D32_SFLOAT_S8_UINT;
-        default:
-            return VK_FORMAT_UNDEFINED;
-        }
-    }
-
-    bool is_vk_depth_format(VkFormat format)
-    {
-        return format == VK_FORMAT_D16_UNORM ||
-            format == VK_FORMAT_D24_UNORM_S8_UINT ||
-            format == VK_FORMAT_D32_SFLOAT ||
-            format == VK_FORMAT_D32_SFLOAT_S8_UINT;
-    }
-
-    bool is_vk_stencil_format(VkFormat format)
-    {
-        return format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
-    }
 
     VulkanBuffer::VulkanBuffer(
         const RHIDevice& owner,

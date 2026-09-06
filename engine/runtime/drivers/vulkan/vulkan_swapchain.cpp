@@ -1,7 +1,7 @@
 #include "drivers/vulkan/vulkan_swapchain.h"
 
-#include "drivers/vulkan/vulkan_device.h"
 #include "drivers/vulkan/vulkan_resource.h"
+#include "drivers/vulkan/vulkan_type_mapping.h"
 
 #include <algorithm>
 #include <string>
@@ -71,14 +71,21 @@ namespace toy3d
         return std::min(max_frames_in_flight, actual_image_count);
     }
 
-    VulkanSwapchain::VulkanSwapchain(VulkanDevice& device)
-        : vulkan_device(device)
+    VulkanSwapchain::VulkanSwapchain(
+        const RHIDevice& owner,
+        VkPhysicalDevice physical_device,
+        VkDevice device,
+        VkSurfaceKHR surface)
+        : owner_device(owner)
+        , vk_physical_device(physical_device)
+        , vk_device(device)
+        , vk_surface(surface)
     {
     }
 
     VulkanSwapchain::~VulkanSwapchain()
     {
-        const VkDevice device = vulkan_device.device();
+        const VkDevice device = vk_device;
         for (VulkanSwapchainImage& swapchain_image : swapchain_images)
         {
             swapchain_image.view.reset();
@@ -100,11 +107,15 @@ namespace toy3d
     }
 
     RHIResult<std::unique_ptr<VulkanSwapchain>> VulkanSwapchain::create(
-        VulkanDevice& device,
+        const RHIDevice& owner,
+        VkPhysicalDevice physical_device,
+        VkDevice device,
+        VkSurfaceKHR surface,
         const RHIViewportContextDesc& desc,
         VkSwapchainKHR old_swapchain)
     {
-        auto swapchain = std::make_unique<VulkanSwapchain>(device);
+        auto swapchain = std::make_unique<VulkanSwapchain>(
+            owner, physical_device, device, surface);
         const RHIStatus status = swapchain->initialize(desc, old_swapchain);
         if (!status)
         {
@@ -121,8 +132,8 @@ namespace toy3d
         VkSurfaceCapabilitiesKHR capabilities{};
         RHIStatus status = make_swapchain_status(
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                vulkan_device.physical_device(),
-                vulkan_device.primary_surface_handle(),
+                vk_physical_device,
+                vk_surface,
                 &capabilities),
             "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
         if (!status)
@@ -147,8 +158,8 @@ namespace toy3d
         std::uint32_t format_count = 0;
         status = make_swapchain_status(
             vkGetPhysicalDeviceSurfaceFormatsKHR(
-                vulkan_device.physical_device(),
-                vulkan_device.primary_surface_handle(),
+                vk_physical_device,
+                vk_surface,
                 &format_count,
                 nullptr),
             "vkGetPhysicalDeviceSurfaceFormatsKHR");
@@ -159,8 +170,8 @@ namespace toy3d
         std::vector<VkSurfaceFormatKHR> formats(format_count);
         status = make_swapchain_status(
             vkGetPhysicalDeviceSurfaceFormatsKHR(
-                vulkan_device.physical_device(),
-                vulkan_device.primary_surface_handle(),
+                vk_physical_device,
+                vk_surface,
                 &format_count,
                 formats.data()),
             "vkGetPhysicalDeviceSurfaceFormatsKHR");
@@ -183,8 +194,8 @@ namespace toy3d
         std::uint32_t present_mode_count = 0;
         status = make_swapchain_status(
             vkGetPhysicalDeviceSurfacePresentModesKHR(
-                vulkan_device.physical_device(),
-                vulkan_device.primary_surface_handle(),
+                vk_physical_device,
+                vk_surface,
                 &present_mode_count,
                 nullptr),
             "vkGetPhysicalDeviceSurfacePresentModesKHR");
@@ -195,8 +206,8 @@ namespace toy3d
         std::vector<VkPresentModeKHR> present_modes(present_mode_count);
         status = make_swapchain_status(
             vkGetPhysicalDeviceSurfacePresentModesKHR(
-                vulkan_device.physical_device(),
-                vulkan_device.primary_surface_handle(),
+                vk_physical_device,
+                vk_surface,
                 &present_mode_count,
                 present_modes.data()),
             "vkGetPhysicalDeviceSurfacePresentModesKHR");
@@ -259,7 +270,7 @@ namespace toy3d
         }
 
         VkSwapchainCreateInfoKHR create_info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-        create_info.surface = vulkan_device.primary_surface_handle();
+        create_info.surface = vk_surface;
         create_info.minImageCount = requested_image_count;
         create_info.imageFormat = format_it->format;
         create_info.imageColorSpace = format_it->colorSpace;
@@ -273,7 +284,7 @@ namespace toy3d
         create_info.clipped = VK_TRUE;
         create_info.oldSwapchain = old_swapchain;
         status = make_swapchain_status(
-            vkCreateSwapchainKHR(vulkan_device.device(), &create_info, nullptr, &vk_swapchain),
+            vkCreateSwapchainKHR(vk_device, &create_info, nullptr, &vk_swapchain),
             "vkCreateSwapchainKHR");
         if (!status)
         {
@@ -284,7 +295,7 @@ namespace toy3d
         std::uint32_t actual_image_count = 0;
         status = make_swapchain_status(
             vkGetSwapchainImagesKHR(
-                vulkan_device.device(), vk_swapchain, &actual_image_count, nullptr),
+                vk_device, vk_swapchain, &actual_image_count, nullptr),
             "vkGetSwapchainImagesKHR");
         if (!status)
         {
@@ -293,7 +304,7 @@ namespace toy3d
         std::vector<VkImage> images(actual_image_count);
         status = make_swapchain_status(
             vkGetSwapchainImagesKHR(
-                vulkan_device.device(), vk_swapchain, &actual_image_count, images.data()),
+                vk_device, vk_swapchain, &actual_image_count, images.data()),
             "vkGetSwapchainImagesKHR");
         if (!status)
         {
@@ -317,7 +328,7 @@ namespace toy3d
             view_info.subresourceRange.layerCount = 1;
             status = make_swapchain_status(
                 vkCreateImageView(
-                    vulkan_device.device(), &view_info, nullptr, &swapchain_image.image_view),
+                    vk_device, &view_info, nullptr, &swapchain_image.image_view),
                 "vkCreateImageView");
             if (!status)
             {
@@ -333,7 +344,7 @@ namespace toy3d
             texture_desc.initial_access = RHIAccess::Present;
             texture_desc.debug_name = desc.debug_name + ".Image" + std::to_string(index);
             swapchain_image.texture = std::make_shared<VulkanTexture>(
-                vulkan_device,
+                owner_device,
                 std::move(texture_desc),
                 swapchain_image.image,
                 VK_IMAGE_LAYOUT_UNDEFINED,
@@ -347,14 +358,14 @@ namespace toy3d
             swapchain_image.view = std::make_shared<VulkanTextureView>(
                 swapchain_image.texture,
                 std::move(view_desc),
-                vulkan_device.device(),
+                vk_device,
                 swapchain_image.image_view,
                 false);
 
             VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             status = make_swapchain_status(
                 vkCreateSemaphore(
-                    vulkan_device.device(), &semaphore_info, nullptr, &swapchain_image.rendering_done),
+                    vk_device, &semaphore_info, nullptr, &swapchain_image.rendering_done),
                 "vkCreateSemaphore");
             if (!status)
             {
@@ -368,7 +379,7 @@ namespace toy3d
     {
         std::uint32_t image_index = 0;
         const VkResult result = vkAcquireNextImageKHR(
-            vulkan_device.device(),
+            vk_device,
             vk_swapchain,
             UINT64_MAX,
             image_acquired,

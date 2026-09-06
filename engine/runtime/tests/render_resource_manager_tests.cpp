@@ -22,6 +22,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -266,7 +267,15 @@ int main()
         toy3d::RHIFormatCapabilities format_capabilities(
             toy3d::PixelFormat) const override
         {
-            return {};
+            toy3d::RHIFormatCapabilities result;
+            result.usage = toy3d::RHIFormatUsage::Sampled |
+                toy3d::RHIFormatUsage::Storage |
+                toy3d::RHIFormatUsage::RenderTarget |
+                toy3d::RHIFormatUsage::DepthStencil |
+                toy3d::RHIFormatUsage::VertexBuffer |
+                toy3d::RHIFormatUsage::CopySource |
+                toy3d::RHIFormatUsage::CopyDestination;
+            return result;
         }
 
         toy3d::RHIQueue& graphics_queue() override
@@ -275,7 +284,7 @@ int main()
         }
 
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIViewportContext>>
-        create_viewport_context(
+        create_viewport_context_impl(
             const toy3d::RHISurfaceRef&,
             const toy3d::RHIViewportContextDesc&) override
         {
@@ -285,7 +294,7 @@ int main()
                     "The resource smoke has no viewport");
         }
 
-        toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer(
+        toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer_impl(
             const toy3d::RHIBufferDesc& desc,
             const toy3d::RHIInitialData* initial_data) override
         {
@@ -302,7 +311,7 @@ int main()
                 std::make_shared<toy3d::RHIBuffer>(*this, desc));
         }
 
-        toy3d::RHIResult<toy3d::RHITextureRef> create_texture(
+        toy3d::RHIResult<toy3d::RHITextureRef> create_texture_impl(
             const toy3d::RHITextureDesc& desc,
             const toy3d::RHIInitialData*) override
         {
@@ -311,7 +320,7 @@ int main()
                 std::make_shared<toy3d::RHITexture>(*this, desc));
         }
 
-        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view(
+        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view_impl(
             const toy3d::RHIBufferRef&,
             const toy3d::RHIBufferViewDesc&) override
         {
@@ -320,7 +329,7 @@ int main()
                 "The resource smoke creates no views");
         }
 
-        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view(
+        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view_impl(
             const toy3d::RHITextureRef& texture,
             const toy3d::RHITextureViewDesc& desc) override
         {
@@ -328,7 +337,7 @@ int main()
                 std::make_shared<toy3d::RHITextureView>(texture, desc));
         }
 
-        toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler(
+        toy3d::RHIResult<toy3d::RHISamplerRef> create_sampler_impl(
             const toy3d::RHISamplerDesc&) override
         {
             return toy3d::RHIResult<toy3d::RHISamplerRef>::failure(
@@ -336,7 +345,7 @@ int main()
                 "The resource smoke creates no samplers");
         }
 
-        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set(
+        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(
             const toy3d::RHIBindingSetDesc& desc) override
         {
             ++binding_set_creation_count;
@@ -344,7 +353,7 @@ int main()
                 std::make_shared<toy3d::RHIBindingSet>(desc));
         }
 
-        toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence(
+        toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence_impl(
             const std::string&) override
         {
             return toy3d::RHIResult<toy3d::RHIGPUFenceRef>::failure(
@@ -353,7 +362,7 @@ int main()
         }
 
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
-        create_graphics_command_context() override
+        create_graphics_command_context_impl() override
         {
             return toy3d::RHIResult<
                 std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::failure(
@@ -404,9 +413,27 @@ int main()
         }
     } device;
     device.queue = &queue;
+    device.test_capabilities.storage_resources = true;
+    device.test_capabilities.indirect_draw = true;
+    device.test_limits.max_color_attachments =
+        std::numeric_limits<std::uint32_t>::max();
+    device.test_limits.max_vertex_buffers =
+        std::numeric_limits<std::uint32_t>::max();
+    device.test_limits.max_texture_dimension_2d =
+        std::numeric_limits<std::uint32_t>::max();
+    device.test_limits.max_texture_array_layers =
+        std::numeric_limits<std::uint32_t>::max();
+    device.test_limits.max_uniform_buffer_size =
+        std::numeric_limits<std::uint32_t>::max();
+    device.test_limits.max_binding_slots_per_group =
+        std::numeric_limits<std::uint32_t>::max();
+    device.test_limits.max_sampler_anisotropy =
+        std::numeric_limits<std::uint32_t>::max();
 
-    struct : toy3d::RHICommandContext
+    struct UniformContext final : toy3d::RHICommandContext
     {
+        using toy3d::RHICommandContext::RHICommandContext;
+
         std::vector<std::uint8_t> last_buffer_upload_data;
 
         toy3d::RHIStatus begin_recording(const std::string&) override
@@ -461,7 +488,7 @@ int main()
                 toy3d::RHIErrorCode::Unsupported,
                 "The ABI materialization smoke does not finish a command list");
         }
-    } uniform_context;
+    } uniform_context(device);
 
     toy3d::RHIBindingLayoutDesc view_object_layout_desc;
     view_object_layout_desc.entries.push_back({toy3d::RHIBindingGroup::View,
@@ -472,7 +499,7 @@ int main()
         toy3d::RHIShaderStageFlags::Vertex, 1u});
     const toy3d::RHIBindingLayoutRef view_object_layout =
         std::make_shared<toy3d::RHIBindingLayout>(
-            std::move(view_object_layout_desc));
+            device, std::move(view_object_layout_desc));
     const toy3d::ShaderMapProgramRef view_object_program =
         load_program(make_view_object_program());
 
@@ -609,8 +636,10 @@ int main()
                view_parameters),
         "View resource-class bindings without a canonical source must fail");
 
-    struct : toy3d::RHIGraphicsCommandContext
+    struct GraphicsContext final : toy3d::RHIGraphicsCommandContext
     {
+        using toy3d::RHIGraphicsCommandContext::RHIGraphicsCommandContext;
+
         std::uint32_t transition_count = 0;
         std::uint32_t upload_count = 0;
         std::uint32_t texture_upload_count = 0;
@@ -772,7 +801,7 @@ int main()
         {
             return toy3d::RHIStatus::success();
         }
-    } context;
+    } context(device);
 
     struct : toy3d::RenderResource
     {
@@ -1136,8 +1165,10 @@ int main()
         }
     } frame_context_shape;
 
-    struct : toy3d::RHIViewportContext
+    struct FrameViewport final : toy3d::RHIViewportContext
     {
+        using toy3d::RHIViewportContext::RHIViewportContext;
+
         std::unique_ptr<toy3d::RHIFrameContext> next_frame;
         std::vector<std::string>* operations = nullptr;
         std::uint32_t begin_count = 0u;
@@ -1211,7 +1242,7 @@ int main()
         {
             return toy3d::RHIStatus::success();
         }
-    } frame_viewport;
+    } frame_viewport(device);
 
     const auto make_frame = [&]()
         -> std::unique_ptr<toy3d::RHIFrameContext>
@@ -1220,7 +1251,7 @@ int main()
             std::make_unique<decltype(frame_context_shape)>();
         frame_context->color_texture = present_texture;
         frame_context->color_view = present_view;
-        auto frame_commands = std::make_unique<decltype(context)>();
+        auto frame_commands = std::make_unique<decltype(context)>(device);
         frame_commands->operations = frame_viewport.operations;
         frame_commands->command_device = &device;
         frame_commands->finish_success = true;

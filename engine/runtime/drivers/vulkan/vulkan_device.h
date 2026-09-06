@@ -13,13 +13,8 @@
 #include <vulkan/vulkan.h>
 
 #include <memory>
-#include <vector>
-
 namespace toy3d
 {
-    class VulkanBindingLayout;
-    class VulkanBindingPacket;
-    class VulkanBindingSet;
     class VulkanDeferredDeletionQueue;
     class VulkanQueue;
 
@@ -48,21 +43,7 @@ namespace toy3d
 
         RHIQueue& graphics_queue() override;
 
-        RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_binding_packet(
-            const std::shared_ptr<VulkanBindingLayout>& layout,
-            std::uint32_t physical_set,
-            const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets);
-        VkInstance instance() const;
-        VkSurfaceKHR primary_surface_handle() const;
-        VkPhysicalDevice physical_device() const;
-        VkDevice device() const;
-        VkQueue graphics_queue_handle() const;
-        std::uint32_t graphics_queue_family_index() const;
-        VulkanMemoryManager& memory_manager();
-        VulkanUploadManager& upload_manager();
-        VulkanDeferredDeletionQueue& deferred_deletion_queue();
         VulkanDeviceObservation observation_snapshot() const;
-        void release_completed_work(RHIQueueCompletionValue completed_value);
 
     protected:
         RHIResult<std::unique_ptr<RHIViewportContext>> create_viewport_context_impl(
