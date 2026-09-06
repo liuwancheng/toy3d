@@ -624,7 +624,8 @@ namespace toy3d
         VulkanViewportContext& viewport,
         VkCommandPool command_pool,
         std::uint64_t frame_id)
-        : vulkan_device(device)
+        : RHIGraphicsCommandContext(device)
+        , vulkan_device(device)
         , viewport_context(&viewport)
         , vk_command_pool(command_pool)
         , recording_frame_id(frame_id)
@@ -634,7 +635,8 @@ namespace toy3d
     VulkanGraphicsCommandContext::VulkanGraphicsCommandContext(
         VulkanDevice& device,
         std::shared_ptr<VulkanCommandPool> command_pool)
-        : vulkan_device(device)
+        : RHIGraphicsCommandContext(device)
+        , vulkan_device(device)
         , owned_command_pool(std::move(command_pool))
         , vk_command_pool(
             owned_command_pool ? owned_command_pool->handle() : VK_NULL_HANDLE)

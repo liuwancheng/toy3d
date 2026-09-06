@@ -227,6 +227,18 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dRHIBindingTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.RHIBinding COMMAND Toy3dRHIBindingTests)
 
+    add_executable(Toy3dRHIDeviceFrontendTests
+        "tests/rhi_device_frontend_tests.cpp")
+    target_compile_features(Toy3dRHIDeviceFrontendTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dRHIDeviceFrontendTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_compile_options(Toy3dRHIDeviceFrontendTests
+        PRIVATE
+            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_link_libraries(Toy3dRHIDeviceFrontendTests PRIVATE Toy3dRuntime Threads::Threads)
+    add_test(NAME Toy3dRuntime.RHIDeviceFrontend COMMAND Toy3dRHIDeviceFrontendTests)
+
     add_executable(Toy3dRHIPixelFormatTests
         "tests/rhi_format_tests.cpp")
     target_compile_features(Toy3dRHIPixelFormatTests PRIVATE cxx_std_17)

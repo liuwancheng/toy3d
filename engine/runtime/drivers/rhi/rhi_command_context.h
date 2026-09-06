@@ -65,10 +65,13 @@ namespace toy3d
 
     using RHICommandListRef = std::shared_ptr<RHICommandList>;
 
-    class RHICommandContext
+    class RHICommandContext : public RHIObject
     {
     public:
-        RHICommandContext() = default;
+        explicit RHICommandContext(const RHIDevice& owner)
+            : RHIObject(owner)
+        {
+        }
         virtual ~RHICommandContext() = default;
 
         RHICommandContext(const RHICommandContext&) = delete;
@@ -89,6 +92,11 @@ namespace toy3d
     class RHIGraphicsCommandContext : public RHICommandContext
     {
     public:
+        explicit RHIGraphicsCommandContext(const RHIDevice& owner)
+            : RHICommandContext(owner)
+        {
+        }
+
         ~RHIGraphicsCommandContext() override = default;
 
         virtual RHIStatus begin_render_pass(const RHIRenderPassDesc& desc) = 0;

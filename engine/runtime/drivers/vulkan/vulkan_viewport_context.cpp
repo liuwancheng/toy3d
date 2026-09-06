@@ -116,7 +116,8 @@ namespace toy3d
         VulkanDevice& device,
         RHISurfaceRef surface,
         RHIViewportContextDesc desc)
-        : vulkan_device(device)
+        : RHIViewportContext(device, desc.debug_name)
+        , vulkan_device(device)
         , viewport_surface(std::move(surface))
         , viewport_desc(std::move(desc))
         , resize_pending(true)

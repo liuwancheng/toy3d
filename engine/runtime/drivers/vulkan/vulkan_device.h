@@ -48,43 +48,10 @@ namespace toy3d
 
         RHIQueue& graphics_queue() override;
 
-        RHIResult<std::unique_ptr<RHIViewportContext>> create_viewport_context(
-            const RHISurfaceRef& surface,
-            const RHIViewportContextDesc& desc) override;
-
-        RHIResult<RHIBufferRef> create_buffer(
-            const RHIBufferDesc& desc,
-            const RHIInitialData* initial_data) override;
-
-        RHIResult<RHITextureRef> create_texture(
-            const RHITextureDesc& desc,
-            const RHIInitialData* initial_data) override;
-
-        RHIResult<RHIBufferViewRef> create_buffer_view(
-            const RHIBufferRef& buffer,
-            const RHIBufferViewDesc& desc) override;
-
-        RHIResult<RHITextureViewRef> create_texture_view(
-            const RHITextureRef& texture,
-            const RHITextureViewDesc& desc) override;
-
-        RHIResult<RHIShaderRef> create_shader_impl(const RHIShaderDesc& desc) override;
-        RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(
-            const RHIBindingLayoutDesc& desc) override;
-        RHIResult<RHISamplerRef> create_sampler(
-            const RHISamplerDesc& desc) override;
-        RHIResult<RHIBindingSetRef> create_binding_set(
-            const RHIBindingSetDesc& desc) override;
         RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_binding_packet(
             const std::shared_ptr<VulkanBindingLayout>& layout,
             std::uint32_t physical_set,
             const std::vector<std::shared_ptr<VulkanBindingSet>>& logical_sets);
-        RHIResult<RHIGPUFenceRef> create_gpu_fence(
-            const std::string& debug_name) override;
-
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
-            create_graphics_command_context() override;
-
         VkInstance instance() const;
         VkSurfaceKHR primary_surface_handle() const;
         VkPhysicalDevice physical_device() const;
@@ -98,8 +65,34 @@ namespace toy3d
         void release_completed_work(RHIQueueCompletionValue completed_value);
 
     protected:
+        RHIResult<std::unique_ptr<RHIViewportContext>> create_viewport_context_impl(
+            const RHISurfaceRef& surface,
+            const RHIViewportContextDesc& desc) override;
+        RHIResult<RHIBufferRef> create_buffer_impl(
+            const RHIBufferDesc& desc,
+            const RHIInitialData* initial_data) override;
+        RHIResult<RHITextureRef> create_texture_impl(
+            const RHITextureDesc& desc,
+            const RHIInitialData* initial_data) override;
+        RHIResult<RHIBufferViewRef> create_buffer_view_impl(
+            const RHIBufferRef& buffer,
+            const RHIBufferViewDesc& desc) override;
+        RHIResult<RHITextureViewRef> create_texture_view_impl(
+            const RHITextureRef& texture,
+            const RHITextureViewDesc& desc) override;
+        RHIResult<RHIShaderRef> create_shader_impl(const RHIShaderDesc& desc) override;
+        RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(
+            const RHIBindingLayoutDesc& desc) override;
+        RHIResult<RHISamplerRef> create_sampler_impl(
+            const RHISamplerDesc& desc) override;
+        RHIResult<RHIBindingSetRef> create_binding_set_impl(
+            const RHIBindingSetDesc& desc) override;
         RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
             const RHIGraphicsPipelineDesc& desc) override;
+        RHIResult<RHIGPUFenceRef> create_gpu_fence_impl(
+            const std::string& debug_name) override;
+        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
+            create_graphics_command_context_impl() override;
         bool is_initialized_impl() const override;
         RHIStatus wait_idle_before_shutdown_impl() override;
         RHIStatus shutdown_impl() override;

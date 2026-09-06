@@ -762,56 +762,29 @@ namespace toy3d
         return *queue;
     }
 
-    RHIResult<std::unique_ptr<RHIViewportContext>> VulkanDevice::create_viewport_context(
+    RHIResult<std::unique_ptr<RHIViewportContext>> VulkanDevice::create_viewport_context_impl(
         const RHISurfaceRef& surface,
         const RHIViewportContextDesc& desc)
     {
-        if (!initialized || !surface)
-        {
-            return RHIResult<std::unique_ptr<RHIViewportContext>>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan viewport context requires an initialized device and surface.");
-        }
         if (surface != primary_rhi_surface || primary_surface == VK_NULL_HANDLE)
         {
             return RHIResult<std::unique_ptr<RHIViewportContext>>::failure(
                 RHIErrorCode::Unsupported,
                 "Vulkan viewport contexts currently support only the primary surface.");
         }
-        if (desc.width == 0 || desc.height == 0 || desc.image_count < 2 || desc.format == PixelFormat::Unknown)
-        {
-            return RHIResult<std::unique_ptr<RHIViewportContext>>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan viewport context descriptor is invalid.");
-        }
         return RHIResult<std::unique_ptr<RHIViewportContext>>::success(
             std::make_unique<VulkanViewportContext>(*this, surface, desc));
     }
 
-    RHIResult<RHIBufferRef> VulkanDevice::create_buffer(
+    RHIResult<RHIBufferRef> VulkanDevice::create_buffer_impl(
         const RHIBufferDesc& desc,
         const RHIInitialData* initial_data)
     {
-        const RHIStatus validation = validate_buffer_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHIBufferRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized || vk_device == VK_NULL_HANDLE)
         {
             return RHIResult<RHIBufferRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
-        if (initial_data != nullptr)
-        {
-            const RHIStatus initial_data_status = validate_buffer_initial_data(desc, *initial_data);
-            if (!initial_data_status)
-            {
-                return RHIResult<RHIBufferRef>::failure(initial_data_status.code(), initial_data_status.message());
-            }
-            return RHIResult<RHIBufferRef>::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan buffer initial data requires the upload path, which is not implemented yet.");
-        }
+        (void)initial_data;
         if (desc.cpu_access != RHICPUAccess::None)
         {
             return RHIResult<RHIBufferRef>::failure(
@@ -856,30 +829,15 @@ namespace toy3d
                 desc.initial_access));
     }
 
-    RHIResult<RHITextureRef> VulkanDevice::create_texture(
+    RHIResult<RHITextureRef> VulkanDevice::create_texture_impl(
         const RHITextureDesc& desc,
         const RHIInitialData* initial_data)
     {
-        const RHIStatus validation = validate_texture_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHITextureRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized || vk_device == VK_NULL_HANDLE)
         {
             return RHIResult<RHITextureRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
-        if (initial_data != nullptr)
-        {
-            const RHIStatus initial_data_status = validate_texture_initial_data(desc, *initial_data);
-            if (!initial_data_status)
-            {
-                return RHIResult<RHITextureRef>::failure(initial_data_status.code(), initial_data_status.message());
-            }
-            return RHIResult<RHITextureRef>::failure(
-                RHIErrorCode::Unsupported,
-                "Vulkan texture initial data requires the upload path, which is not implemented yet.");
-        }
+        (void)initial_data;
         if (desc.cpu_access != RHICPUAccess::None)
         {
             return RHIResult<RHITextureRef>::failure(
@@ -982,35 +940,20 @@ namespace toy3d
             desc.initial_access));
     }
 
-    RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view(const RHIBufferRef&, const RHIBufferViewDesc&)
+    RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(const RHIBufferRef&, const RHIBufferViewDesc&)
     {
         return RHIResult<RHIBufferViewRef>::failure(
             RHIErrorCode::Unsupported,
             "Vulkan buffer views require descriptor binding support, which is not implemented yet.");
     }
 
-    RHIResult<RHITextureViewRef> VulkanDevice::create_texture_view(
+    RHIResult<RHITextureViewRef> VulkanDevice::create_texture_view_impl(
         const RHITextureRef& texture,
         const RHITextureViewDesc& desc)
     {
-        if (!texture)
-        {
-            return RHIResult<RHITextureViewRef>::failure(RHIErrorCode::InvalidArgument, "Vulkan texture view requires a texture.");
-        }
-        if (!texture->is_owned_by(*this))
-        {
-            return RHIResult<RHITextureViewRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan texture view cannot use a texture created by another device.");
-        }
         if (!initialized || vk_device == VK_NULL_HANDLE)
         {
             return RHIResult<RHITextureViewRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
-        }
-        const RHIStatus validation = validate_texture_view_desc(texture->desc(), desc);
-        if (!validation)
-        {
-            return RHIResult<RHITextureViewRef>::failure(validation.code(), validation.message());
         }
         const auto vulkan_texture = std::dynamic_pointer_cast<VulkanTexture>(texture);
         if (!vulkan_texture)
@@ -1062,15 +1005,6 @@ namespace toy3d
         const std::uint32_t layer_count = desc.subresources.layer_count == RHI_ALL_LAYERS
             ? texture->desc().array_layers - desc.subresources.first_layer
             : desc.subresources.layer_count;
-        if (mip_count == 0 || layer_count == 0 ||
-            mip_count > texture->desc().mip_levels - desc.subresources.first_mip ||
-            layer_count > texture->desc().array_layers - desc.subresources.first_layer)
-        {
-            return RHIResult<RHITextureViewRef>::failure(
-                RHIErrorCode::InvalidArgument,
-                "Vulkan texture view subresource range is outside the texture.");
-        }
-
         VkImageViewCreateInfo create_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         create_info.image = vulkan_texture->image();
         create_info.viewType = view_type.value();
@@ -1209,24 +1143,12 @@ namespace toy3d
             *this, desc, vk_device, descriptor_set_layouts, std::move(native_bindings)));
     }
 
-    RHIResult<RHISamplerRef> VulkanDevice::create_sampler(const RHISamplerDesc& desc)
+    RHIResult<RHISamplerRef> VulkanDevice::create_sampler_impl(const RHISamplerDesc& desc)
     {
-        const RHIStatus validation = validate_sampler_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHISamplerRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized)
         {
             return RHIResult<RHISamplerRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
-        if (desc.max_anisotropy > device_limits.max_sampler_anisotropy)
-        {
-            return RHIResult<RHISamplerRef>::failure(
-                RHIErrorCode::Unsupported,
-                "Requested sampler anisotropy exceeds the Vulkan device limit.");
-        }
-
         VkSamplerCreateInfo create_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         create_info.magFilter = to_vk_filter(desc.mag_filter);
         create_info.minFilter = to_vk_filter(desc.min_filter);
@@ -1254,19 +1176,14 @@ namespace toy3d
             std::make_shared<VulkanSampler>(*this, desc, vk_device, sampler));
     }
 
-    RHIResult<RHIBindingSetRef> VulkanDevice::create_binding_set(const RHIBindingSetDesc& desc)
+    RHIResult<RHIBindingSetRef> VulkanDevice::create_binding_set_impl(const RHIBindingSetDesc& desc)
     {
-        const RHIStatus validation = validate_binding_set_desc(desc);
-        if (!validation)
-        {
-            return RHIResult<RHIBindingSetRef>::failure(validation.code(), validation.message());
-        }
         if (!initialized)
         {
             return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
         }
         const auto layout = std::dynamic_pointer_cast<VulkanBindingLayout>(desc.layout);
-        if (!layout || !layout->is_owned_by(*this))
+        if (!layout)
         {
             return RHIResult<RHIBindingSetRef>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1292,8 +1209,7 @@ namespace toy3d
             if (value.buffer)
             {
                 const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
-                if (!buffer || !buffer->is_owned_by(*this) ||
-                    value.buffer_offset % device_limits.uniform_buffer_offset_alignment != 0)
+                if (!buffer)
                 {
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1303,7 +1219,7 @@ namespace toy3d
             else if (value.texture_view)
             {
                 const auto view = std::dynamic_pointer_cast<VulkanTextureView>(value.texture_view);
-                if (!view || !view->is_owned_by(*this))
+                if (!view)
                 {
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1313,7 +1229,7 @@ namespace toy3d
             else if (value.sampler)
             {
                 const auto sampler = std::dynamic_pointer_cast<VulkanSampler>(value.sampler);
-                if (!sampler || !sampler->is_owned_by(*this))
+                if (!sampler)
                 {
                     return RHIResult<RHIBindingSetRef>::failure(
                         RHIErrorCode::InvalidArgument,
@@ -1487,17 +1403,10 @@ namespace toy3d
 
     RHIResult<RHIGraphicsPipelineRef> VulkanDevice::create_graphics_pipeline_impl(const RHIGraphicsPipelineDesc& desc)
     {
-        if (!initialized || vk_device == VK_NULL_HANDLE)
-        {
-            return RHIResult<RHIGraphicsPipelineRef>::failure(RHIErrorCode::NotReady, "Vulkan device is not initialized.");
-        }
         const auto vertex_shader = std::dynamic_pointer_cast<VulkanShader>(desc.vertex_shader);
         const auto pixel_shader = std::dynamic_pointer_cast<VulkanShader>(desc.pixel_shader);
         const auto binding_layout = std::dynamic_pointer_cast<VulkanBindingLayout>(desc.binding_layout);
-        if (!vertex_shader || !pixel_shader || !binding_layout ||
-            !vertex_shader->is_owned_by(*this) ||
-            !pixel_shader->is_owned_by(*this) ||
-            !binding_layout->is_owned_by(*this))
+        if (!vertex_shader || !pixel_shader || !binding_layout)
         {
             return RHIResult<RHIGraphicsPipelineRef>::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1767,12 +1676,12 @@ namespace toy3d
             pipeline));
     }
 
-    RHIResult<RHIGPUFenceRef> VulkanDevice::create_gpu_fence(const std::string&)
+    RHIResult<RHIGPUFenceRef> VulkanDevice::create_gpu_fence_impl(const std::string&)
     {
         return RHIResult<RHIGPUFenceRef>::failure(RHIErrorCode::Unsupported, "Vulkan GPU fences are not implemented yet.");
     }
 
-    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanDevice::create_graphics_command_context()
+    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanDevice::create_graphics_command_context_impl()
     {
         if (!initialized || vk_device == VK_NULL_HANDLE ||
             graphics_queue_family == VK_QUEUE_FAMILY_IGNORED)

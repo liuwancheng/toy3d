@@ -1,9 +1,7 @@
 # Toy3d RHI 设计
 
-> **Active override（Game/Render change）**：OpenSpec change
-> `establish-game-render-framework` 的 `game-render-framework/rhi-frame-submission` capability 与 design 是 viewport frame-end、业务 submit、
-> presentation status、abort 和资源提交后发布语义的当前规范。本文中与该 contract 冲突的旧返回值或失败发布表述不再构成
-> 实现约束；其余公共 RHI、资源、binding、pipeline 和跨后端 contract 继续有效。change 归档后应将结果同步回本文并删除本 override。
+> viewport frame-end、业务 submit、presentation status、abort 和资源提交后发布语义以
+> `openspec/specs/game-render-framework/rhi-frame-submission/spec.md` 为当前规范；本文继续定义公共 RHI、资源、binding、pipeline 和跨后端 contract。
 
 ## 1. 文档目的
 
@@ -99,7 +97,9 @@ rhi_viewport_context.h   frame 边界与 presentation
 
 ### 4.1 `RHIDevice`
 
-`RHIDevice` 负责初始化、能力查询和资源创建，不负责 draw、render pass 或 submit。
+`RHIDevice` 是 Renderer-owned、显式注入的唯一图形后端根门面。上层通过它完成初始化，查询 capability、limits 和 format support，创建长期 RHI object，并取得 graphics queue、viewport context 与 device-level graphics command context。它是 God facade，但不是 God implementation：draw-time transition、binding、render pass 与 draw 属于 `RHIGraphicsCommandContext`，submit/completion/wait 属于 `RHIQueue`，acquire/frame closure/present 属于 `RHIViewportContext` 与 `RHIFrameContext`。
+
+全部公共 `create_*()` 使用 non-virtual interface。公共 frontend 依次执行 descriptor 结构检查、共享 lifecycle admission、initialized/terminal 检查、capability/limits/format support 与输入对象 owner identity 检查；只有通过后才恰好一次调用 protected `create_*_impl()`。backend hook 只处理 native mapping/allocation、API 前置条件与原生错误转换，不重复决定跨 API contract。成功结果必须携带当前 device identity；null 或错误 owner 作为 `BackendFailure`，不发布给上层。
 
 ```cpp
 class RHIDevice
@@ -110,29 +110,37 @@ public:
     virtual const RHICapabilities& capabilities() const = 0;
     virtual const RHILimits& limits() const = 0;
 
-    virtual RHIResult<RHIBufferRef> create_buffer(
+    RHIResult<RHIBufferRef> create_buffer(
         const RHIBufferDesc& desc,
-        const RHIInitialData* initial_data) = 0;
+        const RHIInitialData* initial_data = nullptr);
 
-    virtual RHIResult<RHITextureRef> create_texture(
+    RHIResult<RHITextureRef> create_texture(
         const RHITextureDesc& desc,
-        const RHIInitialData* initial_data) = 0;
+        const RHIInitialData* initial_data = nullptr);
 
-    virtual RHIResult<RHITextureViewRef> create_texture_view(
-        const RHITextureViewDesc& desc) = 0;
+    RHIResult<RHITextureViewRef> create_texture_view(
+        const RHITextureRef& texture,
+        const RHITextureViewDesc& desc);
 
-    virtual RHIResult<RHIShaderRef> create_shader(
-        const RHIShaderDesc& desc) = 0;
+    RHIResult<RHIShaderRef> create_shader(const RHIShaderDesc& desc);
 
-    virtual RHIResult<RHIBindingLayoutRef> create_binding_layout(
-        const RHIBindingLayoutDesc& desc) = 0;
+    RHIResult<RHIBindingLayoutRef> create_binding_layout(
+        const RHIBindingLayoutDesc& desc);
 
-    virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
-        const RHIGraphicsPipelineDesc& desc) = 0;
+    RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline(
+        const RHIGraphicsPipelineDesc& desc);
+
+protected:
+    virtual RHIResult<RHIBufferRef> create_buffer_impl(...) = 0;
+    virtual RHIResult<RHITextureRef> create_texture_impl(...) = 0;
+    virtual RHIResult<RHIGraphicsPipelineRef>
+        create_graphics_pipeline_impl(...) = 0;
 };
 ```
 
-资源不得反向访问全局 device。公共头文件不得定义可变 `g_rhi` 指针；engine 初始化层显式拥有 device，并向 renderer 注入所需引用。
+resource、view、shader、binding、pipeline、fence、viewport 和 device-level context 都保留不可变的非 owning owner device identity，仅用于公共层组合校验，不用于反向查找服务。跨 device 的 view、binding set 或 pipeline 必须在 native 调用前返回 `InvalidArgument`。公共头文件不得定义可变 `g_rhi`、singleton、service locator，或与 `RHIDevice` 平行的 `RHISystem`/`RHIManager` 创建入口；engine 初始化层显式拥有 device，并向 renderer 注入所需引用。
+
+所有创建类别共享同一个 RAII admission。shutdown 先关闭 admission，拒绝新创建并等待在途创建离开，再执行 ordinary idle policy、清理 frontend cache 和 backend state；`shutdown_after_device_lost()` 复用相同 admission，但不再次调用 native idle wait。descriptor/能力错误、`NotReady`、`DeviceLost`、`Unsupported`、`OutOfMemory` 与 `BackendFailure` 必须保持可诊断分类。
 
 ### 4.2 Command context 与 command list
 
@@ -784,6 +792,8 @@ RHI error：`NotReady` 使用 debug，`OutOfDate`/`Suboptimal` 使用 info。`De
 | recording | command buffer | deferred/immediate context | command list |
 | submit completion | submit fence/timeline | FL11_0 `D3D11_QUERY_EVENT` | fence value |
 | async compute | capability gated | 通常不作为基线 | capability gated |
+| device creation frontend | NVI validation + Vulkan hook | 同一 NVI + FL11_0 hook | 同一 NVI + D3D12 hook |
+| unsupported creation | `Unsupported`，不进入无效 native path | `Unsupported`，不得空操作成功 | `Unsupported`，不得发布空壳对象 |
 
 D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力时，可以安全退化为串行和隐式同步，但渲染结果与公共错误语义必须一致。
 

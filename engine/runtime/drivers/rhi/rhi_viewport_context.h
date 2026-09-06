@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace toy3d
@@ -98,10 +99,13 @@ namespace toy3d
     // Owns the presentation lifecycle for one native surface. RenderScene
     // records ordered pass command lists, but never acquires or presents a
     // swapchain image directly.
-    class RHIViewportContext
+    class RHIViewportContext : public RHIObject
     {
     public:
-        RHIViewportContext() = default;
+        explicit RHIViewportContext(const RHIDevice& owner, std::string debug_name = {})
+            : RHIObject(owner, std::move(debug_name))
+        {
+        }
         virtual ~RHIViewportContext() = default;
 
         RHIViewportContext(const RHIViewportContext&) = delete;
