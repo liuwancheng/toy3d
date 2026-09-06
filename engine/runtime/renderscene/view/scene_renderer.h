@@ -27,7 +27,7 @@ namespace toy3d
         SceneRenderer(SceneRenderer&&) = delete;
         SceneRenderer& operator=(SceneRenderer&&) = delete;
 
-        UIntVector2 output_size() const { return view_family_.output_size(); }
+        Extent output_extent() const { return view_family_.output_extent(); }
 
         // Renderer frame orchestration calls this on the logical Rendering
         // Thread after it has begun the shared graphics recording.

@@ -122,7 +122,7 @@ namespace
             return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
                                              "Recording fake has no presentation frames.");
         }
-        toy3d::RHIStatus request_resize(std::uint32_t, std::uint32_t) override
+        toy3d::RHIStatus request_resize(const toy3d::Extent&) override
         {
             return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
                                              "Recording fake has no presentation frames.");

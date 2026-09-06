@@ -380,8 +380,7 @@ void CubeApplication::on_build_ui()
 void CubeApplication::on_build_scene_views(std::vector<toy3d::SceneView>& views, const toy3d::Extent& extent) const
 {
     views.emplace_back(toy3d::Vector3(camera_x_, 1.5f, -6.0f), toy3d::Quaternion::identity(),
-                       toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::UIntVector2(0, 0),
-                       toy3d::UIntVector2(extent.width, extent.height), toy3d::UIntVector2(extent.width, extent.height),
+                       toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, extent.width, extent.height}, extent,
                        toy3d::CameraProjectionMode::Perspective, toy3d::to_radians(toy3d::Degrees(60.0f)), 0.1f,
                        1000.0f);
 }

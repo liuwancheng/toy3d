@@ -8,13 +8,13 @@
 
 namespace toy3d
 {
-    RHIStatus SceneRenderTargets::ensure_extent(RHIDevice& device, std::uint32_t width, std::uint32_t height)
+    RHIStatus SceneRenderTargets::ensure_extent(RHIDevice& device, const Extent& extent)
     {
-        if (width == 0u || height == 0u)
+        if (extent.width == 0u || extent.height == 0u)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "SceneRenderTargets extent must be non-empty.");
         }
-        if (matches(width, height))
+        if (matches(extent))
         {
             return RHIStatus::success();
         }
@@ -28,7 +28,7 @@ namespace toy3d
             }
         }
         release();
-        return create_targets(device, width, height);
+        return create_targets(device, extent);
     }
 
     void SceneRenderTargets::release() noexcept
@@ -90,20 +90,22 @@ namespace toy3d
         scene_depth_access_ = scene_depth_access;
     }
 
-    bool SceneRenderTargets::matches(std::uint32_t width, std::uint32_t height) const noexcept
+    bool SceneRenderTargets::matches(const Extent& extent) const noexcept
     {
         return scene_color_texture_ && scene_color_view_ && scene_color_shader_resource_view_ && scene_depth_texture_ &&
-               scene_depth_view_ && scene_depth_shader_resource_view_ && scene_color_texture_->desc().width == width &&
-               scene_color_texture_->desc().height == height &&
+               scene_depth_view_ && scene_depth_shader_resource_view_ &&
+               scene_color_texture_->desc().width == extent.width &&
+               scene_color_texture_->desc().height == extent.height &&
                scene_color_texture_->desc().format == PixelFormat::R16G16B16A16Float &&
-               scene_depth_texture_->desc().width == width && scene_depth_texture_->desc().height == height;
+               scene_depth_texture_->desc().width == extent.width &&
+               scene_depth_texture_->desc().height == extent.height;
     }
 
-    RHIStatus SceneRenderTargets::create_targets(RHIDevice& device, std::uint32_t width, std::uint32_t height)
+    RHIStatus SceneRenderTargets::create_targets(RHIDevice& device, const Extent& extent)
     {
         RHITextureDesc color_desc;
-        color_desc.width = width;
-        color_desc.height = height;
+        color_desc.width = extent.width;
+        color_desc.height = extent.height;
         color_desc.format = PixelFormat::R16G16B16A16Float;
         color_desc.usage = RHIResourceUsage::RenderTarget | RHIResourceUsage::ShaderResource;
         color_desc.initial_access = RHIAccess::Common;
@@ -165,8 +167,8 @@ namespace toy3d
         }
 
         RHITextureDesc depth_desc;
-        depth_desc.width = width;
-        depth_desc.height = height;
+        depth_desc.width = extent.width;
+        depth_desc.height = extent.height;
         depth_desc.format = PixelFormat::D32Float;
         depth_desc.usage = RHIResourceUsage::DepthStencil | RHIResourceUsage::ShaderResource;
         depth_desc.initial_access = RHIAccess::Common;

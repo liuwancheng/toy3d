@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
+#include "math/integer_vector.h"
 
 #include <cstdint>
 
@@ -20,7 +21,7 @@ namespace toy3d
         SceneRenderTargets(const SceneRenderTargets&) = delete;
         SceneRenderTargets& operator=(const SceneRenderTargets&) = delete;
 
-        RHIStatus ensure_extent(RHIDevice& device, std::uint32_t width, std::uint32_t height);
+        RHIStatus ensure_extent(RHIDevice& device, const Extent& extent);
         void release() noexcept;
 
         const RHITextureRef& scene_color_texture() const noexcept;
@@ -34,9 +35,9 @@ namespace toy3d
         void publish_submitted_access(RHIAccess scene_color_access, RHIAccess scene_depth_access) noexcept;
 
       private:
-        bool matches(std::uint32_t width, std::uint32_t height) const noexcept;
+        bool matches(const Extent& extent) const noexcept;
 
-        RHIStatus create_targets(RHIDevice& device, std::uint32_t width, std::uint32_t height);
+        RHIStatus create_targets(RHIDevice& device, const Extent& extent);
 
         RHITextureRef scene_color_texture_;
         RHITextureViewRef scene_color_view_;

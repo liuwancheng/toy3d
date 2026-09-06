@@ -51,6 +51,20 @@ namespace toy3d
         constexpr const std::uint32_t* data() const { return &x; }
     };
 
+    struct Extent
+    {
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+
+    struct IntRect
+    {
+        std::int32_t x = 0;
+        std::int32_t y = 0;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+
     constexpr bool operator==(const UIntVector2& left, const UIntVector2& right)
     {
         return left.x == right.x && left.y == right.y;
@@ -75,6 +89,22 @@ namespace toy3d
     {
         return !(left == right);
     }
+    constexpr bool operator==(const Extent& left, const Extent& right)
+    {
+        return left.width == right.width && left.height == right.height;
+    }
+    constexpr bool operator!=(const Extent& left, const Extent& right)
+    {
+        return !(left == right);
+    }
+    constexpr bool operator==(const IntRect& left, const IntRect& right)
+    {
+        return left.x == right.x && left.y == right.y && left.width == right.width && left.height == right.height;
+    }
+    constexpr bool operator!=(const IntRect& left, const IntRect& right)
+    {
+        return !(left == right);
+    }
 
     static_assert(sizeof(UIntVector2) == sizeof(std::uint32_t) * 2,
                   "UIntVector2 must contain exactly two contiguous uint32 values.");
@@ -82,10 +112,18 @@ namespace toy3d
                   "UIntVector3 must contain exactly three contiguous uint32 values.");
     static_assert(sizeof(UIntVector4) == sizeof(std::uint32_t) * 4,
                   "UIntVector4 must contain exactly four contiguous uint32 values.");
+    static_assert(sizeof(Extent) == sizeof(std::uint32_t) * 2,
+                  "Extent must contain exactly two contiguous uint32 values.");
+    static_assert(sizeof(IntRect) == sizeof(std::uint32_t) * 4,
+                  "IntRect must contain exactly four contiguous 32-bit integer values.");
     static_assert(std::is_standard_layout<UIntVector2>::value && std::is_trivially_copyable<UIntVector2>::value,
                   "UIntVector2 must be a simple value type.");
     static_assert(std::is_standard_layout<UIntVector3>::value && std::is_trivially_copyable<UIntVector3>::value,
                   "UIntVector3 must be a simple value type.");
     static_assert(std::is_standard_layout<UIntVector4>::value && std::is_trivially_copyable<UIntVector4>::value,
                   "UIntVector4 must be a simple value type.");
+    static_assert(std::is_standard_layout<Extent>::value && std::is_trivially_copyable<Extent>::value,
+                  "Extent must be a simple value type.");
+    static_assert(std::is_standard_layout<IntRect>::value && std::is_trivially_copyable<IntRect>::value,
+                  "IntRect must be a simple value type.");
 } // namespace toy3d

@@ -171,7 +171,8 @@ namespace toy3d
                                            const RHITextureViewRef& scene_color, const TonemapPassTarget& target,
                                            const TonemapParameters& parameters) const
     {
-        if (!initialized() || !scene_color || !target.color_view || target.width == 0u || target.height == 0u ||
+        if (!initialized() || !scene_color || !target.color_view || target.extent.width == 0u ||
+            target.extent.height == 0u ||
             target.format != PixelFormat::B8G8R8A8UNorm || target.sample_count != 1u ||
             target.color_view->desc().format != target.format ||
             target.color_view->texture()->desc().sample_count != target.sample_count)
@@ -238,14 +239,14 @@ namespace toy3d
         if (!status)
             return status;
         RHIViewport viewport;
-        viewport.width = static_cast<float>(target.width);
-        viewport.height = static_cast<float>(target.height);
+        viewport.width = static_cast<float>(target.extent.width);
+        viewport.height = static_cast<float>(target.extent.height);
         status = context.set_viewport(viewport);
         if (!status)
             return status;
         RHIRect scissor;
-        scissor.width = target.width;
-        scissor.height = target.height;
+        scissor.width = target.extent.width;
+        scissor.height = target.extent.height;
         status = context.set_scissor(scissor);
         if (!status)
             return status;

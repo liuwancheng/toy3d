@@ -185,8 +185,8 @@ namespace toy3d
     bool ForwardSceneRenderer::init_views()
     {
         view_infos().clear();
-        const UIntVector2 family_output_size = view_family().output_size();
-        if (family_output_size.x == 0 || family_output_size.y == 0)
+        const Extent family_output_extent = view_family().output_extent();
+        if (family_output_extent.width == 0 || family_output_extent.height == 0)
         {
             TOY_LOG_ERROR("ForwardSceneRenderer init_views requires a non-empty family output.");
             return false;
@@ -197,23 +197,29 @@ namespace toy3d
         for (std::size_t view_index = 0; view_index < view_family().views().size(); ++view_index)
         {
             const SceneView& scene_view = view_family().views()[view_index];
-            const UIntVector2 output_size = scene_view.output_size();
-            const UIntVector2 rect_minimum = scene_view.view_rect_minimum();
-            const UIntVector2 rect_size = scene_view.view_rect_size();
-            if (output_size.x == 0 || output_size.y == 0 || output_size != family_output_size)
+            const Extent output_extent = scene_view.output_extent();
+            const IntRect& view_rect = scene_view.view_rect();
+            if (output_extent.width == 0 || output_extent.height == 0 || output_extent != family_output_extent)
             {
                 TOY_LOG_ERROR(
                     "ForwardSceneRenderer init_views rejected View {} with invalid or inconsistent output size.",
                     view_index);
                 return false;
             }
-            if (rect_size.x == 0 || rect_size.y == 0 || rect_minimum.x >= output_size.x ||
-                rect_minimum.y >= output_size.y || rect_size.x > output_size.x - rect_minimum.x ||
-                rect_size.y > output_size.y - rect_minimum.y)
+            if (view_rect.x < 0 || view_rect.y < 0 || view_rect.width == 0 || view_rect.height == 0)
             {
                 TOY_LOG_ERROR(
                     "ForwardSceneRenderer init_views rejected View {} with an empty or out-of-bounds view rect.",
                     view_index);
+                return false;
+            }
+            const std::uint32_t rect_x = static_cast<std::uint32_t>(view_rect.x);
+            const std::uint32_t rect_y = static_cast<std::uint32_t>(view_rect.y);
+            if (rect_x >= output_extent.width || rect_y >= output_extent.height ||
+                view_rect.width > output_extent.width - rect_x || view_rect.height > output_extent.height - rect_y)
+            {
+                TOY_LOG_ERROR(
+                    "ForwardSceneRenderer init_views rejected View {} with an out-of-bounds view rect.", view_index);
                 return false;
             }
             if (!is_finite(scene_view.camera_position()) || !is_finite(scene_view.camera_orientation()) ||
@@ -234,7 +240,7 @@ namespace toy3d
                 return false;
             }
 
-            const float aspect = static_cast<float>(rect_size.x) / static_cast<float>(rect_size.y);
+            const float aspect = static_cast<float>(view_rect.width) / static_cast<float>(view_rect.height);
             Matrix4 projection_matrix;
             switch (scene_view.projection_mode())
             {
@@ -478,27 +484,14 @@ namespace toy3d
         {
             const ViewInfo& view_info = view_infos()[view_index];
             const SceneView& scene_view = view_info.scene_view();
-            const UIntVector2 rect_minimum = scene_view.view_rect_minimum();
-            const UIntVector2 rect_size = scene_view.view_rect_size();
-            if (rect_minimum.x > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
-                rect_minimum.y > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
-            {
-                TOY_LOG_ERROR(
-                    "Forward Base Pass skipped View {} because its scissor origin exceeds the RHI signed range.",
-                    view_index);
-                continue;
-            }
+            const IntRect& view_rect = scene_view.view_rect();
 
             RHIViewport viewport;
-            viewport.x = static_cast<float>(rect_minimum.x);
-            viewport.y = static_cast<float>(rect_minimum.y);
-            viewport.width = static_cast<float>(rect_size.x);
-            viewport.height = static_cast<float>(rect_size.y);
-            RHIRect scissor;
-            scissor.x = static_cast<std::int32_t>(rect_minimum.x);
-            scissor.y = static_cast<std::int32_t>(rect_minimum.y);
-            scissor.width = rect_size.x;
-            scissor.height = rect_size.y;
+            viewport.x = static_cast<float>(view_rect.x);
+            viewport.y = static_cast<float>(view_rect.y);
+            viewport.width = static_cast<float>(view_rect.width);
+            viewport.height = static_cast<float>(view_rect.height);
+            const RHIRect scissor = view_rect;
 
             for (std::size_t batch_index = 0; batch_index < view_info.mesh_batches().size(); ++batch_index)
             {

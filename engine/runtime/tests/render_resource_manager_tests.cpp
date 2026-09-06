@@ -1059,16 +1059,13 @@ int main()
         toy3d::RHITextureRef color_texture;
         toy3d::RHITextureViewRef color_view;
         std::unique_ptr<toy3d::RHIGraphicsCommandContext> commands;
-        std::uint32_t frame_width = 64u;
-        std::uint32_t frame_height = 64u;
+        toy3d::Extent frame_extent{64u, 64u};
 
         const toy3d::RHITextureRef& present_texture() const override { return color_texture; }
 
         const toy3d::RHITextureViewRef& present_view() const override { return color_view; }
 
-        std::uint32_t width() const override { return frame_width; }
-
-        std::uint32_t height() const override { return frame_height; }
+        toy3d::Extent extent() const override { return frame_extent; }
 
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>> create_graphics_command_context() override
         {
@@ -1136,7 +1133,7 @@ int main()
                                                      "Frame-owner smoke cannot abort an empty frame");
         }
 
-        toy3d::RHIStatus request_resize(std::uint32_t, std::uint32_t) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus request_resize(const toy3d::Extent&) override { return toy3d::RHIStatus::success(); }
     } frame_viewport(device);
 
     const auto make_frame = [&](bool fail_draw_indexed = false) -> std::unique_ptr<toy3d::RHIFrameContext>
@@ -1156,9 +1153,9 @@ int main()
     {
         std::vector<toy3d::SceneView> views;
         views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                           toy3d::UIntVector2(), toy3d::UIntVector2(64u, 64u), toy3d::UIntVector2(64u, 64u),
+                           toy3d::IntRect{0, 0, 64u, 64u}, toy3d::Extent{64u, 64u},
                            toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
-        return toy3d::SceneViewFamily(*frame_render_scene, toy3d::UIntVector2(64u, 64u), std::move(views));
+        return toy3d::SceneViewFamily(*frame_render_scene, toy3d::Extent{64u, 64u}, std::move(views));
     };
 
     decltype(ready_first) submitted_frame_resource;
@@ -1170,10 +1167,10 @@ int main()
           "frame-owner smoke must begin a pending resource transaction");
     std::vector<toy3d::SceneView> submitted_views;
     submitted_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                                 toy3d::UIntVector2(), toy3d::UIntVector2(64u, 64u), toy3d::UIntVector2(64u, 64u),
+                                 toy3d::IntRect{0, 0, 64u, 64u}, toy3d::Extent{64u, 64u},
                                  toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
     toy3d::ForwardSceneRenderer submitted_frame_renderer(
-        toy3d::SceneViewFamily(*frame_render_scene, toy3d::UIntVector2(64u, 64u), std::move(submitted_views)));
+        toy3d::SceneViewFamily(*frame_render_scene, toy3d::Extent{64u, 64u}, std::move(submitted_views)));
     toy3d::SceneRenderTargets submitted_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> submitted_frame_result =
         render_test_frame(submitted_frame_renderer, *frame_render_scene, device, frame_manager, frame_viewport,
@@ -1240,9 +1237,9 @@ int main()
     {
         std::vector<toy3d::SceneView> views;
         views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                           toy3d::UIntVector2(), toy3d::UIntVector2(64u, 64u), toy3d::UIntVector2(64u, 64u),
+                           toy3d::IntRect{0, 0, 64u, 64u}, toy3d::Extent{64u, 64u},
                            toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
-        return toy3d::SceneViewFamily(*base_pass_scene, toy3d::UIntVector2(64u, 64u), std::move(views));
+        return toy3d::SceneViewFamily(*base_pass_scene, toy3d::Extent{64u, 64u}, std::move(views));
     };
 
     decltype(ready_first) base_pass_draw_resource;
@@ -1457,10 +1454,10 @@ int main()
           "resize-race smoke must begin a retryable pending resource transaction");
     std::vector<toy3d::SceneView> resized_views;
     resized_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                               toy3d::UIntVector2(), toy3d::UIntVector2(128u, 64u), toy3d::UIntVector2(128u, 64u),
+                               toy3d::IntRect{0, 0, 128u, 64u}, toy3d::Extent{128u, 64u},
                                toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
     toy3d::ForwardSceneRenderer resize_race_renderer(
-        toy3d::SceneViewFamily(*frame_render_scene, toy3d::UIntVector2(128u, 64u), std::move(resized_views)));
+        toy3d::SceneViewFamily(*frame_render_scene, toy3d::Extent{128u, 64u}, std::move(resized_views)));
     toy3d::SceneRenderTargets resize_race_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> resize_race_result =
         render_test_frame(resize_race_renderer, *frame_render_scene, device, frame_manager, frame_viewport,
@@ -1484,10 +1481,10 @@ int main()
           "abort smoke must begin a retryable pending resource transaction");
     std::vector<toy3d::SceneView> invalid_views;
     invalid_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                               toy3d::UIntVector2(), toy3d::UIntVector2(), toy3d::UIntVector2(64u, 64u),
+                               toy3d::IntRect{0, 0, 0u, 0u}, toy3d::Extent{64u, 64u},
                                toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
     toy3d::ForwardSceneRenderer aborted_frame_renderer(
-        toy3d::SceneViewFamily(*frame_render_scene, toy3d::UIntVector2(64u, 64u), std::move(invalid_views)));
+        toy3d::SceneViewFamily(*frame_render_scene, toy3d::Extent{64u, 64u}, std::move(invalid_views)));
     toy3d::SceneRenderTargets aborted_scene_render_targets;
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> aborted_frame_result =
         render_test_frame(aborted_frame_renderer, *frame_render_scene, device, frame_manager, frame_viewport,

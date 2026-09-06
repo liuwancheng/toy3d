@@ -63,7 +63,7 @@ namespace toy3d
         RHIResult<RHIFrameEndResult> end_frame(std::unique_ptr<RHIFrameContext> frame,
                                                const std::vector<RHICommandListRef>& command_lists) override;
         RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) override;
-        RHIStatus request_resize(std::uint32_t width, std::uint32_t height) override;
+        RHIStatus request_resize(const Extent& extent) override;
         VulkanViewportObservation observation_snapshot() const;
 
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context();
@@ -100,7 +100,6 @@ namespace toy3d
         bool frame_active = false;
         RHIStatus presentation_failure;
         bool resize_pending = false;
-        std::uint32_t pending_width = 0;
-        std::uint32_t pending_height = 0;
+        Extent pending_extent;
     };
 } // namespace toy3d

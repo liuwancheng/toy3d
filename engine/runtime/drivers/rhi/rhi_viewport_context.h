@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
+#include "math/integer_vector.h"
 
 #include <cstdint>
 #include <memory>
@@ -56,8 +57,7 @@ namespace toy3d
 
     struct RHIViewportContextDesc
     {
-        std::uint32_t width = 1;
-        std::uint32_t height = 1;
+        Extent extent{1, 1};
         std::uint32_t image_count = 2;
         PixelFormat format = PixelFormat::B8G8R8A8UNorm;
         RHIPresentMode present_mode = RHIPresentMode::Fifo;
@@ -80,8 +80,7 @@ namespace toy3d
         virtual const RHITextureRef& present_texture() const = 0;
         virtual const RHITextureViewRef& present_view() const = 0;
 
-        virtual std::uint32_t width() const = 0;
-        virtual std::uint32_t height() const = 0;
+        virtual Extent extent() const = 0;
 
         // Recording contexts are frame-local so their allocators can be
         // recycled only after this frame's queue completion value has completed.
@@ -118,6 +117,6 @@ namespace toy3d
 
         // Resize is deferred until a later begin_frame() can safely replace
         // all in-flight presentation images.
-        virtual RHIStatus request_resize(std::uint32_t width, std::uint32_t height) = 0;
+        virtual RHIStatus request_resize(const Extent& extent) = 0;
     };
 } // namespace toy3d

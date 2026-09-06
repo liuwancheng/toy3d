@@ -80,7 +80,7 @@ namespace toy3d
       private:
         bool is_on_logical_rendering_thread() const;
         ThreadStatus fail_startup(const RHIStatus& failure);
-        RHIStatus ensure_primary_frame_extent(std::uint32_t width, std::uint32_t height);
+        RHIStatus ensure_primary_frame_extent(const Extent& extent);
         RHIResult<RHIFrameEndResult> render_frame(SceneRenderer& scene_renderer, const ImGuiDrawData* ui_draw_data);
         void enter_terminal(const RHIStatus& failure) noexcept;
         void append_secondary_diagnostic(const RHIStatus& failure) noexcept;

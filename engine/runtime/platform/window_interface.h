@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime_pch.h"
+#include "math/integer_vector.h"
 #include "platform/platform_input_interface.h"
 
 namespace toy3d
@@ -20,12 +21,6 @@ namespace toy3d
         OFF,
         ON,
         Default
-    };
-
-    struct Extent
-    {
-        uint32_t width;
-        uint32_t height;
     };
 
     struct Properties

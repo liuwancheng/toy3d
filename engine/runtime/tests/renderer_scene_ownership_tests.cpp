@@ -465,7 +465,7 @@ namespace
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus request_resize(std::uint32_t, std::uint32_t) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus request_resize(const toy3d::Extent&) override { return toy3d::RHIStatus::success(); }
     };
 
     class RendererTestDevice final : public toy3d::RHIDevice
@@ -726,9 +726,8 @@ namespace
                                            toy3d::CameraProjectionMode projection_mode, float near_clip, float far_clip)
     {
         return toy3d::SceneView(camera_position, toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                                toy3d::UIntVector2(0u, 0u), toy3d::UIntVector2(128u, 128u),
-                                toy3d::UIntVector2(128u, 128u), projection_mode, toy3d::Radians(1.57079632679f),
-                                near_clip, far_clip);
+                                toy3d::IntRect{0, 0, 128u, 128u}, toy3d::Extent{128u, 128u}, projection_mode,
+                                toy3d::Radians(1.57079632679f), near_clip, far_clip);
     }
 
     toy3d::PrimitiveSceneProxy* add_visibility_proxy(toy3d::RenderScene& render_scene,
@@ -804,7 +803,7 @@ namespace
             finite_views.push_back(make_perspective_view(toy3d::Vector3(100.0f, 0.0f, 0.0f),
                                                          toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
             toy3d::ForwardSceneRenderer finite_renderer(
-                toy3d::SceneViewFamily(render_scene, toy3d::UIntVector2(128u, 128u), std::move(finite_views)));
+                toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u}, std::move(finite_views)));
             check(init_views(finite_renderer) && view_infos(finite_renderer).size() == 2u &&
                       view_infos(finite_renderer)[0].visible_primitives().empty() &&
                       view_infos(finite_renderer)[1].visible_primitives().empty(),
@@ -836,7 +835,7 @@ namespace
             infinite_views.push_back(make_perspective_view(
                 toy3d::Vector3(0.0f, 0.0f, 0.0f), toy3d::CameraProjectionMode::PerspectiveInfiniteFar, 0.1f, 0.0f));
             toy3d::ForwardSceneRenderer infinite_renderer(
-                toy3d::SceneViewFamily(render_scene, toy3d::UIntVector2(128u, 128u), std::move(infinite_views)));
+                toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u}, std::move(infinite_views)));
             check(init_views(infinite_renderer), "infinite-far View must initialize with a five-plane frustum");
             compute_view_visibility(infinite_renderer, render_scene);
             check(visible_contains(view_infos(infinite_renderer)[0], far_only),
@@ -847,26 +846,31 @@ namespace
                 std::vector<toy3d::SceneView> invalid_views;
                 invalid_views.push_back(std::move(view));
                 toy3d::ForwardSceneRenderer invalid_renderer(
-                    toy3d::SceneViewFamily(render_scene, toy3d::UIntVector2(128u, 128u), std::move(invalid_views)));
+                    toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u}, std::move(invalid_views)));
                 return !init_views(invalid_renderer) && view_infos(invalid_renderer).empty();
             };
             check(invalid_view_rejected(toy3d::SceneView(
                       toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                      toy3d::UIntVector2(0u, 0u), toy3d::UIntVector2(0u, 128u), toy3d::UIntVector2(128u, 128u),
+                      toy3d::IntRect{0, 0, 0u, 128u}, toy3d::Extent{128u, 128u},
                       toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 10.0f)),
                   "init_views must reject an empty view rect");
+            check(invalid_view_rejected(toy3d::SceneView(
+                      toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
+                      toy3d::IntRect{-1, 0, 128u, 128u}, toy3d::Extent{128u, 128u},
+                      toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 10.0f)),
+                  "init_views must reject a negative view rect origin");
             check(invalid_view_rejected(
                       make_perspective_view(toy3d::Vector3(), toy3d::CameraProjectionMode::Perspective, 0.0f, 10.0f)),
                   "init_views must reject a non-positive near plane");
             check(invalid_view_rejected(toy3d::SceneView(
                       toy3d::Vector3(std::numeric_limits<float>::infinity(), 0.0f, 0.0f), toy3d::Quaternion::identity(),
-                      toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::UIntVector2(0u, 0u), toy3d::UIntVector2(128u, 128u),
-                      toy3d::UIntVector2(128u, 128u), toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f),
+                      toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, 128u, 128u},
+                      toy3d::Extent{128u, 128u}, toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f),
                       0.1f, 10.0f)),
                   "init_views must reject non-finite camera values");
             check(invalid_view_rejected(toy3d::SceneView(
                       toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                      toy3d::UIntVector2(0u, 0u), toy3d::UIntVector2(128u, 128u), toy3d::UIntVector2(64u, 128u),
+                      toy3d::IntRect{0, 0, 128u, 128u}, toy3d::Extent{64u, 128u},
                       toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 10.0f)),
                   "init_views must reject inconsistent output dimensions");
         }
@@ -947,8 +951,7 @@ namespace
                 surface_desc.window_handle = reinterpret_cast<void*>(1);
                 surface_desc.debug_name = "RendererBootstrapFailureSurface";
                 toy3d::RHIViewportContextDesc viewport_desc;
-                viewport_desc.width = 64u;
-                viewport_desc.height = 64u;
+                viewport_desc.extent = {64u, 64u};
                 viewport_desc.debug_name = "RendererBootstrapFailureViewport";
                 toy3d::Renderer renderer(
                     *graph, std::make_shared<toy3d::RHISurface>(std::move(surface_desc)), std::move(viewport_desc),
@@ -1004,8 +1007,7 @@ namespace
             surface_desc.window_handle = reinterpret_cast<void*>(1);
             surface_desc.debug_name = "RendererImGuiBootstrapSurface";
             toy3d::RHIViewportContextDesc viewport_desc;
-            viewport_desc.width = 64u;
-            viewport_desc.height = 64u;
+            viewport_desc.extent = {64u, 64u};
             viewport_desc.debug_name = "RendererImGuiBootstrapViewport";
             auto font_atlas = std::make_unique<toy3d::ImGuiFontAtlasData>();
             font_atlas->rgba_pixels = {255u, 255u, 255u, 255u};
@@ -1063,8 +1065,7 @@ namespace
             surface_desc.window_handle = reinterpret_cast<void*>(1);
             surface_desc.debug_name = "RendererLifecycleSurface";
             toy3d::RHIViewportContextDesc viewport_desc;
-            viewport_desc.width = 1280;
-            viewport_desc.height = 720;
+            viewport_desc.extent = {1280u, 720u};
             viewport_desc.debug_name = "RendererLifecycleViewport";
             toy3d::Renderer renderer(
                 *graph, std::make_shared<toy3d::RHISurface>(std::move(surface_desc)), std::move(viewport_desc),
@@ -1113,23 +1114,22 @@ namespace
                 toy3d::Vector3 camera_direction(0.0f, 0.0f, 1.0f);
                 toy3d::Radians vertical_fov(1.0f);
                 std::vector<toy3d::SceneView> views;
-                views.emplace_back(camera_position, camera_orientation, camera_direction, toy3d::UIntVector2(10, 20),
-                                   toy3d::UIntVector2(640, 360), toy3d::UIntVector2(1280, 720),
+                views.emplace_back(camera_position, camera_orientation, camera_direction,
+                                   toy3d::IntRect{10, 20, 640u, 360u}, toy3d::Extent{1280u, 720u},
                                    toy3d::CameraProjectionMode::Perspective, vertical_fov, 0.25f, 500.0f);
-                toy3d::SceneViewFamily view_family(*scene_interface, toy3d::UIntVector2(1280, 720), std::move(views));
+                toy3d::SceneViewFamily view_family(*scene_interface, toy3d::Extent{1280u, 720u}, std::move(views));
                 camera_position.x = 99.0f;
                 camera_orientation = toy3d::Quaternion(0.0f, 0.0f, 0.0f, 0.0f);
                 camera_direction.z = -1.0f;
                 vertical_fov = toy3d::Radians(2.0f);
                 check(&view_family.scene_interface() == scene_interface &&
-                          view_family.output_size() == toy3d::UIntVector2(1280, 720) &&
+                          view_family.output_extent() == toy3d::Extent{1280u, 720u} &&
                           view_family.views().size() == 1 &&
                           view_family.views()[0].camera_position() == toy3d::Vector3(1.0f, 2.0f, 3.0f) &&
                           view_family.views()[0].camera_orientation() == toy3d::Quaternion::identity() &&
                           view_family.views()[0].camera_direction() == toy3d::Vector3(0.0f, 0.0f, 1.0f) &&
-                          view_family.views()[0].view_rect_minimum() == toy3d::UIntVector2(10, 20) &&
-                          view_family.views()[0].view_rect_size() == toy3d::UIntVector2(640, 360) &&
-                          view_family.views()[0].output_size() == toy3d::UIntVector2(1280, 720) &&
+                          view_family.views()[0].view_rect() == toy3d::IntRect{10, 20, 640u, 360u} &&
+                          view_family.views()[0].output_extent() == toy3d::Extent{1280u, 720u} &&
                           view_family.views()[0].projection_mode() == toy3d::CameraProjectionMode::Perspective &&
                           view_family.views()[0].vertical_fov() == toy3d::Radians(1.0f) &&
                           view_family.views()[0].near_clip() == 0.25f && view_family.views()[0].far_clip() == 500.0f &&
@@ -1183,10 +1183,10 @@ namespace
                     std::vector<toy3d::SceneView> terminal_views;
                     terminal_views.emplace_back(
                         toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                        toy3d::UIntVector2(), toy3d::UIntVector2(1, 1), toy3d::UIntVector2(1, 1),
+                        toy3d::IntRect{0, 0, 1u, 1u}, toy3d::Extent{1u, 1u},
                         toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
                     renderer.draw_frame(std::make_unique<toy3d::ForwardSceneRenderer>(
-                        toy3d::SceneViewFamily(*scene_interface, toy3d::UIntVector2(1, 1), std::move(terminal_views))));
+                        toy3d::SceneViewFamily(*scene_interface, toy3d::Extent{1u, 1u}, std::move(terminal_views))));
                     check(terminal_world.bind_scene(*scene_interface),
                           "Terminal admission window must still accept Add ownership");
                     check(terminal_actor.static_mesh_component().has_render_state(),

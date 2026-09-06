@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drivers/rhi/rhi_resource.h"
+#include "math/integer_vector.h"
 
 #include <cstdint>
 #include <string>
@@ -8,6 +9,8 @@
 
 namespace toy3d
 {
+    using RHIRect = IntRect;
+
     struct RHIOffset3D
     {
         std::uint32_t x = 0;
@@ -30,14 +33,6 @@ namespace toy3d
         float height = 0.0F;
         float min_depth = 0.0F;
         float max_depth = 1.0F;
-    };
-
-    struct RHIRect
-    {
-        std::int32_t x = 0;
-        std::int32_t y = 0;
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
     };
 
     struct RHIResourceTransition

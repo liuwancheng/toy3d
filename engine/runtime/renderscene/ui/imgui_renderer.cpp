@@ -96,10 +96,10 @@ namespace toy3d
             const double top =
                 std::max(0.0, (static_cast<double>(command.clip_rect.top) - data.display_position[1]) * scale_y);
             const double right =
-                std::min(static_cast<double>(target.width),
+                std::min(static_cast<double>(target.extent.width),
                          (static_cast<double>(command.clip_rect.right) - data.display_position[0]) * scale_x);
             const double bottom =
-                std::min(static_cast<double>(target.height),
+                std::min(static_cast<double>(target.extent.height),
                          (static_cast<double>(command.clip_rect.bottom) - data.display_position[1]) * scale_y);
             if (!(right > left && bottom > top))
                 return false;
@@ -378,11 +378,12 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "ImGui rendering requires completed bootstrap resources.");
         }
-        if (!target.color_view || target.width == 0u || target.height == 0u ||
+        if (!target.color_view || target.extent.width == 0u || target.extent.height == 0u ||
             target.format != PixelFormat::B8G8R8A8UNorm || target.sample_count != 1u ||
             target.color_view->desc().format != target.format ||
             target.color_view->texture()->desc().sample_count != target.sample_count ||
-            draw_data.framebuffer_width != target.width || draw_data.framebuffer_height != target.height ||
+            draw_data.framebuffer_width != target.extent.width ||
+            draw_data.framebuffer_height != target.extent.height ||
             (draw_data.index_stride != 2u && draw_data.index_stride != 4u))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -465,8 +466,8 @@ namespace toy3d
             if (!bind_status)
                 return bind_status;
             RHIViewport viewport;
-            viewport.width = static_cast<float>(target.width);
-            viewport.height = static_cast<float>(target.height);
+            viewport.width = static_cast<float>(target.extent.width);
+            viewport.height = static_cast<float>(target.extent.height);
             bind_status = context.set_viewport(viewport);
             if (!bind_status)
                 return bind_status;

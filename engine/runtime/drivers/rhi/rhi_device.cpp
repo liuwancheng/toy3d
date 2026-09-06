@@ -26,7 +26,8 @@ namespace toy3d
             {
                 return surface_status;
             }
-            if (desc.width == 0 || desc.height == 0 || desc.image_count < 2 || desc.format == PixelFormat::Unknown)
+            if (desc.extent.width == 0 || desc.extent.height == 0 || desc.image_count < 2 ||
+                desc.format == PixelFormat::Unknown)
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,

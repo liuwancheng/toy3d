@@ -71,16 +71,15 @@ namespace toy3d
         {
           public:
             VulkanFrameContext(VulkanViewportContext& owner, RHITextureRef texture, RHITextureViewRef view,
-                               std::uint32_t width, std::uint32_t height)
-                : viewport(owner), output_texture(std::move(texture)), output_view(std::move(view)), frame_width(width),
-                  frame_height(height)
+                               Extent extent)
+                : viewport(owner), output_texture(std::move(texture)), output_view(std::move(view)),
+                  frame_extent(extent)
             {
             }
 
             const RHITextureRef& present_texture() const override { return output_texture; }
             const RHITextureViewRef& present_view() const override { return output_view; }
-            std::uint32_t width() const override { return frame_width; }
-            std::uint32_t height() const override { return frame_height; }
+            Extent extent() const override { return frame_extent; }
 
             RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context() override
             {
@@ -93,8 +92,7 @@ namespace toy3d
             VulkanViewportContext& viewport;
             RHITextureRef output_texture;
             RHITextureViewRef output_view;
-            std::uint32_t frame_width = 0;
-            std::uint32_t frame_height = 0;
+            Extent frame_extent;
         };
     } // namespace
 
@@ -106,8 +104,7 @@ namespace toy3d
         : RHIViewportContext(owner, desc.debug_name), owner_device(owner), vk_physical_device(physical_device),
           vk_device(device), vk_surface(surface), graphics_queue_family(queue_family), graphics_queue(queue),
           upload_manager(uploads), deletion_queue(deletions), viewport_surface(std::move(rhi_surface)),
-          viewport_desc(std::move(desc)), resize_pending(true), pending_width(viewport_desc.width),
-          pending_height(viewport_desc.height)
+          viewport_desc(std::move(desc)), resize_pending(true), pending_extent(viewport_desc.extent)
     {
     }
 
@@ -204,7 +201,7 @@ namespace toy3d
         resize_pending = acquire_result.value().presentation_status.code() == RHIErrorCode::Suboptimal;
         const VkExtent2D extent = swapchain->extent();
         return RHIResult<std::unique_ptr<RHIFrameContext>>::success(std::make_unique<VulkanFrameContext>(
-            *this, acquired_image.texture, acquired_image.view, extent.width, extent.height));
+            *this, acquired_image.texture, acquired_image.view, Extent{extent.width, extent.height}));
     }
 
     RHIResult<RHIFrameEndResult> VulkanViewportContext::end_frame(std::unique_ptr<RHIFrameContext> frame,
@@ -354,12 +351,11 @@ namespace toy3d
         return abort_active_frame();
     }
 
-    RHIStatus VulkanViewportContext::request_resize(std::uint32_t width, std::uint32_t height)
+    RHIStatus VulkanViewportContext::request_resize(const Extent& extent)
     {
-        pending_width = width;
-        pending_height = height;
+        pending_extent = extent;
         resize_pending = true;
-        if (width == 0 || height == 0)
+        if (extent.width == 0 || extent.height == 0)
         {
             return RHIStatus::failure(RHIErrorCode::NotReady, "A zero-sized viewport cannot be presented.");
         }
@@ -389,7 +385,7 @@ namespace toy3d
         {
             return status;
         }
-        if (pending_width == 0 || pending_height == 0 || capabilities.currentExtent.width == 0 ||
+        if (pending_extent.width == 0 || pending_extent.height == 0 || capabilities.currentExtent.width == 0 ||
             capabilities.currentExtent.height == 0)
         {
             return RHIStatus::failure(RHIErrorCode::NotReady, "The Vulkan presentation surface has a zero extent.");
@@ -409,8 +405,7 @@ namespace toy3d
         }
 
         RHIViewportContextDesc replacement_desc = viewport_desc;
-        replacement_desc.width = pending_width;
-        replacement_desc.height = pending_height;
+        replacement_desc.extent = pending_extent;
         auto replacement_result =
             VulkanSwapchain::create(owner_device, vk_physical_device, vk_device, vk_surface, replacement_desc,
                                     swapchain ? swapchain->native_handle() : VK_NULL_HANDLE);
@@ -434,8 +429,7 @@ namespace toy3d
         frame_slots = std::move(replacement_slots);
         current_frame_slot = 0;
         viewport_desc = std::move(replacement_desc);
-        pending_width = viewport_desc.width;
-        pending_height = viewport_desc.height;
+        pending_extent = viewport_desc.extent;
         resize_pending = false;
         ++swapchain_publication_id;
         return RHIStatus::success();

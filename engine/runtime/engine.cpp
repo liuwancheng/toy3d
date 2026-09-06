@@ -220,8 +220,7 @@ namespace toy3d
 
         const Extent window_extent = window->get_win_size();
         RHIViewportContextDesc viewport_desc;
-        viewport_desc.width = window_extent.width;
-        viewport_desc.height = window_extent.height;
+        viewport_desc.extent = window_extent;
         viewport_desc.debug_name = "PrimaryViewport";
         renderer = std::make_unique<Renderer>(
             *task_graph, rhi_surface, std::move(viewport_desc), []() { return create_default_rhi_device(); },
@@ -298,8 +297,7 @@ namespace toy3d
         else
         {
             views.emplace_back(Vector3(0.0f, 1.5f, -6.0f), Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
-                               UIntVector2(0, 0), UIntVector2(extent.width, extent.height),
-                               UIntVector2(extent.width, extent.height), CameraProjectionMode::Perspective,
+                               IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
                                to_radians(Degrees(60.0f)), 0.1f, 1000.0f);
         }
         if (views.empty())
@@ -310,7 +308,7 @@ namespace toy3d
 
         renderer->draw_frame(
             std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
-                *renderer->scene_interface(), UIntVector2(extent.width, extent.height), std::move(views))),
+                *renderer->scene_interface(), extent, std::move(views))),
             std::move(ui_draw_data));
     }
 

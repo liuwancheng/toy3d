@@ -189,6 +189,8 @@ namespace toy3d
                 RHIStatus::failure(RHIErrorCode::BackendFailure, "Renderer bootstrap created no command context"));
         }
 
+        // 这次启动引导录制只执行一次，确保 placeholder 资源在 Renderer 进入 Running 前已在 GPU 就绪。
+        // 常规帧上传和绘制仍由 draw_frame() 在 viewport frame context 中录制。
         step_status = context->begin_recording("RendererBootstrap");
         if (step_status)
         {
@@ -390,14 +392,15 @@ namespace toy3d
                 RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                    "Renderer frame present attachments must belong to its device and current frame."));
         }
-        if (scene_renderer.output_size() != UIntVector2(frame->width(), frame->height()))
+        const Extent frame_extent = frame->extent();
+        if (scene_renderer.output_extent() != frame_extent)
         {
             return abort_recording(
                 RHIStatus::failure(RHIErrorCode::OutOfDate,
                                    "Renderer frame View family output does not match the acquired frame extent."));
         }
 
-        RHIStatus status = scene_render_targets.ensure_extent(device, frame->width(), frame->height());
+        RHIStatus status = scene_render_targets.ensure_extent(device, frame_extent);
         if (!status)
         {
             return abort_recording(status);
@@ -453,8 +456,7 @@ namespace toy3d
 
         TonemapPassTarget tonemap_target;
         tonemap_target.color_view = frame->present_view();
-        tonemap_target.width = frame->width();
-        tonemap_target.height = frame->height();
+        tonemap_target.extent = frame_extent;
         status =
             tonemap_pass_resources.render(device, *context, scene_render_targets.scene_color_shader_resource_view(),
                                           tonemap_target, TonemapParameters{});
@@ -473,8 +475,7 @@ namespace toy3d
             }
             ImGuiPassTarget imgui_target;
             imgui_target.color_view = frame->present_view();
-            imgui_target.width = frame->width();
-            imgui_target.height = frame->height();
+            imgui_target.extent = frame_extent;
             imgui_target.load = RHILoadOperation::Load;
             status = imgui_renderer->render(device, *context, *ui_draw_data, imgui_target);
             if (!status)
@@ -578,8 +579,8 @@ namespace toy3d
                     return;
                 }
 
-                const UIntVector2 output_size = scene_renderer->output_size();
-                const RHIStatus extent_status = ensure_primary_frame_extent(output_size.x, output_size.y);
+                const Extent output_extent = scene_renderer->output_extent();
+                const RHIStatus extent_status = ensure_primary_frame_extent(output_extent);
                 if (!extent_status)
                 {
                     enter_terminal(extent_status);
@@ -629,14 +630,14 @@ namespace toy3d
         return current_thread != NamedThread::Unknown && current_thread == task_graph_.get_render_thread();
     }
 
-    RHIStatus Renderer::ensure_primary_frame_extent(std::uint32_t width, std::uint32_t height)
+    RHIStatus Renderer::ensure_primary_frame_extent(const Extent& extent)
     {
         if (!is_on_logical_rendering_thread())
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Renderer frame extent updates must run on the logical Rendering Thread");
         }
-        if (width == 0u || height == 0u)
+        if (extent.width == 0u || extent.height == 0u)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Renderer frame extent must be non-empty");
         }
@@ -645,15 +646,14 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Renderer frame extent update requires a complete domain");
         }
-        if (viewport_desc_.width == width && viewport_desc_.height == height)
+        if (viewport_desc_.extent == extent)
         {
             return RHIStatus::success();
         }
-        const RHIStatus resize_status = primary_viewport_->request_resize(width, height);
+        const RHIStatus resize_status = primary_viewport_->request_resize(extent);
         if (resize_status)
         {
-            viewport_desc_.width = width;
-            viewport_desc_.height = height;
+            viewport_desc_.extent = extent;
         }
         return resize_status;
     }

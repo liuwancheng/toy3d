@@ -190,9 +190,10 @@ namespace toy3d
         {
             // std::clamp applies Vulkan's inclusive surface limits directly and
             // keeps both dimensions on the same readable C++17 path.
-            extent.width = std::clamp(desc.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+            extent.width =
+                std::clamp(desc.extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
             extent.height =
-                std::clamp(desc.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+                std::clamp(desc.extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
         }
         if (extent.width == 0 || extent.height == 0)
         {

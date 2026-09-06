@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
+#include "math/integer_vector.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/global_shader_type.h"
@@ -23,8 +24,7 @@ namespace toy3d
     struct ImGuiPassTarget
     {
         RHITextureViewRef color_view;
-        std::uint32_t width = 0u;
-        std::uint32_t height = 0u;
+        Extent extent;
         PixelFormat format = PixelFormat::B8G8R8A8UNorm;
         std::uint32_t sample_count = 1u;
         RHILoadOperation load = RHILoadOperation::Load;
