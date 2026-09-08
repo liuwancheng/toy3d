@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "renderscene/view/forward_scene_renderer.h"
+#include "renderscene/view/scene_visibility.h"
 
 namespace
 {
@@ -241,14 +242,6 @@ namespace
         friend type get(ForwardInitViewsMember);
     };
     template struct PrivateMemberAccess<ForwardInitViewsMember, &toy3d::ForwardSceneRenderer::init_views>;
-
-    struct ForwardComputeVisibilityMember
-    {
-        using type = void (toy3d::ForwardSceneRenderer::*)(const toy3d::RenderScene&);
-        friend type get(ForwardComputeVisibilityMember);
-    };
-    template struct PrivateMemberAccess<ForwardComputeVisibilityMember,
-                                        &toy3d::ForwardSceneRenderer::compute_view_visibility>;
 
     struct SceneRendererViewInfosMember
     {
@@ -757,15 +750,15 @@ namespace
         return (renderer.*get(ForwardInitViewsMember{}))();
     }
 
-    void compute_view_visibility(toy3d::ForwardSceneRenderer& renderer, const toy3d::RenderScene& render_scene)
-    {
-        (renderer.*get(ForwardComputeVisibilityMember{}))(render_scene);
-    }
-
     std::vector<toy3d::ViewInfo>& view_infos(toy3d::ForwardSceneRenderer& renderer)
     {
         toy3d::SceneRenderer& base_renderer = renderer;
         return (base_renderer.*get(SceneRendererViewInfosMember{}))();
+    }
+
+    void compute_visibility(toy3d::ForwardSceneRenderer& renderer, const toy3d::RenderScene& render_scene)
+    {
+        toy3d::compute_scene_visibility(render_scene, view_infos(renderer));
     }
 
     void test_cpu_view_and_visibility()
@@ -797,6 +790,10 @@ namespace
                 add_visibility_proxy(render_scene, make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false);
             toy3d::PrimitiveSceneProxy* const second_view_only =
                 add_visibility_proxy(render_scene, make_bounds({100.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), true);
+            toy3d::AxisAlignedBounds invalid_bounds = make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f});
+            invalid_bounds.minimum.x = std::numeric_limits<float>::quiet_NaN();
+            toy3d::PrimitiveSceneProxy* const invalid_bounds_proxy =
+                add_visibility_proxy(render_scene, invalid_bounds, true);
             std::vector<toy3d::SceneView> finite_views;
             finite_views.push_back(make_perspective_view(toy3d::Vector3(0.0f, 0.0f, 0.0f),
                                                          toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
@@ -808,17 +805,19 @@ namespace
                       view_infos(finite_renderer)[0].visible_primitives().empty() &&
                       view_infos(finite_renderer)[1].visible_primitives().empty(),
                   "init_views must build two independent ViewInfo values with empty current-frame visibility");
-            compute_view_visibility(finite_renderer, render_scene);
+            compute_visibility(finite_renderer, render_scene);
             check(visible_contains(view_infos(finite_renderer)[0], inside) &&
                       visible_contains(view_infos(finite_renderer)[0], touching_near) &&
                       !visible_contains(view_infos(finite_renderer)[0], far_only) &&
                       !visible_contains(view_infos(finite_renderer)[0], outside) &&
                       !visible_contains(view_infos(finite_renderer)[0], hidden) &&
+                      !visible_contains(view_infos(finite_renderer)[0], invalid_bounds_proxy) &&
                       !visible_contains(view_infos(finite_renderer)[0], second_view_only),
                   "finite View visibility must include inside/touching AABBs and reject far, outside, and hidden "
                   "proxies");
             check(visible_contains(view_infos(finite_renderer)[1], second_view_only) &&
-                      !visible_contains(view_infos(finite_renderer)[1], inside),
+                      !visible_contains(view_infos(finite_renderer)[1], inside) &&
+                      view_infos(finite_renderer)[1].mesh_batches().empty(),
                   "multi-view visibility must keep per-view results independent");
 
             check(init_views(finite_renderer) && view_infos(finite_renderer)[0].visible_primitives().empty(),
@@ -826,10 +825,10 @@ namespace
 
             render_scene.update_primitive_transform(inside, toy3d::Matrix4::identity(),
                                                     make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false);
-            compute_view_visibility(finite_renderer, render_scene);
+            compute_visibility(finite_renderer, render_scene);
             check(!visible_contains(view_infos(finite_renderer)[0], inside) &&
                       visible_contains(view_infos(finite_renderer)[0], touching_near),
-                  "compute_view_visibility must clear stale results before applying the next frame");
+                  "scene visibility must clear stale results before applying the next frame");
 
             std::vector<toy3d::SceneView> infinite_views;
             infinite_views.push_back(make_perspective_view(
@@ -837,7 +836,7 @@ namespace
             toy3d::ForwardSceneRenderer infinite_renderer(
                 toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u}, std::move(infinite_views)));
             check(init_views(infinite_renderer), "infinite-far View must initialize with a five-plane frustum");
-            compute_view_visibility(infinite_renderer, render_scene);
+            compute_visibility(infinite_renderer, render_scene);
             check(visible_contains(view_infos(infinite_renderer)[0], far_only),
                   "infinite-far visibility must not cull by a fabricated far plane");
 

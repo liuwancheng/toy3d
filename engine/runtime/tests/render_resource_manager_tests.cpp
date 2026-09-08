@@ -14,6 +14,7 @@
 #include "renderscene/material/material_render_proxy.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/mesh_batch.h"
+#include "renderscene/pass/mesh_draw_command.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
@@ -30,11 +31,21 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace
 {
+    static_assert(std::is_default_constructible<toy3d::MeshDrawCommand>::value,
+                  "MeshDrawCommand must support deterministic default initialization");
+    static_assert(std::is_move_constructible<toy3d::MeshDrawCommand>::value,
+                  "MeshDrawCommand must remain a movable frame-local value");
+    static_assert(std::is_default_constructible<toy3d::MeshPassDrawList>::value,
+                  "MeshPassDrawList must support deterministic default initialization");
+    static_assert(std::is_move_constructible<toy3d::MeshPassDrawList>::value,
+                  "MeshPassDrawList must remain a movable frame-local value");
+
     int failure_count = 0;
 
     void check(bool condition, const char* message)
@@ -561,8 +572,13 @@ int main()
                                                              0.0f,
                                                              toy3d::Vector3(10.0f, 11.0f, 12.0f),
                                                              0.0f};
-    const auto view_binding = toy3d::materialize_view_uniform_shader_parameters(
-        device, uniform_context, view_object_layout, *view_object_program, view_parameters);
+    const auto view_buffer =
+        toy3d::create_view_uniform_shader_buffer(device, uniform_context, view_parameters);
+    const auto view_binding = view_buffer
+                                  ? toy3d::create_view_uniform_shader_binding(
+                                        device, view_object_layout, *view_object_program, view_buffer.value())
+                                  : toy3d::RHIResult<toy3d::RHIBindingSetRef>::failure(
+                                        view_buffer.status().code(), view_buffer.status().message());
     float view_projection_diagonal = 0.0f;
     float camera_position_x = 0.0f;
     const bool view_bytes_complete = uniform_context.last_buffer_upload_data.size() == 416u;
@@ -576,6 +592,28 @@ int main()
               view_projection_diagonal == 3.0f && camera_position_x == 7.0f &&
               uniform_context.last_buffer_upload_data[396u] == 0u,
           "View ABI materialization must write canonical members and keep padding zero");
+
+    toy3d::ShaderMapProgramData alternate_view_program_data = make_view_object_program();
+    alternate_view_program_data.bindings[0].target_binding = 1u;
+    alternate_view_program_data.stages[0].reflection = alternate_view_program_data.bindings;
+    const toy3d::ShaderMapProgramRef alternate_view_program = load_program(std::move(alternate_view_program_data));
+    toy3d::RHIBindingLayoutDesc alternate_view_layout_desc;
+    alternate_view_layout_desc.entries.push_back({toy3d::RHIBindingGroup::View, 1u,
+                                                   toy3d::RHIResourceBindingType::UniformBuffer,
+                                                   toy3d::RHIShaderStageFlags::Vertex, 1u});
+    const toy3d::RHIBindingLayoutRef alternate_view_layout =
+        std::make_shared<toy3d::RHIBindingLayout>(device, std::move(alternate_view_layout_desc));
+    const std::uint32_t view_buffer_count_before_adapter = device.buffer_creation_count;
+    const std::uint32_t view_binding_count_before_adapter = device.binding_set_creation_count;
+    const auto alternate_view_binding = toy3d::create_view_uniform_shader_binding(
+        device, alternate_view_layout, *alternate_view_program, view_buffer.value());
+    check(alternate_view_binding.succeeded() && alternate_view_binding.value() != nullptr &&
+              alternate_view_binding.value()->desc().bindings.size() == 1u &&
+              alternate_view_binding.value()->desc().bindings[0].slot == 1u &&
+              alternate_view_binding.value()->desc().bindings[0].buffer == view_buffer.value() &&
+              device.buffer_creation_count == view_buffer_count_before_adapter &&
+              device.binding_set_creation_count == view_binding_count_before_adapter + 1u,
+          "different View layouts must create only an adapter over the same canonical buffer");
 
     toy3d::Matrix4 object_to_world = toy3d::Matrix4::identity();
     object_to_world.at(3u, 0u) = 13.0f;
@@ -594,21 +632,19 @@ int main()
           "Object ABI materialization must write the canonical object matrix");
 
     const toy3d::ShaderMapProgramRef material_only_program = load_program(make_material_program("UnusedView", 70u));
-    const std::uint32_t unused_buffer_count = device.buffer_creation_count;
     const std::uint32_t unused_set_count = device.binding_set_creation_count;
-    const auto unused_view = toy3d::materialize_view_uniform_shader_parameters(
-        device, uniform_context, view_object_layout, *material_only_program, view_parameters);
+    const auto unused_view = toy3d::create_view_uniform_shader_binding(
+        device, view_object_layout, *material_only_program, view_buffer.value());
     check(unused_view.succeeded() && unused_view.value() == nullptr &&
-              device.buffer_creation_count == unused_buffer_count &&
               device.binding_set_creation_count == unused_set_count,
-          "an unused View group must not create a buffer or binding set");
+          "an unused View group must not create a binding adapter");
 
     toy3d::ShaderMapProgramData invalid_view_data = make_view_object_program();
     invalid_view_data.bindings[0].constant_members[0].name = "toy_unknown_view_member";
     invalid_view_data.stages[0].reflection = invalid_view_data.bindings;
     const toy3d::ShaderMapProgramRef invalid_view_program = load_program(std::move(invalid_view_data));
-    check(!toy3d::materialize_view_uniform_shader_parameters(device, uniform_context, view_object_layout,
-                                                             *invalid_view_program, view_parameters),
+    check(!toy3d::create_view_uniform_shader_binding(device, view_object_layout, *invalid_view_program,
+                                                     view_buffer.value()),
           "unknown View members must fail with a diagnostic");
 
     toy3d::ShaderMapProgramData mismatched_identity_data = make_view_object_program();
@@ -618,8 +654,8 @@ int main()
         toy3d::shader::BindingGroup::View, toy3d::shader::ShaderParameterCategory::Constant, "toy_view");
     mismatched_identity_data.stages[0].reflection = mismatched_identity_data.bindings;
     const toy3d::ShaderMapProgramRef mismatched_identity_program = load_program(std::move(mismatched_identity_data));
-    check(!toy3d::materialize_view_uniform_shader_parameters(device, uniform_context, view_object_layout,
-                                                             *mismatched_identity_program, view_parameters),
+    check(!toy3d::create_view_uniform_shader_binding(device, view_object_layout, *mismatched_identity_program,
+                                                     view_buffer.value()),
           "View member names with mismatched stable identities must fail");
 
     toy3d::ShaderMapProgramData invalid_stride_data = make_view_object_program();
@@ -636,8 +672,8 @@ int main()
     resource_view_data.bindings[0].constant_members.clear();
     resource_view_data.stages[0].reflection = resource_view_data.bindings;
     const toy3d::ShaderMapProgramRef resource_view_program = load_program(std::move(resource_view_data));
-    check(!toy3d::materialize_view_uniform_shader_parameters(device, uniform_context, view_object_layout,
-                                                             *resource_view_program, view_parameters),
+    check(!toy3d::create_view_uniform_shader_binding(device, view_object_layout, *resource_view_program,
+                                                     view_buffer.value()),
           "View resource-class bindings without a canonical source must fail");
 
     struct GraphicsContext final : toy3d::RHIGraphicsCommandContext
@@ -649,9 +685,11 @@ int main()
         std::uint32_t texture_upload_count = 0;
         std::vector<std::uint8_t> last_buffer_upload_data;
         std::vector<std::string>* operations = nullptr;
+        std::uint32_t* view_uniform_upload_count = nullptr;
         toy3d::RHIDevice* command_device = nullptr;
         bool finish_success = false;
         bool fail_draw_indexed = false;
+        bool fail_view_uniform_upload = false;
 
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
@@ -677,6 +715,15 @@ int main()
         toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc& desc) override
         {
             ++upload_count;
+            if (view_uniform_upload_count != nullptr && desc.source.size == 416u)
+            {
+                ++(*view_uniform_upload_count);
+            }
+            if (fail_view_uniform_upload && desc.source.size == 416u)
+            {
+                return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
+                                                 "Injected View uniform upload failure");
+            }
             if (operations != nullptr)
             {
                 operations->push_back("upload_buffer");
@@ -1079,6 +1126,7 @@ int main()
 
         std::unique_ptr<toy3d::RHIFrameContext> next_frame;
         std::vector<std::string>* operations = nullptr;
+        std::uint32_t* view_uniform_upload_count = nullptr;
         std::uint32_t begin_count = 0u;
         std::uint32_t end_count = 0u;
         std::uint32_t abort_count = 0u;
@@ -1136,16 +1184,19 @@ int main()
         toy3d::RHIStatus request_resize(const toy3d::Extent&) override { return toy3d::RHIStatus::success(); }
     } frame_viewport(device);
 
-    const auto make_frame = [&](bool fail_draw_indexed = false) -> std::unique_ptr<toy3d::RHIFrameContext>
+    const auto make_frame = [&](bool fail_draw_indexed = false,
+                                bool fail_view_uniform_upload = false) -> std::unique_ptr<toy3d::RHIFrameContext>
     {
         auto frame_context = std::make_unique<decltype(frame_context_shape)>();
         frame_context->color_texture = present_texture;
         frame_context->color_view = present_view;
         auto frame_commands = std::make_unique<decltype(context)>(device);
         frame_commands->operations = frame_viewport.operations;
+        frame_commands->view_uniform_upload_count = frame_viewport.view_uniform_upload_count;
         frame_commands->command_device = &device;
         frame_commands->finish_success = true;
         frame_commands->fail_draw_indexed = fail_draw_indexed;
+        frame_commands->fail_view_uniform_upload = fail_view_uniform_upload;
         frame_context->commands = std::move(frame_commands);
         return frame_context;
     };
@@ -1216,6 +1267,7 @@ int main()
                                     {{0.0f, 0.5f, 4.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 1.0f}}};
     base_pass_mesh_desc.indices = std::vector<std::uint16_t>{0u, 1u, 2u};
     base_pass_mesh_desc.sections.push_back({0u, 3u, 0u});
+    base_pass_mesh_desc.sections.push_back({0u, 3u, 0u});
     base_pass_mesh_desc.material_slots.push_back(base_pass_material_instance);
     const toy3d::StaticMeshRef base_pass_mesh = toy3d::StaticMesh::create(std::move(base_pass_mesh_desc));
     toy3d::StaticMeshRenderData base_pass_render_data(*base_pass_mesh);
@@ -1247,6 +1299,9 @@ int main()
     base_pass_draw_resource.operations = &base_pass_draw_operations;
     frame_viewport.operations = &base_pass_draw_operations;
     device.operations = &base_pass_draw_operations;
+    std::uint32_t base_pass_view_uniform_upload_count = 0u;
+    frame_viewport.view_uniform_upload_count = &base_pass_view_uniform_upload_count;
+    const std::uint32_t base_pass_binding_count_before = device.binding_set_creation_count;
     frame_viewport.next_frame = make_frame();
     check(frame_manager.begin_init(base_pass_draw_resource).succeeded(),
           "Base Pass draw smoke must begin a pending resource transaction");
@@ -1261,6 +1316,8 @@ int main()
         std::find(base_pass_draw_operations.begin(), base_pass_draw_operations.end(), "begin_render_pass");
     const auto draw_command =
         std::find(base_pass_draw_operations.begin(), base_pass_draw_operations.end(), "draw_indexed");
+    const std::size_t draw_command_count = static_cast<std::size_t>(
+        std::count(base_pass_draw_operations.begin(), base_pass_draw_operations.end(), "draw_indexed"));
     const auto first_end_pass = first_begin_pass == base_pass_draw_operations.end()
                                     ? base_pass_draw_operations.end()
                                     : std::find(first_begin_pass, base_pass_draw_operations.end(), "end_render_pass");
@@ -1268,10 +1325,42 @@ int main()
               first_begin_pass != base_pass_draw_operations.end() &&
               first_end_pass != base_pass_draw_operations.end() && first_upload < first_begin_pass &&
               std::find(first_begin_pass, first_end_pass, "device_create") == first_end_pass &&
-              draw_command != base_pass_draw_operations.end() && frame_viewport.end_count == 2u,
-          "Base Pass prepare uploads must precede execute and one prepared draw must reach the same frame list");
+              draw_command != base_pass_draw_operations.end() && draw_command_count == 2u &&
+              base_pass_view_uniform_upload_count == 1u &&
+              device.binding_set_creation_count == base_pass_binding_count_before + 4u &&
+              frame_viewport.end_count == 2u,
+          "Base Pass must upload View data once, reuse one View adapter, and execute both prepared draws");
+    frame_viewport.view_uniform_upload_count = nullptr;
     check(frame_manager.release(base_pass_draw_resource).succeeded(),
           "successful Base Pass draw resource must be releasable");
+
+    decltype(ready_first) view_upload_failed_resource;
+    std::vector<std::string> view_upload_failed_operations;
+    view_upload_failed_resource.operations = &view_upload_failed_operations;
+    frame_viewport.operations = &view_upload_failed_operations;
+    device.operations = &view_upload_failed_operations;
+    frame_viewport.next_frame = make_frame(false, true);
+    const std::uint32_t binding_count_before_view_failure = device.binding_set_creation_count;
+    const std::uint32_t abort_count_before_view_failure = frame_viewport.abort_count;
+    check(frame_manager.begin_init(view_upload_failed_resource).succeeded(),
+          "View upload failure smoke must begin a pending resource transaction");
+    toy3d::ForwardSceneRenderer view_upload_failed_renderer(make_base_pass_view_family());
+    toy3d::SceneRenderTargets view_upload_failed_targets;
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult> view_upload_failed_result =
+        render_test_frame(view_upload_failed_renderer, *base_pass_scene, device, frame_manager, frame_viewport,
+                          view_upload_failed_targets, tonemap_resources);
+    check(!view_upload_failed_result &&
+              view_upload_failed_result.status().code() == toy3d::RHIErrorCode::Unsupported &&
+              device.binding_set_creation_count == binding_count_before_view_failure &&
+              std::find(view_upload_failed_operations.begin(), view_upload_failed_operations.end(),
+                        "begin_render_pass") == view_upload_failed_operations.end() &&
+              view_upload_failed_resource.state() == toy3d::RenderResourceState::PendingUpload &&
+              view_upload_failed_resource.discard_count == 1 &&
+              frame_viewport.abort_count == abort_count_before_view_failure + 1u &&
+              view_upload_failed_operations.back() == "abort_frame",
+          "View upload failure must preserve its status, publish no adapter, and abort before Base Pass begins");
+    check(frame_manager.release(view_upload_failed_resource).succeeded(),
+          "View upload failed resource must remain releasable");
 
     decltype(ready_first) draw_failed_resource;
     std::vector<std::string> draw_failed_operations;

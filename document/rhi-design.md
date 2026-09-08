@@ -24,7 +24,7 @@ UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCom
 - graphics pipeline、binding、render pass、draw 和 draw indexed；
 - capability、limits、可检查错误和 device lost 路径；
 - GlobalShader 驱动的 test/fullscreen pass；
-- 简化的 BasePass、MeshPassProcessor 和 MeshDrawPacket。
+- 独立 BasePass 模块、`MeshPassDrawList` 和 `MeshDrawCommand`。
 
 第一阶段不实现 async compute、bindless、ray tracing、VRS、多 GPU、完整 Render Graph、RHI thread 和 draw batch 内并行。公共描述符和 binding layout 需要预留 compute 与 storage resource，但未实现功能必须返回 `Unsupported`，不得空操作成功。
 
@@ -46,7 +46,7 @@ RenderCore
     - GlobalShaderMap / MaterialShaderMap
     - Material / MaterialInstance / MaterialRenderProxy
     - shader reflection / parameter binding
-    - MeshPassProcessor / MeshDrawPacket
+    - concrete mesh pass / MeshPassDrawList / MeshDrawCommand
     - pipeline and binding cache
         |
         v
@@ -606,35 +606,30 @@ Pipeline 创建入口采用 non-virtual interface。公共 `RHIDevice::create_gr
 
 ### 13.1 Pass 职责
 
-当前显式 Renderer 的业务 Pass 分为连续的 prepare 与 execute。prepare 是 draw 前资源
-物化阶段，可以显式使用 Renderer 注入的 `RHIDevice&` 与当前
-`RHIGraphicsCommandContext&`：它读取 View、Material、Proxy、MeshBatch 等 Render-side
-状态，创建或查询 shader、pipeline、binding，并在同一个 recording 中录制 draw 所需的
-uniform upload。prepare 不创建或结束 context，不 submit、present、wait，也不开始 RHI
-render pass。
+当前显式 Renderer 的具体业务 Pass 使用单一 `render_*_pass(...)` 入口，并在入口内部保持
+prepare-then-execute 边界。prepare 阶段可以显式使用 Renderer 注入的 `RHIDevice&`、
+`RHIShaderProgramCache&` 与当前 `RHIGraphicsCommandContext&`：它读取当前帧 View candidates，
+创建或查询 shader、pipeline、binding，并在同一个 recording 中完成 draw 所需的 uniform
+upload。所有这些工作必须在 `begin_render_pass()` 前完成。
 
 ```cpp
-RHIStatus prepare_base_pass(
+RHIStatus render_base_pass(
     RHIDevice& device,
+    RHIShaderProgramCache& shader_program_cache,
     RHIGraphicsCommandContext& context,
-    const RHIRenderPassDesc& pass_desc,
-    PreparedBasePass& prepared_pass);
-
-RHIStatus execute_base_pass(
-    RHIGraphicsCommandContext& context,
-    const PreparedBasePass& prepared_pass);
+    const BasePassInputs& inputs);
 ```
 
-prepare 的帧内结果只保存 render-pass descriptor、dynamic state、pipeline、vertex/index
-binding、graphics binding 和 draw arguments 等值与 RHI 强引用；不得保存 device、viewport、
-queue、frame context、RenderScene、Material、Proxy 或 MeshBatch 指针，也不得跨帧缓存。
-execute 只接收当前 graphics context 和该不可变准备值，负责 begin/end render pass、设置
-状态和录制 draw；它不得回读准备源或调用任何 device creation。prepare 与 execute 必须使用
-同一个 recording context，因此 upload 严格先于消费它的 draw。
+prepare 的帧内结果由局部 `MeshPassDrawList`/`MeshDrawCommand` 保存 dynamic state、pipeline、
+vertex/index binding、完整 `RHIGraphicsBindings` snapshot 和 draw arguments 等值与 RHI 强引用；
+不得保存 attachment、device、queue、frame context、RenderScene、Material、Proxy 或 MeshBatch
+指针，也不得跨帧缓存。具体 Pass 自己持有 attachment/load/store/clear contract，在全部 draw
+command 准备成功后 begin/end RHI render pass。render-pass scope 内只设置已准备状态并 draw，
+不得回读准备源或调用任何 device creation。
 
 第一阶段由 Renderer frame orchestration 显式决定 viewport acquisition、pending upload、最终输出
 transition、finish 和 frame closure，仍保持单 viewport、单 graphics context、单 immutable business
-command list。`SceneRenderer` 只在注入的同一 context 中执行 View/visibility、prepare 和 scene pass
+command list。`SceneRenderer` 只在注入的同一 context 中执行 View/visibility、View uniform prepare 和 scene pass
 recording，不拥有一次性UI payload，也不调用Tonemap、ImGui、present或submit。任一阶段失败由外层
 frame owner discard 当前 RenderResource recording并调用 `abort_frame()`。当前不建立通用
 `RenderPass` 基类、Pass Scheduler或command packet hierarchy；后续RDG位于renderscene，形成真实
@@ -669,7 +664,7 @@ RHIResult TestPass::execute(RenderPassContext& context)
 
 ### 13.3 BasePass
 
-BasePass 参考 UE4.27 的核心流程，但使用精简对象：
+BasePass 参考 UE4.27 的职责分层，但使用无状态具体入口：
 
 ```text
 Visible primitives
@@ -678,7 +673,7 @@ Visible primitives
 MeshBatch
         |
         v
-BasePassMeshProcessor
+render_base_pass(...)
     - pass eligibility
     - material fallback
     - shader variant
@@ -686,7 +681,7 @@ BasePassMeshProcessor
     - sort key
         |
         v
-MeshDrawPacket
+MeshPassDrawList / MeshDrawCommand
     - pipeline
     - vertex/index buffers
     - material/object bindings
@@ -699,62 +694,51 @@ sort / filter / optional merge
 RHIGraphicsCommandContext
 ```
 
-`BasePassMeshProcessor` 属于 RenderCore/RenderScene，不属于 RHI：
+BasePass 位于 `engine/runtime/renderscene/pass/base_pass.*`。它根据 Material shader identity、
+effective graphics state 与 LocalVertexFactory 获取 shader/pipeline/binding，并构建当前帧 draw
+list。第一阶段不新增通用 `MeshPassProcessor` 基类；ShadowPass 等具体 pass 落地并形成真实重复
+后再评估普通 helper 或 processor abstraction。
+
+### 13.4 `MeshPassDrawList` 与 `MeshDrawCommand`
 
 ```cpp
-class BasePassMeshProcessor
-{
-public:
-    void add_mesh_batch(
-        const MeshBatch& mesh_batch,
-        const PrimitiveSceneProxy& primitive);
-
-private:
-    bool process(
-        const MeshBatch& mesh_batch,
-        const MaterialRenderProxy& material);
-};
-```
-
-BasePass 使用 MaterialShaderMap，根据 Material shader identity、静态属性、static switches、VertexFactory、pass type、feature level 和 target 获取 shader variant，再构建 draw packet。
-
-### 13.4 `MeshDrawPacket`
-
-```cpp
-struct MeshDrawPacket
+struct MeshDrawCommand
 {
     RHIGraphicsPipelineRef pipeline;
-
-    RHIBindingSetRef material_bindings;
-    RHIBindingSetRef object_bindings;
-
-    RHIVertexBufferBindings vertex_buffers;
-    RHIIndexBufferRef index_buffer;
+    std::vector<RHIVertexBufferBinding> vertex_buffers;
+    RHIIndexBufferBinding index_buffer;
+    RHIGraphicsBindings bindings;
     RHIDrawIndexedArgs draw_args;
+    std::uint64_t sort_key = 0;
+};
 
-    uint64 sort_key = 0;
+struct MeshPassDrawList
+{
+    RHIViewport viewport;
+    RHIRect scissor;
+    std::vector<MeshDrawCommand> commands;
 };
 ```
 
-Global/View/Pass bindings 在 pass 开始时准备，Material/Object bindings 按 packet 更新；
-每次 draw 提交一个完整 logical binding 快照：
+Global/View/Pass、Material/Object 按各自 owner 和更新频率准备；每个 command 保存完整 logical
+binding snapshot。同一 View 的 canonical bytes 与 uniform buffer 只准备一次，不同 compatible
+layout 只按需创建轻量 adapter：
 
 ```cpp
-for (const MeshDrawPacket& packet : draw_packets)
+for (const MeshPassDrawList& draw_list : draw_lists)
 {
-    commands.set_graphics_pipeline(packet.pipeline);
-    RHIGraphicsBindings bindings;
-    bindings.global = global_bindings;
-    bindings.view = view_bindings;
-    bindings.pass = pass_bindings;
-    bindings.material = packet.material_bindings;
-    bindings.object = packet.object_bindings;
-    commands.bind_graphics_bindings(bindings);
-    commands.draw_indexed(packet.draw_args);
+    for (const MeshDrawCommand& command : draw_list.commands)
+    {
+        commands.set_graphics_pipeline(command.pipeline);
+        commands.set_viewport(draw_list.viewport);
+        commands.set_scissor(draw_list.scissor);
+        commands.bind_graphics_bindings(command.bindings);
+        commands.draw_indexed(command.draw_args);
+    }
 }
 ```
 
-提交器可缓存当前 pipeline、vertex stream 和 binding set，减少重复 RHI 命令。缓存属于 command recording/RenderCore，不改变 draw packet 的语义。
+提交器可缓存当前 pipeline、vertex stream 和 binding set，减少重复 RHI 命令。缓存属于 command recording/RenderCore，不改变 draw command 的语义。
 
 ## 14. Render 与 RHI 的禁止依赖
 
@@ -864,7 +848,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 - 建立最小 `Material`、`MaterialInstance` 与 `MaterialRenderProxy`；
 - 区分 static/dynamic parameters；
 - 建立 `MaterialShaderVariant` 和 `MaterialShaderMap`；
-- 建立 `MeshBatch`、`BasePassMeshProcessor` 和 `MeshDrawPacket`；
+- 建立 `MeshBatch`、具体 BasePass、`MeshPassDrawList` 和 `MeshDrawCommand`；
 - 完成 SceneColor/SceneDepth 的 BasePass 绘制闭环。
 
 ### 阶段 6：跨后端审计
@@ -892,7 +876,7 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 - Buffer/texture 创建、initial upload、transition、view 和 deferred deletion 形成闭环。
 - 多 frame-in-flight 不提前 reset descriptor/command pool，不提前销毁资源。
 - Shader、binding layout 和 pipeline 使用稳定完整 key，hash collision 不返回错误对象。
-- BasePass 能通过 `BasePassMeshProcessor` 构建 `MeshDrawPacket`，并正确组合 Pass、Material 和 Object 参数。
+- BasePass 能构建 `MeshPassDrawList`/`MeshDrawCommand`，并按 Global、View、Pass、Material、Object 逻辑组组合完整 binding snapshot。
 - 后端不支持功能返回可诊断的 `Unsupported`，不存在默认空操作成功。
 
 ## 19. 待定事项

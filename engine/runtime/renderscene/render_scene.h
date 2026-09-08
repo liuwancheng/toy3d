@@ -8,7 +8,7 @@
 namespace toy3d
 {
     class TaskGraphInterface;
-    class ForwardSceneRenderer;
+    class ViewInfo;
     class PrimitiveSceneInfo;
     class PrimitiveSceneProxy;
     class RenderResourceManager;
@@ -32,7 +32,7 @@ namespace toy3d
         void remove_primitive(PrimitiveSceneProxy* proxy) override;
 
       private:
-        friend class ForwardSceneRenderer;
+        friend void compute_scene_visibility(const RenderScene& render_scene, std::vector<ViewInfo>& view_infos);
 
         const std::vector<std::unique_ptr<PrimitiveSceneInfo>>& primitive_scene_infos() const { return primitives_; }
         bool is_on_logical_rendering_thread() const;
