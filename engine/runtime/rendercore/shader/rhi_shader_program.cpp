@@ -57,8 +57,9 @@ namespace toy3d
             desc.debug_name = program.shader_name + "/" + program.pass_name;
             for (const ShaderMapBinding& binding : stage.reflection)
             {
-                desc.reflection.push_back(
-                    {binding.name, binding.group, binding.target_binding, binding.type, binding.array_count});
+                desc.reflection.push_back({binding.parameter_id, binding.name, binding.group, binding.target_binding,
+                                           binding.type, binding.array_count, binding.constant_buffer_size,
+                                           binding.data_layout_hash, binding.shader_abi_version});
             }
             if (stage.stage == RHIShaderStage::Vertex)
             {
@@ -81,7 +82,9 @@ namespace toy3d
         for (const ShaderMapBinding& binding : data.bindings)
         {
             result.binding_layout.entries.push_back(
-                {binding.group, binding.target_binding, binding.type, binding.stages, binding.array_count});
+                {binding.parameter_id, binding.group, binding.target_binding, binding.type, binding.stages,
+                 binding.array_count, binding.constant_buffer_size, binding.data_layout_hash,
+                 binding.shader_abi_version});
         }
         for (const ShaderMapStage& stage : data.stages)
         {

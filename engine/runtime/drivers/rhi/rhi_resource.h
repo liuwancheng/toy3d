@@ -187,15 +187,12 @@ namespace toy3d
     class RHIBindingSet : public RHIObject
     {
       public:
-        explicit RHIBindingSet(RHIBindingSetDesc desc)
-            : RHIObject(desc.layout ? desc.layout->owner_device() : nullptr, desc.debug_name),
-              binding_set_desc(std::move(desc))
+        RHIBindingSet(const RHIDevice& owner, RHIBindingSetDesc desc)
+            : RHIObject(owner, desc.debug_name), binding_set_desc(std::move(desc))
         {
         }
 
         RHIBindingGroup group() const { return binding_set_desc.group; }
-
-        const std::shared_ptr<RHIBindingLayout>& layout() const { return binding_set_desc.layout; }
 
         const RHIBindingSetDesc& desc() const { return binding_set_desc; }
 

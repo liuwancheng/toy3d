@@ -2,7 +2,7 @@
 
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "format/shader_format_types.h"
-#include "rendercore/shader/shader_parameter_id.h"
+#include "format/shader_binding_identity.h"
 #include "rendercore/shader/shader_vertex_input.h"
 
 #include <cstdint>
@@ -63,6 +63,8 @@ namespace toy3d
         std::uint32_t target_binding = 0;
         std::uint32_t array_count = 1;
         std::uint32_t constant_buffer_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
 
         struct ConstantMember
         {

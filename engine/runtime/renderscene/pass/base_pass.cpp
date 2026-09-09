@@ -227,23 +227,20 @@ namespace toy3d
                 RHIBindingSetRef view_binding;
                 if (program_declares_group(*shader_program, RHIBindingGroup::View))
                 {
-                    RHIResult<RHIBindingSetRef> resolved_view = resolve_view_uniform_binding(
-                        device, view_info, program.binding_layout, *shader_program);
-                    if (!resolved_view)
+                    if (!view_info.view_binding_set())
                     {
-                        TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because View bindings could "
-                                      "not be resolved: {}",
-                                      view_index, batch_index, resolved_view.status().message());
+                        TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because View bindings were not prepared.",
+                                      view_index, batch_index);
                         continue;
                     }
-                    view_binding = std::move(resolved_view).value();
+                    view_binding = view_info.view_binding_set();
                 }
 
                 RHIBindingSetRef material_binding;
                 if (program_declares_group(*shader_program, RHIBindingGroup::Material))
                 {
                     RHIResult<RHIBindingSetRef> materialized_material =
-                        material_proxy.materialize(device, context, program.binding_layout);
+                        material_proxy.materialize(device, context);
                     if (!materialized_material)
                     {
                         TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because Material bindings "
@@ -253,9 +250,10 @@ namespace toy3d
                     }
                     material_binding = std::move(materialized_material).value();
                 }
-                RHIResult<RHIBindingSetRef> object_binding = materialize_primitive_uniform_shader_parameters(
-                    device, context, program.binding_layout, *shader_program,
-                    mesh_batch.scene_proxy().primitive_uniform_shader_parameters());
+                RHIResult<RHIBindingSetRef> object_binding = program_declares_group(*shader_program, RHIBindingGroup::Object)
+                    ? materialize_primitive_uniform_shader_parameters(
+                          device, context, mesh_batch.scene_proxy().primitive_uniform_shader_parameters())
+                    : RHIResult<RHIBindingSetRef>::success(nullptr);
                 if (!object_binding)
                 {
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because Object bindings could not "

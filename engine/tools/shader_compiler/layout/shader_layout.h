@@ -37,7 +37,10 @@ namespace toy3d::shader
     struct ConstantBufferLayout
     {
         BindingGroup group = BindingGroup::Material;
+        ShaderParameterId binding_id = 0;
         std::uint32_t size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = toy_shader_abi_version;
         std::vector<ShaderConstantMember> members;
     };
 

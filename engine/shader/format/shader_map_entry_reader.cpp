@@ -418,7 +418,7 @@ namespace toy3d::shader
                     return false;
                 }
                 const std::vector<std::string_view> fields = split_tabs(line.substr(8u));
-                if (fields.size() != 9u || !ascii_identifier(fields[1]) ||
+                if (fields.size() != 12u || !ascii_identifier(fields[1]) ||
                     entry.bindings.size() >= maximum_binding_count)
                 {
                     add_error(result, "mapping.txt contains an invalid binding record.");
@@ -432,11 +432,15 @@ namespace toy3d::shader
                 const auto register_index = parse_unsigned<std::uint32_t>(fields[6]);
                 const auto descriptor_set = parse_unsigned<std::uint32_t>(fields[7]);
                 const auto descriptor_binding = parse_unsigned<std::uint32_t>(fields[8]);
+                const auto data_size = parse_unsigned<std::uint32_t>(fields[9]);
+                const auto data_layout_hash = parse_hash(std::string(fields[10]), result, "binding data layout hash");
+                const auto abi_version = parse_unsigned<std::uint32_t>(fields[11]);
                 if (!id || *id == 0u || !group || *group > static_cast<std::uint32_t>(BindingGroup::Object) ||
                     !category || *category > static_cast<std::uint32_t>(ShaderParameterCategory::StorageTexture) ||
                     !stages || *stages == 0u || (*stages & ~7u) != 0u || !register_class ||
                     *register_class > static_cast<std::uint32_t>(NativeRegisterClass::UnorderedAccess) ||
-                    !register_index || !descriptor_set || *descriptor_set > 3u || !descriptor_binding)
+                    !register_index || !descriptor_set || *descriptor_set > 3u || !descriptor_binding || !data_size ||
+                    !data_layout_hash || !abi_version)
                 {
                     add_error(result, "mapping.txt binding contains an invalid value.");
                     return false;
@@ -444,6 +448,15 @@ namespace toy3d::shader
                 if (!binding_ids.insert(*id).second)
                 {
                     add_error(result, "mapping.txt contains duplicate binding identities.");
+                    return false;
+                }
+                const bool is_constant =
+                    *category == static_cast<std::uint32_t>(ShaderParameterCategory::Constant);
+                if ((is_constant && (*data_size == 0u || hash_is_zero(*data_layout_hash) ||
+                                     *abi_version != toy_shader_abi_version)) ||
+                    (!is_constant && (*data_size != 0u || !hash_is_zero(*data_layout_hash) || *abi_version != 0u)))
+                {
+                    add_error(result, "mapping.txt binding data ABI metadata is invalid.");
                     return false;
                 }
                 if (!native_slots.emplace(*descriptor_set, *descriptor_binding).second)
@@ -455,7 +468,8 @@ namespace toy3d::shader
                                           static_cast<ShaderParameterCategory>(*category),
                                           static_cast<ShaderStageFlags>(*stages),
                                           static_cast<NativeRegisterClass>(*register_class), *register_index,
-                                          *descriptor_set, *descriptor_binding});
+                                          *descriptor_set, *descriptor_binding, *data_size, *data_layout_hash,
+                                          *abi_version});
             }
             if (calculate_target_binding_hash(entry.target, entry.mapping_version, entry.bindings) !=
                 entry.target_binding_hash)
@@ -484,7 +498,7 @@ namespace toy3d::shader
                     return std::nullopt;
                 }
             }
-            if ((*parsed_lines)[0] != "reflection_version=1" || (*parsed_lines)[4].rfind("thread_group_size=", 0) != 0)
+            if ((*parsed_lines)[0] != "reflection_version=2" || (*parsed_lines)[4].rfind("thread_group_size=", 0) != 0)
             {
                 add_error(result, "Reflection file version or thread-group header is invalid.");
                 return std::nullopt;
@@ -512,7 +526,7 @@ namespace toy3d::shader
                 if (line.rfind("binding=", 0) == 0 && !interfaces_started)
                 {
                     const auto fields = split_tabs(line.substr(8u));
-                    if (fields.size() != 10u || fields[1].empty() ||
+                    if (fields.size() != 12u || fields[1].empty() ||
                         reflection.bindings.size() >= maximum_binding_count)
                     {
                         add_error(result, "Reflection file contains an invalid binding record.");
@@ -527,6 +541,8 @@ namespace toy3d::shader
                     const auto descriptor_set = parse_unsigned<std::uint32_t>(fields[7]);
                     const auto descriptor_binding = parse_unsigned<std::uint32_t>(fields[8]);
                     const auto buffer_size = parse_unsigned<std::uint32_t>(fields[9]);
+                    const auto data_layout_hash = parse_hash(std::string(fields[10]), result, "reflection data layout hash");
+                    const auto abi_version = parse_unsigned<std::uint32_t>(fields[11]);
                     if (!parameter_id || *parameter_id == 0u || !group ||
                         *group > static_cast<std::uint32_t>(BindingGroup::Object) || !category ||
                         *category > static_cast<std::uint32_t>(ShaderParameterCategory::StorageTexture) ||
@@ -534,7 +550,8 @@ namespace toy3d::shader
                         (*resource_kind != 0xffffffffu &&
                          *resource_kind > static_cast<std::uint32_t>(ResourceKind::RWTexture3D)) ||
                         !stages || *stages != *stage || !array_count || *array_count == 0u || !descriptor_set ||
-                        *descriptor_set > 3u || !descriptor_binding || !buffer_size)
+                        *descriptor_set > 3u || !descriptor_binding || !buffer_size || !data_layout_hash ||
+                        !abi_version)
                     {
                         add_error(result, "Reflection binding contains an invalid value.");
                         return std::nullopt;
@@ -551,6 +568,8 @@ namespace toy3d::shader
                     binding.descriptor_set = *descriptor_set;
                     binding.descriptor_binding = *descriptor_binding;
                     binding.constant_buffer_size = *buffer_size;
+                    binding.data_layout_hash = *data_layout_hash;
+                    binding.shader_abi_version = *abi_version;
                     reflection.bindings.push_back(std::move(binding));
                     current_binding = &reflection.bindings.back();
                 }
@@ -630,7 +649,8 @@ namespace toy3d::shader
                 if (binding.category == ShaderParameterCategory::Constant)
                 {
                     if (binding.resource_kind || binding.constant_buffer_size == 0u ||
-                        binding.constant_buffer_size > max_constant_buffer_size)
+                        binding.constant_buffer_size > max_constant_buffer_size ||
+                        hash_is_zero(binding.data_layout_hash) || binding.shader_abi_version != toy_shader_abi_version)
                     {
                         add_error(result, "Reflection constant-buffer metadata is invalid.");
                         return std::nullopt;
@@ -647,8 +667,18 @@ namespace toy3d::shader
                             return std::nullopt;
                         }
                     }
+                    if (calculate_constant_buffer_data_layout_hash(binding.group, binding.parameter_id,
+                                                                  binding.constant_buffer_size,
+                                                                  binding.constant_members,
+                                                                  binding.shader_abi_version) !=
+                        binding.data_layout_hash)
+                    {
+                        add_error(result, "Reflection constant-buffer data layout hash is inconsistent.");
+                        return std::nullopt;
+                    }
                 }
                 else if (!binding.resource_kind || binding.constant_buffer_size != 0u ||
+                         !hash_is_zero(binding.data_layout_hash) || binding.shader_abi_version != 0u ||
                          !binding.constant_members.empty())
                 {
                     add_error(result, "Reflection resource metadata is invalid.");
@@ -720,7 +750,10 @@ namespace toy3d::shader
                         mapping->group != reflected.group || mapping->category != reflected.category ||
                         !has_stage(mapping->stages, stage.request.stage) ||
                         mapping->descriptor_set != reflected.descriptor_set ||
-                        mapping->descriptor_binding != reflected.descriptor_binding)
+                        mapping->descriptor_binding != reflected.descriptor_binding ||
+                        mapping->data_size != reflected.constant_buffer_size ||
+                        mapping->data_layout_hash != reflected.data_layout_hash ||
+                        mapping->shader_abi_version != reflected.shader_abi_version)
                     {
                         add_error(result, "Reflection binding does not match mapping.txt.");
                         return false;

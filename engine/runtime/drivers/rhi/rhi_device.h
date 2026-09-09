@@ -93,7 +93,6 @@ namespace toy3d
         virtual RHIResult<RHIShaderRef> create_shader_impl(const RHIShaderDesc& desc) = 0;
         virtual RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(const RHIBindingLayoutDesc& desc) = 0;
         virtual RHIResult<RHISamplerRef> create_sampler_impl(const RHISamplerDesc& desc) = 0;
-        virtual RHIResult<RHIBindingSetRef> create_binding_set_impl(const RHIBindingSetDesc& desc) = 0;
         virtual RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
             const RHIGraphicsPipelineDesc& desc) = 0;
         virtual RHIResult<RHIGPUFenceRef> create_gpu_fence_impl(const std::string& debug_name) = 0;

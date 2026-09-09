@@ -359,6 +359,7 @@ namespace toy3d::shader
         ConstantBufferPackResult result;
         ConstantBufferLayout layout;
         layout.group = group;
+        layout.binding_id = make_shader_parameter_id(group, ShaderParameterCategory::Constant, "");
         std::uint32_t offset = 0;
         for (const ConstantMemberInput& input : inputs)
         {
@@ -412,6 +413,15 @@ namespace toy3d::shader
         }
         if (!result.diagnostics.empty())
             return result;
+        std::vector<ReflectedConstantMember> reflected_members;
+        reflected_members.reserve(layout.members.size());
+        for (const ShaderConstantMember& member : layout.members)
+        {
+            reflected_members.push_back({member.parameter_id, member.name, member.type, member.offset, member.size,
+                                         member.array_stride, member.matrix_stride});
+        }
+        layout.data_layout_hash = calculate_constant_buffer_data_layout_hash(
+            layout.group, layout.binding_id, layout.size, reflected_members, layout.shader_abi_version);
         result.layout = std::move(layout);
         return result;
     }
@@ -675,7 +685,7 @@ namespace toy3d::shader
             if (stages != ShaderStageFlags::None)
             {
                 ActiveBinding binding;
-                binding.binding_id = make_shader_parameter_id(buffer.group, ShaderParameterCategory::Constant, "");
+                binding.binding_id = buffer.binding_id;
                 binding.name = std::string("toy_") + group_name(buffer.group) + "_data";
                 std::transform(binding.name.begin(), binding.name.end(), binding.name.begin(), [](unsigned char value)
                                { return static_cast<char>(value >= 'A' && value <= 'Z' ? value - 'A' + 'a' : value); });

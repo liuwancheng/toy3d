@@ -279,6 +279,8 @@ namespace toy3d::shader
                 const ConstantBufferLayout& expected_buffer = *expected->logical_binding->constant_buffer;
                 binding.category = ShaderParameterCategory::Constant;
                 binding.constant_buffer_size = descriptor->block.padded_size;
+                binding.data_layout_hash = expected_buffer.data_layout_hash;
+                binding.shader_abi_version = expected_buffer.shader_abi_version;
                 if (binding.constant_buffer_size != expected_buffer.size ||
                     descriptor->block.member_count != expected_buffer.members.size())
                 {

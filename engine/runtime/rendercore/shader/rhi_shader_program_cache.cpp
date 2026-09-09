@@ -37,13 +37,16 @@ namespace toy3d
     {
         return parameter_id == other.parameter_id && group == other.group && type == other.type &&
                stages == other.stages && target_binding == other.target_binding && array_count == other.array_count &&
-               constant_buffer_size == other.constant_buffer_size;
+               constant_buffer_size == other.constant_buffer_size && data_layout_hash == other.data_layout_hash &&
+               shader_abi_version == other.shader_abi_version;
     }
 
     bool RHIShaderProgramKey::StageBinding::operator==(const StageBinding& other) const
     {
-        return group == other.group && type == other.type && target_binding == other.target_binding &&
-               array_count == other.array_count;
+        return parameter_id == other.parameter_id && group == other.group && type == other.type &&
+               target_binding == other.target_binding && array_count == other.array_count &&
+               data_size == other.data_size && data_layout_hash == other.data_layout_hash &&
+               shader_abi_version == other.shader_abi_version;
     }
 
     bool RHIShaderProgramKey::Stage::operator==(const Stage& other) const
@@ -80,6 +83,8 @@ namespace toy3d
             binding.target_binding = source.target_binding;
             binding.array_count = source.array_count;
             binding.constant_buffer_size = source.constant_buffer_size;
+            binding.data_layout_hash = source.data_layout_hash;
+            binding.shader_abi_version = source.shader_abi_version;
             key.bindings.push_back(binding);
         }
         key.stages.reserve(program.stages.size());
@@ -93,10 +98,14 @@ namespace toy3d
             for (const ShaderMapBinding& source_binding : source.reflection)
             {
                 StageBinding binding;
+                binding.parameter_id = source_binding.parameter_id;
                 binding.group = source_binding.group;
                 binding.type = source_binding.type;
                 binding.target_binding = source_binding.target_binding;
                 binding.array_count = source_binding.array_count;
+                binding.data_size = source_binding.constant_buffer_size;
+                binding.data_layout_hash = source_binding.data_layout_hash;
+                binding.shader_abi_version = source_binding.shader_abi_version;
                 stage.reflection.push_back(binding);
             }
             key.stages.push_back(std::move(stage));
@@ -142,6 +151,8 @@ namespace toy3d
             hash_scalar(result, binding.target_binding);
             hash_scalar(result, binding.array_count);
             hash_scalar(result, binding.constant_buffer_size);
+            hash_content(result, binding.data_layout_hash);
+            hash_scalar(result, binding.shader_abi_version);
         }
         for (const RHIShaderProgramKey::Stage& stage : key.stages)
         {
@@ -150,10 +161,14 @@ namespace toy3d
             hash_content(result, stage.content_hash);
             for (const RHIShaderProgramKey::StageBinding& binding : stage.reflection)
             {
+                hash_scalar(result, binding.parameter_id);
                 hash_enum(result, binding.group);
                 hash_enum(result, binding.type);
                 hash_scalar(result, binding.target_binding);
                 hash_scalar(result, binding.array_count);
+                hash_scalar(result, binding.data_size);
+                hash_content(result, binding.data_layout_hash);
+                hash_scalar(result, binding.shader_abi_version);
             }
         }
         for (const RHIShaderProgramKey::VertexInput& input : key.vertex_inputs)

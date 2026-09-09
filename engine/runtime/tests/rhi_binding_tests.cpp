@@ -18,26 +18,27 @@ namespace
         }
     }
 
-    toy3d::RHIBindingLayoutRef make_layout(bool include_view)
+    toy3d::RHIBindingLayoutEntry make_layout_entry(toy3d::ShaderParameterId binding_id,
+                                                    toy3d::RHIBindingGroup group,
+                                                    std::uint32_t target_binding,
+                                                    toy3d::RHIResourceBindingType type,
+                                                    toy3d::RHIShaderStageFlags stages)
     {
-        toy3d::RHIBindingLayoutDesc desc;
-        desc.entries.push_back({toy3d::RHIBindingGroup::Global, 0, toy3d::RHIResourceBindingType::UniformBuffer,
-                                toy3d::RHIShaderStageFlags::Vertex, 1});
-        if (include_view)
+        toy3d::RHIBindingLayoutEntry entry;
+        entry.binding_id = binding_id;
+        entry.group = group;
+        entry.target_binding = target_binding;
+        entry.type = type;
+        entry.stages = stages;
+        if (type == toy3d::RHIResourceBindingType::UniformBuffer)
         {
-            desc.entries.push_back({toy3d::RHIBindingGroup::View, 1, toy3d::RHIResourceBindingType::UniformBuffer,
-                                    toy3d::RHIShaderStageFlags::Vertex, 1});
+            entry.data_size = 64u;
+            entry.data_layout_hash[0] = 1u;
+            entry.shader_abi_version = 1u;
         }
-        return std::make_shared<toy3d::RHIBindingLayout>(std::move(desc));
+        return entry;
     }
 
-    toy3d::RHIBindingSetRef make_set(const toy3d::RHIBindingLayoutRef& layout, toy3d::RHIBindingGroup group)
-    {
-        toy3d::RHIBindingSetDesc desc;
-        desc.layout = layout;
-        desc.group = group;
-        return std::make_shared<toy3d::RHIBindingSet>(std::move(desc));
-    }
 } // namespace
 
 int main()
@@ -133,12 +134,12 @@ int main()
           "pipeline vertex layout must provide every reflected shader input");
 
     toy3d::RHIBindingLayoutDesc cross_group_slots;
-    cross_group_slots.entries.push_back({toy3d::RHIBindingGroup::Global, 0,
-                                         toy3d::RHIResourceBindingType::SampledTexture,
-                                         toy3d::RHIShaderStageFlags::Pixel, 1});
-    cross_group_slots.entries.push_back({toy3d::RHIBindingGroup::Material, 0,
-                                         toy3d::RHIResourceBindingType::SampledTexture,
-                                         toy3d::RHIShaderStageFlags::Pixel, 1});
+    cross_group_slots.entries.push_back(make_layout_entry(3u, toy3d::RHIBindingGroup::Global, 0u,
+                                                          toy3d::RHIResourceBindingType::SampledTexture,
+                                                          toy3d::RHIShaderStageFlags::Pixel));
+    cross_group_slots.entries.push_back(make_layout_entry(4u, toy3d::RHIBindingGroup::Material, 0u,
+                                                          toy3d::RHIResourceBindingType::SampledTexture,
+                                                          toy3d::RHIShaderStageFlags::Pixel));
     check(static_cast<bool>(toy3d::validate_binding_layout_desc(cross_group_slots)),
           "different logical groups may reuse target slots in different native namespaces");
 
@@ -147,28 +148,29 @@ int main()
     check(!toy3d::validate_binding_layout_desc(same_group_overlap),
           "one logical group must reject overlapping target slots");
 
-    const toy3d::RHIBindingLayoutRef layout = make_layout(true);
-    const toy3d::RHIBindingSetRef global = make_set(layout, toy3d::RHIBindingGroup::Global);
-    const toy3d::RHIBindingSetRef view = make_set(layout, toy3d::RHIBindingGroup::View);
-
-    toy3d::RHIGraphicsBindings valid;
-    valid.global = global;
-    valid.view = view;
-    check(static_cast<bool>(toy3d::validate_graphics_bindings(valid)),
-          "Global and View sets with one compatible layout must validate");
-
-    toy3d::RHIGraphicsBindings wrong_field;
-    wrong_field.view = global;
-    check(!toy3d::validate_graphics_bindings(wrong_field), "a logical binding set in the wrong field must fail");
-
-    toy3d::RHIGraphicsBindings incompatible;
-    incompatible.global = global;
-    incompatible.view = make_set(make_layout(false), toy3d::RHIBindingGroup::View);
-    check(!toy3d::validate_graphics_bindings(incompatible), "binding sets with incompatible layouts must fail");
-
     toy3d::RHIGraphicsBindings empty;
     check(static_cast<bool>(toy3d::validate_graphics_bindings(empty)),
           "an empty binding snapshot must be valid before pipeline requirements are known");
+
+    std::uint8_t uniform_byte = 1u;
+    toy3d::RHITransientUniformDataDesc transient_uniform;
+    transient_uniform.source = {&uniform_byte, sizeof(uniform_byte), 0u, 0u};
+    transient_uniform.data_layout_hash[0] = 1u;
+    transient_uniform.shader_abi_version = 1u;
+    check(static_cast<bool>(toy3d::validate_transient_uniform_data_desc(transient_uniform)),
+          "transient uniform data requires copied source bytes and complete data ABI identity");
+    toy3d::RHITransientUniformDataDesc invalid_transient = transient_uniform;
+    invalid_transient.source = {};
+    check(!toy3d::validate_transient_uniform_data_desc(invalid_transient),
+          "empty transient uniform source data must fail");
+    invalid_transient = transient_uniform;
+    invalid_transient.data_layout_hash = {};
+    check(!toy3d::validate_transient_uniform_data_desc(invalid_transient),
+          "transient uniform data without a layout hash must fail");
+    invalid_transient = transient_uniform;
+    invalid_transient.shader_abi_version = 0u;
+    check(!toy3d::validate_transient_uniform_data_desc(invalid_transient),
+          "transient uniform data without a Shader ABI version must fail");
 
     if (failure_count != 0)
     {

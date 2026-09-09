@@ -1,7 +1,7 @@
 #pragma once
 
 #include "math/math.h"
-#include "rendercore/shader/shader_parameter_id.h"
+#include "format/shader_binding_identity.h"
 #include "rendercore/texture/texture.h"
 
 #include <atomic>

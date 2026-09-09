@@ -162,6 +162,8 @@ namespace toy3d
             result.target_binding = binding.descriptor_binding;
             result.array_count = reflected.array_count;
             result.constant_buffer_size = reflected.constant_buffer_size;
+            result.data_layout_hash = reflected.data_layout_hash;
+            result.shader_abi_version = reflected.shader_abi_version;
             for (const shader::ReflectedConstantMember& member : reflected.constant_members)
             {
                 result.constant_members.push_back({member.parameter_id, member.name, to_shader_value_type(member.type),

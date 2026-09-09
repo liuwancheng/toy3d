@@ -202,8 +202,10 @@ namespace toy3d
 
     bool RHIBindingLayoutEntry::operator==(const RHIBindingLayoutEntry& other) const
     {
-        return group == other.group && slot == other.slot && type == other.type && stages == other.stages &&
-               array_count == other.array_count;
+        return binding_id == other.binding_id && group == other.group && target_binding == other.target_binding &&
+               type == other.type && stages == other.stages && array_count == other.array_count &&
+               data_size == other.data_size && data_layout_hash == other.data_layout_hash &&
+               shader_abi_version == other.shader_abi_version;
     }
 
     bool RHIBindingLayoutDesc::operator==(const RHIBindingLayoutDesc& other) const
@@ -526,12 +528,24 @@ namespace toy3d
         std::set<BindingKey> reflected_bindings;
         for (const RHIShaderBindingReflection& binding : desc.reflection)
         {
-            if (binding.name.empty() || binding.array_count == 0)
+            if (binding.binding_id == 0 || binding.name.empty() || binding.array_count == 0)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Shader reflection bindings require a name and non-zero array count.");
             }
-            if (!reflected_bindings.emplace(binding.group, binding_register_class(binding.type), binding.slot).second)
+            const bool data_hash_is_zero = std::all_of(binding.data_layout_hash.begin(), binding.data_layout_hash.end(),
+                                                       [](std::uint8_t byte) { return byte == 0u; });
+            if ((binding.type == RHIResourceBindingType::UniformBuffer &&
+                 (binding.data_size == 0 || data_hash_is_zero || binding.shader_abi_version == 0)) ||
+                (binding.type != RHIResourceBindingType::UniformBuffer &&
+                 (binding.data_size != 0 || !data_hash_is_zero || binding.shader_abi_version != 0)))
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Shader reflection binding data ABI metadata is invalid.");
+            }
+            if (!reflected_bindings
+                     .emplace(binding.group, binding_register_class(binding.type), binding.target_binding)
+                     .second)
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -582,9 +596,21 @@ namespace toy3d
         std::vector<RHIBindingLayoutEntry> bindings;
         for (const RHIBindingLayoutEntry& entry : desc.entries)
         {
-            if (entry.array_count == 0)
+            if (entry.binding_id == 0 || entry.group == RHIBindingGroup::Max || entry.array_count == 0)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding array count must be non-zero.");
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Binding layout entries require a stable ID, logical group, and non-zero array count.");
+            }
+            const bool data_hash_is_zero = std::all_of(entry.data_layout_hash.begin(), entry.data_layout_hash.end(),
+                                                       [](std::uint8_t byte) { return byte == 0u; });
+            if ((entry.type == RHIResourceBindingType::UniformBuffer &&
+                 (entry.data_size == 0 || data_hash_is_zero || entry.shader_abi_version == 0)) ||
+                (entry.type != RHIResourceBindingType::UniformBuffer &&
+                 (entry.data_size != 0 || !data_hash_is_zero || entry.shader_abi_version != 0)))
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Binding layout entry data ABI metadata is invalid.");
             }
             if (entry.stages == RHIShaderStageFlags::None)
             {
@@ -596,7 +622,8 @@ namespace toy3d
                 if (existing.group == entry.group &&
                     binding_register_class(existing.type) == binding_register_class(entry.type) &&
                     EnumHasAnyFlags(existing.stages, entry.stages) &&
-                    binding_ranges_overlap(existing.slot, existing.array_count, entry.slot, entry.array_count))
+                    binding_ranges_overlap(existing.target_binding, existing.array_count, entry.target_binding,
+                                           entry.array_count))
                 {
                     return RHIStatus::failure(
                         RHIErrorCode::InvalidArgument,
@@ -625,37 +652,24 @@ namespace toy3d
 
     RHIStatus validate_binding_set_desc(const RHIBindingSetDesc& desc)
     {
-        if (!desc.layout)
+        if (desc.group == RHIBindingGroup::Max || desc.bindings.empty())
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding set requires a binding layout.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Binding set requires one logical group and at least one value.");
         }
 
-        std::set<std::tuple<BindingRegisterClass, std::uint32_t, std::uint32_t>> supplied_bindings;
+        std::set<std::pair<ShaderParameterId, std::uint32_t>> supplied_bindings;
         for (const RHIBindingValue& value : desc.bindings)
         {
+            if (value.binding_id == 0 || !supplied_bindings.emplace(value.binding_id, value.array_index).second)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Binding set contains an invalid or duplicate logical binding value.");
+            }
             const auto value_type = binding_value_type(value);
             if (!value_type)
             {
                 return value_type.status();
-            }
-            const RHIBindingLayoutEntry* matching_entry = nullptr;
-            for (const RHIBindingLayoutEntry& entry : desc.layout->desc().entries)
-            {
-                if (entry.group == desc.group && entry.slot == value.slot && entry.type == value_type.value())
-                {
-                    matching_entry = &entry;
-                    break;
-                }
-            }
-            if (!matching_entry || value.array_index >= matching_entry->array_count)
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Binding value does not match its layout group, slot, type, or array range.");
-            }
-            if (!supplied_bindings.emplace(binding_register_class(value_type.value()), value.slot, value.array_index)
-                     .second)
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Binding set contains a duplicate value.");
             }
             if (value.buffer)
             {
@@ -673,28 +687,21 @@ namespace toy3d
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                               "Uniform-buffer binding range is invalid.");
                 }
+                const bool hash_is_zero = std::all_of(value.data_layout_hash.begin(), value.data_layout_hash.end(),
+                                                      [](std::uint8_t byte) { return byte == 0u; });
+                if (hash_is_zero || value.shader_abi_version == 0)
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Uniform-buffer binding requires a data layout hash and Shader ABI version.");
+                }
             }
-            else if ((value.buffer_offset != 0 || value.buffer_size != 0))
+            else if (value.buffer_offset != 0 || value.buffer_size != 0 || value.shader_abi_version != 0 ||
+                     std::any_of(value.data_layout_hash.begin(), value.data_layout_hash.end(),
+                                 [](std::uint8_t byte) { return byte != 0u; }))
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Buffer offset and size are valid only for direct uniform-buffer bindings.");
-            }
-        }
-
-        for (const RHIBindingLayoutEntry& entry : desc.layout->desc().entries)
-        {
-            if (entry.group != desc.group)
-            {
-                continue;
-            }
-            for (std::uint32_t array_index = 0; array_index < entry.array_count; ++array_index)
-            {
-                if (supplied_bindings.find(std::make_tuple(binding_register_class(entry.type), entry.slot,
-                                                           array_index)) == supplied_bindings.end())
-                {
-                    return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                              "Binding set must provide every binding declared for its group.");
-                }
+                                          "Buffer range and data ABI are valid only for uniform-buffer bindings.");
             }
         }
         return RHIStatus::success();

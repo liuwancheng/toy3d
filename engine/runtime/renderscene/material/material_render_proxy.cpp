@@ -252,10 +252,9 @@ namespace toy3d
         return true;
     }
 
-    RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize(RHIDevice& device, RHICommandContext& context,
-                                                                 const RHIBindingLayoutRef& binding_layout)
+    RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize(RHIDevice& device, RHICommandContext& context)
     {
-        return materialize_program(device, context, binding_layout, shader_program_, false);
+        return materialize_program(device, context, shader_program_, false);
     }
 
     RHIStatus MaterialRenderProxy::stage_material_candidate(ShaderMapProgramRef shader_program, bool two_sided)
@@ -280,7 +279,6 @@ namespace toy3d
 
         staged_shader_program_ = std::move(shader_program);
         staged_effective_graphics_pass_state_ = effective_state;
-        staged_binding_layout_.reset();
         staged_binding_set_.reset();
         staged_texture_generations_.clear();
         staged_texture_views_.clear();
@@ -288,15 +286,14 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_staged(RHIDevice& device, RHICommandContext& context,
-                                                                        const RHIBindingLayoutRef& binding_layout)
+    RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_staged(RHIDevice& device, RHICommandContext& context)
     {
-        return materialize_program(device, context, binding_layout, staged_shader_program_, true);
+        return materialize_program(device, context, staged_shader_program_, true);
     }
 
     RHIStatus MaterialRenderProxy::commit_material_candidate()
     {
-        if (!staged_shader_program_ || !staged_binding_set_ || !staged_binding_layout_ || staged_dirty_ ||
+        if (!staged_shader_program_ || !staged_binding_set_ || staged_dirty_ ||
             !texture_views_match(true))
         {
             const RHIStatus status = RHIStatus::failure(
@@ -313,7 +310,6 @@ namespace toy3d
 
         shader_program_ = std::move(staged_shader_program_);
         effective_graphics_pass_state_ = staged_effective_graphics_pass_state_;
-        binding_layout_ = std::move(staged_binding_layout_);
         binding_set_ = std::move(staged_binding_set_);
         texture_generations_ = std::move(staged_texture_generations_);
         texture_views_ = std::move(staged_texture_views_);
@@ -326,7 +322,6 @@ namespace toy3d
     {
         staged_shader_program_.reset();
         staged_effective_graphics_pass_state_ = {};
-        staged_binding_layout_.reset();
         staged_binding_set_.reset();
         staged_texture_generations_.clear();
         staged_texture_views_.clear();
@@ -339,26 +334,23 @@ namespace toy3d
     }
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_program(RHIDevice& device, RHICommandContext& context,
-                                                                         const RHIBindingLayoutRef& binding_layout,
                                                                          const ShaderMapProgramRef& shader_program,
                                                                          bool staged)
     {
-        if (!shader_program || !binding_layout)
+        if (!shader_program)
         {
             return RHIResult<RHIBindingSetRef>::failure(
-                RHIErrorCode::NotReady, "Material binding requires a ShaderMap Program and RHI binding layout");
+                RHIErrorCode::NotReady, "Material binding requires a ShaderMap Program");
         }
 
         RHIBindingSetRef& cached_set = staged ? staged_binding_set_ : binding_set_;
-        RHIBindingLayoutRef& cached_layout = staged ? staged_binding_layout_ : binding_layout_;
         bool& dirty = staged ? staged_dirty_ : dirty_;
-        if (!dirty && cached_set && cached_layout == binding_layout && texture_cache_matches(staged))
+        if (!dirty && cached_set && texture_cache_matches(staged))
         {
             return RHIResult<RHIBindingSetRef>::success(cached_set);
         }
 
         RHIBindingSetDesc desc;
-        desc.layout = binding_layout;
         desc.group = RHIBindingGroup::Material;
         desc.debug_name =
             shader_program->data().shader_name + "/" + shader_program->data().pass_name + " MaterialBindings";
@@ -400,35 +392,34 @@ namespace toy3d
                 }
 
                 RHIBindingValue value;
-                value.slot = binding.target_binding;
+                value.binding_id = binding.parameter_id;
                 value.buffer = std::move(buffer).value();
                 value.buffer_size = binding.constant_buffer_size;
+                value.data_layout_hash = binding.data_layout_hash;
+                value.shader_abi_version = binding.shader_abi_version;
                 desc.bindings.push_back(std::move(value));
                 continue;
             }
+            if (binding.type != RHIResourceBindingType::SampledTexture)
+                return RHIResult<RHIBindingSetRef>::failure(
+                    RHIErrorCode::Unsupported, "Material binding requires an unsupported first-stage resource type");
+        }
 
-            if (binding.type == RHIResourceBindingType::SampledTexture && binding.array_count == 1)
+        for (const auto& parameter : texture_parameters_)
+        {
+            TextureResource* const resource = parameter.second;
+            const RHITextureViewRef view = resource != nullptr ? resource->view_for_current_recording() : nullptr;
+            if (resource == nullptr || !view)
             {
-                const auto parameter = texture_parameters_.find(binding.parameter_id);
-                TextureResource* const resource = parameter == texture_parameters_.end() ? nullptr : parameter->second;
-                const RHITextureViewRef view = resource != nullptr ? resource->view_for_current_recording() : nullptr;
-                if (resource == nullptr || !view)
-                {
-                    return RHIResult<RHIBindingSetRef>::failure(
-                        RHIErrorCode::NotReady, "Material TextureResource has no view for the current recording");
-                }
-
-                RHIBindingValue value;
-                value.slot = binding.target_binding;
-                value.texture_view = view;
-                desc.bindings.push_back(std::move(value));
-                generations[resource] = resource->binding_generation();
-                views[resource] = view;
-                continue;
+                return RHIResult<RHIBindingSetRef>::failure(
+                    RHIErrorCode::NotReady, "Material TextureResource has no view for the current recording");
             }
-
-            return RHIResult<RHIBindingSetRef>::failure(
-                RHIErrorCode::Unsupported, "Material binding requires an unsupported first-stage resource type");
+            RHIBindingValue value;
+            value.binding_id = parameter.first;
+            value.texture_view = view;
+            desc.bindings.push_back(std::move(value));
+            generations[resource] = resource->binding_generation();
+            views[resource] = view;
         }
 
         RHIResult<RHIBindingSetRef> created = device.create_binding_set(desc);
@@ -436,7 +427,6 @@ namespace toy3d
         {
             return created;
         }
-        cached_layout = binding_layout;
         cached_set = created.value();
         if (staged)
         {

@@ -75,6 +75,13 @@ namespace toy3d
         virtual RHIStatus transition_resources(const std::vector<RHIResourceTransition>& transitions) = 0;
         virtual RHIStatus copy_buffer(const RHIBufferCopyDesc& desc) = 0;
         virtual RHIStatus upload_buffer(const RHIBufferUploadDesc& desc) = 0;
+        virtual RHIResult<RHIUniformBufferSlice> upload_transient_uniform_data(
+            const RHITransientUniformDataDesc& desc)
+        {
+            (void)desc;
+            return RHIResult<RHIUniformBufferSlice>::failure(
+                RHIErrorCode::Unsupported, "Transient uniform data is unsupported by this RHI backend.");
+        }
         virtual RHIStatus copy_texture(const RHITextureCopyDesc& desc) = 0;
         virtual RHIStatus upload_texture(const RHITextureUploadDesc& desc) = 0;
         virtual RHIStatus write_gpu_fence(const RHIGPUFenceRef& fence) = 0;

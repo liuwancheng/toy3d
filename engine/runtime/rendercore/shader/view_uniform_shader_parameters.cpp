@@ -6,8 +6,7 @@
 #include <vector>
 
 #include "drivers/rhi/rhi_device.h"
-#include "rendercore/shader/shader_map.h"
-#include "rendercore/shader/shader_uniform_buffer.h"
+#include "format/shader_format_types.h"
 
 namespace toy3d
 {
@@ -24,84 +23,46 @@ namespace toy3d
             std::memcpy(bytes.data() + offset, source, size);
         }
 
-        bool member_matches(const ShaderMapBinding::ConstantMember& member, const char* name,
-                            ShaderValueType type, std::uint32_t offset, std::uint32_t size,
-                            std::uint32_t matrix_stride)
+        ShaderDataLayoutHash view_data_layout_hash()
         {
-            return member.name == name &&
-                   member.parameter_id == shader::make_shader_parameter_id(
-                                              shader::BindingGroup::View,
-                                              shader::ShaderParameterCategory::Constant, name) &&
-                   member.type == type && member.offset == offset && member.size == size &&
-                   member.array_stride == 0u && member.matrix_stride == matrix_stride;
-        }
-
-        RHIStatus validate_view_constant_buffer(const ShaderMapBinding& binding)
-        {
-            if (binding.type != RHIResourceBindingType::UniformBuffer ||
-                binding.constant_buffer_size != k_view_uniform_byte_size || binding.constant_members.size() != 8u)
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "View constant buffer does not match the canonical ToyShaderABI layout");
-            }
-
-            const std::vector<ShaderMapBinding::ConstantMember>& members = binding.constant_members;
-            const bool matches =
-                member_matches(members[0], "toy_view", ShaderValueType::Float32x4x4, 0u, k_matrix_byte_size,
-                               k_matrix_stride) &&
-                member_matches(members[1], "toy_projection", ShaderValueType::Float32x4x4, 64u,
-                               k_matrix_byte_size, k_matrix_stride) &&
-                member_matches(members[2], "toy_view_projection", ShaderValueType::Float32x4x4, 128u,
-                               k_matrix_byte_size, k_matrix_stride) &&
-                member_matches(members[3], "toy_inverse_view", ShaderValueType::Float32x4x4, 192u,
-                               k_matrix_byte_size, k_matrix_stride) &&
-                member_matches(members[4], "toy_inverse_projection", ShaderValueType::Float32x4x4, 256u,
-                               k_matrix_byte_size, k_matrix_stride) &&
-                member_matches(members[5], "toy_inverse_view_projection", ShaderValueType::Float32x4x4, 320u,
-                               k_matrix_byte_size, k_matrix_stride) &&
-                member_matches(members[6], "toy_camera_position", ShaderValueType::Float32x3, 384u,
-                               k_vector3_byte_size, 0u) &&
-                member_matches(members[7], "toy_camera_direction", ShaderValueType::Float32x3, 400u,
-                               k_vector3_byte_size, 0u);
-            return matches ? RHIStatus::success()
-                           : RHIStatus::failure(
-                                 RHIErrorCode::InvalidArgument,
-                                 "View constant members do not match the canonical ToyShaderABI layout");
-        }
-
-        RHIResult<const ShaderMapBinding*> find_view_constant_buffer(const ShaderMapProgram& shader_program)
-        {
-            const ShaderMapBinding* constant_buffer = nullptr;
-            for (const ShaderMapBinding& binding : shader_program.data().bindings)
-            {
-                if (binding.group != RHIBindingGroup::View)
-                {
-                    continue;
-                }
-                if (binding.type != RHIResourceBindingType::UniformBuffer || constant_buffer != nullptr)
-                {
-                    return RHIResult<const ShaderMapBinding*>::failure(
-                        binding.type == RHIResourceBindingType::UniformBuffer ? RHIErrorCode::InvalidArgument
-                                                                             : RHIErrorCode::Unsupported,
-                        "View group must contain exactly one canonical uniform buffer");
-                }
-                constant_buffer = &binding;
-            }
-            if (constant_buffer == nullptr)
-            {
-                return RHIResult<const ShaderMapBinding*>::success(nullptr);
-            }
-            const RHIStatus status = validate_view_constant_buffer(*constant_buffer);
-            if (!status)
-            {
-                return RHIResult<const ShaderMapBinding*>::failure(status.code(), status.message());
-            }
-            return RHIResult<const ShaderMapBinding*>::success(constant_buffer);
+            const std::vector<shader::ReflectedConstantMember> members = {
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant, "toy_view"),
+                 "toy_view", shader::ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant, "toy_projection"),
+                 "toy_projection", shader::ShaderValueType::Float32x4x4, 64u, 64u, 0u, 16u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant, "toy_view_projection"),
+                 "toy_view_projection", shader::ShaderValueType::Float32x4x4, 128u, 64u, 0u, 16u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant, "toy_inverse_view"),
+                 "toy_inverse_view", shader::ShaderValueType::Float32x4x4, 192u, 64u, 0u, 16u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant,
+                                                  "toy_inverse_projection"),
+                 "toy_inverse_projection", shader::ShaderValueType::Float32x4x4, 256u, 64u, 0u, 16u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant,
+                                                  "toy_inverse_view_projection"),
+                 "toy_inverse_view_projection", shader::ShaderValueType::Float32x4x4, 320u, 64u, 0u, 16u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant,
+                                                  "toy_camera_position"),
+                 "toy_camera_position", shader::ShaderValueType::Float32x3, 384u, 12u, 0u, 0u},
+                {shader::make_shader_parameter_id(shader::BindingGroup::View,
+                                                  shader::ShaderParameterCategory::Constant,
+                                                  "toy_camera_direction"),
+                 "toy_camera_direction", shader::ShaderValueType::Float32x3, 400u, 12u, 0u, 0u}};
+            const ShaderParameterId binding_id = shader::make_shader_parameter_id(
+                shader::BindingGroup::View, shader::ShaderParameterCategory::Constant, "");
+            return shader::calculate_constant_buffer_data_layout_hash(
+                shader::BindingGroup::View, binding_id, k_view_uniform_byte_size, members);
         }
     } // namespace
 
-    RHIResult<std::shared_ptr<RHIBuffer>> create_view_uniform_shader_buffer(
-        RHIDevice& device, RHICommandContext& context, const ViewUniformShaderParameters& parameters)
+    RHIResult<RHIUniformBufferSlice> upload_view_uniform_shader_parameters(
+        RHICommandContext& context, const ViewUniformShaderParameters& parameters)
     {
         std::vector<std::uint8_t> bytes(k_view_uniform_byte_size, 0u);
         write_bytes(bytes, 0u, parameters.view_matrix.data(), k_matrix_byte_size);
@@ -116,49 +77,36 @@ namespace toy3d
                                           parameters.camera_direction.z};
         write_bytes(bytes, 384u, camera_position, k_vector3_byte_size);
         write_bytes(bytes, 400u, camera_direction, k_vector3_byte_size);
-        return create_uploaded_shader_uniform_buffer(device, context, bytes, "ViewConstants");
-    }
-
-    RHIStatus validate_view_uniform_shader_program(const ShaderMapProgram& shader_program)
-    {
-        const RHIResult<const ShaderMapBinding*> constant_buffer = find_view_constant_buffer(shader_program);
-        return constant_buffer ? RHIStatus::success() : constant_buffer.status();
+        RHITransientUniformDataDesc desc;
+        desc.source = {bytes.data(), bytes.size(), 0, 0};
+        desc.data_layout_hash = view_data_layout_hash();
+        desc.shader_abi_version = shader::toy_shader_abi_version;
+        desc.debug_name = "ViewConstants";
+        return context.upload_transient_uniform_data(desc);
     }
 
     RHIResult<std::shared_ptr<RHIBindingSet>> create_view_uniform_shader_binding(
-        RHIDevice& device, const std::shared_ptr<RHIBindingLayout>& binding_layout,
-        const ShaderMapProgram& shader_program, const std::shared_ptr<RHIBuffer>& buffer)
+        RHIDevice& device, const RHIUniformBufferSlice& slice)
     {
-        if (!binding_layout)
-        {
-            return RHIResult<std::shared_ptr<RHIBindingSet>>::failure(
-                RHIErrorCode::InvalidArgument, "View binding creation requires an RHI binding layout");
-        }
-
-        RHIResult<const ShaderMapBinding*> constant_buffer = find_view_constant_buffer(shader_program);
-        if (!constant_buffer)
-        {
-            return RHIResult<std::shared_ptr<RHIBindingSet>>::failure(constant_buffer.status().code(),
-                                                                      constant_buffer.status().message());
-        }
-        if (constant_buffer.value() == nullptr)
-        {
-            return RHIResult<std::shared_ptr<RHIBindingSet>>::success(nullptr);
-        }
-        if (!buffer || !buffer->is_owned_by(device) || buffer->desc().size != k_view_uniform_byte_size)
+        if (!slice.buffer || !slice.buffer->is_owned_by(device) || slice.size != k_view_uniform_byte_size ||
+            slice.data_layout_hash != view_data_layout_hash() ||
+            slice.shader_abi_version != shader::toy_shader_abi_version)
         {
             return RHIResult<std::shared_ptr<RHIBindingSet>>::failure(
                 RHIErrorCode::InvalidArgument, "View binding requires the prepared canonical View uniform buffer");
         }
 
         RHIBindingSetDesc desc;
-        desc.layout = binding_layout;
         desc.group = RHIBindingGroup::View;
-        desc.debug_name = shader_program.data().shader_name + "/" + shader_program.data().pass_name + " ViewBindings";
+        desc.debug_name = "ViewBindings";
         RHIBindingValue value;
-        value.slot = constant_buffer.value()->target_binding;
-        value.buffer = buffer;
-        value.buffer_size = k_view_uniform_byte_size;
+        value.binding_id = shader::make_shader_parameter_id(
+            shader::BindingGroup::View, shader::ShaderParameterCategory::Constant, "");
+        value.buffer = slice.buffer;
+        value.buffer_offset = slice.offset;
+        value.buffer_size = slice.size;
+        value.data_layout_hash = slice.data_layout_hash;
+        value.shader_abi_version = slice.shader_abi_version;
         desc.bindings.push_back(std::move(value));
         return device.create_binding_set(desc);
     }

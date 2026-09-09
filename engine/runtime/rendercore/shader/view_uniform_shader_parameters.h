@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drivers/rhi/rhi_result.h"
+#include "drivers/rhi/rhi_command_descriptors.h"
 #include "math/matrix4.h"
 #include "math/vector3.h"
 
@@ -8,12 +8,9 @@
 
 namespace toy3d
 {
-    class RHIBindingLayout;
     class RHIBindingSet;
-    class RHIBuffer;
     class RHICommandContext;
     class RHIDevice;
-    class ShaderMapProgram;
 
     // Render-side canonical values for the View logical Binding Group.
     // Shader layout metadata serializes these values later; this type is not a
@@ -32,12 +29,8 @@ namespace toy3d
         float camera_direction_padding = 0.0f;
     };
 
-    RHIResult<std::shared_ptr<RHIBuffer>> create_view_uniform_shader_buffer(
-        RHIDevice& device, RHICommandContext& context, const ViewUniformShaderParameters& parameters);
-
-    RHIStatus validate_view_uniform_shader_program(const ShaderMapProgram& shader_program);
-
+    RHIResult<RHIUniformBufferSlice> upload_view_uniform_shader_parameters(
+        RHICommandContext& context, const ViewUniformShaderParameters& parameters);
     RHIResult<std::shared_ptr<RHIBindingSet>> create_view_uniform_shader_binding(
-        RHIDevice& device, const std::shared_ptr<RHIBindingLayout>& binding_layout,
-        const ShaderMapProgram& shader_program, const std::shared_ptr<RHIBuffer>& buffer);
+        RHIDevice& device, const RHIUniformBufferSlice& slice);
 } // namespace toy3d

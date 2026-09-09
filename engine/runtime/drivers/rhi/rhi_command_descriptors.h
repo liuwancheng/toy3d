@@ -62,6 +62,23 @@ namespace toy3d
         RHIInitialData source;
     };
 
+    struct RHITransientUniformDataDesc
+    {
+        RHIInitialData source;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
+        std::string debug_name;
+    };
+
+    struct RHIUniformBufferSlice
+    {
+        RHIBufferRef buffer;
+        std::uint64_t offset = 0;
+        std::uint64_t size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
+    };
+
     struct RHITextureCopyLocation
     {
         RHITextureRef texture;
@@ -134,6 +151,21 @@ namespace toy3d
         RHIBindingSetRef object;
     };
 
+    namespace rhi_detail
+    {
+        // Resolved bindings are an RHI/backend hand-off; RenderScene only owns
+        // the five logical snapshots and never observes target mappings here.
+        struct ResolvedBinding
+        {
+            RHIBindingLayoutEntry layout;
+            RHIBindingValue value;
+            RHIBindingSetRef source_set;
+        };
+
+        RHIResult<std::vector<ResolvedBinding>> resolve_graphics_bindings(
+            const RHIGraphicsPipelineRef& pipeline, const RHIGraphicsBindings& bindings);
+    } // namespace rhi_detail
+
     struct RHIDrawArgs
     {
         std::uint32_t vertex_count = 0;
@@ -154,6 +186,7 @@ namespace toy3d
     RHIStatus validate_resource_transition(const RHIResourceTransition& transition);
     RHIStatus validate_buffer_copy_desc(const RHIBufferCopyDesc& desc);
     RHIStatus validate_buffer_upload_desc(const RHIBufferUploadDesc& desc);
+    RHIStatus validate_transient_uniform_data_desc(const RHITransientUniformDataDesc& desc);
     RHIStatus validate_texture_copy_desc(const RHITextureCopyDesc& desc);
     RHIStatus validate_texture_upload_desc(const RHITextureUploadDesc& desc);
     RHIStatus validate_render_pass_desc(const RHIRenderPassDesc& desc);

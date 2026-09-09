@@ -35,12 +35,11 @@ namespace toy3d
         const ConvexVolume& view_frustum() const { return view_frustum_; }
         const std::vector<PrimitiveSceneInfo*>& visible_primitives() const { return visible_primitives_; }
         const std::vector<MeshBatch>& mesh_batches() const { return mesh_batches_; }
-        const RHIBufferRef& view_uniform_buffer() const { return view_uniform_buffer_; }
+        const RHIUniformBufferSlice& view_uniform_slice() const { return view_uniform_slice_; }
+        const RHIBindingSetRef& view_binding_set() const { return view_binding_set_; }
         // view_uniform_resources.* is the single policy path for these
         // frame-local GPU resources; concrete passes use that module's helpers.
-        void publish_view_uniform_buffer(RHIBufferRef buffer);
-        RHIBindingSetRef find_view_binding_adapter(const RHIBindingLayoutRef& binding_layout) const;
-        void add_view_binding_adapter(RHIBindingLayoutRef binding_layout, RHIBindingSetRef binding_set) const;
+        void publish_view_uniform_resources(RHIUniformBufferSlice slice, RHIBindingSetRef binding_set);
 
       private:
         friend class ForwardSceneRenderer;
@@ -59,8 +58,8 @@ namespace toy3d
         Matrix4 inverse_view_projection_matrix_;
         ViewUniformShaderParameters view_uniform_shader_parameters_;
         ConvexVolume view_frustum_;
-        RHIBufferRef view_uniform_buffer_;
-        mutable std::vector<std::pair<RHIBindingLayoutRef, RHIBindingSetRef>> view_binding_adapters_;
+        RHIUniformBufferSlice view_uniform_slice_;
+        RHIBindingSetRef view_binding_set_;
         std::vector<PrimitiveSceneInfo*> visible_primitives_;
         std::vector<MeshBatch> mesh_batches_;
     };

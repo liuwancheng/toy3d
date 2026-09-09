@@ -124,6 +124,38 @@ namespace toy3d::shader
         return value;
     }
 
+    ShaderDataLayoutHash calculate_constant_buffer_data_layout_hash(
+        BindingGroup group, ShaderParameterId buffer_binding_id, std::uint32_t data_size,
+        const std::vector<ReflectedConstantMember>& members, std::uint32_t abi_version)
+    {
+        std::vector<const ReflectedConstantMember*> canonical_members;
+        canonical_members.reserve(members.size());
+        for (const ReflectedConstantMember& member : members)
+        {
+            canonical_members.push_back(&member);
+        }
+        std::sort(canonical_members.begin(), canonical_members.end(),
+                  [](const ReflectedConstantMember* left, const ReflectedConstantMember* right)
+                  { return left->parameter_id < right->parameter_id; });
+
+        std::vector<std::uint8_t> bytes;
+        append_integer(bytes, abi_version);
+        append_enum(bytes, group);
+        append_integer(bytes, buffer_binding_id);
+        append_integer(bytes, data_size);
+        append_integer(bytes, static_cast<std::uint32_t>(canonical_members.size()));
+        for (const ReflectedConstantMember* member : canonical_members)
+        {
+            append_integer(bytes, member->parameter_id);
+            append_enum(bytes, member->type);
+            append_integer(bytes, member->offset);
+            append_integer(bytes, member->size);
+            append_integer(bytes, member->array_stride);
+            append_integer(bytes, member->matrix_stride);
+        }
+        return sha256(bytes);
+    }
+
     ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right)
     {
         return static_cast<ShaderStageFlags>(static_cast<std::uint8_t>(left) | static_cast<std::uint8_t>(right));
@@ -180,6 +212,8 @@ namespace toy3d::shader
             append_integer(bytes, binding.descriptor_set);
             append_integer(bytes, binding.descriptor_binding);
             append_integer(bytes, binding.constant_buffer_size);
+            bytes.insert(bytes.end(), binding.data_layout_hash.begin(), binding.data_layout_hash.end());
+            append_integer(bytes, binding.shader_abi_version);
             append_integer(bytes, static_cast<std::uint32_t>(binding.constant_members.size()));
             for (const ReflectedConstantMember& member : binding.constant_members)
             {
@@ -344,6 +378,9 @@ namespace toy3d::shader
             append_integer(bytes, binding.register_index);
             append_integer(bytes, binding.descriptor_set);
             append_integer(bytes, binding.descriptor_binding);
+            append_integer(bytes, binding.data_size);
+            bytes.insert(bytes.end(), binding.data_layout_hash.begin(), binding.data_layout_hash.end());
+            append_integer(bytes, binding.shader_abi_version);
         }
         for (const ShaderCodeEntry* stage : sorted_stages(entry))
         {

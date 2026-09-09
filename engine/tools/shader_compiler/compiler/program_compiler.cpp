@@ -315,7 +315,8 @@ namespace toy3d::shader
         {
             entry.bindings.push_back({binding.binding_id, binding.name, binding.group, binding.category, binding.stages,
                                       binding.register_class, binding.register_index, binding.descriptor_set,
-                                      binding.descriptor_binding});
+                                      binding.descriptor_binding, binding.data_size, binding.data_layout_hash,
+                                      binding.shader_abi_version});
         }
         for (const EntryPoint& entry_point : pass->program.entry_points)
         {

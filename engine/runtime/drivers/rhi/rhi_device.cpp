@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_pipeline_cache.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace toy3d
@@ -390,8 +391,8 @@ namespace toy3d
         }
         for (const RHIBindingLayoutEntry& entry : desc.entries)
         {
-            if (entry.slot >= limits().max_binding_slots_per_group ||
-                entry.array_count > limits().max_binding_slots_per_group - entry.slot)
+            if (entry.target_binding >= limits().max_binding_slots_per_group ||
+                entry.array_count > limits().max_binding_slots_per_group - entry.target_binding)
             {
                 return RHIResult<RHIBindingLayoutRef>::failure(RHIErrorCode::Unsupported,
                                                                "Binding layout exceeds the per-group slot limit.");
@@ -454,11 +455,6 @@ namespace toy3d
             return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady,
                                                         "Binding set creation requires an initialized RHI device.");
         }
-        if (!desc.layout->is_owned_by(*this))
-        {
-            return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument,
-                                                        "Binding set layout must belong to this RHI device.");
-        }
         for (const RHIBindingValue& value : desc.bindings)
         {
             const RHIObject* object = value.buffer         ? static_cast<const RHIObject*>(value.buffer.get())
@@ -482,12 +478,14 @@ namespace toy3d
                 }
             }
         }
-        if (uses_storage_resources(desc.layout->desc()) && !capabilities().storage_resources)
-        {
-            return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::Unsupported,
-                                                        "Storage bindings are not supported by this device.");
-        }
-        return finalize_creation_result(create_binding_set_impl(desc), "binding set");
+        RHIBindingSetDesc canonical_desc = desc;
+        std::sort(canonical_desc.bindings.begin(), canonical_desc.bindings.end(),
+                  [](const RHIBindingValue& left, const RHIBindingValue& right)
+                  {
+                      return left.binding_id != right.binding_id ? left.binding_id < right.binding_id
+                                                                  : left.array_index < right.array_index;
+                  });
+        return RHIResult<RHIBindingSetRef>::success(std::make_shared<RHIBindingSet>(*this, std::move(canonical_desc)));
     }
 
     RHIResult<RHIGraphicsPipelineRef> RHIDevice::create_graphics_pipeline(const RHIGraphicsPipelineDesc& desc)

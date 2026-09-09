@@ -34,7 +34,7 @@ namespace toy3d::shader
     std::string serialize_shader_stage_reflection(const ShaderStageReflection& reflection)
     {
         std::ostringstream output;
-        output << "reflection_version=1\n"
+        output << "reflection_version=2\n"
                << "stage=" << static_cast<std::uint32_t>(reflection.stage) << '\n'
                << "entry_point=" << reflection.entry_point << '\n'
                << "reflection_hash=" << sha256_to_hex(reflection.reflection_hash) << '\n'
@@ -47,7 +47,8 @@ namespace toy3d::shader
                    << '\t' << (binding.resource_kind ? static_cast<std::uint32_t>(*binding.resource_kind) : 0xffffffffu)
                    << '\t' << static_cast<std::uint32_t>(binding.stages) << '\t' << binding.array_count << '\t'
                    << binding.descriptor_set << '\t' << binding.descriptor_binding << '\t'
-                   << binding.constant_buffer_size << '\n';
+                   << binding.constant_buffer_size << '\t' << sha256_to_hex(binding.data_layout_hash) << '\t'
+                   << binding.shader_abi_version << '\n';
             for (const ReflectedConstantMember& member : binding.constant_members)
             {
                 output << "member=" << binding.name << '\t' << member.parameter_id << '\t' << member.name << '\t'

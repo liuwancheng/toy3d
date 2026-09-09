@@ -88,6 +88,8 @@ if(TOY3D_ENABLE_VULKAN_RHI)
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_binding_creation.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_command_context.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_command_context.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_descriptor_pool_manager.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_descriptor_pool_manager.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_deferred_deletion.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_deferred_deletion.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_resource.cpp"

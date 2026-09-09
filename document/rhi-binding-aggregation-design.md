@@ -7,9 +7,9 @@
 `Vulkan ES3.1 profile` 中 Global 与 View 必须共享 physical set 0，而运行时仍需要按不同
 所有权和更新频率维护二者的问题。
 
-本文已确认并完成首个 Vulkan vertical slice 的代码、产物和自动测试闭环。实现删除旧入口后
-已同步更新 `shader-system-design.md` 的当前进度；可正常退出并刷新日志的独立 Editor/Vulkan
-draw/present 冒烟仍是最终运行时验收项。本文继续保留为 contract 和测试依据。
+本文已扩展为 ID-based logical BindingSet、Pipeline-driven active resolution、recording-scoped
+transient uniform data、Vulkan dynamic uniform binding 与分页 descriptor arena 的长期 contract。
+独立 Editor/Vulkan validation 冒烟仍是运行时最终验收项。
 
 ## 2. 用例与非目标
 
@@ -32,7 +32,7 @@ draw/present 冒烟仍是最终运行时验收项。本文继续保留为 contra
   RHI。
 - 本批次不实现 bindless、descriptor indexing、push constants、root constants 优化或
   persistent descriptor cache。
-- 本批次不实现 Material、Forward BasePass、RDG 或多线程 pass 录制。
+- 本批次不实现 RDG 或多线程 pass 录制。
 - 本批次不改变 Shader target mapping；Vulkan 仍固定 set 0=Global+View、set 1=Pass、
   set 2=Material、set 3=Object。
 
@@ -40,7 +40,10 @@ draw/present 冒烟仍是最终运行时验收项。本文继续保留为 contra
 
 `RHIBindingSet` 继续只表示一个 logical group。`RHIBindingSetDesc::group` 不改为 physical
 set，也不允许调用方为了 Vulkan 合并 Global 与 View。这样 Global 和 View 可以由不同的
-上层所有者独立创建和更新。
+上层所有者独立创建和更新。每个 value 以 `ShaderParameterId + array_index` 标识并直接持有
+resource/range；set 不持有 Program layout、target binding 或 backend descriptor。公共 frontend
+验证非零 ID、唯一性、单一 resource choice、range、data ABI、owner 与通用 limits，并按
+ID/array 规范化排序后直接创建普通 immutable `RHIBindingSet`，不存在 backend 创建 hook。
 
 公共图形绑定快照使用五个具名 logical 引用：
 
@@ -68,21 +71,20 @@ draw 前检查中返回可诊断错误。
 公共入口采用 NVI：
 
 1. 检查每个非空 set 的 `group()` 与其字段一致；
-2. 检查 set 的 binding layout 与当前 graphics pipeline layout 兼容；在 device ownership
-   identity 完成前至少比较规范化 layout value，不能仅比较裸指针；
-3. 检查当前 pipeline 所需的 logical group 均已提供；
-4. 保留完整快照并调用 backend `bind_graphics_bindings_impl()`；
-5. backend 只负责 native materialization 和命令翻译，不重新定义缺失 group 的成功语义。
+2. 检查每个 set 与 command context 属于同一 device；
+3. 保存完整 logical snapshot 并调用 backend `bind_graphics_bindings_impl()`；
+4. draw flush 使用当前 Pipeline layout 按 ID/type/array/data ABI 解析 required active values；
+5. 只有 resolved active resources 参与状态验证、native payload 和 command-list lifetime。
 
-当前 `bind_binding_set()` 在迁移期只存在于同一批代码修改内，不形成对外双轨。所有调用方
-迁移到原子入口、测试通过后删除旧虚函数和实现。
+Pipeline 未声明的 group 可保持 null；logical superset 中未被当前 Pipeline 使用的 value 不参与
+解析，因此未 transition 的 inactive texture 不会阻止 draw。
 
 ## 4. Vulkan 实现
 
 ### 4.1 Logical set 与 physical packet
 
-`VulkanBindingSet` 保存一个 logical group 的已验证资源值，不再把“一个 logical group”
-等同于“一个 `VkDescriptorSet`”。命令录制阶段由 Vulkan backend 根据当前 pipeline layout
+普通 `RHIBindingSet` 保存一个 logical group 的已验证资源值，不等同于 `VkDescriptorSet`。
+命令录制阶段由 Vulkan backend 根据当前 pipeline layout
 和完整 `RHIGraphicsBindings` 构造不可变的 physical packet：
 
 ```text
@@ -92,27 +94,29 @@ physical packet 2 <- Material
 physical packet 3 <- Object
 ```
 
-set 0 的 descriptor pool、descriptor set 和全部 writes 必须在一次 materialization 中完成；
-Global 或 View 任一方缺失、layout 不兼容或 write 不完整都失败，不录制半成品 bind。
+set 0 的 descriptor set 和全部 writes 必须在一次 materialization 中完成；Pipeline 实际要求的
+Global 或 View 缺失、ID/type/ABI 不兼容或 write 不完整都失败，不录制半成品 bind。
 
 第一版可在 recording context 内按以下 transient key 去重：
 
 ```text
-pipeline binding-layout identity
+physical-set layout signature
 + physical set index
-+ ordered logical binding-set object identities
++ ordered active texture/sampler/view identities
++ uniform backing buffer identity and range size
 ```
 
-该 key 只用于一次 context 录制期间的临时复用，不进入持久 cache、Shader ABI 或 Cook
-产物。context 持有强引用，避免对象地址在 key 有效期间被复用。后续若引入稳定 RHI owner
-identity，可替换对象地址而不改变公共接口。
+uniform slice offset 不进入 key，而按 physical set/binding 规范顺序作为 dynamic offset 在 bind
+时提交。Debug name、inactive values 和无关 Pipeline state也不进入 key。该 cache 只用于一次
+context recording，不进入持久 cache、Shader ABI 或 Cook 产物。
 
 ### 4.2 生命周期
 
 - logical set 的 CPU 所有者仍是 renderscene/RenderCore；set 强持有其 buffer、view 和
   sampler。
-- recording context 创建 physical packet；packet 强持有组成它的 logical sets、
-  `VkDescriptorPool` 和 `VkDescriptorSet`。
+- device-owned descriptor pool manager分页创建 pool；一个 page分配多个 descriptor sets。
+- recording context 创建 physical packet；packet 强持有 resolved active logical sets、资源、
+  descriptor page 和 `VkDescriptorSet`。
 - `finish_recording()` 后 command list 接管 packet 强引用。
 - queue submit 成功后 frame slot 保活 command list，直到对应 completion fence 完成。
 - command list 丢弃、录制失败或 submit 失败时，未进入 GPU 的 packet 随 command list
@@ -123,9 +127,9 @@ identity，可替换对象地址而不改变公共接口。
 ### 4.3 状态与错误
 
 - physical set 只在绑定快照或 pipeline layout 变化后重新 materialize/bind。
-- sampled texture 与 uniform buffer 的 resource-state validation 仍在 draw 前执行，覆盖组成
-  physical packet 的全部 logical sets。
-- 缺少 required logical group、group 字段错位、layout 不兼容返回 `InvalidArgument`。
+- sampled texture 与 uniform buffer 的 resource-state validation 在 draw 前执行，只覆盖
+  Pipeline resolver 选择的 active resources。
+- 缺少 required logical group、group 字段错位、ID/type/array/data ABI 不兼容返回 `InvalidArgument`。
 - profile limits 或尚未支持的 storage/buffer-view path 返回 `Unsupported`。
 - descriptor pool/set 分配和 update 前置操作失败返回对应 backend failure；失败后不录制
   `vkCmdBindDescriptorSets`。
@@ -150,15 +154,15 @@ table/root bindings。descriptor allocation 与组成它的 logical sets 一并�
 
 默认 profile 保持 Vulkan 1.1、SPIR-V 1.3 和最多四个 bound descriptor sets。Global+View
 共享 set 0 是 profile contract，不依赖 descriptor indexing、update-after-bind 或其他可选
-feature。Cook 和 runtime 继续验证每 stage、每 set 与 pipeline 总 limits；聚合不能绕过
-uniform buffer、sampled image 和 sampler 数量限制。
+feature。uniform binding 在 Vulkan 中使用 dynamic uniform descriptor；Cook 和 runtime 继续验证
+`maxDescriptorSetUniformBuffersDynamic`、每 stage、每 set 与 pipeline 总 limits。
 
 ## 6. 所有权、线程与安全边界
 
 - 一个 command context 只能由一个线程录制；其 transient physical-packet cache 不共享。
 - immutable Shader、layout、logical binding set 可跨 context 只读共享。
-- device 级 descriptor allocator 若后续共享，必须内部同步；第一版优先使用
-  context/frame-local allocation，避免新增不可替换的全局单例。
+- device 级 descriptor pool manager由 `VulkanDevice`拥有并显式注入 context；共享状态内部同步，
+  不是全局单例或 service locator。
 - 公共 descriptor 不包含 `Vk*`、`ID3D11*`、`ID3D12*`、descriptor set index、heap handle
   或 root parameter。
 - backend 必须检查资源来自兼容 device；公共 owner identity 完成前保留现有 backend
@@ -172,9 +176,9 @@ uniform buffer、sampled image 和 sampler 数量限制。
 - pipeline 只使用部分 group 时允许其余字段为空；
 - required Global 或 View 缺失；
 - set 放入错误字段；
-- layout value 不兼容；
+- active ID/type/array/data ABI 不兼容；
 - empty layout 和无 binding 的合法 pass；
-- binding set 资源不完整、重复 slot/array 或错误 resource type。
+- binding set 资源不完整、重复 ID/array 或错误 resource choice。
 
 ### 7.2 Vulkan
 
@@ -197,15 +201,12 @@ uniform buffer、sampled image 和 sampler 数量限制。
 
 ## 8. 迁移顺序与旧实现删除条件
 
-1. 增加 `RHIGraphicsBindings`、公共 NVI validation 和单元测试。
-2. 将 Vulkan graphics state 改为保存完整 logical snapshot，引入 recording-local physical
-   packet materializer 和 command-list lifetime root。
-3. 迁移现有 test pass 到 `bind_graphics_bindings()`，确认 Material-only 路径不回退。
-4. 增加同时使用 Global/View resource binding 的 Shader 与 runtime 测试，完成 Vulkan set 0
-   聚合闭环；constant buffer 数据 contract 随后由 renderscene/RenderCore 独立定义。
-5. 删除 `bind_binding_set()`、Vulkan“一个 logical group 等于一个 physical set”的创建路径
-   和 `Global+View ... not implemented` 诊断。
-6. 更新 Shader 系统当前进度；随后进入 Cook `ShaderCodeLibraryLoader`。
+1. ShaderFormat产物携带 stable ID、constant data size、完整 layout hash 与 ABI version。
+2. logical BindingSet切换为 ID-based frontend普通对象，删除 layout/slot/backend创建路径。
+3. Pipeline resolver选择 active values，Vulkan物化四个 physical sets。
+4. Global/View/Pass/Object迁移到 recording-scoped transient uniform slice；Material保留持久缓存。
+5. Vulkan接入 dynamic offsets、recording-local packet cache和completion-scoped descriptor pages。
+6. 迁移 BasePass、Tonemap、ImGui和测试，并 clean重编 ShaderMapEntry。
 
 只有以下条件全部满足才删除旧入口：公共 validation 测试、Shader compiler/layout 测试、
 ShaderMap/Loader 测试、Vulkan Global+View 测试、`Toy3dEditor` 构建和实际 Vulkan

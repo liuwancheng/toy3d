@@ -13,7 +13,6 @@
 #include "drivers/rhi/rhi_queue.h"
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/shader_map.h"
-#include "rendercore/shader/shader_uniform_buffer.h"
 
 namespace toy3d
 {
@@ -438,25 +437,31 @@ namespace toy3d
 
         std::vector<std::uint8_t> constants(constant_buffer_binding_->constant_buffer_size, 0u);
         write_projection(draw_data, constants.data() + projection_binding_->offset);
-        RHIResult<RHIBufferRef> uniform_buffer =
-            create_uploaded_shader_uniform_buffer(device, context, constants, "ImGuiPassConstants");
-        if (!uniform_buffer)
-            return uniform_buffer.status();
+        RHITransientUniformDataDesc uniform_desc;
+        uniform_desc.source = {constants.data(), constants.size(), 0, 0};
+        uniform_desc.data_layout_hash = constant_buffer_binding_->data_layout_hash;
+        uniform_desc.shader_abi_version = constant_buffer_binding_->shader_abi_version;
+        uniform_desc.debug_name = "ImGuiPassConstants";
+        RHIResult<RHIUniformBufferSlice> uniform_slice = context.upload_transient_uniform_data(uniform_desc);
+        if (!uniform_slice)
+            return uniform_slice.status();
         RHIBindingSetDesc binding_desc;
-        binding_desc.layout = rhi_program_->binding_layout;
         binding_desc.group = RHIBindingGroup::Pass;
         binding_desc.debug_name = "ImGuiPassBindings";
         RHIBindingValue constants_value;
-        constants_value.slot = constant_buffer_binding_->target_binding;
-        constants_value.buffer = std::move(uniform_buffer).value();
-        constants_value.buffer_size = constant_buffer_binding_->constant_buffer_size;
+        constants_value.binding_id = constant_buffer_binding_->parameter_id;
+        constants_value.buffer = uniform_slice.value().buffer;
+        constants_value.buffer_offset = uniform_slice.value().offset;
+        constants_value.buffer_size = uniform_slice.value().size;
+        constants_value.data_layout_hash = uniform_slice.value().data_layout_hash;
+        constants_value.shader_abi_version = uniform_slice.value().shader_abi_version;
         binding_desc.bindings.push_back(std::move(constants_value));
         RHIBindingValue texture_value;
-        texture_value.slot = font_texture_binding_->target_binding;
+        texture_value.binding_id = font_texture_binding_->parameter_id;
         texture_value.texture_view = font_texture_view_;
         binding_desc.bindings.push_back(std::move(texture_value));
         RHIBindingValue sampler_value;
-        sampler_value.slot = font_sampler_binding_->target_binding;
+        sampler_value.binding_id = font_sampler_binding_->parameter_id;
         sampler_value.sampler = font_sampler_;
         binding_desc.bindings.push_back(std::move(sampler_value));
         RHIResult<RHIBindingSetRef> binding_set = device.create_binding_set(binding_desc);

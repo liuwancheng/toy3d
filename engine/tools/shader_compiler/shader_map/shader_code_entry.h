@@ -8,7 +8,7 @@
 
 namespace toy3d::shader
 {
-    constexpr std::uint32_t shader_code_entry_version = 1;
+    constexpr std::uint32_t shader_code_entry_version = 2;
 
     struct ShaderCodeEntryWriteResult
     {

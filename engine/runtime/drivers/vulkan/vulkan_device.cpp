@@ -227,6 +227,7 @@ namespace toy3d
             return status;
         }
         upload_manager_instance = std::make_unique<VulkanUploadManager>(*memory_manager_instance);
+        descriptor_pool_manager_instance = std::make_unique<VulkanDescriptorPoolManager>(vk_device);
         deletion_queue = std::make_unique<VulkanDeferredDeletionQueue>();
         queue = std::make_unique<VulkanQueue>(*this, vk_device, vk_graphics_queue, *upload_manager_instance);
         initialized = true;
@@ -255,6 +256,9 @@ namespace toy3d
             deletion_queue->release_all(vk_device);
         }
         deletion_queue.reset();
+        if (descriptor_pool_manager_instance)
+            descriptor_pool_manager_instance->shutdown();
+        descriptor_pool_manager_instance.reset();
         if (upload_manager_instance)
         {
             upload_manager_instance->shutdown();
@@ -363,7 +367,7 @@ namespace toy3d
         }
         return RHIResult<std::unique_ptr<RHIViewportContext>>::success(std::make_unique<VulkanViewportContext>(
             *this, vk_physical_device, vk_device, primary_surface, graphics_queue_family, *queue,
-            *upload_manager_instance, *deletion_queue, surface, desc));
+            *upload_manager_instance, *descriptor_pool_manager_instance, *deletion_queue, surface, desc));
     }
 
     RHIResult<RHIBufferRef> VulkanDevice::create_buffer_impl(const RHIBufferDesc& desc,
@@ -406,11 +410,6 @@ namespace toy3d
         return create_vulkan_sampler(*this, vk_device, desc);
     }
 
-    RHIResult<RHIBindingSetRef> VulkanDevice::create_binding_set_impl(const RHIBindingSetDesc& desc)
-    {
-        return create_vulkan_binding_set(desc);
-    }
-
     RHIResult<RHIGraphicsPipelineRef> VulkanDevice::create_graphics_pipeline_impl(const RHIGraphicsPipelineDesc& desc)
     {
         return create_vulkan_graphics_pipeline(*this, vk_device, desc);
@@ -424,7 +423,7 @@ namespace toy3d
     RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanDevice::create_graphics_command_context_impl()
     {
         return create_vulkan_graphics_command_context(*this, vk_device, graphics_queue_family,
-                                                      *upload_manager_instance);
+                                                      *upload_manager_instance, *descriptor_pool_manager_instance);
     }
 
     VulkanDeviceObservation VulkanDevice::observation_snapshot() const
@@ -437,6 +436,10 @@ namespace toy3d
         if (upload_manager_instance)
         {
             observation.upload = upload_manager_instance->statistics();
+        }
+        if (descriptor_pool_manager_instance)
+        {
+            observation.descriptors = descriptor_pool_manager_instance->statistics();
         }
         if (deletion_queue)
         {
@@ -774,6 +777,7 @@ namespace toy3d
         device_limits.max_texture_array_layers = properties.limits.maxImageArrayLayers;
         device_limits.max_uniform_buffer_size = properties.limits.maxUniformBufferRange;
         device_limits.max_binding_slots_per_group = properties.limits.maxPerStageDescriptorUniformBuffers;
+        device_limits.max_dynamic_uniform_buffers = properties.limits.maxDescriptorSetUniformBuffersDynamic;
         device_limits.max_sampler_anisotropy =
             features.samplerAnisotropy ? static_cast<std::uint32_t>(properties.limits.maxSamplerAnisotropy) : 1U;
         device_limits.uniform_buffer_offset_alignment = properties.limits.minUniformBufferOffsetAlignment;

@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_device.h"
 #include "drivers/vulkan/vulkan_memory_manager.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
+#include "drivers/vulkan/vulkan_descriptor_pool_manager.h"
 
 #if WITH_WIN64
 #ifndef NOMINMAX
@@ -22,6 +23,7 @@ namespace toy3d
     {
         VulkanMemoryManagerStats memory;
         VulkanUploadManagerStats upload;
+        VulkanDescriptorPoolManagerStats descriptors;
         std::size_t pending_deletions = 0;
         RHIQueueCompletionValue completed_value = 0;
     };
@@ -59,7 +61,6 @@ namespace toy3d
         RHIResult<RHIShaderRef> create_shader_impl(const RHIShaderDesc& desc) override;
         RHIResult<RHIBindingLayoutRef> create_binding_layout_impl(const RHIBindingLayoutDesc& desc) override;
         RHIResult<RHISamplerRef> create_sampler_impl(const RHISamplerDesc& desc) override;
-        RHIResult<RHIBindingSetRef> create_binding_set_impl(const RHIBindingSetDesc& desc) override;
         RHIResult<RHIGraphicsPipelineRef> create_graphics_pipeline_impl(const RHIGraphicsPipelineDesc& desc) override;
         RHIResult<RHIGPUFenceRef> create_gpu_fence_impl(const std::string& debug_name) override;
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context_impl() override;
@@ -88,6 +89,7 @@ namespace toy3d
         RHILimits device_limits;
         std::unique_ptr<VulkanMemoryManager> memory_manager_instance;
         std::unique_ptr<VulkanUploadManager> upload_manager_instance;
+        std::unique_ptr<VulkanDescriptorPoolManager> descriptor_pool_manager_instance;
         std::unique_ptr<VulkanDeferredDeletionQueue> deletion_queue;
         std::unique_ptr<VulkanQueue> queue;
         bool initialized = false;

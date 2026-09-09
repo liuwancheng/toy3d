@@ -29,13 +29,11 @@ namespace toy3d
         void set_vector(ShaderParameterId parameter_id, const vec4& value) noexcept;
         void set_texture(ShaderParameterId parameter_id, TextureResource* texture_resource) noexcept;
 
-        RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context,
-                                                const RHIBindingLayoutRef& binding_layout);
+        RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context);
         RHIStatus begin_init_textures(RenderResourceManager& manager);
 
         RHIStatus stage_material_candidate(ShaderMapProgramRef shader_program, bool two_sided);
-        RHIResult<RHIBindingSetRef> materialize_staged(RHIDevice& device, RHICommandContext& context,
-                                                       const RHIBindingLayoutRef& binding_layout);
+        RHIResult<RHIBindingSetRef> materialize_staged(RHIDevice& device, RHICommandContext& context);
         RHIStatus commit_material_candidate();
         void discard_material_candidate() noexcept;
 
@@ -44,7 +42,6 @@ namespace toy3d
 
       private:
         RHIResult<RHIBindingSetRef> materialize_program(RHIDevice& device, RHICommandContext& context,
-                                                        const RHIBindingLayoutRef& binding_layout,
                                                         const ShaderMapProgramRef& shader_program, bool staged);
         bool texture_cache_matches(bool staged) const noexcept;
         bool texture_views_match(bool staged) const noexcept;
@@ -59,9 +56,7 @@ namespace toy3d
         std::unordered_map<ShaderParameterId, vec3> vector3_parameters_;
         std::unordered_map<ShaderParameterId, vec4> vector4_parameters_;
         std::unordered_map<ShaderParameterId, TextureResource*> texture_parameters_;
-        RHIBindingLayoutRef binding_layout_;
         RHIBindingSetRef binding_set_;
-        RHIBindingLayoutRef staged_binding_layout_;
         RHIBindingSetRef staged_binding_set_;
         std::unordered_map<TextureResource*, std::uint64_t> texture_generations_;
         std::unordered_map<TextureResource*, RHITextureViewRef> texture_views_;

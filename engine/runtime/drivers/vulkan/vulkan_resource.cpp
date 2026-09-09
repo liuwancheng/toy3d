@@ -2,6 +2,7 @@
 
 #include "drivers/vulkan/vulkan_deferred_deletion.h"
 #include "drivers/vulkan/vulkan_type_mapping.h"
+#include "drivers/vulkan/vulkan_upload_manager.h"
 
 #include "logging/logger.h"
 
@@ -21,9 +22,16 @@ namespace toy3d
     {
     }
 
+    VulkanBuffer::VulkanBuffer(const RHIDevice& owner, RHIBufferDesc desc,
+                               std::shared_ptr<VulkanUploadPage> upload_page, RHIAccess initial_access)
+        : RHIBuffer(owner, std::move(desc)), transient_upload_page(std::move(upload_page)),
+          resource_access(initial_access)
+    {
+    }
+
     VulkanBuffer::~VulkanBuffer()
     {
-        if (memory_manager_instance == nullptr)
+        if (transient_upload_page || memory_manager_instance == nullptr)
         {
             return;
         }
@@ -46,7 +54,7 @@ namespace toy3d
 
     VkBuffer VulkanBuffer::buffer() const
     {
-        return allocated_buffer.buffer;
+        return transient_upload_page ? transient_upload_page->buffer() : allocated_buffer.buffer;
     }
 
     RHIAccess VulkanBuffer::current_access() const
@@ -283,10 +291,9 @@ namespace toy3d
 
     VulkanBindingLayout::VulkanBindingLayout(
         const RHIDevice& owner, RHIBindingLayoutDesc desc, VkDevice device,
-        std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
-        std::vector<NativeBinding> native_bindings)
+        std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts)
         : RHIBindingLayout(owner, std::move(desc)), vk_device(device),
-          vk_descriptor_set_layouts(descriptor_set_layouts), binding_mappings(std::move(native_bindings))
+          vk_descriptor_set_layouts(descriptor_set_layouts)
     {
     }
 
@@ -330,20 +337,6 @@ namespace toy3d
         return set < vk_descriptor_set_layouts.size() ? vk_descriptor_set_layouts[set] : VK_NULL_HANDLE;
     }
 
-    RHIResult<std::uint32_t> VulkanBindingLayout::native_binding(RHIBindingGroup group, RHIResourceBindingType type,
-                                                                 std::uint32_t slot) const
-    {
-        for (const NativeBinding& mapping : binding_mappings)
-        {
-            if (mapping.group == group && mapping.type == type && mapping.slot == slot)
-            {
-                return RHIResult<std::uint32_t>::success(mapping.binding);
-            }
-        }
-        return RHIResult<std::uint32_t>::failure(RHIErrorCode::InvalidArgument,
-                                                 "Vulkan binding layout has no matching native binding.");
-    }
-
     const std::array<VkDescriptorSetLayout, VulkanBindingLayout::physical_set_count>& VulkanBindingLayout::
         descriptor_set_layouts() const
     {
@@ -368,22 +361,17 @@ namespace toy3d
         return vk_sampler;
     }
 
-    VulkanBindingSet::VulkanBindingSet(RHIBindingSetDesc desc) : RHIBindingSet(std::move(desc)) {}
-
-    VulkanBindingPacket::VulkanBindingPacket(VkDevice device, VkDescriptorPool descriptor_pool,
+    VulkanBindingPacket::VulkanBindingPacket(std::shared_ptr<VulkanDescriptorPoolPage> descriptor_page,
                                              VkDescriptorSet descriptor_set,
-                                             std::vector<std::shared_ptr<VulkanBindingSet>> logical_sets)
-        : vk_device(device), vk_descriptor_pool(descriptor_pool), vk_descriptor_set(descriptor_set),
+                                             std::vector<RHIBindingSetRef> logical_sets)
+        : pool_page(std::move(descriptor_page)), vk_descriptor_set(descriptor_set),
           source_sets(std::move(logical_sets))
     {
     }
 
     VulkanBindingPacket::~VulkanBindingPacket()
     {
-        if (vk_device != VK_NULL_HANDLE && vk_descriptor_pool != VK_NULL_HANDLE)
-        {
-            vkDestroyDescriptorPool(vk_device, vk_descriptor_pool, nullptr);
-        }
+        vk_descriptor_set = VK_NULL_HANDLE;
     }
 
     VkDescriptorSet VulkanBindingPacket::descriptor_set() const

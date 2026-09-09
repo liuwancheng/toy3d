@@ -51,6 +51,13 @@ namespace toy3d
         {
             return false;
         }
+        if (padding > 0)
+        {
+            // Uniform-page alignment gaps are initialized so native allocation
+            // padding never exposes bytes left by an earlier recording.
+            auto* padding_begin = static_cast<std::byte*>(mapped_data()) + next_offset;
+            std::memset(padding_begin, 0, static_cast<std::size_t>(padding));
+        }
         offset = next_offset + padding;
         next_offset = offset + size;
         return true;
@@ -234,7 +241,7 @@ namespace toy3d
     {
         VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         buffer_info.size = capacity;
-        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         auto buffer = memory_manager.create_buffer(buffer_info, VulkanAllocationUsage::CpuUpload, "Vulkan upload page");
         if (!buffer)

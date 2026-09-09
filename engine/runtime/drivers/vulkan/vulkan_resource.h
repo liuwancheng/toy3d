@@ -20,6 +20,8 @@
 namespace toy3d
 {
     class VulkanDeferredDeletionQueue;
+    class VulkanDescriptorPoolPage;
+    class VulkanUploadPage;
 
     struct VulkanTextureSubresourceState
     {
@@ -33,6 +35,8 @@ namespace toy3d
         VulkanBuffer(const RHIDevice& owner, RHIBufferDesc desc, VulkanMemoryManager& memory_manager,
                      VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer,
                      RHIAccess initial_access);
+        VulkanBuffer(const RHIDevice& owner, RHIBufferDesc desc, std::shared_ptr<VulkanUploadPage> upload_page,
+                     RHIAccess initial_access);
         ~VulkanBuffer() override;
 
         VkBuffer buffer() const;
@@ -45,6 +49,7 @@ namespace toy3d
         VulkanMemoryManager* memory_manager_instance = nullptr;
         VulkanDeferredDeletionQueue* deletion_queue_instance = nullptr;
         VulkanAllocatedBuffer allocated_buffer;
+        std::shared_ptr<VulkanUploadPage> transient_upload_page;
         RHIAccess resource_access = RHIAccess::Common;
         RHIQueueCompletionValue last_use_value = 0;
     };
@@ -138,29 +143,17 @@ namespace toy3d
       public:
         static constexpr std::size_t physical_set_count = 4;
 
-        struct NativeBinding
-        {
-            RHIBindingGroup group = RHIBindingGroup::Material;
-            std::uint32_t slot = 0;
-            RHIResourceBindingType type = RHIResourceBindingType::UniformBuffer;
-            std::uint32_t binding = 0;
-        };
-
         VulkanBindingLayout(const RHIDevice& owner, RHIBindingLayoutDesc desc, VkDevice device,
-                            std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts,
-                            std::vector<NativeBinding> native_bindings);
+                            std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts);
         ~VulkanBindingLayout() override;
 
         static std::uint32_t physical_set(RHIBindingGroup group);
         VkDescriptorSetLayout descriptor_set_layout(RHIBindingGroup group) const;
-        RHIResult<std::uint32_t> native_binding(RHIBindingGroup group, RHIResourceBindingType type,
-                                                std::uint32_t slot) const;
         const std::array<VkDescriptorSetLayout, physical_set_count>& descriptor_set_layouts() const;
 
       private:
         VkDevice vk_device = VK_NULL_HANDLE;
         std::array<VkDescriptorSetLayout, physical_set_count> vk_descriptor_set_layouts = {};
-        std::vector<NativeBinding> binding_mappings;
     };
 
     class VulkanSampler final : public RHISampler
@@ -176,18 +169,11 @@ namespace toy3d
         VkSampler vk_sampler = VK_NULL_HANDLE;
     };
 
-    class VulkanBindingSet final : public RHIBindingSet
-    {
-      public:
-        explicit VulkanBindingSet(RHIBindingSetDesc desc);
-        ~VulkanBindingSet() override = default;
-    };
-
     class VulkanBindingPacket final
     {
       public:
-        VulkanBindingPacket(VkDevice device, VkDescriptorPool descriptor_pool, VkDescriptorSet descriptor_set,
-                            std::vector<std::shared_ptr<VulkanBindingSet>> logical_sets);
+        VulkanBindingPacket(std::shared_ptr<VulkanDescriptorPoolPage> descriptor_page, VkDescriptorSet descriptor_set,
+                            std::vector<RHIBindingSetRef> logical_sets);
         ~VulkanBindingPacket();
 
         VulkanBindingPacket(const VulkanBindingPacket&) = delete;
@@ -196,10 +182,9 @@ namespace toy3d
         VkDescriptorSet descriptor_set() const;
 
       private:
-        VkDevice vk_device = VK_NULL_HANDLE;
-        VkDescriptorPool vk_descriptor_pool = VK_NULL_HANDLE;
+        std::shared_ptr<VulkanDescriptorPoolPage> pool_page;
         VkDescriptorSet vk_descriptor_set = VK_NULL_HANDLE;
-        std::vector<std::shared_ptr<VulkanBindingSet>> source_sets;
+        std::vector<RHIBindingSetRef> source_sets;
     };
 
     // The compatibility render pass supplies the attachment signature Vulkan

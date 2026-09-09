@@ -4,6 +4,7 @@
 #include "drivers/rhi/rhi_capabilities.h"
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "drivers/rhi/rhi_result.h"
+#include "format/shader_binding_identity.h"
 
 #include <array>
 #include <cstddef>
@@ -156,11 +157,15 @@ namespace toy3d
 
     struct RHIShaderBindingReflection
     {
+        ShaderParameterId binding_id = 0;
         std::string name;
         RHIBindingGroup group = RHIBindingGroup::Material;
-        std::uint32_t slot = 0;
+        std::uint32_t target_binding = 0;
         RHIResourceBindingType type = RHIResourceBindingType::UniformBuffer;
         std::uint32_t array_count = 1;
+        std::uint32_t data_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
     };
 
     struct RHIShaderVertexInputReflection
@@ -194,11 +199,15 @@ namespace toy3d
 
     struct RHIBindingLayoutEntry
     {
+        ShaderParameterId binding_id = 0;
         RHIBindingGroup group = RHIBindingGroup::Material;
-        std::uint32_t slot = 0;
+        std::uint32_t target_binding = 0;
         RHIResourceBindingType type = RHIResourceBindingType::UniformBuffer;
         RHIShaderStageFlags stages = RHIShaderStageFlags::None;
         std::uint32_t array_count = 1;
+        std::uint32_t data_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
 
         bool operator==(const RHIBindingLayoutEntry& other) const;
     };
@@ -231,7 +240,7 @@ namespace toy3d
 
     struct RHIBindingValue
     {
-        std::uint32_t slot = 0;
+        ShaderParameterId binding_id = 0;
         std::uint32_t array_index = 0;
         std::shared_ptr<RHIBuffer> buffer;
         std::shared_ptr<RHIBufferView> buffer_view;
@@ -239,11 +248,12 @@ namespace toy3d
         std::shared_ptr<RHISampler> sampler;
         std::uint64_t buffer_offset = 0;
         std::uint64_t buffer_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
     };
 
     struct RHIBindingSetDesc
     {
-        std::shared_ptr<RHIBindingLayout> layout;
         RHIBindingGroup group = RHIBindingGroup::Material;
         std::vector<RHIBindingValue> bindings;
         std::string debug_name;

@@ -754,10 +754,11 @@ namespace
             if (manifest.succeeded())
             {
                 std::string changed = manifest.value();
-                const std::size_t version = changed.find("shader_map_entry_version=3");
+                const std::string current_version =
+                    "shader_map_entry_version=" + std::to_string(shader_map_entry_version);
+                const std::size_t version = changed.find(current_version);
                 if (version != std::string::npos)
-                    changed.replace(version, std::string("shader_map_entry_version=3").size(),
-                                    "shader_map_entry_version=999");
+                    changed.replace(version, current_version.size(), "shader_map_entry_version=999");
                 write_text(manifest_path, changed);
             }
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
@@ -906,11 +907,20 @@ namespace
 
         ConstantBufferLayout material_constants;
         material_constants.group = BindingGroup::Material;
+        material_constants.binding_id = 10u;
         material_constants.size = 112u;
         material_constants.members = {{11u, "tint", ShaderValueType::Float32x3, 0u, 12u, 1u, 0u, 0u, {}, {}},
                                       {12u, "factor", ShaderValueType::Float32, 12u, 4u, 1u, 0u, 0u, {}, {}},
                                       {13u, "transform", ShaderValueType::Float32x4x4, 16u, 64u, 1u, 0u, 16u, {}, {}},
                                       {14u, "weights", ShaderValueType::Float32x4, 80u, 32u, 2u, 16u, 0u, {}, {}}};
+        const std::vector<ReflectedConstantMember> reflected_material_members = {
+            {11u, "tint", ShaderValueType::Float32x3, 0u, 12u, 0u, 0u},
+            {12u, "factor", ShaderValueType::Float32, 12u, 4u, 0u, 0u},
+            {13u, "transform", ShaderValueType::Float32x4x4, 16u, 64u, 0u, 16u},
+            {14u, "weights", ShaderValueType::Float32x4, 80u, 32u, 16u, 0u}};
+        material_constants.data_layout_hash = calculate_constant_buffer_data_layout_hash(
+            material_constants.group, material_constants.binding_id, material_constants.size,
+            reflected_material_members);
         ActiveBinding active_constants;
         active_constants.binding_id = 10u;
         active_constants.name = "ToyMaterialConstants";
@@ -951,11 +961,13 @@ namespace
         resource_layout.target_binding_hash[0] = 2u;
         resource_layout.bindings = {
             {10u, "ToyMaterialConstants", BindingGroup::Material, ShaderParameterCategory::Constant,
-             ShaderStageFlags::Pixel, NativeRegisterClass::ConstantBuffer, 0u, 2u, 0u, &active_constants},
+             ShaderStageFlags::Pixel, NativeRegisterClass::ConstantBuffer, 0u, 2u, 0u, material_constants.size,
+             material_constants.data_layout_hash, toy_shader_abi_version, &active_constants},
             {20u, "material_texture", BindingGroup::Material, ShaderParameterCategory::SampledTexture,
-             ShaderStageFlags::Pixel, NativeRegisterClass::ShaderResource, 0u, 2u, 1u, &active_texture},
+             ShaderStageFlags::Pixel, NativeRegisterClass::ShaderResource, 0u, 2u, 1u, 0u, {}, 0u,
+             &active_texture},
             {21u, "material_sampler", BindingGroup::Material, ShaderParameterCategory::Sampler, ShaderStageFlags::Pixel,
-             NativeRegisterClass::Sampler, 0u, 2u, 2u, &active_sampler}};
+             NativeRegisterClass::Sampler, 0u, 2u, 2u, 0u, {}, 0u, &active_sampler}};
         ShaderCompileRequestInput resource_pixel = pixel;
         resource_pixel.generated_bindings = "[[vk::binding(0, 2)]]\n"
                                             "cbuffer ToyMaterialConstants : register(b0)\n"

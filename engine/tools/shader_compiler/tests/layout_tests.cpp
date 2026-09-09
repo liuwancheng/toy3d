@@ -29,6 +29,35 @@ namespace
                            [&](const toy3d::shader::Diagnostic& diagnostic) { return diagnostic.code == code; });
     }
 
+    void test_constant_buffer_data_layout_hash()
+    {
+        using namespace toy3d::shader;
+        const std::vector<ReflectedConstantMember> members = {
+            {11u, "matrix", ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u},
+            {12u, "weights", ShaderValueType::Float32x4, 64u, 32u, 16u, 0u}};
+        std::vector<ReflectedConstantMember> reordered = {members[1], members[0]};
+        const ShaderDataLayoutHash baseline = calculate_constant_buffer_data_layout_hash(
+            BindingGroup::View, 10u, 96u, members);
+        check(baseline == calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, reordered),
+              "constant-buffer data layout hash must be declaration-order independent");
+
+        std::vector<ReflectedConstantMember> changed = members;
+        changed[1].offset = 60u;
+        check(baseline != calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, changed),
+              "constant-buffer data layout hash must include member offsets even when total size is unchanged");
+        changed = members;
+        changed[0].matrix_stride = 12u;
+        check(baseline != calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, changed),
+              "constant-buffer data layout hash must include matrix stride");
+        changed = members;
+        changed[1].array_stride = 32u;
+        check(baseline != calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, changed),
+              "constant-buffer data layout hash must include array stride");
+        check(baseline != calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, members,
+                                                                      toy_shader_abi_version + 1u),
+              "constant-buffer data layout hash must include the Shader ABI version");
+    }
+
     toy3d::shader::LogicalLayoutResult compile_source(const std::string& source)
     {
         const toy3d::shader::ParseResult parsed = toy3d::shader::parse_shader(source, "layout_test.shader");
@@ -377,6 +406,7 @@ Shader "Tests/Layout"
 
 int main()
 {
+    test_constant_buffer_data_layout_hash();
     test_sha256_and_parameter_id();
     test_toy_shader_abi_packing();
     test_logical_layout_determinism();

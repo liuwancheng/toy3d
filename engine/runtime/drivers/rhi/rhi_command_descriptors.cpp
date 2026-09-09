@@ -10,9 +10,19 @@ namespace toy3d
 {
     namespace
     {
-        bool binding_layouts_match(const RHIBindingSetRef& first, const RHIBindingSetRef& second)
+        RHIResourceBindingType resolved_value_type(const RHIBindingValue& value)
         {
-            return !first || !second || first->layout()->desc() == second->layout()->desc();
+            if (value.buffer)
+                return RHIResourceBindingType::UniformBuffer;
+            if (value.sampler)
+                return RHIResourceBindingType::Sampler;
+            if (value.texture_view)
+                return value.texture_view->desc().type == RHIResourceViewType::UnorderedAccess
+                           ? RHIResourceBindingType::StorageTexture
+                           : RHIResourceBindingType::SampledTexture;
+            return value.buffer_view && value.buffer_view->desc().type == RHIResourceViewType::UnorderedAccess
+                       ? RHIResourceBindingType::StorageBuffer
+                       : RHIResourceBindingType::ReadOnlyBuffer;
         }
     } // namespace
 
@@ -356,7 +366,6 @@ namespace toy3d
                      {RHIBindingGroup::Material, bindings.material},
                      {RHIBindingGroup::Object, bindings.object}}};
 
-        RHIBindingSetRef first_set;
         for (const auto& entry : sets)
         {
             if (!entry.second)
@@ -368,23 +377,108 @@ namespace toy3d
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Graphics bindings contain a binding set in the wrong logical group field.");
             }
-            if (!entry.second->layout())
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Graphics bindings require every binding set to have a layout.");
-            }
-            if (!binding_layouts_match(first_set, entry.second))
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Graphics binding sets must use compatible binding layouts.");
-            }
-            if (!first_set)
-            {
-                first_set = entry.second;
-            }
         }
         return RHIStatus::success();
     }
+
+    RHIStatus validate_transient_uniform_data_desc(const RHITransientUniformDataDesc& desc)
+    {
+        const bool hash_is_zero = std::all_of(desc.data_layout_hash.begin(), desc.data_layout_hash.end(),
+                                              [](std::uint8_t byte) { return byte == 0u; });
+        if (desc.source.data == nullptr || desc.source.size == 0 || desc.source.row_pitch != 0 ||
+            desc.source.slice_pitch != 0 || hash_is_zero || desc.shader_abi_version == 0)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Transient uniform data requires bytes, a data layout hash, and a Shader ABI version.");
+        }
+        return RHIStatus::success();
+    }
+
+    namespace rhi_detail
+    {
+        RHIResult<std::vector<ResolvedBinding>> resolve_graphics_bindings(
+            const RHIGraphicsPipelineRef& pipeline, const RHIGraphicsBindings& bindings)
+        {
+            if (!pipeline || !pipeline->desc().binding_layout)
+            {
+                return RHIResult<std::vector<ResolvedBinding>>::failure(
+                    RHIErrorCode::InvalidArgument, "Resolving graphics bindings requires a pipeline layout.");
+            }
+            const auto set_for_group = [&](RHIBindingGroup group) -> RHIBindingSetRef
+            {
+                switch (group)
+                {
+                case RHIBindingGroup::Global:
+                    return bindings.global;
+                case RHIBindingGroup::View:
+                    return bindings.view;
+                case RHIBindingGroup::Pass:
+                    return bindings.pass;
+                case RHIBindingGroup::Material:
+                    return bindings.material;
+                case RHIBindingGroup::Object:
+                    return bindings.object;
+                case RHIBindingGroup::Max:
+                    return {};
+                }
+                return {};
+            };
+
+            std::vector<ResolvedBinding> resolved;
+            for (const RHIBindingLayoutEntry& entry : pipeline->desc().binding_layout->desc().entries)
+            {
+                const RHIBindingSetRef set = set_for_group(entry.group);
+                if (!set)
+                {
+                    return RHIResult<std::vector<ResolvedBinding>>::failure(
+                        RHIErrorCode::InvalidArgument, "A required logical binding group is missing for the draw.");
+                }
+                if (set->owner_device() != pipeline->owner_device())
+                {
+                    return RHIResult<std::vector<ResolvedBinding>>::failure(
+                        RHIErrorCode::InvalidArgument, "A logical binding set belongs to a different RHI device.");
+                }
+                for (std::uint32_t array_index = 0; array_index < entry.array_count; ++array_index)
+                {
+                    const auto found = std::lower_bound(
+                        set->desc().bindings.begin(), set->desc().bindings.end(),
+                        std::make_pair(entry.binding_id, array_index),
+                        [](const RHIBindingValue& value, const std::pair<ShaderParameterId, std::uint32_t>& key)
+                        {
+                            return value.binding_id != key.first ? value.binding_id < key.first
+                                                                 : value.array_index < key.second;
+                        });
+                    if (found == set->desc().bindings.end() || found->binding_id != entry.binding_id ||
+                        found->array_index != array_index)
+                    {
+                        return RHIResult<std::vector<ResolvedBinding>>::failure(
+                            RHIErrorCode::InvalidArgument, "A required active logical binding value is missing.");
+                    }
+                    if (resolved_value_type(*found) != entry.type)
+                    {
+                        return RHIResult<std::vector<ResolvedBinding>>::failure(
+                            RHIErrorCode::InvalidArgument, "An active logical binding has an incompatible resource type.");
+                    }
+                    if (entry.type == RHIResourceBindingType::UniformBuffer)
+                    {
+                        const std::uint64_t range = found->buffer_size == 0
+                                                        ? found->buffer->desc().size - found->buffer_offset
+                                                        : found->buffer_size;
+                        if (range < entry.data_size || found->data_layout_hash != entry.data_layout_hash ||
+                            found->shader_abi_version != entry.shader_abi_version)
+                        {
+                            return RHIResult<std::vector<ResolvedBinding>>::failure(
+                                RHIErrorCode::InvalidArgument,
+                                "An active uniform binding is incompatible with the pipeline data ABI.");
+                        }
+                    }
+                    resolved.push_back({entry, *found, set});
+                }
+            }
+            return RHIResult<std::vector<ResolvedBinding>>::success(std::move(resolved));
+        }
+    } // namespace rhi_detail
 
     RHIStatus validate_draw_args(const RHIDrawArgs& args)
     {

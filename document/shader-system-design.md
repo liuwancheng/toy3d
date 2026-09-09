@@ -951,9 +951,12 @@ struct ShaderResourceBinding
     std::string name;
     RHIBindingGroup group;
     RHIResourceBindingType type;
-    std::uint32_t slot;
+    std::uint32_t target_binding;
     std::uint32_t array_count;
     RHIShaderStageFlags stages;
+    std::uint32_t constant_buffer_size;
+    ShaderDataLayoutHash data_layout_hash;
+    std::uint32_t shader_abi_version;
 };
 
 struct ShaderConstantMember
@@ -968,7 +971,9 @@ struct ShaderConstantMember
 };
 ```
 
-还需要记录 constant buffer size、vertex input semantic、compute thread-group size、stage input/output 和 capability requirement。
+constant buffer的data layout hash覆盖ABI version、group、buffer ID、总size和每个member的
+ID/type/offset/size/array stride/matrix stride。还需要记录vertex input semantic、compute
+thread-group size、stage input/output和capability requirement。
 
 Cook 必须拒绝：
 
@@ -1292,7 +1297,14 @@ Toy3d 从锁定 source commit 自行构建 `dxcompiler.dll` 及其他平台 DXC 
 9. ShaderMap reader/cache-hit slice 已完成：v2 reader 严格解析 manifest、mapping、stage reflection/dependencies/binary，限制文件大小和 record count，重算 target binding、reflection、binary、`shader_map_key` 与 `entry_content_hash`。首次发布仍使用 owned staging 与 no-replace rename；已有合法同内容 Entry 和并发发布返回 cache hit，损坏 Entry 或同 key 不同内容诊断失败且不覆盖。测试覆盖真实 reflected Program round-trip、重复/并发 publication、binary/dependency/version/target/profile 损坏和超限 metadata。
 10. ShaderMapEntry Loader slice 已完成代码侧闭环：`engine/runtime/rendercore/shader/` 定义 `ShaderMapLoader`、`ShaderMapProgramData`、运行时一致性校验和 RHI descriptor/object 转换；`ShaderMapEntryLoader` 位于 Runtime RenderCore，Editor 只提交 `ShaderLoadConfig`，不再拥有 Loader 实现或链接 `Toy3dShaderCompilerCore`。`engine/shader/format/` 的中立 `Toy3dShaderFormat` target 统一持有 ShaderMapEntry types、hash、SHA-256 与严格 reader，Compiler 与 Runtime 单向依赖该 contract。test pass 只按完整 `ShaderMapProgramKey` 请求 Program，shader binary、entry point、reflection、content hash 和 `RHIBindingLayoutDesc` 全部来自已验证 Entry；旧裸 `.spv`、手写 reflection/hash/Binding Layout 和 GLSL 构建链已删除。`RHIDevice::create_shader()` 与 `create_binding_layout()` 已迁移到公共 NVI validation 后再进入 backend hook；Vulkan pipeline layout 固定为四个 physical sets。
 11. ShaderMap slice 已完成：进程级 `ShaderMap` 在 `ShaderMapLoader` 与 renderscene 之间按 Shader/Pass/`ShaderPlatform`/permutation 完整身份缓存不可变 `ShaderMapProgram`；`ShaderMapEntryLoader` 与尚未实现的 `ShaderCodeLibraryLoader` 由 Runtime composition root 按 `ShaderLoadMode` 创建，Editor 只选择配置。`ShaderMap` 为 constant member 和独立 resource 建立 `ShaderParameterId` 只读索引，分别返回 `ShaderConstantBinding` 与 `ShaderResourceBinding`；runtime validation 拒绝 platform/permutation 不匹配、越界 constant range、重复 parameter ID 以及 stage/Program layout 不一致。当前同步加载由单线程 bootstrap 驱动，不承诺并发 Loader；未来 Game Thread 加载不可变 CPU Program，Render Thread 只持有其引用并创建 RHI/PSO。
-12. Global+View binding 聚合 slice 已完成代码、产物、自动测试和 Vulkan 运行冒烟闭环：公共 `RHIGraphicsBindings` 以一次 NVI 调用提交完整 logical binding 快照，`RHIBindingSet` 保持单 logical group 所有权；Vulkan 在 draw 前按 pipeline layout materialize physical packet，原子合并 set 0 的 Global+View，并由 command list 保活 descriptor pool/set 和 source sets 到 queue completion。test pass 的 Global/View texture 在最终 SPIR-V 中紧凑映射为 set 0 binding 0/1，Material 继续使用 set 2。公共 validation 允许不同 logical group 在不同 native namespace 复用 target slot，同 group overlap 仍拒绝；Vulkan backend 继续按 physical set 检查冲突。Vulkan runtime 基线同步修正为 Vulkan 1.1，与 SPIR-V 1.3 产物一致。独立 Editor/Vulkan 冒烟已连续两轮完成 draw/present、正常 `WM_CLOSE`、日志刷新与退出码 0，未产生新的 validation warning/error；截图与像素级视觉验收仍由 Renderer 里程碑单独提供。
+12. Logical binding收敛已完成代码侧主路径：`ShaderParameterId`与`ShaderDataLayoutHash`由
+`Toy3dShaderFormat`统一定义，ShaderMapEntry、stage reflection、RHI layout与cache key保存完整
+constant ABI；`RHIBindingSet`改为ID-based、Program-independent的普通frontend对象。draw前由
+Pipeline resolver只选择active values。Vulkan原子聚合Global+View到set 0，使用dynamic uniform
+offset、recording-local packet cache和device-owned分页descriptor pool；View每View只上传并创建
+一个logical set，Object/Pass使用recording-scoped transient uniform page，Material保持persistent
+constant缓存。Vulkan runtime基线仍为Vulkan 1.1、SPIR-V 1.3和最多四个bound sets；本次改动的
+独立validation冒烟结果需在最终验证后补充。
 
 根据 `document/core-infrastructure-design.md`，ShaderMap I/O 依赖的共享文件系统阶段 A/B/C 已完成代码侧闭环：`engine/core/` 已建立独立 `Toy3dFileSystem`，提供注入式 `PlatformFile`、`NativePlatformFile`、`PhysicalPath`、文件错误模型、`VirtualPath`、版本化 mount descriptor 与冻结后只读的 `VirtualFileSystem`。ShaderCompiler 的 CLI、toolchain、DXC temporary output、`ShaderCodeEntry` 与 `ShaderMapEntry` I/O 已迁移到注入接口，include resolver 改为通过 `ShaderSourceProvider` 按需加载规范化 virtual source。Entry publication 使用唯一 owned staging 与 no-replace atomic rename；独立测试覆盖物理 I/O、虚拟路径安全、写入/rename fault injection、同 key 并发 publication/cache hit、真实 DXC/SPIR-V/reflection 和失败不发布。
 

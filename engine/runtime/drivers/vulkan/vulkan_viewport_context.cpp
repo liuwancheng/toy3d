@@ -6,6 +6,7 @@
 #include "drivers/vulkan/vulkan_resource.h"
 #include "drivers/vulkan/vulkan_swapchain.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
+#include "drivers/vulkan/vulkan_descriptor_pool_manager.h"
 
 #include <set>
 #include <string>
@@ -99,11 +100,13 @@ namespace toy3d
     VulkanViewportContext::VulkanViewportContext(const RHIDevice& owner, VkPhysicalDevice physical_device,
                                                  VkDevice device, VkSurfaceKHR surface, std::uint32_t queue_family,
                                                  VulkanQueue& queue, VulkanUploadManager& uploads,
+                                                 VulkanDescriptorPoolManager& descriptors,
                                                  VulkanDeferredDeletionQueue& deletions, RHISurfaceRef rhi_surface,
                                                  RHIViewportContextDesc desc)
         : RHIViewportContext(owner, desc.debug_name), owner_device(owner), vk_physical_device(physical_device),
           vk_device(device), vk_surface(surface), graphics_queue_family(queue_family), graphics_queue(queue),
-          upload_manager(uploads), deletion_queue(deletions), viewport_surface(std::move(rhi_surface)),
+          upload_manager(uploads), descriptor_pool_manager(descriptors), deletion_queue(deletions),
+          viewport_surface(std::move(rhi_surface)),
           viewport_desc(std::move(desc)), resize_pending(true), pending_extent(viewport_desc.extent)
     {
     }
@@ -370,7 +373,8 @@ namespace toy3d
                 RHIErrorCode::InvalidArgument, "Vulkan graphics command contexts require an active viewport frame.");
         }
         return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::success(
-            std::make_unique<VulkanGraphicsCommandContext>(owner_device, vk_device, upload_manager, *this,
+            std::make_unique<VulkanGraphicsCommandContext>(owner_device, vk_device, upload_manager,
+                                                           descriptor_pool_manager, *this,
                                                            frame_slots[current_frame_slot].command_pool,
                                                            active_frame_id));
     }

@@ -233,10 +233,17 @@ namespace toy3d
         for (const RHIBindingLayoutEntry& entry : key.binding_layout.entries)
         {
             hash_enum(seed, entry.group);
-            hash_combine(seed, entry.slot);
+            hash_combine(seed, entry.binding_id);
+            hash_combine(seed, entry.target_binding);
             hash_enum(seed, entry.type);
             hash_enum(seed, entry.stages);
             hash_combine(seed, entry.array_count);
+            hash_combine(seed, entry.data_size);
+            for (std::uint8_t byte : entry.data_layout_hash)
+            {
+                hash_combine(seed, byte);
+            }
+            hash_combine(seed, entry.shader_abi_version);
         }
         hash_enum(seed, key.primitive_topology);
         for (const auto& layout : key.vertex_buffers)

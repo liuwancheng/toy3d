@@ -53,6 +53,9 @@ namespace toy3d::shader
         std::uint32_t register_index = 0;
         std::uint32_t descriptor_set = 0;
         std::uint32_t descriptor_binding = 0;
+        std::uint32_t data_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
         const ActiveBinding* logical_binding = nullptr;
     };
 

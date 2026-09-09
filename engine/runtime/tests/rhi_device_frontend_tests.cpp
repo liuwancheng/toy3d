@@ -139,7 +139,6 @@ namespace
         int shader = 0;
         int binding_layout = 0;
         int sampler = 0;
-        int binding_set = 0;
         int pipeline = 0;
         int fence = 0;
         int context = 0;
@@ -311,12 +310,6 @@ namespace
             return toy3d::RHIResult<toy3d::RHISamplerRef>::success(std::make_shared<toy3d::RHISampler>(*this, desc));
         }
 
-        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(const toy3d::RHIBindingSetDesc& desc) override
-        {
-            ++counts.binding_set;
-            return toy3d::RHIResult<toy3d::RHIBindingSetRef>::success(std::make_shared<toy3d::RHIBindingSet>(desc));
-        }
-
         toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
             const toy3d::RHIGraphicsPipelineDesc& desc) override
         {
@@ -441,9 +434,38 @@ namespace
         check(static_cast<bool>(sampler), "legal sampler must be created");
 
         toy3d::RHIBindingSetDesc set_desc;
-        set_desc.layout = layout.value();
+        set_desc.group = toy3d::RHIBindingGroup::Material;
+        toy3d::RHIBindingValue uniform_value;
+        uniform_value.binding_id = 1u;
+        uniform_value.buffer = buffer.value();
+        uniform_value.buffer_size = 64u;
+        uniform_value.data_layout_hash[0] = 1u;
+        uniform_value.shader_abi_version = 1u;
+        set_desc.bindings.push_back(uniform_value);
         const auto binding_set = device.create_binding_set(set_desc);
         check(static_cast<bool>(binding_set), "legal binding set must be created");
+
+        toy3d::RHIBindingSetDesc canonical_set_desc = set_desc;
+        toy3d::RHIBindingValue earlier_uniform = uniform_value;
+        earlier_uniform.binding_id = 2u;
+        canonical_set_desc.bindings.front().binding_id = 3u;
+        canonical_set_desc.bindings.push_back(earlier_uniform);
+        const auto canonical_set = device.create_binding_set(canonical_set_desc);
+        check(canonical_set && canonical_set.value()->desc().bindings[0].binding_id == 2u &&
+                  canonical_set.value()->desc().bindings[1].binding_id == 3u,
+              "logical binding values must be stored in canonical ID/array order");
+
+        toy3d::RHIBindingSetDesc invalid_set_desc = set_desc;
+        invalid_set_desc.bindings.front().binding_id = 0u;
+        check(!device.create_binding_set(invalid_set_desc), "zero logical binding IDs must be rejected");
+        invalid_set_desc = set_desc;
+        invalid_set_desc.bindings.push_back(invalid_set_desc.bindings.front());
+        check(!device.create_binding_set(invalid_set_desc), "duplicate logical binding ID/array pairs must fail");
+        invalid_set_desc = set_desc;
+        invalid_set_desc.bindings.front().texture_view = texture_view.value();
+        check(!device.create_binding_set(invalid_set_desc), "one logical value must select exactly one resource");
+        invalid_set_desc = {};
+        check(!device.create_binding_set(invalid_set_desc), "empty logical binding sets must be rejected");
 
         toy3d::RHIGraphicsPipelineDesc pipeline_desc;
         pipeline_desc.vertex_shader = vertex_shader.value();
@@ -453,6 +475,62 @@ namespace
         pipeline_desc.color_formats[0] = toy3d::PixelFormat::B8G8R8A8UNorm;
         const auto pipeline = device.create_graphics_pipeline(pipeline_desc);
         check(static_cast<bool>(pipeline), "legal graphics pipeline must be created");
+
+        toy3d::RHIBindingLayoutEntry active_uniform;
+        active_uniform.binding_id = uniform_value.binding_id;
+        active_uniform.group = toy3d::RHIBindingGroup::Material;
+        active_uniform.target_binding = 7u;
+        active_uniform.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        active_uniform.stages = toy3d::RHIShaderStageFlags::Vertex;
+        active_uniform.data_size = 64u;
+        active_uniform.data_layout_hash = uniform_value.data_layout_hash;
+        active_uniform.shader_abi_version = uniform_value.shader_abi_version;
+        toy3d::RHIBindingLayoutDesc active_layout_desc;
+        active_layout_desc.entries.push_back(active_uniform);
+        const auto active_layout = device.create_binding_layout(active_layout_desc);
+        toy3d::RHIGraphicsPipelineDesc active_pipeline_desc = pipeline_desc;
+        active_pipeline_desc.binding_layout = active_layout.value();
+        const auto active_pipeline = device.create_graphics_pipeline(active_pipeline_desc);
+        toy3d::RHIGraphicsBindings active_bindings;
+        active_bindings.material = binding_set.value();
+        const auto resolved = toy3d::rhi_detail::resolve_graphics_bindings(active_pipeline.value(), active_bindings);
+        check(resolved && resolved.value().size() == 1u &&
+                  resolved.value().front().layout.target_binding == active_uniform.target_binding &&
+                  resolved.value().front().value.buffer == buffer.value(),
+              "draw resolution must map logical identity to the active Pipeline target binding");
+        toy3d::RHIBindingLayoutDesc shadow_layout_desc = active_layout_desc;
+        shadow_layout_desc.entries.front().target_binding = 2u;
+        const auto shadow_layout = device.create_binding_layout(shadow_layout_desc);
+        toy3d::RHIGraphicsPipelineDesc shadow_pipeline_desc = pipeline_desc;
+        shadow_pipeline_desc.binding_layout = shadow_layout.value();
+        const auto shadow_pipeline = device.create_graphics_pipeline(shadow_pipeline_desc);
+        const auto shadow_resolved =
+            toy3d::rhi_detail::resolve_graphics_bindings(shadow_pipeline.value(), active_bindings);
+        check(shadow_resolved && shadow_resolved.value().front().layout.target_binding == 2u &&
+                  shadow_resolved.value().front().value.buffer == buffer.value(),
+              "a Shadow-style alternate target mapping must reuse the same logical binding set");
+        toy3d::RHIBindingSetDesc superset_desc = set_desc;
+        toy3d::RHIBindingValue inactive_texture;
+        inactive_texture.binding_id = 99u;
+        inactive_texture.texture_view = texture_view.value();
+        superset_desc.bindings.push_back(inactive_texture);
+        const auto superset_set = device.create_binding_set(superset_desc);
+        active_bindings.material = superset_set.value();
+        const auto resolved_superset =
+            toy3d::rhi_detail::resolve_graphics_bindings(active_pipeline.value(), active_bindings);
+        check(resolved_superset && resolved_superset.value().size() == 1u &&
+                  resolved_superset.value().front().value.binding_id == uniform_value.binding_id,
+              "Pipeline resolution must exclude inactive logical superset resources");
+        toy3d::RHIGraphicsBindings missing_bindings;
+        check(!toy3d::rhi_detail::resolve_graphics_bindings(active_pipeline.value(), missing_bindings),
+              "draw resolution must reject a missing required logical group");
+
+        toy3d::RHIBindingSetDesc mismatched_abi_desc = set_desc;
+        mismatched_abi_desc.bindings.front().shader_abi_version += 1u;
+        const auto mismatched_abi_set = device.create_binding_set(mismatched_abi_desc);
+        active_bindings.material = mismatched_abi_set.value();
+        check(!toy3d::rhi_detail::resolve_graphics_bindings(active_pipeline.value(), active_bindings),
+              "draw resolution must reject an active uniform with a different data ABI");
 
         const auto fence = device.create_gpu_fence("frontend fence");
         check(static_cast<bool>(fence), "legal GPU fence must be created");
@@ -465,8 +543,8 @@ namespace
         check(static_cast<bool>(viewport), "legal viewport must be created");
 
         check(device.counts.buffer == 1 && device.counts.texture == 1 && device.counts.buffer_view == 1 &&
-                  device.counts.texture_view == 1 && device.counts.shader == 2 && device.counts.binding_layout == 1 &&
-                  device.counts.sampler == 1 && device.counts.binding_set == 1 && device.counts.pipeline == 1 &&
+                  device.counts.texture_view == 1 && device.counts.shader == 2 && device.counts.binding_layout == 3 &&
+                  device.counts.sampler == 1 && device.counts.pipeline == 3 &&
                   device.counts.fence == 1 && device.counts.context == 1 && device.counts.viewport == 1,
               "each legal frontend path must call its backend hook exactly once");
     }
@@ -493,12 +571,21 @@ namespace
                   second.counts.texture_view == 0,
               "cross-device texture view must fail before backend");
 
-        const auto foreign_layout = first.create_binding_layout({});
+        toy3d::RHIBufferDesc uniform_desc;
+        uniform_desc.size = 64u;
+        uniform_desc.usage = toy3d::RHIResourceUsage::UniformBuffer;
+        const auto foreign_uniform = first.create_buffer(uniform_desc);
         toy3d::RHIBindingSetDesc set_desc;
-        set_desc.layout = foreign_layout.value();
+        toy3d::RHIBindingValue foreign_value;
+        foreign_value.binding_id = 1u;
+        foreign_value.buffer = foreign_uniform.value();
+        foreign_value.buffer_size = uniform_desc.size;
+        foreign_value.data_layout_hash[0] = 1u;
+        foreign_value.shader_abi_version = 1u;
+        set_desc.bindings.push_back(foreign_value);
         const auto cross_device_set = second.create_binding_set(set_desc);
-        check(!cross_device_set && second.counts.binding_set == 0,
-              "cross-device binding layout must fail before backend");
+        check(!cross_device_set && cross_device_set.status().code() == toy3d::RHIErrorCode::InvalidArgument,
+              "cross-device logical binding resources must fail in the frontend");
 
         check(!second.create_gpu_fence("") && second.counts.fence == 0,
               "empty GPU fence name must fail before backend");

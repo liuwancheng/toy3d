@@ -1,6 +1,6 @@
 #pragma once
 
-#include "format/sha256.h"
+#include "format/shader_binding_identity.h"
 
 #include <cstdint>
 #include <optional>
@@ -10,7 +10,6 @@
 
 namespace toy3d::shader
 {
-    using ShaderParameterId = std::uint64_t;
     using ShaderVariantId = std::uint64_t;
     using ShaderEnumValueId = std::uint64_t;
 
@@ -19,8 +18,8 @@ namespace toy3d::shader
     constexpr std::uint32_t shader_permutation_version = 1;
     constexpr std::uint32_t toy_shader_abi_version = 1;
     constexpr std::uint32_t shader_parameter_id_version = 1;
-    constexpr std::uint32_t d3d_binding_mapping_version = 1;
-    constexpr std::uint32_t vulkan_binding_mapping_version = 1;
+    constexpr std::uint32_t d3d_binding_mapping_version = 2;
+    constexpr std::uint32_t vulkan_binding_mapping_version = 2;
     constexpr std::uint32_t max_constant_buffer_size = 16u * 1024u;
     constexpr Sha256Hash default_shader_permutation_key = {
         0x7d, 0x45, 0x04, 0x65, 0xce, 0xb4, 0x90, 0x83, 0x70, 0x8a, 0x69, 0x70, 0x82, 0x7f, 0x0e, 0x0b,
@@ -320,6 +319,8 @@ namespace toy3d::shader
         std::uint32_t descriptor_set = 0;
         std::uint32_t descriptor_binding = 0;
         std::uint32_t constant_buffer_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
         std::vector<ReflectedConstantMember> constant_members;
     };
 
@@ -363,6 +364,9 @@ namespace toy3d::shader
         std::uint32_t register_index = 0;
         std::uint32_t descriptor_set = 0;
         std::uint32_t descriptor_binding = 0;
+        std::uint32_t data_size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = 0;
     };
 
     struct ShaderCodeEntry
@@ -394,6 +398,9 @@ namespace toy3d::shader
     // identity without allocating a second copy of reflected member names.
     ShaderParameterId make_shader_parameter_id(BindingGroup group, ShaderParameterCategory category,
                                                std::string_view name);
+    ShaderDataLayoutHash calculate_constant_buffer_data_layout_hash(
+        BindingGroup group, ShaderParameterId buffer_binding_id, std::uint32_t data_size,
+        const std::vector<ReflectedConstantMember>& members, std::uint32_t abi_version = toy_shader_abi_version);
     Sha256Hash calculate_target_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
                                              const std::vector<ShaderMapBinding>& bindings);
     Sha256Hash calculate_shader_stage_reflection_hash(const ShaderStageReflection& reflection);

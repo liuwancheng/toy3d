@@ -26,6 +26,7 @@ namespace toy3d
         std::uint32_t max_texture_array_layers = 1;
         std::uint32_t max_uniform_buffer_size = 1;
         std::uint32_t max_binding_slots_per_group = 1;
+        std::uint32_t max_dynamic_uniform_buffers = 1;
         std::uint32_t max_sampler_anisotropy = 1;
         std::uint64_t uniform_buffer_offset_alignment = 1;
         std::uint64_t storage_buffer_offset_alignment = 1;

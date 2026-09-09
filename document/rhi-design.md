@@ -502,17 +502,22 @@ enum class RHIBindingGroup : uint8_t
 
 struct RHIBindingLayoutEntry
 {
+    ShaderParameterId binding_id;
     RHIBindingGroup group;
     uint32 target_binding;
     RHIResourceBindingType type;
-    RHIShaderStage stage;
+    RHIShaderStageFlags stages;
     uint32 array_count;
+    uint32 data_size;
+    ShaderDataLayoutHash data_layout_hash;
+    uint32 shader_abi_version;
 };
 ```
 
 Binding resource type 至少包括 uniform buffer、sampled texture、storage texture、sampler、storage buffer。Compute 和 storage binding 可从第一版进入 descriptor，但实际调用受 capability 控制。
 
-每个 entry 只描述一个 stage。同一逻辑参数被多个 stage 使用时生成多个 entry，因此 D3D11/D3D12 可以为不同 stage 保存不同 target binding；Vulkan backend 可在编译 native layout 时合并具有相同 physical set/binding 的 stage visibility。`RHIResourceBindingType` 决定 target register/descriptor class，禁止用一个 `target_binding + stages bitmask` 丢失 per-stage mapping。
+同一逻辑参数在不同 target/stage 的 native mapping由 Shader产物明确记录。`binding_id`与完整
+constant data ABI属于跨 target逻辑身份；`target_binding`只属于当前 target mapping。
 
 ```cpp
 struct RHIGraphicsBindings
@@ -533,7 +538,11 @@ struct RHIGraphicsBindings
 
 `target_binding` 是当前 Shader target record、当前 stage 已编译的 RHI 位置，不是跨 target 的资产级 slot。公共枚举数值不等于 Vulkan set index 或 D3D12 root parameter index。映射只存在于 target-specific binding layout 编译结果中。
 
-`RHIGraphicsBindings` 的五个引用是逻辑数据包；Vulkan backend 在 draw/dispatch 的命令录制阶段、实际 bind 前，根据当前 Global/View pair 获取或构建组合 physical set 0，其他逻辑组分别 materialize 为 set 1..3。command list 保活这些 native set 和其引用资源直到 queue completion；不能推迟到 queue submit 时再改写已经录制的绑定。Pass 不得修改 Material binding，Material 也不得持有 SceneColor、SceneDepth 等 pass resource。Global/View/Pass binding 通常在 pass 开始时绑定，Material/Object binding 按 draw packet 更新。
+`RHIBindingSet` 是按稳定ID索引、与 Program layout解耦的单 group immutable snapshot。draw flush
+使用当前 Pipeline layout解析 active values；Vulkan根据解析结果构造 set 0..3，并以dynamic uniform
+offset复用同一backing page上的descriptor packet。command list只保活active资源、native packet、
+uniform/descriptor pages直到queue completion。Pass不得修改Material binding，Material也不得持有
+SceneColor、SceneDepth等pass resource。
 
 ## 11. Material 系统预留
 
@@ -721,8 +730,8 @@ struct MeshPassDrawList
 ```
 
 Global/View/Pass、Material/Object 按各自 owner 和更新频率准备；每个 command 保存完整 logical
-binding snapshot。同一 View 的 canonical bytes 与 uniform buffer 只准备一次，不同 compatible
-layout 只按需创建轻量 adapter：
+binding snapshot。同一 View 的 canonical bytes、transient uniform slice 与 logical BindingSet
+只准备一次；不同 Pipeline target mapping 在 draw flush中按稳定ID解析，不创建layout adapter：
 
 ```cpp
 for (const MeshPassDrawList& draw_list : draw_lists)

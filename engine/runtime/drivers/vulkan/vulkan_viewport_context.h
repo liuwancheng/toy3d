@@ -20,6 +20,7 @@ namespace toy3d
     class VulkanCommandList;
     class VulkanDeferredDeletionQueue;
     class VulkanQueue;
+    class VulkanDescriptorPoolManager;
     class VulkanRenderPassResources;
     class VulkanSwapchain;
     class VulkanUploadPage;
@@ -55,7 +56,8 @@ namespace toy3d
       public:
         VulkanViewportContext(const RHIDevice& owner, VkPhysicalDevice physical_device, VkDevice device,
                               VkSurfaceKHR surface, std::uint32_t graphics_queue_family, VulkanQueue& graphics_queue,
-                              VulkanUploadManager& upload_manager, VulkanDeferredDeletionQueue& deletion_queue,
+                              VulkanUploadManager& upload_manager, VulkanDescriptorPoolManager& descriptor_pool_manager,
+                              VulkanDeferredDeletionQueue& deletion_queue,
                               RHISurfaceRef rhi_surface, RHIViewportContextDesc desc);
         ~VulkanViewportContext() override;
 
@@ -86,6 +88,7 @@ namespace toy3d
         std::uint32_t graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
         VulkanQueue& graphics_queue;
         VulkanUploadManager& upload_manager;
+        VulkanDescriptorPoolManager& descriptor_pool_manager;
         VulkanDeferredDeletionQueue& deletion_queue;
         RHISurfaceRef viewport_surface;
         RHIViewportContextDesc viewport_desc;

@@ -146,17 +146,23 @@ namespace toy3d::shader
         std::set<ShaderParameterId> binding_ids;
         for (const ShaderMapBinding& binding : entry.bindings)
         {
+            const bool is_constant = binding.category == ShaderParameterCategory::Constant;
             if (binding.binding_id == 0u || binding.name.empty() || static_cast<std::uint32_t>(binding.stages) == 0u ||
                 (static_cast<std::uint32_t>(binding.stages) & ~stage_mask) != 0u || binding.descriptor_set > 3u ||
+                (is_constant && (binding.data_size == 0u || hash_is_zero(binding.data_layout_hash) ||
+                                 binding.shader_abi_version != toy_shader_abi_version)) ||
+                (!is_constant && (binding.data_size != 0u || !hash_is_zero(binding.data_layout_hash) ||
+                                  binding.shader_abi_version != 0u)) ||
                 !binding_ids.insert(binding.binding_id).second ||
                 !native_slots.emplace(binding.descriptor_set, binding.descriptor_binding).second)
             {
                 add_error(result, "ShaderMapEntry contains an invalid mapping record.");
                 return result;
             }
-            stored_layout.bindings.push_back({binding.binding_id, binding.name, binding.group, binding.category,
-                                              binding.stages, binding.register_class, binding.register_index,
-                                              binding.descriptor_set, binding.descriptor_binding, nullptr});
+            stored_layout.bindings.push_back(
+                {binding.binding_id, binding.name, binding.group, binding.category, binding.stages,
+                 binding.register_class, binding.register_index, binding.descriptor_set, binding.descriptor_binding,
+                 binding.data_size, binding.data_layout_hash, binding.shader_abi_version, nullptr});
         }
         if (calculate_target_binding_hash(stored_layout) != entry.target_binding_hash)
         {
@@ -174,9 +180,20 @@ namespace toy3d::shader
                     mapping->group != reflected.group || mapping->category != reflected.category ||
                     !has_stage(mapping->stages, stage.request.stage) ||
                     mapping->descriptor_set != reflected.descriptor_set ||
-                    mapping->descriptor_binding != reflected.descriptor_binding)
+                    mapping->descriptor_binding != reflected.descriptor_binding ||
+                    mapping->data_size != reflected.constant_buffer_size ||
+                    mapping->data_layout_hash != reflected.data_layout_hash ||
+                    mapping->shader_abi_version != reflected.shader_abi_version)
                 {
                     add_error(result, "ShaderMapEntry reflection does not match its mapping.");
+                    return result;
+                }
+                if (reflected.category == ShaderParameterCategory::Constant &&
+                    calculate_constant_buffer_data_layout_hash(
+                        reflected.group, reflected.parameter_id, reflected.constant_buffer_size,
+                        reflected.constant_members, reflected.shader_abi_version) != reflected.data_layout_hash)
+                {
+                    add_error(result, "ShaderMapEntry constant data layout hash is inconsistent.");
                     return result;
                 }
             }
@@ -277,7 +294,8 @@ namespace toy3d::shader
                     << static_cast<std::uint32_t>(binding.group) << '\t' << static_cast<std::uint32_t>(binding.category)
                     << '\t' << static_cast<std::uint32_t>(binding.stages) << '\t'
                     << static_cast<std::uint32_t>(binding.register_class) << '\t' << binding.register_index << '\t'
-                    << binding.descriptor_set << '\t' << binding.descriptor_binding << '\n';
+                    << binding.descriptor_set << '\t' << binding.descriptor_binding << '\t' << binding.data_size
+                    << '\t' << sha256_to_hex(binding.data_layout_hash) << '\t' << binding.shader_abi_version << '\n';
         }
 
         const auto write_text = [&](const std::string& name, const std::string& text)

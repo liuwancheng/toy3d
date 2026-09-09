@@ -7,11 +7,9 @@
 
 namespace toy3d
 {
-    class RHIBindingLayout;
     class RHIBindingSet;
     class RHICommandContext;
     class RHIDevice;
-    class ShaderMapProgram;
 
     // Render-side canonical values for the Object logical Binding Group.
     // The value is copied from PrimitiveSceneProxy state and contains no Game,
@@ -22,6 +20,5 @@ namespace toy3d
     };
 
     RHIResult<std::shared_ptr<RHIBindingSet>> materialize_primitive_uniform_shader_parameters(
-        RHIDevice& device, RHICommandContext& context, const std::shared_ptr<RHIBindingLayout>& binding_layout,
-        const ShaderMapProgram& shader_program, const PrimitiveUniformShaderParameters& parameters);
+        RHIDevice& device, RHICommandContext& context, const PrimitiveUniformShaderParameters& parameters);
 } // namespace toy3d

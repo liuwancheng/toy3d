@@ -20,7 +20,8 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "View uniform preparation context is not owned by the injected device");
         }
-        std::vector<RHIBufferRef> prepared_buffers(view_infos.size());
+        std::vector<RHIUniformBufferSlice> prepared_slices(view_infos.size());
+        std::vector<RHIBindingSetRef> prepared_bindings(view_infos.size());
         for (std::size_t view_index = 0; view_index < view_infos.size(); ++view_index)
         {
             ViewInfo& view_info = view_infos[view_index];
@@ -50,55 +51,34 @@ namespace toy3d
             {
                 continue;
             }
-            if (view_info.view_uniform_buffer())
+            if (view_info.view_binding_set())
             {
-                prepared_buffers[view_index] = view_info.view_uniform_buffer();
+                prepared_slices[view_index] = view_info.view_uniform_slice();
+                prepared_bindings[view_index] = view_info.view_binding_set();
                 continue;
             }
 
-            RHIResult<RHIBufferRef> buffer = create_view_uniform_shader_buffer(
-                device, context, view_info.view_uniform_shader_parameters());
-            if (!buffer)
+            RHIResult<RHIUniformBufferSlice> slice = upload_view_uniform_shader_parameters(
+                context, view_info.view_uniform_shader_parameters());
+            if (!slice)
             {
-                return buffer.status();
+                return slice.status();
             }
-            prepared_buffers[view_index] = std::move(buffer).value();
+            RHIResult<RHIBindingSetRef> binding = create_view_uniform_shader_binding(device, slice.value());
+            if (!binding)
+            {
+                return binding.status();
+            }
+            prepared_slices[view_index] = std::move(slice).value();
+            prepared_bindings[view_index] = std::move(binding).value();
         }
 
         for (std::size_t view_index = 0; view_index < view_infos.size(); ++view_index)
         {
-            view_infos[view_index].publish_view_uniform_buffer(std::move(prepared_buffers[view_index]));
+            view_infos[view_index].publish_view_uniform_resources(std::move(prepared_slices[view_index]),
+                                                                  std::move(prepared_bindings[view_index]));
         }
         return RHIStatus::success();
     }
 
-    RHIResult<RHIBindingSetRef> resolve_view_uniform_binding(RHIDevice& device, const ViewInfo& view_info,
-                                                             const RHIBindingLayoutRef& binding_layout,
-                                                             const ShaderMapProgram& shader_program)
-    {
-        if (!view_info.view_uniform_buffer())
-        {
-            return RHIResult<RHIBindingSetRef>::failure(
-                RHIErrorCode::InvalidArgument, "View uniform buffer was not prepared before mesh-pass preparation");
-        }
-        const RHIStatus schema_status = validate_view_uniform_shader_program(shader_program);
-        if (!schema_status)
-        {
-            return RHIResult<RHIBindingSetRef>::failure(schema_status.code(), schema_status.message());
-        }
-        RHIBindingSetRef cached_binding = view_info.find_view_binding_adapter(binding_layout);
-        if (cached_binding)
-        {
-            return RHIResult<RHIBindingSetRef>::success(std::move(cached_binding));
-        }
-
-        RHIResult<RHIBindingSetRef> binding = create_view_uniform_shader_binding(
-            device, binding_layout, shader_program, view_info.view_uniform_buffer());
-        if (!binding)
-        {
-            return binding;
-        }
-        view_info.add_view_binding_adapter(binding_layout, binding.value());
-        return binding;
-    }
 } // namespace toy3d

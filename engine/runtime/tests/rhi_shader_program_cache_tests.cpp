@@ -164,10 +164,6 @@ namespace
         {
             return unsupported<toy3d::RHISamplerRef>();
         }
-        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(const toy3d::RHIBindingSetDesc&) override
-        {
-            return unsupported<toy3d::RHIBindingSetRef>();
-        }
         toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef> create_graphics_pipeline_impl(
             const toy3d::RHIGraphicsPipelineDesc&) override
         {

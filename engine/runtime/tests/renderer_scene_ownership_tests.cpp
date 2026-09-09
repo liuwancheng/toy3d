@@ -45,6 +45,24 @@ namespace
         return hash;
     }
 
+    void finalize_pass_uniform_binding(toy3d::ShaderMapBinding& binding)
+    {
+        std::vector<toy3d::shader::ReflectedConstantMember> members;
+        members.reserve(binding.constant_members.size());
+        for (const toy3d::ShaderMapBinding::ConstantMember& member : binding.constant_members)
+        {
+            const toy3d::shader::ShaderValueType type =
+                member.type == toy3d::ShaderValueType::Float32x4x4
+                    ? toy3d::shader::ShaderValueType::Float32x4x4
+                    : toy3d::shader::ShaderValueType::Float32;
+            members.push_back({member.parameter_id, member.name, type, member.offset, member.size,
+                               member.array_stride, member.matrix_stride});
+        }
+        binding.data_layout_hash = toy3d::shader::calculate_constant_buffer_data_layout_hash(
+            toy3d::shader::BindingGroup::Pass, binding.parameter_id, binding.constant_buffer_size, members);
+        binding.shader_abi_version = toy3d::shader::toy_shader_abi_version;
+    }
+
     class RendererProgramLoader final : public toy3d::ShaderMapLoader
     {
       public:
@@ -77,7 +95,7 @@ namespace
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/UI/ImGui";
         program.pass_name = "ImGui";
-        program.mapping_version = 1u;
+        program.mapping_version = toy3d::shader::vulkan_binding_mapping_version;
         program.logical_layout_hash = nonzero_hash(10u);
         program.target_binding_hash = nonzero_hash(11u);
         program.pass_template_hash =
@@ -95,6 +113,7 @@ namespace
         constants.constant_buffer_size = 64u;
         constants.constant_members.push_back(
             {10u, "projection", toy3d::ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u});
+        finalize_pass_uniform_binding(constants);
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
@@ -151,7 +170,7 @@ namespace
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/PostProcess/Tonemap";
         program.pass_name = "Tonemap";
-        program.mapping_version = 1u;
+        program.mapping_version = toy3d::shader::vulkan_binding_mapping_version;
         program.logical_layout_hash = nonzero_hash(1u);
         program.target_binding_hash = nonzero_hash(2u);
         program.pass_template_hash =
@@ -168,6 +187,7 @@ namespace
         constants.target_binding = 0u;
         constants.constant_buffer_size = 16u;
         constants.constant_members.push_back({2u, "exposure_ev", toy3d::ShaderValueType::Float32, 0u, 4u, 0u, 0u});
+        finalize_pass_uniform_binding(constants);
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
@@ -560,11 +580,6 @@ namespace
                                                                        "injected Renderer bootstrap sampler failure");
             }
             return toy3d::RHIResult<toy3d::RHISamplerRef>::success(std::make_shared<toy3d::RHISampler>(*this, desc));
-        }
-        toy3d::RHIResult<toy3d::RHIBindingSetRef> create_binding_set_impl(const toy3d::RHIBindingSetDesc&) override
-        {
-            return toy3d::RHIResult<toy3d::RHIBindingSetRef>::failure(toy3d::RHIErrorCode::Unsupported,
-                                                                      "unused test binding set");
         }
         toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence_impl(const std::string&) override
         {

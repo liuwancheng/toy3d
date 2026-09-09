@@ -26,6 +26,7 @@ namespace toy3d
     class VulkanRenderPassResources;
     class VulkanTexture;
     class VulkanUploadManager;
+    class VulkanDescriptorPoolManager;
     class VulkanUploadPage;
     class VulkanViewportContext;
 
@@ -131,9 +132,11 @@ namespace toy3d
     {
       public:
         VulkanGraphicsCommandContext(const RHIDevice& owner, VkDevice device, VulkanUploadManager& upload_manager,
+                                     VulkanDescriptorPoolManager& descriptor_pool_manager,
                                      VulkanViewportContext& viewport, VkCommandPool command_pool,
                                      std::uint64_t frame_id);
         VulkanGraphicsCommandContext(const RHIDevice& owner, VkDevice device, VulkanUploadManager& upload_manager,
+                                     VulkanDescriptorPoolManager& descriptor_pool_manager,
                                      std::shared_ptr<VulkanCommandPool> command_pool);
         ~VulkanGraphicsCommandContext() override = default;
 
@@ -141,6 +144,8 @@ namespace toy3d
         RHIStatus transition_resources(const std::vector<RHIResourceTransition>& transitions) override;
         RHIStatus copy_buffer(const RHIBufferCopyDesc& desc) override;
         RHIStatus upload_buffer(const RHIBufferUploadDesc& desc) override;
+        RHIResult<RHIUniformBufferSlice> upload_transient_uniform_data(
+            const RHITransientUniformDataDesc& desc) override;
         RHIStatus copy_texture(const RHITextureCopyDesc& desc) override;
         RHIStatus upload_texture(const RHITextureUploadDesc& desc) override;
         RHIStatus write_gpu_fence(const RHIGPUFenceRef& fence) override;
@@ -169,6 +174,7 @@ namespace toy3d
         const RHIDevice& owner_device;
         VkDevice vk_device = VK_NULL_HANDLE;
         VulkanUploadManager& upload_manager;
+        VulkanDescriptorPoolManager& descriptor_pool_manager;
         VulkanViewportContext* viewport_context = nullptr;
         std::shared_ptr<VulkanCommandPool> owned_command_pool;
         VkCommandPool vk_command_pool = VK_NULL_HANDLE;
@@ -179,9 +185,10 @@ namespace toy3d
         VulkanGraphicsState graphics_state;
         std::array<std::shared_ptr<VulkanBindingPacket>, VulkanBindingLayout::physical_set_count>
             active_binding_packets{};
+        std::unordered_map<std::string, std::shared_ptr<VulkanBindingPacket>> binding_packet_cache;
     };
 
     RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_vulkan_graphics_command_context(
         const RHIDevice& owner, VkDevice device, std::uint32_t graphics_queue_family,
-        VulkanUploadManager& upload_manager);
+        VulkanUploadManager& upload_manager, VulkanDescriptorPoolManager& descriptor_pool_manager);
 } // namespace toy3d

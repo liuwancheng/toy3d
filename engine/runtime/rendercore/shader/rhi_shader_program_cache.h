@@ -22,16 +22,22 @@ namespace toy3d
             std::uint32_t target_binding = 0;
             std::uint32_t array_count = 1;
             std::uint32_t constant_buffer_size = 0;
+            ShaderDataLayoutHash data_layout_hash{};
+            std::uint32_t shader_abi_version = 0;
 
             bool operator==(const Binding& other) const;
         };
 
         struct StageBinding
         {
+            ShaderParameterId parameter_id = 0;
             RHIBindingGroup group = RHIBindingGroup::Material;
             RHIResourceBindingType type = RHIResourceBindingType::UniformBuffer;
             std::uint32_t target_binding = 0;
             std::uint32_t array_count = 1;
+            std::uint32_t data_size = 0;
+            ShaderDataLayoutHash data_layout_hash{};
+            std::uint32_t shader_abi_version = 0;
 
             bool operator==(const StageBinding& other) const;
         };

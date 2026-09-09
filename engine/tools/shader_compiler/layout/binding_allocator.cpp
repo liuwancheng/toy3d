@@ -193,7 +193,8 @@ namespace toy3d::shader
         {
             bindings.push_back({binding.binding_id, binding.name, binding.group, binding.category, binding.stages,
                                 binding.register_class, binding.register_index, binding.descriptor_set,
-                                binding.descriptor_binding});
+                                binding.descriptor_binding, binding.data_size, binding.data_layout_hash,
+                                binding.shader_abi_version});
         }
         return calculate_target_binding_hash(layout.target, layout.mapping_version, bindings);
     }
@@ -265,8 +266,12 @@ namespace toy3d::shader
                     {
                         add_limit_error(result.diagnostics, *binding, "D3D per-stage", required, supported);
                     }
-                    layout.bindings.push_back({binding->binding_id, binding->name, binding->group, binding->category,
-                                               stage, binding_class, count, 0, 0, binding});
+                    const ConstantBufferLayout* constant_buffer = binding->constant_buffer;
+                    layout.bindings.push_back(
+                        {binding->binding_id, binding->name, binding->group, binding->category, stage, binding_class,
+                         count, 0, 0, constant_buffer ? constant_buffer->size : 0u,
+                         constant_buffer ? constant_buffer->data_layout_hash : ShaderDataLayoutHash{},
+                         constant_buffer ? constant_buffer->shader_abi_version : 0u, binding});
                     count = required;
                     const std::uint32_t pipeline_required = ++class_count(pipeline_counts, binding_class);
                     if (pipeline_required > class_limit(limits.pipeline, binding_class))
@@ -337,9 +342,13 @@ namespace toy3d::shader
                                         descriptor_limit(limits.per_stage_descriptors[stage_index], descriptor_class));
                     }
                 }
-                layout.bindings.push_back({binding->binding_id, binding->name, binding->group, binding->category,
-                                           binding->stages, binding_class, auxiliary_register, set, descriptor_binding,
-                                           binding});
+                const ConstantBufferLayout* constant_buffer = binding->constant_buffer;
+                layout.bindings.push_back(
+                    {binding->binding_id, binding->name, binding->group, binding->category, binding->stages,
+                     binding_class, auxiliary_register, set, descriptor_binding,
+                     constant_buffer ? constant_buffer->size : 0u,
+                     constant_buffer ? constant_buffer->data_layout_hash : ShaderDataLayoutHash{},
+                     constant_buffer ? constant_buffer->shader_abi_version : 0u, binding});
             }
         }
 
