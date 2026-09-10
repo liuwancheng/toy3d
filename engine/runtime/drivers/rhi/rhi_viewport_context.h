@@ -68,11 +68,11 @@ namespace toy3d
     // and either end_frame() or abort_frame(). It exposes the current presentation image as a normal
     // render-graph external resource while keeping acquire synchronization
     // private to the viewport implementation.
-    class RHIFrameContext
+    class RHIFrameContext : public RHIObject
     {
       public:
-        RHIFrameContext() = default;
-        virtual ~RHIFrameContext() = default;
+        explicit RHIFrameContext(const RHIDevice& owner) : RHIObject(owner) {}
+        ~RHIFrameContext() override = default;
 
         RHIFrameContext(const RHIFrameContext&) = delete;
         RHIFrameContext& operator=(const RHIFrameContext&) = delete;
@@ -84,7 +84,24 @@ namespace toy3d
 
         // Recording contexts are frame-local so their allocators can be
         // recycled only after this frame's queue completion value has completed.
-        virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context() = 0;
+        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context()
+        {
+            RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> result = create_graphics_command_context_impl();
+            if (!result)
+            {
+                return result;
+            }
+            if (!result.value() || !result.value()->is_owned_by(*owner_device()))
+            {
+                return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::failure(
+                    RHIErrorCode::BackendFailure,
+                    "Frame context returned no graphics context or one created by another device.");
+            }
+            return result;
+        }
+
+      protected:
+        virtual RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context_impl() = 0;
     };
 
     // Owns the presentation lifecycle for one native surface. RenderScene
@@ -102,7 +119,33 @@ namespace toy3d
         RHIViewportContext(const RHIViewportContext&) = delete;
         RHIViewportContext& operator=(const RHIViewportContext&) = delete;
 
-        virtual RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() = 0;
+        RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame()
+        {
+            RHIResult<std::unique_ptr<RHIFrameContext>> result = begin_frame_impl();
+            if (!result)
+            {
+                return result;
+            }
+            RHIFrameContext* frame = result.value().get();
+            const bool valid_frame = frame != nullptr && frame->is_owned_by(*owner_device()) &&
+                                     frame->present_texture() && frame->present_view() &&
+                                     frame->present_texture()->is_owned_by(*owner_device()) &&
+                                     frame->present_view()->is_owned_by(*owner_device()) &&
+                                     frame->present_view()->texture() == frame->present_texture();
+            if (valid_frame)
+            {
+                return result;
+            }
+
+            const RHIStatus recovery = abort_frame(std::move(result).value());
+            if (!recovery && !rhi_is_recoverable_viewport_status(recovery))
+            {
+                return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(recovery.code(), recovery.message());
+            }
+            return RHIResult<std::unique_ptr<RHIFrameContext>>::failure(
+                RHIErrorCode::BackendFailure,
+                "Viewport backend returned an incomplete frame or presentation resources from another device.");
+        }
 
         // Outer success is the business-submit truth. Presentation status is
         // reported separately because present cannot roll submitted work back.
@@ -118,5 +161,8 @@ namespace toy3d
         // Resize is deferred until a later begin_frame() can safely replace
         // all in-flight presentation images.
         virtual RHIStatus request_resize(const Extent& extent) = 0;
+
+      protected:
+        virtual RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame_impl() = 0;
     };
 } // namespace toy3d

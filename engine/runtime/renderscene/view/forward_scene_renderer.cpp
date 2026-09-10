@@ -25,22 +25,16 @@ namespace toy3d
                                                         RHIGraphicsCommandContext& context,
                                                         SceneRenderTargets& scene_render_targets)
     {
-        const bool scene_targets_complete =
-            scene_render_targets.scene_color_texture() && scene_render_targets.scene_color_view() &&
-            scene_render_targets.scene_color_shader_resource_view() && scene_render_targets.scene_depth_texture() &&
-            scene_render_targets.scene_depth_view() && scene_render_targets.scene_depth_shader_resource_view();
-        const bool scene_targets_owned = scene_targets_complete &&
-                                         scene_render_targets.scene_color_texture()->is_owned_by(device) &&
-                                         scene_render_targets.scene_color_view()->is_owned_by(device) &&
-                                         scene_render_targets.scene_color_shader_resource_view()->is_owned_by(device) &&
-                                         scene_render_targets.scene_depth_texture()->is_owned_by(device) &&
-                                         scene_render_targets.scene_depth_view()->is_owned_by(device) &&
-                                         scene_render_targets.scene_depth_shader_resource_view()->is_owned_by(device);
-        if (!scene_targets_owned)
+        const bool scene_targets_complete = scene_render_targets.scene_color_texture() &&
+                                            scene_render_targets.scene_color_view() &&
+                                            scene_render_targets.scene_color_shader_resource_view() &&
+                                            scene_render_targets.scene_depth_texture() &&
+                                            scene_render_targets.scene_depth_view() &&
+                                            scene_render_targets.scene_depth_shader_resource_view();
+        if (!scene_targets_complete)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Forward scene passes require complete SceneRenderTargets owned by the injected device.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Forward scene passes require complete SceneRenderTargets.");
         }
         if (!init_views())
         {

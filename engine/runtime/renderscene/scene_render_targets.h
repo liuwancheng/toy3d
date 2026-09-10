@@ -45,6 +45,7 @@ namespace toy3d
         RHITextureRef scene_depth_texture_;
         RHITextureViewRef scene_depth_view_;
         RHITextureViewRef scene_depth_shader_resource_view_;
+        const RHIDevice* owning_device_ = nullptr;
         RHIAccess scene_color_access_ = RHIAccess::Common;
         RHIAccess scene_depth_access_ = RHIAccess::Common;
     };

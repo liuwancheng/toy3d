@@ -24,7 +24,7 @@ namespace toy3d
     } // namespace
 
     VulkanQueue::VulkanQueue(const RHIDevice& owner, VkDevice device, VkQueue queue, VulkanUploadManager& manager)
-        : owner_device(owner), vk_device(device), vk_queue(queue), upload_manager(manager)
+        : RHIQueue(owner), owner_device(owner), vk_device(device), vk_queue(queue), upload_manager(manager)
     {
     }
 
@@ -114,11 +114,6 @@ namespace toy3d
             {
                 return RHIResult<RHISubmitResult>::failure(RHIErrorCode::InvalidArgument,
                                                            "Vulkan queue requires Vulkan command lists.");
-            }
-            if (!vulkan_command_list->is_owned_by(owner_device))
-            {
-                return RHIResult<RHISubmitResult>::failure(
-                    RHIErrorCode::InvalidArgument, "Vulkan queue received a command list created by another device.");
             }
             if (!vulkan_command_list->is_device_level())
             {

@@ -27,6 +27,8 @@ namespace
     class RecordingQueue final : public toy3d::RHIQueue
     {
       public:
+        using toy3d::RHIQueue::RHIQueue;
+
         toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
         toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
@@ -55,34 +57,37 @@ namespace
         explicit RecordingContext(const toy3d::RHIDevice& owner) : RHIGraphicsCommandContext(owner) {}
 
         toy3d::RHIStatus begin_recording(const std::string&) override { return unsupported(); }
-        toy3d::RHIStatus transition_resources(const std::vector<toy3d::RHIResourceTransition>&) override
+        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
         {
-            return unsupported();
+            ++transition_count;
+            return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus copy_buffer(const toy3d::RHIBufferCopyDesc&) override { return unsupported(); }
-        toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc&) override { return unsupported(); }
-        toy3d::RHIStatus copy_texture(const toy3d::RHITextureCopyDesc&) override { return unsupported(); }
-        toy3d::RHIStatus upload_texture(const toy3d::RHITextureUploadDesc&) override { return unsupported(); }
-        toy3d::RHIStatus write_gpu_fence(const toy3d::RHIGPUFenceRef&) override { return unsupported(); }
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override { return unsupported(); }
+        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc&) override { return unsupported(); }
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override { return unsupported(); }
+        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override { return unsupported(); }
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override { return unsupported(); }
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
             return toy3d::RHIResult<toy3d::RHICommandListRef>::failure(toy3d::RHIErrorCode::Unsupported,
                                                                        "Recording fake does not execute commands.");
         }
-        toy3d::RHIStatus begin_render_pass(const toy3d::RHIRenderPassDesc&) override { return unsupported(); }
+        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc&) override { return unsupported(); }
         toy3d::RHIStatus end_render_pass() override { return unsupported(); }
-        toy3d::RHIStatus set_graphics_pipeline(const toy3d::RHIGraphicsPipelineRef&) override { return unsupported(); }
+        toy3d::RHIStatus set_graphics_pipeline_impl(const toy3d::RHIGraphicsPipelineRef&) override { return unsupported(); }
         toy3d::RHIStatus set_viewport(const toy3d::RHIViewport&) override { return unsupported(); }
         toy3d::RHIStatus set_scissor(const toy3d::RHIRect&) override { return unsupported(); }
         toy3d::RHIStatus set_blend_constants(const toy3d::vec4&) override { return unsupported(); }
         toy3d::RHIStatus set_stencil_reference(std::uint8_t) override { return unsupported(); }
-        toy3d::RHIStatus set_vertex_buffers(const std::vector<toy3d::RHIVertexBufferBinding>&) override
+        toy3d::RHIStatus set_vertex_buffers_impl(const std::vector<toy3d::RHIVertexBufferBinding>&) override
         {
             return unsupported();
         }
-        toy3d::RHIStatus set_index_buffer(const toy3d::RHIIndexBufferBinding&) override { return unsupported(); }
+        toy3d::RHIStatus set_index_buffer_impl(const toy3d::RHIIndexBufferBinding&) override { return unsupported(); }
         toy3d::RHIStatus draw(const toy3d::RHIDrawArgs&) override { return unsupported(); }
         toy3d::RHIStatus draw_indexed(const toy3d::RHIDrawIndexedArgs&) override { return unsupported(); }
+
+        int transition_count = 0;
 
       protected:
         toy3d::RHIStatus bind_graphics_bindings_impl(const toy3d::RHIGraphicsBindings&) override
@@ -106,8 +111,12 @@ namespace
         {
         }
 
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame_impl() override
         {
+            if (next_frame)
+            {
+                return toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>>::success(std::move(next_frame));
+            }
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>>::failure(
                 toy3d::RHIErrorCode::Unsupported, "Recording fake has no presentation frames.");
         }
@@ -119,14 +128,44 @@ namespace
         }
         toy3d::RHIStatus abort_frame(std::unique_ptr<toy3d::RHIFrameContext>) override
         {
-            return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
-                                             "Recording fake has no presentation frames.");
+            ++abort_count;
+            return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus request_resize(const toy3d::Extent&) override
         {
             return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
                                              "Recording fake has no presentation frames.");
         }
+
+        std::unique_ptr<toy3d::RHIFrameContext> next_frame;
+        int abort_count = 0;
+    };
+
+    class RecordingFrame final : public toy3d::RHIFrameContext
+    {
+      public:
+        RecordingFrame(const toy3d::RHIDevice& owner, toy3d::RHITextureRef texture, toy3d::RHITextureViewRef view,
+                       std::unique_ptr<toy3d::RHIGraphicsCommandContext> context = nullptr)
+            : RHIFrameContext(owner), texture_(std::move(texture)), view_(std::move(view)),
+              context_(std::move(context))
+        {
+        }
+
+        const toy3d::RHITextureRef& present_texture() const override { return texture_; }
+        const toy3d::RHITextureViewRef& present_view() const override { return view_; }
+        toy3d::Extent extent() const override { return {1u, 1u}; }
+
+      protected:
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
+        create_graphics_command_context_impl() override
+        {
+            return toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::success(std::move(context_));
+        }
+
+      private:
+        toy3d::RHITextureRef texture_;
+        toy3d::RHITextureViewRef view_;
+        std::unique_ptr<toy3d::RHIGraphicsCommandContext> context_;
     };
 
     struct HookCounts
@@ -147,7 +186,7 @@ namespace
     class RecordingDevice final : public toy3d::RHIDevice
     {
       public:
-        RecordingDevice()
+        RecordingDevice() : queue(*this)
         {
             device_capabilities.compute_dispatch = true;
             device_capabilities.storage_resources = true;
@@ -633,6 +672,92 @@ namespace
               "unsupported graphics context result must be preserved");
     }
 
+    void test_command_frontend_rejects_cross_device_resources()
+    {
+        RecordingDevice first;
+        RecordingDevice second;
+        initialize(first);
+        initialize(second);
+
+        toy3d::RHIBufferDesc buffer_desc;
+        buffer_desc.size = 16u;
+        buffer_desc.usage = toy3d::RHIResourceUsage::CopyDestination;
+        const auto local_buffer = first.create_buffer(buffer_desc);
+        const auto foreign_buffer = second.create_buffer(buffer_desc);
+        auto context_result = first.create_graphics_command_context();
+        auto* context = context_result ? dynamic_cast<RecordingContext*>(context_result.value().get()) : nullptr;
+        check(local_buffer && foreign_buffer && context != nullptr, "command frontend test setup must succeed");
+        if (!local_buffer || !foreign_buffer || context == nullptr)
+        {
+            return;
+        }
+
+        toy3d::RHIResourceTransition transition;
+        transition.resource = foreign_buffer.value();
+        transition.before = toy3d::RHIAccess::Common;
+        transition.after = toy3d::RHIAccess::CopyDestination;
+        const toy3d::RHIStatus rejected = context->transition_resources({transition});
+        check(!rejected && rejected.code() == toy3d::RHIErrorCode::InvalidArgument &&
+                  context->transition_count == 0,
+              "cross-device command resources must fail before the backend hook");
+
+        transition.resource = local_buffer.value();
+        check(context->transition_resources({transition}) && context->transition_count == 1,
+              "valid command resources must enter the backend hook exactly once");
+    }
+
+    void test_viewport_frontend_validates_frame_outputs()
+    {
+        RecordingDevice first;
+        RecordingDevice second;
+        initialize(first);
+        initialize(second);
+
+        toy3d::RHITextureDesc texture_desc;
+        texture_desc.format = toy3d::PixelFormat::B8G8R8A8UNorm;
+        texture_desc.usage = toy3d::RHIResourceUsage::RenderTarget;
+        const auto local_texture = first.create_texture(texture_desc);
+        const auto foreign_texture = second.create_texture(texture_desc);
+        check(local_texture && foreign_texture, "viewport frontend test textures must be created");
+        if (!local_texture || !foreign_texture)
+        {
+            return;
+        }
+        toy3d::RHITextureViewDesc view_desc;
+        view_desc.type = toy3d::RHIResourceViewType::RenderTarget;
+        view_desc.format = texture_desc.format;
+        view_desc.subresources.mip_count = 1u;
+        view_desc.subresources.layer_count = 1u;
+        const auto local_view = first.create_texture_view(local_texture.value(), view_desc);
+        const auto foreign_view = second.create_texture_view(foreign_texture.value(), view_desc);
+        check(local_view && foreign_view, "viewport frontend test views must be created");
+        if (!local_view || !foreign_view)
+        {
+            return;
+        }
+
+        RecordingViewport viewport(first, "FrontendViewport");
+        viewport.next_frame = std::make_unique<RecordingFrame>(first, foreign_texture.value(), foreign_view.value());
+        const auto rejected_frame = viewport.begin_frame();
+        check(!rejected_frame && rejected_frame.status().code() == toy3d::RHIErrorCode::BackendFailure &&
+                  viewport.abort_count == 1,
+              "viewport frontend must reject and recover a frame with foreign presentation resources");
+
+        viewport.next_frame = std::make_unique<RecordingFrame>(
+            first, local_texture.value(), local_view.value(), std::make_unique<RecordingContext>(second));
+        auto frame_result = viewport.begin_frame();
+        check(static_cast<bool>(frame_result), "viewport frontend must accept a complete same-device frame");
+        if (frame_result)
+        {
+            std::unique_ptr<toy3d::RHIFrameContext> frame = std::move(frame_result).value();
+            const auto context_result = frame->create_graphics_command_context();
+            check(!context_result && context_result.status().code() == toy3d::RHIErrorCode::BackendFailure,
+                  "frame frontend must reject a graphics context created by another device");
+            check(static_cast<bool>(viewport.abort_frame(std::move(frame))),
+                  "viewport frontend test frame must be recoverable");
+        }
+    }
+
     void test_admission_and_shutdown_race()
     {
         RecordingDevice device;
@@ -715,6 +840,8 @@ int main()
     test_legal_creation_calls_each_hook_once();
     test_frontend_rejects_invalid_and_cross_device_inputs();
     test_backend_contract_and_unsupported_results();
+    test_command_frontend_rejects_cross_device_resources();
+    test_viewport_frontend_validates_frame_outputs();
     test_admission_and_shutdown_race();
 
     if (failure_count != 0)

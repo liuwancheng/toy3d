@@ -71,10 +71,10 @@ namespace toy3d
         class VulkanFrameContext final : public RHIFrameContext
         {
           public:
-            VulkanFrameContext(VulkanViewportContext& owner, RHITextureRef texture, RHITextureViewRef view,
-                               Extent extent)
-                : viewport(owner), output_texture(std::move(texture)), output_view(std::move(view)),
-                  frame_extent(extent)
+            VulkanFrameContext(const RHIDevice& device, VulkanViewportContext& owner, RHITextureRef texture,
+                               RHITextureViewRef view, Extent extent)
+                : RHIFrameContext(device), viewport(owner), output_texture(std::move(texture)),
+                  output_view(std::move(view)), frame_extent(extent)
             {
             }
 
@@ -82,7 +82,7 @@ namespace toy3d
             const RHITextureViewRef& present_view() const override { return output_view; }
             Extent extent() const override { return frame_extent; }
 
-            RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context() override
+            RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context_impl() override
             {
                 return viewport.create_graphics_command_context();
             }
@@ -122,7 +122,7 @@ namespace toy3d
         swapchain.reset();
     }
 
-    RHIResult<std::unique_ptr<RHIFrameContext>> VulkanViewportContext::begin_frame()
+    RHIResult<std::unique_ptr<RHIFrameContext>> VulkanViewportContext::begin_frame_impl()
     {
         if (!presentation_failure)
         {
@@ -204,7 +204,7 @@ namespace toy3d
         resize_pending = acquire_result.value().presentation_status.code() == RHIErrorCode::Suboptimal;
         const VkExtent2D extent = swapchain->extent();
         return RHIResult<std::unique_ptr<RHIFrameContext>>::success(std::make_unique<VulkanFrameContext>(
-            *this, acquired_image.texture, acquired_image.view, Extent{extent.width, extent.height}));
+            owner_device, *this, acquired_image.texture, acquired_image.view, Extent{extent.width, extent.height}));
     }
 
     RHIResult<RHIFrameEndResult> VulkanViewportContext::end_frame(std::unique_ptr<RHIFrameContext> frame,

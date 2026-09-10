@@ -14,6 +14,12 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "SceneRenderTargets extent must be non-empty.");
         }
+        if (owning_device_ != nullptr && owning_device_ != &device)
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "SceneRenderTargets cannot be reused or retired through a different RHI device.");
+        }
         if (matches(extent))
         {
             return RHIStatus::success();
@@ -39,6 +45,7 @@ namespace toy3d
         scene_color_shader_resource_view_.reset();
         scene_color_view_.reset();
         scene_color_texture_.reset();
+        owning_device_ = nullptr;
         scene_color_access_ = RHIAccess::Common;
         scene_depth_access_ = RHIAccess::Common;
     }
@@ -233,6 +240,7 @@ namespace toy3d
 
         scene_color_access_ = RHIAccess::Common;
         scene_depth_access_ = RHIAccess::Common;
+        owning_device_ = &device;
         return RHIStatus::success();
     }
 } // namespace toy3d

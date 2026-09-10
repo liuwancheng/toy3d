@@ -61,7 +61,6 @@ namespace toy3d
                               RHISurfaceRef rhi_surface, RHIViewportContextDesc desc);
         ~VulkanViewportContext() override;
 
-        RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame() override;
         RHIResult<RHIFrameEndResult> end_frame(std::unique_ptr<RHIFrameContext> frame,
                                                const std::vector<RHICommandListRef>& command_lists) override;
         RHIStatus abort_frame(std::unique_ptr<RHIFrameContext> frame) override;
@@ -69,6 +68,9 @@ namespace toy3d
         VulkanViewportObservation observation_snapshot() const;
 
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context();
+
+      protected:
+        RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame_impl() override;
 
       private:
         RHIStatus recreate_swapchain();

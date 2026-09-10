@@ -16,12 +16,6 @@ namespace toy3d
     RHIStatus create_object_shader_bindings(RHIDevice& device, RHICommandContext& context,
                                             std::vector<ViewInfo>& view_infos)
     {
-        if (!context.is_owned_by(device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Object shader binding context is not owned by the injected device.");
-        }
-
         std::unordered_map<const PrimitiveSceneProxy*, std::unordered_map<std::uint64_t, RHIBindingSetRef>>
             bindings_by_proxy_and_generation;
         for (const ViewInfo& view_info : view_infos)

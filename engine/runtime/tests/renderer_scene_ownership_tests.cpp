@@ -326,7 +326,10 @@ namespace
     class RendererTestCommandList final : public toy3d::RHICommandList
     {
       public:
-        RendererTestCommandList() : RHICommandList("RendererTestCommandList") {}
+        explicit RendererTestCommandList(const toy3d::RHIDevice& owner)
+            : RHICommandList(owner, "RendererTestCommandList")
+        {
+        }
 
         toy3d::RHIStatus begin() { return mark_recording(); }
 
@@ -342,23 +345,23 @@ namespace
 
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
-            command_list_ = std::make_shared<RendererTestCommandList>();
+            command_list_ = std::make_shared<RendererTestCommandList>(*owner_device());
             return command_list_->begin();
         }
 
-        toy3d::RHIStatus transition_resources(const std::vector<toy3d::RHIResourceTransition>&) override
+        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus copy_buffer(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc&) override
+        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data(
+        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data_impl(
             const toy3d::RHITransientUniformDataDesc& desc) override
         {
             if (desc.source.size == 416u)
@@ -374,14 +377,14 @@ namespace
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
-        toy3d::RHIStatus copy_texture(const toy3d::RHITextureCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus upload_texture(const toy3d::RHITextureUploadDesc&) override
+        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus write_gpu_fence(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
 
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
@@ -393,12 +396,12 @@ namespace
             return toy3d::RHIResult<toy3d::RHICommandListRef>::success(std::move(command_list_));
         }
 
-        toy3d::RHIStatus begin_render_pass(const toy3d::RHIRenderPassDesc&) override
+        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus end_render_pass() override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus set_graphics_pipeline(const toy3d::RHIGraphicsPipelineRef&) override
+        toy3d::RHIStatus set_graphics_pipeline_impl(const toy3d::RHIGraphicsPipelineRef&) override
         {
             return toy3d::RHIStatus::success();
         }
@@ -406,11 +409,11 @@ namespace
         toy3d::RHIStatus set_scissor(const toy3d::RHIRect&) override { return toy3d::RHIStatus::success(); }
         toy3d::RHIStatus set_blend_constants(const toy3d::vec4&) override { return toy3d::RHIStatus::success(); }
         toy3d::RHIStatus set_stencil_reference(std::uint8_t) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus set_vertex_buffers(const std::vector<toy3d::RHIVertexBufferBinding>&) override
+        toy3d::RHIStatus set_vertex_buffers_impl(const std::vector<toy3d::RHIVertexBufferBinding>&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus set_index_buffer(const toy3d::RHIIndexBufferBinding&) override
+        toy3d::RHIStatus set_index_buffer_impl(const toy3d::RHIIndexBufferBinding&) override
         {
             return toy3d::RHIStatus::success();
         }
@@ -455,7 +458,10 @@ namespace
     class RendererTestQueue final : public toy3d::RHIQueue
     {
       public:
-        explicit RendererTestQueue(RendererBootstrapFailurePoint failure_point) : failure_point_(failure_point) {}
+        RendererTestQueue(const toy3d::RHIDevice& owner, RendererBootstrapFailurePoint failure_point)
+            : RHIQueue(owner), failure_point_(failure_point)
+        {
+        }
 
         toy3d::RHIQueueCompletionValue completed_value() const override { return completion_value_; }
 
@@ -497,7 +503,7 @@ namespace
       public:
         using toy3d::RHIViewportContext::RHIViewportContext;
 
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame_impl() override
         {
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>>::failure(
                 toy3d::RHIErrorCode::DeviceLost, "injected Renderer lifecycle terminal");
@@ -523,7 +529,7 @@ namespace
       public:
         explicit RendererTestDevice(RendererBootstrapFailurePoint failure_point = RendererBootstrapFailurePoint::None,
                                     std::shared_ptr<RendererDeviceProbe> probe = nullptr, bool fail_shutdown = false)
-            : queue_(failure_point), failure_point_(failure_point), probe_(std::move(probe)),
+            : queue_(*this, failure_point), failure_point_(failure_point), probe_(std::move(probe)),
               fail_shutdown_(fail_shutdown)
         {
             limits_.max_color_attachments = std::numeric_limits<std::uint32_t>::max();

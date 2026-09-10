@@ -30,12 +30,6 @@ namespace toy3d
     RHIStatus create_material_shader_bindings(RHIDevice& device, RHICommandContext& context,
                                               std::vector<ViewInfo>& view_infos)
     {
-        if (!context.is_owned_by(device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Material shader binding context is not owned by the injected device.");
-        }
-
         for (std::size_t view_index = 0; view_index < view_infos.size(); ++view_index)
         {
             ViewInfo& view_info = view_infos[view_index];
@@ -59,7 +53,7 @@ namespace toy3d
                 }
 
                 RHIBindingSetRef binding = std::move(materialized).value();
-                if (!binding || !binding->is_owned_by(device) || binding->group() != RHIBindingGroup::Material)
+                if (!binding || binding->group() != RHIBindingGroup::Material)
                 {
                     mesh_batch.publish_material_binding(nullptr);
                     TOY_LOG_ERROR("Material binding creation skipped View {} MeshBatch {} because the owner "

@@ -141,25 +141,25 @@ namespace toy3d
         ~VulkanGraphicsCommandContext() override = default;
 
         RHIStatus begin_recording(const std::string& debug_name) override;
-        RHIStatus transition_resources(const std::vector<RHIResourceTransition>& transitions) override;
-        RHIStatus copy_buffer(const RHIBufferCopyDesc& desc) override;
-        RHIStatus upload_buffer(const RHIBufferUploadDesc& desc) override;
-        RHIResult<RHIUniformBufferSlice> upload_transient_uniform_data(
+        RHIStatus transition_resources_impl(const std::vector<RHIResourceTransition>& transitions) override;
+        RHIStatus copy_buffer_impl(const RHIBufferCopyDesc& desc) override;
+        RHIStatus upload_buffer_impl(const RHIBufferUploadDesc& desc) override;
+        RHIResult<RHIUniformBufferSlice> upload_transient_uniform_data_impl(
             const RHITransientUniformDataDesc& desc) override;
-        RHIStatus copy_texture(const RHITextureCopyDesc& desc) override;
-        RHIStatus upload_texture(const RHITextureUploadDesc& desc) override;
-        RHIStatus write_gpu_fence(const RHIGPUFenceRef& fence) override;
+        RHIStatus copy_texture_impl(const RHITextureCopyDesc& desc) override;
+        RHIStatus upload_texture_impl(const RHITextureUploadDesc& desc) override;
+        RHIStatus write_gpu_fence_impl(const RHIGPUFenceRef& fence) override;
         RHIResult<RHICommandListRef> finish_recording() override;
 
-        RHIStatus begin_render_pass(const RHIRenderPassDesc& desc) override;
+        RHIStatus begin_render_pass_impl(const RHIRenderPassDesc& desc) override;
         RHIStatus end_render_pass() override;
-        RHIStatus set_graphics_pipeline(const RHIGraphicsPipelineRef& pipeline) override;
+        RHIStatus set_graphics_pipeline_impl(const RHIGraphicsPipelineRef& pipeline) override;
         RHIStatus set_viewport(const RHIViewport& viewport) override;
         RHIStatus set_scissor(const RHIRect& rect) override;
         RHIStatus set_blend_constants(const vec4& constants) override;
         RHIStatus set_stencil_reference(std::uint8_t reference) override;
-        RHIStatus set_vertex_buffers(const std::vector<RHIVertexBufferBinding>& bindings) override;
-        RHIStatus set_index_buffer(const RHIIndexBufferBinding& binding) override;
+        RHIStatus set_vertex_buffers_impl(const std::vector<RHIVertexBufferBinding>& bindings) override;
+        RHIStatus set_index_buffer_impl(const RHIIndexBufferBinding& binding) override;
         RHIStatus draw(const RHIDrawArgs& args) override;
         RHIStatus draw_indexed(const RHIDrawIndexedArgs& args) override;
 

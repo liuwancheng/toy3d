@@ -18,11 +18,11 @@ namespace toy3d
         RHIQueueCompletionValue completion_value = 0;
     };
 
-    class RHIQueue
+    class RHIQueue : public RHIObject
     {
       public:
-        RHIQueue() = default;
-        virtual ~RHIQueue() = default;
+        explicit RHIQueue(const RHIDevice& owner) : RHIObject(owner) {}
+        ~RHIQueue() override = default;
 
         RHIQueue(const RHIQueue&) = delete;
         RHIQueue& operator=(const RHIQueue&) = delete;

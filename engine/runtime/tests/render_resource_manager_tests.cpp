@@ -487,8 +487,10 @@ namespace
 
 int main()
 {
-    struct : toy3d::RHIQueue
+    struct TestQueue final : toy3d::RHIQueue
     {
+        using toy3d::RHIQueue::RHIQueue;
+
         toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
 
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
@@ -501,7 +503,7 @@ int main()
             return toy3d::RHIResult<toy3d::RHISubmitResult>::failure(
                 toy3d::RHIErrorCode::Unsupported, "The resource smoke does not submit command lists");
         }
-    } queue;
+    };
 
     struct : toy3d::RHIDevice
     {
@@ -646,6 +648,7 @@ int main()
 
         toy3d::RHIStatus shutdown_impl() override { return toy3d::RHIStatus::success(); }
     } device;
+    TestQueue queue(device);
     device.queue = &queue;
     device.test_capabilities.storage_resources = true;
     device.test_capabilities.indirect_draw = true;
@@ -671,21 +674,21 @@ int main()
 
         toy3d::RHIStatus begin_recording(const std::string&) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus transition_resources(const std::vector<toy3d::RHIResourceTransition>&) override
+        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus copy_buffer(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc& desc) override
+        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc& desc) override
         {
             const auto* begin = static_cast<const std::uint8_t*>(desc.source.data);
             last_buffer_upload_data.assign(begin, begin + desc.source.size);
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data(
+        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data_impl(
             const toy3d::RHITransientUniformDataDesc& desc) override
         {
             const auto* begin = static_cast<const std::uint8_t*>(desc.source.data);
@@ -699,14 +702,14 @@ int main()
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
-        toy3d::RHIStatus copy_texture(const toy3d::RHITextureCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus upload_texture(const toy3d::RHITextureUploadDesc&) override
+        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus write_gpu_fence(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
 
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
@@ -784,7 +787,7 @@ int main()
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus transition_resources(const std::vector<toy3d::RHIResourceTransition>& transitions) override
+        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>& transitions) override
         {
             transition_count += static_cast<std::uint32_t>(transitions.size());
             if (operations != nullptr)
@@ -794,9 +797,9 @@ int main()
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus copy_buffer(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc& desc) override
+        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc& desc) override
         {
             ++upload_count;
             if (view_uniform_upload_count != nullptr && desc.source.size == 416u)
@@ -827,7 +830,7 @@ int main()
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data(
+        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data_impl(
             const toy3d::RHITransientUniformDataDesc& desc) override
         {
             ++upload_count;
@@ -865,7 +868,7 @@ int main()
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
-        toy3d::RHIStatus copy_texture(const toy3d::RHITextureCopyDesc&) override
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override
         {
             if (operations != nullptr)
             {
@@ -874,13 +877,13 @@ int main()
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus upload_texture(const toy3d::RHITextureUploadDesc&) override
+        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override
         {
             ++texture_upload_count;
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus write_gpu_fence(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
 
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
@@ -897,7 +900,7 @@ int main()
                 toy3d::RHIErrorCode::Unsupported, "The manager smoke does not finish an RHI command list");
         }
 
-        toy3d::RHIStatus begin_render_pass(const toy3d::RHIRenderPassDesc&) override
+        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc&) override
         {
             if (operations != nullptr)
             {
@@ -915,7 +918,7 @@ int main()
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus set_graphics_pipeline(const toy3d::RHIGraphicsPipelineRef&) override
+        toy3d::RHIStatus set_graphics_pipeline_impl(const toy3d::RHIGraphicsPipelineRef&) override
         {
             if (operations != nullptr)
             {
@@ -932,12 +935,12 @@ int main()
 
         toy3d::RHIStatus set_stencil_reference(std::uint8_t) override { return toy3d::RHIStatus::success(); }
 
-        toy3d::RHIStatus set_vertex_buffers(const std::vector<toy3d::RHIVertexBufferBinding>&) override
+        toy3d::RHIStatus set_vertex_buffers_impl(const std::vector<toy3d::RHIVertexBufferBinding>&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus set_index_buffer(const toy3d::RHIIndexBufferBinding&) override
+        toy3d::RHIStatus set_index_buffer_impl(const toy3d::RHIIndexBufferBinding&) override
         {
             return toy3d::RHIStatus::success();
         }
@@ -1235,6 +1238,8 @@ int main()
 
     struct : toy3d::RHIFrameContext
     {
+        using toy3d::RHIFrameContext::RHIFrameContext;
+
         toy3d::RHITextureRef color_texture;
         toy3d::RHITextureViewRef color_view;
         std::unique_ptr<toy3d::RHIGraphicsCommandContext> commands;
@@ -1246,11 +1251,12 @@ int main()
 
         toy3d::Extent extent() const override { return frame_extent; }
 
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>> create_graphics_command_context() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
+        create_graphics_command_context_impl() override
         {
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::success(std::move(commands));
         }
-    } frame_context_shape;
+    } frame_context_shape(device);
 
     struct FrameViewport final : toy3d::RHIViewportContext
     {
@@ -1268,7 +1274,7 @@ int main()
         toy3d::RHIQueueCompletionValue next_completion_value = 42u;
         toy3d::RHIStatus next_presentation_status = toy3d::RHIStatus::success();
 
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame_impl() override
         {
             ++begin_count;
             if (operations != nullptr)
@@ -1321,7 +1327,7 @@ int main()
     const auto make_frame = [&](bool fail_draw_indexed = false,
                                 bool fail_view_uniform_upload = false) -> std::unique_ptr<toy3d::RHIFrameContext>
     {
-        auto frame_context = std::make_unique<decltype(frame_context_shape)>();
+        auto frame_context = std::make_unique<decltype(frame_context_shape)>(device);
         frame_context->color_texture = present_texture;
         frame_context->color_view = present_view;
         auto frame_commands = std::make_unique<decltype(context)>(device);

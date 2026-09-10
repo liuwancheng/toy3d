@@ -45,6 +45,8 @@ namespace
     class TestQueue final : public toy3d::RHIQueue
     {
       public:
+        using toy3d::RHIQueue::RHIQueue;
+
         toy3d::RHIQueueCompletionValue completed_value() const override { return 0u; }
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
         {
@@ -63,7 +65,7 @@ namespace
     class TestDevice final : public toy3d::RHIDevice
     {
       public:
-        TestDevice()
+        TestDevice() : test_queue(*this)
         {
             test_limits.max_uniform_buffer_size = 65536u;
             test_limits.uniform_buffer_offset_alignment = 16u;
@@ -170,19 +172,19 @@ namespace
         bool fail_upload = false;
 
         toy3d::RHIStatus begin_recording(const std::string&) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus transition_resources(const std::vector<toy3d::RHIResourceTransition>&) override
+        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus copy_buffer(const toy3d::RHIBufferCopyDesc&) override
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc&) override
+        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data(
+        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data_impl(
             const toy3d::RHITransientUniformDataDesc& desc) override
         {
             ++upload_count;
@@ -200,15 +202,15 @@ namespace
             result.size = desc.source.size;
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(result));
         }
-        toy3d::RHIStatus copy_texture(const toy3d::RHITextureCopyDesc&) override
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus upload_texture(const toy3d::RHITextureUploadDesc&) override
+        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus write_gpu_fence(const toy3d::RHIGPUFenceRef&) override
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override
         {
             return toy3d::RHIStatus::success();
         }

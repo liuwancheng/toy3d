@@ -380,18 +380,6 @@ namespace toy3d
             return RHIResult<RHIFrameEndResult>::failure(failure.code(), failure.message());
         };
 
-        if (!frame->present_texture() || !frame->present_view())
-        {
-            return abort_recording(
-                RHIStatus::failure(RHIErrorCode::InvalidArgument, "Renderer frame requires present attachments."));
-        }
-        if (!frame->present_texture()->is_owned_by(device) || !frame->present_view()->is_owned_by(device) ||
-            frame->present_view()->texture() != frame->present_texture())
-        {
-            return abort_recording(
-                RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                   "Renderer frame present attachments must belong to its device and current frame."));
-        }
         const Extent frame_extent = frame->extent();
         if (scene_renderer.output_extent() != frame_extent)
         {
@@ -412,11 +400,6 @@ namespace toy3d
             return abort_recording(context_result.status());
         }
         std::unique_ptr<RHIGraphicsCommandContext> context = std::move(context_result).value();
-        if (!context)
-        {
-            return abort_recording(RHIStatus::failure(RHIErrorCode::BackendFailure,
-                                                      "Viewport frame created no graphics command context."));
-        }
 
         status = context->begin_recording("RendererFrame");
         if (!status)

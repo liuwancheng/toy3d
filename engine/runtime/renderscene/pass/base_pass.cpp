@@ -102,17 +102,13 @@ namespace toy3d
             return RHIStatus::success();
         }
 
-        RHIStatus make_render_pass_desc(RHIDevice& device, const BasePassInputs& inputs,
-                                       RHIRenderPassDesc& pass_desc)
+        RHIStatus make_render_pass_desc(const BasePassInputs& inputs, RHIRenderPassDesc& pass_desc)
         {
             if (!inputs.scene_color || !inputs.scene_depth || !inputs.scene_color->texture() ||
-                !inputs.scene_depth->texture() || !inputs.scene_color->is_owned_by(device) ||
-                !inputs.scene_depth->is_owned_by(device) || !inputs.scene_color->texture()->is_owned_by(device) ||
-                !inputs.scene_depth->texture()->is_owned_by(device))
+                !inputs.scene_depth->texture())
             {
-                return RHIStatus::failure(
-                    RHIErrorCode::InvalidArgument,
-                    "Forward Base Pass requires color and depth attachment views owned by the injected device.");
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Forward Base Pass requires color and depth attachment views.");
             }
 
             RHIColorAttachmentDesc color_attachment;
@@ -142,7 +138,7 @@ namespace toy3d
                                       "Forward Base Pass context is not owned by the injected device.");
         }
         RHIRenderPassDesc pass_desc;
-        RHIStatus status = make_render_pass_desc(device, inputs, pass_desc);
+        RHIStatus status = make_render_pass_desc(inputs, pass_desc);
         if (!status)
         {
             return status;

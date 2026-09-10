@@ -75,6 +75,8 @@ namespace
     class TestQueue final : public toy3d::RHIQueue
     {
       public:
+        using toy3d::RHIQueue::RHIQueue;
+
         toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
         toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
@@ -89,7 +91,7 @@ namespace
     class ShaderProgramDevice final : public toy3d::RHIDevice
     {
       public:
-        ShaderProgramDevice()
+        ShaderProgramDevice() : queue(*this)
         {
             device_capabilities.compute_dispatch = true;
             device_limits.max_binding_slots_per_group = 64;

@@ -26,12 +26,16 @@ namespace
     class ConcurrentSubmitCommandList final : public toy3d::RHICommandList
     {
       public:
+        using toy3d::RHICommandList::RHICommandList;
+
         bool close_for_submit() { return mark_recording() && mark_closed(); }
     };
 
     class ConcurrentSubmitQueue final : public toy3d::RHIQueue
     {
       public:
+        using toy3d::RHIQueue::RHIQueue;
+
         toy3d::RHIQueueCompletionValue completed_value() const override { return submit_count.load(); }
 
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
@@ -139,8 +143,17 @@ int main()
     check(tracked_buffer->current_access() == toy3d::RHIAccess::VertexBuffer,
           "successful submit publication must expose the list final access");
 
-    ConcurrentSubmitQueue submit_queue;
-    auto command_list = std::make_shared<ConcurrentSubmitCommandList>();
+    ConcurrentSubmitQueue submit_queue(first_device);
+    auto foreign_command_list = std::make_shared<ConcurrentSubmitCommandList>(second_device);
+    check(foreign_command_list->close_for_submit(), "foreign command list must become closed");
+    toy3d::RHISubmitInfo foreign_submit_info;
+    foreign_submit_info.command_lists.push_back(foreign_command_list);
+    const auto foreign_submit = submit_queue.submit(foreign_submit_info);
+    check(!foreign_submit && foreign_submit.status().code() == toy3d::RHIErrorCode::InvalidArgument &&
+              submit_queue.submit_count.load() == 0,
+          "queue frontend must reject another device's command list before the backend hook");
+
+    auto command_list = std::make_shared<ConcurrentSubmitCommandList>(first_device);
     check(command_list->close_for_submit(), "resource-state test command list must become closed");
     toy3d::RHISubmitInfo submit_info;
     submit_info.command_lists.push_back(command_list);
@@ -174,7 +187,7 @@ int main()
     check(command_list->state() == toy3d::RHICommandListState::Submitted,
           "backend success must publish Submitted without a post-submit failure path");
 
-    ConcurrentSubmitQueue completion_queue;
+    ConcurrentSubmitQueue completion_queue(first_device);
     auto payload_list =
         std::make_shared<toy3d::VulkanCommandList>(first_device, command_pool, VK_NULL_HANDLE, "CompletionPayload");
     check(payload_list->begin_recording_by_context() && payload_list->close_by_context(),

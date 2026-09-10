@@ -21,6 +21,12 @@ namespace toy3d
                 return RHIResult<RHISubmitResult>::failure(RHIErrorCode::InvalidArgument,
                                                            "Queue submission requires closed command lists.");
             }
+            if (!command_list->is_owned_by(*owner_device()))
+            {
+                return RHIResult<RHISubmitResult>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Queue submission cannot use a command list created by another device.");
+            }
             if (!unique_command_lists.emplace(command_list.get()).second)
             {
                 return RHIResult<RHISubmitResult>::failure(RHIErrorCode::InvalidArgument,

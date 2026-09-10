@@ -12,12 +12,6 @@ namespace toy3d
     RHIStatus create_view_shader_bindings(RHIDevice& device, RHICommandContext& context,
                                           std::vector<ViewInfo>& view_infos)
     {
-        if (!context.is_owned_by(device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "View Shader binding context is not owned by the injected device");
-        }
-
         // Validate every canonical CPU value before the first transient upload,
         // so deterministic View failures cannot leave partial GPU work.
         for (const ViewInfo& view_info : view_infos)

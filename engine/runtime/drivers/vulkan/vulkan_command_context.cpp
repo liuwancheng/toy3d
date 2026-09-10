@@ -539,7 +539,8 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::transition_resources(const std::vector<RHIResourceTransition>& transitions)
+    RHIStatus VulkanGraphicsCommandContext::transition_resources_impl(
+        const std::vector<RHIResourceTransition>& transitions)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -553,12 +554,6 @@ namespace toy3d
             {
                 return validation;
             }
-            if (!transition.resource->is_owned_by(owner_device))
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Vulkan transition cannot use a resource created by another device.");
-            }
-
             VulkanAccessState before_state;
             VulkanAccessState after_state;
             RHIStatus state_status = get_vulkan_access_state(transition.before, before_state);
@@ -677,7 +672,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::copy_buffer(const RHIBufferCopyDesc& desc)
+    RHIStatus VulkanGraphicsCommandContext::copy_buffer_impl(const RHIBufferCopyDesc& desc)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -688,11 +683,6 @@ namespace toy3d
         if (!validation)
         {
             return validation;
-        }
-        if (!desc.source->is_owned_by(owner_device) || !desc.destination->is_owned_by(owner_device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Vulkan buffer copy cannot use resources created by another device.");
         }
         const auto source = std::dynamic_pointer_cast<VulkanBuffer>(desc.source);
         const auto destination = std::dynamic_pointer_cast<VulkanBuffer>(desc.destination);
@@ -719,7 +709,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::upload_buffer(const RHIBufferUploadDesc& desc)
+    RHIStatus VulkanGraphicsCommandContext::upload_buffer_impl(const RHIBufferUploadDesc& desc)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -730,11 +720,6 @@ namespace toy3d
         if (!validation)
         {
             return validation;
-        }
-        if (!desc.destination->is_owned_by(owner_device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Vulkan buffer upload cannot use a resource created by another device.");
         }
         const auto destination = std::dynamic_pointer_cast<VulkanBuffer>(desc.destination);
         if (!destination)
@@ -764,7 +749,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIResult<RHIUniformBufferSlice> VulkanGraphicsCommandContext::upload_transient_uniform_data(
+    RHIResult<RHIUniformBufferSlice> VulkanGraphicsCommandContext::upload_transient_uniform_data_impl(
         const RHITransientUniformDataDesc& desc)
     {
         const RHIStatus recording_status = require_recording();
@@ -809,7 +794,7 @@ namespace toy3d
             {std::move(buffer), upload.value().offset, desc.source.size});
     }
 
-    RHIStatus VulkanGraphicsCommandContext::copy_texture(const RHITextureCopyDesc& desc)
+    RHIStatus VulkanGraphicsCommandContext::copy_texture_impl(const RHITextureCopyDesc& desc)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -820,11 +805,6 @@ namespace toy3d
         if (!validation)
         {
             return validation;
-        }
-        if (!desc.source.texture->is_owned_by(owner_device) || !desc.destination.texture->is_owned_by(owner_device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Vulkan texture copy cannot use resources created by another device.");
         }
         const auto source = std::dynamic_pointer_cast<VulkanTexture>(desc.source.texture);
         const auto destination = std::dynamic_pointer_cast<VulkanTexture>(desc.destination.texture);
@@ -883,7 +863,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::upload_texture(const RHITextureUploadDesc& desc)
+    RHIStatus VulkanGraphicsCommandContext::upload_texture_impl(const RHITextureUploadDesc& desc)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -894,11 +874,6 @@ namespace toy3d
         if (!validation)
         {
             return validation;
-        }
-        if (!desc.destination.texture->is_owned_by(owner_device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Vulkan texture upload cannot use a resource created by another device.");
         }
         const auto destination = std::dynamic_pointer_cast<VulkanTexture>(desc.destination.texture);
         if (!destination)
@@ -967,13 +942,8 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::write_gpu_fence(const RHIGPUFenceRef& fence)
+    RHIStatus VulkanGraphicsCommandContext::write_gpu_fence_impl(const RHIGPUFenceRef& fence)
     {
-        if (fence && !fence->is_owned_by(owner_device))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Vulkan command recording cannot use a GPU fence created by another device.");
-        }
         return unsupported_while_recording("Vulkan GPU fence writes are not implemented yet.");
     }
 
@@ -1004,7 +974,7 @@ namespace toy3d
         return RHIResult<RHICommandListRef>::success(recording_command_list);
     }
 
-    RHIStatus VulkanGraphicsCommandContext::begin_render_pass(const RHIRenderPassDesc& desc)
+    RHIStatus VulkanGraphicsCommandContext::begin_render_pass_impl(const RHIRenderPassDesc& desc)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -1047,7 +1017,7 @@ namespace toy3d
             }
             const auto view = std::dynamic_pointer_cast<VulkanTextureView>(attachment.view);
             const auto texture = view ? std::dynamic_pointer_cast<VulkanTexture>(view->texture()) : nullptr;
-            if (!view || !texture || !view->is_owned_by(owner_device) || !texture->is_owned_by(owner_device))
+            if (!view || !texture)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Vulkan render pass requires Vulkan color attachment views.");
@@ -1117,7 +1087,7 @@ namespace toy3d
             const RHIDepthStencilAttachmentDesc& attachment = desc.depth_stencil_attachment;
             const auto view = std::dynamic_pointer_cast<VulkanTextureView>(attachment.view);
             const auto texture = view ? std::dynamic_pointer_cast<VulkanTexture>(view->texture()) : nullptr;
-            if (!view || !texture || !view->is_owned_by(owner_device) || !texture->is_owned_by(owner_device))
+            if (!view || !texture)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Vulkan render pass requires a Vulkan depth-stencil attachment view.");
@@ -1275,7 +1245,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::set_graphics_pipeline(const RHIGraphicsPipelineRef& pipeline)
+    RHIStatus VulkanGraphicsCommandContext::set_graphics_pipeline_impl(const RHIGraphicsPipelineRef& pipeline)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -1288,7 +1258,7 @@ namespace toy3d
                                       "A Vulkan graphics pipeline can be bound only inside an active render pass.");
         }
         const auto vulkan_pipeline = std::dynamic_pointer_cast<VulkanGraphicsPipeline>(pipeline);
-        if (!vulkan_pipeline || !vulkan_pipeline->is_owned_by(owner_device))
+        if (!vulkan_pipeline)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Vulkan graphics command recording requires a Vulkan graphics pipeline.");
@@ -1364,7 +1334,8 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::set_vertex_buffers(const std::vector<RHIVertexBufferBinding>& bindings)
+    RHIStatus VulkanGraphicsCommandContext::set_vertex_buffers_impl(
+        const std::vector<RHIVertexBufferBinding>& bindings)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -1374,8 +1345,7 @@ namespace toy3d
         for (const RHIVertexBufferBinding& binding : bindings)
         {
             const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
-            if (!buffer || !buffer->is_owned_by(owner_device) ||
-                !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::VertexBuffer))
+            if (!buffer || !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::VertexBuffer))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -1391,7 +1361,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::set_index_buffer(const RHIIndexBufferBinding& binding)
+    RHIStatus VulkanGraphicsCommandContext::set_index_buffer_impl(const RHIIndexBufferBinding& binding)
     {
         const RHIStatus status = require_recording();
         if (!status)
@@ -1399,8 +1369,7 @@ namespace toy3d
             return status;
         }
         const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(binding.buffer);
-        if (!buffer || !buffer->is_owned_by(owner_device) ||
-            !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::IndexBuffer))
+        if (!buffer || !EnumHasAnyFlags(buffer->desc().usage, RHIResourceUsage::IndexBuffer))
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
@@ -1421,17 +1390,6 @@ namespace toy3d
         if (!status)
         {
             return status;
-        }
-        const std::array<RHIBindingSetRef, static_cast<std::size_t>(RHIBindingGroup::Max)> sets = {
-            bindings.global, bindings.view, bindings.pass, bindings.material, bindings.object};
-        if (std::any_of(sets.begin(), sets.end(),
-                        [this](const RHIBindingSetRef& binding_set)
-                        {
-                            return binding_set && !binding_set->is_owned_by(owner_device);
-                        }))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Vulkan command recording cannot use logical sets from another device.");
         }
         graphics_state.set_graphics_bindings(bindings);
         return RHIStatus::success();
