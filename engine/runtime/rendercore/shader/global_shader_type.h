@@ -1,5 +1,6 @@
 #pragma once
 
+#include "rendercore/shader/shader_parameters.h"
 #include "rendercore/shader/shader_map_program.h"
 
 #include <cstdint>
@@ -43,6 +44,7 @@ namespace toy3d
         GlobalShaderType(std::string type_name, std::string shader_name, std::string pass_name,
                          ShaderContentHash permutation_key, ProgramKind program_kind,
                          RHIShaderStageFlags required_stages,
+                         const ShaderParametersMetadata& parameter_metadata,
                          std::vector<GlobalShaderBindingRequirement> binding_requirements);
 
         const std::string& type_name() const { return type_name_; }
@@ -51,6 +53,7 @@ namespace toy3d
         const ShaderContentHash& permutation_key() const { return permutation_key_; }
         ProgramKind program_kind() const { return program_kind_; }
         RHIShaderStageFlags required_stages() const { return required_stages_; }
+        const ShaderParametersMetadata& parameter_metadata() const { return parameter_metadata_; }
         const std::vector<GlobalShaderBindingRequirement>& binding_requirements() const
         {
             return binding_requirements_;
@@ -65,6 +68,7 @@ namespace toy3d
         ShaderContentHash permutation_key_{};
         ProgramKind program_kind_ = ProgramKind::Graphics;
         RHIShaderStageFlags required_stages_ = RHIShaderStageFlags::None;
+        ShaderParametersMetadata parameter_metadata_;
         std::vector<GlobalShaderBindingRequirement> binding_requirements_;
     };
 } // namespace toy3d

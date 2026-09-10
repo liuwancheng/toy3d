@@ -19,9 +19,9 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | 线程与 Task Graph | Active | `threading-task-graph-design.md` | 共享线程、Queue、GraphTask、Named Thread 与同步 contract |
 | GameScene | Active | `gamescene-design.md` | World、Actor、Component、注册与 GameScene 生命周期 |
 | Game/Render 多线程与 Renderer Foundation | Active | `../openspec/specs/game-render-framework/` | 1 个总控与 17 个子 capability specs 是当前框架行为 contract 的唯一规范入口；已完成 change 的设计与任务记录位于 OpenSpec archive |
-| RHI | Active | `rhi-design.md` | 公共 RHI、资源、命令、同步、后端与上层边界 |
-| RHI Binding 聚合 | Active | `rhi-binding-aggregation-design.md` | 五个逻辑 Binding Group 的跨后端聚合 contract |
-| Shader 系统 | Active | `shader-system-design.md` | Shader 语言、编译、反射、ShaderMap、Binding ABI 与运行时加载 |
+| RHI | Active | `rhi-design.md` | 公共 RHI、资源、命令、同步、typed parameter/RHI 分层、后端与上层边界 |
+| RHI Binding 聚合 | Active | `rhi-binding-aggregation-design.md` | 五个逻辑 Binding Group、RenderCore typed 创建边界与跨后端聚合 contract |
+| Shader 系统 | Active | `shader-system-design.md` | Shader 语言、编译、generated C++ parameters、反射、ShaderMap、Binding ABI 与运行时加载 |
 | Shader 语言语法 | Active | `shader-language-v1.ebnf` | `.shader` v1 语法定义 |
 | Vulkan 内存 | Active | `vulkan-memory-management.md` | Vulkan/VMA、上传、completion 与延迟销毁；旧实现评估仅是历史背景 |
 | Runtime Console | Active | `console-manager-design.md` | runtime 配置变量、覆盖顺序与生命周期 |

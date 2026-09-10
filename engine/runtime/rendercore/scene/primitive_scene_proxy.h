@@ -2,7 +2,9 @@
 
 #include "math/matrix4.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
-#include "rendercore/shader/primitive_uniform_shader_parameters.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
+
+#include <cstdint>
 
 namespace toy3d
 {
@@ -19,10 +21,8 @@ namespace toy3d
         PrimitiveSceneProxy& operator=(const PrimitiveSceneProxy&) = delete;
 
         const Matrix4& world_transform() const { return world_transform_; }
-        const PrimitiveUniformShaderParameters& primitive_uniform_shader_parameters() const
-        {
-            return primitive_uniform_shader_parameters_;
-        }
+        const ObjectShaderParameters& object_shader_parameters() const { return object_shader_parameters_; }
+        std::uint64_t object_data_generation() const { return object_data_generation_; }
         const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
         bool visible() const { return visible_; }
 
@@ -35,7 +35,8 @@ namespace toy3d
         void update_transform(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible);
 
         Matrix4 world_transform_;
-        PrimitiveUniformShaderParameters primitive_uniform_shader_parameters_;
+        ObjectShaderParameters object_shader_parameters_;
+        std::uint64_t object_data_generation_ = 1u;
         AxisAlignedBounds world_bounds_;
         bool visible_ = true;
     };

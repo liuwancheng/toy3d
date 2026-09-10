@@ -1,7 +1,16 @@
+#include "drivers/vulkan/vulkan_binding_creation.h"
+#include "drivers/vulkan/vulkan_device.h"
+#include "drivers/vulkan/vulkan_resource.h"
 #include "drivers/vulkan/vulkan_type_mapping.h"
 
+#include <array>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -71,6 +80,81 @@ int main()
     require(to_vk_color_write_mask(RHIColorWriteMask::Red | RHIColorWriteMask::Alpha) ==
                 (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_A_BIT),
             "Color write masks must preserve individual channel bits.");
+
+    require(VulkanBindingLayout::physical_set(RHIBindingGroup::Global) == 0u &&
+                VulkanBindingLayout::physical_set(RHIBindingGroup::View) == 0u &&
+                VulkanBindingLayout::physical_set(RHIBindingGroup::Pass) == 1u &&
+                VulkanBindingLayout::physical_set(RHIBindingGroup::Material) == 2u &&
+                VulkanBindingLayout::physical_set(RHIBindingGroup::Object) == 3u,
+            "Five logical groups must retain the Vulkan ES3.1 four-set aggregation.");
+
+    VulkanDevice device;
+    RHIBufferDesc uniform_buffer_desc;
+    uniform_buffer_desc.size = 1024u;
+    uniform_buffer_desc.usage = RHIResourceUsage::UniformBuffer;
+    const auto uniform_buffer = std::make_shared<VulkanBuffer>(
+        device, uniform_buffer_desc, std::shared_ptr<VulkanUploadPage>{}, RHIAccess::UniformBuffer);
+
+    const auto make_resolved_uniform = [&](ShaderParameterId binding_id, RHIBindingGroup group,
+                                           std::uint32_t target_binding, std::uint64_t offset)
+    {
+        rhi_detail::ResolvedBinding resolved;
+        resolved.layout.binding_id = binding_id;
+        resolved.layout.group = group;
+        resolved.layout.target_binding = target_binding;
+        resolved.layout.type = RHIResourceBindingType::UniformBuffer;
+        resolved.layout.stages = RHIShaderStageFlags::Vertex;
+        resolved.layout.data_size = 64u;
+        resolved.value.binding_id = binding_id;
+        resolved.value.buffer = uniform_buffer;
+        resolved.value.buffer_offset = offset;
+        resolved.value.buffer_size = 64u;
+        return resolved;
+    };
+
+    std::vector<rhi_detail::ResolvedBinding> resolved_bindings;
+    resolved_bindings.push_back(make_resolved_uniform(2u, RHIBindingGroup::View, 1u, 512u));
+    resolved_bindings.push_back(make_resolved_uniform(1u, RHIBindingGroup::Global, 0u, 256u));
+    resolved_bindings.push_back(make_resolved_uniform(3u, RHIBindingGroup::Pass, 0u, 0u));
+    resolved_bindings.push_back(make_resolved_uniform(4u, RHIBindingGroup::Material, 0u, 0u));
+    resolved_bindings.push_back(make_resolved_uniform(5u, RHIBindingGroup::Object, 0u, 0u));
+
+    const VulkanPhysicalBindingSources physical_sources =
+        make_vulkan_physical_binding_sources(resolved_bindings);
+    require(physical_sources[0].size() == 2u && physical_sources[0][0].layout.group == RHIBindingGroup::Global &&
+                physical_sources[0][1].layout.group == RHIBindingGroup::View &&
+                physical_sources[1].size() == 1u && physical_sources[2].size() == 1u &&
+                physical_sources[3].size() == 1u,
+            "Vulkan binding planning must aggregate Global and View atomically and populate four physical sets.");
+
+    RHIBindingLayoutDesc binding_layout_desc;
+    for (const rhi_detail::ResolvedBinding& resolved : resolved_bindings)
+    {
+        binding_layout_desc.entries.push_back(resolved.layout);
+    }
+    VulkanBindingLayout binding_layout(
+        device, std::move(binding_layout_desc), VK_NULL_HANDLE,
+        std::array<VkDescriptorSetLayout, VulkanBindingLayout::physical_set_count>{});
+    const std::string first_packet_key =
+        make_vulkan_binding_packet_cache_key(binding_layout, 0u, physical_sources[0]);
+    std::vector<rhi_detail::ResolvedBinding> moved_uniforms = physical_sources[0];
+    moved_uniforms[0].value.buffer_offset = 768u;
+    moved_uniforms[1].value.buffer_offset = 896u;
+    const std::string moved_packet_key =
+        make_vulkan_binding_packet_cache_key(binding_layout, 0u, moved_uniforms);
+    require(first_packet_key == moved_packet_key,
+            "Dynamic uniform offsets must not invalidate the recording-local Vulkan packet cache.");
+
+    const auto first_offsets = collect_vulkan_dynamic_uniform_offsets(physical_sources[0]);
+    const auto moved_offsets = collect_vulkan_dynamic_uniform_offsets(moved_uniforms);
+    require(first_offsets && moved_offsets && first_offsets.value() == std::vector<std::uint32_t>({256u, 512u}) &&
+                moved_offsets.value() == std::vector<std::uint32_t>({768u, 896u}),
+            "Vulkan dynamic uniform offsets must follow physical binding order independently of packet identity.");
+    moved_uniforms[0].value.buffer_offset =
+        static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1u;
+    const auto overflowing_offsets = collect_vulkan_dynamic_uniform_offsets(moved_uniforms);
+    require(!overflowing_offsets && overflowing_offsets.status().code() == RHIErrorCode::Unsupported,
+            "Vulkan dynamic uniform offsets outside the native 32-bit range must remain diagnostic.");
 
     VulkanAccessState access_state;
     require(get_vulkan_access_state(RHIAccess::CopyDestination, access_state) &&

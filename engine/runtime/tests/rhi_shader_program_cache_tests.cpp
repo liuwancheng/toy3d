@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_device.h"
 #include "drivers/rhi/rhi_queue.h"
 #include "rendercore/shader/shader_map.h"
+#include "shader_map_test_utils.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -62,6 +63,7 @@ namespace
         input.scalar_type = toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
         input.component_count = 3;
         program.vertex_inputs.push_back(input);
+        toy3d::tests::finalize_test_program_parameter_schema(program);
         return program;
     }
 
@@ -238,6 +240,7 @@ namespace
         pixel.content_hash[0] = static_cast<std::uint8_t>(hash_seed + 3u);
         data.stages.push_back(pixel);
 
+        toy3d::tests::finalize_test_program_parameter_schema(data);
         ProgramLoader loader(data);
         toy3d::ShaderMap shader_map(loader);
         toy3d::ShaderMapProgramKey key;
@@ -280,6 +283,9 @@ int main()
     changed = source;
     changed.logical_layout_hash[1] = 9;
     check(differs(changed), "logical layout must participate in the key");
+    changed = source;
+    changed.parameter_schema.schema_identity[1] ^= 9u;
+    check(differs(changed), "complete parameter schema identity must participate in the key");
     changed = source;
     changed.target_binding_hash[1] = 9;
     check(differs(changed), "target layout must participate in the key");

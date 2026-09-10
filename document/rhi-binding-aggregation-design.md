@@ -45,6 +45,8 @@ resource/range；set 不持有 Program layout、target binding 或 backend descr
 验证非零 ID、唯一性、单一 resource choice、range、data ABI、owner 与通用 limits，并按
 ID/array 规范化排序后直接创建普通 immutable `RHIBindingSet`，不存在 backend 创建 hook。
 
+业务调用方不直接组装上述 descriptor。ShaderCompiler 生成的强类型 parameters 与不可变 metadata 只由 RenderCore 消费；RenderCore 在完成 group/schema、required resource、数组、owner/type 和 constant ABI 校验后，编码 canonical bytes并一次创建 logical set。generated C++ 类型、metadata、encoder、字段地址和 Material schema 均不得进入公共 RHI 或 backend hook；backend 仍只消费已验证的 logical set 与 Pipeline active layout。
+
 公共图形绑定快照使用五个具名 logical 引用：
 
 ```cpp
@@ -161,6 +163,7 @@ feature。uniform binding 在 Vulkan 中使用 dynamic uniform descriptor；Cook
 
 - 一个 command context 只能由一个线程录制；其 transient physical-packet cache 不共享。
 - immutable Shader、layout、logical binding set 可跨 context 只读共享。
+- generated metadata 是只读值，不注册到进程级可变 registry；五个 logical group 共用编码规则但不共用 owner 协议。View 由 `ViewInfo` 每帧持有一次创建结果，Object 由 frame-local draw data 跨 mesh pass 复用，Material 持有 persistent logical superset，Pass 才使用 transient 创建入口。
 - device 级 descriptor pool manager由 `VulkanDevice`拥有并显式注入 context；共享状态内部同步，
   不是全局单例或 service locator。
 - 公共 descriptor 不包含 `Vk*`、`ID3D11*`、`ID3D12*`、descriptor set index、heap handle
@@ -199,16 +202,10 @@ feature。uniform binding 在 Vulkan 中使用 dynamic uniform descriptor；Cook
 - 三 target reflection parity 只比较逻辑身份、类型、数组、constant layout 和 stage
   visibility。
 
-## 8. 迁移顺序与旧实现删除条件
+## 8. 长期验收条件
 
-1. ShaderFormat产物携带 stable ID、constant data size、完整 layout hash 与 ABI version。
-2. logical BindingSet切换为 ID-based frontend普通对象，删除 layout/slot/backend创建路径。
-3. Pipeline resolver选择 active values，Vulkan物化四个 physical sets。
-4. Global/View/Pass/Object迁移到 recording-scoped transient uniform slice；Material保留持久缓存。
-5. Vulkan接入 dynamic offsets、recording-local packet cache和completion-scoped descriptor pages。
-6. 迁移 BasePass、Tonemap、ImGui和测试，并 clean重编 ShaderMapEntry。
-
-只有以下条件全部满足才删除旧入口：公共 validation 测试、Shader compiler/layout 测试、
-ShaderMap/Loader 测试、Vulkan Global+View 测试、`Toy3dEditor` 构建和实际 Vulkan
-render/present 冒烟均通过。D3D11/D3D12 后端未接入期间，公共接口与测试 contract 必须保留
-其可实现性，不能把 Vulkan physical set 术语带入调用方。
+- RenderScene 正式代码不得生成 parameter ID、填写 Shader ABI/layout hash 或直接构造 `RHIBindingValue`/`RHIBindingSetDesc`；这些组装职责集中在 RenderCore。
+- ShaderFormat 与 ShaderCompiler 不依赖 Runtime，RenderScene 不依赖任一 backend；generated metadata/parameters 类型不得出现在公共 RHI/backend hook。
+- typed parameter 路径不得引入统一 `.prepare()`、`Prepared*`、binder/adapter、通用 Pass 基类、字符串/variant builder或全局可变 metadata registry。
+- Vulkan Global+View 仍原子物化到 physical set 0；D3D11/D3D12 继续从同一 logical snapshot 生成各自 native mapping，公共接口不出现 native slot 语义。
+- command list、active resources、physical packet、uniform/descriptor pages继续按 queue completion 保活；确定性参数错误在 upload/native binding 前失败，RHI/backend 错误保留原始错误码。

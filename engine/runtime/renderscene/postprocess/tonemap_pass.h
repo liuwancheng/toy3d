@@ -13,7 +13,6 @@ namespace toy3d
 {
     class RHIDevice;
     class RHIGraphicsCommandContext;
-    class ShaderMapProgram;
 
     struct TonemapParameters
     {
@@ -52,11 +51,6 @@ namespace toy3d
         bool initialized() const noexcept;
 
       private:
-        const ShaderMapBinding* constant_buffer_binding_ = nullptr;
-        const ShaderMapBinding::ConstantMember* exposure_binding_ = nullptr;
-        const ShaderMapBinding* scene_color_binding_ = nullptr;
-        const ShaderMapBinding* scene_sampler_binding_ = nullptr;
-        const ShaderMapProgram* shader_program_ = nullptr;
         RHIShaderProgramRef rhi_program_;
         RHISamplerRef sampler_;
         RHIGraphicsPipelineRef pipeline_;

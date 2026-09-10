@@ -88,6 +88,9 @@ namespace
         {
             return nullptr;
         }
+        // Material defaults must use the Program's complete Material schema, not its active binding subset.
+        desc.parameter_schema = toy3d::material_parameter_schema_from_shader_schema(
+            desc.shader_program->data().parameter_schema);
         desc.vector4_defaults.emplace(material_constant_id("base_color"), toy3d::vec4(0.85f, 0.32f, 0.18f, 1.0f));
         desc.vector3_defaults.emplace(material_constant_id("directional_light_direction"),
                                       toy3d::vec3(0.35f, -0.55f, -0.75f));
@@ -303,15 +306,14 @@ void CubeApplication::on_tick(double delta_time)
     }
     if (animate_material_ && material_instance_)
     {
-        const toy3d::ShaderParameterId light_direction_id = material_constant_id("directional_light_direction");
-        const toy3d::ShaderParameterId specular_intensity_id = material_constant_id("specular_intensity");
-        const toy3d::ShaderParameterId texture_id = material_texture_id("surface_tint_texture");
         const float light_x = 0.35f * std::sin(time * 0.7f);
-        static_cast<void>(material_instance_->set_vector(light_direction_id, toy3d::vec3(light_x, -0.55f, -0.75f)));
+        // The C++17 string_view setter resolves this stable schema name synchronously, so the literal never crosses threads.
+        static_cast<void>(material_instance_->set_vector("directional_light_direction",
+                                                         toy3d::vec3(light_x, -0.55f, -0.75f)));
         static_cast<void>(
-            material_instance_->set_scalar(specular_intensity_id, 0.25f + 0.20f * (0.5f + 0.5f * std::sin(time))));
+            material_instance_->set_scalar("specular_intensity", 0.25f + 0.20f * (0.5f + 0.5f * std::sin(time))));
         static_cast<void>(material_instance_->set_texture(
-            texture_id, world().frame_number() % 64u < 32u ? warm_tint_texture_ : cool_tint_texture_));
+            "surface_tint_texture", world().frame_number() % 64u < 32u ? warm_tint_texture_ : cool_tint_texture_));
     }
 
     if (!auto_close_)

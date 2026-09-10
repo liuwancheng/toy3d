@@ -311,6 +311,7 @@ namespace toy3d::shader
         entry.permutation_version = permutation.permutation->version;
         entry.permutation_key = permutation.permutation->key;
         entry.mapping_version = final_mapping.layout->mapping_version;
+        entry.parameter_schema = make_shader_parameter_schema(*logical.layout);
         for (const NativeBinding& binding : final_mapping.layout->bindings)
         {
             entry.bindings.push_back({binding.binding_id, binding.name, binding.group, binding.category, binding.stages,

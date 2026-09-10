@@ -1,10 +1,10 @@
 #include "layout/shader_layout.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <limits>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -106,44 +106,6 @@ namespace toy3d::shader
                 return "StorageTexture";
             }
             return "Invalid";
-        }
-
-        template <typename T> void append_integer(std::vector<std::uint8_t>& bytes, T value)
-        {
-            using Unsigned = std::make_unsigned_t<T>;
-            const Unsigned unsigned_value = static_cast<Unsigned>(value);
-            for (std::size_t index = 0; index < sizeof(T); ++index)
-            {
-                bytes.push_back(static_cast<std::uint8_t>(unsigned_value >> (index * 8u)));
-            }
-        }
-
-        template <typename T> void append_enum(std::vector<std::uint8_t>& bytes, T value)
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(value));
-        }
-
-        void append_string(std::vector<std::uint8_t>& bytes, std::string_view value)
-        {
-            append_integer(bytes, static_cast<std::uint32_t>(value.size()));
-            bytes.insert(bytes.end(), value.begin(), value.end());
-        }
-
-        void append_double(std::vector<std::uint8_t>& bytes, double value)
-        {
-            std::uint64_t bits = 0;
-            static_assert(sizeof(bits) == sizeof(value), "double serialization requires 64-bit IEEE storage");
-            std::memcpy(&bits, &value, sizeof(bits));
-            append_integer(bytes, bits);
-        }
-
-        void append_default_value(std::vector<std::uint8_t>& bytes, const DefaultValue& value)
-        {
-            append_enum(bytes, value.kind);
-            append_integer(bytes, static_cast<std::uint32_t>(value.numbers.size()));
-            for (double number : value.numbers)
-                append_double(bytes, number);
-            append_string(bytes, value.text);
         }
 
         std::optional<ShaderValueType> property_value_type(PropertyType type)
@@ -251,54 +213,20 @@ namespace toy3d::shader
             }
         }
 
-        void append_layout(std::vector<std::uint8_t>& bytes, const LogicalShaderLayout& layout, bool include_schema)
-        {
-            append_integer(bytes, toy_shader_abi_version);
-            append_integer(bytes, shader_parameter_id_version);
-            append_integer(bytes, static_cast<std::uint32_t>(layout.constant_buffers.size()));
-            for (const ConstantBufferLayout& buffer : layout.constant_buffers)
-            {
-                append_enum(bytes, buffer.group);
-                append_integer(bytes, buffer.size);
-                append_integer(bytes, static_cast<std::uint32_t>(buffer.members.size()));
-                for (const ShaderConstantMember& member : buffer.members)
-                {
-                    append_integer(bytes, member.parameter_id);
-                    append_string(bytes, member.name);
-                    append_enum(bytes, member.type);
-                    append_integer(bytes, member.offset);
-                    append_integer(bytes, member.size);
-                    append_integer(bytes, member.array_count);
-                    append_integer(bytes, member.array_stride);
-                    append_integer(bytes, member.matrix_stride);
-                    if (include_schema)
-                    {
-                        append_integer(bytes, static_cast<std::uint32_t>(member.default_value.size()));
-                        bytes.insert(bytes.end(), member.default_value.begin(), member.default_value.end());
-                    }
-                }
-            }
-            append_integer(bytes, static_cast<std::uint32_t>(layout.resources.size()));
-            for (const ShaderResourceParameter& resource : layout.resources)
-            {
-                append_integer(bytes, resource.parameter_id);
-                append_string(bytes, resource.name);
-                append_enum(bytes, resource.group);
-                append_enum(bytes, resource.category);
-                append_enum(bytes, resource.resource_kind);
-                append_enum(bytes, resource.element_type);
-                append_integer(bytes, resource.array_count);
-                if (include_schema)
-                {
-                    append_default_value(bytes, resource.default_value);
-                }
-            }
-        }
-
         void add_error(std::vector<Diagnostic>& diagnostics, DiagnosticCode code, const SourceLocation& location,
                        std::string message)
         {
             diagnostics.push_back({DiagnosticSeverity::Error, code, location, std::move(message)});
+        }
+
+        void canonicalize_declared_inputs(BindingGroup group, std::vector<ConstantMemberInput>& inputs)
+        {
+            std::sort(inputs.begin(), inputs.end(),
+                      [group](const ConstantMemberInput& left, const ConstantMemberInput& right)
+                      {
+                          return make_shader_parameter_id(group, ShaderParameterCategory::Constant, left.name) <
+                                 make_shader_parameter_id(group, ShaderParameterCategory::Constant, right.name);
+                      });
         }
     } // namespace
 
@@ -434,16 +362,8 @@ namespace toy3d::shader
         // View and Object constants are engine-owned canonical schemas. Keep
         // them in every logical layout so HLSL usage, rather than a Shader-name
         // special case, determines whether either group becomes active.
-        const std::vector<ConstantMemberInput> view_inputs = {
-            {"toy_view", ShaderValueType::Float32x4x4},
-            {"toy_projection", ShaderValueType::Float32x4x4},
-            {"toy_view_projection", ShaderValueType::Float32x4x4},
-            {"toy_inverse_view", ShaderValueType::Float32x4x4},
-            {"toy_inverse_projection", ShaderValueType::Float32x4x4},
-            {"toy_inverse_view_projection", ShaderValueType::Float32x4x4},
-            {"toy_camera_position", ShaderValueType::Float32x3},
-            {"toy_camera_direction", ShaderValueType::Float32x3}};
-        ConstantBufferPackResult view_buffer = pack_constant_buffer(BindingGroup::View, view_inputs);
+        const ShaderParameterGroupInput view_input = builtin_shader_parameter_input(BindingGroup::View);
+        ConstantBufferPackResult view_buffer = pack_constant_buffer(view_input.group, view_input.constant_members);
         result.diagnostics.insert(result.diagnostics.end(), view_buffer.diagnostics.begin(),
                                   view_buffer.diagnostics.end());
         if (view_buffer.layout)
@@ -451,7 +371,8 @@ namespace toy3d::shader
             layout.constant_buffers.push_back(std::move(*view_buffer.layout));
         }
 
-        std::vector<ConstantMemberInput> material_inputs;
+        ShaderParameterGroupInput material_input;
+        material_input.group = BindingGroup::Material;
         for (const Property& property : asset.properties)
         {
             const auto value_type = property_value_type(property.type);
@@ -472,7 +393,7 @@ namespace toy3d::shader
                     add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.default_value.location,
                               "Range property default must be within its declared bounds.");
                 }
-                material_inputs.push_back({property.name, *value_type, 1u, property.location});
+                material_input.constant_members.push_back({property.name, *value_type, 1u, property.location});
             }
             else if (property.type == PropertyType::Texture2D || property.type == PropertyType::TextureCube)
             {
@@ -498,9 +419,10 @@ namespace toy3d::shader
                 }
             }
         }
-        if (!material_inputs.empty())
+        if (!material_input.constant_members.empty())
         {
-            ConstantBufferPackResult packed = pack_constant_buffer(BindingGroup::Material, material_inputs);
+            canonicalize_declared_inputs(material_input.group, material_input.constant_members);
+            ConstantBufferPackResult packed = pack_constant_buffer(material_input.group, material_input.constant_members);
             result.diagnostics.insert(result.diagnostics.end(), packed.diagnostics.begin(), packed.diagnostics.end());
             if (packed.layout)
             {
@@ -518,7 +440,8 @@ namespace toy3d::shader
             }
         }
 
-        std::vector<ConstantMemberInput> pass_inputs;
+        ShaderParameterGroupInput pass_input;
+        pass_input.group = BindingGroup::Pass;
         for (const Parameter& parameter : asset.parameters)
         {
             const std::uint32_t expected_count = value_component_count(parameter.type);
@@ -536,11 +459,12 @@ namespace toy3d::shader
                 add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
                           "Parameter '" + parameter.name + "' default must be finite.");
             }
-            pass_inputs.push_back({parameter.name, parameter.type, 1u, parameter.location});
+            pass_input.constant_members.push_back({parameter.name, parameter.type, 1u, parameter.location});
         }
-        if (!pass_inputs.empty())
+        if (!pass_input.constant_members.empty())
         {
-            ConstantBufferPackResult packed = pack_constant_buffer(BindingGroup::Pass, pass_inputs);
+            canonicalize_declared_inputs(pass_input.group, pass_input.constant_members);
+            ConstantBufferPackResult packed = pack_constant_buffer(pass_input.group, pass_input.constant_members);
             result.diagnostics.insert(result.diagnostics.end(), packed.diagnostics.begin(), packed.diagnostics.end());
             if (packed.layout)
             {
@@ -558,8 +482,8 @@ namespace toy3d::shader
             }
         }
 
-        const std::vector<ConstantMemberInput> object_inputs = {{"toy_object_to_world", ShaderValueType::Float32x4x4}};
-        ConstantBufferPackResult object_buffer = pack_constant_buffer(BindingGroup::Object, object_inputs);
+        const ShaderParameterGroupInput object_input = builtin_shader_parameter_input(BindingGroup::Object);
+        ConstantBufferPackResult object_buffer = pack_constant_buffer(object_input.group, object_input.constant_members);
         result.diagnostics.insert(result.diagnostics.end(), object_buffer.diagnostics.begin(),
                                   object_buffer.diagnostics.end());
         if (object_buffer.layout)
@@ -636,28 +560,64 @@ namespace toy3d::shader
             return result;
         }
 
-        std::vector<std::uint8_t> schema_bytes;
-        append_layout(schema_bytes, layout, true);
-        append_integer(schema_bytes, static_cast<std::uint32_t>(asset.properties.size()));
-        for (const Property& property : asset.properties)
-        {
-            append_string(schema_bytes, property.name);
-            append_string(schema_bytes, property.display_name);
-            append_enum(schema_bytes, property.type);
-            append_integer(schema_bytes, static_cast<std::uint8_t>(property.range_min.has_value()));
-            if (property.range_min)
-                append_double(schema_bytes, *property.range_min);
-            append_integer(schema_bytes, static_cast<std::uint8_t>(property.range_max.has_value()));
-            if (property.range_max)
-                append_double(schema_bytes, *property.range_max);
-            append_default_value(schema_bytes, property.default_value);
-        }
-        layout.parameter_schema_hash = sha256(schema_bytes);
-        std::vector<std::uint8_t> logical_bytes;
-        append_layout(logical_bytes, layout, false);
-        layout.logical_layout_hash = sha256(logical_bytes);
+        std::sort(layout.constant_buffers.begin(), layout.constant_buffers.end(),
+                  [](const ConstantBufferLayout& left, const ConstantBufferLayout& right)
+                  { return left.group < right.group; });
+        const ShaderParameterSchema schema = make_shader_parameter_schema(layout);
+        layout.parameter_schema_hash = schema.schema_identity;
+        layout.logical_layout_hash = schema.logical_layout_hash;
         result.layout = std::move(layout);
         return result;
+    }
+
+    ShaderParameterSchema make_shader_parameter_schema(const LogicalShaderLayout& layout)
+    {
+        ShaderParameterSchema schema;
+        for (const ConstantBufferLayout& input : layout.constant_buffers)
+        {
+            ShaderParameterConstantBufferSchema buffer;
+            buffer.binding_id = input.binding_id;
+            buffer.name = std::string("toy_") + group_name(input.group) + "_data";
+            std::transform(buffer.name.begin(), buffer.name.end(), buffer.name.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+            buffer.group = input.group;
+            buffer.size = input.size;
+            buffer.data_layout_hash = input.data_layout_hash;
+            buffer.shader_abi_version = input.shader_abi_version;
+            for (const ShaderConstantMember& input_member : input.members)
+            {
+                buffer.members.push_back({input_member.parameter_id,
+                                          input_member.name,
+                                          input_member.type,
+                                          input_member.offset,
+                                          input_member.size,
+                                          input_member.array_count,
+                                          input_member.array_stride,
+                                          input_member.matrix_stride,
+                                          input_member.default_value});
+            }
+            schema.constant_buffers.push_back(std::move(buffer));
+        }
+        for (const ShaderResourceParameter& input : layout.resources)
+        {
+            ShaderParameterResourceSchema resource;
+            resource.parameter_id = input.parameter_id;
+            resource.name = input.name;
+            resource.group = input.group;
+            resource.category = input.category;
+            resource.resource_kind = input.resource_kind;
+            resource.element_type = input.element_type;
+            resource.array_count = input.array_count;
+            if (input.default_value.kind == DefaultValueKind::String)
+                resource.default_value_kind = ShaderParameterDefaultValueKind::String;
+            else if (input.default_value.kind == DefaultValueKind::Identifier)
+                resource.default_value_kind = ShaderParameterDefaultValueKind::Identifier;
+            resource.default_value = input.default_value.text;
+            schema.resources.push_back(std::move(resource));
+        }
+        schema.logical_layout_hash = calculate_shader_parameter_logical_layout_hash(schema);
+        schema.schema_identity = calculate_shader_parameter_schema_identity(schema);
+        return schema;
     }
 
     ActiveLayoutResult build_active_layout(const LogicalShaderLayout& logical_layout,

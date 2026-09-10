@@ -1,6 +1,7 @@
 #include "format/shader_map_entry.h"
 
 #include <algorithm>
+#include <set>
 #include <type_traits>
 #include <vector>
 
@@ -154,6 +155,289 @@ namespace toy3d::shader
             append_integer(bytes, member->matrix_stride);
         }
         return sha256(bytes);
+    }
+
+    namespace
+    {
+        void append_shader_parameter_schema(std::vector<std::uint8_t>& bytes, const ShaderParameterSchema& schema,
+                                            bool include_defaults)
+        {
+            if (include_defaults)
+                append_integer(bytes, schema.generated_format_version);
+            append_integer(bytes, schema.shader_abi_version);
+            append_integer(bytes, schema.parameter_id_version);
+            append_integer(bytes, static_cast<std::uint32_t>(schema.constant_buffers.size()));
+            for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
+            {
+                append_enum(bytes, buffer.group);
+                if (include_defaults)
+                {
+                    append_integer(bytes, buffer.binding_id);
+                    append_string(bytes, buffer.name);
+                    bytes.insert(bytes.end(), buffer.data_layout_hash.begin(), buffer.data_layout_hash.end());
+                    append_integer(bytes, buffer.shader_abi_version);
+                }
+                append_integer(bytes, buffer.size);
+                append_integer(bytes, static_cast<std::uint32_t>(buffer.members.size()));
+                for (const ShaderParameterConstantMemberSchema& member : buffer.members)
+                {
+                    append_integer(bytes, member.parameter_id);
+                    append_string(bytes, member.name);
+                    append_enum(bytes, member.type);
+                    append_integer(bytes, member.offset);
+                    append_integer(bytes, member.size);
+                    append_integer(bytes, member.array_count);
+                    append_integer(bytes, member.array_stride);
+                    append_integer(bytes, member.matrix_stride);
+                    if (include_defaults)
+                    {
+                        append_integer(bytes, static_cast<std::uint32_t>(member.default_value.size()));
+                        bytes.insert(bytes.end(), member.default_value.begin(), member.default_value.end());
+                    }
+                }
+            }
+            append_integer(bytes, static_cast<std::uint32_t>(schema.resources.size()));
+            for (const ShaderParameterResourceSchema& resource : schema.resources)
+            {
+                append_integer(bytes, resource.parameter_id);
+                append_string(bytes, resource.name);
+                append_enum(bytes, resource.group);
+                append_enum(bytes, resource.category);
+                append_enum(bytes, resource.resource_kind);
+                append_enum(bytes, resource.element_type);
+                append_integer(bytes, resource.array_count);
+                if (include_defaults)
+                {
+                    append_enum(bytes, resource.default_value_kind);
+                    append_string(bytes, resource.default_value);
+                }
+            }
+        }
+
+        const ShaderParameterConstantBufferSchema* find_schema_buffer(const ShaderParameterSchema& schema,
+                                                                       ShaderParameterId id)
+        {
+            const auto found = std::find_if(schema.constant_buffers.begin(), schema.constant_buffers.end(),
+                                            [&](const ShaderParameterConstantBufferSchema& buffer)
+                                            { return buffer.binding_id == id; });
+            return found == schema.constant_buffers.end() ? nullptr : &*found;
+        }
+
+        const ShaderParameterResourceSchema* find_schema_resource(const ShaderParameterSchema& schema,
+                                                                   ShaderParameterId id)
+        {
+            const auto found = std::find_if(schema.resources.begin(), schema.resources.end(),
+                                            [&](const ShaderParameterResourceSchema& resource)
+                                            { return resource.parameter_id == id; });
+            return found == schema.resources.end() ? nullptr : &*found;
+        }
+
+        bool resource_kind_matches_category(ResourceKind kind, ShaderParameterCategory category)
+        {
+            switch (kind)
+            {
+            case ResourceKind::Texture2D:
+            case ResourceKind::Texture2DArray:
+            case ResourceKind::Texture3D:
+            case ResourceKind::TextureCube:
+            case ResourceKind::Texture2DMS:
+                return category == ShaderParameterCategory::SampledTexture;
+            case ResourceKind::Sampler:
+            case ResourceKind::ComparisonSampler:
+                return category == ShaderParameterCategory::Sampler;
+            case ResourceKind::Buffer:
+            case ResourceKind::ByteAddressBuffer:
+            case ResourceKind::StructuredBuffer:
+                return category == ShaderParameterCategory::ReadOnlyBuffer;
+            case ResourceKind::RWBuffer:
+            case ResourceKind::RWByteAddressBuffer:
+            case ResourceKind::RWStructuredBuffer:
+                return category == ShaderParameterCategory::StorageBuffer;
+            case ResourceKind::RWTexture2D:
+            case ResourceKind::RWTexture2DArray:
+            case ResourceKind::RWTexture3D:
+                return category == ShaderParameterCategory::StorageTexture;
+            }
+            return false;
+        }
+    } // namespace
+
+    Sha256Hash calculate_shader_parameter_schema_identity(const ShaderParameterSchema& schema)
+    {
+        std::vector<std::uint8_t> bytes;
+        append_shader_parameter_schema(bytes, schema, true);
+        return sha256(bytes);
+    }
+
+    Sha256Hash calculate_shader_parameter_logical_layout_hash(const ShaderParameterSchema& schema)
+    {
+        std::vector<std::uint8_t> bytes;
+        append_shader_parameter_schema(bytes, schema, false);
+        return sha256(bytes);
+    }
+
+    Sha256Hash calculate_shader_parameter_group_identity(const ShaderParameterSchema& schema, BindingGroup group)
+    {
+        ShaderParameterSchema group_schema;
+        group_schema.generated_format_version = schema.generated_format_version;
+        group_schema.shader_abi_version = schema.shader_abi_version;
+        group_schema.parameter_id_version = schema.parameter_id_version;
+        for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
+        {
+            if (buffer.group == group)
+                group_schema.constant_buffers.push_back(buffer);
+        }
+        for (const ShaderParameterResourceSchema& resource : schema.resources)
+        {
+            if (resource.group == group)
+                group_schema.resources.push_back(resource);
+        }
+        std::vector<std::uint8_t> bytes;
+        append_enum(bytes, group);
+        append_shader_parameter_schema(bytes, group_schema, true);
+        return sha256(bytes);
+    }
+
+    bool validate_shader_parameter_schema(const ShaderParameterSchema& schema, std::string& error)
+    {
+        if (schema.generated_format_version != shader_parameters_generated_format_version ||
+            schema.shader_abi_version != toy_shader_abi_version ||
+            schema.parameter_id_version != shader_parameter_id_version ||
+            schema.schema_identity != calculate_shader_parameter_schema_identity(schema) ||
+            schema.logical_layout_hash != calculate_shader_parameter_logical_layout_hash(schema))
+        {
+            error = "Shader parameter schema has an unsupported version or mismatched identity.";
+            return false;
+        }
+        std::set<ShaderParameterId> identities;
+        std::set<BindingGroup> constant_groups;
+        for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
+        {
+            if (buffer.binding_id == 0u || buffer.name.empty() || buffer.size == 0u ||
+                buffer.shader_abi_version != schema.shader_abi_version || buffer.members.empty() ||
+                !identities.insert(buffer.binding_id).second || !constant_groups.insert(buffer.group).second)
+            {
+                error = "Shader parameter schema contains an invalid constant buffer.";
+                return false;
+            }
+            std::vector<ReflectedConstantMember> reflected_members;
+            for (const ShaderParameterConstantMemberSchema& member : buffer.members)
+            {
+                if (member.parameter_id == 0u || member.name.empty() || member.size == 0u || member.array_count == 0u ||
+                    member.offset > buffer.size || member.size > buffer.size - member.offset ||
+                    (!member.default_value.empty() && member.default_value.size() != member.size) ||
+                    !identities.insert(member.parameter_id).second)
+                {
+                    error = "Shader parameter schema contains an invalid constant member.";
+                    return false;
+                }
+                reflected_members.push_back({member.parameter_id, member.name, member.type, member.offset, member.size,
+                                             member.array_stride, member.matrix_stride});
+            }
+            if (calculate_constant_buffer_data_layout_hash(buffer.group, buffer.binding_id, buffer.size,
+                                                           reflected_members, buffer.shader_abi_version) !=
+                buffer.data_layout_hash)
+            {
+                error = "Shader parameter schema constant ABI identity is inconsistent.";
+                return false;
+            }
+        }
+        for (const ShaderParameterResourceSchema& resource : schema.resources)
+        {
+            if (resource.parameter_id == 0u || resource.name.empty() || resource.array_count == 0u ||
+                resource.category == ShaderParameterCategory::Constant ||
+                !resource_kind_matches_category(resource.resource_kind, resource.category) ||
+                static_cast<std::uint32_t>(resource.default_value_kind) >
+                    static_cast<std::uint32_t>(ShaderParameterDefaultValueKind::Identifier) ||
+                (resource.default_value_kind == ShaderParameterDefaultValueKind::None &&
+                 !resource.default_value.empty()) ||
+                (resource.default_value_kind != ShaderParameterDefaultValueKind::None &&
+                 resource.default_value.empty()) ||
+                !identities.insert(resource.parameter_id).second)
+            {
+                error = "Shader parameter schema contains an invalid resource.";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool validate_reflected_bindings_are_schema_subset(const ShaderParameterSchema& schema,
+                                                       const std::vector<ReflectedBinding>& bindings,
+                                                       std::string& error)
+    {
+        for (const ReflectedBinding& binding : bindings)
+        {
+            if (binding.category == ShaderParameterCategory::Constant)
+            {
+                const ShaderParameterConstantBufferSchema* buffer = find_schema_buffer(schema, binding.parameter_id);
+                if (buffer == nullptr || buffer->name != binding.name || buffer->group != binding.group ||
+                    buffer->size != binding.constant_buffer_size ||
+                    buffer->data_layout_hash != binding.data_layout_hash ||
+                    buffer->shader_abi_version != binding.shader_abi_version ||
+                    buffer->members.size() != binding.constant_members.size())
+                {
+                    error = "Program reflected constant binding is not part of its complete parameter schema.";
+                    return false;
+                }
+                for (std::size_t index = 0; index < buffer->members.size(); ++index)
+                {
+                    const ShaderParameterConstantMemberSchema& expected = buffer->members[index];
+                    const ReflectedConstantMember& actual = binding.constant_members[index];
+                    if (expected.parameter_id != actual.parameter_id || expected.name != actual.name ||
+                        expected.type != actual.type || expected.offset != actual.offset || expected.size != actual.size ||
+                        expected.array_stride != actual.array_stride ||
+                        expected.matrix_stride != actual.matrix_stride)
+                    {
+                        error = "Program reflected constant layout differs from its complete parameter schema.";
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                const ShaderParameterResourceSchema* resource = find_schema_resource(schema, binding.parameter_id);
+                if (resource == nullptr || resource->name != binding.name || resource->group != binding.group ||
+                    resource->category != binding.category || !binding.resource_kind ||
+                    resource->resource_kind != *binding.resource_kind || resource->array_count != binding.array_count)
+                {
+                    error = "Program reflected resource binding is not part of its complete parameter schema.";
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    bool validate_active_bindings_are_schema_subset(const ShaderParameterSchema& schema,
+                                                    const std::vector<ShaderMapBinding>& bindings,
+                                                    std::string& error)
+    {
+        for (const ShaderMapBinding& binding : bindings)
+        {
+            if (binding.category == ShaderParameterCategory::Constant)
+            {
+                const ShaderParameterConstantBufferSchema* buffer = find_schema_buffer(schema, binding.binding_id);
+                if (buffer == nullptr || buffer->name != binding.name || buffer->group != binding.group ||
+                    buffer->size != binding.data_size || buffer->data_layout_hash != binding.data_layout_hash ||
+                    buffer->shader_abi_version != binding.shader_abi_version)
+                {
+                    error = "Program active constant binding is not part of its complete parameter schema.";
+                    return false;
+                }
+            }
+            else
+            {
+                const ShaderParameterResourceSchema* resource = find_schema_resource(schema, binding.binding_id);
+                if (resource == nullptr || resource->name != binding.name || resource->group != binding.group ||
+                    resource->category != binding.category)
+                {
+                    error = "Program active resource binding is not part of its complete parameter schema.";
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     ShaderStageFlags operator|(ShaderStageFlags left, ShaderStageFlags right)
@@ -342,6 +626,8 @@ namespace toy3d::shader
         append_enum(bytes, entry.profile);
         append_integer(bytes, entry.mapping_version);
         bytes.insert(bytes.end(), entry.logical_layout_hash.begin(), entry.logical_layout_hash.end());
+        bytes.insert(bytes.end(), entry.parameter_schema.schema_identity.begin(),
+                     entry.parameter_schema.schema_identity.end());
         bytes.insert(bytes.end(), entry.target_binding_hash.begin(), entry.target_binding_hash.end());
         const Sha256Hash pass_state_hash = calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
         bytes.insert(bytes.end(), pass_state_hash.begin(), pass_state_hash.end());

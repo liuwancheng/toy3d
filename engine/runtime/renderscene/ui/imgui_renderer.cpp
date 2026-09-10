@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstring>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -13,25 +12,26 @@
 #include "drivers/rhi/rhi_queue.h"
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/shader_map.h"
+#include "shader_parameters/toy3d_ui_imgui.generated.h"
 
 namespace toy3d
 {
     const GlobalShaderType& imgui_global_shader_type()
     {
+        static const ImGuiPassParameters parameters;
+        const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
         static const GlobalShaderType type(
             "ImGuiGlobalShader", "Toy3d/UI/ImGui", "ImGui", shader::default_shader_permutation_key,
             GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel,
+            metadata,
             {GlobalShaderBindingRequirement(
-                 shader::make_shader_parameter_id(shader::BindingGroup::Pass, shader::ShaderParameterCategory::Constant,
-                                                  ""),
+                 metadata.constant_buffer.binding_id,
                  RHIBindingGroup::Pass, RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Vertex),
              GlobalShaderBindingRequirement(
-                 shader::make_shader_parameter_id(shader::BindingGroup::Pass,
-                                                  shader::ShaderParameterCategory::SampledTexture, "font_texture"),
+                 metadata.resources[0u].parameter_id,
                  RHIBindingGroup::Pass, RHIResourceBindingType::SampledTexture, 1, RHIShaderStageFlags::Pixel),
              GlobalShaderBindingRequirement(
-                 shader::make_shader_parameter_id(shader::BindingGroup::Pass, shader::ShaderParameterCategory::Sampler,
-                                                  "font_sampler"),
+                 metadata.resources[1u].parameter_id,
                  RHIBindingGroup::Pass, RHIResourceBindingType::Sampler, 1, RHIShaderStageFlags::Pixel)});
         return type;
     }
@@ -40,52 +40,16 @@ namespace toy3d
     {
         const GlobalShaderTypeRegistration imgui_global_shader_registration(imgui_global_shader_type());
 
-        const ShaderMapBinding* find_binding(const ShaderMapProgram& program, const char* name,
-                                             RHIResourceBindingType type)
-        {
-            for (const ShaderMapBinding& binding : program.data().bindings)
-            {
-                if (binding.group == RHIBindingGroup::Pass && binding.type == type && binding.name == name)
-                {
-                    return &binding;
-                }
-            }
-            return nullptr;
-        }
-
-        const ShaderMapBinding::ConstantMember* find_member(const ShaderMapBinding& binding, const char* name)
-        {
-            for (const ShaderMapBinding::ConstantMember& member : binding.constant_members)
-            {
-                if (member.name == name)
-                    return &member;
-            }
-            return nullptr;
-        }
-
-        void write_projection(const ImGuiDrawData& draw_data, std::uint8_t* destination)
+        Matrix4 make_projection(const ImGuiDrawData& draw_data)
         {
             const float left = draw_data.display_position[0];
             const float right = left + draw_data.display_size[0];
             const float top = draw_data.display_position[1];
             const float bottom = top + draw_data.display_size[1];
-            const float matrix[16] = {2.0F / (right - left),
-                                      0.0F,
-                                      0.0F,
-                                      0.0F,
-                                      0.0F,
-                                      2.0F / (top - bottom),
-                                      0.0F,
-                                      0.0F,
-                                      0.0F,
-                                      0.0F,
-                                      0.5F,
-                                      0.0F,
-                                      (right + left) / (left - right),
-                                      (top + bottom) / (bottom - top),
-                                      0.5F,
-                                      1.0F};
-            std::memcpy(destination, matrix, sizeof(matrix));
+            return Matrix4(Vector4(2.0F / (right - left), 0.0F, 0.0F, 0.0F),
+                           Vector4(0.0F, 2.0F / (top - bottom), 0.0F, 0.0F),
+                           Vector4(0.0F, 0.0F, 0.5F, 0.0F),
+                           Vector4((right + left) / (left - right), (top + bottom) / (bottom - top), 0.5F, 1.0F));
         }
 
         bool make_scissor(const ImGuiDrawCommand& command, const ImGuiDrawData& data, const ImGuiPassTarget& target,
@@ -144,22 +108,6 @@ namespace toy3d
         }
         const ShaderMapProgramRef& shader_program = found.program;
         const ShaderMapProgramData& data = shader_program->data();
-
-        const ShaderMapBinding* constant_buffer =
-            find_binding(*shader_program, "toy_pass_data", RHIResourceBindingType::UniformBuffer);
-        const ShaderMapBinding* font_texture =
-            find_binding(*shader_program, "font_texture", RHIResourceBindingType::SampledTexture);
-        const ShaderMapBinding* font_sampler =
-            find_binding(*shader_program, "font_sampler", RHIResourceBindingType::Sampler);
-        const ShaderMapBinding::ConstantMember* projection =
-            constant_buffer != nullptr ? find_member(*constant_buffer, "projection") : nullptr;
-        if (constant_buffer == nullptr || font_texture == nullptr || font_sampler == nullptr || projection == nullptr ||
-            projection->type != ShaderValueType::Float32x4x4 || projection->size != sizeof(float) * 16u ||
-            projection->offset + projection->size > constant_buffer->constant_buffer_size)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "ImGui ShaderMap Program does not match the required Pass binding schema.");
-        }
 
         RHIResult<RHIShaderProgramRef> created_program = shader_program_cache.find_or_create(shader_program);
         if (!created_program)
@@ -249,11 +197,6 @@ namespace toy3d
         if (!created_pipeline)
             return created_pipeline.status();
 
-        shader_program_ = shader_program.get();
-        constant_buffer_binding_ = constant_buffer;
-        projection_binding_ = projection;
-        font_texture_binding_ = font_texture;
-        font_sampler_binding_ = font_sampler;
         rhi_program_ = std::move(created_program).value();
         font_texture_ = std::move(created_texture).value();
         font_texture_view_ = std::move(created_view).value();
@@ -310,11 +253,6 @@ namespace toy3d
         font_texture_view_.reset();
         font_texture_.reset();
         rhi_program_.reset();
-        font_sampler_binding_ = nullptr;
-        font_texture_binding_ = nullptr;
-        projection_binding_ = nullptr;
-        constant_buffer_binding_ = nullptr;
-        shader_program_ = nullptr;
     }
 
     RHIResult<std::size_t> ImGuiRenderer::acquire_buffer_page(RHIDevice& device, std::size_t vertex_bytes,
@@ -435,36 +373,12 @@ namespace toy3d
         if (!status)
             return status;
 
-        std::vector<std::uint8_t> constants(constant_buffer_binding_->constant_buffer_size, 0u);
-        write_projection(draw_data, constants.data() + projection_binding_->offset);
-        RHITransientUniformDataDesc uniform_desc;
-        uniform_desc.source = {constants.data(), constants.size(), 0, 0};
-        uniform_desc.data_layout_hash = constant_buffer_binding_->data_layout_hash;
-        uniform_desc.shader_abi_version = constant_buffer_binding_->shader_abi_version;
-        uniform_desc.debug_name = "ImGuiPassConstants";
-        RHIResult<RHIUniformBufferSlice> uniform_slice = context.upload_transient_uniform_data(uniform_desc);
-        if (!uniform_slice)
-            return uniform_slice.status();
-        RHIBindingSetDesc binding_desc;
-        binding_desc.group = RHIBindingGroup::Pass;
-        binding_desc.debug_name = "ImGuiPassBindings";
-        RHIBindingValue constants_value;
-        constants_value.binding_id = constant_buffer_binding_->parameter_id;
-        constants_value.buffer = uniform_slice.value().buffer;
-        constants_value.buffer_offset = uniform_slice.value().offset;
-        constants_value.buffer_size = uniform_slice.value().size;
-        constants_value.data_layout_hash = uniform_slice.value().data_layout_hash;
-        constants_value.shader_abi_version = uniform_slice.value().shader_abi_version;
-        binding_desc.bindings.push_back(std::move(constants_value));
-        RHIBindingValue texture_value;
-        texture_value.binding_id = font_texture_binding_->parameter_id;
-        texture_value.texture_view = font_texture_view_;
-        binding_desc.bindings.push_back(std::move(texture_value));
-        RHIBindingValue sampler_value;
-        sampler_value.binding_id = font_sampler_binding_->parameter_id;
-        sampler_value.sampler = font_sampler_;
-        binding_desc.bindings.push_back(std::move(sampler_value));
-        RHIResult<RHIBindingSetRef> binding_set = device.create_binding_set(binding_desc);
+        ImGuiPassParameters pass_parameters;
+        pass_parameters.projection = make_projection(draw_data);
+        pass_parameters.font_texture = font_texture_view_;
+        pass_parameters.font_sampler = font_sampler_;
+        RHIResult<RHIBindingSetRef> binding_set =
+            create_transient_shader_binding(device, context, pass_parameters);
         if (!binding_set)
             return binding_set.status();
 
@@ -572,8 +486,8 @@ namespace toy3d
 
     bool ImGuiRenderer::initialized() const noexcept
     {
-        return shader_program_ != nullptr && rhi_program_ && rhi_program_->vertex_shader &&
-               rhi_program_->pixel_shader && rhi_program_->binding_layout && font_texture_ && font_texture_view_ &&
+        return rhi_program_ && rhi_program_->vertex_shader && rhi_program_->pixel_shader &&
+               rhi_program_->binding_layout && font_texture_ && font_texture_view_ &&
                font_sampler_ && pipeline_;
     }
 

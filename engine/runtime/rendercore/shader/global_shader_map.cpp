@@ -23,9 +23,11 @@ namespace toy3d
     GlobalShaderType::GlobalShaderType(std::string type_name, std::string shader_name, std::string pass_name,
                                        ShaderContentHash permutation_key, ProgramKind program_kind,
                                        RHIShaderStageFlags required_stages,
+                                       const ShaderParametersMetadata& parameter_metadata,
                                        std::vector<GlobalShaderBindingRequirement> binding_requirements)
         : type_name_(std::move(type_name)), shader_name_(std::move(shader_name)), pass_name_(std::move(pass_name)),
           permutation_key_(permutation_key), program_kind_(program_kind), required_stages_(required_stages),
+          parameter_metadata_(parameter_metadata),
           binding_requirements_(std::move(binding_requirements))
     {
     }
@@ -34,7 +36,10 @@ namespace toy3d
     {
         return type_name_ == other.type_name_ && shader_name_ == other.shader_name_ && pass_name_ == other.pass_name_ &&
                permutation_key_ == other.permutation_key_ && program_kind_ == other.program_kind_ &&
-               required_stages_ == other.required_stages_ && binding_requirements_ == other.binding_requirements_;
+               required_stages_ == other.required_stages_ &&
+               parameter_metadata_.schema_identity == other.parameter_metadata_.schema_identity &&
+               parameter_metadata_.group_identity == other.parameter_metadata_.group_identity &&
+               binding_requirements_ == other.binding_requirements_;
     }
 
     namespace
@@ -83,6 +88,13 @@ namespace toy3d
                 error = type_context(type) + " has an incomplete immutable descriptor.";
                 return false;
             }
+            const RHIStatus metadata_status = validate_shader_parameters_metadata(type.parameter_metadata());
+            if (!metadata_status)
+            {
+                error = type_context(type) + " has invalid generated parameters metadata: " +
+                        metadata_status.message();
+                return false;
+            }
             const bool has_compute = EnumHasAnyFlags(type.required_stages(), RHIShaderStageFlags::Compute);
             const bool has_graphics = EnumHasAnyFlags(type.required_stages(), RHIShaderStageFlags::AllGraphics);
             if ((type.program_kind() == GlobalShaderType::ProgramKind::Graphics && (!has_graphics || has_compute)) ||
@@ -118,6 +130,14 @@ namespace toy3d
             if (program_stages(program) != type.required_stages())
             {
                 error = type_context(type) + " loaded a Program with mismatched exact stages.";
+                return false;
+            }
+            const RHIStatus metadata_status = validate_shader_parameters_metadata_against_schema(
+                type.parameter_metadata(), program.parameter_schema);
+            if (!metadata_status)
+            {
+                error = type_context(type) + " generated parameters do not match the loaded Shader artifact: " +
+                        metadata_status.message();
                 return false;
             }
             for (const GlobalShaderBindingRequirement& requirement : type.binding_requirements())

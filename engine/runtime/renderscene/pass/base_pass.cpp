@@ -10,7 +10,6 @@
 #include "logging/logger.h"
 #include "rendercore/geometry/local_vertex_factory.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/shader/primitive_uniform_shader_parameters.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_graphics_state.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
@@ -18,7 +17,6 @@
 #include "renderscene/mesh_batch.h"
 #include "renderscene/pass/mesh_draw_command.h"
 #include "renderscene/view/view_info.h"
-#include "renderscene/view/view_uniform_resources.h"
 
 namespace toy3d
 {
@@ -34,6 +32,28 @@ namespace toy3d
                 }
             }
             return false;
+        }
+
+        RHIStatus resolve_owner_binding(RHIDevice& device, const ShaderMapProgram& program, RHIBindingGroup group,
+                                        const RHIBindingSetRef& owner_binding, RHIBindingSetRef& resolved_binding)
+        {
+            resolved_binding.reset();
+            if (!program_declares_group(program, group))
+            {
+                return RHIStatus::success();
+            }
+            if (!owner_binding)
+            {
+                return RHIStatus::failure(RHIErrorCode::NotReady,
+                                          "Program requires a logical binding that its owner did not provide.");
+            }
+            if (!owner_binding->is_owned_by(device) || owner_binding->group() != group)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Owner-provided logical binding has an incompatible device or group.");
+            }
+            resolved_binding = owner_binding;
+            return RHIStatus::success();
         }
 
         RHIStatus apply_attachment_compatibility(const RHIRenderPassDesc& pass_desc,
@@ -156,12 +176,35 @@ namespace toy3d
                                   view_index, batch_index);
                     continue;
                 }
-                if (program_declares_group(*shader_program, RHIBindingGroup::Global) ||
-                    program_declares_group(*shader_program, RHIBindingGroup::Pass))
+
+                RHIGraphicsBindings owner_bindings;
+                RHIStatus batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Global,
+                                                               nullptr, owner_bindings.global);
+                if (batch_status)
                 {
-                    TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because its Program declares "
-                                  "Global or Pass bindings without a canonical source.",
-                                  view_index, batch_index);
+                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::View,
+                                                         view_info.view_binding(), owner_bindings.view);
+                }
+                if (batch_status)
+                {
+                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Pass, nullptr,
+                                                         owner_bindings.pass);
+                }
+                if (batch_status)
+                {
+                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Material,
+                                                         mesh_batch.material_binding(), owner_bindings.material);
+                }
+                if (batch_status)
+                {
+                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Object,
+                                                         mesh_batch.object_binding(), owner_bindings.object);
+                }
+                if (!batch_status)
+                {
+                    TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because owner-provided bindings "
+                                  "are incomplete or incompatible: {}",
+                                  view_index, batch_index, batch_status.message());
                     continue;
                 }
 
@@ -178,7 +221,7 @@ namespace toy3d
                 std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> vertex_layouts;
                 std::vector<RHIGraphicsPipelineDesc::VertexAttribute> vertex_attributes;
                 std::vector<RHIVertexBufferBinding> vertex_bindings;
-                RHIStatus batch_status = mesh_batch.vertex_factory().build_vertex_input(
+                batch_status = mesh_batch.vertex_factory().build_vertex_input(
                     shader_program->data().vertex_inputs, vertex_layouts, vertex_attributes, vertex_bindings);
                 if (!batch_status)
                 {
@@ -224,51 +267,11 @@ namespace toy3d
                     continue;
                 }
 
-                RHIBindingSetRef view_binding;
-                if (program_declares_group(*shader_program, RHIBindingGroup::View))
-                {
-                    if (!view_info.view_binding_set())
-                    {
-                        TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because View bindings were not prepared.",
-                                      view_index, batch_index);
-                        continue;
-                    }
-                    view_binding = view_info.view_binding_set();
-                }
-
-                RHIBindingSetRef material_binding;
-                if (program_declares_group(*shader_program, RHIBindingGroup::Material))
-                {
-                    RHIResult<RHIBindingSetRef> materialized_material =
-                        material_proxy.materialize(device, context);
-                    if (!materialized_material)
-                    {
-                        TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because Material bindings "
-                                      "could not be materialized: {}",
-                                      view_index, batch_index, materialized_material.status().message());
-                        continue;
-                    }
-                    material_binding = std::move(materialized_material).value();
-                }
-                RHIResult<RHIBindingSetRef> object_binding = program_declares_group(*shader_program, RHIBindingGroup::Object)
-                    ? materialize_primitive_uniform_shader_parameters(
-                          device, context, mesh_batch.scene_proxy().primitive_uniform_shader_parameters())
-                    : RHIResult<RHIBindingSetRef>::success(nullptr);
-                if (!object_binding)
-                {
-                    TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because Object bindings could not "
-                                  "be materialized: {}",
-                                  view_index, batch_index, object_binding.status().message());
-                    continue;
-                }
-
                 MeshDrawCommand command;
                 command.pipeline = std::move(pipeline).value();
                 command.vertex_buffers = std::move(vertex_bindings);
                 command.index_buffer = mesh_batch.render_data().index_buffer_binding();
-                command.bindings.view = std::move(view_binding);
-                command.bindings.material = std::move(material_binding);
-                command.bindings.object = std::move(object_binding).value();
+                command.bindings = std::move(owner_bindings);
                 command.draw_args.index_count = mesh_batch.index_count();
                 command.draw_args.first_index = mesh_batch.first_index();
                 draw_list.commands.push_back(std::move(command));

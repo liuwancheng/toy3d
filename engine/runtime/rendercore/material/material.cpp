@@ -5,14 +5,125 @@
 #include "rendercore/shader/shader_map.h"
 #include "renderscene/material/material_render_proxy.h"
 
+#include <cstddef>
 #include <exception>
 #include <stdexcept>
 #include <utility>
 
 namespace toy3d
 {
+    shader::ShaderParameterSchema material_parameter_schema_from_shader_schema(
+        const shader::ShaderParameterSchema& source)
+    {
+        shader::ShaderParameterSchema result;
+        for (const shader::ShaderParameterConstantBufferSchema& buffer : source.constant_buffers)
+        {
+            if (buffer.group == shader::BindingGroup::Material)
+            {
+                result.constant_buffers.push_back(buffer);
+            }
+        }
+        for (const shader::ShaderParameterResourceSchema& resource : source.resources)
+        {
+            if (resource.group == shader::BindingGroup::Material)
+            {
+                result.resources.push_back(resource);
+            }
+        }
+        result.logical_layout_hash = shader::calculate_shader_parameter_logical_layout_hash(result);
+        result.schema_identity = shader::calculate_shader_parameter_schema_identity(result);
+        return result;
+    }
+
     namespace
     {
+        bool validate_material_schema_defaults(const MaterialDesc& desc, std::string& error)
+        {
+            std::size_t scalar_count = 0u;
+            std::size_t vector2_count = 0u;
+            std::size_t vector3_count = 0u;
+            std::size_t vector4_count = 0u;
+            for (const shader::ShaderParameterConstantBufferSchema& buffer : desc.parameter_schema.constant_buffers)
+            {
+                if (buffer.group != shader::BindingGroup::Material)
+                {
+                    error = "Material parameter schema contains a non-Material constant buffer";
+                    return false;
+                }
+                for (const shader::ShaderParameterConstantMemberSchema& member : buffer.members)
+                {
+                    if (member.default_value.size() != member.size)
+                    {
+                        error = "Material constant schema is missing its canonical default value";
+                        return false;
+                    }
+                    bool has_runtime_default = false;
+                    switch (member.type)
+                    {
+                    case shader::ShaderValueType::Float32:
+                        ++scalar_count;
+                        has_runtime_default = desc.scalar_defaults.count(member.parameter_id) == 1u;
+                        break;
+                    case shader::ShaderValueType::Float32x2:
+                        ++vector2_count;
+                        has_runtime_default = desc.vector2_defaults.count(member.parameter_id) == 1u;
+                        break;
+                    case shader::ShaderValueType::Float32x3:
+                        ++vector3_count;
+                        has_runtime_default = desc.vector3_defaults.count(member.parameter_id) == 1u;
+                        break;
+                    case shader::ShaderValueType::Float32x4:
+                        ++vector4_count;
+                        has_runtime_default = desc.vector4_defaults.count(member.parameter_id) == 1u;
+                        break;
+                    default:
+                        error = "Material schema contains an unsupported first-stage constant type";
+                        return false;
+                    }
+                    if (!has_runtime_default)
+                    {
+                        error = "Material is missing a runtime value for a schema constant default";
+                        return false;
+                    }
+                }
+            }
+            if (scalar_count != desc.scalar_defaults.size() || vector2_count != desc.vector2_defaults.size() ||
+                vector3_count != desc.vector3_defaults.size() || vector4_count != desc.vector4_defaults.size())
+            {
+                error = "Material contains a constant default that is not declared by its complete schema";
+                return false;
+            }
+            std::size_t texture_count = 0u;
+            for (const shader::ShaderParameterResourceSchema& resource : desc.parameter_schema.resources)
+            {
+                if (resource.group != shader::BindingGroup::Material)
+                {
+                    error = "Material parameter schema contains a non-Material resource";
+                    return false;
+                }
+                if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
+                    resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u)
+                {
+                    error = "Material schema contains an unsupported first-stage resource type";
+                    return false;
+                }
+                if (resource.default_value_kind == shader::ShaderParameterDefaultValueKind::None ||
+                    desc.texture_defaults.count(resource.parameter_id) != 1u ||
+                    !desc.texture_defaults.at(resource.parameter_id))
+                {
+                    error = "Material Texture schema is missing its canonical or runtime default";
+                    return false;
+                }
+                ++texture_count;
+            }
+            if (texture_count != desc.texture_defaults.size())
+            {
+                error = "Material contains a Texture default that is not declared by its complete schema";
+                return false;
+            }
+            return true;
+        }
+
         bool is_program_compatible_with_material(const MaterialDesc& desc, const ShaderMapProgram& program,
                                                  std::string& error)
         {
@@ -22,83 +133,16 @@ namespace toy3d
                 error = "ShaderMap Program identity does not match the Material shader";
                 return false;
             }
-
-            for (const ShaderMapBinding& binding : program.data().bindings)
+            const shader::ShaderParameterSchema program_material_schema =
+                material_parameter_schema_from_shader_schema(program.data().parameter_schema);
+            if (program_material_schema.schema_identity != desc.parameter_schema.schema_identity)
             {
-                if (binding.group != RHIBindingGroup::Material)
-                {
-                    continue;
-                }
-                if (binding.type == RHIResourceBindingType::UniformBuffer)
-                {
-                    for (const ShaderMapBinding::ConstantMember& member : binding.constant_members)
-                    {
-                        bool has_default = false;
-                        switch (member.type)
-                        {
-                        case ShaderValueType::Float32:
-                            has_default = desc.scalar_defaults.count(member.parameter_id) == 1;
-                            break;
-                        case ShaderValueType::Float32x2:
-                            has_default = desc.vector2_defaults.count(member.parameter_id) == 1;
-                            break;
-                        case ShaderValueType::Float32x3:
-                            has_default = desc.vector3_defaults.count(member.parameter_id) == 1;
-                            break;
-                        case ShaderValueType::Float32x4:
-                            has_default = desc.vector4_defaults.count(member.parameter_id) == 1;
-                            break;
-                        default:
-                            error = "Material defaults do not support a required Shader value type";
-                            return false;
-                        }
-                        if (!has_default)
-                        {
-                            error = "Material is missing a required Shader constant default";
-                            return false;
-                        }
-                    }
-                    continue;
-                }
-                if (binding.type == RHIResourceBindingType::SampledTexture && binding.array_count == 1)
-                {
-                    const auto found = desc.texture_defaults.find(binding.parameter_id);
-                    if (found == desc.texture_defaults.end() || !found->second)
-                    {
-                        error = "Material is missing a required Texture default";
-                        return false;
-                    }
-                    continue;
-                }
-
-                error = "Material Program requires an unsupported Material resource binding";
+                error = "ShaderMap Program complete Material schema does not match the Material schema identity";
                 return false;
             }
             return true;
         }
 
-        const ShaderParameterBinding* find_material_parameter(const std::shared_ptr<const ShaderMapProgram>& program,
-                                                              ShaderParameterId parameter_id)
-        {
-            if (!program || parameter_id == 0)
-            {
-                return nullptr;
-            }
-            const ShaderParameterBinding* binding = program->find_parameter_binding(parameter_id);
-            if (binding == nullptr)
-            {
-                return nullptr;
-            }
-
-            // C++17 get_if makes the closed constant/resource reflection choice
-            // explicit without exception-based variant access.
-            if (const auto* constant = std::get_if<ShaderConstantBinding>(binding))
-            {
-                return constant->group == RHIBindingGroup::Material ? binding : nullptr;
-            }
-            const auto* resource = std::get_if<ShaderResourceBinding>(binding);
-            return resource != nullptr && resource->group == RHIBindingGroup::Material ? binding : nullptr;
-        }
     } // namespace
 
     std::shared_ptr<const Material> Material::create(MaterialDesc desc)
@@ -106,6 +150,22 @@ namespace toy3d
         if (desc.shader_name.empty())
         {
             TOY_LOG_ERROR("A Material must identify a ShaderMap shader.");
+            return nullptr;
+        }
+        std::string schema_error;
+        if (desc.parameter_schema.schema_identity == shader::Sha256Hash{} &&
+            desc.parameter_schema.logical_layout_hash == shader::Sha256Hash{} &&
+            desc.parameter_schema.constant_buffers.empty() && desc.parameter_schema.resources.empty())
+        {
+            desc.parameter_schema.logical_layout_hash =
+                shader::calculate_shader_parameter_logical_layout_hash(desc.parameter_schema);
+            desc.parameter_schema.schema_identity =
+                shader::calculate_shader_parameter_schema_identity(desc.parameter_schema);
+        }
+        if (!shader::validate_shader_parameter_schema(desc.parameter_schema, schema_error) ||
+            !validate_material_schema_defaults(desc, schema_error))
+        {
+            TOY_LOG_ERROR("Invalid Material parameter schema: {}.", schema_error);
             return nullptr;
         }
         if (desc.shader_program)
@@ -206,40 +266,58 @@ namespace toy3d
         material_instance.reset();
     }
 
-    bool MaterialInstance::validate_constant_parameter(ShaderParameterId parameter_id,
-                                                       ShaderValueType expected_value_type) const
+    bool MaterialInstance::resolve_constant_parameter(std::string_view parameter_name,
+                                                      shader::ShaderValueType expected_value_type,
+                                                      ShaderParameterId& parameter_id) const
     {
-        const ShaderParameterBinding* binding = find_material_parameter(shader_program_, parameter_id);
-        // C++17 get_if directly checks the constant branch and keeps a bad
-        // resource/type request on the non-mutating diagnostic path.
-        const auto* constant = binding != nullptr ? std::get_if<ShaderConstantBinding>(binding) : nullptr;
-        if (constant == nullptr || constant->value_type != expected_value_type)
+        parameter_id = 0;
+        for (const shader::ShaderParameterConstantBufferSchema& buffer : material_->parameter_schema().constant_buffers)
         {
-            TOY_LOG_ERROR("Material parameter {} is unknown or has an incompatible constant type.", parameter_id);
-            return false;
+            for (const shader::ShaderParameterConstantMemberSchema& member : buffer.members)
+            {
+                if (member.name == parameter_name)
+                {
+                    if (member.type != expected_value_type)
+                    {
+                        TOY_LOG_ERROR("Material parameter '{}' has an incompatible constant type.", parameter_name);
+                        return false;
+                    }
+                    parameter_id = member.parameter_id;
+                    return true;
+                }
+            }
         }
-        return true;
+        TOY_LOG_ERROR("Material constant parameter '{}' is unknown.", parameter_name);
+        return false;
     }
 
-    bool MaterialInstance::validate_texture_parameter(ShaderParameterId parameter_id) const
+    bool MaterialInstance::resolve_texture_parameter(std::string_view parameter_name,
+                                                     ShaderParameterId& parameter_id) const
     {
-        const ShaderParameterBinding* binding = find_material_parameter(shader_program_, parameter_id);
-        // C++17 get_if distinguishes resource reflection without introducing a
-        // parallel runtime type tag in MaterialInstance.
-        const auto* resource = binding != nullptr ? std::get_if<ShaderResourceBinding>(binding) : nullptr;
-        if (resource == nullptr || resource->resource_type != RHIResourceBindingType::SampledTexture ||
-            resource->array_count != 1)
+        parameter_id = 0;
+        for (const shader::ShaderParameterResourceSchema& resource : material_->parameter_schema().resources)
         {
-            TOY_LOG_ERROR("Material parameter {} is unknown or is not a scalar Texture binding.", parameter_id);
-            return false;
+            if (resource.name == parameter_name)
+            {
+                if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
+                    resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u)
+                {
+                    TOY_LOG_ERROR("Material parameter '{}' is not a scalar Texture2D binding.", parameter_name);
+                    return false;
+                }
+                parameter_id = resource.parameter_id;
+                return true;
+            }
         }
-        return true;
+        TOY_LOG_ERROR("Material Texture parameter '{}' is unknown.", parameter_name);
+        return false;
     }
 
-    bool MaterialInstance::set_scalar(ShaderParameterId parameter_id, float value)
+    bool MaterialInstance::set_scalar(std::string_view parameter_name, float value)
     {
+        ShaderParameterId parameter_id = 0;
         if (!resolve_material_replacement_publication() ||
-            !validate_constant_parameter(parameter_id, ShaderValueType::Float32))
+            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32, parameter_id))
         {
             return false;
         }
@@ -247,14 +325,17 @@ namespace toy3d
         render_proxy_used_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command("SetMaterialScalar",
-                               [proxy, parameter_id, value]() noexcept { proxy->set_scalar(parameter_id, value); });
+                               [proxy, parameter_id, value]() noexcept {
+                                   proxy->apply_scalar_update(parameter_id, value);
+                               });
         return true;
     }
 
-    bool MaterialInstance::set_vector(ShaderParameterId parameter_id, const vec2& value)
+    bool MaterialInstance::set_vector(std::string_view parameter_name, const vec2& value)
     {
+        ShaderParameterId parameter_id = 0;
         if (!resolve_material_replacement_publication() ||
-            !validate_constant_parameter(parameter_id, ShaderValueType::Float32x2))
+            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32x2, parameter_id))
         {
             return false;
         }
@@ -262,14 +343,17 @@ namespace toy3d
         render_proxy_used_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command("SetMaterialVector2",
-                               [proxy, parameter_id, value]() noexcept { proxy->set_vector(parameter_id, value); });
+                               [proxy, parameter_id, value]() noexcept {
+                                   proxy->apply_vector_update(parameter_id, value);
+                               });
         return true;
     }
 
-    bool MaterialInstance::set_vector(ShaderParameterId parameter_id, const vec3& value)
+    bool MaterialInstance::set_vector(std::string_view parameter_name, const vec3& value)
     {
+        ShaderParameterId parameter_id = 0;
         if (!resolve_material_replacement_publication() ||
-            !validate_constant_parameter(parameter_id, ShaderValueType::Float32x3))
+            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32x3, parameter_id))
         {
             return false;
         }
@@ -277,14 +361,17 @@ namespace toy3d
         render_proxy_used_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command("SetMaterialVector3",
-                               [proxy, parameter_id, value]() noexcept { proxy->set_vector(parameter_id, value); });
+                               [proxy, parameter_id, value]() noexcept {
+                                   proxy->apply_vector_update(parameter_id, value);
+                               });
         return true;
     }
 
-    bool MaterialInstance::set_vector(ShaderParameterId parameter_id, const vec4& value)
+    bool MaterialInstance::set_vector(std::string_view parameter_name, const vec4& value)
     {
+        ShaderParameterId parameter_id = 0;
         if (!resolve_material_replacement_publication() ||
-            !validate_constant_parameter(parameter_id, ShaderValueType::Float32x4))
+            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32x4, parameter_id))
         {
             return false;
         }
@@ -292,21 +379,24 @@ namespace toy3d
         render_proxy_used_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command("SetMaterialVector4",
-                               [proxy, parameter_id, value]() noexcept { proxy->set_vector(parameter_id, value); });
+                               [proxy, parameter_id, value]() noexcept {
+                                   proxy->apply_vector_update(parameter_id, value);
+                               });
         return true;
     }
 
-    bool MaterialInstance::set_texture(ShaderParameterId parameter_id, TextureRef texture)
+    bool MaterialInstance::set_texture(std::string_view parameter_name, TextureRef texture)
     {
         if (!resolve_material_replacement_publication())
         {
             return false;
         }
-        if (!texture || !validate_texture_parameter(parameter_id))
+        ShaderParameterId parameter_id = 0;
+        if (!texture || !resolve_texture_parameter(parameter_name, parameter_id))
         {
             if (!texture)
             {
-                TOY_LOG_ERROR("Material Texture parameter {} requires a valid Texture.", parameter_id);
+                TOY_LOG_ERROR("Material Texture parameter '{}' requires a valid Texture.", parameter_name);
             }
             return false;
         }
@@ -330,7 +420,7 @@ namespace toy3d
                                [proxy, parameter_id, resource, texture = std::move(texture),
                                 old_texture = std::move(old_texture)]() mutable noexcept
                                {
-                                   proxy->set_texture(parameter_id, resource);
+                                   proxy->apply_texture_update(parameter_id, resource);
                                    if (old_texture && old_texture.use_count() == 1)
                                    {
                                        Texture::release(old_texture);

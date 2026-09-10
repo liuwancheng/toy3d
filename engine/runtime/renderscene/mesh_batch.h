@@ -1,5 +1,8 @@
 #pragma once
 
+#include "drivers/rhi/rhi_resource.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
+
 #include <cstdint>
 
 namespace toy3d
@@ -17,16 +20,22 @@ namespace toy3d
       public:
         MeshBatch(const StaticMeshSceneProxy& scene_proxy, const StaticMeshRenderData& render_data,
                   const LocalVertexFactory& vertex_factory, MaterialRenderProxy& material_render_proxy,
-                  std::uint32_t first_index, std::uint32_t index_count)
-            : scene_proxy_(&scene_proxy), render_data_(&render_data), vertex_factory_(&vertex_factory),
-              material_render_proxy_(&material_render_proxy), first_index_(first_index), index_count_(index_count)
-        {
-        }
+                  std::uint32_t first_index, std::uint32_t index_count);
 
         const StaticMeshSceneProxy& scene_proxy() const { return *scene_proxy_; }
         const StaticMeshRenderData& render_data() const { return *render_data_; }
         const LocalVertexFactory& vertex_factory() const { return *vertex_factory_; }
         MaterialRenderProxy& material_render_proxy() const { return *material_render_proxy_; }
+        const ObjectShaderParameters& object_shader_parameters() const { return object_shader_parameters_; }
+        std::uint64_t object_data_generation() const { return object_data_generation_; }
+        const RHIBindingSetRef& material_binding() const { return material_binding_; }
+        const RHIBindingSetRef& object_binding() const { return object_binding_; }
+        // MaterialRenderProxy remains the persistent owner; the renderer only
+        // snapshots its current binding into this frame-local draw input.
+        void publish_material_binding(RHIBindingSetRef binding_set);
+        // create_object_shader_bindings() is the only frame-local creation path;
+        // mesh passes consume the published draw-data reference directly.
+        void publish_object_binding(RHIBindingSetRef binding_set);
         std::uint32_t first_index() const { return first_index_; }
         std::uint32_t index_count() const { return index_count_; }
 
@@ -35,6 +44,10 @@ namespace toy3d
         const StaticMeshRenderData* render_data_ = nullptr;
         const LocalVertexFactory* vertex_factory_ = nullptr;
         MaterialRenderProxy* material_render_proxy_ = nullptr;
+        ObjectShaderParameters object_shader_parameters_;
+        std::uint64_t object_data_generation_ = 0u;
+        RHIBindingSetRef material_binding_;
+        RHIBindingSetRef object_binding_;
         std::uint32_t first_index_ = 0;
         std::uint32_t index_count_ = 0;
     };

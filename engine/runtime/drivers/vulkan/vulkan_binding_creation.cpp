@@ -8,18 +8,114 @@
 #include <array>
 #include <limits>
 #include <set>
+#include <string>
+#include <type_traits>
 #include <utility>
 
 namespace toy3d
 {
     namespace
     {
+        template <typename T> void append_packet_key(std::string& key, T value)
+        {
+            static_assert(std::is_trivially_copyable<T>::value, "Packet key fields must be byte-copyable.");
+            key.append(reinterpret_cast<const char*>(&value), sizeof(value));
+        }
+
         VkDescriptorType binding_descriptor_type(RHIResourceBindingType type)
         {
             return type == RHIResourceBindingType::UniformBuffer ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
                                                                   : to_vk_descriptor_type(type);
         }
     } // namespace
+
+    VulkanPhysicalBindingSources make_vulkan_physical_binding_sources(
+        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
+    {
+        VulkanPhysicalBindingSources physical_sources;
+        for (const rhi_detail::ResolvedBinding& resolved : resolved_bindings)
+        {
+            const std::uint32_t physical_set = VulkanBindingLayout::physical_set(resolved.layout.group);
+            if (physical_set < physical_sources.size())
+            {
+                physical_sources[physical_set].push_back(resolved);
+            }
+        }
+        for (auto& sources : physical_sources)
+        {
+            std::sort(sources.begin(), sources.end(),
+                      [](const rhi_detail::ResolvedBinding& left, const rhi_detail::ResolvedBinding& right)
+                      {
+                          return left.layout.target_binding != right.layout.target_binding
+                                     ? left.layout.target_binding < right.layout.target_binding
+                                     : left.value.array_index < right.value.array_index;
+                      });
+        }
+        return physical_sources;
+    }
+
+    std::string make_vulkan_binding_packet_cache_key(
+        const VulkanBindingLayout& layout, std::uint32_t physical_set,
+        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
+    {
+        std::string key;
+        append_packet_key(key, physical_set);
+        for (const RHIBindingLayoutEntry& entry : layout.desc().entries)
+        {
+            if (VulkanBindingLayout::physical_set(entry.group) != physical_set)
+                continue;
+            append_packet_key(key, entry.binding_id);
+            append_packet_key(key, entry.group);
+            append_packet_key(key, entry.target_binding);
+            append_packet_key(key, entry.type);
+            append_packet_key(key, entry.stages);
+            append_packet_key(key, entry.array_count);
+            append_packet_key(key, entry.data_size);
+        }
+        for (const rhi_detail::ResolvedBinding& resolved : resolved_bindings)
+        {
+            append_packet_key(key, resolved.layout.binding_id);
+            append_packet_key(key, resolved.value.array_index);
+            if (resolved.value.buffer)
+            {
+                const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(resolved.value.buffer);
+                append_packet_key(key, buffer->buffer());
+                append_packet_key(key, resolved.layout.data_size);
+            }
+            else if (resolved.value.texture_view)
+            {
+                const auto view = std::dynamic_pointer_cast<VulkanTextureView>(resolved.value.texture_view);
+                append_packet_key(key, view->image_view());
+            }
+            else if (resolved.value.sampler)
+            {
+                const auto sampler = std::dynamic_pointer_cast<VulkanSampler>(resolved.value.sampler);
+                append_packet_key(key, sampler->sampler());
+            }
+        }
+        return key;
+    }
+
+    RHIResult<std::vector<std::uint32_t>> collect_vulkan_dynamic_uniform_offsets(
+        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
+    {
+        std::vector<std::uint32_t> dynamic_offsets;
+        for (const rhi_detail::ResolvedBinding& resolved : resolved_bindings)
+        {
+            if (resolved.layout.type != RHIResourceBindingType::UniformBuffer)
+            {
+                continue;
+            }
+            if (resolved.value.buffer_offset > std::numeric_limits<std::uint32_t>::max())
+            {
+                return RHIResult<std::vector<std::uint32_t>>::failure(
+                    RHIErrorCode::Unsupported,
+                    "Vulkan dynamic uniform-buffer offsets must fit the native 32-bit range.");
+            }
+            dynamic_offsets.push_back(static_cast<std::uint32_t>(resolved.value.buffer_offset));
+        }
+        return RHIResult<std::vector<std::uint32_t>>::success(std::move(dynamic_offsets));
+    }
 
     RHIResult<RHIBindingLayoutRef> create_vulkan_binding_layout(const RHIDevice& owner, VkDevice device,
                                                                 const RHIBindingLayoutDesc& desc)

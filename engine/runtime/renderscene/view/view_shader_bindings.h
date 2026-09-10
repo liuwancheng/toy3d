@@ -11,6 +11,6 @@ namespace toy3d
     class RHIDevice;
     class ViewInfo;
 
-    RHIStatus prepare_view_uniform_resources(RHIDevice& device, RHICommandContext& context,
-                                             std::vector<ViewInfo>& view_infos);
+    RHIStatus create_view_shader_bindings(RHIDevice& device, RHICommandContext& context,
+                                          std::vector<ViewInfo>& view_infos);
 } // namespace toy3d

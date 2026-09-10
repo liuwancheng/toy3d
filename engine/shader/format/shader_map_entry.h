@@ -9,7 +9,7 @@
 
 namespace toy3d::shader
 {
-    constexpr std::uint32_t shader_map_entry_version = 4;
+    constexpr std::uint32_t shader_map_entry_version = 5;
 
     struct ShaderMapEntryReadResult
     {
@@ -26,6 +26,8 @@ namespace toy3d::shader
 
     Sha256Hash calculate_shader_map_key(const ShaderMapEntry& entry);
     Sha256Hash calculate_shader_map_entry_content_hash(const ShaderMapEntry& entry);
+    std::string serialize_shader_parameter_schema(const ShaderParameterSchema& schema);
+    bool parse_shader_parameter_schema(const std::string& text, ShaderParameterSchema& schema, std::string& error);
 
     ShaderMapEntryReadResult read_verified_shader_map_entry(const PlatformFile& platform_file,
                                                             const PhysicalPath& shader_map_root,

@@ -622,6 +622,44 @@ namespace
         std::filesystem::remove_all(working);
     }
 
+    toy3d::shader::ShaderParameterSchema make_parameter_schema()
+    {
+        using namespace toy3d::shader;
+        ShaderParameterSchema schema;
+        ShaderParameterConstantBufferSchema buffer;
+        buffer.binding_id = make_shader_parameter_id(BindingGroup::Pass, ShaderParameterCategory::Constant, "");
+        buffer.name = "toy_pass_data";
+        buffer.group = BindingGroup::Pass;
+        buffer.size = 16u;
+        ShaderParameterConstantMemberSchema member;
+        member.parameter_id = make_shader_parameter_id(BindingGroup::Pass, ShaderParameterCategory::Constant, "tint");
+        member.name = "tint";
+        member.type = ShaderValueType::Float32x4;
+        member.size = 16u;
+        member.default_value.assign(16u, 0u);
+        buffer.members.push_back(member);
+        buffer.data_layout_hash = calculate_constant_buffer_data_layout_hash(
+            buffer.group, buffer.binding_id, buffer.size,
+            {{member.parameter_id, member.name, member.type, member.offset, member.size, member.array_stride,
+              member.matrix_stride}});
+        schema.constant_buffers.push_back(std::move(buffer));
+
+        ShaderParameterResourceSchema texture;
+        texture.parameter_id =
+            make_shader_parameter_id(BindingGroup::Pass, ShaderParameterCategory::SampledTexture, "source_texture");
+        texture.name = "source_texture";
+        texture.group = BindingGroup::Pass;
+        texture.category = ShaderParameterCategory::SampledTexture;
+        texture.resource_kind = ResourceKind::Texture2D;
+        texture.element_type = ShaderResourceElementType::Float4;
+        texture.default_value_kind = ShaderParameterDefaultValueKind::Identifier;
+        texture.default_value = "white";
+        schema.resources.push_back(std::move(texture));
+        schema.logical_layout_hash = calculate_shader_parameter_logical_layout_hash(schema);
+        schema.schema_identity = calculate_shader_parameter_schema_identity(schema);
+        return schema;
+    }
+
     toy3d::shader::ShaderMapEntry make_shader_map_entry()
     {
         using namespace toy3d::shader;
@@ -629,7 +667,8 @@ namespace
         entry.shader_name = "Tests/Storage";
         entry.pass_name = "Forward";
         entry.mapping_version = vulkan_binding_mapping_version;
-        entry.logical_layout_hash[0] = 1u;
+        entry.parameter_schema = make_parameter_schema();
+        entry.logical_layout_hash = entry.parameter_schema.logical_layout_hash;
         entry.graphics_pass_state.cull_mode = ShaderGraphicsPassState::CullMode::Front;
         entry.pass_template_hash = calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
         entry.permutation_key[0] = 6u;
@@ -701,9 +740,40 @@ namespace
             read_verified_shader_map_entry(platform_file, reader_entry_root, published.shader_map_key);
         check(read.succeeded() && read.entry && read.entry->shader_name == entry.shader_name &&
                   read.entry->stages.size() == entry.stages.size() &&
+                  read.entry->parameter_schema.schema_identity == entry.parameter_schema.schema_identity &&
+                  read.entry->parameter_schema.constant_buffers.size() == 1u &&
+                  read.entry->parameter_schema.resources.size() == 1u &&
                   read.entry->graphics_pass_state.cull_mode == ShaderGraphicsPassState::CullMode::Front &&
                   read.entry_content_hash == published.entry_content_hash,
-              "ShaderMapEntry v3 reader must reconstruct and validate a published Entry");
+              "ShaderMapEntry reader must round-trip the complete parameter schema record");
+
+        ShaderParameterSchema invalid_identity = entry.parameter_schema;
+        invalid_identity.schema_identity[0] ^= 0xffu;
+        std::string schema_error;
+        check(!validate_shader_parameter_schema(invalid_identity, schema_error),
+              "a damaged complete schema identity must fail before publication");
+        ShaderMapBinding unknown_active;
+        unknown_active.binding_id = 999u;
+        unknown_active.name = "unknown_texture";
+        unknown_active.group = BindingGroup::Pass;
+        unknown_active.category = ShaderParameterCategory::SampledTexture;
+        unknown_active.stages = ShaderStageFlags::Pixel;
+        check(!validate_active_bindings_are_schema_subset(entry.parameter_schema, {unknown_active}, schema_error),
+              "a Program active binding outside the complete schema must fail before RHI publication");
+
+        ShaderMapEntry damaged_schema_entry = entry;
+        damaged_schema_entry.parameter_schema.schema_identity[0] ^= 0xffu;
+        const ShaderMapEntryWriteResult damaged_schema_publication = write_verified_shader_map_entry(
+            platform_file, physical_path(reader_root / "damaged-schema"), damaged_schema_entry);
+        check(!damaged_schema_publication.succeeded() && !damaged_schema_publication.entry_directory,
+              "damaged schema identity must suppress ShaderMapEntry publication");
+
+        ShaderMapEntry non_subset_entry = entry;
+        non_subset_entry.bindings.push_back(unknown_active);
+        const ShaderMapEntryWriteResult non_subset_publication = write_verified_shader_map_entry(
+            platform_file, physical_path(reader_root / "non-subset"), non_subset_entry);
+        check(!non_subset_publication.succeeded() && !non_subset_publication.entry_directory,
+              "an active binding outside the complete schema must suppress ShaderMapEntry publication");
         const ShaderMapEntryWriteResult duplicate =
             write_verified_shader_map_entry(platform_file, reader_entry_root, entry);
         check(duplicate.succeeded() && duplicate.cache_hit &&
@@ -767,6 +837,28 @@ namespace
                   "unsupported ShaderMapEntry versions must be rejected");
         }
         std::filesystem::remove_all(version_fixture.first);
+
+        auto schema_fixture = publish_corrupt_fixture("storage_corrupt_schema_identity");
+        if (schema_fixture.second.entry_directory)
+        {
+            const std::filesystem::path schema_path =
+                std::filesystem::u8path(schema_fixture.second.entry_directory->utf8()) / "schema.txt";
+            const toy3d::FileResult<std::string> schema_text = platform_file.read_text_utf8(physical_path(schema_path));
+            if (schema_text.succeeded())
+            {
+                std::string changed = schema_text.value();
+                const std::string identity = sha256_to_hex(entry.parameter_schema.schema_identity);
+                const std::size_t position = changed.find(identity);
+                if (position != std::string::npos)
+                    changed[position] = changed[position] == '0' ? '1' : '0';
+                write_text(schema_path, changed);
+            }
+            const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
+                platform_file, physical_path(schema_fixture.first / "entries"), schema_fixture.second.shader_map_key);
+            check(!corrupt.succeeded() && !corrupt.diagnostics.empty(),
+                  "stored schema identity corruption must fail before runtime publication");
+        }
+        std::filesystem::remove_all(schema_fixture.first);
 
         auto target_fixture = publish_corrupt_fixture("storage_corrupt_target");
         if (target_fixture.second.entry_directory)

@@ -3,13 +3,11 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "logging/logger.h"
 #include "rendercore/material/material.h"
-#include "rendercore/shader/shader_uniform_buffer.h"
+#include "rendercore/shader/shader_parameters.h"
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/texture/texture_resource.h"
 
-#include <cstring>
-#include <limits>
 #include <utility>
 #include <vector>
 
@@ -17,73 +15,101 @@ namespace toy3d
 {
     namespace
     {
-        RHIStatus write_float_bytes(std::vector<std::uint8_t>& bytes, std::uint32_t offset, const float* values,
-                                    std::uint32_t value_count, std::uint32_t reflected_size)
+        ShaderParametersMetadata make_material_parameter_metadata(
+            const shader::ShaderParameterSchema& schema)
         {
-            if (values == nullptr || value_count == 0)
+            ShaderParametersMetadata metadata;
+            metadata.group = shader::BindingGroup::Material;
+            metadata.generated_format_version = schema.generated_format_version;
+            metadata.shader_abi_version = schema.shader_abi_version;
+            metadata.parameter_id_version = schema.parameter_id_version;
+            metadata.cpp_identifier_version = shader::shader_parameters_cpp_identifier_version;
+            metadata.schema_identity = schema.schema_identity;
+            metadata.group_identity =
+                shader::calculate_shader_parameter_group_identity(schema, shader::BindingGroup::Material);
+
+            if (!schema.constant_buffers.empty())
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material constant source is empty");
+                const shader::ShaderParameterConstantBufferSchema& schema_buffer = schema.constant_buffers.front();
+                metadata.constant_buffer.binding_id = schema_buffer.binding_id;
+                metadata.constant_buffer.size = schema_buffer.size;
+                metadata.constant_buffer.data_layout_hash = schema_buffer.data_layout_hash;
+                metadata.constant_buffer.shader_abi_version = schema_buffer.shader_abi_version;
+                metadata.constant_buffer.name = schema_buffer.name;
+                metadata.constant_buffer.members.reserve(schema_buffer.members.size());
+                for (const shader::ShaderParameterConstantMemberSchema& member : schema_buffer.members)
+                {
+                    metadata.constant_buffer.members.push_back(
+                        {member.parameter_id, member.type, member.offset, member.size, member.array_count,
+                         member.array_stride, member.matrix_stride, member.default_value, member.name});
+                }
             }
-            const std::uint64_t byte_count = static_cast<std::uint64_t>(value_count) * sizeof(float);
-            if (byte_count != reflected_size || static_cast<std::uint64_t>(offset) + byte_count > bytes.size())
+
+            metadata.resources.reserve(schema.resources.size());
+            for (const shader::ShaderParameterResourceSchema& resource : schema.resources)
             {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Material constant reflection range is invalid");
+                metadata.resources.push_back(
+                    {resource.parameter_id, resource.category, resource.resource_kind, resource.element_type,
+                     resource.array_count, resource.default_value_kind, resource.default_value, resource.name});
             }
-            std::memcpy(bytes.data() + offset, values, static_cast<std::size_t>(byte_count));
-            return RHIStatus::success();
+            return metadata;
         }
 
-        RHIStatus write_constant(const ShaderMapBinding::ConstantMember& member,
-                                 const std::unordered_map<ShaderParameterId, float>& scalars,
-                                 const std::unordered_map<ShaderParameterId, vec2>& vectors2,
-                                 const std::unordered_map<ShaderParameterId, vec3>& vectors3,
-                                 const std::unordered_map<ShaderParameterId, vec4>& vectors4,
-                                 std::vector<std::uint8_t>& bytes)
+        RHIStatus write_material_constant(const ShaderParameterConstantMemberMetadata& member,
+                                          const std::unordered_map<ShaderParameterId, float>& scalars,
+                                          const std::unordered_map<ShaderParameterId, vec2>& vectors2,
+                                          const std::unordered_map<ShaderParameterId, vec3>& vectors3,
+                                          const std::unordered_map<ShaderParameterId, vec4>& vectors4,
+                                          ShaderParameterEncoder& encoder)
         {
             switch (member.type)
             {
-            case ShaderValueType::Float32:
+            case shader::ShaderValueType::Float32:
             {
                 const auto found = scalars.find(member.parameter_id);
-                return found == scalars.end()
-                           ? RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material scalar value is missing")
-                           : write_float_bytes(bytes, member.offset, &found->second, 1, member.size);
+                if (found == scalars.end())
+                    return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material scalar value is missing");
+                encoder.write_constant(member, found->second);
+                break;
             }
-            case ShaderValueType::Float32x2:
+            case shader::ShaderValueType::Float32x2:
             {
                 const auto found = vectors2.find(member.parameter_id);
                 if (found == vectors2.end())
                 {
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material float2 value is missing");
                 }
-                const float values[] = {found->second.x, found->second.y};
-                return write_float_bytes(bytes, member.offset, values, 2, member.size);
+                encoder.write_constant(member, Vector2(found->second.x, found->second.y));
+                break;
             }
-            case ShaderValueType::Float32x3:
+            case shader::ShaderValueType::Float32x3:
             {
                 const auto found = vectors3.find(member.parameter_id);
                 if (found == vectors3.end())
                 {
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material float3 value is missing");
                 }
-                const float values[] = {found->second.x, found->second.y, found->second.z};
-                return write_float_bytes(bytes, member.offset, values, 3, member.size);
+                encoder.write_constant(member, Vector3(found->second.x, found->second.y, found->second.z));
+                break;
             }
-            case ShaderValueType::Float32x4:
+            case shader::ShaderValueType::Float32x4:
             {
                 const auto found = vectors4.find(member.parameter_id);
                 if (found == vectors4.end())
                 {
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material float4 value is missing");
                 }
-                const float values[] = {found->second.x, found->second.y, found->second.z, found->second.w};
-                return write_float_bytes(bytes, member.offset, values, 4, member.size);
+                encoder.write_constant(
+                    member, Vector4(found->second.x, found->second.y, found->second.z, found->second.w));
+                break;
             }
             default:
                 return RHIStatus::failure(RHIErrorCode::Unsupported,
                                           "Material constant type is not supported by the first-stage proxy");
             }
+            return encoder.succeeded()
+                       ? RHIStatus::success()
+                       : RHIStatus::failure(RHIErrorCode::InvalidArgument, encoder.error());
         }
 
         RHIStatus derive_effective_graphics_pass_state(const ShaderMapProgramRef& shader_program, bool two_sided,
@@ -127,7 +153,9 @@ namespace toy3d
     } // namespace
 
     MaterialRenderProxy::MaterialRenderProxy(const Material& material)
-        : shader_name_(material.desc().shader_name), shader_program_(material.desc().shader_program)
+        : shader_name_(material.desc().shader_name), parameter_schema_(material.parameter_schema()),
+          parameter_metadata_(make_material_parameter_metadata(parameter_schema_)),
+          shader_program_(material.desc().shader_program)
     {
         if (shader_program_)
         {
@@ -148,36 +176,64 @@ namespace toy3d
         }
     }
 
-    void MaterialRenderProxy::set_scalar(ShaderParameterId parameter_id, float value) noexcept
+    void MaterialRenderProxy::apply_scalar_update(ShaderParameterId parameter_id, float value) noexcept
     {
+        const auto current = scalar_parameters_.find(parameter_id);
+        if (current != scalar_parameters_.end() && current->second == value)
+        {
+            return;
+        }
         scalar_parameters_[parameter_id] = value;
         dirty_ = true;
         staged_dirty_ = staged_shader_program_ != nullptr;
     }
 
-    void MaterialRenderProxy::set_vector(ShaderParameterId parameter_id, const vec2& value) noexcept
+    void MaterialRenderProxy::apply_vector_update(ShaderParameterId parameter_id, const vec2& value) noexcept
     {
+        const auto current = vector2_parameters_.find(parameter_id);
+        if (current != vector2_parameters_.end() && current->second.x == value.x && current->second.y == value.y)
+        {
+            return;
+        }
         vector2_parameters_[parameter_id] = value;
         dirty_ = true;
         staged_dirty_ = staged_shader_program_ != nullptr;
     }
 
-    void MaterialRenderProxy::set_vector(ShaderParameterId parameter_id, const vec3& value) noexcept
+    void MaterialRenderProxy::apply_vector_update(ShaderParameterId parameter_id, const vec3& value) noexcept
     {
+        const auto current = vector3_parameters_.find(parameter_id);
+        if (current != vector3_parameters_.end() && current->second.x == value.x && current->second.y == value.y &&
+            current->second.z == value.z)
+        {
+            return;
+        }
         vector3_parameters_[parameter_id] = value;
         dirty_ = true;
         staged_dirty_ = staged_shader_program_ != nullptr;
     }
 
-    void MaterialRenderProxy::set_vector(ShaderParameterId parameter_id, const vec4& value) noexcept
+    void MaterialRenderProxy::apply_vector_update(ShaderParameterId parameter_id, const vec4& value) noexcept
     {
+        const auto current = vector4_parameters_.find(parameter_id);
+        if (current != vector4_parameters_.end() && current->second.x == value.x && current->second.y == value.y &&
+            current->second.z == value.z && current->second.w == value.w)
+        {
+            return;
+        }
         vector4_parameters_[parameter_id] = value;
         dirty_ = true;
         staged_dirty_ = staged_shader_program_ != nullptr;
     }
 
-    void MaterialRenderProxy::set_texture(ShaderParameterId parameter_id, TextureResource* texture_resource) noexcept
+    void MaterialRenderProxy::apply_texture_update(ShaderParameterId parameter_id,
+                                                   TextureResource* texture_resource) noexcept
     {
+        const auto current = texture_parameters_.find(parameter_id);
+        if (current != texture_parameters_.end() && current->second == texture_resource)
+        {
+            return;
+        }
         texture_parameters_[parameter_id] = texture_resource;
         if (resource_manager_ != nullptr && texture_resource != nullptr)
         {
@@ -269,6 +325,13 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Staged ShaderMap Program does not match the Material identity");
         }
+        const shader::ShaderParameterSchema candidate_schema =
+            material_parameter_schema_from_shader_schema(shader_program->data().parameter_schema);
+        if (candidate_schema.schema_identity != parameter_schema_.schema_identity)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Staged ShaderMap Program has a different complete Material schema");
+        }
 
         shader::ShaderGraphicsPassState effective_state;
         const RHIStatus state_status = derive_effective_graphics_pass_state(shader_program, two_sided, effective_state);
@@ -279,21 +342,27 @@ namespace toy3d
 
         staged_shader_program_ = std::move(shader_program);
         staged_effective_graphics_pass_state_ = effective_state;
-        staged_binding_set_.reset();
-        staged_texture_generations_.clear();
-        staged_texture_views_.clear();
-        staged_dirty_ = true;
+        // A Program candidate does not participate in the Material logical cache key.
+        // Copying the immutable active snapshot preserves publication isolation while
+        // the normal value/view/generation checks still rebuild a genuinely stale candidate.
+        staged_binding_set_ = binding_set_;
+        staged_texture_generations_ = texture_generations_;
+        staged_texture_views_ = texture_views_;
+        staged_dirty_ = dirty_ || !staged_binding_set_;
+        staged_materialized_ = false;
         return RHIStatus::success();
     }
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_staged(RHIDevice& device, RHICommandContext& context)
     {
-        return materialize_program(device, context, staged_shader_program_, true);
+        RHIResult<RHIBindingSetRef> result = materialize_program(device, context, staged_shader_program_, true);
+        staged_materialized_ = result.succeeded();
+        return result;
     }
 
     RHIStatus MaterialRenderProxy::commit_material_candidate()
     {
-        if (!staged_shader_program_ || !staged_binding_set_ || staged_dirty_ ||
+        if (!staged_shader_program_ || !staged_materialized_ || !staged_binding_set_ || staged_dirty_ ||
             !texture_views_match(true))
         {
             const RHIStatus status = RHIStatus::failure(
@@ -315,6 +384,7 @@ namespace toy3d
         texture_views_ = std::move(staged_texture_views_);
         dirty_ = false;
         staged_dirty_ = false;
+        staged_materialized_ = false;
         return RHIStatus::success();
     }
 
@@ -326,6 +396,7 @@ namespace toy3d
         staged_texture_generations_.clear();
         staged_texture_views_.clear();
         staged_dirty_ = false;
+        staged_materialized_ = false;
     }
 
     const shader::ShaderGraphicsPassState* MaterialRenderProxy::effective_graphics_pass_state() const noexcept
@@ -350,79 +421,42 @@ namespace toy3d
             return RHIResult<RHIBindingSetRef>::success(cached_set);
         }
 
-        RHIBindingSetDesc desc;
-        desc.group = RHIBindingGroup::Material;
-        desc.debug_name =
-            shader_program->data().shader_name + "/" + shader_program->data().pass_name + " MaterialBindings";
+        const RHIStatus metadata_status =
+            validate_shader_parameters_metadata_against_schema(parameter_metadata_, parameter_schema_);
+        if (!metadata_status)
+            return RHIResult<RHIBindingSetRef>::failure(metadata_status.code(), metadata_status.message());
+
+        ShaderParameterEncoder encoder(parameter_metadata_);
+        for (const ShaderParameterConstantMemberMetadata& member : parameter_metadata_.constant_buffer.members)
+        {
+            const RHIStatus status = write_material_constant(member, scalar_parameters_, vector2_parameters_,
+                                                             vector3_parameters_, vector4_parameters_, encoder);
+            if (!status)
+                return RHIResult<RHIBindingSetRef>::failure(status.code(), status.message());
+        }
 
         std::unordered_map<TextureResource*, std::uint64_t> generations;
         std::unordered_map<TextureResource*, RHITextureViewRef> views;
-        for (const ShaderMapBinding& binding : shader_program->data().bindings)
+        for (const ShaderParameterResourceMetadata& resource_metadata : parameter_metadata_.resources)
         {
-            if (binding.group != RHIBindingGroup::Material)
-            {
-                continue;
-            }
-
-            if (binding.type == RHIResourceBindingType::UniformBuffer)
-            {
-                if (binding.constant_buffer_size == 0 ||
-                    binding.constant_buffer_size > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()))
-                {
-                    return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument,
-                                                                "Material constant-buffer size is invalid");
-                }
-
-                std::vector<std::uint8_t> bytes(binding.constant_buffer_size, 0);
-                for (const ShaderMapBinding::ConstantMember& member : binding.constant_members)
-                {
-                    const RHIStatus status = write_constant(member, scalar_parameters_, vector2_parameters_,
-                                                            vector3_parameters_, vector4_parameters_, bytes);
-                    if (!status)
-                    {
-                        return RHIResult<RHIBindingSetRef>::failure(status.code(), status.message());
-                    }
-                }
-
-                RHIResult<RHIBufferRef> buffer =
-                    create_uploaded_shader_uniform_buffer(device, context, bytes, desc.debug_name + " Constants");
-                if (!buffer)
-                {
-                    return RHIResult<RHIBindingSetRef>::failure(buffer.status().code(), buffer.status().message());
-                }
-
-                RHIBindingValue value;
-                value.binding_id = binding.parameter_id;
-                value.buffer = std::move(buffer).value();
-                value.buffer_size = binding.constant_buffer_size;
-                value.data_layout_hash = binding.data_layout_hash;
-                value.shader_abi_version = binding.shader_abi_version;
-                desc.bindings.push_back(std::move(value));
-                continue;
-            }
-            if (binding.type != RHIResourceBindingType::SampledTexture)
-                return RHIResult<RHIBindingSetRef>::failure(
-                    RHIErrorCode::Unsupported, "Material binding requires an unsupported first-stage resource type");
-        }
-
-        for (const auto& parameter : texture_parameters_)
-        {
-            TextureResource* const resource = parameter.second;
+            const auto parameter = texture_parameters_.find(resource_metadata.parameter_id);
+            TextureResource* const resource =
+                parameter != texture_parameters_.end() ? parameter->second : nullptr;
             const RHITextureViewRef view = resource != nullptr ? resource->view_for_current_recording() : nullptr;
             if (resource == nullptr || !view)
             {
                 return RHIResult<RHIBindingSetRef>::failure(
                     RHIErrorCode::NotReady, "Material TextureResource has no view for the current recording");
             }
-            RHIBindingValue value;
-            value.binding_id = parameter.first;
-            value.texture_view = view;
-            desc.bindings.push_back(std::move(value));
+            encoder.add_resource(resource_metadata, view);
+            if (!encoder.succeeded())
+                return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument, encoder.error());
             generations[resource] = resource->binding_generation();
             views[resource] = view;
         }
 
-        RHIResult<RHIBindingSetRef> created = device.create_binding_set(desc);
+        RHIResult<RHIBindingSetRef> created = create_persistent_shader_binding(
+            device, context, parameter_metadata_, encoder, shader_name_ + " MaterialBindings");
         if (!created)
         {
             return created;

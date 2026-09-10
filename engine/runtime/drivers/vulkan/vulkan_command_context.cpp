@@ -11,7 +11,6 @@
 #include <cmath>
 #include <limits>
 #include <string>
-#include <type_traits>
 #include <utility>
 
 namespace toy3d
@@ -86,54 +85,6 @@ namespace toy3d
             barrier.size = VK_WHOLE_SIZE;
             vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
                                  nullptr, 1, &barrier, 0, nullptr);
-        }
-
-        template <typename T> void append_packet_key(std::string& key, T value)
-        {
-            static_assert(std::is_trivially_copyable<T>::value, "Packet key fields must be byte-copyable.");
-            key.append(reinterpret_cast<const char*>(&value), sizeof(value));
-        }
-
-        std::string make_binding_packet_key(
-            const VulkanBindingLayout& layout, std::uint32_t physical_set,
-            const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
-        {
-            std::string key;
-            append_packet_key(key, physical_set);
-            for (const RHIBindingLayoutEntry& entry : layout.desc().entries)
-            {
-                if (VulkanBindingLayout::physical_set(entry.group) != physical_set)
-                    continue;
-                append_packet_key(key, entry.binding_id);
-                append_packet_key(key, entry.group);
-                append_packet_key(key, entry.target_binding);
-                append_packet_key(key, entry.type);
-                append_packet_key(key, entry.stages);
-                append_packet_key(key, entry.array_count);
-                append_packet_key(key, entry.data_size);
-            }
-            for (const rhi_detail::ResolvedBinding& resolved : resolved_bindings)
-            {
-                append_packet_key(key, resolved.layout.binding_id);
-                append_packet_key(key, resolved.value.array_index);
-                if (resolved.value.buffer)
-                {
-                    const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(resolved.value.buffer);
-                    append_packet_key(key, buffer->buffer());
-                    append_packet_key(key, resolved.layout.data_size);
-                }
-                else if (resolved.value.texture_view)
-                {
-                    const auto view = std::dynamic_pointer_cast<VulkanTextureView>(resolved.value.texture_view);
-                    append_packet_key(key, view->image_view());
-                }
-                else if (resolved.value.sampler)
-                {
-                    const auto sampler = std::dynamic_pointer_cast<VulkanSampler>(resolved.value.sampler);
-                    append_packet_key(key, sampler->sampler());
-                }
-            }
-            return key;
         }
 
     } // namespace
@@ -855,8 +806,7 @@ namespace toy3d
                                                      RHIAccess::UniformBuffer);
         recording_command_list->retain_upload_page(upload.value().page);
         return RHIResult<RHIUniformBufferSlice>::success(
-            {std::move(buffer), upload.value().offset, desc.source.size, desc.data_layout_hash,
-             desc.shader_abi_version});
+            {std::move(buffer), upload.value().offset, desc.source.size});
     }
 
     RHIStatus VulkanGraphicsCommandContext::copy_texture(const RHITextureCopyDesc& desc)
@@ -1591,7 +1541,6 @@ namespace toy3d
         {
             return resolved_result.status();
         }
-        std::array<std::vector<rhi_detail::ResolvedBinding>, VulkanBindingLayout::physical_set_count> physical_sources;
         for (const rhi_detail::ResolvedBinding& resolved : resolved_result.value())
         {
             const RHIBindingValue& value = resolved.value;
@@ -1624,18 +1573,9 @@ namespace toy3d
                                                                  texture_state.value().layout,
                                                                  texture_state.value().access);
             }
-            physical_sources[VulkanBindingLayout::physical_set(resolved.layout.group)].push_back(resolved);
         }
-        for (auto& sources : physical_sources)
-        {
-            std::sort(sources.begin(), sources.end(),
-                      [](const rhi_detail::ResolvedBinding& left, const rhi_detail::ResolvedBinding& right)
-                      {
-                          return left.layout.target_binding != right.layout.target_binding
-                                     ? left.layout.target_binding < right.layout.target_binding
-                                     : left.value.array_index < right.value.array_index;
-                      });
-        }
+        const VulkanPhysicalBindingSources physical_sources =
+            make_vulkan_physical_binding_sources(resolved_result.value());
 
         const VulkanGraphicsStateDirty dirty_flags = graphics_state.dirty_flags();
         const bool pipeline_dirty = EnumHasAnyFlags(dirty_flags, VulkanGraphicsStateDirty::Pipeline);
@@ -1654,7 +1594,7 @@ namespace toy3d
                 {
                     continue;
                 }
-                const std::string packet_key = make_binding_packet_key(
+                const std::string packet_key = make_vulkan_binding_packet_cache_key(
                     *layout, static_cast<std::uint32_t>(physical_set), physical_sources[physical_set]);
                 const auto cached_packet = binding_packet_cache.find(packet_key);
                 if (cached_packet != binding_packet_cache.end())
@@ -1675,20 +1615,12 @@ namespace toy3d
                     binding_packet_cache.emplace(packet_key, active_binding_packets[physical_set]);
                     descriptor_pool_manager.record_packet_materialization();
                 }
-                for (const rhi_detail::ResolvedBinding& resolved : physical_sources[physical_set])
+                auto dynamic_offsets_result = collect_vulkan_dynamic_uniform_offsets(physical_sources[physical_set]);
+                if (!dynamic_offsets_result)
                 {
-                    if (resolved.layout.type == RHIResourceBindingType::UniformBuffer)
-                    {
-                        if (resolved.value.buffer_offset > std::numeric_limits<std::uint32_t>::max())
-                        {
-                            return RHIStatus::failure(
-                                RHIErrorCode::Unsupported,
-                                "Vulkan dynamic uniform-buffer offsets must fit the native 32-bit range.");
-                        }
-                        dynamic_offsets[physical_set].push_back(
-                            static_cast<std::uint32_t>(resolved.value.buffer_offset));
-                    }
+                    return dynamic_offsets_result.status();
                 }
+                dynamic_offsets[physical_set] = std::move(dynamic_offsets_result).value();
             }
             for (std::size_t physical_set = 0; physical_set < physical_sources.size(); ++physical_set)
             {

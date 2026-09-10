@@ -34,6 +34,12 @@ namespace toy3d::shader
         SourceLocation location;
     };
 
+    struct ShaderParameterGroupInput
+    {
+        BindingGroup group = BindingGroup::Material;
+        std::vector<ConstantMemberInput> constant_members;
+    };
+
     struct ConstantBufferLayout
     {
         BindingGroup group = BindingGroup::Material;
@@ -61,7 +67,7 @@ namespace toy3d::shader
         BindingGroup group = BindingGroup::Material;
         ShaderParameterCategory category = ShaderParameterCategory::SampledTexture;
         ResourceKind resource_kind = ResourceKind::Texture2D;
-        ResourceElementType element_type = ResourceElementType::None;
+        ShaderResourceElementType element_type = ShaderResourceElementType::None;
         std::uint32_t array_count = 1;
         DefaultValue default_value;
         SourceLocation location;
@@ -115,8 +121,10 @@ namespace toy3d::shader
     };
 
     std::uint32_t structured_element_stride(ResourceElementType type);
+    ShaderParameterGroupInput builtin_shader_parameter_input(BindingGroup group);
     ConstantBufferPackResult pack_constant_buffer(BindingGroup group, const std::vector<ConstantMemberInput>& members);
     LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset);
+    ShaderParameterSchema make_shader_parameter_schema(const LogicalShaderLayout& layout);
     ActiveLayoutResult build_active_layout(const LogicalShaderLayout& logical_layout,
                                            const std::vector<ParameterUsage>& usage);
 } // namespace toy3d::shader

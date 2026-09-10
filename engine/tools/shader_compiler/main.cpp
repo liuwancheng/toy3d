@@ -1,4 +1,6 @@
 #include "shader_map/shader_map_entry.h"
+#include "codegen/shader_parameters_codegen.h"
+#include "codegen/shader_parameters_writer.h"
 #include "compiler/program_compiler.h"
 #include "compiler/toolchain_manifest.h"
 #include "logging/logger.h"
@@ -60,6 +62,7 @@ namespace
         report_message(toy3d::Logger::Level::TOY_ERROR,
                        "Usage:\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
+                       "  Toy3dShaderCompiler generate-parameters <output-directory> <input.shader>...\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] compile-vulkan <input.shader> <virtual-path> "
                        "<pass> <shader-map-root> <working-directory> [--variant <name>=<value>]...\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
@@ -139,6 +142,61 @@ int main(int argument_count, char** arguments)
     }
 
     const std::string command = arguments[command_index];
+    if (command == "generate-parameters")
+    {
+        if (explicit_toolchain_root || command_index + 3 > argument_count)
+        {
+            print_usage();
+            return 2;
+        }
+        std::vector<toy3d::shader::ShaderParametersGeneratedUnit> units;
+        toy3d::shader::ShaderParametersGeneratedUnit builtin;
+        builtin.header = toy3d::shader::generate_builtin_shader_parameters_header();
+        builtin.dependencies.push_back("builtin://GlobalViewObject");
+        units.push_back(std::move(builtin));
+        for (int index = command_index + 2; index < argument_count; ++index)
+        {
+            const std::string input_path = arguments[index];
+            const toy3d::FileResult<std::string> input =
+                platform_file.read_text_utf8(toy3d::PhysicalPath(input_path));
+            if (!input.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR,
+                               input_path + ": error: unable to read Shader parameter source.");
+                return 2;
+            }
+            const toy3d::shader::ParseResult parsed = toy3d::shader::parse_shader(input.value(), input_path);
+            for (const toy3d::shader::Diagnostic& diagnostic : parsed.diagnostics)
+                report_diagnostic(diagnostic);
+            if (!parsed.succeeded())
+                return 1;
+            const toy3d::shader::LogicalLayoutResult layout =
+                toy3d::shader::compile_logical_layout(*parsed.asset);
+            for (const toy3d::shader::Diagnostic& diagnostic : layout.diagnostics)
+                report_diagnostic(diagnostic);
+            if (!layout.succeeded())
+                return 1;
+            toy3d::shader::ShaderParametersGeneratedUnit unit;
+            unit.header = toy3d::shader::generate_shader_parameters_header(*parsed.asset, *layout.layout);
+            for (const toy3d::shader::Diagnostic& diagnostic : unit.header.diagnostics)
+                report_diagnostic(diagnostic);
+            if (!unit.header.succeeded())
+                return 1;
+            unit.dependencies.push_back(input_path);
+            units.push_back(std::move(unit));
+        }
+        const toy3d::shader::ShaderParametersWriteResult written =
+            toy3d::shader::write_shader_parameter_headers(
+                platform_file, toy3d::PhysicalPath(arguments[command_index + 1]), units);
+        for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
+            report_diagnostic(diagnostic);
+        if (!written.succeeded())
+            return 1;
+        std::cout << "Generated " << written.outputs.size() << " Shader parameters header(s); "
+                  << written.changed_outputs.size() << " changed and " << written.removed_outputs.size()
+                  << " stale output(s) removed.\n";
+        return 0;
+    }
     if (command == "toolchain-info")
     {
         if (command_index + 1 != argument_count)

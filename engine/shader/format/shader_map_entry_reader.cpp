@@ -809,6 +809,8 @@ namespace toy3d::shader
                                                        "target",
                                                        "profile",
                                                        "mapping_version",
+                                                       "generated_format_version",
+                                                       "parameter_schema_identity",
                                                        "logical_layout_hash",
                                                        "target_binding_hash",
                                                        "pass_template_hash",
@@ -850,11 +852,15 @@ namespace toy3d::shader
         const auto target = parse_unsigned<std::uint32_t>(manifest->at("target"));
         const auto profile = parse_unsigned<std::uint32_t>(manifest->at("profile"));
         const auto mapping_version = parse_unsigned<std::uint32_t>(manifest->at("mapping_version"));
+        const auto generated_format_version =
+            parse_unsigned<std::uint32_t>(manifest->at("generated_format_version"));
         const auto variant_id_version = parse_unsigned<std::uint32_t>(manifest->at("variant_id_version"));
         const auto permutation_version = parse_unsigned<std::uint32_t>(manifest->at("permutation_version"));
         const auto stage_count = parse_unsigned<std::uint32_t>(manifest->at("stage_count"));
         const auto content_hash = parse_hash(manifest->at("entry_content_hash"), result, "entry_content_hash");
         const auto logical_hash = parse_hash(manifest->at("logical_layout_hash"), result, "logical_layout_hash");
+        const auto schema_identity =
+            parse_hash(manifest->at("parameter_schema_identity"), result, "parameter_schema_identity");
         const auto binding_hash = parse_hash(manifest->at("target_binding_hash"), result, "target_binding_hash");
         const auto pass_hash = parse_hash(manifest->at("pass_template_hash"), result, "pass_template_hash");
         const auto permutation_key = parse_hash(manifest->at("permutation_key"), result, "permutation_key");
@@ -864,10 +870,12 @@ namespace toy3d::shader
             !safe_scalar(manifest->at("pass_name")) || !target ||
             *target != static_cast<std::uint32_t>(ShaderTarget::VulkanSpirV) || !profile ||
             *profile != static_cast<std::uint32_t>(ShaderCompileProfile::VulkanES31) || !mapping_version ||
-            *mapping_version != vulkan_binding_mapping_version || !variant_id_version ||
+            *mapping_version != vulkan_binding_mapping_version || !generated_format_version ||
+            *generated_format_version != shader_parameters_generated_format_version || !variant_id_version ||
             *variant_id_version != shader_variant_id_version || !permutation_version ||
             *permutation_version != shader_permutation_version || !stage_count || *stage_count == 0u ||
-            *stage_count > 3u || !content_hash || !logical_hash || !binding_hash || !pass_hash || !permutation_key ||
+            *stage_count > 3u || !content_hash || !logical_hash || !schema_identity || !binding_hash || !pass_hash ||
+            !permutation_key ||
             !graphics_pass_state || hash_is_zero(*content_hash) || hash_is_zero(*logical_hash) ||
             hash_is_zero(*binding_hash) || hash_is_zero(*pass_hash) || hash_is_zero(*permutation_key))
         {
@@ -894,9 +902,26 @@ namespace toy3d::shader
             return result;
         }
 
+        const auto schema_text = read_text(platform_file, *directory, "schema.txt", maximum_metadata_size, result);
+        std::string schema_error;
+        if (!schema_text || !parse_shader_parameter_schema(*schema_text, entry.parameter_schema, schema_error) ||
+            entry.parameter_schema.generated_format_version != *generated_format_version ||
+            entry.parameter_schema.schema_identity != *schema_identity ||
+            entry.parameter_schema.logical_layout_hash != entry.logical_layout_hash)
+        {
+            add_error(result, schema_error.empty() ? "Shader parameter schema does not match the manifest."
+                                                   : std::move(schema_error));
+            return result;
+        }
+
         const auto mapping_text = read_text(platform_file, *directory, "mapping.txt", maximum_metadata_size, result);
         if (!mapping_text || !parse_mapping(*mapping_text, entry, result))
             return result;
+        if (!validate_active_bindings_are_schema_subset(entry.parameter_schema, entry.bindings, schema_error))
+        {
+            add_error(result, std::move(schema_error));
+            return result;
+        }
 
         const std::array<std::pair<ShaderStageFlags, const char*>, 3> stages = {
             {{ShaderStageFlags::Vertex, "vertex"},
@@ -995,6 +1020,16 @@ namespace toy3d::shader
         {
             add_error(result, "ShaderMapEntry stage set is invalid.");
             return result;
+        }
+        for (const ShaderCodeEntry& stage : entry.stages)
+        {
+            std::string schema_error;
+            if (!validate_reflected_bindings_are_schema_subset(entry.parameter_schema, stage.reflection.bindings,
+                                                               schema_error))
+            {
+                add_error(result, std::move(schema_error));
+                return result;
+            }
         }
         if (calculate_shader_map_key(entry) != shader_map_key)
         {

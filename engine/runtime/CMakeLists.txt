@@ -56,6 +56,10 @@ set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 add_dependencies(${TARGET_NAME} Toy3dShaders)
+add_dependencies(${TARGET_NAME} Toy3dShaderParameters)
+set_source_files_properties(${TOY3D_SHADER_PARAMETERS_HEADERS} PROPERTIES GENERATED TRUE)
+target_sources(${TARGET_NAME} PRIVATE ${TOY3D_SHADER_PARAMETERS_HEADERS})
+source_group("Generated Files\\Shader Parameters" FILES ${TOY3D_SHADER_PARAMETERS_HEADERS})
 
 if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
     target_sources(${TARGET_NAME}
@@ -185,7 +189,9 @@ target_include_directories(
 # add generated files
 target_include_directories(
     ${TARGET_NAME} 
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/generated>)
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/generated>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
   
 # win32 resouce.h
 if(WIN32)
@@ -193,6 +199,25 @@ if(WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(Toy3dShaderParametersTests
+        "tests/shader_parameters_tests.cpp")
+    target_compile_features(Toy3dShaderParametersTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dShaderParametersTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dShaderParametersTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.ShaderParameters COMMAND Toy3dShaderParametersTests)
+
+    add_executable(Toy3dGeneratedShaderParametersCompileTests
+        "tests/generated_shader_parameters_compile_tests.cpp")
+    target_compile_features(Toy3dGeneratedShaderParametersCompileTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dGeneratedShaderParametersCompileTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dGeneratedShaderParametersCompileTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.GeneratedShaderParametersCompile
+        COMMAND Toy3dGeneratedShaderParametersCompileTests)
+
     find_package(Threads REQUIRED)
     add_executable(Toy3dConsoleManagerTests
         "tests/console_manager_tests.cpp"

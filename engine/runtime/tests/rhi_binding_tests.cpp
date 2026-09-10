@@ -4,6 +4,9 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -37,6 +40,56 @@ namespace
             entry.shader_abi_version = 1u;
         }
         return entry;
+    }
+
+    std::uint64_t align_up(std::uint64_t value, std::uint64_t alignment)
+    {
+        return ((value + alignment - 1u) / alignment) * alignment;
+    }
+
+    struct UniformUploadModelResult
+    {
+        toy3d::RHIUniformBufferSlice slice;
+        std::uint64_t allocation_size = 0;
+        std::vector<std::uint8_t> copied_bytes;
+    };
+
+    UniformUploadModelResult model_vulkan_dynamic_uniform_upload(
+        const toy3d::RHITransientUniformDataDesc& desc, const toy3d::RHIBufferRef& arena,
+        std::uint64_t& next_offset, std::uint64_t alignment)
+    {
+        const std::uint64_t offset = align_up(next_offset, alignment);
+        next_offset = offset + desc.source.size;
+        const auto* source = static_cast<const std::uint8_t*>(desc.source.data);
+        return {{arena, offset, desc.source.size}, desc.source.size,
+                std::vector<std::uint8_t>(source, source + desc.source.size)};
+    }
+
+    UniformUploadModelResult model_d3d12_aligned_suballocation(
+        const toy3d::RHITransientUniformDataDesc& desc, const toy3d::RHIBufferRef& arena,
+        std::uint64_t& next_offset)
+    {
+        constexpr std::uint64_t d3d12_constant_buffer_alignment = 256u;
+        const std::uint64_t offset = align_up(next_offset, d3d12_constant_buffer_alignment);
+        const std::uint64_t allocation_size = align_up(desc.source.size, d3d12_constant_buffer_alignment);
+        next_offset = offset + allocation_size;
+        const auto* source = static_cast<const std::uint8_t*>(desc.source.data);
+        return {{arena, offset, desc.source.size}, allocation_size,
+                std::vector<std::uint8_t>(source, source + desc.source.size)};
+    }
+
+    UniformUploadModelResult model_d3d11_standalone_constant_buffer(
+        const toy3d::RHITransientUniformDataDesc& desc)
+    {
+        constexpr std::uint64_t d3d11_constant_buffer_alignment = 16u;
+        const std::uint64_t allocation_size = align_up(desc.source.size, d3d11_constant_buffer_alignment);
+        toy3d::RHIBufferDesc buffer_desc;
+        buffer_desc.size = allocation_size;
+        buffer_desc.usage = toy3d::RHIResourceUsage::UniformBuffer;
+        buffer_desc.debug_name = desc.debug_name;
+        const auto* source = static_cast<const std::uint8_t*>(desc.source.data);
+        return {{std::make_shared<toy3d::RHIBuffer>(std::move(buffer_desc)), 0u, desc.source.size}, allocation_size,
+                std::vector<std::uint8_t>(source, source + desc.source.size)};
     }
 
 } // namespace
@@ -155,22 +208,53 @@ int main()
     std::uint8_t uniform_byte = 1u;
     toy3d::RHITransientUniformDataDesc transient_uniform;
     transient_uniform.source = {&uniform_byte, sizeof(uniform_byte), 0u, 0u};
-    transient_uniform.data_layout_hash[0] = 1u;
-    transient_uniform.shader_abi_version = 1u;
     check(static_cast<bool>(toy3d::validate_transient_uniform_data_desc(transient_uniform)),
-          "transient uniform data requires copied source bytes and complete data ABI identity");
+          "transient uniform data accepts copied source bytes without Shader ABI metadata");
     toy3d::RHITransientUniformDataDesc invalid_transient = transient_uniform;
     invalid_transient.source = {};
     check(!toy3d::validate_transient_uniform_data_desc(invalid_transient),
           "empty transient uniform source data must fail");
-    invalid_transient = transient_uniform;
-    invalid_transient.data_layout_hash = {};
-    check(!toy3d::validate_transient_uniform_data_desc(invalid_transient),
-          "transient uniform data without a layout hash must fail");
-    invalid_transient = transient_uniform;
-    invalid_transient.shader_abi_version = 0u;
-    check(!toy3d::validate_transient_uniform_data_desc(invalid_transient),
-          "transient uniform data without a Shader ABI version must fail");
+
+    const std::vector<std::uint8_t> uniform_bytes(20u, 0x5au);
+    toy3d::RHITransientUniformDataDesc cross_backend_upload;
+    cross_backend_upload.source = {uniform_bytes.data(), uniform_bytes.size(), 0u, 0u};
+    cross_backend_upload.debug_name = "cross-backend uniform bytes";
+
+    toy3d::RHIBufferDesc arena_desc;
+    arena_desc.size = 4096u;
+    arena_desc.usage = toy3d::RHIResourceUsage::UniformBuffer;
+    const auto shared_arena = std::make_shared<toy3d::RHIBuffer>(arena_desc);
+    std::uint64_t vulkan_next_offset = 17u;
+    std::uint64_t d3d12_next_offset = 17u;
+    const UniformUploadModelResult vulkan_upload =
+        model_vulkan_dynamic_uniform_upload(cross_backend_upload, shared_arena, vulkan_next_offset, 64u);
+    const UniformUploadModelResult d3d12_upload =
+        model_d3d12_aligned_suballocation(cross_backend_upload, shared_arena, d3d12_next_offset);
+    const UniformUploadModelResult d3d11_upload =
+        model_d3d11_standalone_constant_buffer(cross_backend_upload);
+    const UniformUploadModelResult second_d3d11_upload =
+        model_d3d11_standalone_constant_buffer(cross_backend_upload);
+
+    check(vulkan_upload.slice.buffer == shared_arena && vulkan_upload.slice.offset == 64u &&
+              vulkan_upload.slice.size == uniform_bytes.size() && vulkan_upload.copied_bytes == uniform_bytes,
+          "the pure-memory upload contract must support a Vulkan dynamic-uniform arena and logical slice");
+    check(d3d12_upload.slice.buffer == shared_arena && d3d12_upload.slice.offset == 256u &&
+              d3d12_upload.slice.size == uniform_bytes.size() && d3d12_upload.allocation_size == 256u &&
+              d3d12_upload.copied_bytes == uniform_bytes,
+          "the same upload contract must support D3D12 256-byte suballocation without exposing its padding");
+    check(d3d11_upload.slice.buffer && d3d11_upload.slice.offset == 0u &&
+              d3d11_upload.slice.size == uniform_bytes.size() && d3d11_upload.allocation_size == 32u &&
+              d3d11_upload.slice.buffer != second_d3d11_upload.slice.buffer &&
+              d3d11_upload.copied_bytes == uniform_bytes,
+          "the same upload contract must support a D3D11 standalone constant-buffer fallback");
+
+    // C++17 structured binding makes this a compile-time field-count contract: adding native
+    // descriptor/register/root fields to either public aggregate breaks this backend-neutral test.
+    const auto [public_source, public_debug_name] = cross_backend_upload;
+    const auto [public_buffer, public_offset, public_size] = d3d12_upload.slice;
+    check(public_source.data == uniform_bytes.data() && public_debug_name == cross_backend_upload.debug_name &&
+              public_buffer == shared_arena && public_offset == 256u && public_size == uniform_bytes.size(),
+          "public transient uniform aggregates must contain only source/debug and buffer/offset/size semantics");
 
     if (failure_count != 0)
     {

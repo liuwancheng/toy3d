@@ -17,7 +17,6 @@ namespace toy3d
 {
     class RHIDevice;
     class RHIGraphicsCommandContext;
-    class ShaderMapProgram;
 
     const GlobalShaderType& imgui_global_shader_type();
 
@@ -72,11 +71,6 @@ namespace toy3d
 
         static constexpr std::size_t INVALID_PAGE_INDEX = std::numeric_limits<std::size_t>::max();
 
-        const ShaderMapBinding* constant_buffer_binding_ = nullptr;
-        const ShaderMapBinding::ConstantMember* projection_binding_ = nullptr;
-        const ShaderMapBinding* font_texture_binding_ = nullptr;
-        const ShaderMapBinding* font_sampler_binding_ = nullptr;
-        const ShaderMapProgram* shader_program_ = nullptr;
         RHIShaderProgramRef rhi_program_;
         RHITextureRef font_texture_;
         RHITextureViewRef font_texture_view_;

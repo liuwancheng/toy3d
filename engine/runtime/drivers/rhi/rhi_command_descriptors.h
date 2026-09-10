@@ -65,8 +65,6 @@ namespace toy3d
     struct RHITransientUniformDataDesc
     {
         RHIInitialData source;
-        ShaderDataLayoutHash data_layout_hash{};
-        std::uint32_t shader_abi_version = 0;
         std::string debug_name;
     };
 
@@ -75,8 +73,6 @@ namespace toy3d
         RHIBufferRef buffer;
         std::uint64_t offset = 0;
         std::uint64_t size = 0;
-        ShaderDataLayoutHash data_layout_hash{};
-        std::uint32_t shader_abi_version = 0;
     };
 
     struct RHITextureCopyLocation

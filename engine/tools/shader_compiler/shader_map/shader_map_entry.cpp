@@ -90,6 +90,7 @@ namespace toy3d::shader
                                                               const ShaderMapEntry& entry)
     {
         ShaderMapEntryWriteResult result;
+        std::string schema_error;
         if (shader_map_root.empty() || entry.shader_name.empty() || entry.pass_name.empty() ||
             entry.target != ShaderTarget::VulkanSpirV || entry.profile != ShaderCompileProfile::VulkanES31 ||
             entry.mapping_version != vulkan_binding_mapping_version || entry.stages.empty() ||
@@ -97,7 +98,10 @@ namespace toy3d::shader
             hash_is_zero(entry.pass_template_hash) || !is_valid_shader_graphics_pass_state(entry.graphics_pass_state) ||
             calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state) != entry.pass_template_hash ||
             entry.variant_id_version != shader_variant_id_version ||
-            entry.permutation_version != shader_permutation_version || hash_is_zero(entry.permutation_key))
+            entry.permutation_version != shader_permutation_version || hash_is_zero(entry.permutation_key) ||
+            entry.logical_layout_hash != entry.parameter_schema.logical_layout_hash ||
+            !validate_shader_parameter_schema(entry.parameter_schema, schema_error) ||
+            !validate_active_bindings_are_schema_subset(entry.parameter_schema, entry.bindings, schema_error))
         {
             add_error(result, "ShaderMapEntry publication requires a fully validated Vulkan Program.");
             return result;
@@ -127,6 +131,12 @@ namespace toy3d::shader
                 !validate_dependencies(stage.request.dependencies))
             {
                 add_error(result, "ShaderMapEntry contains an invalid ShaderCodeEntry.");
+                return result;
+            }
+            if (!validate_reflected_bindings_are_schema_subset(entry.parameter_schema, stage.reflection.bindings,
+                                                               schema_error))
+            {
+                add_error(result, schema_error);
                 return result;
             }
             stage_mask |= stage_value;
@@ -234,6 +244,8 @@ namespace toy3d::shader
                  << "target=" << static_cast<std::uint32_t>(entry.target) << '\n'
                  << "profile=" << static_cast<std::uint32_t>(entry.profile) << '\n'
                  << "mapping_version=" << entry.mapping_version << '\n'
+                 << "generated_format_version=" << entry.parameter_schema.generated_format_version << '\n'
+                 << "parameter_schema_identity=" << sha256_to_hex(entry.parameter_schema.schema_identity) << '\n'
                  << "logical_layout_hash=" << sha256_to_hex(entry.logical_layout_hash) << '\n'
                  << "target_binding_hash=" << sha256_to_hex(entry.target_binding_hash) << '\n'
                  << "pass_template_hash=" << sha256_to_hex(entry.pass_template_hash) << '\n'
@@ -305,6 +317,7 @@ namespace toy3d::shader
                                     : path.status();
         };
         bool wrote_all = write_text("manifest.txt", manifest.str()).succeeded() &&
+                         write_text("schema.txt", serialize_shader_parameter_schema(entry.parameter_schema)).succeeded() &&
                          write_text("mapping.txt", mapping.str()).succeeded();
         for (const ShaderCodeEntry& stage : entry.stages)
         {

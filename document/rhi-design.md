@@ -468,7 +468,7 @@ struct ShaderParameterId
 };
 ```
 
-`ShaderParameterId` 使用 Shader 规范锁定的 64-bit FNV-1a 与带长度字段输入编码，由 binding group、category 和 parameter name 生成；0 为 invalid。资产和 MaterialInstance 按稳定 ID 存储数据，并保留原始名字用于诊断。`binding_slot`、constant buffer offset 和后端 descriptor 位置只能作为 shader 编译/reflection 的派生结果，不能作为资产格式中的持久标识。
+`ShaderParameterId` 使用 Shader 规范锁定的 64-bit FNV-1a 与带长度字段输入编码，由 binding group、category 和 parameter name 生成；0 为 invalid。完整 logical schema 是参数身份、类型、默认值和 constant layout 的唯一权威；Program active layout 只描述当前 Program 实际消费的子集，target mapping 只描述当前 target 的原生位置。`binding_slot`、constant buffer offset 和后端 descriptor 位置不能成为资产或业务调用方持久保存的身份。
 
 Constant 数据按更新频率分块：
 
@@ -480,7 +480,9 @@ MaterialConstants
 ObjectConstants
 ```
 
-Global/View/Pass/Object 可使用 frame upload allocator；Material 保存持久 CPU 参数数据，值变更后按版本上传。Vulkan/D3D12 可使用 dynamic uniform/constant buffer offset 或 upload buffer，D3D11 后端使用 dynamic constant buffer 和安全的 discard/suballocation 策略。
+ShaderCompiler 从 `.shader` Pass/Material schema 与内建 Global/View/Object schema 生成构建目录中的强类型 C++ parameters、不可变 `ShaderParametersMetadata` 和薄编码重载。RenderCore 按 metadata 将字段编码为清零的 canonical bytes，收集独立资源值并创建 logical binding；RenderScene 正式代码只填写强类型字段，不生成 ID、不重述 offset/hash/ABI，也不直接构造 `RHIBindingValue` 或 `RHIBindingSetDesc`。
+
+Global、View、Pass、Material、Object 共用编码规则，但保持各自 owner 和生命周期：Pass 使用 recording-scoped transient binding；View 每 View 每帧创建一次；Object 在 frame-local draw data 中按 Primitive identity 与 object-data generation 复用；Material 使用完整 schema 驱动的 persistent constants 与 Program-independent logical superset。RHI transient uniform upload 只复制 bytes 并返回 buffer/offset/size，不接收 Shader metadata。Vulkan/D3D12 可使用 dynamic uniform/constant buffer offset 或 upload buffer，D3D11 可使用 standalone constant buffer fallback。
 
 ## 10. Binding layout 与 binding set
 
@@ -567,16 +569,13 @@ descriptor set 或 D3D12 descriptor handle。
 
 ### 11.2 `MaterialInstance`
 
-`MaterialInstance` 保存 `MaterialRef` 与由稳定 `ShaderParameterId` 标识的 typed
-parameter override。参数类型必须匹配 Material schema；普通动态参数更新按 RenderCommand FIFO
-更新稳定 `MaterialRenderProxy`，不携带通用 revision，也不触发 shader 编译。`StaticMeshComponent` 始终引用 MaterialInstance，不在 Component
-内复制一套材质字段。
+`MaterialInstance` 保存 `MaterialRef` 与 typed parameter override。GT-facing setter 接收 canonical parameter name，在完整 Material schema 中解析并验证类型后，才更新 override 并通过 RenderCommand FIFO 投递已解析 `ShaderParameterId` 与 owned value；字符串不跨线程，Render Thread 不按名字查找。未知名字或类型错误不得产生部分更新。普通动态参数更新不携带通用 revision，也不触发 shader 编译。`StaticMeshComponent` 始终引用 MaterialInstance，不在 Component 内复制一套材质字段。
 
 ### 11.3 `MaterialRenderProxy`
 
 `MaterialInstance` 拥有地址稳定的 `MaterialRenderProxy` render representation，其可变状态只由
-Render Thread 访问。Proxy 保存 RT 参数表、non-owning `TextureRenderResource*`、ShaderMap program
-和 binding cache；Draw 前解析 override/default 并按需物化 frame-local constants 与 Material binding。
+Render Thread 访问。Proxy 保存 RT 参数表、non-owning `TextureRenderResource*`、完整 Material schema、ShaderMap program
+和 binding cache；Draw 前按完整 schema 解析 override/default，并按需物化 persistent constants 与 Program-independent Material logical superset。Program 只在 draw 时选择 active subset，不作为 logical binding 的构建权威或仅因 mapping/subset 变化触发重建。
 Texture Asset/上层状态保证引用生命周期，已录制 GPU 工作则由 RHI command list 强引用实际 view、
 binding 与 native resource，直至对应 queue completion。
 
@@ -758,6 +757,7 @@ for (const MeshPassDrawList& draw_list : draw_lists)
 - `VertexFactory`、`MeshBatch` 和 `MeshPassProcessor`；
 - `BasePass`、`ShadowPass` 和 mesh sorting；
 - shader source compilation 和 include 管理；
+- generated C++ parameters、`ShaderParametersMetadata`、`ShaderParameterEncoder`、字段地址和 Material schema；
 - Render Graph 的 pass dependency 对象。
 
 RHI 只接收这些类型编译后的结果：shader bytecode、binding layout/set、pipeline descriptor、resource/view、render pass descriptor、command 和 submit dependency。

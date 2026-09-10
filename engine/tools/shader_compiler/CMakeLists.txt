@@ -7,6 +7,12 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "shader_map/shader_map_storage.h"
     "codegen/binding_codegen.cpp"
     "codegen/binding_codegen.h"
+    "codegen/cpp_identifier.cpp"
+    "codegen/cpp_identifier.h"
+    "codegen/shader_parameters_codegen.cpp"
+    "codegen/shader_parameters_codegen.h"
+    "codegen/shader_parameters_writer.cpp"
+    "codegen/shader_parameters_writer.h"
     "compiler/compile_request.cpp"
     "compiler/compile_request.h"
     "compiler/dxc_adapter.cpp"
@@ -36,6 +42,7 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "frontend/tokenizer.h"
     "layout/binding_allocator.cpp"
     "layout/binding_allocator.h"
+    "layout/builtin_shader_parameter_inputs.cpp"
     "layout/shader_layout.cpp"
     "layout/shader_layout.h"
     "reflection/spirv_reflection.cpp"
@@ -103,6 +110,9 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dShaderCompilerLayoutTests
         PRIVATE
             Toy3dShaderCompilerCore)
+    target_compile_definitions(Toy3dShaderCompilerLayoutTests
+        PRIVATE
+            "TOY3D_SHADER_PARAMETERS_WRITER_TEST_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/tests/generated/shader_parameters\"")
     add_test(NAME Toy3dShaderCompiler.Layout
         COMMAND Toy3dShaderCompilerLayoutTests)
 

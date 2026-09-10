@@ -101,6 +101,7 @@ namespace toy3d
         shader::ShaderGraphicsPassState graphics_pass_state;
         ShaderContentHash pass_template_hash{};
         ShaderContentHash permutation_key{};
+        shader::ShaderParameterSchema parameter_schema;
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderMapStage> stages;
         std::vector<ShaderVertexInput> vertex_inputs;

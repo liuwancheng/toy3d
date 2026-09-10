@@ -3,6 +3,10 @@
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/ui/imgui_renderer.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
+#include "shader_parameters/toy3d_postprocess_tonemap.generated.h"
+#include "shader_parameters/toy3d_ui_imgui.generated.h"
+#include "shader_map_test_utils.h"
 
 #include <cstdint>
 #include <iostream>
@@ -60,6 +64,7 @@ namespace
         pixel.content_hash[0] = 4;
         pixel.reflection.push_back(binding);
         program.stages.push_back(pixel);
+        toy3d::tests::finalize_test_program_parameter_schema(program);
         return program;
     }
 
@@ -95,9 +100,63 @@ namespace
         std::vector<toy3d::GlobalShaderBindingRequirement> bindings;
         bindings.emplace_back(parameter_id, toy3d::RHIBindingGroup::Pass, toy3d::RHIResourceBindingType::SampledTexture,
                               1, toy3d::RHIShaderStageFlags::Pixel);
+        toy3d::shader::ShaderParameterSchema schema;
+        const std::string parameter_name = parameter_id == 10u ? "required_texture" :
+                                                                  "required_" + std::to_string(parameter_id);
+        schema.resources.push_back(
+            {parameter_id, parameter_name, toy3d::shader::BindingGroup::Pass,
+             toy3d::shader::ShaderParameterCategory::SampledTexture, toy3d::shader::ResourceKind::Texture2D,
+             toy3d::shader::ShaderResourceElementType::Float4, 1u,
+             toy3d::shader::ShaderParameterDefaultValueKind::None, {}});
+        schema.logical_layout_hash = toy3d::shader::calculate_shader_parameter_logical_layout_hash(schema);
+        schema.schema_identity = toy3d::shader::calculate_shader_parameter_schema_identity(schema);
+        toy3d::ShaderParametersMetadata metadata;
+        metadata.group = toy3d::shader::BindingGroup::Pass;
+        metadata.generated_format_version = schema.generated_format_version;
+        metadata.shader_abi_version = schema.shader_abi_version;
+        metadata.parameter_id_version = schema.parameter_id_version;
+        metadata.cpp_identifier_version = toy3d::shader::shader_parameters_cpp_identifier_version;
+        metadata.schema_identity = schema.schema_identity;
+        metadata.group_identity =
+            toy3d::shader::calculate_shader_parameter_group_identity(schema, metadata.group);
+        metadata.resources.push_back(
+            {parameter_id, toy3d::shader::ShaderParameterCategory::SampledTexture,
+             toy3d::shader::ResourceKind::Texture2D, toy3d::shader::ShaderResourceElementType::Float4, 1u,
+             toy3d::shader::ShaderParameterDefaultValueKind::None, {}, parameter_name});
         return toy3d::GlobalShaderType(std::move(type_name), std::move(shader_name), std::move(pass_name),
                                        toy3d::shader::default_shader_permutation_key,
-                                       toy3d::GlobalShaderType::ProgramKind::Graphics, stages, std::move(bindings));
+                                       toy3d::GlobalShaderType::ProgramKind::Graphics, stages, metadata,
+                                       std::move(bindings));
+    }
+
+    void append_metadata_group(const toy3d::ShaderParametersMetadata& metadata,
+                               toy3d::shader::ShaderParameterSchema& schema)
+    {
+        if (metadata.constant_buffer.size != 0u)
+        {
+            toy3d::shader::ShaderParameterConstantBufferSchema buffer;
+            buffer.binding_id = metadata.constant_buffer.binding_id;
+            buffer.name = metadata.constant_buffer.name;
+            buffer.group = metadata.group;
+            buffer.size = metadata.constant_buffer.size;
+            buffer.data_layout_hash = metadata.constant_buffer.data_layout_hash;
+            buffer.shader_abi_version = metadata.constant_buffer.shader_abi_version;
+            for (const toy3d::ShaderParameterConstantMemberMetadata& member :
+                 metadata.constant_buffer.members)
+            {
+                buffer.members.push_back({member.parameter_id, member.name, member.type, member.offset,
+                                          member.size, member.array_count, member.array_stride,
+                                          member.matrix_stride, member.default_value});
+            }
+            schema.constant_buffers.push_back(std::move(buffer));
+        }
+        for (const toy3d::ShaderParameterResourceMetadata& resource : metadata.resources)
+        {
+            schema.resources.push_back(
+                {resource.parameter_id, resource.name, metadata.group, resource.category,
+                 resource.resource_kind, resource.element_type, resource.array_count,
+                 resource.default_value_kind, resource.default_value});
+        }
     }
 
     toy3d::ShaderMapProgramData make_program_for_type(const toy3d::GlobalShaderType& type, std::uint8_t hash_seed)
@@ -116,21 +175,32 @@ namespace
         {
             toy3d::ShaderMapBinding binding;
             binding.parameter_id = requirement.parameter_id();
-            binding.name = "required_" + std::to_string(binding.parameter_id);
             binding.group = requirement.group();
             binding.type = requirement.type();
+            const toy3d::ShaderParametersMetadata& metadata = type.parameter_metadata();
+            if (binding.type == toy3d::RHIResourceBindingType::UniformBuffer)
+                binding.name = metadata.constant_buffer.name;
+            else
+            {
+                const auto resource = std::find_if(
+                    metadata.resources.begin(), metadata.resources.end(),
+                    [&](const toy3d::ShaderParameterResourceMetadata& candidate)
+                    { return candidate.parameter_id == binding.parameter_id; });
+                binding.name = resource == metadata.resources.end() ? std::string() : resource->name;
+            }
             binding.stages = requirement.stages();
             binding.target_binding = target_binding++;
             binding.array_count = requirement.array_count();
             if (binding.type == toy3d::RHIResourceBindingType::UniformBuffer)
             {
-                binding.constant_buffer_size = 16;
-                toy3d::ShaderMapBinding::ConstantMember member;
-                member.parameter_id = binding.parameter_id + 1u;
-                member.name = "required_member";
-                member.type = toy3d::ShaderValueType::Float32;
-                member.size = sizeof(float);
-                binding.constant_members.push_back(member);
+                binding.constant_buffer_size = metadata.constant_buffer.size;
+                for (const toy3d::ShaderParameterConstantMemberMetadata& source :
+                     metadata.constant_buffer.members)
+                {
+                    binding.constant_members.push_back(
+                        {source.parameter_id, source.name, static_cast<toy3d::ShaderValueType>(source.type),
+                         source.offset, source.size, source.array_stride, source.matrix_stride});
+                }
             }
             program.bindings.push_back(binding);
         }
@@ -161,6 +231,63 @@ namespace
         {
             append_stage(toy3d::RHIShaderStage::Pixel, toy3d::RHIShaderStageFlags::Pixel, "ps_main", 3);
         }
+        toy3d::tests::finalize_test_program_parameter_schema(program);
+        const toy3d::ShaderParametersMetadata& metadata = type.parameter_metadata();
+        for (toy3d::shader::ShaderParameterConstantBufferSchema& buffer : program.parameter_schema.constant_buffers)
+        {
+            if (buffer.binding_id != metadata.constant_buffer.binding_id)
+                continue;
+            buffer.name = metadata.constant_buffer.name;
+            for (toy3d::shader::ShaderParameterConstantMemberSchema& member : buffer.members)
+            {
+                const auto found = std::find_if(
+                    metadata.constant_buffer.members.begin(), metadata.constant_buffer.members.end(),
+                    [&](const toy3d::ShaderParameterConstantMemberMetadata& candidate)
+                    { return candidate.parameter_id == member.parameter_id; });
+                if (found != metadata.constant_buffer.members.end())
+                {
+                    member.name = found->name;
+                    member.default_value = found->default_value;
+                }
+            }
+        }
+        for (toy3d::shader::ShaderParameterResourceSchema& resource : program.parameter_schema.resources)
+        {
+            const auto found = std::find_if(
+                metadata.resources.begin(), metadata.resources.end(),
+                [&](const toy3d::ShaderParameterResourceMetadata& candidate)
+                { return candidate.parameter_id == resource.parameter_id; });
+            if (found != metadata.resources.end())
+            {
+                resource.name = found->name;
+                resource.resource_kind = found->resource_kind;
+                resource.element_type = found->element_type;
+                resource.default_value_kind = found->default_value_kind;
+                resource.default_value = found->default_value;
+            }
+        }
+        const toy3d::TonemapPassParameters tonemap_parameters;
+        const toy3d::ImGuiPassParameters imgui_parameters;
+        const bool uses_builtin_groups =
+            metadata.schema_identity == toy3d::shader_parameters_metadata(tonemap_parameters).schema_identity ||
+            metadata.schema_identity == toy3d::shader_parameters_metadata(imgui_parameters).schema_identity;
+        if (uses_builtin_groups)
+        {
+            const toy3d::ViewShaderParameters view_parameters;
+            const toy3d::ObjectShaderParameters object_parameters;
+            append_metadata_group(toy3d::shader_parameters_metadata(view_parameters), program.parameter_schema);
+            append_metadata_group(toy3d::shader_parameters_metadata(object_parameters), program.parameter_schema);
+            std::sort(program.parameter_schema.constant_buffers.begin(),
+                      program.parameter_schema.constant_buffers.end(),
+                      [](const toy3d::shader::ShaderParameterConstantBufferSchema& left,
+                         const toy3d::shader::ShaderParameterConstantBufferSchema& right)
+                      { return left.group < right.group; });
+        }
+        program.parameter_schema.logical_layout_hash =
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(program.parameter_schema);
+        program.parameter_schema.schema_identity =
+            toy3d::shader::calculate_shader_parameter_schema_identity(program.parameter_schema);
+        program.logical_layout_hash = program.parameter_schema.logical_layout_hash;
         return program;
     }
 } // namespace
@@ -250,8 +377,9 @@ int main()
                   toy3d::RHIShaderStageFlags::Vertex | toy3d::RHIShaderStageFlags::Pixel, 999);
     toy3d::GlobalShaderMapResult binding_mismatch =
         toy3d::GlobalShaderMap::load(shader_map, toy3d::ShaderPlatform::VulkanES31, {&wrong_binding});
-    check(!binding_mismatch.succeeded() && binding_mismatch.error.find("binding requirement") != std::string::npos,
-          "required logical binding mismatch must reject the candidate");
+    check(!binding_mismatch.succeeded() &&
+              binding_mismatch.error.find("generated parameters") != std::string::npos,
+          "required logical binding mismatch must reject the candidate through its schema identity");
 
     CollectionLoader platform_loader({make_program("Toy3d/Test/Platform", "Main", toy3d::ShaderPlatform::D3D11SM5)});
     toy3d::ShaderMap platform_shader_map(platform_loader);
@@ -317,6 +445,33 @@ int main()
               enabled_requirements.types()[0] == &toy3d::tonemap_global_shader_type() &&
               enabled_requirements.types()[1] == &toy3d::imgui_global_shader_type(),
           "enabled ImGui must be selected explicitly from registered Global Shader types");
+
+    toy3d::ShaderMapProgramData same_size_different_schema =
+        make_program_for_type(toy3d::tonemap_global_shader_type(), 29);
+    auto pass_buffer = std::find_if(
+        same_size_different_schema.parameter_schema.constant_buffers.begin(),
+        same_size_different_schema.parameter_schema.constant_buffers.end(),
+        [](const toy3d::shader::ShaderParameterConstantBufferSchema& buffer)
+        { return buffer.group == toy3d::shader::BindingGroup::Pass; });
+    check(pass_buffer != same_size_different_schema.parameter_schema.constant_buffers.end() &&
+              !pass_buffer->members.empty() && !pass_buffer->members[0].default_value.empty(),
+          "equal-size identity fixture requires the generated Pass constant default");
+    if (pass_buffer != same_size_different_schema.parameter_schema.constant_buffers.end() &&
+        !pass_buffer->members.empty() && !pass_buffer->members[0].default_value.empty())
+    {
+        pass_buffer->members[0].default_value[0] ^= 1u;
+    }
+    same_size_different_schema.parameter_schema.schema_identity =
+        toy3d::shader::calculate_shader_parameter_schema_identity(
+            same_size_different_schema.parameter_schema);
+    CollectionLoader different_schema_loader({std::move(same_size_different_schema)});
+    toy3d::ShaderMap different_schema_shader_map(different_schema_loader);
+    toy3d::GlobalShaderMapResult different_schema_map = toy3d::GlobalShaderMap::load(
+        different_schema_shader_map, toy3d::ShaderPlatform::VulkanES31,
+        {&toy3d::tonemap_global_shader_type()});
+    check(!different_schema_map.succeeded() && different_schema_map.shader_map == nullptr &&
+              different_schema_map.error.find("generated parameters") != std::string::npos,
+          "equal-size Shader artifacts with a different complete schema identity must not publish");
 
     const std::vector<const toy3d::GlobalShaderType*>& without_imgui = disabled_requirements.types();
     const std::vector<const toy3d::GlobalShaderType*>& with_imgui = enabled_requirements.types();

@@ -2,6 +2,7 @@
 
 #include "rendercore/geometry/local_vertex_factory.h"
 #include "rendercore/shader/rhi_shader_program.h"
+#include "shader_map_test_utils.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -64,6 +65,7 @@ namespace
         program.stages.push_back(std::move(vertex));
         program.vertex_inputs.push_back({toy3d::ShaderVertexAttributeId::Position0, "POSITION", 0u,
                                          toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32, 4u, 3u});
+        toy3d::tests::finalize_test_program_parameter_schema(program);
         return program;
     }
 
@@ -141,6 +143,26 @@ namespace
         key.permutation_key = invalid.permutation_key;
         check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
               "constant member outside its buffer must fail validation");
+
+        toy3d::ShaderMapProgramData different_layout = program;
+        toy3d::shader::ShaderParameterConstantBufferSchema& schema_buffer =
+            different_layout.parameter_schema.constant_buffers[0];
+        schema_buffer.members[0].offset = 16u;
+        schema_buffer.data_layout_hash = toy3d::shader::calculate_constant_buffer_data_layout_hash(
+            schema_buffer.group, schema_buffer.binding_id, schema_buffer.size,
+            {{schema_buffer.members[0].parameter_id, schema_buffer.members[0].name,
+              schema_buffer.members[0].type, schema_buffer.members[0].offset,
+              schema_buffer.members[0].size, schema_buffer.members[0].array_stride,
+              schema_buffer.members[0].matrix_stride}});
+        different_layout.parameter_schema.logical_layout_hash =
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(
+                different_layout.parameter_schema);
+        different_layout.parameter_schema.schema_identity =
+            toy3d::shader::calculate_shader_parameter_schema_identity(
+                different_layout.parameter_schema);
+        different_layout.logical_layout_hash = different_layout.parameter_schema.logical_layout_hash;
+        check(!toy3d::validate_shader_map_program(std::move(different_layout), key).succeeded(),
+              "equal-size active constants with a different schema layout identity must fail publication");
 
         CountingLoader loader(std::move(program));
         toy3d::ShaderMap shader_map(loader);

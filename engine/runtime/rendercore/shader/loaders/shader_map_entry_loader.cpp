@@ -191,6 +191,7 @@ namespace toy3d
             program.graphics_pass_state = entry.graphics_pass_state;
             program.pass_template_hash = entry.pass_template_hash;
             program.permutation_key = entry.permutation_key;
+            program.parameter_schema = entry.parameter_schema;
 
             for (const shader::ShaderMapBinding& binding : entry.bindings)
             {

@@ -58,6 +58,10 @@ namespace toy3d::shader
             return "ReservedIdentifier";
         case DiagnosticCode::IdentifierConflict:
             return "IdentifierConflict";
+        case DiagnosticCode::InvalidGeneratedIdentifier:
+            return "InvalidGeneratedIdentifier";
+        case DiagnosticCode::GeneratedIdentifierConflict:
+            return "GeneratedIdentifierConflict";
         case DiagnosticCode::InvalidDefaultValue:
             return "InvalidDefaultValue";
         case DiagnosticCode::InvalidResourceGroup:

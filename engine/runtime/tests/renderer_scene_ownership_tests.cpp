@@ -1,10 +1,10 @@
 #include "rendercore/scene_interface.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/shader/primitive_uniform_shader_parameters.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/shader_map.h"
-#include "rendercore/shader/view_uniform_shader_parameters.h"
 #include "rendercore/view/scene_view.h"
+#include "shader_map_test_utils.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/render_command_internal.h"
 #include "rendercore/rendering_thread.h"
@@ -23,6 +23,7 @@
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <functional>
@@ -35,6 +36,7 @@
 
 #include "renderscene/view/forward_scene_renderer.h"
 #include "renderscene/view/scene_visibility.h"
+#include "renderscene/view/view_shader_bindings.h"
 
 namespace
 {
@@ -45,22 +47,25 @@ namespace
         return hash;
     }
 
-    void finalize_pass_uniform_binding(toy3d::ShaderMapBinding& binding)
+    void finalize_generated_global_program(toy3d::ShaderMapProgramData& program,
+                                           const toy3d::ShaderParametersMetadata& metadata)
     {
-        std::vector<toy3d::shader::ReflectedConstantMember> members;
-        members.reserve(binding.constant_members.size());
-        for (const toy3d::ShaderMapBinding::ConstantMember& member : binding.constant_members)
-        {
-            const toy3d::shader::ShaderValueType type =
-                member.type == toy3d::ShaderValueType::Float32x4x4
-                    ? toy3d::shader::ShaderValueType::Float32x4x4
-                    : toy3d::shader::ShaderValueType::Float32;
-            members.push_back({member.parameter_id, member.name, type, member.offset, member.size,
-                               member.array_stride, member.matrix_stride});
-        }
-        binding.data_layout_hash = toy3d::shader::calculate_constant_buffer_data_layout_hash(
-            toy3d::shader::BindingGroup::Pass, binding.parameter_id, binding.constant_buffer_size, members);
-        binding.shader_abi_version = toy3d::shader::toy_shader_abi_version;
+        toy3d::tests::append_shader_parameters_metadata(metadata, program.parameter_schema);
+        const toy3d::ViewShaderParameters view_parameters;
+        const toy3d::ObjectShaderParameters object_parameters;
+        toy3d::tests::append_shader_parameters_metadata(
+            toy3d::shader_parameters_metadata(view_parameters), program.parameter_schema);
+        toy3d::tests::append_shader_parameters_metadata(
+            toy3d::shader_parameters_metadata(object_parameters), program.parameter_schema);
+        std::sort(program.parameter_schema.constant_buffers.begin(), program.parameter_schema.constant_buffers.end(),
+                  [](const toy3d::shader::ShaderParameterConstantBufferSchema& left,
+                     const toy3d::shader::ShaderParameterConstantBufferSchema& right)
+                  { return left.group < right.group; });
+        program.parameter_schema.logical_layout_hash =
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(program.parameter_schema);
+        program.parameter_schema.schema_identity =
+            toy3d::shader::calculate_shader_parameter_schema_identity(program.parameter_schema);
+        program.logical_layout_hash = program.parameter_schema.logical_layout_hash;
     }
 
     class RendererProgramLoader final : public toy3d::ShaderMapLoader
@@ -92,6 +97,8 @@ namespace
 
     toy3d::ShaderMapProgramData make_imgui_program()
     {
+        const toy3d::ShaderParametersMetadata& metadata =
+            toy3d::imgui_global_shader_type().parameter_metadata();
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/UI/ImGui";
         program.pass_name = "ImGui";
@@ -103,23 +110,24 @@ namespace
         program.permutation_key = toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding constants;
-        constants.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::Constant, "");
-        constants.name = "toy_pass_data";
+        constants.parameter_id = metadata.constant_buffer.binding_id;
+        constants.name = metadata.constant_buffer.name;
         constants.group = toy3d::RHIBindingGroup::Pass;
         constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
         constants.stages = toy3d::RHIShaderStageFlags::Vertex;
         constants.target_binding = 0u;
-        constants.constant_buffer_size = 64u;
-        constants.constant_members.push_back(
-            {10u, "projection", toy3d::ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u});
-        finalize_pass_uniform_binding(constants);
+        constants.constant_buffer_size = metadata.constant_buffer.size;
+        const toy3d::ShaderParameterConstantMemberMetadata& projection = metadata.constant_buffer.members[0u];
+        constants.constant_members.push_back({projection.parameter_id, projection.name,
+                                              static_cast<toy3d::ShaderValueType>(projection.type), projection.offset,
+                                              projection.size, projection.array_stride, projection.matrix_stride});
+        constants.data_layout_hash = metadata.constant_buffer.data_layout_hash;
+        constants.shader_abi_version = metadata.constant_buffer.shader_abi_version;
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
-        texture.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::SampledTexture, "font_texture");
-        texture.name = "font_texture";
+        texture.parameter_id = metadata.resources[0u].parameter_id;
+        texture.name = metadata.resources[0u].name;
         texture.group = toy3d::RHIBindingGroup::Pass;
         texture.type = toy3d::RHIResourceBindingType::SampledTexture;
         texture.stages = toy3d::RHIShaderStageFlags::Pixel;
@@ -127,9 +135,8 @@ namespace
         program.bindings.push_back(texture);
 
         toy3d::ShaderMapBinding sampler;
-        sampler.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::Sampler, "font_sampler");
-        sampler.name = "font_sampler";
+        sampler.parameter_id = metadata.resources[1u].parameter_id;
+        sampler.name = metadata.resources[1u].name;
         sampler.group = toy3d::RHIBindingGroup::Pass;
         sampler.type = toy3d::RHIResourceBindingType::Sampler;
         sampler.stages = toy3d::RHIShaderStageFlags::Pixel;
@@ -162,11 +169,14 @@ namespace
         pixel.content_hash = nonzero_hash(13u);
         pixel.reflection = {texture, sampler};
         program.stages.push_back(std::move(pixel));
+        finalize_generated_global_program(program, metadata);
         return program;
     }
 
     std::shared_ptr<const toy3d::GlobalShaderMap> make_global_shader_map(bool include_imgui = false)
     {
+        const toy3d::ShaderParametersMetadata& metadata =
+            toy3d::tonemap_global_shader_type().parameter_metadata();
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/PostProcess/Tonemap";
         program.pass_name = "Tonemap";
@@ -178,22 +188,24 @@ namespace
         program.permutation_key = toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding constants;
-        constants.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::Constant, "");
-        constants.name = "toy_pass_data";
+        constants.parameter_id = metadata.constant_buffer.binding_id;
+        constants.name = metadata.constant_buffer.name;
         constants.group = toy3d::RHIBindingGroup::Pass;
         constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
         constants.stages = toy3d::RHIShaderStageFlags::Pixel;
         constants.target_binding = 0u;
-        constants.constant_buffer_size = 16u;
-        constants.constant_members.push_back({2u, "exposure_ev", toy3d::ShaderValueType::Float32, 0u, 4u, 0u, 0u});
-        finalize_pass_uniform_binding(constants);
+        constants.constant_buffer_size = metadata.constant_buffer.size;
+        const toy3d::ShaderParameterConstantMemberMetadata& exposure = metadata.constant_buffer.members[0u];
+        constants.constant_members.push_back({exposure.parameter_id, exposure.name,
+                                              static_cast<toy3d::ShaderValueType>(exposure.type), exposure.offset,
+                                              exposure.size, exposure.array_stride, exposure.matrix_stride});
+        constants.data_layout_hash = metadata.constant_buffer.data_layout_hash;
+        constants.shader_abi_version = metadata.constant_buffer.shader_abi_version;
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
-        texture.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::SampledTexture, "scene_color");
-        texture.name = "scene_color";
+        texture.parameter_id = metadata.resources[0u].parameter_id;
+        texture.name = metadata.resources[0u].name;
         texture.group = toy3d::RHIBindingGroup::Pass;
         texture.type = toy3d::RHIResourceBindingType::SampledTexture;
         texture.stages = toy3d::RHIShaderStageFlags::Pixel;
@@ -201,9 +213,8 @@ namespace
         program.bindings.push_back(texture);
 
         toy3d::ShaderMapBinding sampler;
-        sampler.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::Sampler, "scene_sampler");
-        sampler.name = "scene_sampler";
+        sampler.parameter_id = metadata.resources[1u].parameter_id;
+        sampler.name = metadata.resources[1u].name;
         sampler.group = toy3d::RHIBindingGroup::Pass;
         sampler.type = toy3d::RHIResourceBindingType::Sampler;
         sampler.stages = toy3d::RHIShaderStageFlags::Pixel;
@@ -224,6 +235,7 @@ namespace
         pixel.reflection = program.bindings;
         program.stages.push_back(std::move(pixel));
 
+        finalize_generated_global_program(program, metadata);
         std::vector<toy3d::ShaderMapProgramData> programs;
         programs.push_back(std::move(program));
         if (include_imgui)
@@ -270,6 +282,13 @@ namespace
     };
     template struct PrivateMemberAccess<SceneRendererViewInfosMember, &toy3d::SceneRenderer::view_infos>;
 
+    struct ViewInfoShaderParametersMember
+    {
+        using type = toy3d::ViewShaderParameters toy3d::ViewInfo::*;
+        friend type get(ViewInfoShaderParametersMember);
+    };
+    template struct PrivateMemberAccess<ViewInfoShaderParametersMember, &toy3d::ViewInfo::view_shader_parameters_>;
+
     static_assert(std::is_abstract<toy3d::SceneInterface>::value, "SceneInterface must remain an abstract bridge");
     static_assert(std::has_virtual_destructor<toy3d::SceneInterface>::value,
                   "SceneInterface must support polymorphic destruction");
@@ -297,10 +316,10 @@ namespace
                   "SceneRenderer must support polymorphic logical-RT destruction");
     static_assert(std::is_final<toy3d::ForwardSceneRenderer>::value,
                   "ForwardSceneRenderer must remain the concrete forward implementation");
-    static_assert(std::is_standard_layout<toy3d::ViewUniformShaderParameters>::value,
-                  "View uniform parameters must remain a standard-layout CPU value");
-    static_assert(std::is_standard_layout<toy3d::PrimitiveUniformShaderParameters>::value,
-                  "Primitive uniform parameters must remain a standard-layout CPU value");
+    static_assert(std::is_standard_layout<toy3d::ViewShaderParameters>::value,
+                  "Generated View parameters must remain a standard-layout CPU value");
+    static_assert(std::is_standard_layout<toy3d::ObjectShaderParameters>::value,
+                  "Generated Object parameters must remain a standard-layout CPU value");
 
     int failure_count = 0;
 
@@ -319,6 +338,8 @@ namespace
       public:
         using toy3d::RHIGraphicsCommandContext::RHIGraphicsCommandContext;
 
+        std::uint32_t view_upload_count = 0u;
+
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
             command_list_ = std::make_shared<RendererTestCommandList>();
@@ -335,6 +356,22 @@ namespace
         toy3d::RHIStatus upload_buffer(const toy3d::RHIBufferUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
+        }
+
+        toy3d::RHIResult<toy3d::RHIUniformBufferSlice> upload_transient_uniform_data(
+            const toy3d::RHITransientUniformDataDesc& desc) override
+        {
+            if (desc.source.size == 416u)
+            {
+                ++view_upload_count;
+            }
+            toy3d::RHIBufferDesc buffer_desc;
+            buffer_desc.size = desc.source.size;
+            buffer_desc.usage = toy3d::RHIResourceUsage::UniformBuffer;
+            toy3d::RHIUniformBufferSlice slice;
+            slice.buffer = std::make_shared<toy3d::RHIBuffer>(*owner_device(), std::move(buffer_desc));
+            slice.size = desc.source.size;
+            return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
         toy3d::RHIStatus copy_texture(const toy3d::RHITextureCopyDesc&) override { return toy3d::RHIStatus::success(); }
@@ -820,6 +857,29 @@ namespace
                       view_infos(finite_renderer)[0].visible_primitives().empty() &&
                       view_infos(finite_renderer)[1].visible_primitives().empty(),
                   "init_views must build two independent ViewInfo values with empty current-frame visibility");
+
+            std::vector<toy3d::SceneView> invalid_parameter_views;
+            invalid_parameter_views.push_back(make_perspective_view(
+                toy3d::Vector3(), toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
+            invalid_parameter_views.push_back(make_perspective_view(
+                toy3d::Vector3(1.0f, 0.0f, 0.0f), toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
+            toy3d::ForwardSceneRenderer invalid_parameter_renderer(
+                toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u},
+                                        std::move(invalid_parameter_views)));
+            check(init_views(invalid_parameter_renderer),
+                  "invalid generated View parameter fixture must first initialize canonical CPU views");
+            toy3d::ViewShaderParameters& invalid_parameters =
+                view_infos(invalid_parameter_renderer)[1].*get(ViewInfoShaderParametersMember{});
+            invalid_parameters.toy_view.at(0u, 0u) = std::numeric_limits<float>::quiet_NaN();
+            RendererTestCommandContext invalid_view_context(device);
+            const toy3d::RHIStatus invalid_binding_status = toy3d::create_view_shader_bindings(
+                device, invalid_view_context, view_infos(invalid_parameter_renderer));
+            check(!invalid_binding_status && invalid_binding_status.code() == toy3d::RHIErrorCode::InvalidArgument &&
+                      invalid_view_context.view_upload_count == 0u &&
+                      !view_infos(invalid_parameter_renderer)[0].view_binding() &&
+                      !view_infos(invalid_parameter_renderer)[1].view_binding(),
+                  "non-finite View matrices must fail the whole batch before any upload or partial publication");
+
             compute_visibility(finite_renderer, render_scene);
             check(visible_contains(view_infos(finite_renderer)[0], inside) &&
                       visible_contains(view_infos(finite_renderer)[0], touching_near) &&
@@ -838,12 +898,17 @@ namespace
             check(init_views(finite_renderer) && view_infos(finite_renderer)[0].visible_primitives().empty(),
                   "reinitializing a renderer must reset previous visibility results");
 
-            render_scene.update_primitive_transform(inside, toy3d::Matrix4::identity(),
+            const std::uint64_t prior_object_generation = inside->object_data_generation();
+            toy3d::Matrix4 updated_object_transform = toy3d::Matrix4::identity();
+            updated_object_transform.at(3u, 0u) = 1.0f;
+            render_scene.update_primitive_transform(inside, updated_object_transform,
                                                     make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false);
             compute_visibility(finite_renderer, render_scene);
             check(!visible_contains(view_infos(finite_renderer)[0], inside) &&
-                      visible_contains(view_infos(finite_renderer)[0], touching_near),
-                  "scene visibility must clear stale results before applying the next frame");
+                      visible_contains(view_infos(finite_renderer)[0], touching_near) &&
+                      inside->object_shader_parameters().toy_object_to_world == updated_object_transform &&
+                      inside->object_data_generation() == prior_object_generation + 1u,
+                  "scene updates must advance Object data generation and clear stale visibility results");
 
             std::vector<toy3d::SceneView> infinite_views;
             infinite_views.push_back(make_perspective_view(
@@ -903,33 +968,31 @@ namespace
         const toy3d::Matrix4 inverse_view_projection_matrix(7.0f);
         const toy3d::Vector3 camera_position(1.0f, 2.0f, 3.0f);
         const toy3d::Vector3 camera_direction(0.0f, 0.0f, 1.0f);
-        const toy3d::ViewUniformShaderParameters view_parameters{view_matrix,
-                                                                 projection_matrix,
-                                                                 view_projection_matrix,
-                                                                 inverse_view_matrix,
-                                                                 inverse_projection_matrix,
-                                                                 inverse_view_projection_matrix,
-                                                                 camera_position,
-                                                                 0.0f,
-                                                                 camera_direction,
-                                                                 0.0f};
-        check(view_parameters.view_matrix == view_matrix && view_parameters.projection_matrix == projection_matrix &&
-                  view_parameters.view_projection_matrix == view_projection_matrix &&
-                  view_parameters.inverse_view_matrix == inverse_view_matrix &&
-                  view_parameters.inverse_projection_matrix == inverse_projection_matrix &&
-                  view_parameters.inverse_view_projection_matrix == inverse_view_projection_matrix &&
-                  view_parameters.camera_position == camera_position &&
-                  view_parameters.camera_direction == camera_direction &&
-                  view_parameters.camera_position_padding == 0.0f && view_parameters.camera_direction_padding == 0.0f,
-              "View uniform parameters must preserve canonical matrices and camera values");
+        const toy3d::ViewShaderParameters view_parameters{view_matrix,
+                                                           projection_matrix,
+                                                           view_projection_matrix,
+                                                           inverse_view_matrix,
+                                                           inverse_projection_matrix,
+                                                           inverse_view_projection_matrix,
+                                                           camera_position,
+                                                           camera_direction};
+        check(view_parameters.toy_view == view_matrix && view_parameters.toy_projection == projection_matrix &&
+                  view_parameters.toy_view_projection == view_projection_matrix &&
+                  view_parameters.toy_inverse_view == inverse_view_matrix &&
+                  view_parameters.toy_inverse_projection == inverse_projection_matrix &&
+                  view_parameters.toy_inverse_view_projection == inverse_view_projection_matrix &&
+                  view_parameters.toy_camera_position == camera_position &&
+                  view_parameters.toy_camera_direction == camera_direction,
+              "Generated View parameters must preserve canonical matrices and camera values");
 
         toy3d::Matrix4 object_to_world = toy3d::Matrix4::identity();
         object_to_world.at(3, 0) = 2.0f;
         object_to_world.at(3, 1) = 3.0f;
         object_to_world.at(3, 2) = 4.0f;
         const toy3d::StaticMeshSceneProxy proxy(object_to_world, toy3d::AxisAlignedBounds{}, true, nullptr, {});
-        check(proxy.primitive_uniform_shader_parameters().object_to_world == object_to_world,
-              "Primitive uniform parameters must initialize from copied Proxy transform values");
+        check(proxy.object_shader_parameters().toy_object_to_world == object_to_world &&
+                  proxy.object_data_generation() == 1u,
+              "Generated Object parameters and their generation must initialize from copied Proxy values");
     }
 
     void test_renderer_bootstrap_failures()

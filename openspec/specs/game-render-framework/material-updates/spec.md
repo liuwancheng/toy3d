@@ -6,14 +6,14 @@
 ## Requirements
 
 ### Requirement: 普通 setter 只投递 owned value
-scalar、vector 和 texture setter SHALL 先使用 Material/ShaderMap parameter contract 验证 `ShaderParameterId` 与 value type，再更新 GT override，并投递 stable `MaterialRenderProxy` identity、parameter identity 与 owned value。setter 不得创建 RHI buffer、material binding、submit、flush 或 wait；未知 parameter、类型不兼容或 Texture Asset 无效时 MUST 返回可诊断失败且不得投递部分 update。
+scalar、vector 和 texture setter SHALL 先通过 Material 完整 parameter schema 按 canonical name 解析 parameter identity 与 value type，再更新 GT override，并投递 stable `MaterialRenderProxy` identity、已解析 parameter identity 与 owned value。业务调用方 MUST NOT 构造或传入裸 `ShaderParameterId`；setter 不得创建 RHI buffer、material binding、submit、flush 或 wait。未知 parameter、类型不兼容或 Texture Asset 无效时 MUST 返回可诊断失败且不得投递部分 update。名字解析只发生在低频 Material 编辑边界，RT 不得按字符串查找参数。
 
 #### Scenario: 连续 setter
 - **WHEN** Draw 前同一参数被连续修改
 - **THEN** RT MUST 按 FIFO 应用，Draw MUST 使用最终值
 
 #### Scenario: 参数类型错误
-- **WHEN** scalar setter 指向 ShaderMap 中的 texture parameter 或未知 ShaderParameterId
+- **WHEN** scalar setter 使用 texture parameter name 或未知 name
 - **THEN** MaterialInstance MUST 保持原 GT override、不 enqueue update并返回可诊断失败
 
 ### Requirement: MaterialRenderProxy ownership 通过 release command 闭合
@@ -26,20 +26,24 @@ MaterialInstance SHALL 独占地址稳定的 `MaterialRenderProxy` allocation，
 - **THEN** 对应 Proxy material update/remove MUST 先进入 FIFO，MaterialRenderProxy ownership-transfer release MUST 最后进入，并由 RT 按该顺序执行
 
 ### Requirement: Draw 前按需物化
-RT SHALL 只在一个可见 `MeshBatch` 实际使用该 `MaterialRenderProxy` 时，解析 instance override/parent Material default、依据 ShaderMap parameter layout 生成 frame-local constants、解析 `TextureResource` 当前 active view/binding generation，并物化或复用 Material logical binding set；多个 dirty FIFO update MAY 合并为一次构建。
+RT SHALL 只在一个可见 `MeshBatch` 实际使用该 `MaterialRenderProxy` 时，根据完整 Material schema、instance override 与 parent Material default 生成或更新 persistent constants，解析 `TextureResource` 当前 active view/binding generation，并物化或复用一个 Program-independent Material logical superset BindingSet；多个 dirty FIFO update MAY 合并为一次构建。Material schema MUST 独立于任一具体 Program active layout；Shader variant 只决定 draw 时由 Pipeline resolver 消费 superset 中的哪些 active values。
 
-frame-local constants、descriptor/physical packet 和最终 RHI binding MUST 由当前 recording/command list 保活到 queue completion。MaterialRenderProxy 自身不得直接 submit、等待 GPU 或持有 viewport frame token。
+Material constants、logical BindingSet、backend native packet 和实际 active RHI resources MUST 由对应 owner 或当前 recording/command list 保活到 queue completion。MaterialRenderProxy 自身不得直接 submit、等待 GPU、持有 viewport frame token、Program target mapping 或 backend descriptor。
 
 #### Scenario: 未参与 Draw 的 dirty Material
 - **WHEN** MaterialRenderProxy 被更新但本帧无可见 Primitive 使用
-- **THEN** 系统 MUST NOT 为其强制创建 frame-local constants/binding
+- **THEN** 系统 MUST NOT 为其强制创建或更新 Material constants/logical binding
 
 #### Scenario: 同一帧多个 Draw 复用 Material
-- **WHEN** 两个可见 MeshBatch 使用相同 MaterialRenderProxy 且中间没有 parameter、texture generation 或 ShaderMap/layout 变化
-- **THEN** Renderer MAY 复用同一当前帧 Material logical binding，command list MUST 保活其全部实际 RHI resources
+- **WHEN** 两个可见 MeshBatch 使用相同 MaterialRenderProxy 且中间没有 parameter、texture generation、sampler 或 Material schema 变化
+- **THEN** Renderer MUST 复用同一个 Material logical BindingSet，即使两个 Program 的 active bindings 或 target mapping 不同
+
+#### Scenario: Shader variant 使用 Material 子集
+- **WHEN** Material schema 包含一张当前 Shader variant 未使用的纹理
+- **THEN** MaterialRenderProxy MUST 保留同一个完整 logical superset，RHI 只验证、transition 和保活当前 variant 的 active 子集
 
 ### Requirement: Material 只填充五组 binding 中的 Material group
-Forward Base Pass MUST 分别解析 Global、View、Pass、Material、Object 五个 logical Binding Group：View 使用 `ViewUniformShaderParameters`，Object 使用 `PrimitiveUniformShaderParameters`，Material 使用 `MaterialRenderProxy` 的物化结果。MaterialRenderProxy MUST NOT 写入 View/Object group，也不得感知 Vulkan physical set、D3D register/root mapping 或 backend descriptor 类型。
+Forward Base Pass 和其他 mesh pass MUST 分别组合 Global、View、Pass、Material、Object 五个 logical Binding Group。MaterialRenderProxy MUST 只从完整 Material schema 产生 Material group，不得写入 View/Object group，不得感知 Program target slot、Vulkan physical set、D3D register/root mapping 或 backend descriptor 类型。
 
 最终 Draw SHALL 通过现有 `RHIGraphicsBindings` 原子提供所需 logical groups；Vulkan ES3.1 profile 的 Global+View physical set 0 聚合和 D3D11/D3D12 native mapping继续由 RHI/backend 处理。
 
@@ -55,11 +59,15 @@ MaterialInstance GT state MUST 先持有新 `TextureRef`，再 enqueue Proxy tex
 - **THEN** proxy update MUST 排在旧 Texture release command 之前
 
 ### Requirement: Material binding cache 使用明确失效条件
-scalar/vector value 改变、texture representation identity 改变、`TextureResource` RT-only binding generation 改变，或完整 ShaderMap/layout candidate 成功发布时，MaterialRenderProxy MUST 把 Material binding 标记为 dirty。同一 native texture/view 的内容更新若不改变 binding generation，MUST NOT 仅因内容 upload 强制重建 Material binding。
+scalar/vector value 改变、sampler value 改变、texture representation identity 改变、`TextureResource` RT-only binding generation 改变，或 Material parameter schema/data-layout candidate 成功发布时，MaterialRenderProxy MUST 把 Material logical binding 标记为 dirty。同一 native texture/view 的内容更新若不改变 binding generation，MUST NOT 仅因内容 upload 强制重建；Program、target mapping 或只改变 active resource subset 的 Shader variant MUST NOT 作为 Material logical binding 失效条件。
 
 #### Scenario: Texture 内容更新但 view 不变
 - **WHEN** Material 使用的 Texture 只更新 mip 内容且 active view identity/binding generation 不变
 - **THEN** MaterialRenderProxy MUST 继续复用兼容 binding，command list 通过 resource state/strong ref 使用更新后的内容
+
+#### Scenario: Program active layout 改变
+- **WHEN** Material schema 和 parameter values 不变，但新 Program 使用不同资源子集或 target mapping
+- **THEN** MaterialRenderProxy MUST 继续复用原 logical BindingSet，由 Pipeline resolver 选择新 active subset
 
 ### Requirement: 结构性变化走 replacement
 blend mode、two-sided、depth policy、shading model、static switch、shader permutation、binding layout 或 vertex input requirement 变化 MUST NOT 走普通 setter，必须构建完整 ShaderMap/Proxy state candidate。只有 ShaderMap、binding layout、render state、所需 resources 与 pipeline/VertexFactory compatibility 都验证成功，且需要 GPU 工作时对应 business submit 成功后，candidate 才能发布；失败时 active state MUST 保持可用。

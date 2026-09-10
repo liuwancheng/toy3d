@@ -8,11 +8,13 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "logging/logger.h"
 #include "math/matrix_construction.h"
+#include "renderscene/material/material_shader_bindings.h"
+#include "renderscene/object_shader_bindings.h"
 #include "renderscene/pass/base_pass.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/view/scene_visibility.h"
-#include "renderscene/view/view_uniform_resources.h"
+#include "renderscene/view/view_shader_bindings.h"
 
 namespace toy3d
 {
@@ -47,7 +49,17 @@ namespace toy3d
         }
 
         compute_scene_visibility(render_scene, view_infos());
-        RHIStatus status = prepare_view_uniform_resources(device, context, view_infos());
+        RHIStatus status = create_view_shader_bindings(device, context, view_infos());
+        if (!status)
+        {
+            return status;
+        }
+        status = create_object_shader_bindings(device, context, view_infos());
+        if (!status)
+        {
+            return status;
+        }
+        status = create_material_shader_bindings(device, context, view_infos());
         if (!status)
         {
             return status;

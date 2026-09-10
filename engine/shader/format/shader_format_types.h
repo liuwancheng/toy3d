@@ -18,6 +18,8 @@ namespace toy3d::shader
     constexpr std::uint32_t shader_permutation_version = 1;
     constexpr std::uint32_t toy_shader_abi_version = 1;
     constexpr std::uint32_t shader_parameter_id_version = 1;
+    constexpr std::uint32_t shader_parameters_generated_format_version = 1;
+    constexpr std::uint32_t shader_parameters_cpp_identifier_version = 1;
     constexpr std::uint32_t d3d_binding_mapping_version = 2;
     constexpr std::uint32_t vulkan_binding_mapping_version = 2;
     constexpr std::uint32_t max_constant_buffer_size = 16u * 1024u;
@@ -116,6 +118,39 @@ namespace toy3d::shader
         ReadOnlyBuffer,
         StorageBuffer,
         StorageTexture
+    };
+
+    enum class ShaderResourceElementType
+    {
+        None,
+        Float,
+        Float2,
+        Float3,
+        Float4,
+        Int,
+        Int2,
+        Int3,
+        Int4,
+        UInt,
+        UInt2,
+        UInt3,
+        UInt4,
+        Float2x2,
+        Float2x3,
+        Float2x4,
+        Float3x2,
+        Float3x3,
+        Float3x4,
+        Float4x2,
+        Float4x3,
+        Float4x4
+    };
+
+    enum class ShaderParameterDefaultValueKind
+    {
+        None,
+        String,
+        Identifier
     };
 
     // Backend-neutral Shader Pass template persisted in ShaderMap artifacts.
@@ -369,6 +404,54 @@ namespace toy3d::shader
         std::uint32_t shader_abi_version = 0;
     };
 
+    struct ShaderParameterConstantMemberSchema
+    {
+        ShaderParameterId parameter_id = 0;
+        std::string name;
+        ShaderValueType type = ShaderValueType::Float32;
+        std::uint32_t offset = 0;
+        std::uint32_t size = 0;
+        std::uint32_t array_count = 1;
+        std::uint32_t array_stride = 0;
+        std::uint32_t matrix_stride = 0;
+        std::vector<std::uint8_t> default_value;
+    };
+
+    struct ShaderParameterConstantBufferSchema
+    {
+        ShaderParameterId binding_id = 0;
+        std::string name;
+        BindingGroup group = BindingGroup::Material;
+        std::uint32_t size = 0;
+        ShaderDataLayoutHash data_layout_hash{};
+        std::uint32_t shader_abi_version = toy_shader_abi_version;
+        std::vector<ShaderParameterConstantMemberSchema> members;
+    };
+
+    struct ShaderParameterResourceSchema
+    {
+        ShaderParameterId parameter_id = 0;
+        std::string name;
+        BindingGroup group = BindingGroup::Material;
+        ShaderParameterCategory category = ShaderParameterCategory::SampledTexture;
+        ResourceKind resource_kind = ResourceKind::Texture2D;
+        ShaderResourceElementType element_type = ShaderResourceElementType::None;
+        std::uint32_t array_count = 1;
+        ShaderParameterDefaultValueKind default_value_kind = ShaderParameterDefaultValueKind::None;
+        std::string default_value;
+    };
+
+    struct ShaderParameterSchema
+    {
+        std::uint32_t generated_format_version = shader_parameters_generated_format_version;
+        std::uint32_t shader_abi_version = toy_shader_abi_version;
+        std::uint32_t parameter_id_version = shader_parameter_id_version;
+        Sha256Hash schema_identity{};
+        Sha256Hash logical_layout_hash{};
+        std::vector<ShaderParameterConstantBufferSchema> constant_buffers;
+        std::vector<ShaderParameterResourceSchema> resources;
+    };
+
     struct ShaderCodeEntry
     {
         ShaderCompileRequest request;
@@ -390,6 +473,7 @@ namespace toy3d::shader
         std::uint32_t permutation_version = shader_permutation_version;
         Sha256Hash permutation_key{};
         std::uint32_t mapping_version = 0;
+        ShaderParameterSchema parameter_schema;
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderCodeEntry> stages;
     };
@@ -403,6 +487,16 @@ namespace toy3d::shader
         const std::vector<ReflectedConstantMember>& members, std::uint32_t abi_version = toy_shader_abi_version);
     Sha256Hash calculate_target_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
                                              const std::vector<ShaderMapBinding>& bindings);
+    Sha256Hash calculate_shader_parameter_schema_identity(const ShaderParameterSchema& schema);
+    Sha256Hash calculate_shader_parameter_logical_layout_hash(const ShaderParameterSchema& schema);
+    Sha256Hash calculate_shader_parameter_group_identity(const ShaderParameterSchema& schema, BindingGroup group);
+    bool validate_shader_parameter_schema(const ShaderParameterSchema& schema, std::string& error);
+    bool validate_active_bindings_are_schema_subset(const ShaderParameterSchema& schema,
+                                                    const std::vector<ShaderMapBinding>& bindings,
+                                                    std::string& error);
+    bool validate_reflected_bindings_are_schema_subset(const ShaderParameterSchema& schema,
+                                                       const std::vector<ReflectedBinding>& bindings,
+                                                       std::string& error);
     Sha256Hash calculate_shader_stage_reflection_hash(const ShaderStageReflection& reflection);
     bool is_valid_shader_graphics_pass_state(const ShaderGraphicsPassState& state);
     Sha256Hash calculate_shader_graphics_pass_state_hash(const ShaderGraphicsPassState& state);

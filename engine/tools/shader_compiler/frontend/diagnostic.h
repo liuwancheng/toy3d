@@ -33,6 +33,8 @@ namespace toy3d::shader
         InvalidShaderName,
         ReservedIdentifier,
         IdentifierConflict,
+        InvalidGeneratedIdentifier,
+        GeneratedIdentifierConflict,
         InvalidDefaultValue,
         InvalidResourceGroup,
         InvalidResourceType,

@@ -2,19 +2,20 @@
 
 #include "math/math.h"
 #include "format/shader_binding_identity.h"
+#include "format/shader_format_types.h"
 #include "rendercore/texture/texture.h"
 
 #include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace toy3d
 {
     class MaterialRenderProxy;
     class ShaderMapProgram;
-    enum class ShaderValueType;
 
     enum class MaterialShadingModel
     {
@@ -27,9 +28,13 @@ namespace toy3d
         Translucent
     };
 
+    shader::ShaderParameterSchema material_parameter_schema_from_shader_schema(
+        const shader::ShaderParameterSchema& shader_schema);
+
     struct MaterialDesc
     {
         std::string shader_name;
+        shader::ShaderParameterSchema parameter_schema;
         std::shared_ptr<const ShaderMapProgram> shader_program;
         std::unordered_map<ShaderParameterId, float> scalar_defaults;
         std::unordered_map<ShaderParameterId, vec2> vector2_defaults;
@@ -53,6 +58,7 @@ namespace toy3d
         Material& operator=(Material&&) noexcept = default;
 
         const MaterialDesc& desc() const { return desc_; }
+        const shader::ShaderParameterSchema& parameter_schema() const { return desc_.parameter_schema; }
 
       private:
         explicit Material(MaterialDesc desc);
@@ -78,11 +84,13 @@ namespace toy3d
 
         const MaterialRef& material() const { return material_; }
 
-        bool set_scalar(ShaderParameterId parameter_id, float value);
-        bool set_vector(ShaderParameterId parameter_id, const vec2& value);
-        bool set_vector(ShaderParameterId parameter_id, const vec3& value);
-        bool set_vector(ShaderParameterId parameter_id, const vec4& value);
-        bool set_texture(ShaderParameterId parameter_id, TextureRef texture);
+        // string_view accepts canonical schema names without forcing the low-frequency
+        // GT edit boundary to allocate; the view is resolved before any RT command is built.
+        bool set_scalar(std::string_view parameter_name, float value);
+        bool set_vector(std::string_view parameter_name, const vec2& value);
+        bool set_vector(std::string_view parameter_name, const vec3& value);
+        bool set_vector(std::string_view parameter_name, const vec4& value);
+        bool set_texture(std::string_view parameter_name, TextureRef texture);
 
         bool stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program, bool two_sided);
         bool publish_material_replacement();
@@ -95,8 +103,9 @@ namespace toy3d
       private:
         explicit MaterialInstance(MaterialRef material);
 
-        bool validate_constant_parameter(ShaderParameterId parameter_id, ShaderValueType expected_value_type) const;
-        bool validate_texture_parameter(ShaderParameterId parameter_id) const;
+        bool resolve_constant_parameter(std::string_view parameter_name, shader::ShaderValueType expected_value_type,
+                                        ShaderParameterId& parameter_id) const;
+        bool resolve_texture_parameter(std::string_view parameter_name, ShaderParameterId& parameter_id) const;
         bool resolve_material_replacement_publication();
 
         MaterialRef material_;

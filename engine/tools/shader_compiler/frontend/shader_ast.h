@@ -10,6 +10,8 @@
 
 namespace toy3d::shader
 {
+    using ResourceElementType = ShaderResourceElementType;
+
     enum class PropertyType
     {
         Float,
@@ -54,38 +56,12 @@ namespace toy3d::shader
         SourceLocation location;
     };
 
-    enum class ResourceElementType
-    {
-        None,
-        Float,
-        Float2,
-        Float3,
-        Float4,
-        Int,
-        Int2,
-        Int3,
-        Int4,
-        UInt,
-        UInt2,
-        UInt3,
-        UInt4,
-        Float2x2,
-        Float2x3,
-        Float2x4,
-        Float3x2,
-        Float3x3,
-        Float3x4,
-        Float4x2,
-        Float4x3,
-        Float4x4
-    };
-
     struct Resource
     {
         BindingGroup group = BindingGroup::Pass;
         std::string name;
         ResourceKind kind = ResourceKind::Texture2D;
-        ResourceElementType element_type = ResourceElementType::None;
+        ShaderResourceElementType element_type = ShaderResourceElementType::None;
         DefaultValue default_value;
         SourceLocation location;
     };

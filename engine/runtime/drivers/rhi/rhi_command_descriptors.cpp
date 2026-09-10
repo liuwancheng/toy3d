@@ -383,14 +383,12 @@ namespace toy3d
 
     RHIStatus validate_transient_uniform_data_desc(const RHITransientUniformDataDesc& desc)
     {
-        const bool hash_is_zero = std::all_of(desc.data_layout_hash.begin(), desc.data_layout_hash.end(),
-                                              [](std::uint8_t byte) { return byte == 0u; });
         if (desc.source.data == nullptr || desc.source.size == 0 || desc.source.row_pitch != 0 ||
-            desc.source.slice_pitch != 0 || hash_is_zero || desc.shader_abi_version == 0)
+            desc.source.slice_pitch != 0)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,
-                "Transient uniform data requires bytes, a data layout hash, and a Shader ABI version.");
+                "Transient uniform data requires non-empty tightly packed source bytes.");
         }
         return RHIStatus::success();
     }

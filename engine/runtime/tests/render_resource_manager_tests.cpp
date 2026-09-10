@@ -4,16 +4,19 @@
 #include "rendercore/material/material.h"
 #include "rendercore/rendering_thread.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/shader/primitive_uniform_shader_parameters.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_map.h"
-#include "rendercore/shader/view_uniform_shader_parameters.h"
+#include "rendercore/shader/shader_parameters.h"
 #include "rendercore/texture/texture.h"
+#include "shader_map_test_utils.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
 #include "renderscene/geometry/static_mesh_render_data.h"
+#include "renderscene/material/material_shader_bindings.h"
 #include "renderscene/material/material_render_proxy.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/mesh_batch.h"
+#include "renderscene/object_shader_bindings.h"
 #include "renderscene/pass/mesh_draw_command.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/render_resource.h"
@@ -22,6 +25,7 @@
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/texture/texture_resource.h"
 #include "renderscene/view/forward_scene_renderer.h"
+#include "renderscene/view/view_shader_bindings.h"
 #include "task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
@@ -37,6 +41,24 @@
 
 namespace
 {
+    template <typename MemberDescription, typename MemberDescription::type Member> struct PrivateMemberAccess
+    {
+        friend typename MemberDescription::type get(MemberDescription) { return Member; }
+    };
+
+    struct SceneRendererViewInfosMember
+    {
+        using type = std::vector<toy3d::ViewInfo>& (toy3d::SceneRenderer::*)();
+        friend type get(SceneRendererViewInfosMember);
+    };
+    template struct PrivateMemberAccess<SceneRendererViewInfosMember, &toy3d::SceneRenderer::view_infos>;
+
+    std::vector<toy3d::ViewInfo>& view_infos(toy3d::ForwardSceneRenderer& renderer)
+    {
+        toy3d::SceneRenderer& base_renderer = renderer;
+        return (base_renderer.*get(SceneRendererViewInfosMember{}))();
+    }
+
     static_assert(std::is_default_constructible<toy3d::MeshDrawCommand>::value,
                   "MeshDrawCommand must support deterministic default initialization");
     static_assert(std::is_move_constructible<toy3d::MeshDrawCommand>::value,
@@ -156,7 +178,36 @@ namespace
         vertex.content_hash = nonzero_hash(hash_seed + 4u);
         vertex.reflection = program.bindings;
         program.stages.push_back(std::move(vertex));
+        toy3d::tests::finalize_test_program_parameter_schema(program);
+        for (toy3d::shader::ShaderParameterConstantMemberSchema& member :
+             program.parameter_schema.constant_buffers.front().members)
+        {
+            member.default_value.resize(member.size, 0u);
+            if (member.parameter_id == 11u)
+            {
+                const float default_roughness = 0.25f;
+                std::memcpy(member.default_value.data(), &default_roughness, sizeof(default_roughness));
+            }
+            else if (member.parameter_id == 13u)
+            {
+                const float default_base_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
+                std::memcpy(member.default_value.data(), default_base_color, sizeof(default_base_color));
+            }
+        }
+        program.parameter_schema.resources.front().default_value_kind =
+            toy3d::shader::ShaderParameterDefaultValueKind::String;
+        program.parameter_schema.resources.front().default_value = "Builtin/White";
+        program.parameter_schema.logical_layout_hash =
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(program.parameter_schema);
+        program.parameter_schema.schema_identity =
+            toy3d::shader::calculate_shader_parameter_schema_identity(program.parameter_schema);
+        program.logical_layout_hash = program.parameter_schema.logical_layout_hash;
         return program;
+    }
+
+    toy3d::shader::ShaderParameterSchema material_schema_from_program(const toy3d::ShaderMapProgram& program)
+    {
+        return toy3d::material_parameter_schema_from_shader_schema(program.data().parameter_schema);
     }
 
     class MaterialProgramLoader final : public toy3d::ShaderMapLoader
@@ -256,6 +307,7 @@ namespace
         vertex.content_hash = nonzero_hash(63u);
         vertex.reflection = program.bindings;
         program.stages.push_back(std::move(vertex));
+        toy3d::tests::finalize_test_program_parameter_schema(program);
         return program;
     }
 
@@ -281,11 +333,46 @@ namespace
         pixel.binary = {4u, 3u, 2u, 1u};
         pixel.content_hash = nonzero_hash(64u);
         program.stages.push_back(std::move(pixel));
+        toy3d::tests::finalize_test_program_parameter_schema(program);
+        return program;
+    }
+
+    toy3d::ShaderMapProgramData make_base_pass_program_with_required_material()
+    {
+        toy3d::ShaderMapProgramData program = make_base_pass_program();
+        program.shader_name = "Toy3d/Test/ViewObjectMaterial";
+
+        toy3d::ShaderMapBinding material_constants;
+        material_constants.parameter_id = 10u;
+        material_constants.name = "MaterialConstants";
+        material_constants.group = toy3d::RHIBindingGroup::Material;
+        material_constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
+        material_constants.stages = toy3d::RHIShaderStageFlags::Pixel;
+        material_constants.target_binding = 0u;
+        material_constants.constant_buffer_size = 16u;
+        material_constants.constant_members.push_back(
+            {11u, "required_value", toy3d::ShaderValueType::Float32, 0u, 4u, 0u, 0u});
+        finalize_uniform_binding(material_constants);
+        program.bindings.push_back(material_constants);
+        program.stages.back().reflection.push_back(material_constants);
+        toy3d::tests::finalize_test_program_parameter_schema(program);
+        toy3d::shader::ShaderParameterConstantMemberSchema& member =
+            program.parameter_schema.constant_buffers.back().members.front();
+        member.default_value.resize(member.size, 0u);
+        const float default_value = 0.25f;
+        std::memcpy(member.default_value.data(), &default_value, sizeof(default_value));
+        program.parameter_schema.logical_layout_hash =
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(program.parameter_schema);
+        program.parameter_schema.schema_identity =
+            toy3d::shader::calculate_shader_parameter_schema_identity(program.parameter_schema);
+        program.logical_layout_hash = program.parameter_schema.logical_layout_hash;
         return program;
     }
 
     toy3d::ShaderMapProgramData make_tonemap_program()
     {
+        const toy3d::ShaderParametersMetadata& metadata =
+            toy3d::tonemap_global_shader_type().parameter_metadata();
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/PostProcess/Tonemap";
         program.pass_name = "Tonemap";
@@ -297,22 +384,24 @@ namespace
         program.permutation_key = toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding constants;
-        constants.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::Constant, "");
-        constants.name = "toy_pass_data";
+        constants.parameter_id = metadata.constant_buffer.binding_id;
+        constants.name = metadata.constant_buffer.name;
         constants.group = toy3d::RHIBindingGroup::Pass;
         constants.type = toy3d::RHIResourceBindingType::UniformBuffer;
         constants.stages = toy3d::RHIShaderStageFlags::Pixel;
         constants.target_binding = 0u;
-        constants.constant_buffer_size = 16u;
-        constants.constant_members.push_back({201u, "exposure_ev", toy3d::ShaderValueType::Float32, 0u, 4u, 0u, 0u});
-        finalize_uniform_binding(constants);
+        constants.constant_buffer_size = metadata.constant_buffer.size;
+        const toy3d::ShaderParameterConstantMemberMetadata& exposure = metadata.constant_buffer.members[0u];
+        constants.constant_members.push_back({exposure.parameter_id, exposure.name,
+                                              static_cast<toy3d::ShaderValueType>(exposure.type), exposure.offset,
+                                              exposure.size, exposure.array_stride, exposure.matrix_stride});
+        constants.data_layout_hash = metadata.constant_buffer.data_layout_hash;
+        constants.shader_abi_version = metadata.constant_buffer.shader_abi_version;
         program.bindings.push_back(constants);
 
         toy3d::ShaderMapBinding texture;
-        texture.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::SampledTexture, "scene_color");
-        texture.name = "scene_color";
+        texture.parameter_id = metadata.resources[0u].parameter_id;
+        texture.name = metadata.resources[0u].name;
         texture.group = toy3d::RHIBindingGroup::Pass;
         texture.type = toy3d::RHIResourceBindingType::SampledTexture;
         texture.stages = toy3d::RHIShaderStageFlags::Pixel;
@@ -320,9 +409,8 @@ namespace
         program.bindings.push_back(texture);
 
         toy3d::ShaderMapBinding sampler;
-        sampler.parameter_id = toy3d::shader::make_shader_parameter_id(
-            toy3d::shader::BindingGroup::Pass, toy3d::shader::ShaderParameterCategory::Sampler, "scene_sampler");
-        sampler.name = "scene_sampler";
+        sampler.parameter_id = metadata.resources[1u].parameter_id;
+        sampler.name = metadata.resources[1u].name;
         sampler.group = toy3d::RHIBindingGroup::Pass;
         sampler.type = toy3d::RHIResourceBindingType::Sampler;
         sampler.stages = toy3d::RHIShaderStageFlags::Pixel;
@@ -342,6 +430,22 @@ namespace
         pixel.content_hash = nonzero_hash(74u);
         pixel.reflection = program.bindings;
         program.stages.push_back(std::move(pixel));
+        toy3d::tests::append_shader_parameters_metadata(metadata, program.parameter_schema);
+        const toy3d::ViewShaderParameters view_parameters;
+        const toy3d::ObjectShaderParameters object_parameters;
+        toy3d::tests::append_shader_parameters_metadata(
+            toy3d::shader_parameters_metadata(view_parameters), program.parameter_schema);
+        toy3d::tests::append_shader_parameters_metadata(
+            toy3d::shader_parameters_metadata(object_parameters), program.parameter_schema);
+        std::sort(program.parameter_schema.constant_buffers.begin(), program.parameter_schema.constant_buffers.end(),
+                  [](const toy3d::shader::ShaderParameterConstantBufferSchema& left,
+                     const toy3d::shader::ShaderParameterConstantBufferSchema& right)
+                  { return left.group < right.group; });
+        program.parameter_schema.logical_layout_hash =
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(program.parameter_schema);
+        program.parameter_schema.schema_identity =
+            toy3d::shader::calculate_shader_parameter_schema_identity(program.parameter_schema);
+        program.logical_layout_hash = program.parameter_schema.logical_layout_hash;
         return program;
     }
 
@@ -592,8 +696,6 @@ int main()
             toy3d::RHIUniformBufferSlice slice;
             slice.buffer = std::make_shared<toy3d::RHIBuffer>(*owner_device(), std::move(buffer_desc));
             slice.size = desc.source.size;
-            slice.data_layout_hash = desc.data_layout_hash;
-            slice.shader_abi_version = desc.shader_abi_version;
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
@@ -613,21 +715,15 @@ int main()
         }
     } uniform_context(device);
 
-    const toy3d::ViewUniformShaderParameters view_parameters{toy3d::Matrix4(1.0f),
-                                                             toy3d::Matrix4(2.0f),
-                                                             toy3d::Matrix4(3.0f),
-                                                             toy3d::Matrix4(4.0f),
-                                                             toy3d::Matrix4(5.0f),
-                                                             toy3d::Matrix4(6.0f),
-                                                             toy3d::Vector3(7.0f, 8.0f, 9.0f),
-                                                             0.0f,
-                                                             toy3d::Vector3(10.0f, 11.0f, 12.0f),
-                                                             0.0f};
-    const auto view_slice = toy3d::upload_view_uniform_shader_parameters(uniform_context, view_parameters);
-    const auto view_binding = view_slice
-                                  ? toy3d::create_view_uniform_shader_binding(device, view_slice.value())
-                                  : toy3d::RHIResult<toy3d::RHIBindingSetRef>::failure(
-                                        view_slice.status().code(), view_slice.status().message());
+    const toy3d::ViewShaderParameters view_parameters{toy3d::Matrix4(1.0f),
+                                                       toy3d::Matrix4(2.0f),
+                                                       toy3d::Matrix4(3.0f),
+                                                       toy3d::Matrix4(4.0f),
+                                                       toy3d::Matrix4(5.0f),
+                                                       toy3d::Matrix4(6.0f),
+                                                       toy3d::Vector3(7.0f, 8.0f, 9.0f),
+                                                       toy3d::Vector3(10.0f, 11.0f, 12.0f)};
+    const auto view_binding = toy3d::create_transient_shader_binding(device, uniform_context, view_parameters);
     float view_projection_diagonal = 0.0f;
     float camera_position_x = 0.0f;
     const bool view_bytes_complete = uniform_context.last_buffer_upload_data.size() == 416u;
@@ -644,14 +740,13 @@ int main()
 
     check(view_binding.succeeded() && view_binding.value()->desc().bindings.size() == 1u &&
               view_binding.value()->desc().bindings[0].binding_id != 0u &&
-              view_binding.value()->desc().bindings[0].buffer == view_slice.value().buffer,
+              view_binding.value()->desc().bindings[0].buffer != nullptr,
           "View binding must be logical identity based and independent of Program target slots");
 
     toy3d::Matrix4 object_to_world = toy3d::Matrix4::identity();
     object_to_world.at(3u, 0u) = 13.0f;
-    const toy3d::PrimitiveUniformShaderParameters object_parameters{object_to_world};
-    const auto object_binding = toy3d::materialize_primitive_uniform_shader_parameters(
-        device, uniform_context, object_parameters);
+    const toy3d::ObjectShaderParameters object_parameters{object_to_world};
+    const auto object_binding = toy3d::create_transient_shader_binding(device, uniform_context, object_parameters);
     float object_translation_x = 0.0f;
     const bool object_bytes_complete = uniform_context.last_buffer_upload_data.size() == 64u;
     if (object_bytes_complete)
@@ -673,10 +768,12 @@ int main()
         std::vector<std::uint8_t> last_buffer_upload_data;
         std::vector<std::string>* operations = nullptr;
         std::uint32_t* view_uniform_upload_count = nullptr;
+        std::uint32_t* object_uniform_upload_count = nullptr;
         toy3d::RHIDevice* command_device = nullptr;
         bool finish_success = false;
         bool fail_draw_indexed = false;
         bool fail_view_uniform_upload = false;
+        bool fail_next_material_uniform_upload = false;
 
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
@@ -706,10 +803,20 @@ int main()
             {
                 ++(*view_uniform_upload_count);
             }
+            if (object_uniform_upload_count != nullptr && desc.source.size == 64u)
+            {
+                ++(*object_uniform_upload_count);
+            }
             if (fail_view_uniform_upload && desc.source.size == 416u)
             {
                 return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
                                                  "Injected View uniform upload failure");
+            }
+            if (fail_next_material_uniform_upload && desc.source.size == 16u)
+            {
+                fail_next_material_uniform_upload = false;
+                return toy3d::RHIStatus::failure(toy3d::RHIErrorCode::Unsupported,
+                                                 "Injected first Material uniform upload failure");
             }
             if (operations != nullptr)
             {
@@ -728,10 +835,20 @@ int main()
             {
                 ++(*view_uniform_upload_count);
             }
+            if (object_uniform_upload_count != nullptr && desc.source.size == 64u)
+            {
+                ++(*object_uniform_upload_count);
+            }
             if (fail_view_uniform_upload && desc.source.size == 416u)
             {
                 return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::failure(
                     toy3d::RHIErrorCode::Unsupported, "Injected View uniform upload failure");
+            }
+            if (fail_next_material_uniform_upload && desc.source.size == 16u)
+            {
+                fail_next_material_uniform_upload = false;
+                return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::failure(
+                    toy3d::RHIErrorCode::Unsupported, "Injected first Material uniform upload failure");
             }
             if (operations != nullptr)
             {
@@ -745,8 +862,6 @@ int main()
             toy3d::RHIUniformBufferSlice slice;
             slice.buffer = std::make_shared<toy3d::RHIBuffer>(*owner_device(), std::move(buffer_desc));
             slice.size = desc.source.size;
-            slice.data_layout_hash = desc.data_layout_hash;
-            slice.shader_abi_version = desc.shader_abi_version;
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
@@ -1144,10 +1259,12 @@ int main()
         std::unique_ptr<toy3d::RHIFrameContext> next_frame;
         std::vector<std::string>* operations = nullptr;
         std::uint32_t* view_uniform_upload_count = nullptr;
+        std::uint32_t* object_uniform_upload_count = nullptr;
         std::uint32_t begin_count = 0u;
         std::uint32_t end_count = 0u;
         std::uint32_t abort_count = 0u;
         bool end_success = true;
+        bool fail_next_material_uniform_upload = false;
         toy3d::RHIQueueCompletionValue next_completion_value = 42u;
         toy3d::RHIStatus next_presentation_status = toy3d::RHIStatus::success();
 
@@ -1210,10 +1327,12 @@ int main()
         auto frame_commands = std::make_unique<decltype(context)>(device);
         frame_commands->operations = frame_viewport.operations;
         frame_commands->view_uniform_upload_count = frame_viewport.view_uniform_upload_count;
+        frame_commands->object_uniform_upload_count = frame_viewport.object_uniform_upload_count;
         frame_commands->command_device = &device;
         frame_commands->finish_success = true;
         frame_commands->fail_draw_indexed = fail_draw_indexed;
         frame_commands->fail_view_uniform_upload = fail_view_uniform_upload;
+        frame_commands->fail_next_material_uniform_upload = frame_viewport.fail_next_material_uniform_upload;
         frame_context->commands = std::move(frame_commands);
         return frame_context;
     };
@@ -1306,6 +1425,9 @@ int main()
         views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
                            toy3d::IntRect{0, 0, 64u, 64u}, toy3d::Extent{64u, 64u},
                            toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
+        views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
+                           toy3d::IntRect{0, 0, 64u, 64u}, toy3d::Extent{64u, 64u},
+                           toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
         return toy3d::SceneViewFamily(*base_pass_scene, toy3d::Extent{64u, 64u}, std::move(views));
     };
 
@@ -1315,7 +1437,9 @@ int main()
     frame_viewport.operations = &base_pass_draw_operations;
     device.operations = &base_pass_draw_operations;
     std::uint32_t base_pass_view_uniform_upload_count = 0u;
+    std::uint32_t base_pass_object_uniform_upload_count = 0u;
     frame_viewport.view_uniform_upload_count = &base_pass_view_uniform_upload_count;
+    frame_viewport.object_uniform_upload_count = &base_pass_object_uniform_upload_count;
     frame_viewport.next_frame = make_frame();
     check(frame_manager.begin_init(base_pass_draw_resource).succeeded(),
           "Base Pass draw smoke must begin a pending resource transaction");
@@ -1339,13 +1463,125 @@ int main()
               first_begin_pass != base_pass_draw_operations.end() &&
               first_end_pass != base_pass_draw_operations.end() && first_upload < first_begin_pass &&
               std::find(first_begin_pass, first_end_pass, "device_create") == first_end_pass &&
-              draw_command != base_pass_draw_operations.end() && draw_command_count == 2u &&
-              base_pass_view_uniform_upload_count == 1u &&
+              draw_command != base_pass_draw_operations.end() && draw_command_count == 4u &&
+              base_pass_view_uniform_upload_count == 2u && base_pass_object_uniform_upload_count == 1u &&
               frame_viewport.end_count == 2u,
-          "Base Pass must upload View data once, reuse one logical View set, and execute both prepared draws");
+          "Base Pass must upload each View once and one shared Object for every draw of the same Primitive");
+    const toy3d::RHIBindingSetRef first_base_pass_binding = view_infos(base_pass_draw_renderer)[0].view_binding();
+    const toy3d::RHIBindingSetRef second_base_pass_binding = view_infos(base_pass_draw_renderer)[1].view_binding();
+    decltype(context) shadow_style_context(device);
+    const toy3d::RHIStatus shadow_style_status = toy3d::create_view_shader_bindings(
+        device, shadow_style_context, view_infos(base_pass_draw_renderer));
+    check(shadow_style_status.succeeded() && shadow_style_context.upload_count == 0u &&
+              first_base_pass_binding == view_infos(base_pass_draw_renderer)[0].view_binding() &&
+              second_base_pass_binding == view_infos(base_pass_draw_renderer)[1].view_binding(),
+          "Shadow-style consumption must reuse the BasePass ViewInfo bindings without duplicate uploads");
+    toy3d::RHIBindingSetRef frame_object_binding_ref =
+        view_infos(base_pass_draw_renderer)[0].mesh_batches()[0].object_binding();
+    bool all_draws_share_object_binding = frame_object_binding_ref != nullptr;
+    for (const toy3d::ViewInfo& view_info : view_infos(base_pass_draw_renderer))
+    {
+        for (const toy3d::MeshBatch& mesh_batch : view_info.mesh_batches())
+        {
+            all_draws_share_object_binding =
+                all_draws_share_object_binding && mesh_batch.object_binding() == frame_object_binding_ref;
+        }
+    }
+    decltype(context) object_shadow_style_context(device);
+    const toy3d::RHIStatus object_shadow_style_status = toy3d::create_object_shader_bindings(
+        device, object_shadow_style_context, view_infos(base_pass_draw_renderer));
+    check(object_shadow_style_status.succeeded() && object_shadow_style_context.upload_count == 0u &&
+              all_draws_share_object_binding,
+          "BasePass and Shadow-style consumers must share one frame-local Object upload and logical binding");
+    std::weak_ptr<toy3d::RHIBindingSet> frame_object_binding = frame_object_binding_ref;
+    view_infos(base_pass_draw_renderer).clear();
+    frame_object_binding_ref.reset();
+    check(frame_object_binding.expired(),
+          "frame-local Object binding ownership must release when the frame's MeshBatch data is cleared");
     frame_viewport.view_uniform_upload_count = nullptr;
+    frame_viewport.object_uniform_upload_count = nullptr;
     check(frame_manager.release(base_pass_draw_resource).succeeded(),
           "successful Base Pass draw resource must be releasable");
+
+    const toy3d::ShaderMapProgramRef mixed_program =
+        load_program(make_base_pass_program_with_required_material());
+    toy3d::MaterialDesc missing_material_desc;
+    missing_material_desc.shader_name = "Toy3d/Test/ViewObjectMaterial";
+    missing_material_desc.parameter_schema = material_schema_from_program(*mixed_program);
+    missing_material_desc.shader_program = mixed_program;
+    missing_material_desc.scalar_defaults.emplace(11u, 0.25F);
+    const toy3d::MaterialRef missing_material = toy3d::Material::create(std::move(missing_material_desc));
+    toy3d::MaterialDesc complete_material_desc;
+    complete_material_desc.shader_name = "Toy3d/Test/ViewObjectMaterial";
+    complete_material_desc.parameter_schema = material_schema_from_program(*mixed_program);
+    complete_material_desc.shader_program = mixed_program;
+    complete_material_desc.scalar_defaults.emplace(11u, 0.5F);
+    const toy3d::MaterialRef complete_material = toy3d::Material::create(std::move(complete_material_desc));
+    const toy3d::MaterialInstanceRef missing_material_instance = toy3d::MaterialInstance::create(missing_material);
+    const toy3d::MaterialInstanceRef complete_material_instance = toy3d::MaterialInstance::create(complete_material);
+
+    toy3d::StaticMeshDesc mixed_mesh_desc;
+    mixed_mesh_desc.vertices = {{{-0.5F, -0.5F, 4.0F}, {0.0F, 0.0F, 1.0F}, {0.0F, 0.0F}},
+                                {{0.5F, -0.5F, 4.0F}, {0.0F, 0.0F, 1.0F}, {1.0F, 0.0F}},
+                                {{0.0F, 0.5F, 4.0F}, {0.0F, 0.0F, 1.0F}, {0.5F, 1.0F}}};
+    mixed_mesh_desc.indices = std::vector<std::uint16_t>{0u, 1u, 2u};
+    mixed_mesh_desc.sections.push_back({0u, 3u, 0u});
+    mixed_mesh_desc.sections.push_back({0u, 3u, 1u});
+    mixed_mesh_desc.material_slots.push_back(missing_material_instance);
+    mixed_mesh_desc.material_slots.push_back(complete_material_instance);
+    const toy3d::StaticMeshRef mixed_mesh = toy3d::StaticMesh::create(std::move(mixed_mesh_desc));
+    toy3d::StaticMeshRenderData mixed_render_data(*mixed_mesh);
+    check(mixed_render_data.begin_init(frame_manager).succeeded() &&
+              frame_manager.record_pending_uploads(context).succeeded() &&
+              mixed_render_data.prepare_current_recording().succeeded() &&
+              frame_manager.commit_recording().succeeded(),
+          "mixed-validity Base Pass fixture must publish drawable mesh buffers");
+
+    auto missing_material_proxy = std::make_unique<toy3d::MaterialRenderProxy>(*missing_material);
+    auto complete_material_proxy = std::make_unique<toy3d::MaterialRenderProxy>(*complete_material);
+    auto mixed_scene = std::make_unique<toy3d::RenderScene>(*material_graph, frame_manager);
+    mixed_scene->add_primitive(std::make_unique<toy3d::StaticMeshSceneProxy>(
+        toy3d::Matrix4::identity(), mixed_mesh->local_bounds(), true, &mixed_render_data,
+        std::vector<toy3d::MaterialRenderProxy*>{missing_material_proxy.get(), complete_material_proxy.get()}));
+    std::vector<toy3d::SceneView> mixed_views;
+    mixed_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0F, 0.0F, 1.0F),
+                             toy3d::IntRect{0, 0, 64u, 64u}, toy3d::Extent{64u, 64u},
+                             toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0F), 0.1F, 100.0F);
+    toy3d::ForwardSceneRenderer mixed_renderer(
+        toy3d::SceneViewFamily(*mixed_scene, toy3d::Extent{64u, 64u}, std::move(mixed_views)));
+    decltype(ready_first) mixed_resource;
+    std::vector<std::string> mixed_operations;
+    mixed_resource.operations = &mixed_operations;
+    frame_viewport.operations = &mixed_operations;
+    device.operations = &mixed_operations;
+    frame_viewport.fail_next_material_uniform_upload = true;
+    frame_viewport.next_frame = make_frame();
+    frame_viewport.fail_next_material_uniform_upload = false;
+    check(frame_manager.begin_init(mixed_resource).succeeded(),
+          "mixed-validity Base Pass smoke must begin a pending resource transaction");
+    toy3d::SceneRenderTargets mixed_targets;
+    const toy3d::RHIResult<toy3d::RHIFrameEndResult> mixed_result =
+        render_test_frame(mixed_renderer, *mixed_scene, device, frame_manager, frame_viewport, mixed_targets,
+                          tonemap_resources);
+    const auto mixed_begin = std::find(mixed_operations.begin(), mixed_operations.end(), "begin_render_pass");
+    const auto mixed_end = mixed_begin == mixed_operations.end()
+                               ? mixed_operations.end()
+                               : std::find(mixed_begin, mixed_operations.end(), "end_render_pass");
+    const bool mixed_bindings_published = view_infos(mixed_renderer).size() == 1u &&
+                                          view_infos(mixed_renderer)[0].mesh_batches().size() == 2u &&
+                                          !view_infos(mixed_renderer)[0].mesh_batches()[0].material_binding() &&
+                                          view_infos(mixed_renderer)[0].mesh_batches()[1].material_binding();
+    check(mixed_result.succeeded() && mixed_bindings_published && mixed_begin != mixed_operations.end() &&
+              mixed_end != mixed_operations.end() &&
+              std::find(mixed_begin, mixed_end, "upload_transient_uniform") == mixed_end &&
+              std::find(mixed_begin, mixed_end, "device_create") == mixed_end &&
+              std::count(mixed_operations.begin(), mixed_operations.end(), "draw_indexed") == 1,
+          "a missing required owner binding must skip only its batch while a later valid batch still records");
+    check(frame_manager.release(mixed_resource).succeeded() && mixed_render_data.release(frame_manager).succeeded(),
+          "mixed-validity Base Pass resources must release cleanly");
+    mixed_scene.reset();
+    missing_material_proxy.reset();
+    complete_material_proxy.reset();
 
     decltype(ready_first) view_upload_failed_resource;
     std::vector<std::string> view_upload_failed_operations;
@@ -1601,38 +1837,110 @@ int main()
     active_program_data.graphics_pass_state.cull_mode = toy3d::shader::ShaderGraphicsPassState::CullMode::Front;
     active_program_data.pass_template_hash =
         toy3d::shader::calculate_shader_graphics_pass_state_hash(active_program_data.graphics_pass_state);
+    toy3d::ShaderMapProgramData mapping_only_program_data = active_program_data;
+    mapping_only_program_data.bindings[0u].target_binding = 2u;
+    mapping_only_program_data.bindings[1u].target_binding = 3u;
+    mapping_only_program_data.stages.front().reflection = mapping_only_program_data.bindings;
+    mapping_only_program_data.target_binding_hash = nonzero_hash(90u);
     const toy3d::ShaderMapProgramRef active_program = load_program(std::move(active_program_data));
+    const toy3d::ShaderMapProgramRef mapping_only_program = load_program(std::move(mapping_only_program_data));
     const toy3d::ShaderMapProgramRef candidate_program = load_program(make_material_program("Candidate", 40u));
+    toy3d::ShaderMapProgramData subset_program_data = make_material_program("TextureInactive", 50u);
+    subset_program_data.bindings.erase(
+        std::remove_if(subset_program_data.bindings.begin(), subset_program_data.bindings.end(),
+                       [](const toy3d::ShaderMapBinding& binding)
+                       { return binding.type == toy3d::RHIResourceBindingType::SampledTexture; }),
+        subset_program_data.bindings.end());
+    subset_program_data.stages.front().reflection = subset_program_data.bindings;
+    const toy3d::ShaderMapProgramRef subset_program = load_program(std::move(subset_program_data));
     toy3d::ShaderMapProgramData incompatible_schema_program_data = make_material_program("IncompleteCandidate", 60u);
     incompatible_schema_program_data.bindings.front().constant_members.erase(
         incompatible_schema_program_data.bindings.front().constant_members.begin());
     incompatible_schema_program_data.stages.front().reflection = incompatible_schema_program_data.bindings;
+    toy3d::tests::finalize_test_program_parameter_schema(incompatible_schema_program_data);
     const toy3d::ShaderMapProgramRef incompatible_schema_program =
         load_program(std::move(incompatible_schema_program_data));
     toy3d::MaterialDesc render_material_desc;
     render_material_desc.shader_name = "Toy3d/Test/Material";
+    render_material_desc.parameter_schema = material_schema_from_program(*active_program);
     render_material_desc.shader_program = active_program;
     render_material_desc.scalar_defaults.emplace(11u, 0.25f);
     render_material_desc.vector4_defaults.emplace(13u, toy3d::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     render_material_desc.texture_defaults.emplace(12u, texture);
     const toy3d::MaterialRef render_material = toy3d::Material::create(std::move(render_material_desc));
-    check(render_material != nullptr, "Material fixture requires a schema-compatible Material");
+    toy3d::MaterialDesc subset_material_desc;
+    subset_material_desc.shader_name = "Toy3d/Test/Material";
+    subset_material_desc.parameter_schema = material_schema_from_program(*active_program);
+    subset_material_desc.shader_program = subset_program;
+    subset_material_desc.scalar_defaults.emplace(11u, 0.25f);
+    subset_material_desc.vector4_defaults.emplace(13u, toy3d::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    subset_material_desc.texture_defaults.emplace(12u, texture);
+    const toy3d::MaterialRef subset_material = toy3d::Material::create(std::move(subset_material_desc));
+    check(render_material != nullptr && subset_material != nullptr &&
+              render_material->parameter_schema().schema_identity ==
+                  subset_material->parameter_schema().schema_identity &&
+              subset_material->parameter_schema().constant_buffers.size() == 1u &&
+              subset_material->parameter_schema().constant_buffers.front().members.size() == 2u &&
+              subset_material->parameter_schema().constant_buffers.front().members.front().name == "roughness" &&
+              subset_material->parameter_schema().constant_buffers.front().members.front().parameter_id == 11u &&
+              subset_material->parameter_schema().constant_buffers.front().members.front().type ==
+                  toy3d::shader::ShaderValueType::Float32 &&
+              subset_material->parameter_schema().constant_buffers.front().members.front().offset == 0u &&
+              subset_material->parameter_schema().constant_buffers.front().members.front().size == 4u &&
+              subset_material->parameter_schema().constant_buffers.front().members.front().default_value.size() ==
+                  4u &&
+              subset_material->parameter_schema().resources.size() == 1u &&
+              subset_material->parameter_schema().resources.front().name == "base_color_texture" &&
+              subset_material->parameter_schema().resources.front().parameter_id == 12u &&
+              subset_material->parameter_schema().resources.front().category ==
+                  toy3d::shader::ShaderParameterCategory::SampledTexture &&
+              subset_material->parameter_schema().resources.front().resource_kind ==
+                  toy3d::shader::ResourceKind::Texture2D &&
+              subset_material->parameter_schema().resources.front().default_value == "Builtin/White" &&
+              subset_program->data().bindings.size() == 1u,
+          "Material variants with different active resource subsets must share one complete runtime schema");
 
     const std::uint32_t invisible_buffer_count = device.buffer_creation_count;
     toy3d::MaterialInstanceRef invisible_material_instance = toy3d::MaterialInstance::create(render_material);
-    invisible_material_instance.reset();
+    check(invisible_material_instance->set_scalar("roughness", 0.375f),
+          "an invisible MaterialInstance must accept a schema-validated dirty update");
+    toy3d::MaterialInstance::release(invisible_material_instance);
     check(device.buffer_creation_count == invisible_buffer_count,
-          "an invisible MaterialInstance must not allocate constants or bindings");
+          "an invisible dirty MaterialInstance must not allocate constants or bindings before a visible draw");
+
+    toy3d::MaterialInstanceRef subset_material_instance = toy3d::MaterialInstance::create(subset_material);
+    toy3d::RHIResult<toy3d::RHIBindingSetRef> subset_material_binding =
+        subset_material_instance->material_render_proxy()->materialize(device, context);
+    bool subset_has_constants = false;
+    bool subset_has_inactive_texture = false;
+    if (subset_material_binding)
+    {
+        for (const toy3d::RHIBindingValue& value : subset_material_binding.value()->desc().bindings)
+        {
+            subset_has_constants = subset_has_constants || value.binding_id == 10u;
+            subset_has_inactive_texture = subset_has_inactive_texture || value.binding_id == 12u;
+        }
+    }
+    check(subset_material_binding.succeeded() &&
+              subset_material_binding.value()->desc().bindings.size() == 2u && subset_has_constants &&
+              subset_has_inactive_texture,
+          "Material logical materialization must include the complete schema superset even when the Program "
+          "active layout omits a Texture");
+    toy3d::MaterialInstance::release(subset_material_instance);
 
     toy3d::MaterialInstanceRef render_material_instance = toy3d::MaterialInstance::create(render_material);
     check(render_material_instance != nullptr &&
-              !render_material_instance->set_vector(11u, toy3d::vec4(1.0f, 0.0f, 0.0f, 1.0f)),
+              render_material_instance->set_scalar("roughness", 0.5f) &&
+              render_material_instance->set_texture("base_color_texture", texture) &&
+              !render_material_instance->set_vector("roughness", toy3d::vec4(1.0f, 0.0f, 0.0f, 1.0f)) &&
+              !render_material_instance->set_scalar("base_color_texture", 1.0f) &&
+              !render_material_instance->set_scalar("unknown_parameter", 1.0f) &&
+              !render_material_instance->set_texture("roughness", texture) &&
+              !render_material_instance->set_texture("base_color_texture", nullptr),
           "a setter with the wrong reflected type must fail without mutation");
-    check(render_material_instance->set_scalar(11u, 0.5f) && render_material_instance->set_scalar(11u, 0.75f) &&
-              render_material_instance->set_texture(12u, texture),
-          "valid Material setters must enqueue their FIFO proxy updates");
 
     toy3d::MaterialRenderProxy* const material_proxy = render_material_instance->material_render_proxy();
+    const std::uint32_t buffer_count_before_first_draw = device.buffer_creation_count;
     toy3d::RHIResult<toy3d::RHIBindingSetRef> first_material_binding =
         material_proxy->materialize(device, context);
     float materialized_scalar = 0.0f;
@@ -1640,13 +1948,43 @@ int main()
     {
         std::memcpy(&materialized_scalar, context.last_buffer_upload_data.data(), sizeof(float));
     }
-    check(first_material_binding.succeeded() && materialized_scalar == 0.75f,
-          "first visible materialization must consume the final FIFO scalar value");
+    check(first_material_binding.succeeded() && materialized_scalar == 0.5f,
+          "invalid name and type requests must leave the last valid GT/RT scalar update intact");
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> binding_after_failed_updates =
+        material_proxy->materialize(device, context);
+    check(binding_after_failed_updates.succeeded() &&
+              binding_after_failed_updates.value() == first_material_binding.value() &&
+              device.buffer_creation_count == buffer_count_before_first_draw + 1u,
+          "same-frame draws must reuse one Material logical binding and failed setters must not dirty it");
+
+    // Mutating this caller-owned string immediately after both calls proves the
+    // queued commands retain only the resolved parameter ID and owned scalar values.
+    std::string canonical_parameter_name = "roughness";
+    check(render_material_instance->set_scalar(canonical_parameter_name, 0.625f) &&
+              render_material_instance->set_scalar(canonical_parameter_name, 0.75f),
+          "valid Material setters must enqueue their FIFO proxy updates");
+    canonical_parameter_name = "base_color_texture";
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> fifo_material_binding =
+        material_proxy->materialize(device, context);
+    materialized_scalar = 0.0f;
+    if (context.last_buffer_upload_data.size() >= sizeof(float))
+    {
+        std::memcpy(&materialized_scalar, context.last_buffer_upload_data.data(), sizeof(float));
+    }
+    check(fifo_material_binding.succeeded() && materialized_scalar == 0.75f,
+          "RT must apply consecutive resolved-ID updates in FIFO order without retaining the caller's name");
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> unchanged_material_binding =
         material_proxy->materialize(device, context);
     check(unchanged_material_binding.succeeded() &&
-              unchanged_material_binding.value() == first_material_binding.value(),
+              unchanged_material_binding.value() == fifo_material_binding.value(),
           "unchanged Material parameters and Texture binding identity must reuse the binding");
+    check(render_material_instance->set_scalar("roughness", 0.75f),
+          "a repeated Material value update must remain a valid GT operation");
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> same_value_material_binding =
+        material_proxy->materialize(device, context);
+    check(same_value_material_binding.succeeded() &&
+              same_value_material_binding.value() == unchanged_material_binding.value(),
+          "an equal scalar value must not invalidate the Material logical binding");
 
     const toy3d::RHITextureViewRef first_view = texture_resource->active_view();
     toy3d::TextureDesc content_update = texture->desc();
@@ -1658,7 +1996,7 @@ int main()
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> content_updated_material_binding =
         material_proxy->materialize(device, context);
     check(content_updated_material_binding.succeeded() &&
-              content_updated_material_binding.value() == first_material_binding.value(),
+              content_updated_material_binding.value() == unchanged_material_binding.value(),
           "same-view Texture content updates must not rebuild Material bindings");
 
     toy3d::TextureDesc replacement_desc;
@@ -1675,7 +2013,7 @@ int main()
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> replacement_material_binding =
         material_proxy->materialize(device, context);
     check(replacement_material_binding.succeeded() &&
-              replacement_material_binding.value() != first_material_binding.value(),
+              replacement_material_binding.value() != content_updated_material_binding.value(),
           "a replacement candidate view must invalidate the current-list Material binding");
     check(manager.commit_recording() && texture_resource->active_view() != first_view &&
               texture_resource->binding_generation() == 2u && first_view != nullptr,
@@ -1699,14 +2037,16 @@ int main()
     check(direct_incomplete_stage && !direct_incomplete_commit && direct_retry_stage,
           "a failed direct candidate commit must discard staged state and allow retry");
     material_proxy->discard_material_candidate();
+    check(!material_proxy->stage_material_candidate(incompatible_schema_program, true),
+          "the Render-side Material schema must reject a candidate with a different complete identity");
 
     const bool incomplete_candidate_staged =
         render_material_instance->stage_material_replacement(incompatible_schema_program, true);
     const bool incomplete_candidate_published = render_material_instance->publish_material_replacement();
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_binding_after_failed_candidate =
         material_proxy->materialize(device, context);
-    const bool old_schema_scalar_accepted = render_material_instance->set_scalar(11u, 0.75f);
-    check(incomplete_candidate_staged && incomplete_candidate_published &&
+    const bool old_schema_scalar_accepted = render_material_instance->set_scalar("roughness", 0.75f);
+    check(!incomplete_candidate_staged && !incomplete_candidate_published &&
               material_proxy->shader_program() == active_program &&
               material_proxy->effective_graphics_pass_state() != nullptr &&
               material_proxy->effective_graphics_pass_state()->cull_mode ==
@@ -1714,7 +2054,40 @@ int main()
               active_binding_after_failed_candidate.succeeded() &&
               active_binding_after_failed_candidate.value() == active_candidate_binding.value() &&
               old_schema_scalar_accepted,
-          "a failed public two-sided publication must preserve the complete active state and GT schema");
+          "a candidate with a different complete Material schema must be rejected before publication");
+
+    const toy3d::RHIBindingSetRef binding_before_mapping_candidate = active_binding_after_failed_candidate.value();
+    check(active_program->data().target_binding_hash != mapping_only_program->data().target_binding_hash &&
+              active_program->data().bindings[0u].target_binding !=
+                  mapping_only_program->data().bindings[0u].target_binding &&
+              render_material_instance->stage_material_replacement(mapping_only_program, false),
+          "a schema-compatible Program mapping candidate must stage successfully");
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> mapping_candidate_binding =
+        material_proxy->materialize_staged(device, context);
+    check(mapping_candidate_binding.succeeded() &&
+              mapping_candidate_binding.value() == binding_before_mapping_candidate &&
+              render_material_instance->publish_material_replacement() &&
+              material_proxy->shader_program() == mapping_only_program &&
+              material_proxy->materialize(device, context).value() == binding_before_mapping_candidate,
+          "a Program target-mapping change must publish while reusing the Program-independent Material binding");
+    check(render_material_instance->stage_material_replacement(active_program, false) &&
+              material_proxy->materialize_staged(device, context).value() == binding_before_mapping_candidate &&
+              render_material_instance->publish_material_replacement(),
+          "restoring the original Program mapping must also reuse the Material logical binding");
+
+    check(render_material_instance->stage_material_replacement(subset_program, false),
+          "a Program candidate with a smaller active Material subset must stage successfully");
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> subset_candidate_binding =
+        material_proxy->materialize_staged(device, context);
+    check(subset_candidate_binding.succeeded() && subset_candidate_binding.value() == binding_before_mapping_candidate &&
+              render_material_instance->publish_material_replacement() &&
+              material_proxy->shader_program() == subset_program &&
+              material_proxy->materialize(device, context).value() == binding_before_mapping_candidate,
+          "an active-subset-only Program change must reuse the complete Material logical superset");
+    check(render_material_instance->stage_material_replacement(active_program, false) &&
+              material_proxy->materialize_staged(device, context).value() == binding_before_mapping_candidate &&
+              render_material_instance->publish_material_replacement(),
+          "restoring the full active subset must not rebuild the unchanged Material logical superset");
 
     check(render_material_instance->stage_material_replacement(candidate_program, true) &&
               material_proxy->materialize_staged(device, context).succeeded() &&
@@ -1725,10 +2098,19 @@ int main()
                   toy3d::shader::ShaderGraphicsPassState::CullMode::Front,
           "discarding a fully materialized candidate must preserve active Program and state");
 
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_binding_before_replacement =
+        material_proxy->materialize(device, context);
     const bool staged_two_sided = render_material_instance->stage_material_replacement(candidate_program, true);
     toy3d::RHIResult<toy3d::RHIBindingSetRef> staged_two_sided_binding =
         material_proxy->materialize_staged(device, context);
+    const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_binding_while_candidate_staged =
+        material_proxy->materialize(device, context);
     check(staged_two_sided && staged_two_sided_binding.succeeded() &&
+              active_binding_before_replacement.succeeded() &&
+              active_binding_while_candidate_staged.succeeded() &&
+              active_binding_while_candidate_staged.value() == active_binding_before_replacement.value() &&
+              staged_two_sided_binding.value() == active_binding_before_replacement.value() &&
+              material_proxy->shader_program() == active_program &&
               render_material_instance->publish_material_replacement() &&
               material_proxy->shader_program() == candidate_program &&
               material_proxy->effective_graphics_pass_state() != nullptr &&

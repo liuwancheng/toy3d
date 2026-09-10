@@ -2,33 +2,32 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <limits>
-#include <vector>
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/shader_map.h"
+#include "shader_parameters/toy3d_postprocess_tonemap.generated.h"
 
 namespace toy3d
 {
     const GlobalShaderType& tonemap_global_shader_type()
     {
+        static const TonemapPassParameters parameters;
+        const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
         static const GlobalShaderType type(
             "TonemapGlobalShader", "Toy3d/PostProcess/Tonemap", "Tonemap", shader::default_shader_permutation_key,
             GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel,
+            metadata,
             {GlobalShaderBindingRequirement(
-                 shader::make_shader_parameter_id(shader::BindingGroup::Pass, shader::ShaderParameterCategory::Constant,
-                                                  ""),
+                 metadata.constant_buffer.binding_id,
                  RHIBindingGroup::Pass, RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Pixel),
              GlobalShaderBindingRequirement(
-                 shader::make_shader_parameter_id(shader::BindingGroup::Pass,
-                                                  shader::ShaderParameterCategory::SampledTexture, "scene_color"),
+                 metadata.resources[0u].parameter_id,
                  RHIBindingGroup::Pass, RHIResourceBindingType::SampledTexture, 1, RHIShaderStageFlags::Pixel),
              GlobalShaderBindingRequirement(
-                 shader::make_shader_parameter_id(shader::BindingGroup::Pass, shader::ShaderParameterCategory::Sampler,
-                                                  "scene_sampler"),
+                 metadata.resources[1u].parameter_id,
                  RHIBindingGroup::Pass, RHIResourceBindingType::Sampler, 1, RHIShaderStageFlags::Pixel)});
         return type;
     }
@@ -37,30 +36,6 @@ namespace toy3d
     {
         const GlobalShaderTypeRegistration tonemap_global_shader_registration(tonemap_global_shader_type());
 
-        const ShaderMapBinding* find_binding(const ShaderMapProgram& program, const char* name,
-                                             RHIResourceBindingType type)
-        {
-            for (const ShaderMapBinding& binding : program.data().bindings)
-            {
-                if (binding.group == RHIBindingGroup::Pass && binding.type == type && binding.name == name)
-                {
-                    return &binding;
-                }
-            }
-            return nullptr;
-        }
-
-        const ShaderMapBinding::ConstantMember* find_constant_member(const ShaderMapBinding& binding, const char* name)
-        {
-            for (const ShaderMapBinding::ConstantMember& member : binding.constant_members)
-            {
-                if (member.name == name)
-                {
-                    return &member;
-                }
-            }
-            return nullptr;
-        }
     } // namespace
 
     float tonemap_sdr_channel_reference(float linear_value, float exposure_ev)
@@ -91,22 +66,6 @@ namespace toy3d
                                       "Tonemap Global Shader lookup failed: " + found.error);
         }
         const ShaderMapProgramRef& shader_program = found.program;
-
-        const ShaderMapBinding* constant_buffer =
-            find_binding(*shader_program, "toy_pass_data", RHIResourceBindingType::UniformBuffer);
-        const ShaderMapBinding* scene_color =
-            find_binding(*shader_program, "scene_color", RHIResourceBindingType::SampledTexture);
-        const ShaderMapBinding* scene_sampler =
-            find_binding(*shader_program, "scene_sampler", RHIResourceBindingType::Sampler);
-        const ShaderMapBinding::ConstantMember* exposure =
-            constant_buffer != nullptr ? find_constant_member(*constant_buffer, "exposure_ev") : nullptr;
-        if (constant_buffer == nullptr || scene_color == nullptr || scene_sampler == nullptr || exposure == nullptr ||
-            exposure->type != ShaderValueType::Float32 || exposure->size != sizeof(float) ||
-            exposure->offset + exposure->size > constant_buffer->constant_buffer_size)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Tonemap ShaderMap Program does not match the required Pass binding schema.");
-        }
 
         RHIResult<RHIShaderProgramRef> created_program = shader_program_cache.find_or_create(shader_program);
         if (!created_program)
@@ -146,11 +105,6 @@ namespace toy3d
             return created_pipeline.status();
         }
 
-        shader_program_ = shader_program.get();
-        constant_buffer_binding_ = constant_buffer;
-        exposure_binding_ = exposure;
-        scene_color_binding_ = scene_color;
-        scene_sampler_binding_ = scene_sampler;
         rhi_program_ = std::move(created_program).value();
         sampler_ = std::move(created_sampler).value();
         pipeline_ = std::move(created_pipeline).value();
@@ -162,18 +116,13 @@ namespace toy3d
         pipeline_.reset();
         sampler_.reset();
         rhi_program_.reset();
-        scene_sampler_binding_ = nullptr;
-        scene_color_binding_ = nullptr;
-        exposure_binding_ = nullptr;
-        constant_buffer_binding_ = nullptr;
-        shader_program_ = nullptr;
     }
 
     RHIStatus TonemapPassResources::render(RHIDevice& device, RHIGraphicsCommandContext& context,
                                            const RHITextureViewRef& scene_color, const TonemapPassTarget& target,
                                            const TonemapParameters& parameters) const
     {
-        if (!initialized() || !scene_color || !target.color_view || target.extent.width == 0u ||
+        if (!initialized() || !target.color_view || target.extent.width == 0u ||
             target.extent.height == 0u ||
             target.format != PixelFormat::B8G8R8A8UNorm || target.sample_count != 1u ||
             target.color_view->desc().format != target.format ||
@@ -188,40 +137,12 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Tonemap exposure must be finite.");
         }
 
-        std::vector<std::uint8_t> constants(constant_buffer_binding_->constant_buffer_size, 0u);
-        std::memcpy(constants.data() + exposure_binding_->offset, &parameters.exposure_ev,
-                    sizeof(parameters.exposure_ev));
-        RHITransientUniformDataDesc uniform_desc;
-        uniform_desc.source = {constants.data(), constants.size(), 0, 0};
-        uniform_desc.data_layout_hash = constant_buffer_binding_->data_layout_hash;
-        uniform_desc.shader_abi_version = constant_buffer_binding_->shader_abi_version;
-        uniform_desc.debug_name = "TonemapPassConstants";
-        RHIResult<RHIUniformBufferSlice> uniform_slice = context.upload_transient_uniform_data(uniform_desc);
-        if (!uniform_slice)
-        {
-            return uniform_slice.status();
-        }
-
-        RHIBindingSetDesc binding_desc;
-        binding_desc.group = RHIBindingGroup::Pass;
-        binding_desc.debug_name = "TonemapPassBindings";
-        RHIBindingValue constants_value;
-        constants_value.binding_id = constant_buffer_binding_->parameter_id;
-        constants_value.buffer = uniform_slice.value().buffer;
-        constants_value.buffer_offset = uniform_slice.value().offset;
-        constants_value.buffer_size = uniform_slice.value().size;
-        constants_value.data_layout_hash = uniform_slice.value().data_layout_hash;
-        constants_value.shader_abi_version = uniform_slice.value().shader_abi_version;
-        binding_desc.bindings.push_back(std::move(constants_value));
-        RHIBindingValue texture_value;
-        texture_value.binding_id = scene_color_binding_->parameter_id;
-        texture_value.texture_view = scene_color;
-        binding_desc.bindings.push_back(std::move(texture_value));
-        RHIBindingValue sampler_value;
-        sampler_value.binding_id = scene_sampler_binding_->parameter_id;
-        sampler_value.sampler = sampler_;
-        binding_desc.bindings.push_back(std::move(sampler_value));
-        RHIResult<RHIBindingSetRef> binding_set = device.create_binding_set(binding_desc);
+        TonemapPassParameters pass_parameters;
+        pass_parameters.exposure_ev = parameters.exposure_ev;
+        pass_parameters.scene_color = scene_color;
+        pass_parameters.scene_sampler = sampler_;
+        RHIResult<RHIBindingSetRef> binding_set =
+            create_transient_shader_binding(device, context, pass_parameters);
         if (!binding_set)
         {
             return binding_set.status();
@@ -273,7 +194,7 @@ namespace toy3d
 
     bool TonemapPassResources::initialized() const noexcept
     {
-        return shader_program_ != nullptr && rhi_program_ && rhi_program_->vertex_shader &&
-               rhi_program_->pixel_shader && rhi_program_->binding_layout && sampler_ && pipeline_;
+        return rhi_program_ && rhi_program_->vertex_shader && rhi_program_->pixel_shader &&
+               rhi_program_->binding_layout && sampler_ && pipeline_;
     }
 } // namespace toy3d

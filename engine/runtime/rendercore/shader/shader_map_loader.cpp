@@ -22,6 +22,154 @@ namespace toy3d
                    program.platform == key.platform && program.permutation_key == key.permutation_key;
         }
 
+        shader::BindingGroup to_shader_group(RHIBindingGroup group)
+        {
+            switch (group)
+            {
+            case RHIBindingGroup::Global:
+                return shader::BindingGroup::Global;
+            case RHIBindingGroup::View:
+                return shader::BindingGroup::View;
+            case RHIBindingGroup::Pass:
+                return shader::BindingGroup::Pass;
+            case RHIBindingGroup::Material:
+                return shader::BindingGroup::Material;
+            case RHIBindingGroup::Object:
+                return shader::BindingGroup::Object;
+            case RHIBindingGroup::Max:
+                break;
+            }
+            return shader::BindingGroup::Material;
+        }
+
+        shader::ShaderParameterCategory to_shader_category(RHIResourceBindingType type)
+        {
+            switch (type)
+            {
+            case RHIResourceBindingType::UniformBuffer:
+                return shader::ShaderParameterCategory::Constant;
+            case RHIResourceBindingType::SampledTexture:
+                return shader::ShaderParameterCategory::SampledTexture;
+            case RHIResourceBindingType::Sampler:
+                return shader::ShaderParameterCategory::Sampler;
+            case RHIResourceBindingType::ReadOnlyBuffer:
+                return shader::ShaderParameterCategory::ReadOnlyBuffer;
+            case RHIResourceBindingType::StorageBuffer:
+                return shader::ShaderParameterCategory::StorageBuffer;
+            }
+            return shader::ShaderParameterCategory::Constant;
+        }
+
+        bool same_value_type(shader::ShaderValueType expected, ShaderValueType actual)
+        {
+            switch (expected)
+            {
+            case shader::ShaderValueType::Float32:
+                return actual == ShaderValueType::Float32;
+            case shader::ShaderValueType::Float32x2:
+                return actual == ShaderValueType::Float32x2;
+            case shader::ShaderValueType::Float32x3:
+                return actual == ShaderValueType::Float32x3;
+            case shader::ShaderValueType::Float32x4:
+                return actual == ShaderValueType::Float32x4;
+            case shader::ShaderValueType::Int32:
+                return actual == ShaderValueType::Int32;
+            case shader::ShaderValueType::Int32x2:
+                return actual == ShaderValueType::Int32x2;
+            case shader::ShaderValueType::Int32x3:
+                return actual == ShaderValueType::Int32x3;
+            case shader::ShaderValueType::Int32x4:
+                return actual == ShaderValueType::Int32x4;
+            case shader::ShaderValueType::UInt32:
+                return actual == ShaderValueType::UInt32;
+            case shader::ShaderValueType::UInt32x2:
+                return actual == ShaderValueType::UInt32x2;
+            case shader::ShaderValueType::UInt32x3:
+                return actual == ShaderValueType::UInt32x3;
+            case shader::ShaderValueType::UInt32x4:
+                return actual == ShaderValueType::UInt32x4;
+            case shader::ShaderValueType::Float32x2x2:
+                return actual == ShaderValueType::Float32x2x2;
+            case shader::ShaderValueType::Float32x2x3:
+                return actual == ShaderValueType::Float32x2x3;
+            case shader::ShaderValueType::Float32x2x4:
+                return actual == ShaderValueType::Float32x2x4;
+            case shader::ShaderValueType::Float32x3x2:
+                return actual == ShaderValueType::Float32x3x2;
+            case shader::ShaderValueType::Float32x3x3:
+                return actual == ShaderValueType::Float32x3x3;
+            case shader::ShaderValueType::Float32x3x4:
+                return actual == ShaderValueType::Float32x3x4;
+            case shader::ShaderValueType::Float32x4x2:
+                return actual == ShaderValueType::Float32x4x2;
+            case shader::ShaderValueType::Float32x4x3:
+                return actual == ShaderValueType::Float32x4x3;
+            case shader::ShaderValueType::Float32x4x4:
+                return actual == ShaderValueType::Float32x4x4;
+            }
+            return false;
+        }
+
+        bool validate_program_schema_subset(const ShaderMapProgramData& program, std::string& error)
+        {
+            if (!shader::validate_shader_parameter_schema(program.parameter_schema, error) ||
+                program.logical_layout_hash != program.parameter_schema.logical_layout_hash)
+            {
+                return false;
+            }
+            for (const ShaderMapBinding& binding : program.bindings)
+            {
+                if (binding.type == RHIResourceBindingType::UniformBuffer)
+                {
+                    const auto buffer = std::find_if(
+                        program.parameter_schema.constant_buffers.begin(),
+                        program.parameter_schema.constant_buffers.end(),
+                        [&](const shader::ShaderParameterConstantBufferSchema& candidate)
+                        { return candidate.binding_id == binding.parameter_id; });
+                    if (buffer == program.parameter_schema.constant_buffers.end() || buffer->name != binding.name ||
+                        buffer->group != to_shader_group(binding.group) ||
+                        buffer->size != binding.constant_buffer_size ||
+                        buffer->data_layout_hash != binding.data_layout_hash ||
+                        buffer->shader_abi_version != binding.shader_abi_version ||
+                        buffer->members.size() != binding.constant_members.size())
+                    {
+                        error = "ShaderMap Program active constant binding is not part of its complete schema.";
+                        return false;
+                    }
+                    for (std::size_t index = 0; index < buffer->members.size(); ++index)
+                    {
+                        const shader::ShaderParameterConstantMemberSchema& expected = buffer->members[index];
+                        const ShaderMapBinding::ConstantMember& actual = binding.constant_members[index];
+                        if (expected.parameter_id != actual.parameter_id || expected.name != actual.name ||
+                            !same_value_type(expected.type, actual.type) ||
+                            expected.offset != actual.offset || expected.size != actual.size ||
+                            expected.array_stride != actual.array_stride ||
+                            expected.matrix_stride != actual.matrix_stride)
+                        {
+                            error = "ShaderMap Program active constant layout differs from its complete schema.";
+                            return false;
+                        }
+                    }
+                }
+                else
+                {
+                    const auto resource = std::find_if(
+                        program.parameter_schema.resources.begin(), program.parameter_schema.resources.end(),
+                        [&](const shader::ShaderParameterResourceSchema& candidate)
+                        { return candidate.parameter_id == binding.parameter_id; });
+                    if (resource == program.parameter_schema.resources.end() || resource->name != binding.name ||
+                        resource->group != to_shader_group(binding.group) ||
+                        resource->category != to_shader_category(binding.type) ||
+                        resource->array_count != binding.array_count)
+                    {
+                        error = "ShaderMap Program active resource binding is not part of its complete schema.";
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         std::uint32_t vulkan_portable_set(RHIBindingGroup group)
         {
             switch (group)
@@ -170,6 +318,10 @@ namespace toy3d
     ShaderMapProgramLoadResult validate_shader_map_program(ShaderMapProgramData program, const ShaderMapProgramKey& key)
     {
         ShaderMapProgramLoadResult result;
+        if (!validate_program_schema_subset(program, result.error))
+        {
+            return result;
+        }
         if (key.shader_name.empty() || key.pass_name.empty() || hash_is_zero(key.permutation_key))
         {
             result.error = "ShaderMap key requires shader/pass names and a permutation key.";
