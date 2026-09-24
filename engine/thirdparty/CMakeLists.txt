@@ -3,6 +3,7 @@ set(third_party_folder "ThirdParty")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(ShaderToolchain)
+include(assimp.cmake)
 
 if(NOT TARGET imgui)
     include(imgui.cmake)
