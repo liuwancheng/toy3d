@@ -7,6 +7,10 @@
 | 能力 | CMake target | 公共入口 | 可执行示例 |
 |---|---|---|---|
 | 文件系统 | `Toy3dFileSystem` | `file_system/file_system.h`、`native_platform_file.h` | `engine/core/tests/file_system_tests.cpp` |
+| 创作数据反射 | `Toy3dReflection` | `reflection/reflection_macros.h`、`reflection/type_registry.h` | `engine/tools/reflection_codegen/tests/codegen_tests.cpp` |
+| UTF-8 校验 | `Toy3dText` | `text/utf8.h` | `engine/core/tests/text_tests.cpp` |
+| 值编解码 | `Toy3dSerialization` | `serialization/value_codec.h`、`serialization/math_value_codec.h`、`serialization/schema_migration.h` | `engine/core/tests/serialization_tests.cpp` |
+| Asset 容器与身份 | `Toy3dResource` | `asset_file.h`、`asset_identity.h`、`asset_index.h`、`property_path.h`、`edit_session.h` | `engine/resource/tests/asset_file_tests.cpp`、`engine/tools/reflection_codegen/tests/codegen_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
 | 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | GPU-ready 格式 | `Toy3dPixelFormat` | `pixel_format/pixel_format.h` | `engine/core/tests/pixel_format_tests.cpp` |
@@ -23,6 +27,47 @@ target_link_libraries(MyTarget
 ```
 
 `Toy3dTaskGraph` 会传递 `Toy3dThreading`。不要直接包含 `stalling_task_queue.h`、`bounded_mpmc_queue.h` 或继承 `BaseGraphTask`；这些是实现层入口。
+
+## Text
+
+`toy3d::is_valid_utf8(text)` 只检查 UTF-8 编码；NUL、路径 segment 和其他领域规则由调用方继续检查。FileSystem 的虚拟路径、物理路径和文本读取与 Serialization 共用此入口。
+
+## Reflection
+
+创作数据头文件显式包含 `reflection/reflection_macros.h`，在公开 `struct` 与字段前分别放置稳定名称标记；无标记字段不进入 schema。`Edit` 可编辑、`Visible` 只读、`Transient` 不保存，已标记字段无 `Transient` 时默认保存。`Category`、`Range`、`Unit`、`AssetType` 只提供编辑提示。受限声明语法、支持类型和失败边界见 `document/editor-resource-foundation-design.md`。
+
+构建时以明确的 `--input` 清单调用 `Toy3dReflectionCodegen`，并给出构建目录中的 `--header`、`--source` 和唯一 `--function` 名；把生成 `.cpp` 加入使用目标。生成文件只放 build 目录，使用目标链接 `Toy3dReflection` 与 `Toy3dSerialization`。生成函数由 composition root 显式调用，检查返回值后冻结注册表：
+
+```cpp
+toy3d::TypeRegistry registry;
+const toy3d::ReflectionStatus registered = register_generated_content_types(registry);
+if (!registered.succeeded())
+{
+    return;
+}
+const toy3d::ReflectionStatus frozen = registry.freeze();
+if (!frozen.succeeded())
+{
+    return;
+}
+const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
+```
+
+`register_generated_content_types` 是示例生成函数名，实际名称由 `--function` 决定。生成器测试演示了标记输入、生成代码编译、非法组合和未知类型拒绝。
+
+## Serialization
+
+`ValueWriter`/`ValueReader` 负责固定宽度值、UTF-8 文本、数组长度与嵌套深度的有界读写；每次调用都检查 `ValueStatus`。编码为显式 little-endian，不保存 C++ struct 内存布局。`ValueReader` 借用输入字节，调用方必须保持输入寿命覆盖 reader。错误通过 `ValueStatus` 携带 offset、属性路径与原因，调用方决定记录日志或显示 Dialog。资源文件外层不在此模块。
+
+生成的 `encode_value(writer, data)` / `decode_value(reader, data)` 按稳定字段名排序。字段帧依次为名称、`uint8` 必需标志（`1` 必需、`0` 可选）及长度前缀 payload；生成器目前写出必需字段。未知必需字段拒绝，未知可选字段返回 `UnknownOptionalField`，调用方可只读展示，但不得把丢失该字段的候选保存。`SchemaMigrationRegistry` 以 `类型名 + from_version` 显式登记逐版本迁移，回调可用 `rename_schema_field` 和 `convert_schema_field` 处理字段；迁移只在完整成功后发布新字节。
+
+## Resource
+
+`AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。`encode_asset_file(index, segments)` 按稳定名称生成完整 Asset 字节；`inspect_asset(files, path)` 只读取固定头和索引。`load_asset<T>(types, migrations, files, path, type_name, output, validate)` 形成完整候选并在领域验证成功后赋值；`save_asset<T>(types, migrations, files, path, index, value, validate, extra_segments)` 先检查已发布文件能无损解码，并要求提供已有大段的字节，再通过 FileSystem 原子发布。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
+
+旧文件格式通过另一个 `load_asset<T>` 重载显式传入 `AssetFormatMigrationRegistry`，先迁移文件外层，再执行 schema 迁移；未知格式与缺失步骤返回错误且不修改原文件或调用方值。格式版本 0 目前只作迁移测试 fixture。
+
+`access_property(types, type, encoded_value, path)` 读取嵌套字段、数组元素或变体分支；`PropertyPathPart::element_id(identity_property, identity)` 在插入和重排后按作者保存的稳定 ID 选择元素。`EditSession<T>` 在 owner 线程持有快照、撤销记录与脏状态，先 `bind_published(files)`，再用 `apply_edit({patch...})` 提交单次或复合编辑；`undo()` / `redo()` 恢复快照，`save(files, migrations, index, extra_segments)` 仅在目标文件成功原子发布后清脏。调用方提供领域 validator 与可选预览准备/通知回调，使用 `EditChangeKind` 决定 setter、重新导入、Cook 或完整候选替换；失败不发布通知。错误由 Logger 或 Editor Dialog 的调用方处理。
 
 ## FileSystem
 

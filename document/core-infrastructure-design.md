@@ -13,6 +13,7 @@
 5. 大文件和局部读取通过 RAII `FileHandle` 完成；整文件读写是建立在 handle 之上的便利 API，不再是唯一能力。
 6. composition root 创建服务并注册 mount；library core 不提供不可替换的全局单例。
 7. v1 保持同步 I/O。未来异步层组合 `read_at()` 与共享 task system，不在本轮把线程池或 coroutine 固化进文件系统。
+8. UTF-8 有效性检查复用 `Toy3dText`；FileSystem 自行检查路径专有的 NUL、segment 与 mount 规则，不在多个 `.cpp` 中保留重复 UTF-8 解码器。
 
 ## 2. 设计来源与取舍
 

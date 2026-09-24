@@ -45,6 +45,7 @@ configure_file(
 # 构建子文件夹cmake工程
 add_subdirectory(thirdparty)
 add_subdirectory(core)
+add_subdirectory(resource)
 
 add_subdirectory(tools)
 add_subdirectory(shader)

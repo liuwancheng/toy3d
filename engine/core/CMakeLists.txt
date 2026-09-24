@@ -1,3 +1,9 @@
+add_library(Toy3dText INTERFACE)
+target_compile_features(Toy3dText INTERFACE cxx_std_17)
+target_include_directories(Toy3dText
+    INTERFACE
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+
 add_library(Toy3dFileSystem STATIC)
 target_sources(Toy3dFileSystem
     PRIVATE
@@ -25,6 +31,39 @@ set_target_properties(Toy3dFileSystem PROPERTIES
 target_include_directories(Toy3dFileSystem
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+target_link_libraries(Toy3dFileSystem PUBLIC Toy3dText)
+
+add_library(Toy3dReflection STATIC)
+target_sources(Toy3dReflection
+    PRIVATE
+        "reflection/reflection_macros.h"
+        "reflection/type_registry.cpp"
+        "reflection/type_registry.h")
+target_compile_features(Toy3dReflection PUBLIC cxx_std_17)
+set_target_properties(Toy3dReflection PROPERTIES
+    CXX_EXTENSIONS OFF
+    FOLDER "Engine/Core")
+target_include_directories(Toy3dReflection
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+
+add_library(Toy3dSerialization STATIC)
+target_sources(Toy3dSerialization
+    PRIVATE
+        "serialization/math_value_codec.cpp"
+        "serialization/math_value_codec.h"
+        "serialization/schema_migration.cpp"
+        "serialization/schema_migration.h"
+        "serialization/value_codec.cpp"
+        "serialization/value_codec.h")
+target_compile_features(Toy3dSerialization PUBLIC cxx_std_17)
+set_target_properties(Toy3dSerialization PROPERTIES
+    CXX_EXTENSIONS OFF
+    FOLDER "Engine/Core")
+target_include_directories(Toy3dSerialization
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
+target_link_libraries(Toy3dSerialization PUBLIC Toy3dReflection Toy3dText Toy3dMath)
 
 add_library(Toy3dLogging STATIC)
 target_sources(Toy3dLogging
@@ -146,6 +185,30 @@ target_include_directories(Toy3dTaskGraph
 target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
 
 if(BUILD_TESTING)
+    add_executable(Toy3dSerializationTests "tests/serialization_tests.cpp")
+    target_compile_features(Toy3dSerializationTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dSerializationTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dSerializationTests PRIVATE Toy3dSerialization)
+    add_test(NAME Toy3dCore.Serialization COMMAND Toy3dSerializationTests)
+
+    add_executable(Toy3dTextTests "tests/text_tests.cpp")
+    target_compile_features(Toy3dTextTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dTextTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dTextTests PRIVATE Toy3dText)
+    add_test(NAME Toy3dCore.Text COMMAND Toy3dTextTests)
+
+    add_executable(Toy3dReflectionTests "tests/reflection_tests.cpp")
+    target_compile_features(Toy3dReflectionTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dReflectionTests PROPERTIES
+        CXX_EXTENSIONS OFF
+        FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dReflectionTests PRIVATE Toy3dReflection Threads::Threads)
+    add_test(NAME Toy3dCore.Reflection COMMAND Toy3dReflectionTests)
+
     add_executable(Toy3dPixelFormatTests "tests/pixel_format_tests.cpp")
     target_compile_features(Toy3dPixelFormatTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dPixelFormatTests PROPERTIES
