@@ -1,6 +1,7 @@
 add_library(Toy3dShaderFormat STATIC)
 target_sources(Toy3dShaderFormat
     PRIVATE
+        "builtin_shader_parameters.h"
         "format/shader_format_hash.cpp"
         "format/sha256.cpp"
         "format/sha256.h"

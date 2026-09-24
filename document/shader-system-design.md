@@ -857,6 +857,8 @@ auto pass_binding = create_transient_shader_binding(
 
 每个 `.shader` Pass schema 与内建 Global/View/Object schema 由同一 codegen 规则产生普通 C++17 parameters struct、不可变 `ShaderParametersMetadata` accessor 和薄 `inline encode_shader_parameters` 重载。生成文件只位于 `<build>/generated/shader_parameters/`，一个生成单元只产生一个自包含 `.generated.h`，不产生 `.cpp`。输出顺序、C++ identifier 映射与内容必须确定；非法字符、关键字和规范化碰撞直接诊断，不能追加不稳定序号。
 
+内建 View/Object 常量的 group、名称与类型以 `engine/shader/builtin_shader_parameters.h` 中的常量表为唯一声明源。ShaderCompilerCore 直接读取该表，参数头文件生成和 Cook 编译由同一份 schema 推导；修改该头文件会重建编译器及其生成物。Global 当前没有内建常量。内建参数的 C++ 赋值应按字段名完成，不依赖声明顺序。
+
 RenderCore 的 `ShaderParameterEncoder` 依据 metadata 逐字段写入清零的 canonical bytes，并独立收集 texture、sampler 和 buffer values；它不 raw-copy C++ object representation。所有 required resource、数组、owner/type、schema identity 和 constant ABI 的确定性检查必须发生在 upload 前。Pass-local 值使用 `create_transient_shader_binding()`；persistent owner 使用相同编码 contract 的 persistent 创建入口。RHI失败保留原始错误码。
 
 Global、View、Pass、Material、Object 只共享 schema/编码机制，不共享 owner 协议：View 每 `ViewInfo` 每帧创建一次，Object 在 frame-local draw data 中跨 BasePass/ShadowPass 复用，Material 从完整 schema 构建 persistent Program-independent logical superset，Pass 才创建 transient binding。正式 RenderScene 代码禁止直接调用 parameter ID 生成函数、填写 layout hash/Shader ABI 或构造 `RHIBindingValue`/`RHIBindingSetDesc`，也禁止使用字符串字典、无类型 variant builder、统一 `.prepare()`、`Prepared*`、binder/adapter、通用 Pass 基类或全局可变 metadata registry。
