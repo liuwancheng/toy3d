@@ -67,7 +67,8 @@ namespace toy3d
         RHIStatus request_resize(const Extent& extent) override;
         VulkanViewportObservation observation_snapshot() const;
 
-        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context();
+        bool is_active_frame(std::uint64_t frame_id) const;
+        RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context(std::uint64_t frame_id);
 
       protected:
         RHIResult<std::unique_ptr<RHIFrameContext>> begin_frame_impl() override;

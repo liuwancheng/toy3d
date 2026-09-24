@@ -5,6 +5,7 @@
 #include "drivers/vulkan/vulkan_resource.h"
 #include "drivers/vulkan/vulkan_type_mapping.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
+#include "drivers/vulkan/vulkan_viewport_context.h"
 
 #include <algorithm>
 #include <array>
@@ -487,6 +488,11 @@ namespace toy3d
 
     RHIStatus VulkanGraphicsCommandContext::begin_recording(const std::string& debug_name)
     {
+        if (viewport_context != nullptr && !viewport_context->is_active_frame(recording_frame_id))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Vulkan graphics command context belongs to an inactive viewport frame.");
+        }
         if (recording_command_list)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -1666,6 +1672,11 @@ namespace toy3d
 
     RHIStatus VulkanGraphicsCommandContext::require_recording() const
     {
+        if (viewport_context != nullptr && !viewport_context->is_active_frame(recording_frame_id))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Vulkan graphics command context belongs to an inactive viewport frame.");
+        }
         if (!recording_command_list || recording_command_list->state() != RHICommandListState::Recording)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
