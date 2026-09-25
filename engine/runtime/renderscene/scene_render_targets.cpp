@@ -2,7 +2,6 @@
 
 #include "drivers/rhi/rhi_device.h"
 #include "drivers/rhi/rhi_public_definitions.h"
-#include "drivers/rhi/rhi_queue.h"
 
 #include <utility>
 
@@ -25,14 +24,8 @@ namespace toy3d
             return RHIStatus::success();
         }
 
-        if (scene_color_texture_ || scene_depth_texture_)
-        {
-            const RHIStatus idle = device.graphics_queue().wait_idle();
-            if (!idle)
-            {
-                return idle;
-            }
-        }
+        // Submitted command lists and backend deferred deletion keep old images
+        // alive until their GPU use completes, so panel resizing needs no queue stall.
         release();
         return create_targets(device, extent);
     }

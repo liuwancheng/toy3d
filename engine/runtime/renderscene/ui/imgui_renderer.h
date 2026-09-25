@@ -46,7 +46,8 @@ namespace toy3d
         void release() noexcept;
 
         RHIStatus render(RHIDevice& device, RHIGraphicsCommandContext& context, const ImGuiDrawData& draw_data,
-                         const ImGuiPassTarget& target);
+                         const ImGuiPassTarget& target, const RHITextureViewRef& viewport_texture_view = {},
+                         ImGuiTextureId viewport_texture_id = {});
         RHIStatus publish_frame_submission(RHIQueueCompletionValue completion_value) noexcept;
         void discard_frame_recording() noexcept;
 

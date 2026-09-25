@@ -278,7 +278,7 @@ namespace toy3d
         return true;
     }
 
-    void Engine::submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data)
+    void Engine::submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data, ViewportFrameOutput output)
     {
         if (!window || !renderer || !renderer->scene_interface())
         {
@@ -290,28 +290,34 @@ namespace toy3d
         {
             return;
         }
+        output.window_extent = extent;
+        const Extent scene_extent = output.sample_in_ui ? output.scene_extent : extent;
 
         std::vector<SceneView> views;
-        if (application)
+        if (scene_extent.width != 0u && scene_extent.height != 0u && application)
         {
-            application->build_scene_views(views, extent);
+            application->build_scene_views(views, scene_extent);
         }
-        else
+        else if (scene_extent.width != 0u && scene_extent.height != 0u)
         {
             views.emplace_back(Vector3(0.0f, 1.5f, -6.0f), Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
-                               IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
+                               IntRect{0, 0, scene_extent.width, scene_extent.height}, scene_extent,
+                               CameraProjectionMode::Perspective,
                                to_radians(Degrees(60.0f)), 0.1f, 1000.0f);
         }
-        if (views.empty())
+        if (views.empty() && scene_extent.width != 0u && scene_extent.height != 0u)
         {
             TOY_LOG_ERROR("Runtime frame draw requires at least one SceneView.");
             return;
         }
 
-        renderer->draw_frame(
-            std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
-                *renderer->scene_interface(), extent, std::move(views))),
-            std::move(ui_draw_data));
+        std::unique_ptr<SceneRenderer> scene_renderer;
+        if (!views.empty())
+        {
+            scene_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
+                *renderer->scene_interface(), scene_extent, std::move(views)));
+        }
+        renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output);
     }
 
     void Engine::shutdown_render_framework()
@@ -572,13 +578,22 @@ namespace toy3d
                 break;
             }
             std::unique_ptr<ImGuiDrawData> ui_draw_data;
+            ViewportFrameOutput viewport_output;
             if (imgui_system && imgui_system->begin_frame(*window, delta_time))
             {
                 if (application_bound && application)
                 {
                     application->build_ui();
+                    viewport_output.sample_in_ui = application->scene_viewport_extent(viewport_output.scene_extent);
+                    if (viewport_output.sample_in_ui)
+                        viewport_output.texture_id = IMGUI_SCENE_VIEWPORT_TEXTURE_ID;
                 }
-                ImGuiSnapshotResult ui_result = imgui_system->end_frame();
+                const ImGuiTextureId allowed_texture =
+                    viewport_output.sample_in_ui && viewport_output.scene_extent.width != 0u &&
+                            viewport_output.scene_extent.height != 0u
+                        ? viewport_output.texture_id
+                        : ImGuiTextureId{};
+                ImGuiSnapshotResult ui_result = imgui_system->end_frame(allowed_texture);
                 if (!ui_result.succeeded())
                 {
                     TOY_LOG_ERROR("Runtime UI frame was rejected: {}", ui_result.diagnostic);
@@ -588,7 +603,7 @@ namespace toy3d
                     ui_draw_data = std::move(ui_result.draw_data);
                 }
             }
-            submit_frame_draw(std::move(ui_draw_data));
+            submit_frame_draw(std::move(ui_draw_data), viewport_output);
             const RenderFenceWaitResult synchronized = frame_end_sync->sync_frame();
             if (!synchronized.succeeded())
             {

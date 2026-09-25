@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <utility>
+#include <vector>
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_queue.h"
@@ -17,6 +18,7 @@
 #include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/scene_render_targets.h"
+#include "renderscene/viewport_output_target.h"
 #include "renderscene/view/scene_renderer.h"
 #include "task_graph/task_graph_interface.h"
 
@@ -121,6 +123,7 @@ namespace toy3d
         resource_manager_ = std::make_unique<RenderResourceManager>(*device_);
         render_scene_ = std::make_unique<RenderScene>(task_graph_, *resource_manager_);
         scene_render_targets_ = std::make_unique<SceneRenderTargets>();
+        viewport_output_target_ = std::make_unique<ViewportOutputTarget>();
 
         if (imgui_font_atlas_input_)
         {
@@ -330,10 +333,12 @@ namespace toy3d
     }
 
     RHIResult<RHIFrameEndResult> render_viewport_frame(
-        SceneRenderer& scene_renderer, const ImGuiDrawData* ui_draw_data, RenderScene& render_scene, RHIDevice& device,
+        SceneRenderer* scene_renderer, const ImGuiDrawData* ui_draw_data, const ViewportFrameOutput& output,
+        RenderScene& render_scene, RHIDevice& device,
         RHIShaderProgramCache& shader_program_cache, RenderResourceManager& resource_manager,
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
-        TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer)
+        TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
+        ViewportOutputTarget& viewport_output_target)
     {
         RHIResult<std::unique_ptr<RHIFrameContext>> frame_result = viewport.begin_frame();
         if (!frame_result)
@@ -381,17 +386,29 @@ namespace toy3d
         };
 
         const Extent frame_extent = frame->extent();
-        if (scene_renderer.output_extent() != frame_extent)
+        const Extent scene_extent = output.sample_in_ui ? output.scene_extent : frame_extent;
+        const bool has_scene = scene_extent.width != 0u && scene_extent.height != 0u;
+        if ((!output.sample_in_ui && !has_scene) || (has_scene != (scene_renderer != nullptr)) ||
+            (has_scene && scene_renderer->output_extent() != scene_extent) ||
+            (output.sample_in_ui && !output.texture_id.valid()))
         {
             return abort_recording(
                 RHIStatus::failure(RHIErrorCode::OutOfDate,
-                                   "Renderer frame View family output does not match the acquired frame extent."));
+                                   "Renderer frame scene output does not match its viewport request."));
         }
 
-        RHIStatus status = scene_render_targets.ensure_extent(device, frame_extent);
-        if (!status)
+        RHIStatus status = RHIStatus::success();
+        if (has_scene)
         {
-            return abort_recording(status);
+            status = scene_render_targets.ensure_extent(device, scene_extent);
+            if (!status)
+                return abort_recording(status);
+            if (output.sample_in_ui)
+            {
+                status = viewport_output_target.ensure_extent(device, scene_extent);
+                if (!status)
+                    return abort_recording(status);
+            }
         }
 
         RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> context_result = frame->create_graphics_command_context();
@@ -413,39 +430,69 @@ namespace toy3d
             return abort_recording(status);
         }
 
-        status = scene_renderer.render_scene_passes(render_scene, device, shader_program_cache, *context,
-                                                    scene_render_targets);
-        if (!status)
+        if (has_scene)
         {
-            return abort_recording(status);
+            status = scene_renderer->render_scene_passes(render_scene, device, shader_program_cache, *context,
+                                                         scene_render_targets);
+            if (!status)
+                return abort_recording(status);
         }
 
-        RHIResourceTransition scene_color_to_shader_resource;
-        scene_color_to_shader_resource.resource = scene_render_targets.scene_color_texture();
-        scene_color_to_shader_resource.subresources =
-            scene_render_targets.scene_color_shader_resource_view()->desc().subresources;
-        scene_color_to_shader_resource.before = RHIAccess::RenderTarget;
-        scene_color_to_shader_resource.after = RHIAccess::ShaderResourceGraphics;
+        std::vector<RHIResourceTransition> final_output_transitions;
+        if (has_scene)
+        {
+            RHIResourceTransition scene_color_to_shader_resource;
+            scene_color_to_shader_resource.resource = scene_render_targets.scene_color_texture();
+            scene_color_to_shader_resource.subresources =
+                scene_render_targets.scene_color_shader_resource_view()->desc().subresources;
+            scene_color_to_shader_resource.before = RHIAccess::RenderTarget;
+            scene_color_to_shader_resource.after = RHIAccess::ShaderResourceGraphics;
+            final_output_transitions.push_back(std::move(scene_color_to_shader_resource));
+        }
         RHIResourceTransition present_to_render_target;
         present_to_render_target.resource = frame->present_texture();
         present_to_render_target.subresources = frame->present_view()->desc().subresources;
         present_to_render_target.before = RHIAccess::Present;
         present_to_render_target.after = RHIAccess::RenderTarget;
-        status = context->transition_resources({scene_color_to_shader_resource, present_to_render_target});
+        final_output_transitions.push_back(std::move(present_to_render_target));
+        if (has_scene && output.sample_in_ui)
+        {
+            RHIResourceTransition viewport_to_render_target;
+            viewport_to_render_target.resource = viewport_output_target.texture();
+            viewport_to_render_target.subresources = viewport_output_target.render_target_view()->desc().subresources;
+            viewport_to_render_target.before = viewport_output_target.access();
+            viewport_to_render_target.after = RHIAccess::RenderTarget;
+            final_output_transitions.push_back(std::move(viewport_to_render_target));
+        }
+        status = context->transition_resources(final_output_transitions);
         if (!status)
         {
             return abort_recording(status);
         }
 
-        TonemapPassTarget tonemap_target;
-        tonemap_target.color_view = frame->present_view();
-        tonemap_target.extent = frame_extent;
-        status =
-            tonemap_pass_resources.render(device, *context, scene_render_targets.scene_color_shader_resource_view(),
-                                          tonemap_target, TonemapParameters{});
-        if (!status)
+        if (has_scene)
         {
-            return abort_recording(status);
+            TonemapPassTarget tonemap_target;
+            tonemap_target.color_view = output.sample_in_ui ? viewport_output_target.render_target_view()
+                                                            : frame->present_view();
+            tonemap_target.extent = scene_extent;
+            status = tonemap_pass_resources.render(device, *context,
+                                                   scene_render_targets.scene_color_shader_resource_view(),
+                                                   tonemap_target, TonemapParameters{});
+            if (!status)
+                return abort_recording(status);
+            if (output.sample_in_ui)
+            {
+                RHIResourceTransition viewport_to_shader_resource;
+                viewport_to_shader_resource.resource = viewport_output_target.texture();
+                viewport_to_shader_resource.subresources =
+                    viewport_output_target.shader_resource_view()->desc().subresources;
+                viewport_to_shader_resource.before = RHIAccess::RenderTarget;
+                viewport_to_shader_resource.after = RHIAccess::ShaderResourceGraphics;
+                status = context->transition_resources({viewport_to_shader_resource});
+                if (!status)
+                    return abort_recording(status);
+            }
         }
 
         const bool has_ui = ui_draw_data != nullptr && !ui_draw_data->empty();
@@ -459,12 +506,34 @@ namespace toy3d
             ImGuiPassTarget imgui_target;
             imgui_target.color_view = frame->present_view();
             imgui_target.extent = frame_extent;
-            imgui_target.load = RHILoadOperation::Load;
-            status = imgui_renderer->render(device, *context, *ui_draw_data, imgui_target);
+            imgui_target.load = output.sample_in_ui ? RHILoadOperation::Clear : RHILoadOperation::Load;
+            imgui_target.clear_value = RHIClearValue::color_value(vec4(0.08F, 0.08F, 0.08F, 1.0F));
+            status = imgui_renderer->render(device, *context, *ui_draw_data, imgui_target,
+                                            has_scene && output.sample_in_ui
+                                                ? viewport_output_target.shader_resource_view()
+                                                : RHITextureViewRef{},
+                                            output.texture_id);
             if (!status)
             {
                 return abort_recording(status);
             }
+        }
+        else if (output.sample_in_ui)
+        {
+            RHIRenderPassDesc clear_pass;
+            RHIColorAttachmentDesc color;
+            color.view = frame->present_view();
+            color.load = RHILoadOperation::Clear;
+            color.store = RHIStoreOperation::Store;
+            color.clear_value = RHIClearValue::color_value(vec4(0.08F, 0.08F, 0.08F, 1.0F));
+            clear_pass.color_attachments.push_back(std::move(color));
+            clear_pass.debug_name = "EditorWindowClear";
+            status = context->begin_render_pass(clear_pass);
+            if (!status)
+                return abort_recording(status);
+            status = context->end_render_pass();
+            if (!status)
+                return abort_recording(status);
         }
 
         RHIResourceTransition render_target_to_present;
@@ -535,34 +604,43 @@ namespace toy3d
                 submitted_result.presentation_status = commit_status;
             }
         }
-        scene_render_targets.publish_submitted_access(RHIAccess::ShaderResourceGraphics, RHIAccess::DepthStencilWrite);
+        if (has_scene)
+        {
+            scene_render_targets.publish_submitted_access(RHIAccess::ShaderResourceGraphics,
+                                                          RHIAccess::DepthStencilWrite);
+            if (output.sample_in_ui)
+                viewport_output_target.publish_submitted_access(RHIAccess::ShaderResourceGraphics);
+        }
         return RHIResult<RHIFrameEndResult>::success(std::move(submitted_result));
     }
 
-    RHIResult<RHIFrameEndResult> Renderer::render_frame(SceneRenderer& scene_renderer,
-                                                        const ImGuiDrawData* ui_draw_data)
+    RHIResult<RHIFrameEndResult> Renderer::render_frame(SceneRenderer* scene_renderer,
+                                                        const ImGuiDrawData* ui_draw_data,
+                                                        const ViewportFrameOutput& output)
     {
-        return render_viewport_frame(scene_renderer, ui_draw_data, *render_scene_, *device_, *shader_program_cache_,
+        return render_viewport_frame(scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_,
                                      *resource_manager_, *primary_viewport_, *scene_render_targets_,
-                                     *tonemap_pass_resources_, imgui_renderer_.get());
+                                     *tonemap_pass_resources_, imgui_renderer_.get(), *viewport_output_target_);
     }
 
     void Renderer::draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
-                              std::unique_ptr<ImGuiDrawData> ui_draw_data)
+                              std::unique_ptr<ImGuiDrawData> ui_draw_data, ViewportFrameOutput output)
     {
         enqueue_render_command(
             "DrawFrame",
             [this, scene_renderer = std::move(scene_renderer),
-             ui_draw_data = std::move(ui_draw_data)]() mutable noexcept
+             ui_draw_data = std::move(ui_draw_data), output]() mutable noexcept
             {
                 if (lifecycle_state_.load() != RendererLifecycleState::Running || !render_scene_ ||
-                    !resource_manager_ || !device_ || !primary_viewport_ || !scene_render_targets_ || !scene_renderer)
+                    !resource_manager_ || !device_ || !primary_viewport_ || !scene_render_targets_ ||
+                    !viewport_output_target_ || (!scene_renderer && !output.sample_in_ui))
                 {
-                    TOY_LOG_ERROR("Renderer Draw requires a complete Running domain and a SceneRenderer.");
+                    TOY_LOG_ERROR("Renderer Draw requires a complete Running domain and valid frame inputs.");
                     return;
                 }
 
-                const Extent output_extent = scene_renderer->output_extent();
+                const Extent output_extent = output.sample_in_ui ? output.window_extent
+                                                                   : scene_renderer->output_extent();
                 const RHIStatus extent_status = ensure_primary_frame_extent(output_extent);
                 if (!extent_status)
                 {
@@ -571,7 +649,7 @@ namespace toy3d
                     return;
                 }
 
-                RHIResult<RHIFrameEndResult> frame_result = render_frame(*scene_renderer, ui_draw_data.get());
+                RHIResult<RHIFrameEndResult> frame_result = render_frame(scene_renderer.get(), ui_draw_data.get(), output);
                 if (!frame_result)
                 {
                     if (!rhi_is_recoverable_viewport_status(frame_result.status()))
@@ -703,6 +781,11 @@ namespace toy3d
         {
             scene_render_targets_->release();
             scene_render_targets_.reset();
+        }
+        if (viewport_output_target_)
+        {
+            viewport_output_target_->release();
+            viewport_output_target_.reset();
         }
         if (resource_manager_)
         {

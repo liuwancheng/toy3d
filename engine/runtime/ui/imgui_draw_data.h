@@ -31,6 +31,7 @@ namespace toy3d
     };
 
     constexpr ImGuiTextureId IMGUI_FONT_ATLAS_TEXTURE_ID(1u);
+    constexpr ImGuiTextureId IMGUI_SCENE_VIEWPORT_TEXTURE_ID(2u);
 
     struct ImGuiVertex
     {

@@ -319,7 +319,7 @@ namespace toy3d
         return true;
     }
 
-    ImGuiSnapshotResult ImGuiSystem::end_frame()
+    ImGuiSnapshotResult ImGuiSystem::end_frame(ImGuiTextureId viewport_texture_id)
     {
         if (context_ == nullptr || !frame_active_)
         {
@@ -331,7 +331,7 @@ namespace toy3d
         ImGuiIO& io = ImGui::GetIO();
         InputSystem::get_instance().set_capture_policy({io.WantCaptureMouse, io.WantCaptureKeyboard, io.WantTextInput});
         const ImDrawData* source = ImGui::GetDrawData();
-        return source != nullptr ? snapshot(*source) : ImGuiSnapshotResult{};
+        return source != nullptr ? snapshot(*source, viewport_texture_id) : ImGuiSnapshotResult{};
     }
 
     const ImGuiFontAtlasData& ImGuiSystem::font_atlas() const noexcept
@@ -418,7 +418,7 @@ namespace toy3d
         }
     }
 
-    ImGuiSnapshotResult ImGuiSystem::snapshot(const ImDrawData& source) const
+    ImGuiSnapshotResult ImGuiSystem::snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id) const
     {
         ImGuiSnapshotResult result;
         if (!source.Valid || !finite_pair(source.DisplayPos) || !finite_pair(source.DisplaySize) ||
@@ -521,7 +521,7 @@ namespace toy3d
                 }
                 ImGuiTextureId texture_id;
                 if (!decode_texture_id(source_command.GetTexID(), texture_id) ||
-                    texture_id != IMGUI_FONT_ATLAS_TEXTURE_ID)
+                    (texture_id != IMGUI_FONT_ATLAS_TEXTURE_ID && texture_id != viewport_texture_id))
                 {
                     return snapshot_failure(static_cast<std::size_t>(list_index),
                                             static_cast<std::size_t>(command_index),

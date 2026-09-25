@@ -309,7 +309,9 @@ namespace toy3d
     }
 
     RHIStatus ImGuiRenderer::render(RHIDevice& device, RHIGraphicsCommandContext& context,
-                                    const ImGuiDrawData& draw_data, const ImGuiPassTarget& target)
+                                    const ImGuiDrawData& draw_data, const ImGuiPassTarget& target,
+                                    const RHITextureViewRef& viewport_texture_view,
+                                    ImGuiTextureId viewport_texture_id)
     {
         if (draw_data.empty())
             return RHIStatus::success();
@@ -381,6 +383,22 @@ namespace toy3d
             create_transient_shader_binding(device, context, pass_parameters);
         if (!binding_set)
             return binding_set.status();
+        RHIBindingSetRef font_binding = binding_set.value();
+        RHIBindingSetRef viewport_binding;
+        if (viewport_texture_view)
+        {
+            if (!viewport_texture_id.valid() || viewport_texture_id == IMGUI_FONT_ATLAS_TEXTURE_ID)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Viewport texture identity is invalid.");
+            }
+            pass_parameters.font_texture = viewport_texture_view;
+            RHIResult<RHIBindingSetRef> created_viewport_binding =
+                create_transient_shader_binding(device, context, pass_parameters);
+            if (!created_viewport_binding)
+                return created_viewport_binding.status();
+            viewport_binding = created_viewport_binding.value();
+        }
+        RHIBindingSetRef active_binding = font_binding;
 
         const auto bind_state = [&]() -> RHIStatus
         {
@@ -406,7 +424,7 @@ namespace toy3d
             if (!bind_status)
                 return bind_status;
             RHIGraphicsBindings bindings;
-            bindings.pass = binding_set.value();
+            bindings.pass = active_binding;
             return context.bind_graphics_bindings(bindings);
         };
 
@@ -433,10 +451,24 @@ namespace toy3d
                     return status;
                 continue;
             }
-            if (command.texture_id != IMGUI_FONT_ATLAS_TEXTURE_ID)
+            RHIBindingSetRef requested_binding;
+            if (command.texture_id == IMGUI_FONT_ATLAS_TEXTURE_ID)
+                requested_binding = font_binding;
+            else if (viewport_binding && command.texture_id == viewport_texture_id)
+                requested_binding = viewport_binding;
+            else
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "ImGui draw references an unknown texture identity.");
+            }
+            if (requested_binding != active_binding)
+            {
+                active_binding = std::move(requested_binding);
+                RHIGraphicsBindings bindings;
+                bindings.pass = active_binding;
+                status = context.bind_graphics_bindings(bindings);
+                if (!status)
+                    return status;
             }
             RHIRect scissor;
             if (!make_scissor(command, draw_data, target, scissor))

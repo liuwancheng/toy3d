@@ -22,7 +22,9 @@
 #include "renderscene/render_resource.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/renderer_frame.h"
+#include "renderscene/renderer.h"
 #include "renderscene/scene_render_targets.h"
+#include "renderscene/viewport_output_target.h"
 #include "renderscene/texture/texture_resource.h"
 #include "renderscene/view/forward_scene_renderer.h"
 #include "renderscene/view/view_shader_bindings.h"
@@ -479,9 +481,11 @@ namespace
         toy3d::SceneRenderTargets& scene_render_targets, toy3d::TonemapPassResources& tonemap_pass_resources)
     {
         toy3d::RHIShaderProgramCache shader_program_cache(device);
-        return toy3d::render_viewport_frame(scene_renderer, nullptr, render_scene, device, shader_program_cache,
+        toy3d::ViewportOutputTarget viewport_output_target;
+        return toy3d::render_viewport_frame(&scene_renderer, nullptr, toy3d::ViewportFrameOutput{},
+                                            render_scene, device, shader_program_cache,
                                             resource_manager, viewport, scene_render_targets, tonemap_pass_resources,
-                                            nullptr);
+                                            nullptr, viewport_output_target);
     }
 } // namespace
 
@@ -1394,6 +1398,51 @@ int main()
           "frame owner must record uploads and Base Pass in one list, then commit only after submit");
     check(frame_manager.release(submitted_frame_resource).succeeded(),
           "submitted frame resource must release after the frame-owner smoke");
+
+    std::vector<std::string> embedded_frame_operations;
+    frame_viewport.operations = &embedded_frame_operations;
+    device.operations = &embedded_frame_operations;
+    FrameViewport embedded_viewport(device);
+    embedded_viewport.operations = &embedded_frame_operations;
+    embedded_viewport.next_frame = make_frame();
+    std::vector<toy3d::SceneView> embedded_views;
+    embedded_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(),
+                                toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, 32u, 32u},
+                                toy3d::Extent{32u, 32u}, toy3d::CameraProjectionMode::Perspective,
+                                toy3d::Radians(1.0f), 0.1f, 100.0f);
+    toy3d::ForwardSceneRenderer embedded_renderer(
+        toy3d::SceneViewFamily(*frame_render_scene, toy3d::Extent{32u, 32u}, std::move(embedded_views)));
+    toy3d::SceneRenderTargets embedded_scene_targets;
+    toy3d::ViewportOutputTarget embedded_output_target;
+    toy3d::ViewportFrameOutput embedded_output;
+    embedded_output.sample_in_ui = true;
+    embedded_output.window_extent = {64u, 64u};
+    embedded_output.scene_extent = {32u, 32u};
+    embedded_output.texture_id = toy3d::IMGUI_SCENE_VIEWPORT_TEXTURE_ID;
+    toy3d::RHIShaderProgramCache embedded_shader_cache(device);
+    const auto embedded_result = toy3d::render_viewport_frame(
+        &embedded_renderer, nullptr, embedded_output, *frame_render_scene, device, embedded_shader_cache,
+        frame_manager, embedded_viewport, embedded_scene_targets, tonemap_resources, nullptr, embedded_output_target);
+    check(embedded_result.succeeded() && embedded_scene_targets.scene_color_texture() &&
+              embedded_scene_targets.scene_color_texture()->desc().width == 32u &&
+              embedded_output_target.texture() && embedded_output_target.texture()->desc().width == 32u &&
+              embedded_output_target.access() == toy3d::RHIAccess::ShaderResourceGraphics &&
+              embedded_viewport.end_count == 1u,
+          "embedded viewport must render at panel extent and publish an SDR texture before window presentation");
+
+    FrameViewport hidden_viewport(device);
+    hidden_viewport.operations = &embedded_frame_operations;
+    hidden_viewport.next_frame = make_frame();
+    toy3d::ViewportFrameOutput hidden_output = embedded_output;
+    hidden_output.scene_extent = {};
+    toy3d::SceneRenderTargets hidden_scene_targets;
+    toy3d::ViewportOutputTarget hidden_output_target;
+    const auto hidden_result = toy3d::render_viewport_frame(
+        nullptr, nullptr, hidden_output, *frame_render_scene, device, embedded_shader_cache, frame_manager,
+        hidden_viewport, hidden_scene_targets, tonemap_resources, nullptr, hidden_output_target);
+    check(hidden_result.succeeded() && !hidden_scene_targets.scene_color_texture() &&
+              !hidden_output_target.texture() && hidden_viewport.end_count == 1u,
+          "hidden embedded viewport must present UI without allocating a scene target");
 
     const toy3d::ShaderMapProgramRef base_pass_program = load_program(make_base_pass_program());
     toy3d::MaterialDesc base_pass_material_desc;

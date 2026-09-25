@@ -11,6 +11,7 @@
 
 #include "config/command_line_parser.h"
 #include "engine.h"
+#include "editor.h"
 
 toy3d::Engine g_engine;
 
@@ -92,6 +93,7 @@ int engine_main(void* hInstance)
     shader_config.mode = toy3d::ShaderLoadMode::ShaderMapEntry;
     shader_config.path = toy3d::PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
     g_engine.set_shader_load_config(std::move(shader_config));
+    g_engine.set_application(std::make_unique<toy3d::EditorApplication>());
     g_engine.init(hInstance);
     g_engine.main_loop();
     g_engine.exit();

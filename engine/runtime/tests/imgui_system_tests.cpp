@@ -149,6 +149,16 @@ int main()
     check(!unknown_texture.succeeded() && unknown_texture.draw_data == nullptr,
           "unknown texture identity must reject the whole UI payload");
 
+    check(imgui.begin_frame(window, 1.0 / 60.0), "registered viewport texture test frame must start");
+    ImGui::GetForegroundDrawList()->AddImage(
+        reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value())),
+        ImVec2(0.0F, 0.0F), ImVec2(20.0F, 20.0F));
+    ImGuiSnapshotResult viewport_texture = imgui.end_frame(IMGUI_SCENE_VIEWPORT_TEXTURE_ID);
+    check(viewport_texture.succeeded() && viewport_texture.draw_data &&
+              !viewport_texture.draw_data->commands.empty() &&
+              viewport_texture.draw_data->commands.back().texture_id == IMGUI_SCENE_VIEWPORT_TEXTURE_ID,
+          "registered viewport texture identity must survive the UI snapshot");
+
     check(imgui.begin_frame(window, 1.0 / 60.0), "callback rejection test frame must start");
     ImGui::GetForegroundDrawList()->AddCallback([](const ImDrawList*, const ImDrawCmd*) {}, nullptr);
     ImGuiSnapshotResult callback = imgui.end_frame();

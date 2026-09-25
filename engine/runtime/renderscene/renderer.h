@@ -22,6 +22,15 @@ namespace toy3d
     class TaskGraphInterface;
     class TonemapPassResources;
     class ImGuiRenderer;
+    class ViewportOutputTarget;
+
+    struct ViewportFrameOutput
+    {
+        bool sample_in_ui = false;
+        Extent window_extent;
+        Extent scene_extent;
+        ImGuiTextureId texture_id;
+    };
 
     enum class RendererLifecycleState
     {
@@ -71,7 +80,8 @@ namespace toy3d
         ThreadStatus initialize();
         ThreadStatus teardown();
         void draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
-                        std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr);
+                        std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr,
+                        ViewportFrameOutput output = {});
         RendererStatus status() const;
         // Published only between successful logical-RT initialize and teardown.
         // The pointer is non-owning and exposes no concrete RenderScene state to GT.
@@ -81,7 +91,8 @@ namespace toy3d
         bool is_on_logical_rendering_thread() const;
         ThreadStatus fail_startup(const RHIStatus& failure);
         RHIStatus ensure_primary_frame_extent(const Extent& extent);
-        RHIResult<RHIFrameEndResult> render_frame(SceneRenderer& scene_renderer, const ImGuiDrawData* ui_draw_data);
+        RHIResult<RHIFrameEndResult> render_frame(SceneRenderer* scene_renderer, const ImGuiDrawData* ui_draw_data,
+                                                  const ViewportFrameOutput& output);
         void enter_terminal(const RHIStatus& failure) noexcept;
         void append_secondary_diagnostic(const RHIStatus& failure) noexcept;
         void release_domain(bool terminal) noexcept;
@@ -98,6 +109,7 @@ namespace toy3d
         std::unique_ptr<RenderResourceManager> resource_manager_;
         std::unique_ptr<RenderScene> render_scene_;
         std::unique_ptr<SceneRenderTargets> scene_render_targets_;
+        std::unique_ptr<ViewportOutputTarget> viewport_output_target_;
         std::unique_ptr<TonemapPassResources> tonemap_pass_resources_;
         std::unique_ptr<ImGuiRenderer> imgui_renderer_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;

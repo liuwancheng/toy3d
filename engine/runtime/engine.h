@@ -28,6 +28,7 @@ namespace toy3d
     class ShaderMapLoader;
     class ShaderMapProgram;
     struct ImGuiDrawData;
+    struct ViewportFrameOutput;
 
     enum class ShaderLoadMode
     {
@@ -65,7 +66,7 @@ namespace toy3d
         bool initialize_builtin_shader_programs();
         bool initialize_render_framework();
         void shutdown_render_framework();
-        void submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data);
+        void submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data, ViewportFrameOutput output);
 
         double game_time = 0.0;
         double delta_time = 0.0;
