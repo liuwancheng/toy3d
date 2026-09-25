@@ -12,7 +12,9 @@
 
 namespace toy3d
 {
-
+    // --------------------------------------------------------------------------
+    // VulkanBuffer: GPU buffer access state and deferred destruction
+    // --------------------------------------------------------------------------
     VulkanBuffer::VulkanBuffer(const RHIDevice& owner, RHIBufferDesc desc, VulkanMemoryManager& memory_manager,
                                VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer,
                                RHIAccess initial_access)
@@ -77,6 +79,58 @@ namespace toy3d
         return last_use_value;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanReadback: CPU-visible pixel data and GPU-completion lifetime
+    // --------------------------------------------------------------------------
+    VulkanReadback::VulkanReadback(const RHIDevice& owner, std::string debug_name,
+                                   VulkanMemoryManager& memory_manager,
+                                   VulkanDeferredDeletionQueue& deletion_queue,
+                                   VulkanAllocatedBuffer allocated_buffer)
+        : RHIReadback(owner, std::move(debug_name)), memory_manager_instance(&memory_manager),
+          deletion_queue_instance(&deletion_queue), allocated_buffer(std::move(allocated_buffer))
+    {
+    }
+
+    VulkanReadback::~VulkanReadback()
+    {
+        if (memory_manager_instance == nullptr)
+            return;
+        const RHIQueueCompletionValue last_use = last_use_completion_value();
+        if (last_use == 0 || deletion_queue_instance == nullptr)
+        {
+            memory_manager_instance->destroy_buffer(allocated_buffer);
+            return;
+        }
+        auto payload = std::make_shared<VulkanAllocatedBuffer>(std::move(allocated_buffer));
+        VulkanMemoryManager* const memory_manager = memory_manager_instance;
+        const RHIStatus status = deletion_queue_instance->enqueue(last_use, [memory_manager, payload](VkDevice)
+                                                                  { memory_manager->destroy_buffer(*payload); });
+        if (!status)
+        {
+            TOY_LOG_ERROR("Failed to defer Vulkan readback deletion: {}", status.message());
+            memory_manager_instance->destroy_buffer(*payload);
+        }
+    }
+
+    RHIResult<std::uint32_t> VulkanReadback::read_uint32_impl() const
+    {
+        if (memory_manager_instance == nullptr || allocated_buffer.allocation.mapped_data == nullptr)
+        {
+            return RHIResult<std::uint32_t>::failure(RHIErrorCode::BackendFailure,
+                                                     "Vulkan readback allocation is not mapped.");
+        }
+        const RHIStatus status = memory_manager_instance->invalidate_allocation(
+            allocated_buffer.allocation, 0, sizeof(std::uint32_t));
+        if (!status)
+            return RHIResult<std::uint32_t>::failure(status.code(), status.message());
+        std::uint32_t result = 0;
+        std::memcpy(&result, allocated_buffer.allocation.mapped_data, sizeof(result));
+        return RHIResult<std::uint32_t>::success(result);
+    }
+
+    // --------------------------------------------------------------------------
+    // VulkanTexture: image subresource state and deferred destruction
+    // --------------------------------------------------------------------------
     VulkanTexture::VulkanTexture(const RHIDevice& owner, RHITextureDesc desc, VulkanMemoryManager& memory_manager,
                                  VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedImage allocated_image,
                                  VkImageLayout initial_layout, RHIAccess initial_access)
@@ -182,6 +236,9 @@ namespace toy3d
         return last_use_value;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanTextureView: native image-view ownership
+    // --------------------------------------------------------------------------
     VulkanTextureView::VulkanTextureView(std::shared_ptr<RHITexture> texture, RHITextureViewDesc desc, VkDevice device,
                                          VkImageView image_view, bool owns_image_view)
         : RHITextureView(std::move(texture), std::move(desc)), vk_device(device), vk_image_view(image_view),
@@ -202,6 +259,9 @@ namespace toy3d
         return vk_image_view;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanRenderPassResources: render-pass lifetime and compatibility
+    // --------------------------------------------------------------------------
     VulkanRenderPassResources::VulkanRenderPassResources(VkDevice device, VkRenderPass render_pass,
                                                          VkFramebuffer framebuffer,
                                                          std::vector<PixelFormat> color_formats,
@@ -270,6 +330,9 @@ namespace toy3d
         return true;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanShader: native shader-module lifetime
+    // --------------------------------------------------------------------------
     VulkanShader::VulkanShader(const RHIDevice& owner, RHIShaderDesc desc, VkDevice device,
                                VkShaderModule shader_module)
         : RHIShader(owner, std::move(desc)), vk_device(device), vk_shader_module(shader_module)
@@ -289,6 +352,9 @@ namespace toy3d
         return vk_shader_module;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanBindingLayout: logical groups and descriptor-set layouts
+    // --------------------------------------------------------------------------
     VulkanBindingLayout::VulkanBindingLayout(
         const RHIDevice& owner, RHIBindingLayoutDesc desc, VkDevice device,
         std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts)
@@ -343,6 +409,9 @@ namespace toy3d
         return vk_descriptor_set_layouts;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanSampler: native sampler lifetime
+    // --------------------------------------------------------------------------
     VulkanSampler::VulkanSampler(const RHIDevice& owner, RHISamplerDesc desc, VkDevice device, VkSampler sampler)
         : RHISampler(owner, std::move(desc)), vk_device(device), vk_sampler(sampler)
     {
@@ -361,6 +430,9 @@ namespace toy3d
         return vk_sampler;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanBindingPacket: descriptor-set page and binding retention
+    // --------------------------------------------------------------------------
     VulkanBindingPacket::VulkanBindingPacket(std::shared_ptr<VulkanDescriptorPoolPage> descriptor_page,
                                              VkDescriptorSet descriptor_set,
                                              std::vector<RHIBindingSetRef> logical_sets)
@@ -379,6 +451,9 @@ namespace toy3d
         return vk_descriptor_set;
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanGraphicsPipeline: native pipeline lifetime and pass compatibility
+    // --------------------------------------------------------------------------
     VulkanGraphicsPipeline::VulkanGraphicsPipeline(const RHIDevice& owner, RHIGraphicsPipelineDesc desc,
                                                    VkDevice device, VkRenderPass compatibility_render_pass,
                                                    VkPipelineLayout pipeline_layout, VkPipeline pipeline)

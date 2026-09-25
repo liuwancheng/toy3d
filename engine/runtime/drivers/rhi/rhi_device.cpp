@@ -263,6 +263,26 @@ namespace toy3d
         return finalize_creation_result(create_texture_impl(desc, initial_data), "texture");
     }
 
+    RHIResult<RHIReadbackRef> RHIDevice::create_readback(const std::string& debug_name)
+    {
+        const RHIStatus creation_status = begin_creation();
+        if (!creation_status)
+            return failure_from_status<RHIReadbackRef>(creation_status);
+        const CreationScope creation_scope(*this);
+        if (!is_initialized_impl())
+        {
+            return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::NotReady,
+                                                      "Readback creation requires an initialized RHI device.");
+        }
+        return finalize_creation_result(create_readback_impl(debug_name), "readback");
+    }
+
+    RHIResult<RHIReadbackRef> RHIDevice::create_readback_impl(const std::string&)
+    {
+        return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::Unsupported,
+                                                  "This RHI backend does not support pixel readback.");
+    }
+
     RHIResult<RHIBufferViewRef> RHIDevice::create_buffer_view(const RHIBufferRef& buffer, const RHIBufferViewDesc& desc)
     {
         if (!buffer)

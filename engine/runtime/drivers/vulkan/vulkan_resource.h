@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace toy3d
@@ -52,6 +53,24 @@ namespace toy3d
         std::shared_ptr<VulkanUploadPage> transient_upload_page;
         RHIAccess resource_access = RHIAccess::Common;
         RHIQueueCompletionValue last_use_value = 0;
+    };
+
+    class VulkanReadback final : public RHIReadback
+    {
+      public:
+        VulkanReadback(const RHIDevice& owner, std::string debug_name, VulkanMemoryManager& memory_manager,
+                       VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer);
+        ~VulkanReadback() override;
+
+        VkBuffer buffer() const { return allocated_buffer.buffer; }
+
+      protected:
+        RHIResult<std::uint32_t> read_uint32_impl() const override;
+
+      private:
+        VulkanMemoryManager* memory_manager_instance = nullptr;
+        VulkanDeferredDeletionQueue* deletion_queue_instance = nullptr;
+        VulkanAllocatedBuffer allocated_buffer;
     };
 
     class VulkanTexture final : public RHITexture

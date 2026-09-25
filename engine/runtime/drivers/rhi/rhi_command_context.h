@@ -77,6 +77,7 @@ namespace toy3d
         RHIStatus upload_buffer(const RHIBufferUploadDesc& desc);
         RHIResult<RHIUniformBufferSlice> upload_transient_uniform_data(const RHITransientUniformDataDesc& desc);
         RHIStatus copy_texture(const RHITextureCopyDesc& desc);
+        RHIStatus readback_texture_pixel(const RHITexturePixelReadbackDesc& desc);
         RHIStatus upload_texture(const RHITextureUploadDesc& desc);
         RHIStatus write_gpu_fence(const RHIGPUFenceRef& fence);
         virtual RHIResult<RHICommandListRef> finish_recording() = 0;
@@ -88,6 +89,7 @@ namespace toy3d
         virtual RHIResult<RHIUniformBufferSlice> upload_transient_uniform_data_impl(
             const RHITransientUniformDataDesc& desc);
         virtual RHIStatus copy_texture_impl(const RHITextureCopyDesc& desc) = 0;
+        virtual RHIStatus readback_texture_pixel_impl(const RHITexturePixelReadbackDesc& desc);
         virtual RHIStatus upload_texture_impl(const RHITextureUploadDesc& desc) = 0;
         virtual RHIStatus write_gpu_fence_impl(const RHIGPUFenceRef& fence) = 0;
     };

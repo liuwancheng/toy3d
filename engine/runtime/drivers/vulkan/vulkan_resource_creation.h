@@ -19,6 +19,10 @@ namespace toy3d
                                                  VulkanMemoryManager& memory_manager,
                                                  VulkanDeferredDeletionQueue& deletion_queue, const RHIBufferDesc& desc,
                                                  const RHIInitialData* initial_data);
+    RHIResult<RHIReadbackRef> create_vulkan_readback(const RHIDevice& owner, VkDevice device,
+                                                     VulkanMemoryManager& memory_manager,
+                                                     VulkanDeferredDeletionQueue& deletion_queue,
+                                                     const std::string& debug_name);
     RHIResult<RHITextureRef> create_vulkan_texture(const RHIDevice& owner, VkPhysicalDevice physical_device,
                                                    VkDevice device, VulkanMemoryManager& memory_manager,
                                                    VulkanDeferredDeletionQueue& deletion_queue,

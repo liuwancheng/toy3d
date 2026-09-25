@@ -13,6 +13,9 @@ namespace toy3d
         }
     } // namespace
 
+    // --------------------------------------------------------------------------
+    // RHICommandContext: shared validation before backend command recording
+    // --------------------------------------------------------------------------
     RHIStatus RHICommandContext::transition_resources(const std::vector<RHIResourceTransition>& transitions)
     {
         for (const RHIResourceTransition& transition : transitions)
@@ -113,6 +116,25 @@ namespace toy3d
         return upload_texture_impl(desc);
     }
 
+    RHIStatus RHICommandContext::readback_texture_pixel(const RHITexturePixelReadbackDesc& desc)
+    {
+        const RHIStatus validation = validate_texture_pixel_readback_desc(desc);
+        if (!validation)
+            return validation;
+        if (!desc.source.texture->is_owned_by(*owner_device()) ||
+            !desc.destination->is_owned_by(*owner_device()))
+        {
+            return foreign_object("Pixel readback");
+        }
+        return readback_texture_pixel_impl(desc);
+    }
+
+    RHIStatus RHICommandContext::readback_texture_pixel_impl(const RHITexturePixelReadbackDesc&)
+    {
+        return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                  "This RHI backend does not support pixel readback.");
+    }
+
     RHIStatus RHICommandContext::write_gpu_fence(const RHIGPUFenceRef& fence)
     {
         if (fence && !fence->is_owned_by(*owner_device()))
@@ -122,6 +144,9 @@ namespace toy3d
         return write_gpu_fence_impl(fence);
     }
 
+    // --------------------------------------------------------------------------
+    // RHIGraphicsCommandContext: shared graphics-command validation
+    // --------------------------------------------------------------------------
     RHIStatus RHIGraphicsCommandContext::begin_render_pass(const RHIRenderPassDesc& desc)
     {
         const RHIStatus validation = validate_render_pass_desc(desc);

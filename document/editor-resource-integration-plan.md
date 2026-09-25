@@ -16,7 +16,7 @@
 
 **工作包 E2：Actor 级 `HitProxyPass`。** 命名对应 UE 的 `EMeshPass::HitProxy`，不复制 UE 的类型前缀或 UObject 体系。Editor 侧为 Actor 分配稳定的会话身份；Game→Render 的快照传递只读数字 ID，不传 Actor 指针。Pass 复用可见 `MeshBatch` 的几何与对象变换，使用固定 Shader 和深度测试，写入 `R32UInt` 或经 format capability 验证的等价无损格式，0 表示空白，遵循 reversed-Z。一个 Actor 的多个 mesh batch 写同一 ID；Gizmo 不进入第一版 ID pass，由 ImGui/ImGuizmo 输入命中优先处理。点击请求记录视口内物理像素坐标、视口 generation 与场景 generation；读回后对照当帧 ID 映射，再由 Game Thread 校验 Actor 仍存在。第一版只响应编辑模式的单击，点击空白清除选择；组件、section、框选、半透明选择与连续悬停后置。
 
-E2 的主要公共 RHI 缺口是受控的 GPU 纹理像素读回：现有 `RHICPUAccess::Read`、`CopySource` 和 Vulkan `CpuReadback` 只是语义/内存基础，还没有完整的 texture-to-readback-buffer 命令、完成查询与 CPU 读取入口。新增接口须先在 RHI 设计中固定资源所有权、row pitch/对齐、提交完成和失败语义，并评估 Vulkan、D3D11 FL11_0、D3D12 与移动端 profile；后端未实现时返回 `Unsupported`。点击不得 `wait_idle` 或等待整个 graphics queue；允许下一帧得到结果，过期请求丢弃。
+E2 的公共 RHI 读回基础现已按[RHI 设计](rhi-design.md)增加单像素 `R32UInt` `RHIReadback`、`readback_texture_pixel()` 和基于 queue completion value 的非阻塞 `read_uint32()`；Vulkan 使用私有的 readback buffer，D3D11/D3D12 尚返回 `Unsupported`。它只完成 GPU→CPU 数据通道；Hit Proxy Shader/Pass、Actor ID 快照、过期请求过滤与 Editor 选中态仍须接线。点击不得 `wait_idle` 或等待整个 graphics queue；允许下一帧得到结果，过期请求丢弃。
 
 ```cpp
 // 拟新增的上层语义；具体名称和 Result 类型在 RHI/Editor 提案中固定。

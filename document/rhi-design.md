@@ -13,6 +13,14 @@ UE4.27 用于参考职责分层、GlobalShader、MeshPassProcessor、MeshDrawCom
 
 ## 2. 第一阶段范围
 
+### 编辑器 Actor 选取的单像素读回
+
+E2 使用独立的 `R32UInt` Hit Proxy 颜色目标。公共 RHI 提供一个单像素 `RHIReadback` 资源：设备创建它，图形命令上下文在 render pass 外把 `R32UInt` 纹理的一个像素复制到它，提交完成后调用方以 queue completion value 非阻塞读取 `uint32`。`0` 由上层解释为空白。读回资源和源纹理由 command list 保活至 GPU 完成；调用方在提交成功前不得读取，且不能通过 `wait_idle()` 实现点击选取。未提交或尚未完成返回 `NotReady`，格式、范围、资源 owner 与状态不符返回 `InvalidArgument` 或 `Unsupported`，设备丢失保留原始错误。
+
+此接口不公开 Vulkan buffer、D3D staging texture 或行对齐。Vulkan 用 4 字节 host-visible readback buffer 与 `vkCmdCopyImageToBuffer`，完成后 invalidate 非一致性内存；D3D11 FL11_0 可用 staging texture 与 [CopySubresourceRegion](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-copysubresourceregion)/`Map`，D3D12 可用 [readback heap](https://learn.microsoft.com/en-us/windows/win32/direct3d12/readback-data-using-heaps) 与 [CopyTextureRegion](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-copytextureregion)。移动端 Vulkan 1.1 不要求额外图形特性，但须在创建 ID 纹理前验证 `R32UInt` 的 `RenderTarget | CopySource` 支持。未实现的后端 hook 明确返回 `Unsupported`。第一版只接受单采样、2D、`R32UInt` 颜色纹理；截图和区域读回另行扩展，不把 D3D11 不具备的通用纹理到 buffer 拷贝作为公共接口。
+
+`RHIReadback` 由 Renderer 在 Render Thread 持有；读回结果只有在对应提交的 completion value 完成后才进入 Game Thread 的 Actor ID 映射。每次点击使用独立读回资源，避免尚未消费的旧请求被下一次 GPU 写入覆盖。取消/过期请求仍须等 GPU 完成后才释放对应资源。
+
 第一阶段实现以下闭环：
 
 - 单 graphics queue；

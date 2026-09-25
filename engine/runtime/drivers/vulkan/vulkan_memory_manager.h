@@ -107,6 +107,7 @@ namespace toy3d
                                                        const char* debug_name = nullptr);
         void destroy_buffer(VulkanAllocatedBuffer& buffer);
         RHIStatus flush_allocation(const VulkanAllocation& allocation, VkDeviceSize offset, VkDeviceSize size);
+        RHIStatus invalidate_allocation(const VulkanAllocation& allocation, VkDeviceSize offset, VkDeviceSize size);
 
         RHIResult<VulkanAllocatedImage> create_image(const VkImageCreateInfo& image_info,
                                                      VulkanAllocationUsage allocation_usage,

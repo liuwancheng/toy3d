@@ -58,6 +58,34 @@ namespace toy3d
             owner, desc, memory_manager, deletion_queue, std::move(allocated_buffer.value()), desc.initial_access));
     }
 
+    RHIResult<RHIReadbackRef> create_vulkan_readback(const RHIDevice& owner, VkDevice device,
+                                                     VulkanMemoryManager& memory_manager,
+                                                     VulkanDeferredDeletionQueue& deletion_queue,
+                                                     const std::string& debug_name)
+    {
+        if (device == VK_NULL_HANDLE)
+        {
+            return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::NotReady,
+                                                      "Vulkan readback requires a logical device.");
+        }
+        VkBufferCreateInfo create_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size = sizeof(std::uint32_t);
+        create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        auto allocated = memory_manager.create_buffer(create_info, VulkanAllocationUsage::CpuReadback,
+                                                       debug_name.c_str());
+        if (!allocated)
+            return RHIResult<RHIReadbackRef>::failure(allocated.status().code(), allocated.status().message());
+        if (allocated.value().allocation.mapped_data == nullptr)
+        {
+            memory_manager.destroy_buffer(allocated.value());
+            return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::BackendFailure,
+                                                      "Vulkan readback allocation is not host mapped.");
+        }
+        return RHIResult<RHIReadbackRef>::success(std::make_shared<VulkanReadback>(
+            owner, debug_name, memory_manager, deletion_queue, std::move(allocated.value())));
+    }
+
     RHIResult<RHITextureRef> create_vulkan_texture(const RHIDevice& owner, VkPhysicalDevice physical_device,
                                                    VkDevice device, VulkanMemoryManager& memory_manager,
                                                    VulkanDeferredDeletionQueue& deletion_queue,

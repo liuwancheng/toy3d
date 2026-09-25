@@ -706,6 +706,57 @@ namespace
               "valid command resources must enter the backend hook exactly once");
     }
 
+    void test_pixel_readback_frontend()
+    {
+        RecordingDevice first;
+        RecordingDevice second;
+        initialize(first);
+        initialize(second);
+
+        toy3d::RHITextureDesc texture_desc;
+        texture_desc.width = 8u;
+        texture_desc.height = 8u;
+        texture_desc.format = toy3d::PixelFormat::R32UInt;
+        texture_desc.usage = toy3d::RHIResourceUsage::RenderTarget | toy3d::RHIResourceUsage::CopySource;
+        const auto texture = first.create_texture(texture_desc);
+        auto context_result = first.create_graphics_command_context();
+        check(texture && context_result, "pixel readback frontend setup must succeed");
+        if (!texture || !context_result)
+            return;
+
+        auto local_readback = std::make_shared<toy3d::RHIReadback>(first, "local readback");
+        auto foreign_readback = std::make_shared<toy3d::RHIReadback>(second, "foreign readback");
+        toy3d::RHITexturePixelReadbackDesc desc;
+        desc.source.texture = texture.value();
+        desc.source.offset.x = 7u;
+        desc.source.offset.y = 7u;
+        desc.destination = local_readback;
+        check(static_cast<bool>(toy3d::validate_texture_pixel_readback_desc(desc)),
+              "in-bounds R32UInt pixel must validate");
+        check(local_readback->read_uint32(0).status().code() == toy3d::RHIErrorCode::NotReady,
+              "unsubmitted readback must remain NotReady");
+        local_readback->mark_used(3u);
+        check(local_readback->read_uint32(2u).status().code() == toy3d::RHIErrorCode::NotReady,
+              "in-flight readback must remain NotReady");
+        check(local_readback->read_uint32(3u).status().code() == toy3d::RHIErrorCode::Unsupported,
+              "completed readback must report an unsupported backend explicitly");
+
+        desc.source.offset.x = 8u;
+        check(!toy3d::validate_texture_pixel_readback_desc(desc), "out-of-bounds pixel must fail validation");
+        desc.source.offset.x = 7u;
+        desc.destination = foreign_readback;
+        const auto foreign = context_result.value()->readback_texture_pixel(desc);
+        check(!foreign && foreign.code() == toy3d::RHIErrorCode::InvalidArgument,
+              "cross-device readback must fail before the backend hook");
+        desc.destination = local_readback;
+        const auto unsupported = context_result.value()->readback_texture_pixel(desc);
+        check(!unsupported && unsupported.code() == toy3d::RHIErrorCode::Unsupported,
+              "backend without readback must return Unsupported");
+        const auto unsupported_creation = first.create_readback("unsupported readback");
+        check(!unsupported_creation && unsupported_creation.status().code() == toy3d::RHIErrorCode::Unsupported,
+              "backend without readback creation must return Unsupported");
+    }
+
     void test_viewport_frontend_validates_frame_outputs()
     {
         RecordingDevice first;
@@ -841,6 +892,7 @@ int main()
     test_frontend_rejects_invalid_and_cross_device_inputs();
     test_backend_contract_and_unsupported_results();
     test_command_frontend_rejects_cross_device_resources();
+    test_pixel_readback_frontend();
     test_viewport_frontend_validates_frame_outputs();
     test_admission_and_shutdown_race();
 

@@ -156,6 +156,31 @@ namespace toy3d
         return RHIStatus::success();
     }
 
+    RHIStatus validate_texture_pixel_readback_desc(const RHITexturePixelReadbackDesc& desc)
+    {
+        if (!desc.source.texture || !desc.destination)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pixel readback requires a source texture and destination.");
+        }
+        const RHITextureDesc& source = desc.source.texture->desc();
+        if (source.dimension != RHIResourceDimension::Texture2D || source.format != PixelFormat::R32UInt ||
+            source.sample_count != 1 || desc.source.mip >= source.mip_levels ||
+            desc.source.layer >= source.array_layers || desc.source.offset.z != 0 ||
+            desc.source.offset.x >= std::max(1U, source.width >> desc.source.mip) ||
+            desc.source.offset.y >= std::max(1U, source.height >> desc.source.mip))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pixel readback requires one in-bounds R32UInt 2D pixel.");
+        }
+        if (!EnumHasAnyFlags(source.usage, RHIResourceUsage::CopySource))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pixel readback source is missing CopySource usage.");
+        }
+        return RHIStatus::success();
+    }
+
     RHIStatus validate_texture_upload_desc(const RHITextureUploadDesc& desc)
     {
         if (!desc.destination.texture)

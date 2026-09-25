@@ -255,6 +255,10 @@ namespace toy3d
                 {
                     texture->mark_used(completion_value);
                 }
+                else if (const auto readback = std::dynamic_pointer_cast<VulkanReadback>(resource))
+                {
+                    readback->mark_used(completion_value);
+                }
             }
             upload_manager.mark_submitted(command_list->retained_upload_pages(), completion_value);
         }

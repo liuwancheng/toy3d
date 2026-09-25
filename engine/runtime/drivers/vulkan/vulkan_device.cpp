@@ -383,6 +383,11 @@ namespace toy3d
                                      desc, initial_data);
     }
 
+    RHIResult<RHIReadbackRef> VulkanDevice::create_readback_impl(const std::string& debug_name)
+    {
+        return create_vulkan_readback(*this, vk_device, *memory_manager_instance, *deletion_queue, debug_name);
+    }
+
     RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(const RHIBufferRef& buffer,
                                                                       const RHIBufferViewDesc& desc)
     {

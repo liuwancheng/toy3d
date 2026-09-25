@@ -16,6 +16,9 @@
 
 namespace toy3d
 {
+    // --------------------------------------------------------------------------
+    // VulkanCommandPool: native command-pool lifetime
+    // --------------------------------------------------------------------------
     VulkanCommandPool::VulkanCommandPool(VkDevice device, VkCommandPool command_pool)
         : vk_device(device), vk_command_pool(command_pool)
     {
@@ -90,6 +93,9 @@ namespace toy3d
 
     } // namespace
 
+    // --------------------------------------------------------------------------
+    // VulkanCommandList: recorded resources and local access-state tracking
+    // --------------------------------------------------------------------------
     VulkanCommandList::VulkanCommandList(const RHIDevice& device, VulkanViewportContext& owner,
                                          VkCommandBuffer command_buffer, std::uint64_t frame_id, std::string debug_name)
         : RHICommandList(device, std::move(debug_name)), viewport_owner(&owner), vk_command_buffer(command_buffer),
@@ -437,6 +443,9 @@ namespace toy3d
         return mark_submitted();
     }
 
+    // --------------------------------------------------------------------------
+    // VulkanGraphicsCommandContext: graphics recording and native commands
+    // --------------------------------------------------------------------------
     VulkanGraphicsCommandContext::VulkanGraphicsCommandContext(const RHIDevice& owner, VkDevice device,
                                                                VulkanUploadManager& upload_manager,
                                                                VulkanDescriptorPoolManager& descriptor_pool_manager,
@@ -866,6 +875,51 @@ namespace toy3d
                        destination_state.value().layout, 1, &region);
         recording_command_list->retain_resource(desc.source.texture);
         recording_command_list->retain_resource(desc.destination.texture);
+        return RHIStatus::success();
+    }
+
+    RHIStatus VulkanGraphicsCommandContext::readback_texture_pixel_impl(const RHITexturePixelReadbackDesc& desc)
+    {
+        const RHIStatus status = require_recording();
+        if (!status)
+            return status;
+        if (active_render_pass)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pixel readback must be recorded outside a render pass.");
+        }
+        const auto source = std::dynamic_pointer_cast<VulkanTexture>(desc.source.texture);
+        const auto destination = std::dynamic_pointer_cast<VulkanReadback>(desc.destination);
+        if (!source || !destination)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Vulkan pixel readback requires Vulkan resources.");
+        }
+        const RHISubresourceRange source_range{RHITextureAspect::Color, desc.source.mip, 1,
+                                               desc.source.layer, 1};
+        const auto source_state = recording_command_list->tracked_texture_state(source, source_range);
+        if (!source_state || source_state.value().access != RHIAccess::CopySource)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Pixel readback source must be in CopySource state.");
+        }
+        recording_command_list->track_texture_transition(source, source_range, source_state.value().layout,
+                                                         source_state.value().access);
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = desc.source.mip;
+        region.imageSubresource.baseArrayLayer = desc.source.layer;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = {static_cast<std::int32_t>(desc.source.offset.x),
+                              static_cast<std::int32_t>(desc.source.offset.y), 0};
+        region.imageExtent = {1, 1, 1};
+        vkCmdCopyImageToBuffer(vk_command_buffer, source->image(), source_state.value().layout,
+                               destination->buffer(), 1, &region);
+        recording_command_list->retain_resource(desc.source.texture);
+        recording_command_list->retain_resource(desc.destination);
         return RHIStatus::success();
     }
 

@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_descriptors.h"
 
 #include <memory>
+#include <atomic>
 #include <string>
 #include <utility>
 
@@ -61,6 +62,27 @@ namespace toy3d
 
       private:
         RHIBufferDesc resource_desc;
+    };
+
+    // A single R32UInt pixel result. The backend chooses its native staging
+    // resource; the caller only polls after the owning queue has completed.
+    class RHIReadback : public RHIResource
+    {
+      public:
+        explicit RHIReadback(const RHIDevice& owner, std::string debug_name = {})
+            : RHIResource(owner, std::move(debug_name))
+        {
+        }
+
+        RHIResult<std::uint32_t> read_uint32(RHIQueueCompletionValue completed_value) const;
+        void mark_used(RHIQueueCompletionValue completion_value);
+        RHIQueueCompletionValue last_use_completion_value() const;
+
+      protected:
+        virtual RHIResult<std::uint32_t> read_uint32_impl() const;
+
+      private:
+        std::atomic<RHIQueueCompletionValue> last_use_value{0};
     };
 
     class RHITexture : public RHIResource
@@ -246,6 +268,7 @@ namespace toy3d
 
     using RHIResourceRef = std::shared_ptr<RHIResource>;
     using RHIBufferRef = std::shared_ptr<RHIBuffer>;
+    using RHIReadbackRef = std::shared_ptr<RHIReadback>;
     using RHITextureRef = std::shared_ptr<RHITexture>;
     using RHITextureViewRef = std::shared_ptr<RHITextureView>;
     using RHIBufferViewRef = std::shared_ptr<RHIBufferView>;

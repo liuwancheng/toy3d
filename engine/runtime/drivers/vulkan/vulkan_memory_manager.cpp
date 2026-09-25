@@ -181,6 +181,22 @@ namespace toy3d
         return RHIStatus::success();
     }
 
+    RHIStatus VulkanMemoryManager::invalidate_allocation(const VulkanAllocation& allocation, VkDeviceSize offset,
+                                                         VkDeviceSize size)
+    {
+        if (vma_allocator == VK_NULL_HANDLE || allocation.handle == VK_NULL_HANDLE)
+        {
+            return RHIStatus::failure(RHIErrorCode::NotReady, "Vulkan allocation cannot be invalidated.");
+        }
+        const VkResult result = vmaInvalidateAllocation(vma_allocator, allocation.handle, offset, size);
+        if (result != VK_SUCCESS)
+        {
+            return RHIStatus::failure(allocation_error_code(result), "vmaInvalidateAllocation failed with VkResult " +
+                                                                         std::to_string(static_cast<int>(result)) + ".");
+        }
+        return RHIStatus::success();
+    }
+
     RHIResult<VulkanAllocatedImage> VulkanMemoryManager::create_image(const VkImageCreateInfo& image_info,
                                                                       VulkanAllocationUsage allocation_usage,
                                                                       const char* debug_name)
