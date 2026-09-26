@@ -56,7 +56,7 @@ target_compile_definitions(${TARGET_NAME}
   PRIVATE
     "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
 
-target_link_libraries(${TARGET_NAME} Toy3dRuntime imgui)
+target_link_libraries(${TARGET_NAME} Toy3dRuntime imguizmo)
 target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
 
 if(WIN32)

@@ -1,6 +1,7 @@
 #include "editor.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include "file_system/physical_path.h"
 #include "format/shader_binding_identity.h"
@@ -8,6 +9,7 @@
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
+#include "math/matrix_construction.h"
 #include "rendercore/geometry/static_mesh.h"
 #include "rendercore/material/material.h"
 #include "rendercore/frame_synchronization.h"
@@ -26,6 +28,17 @@ namespace toy3d
 {
     namespace
     {
+        constexpr Vector3 k_preview_camera_position(3.0f, 2.5f, -6.0f);
+        constexpr Vector3 k_preview_camera_target(0.0f, 0.0f, 3.0f);
+        constexpr float k_preview_near_clip = 0.1f;
+        constexpr float k_preview_far_clip = 1000.0f;
+
+        bool make_preview_camera(Quaternion& orientation, Vector3& direction)
+        {
+            return try_normalize(k_preview_camera_target - k_preview_camera_position, direction) &&
+                   try_make_rotation_from_forward_up(direction, Vector3(0.0f, 1.0f, 0.0f), orientation);
+        }
+
         std::uint32_t physical_extent(float logical, float scale)
         {
             const double value = static_cast<double>(logical) * static_cast<double>(scale);
@@ -109,14 +122,14 @@ namespace toy3d
             constexpr float h = 0.75f;
             StaticMeshDesc mesh_desc;
             mesh_desc.vertices = {
-                {{-h, -h, 3.0f - h}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
-                {{ h, -h, 3.0f - h}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
-                {{ h,  h, 3.0f - h}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
-                {{-h,  h, 3.0f - h}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
-                {{-h, -h, 3.0f + h}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-                {{ h, -h, 3.0f + h}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
-                {{ h,  h, 3.0f + h}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-                {{-h,  h, 3.0f + h}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}}
+                {{-h, -h, -h}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+                {{ h, -h, -h}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
+                {{ h,  h, -h}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+                {{-h,  h, -h}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
+                {{-h, -h,  h}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+                {{ h, -h,  h}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+                {{ h,  h,  h}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+                {{-h,  h,  h}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}}
             };
             // This small preview uses one explicit UInt16 index width.
             mesh_desc.indices = std::vector<std::uint16_t>{
@@ -141,6 +154,13 @@ namespace toy3d
         }
         preview_material_ = preview_mesh->material_slots().front();
         preview_actor_ = &world().spawn_actor<StaticMeshActor>();
+        Transform preview_transform;
+        preview_transform.translation.z = 3.0f;
+        if (!preview_actor_->static_mesh_component().set_local_transform(preview_transform))
+        {
+            TOY_LOG_ERROR("Editor preview cube transform could not be set.");
+            return false;
+        }
         preview_actor_->static_mesh_component().set_static_mesh(std::move(preview_mesh));
         return true;
     }
@@ -161,14 +181,46 @@ namespace toy3d
 
     void EditorApplication::on_build_ui()
     {
+        gizmo_.begin_frame();
         pending_hit_request_ = {};
         scene_extent_ = {};
-        const ImGuiID dockspace = ImGui::DockSpaceOverViewport();
-        // The first frame must give the scene panel a real viewport-sized region.
-        ImGui::SetNextWindowDockID(dockspace, ImGuiCond_Always);
+        const ImGuiViewport* const viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+        constexpr ImGuiWindowFlags host_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                                                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                                ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                                ImGuiWindowFlags_NoNavFocus;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::Begin("Toy3d Editor Dockspace", nullptr, host_flags);
+        ImGui::PopStyleVar(3);
+        const ImGuiID dockspace = ImGui::GetID("Toy3d Editor Dockspace Node");
+        if (!initial_dock_layout_checked_)
+        {
+            initial_dock_layout_checked_ = true;
+            // Build a usable two-panel layout only when no saved layout exists.
+            if (ImGui::DockBuilderGetNode(dockspace) == nullptr)
+            {
+                ImGui::DockBuilderAddNode(dockspace, ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodeSize(dockspace, viewport->WorkSize);
+                ImGuiID details_dock = 0;
+                ImGuiID scene_dock = 0;
+                ImGui::DockBuilderSplitNode(dockspace, ImGuiDir_Right, 0.25f,
+                                            &details_dock, &scene_dock);
+                ImGui::DockBuilderDockWindow("Game Viewport", scene_dock);
+                ImGui::DockBuilderDockWindow("Details", details_dock);
+                ImGui::DockBuilderFinish(dockspace);
+            }
+        }
+        ImGui::DockSpace(dockspace);
+        ImGui::End();
         const bool visible = ImGui::Begin("Game Viewport");
         if (visible)
         {
+            gizmo_.draw_toolbar();
             const ImVec2 available = ImGui::GetContentRegionAvail();
             const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
             scene_extent_.width = physical_extent(available.x, scale.x);
@@ -177,9 +229,38 @@ namespace toy3d
             {
                 const std::uintptr_t id = static_cast<std::uintptr_t>(IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value());
                 ImGui::Image(reinterpret_cast<ImTextureID>(id), available);
-                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                const bool viewport_hovered = ImGui::IsItemHovered();
+                const ImVec2 origin = ImGui::GetItemRectMin();
+                gizmo_.handle_shortcuts(viewport_hovered);
+
+                bool gizmo_consumed_click = false;
+                Actor* const selected = world().find_actor_by_id(selected_actor_id_);
+                SceneComponent* const root = selected != nullptr ? selected->root_component() : nullptr;
+                if (root != nullptr)
                 {
-                    const ImVec2 origin = ImGui::GetItemRectMin();
+                    Quaternion camera_orientation;
+                    Vector3 camera_direction;
+                    Matrix4 view;
+                    Matrix4 projection;
+                    PerspectiveProjectionDesc projection_desc;
+                    projection_desc.vertical_fov = to_radians(Degrees(60.0f));
+                    projection_desc.aspect = static_cast<float>(scene_extent_.width) /
+                                             static_cast<float>(scene_extent_.height);
+                    projection_desc.near_clip = k_preview_near_clip;
+                    projection_desc.far_clip = k_preview_far_clip;
+                    if (make_preview_camera(camera_orientation, camera_direction) &&
+                        try_make_view_matrix(k_preview_camera_position, camera_orientation, view) &&
+                        try_make_perspective_projection(projection_desc, projection))
+                    {
+                        gizmo_consumed_click = gizmo_.manipulate(*root, view, projection, origin.x, origin.y,
+                                                                 available.x, available.y);
+                    }
+                }
+                if (gizmo_consumed_click && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    current_hit_request_id_ = 0u;
+                if (viewport_hovered && !gizmo_consumed_click &&
+                    ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
                     const ImVec2 mouse = ImGui::GetMousePos();
                     const std::uint32_t x = physical_pixel(mouse.x - origin.x, scale.x);
                     const std::uint32_t y = physical_pixel(mouse.y - origin.y, scale.y);
@@ -208,7 +289,17 @@ namespace toy3d
         ImGui::Begin("Details");
         Actor* const selected = world().find_actor_by_id(selected_actor_id_);
         if (selected != nullptr)
+        {
             ImGui::Text("Selected Actor ID: %u", selected_actor_id_);
+            if (const SceneComponent* const root = selected->root_component())
+            {
+                const Transform& transform = root->local_transform();
+                ImGui::Text("Location: %.2f, %.2f, %.2f", transform.translation.x,
+                            transform.translation.y, transform.translation.z);
+                ImGui::Text("Scale: %.2f, %.2f, %.2f", transform.scale.x,
+                            transform.scale.y, transform.scale.z);
+            }
+        }
         else
             ImGui::TextUnformatted("No Actor selected");
         ImGui::End();
@@ -257,17 +348,15 @@ namespace toy3d
 
     void EditorApplication::on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const
     {
-        const Vector3 camera_position(3.0f, 2.5f, -6.0f);
         Vector3 camera_direction;
         Quaternion camera_orientation;
-        if (!try_normalize(Vector3(0.0f, 0.0f, 3.0f) - camera_position, camera_direction) ||
-            !try_make_rotation_from_forward_up(camera_direction, Vector3(0.0f, 1.0f, 0.0f), camera_orientation))
+        if (!make_preview_camera(camera_orientation, camera_direction))
         {
             TOY_LOG_ERROR("Editor preview camera could not be constructed.");
             return;
         }
-        views.emplace_back(camera_position, camera_orientation, camera_direction,
+        views.emplace_back(k_preview_camera_position, camera_orientation, camera_direction,
                            IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
-                           to_radians(Degrees(60.0f)), 0.1f, 1000.0f);
+                           to_radians(Degrees(60.0f)), k_preview_near_clip, k_preview_far_clip);
     }
 } // namespace toy3d

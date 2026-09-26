@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/application.h"
+#include "editor_viewport_gizmo.h"
 #include "rendercore/material/material.h"
 
 #include <cstdint>
@@ -28,6 +29,8 @@ namespace toy3d
         std::uint64_t current_hit_request_id_ = 0;
         std::uint64_t viewport_generation_ = 1;
         std::uint32_t selected_actor_id_ = 0;
+        bool initial_dock_layout_checked_ = false;
+        EditorViewportGizmo gizmo_;
         StaticMeshActor* preview_actor_ = nullptr;
         MaterialInstanceRef preview_material_;
     };

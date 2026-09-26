@@ -10,6 +10,12 @@ if(NOT TARGET imgui)
     set_target_properties(imgui PROPERTIES FOLDER ${third_party_folder}/imgui)
 endif()
 
+add_library(imguizmo STATIC "${CMAKE_CURRENT_SOURCE_DIR}/ImGuizmo/ImGuizmo.cpp")
+target_compile_features(imguizmo PUBLIC cxx_std_17)
+set_target_properties(imguizmo PROPERTIES CXX_EXTENSIONS OFF FOLDER "${third_party_folder}/imgui")
+target_include_directories(imguizmo PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ImGuizmo>")
+target_link_libraries(imguizmo PUBLIC imgui)
+
 if(NOT TARGET glfw)
     option(GLFW_BUILD_EXAMPLES "" OFF)
     option(GLFW_BUILD_TESTS "" OFF)

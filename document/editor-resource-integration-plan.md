@@ -38,7 +38,7 @@ while (renderer.poll_hit_proxy(hit)) {
 }
 ```
 
-E1 已完成并通过可见立方体的窗口检查。E2 已接入 World 内 Actor/Component 临时 ID、按提交生成的 HitProxyId 与 section 目标映射，Editor 当前只选中 Actor；Debug 构建及 CTest 已通过，实际 GPU 点击与空白清除仍需窗口验收。后续 Editor 输入路由、Gizmo、资源浏览器、模型导入和属性编辑在此基础上分批接入。HitProxy 的 ID 目标与读回保持独立，不占用 ImGui 纹理身份。
+E1 已完成并通过可见立方体的窗口检查。E2 已接入 World 内 Actor/Component 临时 ID、按提交生成的 HitProxyId 与 section 目标映射，Editor 当前只选中 Actor；Debug 构建及 CTest 已通过，用户已确认单个 Cube 可以点击选中，空白清除和遮挡关系仍需窗口验收。Editor 已接入独立的 ImGuizmo 1.10，仅在 Editor 视口中编辑选中 Actor 的 root Transform，并让 Gizmo 命中优先于 HitProxy 点击；已在实际窗口检查右侧 Details 停靠、Cube 中心枢轴和沿 Y 轴移动，旋转与缩放仍需窗口验收。后续输入路由、资源浏览器、模型导入和属性编辑在此基础上分批接入。HitProxy 的 ID 目标与读回保持独立，不占用 ImGui 纹理身份。
 
 ### 1.2 编辑器专用属性的宏边界
 
