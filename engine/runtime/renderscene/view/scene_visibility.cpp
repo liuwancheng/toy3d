@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <limits>
 
 #include "logging/logger.h"
 #include "math/vector3.h"
@@ -105,6 +106,11 @@ namespace toy3d
                 const std::vector<StaticMeshSection>& sections = render_data->sections();
                 for (std::size_t section_index = 0; section_index < sections.size(); ++section_index)
                 {
+                    if (section_index > std::numeric_limits<std::uint32_t>::max())
+                    {
+                        TOY_LOG_ERROR("Scene visibility skipped a StaticMesh section whose index exceeds uint32.");
+                        continue;
+                    }
                     const StaticMeshSection& section = sections[section_index];
                     const std::size_t first_index = section.first_index;
                     const std::size_t index_count = section.index_count;
@@ -133,7 +139,8 @@ namespace toy3d
                     }
 
                     mesh_batches.emplace_back(*static_mesh_proxy, *render_data, *vertex_factory, *material_proxy,
-                                              section.first_index, section.index_count);
+                                              section.first_index, section.index_count,
+                                              static_cast<std::uint32_t>(section_index));
                 }
             }
         }

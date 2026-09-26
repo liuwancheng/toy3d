@@ -25,9 +25,12 @@ namespace toy3d
         std::uint64_t object_data_generation() const { return object_data_generation_; }
         const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
         bool visible() const { return visible_; }
+        std::uint32_t actor_id() const { return actor_id_; }
+        std::uint32_t component_id() const { return component_id_; }
 
       protected:
-        PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible);
+        PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
+                            std::uint32_t actor_id = 0, std::uint32_t component_id = 0);
 
       private:
         friend class RenderScene;
@@ -39,5 +42,7 @@ namespace toy3d
         std::uint64_t object_data_generation_ = 1u;
         AxisAlignedBounds world_bounds_;
         bool visible_ = true;
+        std::uint32_t actor_id_ = 0;
+        std::uint32_t component_id_ = 0;
     };
 } // namespace toy3d

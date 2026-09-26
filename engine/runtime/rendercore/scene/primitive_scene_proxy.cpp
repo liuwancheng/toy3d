@@ -5,9 +5,11 @@
 
 namespace toy3d
 {
-    PrimitiveSceneProxy::PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible)
+    PrimitiveSceneProxy::PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
+                                             std::uint32_t actor_id, std::uint32_t component_id)
         : world_transform_(std::move(world_transform)), object_shader_parameters_{world_transform_},
-          world_bounds_(std::move(world_bounds)), visible_(visible)
+          world_bounds_(std::move(world_bounds)), visible_(visible), actor_id_(actor_id),
+          component_id_(component_id)
     {
     }
 

@@ -24,6 +24,116 @@
 
 namespace toy3d
 {
+    namespace
+    {
+        RHIStatus record_hit_proxy(SceneRenderer& scene_renderer, RHIDevice& device,
+                                   RHIShaderProgramCache& shader_program_cache,
+                                   const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                   const Extent& extent, const HitProxyRequest& request,
+                                   RHIReadbackRef& recorded_readback, HitProxyTable& table)
+        {
+            if (request.pixel_x >= extent.width || request.pixel_y >= extent.height)
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "HitProxy pixel is outside the scene image.");
+            const RHIFormatCapabilities format = device.format_capabilities(PixelFormat::R32UInt);
+            if (!EnumHasAnyFlags(format.usage, RHIFormatUsage::RenderTarget) ||
+                !EnumHasAnyFlags(format.usage, RHIFormatUsage::CopySource))
+            {
+                TOY_LOG_ERROR("HitProxy R32UInt render target/readback is unsupported by this device.");
+                return RHIStatus::success();
+            }
+            RHIResult<RHIReadbackRef> readback = device.create_readback("HitProxyPixel");
+            if (!readback)
+            {
+                if (readback.status().code() == RHIErrorCode::Unsupported)
+                {
+                    TOY_LOG_ERROR("HitProxy readback is unsupported: {}", readback.status().message());
+                    return RHIStatus::success();
+                }
+                return readback.status();
+            }
+            RHITextureDesc id_desc;
+            id_desc.width = extent.width;
+            id_desc.height = extent.height;
+            id_desc.format = PixelFormat::R32UInt;
+            id_desc.usage = RHIResourceUsage::RenderTarget | RHIResourceUsage::CopySource;
+            id_desc.initial_access = RHIAccess::Common;
+            id_desc.clear_value = RHIClearValue::color_value(vec4(0.0f));
+            id_desc.debug_name = "HitProxyId";
+            RHIResult<RHITextureRef> id_texture = device.create_texture(id_desc);
+            if (!id_texture)
+                return id_texture.status();
+            RHITextureViewDesc id_view_desc;
+            id_view_desc.type = RHIResourceViewType::RenderTarget;
+            id_view_desc.format = PixelFormat::R32UInt;
+            id_view_desc.subresources.mip_count = 1u;
+            id_view_desc.subresources.layer_count = 1u;
+            id_view_desc.debug_name = "HitProxyIdRTV";
+            RHIResult<RHITextureViewRef> id_view = device.create_texture_view(id_texture.value(), id_view_desc);
+            if (!id_view)
+                return id_view.status();
+
+            RHITextureDesc depth_desc;
+            depth_desc.width = extent.width;
+            depth_desc.height = extent.height;
+            depth_desc.format = PixelFormat::D32Float;
+            depth_desc.usage = RHIResourceUsage::DepthStencil;
+            depth_desc.initial_access = RHIAccess::Common;
+            depth_desc.clear_value = RHIClearValue::DepthZero;
+            depth_desc.debug_name = "HitProxyDepth";
+            RHIResult<RHITextureRef> depth_texture = device.create_texture(depth_desc);
+            if (!depth_texture)
+                return depth_texture.status();
+            RHITextureViewDesc depth_view_desc;
+            depth_view_desc.type = RHIResourceViewType::DepthStencil;
+            depth_view_desc.format = PixelFormat::D32Float;
+            depth_view_desc.subresources.aspect = RHITextureAspect::Depth;
+            depth_view_desc.subresources.mip_count = 1u;
+            depth_view_desc.subresources.layer_count = 1u;
+            depth_view_desc.debug_name = "HitProxyDepthDSV";
+            RHIResult<RHITextureViewRef> depth_view = device.create_texture_view(depth_texture.value(), depth_view_desc);
+            if (!depth_view)
+                return depth_view.status();
+
+            RHIResourceTransition id_to_target;
+            id_to_target.resource = id_texture.value();
+            id_to_target.subresources = id_view.value()->desc().subresources;
+            id_to_target.before = RHIAccess::Common;
+            id_to_target.after = RHIAccess::RenderTarget;
+            RHIResourceTransition depth_to_target;
+            depth_to_target.resource = depth_texture.value();
+            depth_to_target.subresources = depth_view.value()->desc().subresources;
+            depth_to_target.before = RHIAccess::Common;
+            depth_to_target.after = RHIAccess::DepthStencilWrite;
+            RHIStatus status = context.transition_resources({id_to_target, depth_to_target});
+            if (!status)
+                return status;
+            status = scene_renderer.render_hit_proxy(device, shader_program_cache, global_shader_map, context,
+                                                     id_view.value(), depth_view.value(), table);
+            if (!status)
+                return status;
+            RHIResourceTransition id_to_copy;
+            id_to_copy.resource = id_texture.value();
+            id_to_copy.subresources = id_view.value()->desc().subresources;
+            id_to_copy.before = RHIAccess::RenderTarget;
+            id_to_copy.after = RHIAccess::CopySource;
+            status = context.transition_resources({id_to_copy});
+            if (!status)
+                return status;
+            RHITexturePixelReadbackDesc copy;
+            copy.source.texture = id_texture.value();
+            copy.source.offset.x = request.pixel_x;
+            copy.source.offset.y = request.pixel_y;
+            copy.destination = readback.value();
+            status = context.readback_texture_pixel(copy);
+            if (status)
+                recorded_readback = std::move(readback).value();
+            return status;
+        }
+    } // namespace
+
+    // --------------------------------------------------------------------------
+    // RendererStatus: immutable Game Thread view of renderer lifecycle failures
+    // --------------------------------------------------------------------------
     RendererLifecycleState RendererStatus::lifecycle_state() const noexcept
     {
         return lifecycle_state_;
@@ -49,6 +159,9 @@ namespace toy3d
         return secondary_diagnostic_;
     }
 
+    // --------------------------------------------------------------------------
+    // Renderer: Render Thread domain lifetime and Game Thread frame submission
+    // --------------------------------------------------------------------------
     Renderer::Renderer(TaskGraphInterface& task_graph, RHISurfaceRef primary_surface,
                        RHIViewportContextDesc viewport_desc,
                        std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
@@ -338,7 +451,8 @@ namespace toy3d
         RHIShaderProgramCache& shader_program_cache, RenderResourceManager& resource_manager,
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
-        ViewportOutputTarget& viewport_output_target)
+        ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map,
+        RHIReadbackRef* recorded_readback, HitProxyTable* hit_proxy_table)
     {
         RHIResult<std::unique_ptr<RHIFrameContext>> frame_result = viewport.begin_frame();
         if (!frame_result)
@@ -436,6 +550,17 @@ namespace toy3d
                                                          scene_render_targets);
             if (!status)
                 return abort_recording(status);
+            if (output.hit_proxy_request.request_id != 0u)
+            {
+                if (global_shader_map == nullptr || recorded_readback == nullptr || hit_proxy_table == nullptr)
+                    return abort_recording(RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                                               "HitProxy frame requires its ShaderMap and readback owner."));
+                status = record_hit_proxy(*scene_renderer, device, shader_program_cache, *global_shader_map,
+                                          *context, scene_extent, output.hit_proxy_request, *recorded_readback,
+                                          *hit_proxy_table);
+                if (!status)
+                    return abort_recording(status);
+            }
         }
 
         std::vector<RHIResourceTransition> final_output_transitions;
@@ -618,9 +743,16 @@ namespace toy3d
                                                         const ImGuiDrawData* ui_draw_data,
                                                         const ViewportFrameOutput& output)
     {
-        return render_viewport_frame(scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_,
+        RHIReadbackRef recorded_readback;
+        HitProxyTable hit_proxy_table;
+        RHIResult<RHIFrameEndResult> result = render_viewport_frame(scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_,
                                      *resource_manager_, *primary_viewport_, *scene_render_targets_,
-                                     *tonemap_pass_resources_, imgui_renderer_.get(), *viewport_output_target_);
+                                     *tonemap_pass_resources_, imgui_renderer_.get(), *viewport_output_target_,
+                                     global_shader_map_input_.get(), &recorded_readback, &hit_proxy_table);
+        if (result && recorded_readback)
+            pending_hit_readbacks_.push_back({output.hit_proxy_request, std::move(recorded_readback),
+                                              std::move(hit_proxy_table)});
+        return result;
     }
 
     void Renderer::draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
@@ -638,6 +770,7 @@ namespace toy3d
                     TOY_LOG_ERROR("Renderer Draw requires a complete Running domain and valid frame inputs.");
                     return;
                 }
+                collect_hit_proxy_readbacks();
 
                 const Extent output_extent = output.sample_in_ui ? output.window_extent
                                                                    : scene_renderer->output_extent();
@@ -666,7 +799,53 @@ namespace toy3d
                     }
                 }
                 scene_renderer.reset();
+                collect_hit_proxy_readbacks();
             });
+    }
+
+    void Renderer::collect_hit_proxy_readbacks()
+    {
+        if (!device_)
+            return;
+        const RHIQueueCompletionValue completed = device_->graphics_queue().completed_value();
+        for (auto pending = pending_hit_readbacks_.begin(); pending != pending_hit_readbacks_.end();)
+        {
+            RHIResult<std::uint32_t> pixel = pending->readback->read_uint32(completed);
+            if (!pixel && pixel.status().code() == RHIErrorCode::NotReady)
+            {
+                ++pending;
+                continue;
+            }
+            if (pixel)
+            {
+                HitProxyTarget target;
+                const HitProxyId id{pixel.value()};
+                if (resolve_hit_proxy(id, pending->table, target))
+                {
+                    std::lock_guard<std::mutex> lock(hit_results_mutex_);
+                    completed_hit_results_.push_back({pending->request, id, target});
+                }
+                else
+                {
+                    TOY_LOG_ERROR("HitProxy readback ID {} is absent from its submission table.", id.value);
+                }
+            }
+            else
+            {
+                TOY_LOG_ERROR("HitProxy readback failed: {}", pixel.status().message());
+            }
+            pending = pending_hit_readbacks_.erase(pending);
+        }
+    }
+
+    bool Renderer::poll_hit_proxy(HitProxyResult& result)
+    {
+        std::lock_guard<std::mutex> lock(hit_results_mutex_);
+        if (completed_hit_results_.empty())
+            return false;
+        result = completed_hit_results_.front();
+        completed_hit_results_.pop_front();
+        return true;
     }
 
     RendererStatus Renderer::status() const
@@ -775,6 +954,11 @@ namespace toy3d
 
     void Renderer::release_domain(bool terminal) noexcept
     {
+        pending_hit_readbacks_.clear();
+        {
+            std::lock_guard<std::mutex> lock(hit_results_mutex_);
+            completed_hit_results_.clear();
+        }
         published_scene_interface_.store(nullptr);
         render_scene_.reset();
         if (scene_render_targets_)

@@ -56,6 +56,16 @@ namespace toy3d
         return on_scene_viewport_extent(extent);
     }
 
+    bool Application::hit_proxy_request(HitProxyRequest& request)
+    {
+        return on_hit_proxy_request(request);
+    }
+
+    void Application::hit_proxy_result(const HitProxyResult& result)
+    {
+        on_hit_proxy_result(result);
+    }
+
     void Application::build_scene_views(std::vector<SceneView>& views, const Extent& extent) const
     {
         on_build_scene_views(views, extent);

@@ -11,6 +11,7 @@
 #include "renderscene/material/material_shader_bindings.h"
 #include "renderscene/object_shader_bindings.h"
 #include "renderscene/pass/base_pass.h"
+#include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/view/scene_visibility.h"
@@ -19,6 +20,16 @@
 namespace toy3d
 {
     ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family) : SceneRenderer(std::move(view_family)) {}
+
+    RHIStatus ForwardSceneRenderer::render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+                                                      const GlobalShaderMap& global_shader_map,
+                                                      RHIGraphicsCommandContext& context,
+                                                      const RHITextureViewRef& id_view,
+                                                      const RHITextureViewRef& depth_view, HitProxyTable& table)
+    {
+        return render_hit_proxy_pass(device, shader_program_cache, global_shader_map, context, view_infos(),
+                                     id_view, depth_view, table);
+    }
 
     RHIStatus ForwardSceneRenderer::render_scene_passes(RenderScene& render_scene, RHIDevice& device,
                                                         RHIShaderProgramCache& shader_program_cache,

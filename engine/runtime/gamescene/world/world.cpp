@@ -117,6 +117,26 @@ namespace toy3d
                             [&actor](const std::unique_ptr<Actor>& candidate) { return candidate.get() == &actor; });
     }
 
+    std::uint32_t World::allocate_actor_id()
+    {
+        if (next_actor_id_ > (std::numeric_limits<std::uint32_t>::max)())
+        {
+            TOY_LOG_ERROR("World exhausted its 32-bit Actor IDs; new Actors cannot be picked.");
+            return 0u;
+        }
+        return static_cast<std::uint32_t>(next_actor_id_++);
+    }
+
+    std::uint32_t World::allocate_component_id()
+    {
+        if (next_component_id_ > (std::numeric_limits<std::uint32_t>::max)())
+        {
+            TOY_LOG_ERROR("World exhausted its 32-bit Component IDs; new Components cannot be picked.");
+            return 0u;
+        }
+        return static_cast<std::uint32_t>(next_component_id_++);
+    }
+
     bool World::destroy_actor(Actor& actor)
     {
         const auto found = find_actor(actor);
@@ -131,6 +151,7 @@ namespace toy3d
         }
 
         (*found)->mark_pending_destroy();
+        mark_scene_changed();
         if (ticking_ || dispatching_lifecycle_)
         {
             return true;
@@ -168,6 +189,24 @@ namespace toy3d
     {
         return std::any_of(actors_.begin(), actors_.end(),
                            [&actor](const std::unique_ptr<Actor>& candidate) { return candidate.get() == &actor; });
+    }
+
+    Actor* World::find_actor_by_id(std::uint32_t actor_id) const
+    {
+        if (actor_id == 0u)
+            return nullptr;
+        for (const std::unique_ptr<Actor>& actor : actors_)
+        {
+            if (actor->actor_id() == actor_id && !actor->is_pending_destroy())
+                return actor.get();
+        }
+        return nullptr;
+    }
+
+    void World::mark_scene_changed()
+    {
+        scene_generation_ = scene_generation_ == (std::numeric_limits<std::uint64_t>::max)()
+                                ? 1u : scene_generation_ + 1u;
     }
 
     bool World::bind_scene(SceneInterface& scene)

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "logging/logger.h"
+#include "gamescene/actor/actor.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 
 namespace toy3d
@@ -106,6 +107,7 @@ namespace toy3d
             material_render_proxies.push_back(material != nullptr ? material->material_render_proxy() : nullptr);
         }
         return std::make_unique<StaticMeshSceneProxy>(world_transform(), world_bounds_, visible(),
-                                                      static_mesh_->render_data(), std::move(material_render_proxies));
+                                                      static_mesh_->render_data(), std::move(material_render_proxies),
+                                                      owner().actor_id(), component_id());
     }
 } // namespace toy3d

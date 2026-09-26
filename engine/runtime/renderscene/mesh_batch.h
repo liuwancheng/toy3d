@@ -20,7 +20,7 @@ namespace toy3d
       public:
         MeshBatch(const StaticMeshSceneProxy& scene_proxy, const StaticMeshRenderData& render_data,
                   const LocalVertexFactory& vertex_factory, MaterialRenderProxy& material_render_proxy,
-                  std::uint32_t first_index, std::uint32_t index_count);
+                  std::uint32_t first_index, std::uint32_t index_count, std::uint32_t section_index = 0);
 
         const StaticMeshSceneProxy& scene_proxy() const { return *scene_proxy_; }
         const StaticMeshRenderData& render_data() const { return *render_data_; }
@@ -38,6 +38,7 @@ namespace toy3d
         void publish_object_binding(RHIBindingSetRef binding_set);
         std::uint32_t first_index() const { return first_index_; }
         std::uint32_t index_count() const { return index_count_; }
+        std::uint32_t section_index() const { return section_index_; }
 
       private:
         const StaticMeshSceneProxy* scene_proxy_ = nullptr;
@@ -50,5 +51,6 @@ namespace toy3d
         RHIBindingSetRef object_binding_;
         std::uint32_t first_index_ = 0;
         std::uint32_t index_count_ = 0;
+        std::uint32_t section_index_ = 0;
     };
 } // namespace toy3d

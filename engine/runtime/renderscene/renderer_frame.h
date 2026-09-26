@@ -14,6 +14,7 @@ namespace toy3d
     class SceneRenderTargets;
     class TonemapPassResources;
     class ViewportOutputTarget;
+    class GlobalShaderMap;
     struct ViewportFrameOutput;
 
     // Executes one explicit viewport-frame transaction. Renderer owns the
@@ -25,6 +26,7 @@ namespace toy3d
         RHIShaderProgramCache& shader_program_cache, RenderResourceManager& resource_manager,
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
-        ViewportOutputTarget& viewport_output_target);
+        ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map = nullptr,
+        RHIReadbackRef* recorded_readback = nullptr);
 
 } // namespace toy3d

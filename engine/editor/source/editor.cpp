@@ -37,6 +37,15 @@ namespace toy3d
             return static_cast<std::uint32_t>(std::floor(value + 0.5));
         }
 
+        std::uint32_t physical_pixel(float logical, float scale)
+        {
+            const double value = static_cast<double>(logical) * static_cast<double>(scale);
+            if (!std::isfinite(value) || value < 0.0 ||
+                value > static_cast<double>(std::numeric_limits<std::uint32_t>::max()))
+                return (std::numeric_limits<std::uint32_t>::max)();
+            return static_cast<std::uint32_t>(std::floor(value));
+        }
+
         StaticMeshRef make_preview_cube()
         {
             ShaderMapEntryLoader loader(PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
@@ -152,6 +161,7 @@ namespace toy3d
 
     void EditorApplication::on_build_ui()
     {
+        pending_hit_request_ = {};
         scene_extent_ = {};
         const ImGuiID dockspace = ImGui::DockSpaceOverViewport();
         // The first frame must give the scene panel a real viewport-sized region.
@@ -167,9 +177,76 @@ namespace toy3d
             {
                 const std::uintptr_t id = static_cast<std::uintptr_t>(IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value());
                 ImGui::Image(reinterpret_cast<ImTextureID>(id), available);
+                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    const ImVec2 origin = ImGui::GetItemRectMin();
+                    const ImVec2 mouse = ImGui::GetMousePos();
+                    const std::uint32_t x = physical_pixel(mouse.x - origin.x, scale.x);
+                    const std::uint32_t y = physical_pixel(mouse.y - origin.y, scale.y);
+                    if (x < scene_extent_.width && y < scene_extent_.height &&
+                        next_hit_request_id_ != (std::numeric_limits<std::uint64_t>::max)())
+                    {
+                        pending_hit_request_.request_id = next_hit_request_id_++;
+                        pending_hit_request_.viewport_generation = viewport_generation_;
+                        pending_hit_request_.scene_generation = world().scene_generation();
+                        pending_hit_request_.pixel_x = x;
+                        pending_hit_request_.pixel_y = y;
+                        current_hit_request_id_ = pending_hit_request_.request_id;
+                    }
+                }
             }
         }
         ImGui::End();
+        if (scene_extent_ != previous_scene_extent_)
+        {
+            ++viewport_generation_;
+            previous_scene_extent_ = scene_extent_;
+            if (pending_hit_request_.request_id != 0u)
+                pending_hit_request_.viewport_generation = viewport_generation_;
+        }
+
+        ImGui::Begin("Details");
+        Actor* const selected = world().find_actor_by_id(selected_actor_id_);
+        if (selected != nullptr)
+            ImGui::Text("Selected Actor ID: %u", selected_actor_id_);
+        else
+            ImGui::TextUnformatted("No Actor selected");
+        ImGui::End();
+    }
+
+    bool EditorApplication::on_hit_proxy_request(HitProxyRequest& request)
+    {
+        if (pending_hit_request_.request_id == 0u)
+            return false;
+        request = pending_hit_request_;
+        pending_hit_request_ = {};
+        return true;
+    }
+
+    void EditorApplication::on_hit_proxy_result(const HitProxyResult& result)
+    {
+        if (result.request.request_id != current_hit_request_id_ ||
+            result.request.viewport_generation != viewport_generation_ ||
+            result.request.scene_generation != world().scene_generation())
+            return;
+        if (result.target.kind == HitProxyTargetKind::None)
+        {
+            selected_actor_id_ = 0u;
+            return;
+        }
+        Actor* const actor = world().find_actor_by_id(result.target.actor_id);
+        if (actor == nullptr)
+        {
+            selected_actor_id_ = 0u;
+            return;
+        }
+        if (result.target.kind != HitProxyTargetKind::Actor &&
+            actor->find_component_by_id(result.target.component_id) == nullptr)
+        {
+            selected_actor_id_ = 0u;
+            return;
+        }
+        selected_actor_id_ = result.target.actor_id;
     }
 
     bool EditorApplication::on_scene_viewport_extent(Extent& extent) const

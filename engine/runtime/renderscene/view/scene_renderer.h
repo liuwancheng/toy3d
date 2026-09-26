@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_result.h"
 #include "rendercore/view/scene_view.h"
+#include "rendercore/hit_proxy.h"
 #include "renderscene/view/view_info.h"
 
 #include <vector>
@@ -13,6 +14,7 @@ namespace toy3d
     class RHIGraphicsCommandContext;
     class RHIShaderProgramCache;
     class SceneRenderTargets;
+    class GlobalShaderMap;
 
     // GT-created one-shot owner transferred into a Draw command. All render-side
     // mutation and destruction happens on the logical Rendering Thread.
@@ -35,6 +37,10 @@ namespace toy3d
                                               RHIShaderProgramCache& shader_program_cache,
                                               RHIGraphicsCommandContext& context,
                                               SceneRenderTargets& scene_render_targets) = 0;
+        virtual RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+                                           const GlobalShaderMap& global_shader_map,
+                                           RHIGraphicsCommandContext& context, const RHITextureViewRef& id_view,
+                                           const RHITextureViewRef& depth_view, HitProxyTable& table) = 0;
 
       protected:
         const SceneViewFamily& view_family() const { return view_family_; }

@@ -2,6 +2,8 @@
 
 #include "gamescene/world/world_types.h"
 
+#include <cstdint>
+
 namespace toy3d
 {
     class Actor;
@@ -17,6 +19,7 @@ namespace toy3d
         ActorComponent& operator=(const ActorComponent&) = delete;
 
         Actor& owner() const { return owner_; }
+        std::uint32_t component_id() const { return component_id_; }
         World& world() const;
         bool is_registered() const { return registered_; }
         bool is_initialized() const { return initialized_; }
@@ -39,6 +42,7 @@ namespace toy3d
         void unregister_component();
 
         Actor& owner_;
+        std::uint32_t component_id_ = 0;
         bool registered_ = false;
         bool initialized_ = false;
         bool begun_play_ = false;

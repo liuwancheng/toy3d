@@ -1,10 +1,12 @@
 #pragma once
 
 #include "drivers/rhi/rhi_device.h"
+#include "rendercore/hit_proxy.h"
 #include "threading/threading_types.h"
 #include "ui/imgui_draw_data.h"
 
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -30,6 +32,7 @@ namespace toy3d
         Extent window_extent;
         Extent scene_extent;
         ImGuiTextureId texture_id;
+        HitProxyRequest hit_proxy_request;
     };
 
     enum class RendererLifecycleState
@@ -83,6 +86,7 @@ namespace toy3d
                         std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr,
                         ViewportFrameOutput output = {});
         RendererStatus status() const;
+        bool poll_hit_proxy(HitProxyResult& result);
         // Published only between successful logical-RT initialize and teardown.
         // The pointer is non-owning and exposes no concrete RenderScene state to GT.
         SceneInterface* scene_interface() const;
@@ -96,6 +100,14 @@ namespace toy3d
         void enter_terminal(const RHIStatus& failure) noexcept;
         void append_secondary_diagnostic(const RHIStatus& failure) noexcept;
         void release_domain(bool terminal) noexcept;
+        void collect_hit_proxy_readbacks();
+
+        struct PendingHitReadback
+        {
+            HitProxyRequest request;
+            RHIReadbackRef readback;
+            HitProxyTable table;
+        };
 
         TaskGraphInterface& task_graph_;
         RHISurfaceRef primary_surface_input_;
@@ -123,5 +135,8 @@ namespace toy3d
         RHIErrorCode first_error_code_ = RHIErrorCode::None;
         std::string first_error_message_;
         std::string secondary_diagnostic_;
+        std::deque<PendingHitReadback> pending_hit_readbacks_;
+        std::deque<HitProxyResult> completed_hit_results_;
+        mutable std::mutex hit_results_mutex_;
     };
 } // namespace toy3d

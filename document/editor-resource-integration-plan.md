@@ -14,9 +14,11 @@
 
 **工作包 E1：离屏场景输出与 ImGui 显示（基础版已实现）。** `SceneRenderTargets` 的场景颜色目标仍用于 Forward Pass；RenderScene/Renderer 增加供 Editor 面板采样的最终颜色目标，Tonemap 写入该目标，再由 ImGui 图片命令合成到主窗口。当前只有一个场景面板，Game Thread 传固定的不透明逻辑纹理 ID，`ImGuiSystem` 仅允许字体与该 ID，Render Thread 将该 ID 解析为本帧视口纹理。目标尺寸由面板内容区域决定，零尺寸跳过场景绘制；resize 后旧纹理由渲染提交与后端延迟销毁机制保留至 GPU 不再使用。普通运行时仍直接输出到 presentation target。已通过立方体可见的实际窗口截图、Debug 构建和相关测试验证；面板 resize、最小化/恢复、单/多 Rendering Thread 模式及多视口动态纹理注册仍需单独验收。
 
-**工作包 E2：Actor 级 `HitProxyPass`。** 命名对应 UE 的 `EMeshPass::HitProxy`，不复制 UE 的类型前缀或 UObject 体系。Editor 侧为 Actor 分配稳定的会话身份；Game→Render 的快照传递只读数字 ID，不传 Actor 指针。Pass 复用可见 `MeshBatch` 的几何与对象变换，使用固定 Shader 和深度测试，写入 `R32UInt` 或经 format capability 验证的等价无损格式，0 表示空白，遵循 reversed-Z。一个 Actor 的多个 mesh batch 写同一 ID；Gizmo 不进入第一版 ID pass，由 ImGui/ImGuizmo 输入命中优先处理。点击请求记录视口内物理像素坐标、视口 generation 与场景 generation；读回后对照当帧 ID 映射，再由 Game Thread 校验 Actor 仍存在。第一版只响应编辑模式的单击，点击空白清除选择；组件、section、框选、半透明选择与连续悬停后置。
+**工作包 E2：Actor 选择与可扩展 HitProxy。** 命名参考 UE 的 `EMeshPass::HitProxy`，但保持 Toy3d 对象与线程边界。`World` 分别给 Actor 和 Component 分配不复用的 World 内临时 ID；`PrimitiveSceneProxy` 只携带这两个数值身份，`MeshBatch` 另携带 section 索引。HitProxyPass 在每次点击提交中为可见的 `(Actor, Component, section)` 目标分配独立的 `HitProxyId`，将其写入 `R32UInt` 目标；0 表示背景。相同目标跨 View 复用该次提交的 ID。`HitProxyId` 与 `actor_id`、`component_id` 不混用，映射表跟随对应读回一直保留到 GPU 完成，因此较晚返回的像素不会误用新一帧的映射。
 
-E2 的公共 RHI 读回基础现已按[RHI 设计](rhi-design.md)增加单像素 `R32UInt` `RHIReadback`、`readback_texture_pixel()` 和基于 queue completion value 的非阻塞 `read_uint32()`；Vulkan 使用私有的 readback buffer，D3D11/D3D12 尚返回 `Unsupported`。它只完成 GPU→CPU 数据通道；Hit Proxy Shader/Pass、Actor ID 快照、过期请求过滤与 Editor 选中态仍须接线。点击不得 `wait_idle` 或等待整个 graphics queue；允许下一帧得到结果，过期请求丢弃。
+读回结果包含 `HitProxyId` 及解析后的 `HitProxyTarget`，支持 Actor、Component 与 MeshSection 目标语义；当前 StaticMesh 绘制产生 MeshSection 目标，Editor 只执行 Actor 选中。Game Thread 先核对请求、视口和场景 generation，再查询 Actor 与 Component 是否存活；背景清除选择，越界 ID 记录错误并丢弃。Gizmo 命中仍由 ImGui/ImGuizmo 输入优先处理，框选、半透明选择和持续悬停后续接入。Pass 仅在点击帧执行，使用独立深度目标与 reversed-Z，不通过 `wait_idle` 等待整条队列。
+
+公共 RHI 已提供单像素 `R32UInt` 读回；Vulkan 使用私有 readback buffer，D3D11/D3D12 当前返回 `Unsupported`。当前 Shader `Parameters v1` 只开放 Float 系列，所以把 32 位 `HitProxyId` 拆成两个可精确表示 16 位整数的 `Float2` 分量传入 Shader，再写入 `R32UInt`。实际 GPU 点击选中与背景清除仍需窗口验收。
 
 ```cpp
 // 拟新增的上层语义；具体名称和 Result 类型在 RHI/Editor 提案中固定。
@@ -26,14 +28,17 @@ EditorTextureId published = editor_viewport.presented_texture_id();
 if (published.valid())
     ImGui::Image(to_imgui_texture_id(published), panel_size);
 
-HitProxyRequest request{viewport_id, pixel, viewport_generation, scene_generation};
-renderer.request_hit_proxy(request);
+HitProxyRequest request{request_id, viewport_generation, scene_generation, pixel_x, pixel_y};
+viewport_output.hit_proxy_request = request;
 // 后续帧：只返回 Actor 会话身份，不向 Editor 暴露 RHI texture 或 RenderProxy。
-HitProxyResult hit = renderer.poll_hit_proxy(request.id);
-editor_selection.apply_if_current(hit);
+HitProxyResult hit;
+while (renderer.poll_hit_proxy(hit)) {
+    if (request_is_current(hit.request))
+        editor_selection.apply_actor(hit.target.actor_id);
+}
 ```
 
-E1 基础版已完成，下一步是 E2：两者共享视口尺寸、资源生命周期和 frame submission 边界；E2 的 ID 目标与读回保持独立，不把选取数据塞进 ImGui 纹理身份。E2 验证通过后，再扩展已有 Editor 宿主的输入路由、资源浏览器、模型导入和属性编辑。当前 `Application::on_build_ui()` 不暴露 Renderer；E1 由 Engine composition root 传递帧值，后续接线继续保持这一边界。
+E1 已完成并通过可见立方体的窗口检查。E2 已接入 World 内 Actor/Component 临时 ID、按提交生成的 HitProxyId 与 section 目标映射，Editor 当前只选中 Actor；Debug 构建及 CTest 已通过，实际 GPU 点击与空白清除仍需窗口验收。后续 Editor 输入路由、Gizmo、资源浏览器、模型导入和属性编辑在此基础上分批接入。HitProxy 的 ID 目标与读回保持独立，不占用 ImGui 纹理身份。
 
 ### 1.2 编辑器专用属性的宏边界
 

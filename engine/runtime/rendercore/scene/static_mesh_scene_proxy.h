@@ -16,7 +16,8 @@ namespace toy3d
       public:
         StaticMeshSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
                              StaticMeshRenderData* render_data,
-                             std::vector<MaterialRenderProxy*> material_render_proxies);
+                             std::vector<MaterialRenderProxy*> material_render_proxies,
+                             std::uint32_t actor_id = 0, std::uint32_t component_id = 0);
         ~StaticMeshSceneProxy() override = default;
 
         StaticMeshRenderData* render_data() const { return render_data_; }

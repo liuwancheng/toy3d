@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "gamescene/component/primitive_component.h"
+#include "gamescene/world/world.h"
 #include "logging/logger.h"
 
 namespace toy3d
@@ -28,6 +29,23 @@ namespace toy3d
         return std::any_of(components_.begin(), components_.end(),
                            [&component](const std::unique_ptr<ActorComponent>& candidate)
                            { return candidate.get() == &component; });
+    }
+
+    std::uint32_t Actor::allocate_component_id()
+    {
+        return world_.allocate_component_id();
+    }
+
+    ActorComponent* Actor::find_component_by_id(std::uint32_t component_id) const
+    {
+        if (component_id == 0u)
+            return nullptr;
+        for (const std::unique_ptr<ActorComponent>& component : components_)
+        {
+            if (component->component_id() == component_id)
+                return component.get();
+        }
+        return nullptr;
     }
 
     void Actor::register_all_components()

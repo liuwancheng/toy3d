@@ -51,6 +51,7 @@ namespace toy3d
         // The fire-and-forget contract guarantees ownership has been consumed inline
         // or accepted by Task Graph before normal return.
         scene_proxy_ = proxy_identity;
+        world().mark_scene_changed();
     }
 
     void PrimitiveComponent::send_render_transform()
@@ -62,6 +63,7 @@ namespace toy3d
         }
 
         scene->update_primitive_transform(scene_proxy_, world_transform(), world_bounds_, visible_);
+        world().mark_scene_changed();
     }
 
     void PrimitiveComponent::destroy_render_state()
@@ -75,6 +77,7 @@ namespace toy3d
         assert(scene != nullptr);
         scene->remove_primitive(scene_proxy_);
         scene_proxy_ = nullptr;
+        world().mark_scene_changed();
     }
 
     void PrimitiveComponent::on_register()

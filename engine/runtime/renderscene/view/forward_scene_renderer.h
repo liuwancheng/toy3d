@@ -20,6 +20,10 @@ namespace toy3d
         RHIStatus render_scene_passes(RenderScene& render_scene, RHIDevice& device,
                                       RHIShaderProgramCache& shader_program_cache, RHIGraphicsCommandContext& context,
                                       SceneRenderTargets& scene_render_targets) override;
+        RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+                                   const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                   const RHITextureViewRef& id_view, const RHITextureViewRef& depth_view,
+                                   HitProxyTable& table) override;
         bool init_views();
     };
 } // namespace toy3d

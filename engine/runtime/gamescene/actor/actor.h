@@ -5,6 +5,7 @@
 #include "gamescene/world/world_types.h"
 
 #include <memory>
+#include <cstdint>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@ namespace toy3d
         Actor& operator=(const Actor&) = delete;
 
         World& world() const { return world_; }
+        std::uint32_t actor_id() const { return actor_id_; }
         bool is_registered() const { return registered_; }
         bool is_initialized() const { return initialized_; }
         bool has_begun_play() const { return begun_play_; }
@@ -38,6 +40,7 @@ namespace toy3d
 
             auto component = std::make_unique<Component>(*this, std::forward<Args>(args)...);
             Component& result = *component;
+            result.component_id_ = allocate_component_id();
             components_.push_back(std::move(component));
             if (registered_)
             {
@@ -55,6 +58,7 @@ namespace toy3d
         }
 
         bool set_root_component(SceneComponent* component);
+        ActorComponent* find_component_by_id(std::uint32_t component_id) const;
 
       protected:
         virtual void on_initialize() {}
@@ -66,6 +70,7 @@ namespace toy3d
         friend class World;
 
         bool owns_component(const ActorComponent& component) const;
+        std::uint32_t allocate_component_id();
         void register_all_components();
         void initialize_actor();
         void begin_play();
@@ -77,6 +82,7 @@ namespace toy3d
         void mark_pending_destroy() { pending_destroy_ = true; }
 
         World& world_;
+        std::uint32_t actor_id_ = 0;
         std::vector<std::unique_ptr<ActorComponent>> components_;
         SceneComponent* root_component_ = nullptr;
         bool registered_ = false;

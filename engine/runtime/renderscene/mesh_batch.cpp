@@ -8,12 +8,12 @@ namespace toy3d
 {
     MeshBatch::MeshBatch(const StaticMeshSceneProxy& scene_proxy, const StaticMeshRenderData& render_data,
                          const LocalVertexFactory& vertex_factory, MaterialRenderProxy& material_render_proxy,
-                         std::uint32_t first_index, std::uint32_t index_count)
+                         std::uint32_t first_index, std::uint32_t index_count, std::uint32_t section_index)
         : scene_proxy_(&scene_proxy), render_data_(&render_data), vertex_factory_(&vertex_factory),
           material_render_proxy_(&material_render_proxy),
           object_shader_parameters_(scene_proxy.object_shader_parameters()),
           object_data_generation_(scene_proxy.object_data_generation()), first_index_(first_index),
-          index_count_(index_count)
+          index_count_(index_count), section_index_(section_index)
     {
     }
 

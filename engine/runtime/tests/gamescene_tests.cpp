@@ -4,9 +4,11 @@
 #include "gamescene/component/light_component.h"
 #include "gamescene/world/world.h"
 #include "rendercore/geometry/static_mesh.h"
+#include "rendercore/hit_proxy.h"
 #include "rendercore/material/material.h"
 
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <utility>
 
@@ -148,11 +150,33 @@ int main()
     Actor& child_actor = world.spawn_actor();
     check(world.actor_count() == 2 && world.contains(parent_actor) && parent_actor.is_registered(),
           "World::spawn_actor must own and register every spawned Actor");
+    check(parent_actor.actor_id() != 0u && child_actor.actor_id() > parent_actor.actor_id() &&
+              world.find_actor_by_id(parent_actor.actor_id()) == &parent_actor &&
+              world.find_actor_by_id(0u) == nullptr,
+          "Actor IDs must be distinct, resolvable, and reserve zero for background hits");
 
     SceneComponent& parent = parent_actor.create_component<SceneComponent>();
     SceneComponent& child = child_actor.create_component<SceneComponent>();
     check(parent.is_registered() && child.is_registered(),
           "A component created on a registered Actor must register immediately");
+    SceneComponent& sibling = parent_actor.create_component<SceneComponent>();
+    check(parent.component_id() != 0u && child.component_id() > parent.component_id() &&
+              sibling.component_id() > child.component_id() &&
+              parent_actor.find_component_by_id(parent.component_id()) == &parent &&
+              parent_actor.find_component_by_id(sibling.component_id()) == &sibling &&
+              parent_actor.find_component_by_id(0u) == nullptr &&
+              child_actor.find_component_by_id(sibling.component_id()) == nullptr,
+          "Component identities must be distinct within the World and resolvable by their Actor");
+
+    HitProxyTable hit_table{{HitProxyTargetKind::MeshSection, parent_actor.actor_id(), parent.component_id(), 0u},
+                            {HitProxyTargetKind::MeshSection, parent_actor.actor_id(), sibling.component_id(), 2u}};
+    HitProxyTarget hit_target;
+    check(resolve_hit_proxy({2u}, hit_table, hit_target) &&
+              hit_target.actor_id == parent_actor.actor_id() &&
+              hit_target.component_id == sibling.component_id() && hit_target.mesh_section_index == 2u &&
+              resolve_hit_proxy({0u}, hit_table, hit_target) && hit_target.kind == HitProxyTargetKind::None &&
+              !resolve_hit_proxy({3u}, hit_table, hit_target),
+          "HitProxy pixel IDs must resolve through their own submission table, including background and invalid IDs");
     check(parent_actor.set_root_component(&parent) && child_actor.set_root_component(&child),
           "An Actor must accept one of its own SceneComponents as root");
     check(!parent_actor.set_root_component(&child), "An Actor must reject a root component owned by another Actor");
@@ -185,10 +209,17 @@ int main()
     int register_count = 0;
     int unregister_count = 0;
     Actor& lifecycle_actor = world.spawn_actor();
+    const std::uint32_t destroyed_actor_id = lifecycle_actor.actor_id();
+    const std::uint64_t generation_before_destruction = world.scene_generation();
     lifecycle_actor.create_component<TrackingComponent>(register_count, unregister_count);
     check(register_count == 1 && unregister_count == 0, "ActorComponent registration must run exactly once");
     check(world.destroy_actor(lifecycle_actor) && unregister_count == 1,
           "World::destroy_actor must unregister components before destruction");
+    Actor& replacement_actor = world.spawn_actor();
+    check(world.find_actor_by_id(destroyed_actor_id) == nullptr &&
+              replacement_actor.actor_id() > destroyed_actor_id &&
+              world.scene_generation() > generation_before_destruction,
+          "Destroyed Actors must not reuse an Actor ID or preserve the old scene generation");
 
     World ticking_world;
     LifecycleCounts ticking_actor_counts;

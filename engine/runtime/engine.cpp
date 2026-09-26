@@ -28,6 +28,7 @@
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/view/scene_view.h"
+#include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/renderer.h"
 #include "renderscene/ui/imgui_renderer.h"
@@ -431,6 +432,11 @@ namespace toy3d
             TOY_LOG_ERROR("Tonemap Global Shader requirement failed: {}", requirement_error);
             return false;
         }
+        if (!requirements.add(hit_proxy_global_shader_type(), requirement_error))
+        {
+            TOY_LOG_ERROR("HitProxy Global Shader requirement failed: {}", requirement_error);
+            return false;
+        }
         if (imgui_system != nullptr)
         {
             if (!requirements.add(imgui_global_shader_type(), requirement_error))
@@ -565,6 +571,12 @@ namespace toy3d
             ++frame_count;
 
             window->process_events();
+            if (application_bound && application && renderer)
+            {
+                HitProxyResult hit;
+                while (renderer->poll_hit_proxy(hit))
+                    application->hit_proxy_result(hit);
+            }
             if (world)
             {
                 static_cast<void>(world->tick(delta_time));
@@ -601,6 +613,8 @@ namespace toy3d
                 else
                 {
                     ui_draw_data = std::move(ui_result.draw_data);
+                    if (viewport_output.sample_in_ui && application_bound && application)
+                        static_cast<void>(application->hit_proxy_request(viewport_output.hit_proxy_request));
                 }
             }
             submit_frame_draw(std::move(ui_draw_data), viewport_output);

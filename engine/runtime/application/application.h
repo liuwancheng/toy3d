@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/window_interface.h"
+#include "rendercore/hit_proxy.h"
 #include "rendercore/view/scene_view.h"
 
 #include <vector>
@@ -31,6 +32,8 @@ namespace toy3d
         virtual void on_build_ui() {}
         // An embedded scene viewport supplies its own pixel extent after UI layout.
         virtual bool on_scene_viewport_extent(Extent& extent) const { return false; }
+        virtual bool on_hit_proxy_request(HitProxyRequest& request) { return false; }
+        virtual void on_hit_proxy_result(const HitProxyResult& result) {}
         virtual void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const = 0;
         virtual void on_shutdown() {}
 
@@ -41,6 +44,8 @@ namespace toy3d
         void tick(double delta_time);
         void build_ui();
         bool scene_viewport_extent(Extent& extent) const;
+        bool hit_proxy_request(HitProxyRequest& request);
+        void hit_proxy_result(const HitProxyResult& result);
         void build_scene_views(std::vector<SceneView>& views, const Extent& extent) const;
         void shutdown();
 
