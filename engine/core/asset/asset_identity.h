@@ -13,6 +13,8 @@ namespace toy3d
         bool valid() const;
         std::string hex() const;
         static bool parse(const std::string& hex, AssetId& output);
+        // Failure leaves output unchanged; random identity is not a content hash.
+        static bool try_generate(AssetId& output);
     };
 
     struct SubresourceId

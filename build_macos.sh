@@ -37,7 +37,8 @@ case "${generator}" in
             -S "${script_dir}" \
             -B "${build_dir}" \
             -G "Xcode" \
-            -DTOY3D_ENABLE_VULKAN_RHI=ON
+            -DTOY3D_ENABLE_VULKAN_RHI=ON \
+            -DTOY3D_ENABLE_ASSIMP_MODEL_IMPORT=ON
         XCODE_XCCONFIG_FILE="${xcode_no_sign_config}" cmake \
             --build "${build_dir}" \
             --config "${configuration}" \
@@ -50,7 +51,8 @@ case "${generator}" in
             -B "${build_dir}" \
             -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE="${configuration}" \
-            -DTOY3D_ENABLE_VULKAN_RHI=ON
+            -DTOY3D_ENABLE_VULKAN_RHI=ON \
+            -DTOY3D_ENABLE_ASSIMP_MODEL_IMPORT=ON
         cmake \
             --build "${build_dir}" \
             --target Toy3dEditor \

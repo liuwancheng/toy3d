@@ -1,6 +1,8 @@
 #pragma once
 
 #include "math/transform.h"
+#include "asset_identity.h"
+#include "rendercore/geometry/static_mesh.h"
 #include <cstdint>
 #include <vector>
 
@@ -13,7 +15,8 @@ namespace toy3d
         Plane,
         DirectionalLight,
         PointLight,
-        Camera
+        Camera,
+        StaticMesh
     };
 
     struct PlacementItem
@@ -28,6 +31,9 @@ namespace toy3d
     {
         PlacementItemId item = PlacementItemId::EmptyActor;
         Transform transform;
+        // A CPU prototype survives history; each spawn gets fresh render resources.
+        StaticMeshRef static_mesh;
+        AssetId asset_id;
     };
 
     const std::vector<PlacementItem>& placement_catalog();

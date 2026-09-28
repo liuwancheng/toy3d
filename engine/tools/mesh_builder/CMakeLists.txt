@@ -1,0 +1,6 @@
+add_library(Toy3dMeshBuilder STATIC)
+target_sources(Toy3dMeshBuilder PRIVATE "static_mesh_builder.h" "static_mesh_builder.cpp")
+target_compile_features(Toy3dMeshBuilder PUBLIC cxx_std_17)
+set_target_properties(Toy3dMeshBuilder PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tools")
+target_include_directories(Toy3dMeshBuilder PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")
+target_link_libraries(Toy3dMeshBuilder PUBLIC Toy3dStaticMeshAsset)

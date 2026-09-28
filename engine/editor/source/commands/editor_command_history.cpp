@@ -21,6 +21,7 @@ namespace toy3d
     void EditorCommandHistory::clear()
     {
         active_ = false;
+        pending_ = {};
         undo_.clear();
         redo_.clear();
         world_ = nullptr;

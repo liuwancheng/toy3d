@@ -1,6 +1,8 @@
 #include "asset_identity.h"
 
 #include <algorithm>
+#include <exception>
+#include <random>
 
 namespace toy3d
 {
@@ -51,6 +53,23 @@ namespace toy3d
     bool AssetId::valid() const { return is_valid_id(bytes); }
     std::string AssetId::hex() const { return format_id(bytes); }
     bool AssetId::parse(const std::string& hex, AssetId& output) { return parse_id(hex, output.bytes); }
+    bool AssetId::try_generate(AssetId& output)
+    {
+        try
+        {
+            std::random_device entropy;
+            std::uniform_int_distribution<unsigned> distribution(0, 255);
+            AssetId candidate;
+            for (std::uint8_t& byte : candidate.bytes) byte = static_cast<std::uint8_t>(distribution(entropy));
+            if (!candidate.valid()) return false;
+            output = candidate;
+            return true;
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+    }
     bool SubresourceId::valid() const { return is_valid_id(bytes); }
     std::string SubresourceId::hex() const { return format_id(bytes); }
     bool SubresourceId::parse(const std::string& hex, SubresourceId& output)

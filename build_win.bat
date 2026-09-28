@@ -41,7 +41,7 @@ where cmake.exe >nul 2>&1
 if errorlevel 1 goto cmake_missing
 
 echo [1/2] Generate Visual Studio 2022 x64 projects.
-cmake.exe -S "%TOY3D_SCRIPT_ROOT%" -B "%TOY3D_BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON -DTOY3D_ENABLE_VULKAN_RHI=ON
+cmake.exe -S "%TOY3D_SCRIPT_ROOT%" -B "%TOY3D_BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON -DTOY3D_ENABLE_VULKAN_RHI=ON -DTOY3D_ENABLE_ASSIMP_MODEL_IMPORT=ON
 set "TOY3D_EXIT_CODE=%errorlevel%"
 if not "%TOY3D_EXIT_CODE%"=="0" goto configure_failed
 

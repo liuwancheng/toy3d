@@ -184,6 +184,10 @@ target_include_directories(Toy3dTaskGraph
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
 
+add_subdirectory(asset)
+add_subdirectory(mesh_description)
+add_subdirectory(static_mesh)
+
 if(BUILD_TESTING)
     add_executable(Toy3dSerializationTests "tests/serialization_tests.cpp")
     target_compile_features(Toy3dSerializationTests PRIVATE cxx_std_17)

@@ -8,6 +8,7 @@
 #include "viewport/scene_viewport.h"
 
 #include <string>
+#include <array>
 
 namespace toy3d
 {
@@ -39,6 +40,14 @@ namespace toy3d
         bool reset_dock_layout_ = false;
         std::string asset_folder_ = "/Project";
         bool show_engine_content_ = false;
+        void draw_model_import_dialog();
+        void place_selected_static_mesh();
+        std::array<char, 1024> import_source_{};
+        std::array<char, 256> import_asset_name_{};
+        std::string import_folder_;
+        std::string model_error_;
+        float import_scale_ = 1.0f;
+        bool open_import_dialog_ = false;
 
     };
 } // namespace toy3d

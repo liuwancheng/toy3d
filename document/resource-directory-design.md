@@ -44,3 +44,7 @@ Windows 一键入口为根目录 `build_win.bat [配置] [Toy3dEditor|Toy3dCubeT
 ## 5. 验证
 
 Windows 重新配置并构建 Editor、Cube 与受影响测试；覆盖项目配置继承/覆盖/读取失败、两个资产根的引用与重复身份、创作/部署根重叠拒绝、引擎资源只读、部署不会删除已有文件。启动两个应用检查配置/资源加载与正常退出。macOS 应用包配置做静态检查；当前 Windows 验证不宣称 macOS 实际构建通过。
+
+## 6. Asset 代码目录
+
+通用 Asset 容器、身份、索引与编辑事务统一位于 `engine/core/asset`，保留独立 `Toy3dResource` target。它与内容目录 `engine/asset`、`project/asset` 分开；不再建立 `engine/resource` 或笼统的 `engine/runtime/resource`。领域数据、外部导入和运行时对象仍各自分层；目录迁移不改变 Asset 文件格式、身份或公共 API。

@@ -35,10 +35,11 @@ namespace toy3d
         bool describe(const Actor& actor, PlacementRequest& request) const;
         const char* label(std::uint32_t actor_id) const;
         void forget(std::uint32_t actor_id);
+        const MaterialInstanceRef& default_material() const { return material_; }
       private:
         StaticMeshRef cube_;
         StaticMeshRef plane_;
         MaterialInstanceRef material_;
-        std::map<std::uint32_t, PlacementItemId> placed_items_;
+        std::map<std::uint32_t, PlacementRequest> placed_items_;
     };
 }

@@ -94,7 +94,15 @@ target_compile_definitions(${TARGET_NAME}
     "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\""
     "TOY3D_EDITOR_LAYOUT_PATH=\"${BINARY_ROOT_DIR}saved/editor_layout.ini\"")
 
-target_link_libraries(${TARGET_NAME} Toy3dRuntime Toy3dResource imguizmo)
+target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource imguizmo)
+if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
+    target_sources(${TARGET_NAME} PRIVATE
+        "source/asset_tools/static_mesh_asset_tools.h" "source/asset_tools/static_mesh_asset_tools.cpp")
+    target_link_libraries(${TARGET_NAME} PRIVATE Toy3dAssetImport)
+    target_compile_definitions(${TARGET_NAME} PRIVATE WITH_MODEL_IMPORT=1)
+else()
+    target_compile_definitions(${TARGET_NAME} PRIVATE WITH_MODEL_IMPORT=0)
+endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
 
 if(BUILD_TESTING)

@@ -11,6 +11,11 @@
 #include "panels/scene_panels.h"
 #include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
+#include "rendercore/geometry/static_mesh_asset_loader.h"
+#if WITH_MODEL_IMPORT
+#include "asset_import/static_mesh_import.h"
+#include "asset_tools/static_mesh_asset_tools.h"
+#endif
 
 namespace toy3d
 {
@@ -63,6 +68,14 @@ namespace toy3d
         {
             if (ImGui::BeginMenu("File"))
             {
+#if WITH_MODEL_IMPORT
+                if (ImGui::MenuItem("Import Static Mesh..."))
+                {
+                    import_folder_ = asset_folder_.compare(0, 8, "/Project") == 0 ? asset_folder_ : "/Project";
+                    model_error_.clear();
+                    open_import_dialog_ = true;
+                }
+#endif
                 if (ImGui::MenuItem("Exit")) window().close();
                 ImGui::EndMenu();
             }
@@ -90,6 +103,7 @@ namespace toy3d
             }
             ImGui::EndMainMenuBar();
         }
+        draw_model_import_dialog();
         if (ImGui::BeginPopupModal("About Toy3d Editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::TextUnformatted("Toy3d Editor");
@@ -120,6 +134,8 @@ namespace toy3d
         ImGui::SameLine();
         if (ImGui::Button("Refresh Assets") && !workspace_.refresh())
             TOY_LOG_ERROR("Editor asset refresh failed: {}", workspace_.error());
+        ImGui::SameLine();
+        if (ImGui::Button("Add Selected Mesh")) place_selected_static_mesh();
         ImGui::Separator();
         const ImGuiID dockspace = ImGui::GetID("Toy3d Editor Dockspace Node");
         if (reset_dock_layout_)
@@ -179,6 +195,15 @@ namespace toy3d
         draw_details(world(), selection_, command_history_, workspace_, scene_viewport_);
         scene_viewport_.draw(world(), selection_, command_history_);
         draw_content_browser(workspace_, selection_, asset_folder_, show_engine_content_);
+        if (!model_error_.empty())
+        {
+            if (ImGui::Begin("Model Import / Load"))
+            {
+                ImGui::TextWrapped("%s", model_error_.c_str());
+                if (ImGui::Button("Dismiss")) model_error_.clear();
+            }
+            ImGui::End();
+        }
 
         selection_.resolve_actor(world());
         const ImGuiIO& io = ImGui::GetIO();
@@ -208,6 +233,78 @@ namespace toy3d
             else if (ImGui::IsKeyPressed(ImGuiKey_Y))
                 command_history_.redo(world());
         }
+    }
+
+    void EditorApplication::draw_model_import_dialog()
+    {
+#if WITH_MODEL_IMPORT
+        if (open_import_dialog_)
+        {
+            ImGui::OpenPopup("Import Static Mesh");
+            open_import_dialog_ = false;
+        }
+        if (ImGui::BeginPopupModal("Import Static Mesh", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted("Import static FBX / OBJ / glTF / GLB");
+            ImGui::TextUnformatted("Meshes are combined. Source materials are replaced with the default material.");
+            ImGui::SetNextItemWidth(540.0f);
+            ImGui::InputText("Source file", import_source_.data(), import_source_.size());
+            ImGui::InputText("Asset name (without extension)", import_asset_name_.data(), import_asset_name_.size());
+            ImGui::InputFloat("Scale multiplier", &import_scale_);
+            ImGui::Text("Destination: %s", import_folder_.c_str());
+            if (!model_error_.empty()) ImGui::TextWrapped("%s", model_error_.c_str());
+            if (ImGui::Button("Import"))
+            {
+                const std::string name(import_asset_name_.data());
+                if (name.empty() || name.find_first_of("/\\:") != std::string::npos || name == "." || name == "..")
+                    model_error_ = "Enter an asset name without directories.";
+                else
+                {
+                    StaticMeshImportOptions options;
+                    options.scale = import_scale_;
+                    AssetId id;
+                    if (import_static_mesh_to_workspace(workspace_, PhysicalPath(import_source_.data()),
+                        import_folder_ + "/" + name + ".asset", options, id, model_error_))
+                    {
+                        selection_.select_asset(id);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else TOY_LOG_ERROR("Model import failed: {}", model_error_);
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) { model_error_.clear(); ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
+#endif
+    }
+
+    void EditorApplication::place_selected_static_mesh()
+    {
+        const AssetLocation* asset = selection_.resolve_asset(workspace_.catalog().index);
+        if (!asset || asset->index.root_type != "toy3d.StaticMeshAssetData")
+        {
+            model_error_ = "Select a StaticMesh asset in Content Browser first.";
+            return;
+        }
+        const auto geometry = read_static_mesh_asset(workspace_.files(), asset->path);
+        if (!geometry.succeeded())
+        {
+            model_error_ = geometry.status().message;
+            TOY_LOG_ERROR("Static mesh load failed: {}", model_error_);
+            return;
+        }
+        PlacementRequest request;
+        request.item = PlacementItemId::StaticMesh;
+        request.asset_id = asset->index.asset_id;
+        request.static_mesh = create_static_mesh_from_asset(geometry.value(), actor_factory_.default_material());
+        request.transform.translation = Vector3(2.5f, 0.75f, 3.0f);
+        if (!request.static_mesh) { model_error_ = "Could not create StaticMesh runtime geometry."; return; }
+        const std::uint32_t actor_id = command_history_.place_actor(world(), request);
+        if (!actor_id) { model_error_ = "Could not place StaticMesh Actor."; return; }
+        selection_.select_actor(world(), actor_id);
+        scene_viewport_.cancel_pending_hit();
+        model_error_.clear();
     }
 
     bool EditorApplication::on_hit_proxy_request(HitProxyRequest& request)

@@ -1,0 +1,6 @@
+add_library(Toy3dMeshDescription STATIC)
+target_sources(Toy3dMeshDescription PRIVATE "mesh_description.h" "mesh_description.cpp")
+target_compile_features(Toy3dMeshDescription PUBLIC cxx_std_17)
+set_target_properties(Toy3dMeshDescription PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
+target_include_directories(Toy3dMeshDescription PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")
+target_link_libraries(Toy3dMeshDescription PUBLIC Toy3dResource Toy3dMath)

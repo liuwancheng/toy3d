@@ -4,7 +4,7 @@
 
 Editor 是使用现有 Engine、GameScene、RenderScene 和资源基础设施的创作程序，不另建一套运行时对象系统。它需要支持场景对象编辑，以及模型、材质、动画、碰撞和场景 Asset 的浏览、预览、修改与保存。各资源类型共享 Asset 身份、索引和文件外层；导入、领域校验、预览和运行时构造分别由对应领域负责。第一条资源贯通链路仍按[编辑器资源接入方案](editor-resource-integration-plan.md)选择静态模型。
 
-当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层，显示目录和元数据并手动刷新。生产模型导入、类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
+当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层。启用 Assimp 后提供静态模型导入菜单；保存为 `.asset` 后可选中并通过 `Add Selected Mesh` 放置，沿同一命令历史重建。生产链遵循 [StaticMesh 设计](static-mesh-import-design.md)。类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
 
 近期不建立插件系统、多文档并发编辑、运行时热重载、Blueprint 式对象系统或通用属性方法调用。先完成单个场景编辑视口、单个活动 Asset 编辑会话和可验证的端到端工作流；扩展到多视口、多预览 World 时再扩展相应的渲染输出 contract。
 

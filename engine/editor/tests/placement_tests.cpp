@@ -13,6 +13,8 @@
 
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/camera_actor.h"
+#include "gamescene/actor/static_mesh_actor.h"
+#include "rendercore/geometry/static_mesh_asset_loader.h"
 #include "gamescene/world/world.h"
 #include "math/matrix_construction.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
@@ -243,7 +245,41 @@ int main()
         check(factory.create(world, request) != nullptr, "Cube geometry should be reusable");
         request.item = PlacementItemId::Plane;
         check(factory.create(world, request) != nullptr, "Plane geometry should be reusable");
+        StaticMeshAssetGeometry imported;
+        imported.material_slots = {"ImportedSlot"};
+        imported.vertices = {{{0,0,0},{0,0,1},{0,0}}, {{1,0,0},{0,0,1},{1,0}}, {{0,1,0},{0,0,1},{0,1}}};
+        imported.vertices[0].color = {32, 64, 128, 255};
+        imported.indices = {0,1,2};
+        imported.sections = {{0,3,0}};
+        request = {};
+        request.item = PlacementItemId::StaticMesh;
+        check(AssetId::parse("0123456789abcdef0123456789abcdef", request.asset_id), "Imported placement identity");
+        request.static_mesh = create_static_mesh_from_asset(imported, factory.default_material());
+        check(request.static_mesh != nullptr, "Asset geometry must adapt to runtime without Assimp");
+        EditorCommandHistory history(factory);
+        const auto mesh_id = history.place_actor(world, request);
+        auto* mesh_actor = dynamic_cast<StaticMeshActor*>(world.find_actor_by_id(mesh_id));
+        check(mesh_actor != nullptr, "Asset placement must create StaticMeshActor");
+        if (mesh_actor)
+        {
+            const auto mesh = mesh_actor->static_mesh_component().static_mesh();
+            check(mesh && mesh != request.static_mesh && mesh->vertex_colors()[0] == imported.vertices[0].color,
+                  "Placement must retain colors and use fresh render-resource ownership");
+            check(history.delete_actor(world, mesh_id) && history.undo(world), "Imported mesh delete undo");
+            auto restored_id = world.actor_ids().back();
+            mesh_actor = dynamic_cast<StaticMeshActor*>(world.find_actor_by_id(restored_id));
+            check(mesh_actor && mesh_actor->static_mesh_component().static_mesh() != mesh,
+                  "Restored asset Actor must not reuse released render resources");
+            PlacementRequest restored;
+            check(mesh_actor && factory.describe(*mesh_actor, restored) && restored.asset_id == request.asset_id &&
+                  restored.static_mesh == request.static_mesh, "History must preserve asset identity and CPU prototype");
+            check(history.redo(world) && history.undo(world), "Imported deletion redo remains reconstructible");
+        }
+        history.clear();
         for (auto id : world.actor_ids()) check(world.destroy_actor(*world.find_actor_by_id(id)), "Geometry Actor cleanup");
+        // The caller's CPU prototype also owns a default-material reference.
+        // Drop it before the factory performs the material's final release.
+        request = {};
         factory.release();
     }
     {

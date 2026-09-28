@@ -103,6 +103,7 @@ namespace toy3d
             if (!prototype) return nullptr;
             StaticMeshDesc desc;
             desc.vertices = prototype->vertices();
+            desc.vertex_colors = prototype->vertex_colors();
             desc.indices = prototype->indices();
             desc.sections = prototype->sections();
             desc.material_slots = prototype->material_slots();
@@ -203,13 +204,19 @@ namespace toy3d
 
     Actor* ActorFactory::create(World& world, const PlacementRequest& request)
     {
-        if (!find_placement_item(request.item) || (!is_finite(request.transform.translation) || !is_finite(request.transform.rotation) || !is_finite(request.transform.scale)) ||
+        if ((!find_placement_item(request.item) && request.item != PlacementItemId::StaticMesh) || (!is_finite(request.transform.translation) || !is_finite(request.transform.rotation) || !is_finite(request.transform.scale)) ||
             request.transform.scale.x <= 0 || request.transform.scale.y <= 0 || request.transform.scale.z <= 0)
             return nullptr;
         if ((request.item == PlacementItemId::Cube && !cube_) ||
             (request.item == PlacementItemId::Plane && !plane_))
             return nullptr;
         StaticMeshRef geometry;
+        if (request.item == PlacementItemId::StaticMesh)
+        {
+            if (!request.asset_id.valid()) return nullptr;
+            geometry = instantiate_geometry(request.static_mesh);
+            if (!geometry) return nullptr;
+        }
         if (request.item == PlacementItemId::Cube || request.item == PlacementItemId::Plane)
         {
             geometry = instantiate_geometry(request.item == PlacementItemId::Cube ? cube_ : plane_);
@@ -228,6 +235,7 @@ namespace toy3d
             break;
         case PlacementItemId::Cube:
         case PlacementItemId::Plane:
+        case PlacementItemId::StaticMesh:
             actor = &world.spawn_actor<StaticMeshActor>();
             break;
         case PlacementItemId::DirectionalLight:
@@ -247,7 +255,7 @@ namespace toy3d
         }
         if (auto* mesh_actor = dynamic_cast<StaticMeshActor*>(actor))
             mesh_actor->static_mesh_component().set_static_mesh(std::move(geometry));
-        placed_items_[actor->actor_id()] = request.item;
+        placed_items_[actor->actor_id()] = request;
         return actor;
     }
 
@@ -255,7 +263,7 @@ namespace toy3d
     {
         const auto found = placed_items_.find(actor.actor_id());
         if (found == placed_items_.end() || !actor.root_component()) return false;
-        request.item = found->second;
+        request = found->second;
         request.transform = actor.root_component()->local_transform();
         return true;
     }
@@ -263,7 +271,8 @@ namespace toy3d
     const char* ActorFactory::label(std::uint32_t actor_id) const
     {
         const auto found = placed_items_.find(actor_id);
-        const PlacementItem* item = found == placed_items_.end() ? nullptr : find_placement_item(found->second);
+        if (found != placed_items_.end() && found->second.item == PlacementItemId::StaticMesh) return "Static Mesh";
+        const PlacementItem* item = found == placed_items_.end() ? nullptr : find_placement_item(found->second.item);
         return item ? item->name : "Actor";
     }
 
