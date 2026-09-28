@@ -17,6 +17,9 @@ namespace toy3d
         float far_clip() const { return far_clip_; }
 
         bool set_perspective(float vertical_fov_degrees, float near_clip, float far_clip);
+        // Reference-aspect projection must be representable before publishing
+        // settings. View construction still validates the actual output aspect.
+        static bool is_valid_perspective(float vertical_fov_degrees, float near_clip, float far_clip);
 
       private:
         CameraProjectionMode projection_mode_ = CameraProjectionMode::Perspective;

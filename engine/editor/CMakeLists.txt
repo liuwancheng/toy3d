@@ -11,7 +11,7 @@ list(APPEND EDITOR_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/source/panels/scene_panels.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/selection/editor_selection.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/scene_viewport.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/light_actor_icons.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/actor_icons.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/workspace/editor_workspace.h")
 list(APPEND EDITOR_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/source/placement/placement_catalog.cpp"
@@ -22,7 +22,7 @@ list(APPEND EDITOR_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/source/panels/scene_panels.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/selection/editor_selection.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/scene_viewport.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/light_actor_icons.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/actor_icons.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/workspace/editor_workspace.cpp")
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${EDITOR_HEADERS} ${EDITOR_SOURCES} )
 
@@ -113,12 +113,15 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/source/placement/placement_catalog.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/placement/actor_placement.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/placement/actor_factory.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/light_actor_icons.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/actor_icons.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/scene_viewport.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/source/editor_viewport_gizmo.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/source/selection/editor_selection.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/commands/editor_command_history.cpp")
     target_compile_features(Toy3dEditorPlacementTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorPlacementTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorPlacementTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorPlacementTests PRIVATE Toy3dRuntime imgui)
+    target_link_libraries(Toy3dEditorPlacementTests PRIVATE Toy3dRuntime Toy3dResource imguizmo)
     target_compile_definitions(Toy3dEditorPlacementTests PRIVATE
         WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")

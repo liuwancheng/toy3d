@@ -5,6 +5,7 @@
 #include "file_system/physical_path.h"
 #include "format/shader_binding_identity.h"
 #include "format/shader_format_types.h"
+#include "gamescene/actor/camera_actor.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/world/world.h"
@@ -116,6 +117,13 @@ namespace toy3d
     {
         EditorActorState state;
         if (actor.root_component()) state.transform = actor.root_component()->local_transform();
+        const auto* camera = dynamic_cast<const CameraComponent*>(actor.root_component());
+        if (camera)
+        {
+            state.camera_vertical_fov = camera->vertical_fov_degrees();
+            state.camera_near_clip = camera->near_clip();
+            state.camera_far_clip = camera->far_clip();
+        }
         const auto* light = dynamic_cast<const LightComponent*>(actor.root_component());
         if (light)
         {
@@ -135,9 +143,22 @@ namespace toy3d
             !is_finite(state.light_range) || state.light_range <= 0) return false;
         SceneComponent* root = actor.root_component();
         if (!root) return false;
+        auto* camera = dynamic_cast<CameraComponent*>(root);
+        // Validate the complete camera edit before writing its Transform. A rejected
+        // projection must not partially apply a history record.
+        if (camera && !CameraComponent::is_valid_perspective(state.camera_vertical_fov,
+                                                            state.camera_near_clip, state.camera_far_clip))
+        {
+            TOY_LOG_ERROR("Camera edit rejected an invalid or unrepresentable perspective projection.");
+            return false;
+        }
         const Transform& current = root->local_transform();
         if ((current.translation != state.transform.translation || current.rotation != state.transform.rotation ||
              current.scale != state.transform.scale) && !root->set_local_transform(state.transform)) return false;
+        if (camera && (camera->vertical_fov_degrees() != state.camera_vertical_fov ||
+            camera->near_clip() != state.camera_near_clip || camera->far_clip() != state.camera_far_clip) &&
+            !camera->set_perspective(state.camera_vertical_fov, state.camera_near_clip, state.camera_far_clip))
+            return false;
         auto* light = dynamic_cast<LightComponent*>(root);
         if (light)
         {
@@ -214,6 +235,9 @@ namespace toy3d
             break;
         case PlacementItemId::PointLight:
             actor = &world.spawn_actor<PointLightActor>();
+            break;
+        case PlacementItemId::Camera:
+            actor = &world.spawn_actor<CameraActor>();
             break;
         }
         if (!actor || !actor->root_component()->set_local_transform(request.transform))

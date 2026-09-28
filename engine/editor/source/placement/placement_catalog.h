@@ -12,7 +12,8 @@ namespace toy3d
         Cube,
         Plane,
         DirectionalLight,
-        PointLight
+        PointLight,
+        Camera
     };
 
     struct PlacementItem

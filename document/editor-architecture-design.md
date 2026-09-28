@@ -4,7 +4,7 @@
 
 Editor 是使用现有 Engine、GameScene、RenderScene 和资源基础设施的创作程序，不另建一套运行时对象系统。它需要支持场景对象编辑，以及模型、材质、动画、碰撞和场景 Asset 的浏览、预览、修改与保存。各资源类型共享 Asset 身份、索引和文件外层；导入、领域校验、预览和运行时构造分别由对应领域负责。第一条资源贯通链路仍按[编辑器资源接入方案](editor-resource-integration-plan.md)选择静态模型。
 
-当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform 和灯光属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层，显示目录和元数据并手动刷新。生产模型导入、类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
+当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层，显示目录和元数据并手动刷新。生产模型导入、类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
 
 近期不建立插件系统、多文档并发编辑、运行时热重载、Blueprint 式对象系统或通用属性方法调用。先完成单个场景编辑视口、单个活动 Asset 编辑会话和可验证的端到端工作流；扩展到多视口、多预览 World 时再扩展相应的渲染输出 contract。
 
@@ -120,7 +120,7 @@ engine/editor/
 
 ## 8. Place Actors 与放置链路
 
-Place Actors 位于默认布局左侧，提供内置对象目录；Content Browser 浏览用户磁盘 Asset。目录由 Editor 显式登记，搜索过滤同一份目录，不依赖运行时反射枚举。当前条目为 Empty Actor、Cube、Plane、Directional Light、Point Light。Sphere、Cylinder、Cone、Spot Light 后续加入。
+Place Actors 位于默认布局左侧，提供内置对象目录；Content Browser 浏览用户磁盘 Asset。目录由 Editor 显式登记，搜索过滤同一份目录，不依赖运行时反射枚举。当前条目为 Empty Actor、Camera、Cube、Plane、Directional Light、Point Light。Sphere、Cylinder、Cone、Spot Light 后续加入。
 
 | 文件/类型 | 职责 |
 | --- | --- |
@@ -128,7 +128,7 @@ Place Actors 位于默认布局左侧，提供内置对象目录；Content Brows
 | ActorFactory | 组合 Actor/Component，持有几何原型和共享材质，记录创建类型 |
 | actor_placement | 视口坐标反投影、地面相交和备用距离 |
 | SceneViewport | 仅实际图像接受拖放；提示候选位置，松开后提交命令 |
-| EditorCommandHistory | 创建、删除、Transform 和灯光属性共用一条撤销历史 |
+| EditorCommandHistory | 创建、删除、Transform、灯光和相机属性共用一条撤销历史 |
 
 ```mermaid
 flowchart LR
@@ -179,3 +179,29 @@ DirectionalLightActor、PointLightActor 仅组合对应 LightComponent root。�
 Forward Base Pass 通过生成的 Pass 参数消费场景灯光；方向光不再是 Phong Material 属性。首期支持一盏方向光和四盏点光，按 render_priority 降序、同优先级注册顺序选择，超出上限时按状态变化记录 warning。点光采用半径内平方衰减，不提供阴影或物理单位曝光模型；Spot Light 明确记录未支持。两组 Float4x4 的列分别保存点光位置/半径和颜色强度，沿现有矩阵 ABI 编码，无 descriptor array 或公共 RHI 改动。Vulkan ES3.1、D3D11 SM5、D3D12 SM6 都可用常量缓冲实现，当前验证平台为 Windows Vulkan。
 
 Details 支持灯光启用、线性颜色、强度和半径，连续修改合并为一次撤销。方向使用 root rotation 和 Gizmo；光线行进方向为本地 +Z 的世界旋转结果，着色时取负得到指向光源的方向。
+
+## 10. 首期场景相机
+
+Place Actors 的 Basic 类别提供 Camera，默认放置高度为地面上 1.5 米、朝向为本地 +Z。ActorFactory 创建 Runtime CameraActor；Outliner 和现有 Actor 选择共享该身份。Details 编辑垂直 FOV、近远裁剪面，连续输入共用 EditorCommandHistory；创建、删除及重建也记录相机参数。非法投影先校验再修改 Transform，失败保留原状态并记录日志。当前仍通过 Gizmo 旋转相机，Details 没有新增欧拉角输入。
+
+`SceneViewport` 保存独立的编辑器观察 pose 和场景相机查看目标。查看目标使用 World observer 与 World-local Actor ID，每次访问都从当前 World 解析；observer 仅比较身份，不通过它读取旧 World。进入或退出查看递增 viewport generation 并取消旧异步 HitProxy 请求。当前 EditorApplication 和 Engine 的单 World 生命周期保证 observer 的有效区间；未来替换 World 时必须先退出查看，不能仅依赖地址比较识别重建后的 World。
+
+选中相机不会自动切换画面。Details 的 `View Camera` 显式进入查看，Details 或视口顶部的 `Exit Camera View` 恢复原观察 pose。查看目标与 Actor 选择独立；查看期间暂停视口拖放、Gizmo、图标和图像选取，Outliner/Details 继续工作。删除或无效化目标后使用观察 pose；撤销删除产生新 Actor ID，必须显式重新进入查看。查看只读取相机，不把视口输入写回对象，不表示 Gameplay 已选定活动相机。
+
+`current_view()` 是当前视角的唯一数据来源，视口图标、Gizmo、放置从它构造矩阵，渲染提交复制对应 SceneView。Details 在 SceneViewport 绘制前执行，让相机参数和视角切换在本帧生效。画面宽高比使用物理输出尺寸；没有固定宽高比、黑边、正交或摄影机物理参数。
+
+`viewport/actor_icons.*` 统一灯光和相机的 Editor 覆盖层。相机使用固定 36 个逻辑像素的摄像机图标，Place Actors 使用 24 像素版本。灯光与相机在同一份列表按 reversed-Z 深度排序，命中最近图标；不读取场景深度，仍可透过几何显示与选取。选中相机额外绘制长度 3 米的 FOV 示意锥及 +Z 提示，使用 world rotation，忽略 scale。此图形不是实际 near/far 裁剪范围；每条线段先裁剪到观察者齐次视锥，再投影到 ImGui 图像，端点在镜头后方时不会发生翻转或无界坐标。图标原点被裁剪时，仍绘制可见的示意锥线段。
+
+相机图标和示意锥只编译在 Editor target，不增加 Runtime 渲染组件、公共 RHI 接口或新 Pass；以后若 Runtime 类型增加编辑器行为/数据，继续分别使用 WITH_EDITOR/WITH_EDITORONLY_DATA 隔离。画中画需要独立离屏输出与逻辑纹理生命周期，Pilot 需要导航输入和写回 Transform 的撤销合并，场景保存需要持久 Actor/Component 身份；这三项留待对应模块接入，不把本轮撤销记录当作场景 Asset 序列化。
+
+```mermaid
+flowchart TD
+    Viewport[SceneViewport 当前视角] --> Target{查看 CameraActor?}
+    Target -->|否| Observer[编辑器观察 pose]
+    Target -->|是| Camera[当前 World 解析 Actor ID]
+    Observer --> View[GT 构造 owned SceneView]
+    Camera --> View
+    View --> Overlay[投影矩阵用于图标 / 放置 / Gizmo]
+    View --> Family[SceneViewFamily / RenderCommand]
+    Family --> Render[RT 现有 Forward Renderer]
+```

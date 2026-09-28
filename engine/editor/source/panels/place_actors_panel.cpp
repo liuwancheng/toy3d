@@ -2,7 +2,7 @@
 
 #include "imgui.h"
 #include "placement/placement_catalog.h"
-#include "viewport/light_actor_icons.h"
+#include "viewport/actor_icons.h"
 
 #include <cstring>
 
@@ -27,13 +27,17 @@ namespace toy3d
                 }
                 const bool is_directional = item.id == PlacementItemId::DirectionalLight;
                 const bool is_point = item.id == PlacementItemId::PointLight;
-                if (is_directional || is_point)
+                const bool is_camera = item.id == PlacementItemId::Camera;
+                if (is_directional || is_point || is_camera)
                 {
                     const ImVec2 position = ImGui::GetCursorScreenPos();
                     constexpr float row_height = 26.0f;
                     ImGui::PushID(static_cast<int>(item.id));
-                    ImGui::Selectable("##light", false, 0, ImVec2(0.0f, row_height));
-                    draw_light_icon(*ImGui::GetWindowDrawList(),
+                    ImGui::Selectable("##actor", false, 0, ImVec2(0.0f, row_height));
+                    if (is_camera)
+                        draw_camera_icon(*ImGui::GetWindowDrawList(),
+                                         Vector2(position.x + row_height * 0.5f, position.y + row_height * 0.5f), 24.0f);
+                    else draw_light_icon(*ImGui::GetWindowDrawList(),
                                     is_directional ? LightKind::Directional : LightKind::Point,
                                     Vector2(position.x + row_height * 0.5f, position.y + row_height * 0.5f),
                                     24.0f);

@@ -39,6 +39,7 @@ namespace toy3d
 
     void EditorApplication::on_shutdown()
     {
+        scene_viewport_.exit_camera_view();
         command_history_.clear();
         for (const auto actor_id : world().actor_ids())
         {
@@ -173,10 +174,10 @@ namespace toy3d
         ImGui::End();
 
         draw_place_actors_panel();
-        scene_viewport_.draw(world(), selection_, command_history_);
         if (draw_outliner(world(), selection_, command_history_, actor_factory_))
             scene_viewport_.cancel_pending_hit();
-        draw_details(world(), selection_, command_history_, workspace_);
+        draw_details(world(), selection_, command_history_, workspace_, scene_viewport_);
+        scene_viewport_.draw(world(), selection_, command_history_);
         draw_content_browser(workspace_, selection_, asset_folder_, show_engine_content_);
 
         selection_.resolve_actor(world());
@@ -226,6 +227,6 @@ namespace toy3d
 
     void EditorApplication::on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const
     {
-        scene_viewport_.build_scene_views(views, extent);
+        scene_viewport_.build_scene_views(world(), views, extent);
     }
 } // namespace toy3d

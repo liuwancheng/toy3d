@@ -1,35 +1,36 @@
 #include "viewport/scene_viewport.h"
 
+#include <cmath>
+#include <cstdint>
+#include <limits>
+
 #include "imgui.h"
 #include "ImGuizmo.h"
 
 #include "commands/editor_command_history.h"
 #include "gamescene/actor/actor.h"
+#include "gamescene/component/camera_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "math/matrix_construction.h"
-#include "selection/editor_selection.h"
 #include "placement/actor_placement.h"
+#include "selection/editor_selection.h"
 #include "ui/imgui_draw_data.h"
-#include "viewport/light_actor_icons.h"
-
-#include <cmath>
-#include <cstdint>
-#include <limits>
+#include "viewport/actor_icons.h"
 
 namespace toy3d
 {
     namespace
     {
-        constexpr Vector3 k_camera_position(3.0f, 2.5f, -6.0f);
-        constexpr Vector3 k_camera_target(0.0f, 0.0f, 3.0f);
-        constexpr float k_near_clip = 0.1f;
-        constexpr float k_far_clip = 1000.0f;
-
-        bool make_camera(Quaternion& orientation, Vector3& direction)
+        bool make_view_matrices(const SceneView& scene_view, Matrix4& view, Matrix4& projection)
         {
-            return try_normalize(k_camera_target - k_camera_position, direction) &&
-                   try_make_rotation_from_forward_up(direction, Vector3(0.0f, 1.0f, 0.0f), orientation);
+            PerspectiveProjectionDesc desc;
+            desc.vertical_fov = scene_view.vertical_fov();
+            desc.aspect = static_cast<float>(scene_view.output_extent().width) / scene_view.output_extent().height;
+            desc.near_clip = scene_view.near_clip();
+            desc.far_clip = scene_view.far_clip();
+            return try_make_view_matrix(scene_view.camera_position(), scene_view.camera_orientation(), view) &&
+                   try_make_perspective_projection(desc, projection);
         }
 
         std::uint32_t physical_extent(float logical, float scale)
@@ -49,7 +50,61 @@ namespace toy3d
                 return (std::numeric_limits<std::uint32_t>::max)();
             return static_cast<std::uint32_t>(std::floor(value));
         }
-    } // namespace
+    }
+
+    SceneViewport::SceneViewport()
+    {
+        if (!try_make_rotation_from_forward_up(Vector3(0, 0, 3) - editor_camera_position_,
+                                               Vector3(0, 1, 0), editor_camera_orientation_))
+            TOY_LOG_ERROR("Editor observation camera could not be initialized.");
+    }
+
+    bool SceneViewport::view_camera(const World& world, std::uint32_t actor_id)
+    {
+        const Actor* actor = world.find_actor_by_id(actor_id);
+        if (!actor || actor->is_pending_destroy() || !dynamic_cast<const CameraComponent*>(actor->root_component()))
+        {
+            TOY_LOG_ERROR("Cannot view Camera Actor {} in the current World.", actor_id);
+            return false;
+        }
+        if (camera_world_ != &world || camera_actor_id_ != actor_id)
+        {
+            camera_world_ = &world;
+            camera_actor_id_ = actor_id;
+            ++viewport_generation_;
+            cancel_pending_hit();
+        }
+        return true;
+    }
+
+    void SceneViewport::exit_camera_view()
+    {
+        if (camera_actor_id_ == 0) return;
+        camera_actor_id_ = 0;
+        camera_world_ = nullptr;
+        ++viewport_generation_;
+        cancel_pending_hit();
+    }
+
+    std::uint32_t SceneViewport::viewed_camera_id(const World& world) const
+    {
+        if (camera_world_ != &world || camera_actor_id_ == 0) return 0;
+        const Actor* actor = world.find_actor_by_id(camera_actor_id_);
+        return actor && !actor->is_pending_destroy() && dynamic_cast<const CameraComponent*>(actor->root_component())
+            ? camera_actor_id_ : 0;
+    }
+
+    SceneView SceneViewport::current_view(const World& world, const Extent& extent) const
+    {
+        const Actor* actor = world.find_actor_by_id(viewed_camera_id(world));
+        const auto* camera = actor ? dynamic_cast<const CameraComponent*>(actor->root_component()) : nullptr;
+        const Vector3 position = camera ? transform_position(camera->world_transform(), Vector3()) : editor_camera_position_;
+        const Quaternion orientation = camera ? camera->world_rotation() : editor_camera_orientation_;
+        return SceneView(position, orientation, rotate_vector(orientation, Vector3(0, 0, 1)),
+                         IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
+                         to_radians(Degrees(camera ? camera->vertical_fov_degrees() : 60.0f)),
+                         camera ? camera->near_clip() : 0.1f, camera ? camera->far_clip() : 1000.0f);
+    }
 
     void SceneViewport::begin_frame()
     {
@@ -60,11 +115,18 @@ namespace toy3d
 
     void SceneViewport::draw(World& world, EditorSelection& selection, EditorCommandHistory& history)
     {
+        if (camera_actor_id_ != 0 && viewed_camera_id(world) == 0) exit_camera_view();
         // Keep the persisted ImGui window identity while changing its visible title.
         const bool visible = ImGui::Begin("Scene Viewport###Game Viewport");
         if (visible)
         {
-            gizmo_.draw_toolbar();
+            if (viewed_camera_id(world) != 0)
+            {
+                ImGui::Text("Viewing Camera %u", viewed_camera_id(world));
+                ImGui::SameLine();
+                if (ImGui::Button("Exit Camera View")) exit_camera_view();
+            }
+            else gizmo_.draw_toolbar();
             const ImVec2 available = ImGui::GetContentRegionAvail();
             const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
             scene_extent_.width = physical_extent(available.x, scale.x);
@@ -75,34 +137,28 @@ namespace toy3d
                 ImGui::Image(reinterpret_cast<ImTextureID>(id), available);
                 const bool hovered = ImGui::IsItemHovered();
                 const ImVec2 origin = ImGui::GetItemRectMin();
-                gizmo_.handle_shortcuts(hovered);
-                bool placement_active = ImGui::GetDragDropPayload() != nullptr;
-                if (ImGui::BeginDragDropTarget())
+                const bool viewing = viewed_camera_id(world) != 0;
+                if (!viewing) gizmo_.handle_shortcuts(hovered);
+                const SceneView scene_view = current_view(world, scene_extent_);
+                Matrix4 view;
+                Matrix4 projection;
+                const bool matrices_valid = make_view_matrices(scene_view, view, projection);
+                if (!matrices_valid) TOY_LOG_ERROR("Editor viewport rejected camera matrices.");
+                const bool placement_active = ImGui::GetDragDropPayload() != nullptr;
+                if (!viewing && matrices_valid && ImGui::BeginDragDropTarget())
                 {
                     const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
                         PLACEMENT_DRAG_PAYLOAD, ImGuiDragDropFlags_AcceptBeforeDelivery);
                     if (payload && payload->DataSize == sizeof(PlacementItemId))
                     {
-                        // Copy a small value identity; the payload never owns World objects.
                         const PlacementItemId item_id = *static_cast<const PlacementItemId*>(payload->Data);
                         const PlacementItem* item = find_placement_item(item_id);
-                        Quaternion orientation;
-                        Vector3 direction;
-                        Matrix4 view;
-                        Matrix4 projection;
-                        PerspectiveProjectionDesc desc;
-                        desc.vertical_fov = to_radians(Degrees(60));
-                        desc.aspect = available.x / available.y;
-                        desc.near_clip = k_near_clip;
-                        desc.far_clip = k_far_clip;
                         const ImVec2 mouse = ImGui::GetMousePos();
                         const Vector2 position((mouse.x - origin.x) / available.x, (mouse.y - origin.y) / available.y);
                         PlacementRequest request;
                         request.item = item_id;
-                        if (item && make_camera(orientation, direction) &&
-                            try_make_view_matrix(k_camera_position, orientation, view) &&
-                            try_make_perspective_projection(desc, projection) &&
-                            calculate_placement_transform(view, projection, k_camera_position, position, *item, request.transform))
+                        if (item && calculate_placement_transform(view, projection, scene_view.camera_position(),
+                                                                  position, *item, request.transform))
                         {
                             const Vector3& location = request.transform.translation;
                             const Vector4 clip = projection * view * Vector4(location.x, location.y, location.z, 1);
@@ -130,67 +186,38 @@ namespace toy3d
                     ImGui::EndDragDropTarget();
                 }
 
-
                 bool gizmo_consumed_click = false;
                 Actor* const selected = selection.resolve_actor(world);
-                std::uint32_t hovered_light_id = 0;
-                {
-                    Quaternion orientation;
-                    Vector3 direction;
-                    Matrix4 view;
-                    Matrix4 projection;
-                    PerspectiveProjectionDesc desc;
-                    desc.vertical_fov = to_radians(Degrees(60.0f));
-                    desc.aspect = static_cast<float>(scene_extent_.width) / scene_extent_.height;
-                    desc.near_clip = k_near_clip;
-                    desc.far_clip = k_far_clip;
-                    if (make_camera(orientation, direction) &&
-                        try_make_view_matrix(k_camera_position, orientation, view) &&
-                        try_make_perspective_projection(desc, projection))
-                        hovered_light_id = draw_light_actor_icons(world, projection * view,
-                            Vector2(origin.x, origin.y), Vector2(available.x, available.y),
-                            selected ? selected->actor_id() : 0u, hovered && !placement_active);
-                }
+                std::uint32_t hovered_icon_id = 0;
+                if (!viewing && matrices_valid)
+                    hovered_icon_id = draw_actor_icons(world, projection * view,
+                        Vector2(origin.x, origin.y), Vector2(available.x, available.y),
+                        selected ? selected->actor_id() : 0u, hovered && !placement_active,
+                        static_cast<float>(scene_extent_.width) / scene_extent_.height);
                 SceneComponent* const root = selected != nullptr ? selected->root_component() : nullptr;
-                if (root != nullptr && !placement_active)
+                if (root != nullptr && !placement_active && !viewing && matrices_valid)
                 {
-                    Quaternion orientation;
-                    Vector3 direction;
-                    Matrix4 view;
-                    Matrix4 projection;
-                    PerspectiveProjectionDesc desc;
-                    desc.vertical_fov = to_radians(Degrees(60.0f));
-                    desc.aspect = static_cast<float>(scene_extent_.width) /
-                                  static_cast<float>(scene_extent_.height);
-                    desc.near_clip = k_near_clip;
-                    desc.far_clip = k_far_clip;
-                    if (make_camera(orientation, direction) &&
-                        try_make_view_matrix(k_camera_position, orientation, view) &&
-                        try_make_perspective_projection(desc, projection))
-                    {
-                        if (history.active_for(EditorTransformSource::Details) &&
-                            ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                            history.finish(world, EditorTransformSource::Details);
-                        const Transform before = root->local_transform();
-                        gizmo_consumed_click = gizmo_.manipulate(*root, view, projection, origin.x, origin.y,
-                                                                 available.x, available.y);
-                        if (ImGuizmo::IsUsingAny() && !history.active())
-                            history.begin(world, selected->actor_id(), before, EditorTransformSource::Gizmo);
-                    }
+                    if (history.active_for(EditorTransformSource::Details) &&
+                        ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                        history.finish(world, EditorTransformSource::Details);
+                    const Transform before = root->local_transform();
+                    gizmo_consumed_click = gizmo_.manipulate(*root, view, projection, origin.x, origin.y,
+                                                             available.x, available.y);
+                    if (ImGuizmo::IsUsingAny() && !history.active())
+                        history.begin(world, selected->actor_id(), before, EditorTransformSource::Gizmo);
                 }
                 if (history.active_for(EditorTransformSource::Gizmo) && !ImGuizmo::IsUsingAny())
                     history.finish(world, EditorTransformSource::Gizmo);
                 if (gizmo_consumed_click && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                    current_hit_request_id_ = 0u;
-                if (hovered && !placement_active && !gizmo_consumed_click && !ImGui::GetIO().WantTextInput &&
-                    ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    cancel_pending_hit();
+                if (hovered && !viewing && matrices_valid && !placement_active && !gizmo_consumed_click &&
+                    !ImGui::GetIO().WantTextInput && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 {
-                    // Editor overlay icons use their visible screen rectangle.
-                    // Cancel an older asynchronous GPU result before selecting;
-                    // mesh clicks continue through the existing HitProxy Pass.
-                    if (hovered_light_id != 0)
+                    // Lights and cameras share one depth-sorted overlay hit list.
+                    // Invalidate older GPU results before accepting an icon click.
+                    if (hovered_icon_id != 0)
                     {
-                        selection.select_actor(world, hovered_light_id);
+                        selection.select_actor(world, hovered_icon_id);
                         cancel_pending_hit();
                     }
                     else
@@ -236,8 +263,7 @@ namespace toy3d
 
     bool SceneViewport::take_hit_request(HitProxyRequest& request)
     {
-        if (pending_hit_request_.request_id == 0u)
-            return false;
+        if (pending_hit_request_.request_id == 0u) return false;
         request = pending_hit_request_;
         pending_hit_request_ = {};
         return true;
@@ -249,10 +275,10 @@ namespace toy3d
         current_hit_request_id_ = 0u;
     }
 
-    void SceneViewport::receive_hit_result(World& world, EditorSelection& selection,
-                                            const HitProxyResult& result)
+    void SceneViewport::receive_hit_result(World& world, EditorSelection& selection, const HitProxyResult& result)
     {
-        if (result.request.request_id != current_hit_request_id_ ||
+        if (result.request.request_id == 0 || viewed_camera_id(world) != 0 ||
+            result.request.request_id != current_hit_request_id_ ||
             result.request.viewport_generation != viewport_generation_ ||
             result.request.scene_generation != world.scene_generation())
             return;
@@ -272,17 +298,9 @@ namespace toy3d
         selection.select_actor(world, actor->actor_id());
     }
 
-    void SceneViewport::build_scene_views(std::vector<SceneView>& views, const Extent& extent) const
+    void SceneViewport::build_scene_views(const World& world, std::vector<SceneView>& views, const Extent& extent) const
     {
-        Vector3 direction;
-        Quaternion orientation;
-        if (!make_camera(orientation, direction))
-        {
-            TOY_LOG_ERROR("Editor scene camera could not be constructed.");
-            return;
-        }
-        views.emplace_back(k_camera_position, orientation, direction,
-                           IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
-                           to_radians(Degrees(60.0f)), k_near_clip, k_far_clip);
+        if (extent.width == 0 || extent.height == 0) return;
+        views.push_back(current_view(world, extent));
     }
-} // namespace toy3d
+}

@@ -4,11 +4,13 @@
 
 #include "commands/editor_command_history.h"
 #include "gamescene/actor/actor.h"
+#include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "selection/editor_selection.h"
 #include "workspace/editor_workspace.h"
+#include "viewport/scene_viewport.h"
 
 #include <cstdint>
 #include <algorithm>
@@ -39,6 +41,17 @@ namespace toy3d
             if (ImGui::IsItemDeactivated())
                 history.finish(world, EditorTransformSource::Details);
         }
+        void draw_camera_field(const char* label, float EditorActorState::* field, float speed,
+                               World& world, Actor& actor, EditorCommandHistory& history)
+        {
+            EditorActorState edited = capture_actor_state(actor);
+            const bool changed = ImGui::DragFloat(label, &(edited.*field), speed);
+            if (ImGui::IsItemActivated())
+                history.begin(world, actor.actor_id(), edited.transform, EditorTransformSource::Details);
+            if (changed && !apply_actor_state(actor, edited))
+                TOY_LOG_ERROR("Details rejected {} for Camera Actor {}.", label, actor.actor_id());
+            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+        }
     } // namespace
 
     bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history, const ActorFactory& factory)
@@ -65,7 +78,7 @@ namespace toy3d
     }
 
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,
-                      const EditorWorkspace& workspace)
+                      const EditorWorkspace& workspace, SceneViewport& viewport)
     {
         if (ImGui::Begin("Details"))
         {
@@ -98,6 +111,28 @@ namespace toy3d
                     draw_transform_field("Location", &Transform::translation, world, *actor, history);
                     draw_transform_field("Scale", &Transform::scale, world, *actor, history);
                     ImGui::TextDisabled("Rotation: use the viewport gizmo");
+                    if (dynamic_cast<CameraComponent*>(actor->root_component()))
+                    {
+                        ImGui::Separator();
+                        ImGui::TextUnformatted("Perspective Camera");
+                        draw_camera_field("Vertical FOV (degrees)", &EditorActorState::camera_vertical_fov,
+                                          0.25f, world, *actor, history);
+                        draw_camera_field("Near Clip (m)", &EditorActorState::camera_near_clip,
+                                          0.01f, world, *actor, history);
+                        draw_camera_field("Far Clip (m)", &EditorActorState::camera_far_clip,
+                                          1.0f, world, *actor, history);
+                        ImGui::TextDisabled("Aspect ratio follows the viewport");
+                        ImGui::TextDisabled("Camera scale does not affect projection");
+                        if (viewport.viewed_camera_id(world) == actor->actor_id())
+                        {
+                            if (ImGui::Button("Exit Camera View")) viewport.exit_camera_view();
+                        }
+                        else if (ImGui::Button("View Camera"))
+                        {
+                            history.finish(world, EditorTransformSource::Details);
+                            if (!history.active()) viewport.view_camera(world, actor->actor_id());
+                        }
+                    }
                     auto* light = dynamic_cast<LightComponent*>(actor->root_component());
                     if (light)
                     {

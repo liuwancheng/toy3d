@@ -1,6 +1,7 @@
 #include "commands/editor_command_history.h"
 #include "placement/actor_placement.h"
-#include "viewport/light_actor_icons.h"
+#include "viewport/actor_icons.h"
+#include "viewport/scene_viewport.h"
 
 #include <cmath>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include "imgui.h"
 
 #include "gamescene/actor/light_actor.h"
+#include "gamescene/actor/camera_actor.h"
 #include "gamescene/world/world.h"
 #include "math/matrix_construction.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
@@ -104,6 +106,116 @@ int main()
               "Property undo must follow the reconstructed light ID");
     }
     {
+        World world;
+        world.initialize();
+        ActorFactory factory;
+        EditorCommandHistory history(factory);
+        PlacementRequest request;
+        request.item = PlacementItemId::Camera;
+        request.transform.translation = Vector3(1, 2, -4);
+        const auto id = history.place_actor(world, request);
+        auto* actor = dynamic_cast<CameraActor*>(world.find_actor_by_id(id));
+        check(actor && actor->root_component() == &actor->camera_component(), "Camera placement must own a camera root");
+        if (actor)
+        {
+            SceneViewport viewport;
+            const Extent extent{800, 400};
+            std::vector<SceneView> editor_views;
+            viewport.build_scene_views(world, editor_views, extent);
+            check(editor_views.size() == 1 && viewport.view_camera(world, id), "View a placed camera");
+            history.begin(world, id, actor->root_component()->local_transform(), EditorTransformSource::Details);
+            check(actor->camera_component().set_perspective(75, 0.2f, 500), "Camera property gesture");
+            history.finish(world, EditorTransformSource::Details);
+            check(history.undo(world) && actor->camera_component().vertical_fov_degrees() == 60,
+                  "Camera parameter undo must restore the complete projection");
+            check(history.redo(world) && actor->camera_component().near_clip() == 0.2f,
+                  "Camera parameter redo must restore clipping planes");
+            std::vector<SceneView> views;
+            viewport.build_scene_views(world, views, extent);
+            check(views.size() == 1 && views.front().camera_position() == request.transform.translation &&
+                  views.front().vertical_fov() == to_radians(Degrees(75)), "Camera view must copy world pose and projection");
+            EditorActorState invalid = capture_actor_state(*actor);
+            invalid.transform.translation = Vector3(99);
+            invalid.camera_near_clip = invalid.camera_far_clip;
+            check(!apply_actor_state(*actor, invalid) && actor->root_component()->local_transform().translation ==
+                  request.transform.translation, "Invalid projection must not partially apply its Transform");
+            const float bad_values[] = {0, 180, std::numeric_limits<float>::denorm_min(), std::numeric_limits<float>::infinity(),
+                                        std::numeric_limits<float>::quiet_NaN()};
+            for (const float value : bad_values)
+                check(!actor->camera_component().set_perspective(value, 0.1f, 100) &&
+                      actor->camera_component().vertical_fov_degrees() == 75, "Invalid FOV must preserve camera settings");
+            invalid = capture_actor_state(*actor);
+            invalid.transform.translation = Vector3(99);
+            invalid.camera_near_clip = 1e30f;
+            invalid.camera_far_clip = 2e30f;
+            check(!apply_actor_state(*actor, invalid) && actor->root_component()->local_transform().translation ==
+                  request.transform.translation && actor->camera_component().near_clip() == 0.2f,
+                  "Unrepresentable clipping projection must not mutate Transform or camera state");
+            check(!actor->camera_component().set_perspective(60, std::numeric_limits<float>::denorm_min(),
+                                                            std::numeric_limits<float>::denorm_min() * 2) &&
+                  actor->camera_component().near_clip() == 0.2f,
+                  "Underflow to a singular projection must preserve camera settings");
+            check(actor->camera_component().set_perspective(45, 0.3f, 300) &&
+                  views.front().vertical_fov() == to_radians(Degrees(75)), "Published SceneView must not reread its Component");
+            Transform scaled = actor->root_component()->local_transform();
+            scaled.scale = Vector3(2, 3, 4);
+            check(actor->root_component()->set_local_transform(scaled), "Nonuniform camera scale should remain an Actor property");
+            views.clear();
+            viewport.build_scene_views(world, views, extent);
+            check(views.front().camera_direction() == Vector3(0, 0, 1) && views.front().vertical_fov() == to_radians(Degrees(45)),
+                  "Camera projection and direction must ignore nonuniform scale");
+            auto& parent = world.spawn_actor<Actor>();
+            auto& root = parent.create_component<SceneComponent>();
+            check(parent.set_root_component(&root), "Camera attachment parent root");
+            Transform parent_transform;
+            parent_transform.translation = Vector3(4, 0, 0);
+            check(try_make_rotation_from_forward_up(Vector3(1, 0, 0), Vector3(0, 1, 0), parent_transform.rotation) &&
+                  root.set_local_transform(parent_transform) &&
+                  actor->camera_component().attach_to(&root, AttachmentRule::KeepRelative), "Camera attachment should use scene transforms");
+            views.clear();
+            viewport.build_scene_views(world, views, extent);
+            check(is_nearly_equal(views.front().camera_direction(), Vector3(1, 0, 0)) &&
+                  is_nearly_equal(views.front().camera_position(), transform_position(root.world_transform(), scaled.translation)),
+                  "Camera view must use inherited world position and rotation");
+            check(actor->camera_component().attach_to(nullptr, AttachmentRule::KeepRelative), "Detach camera before history deletion");
+            World other_world;
+            auto& other_camera = other_world.spawn_actor<CameraActor>();
+            check(other_camera.actor_id() == id && viewport.viewed_camera_id(other_world) == 0,
+                  "World-local Actor IDs must not leak camera viewing across Worlds");
+            views.clear();
+            viewport.build_scene_views(other_world, views, extent);
+            check(views.front().camera_position() == editor_views.front().camera_position(), "Another World must use the editor observer");
+            check(!viewport.view_camera(world, parent.actor_id()) && viewport.viewed_camera_id(world) == id,
+                  "Invalid camera target must preserve the current view");
+            check(history.delete_actor(world, id) && viewport.viewed_camera_id(world) == 0, "Deleting a viewed camera must invalidate its target");
+            views.clear();
+            viewport.build_scene_views(world, views, extent);
+            check(views.front().camera_position() == editor_views.front().camera_position() &&
+                  views.front().camera_orientation() == editor_views.front().camera_orientation(), "Deletion must restore the untouched editor pose");
+            check(history.undo(world), "Camera deletion undo");
+            CameraActor* restored = nullptr;
+            for (const auto actor_id : world.actor_ids())
+                if (auto* candidate = dynamic_cast<CameraActor*>(world.find_actor_by_id(actor_id))) restored = candidate;
+            check(restored && restored->actor_id() != id && restored->camera_component().vertical_fov_degrees() == 45 &&
+                  restored->camera_component().far_clip() == 300 && viewport.viewed_camera_id(world) == 0,
+                  "Deletion undo must restore camera data without silently resuming viewing");
+            if (restored)
+            {
+                check(history.undo(world) && restored->camera_component().vertical_fov_degrees() == 60,
+                      "Earlier camera edits must follow reconstructed IDs");
+                check(history.redo(world) && restored->camera_component().vertical_fov_degrees() == 75 &&
+                      viewport.view_camera(world, restored->actor_id()), "Redo and explicit viewing after reconstruction");
+                viewport.exit_camera_view();
+                views.clear();
+                viewport.build_scene_views(world, views, extent);
+                check(views.front().camera_position() == editor_views.front().camera_position(), "Explicit exit must restore the editor view");
+            }
+            views.clear();
+            viewport.build_scene_views(world, views, Extent{});
+            check(views.empty(), "Collapsed viewport must not create a zero-sized View");
+        }
+    }
+    {
         TestScene scene;
         World world;
         auto& light = world.spawn_actor<PointLightActor>();
@@ -172,20 +284,29 @@ int main()
         const Vector2 size(800, 400);
         Vector2 center;
         float depth = 0;
-        check(project_light_icon(projection, Vector3(0, 0, 2), origin, size, center, depth) &&
+        check(project_actor_icon(projection, Vector3(0, 0, 2), origin, size, center, depth) &&
               center == Vector2(500, 250), "Icon must align with the viewport image, including its offset");
         const float near_depth = depth;
-        check(project_light_icon(projection, Vector3(0, 1, 5), origin, size, center, depth) &&
+        check(project_actor_icon(projection, Vector3(0, 1, 5), origin, size, center, depth) &&
               center.y < 250 && depth < near_depth, "Icon projection must use top-left Y and reversed-Z");
         const Vector2 before = center;
         const float before_depth = depth;
-        check(!project_light_icon(projection, Vector3(0, 0, -2), origin, size, center, depth) &&
+        check(!project_actor_icon(projection, Vector3(0, 0, -2), origin, size, center, depth) &&
               center == before && depth == before_depth, "Behind-camera icons must be rejected without changing output");
-        check(!project_light_icon(projection, Vector3(0, 0, 0.01f), origin, size, center, depth), "Near-clipped icons must be rejected");
-        check(!project_light_icon(projection, Vector3(0, 0, 200), origin, size, center, depth), "Far-clipped icons must be rejected");
-        check(!project_light_icon(projection, Vector3(100, 0, 2), origin, size, center, depth), "Offscreen icons must be rejected");
-        check(!project_light_icon(projection, Vector3(0, 0, 2), origin, Vector2(), center, depth), "Empty images must be rejected");
-        check(!project_light_icon(projection, Vector3((std::numeric_limits<float>::quiet_NaN)(), 0, 2),
+        check(!project_actor_icon(projection, Vector3(0, 0, 0.01f), origin, size, center, depth), "Near-clipped icons must be rejected");
+        check(!project_actor_icon(projection, Vector3(0, 0, 200), origin, size, center, depth), "Far-clipped icons must be rejected");
+        Vector2 a;
+        Vector2 b;
+        check(project_actor_segment(projection, Vector3(0, 0, -1), Vector3(0.2f, 0, 2), origin, size, a, b) &&
+              is_finite(a) && is_finite(b) && a.x >= origin.x && a.x <= origin.x + size.x,
+              "Frustum lines crossing the near plane must remain inside the image");
+        const Vector2 before_a = a;
+        const Vector2 before_b = b;
+        check(!project_actor_segment(projection, Vector3(0, 0, -1), Vector3(0, 0, -2), origin, size, a, b) &&
+              a == before_a && b == before_b, "Fully clipped frustum lines must preserve outputs");
+        check(!project_actor_icon(projection, Vector3(100, 0, 2), origin, size, center, depth), "Offscreen icons must be rejected");
+        check(!project_actor_icon(projection, Vector3(0, 0, 2), origin, Vector2(), center, depth), "Empty images must be rejected");
+        check(!project_actor_icon(projection, Vector3((std::numeric_limits<float>::quiet_NaN)(), 0, 2),
                                   origin, size, center, depth), "Nonfinite icon positions must be rejected");
         DirectionalLightArrow arrow;
         check(project_light_direction(projection, Vector3(0, 0, 5), Vector3(1, 0, 0), origin, size, arrow) &&
@@ -235,23 +356,35 @@ int main()
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);
         ImGui::Begin("Icon hit test");
-        check(draw_light_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, true) ==
+        auto& camera = world.spawn_actor<CameraActor>();
+        Transform camera_transform;
+        camera_transform.translation = Vector3(0, 0, 1);
+        check(camera.root_component()->set_local_transform(camera_transform), "Camera icon transform");
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), camera.actor_id(), true, 2.0f) ==
+              camera.actor_id(), "Camera and light icons must share frontmost picking");
+        camera_transform.translation = Vector3(0, 0, 9);
+        check(camera.root_component()->set_local_transform(camera_transform) &&
+              draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), camera.actor_id(), true, 2.0f) ==
+              near_light.actor_id(), "A farther camera must not steal a nearer light hit");
+        camera_transform.translation = Vector3(0, 0, -2);
+        check(camera.root_component()->set_local_transform(camera_transform), "Clipped camera icon transform");
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, true, 2.0f) ==
               near_light.actor_id(), "Overlapping light icons must select the frontmost Actor");
-        check(draw_light_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, false) == 0,
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, false, 2.0f) == 0,
               "Drag/drop or blocked image input must suppress icon hits");
         near_light.light_component().set_enabled(false);
-        check(draw_light_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), near_light.actor_id(), true) ==
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), near_light.actor_id(), true, 2.0f) ==
               near_light.actor_id(), "Disabled lights must remain selectable for editing");
         transform.translation = Vector3(0, 0, -2);
         check(near_light.root_component()->set_local_transform(transform), "Move near icon behind camera");
-        check(draw_light_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, true) ==
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, true, 2.0f) ==
               far_light.actor_id(), "A clipped light must not intercept another icon");
-        check(draw_light_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), far_light.actor_id(), true) ==
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), far_light.actor_id(), true, 2.0f) ==
               far_light.actor_id(), "Selected directional-light depth cues must preserve icon hits");
         transform.translation = Vector3(0, 0, 5);
         check(try_make_rotation_from_forward_up(Vector3(1, -1, 1), Vector3(0, 1, 0), transform.rotation) &&
               far_light.root_component()->set_local_transform(transform), "Rotate the directional-light indicator");
-        check(draw_light_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), far_light.actor_id(), true) ==
+        check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), far_light.actor_id(), true, 2.0f) ==
               far_light.actor_id(), "Selected directional-light arrows must preserve icon hits after rotation");
         ImGui::End();
         ImGui::Render();

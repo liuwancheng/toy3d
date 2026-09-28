@@ -44,7 +44,8 @@ engine/runtime/gamescene/
 │   └── world_types.h
 ├── actor/
 │   ├── actor.*
-│   └── static_mesh_actor.*
+│   ├── static_mesh_actor.*
+│   └── camera_actor.*
 └── component/
     ├── actor_component.*
     ├── scene_component.*
@@ -63,10 +64,11 @@ ActorComponent
     └── LightComponent
 
 Actor
-└── StaticMeshActor
+├── StaticMeshActor
+└── CameraActor
 ```
 
-当前已有 `DirectionalLightActor` 与 `PointLightActor`，分别组合对应 LightComponent root。未来有稳定用例后再增加 `CameraActor`、`Pawn` 与 `Character`；
+当前已有 `DirectionalLightActor` 与 `PointLightActor`，分别组合对应 LightComponent root；`CameraActor` 组合 CameraComponent root，提供可独立放置的相机。未来有稳定用例后再增加 `Pawn` 与 `Character`；
 不为目录整齐预建空类型。
 
 ## 3. 所有权与生命周期
@@ -241,3 +243,11 @@ LightComponent 使用显式 render-state 生命周期：注册或 World bind 创
 Directional 的 world rotation 将本地 +Z 变换为光线行进方向。Point 的位置来自 Component world transform，范围、线性颜色、非负强度和 enabled 保留 GameScene 校验。前向渲染的数量限制和参数打包属于 RenderScene，World 不逐帧扫描或生成光照快照。Editor 通过 Application 启动策略保持 Initialized World，仍正常 create/update/remove render state。
 
 StaticMeshComponent 的 Remove 之后追加保留 mesh 和 material override 引用的 FIFO 命令，保证 setter 替换旧网格或 Actor 析构时，借用 RenderData 的 Remove 能先完成。此命令只保留所有权，不读取 GT 状态，不承担 GPU idle；后端继续按 submission completion 延迟销毁 RHI 资源。MaterialInstance 最后引用的显式 release 仍由资源所有者负责。
+
+## 10. 相机对象与 View 输入
+
+`CameraActor` 独占默认 `CameraComponent` 并设为 root，仅提供独立放置和组件访问。它不选择活动视角、不创建 SceneProxy、不控制 Window 或 Renderer。CameraComponent 可以被其他 Actor 组合并挂接 SceneComponent，继续使用现有注册、attachment 和 Transform 生命周期。
+
+首期 CameraComponent 支持有限远平面的透视相机，默认垂直 FOV 为 60 度、near 为 0.1 米、far 为 1000 米；`set_perspective()` 原子校验有限值、`0 < FOV < 180` 与 `0 < near < far`，失败记录日志并保留旧参数。纯查询 `is_valid_perspective()` 还通过 Core Math 验证参考宽高比 1 下的投影、逆矩阵及有限视锥可表示，拒绝角度/乘积下溢、乘积溢出或退化视锥；真正的 View 仍按实际宽高比验证派生矩阵。Editor 复用此查询，在应用历史记录的 Transform 前校验相机参数。`CameraProjectionMode` 中的其他枚举不表示 CameraComponent 已提供对应 setter 或 Renderer 已支持所有模式。
+
+View 构建方从组件复制 world position、world rotation 和投影输入，按输出尺寸确定宽高比；方向由 world rotation 变换本地 +Z 获得。组件及父级的 scale 不改变 FOV 或方向，父级 TRS 对世界位置的影响仍遵守 SceneComponent contract。Rendering Thread 只消费 owned `SceneView`，不得保留或读取 CameraActor/CameraComponent 指针。GameApplication 选择哪个相机仍属于项目策略，不自动采用 World 中第一台相机。

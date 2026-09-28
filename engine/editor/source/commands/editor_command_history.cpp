@@ -12,7 +12,9 @@ namespace toy3d
         {
             return a.transform.translation == b.transform.translation && a.transform.rotation == b.transform.rotation &&
                    a.transform.scale == b.transform.scale && a.light_enabled == b.light_enabled &&
-                   a.light_color == b.light_color && a.light_intensity == b.light_intensity && a.light_range == b.light_range;
+                   a.light_color == b.light_color && a.light_intensity == b.light_intensity && a.light_range == b.light_range &&
+                   a.camera_vertical_fov == b.camera_vertical_fov && a.camera_near_clip == b.camera_near_clip &&
+                   a.camera_far_clip == b.camera_far_clip;
         }
     }
 
