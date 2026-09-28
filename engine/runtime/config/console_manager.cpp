@@ -32,7 +32,7 @@ namespace toy3d
         return instance;
     }
 
-    FileStatus ConsoleManager::load_config(FileSystem& file_system, const VirtualPath& path)
+    FileStatus ConsoleManager::load_config(FileSystem& file_system, const VirtualPath& path, ConfigLoadMode mode)
     {
         auto text = file_system.read_text_utf8(path);
         if (!text.succeeded())
@@ -104,7 +104,17 @@ namespace toy3d
         }
 
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        values_ = std::move(parsed_values);
+        if (mode == ConfigLoadMode::Replace)
+        {
+            values_ = std::move(parsed_values);
+        }
+        else
+        {
+            // Publish the complete layer under one lock; omitted project keys
+            // retain their engine defaults. Failed reads never reach this point.
+            for (const auto& entry : parsed_values)
+                values_[entry.first] = entry.second;
+        }
         return FileStatus::success();
     }
 

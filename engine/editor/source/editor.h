@@ -1,19 +1,27 @@
 #pragma once
 
 #include "application/application.h"
-#include "editor_viewport_gizmo.h"
+#include "commands/editor_command_history.h"
+#include "placement/actor_factory.h"
 #include "rendercore/material/material.h"
+#include "selection/editor_selection.h"
+#include "viewport/scene_viewport.h"
 
-#include <cstdint>
+#include <string>
 
 namespace toy3d
 {
     class StaticMeshActor;
+    class EditorWorkspace;
 
     class EditorApplication final : public Application
     {
+      public:
+        explicit EditorApplication(EditorWorkspace& workspace) : workspace_(workspace), command_history_(actor_factory_) {}
+
       protected:
         bool on_initialize() override;
+        bool starts_world_play() const override { return false; }
         void on_shutdown() override;
         void on_build_ui() override;
         bool on_scene_viewport_extent(Extent& extent) const override;
@@ -22,16 +30,15 @@ namespace toy3d
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override;
 
       private:
-        Extent scene_extent_;
-        Extent previous_scene_extent_;
-        HitProxyRequest pending_hit_request_;
-        std::uint64_t next_hit_request_id_ = 1;
-        std::uint64_t current_hit_request_id_ = 0;
-        std::uint64_t viewport_generation_ = 1;
-        std::uint32_t selected_actor_id_ = 0;
+        EditorWorkspace& workspace_;
+        EditorSelection selection_;
+        ActorFactory actor_factory_;
+        EditorCommandHistory command_history_;
+        SceneViewport scene_viewport_;
         bool initial_dock_layout_checked_ = false;
-        EditorViewportGizmo gizmo_;
-        StaticMeshActor* preview_actor_ = nullptr;
-        MaterialInstanceRef preview_material_;
+        bool reset_dock_layout_ = false;
+        std::string asset_folder_ = "/Project";
+        bool show_engine_content_ = false;
+
     };
 } // namespace toy3d

@@ -2,12 +2,26 @@
 
 #include "logging/logger.h"
 #include "math/scalar_math.h"
+#include "gamescene/world/world.h"
+#include "rendercore/scene_interface.h"
+#include <cassert>
+#include <utility>
 
 namespace toy3d
 {
+    // --------------------------------------------------------------------------
+    // LightComponent: validates GT properties and owns the opaque render-state identity
+    // --------------------------------------------------------------------------
+    LightComponent::~LightComponent()
+    {
+        // Actor unregister / World unbind must run while SceneInterface is still alive.
+        assert(scene_proxy_ == nullptr);
+    }
+
     void LightComponent::set_enabled(bool enabled)
     {
         enabled_ = enabled;
+        send_render_update();
     }
 
     bool LightComponent::set_color(const Vector3& color)
@@ -18,6 +32,7 @@ namespace toy3d
             return false;
         }
         color_ = color;
+        send_render_update();
         return true;
     }
 
@@ -29,14 +44,70 @@ namespace toy3d
             return false;
         }
         intensity_ = intensity;
+        send_render_update();
         return true;
     }
 
     void LightComponent::set_render_priority(int render_priority)
     {
         render_priority_ = render_priority;
+        send_render_update();
     }
 
+
+    LightSceneData LightComponent::scene_data() const
+    {
+        LightSceneData data;
+        data.kind = dynamic_cast<const PointLightComponent*>(this) ? LightKind::Point : LightKind::Directional;
+        data.position = transform_position(world_transform(), Vector3());
+        data.direction = rotate_vector(world_rotation(), Vector3(0, 0, 1));
+        data.color = color_;
+        data.intensity = intensity_;
+        data.enabled = enabled_;
+        data.priority = render_priority_;
+        if (const auto* local = dynamic_cast<const LocalLightComponent*>(this)) data.range = local->range();
+        return data;
+    }
+
+    void LightComponent::create_render_state()
+    {
+        if (scene_proxy_ || !is_registered() || !world().scene_interface()) return;
+        if (dynamic_cast<SpotLightComponent*>(this))
+        {
+            TOY_LOG_ERROR("Spot light rendering is not supported yet.");
+            return;
+        }
+        auto proxy = std::make_unique<LightSceneProxy>();
+        proxy->data = scene_data();
+        LightSceneProxy* identity = proxy.get();
+        world().scene_interface()->add_light(std::move(proxy));
+        scene_proxy_ = identity;
+        world().mark_scene_changed();
+    }
+
+    void LightComponent::destroy_render_state()
+    {
+        if (!scene_proxy_) return;
+        assert(world().scene_interface());
+        world().scene_interface()->remove_light(scene_proxy_);
+        scene_proxy_ = nullptr;
+        world().mark_scene_changed();
+    }
+
+    void LightComponent::send_render_update()
+    {
+        if (!scene_proxy_ || !world().scene_interface()) return;
+        world().scene_interface()->update_light(scene_proxy_, scene_data());
+        world().mark_scene_changed();
+    }
+
+    void LightComponent::on_register() { create_render_state(); }
+    void LightComponent::on_unregister() { destroy_render_state(); }
+    void LightComponent::on_world_transform_updated() { send_render_update(); }
+
+    // --------------------------------------------------------------------------
+    // LocalLightComponent: validates the finite attenuation radius
+    // --------------------------------------------------------------------------
     bool LocalLightComponent::set_range(float range)
     {
         if (!is_finite(range) || range <= 0.0f)
@@ -45,9 +116,13 @@ namespace toy3d
             return false;
         }
         range_ = range;
+        send_render_update();
         return true;
     }
 
+    // --------------------------------------------------------------------------
+    // SpotLightComponent: stores validated cone angles; rendering is not yet supported
+    // --------------------------------------------------------------------------
     bool SpotLightComponent::set_cone_angles(float inner_angle_degrees, float outer_angle_degrees)
     {
         if (!is_finite(inner_angle_degrees) || !is_finite(outer_angle_degrees) || inner_angle_degrees < 0.0f ||

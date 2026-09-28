@@ -45,6 +45,9 @@ elseif(ANDROID)
 endif()
 
 # 合并源文件
+list(REMOVE_ITEM ALL_HEADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/scene/light_scene_proxy.h")
+list(REMOVE_ITEM ALL_SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.cpp")
 set(HEADER_FILES ${ALL_HEADER_FILES} ${PLATFORM_HEADER_FILES})
 set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
 
@@ -55,6 +58,10 @@ set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
+target_sources(${TARGET_NAME} PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/scene/light_scene_proxy.h")
 add_dependencies(${TARGET_NAME} Toy3dShaders)
 add_dependencies(${TARGET_NAME} Toy3dShaderParameters)
 set_source_files_properties(${TOY3D_SHADER_PARAMETERS_HEADERS} PROPERTIES GENERATED TRUE)
@@ -195,7 +202,7 @@ target_include_directories(
   
 # win32 resouce.h
 if(WIN32)
-    target_include_directories(${TARGET_NAME} PRIVATE ${ENGINE_ROOT_DIR}/${ASSET_NAME}/win32)
+    target_include_directories(${TARGET_NAME} PRIVATE "${ENGINE_ROOT_DIR}/build/windows/resources")
 endif()
 
 if(BUILD_TESTING)

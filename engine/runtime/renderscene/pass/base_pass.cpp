@@ -183,7 +183,7 @@ namespace toy3d
                 }
                 if (batch_status)
                 {
-                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Pass, nullptr,
+                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Pass, inputs.lighting_binding,
                                                          owner_bindings.pass);
                 }
                 if (batch_status)

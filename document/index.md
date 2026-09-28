@@ -16,7 +16,8 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | 公共模块使用 | Active | `core-module-usage-index.md` | 查找 `engine/core/` target、公共头文件和最小用例的首选入口 |
 | 共享文件系统 | Active | `core-infrastructure-design.md` | 文件、路径、mount、存储后端与 I/O contract |
 | 编辑器资源基础 | Active | `editor-resource-foundation-design.md` | 反射、值编解码、Asset 文件、身份索引与无界面编辑 contract；行为细节见 OpenSpec change `establish-editor-resource-foundation` |
-| 编辑器资源接入方案 | Draft | `editor-resource-integration-plan.md` | 创作目录、模型生产链、最小 Editor 与后续资源类型的分批接入计划，待 OpenSpec 提案固定 |
+| Editor 总体架构 | Draft | `editor-architecture-design.md` | Editor 所有权、面板、选择、视口、编辑命令、场景生命周期与分批实施 |
+| 编辑器资源接入方案 | Draft | `editor-resource-integration-plan.md` | 创作目录、模型生产链、资源编辑与后续资源类型的分批接入计划 |
 | Core Math | Active | `core-math-design.md` | 数学类型、坐标、矩阵、Transform 与迁移 contract |
 | 线程与 Task Graph | Active | `threading-task-graph-design.md` | 共享线程、Queue、GraphTask、Named Thread 与同步 contract |
 | GameScene | Active | `gamescene-design.md` | World、Actor、Component、注册与 GameScene 生命周期 |
@@ -27,6 +28,7 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | Shader 语言语法 | Active | `shader-language-v1.ebnf` | `.shader` v1 语法定义 |
 | Vulkan 内存 | Active | `vulkan-memory-management.md` | Vulkan/VMA、上传、completion 与延迟销毁；旧实现评估仅是历史背景 |
 | Runtime Console | Active | `console-manager-design.md` | runtime 配置变量、覆盖顺序与生命周期 |
+| 资源目录与部署 | Active | `resource-directory-design.md` | 引擎/项目资产、配置、Editor 界面资源与平台构建输入的职责及部署 |
 | Application 与验证项目 | Active | `application-design.md` | 项目侧启动策略、Engine 绑定边界与当前 Cube 案例组织 |
 
 ## 历史文档

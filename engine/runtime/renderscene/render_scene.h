@@ -30,6 +30,13 @@ namespace toy3d
         void update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
                                         AxisAlignedBounds world_bounds, bool visible) override;
         void remove_primitive(PrimitiveSceneProxy* proxy) override;
+        void add_light(std::unique_ptr<LightSceneProxy> proxy) override;
+        void update_light(LightSceneProxy* proxy, LightSceneData data) override;
+        void remove_light(LightSceneProxy* proxy) override;
+        // Read only on the logical Rendering Thread while constructing forward pass parameters.
+        const std::vector<std::unique_ptr<LightSceneProxy>>& lights() const;
+        bool light_limit_reported() const { return light_limit_reported_; }
+        void set_light_limit_reported(bool reported) { light_limit_reported_ = reported; }
 
       private:
         friend void compute_scene_visibility(const RenderScene& render_scene, std::vector<ViewInfo>& view_infos);
@@ -44,5 +51,7 @@ namespace toy3d
         TaskGraphInterface& task_graph_;
         RenderResourceManager& resource_manager_;
         std::vector<std::unique_ptr<PrimitiveSceneInfo>> primitives_;
+        std::vector<std::unique_ptr<LightSceneProxy>> lights_;
+        bool light_limit_reported_ = false;
     };
 } // namespace toy3d

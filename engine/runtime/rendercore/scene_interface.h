@@ -2,6 +2,7 @@
 
 #include "math/matrix4.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
+#include "rendercore/scene/light_scene_proxy.h"
 
 #include <memory>
 
@@ -25,6 +26,9 @@ namespace toy3d
         virtual void update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
                                                 AxisAlignedBounds world_bounds, bool visible) = 0;
         virtual void remove_primitive(PrimitiveSceneProxy* proxy) = 0;
+        virtual void add_light(std::unique_ptr<LightSceneProxy> proxy) = 0;
+        virtual void update_light(LightSceneProxy* proxy, LightSceneData data) = 0;
+        virtual void remove_light(LightSceneProxy* proxy) = 0;
     };
 
     inline SceneInterface::~SceneInterface() = default;

@@ -2,4 +2,3 @@
 #include "resource.h"
 
 IDI_TOY3D_ICON               ICON                    "Toy3d.ico"
-IDI_TOY3D_EDITOR_ICON        ICON                    "Toy3dEditor.ico"

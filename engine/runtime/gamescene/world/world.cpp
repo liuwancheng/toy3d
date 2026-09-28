@@ -203,6 +203,18 @@ namespace toy3d
         return nullptr;
     }
 
+    std::vector<std::uint32_t> World::actor_ids() const
+    {
+        std::vector<std::uint32_t> ids;
+        ids.reserve(actors_.size());
+        for (const std::unique_ptr<Actor>& actor : actors_)
+        {
+            if (!actor->is_pending_destroy() && actor->actor_id() != 0u)
+                ids.push_back(actor->actor_id());
+        }
+        return ids;
+    }
+
     void World::mark_scene_changed()
     {
         scene_generation_ = scene_generation_ == (std::numeric_limits<std::uint64_t>::max)()
@@ -222,7 +234,7 @@ namespace toy3d
         scene_interface_ = &scene;
         for (const std::unique_ptr<Actor>& actor : actors_)
         {
-            actor->create_render_state_for_registered_primitives();
+            actor->create_render_state_for_registered_components();
         }
         return true;
     }
@@ -236,7 +248,7 @@ namespace toy3d
 
         for (std::size_t index = actors_.size(); index > 0; --index)
         {
-            actors_[index - 1]->destroy_render_state_for_registered_primitives();
+            actors_[index - 1]->destroy_render_state_for_registered_components();
         }
         scene_interface_ = nullptr;
         return true;

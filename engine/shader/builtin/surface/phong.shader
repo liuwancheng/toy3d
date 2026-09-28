@@ -5,13 +5,22 @@ Shader "Toy3d/Surface/Phong"
     Properties
     {
         base_color ("Base Color", Color) = (0.85, 0.32, 0.18, 1.0)
-        directional_light_direction ("Directional Light Direction", Float3) = (0.35, -0.55, -0.75)
-        directional_light_color ("Directional Light Color", Color) = (1.0, 0.96, 0.88, 1.0)
         ambient_color ("Ambient Color", Color) = (0.08, 0.10, 0.14, 1.0)
         specular_color ("Specular Color", Color) = (1.0, 0.92, 0.78, 1.0)
         specular_power ("Specular Power", Float) = 32.0
         specular_intensity ("Specular Intensity", Float) = 0.35
         surface_tint_texture ("Surface Tint Texture", Texture2D) = "white"
+    }
+
+    Parameters
+    {
+        Pass
+        {
+            scene_light_direction : Float4 = (0.0, 0.0, -1.0, 0.0)
+            scene_light_color : Float4 = (0.0, 0.0, 0.0, 0.0)
+            point_light_positions : Float4x4
+            point_light_colors : Float4x4
+        }
     }
 
     Pass "Forward"
@@ -72,7 +81,7 @@ Shader "Toy3d/Surface/Phong"
                 input.world_normal,
                 float3(0.0, 0.0, 1.0));
             const float3 light_direction = toy_safe_normalize(
-                directional_light_direction,
+                scene_light_direction.xyz,
                 float3(0.0, 0.0, -1.0));
             const float3 view_direction = toy_safe_normalize(
                 toy_camera_position - input.world_position,
@@ -85,11 +94,25 @@ Shader "Toy3d/Surface/Phong"
             const float3 texture_tint =
                 surface_tint_texture.Load(int3(0, 0, 0)).rgb;
 
+            float3 point_diffuse = float3(0, 0, 0);
+            // Four column-packed lights use the existing matrix ABI; no descriptor arrays are required.
+            for (int i = 0; i < 4; ++i)
+            {
+                const float3 position = float3(point_light_positions[0][i], point_light_positions[1][i], point_light_positions[2][i]);
+                const float radius = point_light_positions[3][i];
+                const float3 radiance = float3(point_light_colors[0][i], point_light_colors[1][i], point_light_colors[2][i]);
+                const float3 delta = position - input.world_position;
+                const float distance = length(delta);
+                const float attenuation = radius > 0.0 ? saturate(1.0 - distance / radius) : 0.0;
+                point_diffuse += radiance * attenuation * attenuation *
+                    saturate(dot(normal, toy_safe_normalize(delta, float3(0, 1, 0))));
+            }
+
             const float3 lit_color =
                 base_color.rgb * texture_tint *
                     (ambient_color.rgb +
-                     directional_light_color.rgb * diffuse_term) +
-                specular_color.rgb * (specular_term * specular_intensity);
+                     scene_light_color.rgb * diffuse_term + point_diffuse) +
+                specular_color.rgb * scene_light_color.rgb * (specular_term * specular_intensity);
             return float4(max(lit_color, 0.0), base_color.a);
         }
         ENDHLSL

@@ -3,6 +3,7 @@
 #include "input/input_system.h"
 #include "win32_input.h"
 #include "resource.h"
+#include "logging/logger.h"
 
 namespace toy3d
 {
@@ -134,9 +135,15 @@ namespace toy3d
         properties.mode = console.get_bool("Window.Fullscreen", false) ? Mode::Fullscreen : Mode::Default;
 
         HICON hIcon = static_cast<HICON>(
-            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 128, 128, LR_DEFAULTCOLOR));
+            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 128, 128,
+                        LR_DEFAULTCOLOR | LR_SHARED));
+        if (hIcon == nullptr) TOY_LOG_ERROR("Application icon loading failed: {}", GetLastError());
         HICON hIconSm = static_cast<HICON>(
-            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
+            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 32, 32,
+                        LR_DEFAULTCOLOR | LR_SHARED));
+        if (hIconSm == nullptr) TOY_LOG_ERROR("Small application icon loading failed: {}", GetLastError());
+        // LR_SHARED keeps executable icons alive for the registered window
+        // class lifetime; the window must not destroy these shared handles.
 
         // 创建窗口类
         WNDCLASSEX wc = {};

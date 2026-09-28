@@ -107,7 +107,8 @@ namespace toy3d
             TOY_LOG_ERROR("Gizmo produced a transform that cannot be represented as local TRS.");
             return consumes_pointer;
         }
-        root.set_local_transform(local_transform);
+        if (!root.set_local_transform(local_transform))
+            TOY_LOG_ERROR("Gizmo produced an invalid local Transform.");
         return consumes_pointer;
     }
 } // namespace toy3d

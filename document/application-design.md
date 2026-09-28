@@ -2,7 +2,7 @@
 
 ## 1. 状态、目标与非目标
 
-本文是当前无 Editor 阶段的 `Application` contract。目标是让项目代码通过一个稳定入口接入现有
+本文定义项目与 Editor 宿主共用的 `Application` contract。目标是让项目代码通过一个稳定入口接入现有
 `Engine` composition root，并把仓库内 `project/` 作为第一份可运行案例，支持后续快速增加引擎模块
 验证项目。
 
@@ -45,6 +45,8 @@ World 和 Window 不在每帧回调之间重复传递。Engine 只在内部绑�
 
 第一版所有 Application hook 均在 Game Thread 顺序调用：
 
+protected `starts_world_play() const` 默认为 true。Editor 覆盖为 false，World 仅初始化并绑定 SceneInterface，保持 Initialized，不执行 Gameplay BeginPlay/Tick；Application 的 UI、宿主 tick 和 View 构建仍正常执行。该启动策略不提供 Play 模式切换或第二个 World。
+
 ```text
 Engine creates Window and rendering framework
 → Engine creates World
@@ -52,11 +54,11 @@ Engine creates Window and rendering framework
 → Application::on_initialize()
 → World::initialize()
 → World binds SceneInterface
-→ World::begin_play()
+→ World::begin_play()        # starts_world_play() 为 true 时
 
 each frame:
 Window events
-→ World::tick(delta)          # Actor/Component Gameplay
+→ World::tick(delta)          # 仅 Playing World 驱动 Gameplay
 → Application::on_tick(delta) # project-level policy only
 → Application::on_build_scene_views()
 → submit Draw
@@ -79,6 +81,8 @@ Engine 在调用 `on_initialize()` 前就把 Application 标记为已绑定。�
 
 ```text
 project/
+├── asset/                # 游戏资产，子目录由使用者组织
+├── config/               # 项目配置覆盖
 ├── cube_test.cpp          # 参数解析、创建 Application、启动 Engine
 ├── cube_application.*     # 项目资源、View 与验收策略
 └── cube_actor.*           # Actor/Component 层级与 Gameplay Tick
@@ -88,12 +92,13 @@ project/
 本应属于 Actor/Component 的 Gameplay；Actor 不得持有 Window、Engine、Renderer 或后端对象。
 
 后续需要频繁增加案例时，再在不改变上述 contract 的前提下提取 `toy3d_add_project()` CMake helper 和
-通用 executable 入口。第一版先使用 Cube 案例验证 Application 生命周期本身，避免同时引入模板生成和
-部署系统。
+通用 executable 入口。第一版先使用 Cube 案例验证 Application 生命周期本身，不引入模板生成。
+Editor 与 Cube 已共用 `engine/build/cmake/deploy_resources.cmake` 的开发资源复制规则；引擎/项目资产、
+配置和平台图标边界见 [资源目录设计](resource-directory-design.md)。
 
 ## 6. 验证矩阵
 
-- 无 Application 的 `Toy3dEditor` 继续使用 Engine 的空 World 与默认 View；
+- 无 Application 时使用 Engine 的空 Playing World 与默认 View；Editor Application 使用 Initialized World；
 - Cube Application 初始化成功后，Actor Tick、Material 更新和 SceneView 构造保持原行为；
 - Application 初始化失败时执行一次 shutdown，并按 Engine 原有路径回滚；
 - single-thread 与 multi-thread 使用相同 Application 调用顺序；

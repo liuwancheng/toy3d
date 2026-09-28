@@ -52,6 +52,7 @@ namespace toy3d
         bool destroy_actor(Actor& actor);
         bool contains(const Actor& actor) const;
         Actor* find_actor_by_id(std::uint32_t actor_id) const;
+        std::vector<std::uint32_t> actor_ids() const;
         std::uint64_t scene_generation() const { return scene_generation_; }
         void mark_scene_changed();
         bool bind_scene(SceneInterface& scene);

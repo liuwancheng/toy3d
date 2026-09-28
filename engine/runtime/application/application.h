@@ -26,6 +26,7 @@ namespace toy3d
         const IWindow& window() const;
 
         virtual bool on_initialize() = 0;
+        virtual bool starts_world_play() const { return true; }
         virtual void on_tick(double) {}
         // Called only while the GT Dear ImGui frame is active. Applications
         // may build widgets through ImGui core but receive no renderer service.

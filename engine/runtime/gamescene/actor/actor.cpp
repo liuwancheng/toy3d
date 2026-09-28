@@ -1,4 +1,5 @@
 #include "gamescene/actor/actor.h"
+#include "gamescene/component/light_component.h"
 
 #include <algorithm>
 
@@ -134,7 +135,7 @@ namespace toy3d
         }
     }
 
-    void Actor::create_render_state_for_registered_primitives()
+    void Actor::create_render_state_for_registered_components()
     {
         for (const std::unique_ptr<ActorComponent>& component : components_)
         {
@@ -143,10 +144,12 @@ namespace toy3d
             {
                 primitive->create_render_state();
             }
+            auto* light = dynamic_cast<LightComponent*>(component.get());
+            if (light && light->is_registered()) light->create_render_state();
         }
     }
 
-    void Actor::destroy_render_state_for_registered_primitives()
+    void Actor::destroy_render_state_for_registered_components()
     {
         for (std::size_t index = components_.size(); index > 0; --index)
         {
@@ -155,6 +158,8 @@ namespace toy3d
             {
                 primitive->destroy_render_state();
             }
+            auto* light = dynamic_cast<LightComponent*>(components_[index - 1].get());
+            if (light) light->destroy_render_state();
         }
     }
 } // namespace toy3d

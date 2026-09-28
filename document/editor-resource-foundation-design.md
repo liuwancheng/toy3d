@@ -17,11 +17,11 @@
 | `engine/core/serialization/` | `Toy3dSerialization` | 有界值编解码、版本迁移所需的值接口与错误返回 |
 | `engine/resource/` | `Toy3dResource` | Asset/子资源身份、统一文件外层、索引、类型化引用和编辑事务 |
 | `engine/tools/reflection_codegen/` | 独立生成器目标 | 处理构建配置中的明确头文件清单，向构建目录输出 C++ |
-| `engine/asset/` | 无代码目标 | 用户组织的资产文件，相当于 UE `Content`；子目录名不决定资源类型 |
+| `engine/asset/`、`project/asset/` | 无代码目标 | 引擎与项目资产，相当于 UE `Content`；子目录名不决定资源类型 |
 
 依赖方向为 `Toy3dSerialization → Toy3dReflection + Toy3dText + Toy3dMath`，`Toy3dFileSystem → Toy3dText`，`Toy3dResource → Toy3dSerialization + Toy3dReflection + Toy3dFileSystem`。资源身份的值编解码在资源目标提供适配，Serialization 不反向依赖资源目标。领域 DTO 和领域校验属于对应领域目标或其测试 fixture；工具不得反向依赖 runtime，资源目标不得依赖 RenderCore、GameScene 或 Editor。生成器为构建时工具，不参与目标程序的运行时生命周期。目标统一使用 C++17、`target_*` CMake 配置；生成结果只在构建目录中，构建不隐式从网络取得工具或 codec。
 
-`engine/asset/` 保留现有名称和文件，不强制 `mesh/`、`animation/` 等子目录。文件内根类型和 Asset ID 决定资源身份；路径只用于查找。`Toy3dFileSystem` 仍只处理字节、路径和 mount，不处理资源类型或依赖。文件系统的 `VirtualPath`、`FileStatus` 和单文件原子写入沿用 [共享文件系统设计](core-infrastructure-design.md)。
+`asset` 保留现有名称，不强制 `mesh/`、`animation/` 等子目录。引擎内置资产放入 `engine/asset/`，游戏资产放入 `project/asset/`；配置、平台打包输入与 Editor 界面资源的分离遵循 [资源目录设计](resource-directory-design.md)。文件内根类型和 Asset ID 决定资源身份；路径只用于查找。`Toy3dFileSystem` 仍只处理字节、路径和 mount，不处理资源类型或依赖。文件系统的 `VirtualPath`、`FileStatus` 和单文件原子写入沿用 [共享文件系统设计](core-infrastructure-design.md)。
 
 实施前盘点确认：`Toy3dFileSystem` 已有虚拟路径、受限读取、文件句柄和 `write_binary_atomic()`；`Toy3dLogging`、`Toy3dMath` 各自有独立目标；shader compiler 的 reflection 只描述 GPU shader，不是可复用的创作数据类型系统。现有 `engine/core/` 没有通用创作数据反射、值序列化或 Asset ID 目标，`engine/resource/` 尚未建立。生成器采用仅依赖 C++17 标准库的独立可执行目标，解析明确的受限标记语法；首次版本不引入 Clang SDK、运行时反射依赖或隐式网络下载。当前项目配置可在 Visual Studio 17 2022/x64、`BUILD_TESTING=ON` 下离线完成；新的目标只增加显式 `target_*` 依赖，不复用 shader compiler 的 GPU reflection 类型。
 
@@ -96,7 +96,7 @@ composition root 先创建并冻结 `FileSystem` mount，再显式注册及冻�
 
 Windows/MSVC 和 macOS/Clang 使用相同持久化名称、文件字节序和分段 fixture；平台差异限于构建与现有文件系统后端。移动端和其他平台在公共格式层不引入宿主字节序假设；当前无生产 Cook/profile 产物时可以读取创作文件，但需要产物的预览或 runtime 请求应明确返回未就绪。
 
-实施顺序：先建立文档和独立目标，再实现生成器/冻结 schema、值编解码、Asset 外层与身份索引，最后接编辑事务及跨类型 fixture。已有 `engine/asset/` 文件不搬动，旧 runtime Mesh/Texture/Material 和 World 创建路径继续工作。没有旧 Toy3d Asset 格式需原地转换。后续每个领域接入生产导入器或预览器时，须有新入口的同等行为测试和迁移方案，确认全部调用方迁移后才删除旧入口；Shader `Properties` 和 GameScene 生命周期入口不是本 change 的删除对象。回滚新基础目标不得改写既有资产。
+实施顺序：先建立文档和独立目标，再实现生成器/冻结 schema、值编解码、Asset 外层与身份索引，最后接编辑事务及跨类型 fixture。资源基础建立时保持旧 runtime Mesh/Texture/Material 和 World 创建路径；后续目录迁移遵循 [资源目录设计](resource-directory-design.md)，不改变 Asset 格式和身份。没有旧 Toy3d Asset 格式需原地转换。后续每个领域接入生产导入器或预览器时，须有新入口的同等行为测试和迁移方案，确认全部调用方迁移后才删除旧入口；Shader `Properties` 和 GameScene 生命周期入口不是本 change 的删除对象。回滚新基础目标不得改写既有资产。
 
 | 验证层 | 主要检查 |
 | --- | --- |

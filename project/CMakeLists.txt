@@ -5,8 +5,15 @@ set(TOY3D_CUBE_TEST_SOURCES
     "cube_application.h"
     "cube_test.cpp")
 
-if(APPLE)
-    set(TOY3D_CUBE_TEST_ICON "${TOY3D_ROOT_DIR}/engine/asset/mac/Toy3d.icns")
+if(WIN32)
+    set(TOY3D_CUBE_RESOURCE_DIR "${TOY3D_ROOT_DIR}/engine/build/windows/resources")
+    add_executable(Toy3dCubeTest ${TOY3D_CUBE_TEST_SOURCES}
+        "${TOY3D_CUBE_RESOURCE_DIR}/Toy3d.rc")
+    target_include_directories(Toy3dCubeTest PRIVATE "${TOY3D_CUBE_RESOURCE_DIR}")
+    set_source_files_properties("${TOY3D_CUBE_RESOURCE_DIR}/Toy3d.rc" PROPERTIES
+        OBJECT_DEPENDS "${TOY3D_CUBE_RESOURCE_DIR}/resource.h;${TOY3D_CUBE_RESOURCE_DIR}/Toy3d.ico")
+elseif(APPLE)
+    set(TOY3D_CUBE_TEST_ICON "${TOY3D_ROOT_DIR}/engine/build/mac/resources/Toy3d.icns")
     add_executable(Toy3dCubeTest MACOSX_BUNDLE
         ${TOY3D_CUBE_TEST_SOURCES}
         "${TOY3D_CUBE_TEST_ICON}")
@@ -26,6 +33,10 @@ if(APPLE)
         MACOSX_BUNDLE_BUNDLE_NAME "Toy3dCubeTest"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.toy3d.CubeTest"
         MACOSX_BUNDLE_ICON_FILE "Toy3d.icns"
+        MACOSX_BUNDLE_INFO_PLIST "${TOY3D_ROOT_DIR}/engine/build/mac/resources/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${CMAKE_PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${CMAKE_PROJECT_VERSION}"
+        MACOSX_BUNDLE_COPYRIGHT "Toy3d contributors"
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
         XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO")
 endif()
@@ -54,10 +65,6 @@ else()
                 "$<TARGET_FILE:Toy3dCubeTest>"
                 "${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dCubeTest>")
 endif()
-list(APPEND TOY3D_CUBE_TEST_POST_BUILD_COMMANDS
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${BINARY_ROOT_DIR}/asset"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${TOY3D_ROOT_DIR}/engine/asset"
-            "${BINARY_ROOT_DIR}/asset")
 add_custom_command(TARGET Toy3dCubeTest POST_BUILD
-    ${TOY3D_CUBE_TEST_POST_BUILD_COMMANDS})
+    ${TOY3D_CUBE_TEST_POST_BUILD_COMMANDS} VERBATIM)
+toy3d_deploy_common_resources(Toy3dCubeTest)

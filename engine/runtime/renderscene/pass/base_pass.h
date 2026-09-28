@@ -19,6 +19,7 @@ namespace toy3d
         const std::vector<ViewInfo>& views;
         RHITextureViewRef scene_color;
         RHITextureViewRef scene_depth;
+        RHIBindingSetRef lighting_binding;
     };
 
     RHIStatus render_base_pass(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,

@@ -1,4 +1,6 @@
 #include "cube_application.h"
+#include "gamescene/actor/light_actor.h"
+#include "logging/logger.h"
 
 #include "cube_actor.h"
 
@@ -92,10 +94,6 @@ namespace
         desc.parameter_schema = toy3d::material_parameter_schema_from_shader_schema(
             desc.shader_program->data().parameter_schema);
         desc.vector4_defaults.emplace(material_constant_id("base_color"), toy3d::vec4(0.85f, 0.32f, 0.18f, 1.0f));
-        desc.vector3_defaults.emplace(material_constant_id("directional_light_direction"),
-                                      toy3d::vec3(0.35f, -0.55f, -0.75f));
-        desc.vector4_defaults.emplace(material_constant_id("directional_light_color"),
-                                      toy3d::vec4(1.0f, 0.96f, 0.88f, 1.0f));
         desc.vector4_defaults.emplace(material_constant_id("ambient_color"), toy3d::vec4(0.08f, 0.10f, 0.14f, 1.0f));
         desc.vector4_defaults.emplace(material_constant_id("specular_color"), toy3d::vec4(1.0f, 0.92f, 0.78f, 1.0f));
         desc.scalar_defaults.emplace(material_constant_id("specular_power"), 32.0f);
@@ -286,6 +284,11 @@ bool CubeApplication::on_initialize()
     }
 
     actor_ = &world().spawn_actor<CubeActor>(mesh_);
+    light_actor_ = &world().spawn_actor<toy3d::DirectionalLightActor>();
+    toy3d::Transform light_transform;
+    if (!toy3d::try_make_rotation_from_forward_up(toy3d::Vector3(-0.35f, 0.55f, 0.75f),
+                                                  toy3d::Vector3(0, 1, 0), light_transform.rotation) ||
+        !light_actor_->root_component()->set_local_transform(light_transform)) return false;
     return true;
 }
 
@@ -307,9 +310,15 @@ void CubeApplication::on_tick(double delta_time)
     if (animate_material_ && material_instance_)
     {
         const float light_x = 0.35f * std::sin(time * 0.7f);
-        // The C++17 string_view setter resolves this stable schema name synchronously, so the literal never crosses threads.
-        static_cast<void>(material_instance_->set_vector("directional_light_direction",
-                                                         toy3d::vec3(light_x, -0.55f, -0.75f)));
+        if (light_actor_)
+        {
+            toy3d::Transform light_transform = light_actor_->root_component()->local_transform();
+            if (!toy3d::try_make_rotation_from_forward_up(toy3d::Vector3(-light_x, 0.55f, 0.75f),
+                                                         toy3d::Vector3(0, 1, 0), light_transform.rotation) ||
+                !light_actor_->root_component()->set_local_transform(light_transform))
+                TOY_LOG_ERROR("Cube sample light animation failed.");
+        }
+        // C++17 string_view resolves the schema name synchronously; the literal never crosses threads.
         static_cast<void>(
             material_instance_->set_scalar("specular_intensity", 0.25f + 0.20f * (0.5f + 0.5f * std::sin(time))));
         static_cast<void>(material_instance_->set_texture(
@@ -405,6 +414,11 @@ bool CubeApplication::release_scene_resources()
             {
                 return false;
             }
+        }
+        if (light_actor_)
+        {
+            if (!world().destroy_actor(*light_actor_)) return false;
+            light_actor_ = nullptr;
         }
         actor_destroyed_ = true;
     }

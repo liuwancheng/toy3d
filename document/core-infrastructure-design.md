@@ -95,6 +95,8 @@ runtime / editor / tools domain services
 /User                   明确授权的用户内容；默认不挂载
 ```
 
+当前宿主另挂载 `/Engine/Config`、`/Project/Config` 读取引擎与项目配置，Editor 创作实例另有只读 `/Editor/Resources`。这些 mount 是宿主策略而非 FileSystem 硬编码；对应物理目录和部署边界见 [资源目录设计](resource-directory-design.md)。
+
 目录只是 namespace contract，不硬编码到共享 library。每个 executable 的 composition root 根据部署配置挂载。Asset 系统可以用自己的 `AssetId` 或逻辑 URI，但只能通过领域 service 转成 `VirtualPath`，不能反过来让文件系统理解 Asset。
 
 ### 4.2 `PhysicalPath`

@@ -18,20 +18,25 @@ toy3d/
 │   │   ├── platform/            win、mac、android 等平台实现
 │   │   ├── renderscene/         上层渲染场景与 pass
 │   │   └── generated/           历史生成头文件位置，待迁移
-│   ├── editor/                  Toy3dEditor 入口与编辑器代码
+│   ├── editor/                  Toy3dEditor 入口、编辑器代码与 resources 界面资源
 │   ├── tools/
 │   │   └── shader_compiler/     shader compiler 前端、CLI 与测试
 │   ├── shader/                  shader 源码及其构建规则
-│   ├── asset/                   运行资源
+│   ├── asset/                   引擎内置资产，对应 UE Content
+│   ├── config/                  引擎默认配置数据
+│   ├── build/                   平台图标、plist 模板与部署规则，受版本管理
 │   ├── template/                配置文件模板
 │   └── thirdparty/              第三方依赖
 ├── document/                    架构与设计文档
+├── project/                     验证项目代码、asset 游戏资产与 config 项目配置
 ├── .codex/skills/               仓库级 Codex skills
 ├── build/                       CMake 构建目录，不提交
 └── bin/                         可执行文件和复制后的运行资源，不提交
 ```
 
 现有公共基础设施的 CMake target、公共头文件和最小调用方式统一索引在 `document/core-module-usage-index.md`。新增文件、日志、线程、任务等通用能力前先查该索引及对应专项设计，避免重复实现。
+
+资产、配置、Editor 界面资源与平台构建输入遵循 `document/resource-directory-design.md`。`engine/build/` 是源码输入，不是根目录的 CMake `build/` 产物；Editor 创作写入源码侧 `project/asset/`，不得保存到 `bin/` 部署副本。资产子目录由使用者自行组织。
 
 新增运行时代码放入 `engine/runtime/` 中职责最接近的模块，不再建立笼统的 `engine/runtime/core/`。需要同时被 runtime、editor 或 tools 使用的第一方基础设施放入 `engine/core/`，不得为了复用而让工具反向依赖 `engine/runtime/`。RHI 公共类型和行为放在 `drivers/rhi/`，图形 API 实现放在各自独立后端目录；renderscene 不得依赖后端类型。离线工具放在 `engine/tools/`，不得反向依赖 editor。shader 源文件与 shader compiler 实现分开管理。除升级依赖外不要修改 `engine/thirdparty/`。
 
@@ -53,13 +58,14 @@ toy3d/
 
 ## 构建、测试与开发命令
 
+- `./build_win.bat Debug`：推荐的 Windows 一键入口；生成 VS 2022 x64 工程、启用 Vulkan、构建 Editor 并自动部署到 `bin/`。第二个参数可选 `Toy3dCubeTest`，配置支持 `Debug`、`Release`、`RelWithDebInfo`、`MinSizeRel`。
 - `cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON`：推荐的 Windows 配置命令。
 - `cmake --build build --config Debug --target Toy3dEditor`：构建 Debug 编辑器及其运行时依赖。
 - `cmake --build build --config Debug --target Toy3dShaderCompilerFrontendTests`：构建 shader compiler 前端测试。
 - `ctest --test-dir build -C Debug --output-on-failure`：运行已登记的测试并输出失败诊断。
 - `./build_macos.sh Debug`：在 macOS 上配置并构建 `Toy3dEditor`；默认使用 Xcode，在 sandbox/CI 中使用 Unix Makefiles。也可传入 `Release`、`RelWithDebInfo` 或 `MinSizeRel`。
 
-`build_win.bat` 仍是未指定 `-S/-B` 的历史脚本，在修正前不得作为推荐入口。构建产物和复制后的运行资源会进入 `bin/`。项目禁止 CMake 源码内构建。
+`build_win.bat` 按脚本所在目录定位源码和 `build/`，可从任意工作目录调用；无参数运行默认构建 Debug Editor 并暂停显示结果，显式传入参数时不暂停。构建失败返回非零退出码。构建产物和复制后的运行资源会进入 `bin/`。项目禁止 CMake 源码内构建。
 
 ## C++ 编码规范
 

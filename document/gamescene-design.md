@@ -66,7 +66,7 @@ Actor
 └── StaticMeshActor
 ```
 
-未来有稳定用例后再增加 `CameraActor`、各类 `LightActor`、`Pawn` 与 `Character`；
+当前已有 `DirectionalLightActor` 与 `PointLightActor`，分别组合对应 LightComponent root。未来有稳定用例后再增加 `CameraActor`、`Pawn` 与 `Character`；
 不为目录整齐预建空类型。
 
 ## 3. 所有权与生命周期
@@ -233,3 +233,11 @@ G1 不保留旧 Actor factory、帧末 transform 扫描、Scene/resource collect
 也不保留空的 GameScene 与 Camera 占位类型。
 
 后续每批必须保持唯一正式入口，不新增 snapshot collector 与 RenderCommand 双轨。
+
+## 9. 场景灯光与资源引用释放
+
+LightComponent 使用显式 render-state 生命周期：注册或 World bind 创建 CPU-only LightSceneProxy 并转移到 SceneInterface，GT 仅保留 opaque identity。setter 和 world transform 变化复制 LightSceneData，经 update_light 推送；注销或 World unbind 先 remove_light 再清 identity。RenderScene 独占代理并在 RT 更新，不访问 Actor/Component。Directional 和 Point 当前支持；Spot render state 明确记录未支持。
+
+Directional 的 world rotation 将本地 +Z 变换为光线行进方向。Point 的位置来自 Component world transform，范围、线性颜色、非负强度和 enabled 保留 GameScene 校验。前向渲染的数量限制和参数打包属于 RenderScene，World 不逐帧扫描或生成光照快照。Editor 通过 Application 启动策略保持 Initialized World，仍正常 create/update/remove render state。
+
+StaticMeshComponent 的 Remove 之后追加保留 mesh 和 material override 引用的 FIFO 命令，保证 setter 替换旧网格或 Actor 析构时，借用 RenderData 的 Remove 能先完成。此命令只保留所有权，不读取 GT 状态，不承担 GPU idle；后端继续按 submission completion 延迟销毁 RHI 资源。MaterialInstance 最后引用的显式 release 仍由资源所有者负责。

@@ -1,7 +1,7 @@
 find_package(Threads REQUIRED)
 
 add_library(Toy3dResource STATIC)
-target_sources(Toy3dResource PRIVATE "asset_identity.cpp" "asset_identity.h" "asset_value_codec.cpp" "asset_file.cpp" "asset_file.h" "asset_format_migration.cpp" "asset_index.cpp" "asset_index.h" "property_path.cpp" "property_path.h" "edit_session.h")
+target_sources(Toy3dResource PRIVATE "asset_identity.cpp" "asset_identity.h" "asset_value_codec.cpp" "asset_file.cpp" "asset_file.h" "asset_format_migration.cpp" "asset_index.cpp" "asset_index.h" "asset_catalog.cpp" "asset_catalog.h" "property_path.cpp" "property_path.h" "edit_session.h")
 target_compile_features(Toy3dResource PUBLIC cxx_std_17)
 set_target_properties(Toy3dResource PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Resource")
 target_include_directories(Toy3dResource

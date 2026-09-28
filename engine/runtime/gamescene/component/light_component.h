@@ -2,13 +2,14 @@
 
 #include "gamescene/component/scene_component.h"
 #include "math/vector3.h"
+#include "rendercore/scene/light_scene_proxy.h"
 
 namespace toy3d
 {
     class LightComponent : public SceneComponent
     {
       public:
-        ~LightComponent() override = default;
+        ~LightComponent() override;
 
         bool enabled() const { return enabled_; }
         void set_enabled(bool enabled);
@@ -22,14 +23,23 @@ namespace toy3d
         int render_priority() const { return render_priority_; }
         void set_render_priority(int render_priority);
 
+        void create_render_state();
+        void destroy_render_state();
+
       protected:
         explicit LightComponent(Actor& owner) : SceneComponent(owner) {}
+        void on_register() override;
+        void on_unregister() override;
+        void on_world_transform_updated() override;
+        void send_render_update();
 
       private:
         bool enabled_ = true;
         Vector3 color_{1.0f};
         float intensity_ = 1.0f;
         int render_priority_ = 0;
+        LightSceneData scene_data() const;
+        LightSceneProxy* scene_proxy_ = nullptr;
     };
 
     class DirectionalLightComponent final : public LightComponent

@@ -20,14 +20,15 @@ runtime modules -> ConsoleManager -> Toy3dFileSystem contract
 
 `ConsoleManager::get_instance()` 提供 runtime 进程级全局入口。`Engine::pre_init()` 在创建 Window 和 Renderer 前按以下顺序初始化：
 
-1. 从 `/Engine/config/engine_config.ini` 加载变量；
-2. 应用命令行覆盖；
-3. 后续 cmd 命令可继续通过 `set_value()` 覆盖。
+1. 从 `/Engine/Config/engine_config.ini` 加载引擎默认值；
+2. 用 `ConfigLoadMode::Overlay` 加载 `/Project/Config/engine_config.ini`，仅覆盖项目明确写出的键；
+3. 应用命令行覆盖；
+4. 后续 cmd 命令可继续通过 `set_value()` 覆盖。
 
 覆盖优先级通过明确的调用顺序实现：
 
 ```text
-调用方默认值 < Config < 命令行 < 运行时 cmd
+调用方默认值 < 引擎 Config < 项目 Config < 命令行 < 运行时 cmd
 ```
 
 本阶段不支持在运行期间重新加载 Config；避免低优先级来源覆盖已经生效的命令行或 cmd 值。
@@ -35,14 +36,14 @@ runtime modules -> ConsoleManager -> Toy3dFileSystem contract
 ## 4. 所有权、线程与错误
 
 - singleton 持有变量表，进程退出时由静态生命周期回收；不持有 Window、Renderer、FileSystem 或其他业务对象；
-- 查询使用共享锁，写入和 Config 批量替换使用独占锁；返回字符串副本，不向调用方暴露容器引用；
-- Config 缺失、路径非法、UTF-8 非法或 I/O 失败保留 `FileStatus`，由 composition root 记录诊断；
+- 查询使用共享锁，写入和 Config 批量替换/覆盖使用独占锁；返回字符串副本，不向调用方暴露容器引用；`Replace` 为默认加载方式，`Overlay` 保留未提及的键；
+- Config 缺失、路径非法、UTF-8 非法或 I/O 失败保留 `FileStatus`，失败不修改现有值；项目配置缺失允许继续，其他加载失败由 composition root 记录日志；
 - 无效数值转换返回调用方提供的默认值；未知变量不会自动创建，只有 `set_value()` 和输入来源可以写入；
 - `reset_for_tests()` 只用于测试隔离，生产初始化流程不得调用。
 
 ## 5. 平台与安全边界
 
-所有平台使用相同的虚拟 Config 路径和变量命名。Config 只能通过已冻结、只读的 `/Engine` mount 加载，不接受 CWD fallback 或任意物理路径。命令行与未来 cmd 只修改变量值，不获得文件系统访问能力。
+所有平台使用相同的虚拟 Config 路径和变量命名。Config 只能通过已冻结、只读的 `/Engine/Config`、`/Project/Config` mount 加载，不接受 CWD fallback 或任意物理路径。源配置分别位于 `engine/config`、`project/config`，部署与目录职责见 [资源目录设计](resource-directory-design.md)。命令行与未来 cmd 只修改变量值，不获得文件系统访问能力。用户配置保存层尚未实现。
 
 ## 6. 测试与迁移
 

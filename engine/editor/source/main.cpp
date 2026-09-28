@@ -3,6 +3,7 @@
 #include <codecvt>
 #include <locale>
 #include <memory>
+#include <iostream>
 #include <utility>
 
 #if WITH_WIN64
@@ -12,6 +13,7 @@
 #include "config/command_line_parser.h"
 #include "engine.h"
 #include "editor.h"
+#include "workspace/editor_workspace.h"
 
 toy3d::Engine g_engine;
 
@@ -89,13 +91,36 @@ int main(int argc, char* argv[])
 
 int engine_main(void* hInstance)
 {
+    toy3d::CommandLineParser& arguments = toy3d::CommandLineParser::get_instance();
+    std::vector<std::string> editor_defaults = {"Toy3dEditor"};
+    if (!arguments.has_option("Window.Title"))
+        editor_defaults.push_back("--Window.Title=Toy3d Editor");
+    if (!arguments.has_option("Window.Width") && !arguments.has_option("Width") &&
+        !arguments.has_option("resX"))
+        editor_defaults.push_back("--Window.Width=1600");
+    if (!arguments.has_option("Window.Height") && !arguments.has_option("Height") &&
+        !arguments.has_option("resY"))
+        editor_defaults.push_back("--Window.Height=900");
+    arguments.parser_args(editor_defaults);
+
+    toy3d::EditorWorkspace workspace;
+    const std::string asset_root = arguments.get_option("Editor.AssetRoot", TOY3D_EDITOR_ASSET_ROOT);
+    toy3d::EditorWorkspacePaths workspace_paths;
+    workspace_paths.project_assets = toy3d::PhysicalPath(asset_root);
+    workspace_paths.engine_assets = toy3d::PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
+    workspace_paths.editor_resources = toy3d::PhysicalPath(TOY3D_EDITOR_RESOURCE_ROOT);
+    workspace_paths.deployment = toy3d::PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
+    const bool workspace_ready = workspace.initialize(workspace_paths);
+    if (!workspace_ready)
+        std::cerr << "Editor workspace: " << workspace.error() << '\n';
     toy3d::ShaderLoadConfig shader_config;
     shader_config.mode = toy3d::ShaderLoadMode::ShaderMapEntry;
     shader_config.path = toy3d::PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
     g_engine.set_shader_load_config(std::move(shader_config));
-    g_engine.set_application(std::make_unique<toy3d::EditorApplication>());
+    g_engine.set_application(std::make_unique<toy3d::EditorApplication>(workspace));
     g_engine.init(hInstance);
     g_engine.main_loop();
     g_engine.exit();
+    g_engine.set_application(nullptr);
     return 0;
 }

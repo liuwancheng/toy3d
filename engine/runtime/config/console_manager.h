@@ -10,6 +10,12 @@ namespace toy3d
     struct FileStatus;
     class VirtualPath;
 
+    enum class ConfigLoadMode
+    {
+        Replace,
+        Overlay
+    };
+
     class ConsoleManager
     {
       public:
@@ -20,7 +26,8 @@ namespace toy3d
         ConsoleManager(ConsoleManager&&) = delete;
         ConsoleManager& operator=(ConsoleManager&&) = delete;
 
-        FileStatus load_config(FileSystem& file_system, const VirtualPath& path);
+        FileStatus load_config(FileSystem& file_system, const VirtualPath& path,
+                               ConfigLoadMode mode = ConfigLoadMode::Replace);
         void set_value(const std::string& key, const std::string& value);
         std::string get_string(const std::string& key, const std::string& default_value = "") const;
         int get_int(const std::string& key, int default_value = 0) const;

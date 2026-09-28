@@ -23,6 +23,7 @@ namespace toy3d
 
       private:
         void update_bounds() override;
+        void on_render_state_removed() override;
         std::unique_ptr<PrimitiveSceneProxy> create_scene_proxy() const override;
 
         StaticMeshRef static_mesh_;

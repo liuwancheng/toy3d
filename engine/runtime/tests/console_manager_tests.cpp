@@ -70,7 +70,7 @@ int main()
           "config fixture must be written through PlatformFile");
 
     toy3d::DirectoryFileStoreDesc store_desc;
-    store_desc.physical_root = toy3d::PhysicalPath(directory.path.u8string());
+    store_desc.physical_root = toy3d::PhysicalPath((directory.path / "config").u8string());
     store_desc.writable = false;
     store_desc.debug_name = "RuntimeConfigTest";
     auto store = toy3d::DirectoryFileStore::create(platform_file, store_desc);
@@ -79,23 +79,47 @@ int main()
         return 1;
 
     toy3d::FileMountDesc mount;
-    mount.virtual_root = virtual_path("/Engine");
+    mount.virtual_root = virtual_path("/Engine/Config");
     mount.store = store.value();
     mount.access = toy3d::MountAccess::ReadOnly;
     mount.debug_name = "Engine";
     toy3d::FileSystem file_system;
     check(file_system.add_mount(mount).succeeded(), "engine config mount must register");
+    mount.virtual_root = virtual_path("/Project/Config");
+    check(file_system.add_mount(mount).succeeded(), "project config mount must register");
     check(file_system.freeze().succeeded(), "engine config mount must freeze");
 
     toy3d::ConsoleManager& console = toy3d::ConsoleManager::get_instance();
     console.reset_for_tests();
-    check(console.load_config(file_system, virtual_path("/Engine/config/engine_config.ini")).succeeded(),
+    check(console.load_config(file_system, virtual_path("/Engine/Config/engine_config.ini")).succeeded(),
           "ConsoleManager must load config through the virtual file system");
     check(console.get_int("Window.Width") == 1280, "section integer must parse");
     check(console.get_int("Window.Height") == 720, "CRLF input must parse");
     check(console.get_string("Window.Title") == "Toy3d Test", "trimmed text must parse");
     check(console.get_bool("Renderer.VSync", false), "inline comments must be removed");
     check(console.get_int("Missing", 42) == 42, "missing values must preserve defaults");
+
+    const toy3d::PhysicalPath project_config_path((directory.path / "config" / "project.ini").u8string());
+    check(platform_file.write_text_utf8(project_config_path, "[Window]\nWidth=1440\nTitle=Project Test\n",
+                                       toy3d::FileWriteMode::CreateNew).succeeded(),
+          "project config fixture must be written");
+    check(console.load_config(file_system, virtual_path("/Project/Config/project.ini"),
+                              toy3d::ConfigLoadMode::Overlay).succeeded(), "project config overlay must load");
+    check(console.get_int("Window.Width") == 1440 && console.get_string("Window.Title") == "Project Test",
+          "explicit project keys must override engine defaults");
+    check(console.get_int("Window.Height") == 720 && console.get_bool("Renderer.VSync", false),
+          "omitted project keys must retain engine defaults");
+    check(console.load_config(file_system, virtual_path("/Project/Config/missing.ini"),
+                              toy3d::ConfigLoadMode::Overlay).code == toy3d::FileErrorCode::NotFound &&
+              console.get_int("Window.Width") == 1440 && console.get_int("Window.Height") == 720,
+          "missing overlay must not discard valid engine or project settings");
+    const toy3d::PhysicalPath invalid_config_path((directory.path / "config" / "invalid.ini").u8string());
+    check(platform_file.write_binary(invalid_config_path, {0xffu}, toy3d::FileWriteMode::CreateNew).succeeded(),
+          "invalid config fixture must be written");
+    check(!console.load_config(file_system, virtual_path("/Project/Config/invalid.ini"),
+                               toy3d::ConfigLoadMode::Overlay).succeeded() &&
+              console.get_int("Window.Width") == 1440,
+          "invalid UTF-8 overlay must preserve the last valid configuration");
 
     toy3d::CommandLineParser command_line;
     command_line.parser_args({"Toy3dEditor", "--resX=1600", "--resY=900", "--fullscreen", "--vsync=false"});
@@ -105,7 +129,7 @@ int main()
     check(console.get_bool("Window.Fullscreen", false), "fullscreen override must use config schema");
     check(!console.get_bool("Renderer.VSync", true), "vsync override must use config schema");
 
-    const toy3d::FileStatus missing = console.load_config(file_system, virtual_path("/Engine/config/missing.ini"));
+    const toy3d::FileStatus missing = console.load_config(file_system, virtual_path("/Engine/Config/missing.ini"));
     check(missing.code == toy3d::FileErrorCode::NotFound, "missing config must preserve the file-system diagnostic");
     check(console.get_int("Window.Width") == 1600, "failed reload must preserve the last valid configuration");
 

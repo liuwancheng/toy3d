@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drivers/rhi/rhi_viewport_context.h"
+#include "rendercore/hit_proxy.h"
 
 namespace toy3d
 {
@@ -27,6 +28,6 @@ namespace toy3d
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
         ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map = nullptr,
-        RHIReadbackRef* recorded_readback = nullptr);
+        RHIReadbackRef* recorded_readback = nullptr, HitProxyTable* hit_proxy_table = nullptr);
 
 } // namespace toy3d

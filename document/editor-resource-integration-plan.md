@@ -2,11 +2,11 @@
 
 ## 1. 目标与当前落点
 
-本方案是 `establish-editor-resource-foundation` 完成后的接入计划，供下一轮 OpenSpec 提案评审。它不改变[编辑器资源基础设计](editor-resource-foundation-design.md)的 Asset 文件格式、反射用途标记或现有 GameScene 生命周期。
+本方案是 `establish-editor-resource-foundation` 完成后的资源接入计划，与 [Editor 总体架构](editor-architecture-design.md)配合使用。它不改变[编辑器资源基础设计](editor-resource-foundation-design.md)的 Asset 文件格式、反射用途标记或现有 GameScene 生命周期。
 
 目标是让一份位于创作源目录的 Toy3d Asset 从磁盘进入资源索引，经过类型化加载和领域验证，构造成运行时对象，并能由 Editor 选择、编辑、保存和重新打开。第一条贯通链路使用**静态模型 Asset**，因为它同时验证大数据段、子资源、依赖和渲染对象构造。使用一份真实 FBX 验证源文件导入和 `StaticMesh` 加载，同时保留受控的简单网格 Asset 作为编解码边界测试。材质参数的实时预览作为下一条链路接入，并继续以 Shader `Properties` 为权威。动画、碰撞和场景各自有后续领域适配；不能因第一条链路选择模型而收窄通用资源接口。
 
-当前仓库已具备 `Toy3dReflection`、`Toy3dSerialization`、`Toy3dResource`、反射生成器和五类测试 DTO；这些 DTO 位于 `engine/tools/reflection_codegen/tests/`，尚不是生产资源类型。`Toy3dEditor` 已接入 `EditorApplication` 和显示预览立方体的 `Game Viewport`，但没有资产索引或资源 UI。`Engine::initialize_file_system()` 将部署目录 `bin/asset` 对应的 store 以只读方式同时挂为 `/Engine` 和 `/Project`；构建会重新复制 `engine/asset` 到 `bin/asset`。因此 `bin/asset` 只能作为部署副本，不能充当 Editor 保存位置。`AssetId` 当前有解析与校验，但没有生产创建入口。
+当前仓库已具备 `Toy3dReflection`、`Toy3dSerialization`、`Toy3dResource`、反射生成器和五类测试 DTO；这些 DTO 位于 `engine/tools/reflection_codegen/tests/`，尚不是生产资源类型。`Toy3dEditor` 已接入 `EditorApplication`、显示预览立方体的 `Scene Viewport`、Actor 选取、ImGuizmo、基础主界面和 Content Browser。资源层已提供通用 `.asset` 扫描；Editor 使用独立的创作 mount 浏览 Asset 外层信息，但还没有生产资产创建、类型化打开或保存入口。Engine 只读部署 mount 分别读取 `bin/engine/asset` 与 `bin/project/asset`；Editor 的 `/Project` 指向可写 `project/asset`，`/Engine` 指向只读引擎资产。构建共用复制规则，不清空共享部署树；部署副本不能充当保存位置。目录职责见 [资源目录设计](resource-directory-design.md)。`AssetId` 当前有解析与校验，但没有生产创建入口。
 
 ### 1.1 Editor 先行工作包：视口呈现与 Actor Hit Proxy
 
@@ -21,7 +21,7 @@
 公共 RHI 已提供单像素 `R32UInt` 读回；Vulkan 使用私有 readback buffer，D3D11/D3D12 当前返回 `Unsupported`。当前 Shader `Parameters v1` 只开放 Float 系列，所以把 32 位 `HitProxyId` 拆成两个可精确表示 16 位整数的 `Float2` 分量传入 Shader，再写入 `R32UInt`。实际 GPU 点击选中与背景清除仍需窗口验收。
 
 ```cpp
-// 拟新增的上层语义；具体名称和 Result 类型在 RHI/Editor 提案中固定。
+// 上层语义示意；具体名称和 Result 类型在对应接口设计中固定。
 // Game Thread 提交本帧目标尺寸，并只使用已发布的纹理身份；渲染在 Rendering Thread 完成。
 editor_viewport.request_extent(requested_extent);
 EditorTextureId published = editor_viewport.presented_texture_id();
@@ -42,9 +42,9 @@ E1 已完成并通过可见立方体的窗口检查。E2 已接入 World 内 Act
 
 ### 1.2 编辑器专用属性的宏边界
 
-后续提案采用 `WITH_EDITOR`（编辑器行为和 UI）与 `WITH_EDITORONLY_DATA`（导入、重导入、Cook 所需的创作源数据）两个编译开关，命名与 UE 保持一致。`TOY3D_PROPERTY(..., Edit)` 仍只表示检查器可修改，不表示字段仅供 Editor 使用。Actor Transform、模型几何引用、材质参数等运行时需要的字段即使可编辑，也必须保留在运行时 DTO 和序列化 schema 中。视口选中态、Gizmo 状态、面板布局等临时 UI 状态由 Editor 持有，不写进 Asset。
+Editor 采用 `WITH_EDITOR`（编辑器行为和 UI）与 `WITH_EDITORONLY_DATA`（导入、重导入、Cook 所需的创作源数据）两个编译开关，命名与 UE 保持一致。`TOY3D_PROPERTY(..., Edit)` 仍只表示检查器可修改，不表示字段仅供 Editor 使用。Actor Transform、模型几何引用、材质参数等运行时需要的字段即使可编辑，也必须保留在运行时 DTO 和序列化 schema 中。视口选中态、Gizmo 状态、面板布局等临时 UI 状态由 Editor 持有，不写进 Asset。
 
-生产资源类型应将编辑器专用的源文件路径、导入选项等放入独立的创作数据类型或 `.asset` 可选数据段；运行时领域 DTO 及公共反射 schema 保持稳定。创作源 Asset 保留这些数据以支持重导入，未来 Cook 产物显式排除；在 Cook 尚未实现时，运行时读取创作源 Asset 须明确忽略该可选段，保存时则遵守现有“完整保留未知段，否则只读”的规则。当前五类测试 DTO 和既有文件格式不在此轮重写；生产模型 DTO 的具体拆分由后续 OpenSpec 提案固定。
+生产资源类型应将编辑器专用的源文件路径、导入选项等放入独立的创作数据类型或 `.asset` 可选数据段；运行时领域 DTO 及公共反射 schema 保持稳定。创作源 Asset 保留这些数据以支持重导入，未来 Cook 产物显式排除；在 Cook 尚未实现时，运行时读取创作源 Asset 须明确忽略该可选段，保存时则遵守现有“完整保留未知段，否则只读”的规则。当前五类测试 DTO 和既有文件格式不在此轮重写；生产模型 DTO 的具体拆分在模型领域设计中固定。
 
 ```cpp
 // 拟新增：仅在 Editor/离线导入目标中编译；不改变运行时共享 DTO 的布局。
@@ -71,10 +71,11 @@ CMake 必须以目标级编译定义明确给出 0/1；`WITH_EDITORONLY_DATA` �
 ## 2. 建议的目标结构
 
 ```text
-engine/asset/**/*.asset                 创作源文件，子目录由使用者决定
+project/asset/**/*.asset                游戏创作源文件，子目录由使用者决定
        │
        ▼
-Editor 专用 FileSystem 实例              /Engine → engine/asset，可写
+Editor 专用 FileSystem 实例              /Project → project/asset，可写
+                                        /Engine → engine/asset，只读
        │                                与 Engine 当前只读部署实例使用同一 Toy3dFileSystem 实现
        ├── inspect_asset → AssetIndex    只看索引、ID、依赖和类型
        └── load_asset → ModelAssetData   类型化候选、schema 迁移、领域校验
@@ -82,20 +83,21 @@ Editor 专用 FileSystem 实例              /Engine → engine/asset，可写
                           ├── 领域 blob codec → StaticMeshDesc → StaticMeshRef → World/预览
                           └── EditSession<ModelAssetData> → 原子保存到创作源文件
 
-runtime 部署：engine/asset → bin/asset → /Engine 只读；只消费已验证 Asset/产物。
+runtime 部署：engine/asset → bin/engine/asset → /Engine 只读；
+              project/asset → bin/project/asset → /Project 只读。
 ```
 
 Editor 可使用第二个 `FileSystem` 实例表达不同的 mount 策略，但不得另写文件系统实现。Editor executable 的 composition root 持有创作 `FileSystem`、冻结的 `TypeRegistry`、`AssetIndex`、schema migration registry 和活动编辑会话；`EditorApplication` 仅借用这些对象，必须在它们销毁前退出。`Engine` 继续持有自己的只读运行时文件系统和 World。类型化 DTO 与数据验证放在可被 Editor、runtime 和 tools 共同依赖的资源领域目标；模型到 `StaticMesh` 的适配器放在 runtime，不让 `Toy3dResource` 依赖 RenderCore。
 
-当前只有单仓库的 `engine/asset` 创作根。Editor 的启动配置须明确源目录，可由命令行指定并由开发构建提供默认值；不得从当前工作目录猜测或把绝对开发机路径写入 Asset。第一阶段用 `/Engine` 映射这份源目录，不扫描当前 `/Project` 别名，避免同一 Asset 被登记两次。将来独立项目目录落地后，`/Project` 才映射独立的 `<project>/asset`；这个演进需要单独的项目宿主方案，不强制 `mesh/`、`animation/` 等子目录。
+当前开发构建使用 `project/asset` 作为游戏创作根，`engine/asset` 作为只读引擎资产根。Editor 的 `--Editor.AssetRoot` 可指定项目资产源目录；不得从当前工作目录猜测或把绝对开发机路径写入 Asset。两个资产根统一扫描一次后校验 ID 与强依赖，允许项目引用引擎资源，禁止把同一份物理资产作为两个根重复登记。不强制 `mesh/`、`animation/` 等子目录；完整项目描述文件和多项目切换仍待后续宿主方案。
 
 ## 3. 接入步骤与接口草案
 
-下列片段区分**已有 API**与**拟新增 API**；签名是下一轮提案的设计输入，不表示这些新增入口已经存在。
+下列片段区分**已有 API**与**拟新增 API**；签名是后续实现的设计输入，不表示这些新增入口已经存在。
 
 ### A. 创作目录与索引
 
-在 Editor 入口创建可写 `DirectoryFileStore`，用现有 `FileSystem::add_mount()` 和 `freeze()` 把源目录挂到 `/Engine`。继续保持 Engine 自身部署 mount 只读。拒绝源目录不存在、不可写、与部署目录相同或不能安全解析的启动配置；失败时输出日志并向 Editor 呈现错误，禁止静默降级到 `bin/asset`。
+在 Editor 入口创建可写项目 `DirectoryFileStore`，用现有 `FileSystem::add_mount()` 和 `freeze()` 把源目录挂到 `/Project`，同时挂载只读引擎资产与 Editor 界面资源。保持 Engine 自身部署 mount 只读。拒绝源目录不存在、与部署根/引擎资产/界面资源重叠或不能安全解析的启动配置；实际写入失败必须报告，后续生产保存入口补齐权限预检。失败时输出日志并向 Editor 呈现错误，禁止降级到部署副本。
 
 拟在 `engine/resource/` 增加扫描入口：递归使用 `FileSystem::enumerate()`，仅对 `.asset` 调用 `inspect_asset()`，构建临时 `AssetIndex`，全部成功且强依赖无环后一次交给 owner。非 Asset 文件如字体和图标跳过；具有 `.asset` 后缀但头损坏、重复 ID、重复路径、越界索引或未知必需段必须报告具体路径。可先采用手动重新扫描，不引入文件监视器或数据库。移动与删除初期由受控命令执行，先验证冲突与引用，再修改磁盘并刷新索引；不承诺跨文件事务。
 
@@ -169,7 +171,7 @@ ModelRuntimeResult candidate = build_static_mesh(model, geometry.value(), resolv
 
 ### D. 最小 Editor 工作流
 
-Editor 新增 `EditorApplication` 并通过已有 `Engine::set_application()` 注入；它借用 Editor composition root 中的资产工作上下文，在 Game Thread 使用 `Application::on_build_ui()` 绘制初版 UI。先做资产列表、按索引显示类型/ID/依赖、选中模型的只读详情，再增加由 `TypeRegistry` 与 `PropertyPath` 驱动的可编辑字段。每个编辑调用 `EditSession<ModelAssetData>::apply_edit()`；撤销、重做和保存分别走会话已有入口。编辑 import settings 应显示“需要重新导入/构建产物”的状态，不把仅修改元数据误报成已经更新预览。
+现有 `EditorApplication` 已通过 `Engine::set_application()` 注入；资源接入时让它借用 Editor composition root 中的资产工作上下文，在 Game Thread 使用 `Application::on_build_ui()` 绘制 UI。先做资产列表、按索引显示类型/ID/依赖、选中模型的只读详情，再增加由 `TypeRegistry` 与 `PropertyPath` 驱动的可编辑字段。每个编辑调用 `EditSession<ModelAssetData>::apply_edit()`；撤销、重做和保存分别走会话已有入口。编辑 import settings 应显示“需要重新导入/构建产物”的状态，不把仅修改元数据误报成已经更新预览。
 
 保存时提供旧文件所有非 `type_data` 段的字节，缺失时保持只读并显示 `AssetStatus`。关闭或切换 Asset 时处理脏会话。Editor 调用方负责把状态映射到现有 Logger 与需要用户操作的 Dialog，不建立第二套诊断系统。第一阶段不实现通用方法调用、运行时 Actor 任意字段改写、资源热重载或多文档并发编辑。
 
@@ -187,11 +189,11 @@ Editor 新增 `EditorApplication` 并通过已有 `Engine::set_application()` �
 | 碰撞 | shape tagged variant、mesh 引用；后续加速数据 | 物理后端形状构造与重建边界 | 形状列表和参数验证，后续空间预览 |
 | 场景 | Actor/Component ID、层级、附件、资源引用 | GameScene 未发布候选与受控生命周期创建入口 | 可先查看 DTO，暂不直接装配 World |
 
-FBX 静态网格导入纳入首条模型验证链路；其他源格式、FBX 动画与蒙皮、动画压缩、物理 Cook、场景装配和独立项目目录应分别立 OpenSpec change。它们共享 Asset 外层与稳定身份，但各自定义领域 blob、验证、预览和发布策略。
+FBX 静态网格导入纳入首条模型验证链路；其他源格式、FBX 动画与蒙皮、动画压缩、物理 Cook、场景装配和独立项目目录分批设计与实施。它们共享 Asset 外层与稳定身份，但各自定义领域 blob、验证、预览和发布策略。
 
 ## 5. 分批实施与验收
 
-1. **Asset workspace**：源目录启动配置、可写 Editor mount、递归扫描、临时索引发布、ID 生成、创建/重复/损坏/只读测试。验收：重启后仍以同一 Asset ID 找到文件；Editor 保存不触碰 `bin/asset`。
+1. **Asset workspace**：源目录启动配置、可写 Editor mount、递归扫描、临时索引发布、ID 生成、创建/重复/损坏/只读测试。验收：重启后仍以同一 Asset ID 找到文件；Editor 保存不触碰部署副本。
 2. **模型生产链**：正式 DTO、构建生成、简单网格 Asset 写入器、模型 blob codec、Assimp 静态 FBX 导入、runtime `StaticMesh` 适配。验收：真实 FBX 导入为 `.asset` 后，测试或 Cube 案例从磁盘重新加载网格并渲染；UV 接缝、材质 section、坐标/单位转换正确；坏 blob、丢失依赖、子资源重排不污染旧对象。
 3. **最小 Editor**：`EditorApplication`、资产列表、模型详情、字段编辑、undo/redo、保存、错误提示。验收：编辑后重启可读回；保存失败保留脏状态与旧文件；改 import settings 明确显示待重建。
 4. **材质编辑预览**：生产材质 DTO、Shader schema 适配、Asset 保存、setter/候选预览。验收：参数类型、范围和 orphan 由 Shader schema 决定；失败保留旧材质预览。
@@ -199,11 +201,11 @@ FBX 静态网格导入纳入首条模型验证链路；其他源格式、FBX 动
 
 每批都要求 Windows 配置、受影响目标构建和相关测试；共享目标与生成器还需 macOS/Clang 验证（可用环境下）。文件格式与 schema 迁移、非法字段、原子写失败、索引冲突要保留自动化验证。跨平台验证缺席时如实记录，不能据 Windows 构建宣称其他平台已支持。
 
-## 6. 提案前需要固定的决策
+## 6. 落地前需要固定的决策
 
-- **创作根**：建议当前单仓库使用 `engine/asset`，Editor 显式绑定源目录；`bin/asset` 永远是部署副本。未来独立项目目录另案引入。
+- **创作根**：当前使用 `project/asset`，Editor 显式绑定项目源目录；引擎资产只读。`bin/engine/asset`、`bin/project/asset` 是部署副本；多项目宿主后续接入。
 - **首个资源**：建议先用受控简单网格 Asset 验证 codec，再用 Assimp 将真实静态 FBX 导入同一 Asset 格式，完成运行时 `StaticMesh` 构造与渲染，然后做材质参数编辑预览。FBX 解析只存在于 Editor/离线导入工具。
 - **Editor 所有权**：建议 Editor executable 拥有独立的 Toy3dFileSystem 实例及资源工作上下文，并注入 `EditorApplication`；不把可写资源服务塞进通用 `Engine` 或 `Application` 基类。
 - **发布范围**：本轮仅单文件 Asset 原子保存；多文件导入/Cook 的 publication 和资源缓存失效单独设计。
 
-这些决策确认后，再以独立 OpenSpec change 固定第一批 workspace 与模型生产链的 proposal、spec、design 和 tasks；Editor UI 与其余资源类别按可独立验收的批次推进。
+Editor UI 的职责与顺序见 [Editor 总体架构](editor-architecture-design.md)；workspace、模型生产链与其余资源类别按可独立验收的批次推进。

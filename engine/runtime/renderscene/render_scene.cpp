@@ -165,6 +165,48 @@ namespace toy3d
         removed.reset();
     }
 
+
+    void RenderScene::add_light(std::unique_ptr<LightSceneProxy> proxy)
+    {
+        enqueue_render_command("AddLight", [this, proxy = std::move(proxy)]() mutable noexcept
+        {
+            assert(is_on_logical_rendering_thread());
+            if (!proxy) { TOY_LOG_ERROR("Null light proxy."); return; }
+            lights_.push_back(std::move(proxy));
+        });
+    }
+
+    void RenderScene::update_light(LightSceneProxy* proxy, LightSceneData data)
+    {
+        enqueue_render_command("UpdateLight", [this, proxy, data]() noexcept
+        {
+            assert(is_on_logical_rendering_thread());
+            for (const auto& light : lights_)
+            {
+                if (light.get() == proxy) { light->data = data; return; }
+            }
+            TOY_LOG_ERROR("Update for an unregistered light proxy.");
+        });
+    }
+
+    void RenderScene::remove_light(LightSceneProxy* proxy)
+    {
+        enqueue_render_command("RemoveLight", [this, proxy]() noexcept
+        {
+            assert(is_on_logical_rendering_thread());
+            const auto found = std::find_if(lights_.begin(), lights_.end(),
+                [proxy](const std::unique_ptr<LightSceneProxy>& light) { return light.get() == proxy; });
+            if (found == lights_.end()) { TOY_LOG_ERROR("Remove for an unregistered light proxy."); return; }
+            lights_.erase(found);
+        });
+    }
+
+    const std::vector<std::unique_ptr<LightSceneProxy>>& RenderScene::lights() const
+    {
+        assert(is_on_logical_rendering_thread());
+        return lights_;
+    }
+
     bool RenderScene::is_on_logical_rendering_thread() const
     {
         const NamedThread current_thread = task_graph_.get_current_thread_if_known();

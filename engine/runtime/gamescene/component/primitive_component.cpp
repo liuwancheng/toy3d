@@ -76,6 +76,7 @@ namespace toy3d
         SceneInterface* const scene = world().scene_interface();
         assert(scene != nullptr);
         scene->remove_primitive(scene_proxy_);
+        on_render_state_removed();
         scene_proxy_ = nullptr;
         world().mark_scene_changed();
     }

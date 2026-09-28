@@ -33,6 +33,7 @@ class CubeApplication final : public toy3d::Application
     toy3d::MaterialInstanceRef material_instance_;
     toy3d::StaticMeshRef mesh_;
     toy3d::Actor* actor_ = nullptr;
+    toy3d::Actor* light_actor_ = nullptr;
     float camera_x_ = 0.0f;
     bool animate_camera_ = true;
     bool animate_material_ = true;

@@ -8,6 +8,7 @@
 #include "logging/logger.h"
 #include "gamescene/actor/actor.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "rendercore/render_command.h"
 
 namespace toy3d
 {
@@ -60,6 +61,14 @@ namespace toy3d
         }
         const MaterialInstanceRef& material_override = material_overrides_[material_slot];
         return material_override != nullptr ? material_override : static_mesh_->material_slots()[material_slot];
+    }
+
+    void StaticMeshComponent::on_render_state_removed()
+    {
+        // Remove only borrows render_data. Keep its owner and override owners alive
+        // until that earlier FIFO command has released every Render-side reference.
+        enqueue_render_command("ReleaseRemovedStaticMeshReferences",
+            [mesh = static_mesh_, materials = material_overrides_]() noexcept {});
     }
 
     void StaticMeshComponent::update_bounds()

@@ -1,6 +1,7 @@
 #include "renderscene/view/forward_scene_renderer.h"
 
 #include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "logging/logger.h"
 #include "math/matrix_construction.h"
 #include "renderscene/material/material_shader_bindings.h"
+#include "renderscene/material/material_render_proxy.h"
 #include "renderscene/object_shader_bindings.h"
 #include "renderscene/pass/base_pass.h"
 #include "renderscene/pass/hit_proxy_pass.h"
@@ -16,6 +18,8 @@
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/view/scene_visibility.h"
 #include "renderscene/view/view_shader_bindings.h"
+#include "rendercore/shader/shader_parameters.h"
+#include "shader_parameters/toy3d_surface_phong.generated.h"
 
 namespace toy3d
 {
@@ -98,8 +102,73 @@ namespace toy3d
             }
         }
 
+
+        RHIBindingSetRef lighting_binding;
+        bool needs_lighting_binding = false;
+        for (const ViewInfo& view : view_infos())
+        {
+            for (const MeshBatch& batch : view.mesh_batches())
+            {
+                const auto& program = batch.material_render_proxy().shader_program();
+                if (!program) continue;
+                for (const ShaderMapBinding& binding : program->data().bindings)
+                    if (binding.group == RHIBindingGroup::Pass) needs_lighting_binding = true;
+            }
+        }
+        // Empty/unlit draws do not require a lighting upload or a Pass binding.
+        if (needs_lighting_binding)
+        {
+            ForwardPassParameters lighting;
+            lighting.scene_light_direction = Vector4(0, 0, -1, 0);
+            lighting.scene_light_color = Vector4();
+            lighting.point_light_positions = Matrix4::zero();
+            lighting.point_light_colors = Matrix4::zero();
+            std::vector<const LightSceneData*> candidates;
+            for (const auto& light : render_scene.lights())
+                if (light->data.enabled && light->data.intensity > 0) candidates.push_back(&light->data);
+            // Stable order resolves equal priorities by registration order.
+            std::stable_sort(candidates.begin(), candidates.end(),
+                [](const LightSceneData* a, const LightSceneData* b) { return a->priority > b->priority; });
+            constexpr std::size_t max_point_lights = Matrix4::k_column_count;
+            std::size_t point_count = 0;
+            std::size_t directional_count = 0;
+            for (const LightSceneData* light : candidates)
+            {
+                const Vector3 radiance = light->color * light->intensity;
+                if (light->kind == LightKind::Directional)
+                {
+                    if (directional_count++ == 0)
+                    {
+                        lighting.scene_light_direction = Vector4(-light->direction.x, -light->direction.y, -light->direction.z, 0);
+                        lighting.scene_light_color = Vector4(radiance.x, radiance.y, radiance.z, 0);
+                    }
+                }
+                else
+                {
+                    if (point_count < max_point_lights)
+                    {
+                        lighting.point_light_positions.at(point_count, 0) = light->position.x;
+                        lighting.point_light_positions.at(point_count, 1) = light->position.y;
+                        lighting.point_light_positions.at(point_count, 2) = light->position.z;
+                        lighting.point_light_positions.at(point_count, 3) = light->range;
+                        lighting.point_light_colors.at(point_count, 0) = radiance.x;
+                        lighting.point_light_colors.at(point_count, 1) = radiance.y;
+                        lighting.point_light_colors.at(point_count, 2) = radiance.z;
+                    }
+                    ++point_count;
+                }
+            }
+            const bool overflow = point_count > max_point_lights || directional_count > 1;
+            if (overflow && !render_scene.light_limit_reported())
+                TOY_LOG_WARN("Forward lighting supports one directional light and {} point lights; lower priority lights were omitted.", max_point_lights);
+            render_scene.set_light_limit_reported(overflow);
+            auto created = create_transient_shader_binding(device, context, lighting);
+            if (!created) return created.status();
+            lighting_binding = std::move(created).value();
+        }
         BasePassInputs inputs{view_infos(), scene_render_targets.scene_color_view(),
-                              scene_render_targets.scene_depth_view()};
+                              scene_render_targets.scene_depth_view(), std::move(lighting_binding)};
+
         return render_base_pass(device, shader_program_cache, context, inputs);
     }
 

@@ -30,6 +30,7 @@ namespace toy3d
         void on_unregister() override;
         void on_world_transform_updated() override;
         virtual void update_bounds() = 0;
+        virtual void on_render_state_removed() {}
         virtual std::unique_ptr<PrimitiveSceneProxy> create_scene_proxy() const = 0;
 
         AxisAlignedBounds world_bounds_;

@@ -1,5 +1,6 @@
 #include "asset_file.h"
 #include "asset_index.h"
+#include "asset_catalog.h"
 
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
@@ -158,6 +159,7 @@ int main()
     mount.virtual_root = mount_root.value();
     mount.store = store.value();
     mount.access = MountAccess::ReadWrite;
+    mount.allow_enumeration = true;
     check(files.add_mount(mount).succeeded() && files.freeze().succeeded(), "fixture mount failed");
     check(files.write_binary(path.value(), encoded.value(), FileWriteMode::CreateNew).succeeded(),
           "fixture file write failed");
@@ -232,6 +234,25 @@ int main()
     check(physical_locations.resolve(root_reference).succeeded() &&
               inspect_asset(files, destination.value()).succeeded(),
           "reference failed after physical file move");
+    auto catalog = scan_asset_catalog(files, mount_root.value());
+    check(catalog.succeeded() && catalog.value().entries.size() == 1 &&
+              catalog.value().directories.size() == 2 &&
+              catalog.value().index.find(id) != nullptr,
+          "asset catalog did not scan the moved asset and arbitrary folder");
+    auto duplicate = VirtualPath::parse("/asset/duplicate.asset");
+    check(duplicate.succeeded() &&
+              files.write_binary(duplicate.value(), encoded.value(), FileWriteMode::CreateNew).succeeded() &&
+              scan_asset_catalog(files, mount_root.value()).status().code == AssetErrorCode::DuplicateIdentity &&
+              catalog.value().index.find(id) != nullptr &&
+              files.remove_file(duplicate.value()).succeeded(),
+          "duplicate asset identity did not reject the new scan");
+    auto damaged = VirtualPath::parse("/asset/damaged.asset");
+    check(damaged.succeeded() &&
+              files.write_binary(damaged.value(), {0u, 1u}, FileWriteMode::CreateNew).succeeded() &&
+              !scan_asset_catalog(files, mount_root.value()).succeeded() &&
+              files.remove_file(damaged.value()).succeeded() &&
+              scan_asset_catalog(files, mount_root.value()).succeeded(),
+          "damaged asset file did not reject the scan or recover after removal");
     std::error_code cleanup_error;
     fs::remove_all(root, cleanup_error);
     check(!cleanup_error, "fixture cleanup failed");

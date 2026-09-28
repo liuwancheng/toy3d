@@ -330,7 +330,7 @@ engine/shader/include/<name>.hlsli
 以下位置禁止保存手写 Shader 源码：
 
 - `engine/runtime/generated/`：仅兼容现有生成头文件，Shader 生成物不得写入源码树；
-- `engine/asset/`：保留图标、字体等普通运行资源，不与 Shader 源码混放；
+- `engine/asset/`：保存引擎内置资产；Editor 字体/图片与平台应用图标分别放入 `engine/editor/resources/`、`engine/build/`，见 [资源目录设计](resource-directory-design.md)；
 - `bin/` 和 `build/`：只保存可再生成的 package、cache、debug artifact 或中间文件。
 
 ### 4.3 构建目录、Cook 产物与运行时部署

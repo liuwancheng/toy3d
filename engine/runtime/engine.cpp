@@ -112,7 +112,7 @@ namespace toy3d
             return;
         }
         // 2. Load engine configuration.
-        auto config_path = VirtualPath::parse("/Engine/config/engine_config.ini");
+        auto config_path = VirtualPath::parse("/Engine/Config/engine_config.ini");
         if (!config_path.succeeded())
         {
             TOY_LOG_ERROR("The built-in engine config path is invalid.");
@@ -123,7 +123,18 @@ namespace toy3d
         {
             TOY_LOG_ERROR("Failed to load {}: {}", config_path.value().utf8(), config_status.message);
         }
-        // 3. Apply command-line configuration overrides.
+        // 3. Project settings inherit engine keys and override only explicit keys.
+        const auto project_config_path = VirtualPath::parse("/Project/Config/engine_config.ini");
+        if (!project_config_path.succeeded())
+        {
+            TOY_LOG_ERROR("The built-in project config path is invalid.");
+            return;
+        }
+        const FileStatus project_config_status = ConsoleManager::get_instance().load_config(
+            file_system, project_config_path.value(), ConfigLoadMode::Overlay);
+        if (!project_config_status.succeeded() && project_config_status.code != FileErrorCode::NotFound)
+            TOY_LOG_ERROR("Failed to load {}: {}", project_config_path.value().utf8(), project_config_status.message);
+        // 4. Apply command-line configuration overrides.
         CommandLineParser::get_instance().apply_config();
     }
 
@@ -275,7 +286,8 @@ namespace toy3d
             shutdown_render_framework();
             return false;
         }
-        world->begin_play();
+        if (!application || application->starts_world_play())
+            world->begin_play();
         return true;
     }
 
@@ -474,7 +486,7 @@ namespace toy3d
         {
             return shader_root.status();
         }
-        auto asset_root = native_platform_file.join_relative(deployment_root, "asset");
+        auto asset_root = native_platform_file.join_relative(deployment_root, "engine/asset");
         if (!asset_root.succeeded())
         {
             return asset_root.status();
@@ -538,10 +550,24 @@ namespace toy3d
                                      "EngineShader");
         if (!status.succeeded())
             return status;
-        status =
-            add_directory_mount(file_system, "/Project", engine_asset_store, MountAccess::ReadOnly, true, "Project");
-        if (!status.succeeded())
-            return status;
+        // Deployment directories have separate read-only stores; /Project must
+        // never alias the engine assets. FileSystem owns these store lifetimes.
+        auto mount_deployed_directory = [&](const char* relative_root, const char* virtual_root,
+                                            const char* debug_name)
+        {
+            const auto physical_root = native_platform_file.join_relative(deployment_root, relative_root);
+            if (!physical_root.succeeded()) return physical_root.status();
+            const auto store = create_store(physical_root.value(), false, debug_name);
+            if (!store.succeeded()) return store.status();
+            return add_directory_mount(file_system, virtual_root, store.value(), MountAccess::ReadOnly, true,
+                                       debug_name);
+        };
+        status = mount_deployed_directory("project/asset", "/Project", "ProjectAssets");
+        if (!status.succeeded()) return status;
+        status = mount_deployed_directory("engine/config", "/Engine/Config", "EngineConfig");
+        if (!status.succeeded()) return status;
+        status = mount_deployed_directory("project/config", "/Project/Config", "ProjectConfig");
+        if (!status.succeeded()) return status;
         status = add_directory_mount(file_system, "/Saved", saved_store, MountAccess::ReadWrite, true, "Saved");
         if (!status.succeeded())
             return status;
@@ -579,7 +605,8 @@ namespace toy3d
             }
             if (world)
             {
-                static_cast<void>(world->tick(delta_time));
+                if (world->lifecycle_state() == WorldLifecycleState::Playing)
+                    static_cast<void>(world->tick(delta_time));
                 if (application_bound && application)
                 {
                     application->tick(delta_time);
