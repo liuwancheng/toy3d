@@ -4,7 +4,7 @@
 
 StaticMesh 首版已接入：独立预览、共享 Forward/Tonemap、多个 ImGui 逻辑纹理、异步颜色读回、包内 PNG、有界缓存、Content Browser 图块及导入后自动保存。职责划分参考 UE4.27 的 ThumbnailRenderer、ThumbnailHelpers、AssetThumbnail、ObjectThumbnail 和 SavePackageUtilities，保持 Toy3d 的命名和所有权边界。
 
-模型使用现有默认材质。材质/动画/碰撞/场景缩略图、材质依赖加载、源文件拖入和导入参数面板扩展不在本轮；以后每种资源提供自己的预览策略，共用缓存、图片格式和 UI 纹理通道。
+模型使用现有默认材质。材质/动画/碰撞/场景缩略图和材质依赖加载尚未实现；以后每种资源提供自己的预览策略，共用缓存、图片格式和 UI 纹理通道。源文件拖入与导入确认框属于 [StaticMesh 导入交互](static-mesh-import-design.md#7-editor-导入与拖放交互)，成功发布后调用本模块生成缩略图。
 
 规范边界见 [资源基础](editor-resource-foundation-design.md)、[StaticMesh 生产链](static-mesh-import-design.md)、[Application](application-design.md)、[RHI](rhi-design.md) 和 [Game/Render contract](../openspec/specs/game-render-framework/)。
 

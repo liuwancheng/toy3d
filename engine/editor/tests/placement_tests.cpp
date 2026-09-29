@@ -2,6 +2,7 @@
 #include "placement/actor_placement.h"
 #include "viewport/actor_icons.h"
 #include "viewport/scene_viewport.h"
+#include "selection/editor_selection.h"
 
 #include <cmath>
 #include <iostream>
@@ -424,6 +425,62 @@ int main()
               far_light.actor_id(), "Selected directional-light arrows must preserve icon hits after rotation");
         ImGui::End();
         ImGui::Render();
+        ImGui::DestroyContext(context);
+    }
+    {
+        // Real ImGui payload delivery exercises viewport input priority. Hover
+        // must never mutate the World; only release produces an owned request.
+        ImGuiContext* context = ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.ConfigWindowsMoveFromTitleBarOnly = true;
+        io.DisplaySize = ImVec2(1000, 600);
+        unsigned char* pixels = nullptr;
+        int width = 0, height = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        World world;
+        ActorFactory factory;
+        EditorCommandHistory history(factory);
+        EditorSelection selection;
+        SceneViewport viewport;
+        AssetId id;
+        check(AssetId::parse("12345678901234567890123456789012", id), "Drag fixture identity");
+        auto draw = [&]()
+        {
+            // ImGuizmo BeginFrame creates its overlay window and consumes
+            // NextWindow settings; apply the viewport layout afterwards.
+            viewport.begin_frame();
+            ImGui::SetNextWindowPos(ImVec2(200, 0));
+            ImGui::SetNextWindowSize(ImVec2(800, 600));
+            viewport.draw(world, selection, history);
+        };
+        io.AddMousePosEvent(500, 300);
+        ImGui::NewFrame();
+        draw();
+        ImGui::Render();
+        for (int frame = 0; frame < 2; ++frame)
+        {
+            io.AddMouseButtonEvent(0, frame == 0);
+            ImGui::NewFrame();
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))
+            {
+                ImGui::SetDragDropPayload(ASSET_DRAG_PAYLOAD, &id, sizeof(id));
+                ImGui::TextUnformatted("StaticMesh test payload");
+                ImGui::EndDragDropSource();
+            }
+            draw();
+            AssetPlacementRequest request;
+            const bool delivered = viewport.take_asset_placement(request);
+            check(delivered == (frame == 1), "Only drag release delivers an AssetPlacementRequest");
+            if (delivered)
+            {
+                check(request.asset_id == id && is_finite(request.transform.translation), "Delivery owns identity and placement transform");
+                check(!viewport.take_asset_placement(request), "Placement request is consumed exactly once");
+            }
+            HitProxyRequest hit;
+            check(!viewport.take_hit_request(hit) && world.actor_count() == 0, "Dragging blocks picking and performs no direct scene mutation");
+            ImGui::Render();
+        }
         ImGui::DestroyContext(context);
     }
     return failures == 0 ? 0 : 1;

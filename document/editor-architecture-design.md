@@ -4,7 +4,7 @@
 
 Editor 是使用现有 Engine、GameScene、RenderScene 和资源基础设施的创作程序，不另建一套运行时对象系统。它需要支持场景对象编辑，以及模型、材质、动画、碰撞和场景 Asset 的浏览、预览、修改与保存。各资源类型共享 Asset 身份、索引和文件外层；导入、领域校验、预览和运行时构造分别由对应领域负责。第一条资源贯通链路仍按[编辑器资源接入方案](editor-resource-integration-plan.md)选择静态模型。
 
-当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层。启用 Assimp 后提供静态模型导入菜单；保存为 `.asset` 后可选中并通过 `Add Selected Mesh` 放置，沿同一命令历史重建。生产链遵循 [StaticMesh 设计](static-mesh-import-design.md)。类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
+当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层。启用 Assimp 后，Content Browser 工具栏、空白处右键菜单和外部模型拖入共用导入确认框；保存为 `.asset` 并生成缩略图后，资源图块可拖入 Scene Viewport 创建 Actor，沿同一命令历史撤销重做。生产链遵循 [StaticMesh 设计](static-mesh-import-design.md)。类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
 
 近期不建立插件系统、多文档并发编辑、运行时热重载、Blueprint 式对象系统或通用属性方法调用。先完成单个场景编辑视口、单个活动 Asset 编辑会话和可验证的端到端工作流；扩展到多视口、多预览 World 时再扩展相应的渲染输出 contract。
 
@@ -58,6 +58,8 @@ ImGui 面板每帧即时绘制，但工作区、选择、活动会话、撤销�
 ## 4. 输入、修改与撤销
 
 输入优先级为：模态对话框及文本输入 → 正在拖动的 Gizmo → 视口点击 HitProxy → 编辑器快捷键 → 游戏输入。只有鼠标位于实际场景图像区域，且更高优先级操作未消费点击时，才提交 HitProxy 请求。结果返回后校验请求 ID、视口 generation、场景 generation 和对象存活；较晚返回的结果不得覆盖较新的选择。
+
+面板仅通过标题栏或停靠 tab 移动（`ConfigWindowsMoveFromTitleBarOnly`）。资源拖动期间禁止 Gizmo 和拾取，Scene Viewport 只在 delivery 返回 owned AssetPlacementRequest；Editor 在绘制后通过 AssetId 重新解析资源并提交创建命令。导入确认框打开时屏蔽删除、撤销/重做快捷键，新外部文件批次不替换当前设置。
 
 所有 Editor 状态和 World/Asset 修改在 Game Thread 的受控提交点执行。Actor Transform 必须走 `SceneComponent::set_local_transform()` 等领域 setter，不能直接改内部数据；一次 Gizmo 按下至松开构成一个撤销事务，Details 的一次数值提交也构成一个事务。Actor 命令记录修改前后值和对象身份，撤销/重做时重新解析对象，并在对象已删除或 World 已切换时明确失败或失效。不要把这些 World 命令伪装成 `EditSession<T>` 的 Asset 补丁。
 

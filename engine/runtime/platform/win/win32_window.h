@@ -1,6 +1,7 @@
 #pragma once
 #include "platform/window_interface.h"
 #include <windows.h>
+#include <shellapi.h>
 
 namespace toy3d
 {
@@ -13,6 +14,8 @@ namespace toy3d
         bool should_close() final;
         void process_events() final;
         void close() final;
+        bool enable_file_drop(bool enabled) override;
+        void receive_file_drop(HDROP drop);
         void resize(uint32_t _width, uint32_t _height) final;
         Extent get_display_size() const final;
         Extent get_framebuffer_size() const final;
@@ -28,5 +31,6 @@ namespace toy3d
         HWND hWnd = nullptr;
         HINSTANCE hInstance = nullptr;
         bool b_close = false;
+        bool file_drop_enabled_ = false;
     };
 } // namespace toy3d

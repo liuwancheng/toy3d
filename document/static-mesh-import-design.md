@@ -58,3 +58,15 @@ auto mesh = create_static_mesh_from_asset(geometry.value(), default_material);
 错误复用 AssetStatus/ValueStatus/FileStatus；底层返回，CLI/Editor 使用现有日志和 Dialog，不新增诊断系统。外部文件通过只读 source mount 和 Assimp IOSystem 读取，旁文件只能在该根内访问；拒绝绝对宿主路径、越根路径与 symlink。读取与产物限制不保证 Assimp 内部解析峰值内存上限，只面向开发者选定的本地资产。
 
 Windows/macOS 共用格式与转换；macOS 没有实机验证时如实说明。验证要求覆盖 FBX/OBJ/glTF 样本、节点与轴/单位、镜像绕序、UV 接缝、材质 section、退化/损坏/超限数据、确定性编码、首次原子创建/重名拒绝、移走源文件后加载和 Actor undo/redo。目录收敛先完成配置与旧测试，再接新链路；删除旧 `engine/resource`，无格式迁移、无双入口。旧 tinyobjloader 的其他用途不在本次删除范围。
+
+## 7. Editor 导入与拖放交互
+
+Content Browser 工具栏及资源区空白处右键菜单提供 `Import...`。原生选择文件与外部文件拖入均只建立导入候选，统一打开 `StaticMeshImportDialog`，点击确认才写入项目当前目录；不允许写入 `/Engine`。设置包括源文件、资源名和统一 scale，显示合并静态实例、默认材质及不导入动画/碰撞的实际范围。批量文件最多 32 项，逐文件确认名称并串行发布；重名拒绝覆盖，成功项移出候选，失败项保留原因，取消不撤销已经明确发布的项。当前解析仍在 GT 串行执行，大文件可能阻塞 UI；后续异步化必须将 Worker 候选生产与 GT catalog 发布分开。
+
+`source/asset_tools` 保留导入业务策略，`source/panels/static_mesh_import_dialog.*` 持有候选与 ImGui 状态；`source/platform` 只负责该模型工作流的原生选择窗口（Windows common dialog、macOS NSOpenPanel）。文件 IO 仍调用 Core FileSystem/NativePlatformFile，不建立第二套文件服务。没有引入通用 Dialog manager。
+
+外部文件拖放属于平台窗口事件：IWindow 提供显式启用与取出 owned UTF-8 路径、客户区逻辑坐标的接口，默认关闭，非支持平台明确返回 false。单批 32 文件、每路径 4096 字节、待消费事件最多 8 个；原生回调仅复制事件并检查错误，不执行 Assimp 或修改 World。Windows 使用 WM_DROPFILES 并始终 DragFinish；macOS 使用 GLFW drop callback。Editor 在当前 Content Browser 区域接收，模态期间拒绝新批次，引擎资产目录提示只读。坐标不使用 framebuffer 像素；事件和候选均只在 GT 消费，退出时关闭接收并清空。
+
+资源图块的 ImGui payload 仅复制 AssetId（不含 catalog 指针或宿主路径），SceneViewport 返回 `AssetPlacementRequest {asset_id, transform}`。视口 hover 只绘制落点标记；delivery 时 Editor 再从当前 catalog 校验类型/存活，读取 `.asset`，组合现有 ActorFactory 与 EditorCommandHistory。地面落点使用模型 local bounds.minimum.y 修正原点高度，未命中地面则沿视线放置。成功后选中新 Actor、取消过期 HitProxy；失败不创建 Actor、不改历史。Camera View 不接受放置，拖动期间屏蔽 Gizmo 与拾取。放置旧资源不依赖 Assimp，Engine 只读资源允许放置；顶部 `Add Selected Mesh` 入口移除。
+
+验证覆盖设置与扩展名校验、批量上限/重名/只读目录、取消无写入、源文件失败、payload delivery 才创建、catalog 刷新后的身份解析、bounds 地面偏移、撤销重做和 Assimp OFF 加载。Windows 构建与测试独立执行；原生文件窗口和桌面外部拖放需交互验收，macOS 实机未验证时不得宣称通过。

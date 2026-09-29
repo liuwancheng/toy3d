@@ -19,6 +19,9 @@ namespace toy3d
             error = "Choose a .asset destination inside the project asset root.";
             return false;
         }
+        const auto existing = workspace.files().stat(output.value());
+        if (existing.succeeded()) { error = "An asset already exists at " + destination + ". Choose another resource name."; return false; }
+        if (existing.status().code != FileErrorCode::NotFound) { error = existing.status().message; return false; }
         NativePlatformFile platform;
         const auto canonical = platform.canonical(source);
         if (!canonical.succeeded()) { error = canonical.status().message; return false; }

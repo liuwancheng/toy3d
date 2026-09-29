@@ -97,7 +97,24 @@ target_compile_definitions(${TARGET_NAME}
 target_sources(${TARGET_NAME} PRIVATE
     "source/thumbnails/thumbnail_preview_scene.h" "source/thumbnails/thumbnail_preview_scene.cpp"
     "source/thumbnails/asset_thumbnail_pool.h" "source/thumbnails/asset_thumbnail_pool.cpp"
-    "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp")
+    "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp"
+    "source/panels/static_mesh_import_dialog.h" "source/panels/static_mesh_import_dialog.cpp"
+    "source/placement/asset_placement.h" "source/placement/asset_placement.cpp")
+
+if(WIN32)
+    set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/win/model_file_picker.cpp")
+    set(TOY3D_MODEL_PICKER_LIBRARIES comdlg32)
+elseif(APPLE)
+    set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/mac/model_file_picker.mm")
+    find_library(TOY3D_EDITOR_COCOA_FRAMEWORK Cocoa REQUIRED)
+    set(TOY3D_MODEL_PICKER_LIBRARIES "${TOY3D_EDITOR_COCOA_FRAMEWORK}")
+    set_target_properties(${TARGET_NAME} PROPERTIES OBJCXX_STANDARD 17 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
+else()
+    set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/model_file_picker_unsupported.cpp")
+    set(TOY3D_MODEL_PICKER_LIBRARIES "")
+endif()
+target_sources(${TARGET_NAME} PRIVATE "source/platform/model_file_picker.h" "${TOY3D_MODEL_PICKER_SOURCE}")
+target_link_libraries(${TARGET_NAME} PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
 target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec imguizmo)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
     target_sources(${TARGET_NAME} PRIVATE
@@ -116,11 +133,25 @@ if(BUILD_TESTING)
             "source/workspace/editor_workspace.cpp"
             "source/thumbnails/asset_thumbnail_pool.cpp" "source/thumbnails/thumbnail_preview_scene.cpp"
             "source/panels/content_browser_panel.cpp" "source/selection/editor_selection.cpp"
+            "source/panels/static_mesh_import_dialog.cpp" "${TOY3D_MODEL_PICKER_SOURCE}"
+            "source/placement/asset_placement.cpp" "source/placement/actor_placement.cpp"
+            "source/commands/editor_command_history.cpp"
             "source/placement/actor_factory.cpp" "source/placement/placement_catalog.cpp")
         target_compile_features(Toy3dEditorThumbnailTests PRIVATE cxx_std_17)
         set_target_properties(Toy3dEditorThumbnailTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
         target_include_directories(Toy3dEditorThumbnailTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
         target_link_libraries(Toy3dEditorThumbnailTests PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec imgui)
+        target_link_libraries(Toy3dEditorThumbnailTests PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
+        if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
+            target_sources(Toy3dEditorThumbnailTests PRIVATE "source/asset_tools/static_mesh_asset_tools.cpp")
+            target_link_libraries(Toy3dEditorThumbnailTests PRIVATE Toy3dAssetImport)
+            target_compile_definitions(Toy3dEditorThumbnailTests PRIVATE WITH_MODEL_IMPORT=1)
+        else()
+            target_compile_definitions(Toy3dEditorThumbnailTests PRIVATE WITH_MODEL_IMPORT=0)
+        endif()
+        if(APPLE)
+            set_target_properties(Toy3dEditorThumbnailTests PROPERTIES OBJCXX_STANDARD 17 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
+        endif()
         if(WIN32)
             target_sources(Toy3dEditorThumbnailTests PRIVATE "${EDITOR_ICON_FILE}")
         endif()

@@ -1,4 +1,6 @@
 #include "win32_window.h"
+#include <filesystem>
+#include <vector>
 #include "config/console_manager.h"
 #include "input/input_system.h"
 #include "win32_input.h"
@@ -17,6 +19,10 @@ namespace toy3d
             {
             case WM_CLOSE:
                 s_win_instance->close();
+                return 0;
+
+            case WM_DROPFILES:
+                s_win_instance->receive_file_drop(reinterpret_cast<HDROP>(wParam));
                 return 0;
 
             case WM_DESTROY:
@@ -83,6 +89,54 @@ namespace toy3d
     bool Win32Window::should_close()
     {
         return b_close;
+    }
+
+    bool Win32Window::enable_file_drop(bool enabled)
+    {
+        if (!hWnd) return false;
+        DragAcceptFiles(hWnd, enabled ? TRUE : FALSE);
+        file_drop_enabled_ = enabled;
+        if (!enabled) clear_file_drops();
+        return true;
+    }
+
+    void Win32Window::receive_file_drop(HDROP drop)
+    {
+        // WM_DROPFILES transfers a handle that must be released on every path.
+        struct DropRelease
+        {
+            HDROP handle = nullptr;
+            ~DropRelease() { DragFinish(handle); }
+        } release{drop};
+        if (!file_drop_enabled_) return;
+        POINT point{};
+        if (!DragQueryPoint(drop, &point)) return; // Non-client-area delivery.
+        const UINT count = DragQueryFileW(drop, 0xFFFFFFFFu, nullptr, 0);
+        if (count == 0 || count > maximum_file_drop_paths)
+        {
+            TOY_LOG_ERROR("File drop accepts 1 to {} files.", maximum_file_drop_paths);
+            return;
+        }
+        FileDropEvent event;
+        event.position = Vector2(static_cast<float>(point.x), static_cast<float>(point.y));
+        for (UINT i = 0; i < count; ++i)
+        {
+            const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+            if (length == 0 || length > maximum_file_drop_path_bytes)
+            { TOY_LOG_ERROR("Dropped file path is empty or too long."); return; }
+            std::vector<wchar_t> path(length + 1, L'\0');
+            if (DragQueryFileW(drop, i, path.data(), static_cast<UINT>(path.size())) != length)
+            { TOY_LOG_ERROR("Dropped file path query failed."); return; }
+            try
+            {
+                // C++17 filesystem converts the native UTF-16 selection to
+                // UTF-8; file operations still use the shared FileSystem.
+                event.paths.push_back(std::filesystem::path(path.data()).u8string());
+            }
+            catch (const std::exception& error)
+            { TOY_LOG_ERROR("Dropped file path conversion failed: {}", error.what()); return; }
+        }
+        if (!enqueue_file_drop(std::move(event))) TOY_LOG_ERROR("File drop queue rejected invalid or excessive input.");
     }
     void Win32Window::process_events()
     {

@@ -12,11 +12,7 @@
 #include "panels/content_browser_panel.h"
 #include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
-#include "rendercore/geometry/static_mesh_asset_loader.h"
-#if WITH_MODEL_IMPORT
-#include "asset_import/static_mesh_import.h"
-#include "asset_tools/static_mesh_asset_tools.h"
-#endif
+#include "placement/asset_placement.h"
 
 namespace toy3d
 {
@@ -30,6 +26,11 @@ namespace toy3d
         style.FrameRounding = 3.0f;
         style.TabRounding = 3.0f;
         ImGui::GetIO().IniFilename = TOY3D_EDITOR_LAYOUT_PATH;
+        // Scene-image gestures edit content; dock panels move by their title/tab.
+        ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
+#if WITH_MODEL_IMPORT
+        if (!window().enable_file_drop(true)) TOY_LOG_WARN("External model file drop is unavailable on this platform.");
+#endif
         if (!actor_factory_.initialize()) return false;
         PlacementRequest preview;
         preview.item = PlacementItemId::Cube;
@@ -45,6 +46,10 @@ namespace toy3d
 
     void EditorApplication::on_shutdown()
     {
+#if WITH_MODEL_IMPORT
+        if (!window().enable_file_drop(false)) TOY_LOG_WARN("Could not disable external model file drop.");
+#endif
+        model_import_.clear();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         command_history_.clear();
@@ -73,9 +78,7 @@ namespace toy3d
 #if WITH_MODEL_IMPORT
                 if (ImGui::MenuItem("Import Static Mesh..."))
                 {
-                    import_folder_ = asset_folder_.compare(0, 8, "/Project") == 0 ? asset_folder_ : "/Project";
-                    model_error_.clear();
-                    open_import_dialog_ = true;
+                    if (!model_import_.request(asset_folder_)) model_error_ = model_import_.error();
                 }
 #endif
                 if (ImGui::MenuItem("Exit")) window().close();
@@ -105,7 +108,6 @@ namespace toy3d
             }
             ImGui::EndMainMenuBar();
         }
-        draw_model_import_dialog();
         if (ImGui::BeginPopupModal("About Toy3d Editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::TextUnformatted("Toy3d Editor");
@@ -139,8 +141,6 @@ namespace toy3d
             if (!workspace_.refresh()) TOY_LOG_ERROR("Editor asset refresh failed: {}", workspace_.error());
             else thumbnails_.invalidate();
         }
-        ImGui::SameLine();
-        if (ImGui::Button("Add Selected Mesh")) place_selected_static_mesh();
         ImGui::Separator();
         const ImGuiID dockspace = ImGui::GetID("Toy3d Editor Dockspace Node");
         if (reset_dock_layout_)
@@ -199,7 +199,32 @@ namespace toy3d
             scene_viewport_.cancel_pending_hit();
         draw_details(world(), selection_, command_history_, workspace_, scene_viewport_);
         scene_viewport_.draw(world(), selection_, command_history_);
-        draw_content_browser(workspace_, selection_, asset_folder_, show_engine_content_, thumbnails_, asset_tile_size_);
+        const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
+            show_engine_content_, thumbnails_, asset_tile_size_, WITH_MODEL_IMPORT != 0);
+#if WITH_MODEL_IMPORT
+        if (browser.import_requested && !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+        FileDropEvent dropped;
+        while (window().take_file_drop(dropped))
+        {
+            // External file events cannot replace an active modal transaction.
+            if (!model_import_.active() && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) &&
+                browser.accepts_drop(dropped.position) && !model_import_.request(asset_folder_, dropped.paths))
+                model_error_ = model_import_.error();
+        }
+        model_import_.draw(window(), workspace_, selection_, thumbnails_);
+#endif
+        AssetPlacementRequest placed;
+        if (scene_viewport_.take_asset_placement(placed))
+        {
+            const std::uint32_t actor_id = place_static_mesh_asset(workspace_, world(), actor_factory_,
+                command_history_, placed, model_error_);
+            if (actor_id)
+            {
+                selection_.select_actor(world(), actor_id);
+                scene_viewport_.cancel_pending_hit();
+            }
+            else TOY_LOG_ERROR("Asset placement failed: {}", model_error_);
+        }
         if (!model_error_.empty())
         {
             if (ImGui::Begin("Model Import / Load"))
@@ -217,7 +242,8 @@ namespace toy3d
         const bool actor_panel_focused = focused &&
             (focused == ImGui::FindWindowByName("Scene Viewport###Game Viewport") ||
              focused == ImGui::FindWindowByName("Outliner") || focused == ImGui::FindWindowByName("Details"));
-        if (actor_panel_focused && selection_.focus() == EditorSelectionFocus::Actor &&
+        const bool modal_active = model_import_.active() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        if (!modal_active && actor_panel_focused && selection_.focus() == EditorSelectionFocus::Actor &&
             !io.WantTextInput && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Delete))
         {
             if (command_history_.delete_actor(world(), selection_.actor_id()))
@@ -226,7 +252,7 @@ namespace toy3d
                 scene_viewport_.cancel_pending_hit();
             }
         }
-        if (io.KeyCtrl && !io.WantTextInput && !ImGui::IsAnyItemActive())
+        if (!modal_active && io.KeyCtrl && !io.WantTextInput && !ImGui::IsAnyItemActive())
         {
             if (ImGui::IsKeyPressed(ImGuiKey_Z))
             {
@@ -240,82 +266,9 @@ namespace toy3d
         }
     }
 
-    void EditorApplication::draw_model_import_dialog()
-    {
-#if WITH_MODEL_IMPORT
-        if (open_import_dialog_)
-        {
-            ImGui::OpenPopup("Import Static Mesh");
-            open_import_dialog_ = false;
-        }
-        if (ImGui::BeginPopupModal("Import Static Mesh", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            ImGui::TextUnformatted("Import static FBX / OBJ / glTF / GLB");
-            ImGui::TextUnformatted("Meshes are combined. Source materials are replaced with the default material.");
-            ImGui::SetNextItemWidth(540.0f);
-            ImGui::InputText("Source file", import_source_.data(), import_source_.size());
-            ImGui::InputText("Asset name (without extension)", import_asset_name_.data(), import_asset_name_.size());
-            ImGui::InputFloat("Scale multiplier", &import_scale_);
-            ImGui::Text("Destination: %s", import_folder_.c_str());
-            if (!model_error_.empty()) ImGui::TextWrapped("%s", model_error_.c_str());
-            if (ImGui::Button("Import"))
-            {
-                const std::string name(import_asset_name_.data());
-                if (name.empty() || name.find_first_of("/\\:") != std::string::npos || name == "." || name == "..")
-                    model_error_ = "Enter an asset name without directories.";
-                else
-                {
-                    StaticMeshImportOptions options;
-                    options.scale = import_scale_;
-                    AssetId id;
-                    if (import_static_mesh_to_workspace(workspace_, PhysicalPath(import_source_.data()),
-                        import_folder_ + "/" + name + ".asset", options, id, model_error_))
-                    {
-                        selection_.select_asset(id);
-                        thumbnails_.generate(id, true);
-                        ImGui::CloseCurrentPopup();
-                    }
-                    else TOY_LOG_ERROR("Model import failed: {}", model_error_);
-                }
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) { model_error_.clear(); ImGui::CloseCurrentPopup(); }
-            ImGui::EndPopup();
-        }
-#endif
-    }
-
     bool EditorApplication::on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)
     {
         return thumbnails_.initialize(scene, actor_factory_.default_material(), tasks);
-    }
-
-    void EditorApplication::place_selected_static_mesh()
-    {
-        const AssetLocation* asset = selection_.resolve_asset(workspace_.catalog().index);
-        if (!asset || asset->index.root_type != "toy3d.StaticMeshAssetData")
-        {
-            model_error_ = "Select a StaticMesh asset in Content Browser first.";
-            return;
-        }
-        const auto geometry = read_static_mesh_asset(workspace_.files(), asset->path);
-        if (!geometry.succeeded())
-        {
-            model_error_ = geometry.status().message;
-            TOY_LOG_ERROR("Static mesh load failed: {}", model_error_);
-            return;
-        }
-        PlacementRequest request;
-        request.item = PlacementItemId::StaticMesh;
-        request.asset_id = asset->index.asset_id;
-        request.static_mesh = create_static_mesh_from_asset(geometry.value(), actor_factory_.default_material());
-        request.transform.translation = Vector3(2.5f, 0.75f, 3.0f);
-        if (!request.static_mesh) { model_error_ = "Could not create StaticMesh runtime geometry."; return; }
-        const std::uint32_t actor_id = command_history_.place_actor(world(), request);
-        if (!actor_id) { model_error_ = "Could not place StaticMesh Actor."; return; }
-        selection_.select_actor(world(), actor_id);
-        scene_viewport_.cancel_pending_hit();
-        model_error_.clear();
     }
 
     bool EditorApplication::on_hit_proxy_request(HitProxyRequest& request)

@@ -6,7 +6,7 @@ namespace toy3d
 {
     bool calculate_placement_transform(const Matrix4& view, const Matrix4& projection,
                                        const Vector3& camera_position, const Vector2& image_position,
-                                       const PlacementItem& item, Transform& result)
+                                       const PlacementItem& item, Transform& result, bool* on_ground)
     {
         if (!is_finite(camera_position) || !is_finite(image_position) || image_position.x < 0 ||
             image_position.y < 0 || image_position.x > 1 || image_position.y > 1) return false;
@@ -35,6 +35,7 @@ namespace toy3d
             !try_make_rotation_from_forward_up(Vector3(-0.35f, -0.55f, 0.75f), Vector3(0, 1, 0), placed.rotation))
             return false;
         result = placed;
+        if (on_ground) *on_ground = ground;
         return true;
     }
 }

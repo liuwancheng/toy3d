@@ -1,4 +1,5 @@
 #include "mac_window.h"
+#include <cstring>
 #include "config/console_manager.h"
 #include "input/input_system.h"
 #include "logging/logger.h"
@@ -133,6 +134,33 @@ namespace toy3d
     bool MacWindow::should_close()
     {
         return glfw_window == nullptr || glfwWindowShouldClose(glfw_window);
+    }
+
+    bool MacWindow::enable_file_drop(bool enabled)
+    {
+        if (!glfw_window) return false;
+        glfwSetDropCallback(glfw_window, enabled ? file_drop_callback : nullptr);
+        if (!enabled) clear_file_drops();
+        return true;
+    }
+
+    void MacWindow::file_drop_callback(GLFWwindow* window, int count, const char** paths)
+    {
+        auto* owner = static_cast<MacWindow*>(glfwGetWindowUserPointer(window));
+        if (!owner || !paths || count <= 0 || static_cast<std::size_t>(count) > maximum_file_drop_paths)
+        { TOY_LOG_ERROR("File drop rejected an invalid batch."); return; }
+        double x = 0, y = 0;
+        glfwGetCursorPos(window, &x, &y);
+        FileDropEvent event;
+        event.position = Vector2(static_cast<float>(x), static_cast<float>(y));
+        for (int i = 0; i < count; ++i)
+        {
+            if (!paths[i] || std::strlen(paths[i]) > maximum_file_drop_path_bytes)
+            { TOY_LOG_ERROR("Dropped file path is invalid or too long."); return; }
+            event.paths.emplace_back(paths[i]);
+        }
+        if (!owner->enqueue_file_drop(std::move(event)))
+            TOY_LOG_ERROR("File drop queue rejected invalid or excessive input.");
     }
 
     void MacWindow::process_events()

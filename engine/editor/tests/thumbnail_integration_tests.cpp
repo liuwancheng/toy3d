@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
+#include <cwchar>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -10,6 +12,8 @@
 #include "imgui.h"
 #if WITH_WIN64
 #include <windows.h>
+#include <shlobj.h>
+#include "platform/win/win32_window.h"
 #endif
 
 #include "config/command_line_parser.h"
@@ -17,11 +21,20 @@
 #include "file_system/native_platform_file.h"
 #include "image_codec/png_codec.h"
 #include "placement/actor_factory.h"
+#include "placement/asset_placement.h"
+#include "commands/editor_command_history.h"
+#include "gamescene/world/world.h"
+#include "gamescene/actor/actor.h"
 #include "panels/content_browser_panel.h"
+#include "panels/static_mesh_import_dialog.h"
 #include "selection/editor_selection.h"
 #include "rendercore/frame_synchronization.h"
 #include "thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
+#if WITH_MODEL_IMPORT
+#include "asset_tools/static_mesh_asset_tools.h"
+#include "asset_import/static_mesh_import.h"
+#endif
 
 namespace
 {
@@ -39,12 +52,15 @@ namespace
     {
       public:
         ThumbnailTestApplication(EditorWorkspace& workspace, AssetId first, AssetId second, TestState& state)
-            : workspace_(workspace), pool_(workspace), first_(first), second_(second), state_(state) {}
+            : workspace_(workspace), pool_(workspace), history_(factory_), first_(first), second_(second), state_(state) {}
 
       private:
         bool on_initialize() override
         {
             ImGui::GetIO().IniFilename = nullptr;
+#if WITH_WIN64
+            if (!verify_native_drop()) return false;
+#endif
             return factory_.initialize();
         }
         bool starts_world_play() const override { return false; }
@@ -81,7 +97,12 @@ namespace
             elapsed_ += delta;
             if (elapsed_ > 30.0) { stop("Thumbnail integration timed out."); return; }
             pool_.tick();
-            if (!started_) { started_ = true; pool_.generate(first_, true); }
+            if (!started_)
+            {
+                started_ = true;
+                if (!verify_asset_placement()) return;
+                pool_.generate(first_, true);
+            }
             const auto a = request(first_);
             const auto b = phase_ > 0 ? request(second_) : AssetThumbnailView{};
             if (phase_ != 3 && !a.error.empty()) { stop(a.error); return; }
@@ -168,6 +189,55 @@ namespace
             return true;
         }
         void stop(std::string error) { state_.error = std::move(error); window().close(); }
+        bool verify_asset_placement()
+        {
+            AssetPlacementRequest request;
+            request.asset_id = first_;
+            request.on_ground = true;
+            std::string error;
+            const auto id = place_static_mesh_asset(workspace_, world(), factory_, history_, request, error);
+            Actor* actor = world().find_actor_by_id(id);
+            if (!actor || actor->root_component()->local_transform().translation.y != 1 ||
+                !history_.undo(world()) || world().actor_count() != 0 || !history_.redo(world()) || world().actor_count() != 1)
+            { stop("Asset placement, imported ground offset or undo/redo failed: " + error); return false; }
+            request.asset_id = {};
+            if (place_static_mesh_asset(workspace_, world(), factory_, history_, request, error) || world().actor_count() != 1)
+            { stop("A stale or invalid asset identity mutated the scene."); return false; }
+            if (!history_.undo(world()) || world().actor_count() != 0)
+            { stop("Rejected asset placement changed the command history."); return false; }
+            history_.clear();
+            return true;
+        }
+#if WITH_WIN64
+        bool verify_native_drop()
+        {
+            auto* native = dynamic_cast<Win32Window*>(&window());
+            if (!native || !window().enable_file_drop(true)) { stop("Native file drop could not be enabled."); return false; }
+            const wchar_t first[] = L"D:\\mesh.obj";
+            const wchar_t second[] = L"D:\\模型.fbx";
+            const std::size_t bytes = sizeof(DROPFILES) + sizeof(first) + sizeof(second) + sizeof(wchar_t);
+            HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
+            void* data = memory ? GlobalLock(memory) : nullptr;
+            if (!data) { if (memory) GlobalFree(memory); stop("Native drop fixture allocation failed."); return false; }
+            DROPFILES drop{};
+            drop.pFiles = sizeof(DROPFILES);
+            drop.pt = POINT{140, 90};
+            drop.fWide = TRUE;
+            std::memcpy(data, &drop, sizeof(drop));
+            auto* names = static_cast<unsigned char*>(data) + sizeof(DROPFILES);
+            std::memcpy(names, first, sizeof(first));
+            std::memcpy(names + sizeof(first), second, sizeof(second));
+            GlobalUnlock(memory);
+            // WM_DROPFILES transfers ownership; Window's DragFinish releases it.
+            SendMessageW(native->get_native_hwnd(), WM_DROPFILES, reinterpret_cast<WPARAM>(memory), 0);
+            FileDropEvent event;
+            if (!window().take_file_drop(event) || event.position != Vector2(140, 90) || event.paths.size() != 2 ||
+                event.paths[0] != "D:\\mesh.obj" || event.paths[1] != u8"D:\\模型.fbx" || window().take_file_drop(event))
+            { stop("Native drop did not preserve owned UTF-8 paths and client coordinates."); return false; }
+            if (!window().enable_file_drop(false)) { stop("Native drop disable failed."); return false; }
+            return true;
+        }
+#endif
         void on_build_ui() override
         {
             ImGui::SetNextWindowSize(ImVec2(620, 320), ImGuiCond_Always);
@@ -184,9 +254,23 @@ namespace
                 }
             }
             ImGui::End();
+            if (!import_dialog_shown_)
+            {
+                import_dialog_shown_ = true;
+                if (!import_dialog_.request("/Project", {"not-confirmed.obj"}))
+                { stop("Import confirmation dialog did not open."); return; }
+            }
+            // Draw the actual settings modal at a small window size. Requesting
+            // or drawing it must never import before an explicit confirmation.
+            import_dialog_.draw(window(), workspace_, selection_, pool_);
+            const auto unconfirmed = VirtualPath::parse("/Project/not-confirmed.asset");
+            const auto state = workspace_.files().stat(unconfirmed.value());
+            if (state.succeeded() || state.status().code != FileErrorCode::NotFound)
+                stop("Opening the import dialog wrote an unconfirmed asset.");
         }
         void on_shutdown() override
         {
+            import_dialog_.clear();
             pool_.shutdown();
             if (!flush_rendering_commands().succeeded()) state_.error = "Preview teardown did not drain.";
             factory_.release();
@@ -195,7 +279,10 @@ namespace
         EditorWorkspace& workspace_;
         AssetThumbnailPool pool_;
         ActorFactory factory_;
+        EditorCommandHistory history_;
         EditorSelection selection_;
+        StaticMeshImportDialog import_dialog_;
+        bool import_dialog_shown_ = false;
         std::string folder_ = "/Project";
         bool show_engine_ = false;
         float tile_size_ = 112;
@@ -212,6 +299,22 @@ namespace
 int main()
 {
     using namespace toy3d;
+    std::string destination = "unchanged", error;
+    if (!static_mesh_import_destination("C:/模型.FBX", "/Project/Models", u8"模型", 1, destination, error) ||
+        destination != u8"/Project/Models/模型.asset" ||
+        static_mesh_import_destination("a.obj", "/Engine", "mesh", 1, destination, error) ||
+        static_mesh_import_destination("a.obj", "/Project2", "mesh", 1, destination, error) ||
+        static_mesh_import_destination("a.png", "/Project", "mesh", 1, destination, error) ||
+        static_mesh_import_destination("a.obj", "/Project", "../mesh", 1, destination, error) ||
+        static_mesh_import_destination("a.obj", "/Project", "mesh", 0, destination, error))
+    { std::cerr << "Import settings validation failed: " << error; return EXIT_FAILURE; }
+    StaticMeshImportDialog dialog;
+    if (dialog.request("/Engine", {"a.obj"}) || dialog.active() ||
+        dialog.request("/Project", std::vector<std::string>(maximum_file_drop_paths + 1, "a.obj")) ||
+        !dialog.request("/Project", {"a.obj"}) || !dialog.active() || dialog.request("/Project", {"b.obj"}))
+    { std::cerr << "Import transaction boundary failed."; return EXIT_FAILURE; }
+    dialog.clear();
+    if (dialog.active()) return EXIT_FAILURE;
     NativePlatformFile platform;
     AssetId first, second;
     if (!AssetId::try_generate(first) || !AssetId::try_generate(second)) return EXIT_FAILURE;
@@ -243,6 +346,22 @@ int main()
         !workspace.files().write_binary_atomic(path_a.value(), a.value(), FilePublishMode::CreateNew).succeeded() ||
         !workspace.files().write_binary_atomic(path_b.value(), b.value(), FilePublishMode::CreateNew).succeeded() ||
         !workspace.refresh()) return EXIT_FAILURE;
+#if WITH_MODEL_IMPORT
+    const auto source = platform.join_relative(root.value(), "import-smoke.obj");
+    if (!source.succeeded() || !platform.write_text_utf8(source.value(),
+        "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", FileWriteMode::CreateNew).succeeded()) return EXIT_FAILURE;
+    AssetId imported;
+    StaticMeshImportOptions options;
+    const std::size_t before = workspace.catalog().entries.size();
+    if (!import_static_mesh_to_workspace(workspace, source.value(), "/Project/import-smoke.asset", options, imported, error) ||
+        !imported.valid() || workspace.catalog().entries.size() != before + 1) return EXIT_FAILURE;
+    AssetId rejected;
+    if (import_static_mesh_to_workspace(workspace, source.value(), "/Project/import-smoke.asset", options, rejected, error) ||
+        rejected.valid() || import_static_mesh_to_workspace(workspace, source.value(), "/Engine/import-smoke.asset", options, rejected, error))
+    { std::cerr << "Import overwrite or read-only boundary failed."; return EXIT_FAILURE; }
+    const auto imported_path = VirtualPath::parse("/Project/import-smoke.asset");
+    if (!workspace.files().remove_file(imported_path.value()).succeeded() || !workspace.refresh()) return EXIT_FAILURE;
+#endif
     CommandLineParser::get_instance().parser_args({"ThumbnailTests", "--Window.Width=720", "--Window.Height=480", "--Window.Title=Thumbnail Tests"});
     TestState state;
     {
@@ -261,7 +380,7 @@ int main()
         engine.exit();
     }
     std::cout << "Thumbnail artifacts: " << root.value().utf8() << '\n';
-    if (!state.complete) { std::cerr << "Thumbnail integration failed: " << state.error << '\n'; return EXIT_FAILURE; }
+    if (!state.complete || !state.error.empty()) { std::cerr << "Thumbnail integration failed: " << state.error << '\n'; return EXIT_FAILURE; }
     std::cout << "Preview render, PNG persistence, opaque preservation, multi-image reload and save conflict passed.\n";
     return EXIT_SUCCESS;
 }

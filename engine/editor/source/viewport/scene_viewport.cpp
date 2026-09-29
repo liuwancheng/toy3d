@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 
 #include "imgui.h"
@@ -111,6 +112,7 @@ namespace toy3d
         gizmo_.begin_frame();
         pending_hit_request_ = {};
         scene_extent_ = {};
+        asset_placement_pending_ = false;
     }
 
     void SceneViewport::draw(World& world, EditorSelection& selection, EditorCommandHistory& history)
@@ -180,6 +182,31 @@ namespace toy3d
                                     selection.select_actor(world, actor_id);
                                     cancel_pending_hit();
                                 }
+                            }
+                        }
+                    }
+                    const ImGuiPayload* asset_payload = ImGui::AcceptDragDropPayload(
+                        ASSET_DRAG_PAYLOAD, ImGuiDragDropFlags_AcceptBeforeDelivery);
+                    if (asset_payload && asset_payload->DataSize == sizeof(AssetId))
+                    {
+                        AssetPlacementRequest request;
+                        std::memcpy(&request.asset_id, asset_payload->Data, sizeof(request.asset_id));
+                        const PlacementItem mesh_item{PlacementItemId::StaticMesh, "Static Mesh", "Assets", 0};
+                        const ImVec2 mouse = ImGui::GetMousePos();
+                        const Vector2 position((mouse.x - origin.x) / available.x, (mouse.y - origin.y) / available.y);
+                        if (request.asset_id.valid() && calculate_placement_transform(view, projection,
+                            scene_view.camera_position(), position, mesh_item, request.transform, &request.on_ground))
+                        {
+                            ImDrawList* draw = ImGui::GetWindowDrawList();
+                            draw->PushClipRect(origin, ImVec2(origin.x + available.x, origin.y + available.y), true);
+                            draw->AddCircle(mouse, 12, IM_COL32(255, 200, 70, 255), 16, 2);
+                            draw->AddText(ImVec2(mouse.x + 15, mouse.y), IM_COL32_WHITE, "Place Static Mesh");
+                            draw->PopClipRect();
+                            if (asset_payload->IsDelivery())
+                            {
+                                asset_placement_ = request;
+                                asset_placement_pending_ = true;
+                                cancel_pending_hit();
                             }
                         }
                     }
@@ -253,6 +280,14 @@ namespace toy3d
                 current_hit_request_id_ = pending_hit_request_.request_id;
             }
         }
+    }
+
+    bool SceneViewport::take_asset_placement(AssetPlacementRequest& request)
+    {
+        if (!asset_placement_pending_) return false;
+        request = asset_placement_;
+        asset_placement_pending_ = false;
+        return true;
     }
 
     bool SceneViewport::extent(Extent& extent) const

@@ -2,6 +2,7 @@
 
 #include "application/application.h"
 #include "editor_viewport_gizmo.h"
+#include "placement/asset_placement.h"
 
 #include <cstdint>
 
@@ -19,6 +20,7 @@ namespace toy3d
         void draw(World& world, EditorSelection& selection, EditorCommandHistory& history);
         bool extent(Extent& extent) const;
         bool take_hit_request(HitProxyRequest& request);
+        bool take_asset_placement(AssetPlacementRequest& request);
         void cancel_pending_hit();
         void receive_hit_result(World& world, EditorSelection& selection, const HitProxyResult& result);
         bool view_camera(const World& world, std::uint32_t actor_id);
@@ -41,5 +43,7 @@ namespace toy3d
         std::uint64_t current_hit_request_id_ = 0;
         std::uint64_t viewport_generation_ = 1;
         EditorViewportGizmo gizmo_;
+        AssetPlacementRequest asset_placement_;
+        bool asset_placement_pending_ = false;
     };
 } // namespace toy3d

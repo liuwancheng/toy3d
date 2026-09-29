@@ -6,6 +6,7 @@
 
 #include "imgui.h"
 #include "logging/logger.h"
+#include "placement/asset_placement.h"
 #include "selection/editor_selection.h"
 #include "thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
@@ -49,11 +50,25 @@ namespace toy3d
         };
     }
 
-    void draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
-                              bool& show_engine_content, AssetThumbnailPool& thumbnails, float& tile_size)
+    ContentBrowserActions draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
+                              bool& show_engine_content, AssetThumbnailPool& thumbnails, float& tile_size, bool import_enabled)
     {
+        ContentBrowserActions actions;
         if (ImGui::Begin("Content Browser"))
         {
+            const ImVec2 region = ImGui::GetWindowPos();
+            const ImVec2 size = ImGui::GetWindowSize();
+            actions.visible = true;
+            actions.region_min = Vector2(region.x, region.y);
+            actions.region_max = Vector2(region.x + size.x, region.y + size.y);
+            const bool writable = folder == "/Project" || folder.compare(0, 9, "/Project/") == 0;
+            ImGui::BeginDisabled(!import_enabled || !writable);
+            if (ImGui::Button("Import...")) actions.import_requested = true;
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip(!import_enabled ? "Model import is disabled in this build" : !writable ?
+                    "Engine content is read only" : "Choose model files and confirm import settings");
+            ImGui::SameLine();
             if (ImGui::Button("Refresh"))
             {
                 if (!workspace.refresh()) TOY_LOG_ERROR("Content Browser refresh failed: {}", workspace.error());
@@ -124,6 +139,13 @@ namespace toy3d
                                 else folder = item.path;
                             }
                             const bool hovered = ImGui::IsItemHovered();
+                            if (item.asset && item.asset->file.root_type == "toy3d.StaticMeshAssetData" && ImGui::BeginDragDropSource())
+                            {
+                                const AssetId id = item.asset->file.asset_id;
+                                ImGui::SetDragDropPayload(ASSET_DRAG_PAYLOAD, &id, sizeof(id));
+                                ImGui::Text("Place Static Mesh: %s", item.path.c_str());
+                                ImGui::EndDragDropSource();
+                            }
                             auto& draw = *ImGui::GetWindowDrawList();
                             draw.AddRectFilled(position, end, selected ? IM_COL32(48, 89, 126, 255) :
                                 hovered ? IM_COL32(55, 58, 63, 255) : IM_COL32(31, 33, 37, 255), 4);
@@ -164,10 +186,18 @@ namespace toy3d
                     }
                 }
                 if (items.empty()) ImGui::TextDisabled("No assets or folders here");
+                if (ImGui::BeginPopupContextWindow("Content Actions", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+                {
+                    if (ImGui::MenuItem("Import...", nullptr, false, import_enabled && writable)) actions.import_requested = true;
+                    if (!writable) ImGui::TextDisabled("Engine content is read only");
+                    if (!import_enabled) ImGui::TextDisabled("Model import is disabled in this build");
+                    ImGui::EndPopup();
+                }
                 ImGui::EndChild();
                 ImGui::EndTable();
             }
         }
         ImGui::End();
+        return actions;
     }
 }
