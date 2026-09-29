@@ -95,6 +95,8 @@ target_compile_definitions(${TARGET_NAME}
     "TOY3D_EDITOR_LAYOUT_PATH=\"${BINARY_ROOT_DIR}saved/editor_layout.ini\"")
 
 target_sources(${TARGET_NAME} PRIVATE
+    "source/material/material_edit_session.h" "source/material/material_edit_session.cpp"
+    "source/panels/material_editor_panel.h" "source/panels/material_editor_panel.cpp"
     "source/thumbnails/thumbnail_preview_scene.h" "source/thumbnails/thumbnail_preview_scene.cpp"
     "source/thumbnails/asset_thumbnail_pool.h" "source/thumbnails/asset_thumbnail_pool.cpp"
     "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp"
@@ -133,6 +135,7 @@ if(BUILD_TESTING)
         add_executable(Toy3dEditorThumbnailTests
             "tests/thumbnail_integration_tests.cpp"
             "source/workspace/editor_workspace.cpp"
+            "source/material/material_edit_session.cpp"
             "source/thumbnails/asset_thumbnail_pool.cpp" "source/thumbnails/thumbnail_preview_scene.cpp"
             "source/panels/content_browser_panel.cpp" "source/selection/editor_selection.cpp"
             "source/panels/static_mesh_import_dialog.cpp" "${TOY3D_MODEL_PICKER_SOURCE}"
@@ -169,6 +172,7 @@ if(BUILD_TESTING)
     endif()
     add_executable(Toy3dEditorWorkspaceTests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/workspace_tests.cpp"
+        "source/material/material_edit_session.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/workspace/editor_workspace.cpp")
     target_compile_features(Toy3dEditorWorkspaceTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorWorkspaceTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
@@ -177,6 +181,37 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset)
     target_compile_options(Toy3dEditorWorkspaceTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     add_test(NAME Toy3dEditor.Workspace COMMAND Toy3dEditorWorkspaceTests)
+
+    add_executable(Toy3dEditorMaterialTests
+        "tests/material_edit_tests.cpp"
+        "source/material/material_edit_session.cpp"
+        "source/workspace/editor_workspace.cpp")
+    target_compile_features(Toy3dEditorMaterialTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorMaterialTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_include_directories(Toy3dEditorMaterialTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
+    target_link_libraries(Toy3dEditorMaterialTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset)
+    target_compile_definitions(Toy3dEditorMaterialTests PRIVATE
+        "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-editor-test-output\"")
+    target_compile_options(Toy3dEditorMaterialTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.Material COMMAND Toy3dEditorMaterialTests)
+
+    add_executable(Toy3dEditorMaterialUiTests
+        "tests/material_ui_tests.cpp"
+        "source/material/material_edit_session.cpp"
+        "source/panels/material_editor_panel.cpp"
+        "source/workspace/editor_workspace.cpp")
+    target_compile_features(Toy3dEditorMaterialUiTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorMaterialUiTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_include_directories(Toy3dEditorMaterialUiTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
+    target_link_libraries(Toy3dEditorMaterialUiTests PRIVATE Toy3dRuntime Toy3dResource imgui)
+    target_compile_definitions(Toy3dEditorMaterialUiTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
+        "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-ui-test-output\""
+        "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
+        "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
+        "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
+        "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
+    target_compile_options(Toy3dEditorMaterialUiTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.MaterialUi COMMAND Toy3dEditorMaterialUiTests)
 
     add_executable(Toy3dEditorPlacementTests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/placement_tests.cpp"

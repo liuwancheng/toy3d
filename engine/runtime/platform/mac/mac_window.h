@@ -18,6 +18,7 @@ namespace toy3d
         bool should_close() final;
         void process_events() final;
         void close() final;
+        bool cancel_close() override;
         bool enable_file_drop(bool enabled) override;
 
         GLFWwindow* get_glfw_window() const { return glfw_window; }

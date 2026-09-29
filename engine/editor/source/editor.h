@@ -9,6 +9,7 @@
 #include "thumbnails/asset_thumbnail_pool.h"
 #include "panels/static_mesh_import_dialog.h"
 #include "panels/material_create_dialog.h"
+#include "panels/material_editor_panel.h"
 
 #include <string>
 #include <utility>
@@ -27,6 +28,7 @@ namespace toy3d
         bool on_initialize() override;
         bool starts_world_play() const override { return false; }
         void on_shutdown() override;
+        bool on_close_requested() override { return material_editor_.request_exit(); }
         void on_build_ui() override;
         bool on_scene_viewport_extent(Extent& extent) const override;
         bool on_hit_proxy_request(HitProxyRequest& request) override;
@@ -53,6 +55,10 @@ namespace toy3d
         bool show_engine_content_ = false;
         StaticMeshImportDialog model_import_;
         MaterialCreateDialog material_create_;
+        MaterialEditorPanel material_editor_;
+        bool material_history_target_ = false;
+        void undo_edit();
+        void redo_edit();
         std::string model_error_;
 
     };

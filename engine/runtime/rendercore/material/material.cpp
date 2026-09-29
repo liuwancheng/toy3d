@@ -11,6 +11,7 @@
 #include <exception>
 #include <stdexcept>
 #include <utility>
+#include <set>
 
 namespace toy3d
 {
@@ -43,6 +44,84 @@ namespace toy3d
 
     namespace
     {
+        struct ResolvedMaterialParameter
+        {
+            ShaderParameterId id = 0;
+            MaterialParameterValue value;
+        };
+
+        bool resolve_material_changes(const MaterialDesc& desc, const MaterialParameterChanges& changes,
+                                      std::vector<ResolvedMaterialParameter>& resolved)
+        {
+            std::set<std::string> names;
+            for (const auto& change : changes)
+            {
+                if (!names.insert(change.name).second) return false;
+                ResolvedMaterialParameter item;
+                item.value = change.value;
+                // C++17 get_if keeps this closed set readable and permits typed
+                // reset defaults without passing variant machinery to the RT proxy.
+                const bool reset = std::holds_alternative<std::monostate>(change.value);
+                for (const auto& buffer : desc.parameter_schema.constant_buffers)
+                    for (const auto& member : buffer.members)
+                        if (member.name == change.name)
+                        {
+                            item.id = member.parameter_id;
+                            if (member.type == shader::ShaderValueType::Float32)
+                            {
+                                if (reset) item.value = desc.scalar_defaults.at(item.id);
+                                const auto* value = std::get_if<float>(&item.value);
+                                if (!value || !std::isfinite(*value)) return false;
+                            }
+                            else if (member.type == shader::ShaderValueType::Float32x2)
+                            {
+                                if (reset)
+                                {
+                                    const auto& value = desc.vector2_defaults.at(item.id);
+                                    item.value = Vector2(value.x, value.y);
+                                }
+                                const auto* value = std::get_if<Vector2>(&item.value);
+                                if (!value || !std::isfinite(value->x) || !std::isfinite(value->y)) return false;
+                            }
+                            else if (member.type == shader::ShaderValueType::Float32x3)
+                            {
+                                if (reset)
+                                {
+                                    const auto& value = desc.vector3_defaults.at(item.id);
+                                    item.value = Vector3(value.x, value.y, value.z);
+                                }
+                                const auto* value = std::get_if<Vector3>(&item.value);
+                                if (!value || !std::isfinite(value->x) || !std::isfinite(value->y) || !std::isfinite(value->z)) return false;
+                            }
+                            else if (member.type == shader::ShaderValueType::Float32x4)
+                            {
+                                if (reset)
+                                {
+                                    const auto& value = desc.vector4_defaults.at(item.id);
+                                    item.value = Vector4(value.x, value.y, value.z, value.w);
+                                }
+                                const auto* value = std::get_if<Vector4>(&item.value);
+                                if (!value || !std::isfinite(value->x) || !std::isfinite(value->y) ||
+                                    !std::isfinite(value->z) || !std::isfinite(value->w)) return false;
+                            }
+                            else return false;
+                        }
+                for (const auto& resource : desc.parameter_schema.resources)
+                    if (resource.name == change.name)
+                    {
+                        if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
+                            resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u) return false;
+                        item.id = resource.parameter_id;
+                        if (reset) item.value = desc.texture_defaults.at(item.id);
+                        const auto* value = std::get_if<TextureRef>(&item.value);
+                        if (!value || !*value) return false;
+                    }
+                if (!item.id) return false;
+                resolved.push_back(std::move(item));
+            }
+            return true;
+        }
+
         bool validate_material_schema_defaults(const MaterialDesc& desc, std::string& error)
         {
             std::size_t scalar_count = 0u;
@@ -342,170 +421,119 @@ namespace toy3d
         material_instance.reset();
     }
 
-    bool MaterialInstance::resolve_constant_parameter(std::string_view parameter_name,
-                                                      shader::ShaderValueType expected_value_type,
-                                                      ShaderParameterId& parameter_id) const
+
+    bool MaterialInstance::set_scalar(std::string_view name, float value)
     {
-        parameter_id = 0;
-        for (const shader::ShaderParameterConstantBufferSchema& buffer : material_->parameter_schema().constant_buffers)
+        return apply_parameters({{std::string(name), value}});
+    }
+
+    bool MaterialInstance::set_vector(std::string_view name, const vec2& value)
+    {
+        return apply_parameters({{std::string(name), Vector2(value.x, value.y)}});
+    }
+
+    bool MaterialInstance::set_vector(std::string_view name, const vec3& value)
+    {
+        return apply_parameters({{std::string(name), Vector3(value.x, value.y, value.z)}});
+    }
+
+    bool MaterialInstance::set_vector(std::string_view name, const vec4& value)
+    {
+        return apply_parameters({{std::string(name), Vector4(value.x, value.y, value.z, value.w)}});
+    }
+
+    bool MaterialInstance::set_texture(std::string_view name, TextureRef texture)
+    {
+        return apply_parameters({{std::string(name), std::move(texture)}});
+    }
+
+    bool MaterialInstance::validate_parameters(const MaterialParameterChanges& changes) const
+    {
+        std::vector<ResolvedMaterialParameter> resolved;
+        if (!resolve_material_changes(material_->desc(), changes, resolved))
         {
-            for (const shader::ShaderParameterConstantMemberSchema& member : buffer.members)
+            TOY_LOG_ERROR("Material parameter batch contains duplicate, unknown, incompatible or non-finite values.");
+            return false;
+        }
+        return true;
+    }
+
+    bool MaterialInstance::apply_parameters(const MaterialParameterChanges& changes)
+    {
+        if (!resolve_material_replacement_publication()) return false;
+        std::vector<ResolvedMaterialParameter> resolved;
+        if (!resolve_material_changes(material_->desc(), changes, resolved))
+        {
+            TOY_LOG_ERROR("Material parameter batch contains duplicate, unknown, incompatible or non-finite values.");
+            return false;
+        }
+        if (resolved.empty()) return true;
+        auto scalars = scalar_overrides_;
+        auto vectors2 = vector2_overrides_;
+        auto vectors3 = vector3_overrides_;
+        auto vectors4 = vector4_overrides_;
+        auto textures = texture_overrides_;
+        for (std::size_t i = 0; i < resolved.size(); ++i)
+        {
+            const auto id = resolved[i].id;
+            // C++17 get_if explicitly dispatches the closed value set; resets
+            // erase GT overrides while the RT receives the resolved default.
+            if (std::holds_alternative<std::monostate>(changes[i].value))
             {
-                if (member.name == parameter_name)
+                scalars.erase(id); vectors2.erase(id); vectors3.erase(id);
+                vectors4.erase(id); textures.erase(id);
+            }
+            else if (const auto* value = std::get_if<float>(&resolved[i].value)) scalars[id] = *value;
+            else if (const auto* value = std::get_if<Vector2>(&resolved[i].value)) vectors2[id] = vec2(value->x, value->y);
+            else if (const auto* value = std::get_if<Vector3>(&resolved[i].value)) vectors3[id] = vec3(value->x, value->y, value->z);
+            else if (const auto* value = std::get_if<Vector4>(&resolved[i].value)) vectors4[id] = vec4(value->x, value->y, value->z, value->w);
+            else if (const auto* value = std::get_if<TextureRef>(&resolved[i].value)) textures[id] = *value;
+        }
+        MaterialRenderProxy* const proxy = material_render_proxy_.get();
+        auto old_textures = std::make_shared<std::unordered_map<ShaderParameterId, TextureRef>>(texture_overrides_);
+        texture_overrides_.swap(textures);
+        textures.clear();
+        // The new map and owned payload hold every new Texture before admission.
+        // The old map stays alive until the complete RT batch has switched pointers.
+        try
+        {
+            enqueue_render_command("ApplyMaterialParameters",
+            [proxy, resolved = std::move(resolved), old_textures]() mutable noexcept
+            {
+                for (const auto& item : resolved)
                 {
-                    if (member.type != expected_value_type)
-                    {
-                        TOY_LOG_ERROR("Material parameter '{}' has an incompatible constant type.", parameter_name);
-                        return false;
-                    }
-                    parameter_id = member.parameter_id;
-                    return true;
+                    // C++17 get_if avoids a generic visitor at the RT boundary.
+                    if (const auto* value = std::get_if<float>(&item.value)) proxy->apply_scalar_update(item.id, *value);
+                    else if (const auto* value = std::get_if<Vector2>(&item.value)) proxy->apply_vector_update(item.id, vec2(value->x, value->y));
+                    else if (const auto* value = std::get_if<Vector3>(&item.value)) proxy->apply_vector_update(item.id, vec3(value->x, value->y, value->z));
+                    else if (const auto* value = std::get_if<Vector4>(&item.value)) proxy->apply_vector_update(item.id, vec4(value->x, value->y, value->z, value->w));
+                    else if (const auto* value = std::get_if<TextureRef>(&item.value)) proxy->apply_texture_update(item.id, (*value)->texture_resource());
                 }
-            }
-        }
-        TOY_LOG_ERROR("Material constant parameter '{}' is unknown.", parameter_name);
-        return false;
-    }
-
-    bool MaterialInstance::resolve_texture_parameter(std::string_view parameter_name,
-                                                     ShaderParameterId& parameter_id) const
-    {
-        parameter_id = 0;
-        for (const shader::ShaderParameterResourceSchema& resource : material_->parameter_schema().resources)
-        {
-            if (resource.name == parameter_name)
-            {
-                if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
-                    resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u)
+                for (auto& item : *old_textures)
                 {
-                    TOY_LOG_ERROR("Material parameter '{}' is not a scalar Texture2D binding.", parameter_name);
-                    return false;
+                    if (item.second && item.second.use_count() == 1) Texture::release(item.second);
+                    item.second.reset();
                 }
-                parameter_id = resource.parameter_id;
-                return true;
-            }
+            });
         }
-        TOY_LOG_ERROR("Material Texture parameter '{}' is unknown.", parameter_name);
-        return false;
-    }
-
-    bool MaterialInstance::set_scalar(std::string_view parameter_name, float value)
-    {
-        ShaderParameterId parameter_id = 0;
-        if (!resolve_material_replacement_publication() ||
-            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32, parameter_id))
+        catch (...)
         {
-            return false;
+            texture_overrides_.swap(*old_textures);
+            throw;
         }
-        scalar_overrides_[parameter_id] = value;
+        scalar_overrides_.swap(scalars);
+        vector2_overrides_.swap(vectors2);
+        vector3_overrides_.swap(vectors3);
+        vector4_overrides_.swap(vectors4);
         render_proxy_used_ = true;
-        MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        enqueue_render_command("SetMaterialScalar",
-                               [proxy, parameter_id, value]() noexcept {
-                                   proxy->apply_scalar_update(parameter_id, value);
-                               });
         return true;
     }
 
-    bool MaterialInstance::set_vector(std::string_view parameter_name, const vec2& value)
+    bool MaterialInstance::reset_parameter(std::string_view name)
     {
-        ShaderParameterId parameter_id = 0;
-        if (!resolve_material_replacement_publication() ||
-            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32x2, parameter_id))
-        {
-            return false;
-        }
-        vector2_overrides_[parameter_id] = value;
-        render_proxy_used_ = true;
-        MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        enqueue_render_command("SetMaterialVector2",
-                               [proxy, parameter_id, value]() noexcept {
-                                   proxy->apply_vector_update(parameter_id, value);
-                               });
-        return true;
+        return apply_parameters({{std::string(name), std::monostate{}}});
     }
 
-    bool MaterialInstance::set_vector(std::string_view parameter_name, const vec3& value)
-    {
-        ShaderParameterId parameter_id = 0;
-        if (!resolve_material_replacement_publication() ||
-            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32x3, parameter_id))
-        {
-            return false;
-        }
-        vector3_overrides_[parameter_id] = value;
-        render_proxy_used_ = true;
-        MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        enqueue_render_command("SetMaterialVector3",
-                               [proxy, parameter_id, value]() noexcept {
-                                   proxy->apply_vector_update(parameter_id, value);
-                               });
-        return true;
-    }
-
-    bool MaterialInstance::set_vector(std::string_view parameter_name, const vec4& value)
-    {
-        ShaderParameterId parameter_id = 0;
-        if (!resolve_material_replacement_publication() ||
-            !resolve_constant_parameter(parameter_name, shader::ShaderValueType::Float32x4, parameter_id))
-        {
-            return false;
-        }
-        vector4_overrides_[parameter_id] = value;
-        render_proxy_used_ = true;
-        MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        enqueue_render_command("SetMaterialVector4",
-                               [proxy, parameter_id, value]() noexcept {
-                                   proxy->apply_vector_update(parameter_id, value);
-                               });
-        return true;
-    }
-
-    bool MaterialInstance::set_texture(std::string_view parameter_name, TextureRef texture)
-    {
-        if (!resolve_material_replacement_publication())
-        {
-            return false;
-        }
-        ShaderParameterId parameter_id = 0;
-        if (!texture || !resolve_texture_parameter(parameter_name, parameter_id))
-        {
-            if (!texture)
-            {
-                TOY_LOG_ERROR("Material Texture parameter '{}' requires a valid Texture.", parameter_name);
-            }
-            return false;
-        }
-
-        TextureRef old_texture;
-        const auto found = texture_overrides_.find(parameter_id);
-        if (found != texture_overrides_.end())
-        {
-            old_texture = std::move(found->second);
-            found->second = texture;
-        }
-        else
-        {
-            texture_overrides_.emplace(parameter_id, texture);
-        }
-
-        render_proxy_used_ = true;
-        MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        TextureResource* const resource = texture->texture_resource();
-        enqueue_render_command("SetMaterialTexture",
-                               [proxy, parameter_id, resource, texture = std::move(texture),
-                                old_texture = std::move(old_texture)]() mutable noexcept
-                               {
-                                   proxy->apply_texture_update(parameter_id, resource);
-                                   if (old_texture && old_texture.use_count() == 1)
-                                   {
-                                       Texture::release(old_texture);
-                                   }
-                                   old_texture.reset();
-                                   texture.reset();
-                               });
-        return true;
-    }
 
     bool MaterialInstance::stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program,
                                                       bool two_sided)

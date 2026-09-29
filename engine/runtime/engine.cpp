@@ -603,7 +603,7 @@ namespace toy3d
             return;
         }
         auto previous_tick = std::chrono::steady_clock::now();
-        while (!window->should_close())
+        while (true)
         {
             const auto current_tick = std::chrono::steady_clock::now();
             delta_time = std::chrono::duration<double>(current_tick - previous_tick).count();
@@ -631,7 +631,12 @@ namespace toy3d
             }
             if (window->should_close())
             {
-                break;
+                if (!application_bound || !application || application->on_close_requested()) break;
+                if (!window->cancel_close())
+                {
+                    TOY_LOG_ERROR("Platform window cannot defer the requested close.");
+                    break;
+                }
             }
             std::unique_ptr<ImGuiDrawData> ui_draw_data;
             ViewportFrameOutput viewport_output;

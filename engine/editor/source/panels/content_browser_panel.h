@@ -16,6 +16,7 @@ namespace toy3d
         bool material_creation_requested = false;
         MaterialAssetCreationKind material_creation_kind = MaterialAssetCreationKind::Material;
         AssetId material_parent;
+        AssetId material_open;
         bool visible = false;
         Vector2 region_min;
         Vector2 region_max;

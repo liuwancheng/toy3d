@@ -32,6 +32,8 @@ namespace toy3d
         if (!window().enable_file_drop(true)) TOY_LOG_WARN("External model file drop is unavailable on this platform.");
 #endif
         if (!actor_factory_.initialize()) return false;
+        material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
+            PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
         PlacementRequest preview;
         preview.item = PlacementItemId::Cube;
         preview.transform.translation = Vector3(0.0f, 0.75f, 3.0f);
@@ -51,6 +53,7 @@ namespace toy3d
 #endif
         model_import_.clear();
         material_create_.clear();
+        material_editor_.shutdown();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         command_history_.clear();
@@ -93,8 +96,8 @@ namespace toy3d
             }
             if (ImGui::BeginMenu("Edit"))
             {
-                if (ImGui::MenuItem("Undo", "Ctrl+Z")) command_history_.undo(world());
-                if (ImGui::MenuItem("Redo", "Ctrl+Y")) command_history_.redo(world());
+                if (ImGui::MenuItem("Undo", "Ctrl+Z")) undo_edit();
+                if (ImGui::MenuItem("Redo", "Ctrl+Y")) redo_edit();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Window"))
@@ -139,9 +142,9 @@ namespace toy3d
         ImGui::SameLine();
         ImGui::TextDisabled("  |  Scene");
         ImGui::SameLine();
-        if (ImGui::Button("Undo")) command_history_.undo(world());
+        if (ImGui::Button("Undo")) undo_edit();
         ImGui::SameLine();
-        if (ImGui::Button("Redo")) command_history_.redo(world());
+        if (ImGui::Button("Redo")) redo_edit();
         ImGui::SameLine();
         if (ImGui::Button("Refresh Assets"))
         {
@@ -208,6 +211,8 @@ namespace toy3d
         scene_viewport_.draw(world(), selection_, command_history_);
         const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
             show_engine_content_, thumbnails_, asset_tile_size_, WITH_MODEL_IMPORT != 0);
+        if (browser.material_open.valid() && !model_import_.active() && !material_create_.active())
+            material_editor_.request_open(browser.material_open);
         if (browser.material_creation_requested && !model_import_.active())
             material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
 #if WITH_MODEL_IMPORT
@@ -223,6 +228,8 @@ namespace toy3d
         model_import_.draw(window(), workspace_, selection_, thumbnails_);
 #endif
         material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema());
+        material_editor_.draw();
+        if (material_editor_.take_exit()) window().close();
         AssetPlacementRequest placed;
         if (scene_viewport_.take_asset_placement(placed))
         {
@@ -252,6 +259,8 @@ namespace toy3d
         const bool actor_panel_focused = focused &&
             (focused == ImGui::FindWindowByName("Scene Viewport###Game Viewport") ||
              focused == ImGui::FindWindowByName("Outliner") || focused == ImGui::FindWindowByName("Details"));
+        if (material_editor_.focused()) material_history_target_ = true;
+        else if (actor_panel_focused) material_history_target_ = false;
         const bool modal_active = model_import_.active() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
         if (!modal_active && actor_panel_focused && selection_.focus() == EditorSelectionFocus::Actor &&
             !io.WantTextInput && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Delete))
@@ -262,7 +271,7 @@ namespace toy3d
                 scene_viewport_.cancel_pending_hit();
             }
         }
-        if (!modal_active && io.KeyCtrl && !io.WantTextInput && !ImGui::IsAnyItemActive())
+        if (!modal_active && actor_panel_focused && io.KeyCtrl && !io.WantTextInput && !ImGui::IsAnyItemActive())
         {
             if (ImGui::IsKeyPressed(ImGuiKey_Z))
             {
@@ -274,6 +283,20 @@ namespace toy3d
             else if (ImGui::IsKeyPressed(ImGuiKey_Y))
                 command_history_.redo(world());
         }
+    }
+
+    void EditorApplication::undo_edit()
+    {
+        if (ImGui::IsAnyItemActive() || model_import_.active() || material_create_.active() || material_editor_.modal_pending()) return;
+        if (material_history_target_) material_editor_.undo();
+        else command_history_.undo(world());
+    }
+
+    void EditorApplication::redo_edit()
+    {
+        if (ImGui::IsAnyItemActive() || model_import_.active() || material_create_.active() || material_editor_.modal_pending()) return;
+        if (material_history_target_) material_editor_.redo();
+        else command_history_.redo(world());
     }
 
     bool EditorApplication::on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)

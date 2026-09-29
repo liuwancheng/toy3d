@@ -25,6 +25,8 @@ World 对象或属于项目宿主策略的状态才留在 Application。
 
 文件拖入是可选的 IWindow 平台事件，默认关闭，启用与消费均在窗口 owner thread。事件只携带 owned UTF-8 路径及客户区逻辑坐标，不通过游戏输入映射或触发资源加载；Application 自行决定接收区域和业务确认流程。当前 Windows/macOS Editor 的模型接入、上限和退出清理见 [StaticMesh 导入交互](static-mesh-import-design.md#7-editor-导入与拖放交互)。其他平台启用返回 false。
 
+关闭请求在窗口 owner/GT 处理：Engine 收集事件后发现 `should_close()`，先调用 `Application::on_close_requested()`（默认 true）。Editor 有未保存资源时返回 false，让支持的窗口通过 `cancel_close()` 清除关闭标志并继续 UI 帧；确认保存或放弃后重新请求 close，取消则保留窗口。Windows/macOS 支持延迟，不销毁原生窗口后再弹框；其他平台默认返回不支持并记录错误。hook 不执行 RHI、阻塞等待或原生 Dialog，保存策略仍属于 Editor。
+
 ## 3. 所有权与绑定
 
 ```text

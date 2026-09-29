@@ -11,6 +11,31 @@
 
 namespace toy3d
 {
+    bool EditorWorkspace::read_material_properties(const PhysicalPath& registered_root, const std::string& shader_name,
+        const shader::ShaderParameterSchema& schema, std::vector<shader::ShaderEditorProperty>& properties,
+        std::string& error) const
+    {
+        const auto entries = platform_file_.enumerate_directory(registered_root);
+        if (!entries.succeeded()) { error = entries.status().message; return false; }
+        for (const auto& entry : entries.value())
+        {
+            if (entry.type != FileType::Directory) continue;
+            std::vector<shader::ShaderEditorProperty> candidate;
+            std::string problem;
+            if (shader::read_shader_editor_properties(platform_file_, entry.path, shader_name, schema, candidate, problem) &&
+                !candidate.empty())
+            {
+                properties = std::move(candidate);
+                error.clear();
+                return true;
+            }
+            if (!problem.empty()) error = problem;
+        }
+        if (!error.empty()) return false;
+        properties.clear();
+        return true;
+    }
+
     namespace
     {
         std::string comparable_path(std::string path)

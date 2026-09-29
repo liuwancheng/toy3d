@@ -141,6 +141,11 @@ namespace toy3d
                                 else folder = item.path;
                             }
                             const bool hovered = ImGui::IsItemHovered();
+                            const bool is_material = item.asset &&
+                                (item.asset->file.root_type == "toy3d.MaterialAssetData" ||
+                                 item.asset->file.root_type == "toy3d.MaterialInstanceAssetData");
+                            if (is_material && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                                actions.material_open = item.asset->file.asset_id;
                             if (item.asset && item.asset->file.root_type == "toy3d.StaticMeshAssetData" && ImGui::BeginDragDropSource())
                             {
                                 const AssetId id = item.asset->file.asset_id;
@@ -173,6 +178,8 @@ namespace toy3d
                             }
                             if (item.asset && ImGui::BeginPopupContextItem("Asset Actions"))
                             {
+                                if (is_material && ImGui::MenuItem("Open Material Editor"))
+                                    actions.material_open = item.asset->file.asset_id;
                                 if (item.asset->file.root_type == "toy3d.MaterialAssetData" && ImGui::MenuItem("Create Material Instance..."))
                                 {
                                     actions.material_creation_requested = true;

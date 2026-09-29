@@ -40,6 +40,8 @@ namespace toy3d
         virtual void on_hit_proxy_result(const HitProxyResult& result) {}
         virtual void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const = 0;
         virtual void on_shutdown() {}
+        // Editor may keep the frame loop alive while resolving unsaved work.
+        virtual bool on_close_requested() { return true; }
         virtual bool uses_preview_scene() const { return false; }
         virtual bool on_initialize_preview_scene(SceneInterface&, TaskGraphInterface&) { return true; }
         virtual void on_collect_ui_render_work(UiRenderWork&) {}

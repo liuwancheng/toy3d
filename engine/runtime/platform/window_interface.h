@@ -63,6 +63,8 @@ namespace toy3d
         virtual void process_events() = 0;
 
         virtual void close() = 0;
+        // Deferred close is optional for platform surfaces that can remain live.
+        virtual bool cancel_close() { return false; }
 
         // Native callbacks only enqueue owned events. Applications choose the
         // accepted UI region and consume on the window owner thread.

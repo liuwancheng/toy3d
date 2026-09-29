@@ -175,4 +175,11 @@ namespace toy3d
             glfwSetWindowShouldClose(glfw_window, true);
         }
     }
+
+    bool MacWindow::cancel_close()
+    {
+        if (!glfw_window) return false;
+        glfwSetWindowShouldClose(glfw_window, false);
+        return true;
+    }
 } // namespace toy3d

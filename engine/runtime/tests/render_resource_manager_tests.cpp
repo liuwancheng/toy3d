@@ -2072,6 +2072,31 @@ int main()
             check(built.succeeded(), "known orphan must not stop valid runtime material construction");
             orphan_instance = built.value();
         }
+        const auto stable_proxy = root_instance->material_render_proxy();
+        const toy3d::MaterialParameterChanges batch = {
+            {"roughness", 0.6f}, {"base_color", toy3d::Vector4(0.3f, 0.4f, 0.5f, 1.0f)}};
+        check(root_instance->apply_parameters(batch), "complete dynamic batch must apply");
+        const auto batched_binding = stable_proxy->materialize(device, context);
+        float batch_scalar = 0.0f;
+        float batch_color = 0.0f;
+        if (context.last_buffer_upload_data.size() == 32u)
+        {
+            std::memcpy(&batch_scalar, context.last_buffer_upload_data.data(), sizeof(float));
+            std::memcpy(&batch_color, context.last_buffer_upload_data.data() + 16u, sizeof(float));
+        }
+        check(batched_binding.succeeded() && batch_scalar == 0.6f && batch_color == 0.3f &&
+            root_instance->material_render_proxy() == stable_proxy, "batch preserves proxy and publishes every parameter");
+        check(!root_instance->apply_parameters({{"roughness", 0.7f}, {"unknown", 1.0f}}) &&
+            !root_instance->apply_parameters({{"roughness", 0.7f}, {"roughness", 0.8f}}) &&
+            !root_instance->set_scalar("roughness", std::numeric_limits<float>::quiet_NaN()) &&
+            stable_proxy->materialize(device, context).value() == batched_binding.value(),
+            "unknown duplicate or non-finite batch must not publish a partial update or dirty bindings");
+        check(root_instance->reset_parameter("roughness") && root_instance->reset_parameter("base_color"),
+            "runtime reset must resolve immutable Shader defaults");
+        const auto reset_binding = stable_proxy->materialize(device, context);
+        if (context.last_buffer_upload_data.size() == 32u)
+            std::memcpy(&batch_scalar, context.last_buffer_upload_data.data(), sizeof(float));
+        check(reset_binding.succeeded() && batch_scalar == 0.25f, "runtime reset uses Shader default rather than root override");
         toy3d::MaterialInstance::release(orphan_instance);
         toy3d::MaterialInstance::release(inherited_instance);
         toy3d::MaterialInstance::release(child_instance);

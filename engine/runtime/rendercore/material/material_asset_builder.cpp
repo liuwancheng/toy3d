@@ -49,21 +49,26 @@ namespace toy3d
             if (!candidate) return AssetResult<MaterialInstanceRef>(failure("Could not create runtime material instance."));
             try
             {
+                MaterialParameterChanges changes;
                 for (const auto& pair : effective)
                 {
                     const auto& item = *pair.second;
-                    bool applied = false;
-                    // get_if keeps the boundary conversion to legacy GLM setters explicit.
-                    if (const auto* value = std::get_if<float>(&item.value)) applied = candidate->set_scalar(item.name, *value);
-                    else if (const auto* value = std::get_if<Vector2>(&item.value)) applied = candidate->set_vector(item.name, vec2(value->x, value->y));
-                    else if (const auto* value = std::get_if<Vector3>(&item.value)) applied = candidate->set_vector(item.name, vec3(value->x, value->y, value->z));
-                    else if (const auto* value = std::get_if<Vector4>(&item.value)) applied = candidate->set_vector(item.name, vec4(value->x, value->y, value->z, value->w));
-                    else if (const auto* value = std::get_if<AssetRef>(&item.value)) applied = candidate->set_texture(item.name, textures.assets.at(value->asset_id));
-                    if (!applied)
-                    {
-                        MaterialInstance::release(candidate);
-                        return AssetResult<MaterialInstanceRef>(failure("Could not apply material parameter: " + item.name));
-                    }
+                    MaterialParameterChange change;
+                    change.name = item.name;
+                    // C++17 get_if maps the persisted closed set into one owned
+                    // runtime batch; AssetRef resolution stays on the GT.
+                    if (const auto* value = std::get_if<float>(&item.value)) change.value = *value;
+                    else if (const auto* value = std::get_if<Vector2>(&item.value)) change.value = *value;
+                    else if (const auto* value = std::get_if<Vector3>(&item.value)) change.value = *value;
+                    else if (const auto* value = std::get_if<Vector4>(&item.value)) change.value = *value;
+                    else if (const auto* value = std::get_if<AssetRef>(&item.value)) change.value = textures.assets.at(value->asset_id);
+                    else return AssetResult<MaterialInstanceRef>(failure("Unsupported material parameter: " + item.name));
+                    changes.push_back(std::move(change));
+                }
+                if (!candidate->apply_parameters(changes))
+                {
+                    MaterialInstance::release(candidate);
+                    return AssetResult<MaterialInstanceRef>(failure("Could not apply the complete material parameter batch."));
                 }
             }
             catch (const std::exception& error)

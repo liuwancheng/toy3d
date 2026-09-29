@@ -11,6 +11,8 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
+#include <vector>
 
 namespace toy3d
 {
@@ -72,6 +74,16 @@ namespace toy3d
 
     using MaterialRef = std::shared_ptr<const Material>;
 
+    // C++17 variant owns the closed runtime value set; monostate resets to
+    // the immutable Shader default without a nullable resource convention.
+    using MaterialParameterValue = std::variant<std::monostate, float, Vector2, Vector3, Vector4, TextureRef>;
+    struct MaterialParameterChange
+    {
+        std::string name;
+        MaterialParameterValue value;
+    };
+    using MaterialParameterChanges = std::vector<MaterialParameterChange>;
+
     class MaterialInstance
     {
       public:
@@ -95,6 +107,9 @@ namespace toy3d
         bool set_vector(std::string_view parameter_name, const vec3& value);
         bool set_vector(std::string_view parameter_name, const vec4& value);
         bool set_texture(std::string_view parameter_name, TextureRef texture);
+        bool reset_parameter(std::string_view parameter_name);
+        bool validate_parameters(const MaterialParameterChanges& changes) const;
+        bool apply_parameters(const MaterialParameterChanges& changes);
 
         bool stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program, bool two_sided);
         bool publish_material_replacement();
@@ -107,9 +122,6 @@ namespace toy3d
       private:
         explicit MaterialInstance(MaterialRef material);
 
-        bool resolve_constant_parameter(std::string_view parameter_name, shader::ShaderValueType expected_value_type,
-                                        ShaderParameterId& parameter_id) const;
-        bool resolve_texture_parameter(std::string_view parameter_name, ShaderParameterId& parameter_id) const;
         bool resolve_material_replacement_publication();
 
         MaterialRef material_;

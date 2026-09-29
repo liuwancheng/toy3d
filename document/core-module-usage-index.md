@@ -81,6 +81,8 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 ## Hash、PNG 与缩略图
 
+Editor 的材质编辑入口为 `EditorWorkspace::material_edit()` 和 `material/material_edit_session.h`，内部组合现有 typed EditSession；手势草稿结束后一次提交，save 重新读取所有最新可选段并更新依赖，详见[材质系统设计](material-system-design.md)。该入口属于 Editor 业务，不新增 Core 撤销系统或通用资源内存对象。
+
 `sha256(bytes/text)` 返回固定 32 字节签名；Shader key 的组装策略仍在 Shader，算法只留 Core 一份。`encode_png(image,bytes)` / `decode_png(bytes,image)` 是有界内存 codec，失败不替换输出，不直接操作文件或 RHI。图像为 top-left、紧凑 RGBA8，调用方负责色彩语义。
 
 `Toy3dAssetThumbnail` 编解码可选图片/源签名段，不依赖 PNG。`replace_asset_segments(original,replacements)` 在 `Toy3dResource` 中保留其他段的原始字节、身份和引用，返回完整候选而不写文件；发布者仍须检查权限/完整文件基线并通过 FileSystem 原子发布。格式、所有权、线程和平台边界见 [Asset 缩略图](asset-thumbnail-design.md)。
