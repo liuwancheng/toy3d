@@ -39,6 +39,8 @@ Importer 还写入可选 `thumbnail_source` 内容签名。Editor 在导入成�
 
 ## 5. API 与生命周期
 
+运行时 `create_static_mesh_from_asset()` 将 `material_slots` 的作者槽名传入 StaticMeshDesc，与初始默认材质槽保持一一对应。ActorFactory 克隆几何时保留槽名；Editor 材质赋值按名称解析，而不将导入时的数值下标长期保存在历史中。材质赋值只改变当前 Actor 的覆盖，不写回 StaticMesh Asset，详见[材质系统](material-system-design.md)。
+
 ```cpp
 auto imported = import_static_meshes(source_files, source_path, options);
 // 检查结果，逐项记录 warnings。

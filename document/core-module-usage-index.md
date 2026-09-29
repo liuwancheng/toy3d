@@ -15,6 +15,7 @@
 | StaticMesh 资产 | `Toy3dStaticMeshAsset` | `static_mesh/static_mesh_asset.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
 | Material/Instance 资产 | `Toy3dMaterialAsset` | `material/material_asset.h`、`material/material_asset_data.h` | `engine/core/material/tests/material_asset_tests.cpp`、`engine/editor/tests/workspace_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
+| 外部进程 | `Toy3dProcess` | `process/process.h` | `engine/core/process/tests/process_tests.cpp` |
 | 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | GPU-ready 格式 | `Toy3dPixelFormat` | `pixel_format/pixel_format.h` | `engine/core/tests/pixel_format_tests.cpp` |
 | 内容签名 | `Toy3dHash` | `hash/sha256.h` | `engine/core/asset_thumbnail/tests/asset_thumbnail_tests.cpp` |
@@ -33,6 +34,21 @@ target_link_libraries(MyTarget
 ```
 
 `Toy3dTaskGraph` 会传递 `Toy3dThreading`。不要直接包含 `stalling_task_queue.h`、`bounded_mpmc_queue.h` 或继承 `BaseGraphTask`；这些是实现层入口。
+
+## Process
+
+链接 `Toy3dProcess`，由 composition root 持有 `NativeProcessService`，向使用者注入 `ProcessService&`。`run(absolute_executable, argv, options)` 同步返回启动状态、退出码和有界合并输出；`options.cancel` 的原子寿命必须覆盖调用。超时/取消终止本次拥有的进程树，输出截断后仍排空 pipe。`launch_detached(absolute_executable, argv)` 只确认平台启动成功，外部编辑器归用户管理。两者均不调用 shell 或搜索 PATH。所有结果必须检查，策略层负责日志或界面提示。
+
+```cpp
+toy3d::NativeProcessService processes;
+toy3d::ProcessRunOptions options;
+options.timeout_ms = 30000;
+const auto result = processes.run(compiler_executable, {"--version"}, options);
+if (!result.succeeded())
+    TOY_LOG_ERROR("Compiler failed: {} {}", result.message, result.output);
+```
+
+Shader Compiler 已迁移到此服务并删除私有 runner。Editor 的源码身份、工具链、编译请求与接管仍在 `material/material_shader_workflow.h`，不属于 Core Process；详见 [Core Process](core-process-design.md) 和[材质源码迭代](material-source-workflow-design.md)。
 
 ## Text
 
@@ -71,7 +87,7 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 通用 Asset 代码位于 `engine/core/asset`，独立 target 名称暂保留 `Toy3dResource`。`AssetId::try_generate(output)` 生成非零随机 128 位身份，失败不修改输出；不是内容 hash，创建方仍须在 catalog 查重。正式 StaticMesh 领域类型位于 `engine/core/static_mesh`，详细格式与加载流程见 [StaticMesh 生产链](static-mesh-import-design.md)。
 
-`Toy3dMaterialAsset` 已提供正式 Material/Instance DTO 与生成的反射和值编解码。先调用 `register_material_asset_types(types)` 并检查结果，再冻结 TypeRegistry；创建使用 `encode_material_asset()` / `encode_material_instance_asset()` 和 FileSystem 原子 CreateNew，读取使用 `read_material_asset()` / `read_material_instance_asset()`，修改保存沿用 EditSession/save_asset。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用；encode 对覆盖按名称排序，reader 核对 typed 引用与外层依赖索引。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。Texture2D target 尚待实施，不将 `Toy3dTextureAsset` 当作当前可链接目标；自动材质控件、JPEG codec 与共享 Process 的迁移见[材质系统设计](material-system-design.md)。
+`Toy3dMaterialAsset` 已提供正式 Material/Instance DTO 与生成的反射和值编解码。先调用 `register_material_asset_types(types)` 并检查结果，再冻结 TypeRegistry；创建使用 `encode_material_asset()` / `encode_material_instance_asset()` 和 FileSystem 原子 CreateNew，读取使用 `read_material_asset()` / `read_material_instance_asset()`，修改保存沿用 EditSession/save_asset。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用；encode 对覆盖按名称排序，reader 核对 typed 引用与外层依赖索引。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。Texture2D target 与 JPEG codec 尚待实施；材质控件已接入，源码编译使用上述 Toy3dProcess，详见[材质系统设计](material-system-design.md)。
 
 `AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。`encode_asset_file(index, segments)` 按稳定名称生成完整 Asset 字节；`inspect_asset(files, path)` 只读取固定头和索引。`load_asset<T>(types, migrations, files, path, type_name, output, validate)` 形成完整候选并在领域验证成功后赋值；`save_asset<T>(types, migrations, files, path, index, value, validate, extra_segments)` 先检查已发布文件能无损解码，并要求提供已有大段的字节，再通过 FileSystem 原子发布。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
 
@@ -82,6 +98,8 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 ## Hash、PNG 与缩略图
 
 Editor 的材质编辑入口为 `EditorWorkspace::material_edit()` 和 `material/material_edit_session.h`，内部组合现有 typed EditSession；手势草稿结束后一次提交，save 重新读取所有最新可选段并更新依赖，详见[材质系统设计](material-system-design.md)。该入口属于 Editor 业务，不新增 Core 撤销系统或通用资源内存对象。
+
+Editor 场景材质赋值入口为 `EditorCommandHistory::assign_material()`；EditorApplication 持有并注入 `material/material_assignments.h` 的 MaterialAssignments，组合已有 FileSystem、领域 DTO codec、SHA256 和 RenderCore builder，管理槽位 AssetRef 与已加载版本的生命周期。runtime StaticMeshComponent 仅持有运行时强引用，资产编辑与场景赋值继续使用各自既有历史；这不是新增 Core Asset cache 或撤销系统。
 
 `sha256(bytes/text)` 返回固定 32 字节签名；Shader key 的组装策略仍在 Shader，算法只留 Core 一份。`encode_png(image,bytes)` / `decode_png(bytes,image)` 是有界内存 codec，失败不替换输出，不直接操作文件或 RHI。图像为 top-left、紧凑 RGBA8，调用方负责色彩语义。
 

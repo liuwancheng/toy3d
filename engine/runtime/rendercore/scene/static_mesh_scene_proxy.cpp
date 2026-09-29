@@ -13,4 +13,7 @@ namespace toy3d
           material_render_proxies_(std::move(material_render_proxies))
     {
     }
+
+    void StaticMeshSceneProxy::set_material_render_proxies(std::vector<MaterialRenderProxy*> materials)
+    { material_render_proxies_ = std::move(materials); }
 } // namespace toy3d

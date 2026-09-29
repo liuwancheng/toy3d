@@ -23,6 +23,7 @@ namespace toy3d::shader
         std::string generated_bindings;
         std::string shader_include_source;
         std::string pass_source;
+        std::uint32_t pass_source_line = 1u;
         const ShaderSourceProvider* source_provider = nullptr;
         Sha256Hash logical_layout_hash{};
         Sha256Hash target_binding_hash{};

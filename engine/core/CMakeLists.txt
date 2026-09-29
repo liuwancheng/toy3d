@@ -191,6 +191,7 @@ add_subdirectory(asset_thumbnail)
 add_subdirectory(mesh_description)
 add_subdirectory(static_mesh)
 add_subdirectory(material)
+add_subdirectory(process)
 
 if(BUILD_TESTING)
     add_executable(Toy3dSerializationTests "tests/serialization_tests.cpp")

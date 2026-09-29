@@ -10,6 +10,7 @@
 #include "logging/logger.h"
 #include "rendercore/shader/shader_map.h"
 #include "workspace/editor_workspace.h"
+#include "material/material_shader_workflow.h"
 
 namespace toy3d
 {
@@ -55,6 +56,13 @@ namespace toy3d
     {
         workspace_ = &workspace;
         defaults_ = std::move(defaults);
+        textures_.named_defaults.clear();
+        if (defaults_)
+            for (const auto& resource : defaults_->parameter_schema().resources)
+            {
+                const auto found = defaults_->desc().texture_defaults.find(resource.parameter_id);
+                if (found != defaults_->desc().texture_defaults.end()) textures_.named_defaults[resource.default_value] = found->second;
+            }
         if (defaults_ && defaults_->desc().shader_program &&
             !workspace.read_material_properties(shader_root, defaults_->desc().shader_name,
                 defaults_->desc().shader_program->data().parameter_schema, properties_, metadata_warning_))
@@ -138,29 +146,51 @@ namespace toy3d
     bool MaterialEditorPanel::open(const AssetId& id)
     {
         if (!defaults_ || !defaults_->desc().shader_program) { report(parameter_error("The registered Phong Shader is unavailable.")); return false; }
-        MaterialEditSession candidate(*workspace_);
-        auto status = candidate.open(id, defaults_->parameter_schema());
-        if (!status.succeeded()) { report(status); return false; }
-        MaterialTextureValues textures;
-        for (const auto& resource : defaults_->parameter_schema().resources)
+        ShaderMapProgramRef program = defaults_->desc().shader_program;
+        if (shaders_)
         {
-            const auto found = defaults_->desc().texture_defaults.find(resource.parameter_id);
-            if (found != defaults_->desc().texture_defaults.end()) textures.named_defaults[resource.default_value] = found->second;
+            const auto* location = workspace_->catalog().index.find(id);
+            if (!location) { report(parameter_error("Material asset is missing.")); return false; }
+            MaterialAssetData root;
+            AssetStatus read;
+            if (location->index.root_type == "toy3d.MaterialInstanceAssetData")
+            {
+                MaterialInstanceAssetData child;
+                read = read_material_instance_asset(workspace_->types(), workspace_->files(), location->path, child, &workspace_->catalog().index);
+                if (!read.succeeded()) { report(read); return false; }
+                const auto* parent = workspace_->catalog().index.find(child.parent.asset_id);
+                if (!parent) { report(parameter_error("Parent material is missing.")); return false; }
+                read = read_material_asset(workspace_->types(), workspace_->files(), parent->path, root, &workspace_->catalog().index);
+            }
+            else read = read_material_asset(workspace_->types(), workspace_->files(), location->path, root, &workspace_->catalog().index);
+            if (!read.succeeded()) { report(read); return false; }
+            program = shaders_->program(root.shader_name);
+            if (!program) { report(parameter_error("Shader has no published Program. Compile it from Create Material first.")); return false; }
         }
+        const auto schema = material_parameter_schema_from_shader_schema(program->data().parameter_schema);
+        MaterialEditSession candidate(*workspace_);
+        auto status = candidate.open(id, schema, program->data().shader_name);
+        if (!status.succeeded()) { report(status); return false; }
         // Build the complete effective root first; the runtime object is private
         // to this window and does not mutate ActorFactory's shared default.
         MaterialAssetData effective = candidate.root_data();
         effective.overrides = candidate.effective_overrides();
         MaterialInstanceRef next;
         {
-            const auto built = create_material_from_asset(effective, defaults_->desc().shader_program, textures);
+            const auto built = create_material_from_asset(effective, program, textures_);
             if (!built.succeeded()) { report(built.status()); return false; }
             next = built.value();
         }
-        status = workspace_->material_edit().open(id, defaults_->parameter_schema());
+        status = workspace_->material_edit().open(id, schema, program->data().shader_name);
         if (!status.succeeded()) { MaterialInstance::release(next); report(status); return false; }
         if (runtime_) MaterialInstance::release(runtime_);
         runtime_ = std::move(next);
+        defaults_ = runtime_->material(); ++session_revision_;
+        if (shaders_)
+        {
+            const auto* source = shaders_->find(program->data().shader_name);
+            if (source) properties_ = source->properties;
+        }
         workspace_->material_edit().set_preview(
             [this](const std::vector<MaterialParameterOverride>& values)
             {
@@ -182,9 +212,44 @@ namespace toy3d
 
     void MaterialEditorPanel::close()
     {
+        discard_shader(); ++session_revision_;
         workspace_->material_edit().clear();
         if (runtime_) MaterialInstance::release(runtime_);
         focused_ = false;
+    }
+
+    bool MaterialEditorPanel::prepare_shader(const ShaderMapProgramRef& program,
+        const std::vector<shader::ShaderEditorProperty>& properties, std::string& error)
+    {
+        discard_shader();
+        auto& session = workspace_->material_edit();
+        if (!session.active() || session.root_data().shader_name != program->data().shader_name) return true;
+        if (session.gesturing()) { error = "Finish the parameter gesture before applying compiled code."; return false; }
+        MaterialAssetData effective = session.root_data();
+        auto schema = material_parameter_schema_from_shader_schema(program->data().parameter_schema);
+        effective.overrides = session.effective_overrides(schema);
+        candidate_properties_ = properties;
+        candidate_schema_ = std::move(schema);
+        const auto built = create_material_from_asset(effective, program, textures_);
+        if (!built.succeeded()) { error = built.status().message; return false; }
+        shader_candidate_ = built.value(); return true;
+    }
+
+    void MaterialEditorPanel::publish_shader()
+    {
+        if (!shader_candidate_) return;
+        auto& session = workspace_->material_edit();
+        const auto status = session.update_schema(std::move(candidate_schema_));
+        if (!status.succeeded()) { report(status); discard_shader(); return; }
+        if (runtime_) MaterialInstance::release(runtime_);
+        runtime_ = std::move(shader_candidate_); defaults_ = runtime_->material();
+        properties_ = std::move(candidate_properties_); metadata_warning_.clear(); error_.clear();
+    }
+    void MaterialEditorPanel::discard_shader()
+    {
+        if (shader_candidate_) MaterialInstance::release(shader_candidate_);
+        candidate_properties_.clear();
+        candidate_schema_ = {};
     }
     void MaterialEditorPanel::complete_transition()
     {
@@ -196,7 +261,7 @@ namespace toy3d
     void MaterialEditorPanel::shutdown()
     {
         if (workspace_) close();
-        defaults_.reset(); workspace_ = nullptr;
+        defaults_.reset(); textures_.named_defaults.clear(); workspace_ = nullptr;
     }
     void MaterialEditorPanel::undo()
     {
@@ -354,6 +419,18 @@ namespace toy3d
             ImGui::TextWrapped("%s%s", session.path().utf8().c_str(), session.dirty() ? " *" : "");
             ImGui::TextDisabled("%s%s", session.root_data().shader_name.c_str(), session.writable() ? "" : " | Read only");
             if (session.is_instance()) ImGui::TextDisabled("Parent: %s", session.instance_data()->parent.asset_id.hex().c_str());
+            if (shaders_)
+            {
+                if (ImGui::Button("Open Source")) shaders_->open_source(session.root_data().shader_name);
+                ImGui::SameLine();
+                ImGui::BeginDisabled(shaders_->busy() || session.gesturing() || modal_pending());
+                if (ImGui::Button("Recompile")) shaders_->recompile(session.root_data().shader_name, session.id(), session_revision_);
+                ImGui::EndDisabled();
+                ImGui::TextWrapped("%s", shaders_->status().c_str());
+                if (!shaders_->error().empty()) ImGui::TextWrapped("%s", shaders_->error().c_str());
+                if (shaders_->has_error_location() && ImGui::Button("Open Error in VS Code")) shaders_->open_error();
+                if (!shaders_->output().empty() && ImGui::CollapsingHeader("Compiler Output")) ImGui::TextUnformatted(shaders_->output().c_str());
+            }
             ImGui::TextDisabled("Two sided: %s", session.root_data().two_sided ? "Yes" : "No");
             ImGui::BeginDisabled(!session.writable() || modal_pending());
             if (ImGui::Button("Save")) save();

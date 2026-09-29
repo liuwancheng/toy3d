@@ -47,6 +47,9 @@ namespace toy3d
         explicit ShaderMap(ShaderMapLoader& loader);
 
         ShaderMapProgramResult find_or_load(const ShaderMapProgramKey& key);
+        // Build an immutable, verified revision without mutating a cached key.
+        // The caller publishes it only after its material/pipeline checks pass.
+        static ShaderMapProgramResult create_candidate(ShaderMapProgramData data, const ShaderMapProgramKey& key);
 
       private:
         struct ProgramKey

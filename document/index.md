@@ -15,10 +15,12 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | --- | --- | --- | --- |
 | 公共模块使用 | Active | `core-module-usage-index.md` | 查找 `engine/core/` target、公共头文件和最小用例的首选入口 |
 | 共享文件系统 | Active | `core-infrastructure-design.md` | 文件、路径、mount、存储后端与 I/O contract |
+| 外部进程 | Active | `core-process-design.md` | compiler 和 Editor 共享的有界执行、取消及外部编辑器启动 |
+| 材质源码迭代 | Active | `material-source-workflow-design.md` | 项目源码登记、外部编辑、异步编译与候选接管 |
 | 编辑器资源基础 | Active | `editor-resource-foundation-design.md` | 反射、值编解码、Asset 文件、身份索引与无界面编辑 contract；行为细节见 OpenSpec change `establish-editor-resource-foundation` |
 | Editor 总体架构 | Draft | `editor-architecture-design.md` | Editor 所有权、面板、选择、视口、编辑命令、场景生命周期与分批实施 |
 | 编辑器资源接入方案 | Draft | `editor-resource-integration-plan.md` | 创作目录、模型生产链、资源编辑与后续资源类型的分批接入计划 |
-| 代码材质与参数化编辑 | Active | `material-system-design.md` | M1～M3 属性、资产和参数编辑已接入；槽位赋值、贴图采样、预览和源码重编译按 M4～M7 实施 |
+| 代码材质与参数化编辑 | Active | `material-system-design.md` | 属性、资产、参数编辑、模型槽位赋值及源码迭代已接入；贴图采样和完整材质预览按 M5～M6 实施 |
 | StaticMesh 生产链 | Active | `static-mesh-import-design.md` | MeshDescription、Assimp 导入、网格构建、Asset 保存与运行时适配 |
 | Asset 缩略图 | Active | `asset-thumbnail-design.md` | StaticMesh 独立预览、多 UI 纹理、异步颜色读回、包内 PNG 与缩略图池 contract |
 | Core Math | Active | `core-math-design.md` | 数学类型、坐标、矩阵、Transform 与迁移 contract |

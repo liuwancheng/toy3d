@@ -14,7 +14,7 @@
 | `engine/build/windows/resources` | `.rc`、资源 ID、`.ico` | 编译嵌入 exe，不复制到资产目录 |
 | `engine/build/mac/resources` | `.icns`、iconset、plist 模板 | `.icns` 与生成的 plist 进入 `.app`，iconset 不部署 |
 | `engine/shader` | Shader 源码 | 现有 shader 构建规则管理产物 |
-| `project/shader`（拟接入） | 项目 Shader 源码与 include，按[材质设计](material-system-design.md)显式登记 | 编译产物进入 build/saved，独立源码不作为 `.asset` 部署 |
+| `project/shader` | 项目 Shader 源码与 include，由 `project/config/shader_sources.txt` 显式登记 | Editor 编译产物进入 `bin/saved/material_shaders`，独立源码不作为 `.asset` 部署 |
 
 `engine/build` 是受版本管理的构建输入；仓库根 `build` 是不提交的 CMake 输出。`engine/runtime/config` 是 C++ 配置系统代码，与 `engine/config` 数据分开。当前 `project` 仍是 Cube 验证项目，不引入项目描述文件、项目生成器或 Cook。
 
@@ -25,6 +25,8 @@ Engine composition root 用现有 `FileSystem` 注册只读 `/Engine`、`/Projec
 Editor executable 持有独立的创作 `EditorWorkspace`，用相同文件系统实现挂载源码侧的可写 `/Project` 和只读 `/Engine`、`/Editor/Resources`。Content Browser 默认浏览 `/Project`，可以显示引擎资产。统一扫描两个资产根后才校验 Asset ID 与强依赖，允许项目引用引擎内置资产；失败保留最后有效 catalog。界面资源不参与 Asset 扫描。
 
 `--Editor.AssetRoot` 只修改项目资产的创作根，不重定向 runtime 的部署配置或引擎资产。创作根不得与部署根或引擎资产根重叠，包括父子目录关系；不存在或无法安全解析时失败，不能降级到部署副本。资产 API 继续使用虚拟路径，物理根只存在于 composition root 与平台实现。
+
+材质源码工作流拥有独立只读 `/Engine/Shaders`、`/Engine/ShaderIncludes`、`/Project/Shaders`、可选 `/Project/ShaderIncludes` 和 `/Project/Config` mount，以及可写 `/Saved`。它与创作 Asset mount 分开，Content Browser 不扫描这些根。`--Editor.ProjectShaderRoot` 与 `--Editor.ShaderConfigRoot` 可显式覆盖源码及登记清单根；不会随 `Editor.AssetRoot` 隐式变化。详见[材质源码迭代](material-source-workflow-design.md)。
 
 ## 3. 配置与平台资源
 

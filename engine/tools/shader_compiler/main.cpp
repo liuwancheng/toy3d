@@ -5,6 +5,8 @@
 #include "compiler/toolchain_manifest.h"
 #include "logging/logger.h"
 #include "file_system/native_platform_file.h"
+#include "file_system/directory_file_store.h"
+#include "file_system/file_system.h"
 #include "frontend/shader_parser.h"
 
 #include <cstdint>
@@ -64,7 +66,8 @@ namespace
                        "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
                        "  Toy3dShaderCompiler generate-parameters <output-directory> <input.shader>...\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] compile-vulkan <input.shader> <virtual-path> "
-                       "<pass> <shader-map-root> <working-directory> [--variant <name>=<value>]...\n"
+                       "<pass> <shader-map-root> <working-directory> [--variant <name>=<value>]... "
+                       "[--engine-include-root <path>] [--project-include-root <path>]\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
     }
 
@@ -265,7 +268,8 @@ int main(int argument_count, char** arguments)
         return 2;
     }
     const std::string& source = source_file.value();
-    const toy3d::shader::ParseResult result = toy3d::shader::parse_shader(source, path);
+    const std::string diagnostic_path = compile_vulkan ? arguments[command_index + 2] : path;
+    const toy3d::shader::ParseResult result = toy3d::shader::parse_shader(source, diagnostic_path);
     for (const toy3d::shader::Diagnostic& diagnostic : result.diagnostics)
     {
         report_diagnostic(diagnostic);
@@ -314,8 +318,28 @@ int main(int argument_count, char** arguments)
         toy3d::shader::ShaderProgramCompileInput compile_input;
         compile_input.source_virtual_path = arguments[command_index + 2];
         compile_input.pass_name = arguments[command_index + 3];
+        toy3d::FileSystem includes;
+        bool engine_include = false, project_include = false;
         for (int index = compile_required_end; index < argument_count; index += 2)
         {
+            const std::string option = arguments[index];
+            if (option == "--engine-include-root" || option == "--project-include-root")
+            {
+                bool& supplied = option == "--engine-include-root" ? engine_include : project_include;
+                if (supplied) { print_usage(); return 2; }
+                supplied = true;
+                toy3d::DirectoryFileStoreDesc desc;
+                desc.physical_root = toy3d::PhysicalPath(arguments[index + 1]);
+                const auto store = toy3d::DirectoryFileStore::create(platform_file, desc);
+                if (!store.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, store.status().message); return 2; }
+                toy3d::FileMountDesc mount;
+                const auto root = toy3d::VirtualPath::parse(option == "--engine-include-root" ? "/Engine/ShaderIncludes" : "/Project/ShaderIncludes");
+                if (!root.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, root.status().message); return 2; }
+                mount.virtual_root = root.value(); mount.store = store.value();
+                const auto added = includes.add_mount(mount);
+                if (!added.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, added.message); return 2; }
+                continue;
+            }
             if (std::string(arguments[index]) != "--variant")
             {
                 print_usage();
@@ -331,7 +355,9 @@ int main(int argument_count, char** arguments)
             compile_input.variant_selections.push_back(
                 {selection.substr(0, separator), selection.substr(separator + 1u)});
         }
-        const toy3d::shader::RegisteredShaderSourceProvider source_provider({});
+        const auto frozen = includes.freeze();
+        if (!frozen.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, frozen.message); return 2; }
+        const toy3d::shader::FileShaderSourceProvider source_provider(includes);
         compile_input.source_provider = &source_provider;
         toy3d::shader::ShaderMapEntryCompileResult compiled = toy3d::shader::compile_vulkan_shader_map_entry(
             *result.asset, compile_input, *discovered.toolchain, platform_file,

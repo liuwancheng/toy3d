@@ -49,6 +49,29 @@ namespace toy3d
                                });
     }
 
+    void RenderScene::update_primitive_materials(PrimitiveSceneProxy* proxy,
+        std::vector<MaterialRenderProxy*> materials)
+    {
+        enqueue_render_command("UpdatePrimitiveMaterials", [this, proxy, materials = std::move(materials)]() mutable noexcept
+        {
+            assert(is_on_logical_rendering_thread());
+            const auto found = std::find_if(primitives_.begin(), primitives_.end(),
+                [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info) { return info->proxy() == proxy; });
+            auto* mesh = found == primitives_.end() ? nullptr : dynamic_cast<StaticMeshSceneProxy*>((*found)->proxy());
+            if (!mesh || materials.size() != mesh->material_render_proxies().size())
+            { TOY_LOG_ERROR("Material update requires a registered StaticMesh proxy with matching slots."); return; }
+            for (auto* material : materials)
+            {
+                if (!material) { TOY_LOG_ERROR("Material update contains a null render proxy."); return; }
+                const auto status = material->begin_init_textures(resource_manager_);
+                if (!status) { TOY_LOG_ERROR("Material update could not initialize textures: {}", status.message()); return; }
+            }
+            // Material changes do not end the geometry lifetime. Removing the
+            // last Primitive would terminally release shared mesh resources.
+            mesh->set_material_render_proxies(std::move(materials));
+        });
+    }
+
     void RenderScene::remove_primitive(PrimitiveSceneProxy* proxy)
     {
         enqueue_render_command("RemovePrimitive", [this, proxy]() noexcept { remove_primitive_render_thread(proxy); });

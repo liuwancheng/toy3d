@@ -6,6 +6,7 @@
 #include "logging/logger.h"
 #include "selection/editor_selection.h"
 #include "workspace/editor_workspace.h"
+#include "material/material_shader_workflow.h"
 
 namespace toy3d
 {
@@ -19,6 +20,7 @@ namespace toy3d
         published_id_ = {};
         error_.clear();
         two_sided_ = false;
+        shader_name_ = "Toy3d/Surface/Phong";
     }
 
     void MaterialCreateDialog::request(MaterialAssetCreationKind kind, const std::string& folder, AssetId parent)
@@ -35,7 +37,7 @@ namespace toy3d
     }
 
     void MaterialCreateDialog::draw(EditorWorkspace& workspace, EditorSelection& selection,
-        std::string& browser_folder, const shader::ShaderParameterSchema& schema)
+        std::string& browser_folder, const shader::ShaderParameterSchema& schema, MaterialShaderWorkflow* shaders)
     {
         if (!active_) return;
         const char* title = kind_ == MaterialAssetCreationKind::Material ? "Create Material" : "Create Material Instance";
@@ -56,8 +58,13 @@ namespace toy3d
         }
         if (kind_ == MaterialAssetCreationKind::Material)
         {
-            ImGui::TextUnformatted("Shader: Toy3d/Surface/Phong");
-            ImGui::TextDisabled("Unlit will be available after Sampler support is connected.");
+            if (shaders && ImGui::BeginCombo("Shader", shader_name_.c_str()))
+            {
+                for (const auto& source : shaders->sources())
+                    if (ImGui::Selectable(source.name.c_str(), source.name == shader_name_)) shader_name_ = source.name;
+                ImGui::EndCombo();
+            }
+            if (!shaders) ImGui::TextUnformatted("Shader: Toy3d/Surface/Phong");
             ImGui::Checkbox("Two Sided", &two_sided_);
         }
         else
@@ -74,7 +81,24 @@ namespace toy3d
                 ImGui::EndCombo();
             }
             ImGui::TextDisabled("Inherits Shader and Two Sided from its root Material.");
+            if (parent)
+            {
+                MaterialAssetData root;
+                const auto read = read_material_asset(workspace.types(), workspace.files(), parent->path, root, &workspace.catalog().index);
+                if (read.succeeded()) shader_name_ = root.shader_name;
+                else error_ = read.message;
+            }
         }
+        const auto program = shaders ? shaders->program(shader_name_) : nullptr;
+        if (shaders)
+        {
+            if (ImGui::Button("Open Source")) shaders->open_source(shader_name_);
+            ImGui::SameLine(); ImGui::BeginDisabled(shaders->busy());
+            if (ImGui::Button(program ? "Recompile Shader" : "Compile Shader")) shaders->recompile(shader_name_);
+            ImGui::EndDisabled(); ImGui::TextWrapped("%s", shaders->status().c_str());
+            if (!shaders->error().empty()) ImGui::TextWrapped("%s", shaders->error().c_str());
+        }
+        const auto selected_schema = program ? material_parameter_schema_from_shader_schema(program->data().parameter_schema) : schema;
         std::string destination;
         std::string destination_error;
         const bool valid_destination = material_asset_destination(folder_, name_.data(), destination, destination_error);
@@ -84,7 +108,7 @@ namespace toy3d
         if (!error_.empty()) ImGui::TextWrapped("%s", error_.c_str());
         ImGui::Separator();
         const bool can_create = valid_destination && !published_id_.valid() &&
-            (kind_ == MaterialAssetCreationKind::Material || parent_.valid());
+            (kind_ == MaterialAssetCreationKind::Material || parent_.valid()) && (!shaders || program);
         ImGui::BeginDisabled(!can_create);
         if (ImGui::Button("Create"))
         {
@@ -92,16 +116,16 @@ namespace toy3d
             if (kind_ == MaterialAssetCreationKind::Material)
             {
                 MaterialAssetData data;
-                data.shader_name = "Toy3d/Surface/Phong";
+                data.shader_name = shader_name_;
                 data.two_sided = two_sided_;
-                result = create_material_asset_in_workspace(workspace, destination, data, schema, published_id_);
+                result = create_material_asset_in_workspace(workspace, destination, data, selected_schema, published_id_, shader_name_);
             }
             else
             {
                 MaterialInstanceAssetData data;
                 data.parent.asset_id = parent_;
                 data.parent.expected_type = "toy3d.MaterialAssetData";
-                result = create_material_instance_asset_in_workspace(workspace, destination, data, schema, published_id_);
+                result = create_material_instance_asset_in_workspace(workspace, destination, data, selected_schema, published_id_, shader_name_);
             }
             if (result.succeeded())
             {

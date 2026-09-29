@@ -341,6 +341,12 @@ namespace toy3d
         UiRenderWork work;
         std::unique_ptr<SceneRenderer> preview_renderer;
         if (application) application->on_collect_ui_render_work(work);
+        if (application)
+        {
+            std::vector<MaterialProgramValidationRef> validations;
+            application->on_collect_material_validation(validations);
+            for (auto& validation : validations) renderer->validate_material_program(std::move(validation));
+        }
         if (work.preview.request_id && renderer->preview_scene_interface())
             preview_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
                 *renderer->preview_scene_interface(), work.preview.extent, std::move(work.preview.views)), true);

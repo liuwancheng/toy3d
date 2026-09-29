@@ -4,6 +4,7 @@
 #include "rendercore/hit_proxy.h"
 #include "rendercore/view/scene_view.h"
 #include "ui/ui_texture_work.h"
+#include "rendercore/material/material_program_validation.h"
 
 #include <vector>
 
@@ -45,6 +46,7 @@ namespace toy3d
         virtual bool uses_preview_scene() const { return false; }
         virtual bool on_initialize_preview_scene(SceneInterface&, TaskGraphInterface&) { return true; }
         virtual void on_collect_ui_render_work(UiRenderWork&) {}
+        virtual void on_collect_material_validation(std::vector<MaterialProgramValidationRef>&) {}
         virtual void on_ui_texture_result(UiTextureResult) {}
         virtual std::vector<ImGuiTextureId> ui_texture_ids() const { return {}; }
 

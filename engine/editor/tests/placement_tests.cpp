@@ -37,6 +37,7 @@ namespace
         void update_primitive_transform(toy3d::PrimitiveSceneProxy*, toy3d::Matrix4,
                                         toy3d::AxisAlignedBounds, bool) override {}
         void remove_primitive(toy3d::PrimitiveSceneProxy*) override {}
+        void update_primitive_materials(toy3d::PrimitiveSceneProxy*, std::vector<toy3d::MaterialRenderProxy*>) override {}
         void add_light(std::unique_ptr<toy3d::LightSceneProxy> proxy) override { lights.push_back(std::move(proxy)); }
         void update_light(toy3d::LightSceneProxy* proxy, toy3d::LightSceneData data) override { proxy->data = data; ++updates; }
         void remove_light(toy3d::LightSceneProxy* proxy) override

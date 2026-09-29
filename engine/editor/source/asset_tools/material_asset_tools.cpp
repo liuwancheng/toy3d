@@ -91,10 +91,10 @@ namespace toy3d
     }
 
     AssetStatus create_material_asset_in_workspace(EditorWorkspace& workspace, const std::string& destination,
-        const MaterialAssetData& data, const shader::ShaderParameterSchema& schema, AssetId& published_id)
+        const MaterialAssetData& data, const shader::ShaderParameterSchema& schema, AssetId& published_id,
+        const std::string& registered_shader_name)
     {
-        // Only the registered, compiled Phong authoring option is available in M2.
-        if (data.shader_name != "Toy3d/Surface/Phong") return fail("Choose the supported Phong Shader.");
+        if (data.shader_name != registered_shader_name) return fail("Choose a registered, compiled material Shader.");
         AssetStatus valid = check_supported_schema(schema);
         if (valid.succeeded()) valid = validate_material_overrides_schema(data.overrides, schema);
         if (!valid.succeeded()) return valid;
@@ -106,7 +106,8 @@ namespace toy3d
     }
 
     AssetStatus create_material_instance_asset_in_workspace(EditorWorkspace& workspace, const std::string& destination,
-        const MaterialInstanceAssetData& data, const shader::ShaderParameterSchema& schema, AssetId& published_id)
+        const MaterialInstanceAssetData& data, const shader::ShaderParameterSchema& schema, AssetId& published_id,
+        const std::string& registered_shader_name)
     {
         AssetStatus valid = validate_material_instance_asset(data, &workspace.catalog().index);
         if (!valid.succeeded()) return valid;
@@ -115,7 +116,7 @@ namespace toy3d
         MaterialAssetData parent_data;
         valid = read_material_asset(workspace.types(), workspace.files(), parent->path, parent_data, &workspace.catalog().index);
         if (!valid.succeeded()) return valid;
-        if (parent_data.shader_name != "Toy3d/Surface/Phong") return fail("Parent Shader is not supported by the current material workflow.");
+        if (parent_data.shader_name != registered_shader_name) return fail("Parent Shader does not match its registered Program.");
         valid = check_supported_schema(schema);
         if (valid.succeeded()) valid = validate_material_overrides_schema(data.overrides, schema);
         if (!valid.succeeded()) return valid;

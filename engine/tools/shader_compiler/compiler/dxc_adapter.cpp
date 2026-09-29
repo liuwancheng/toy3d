@@ -109,9 +109,11 @@ namespace toy3d::shader
                       "Failed to create Shader compiler working directory: " + created.message);
             return result;
         }
-        const std::string key = sha256_to_hex(request.compile_key);
-        const FileResult<PhysicalPath> source_path = platform_file.join_relative(working_directory, key + ".hlsl");
-        const FileResult<PhysicalPath> output_path = platform_file.join_relative(working_directory, key + ".spv");
+        // Each caller supplies an exclusive request/stage directory. The full
+        // compile identity lives in the artifact metadata; repeating its hash
+        // in temporary filenames can exceed external tools' Windows path limit.
+        const FileResult<PhysicalPath> source_path = platform_file.join_relative(working_directory, "input.hlsl");
+        const FileResult<PhysicalPath> output_path = platform_file.join_relative(working_directory, "output.spv");
         if (!source_path.succeeded() || !output_path.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
@@ -151,11 +153,13 @@ namespace toy3d::shader
             result.diagnostics = std::move(invocation_diagnostics);
             return result;
         }
-        const ProcessResult compiled = process_runner(toolchain.dxc_path, invocation->arguments);
-        if (!compiled.launched || compiled.exit_code != 0)
+        const NativeProcessService native_process;
+        const ProcessResult compiled = process_runner ? process_runner(toolchain.dxc_path, invocation->arguments) :
+            native_process.run(toolchain.dxc_path, invocation->arguments);
+        if (!compiled.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
-                      "DXC failed (exit " + std::to_string(compiled.exit_code) + "):\n" + compiled.output);
+                      "DXC failed (exit " + std::to_string(compiled.exit_code) + "): " + compiled.message + "\n" + compiled.output);
             return result;
         }
         FileResult<std::vector<std::uint8_t>> binary = platform_file.read_binary(output_path.value());
@@ -166,11 +170,12 @@ namespace toy3d::shader
             return result;
         }
         const ProcessResult validated =
-            process_runner(toolchain.spirv_val_path, {"--target-env", "vulkan1.1", output_path.value().utf8()});
-        if (!validated.launched || validated.exit_code != 0)
+            process_runner ? process_runner(toolchain.spirv_val_path, {"--target-env", "vulkan1.1", output_path.value().utf8()}) :
+                native_process.run(toolchain.spirv_val_path, {"--target-env", "vulkan1.1", output_path.value().utf8()});
+        if (!validated.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderValidationFailed, request,
-                      "spirv-val failed (exit " + std::to_string(validated.exit_code) + "):\n" + validated.output);
+                      "spirv-val failed (exit " + std::to_string(validated.exit_code) + "): " + validated.message + "\n" + validated.output);
             return result;
         }
         result.binary = std::move(binary.value());

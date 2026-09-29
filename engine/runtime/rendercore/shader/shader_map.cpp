@@ -62,6 +62,14 @@ namespace toy3d
 
     ShaderMap::ShaderMap(ShaderMapLoader& loader) : loader_(loader) {}
 
+    ShaderMapProgramResult ShaderMap::create_candidate(ShaderMapProgramData data, const ShaderMapProgramKey& key)
+    {
+        auto validated = validate_shader_map_program(std::move(data), key);
+        if (!validated.succeeded()) return {nullptr, std::move(validated.error)};
+        ShaderMapProgram value(std::move(*validated.program));
+        return {std::make_shared<ShaderMapProgram>(std::move(value)), {}};
+    }
+
     bool ShaderMap::ProgramKey::operator==(const ProgramKey& other) const
     {
         return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&

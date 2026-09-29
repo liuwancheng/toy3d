@@ -1,5 +1,7 @@
 #include "editor.h"
 
+#include <exception>
+
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -13,6 +15,7 @@
 #include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
 #include "placement/asset_placement.h"
+#include "config/command_line_parser.h"
 
 namespace toy3d
 {
@@ -32,8 +35,28 @@ namespace toy3d
         if (!window().enable_file_drop(true)) TOY_LOG_WARN("External model file drop is unavailable on this platform.");
 #endif
         if (!actor_factory_.initialize()) return false;
+        material_assignments_.initialize(workspace_, actor_factory_.default_material()->material());
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
             PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+        auto& arguments = CommandLineParser::get_instance();
+        MaterialShaderPaths shader_paths;
+        shader_paths.project_shader = PhysicalPath(arguments.get_option("Editor.ProjectShaderRoot", TOY3D_EDITOR_PROJECT_SHADER_ROOT));
+        shader_paths.project_config = PhysicalPath(arguments.get_option("Editor.ShaderConfigRoot", TOY3D_EDITOR_PROJECT_CONFIG_ROOT));
+        shader_paths.engine_shader = PhysicalPath(TOY3D_EDITOR_ENGINE_SHADER_ROOT);
+        shader_paths.engine_include = PhysicalPath(TOY3D_EDITOR_ENGINE_INCLUDE_ROOT);
+        shader_paths.builtin_entries = PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
+        shader_paths.saved = PhysicalPath(TOY3D_EDITOR_SHADER_SAVED_ROOT);
+        shader_paths.compiler = PhysicalPath(TOY3D_EDITOR_SHADER_COMPILER);
+        shader_paths.toolchain = PhysicalPath(TOY3D_EDITOR_SHADER_TOOLCHAIN);
+        shader_paths.code_executable = PhysicalPath(arguments.get_option("Editor.CodeExecutable", ""));
+        std::string shader_error;
+        shader_workflow_ready_ = shaders_.initialize(std::move(shader_paths), actor_factory_.default_material()->material(), shader_error);
+        if (shader_workflow_ready_)
+        {
+            material_editor_.set_shader_workflow(shaders_);
+            material_assignments_.set_program_resolver([this](const std::string& name) { return shaders_.program(name); });
+        }
+        else TOY_LOG_ERROR("Material source workflow unavailable: {}", shader_error);
         PlacementRequest preview;
         preview.item = PlacementItemId::Cube;
         preview.transform.translation = Vector3(0.0f, 0.75f, 3.0f);
@@ -46,8 +69,44 @@ namespace toy3d
         return true;
     }
 
+    void EditorApplication::on_tick(double)
+    {
+        thumbnails_.tick();
+        if (!shader_workflow_ready_) return;
+        shaders_.tick();
+        if (!shaders_.candidate_ready()) return;
+        auto& session = workspace_.material_edit();
+        if (shaders_.origin().valid() && (!session.active() || !(session.id() == shaders_.origin()) ||
+            material_editor_.session_revision() != shaders_.origin_revision()))
+        { shaders_.reject("The material session changed during compilation. Recompile from the current session."); return; }
+        if (session.gesturing()) return;
+        std::string error;
+        try
+        {
+            if (!material_assignments_.prepare_shader(shaders_.candidate(), error) ||
+                !material_editor_.prepare_shader(shaders_.candidate(), shaders_.candidate_properties(), error))
+            {
+                material_assignments_.discard_shader(); material_editor_.discard_shader(); shaders_.reject(error); return;
+            }
+            // GT candidates/target identities and RT pipelines are checked
+            // before publishing the source record and the slot references.
+            if (!material_assignments_.publish_shader(error, true))
+            { material_assignments_.discard_shader(); material_editor_.discard_shader(); shaders_.reject(error); return; }
+            if (!shaders_.publish())
+            {
+                error = shaders_.error(); material_assignments_.discard_shader(); material_editor_.discard_shader(); shaders_.reject(error); return;
+            }
+            material_assignments_.complete_shader();
+            material_editor_.publish_shader();
+            TOY_LOG_INFO("{}", shaders_.status());
+        }
+        catch (const std::exception& exception)
+        { material_assignments_.discard_shader(); material_editor_.discard_shader(); shaders_.reject(exception.what()); }
+    }
+
     void EditorApplication::on_shutdown()
     {
+        shaders_.shutdown();
 #if WITH_MODEL_IMPORT
         if (!window().enable_file_drop(false)) TOY_LOG_WARN("Could not disable external model file drop.");
 #endif
@@ -69,6 +128,7 @@ namespace toy3d
         command_history_.cancel();
         selection_.clear_actor();
         selection_.clear_asset();
+        material_assignments_.shutdown();
         actor_factory_.release();
     }
 
@@ -207,7 +267,7 @@ namespace toy3d
         draw_place_actors_panel();
         if (draw_outliner(world(), selection_, command_history_, actor_factory_))
             scene_viewport_.cancel_pending_hit();
-        draw_details(world(), selection_, command_history_, workspace_, scene_viewport_);
+        draw_details(world(), selection_, command_history_, workspace_, scene_viewport_, material_assignments_, material_assignment_error_);
         scene_viewport_.draw(world(), selection_, command_history_);
         const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
             show_engine_content_, thumbnails_, asset_tile_size_, WITH_MODEL_IMPORT != 0);
@@ -227,7 +287,8 @@ namespace toy3d
         }
         model_import_.draw(window(), workspace_, selection_, thumbnails_);
 #endif
-        material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema());
+        material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema(),
+            shader_workflow_ready_ ? &shaders_ : nullptr);
         material_editor_.draw();
         if (material_editor_.take_exit()) window().close();
         AssetPlacementRequest placed;

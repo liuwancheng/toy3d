@@ -1,7 +1,7 @@
 #pragma once
 
 #include "compiler/compile_request.h"
-#include "compiler/process_runner.h"
+#include "process/process.h"
 #include "compiler/toolchain_manifest.h"
 
 #include <functional>
@@ -34,8 +34,10 @@ namespace toy3d::shader
                                                              const PhysicalPath& output_path,
                                                              std::vector<Diagnostic>& diagnostics);
 
+    // working_directory belongs exclusively to this invocation until it returns;
+    // concurrent callers must supply different request/stage directories.
     ShaderCompilerOutput compile_vulkan_shader(const ShaderCompileRequest& request,
                                                const DiscoveredShaderToolchain& toolchain, PlatformFile& platform_file,
                                                const PhysicalPath& working_directory,
-                                               const ShaderProcessRunner& process_runner = run_process);
+                                               const ShaderProcessRunner& process_runner = {});
 } // namespace toy3d::shader

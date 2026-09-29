@@ -19,7 +19,9 @@ namespace toy3d
         using PreviewNotify = std::function<void(const std::vector<MaterialParameterOverride>&)>;
 
         explicit MaterialEditSession(EditorWorkspace& workspace) : workspace_(workspace) {}
-        AssetStatus open(const AssetId& id, shader::ShaderParameterSchema schema);
+        AssetStatus open(const AssetId& id, shader::ShaderParameterSchema schema,
+                         const std::string& registered_shader_name = "Toy3d/Surface/Phong");
+        AssetStatus update_schema(shader::ShaderParameterSchema schema);
         void set_preview(PreviewPrepare prepare, PreviewNotify notify);
         void clear();
         bool active() const { return root_ || instance_; }
@@ -36,6 +38,7 @@ namespace toy3d
         const shader::ShaderParameterSchema& schema() const { return schema_; }
         const std::vector<MaterialParameterOverride>& overrides() const;
         std::vector<MaterialParameterOverride> effective_overrides() const;
+        std::vector<MaterialParameterOverride> effective_overrides(const shader::ShaderParameterSchema& schema) const;
         AssetStatus begin_gesture();
         AssetStatus set_parameter(const MaterialParameterOverride& value);
         AssetStatus remove_parameter(const std::string& name);

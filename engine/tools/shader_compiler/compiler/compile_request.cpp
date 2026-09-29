@@ -69,7 +69,11 @@ namespace toy3d::shader
         source << "#line 1 \"/Generated/ToyShaderPrelude.hlsli\"\n" << input.generated_prelude << '\n';
         source << input.generated_bindings << '\n';
         source << "#line 1 \"" << input.source_virtual_path << "\"\n";
-        source << input.shader_include_source << '\n' << input.pass_source << '\n';
+        source << input.shader_include_source << '\n';
+        // Pass HLSL is captured from inside .shader. Preserve its original line
+        // so external editors open the author source rather than generated HLSL.
+        source << "#line " << input.pass_source_line << " \"" << input.source_virtual_path << "\"\n";
+        source << input.pass_source << '\n';
         if (input.source_provider == nullptr)
         {
             result.diagnostics.push_back({DiagnosticSeverity::Error,

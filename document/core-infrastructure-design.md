@@ -336,6 +336,7 @@ Unsupported, Cancelled [future async], IoError
 
 - `NativePlatformFile` 内部使用 wide API；公共路径仍为 UTF-8；
 - 明确处理 sharing mode、长路径、drive/UNC 和 reparse point；
+- Native 文件/目录操作将已规范化的绝对 drive/UNC 路径转换为 Win32 extended-length 格式；open 和原子发布也使用此格式。枚举、absolute、canonical 等返回值去除平台前缀，该前缀不进入公共 PhysicalPath、资源身份或持久化数据，不依赖宿主应用的 longPathAware manifest。
 - no-replace rename 与 replace 分开实现，不依赖 `std::filesystem::rename` 的模糊覆盖语义；
 - Windows 的大小写不敏感不改变 `VirtualPath` identity。mount/cook 时扫描并拒绝仅大小写不同的冲突。
 

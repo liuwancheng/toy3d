@@ -39,7 +39,7 @@
 - `Shader "Toy3d/..."` 的逻辑名是公开身份，文件虚拟路径只用于 include、cache 和 diagnostics。逻辑名由 `/` 分隔的 ASCII `[A-Za-z_][A-Za-z0-9_]*` 段组成，大小写敏感；Cook 拒绝完全重复和仅大小写不同的冲突。
 - Pass 名称非空、在 Shader 内唯一且大小写敏感。稳定 `ShaderPassId` 不受 Pass 重排影响；重命名视为删除旧 Pass 并新增 Pass。
 - Properties、Parameters、Resources、engine schema 与 Variants 生成的 HLSL 名称位于同一冲突域；`toy3d_`/`TOY3D_` 前缀保留。冲突直接报错，不自动改名。
-- include 只接受规范化虚拟绝对路径。v1 允许 `/Engine/ShaderIncludes/`，未来允许 `/Project/ShaderIncludes/`；禁止本机绝对路径、相对路径、`..`、反斜杠、系统/CWD fallback。`/Generated/` 只能由 compiler 注入，用户不得直接 include。
+- include 只接受规范化虚拟绝对路径。v1 允许 `/Engine/ShaderIncludes/` 和 `/Project/ShaderIncludes/`，物理根由调用方显式注入；禁止本机绝对路径、相对路径、`..`、反斜杠、系统/CWD fallback。`/Generated/` 只能由 compiler 注入，用户不得直接 include。单 include 最多 4 MiB，展开后的单 stage 最多 8 MiB；保留作者原始行号及 include 返回位置。
 - compiler 依次注入 `/Generated/ToyShaderPrelude.hlsli`、`/Generated/ToyBindings.hlsli`、Shader `HLSLINCLUDE` 和 Pass `HLSLPROGRAM`。generated 内容进入 compile key；Editor/Debug 可落盘 shadow copy，并用 `#line` 映射虚拟路径。
 - include cycle 报完整链；最大深度默认 64，可配置降低；依赖图保存虚拟路径与 SHA-256。
 
@@ -114,7 +114,7 @@ Shader 数据沿用容易识别的 UE 风格术语，但职责以 Toy3d 本文�
 
 `ShaderMapProgramKey` 是精确逻辑查询身份，由 Shader 名、Pass 名、`ShaderPlatform` 与必选 permutation key 组成。`ShaderPlatform` 对应 UE `EShaderPlatform` 的目标能力概念，当前取值为 `VulkanES31`、`D3D11SM5` 与 `D3D12SM6`；公开查询不再同时接收可形成非法组合的 binary format/profile。具体 binary format 由 `ShaderPlatform` 确定。当前不引入额外 `ShaderMapProgramId` 或 generation 索引；Program 内容 hash 保存在 `ShaderMapProgramData` 中，待 DDC 或热重载需要精确编译身份时再形成独立类型。
 
-Loader 负责来源格式、边界、版本、manifest/hash 与索引验证；`ShaderMap` 是运行时公共语义的唯一守门人，负责验证请求身份、stage 组合、binding/reflection 与 constant layout。只有成功 Program 进入缓存，失败不做 negative cache。Program 发布后不可原地修改；未来热重载创建新对象并替换 current 引用，失败保留 last-known-good，旧对象仅因 Game/Render Thread 或 RHI/PSO 引用继续存活。
+Loader 负责来源格式、边界、版本、manifest/hash 与索引验证；`ShaderMap` 是运行时公共语义的唯一守门人，负责验证请求身份、stage 组合、binding/reflection 与 constant layout。只有成功 Program 进入缓存，失败不做 negative cache。Program 发布后不可原地修改。`ShaderMap::create_candidate(data, key)` 使用相同完整校验创建独立不可变对象，不替换 `find_or_load` 缓存；调用方验证 GPU/VF、当前依赖与领域对象后才替换自身 current 引用。Editor 的手动源码迭代已使用此入口，失败保留旧对象，接管和生命周期见[材质源码迭代](material-source-workflow-design.md)。
 
 当前单线程 bootstrap 允许 renderscene 临时同步调用 `ShaderMap::find_or_load()`。正式 Game Thread/Render Thread 分离后，由 Game Thread 驱动 `ShaderMapLoader` 和 CPU Program 加载，向 Render Thread 发布不可变 `ShaderMapProgramRef`；Render Thread 不执行 Shader 文件 I/O，只创建和持有 `RHIShaderProgram`/PSO。该线程迁移是未来方向，本批次不提前引入线程框架。
 

@@ -244,6 +244,8 @@ Directional 的 world rotation 将本地 +Z 变换为光线行进方向。Point 
 
 StaticMeshComponent 的 Remove 之后追加保留 mesh 和 material override 引用的 FIFO 命令，保证 setter 替换旧网格或 Actor 析构时，借用 RenderData 的 Remove 能先完成。此命令只保留所有权，不读取 GT 状态，不承担 GPU idle；后端继续按 submission completion 延迟销毁 RHI 资源。MaterialInstance 最后引用的显式 release 仍由资源所有者负责。
 
+StaticMesh 的 `material_slot_names()` 与默认材质槽一一对应且非空、唯一；导入器传入作者槽名，旧程序生成网格可在首次创建时生成确定性名称。名称是 Editor 赋值及重放的身份，数组下标仅用于当前 Component setter；克隆几何保留名称。设置和 `clear_material_override(slot)` 通过 `SceneInterface::update_primitive_materials` FIFO 更新已注册 Proxy 的完整材质列表，不 Remove/Add、不释放几何、不改变 HitProxy 身份；恢复网格默认材质，已为空是 no-op，非法槽返回 false 并日志记录。RT 检查目标与槽数、初始化新材质 TextureResources 后才更换引用；GT 追加旧 override 引用保活命令。Editor 资产身份和加载记录保留在 Editor 模块，不加入 runtime Component 数据或 RHI；领域加载 owner 在场景用户移除并 FIFO drain 之后最终释放 MaterialInstance。
+
 ## 10. 相机对象与 View 输入
 
 `CameraActor` 独占默认 `CameraComponent` 并设为 root，仅提供独立放置和组件访问。它不选择活动视角、不创建 SceneProxy、不控制 Window 或 Renderer。CameraComponent 可以被其他 Actor 组合并挂接 SceneComponent，继续使用现有注册、attachment 和 Transform 生命周期。

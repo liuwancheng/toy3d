@@ -102,6 +102,15 @@ namespace
         check(second.succeeded(), second.error.c_str());
         check(first.program == second.program, "ShaderMap must return the cached immutable Program");
         check(loader.load_count == 1, "full identity cache hit must not call the Loader again");
+        auto candidate = toy3d::ShaderMap::create_candidate(program, key);
+        check(candidate.succeeded() && candidate.program != first.program,
+              "a candidate with the same key must be a separate immutable Program");
+        check(shader_map.find_or_load(key).program == first.program && loader.load_count == 1,
+              "candidate creation must not replace an already published cache entry");
+        auto invalid_candidate = program;
+        invalid_candidate.shader_name = "Wrong/Shader";
+        check(!toy3d::ShaderMap::create_candidate(std::move(invalid_candidate), key).succeeded(),
+              "candidate creation must validate identity before publishing a Program");
 
         const toy3d::ShaderParameterBinding* constant_binding = first.program->find_parameter_binding(11);
         const auto* constant = constant_binding ? std::get_if<toy3d::ShaderConstantBinding>(constant_binding) : nullptr;

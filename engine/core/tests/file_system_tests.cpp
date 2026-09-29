@@ -677,6 +677,28 @@ namespace
         check(file_system.enumerate(virtual_path("/Fault")).status().code == toy3d::FileErrorCode::IoError,
               "enumeration must not hide a higher-layer failure");
     }
+    void test_windows_long_native_paths()
+    {
+#if defined(_WIN32)
+        TestDirectory directory = make_test_directory();
+        toy3d::NativePlatformFile files;
+        fs::path nested = directory.path;
+        for (unsigned int depth = 0u; depth < 6u; ++depth) nested /= std::string(48u, 'a' + depth);
+        check(files.create_directories(physical(nested)).succeeded(), "long native directory creation");
+        const auto first = physical(nested / "source.bin");
+        const auto second = physical(nested / "destination.bin");
+        check(first.utf8().size() > 260u, "fixture must exceed Windows MAX_PATH");
+        check(files.write_text_utf8(first, "original", toy3d::FileWriteMode::CreateNew).succeeded(), "long native file create");
+        const auto read = files.read_text_utf8(first);
+        check(read.succeeded() && read.value() == "original", "long native file read");
+        check(files.rename_no_replace(first, second).succeeded(), "long native no-replace rename");
+        check(files.write_text_utf8(first, "replacement", toy3d::FileWriteMode::CreateNew).succeeded(), "long native replacement candidate");
+        check(files.replace(first, second).succeeded(), "long native replace");
+        const auto replaced = files.read_text_utf8(second);
+        check(replaced.succeeded() && replaced.value() == "replacement", "long native replacement read");
+        check(files.remove_file(second).succeeded(), "long native file remove");
+#endif
+    }
 } // namespace
 
 int main()
@@ -692,6 +714,7 @@ int main()
     test_directory_store_symlink_boundaries();
     test_file_system_overlay_and_snapshot();
     test_overlay_fallback_only_on_not_found();
+    test_windows_long_native_paths();
 
     if (failure_count != 0)
     {

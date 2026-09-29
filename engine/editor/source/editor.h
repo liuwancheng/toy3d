@@ -10,6 +10,7 @@
 #include "panels/static_mesh_import_dialog.h"
 #include "panels/material_create_dialog.h"
 #include "panels/material_editor_panel.h"
+#include "material/material_shader_workflow.h"
 
 #include <string>
 #include <utility>
@@ -22,7 +23,7 @@ namespace toy3d
     class EditorApplication final : public Application
     {
       public:
-        explicit EditorApplication(EditorWorkspace& workspace) : workspace_(workspace), command_history_(actor_factory_), thumbnails_(workspace) {}
+        explicit EditorApplication(EditorWorkspace& workspace) : workspace_(workspace), command_history_(actor_factory_, material_assignments_), thumbnails_(workspace) {}
 
       protected:
         bool on_initialize() override;
@@ -36,7 +37,8 @@ namespace toy3d
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override;
         bool uses_preview_scene() const override { return true; }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override;
-        void on_tick(double) override { thumbnails_.tick(); }
+        void on_tick(double) override;
+        void on_collect_material_validation(std::vector<MaterialProgramValidationRef>& requests) override { if (shader_workflow_ready_) shaders_.collect_validation(requests); }
         void on_collect_ui_render_work(UiRenderWork& work) override { thumbnails_.collect_render_work(work); }
         void on_ui_texture_result(UiTextureResult result) override { thumbnails_.on_texture_result(std::move(result)); }
         std::vector<ImGuiTextureId> ui_texture_ids() const override { return thumbnails_.texture_ids(); }
@@ -45,6 +47,7 @@ namespace toy3d
         EditorWorkspace& workspace_;
         EditorSelection selection_;
         ActorFactory actor_factory_;
+        MaterialAssignments material_assignments_;
         EditorCommandHistory command_history_;
         SceneViewport scene_viewport_;
         AssetThumbnailPool thumbnails_;
@@ -56,10 +59,15 @@ namespace toy3d
         StaticMeshImportDialog model_import_;
         MaterialCreateDialog material_create_;
         MaterialEditorPanel material_editor_;
+        NativeProcessService processes_;
+        ThreadManager shader_threads_;
+        MaterialShaderWorkflow shaders_{processes_, shader_threads_};
+        bool shader_workflow_ready_ = false;
         bool material_history_target_ = false;
         void undo_edit();
         void redo_edit();
         std::string model_error_;
+        std::string material_assignment_error_;
 
     };
 } // namespace toy3d

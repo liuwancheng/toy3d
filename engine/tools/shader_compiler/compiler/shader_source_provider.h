@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hash/sha256.h"
+#include "file_system/file_system.h"
 
 #include <optional>
 #include <string>
@@ -50,5 +51,18 @@ namespace toy3d::shader
       private:
         std::unordered_map<std::string, ShaderSourceRecord> files_;
         std::string validation_error_;
+    };
+
+    // Explicit read-only mounts constrain disk includes; no CWD, PATH or
+    // system include fallback participates in compilation.
+    class FileShaderSourceProvider final : public ShaderSourceProvider
+    {
+      public:
+        explicit FileShaderSourceProvider(const FileSystem& files) : files_(files) {}
+        const std::string& validation_error() const override { return error_; }
+        ShaderSourceLoadResult load(const std::string& virtual_path) const override;
+      private:
+        const FileSystem& files_;
+        std::string error_;
     };
 } // namespace toy3d::shader

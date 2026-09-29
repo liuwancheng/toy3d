@@ -334,6 +334,16 @@ namespace
         const ShaderCompileRequestResult changed_result = build_shader_compile_request(changed);
         check(changed_result.succeeded() && changed_result.request->compile_key != first.request->compile_key,
               "dependency content must enter the compile key");
+        const RegisteredShaderSourceProvider project_provider({
+            {"/Project/ShaderIncludes/Common.hlsli", "static const float4 included_value = 1.0;\n"}});
+        auto project = make_input(project_provider);
+        project.shader_include_source.clear();
+        project.pass_source_line = 70u;
+        project.pass_source = "#include \"/Project/ShaderIncludes/Common.hlsli\"\nfloat4 vs_main() : SV_Position { return included_value; }";
+        const auto project_result = build_shader_compile_request(project);
+        check(project_result.succeeded() && project_result.request->dependencies.size() == 1u &&
+            project_result.request->source.find("#line 71 \"/Engine/Shaders/Tests/Compile.shader\"") != std::string::npos,
+            "project include expansion must restore the author's .shader line after include");
     }
 
     void test_include_failures()
@@ -550,7 +560,7 @@ namespace
         std::size_t invocation_count = 0;
         const ShaderProcessRunner runner = [&](const toy3d::PhysicalPath&, const std::vector<std::string>& args)
         {
-            ProcessResult result;
+            toy3d::ProcessResult result;
             result.launched = true;
             result.exit_code = 0;
             if (invocation_count++ == 0)
@@ -585,7 +595,7 @@ namespace
         const ShaderProcessRunner failing_validator =
             [&](const toy3d::PhysicalPath&, const std::vector<std::string>& args)
         {
-            ProcessResult result;
+            toy3d::ProcessResult result;
             result.launched = true;
             result.exit_code = failing_invocation++ == 0 ? 0 : 1;
             result.output = result.exit_code == 0 ? std::string{} : "validation failed";
@@ -605,7 +615,7 @@ namespace
 
         const ShaderProcessRunner failing_compiler = [](const toy3d::PhysicalPath&, const std::vector<std::string>&)
         {
-            return ProcessResult{true, 1, "compile failed"};
+            return toy3d::ProcessResult{true, 1, "compile failed"};
         };
         const ShaderCompilerOutput compilation_failure =
             compile_vulkan_shader(*built.request, toolchain, platform_file, physical_path(working), failing_compiler);

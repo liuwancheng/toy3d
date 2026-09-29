@@ -106,13 +106,47 @@ namespace toy3d
 
         fs::path to_native(const PhysicalPath& path)
         {
-            return fs::u8path(path.utf8());
+            fs::path native = fs::u8path(path.utf8());
+#if defined(_WIN32)
+            if (native.is_absolute())
+            {
+                std::wstring text = native.lexically_normal().make_preferred().native();
+                if (text.compare(0u, 4u, L"\\\\?\\") != 0u && text.compare(0u, 4u, L"\\\\.\\") != 0u)
+                    text = text.compare(0u, 2u, L"\\\\") == 0u ? L"\\\\?\\UNC\\" + text.substr(2u) : L"\\\\?\\" + text;
+                native = fs::path(std::move(text));
+            }
+#endif
+            return native;
         }
 
         PhysicalPath from_native(const fs::path& path)
         {
+#if defined(_WIN32)
+            const std::wstring& text = path.native();
+            if (text.compare(0u, 8u, L"\\\\?\\UNC\\") == 0u)
+                return PhysicalPath(fs::path(L"\\\\" + text.substr(8u)).u8string());
+            if (text.compare(0u, 4u, L"\\\\?\\") == 0u)
+                return PhysicalPath(fs::path(text.substr(4u)).u8string());
+#endif
             return PhysicalPath(path.u8string());
         }
+
+#if defined(_WIN32)
+        FileResult<std::wstring> windows_api_path(const PhysicalPath& path)
+        {
+            // filesystem normalizes a trusted host path before adding Win32's
+            // extended-length prefix; PhysicalPath itself keeps ordinary UTF-8.
+            std::error_code error;
+            auto absolute = fs::absolute(to_native(path), error);
+            if (error) return FileResult<std::wstring>(make_error("native_path", path, error));
+            std::wstring native = absolute.lexically_normal().make_preferred().native();
+            if (native.compare(0u, 4u, L"\\\\?\\") == 0u || native.compare(0u, 4u, L"\\\\.\\") == 0u)
+                return FileResult<std::wstring>(std::move(native));
+            if (native.compare(0u, 2u, L"\\\\") == 0u)
+                return FileResult<std::wstring>(L"\\\\?\\UNC\\" + native.substr(2u));
+            return FileResult<std::wstring>(L"\\\\?\\" + native);
+        }
+#endif
 
         FileType to_file_type(fs::file_type type)
         {
@@ -464,12 +498,14 @@ namespace toy3d
         const bool readable = mode == FileOpenMode::Read || mode == FileOpenMode::ReadWrite;
         const bool writable = mode != FileOpenMode::Read;
 #if defined(_WIN32)
+        const auto windows_path = windows_api_path(path);
+        if (!windows_path.succeeded()) return FileResult<std::unique_ptr<FileHandle>>(windows_path.status());
         const DWORD access = (readable ? GENERIC_READ : 0u) | (writable ? GENERIC_WRITE : 0u);
         const DWORD creation = mode == FileOpenMode::Read            ? OPEN_EXISTING
                                : mode == FileOpenMode::WriteNew      ? CREATE_NEW
                                : mode == FileOpenMode::WriteTruncate ? CREATE_ALWAYS
                                                                      : OPEN_ALWAYS;
-        const HANDLE handle = CreateFileW(native_path.c_str(), access, FILE_SHARE_READ, nullptr, creation,
+        const HANDLE handle = CreateFileW(windows_path.value().c_str(), access, FILE_SHARE_READ, nullptr, creation,
                                           FILE_ATTRIBUTE_NORMAL, nullptr);
         if (handle == INVALID_HANDLE_VALUE)
         {
@@ -745,7 +781,11 @@ namespace toy3d
                                     "rename must stay within the same parent directory");
             }
 #if defined(_WIN32)
-            if (!MoveFileExW(native_source.c_str(), native_destination.c_str(), MOVEFILE_WRITE_THROUGH))
+            const auto windows_source = windows_api_path(source);
+            const auto windows_destination = windows_api_path(destination);
+            if (!windows_source.succeeded()) return windows_source.status();
+            if (!windows_destination.succeeded()) return windows_destination.status();
+            if (!MoveFileExW(windows_source.value().c_str(), windows_destination.value().c_str(), MOVEFILE_WRITE_THROUGH))
             {
                 return make_error("rename_no_replace", destination,
                                   std::error_code(static_cast<int>(GetLastError()), std::system_category()));
@@ -793,7 +833,11 @@ namespace toy3d
                 return invalid_path("replace", destination, "replace must stay within the same parent directory");
             }
 #if defined(_WIN32)
-            if (!MoveFileExW(native_source.c_str(), native_destination.c_str(),
+            const auto windows_source = windows_api_path(source);
+            const auto windows_destination = windows_api_path(destination);
+            if (!windows_source.succeeded()) return windows_source.status();
+            if (!windows_destination.succeeded()) return windows_destination.status();
+            if (!MoveFileExW(windows_source.value().c_str(), windows_destination.value().c_str(),
                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             {
                 return make_error("replace", destination,

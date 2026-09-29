@@ -22,6 +22,7 @@ namespace toy3d
 
         StaticMeshRenderData* render_data() const { return render_data_; }
         const std::vector<MaterialRenderProxy*>& material_render_proxies() const { return material_render_proxies_; }
+        void set_material_render_proxies(std::vector<MaterialRenderProxy*> materials);
 
       private:
         StaticMeshRenderData* render_data_ = nullptr;

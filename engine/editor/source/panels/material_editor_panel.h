@@ -3,6 +3,7 @@
 #include "asset_identity.h"
 #include "format/shader_editor_properties.h"
 #include "rendercore/material/material_asset_builder.h"
+#include "rendercore/shader/shader_map.h"
 
 #include <string>
 #include <vector>
@@ -10,6 +11,7 @@
 namespace toy3d
 {
     class EditorWorkspace;
+    class MaterialShaderWorkflow;
 
     enum class MaterialCloseDecision
     {
@@ -24,6 +26,11 @@ namespace toy3d
     {
       public:
         void initialize(EditorWorkspace& workspace, MaterialRef defaults, const PhysicalPath& shader_root);
+        void set_shader_workflow(MaterialShaderWorkflow& workflow) { shaders_ = &workflow; }
+        bool prepare_shader(const ShaderMapProgramRef& program, const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
+        void publish_shader();
+        void discard_shader();
+        std::uint64_t session_revision() const { return session_revision_; }
         void request_open(const AssetId& id);
         void request_close();
         bool request_exit();
@@ -47,7 +54,13 @@ namespace toy3d
 
         EditorWorkspace* workspace_ = nullptr;
         MaterialRef defaults_;
+        MaterialTextureValues textures_;
         MaterialInstanceRef runtime_;
+        MaterialInstanceRef shader_candidate_;
+        std::vector<shader::ShaderEditorProperty> candidate_properties_;
+        shader::ShaderParameterSchema candidate_schema_;
+        MaterialShaderWorkflow* shaders_ = nullptr;
+        std::uint64_t session_revision_ = 0u;
         std::vector<shader::ShaderEditorProperty> properties_;
         std::string metadata_warning_;
         std::string error_;

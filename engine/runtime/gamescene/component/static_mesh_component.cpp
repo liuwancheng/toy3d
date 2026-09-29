@@ -43,14 +43,42 @@ namespace toy3d
             return false;
         }
 
-        const bool rebuild_render_state = has_render_state();
-        if (rebuild_render_state)
-        {
-            destroy_render_state();
-        }
+        auto previous = material_overrides_;
         material_overrides_[material_slot] = std::move(material);
-        create_render_state();
+        send_material_overrides(std::move(previous));
         return true;
+    }
+
+    bool StaticMeshComponent::clear_material_override(std::uint32_t material_slot)
+    {
+        if (!static_mesh_ || material_slot >= material_overrides_.size())
+        {
+            TOY_LOG_ERROR("Clearing a StaticMesh Material override requires an existing slot.");
+            return false;
+        }
+        if (!material_overrides_[material_slot]) return true;
+        auto previous = material_overrides_;
+        material_overrides_[material_slot].reset();
+        send_material_overrides(std::move(previous));
+        return true;
+    }
+
+    void StaticMeshComponent::send_material_overrides(std::vector<MaterialInstanceRef> previous)
+    {
+        if (!has_render_state()) { create_render_state(); return; }
+        std::vector<MaterialRenderProxy*> proxies;
+        proxies.reserve(material_overrides_.size());
+        for (std::uint32_t slot = 0u; slot < material_overrides_.size(); ++slot)
+            proxies.push_back(material_for_slot(slot)->material_render_proxy());
+        send_render_materials(std::move(proxies));
+        // The preceding update stops borrowing old material proxies before its
+        // owned GT references are dropped. Geometry and HitProxy identity stay.
+        enqueue_render_command("ReleaseUpdatedStaticMeshMaterials", [previous = std::move(previous)]() noexcept {});
+    }
+
+    bool StaticMeshComponent::has_material_override(std::uint32_t material_slot) const
+    {
+        return material_slot < material_overrides_.size() && material_overrides_[material_slot] != nullptr;
     }
 
     MaterialInstanceRef StaticMeshComponent::material_for_slot(std::uint32_t material_slot) const

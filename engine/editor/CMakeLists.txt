@@ -94,7 +94,30 @@ target_compile_definitions(${TARGET_NAME}
     "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\""
     "TOY3D_EDITOR_LAYOUT_PATH=\"${BINARY_ROOT_DIR}saved/editor_layout.ini\"")
 
+target_compile_definitions(${TARGET_NAME} PRIVATE
+    "TOY3D_EDITOR_PROJECT_SHADER_ROOT=\"${TOY3D_ROOT_DIR}/project/shader\""
+    "TOY3D_EDITOR_PROJECT_CONFIG_ROOT=\"${TOY3D_ROOT_DIR}/project/config\""
+    "TOY3D_EDITOR_ENGINE_SHADER_ROOT=\"${ENGINE_ROOT_DIR}/shader/builtin\""
+    "TOY3D_EDITOR_ENGINE_INCLUDE_ROOT=\"${ENGINE_ROOT_DIR}/shader/include\""
+    "TOY3D_EDITOR_SHADER_SAVED_ROOT=\"${BINARY_ROOT_DIR}saved/material_shaders\""
+    "TOY3D_EDITOR_SHADER_COMPILER=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dShaderCompiler>\""
+    "TOY3D_EDITOR_SHADER_TOOLCHAIN=\"${TOY3D_SHADER_TOOLCHAIN_ROOT}\"")
+
+add_library(Toy3dEditorMaterialShader STATIC)
+target_sources(Toy3dEditorMaterialShader PRIVATE
+    "source/material/material_shader_workflow.h" "source/material/material_shader_workflow.cpp")
+target_compile_features(Toy3dEditorMaterialShader PUBLIC cxx_std_17)
+set_target_properties(Toy3dEditorMaterialShader PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Editor")
+target_include_directories(Toy3dEditorMaterialShader PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/source")
+target_link_libraries(Toy3dEditorMaterialShader PUBLIC Toy3dRuntime Toy3dProcess)
+target_compile_definitions(Toy3dEditorMaterialShader PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
+if(MSVC)
+    target_compile_options(Toy3dEditorMaterialShader PRIVATE /utf-8)
+endif()
+target_link_libraries(${TARGET_NAME} PRIVATE Toy3dEditorMaterialShader)
+
 target_sources(${TARGET_NAME} PRIVATE
+    "source/material/material_assignments.h" "source/material/material_assignments.cpp"
     "source/material/material_edit_session.h" "source/material/material_edit_session.cpp"
     "source/panels/material_editor_panel.h" "source/panels/material_editor_panel.cpp"
     "source/thumbnails/thumbnail_preview_scene.h" "source/thumbnails/thumbnail_preview_scene.cpp"
@@ -136,6 +159,7 @@ if(BUILD_TESTING)
             "tests/thumbnail_integration_tests.cpp"
             "source/workspace/editor_workspace.cpp"
             "source/material/material_edit_session.cpp"
+            "source/material/material_assignments.cpp"
             "source/thumbnails/asset_thumbnail_pool.cpp" "source/thumbnails/thumbnail_preview_scene.cpp"
             "source/panels/content_browser_panel.cpp" "source/selection/editor_selection.cpp"
             "source/panels/static_mesh_import_dialog.cpp" "${TOY3D_MODEL_PICKER_SOURCE}"
@@ -223,6 +247,9 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/source/editor_viewport_gizmo.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/selection/editor_selection.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/commands/editor_command_history.cpp")
+    target_sources(Toy3dEditorPlacementTests PRIVATE
+        "source/material/material_assignments.cpp"
+        "source/material/material_edit_session.cpp" "source/workspace/editor_workspace.cpp")
     target_compile_features(Toy3dEditorPlacementTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorPlacementTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorPlacementTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
@@ -232,6 +259,65 @@ if(BUILD_TESTING)
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
     target_compile_options(Toy3dEditorPlacementTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     add_test(NAME Toy3dEditor.Placement COMMAND Toy3dEditorPlacementTests)
+
+    add_executable(Toy3dEditorMaterialAssignmentTests
+        "tests/material_assignment_tests.cpp"
+        "source/material/material_assignments.cpp" "source/material/material_edit_session.cpp"
+        "source/workspace/editor_workspace.cpp" "source/commands/editor_command_history.cpp"
+        "source/placement/actor_factory.cpp" "source/placement/placement_catalog.cpp"
+        "source/placement/actor_placement.cpp" "source/selection/editor_selection.cpp"
+        "source/panels/scene_panels.cpp" "source/viewport/scene_viewport.cpp"
+        "source/viewport/actor_icons.cpp" "source/editor_viewport_gizmo.cpp")
+    target_compile_features(Toy3dEditorMaterialAssignmentTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorMaterialAssignmentTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_include_directories(Toy3dEditorMaterialAssignmentTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
+    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dRuntime Toy3dResource imguizmo)
+    target_compile_definitions(Toy3dEditorMaterialAssignmentTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
+        "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-assignment-test-output\""
+        "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
+        "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
+        "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
+        "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
+    target_compile_options(Toy3dEditorMaterialAssignmentTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.MaterialAssignment COMMAND Toy3dEditorMaterialAssignmentTests)
+    add_test(NAME Toy3dEditor.MaterialAssignmentMultiThread COMMAND Toy3dEditorMaterialAssignmentTests --multithread)
+    set_tests_properties(Toy3dEditor.MaterialAssignment Toy3dEditor.MaterialAssignmentMultiThread PROPERTIES TIMEOUT 45)
+    if(TOY3D_ENABLE_VULKAN_RHI)
+        add_executable(Toy3dEditorMaterialShaderTests
+            "tests/material_shader_tests.cpp"
+            "source/material/material_assignments.cpp" "source/material/material_edit_session.cpp"
+            "source/panels/material_editor_panel.cpp" "source/workspace/editor_workspace.cpp"
+            "source/placement/actor_factory.cpp" "source/placement/placement_catalog.cpp")
+        target_compile_features(Toy3dEditorMaterialShaderTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dEditorMaterialShaderTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+        target_link_libraries(Toy3dEditorMaterialShaderTests PRIVATE Toy3dEditorMaterialShader imgui)
+        target_compile_definitions(Toy3dEditorMaterialShaderTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
+            "TOY3D_SHADER_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-shader-test-output\""
+            "TOY3D_SHADER_TEST_SOURCE=\"${TOY3D_ROOT_DIR}/project/shader/painted.shader\""
+            "TOY3D_SHADER_TEST_INCLUDE=\"${TOY3D_ROOT_DIR}/project/shader/include/project_common.hlsli\""
+            "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
+            "TOY3D_EDITOR_ENGINE_SHADER_ROOT=\"${ENGINE_ROOT_DIR}/shader/builtin\""
+            "TOY3D_EDITOR_ENGINE_INCLUDE_ROOT=\"${ENGINE_ROOT_DIR}/shader/include\""
+            "TOY3D_EDITOR_SHADER_COMPILER=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dShaderCompiler>\""
+            "TOY3D_EDITOR_SHADER_TOOLCHAIN=\"${TOY3D_SHADER_TOOLCHAIN_ROOT}\""
+            "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
+            "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
+            "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
+        if(MSVC)
+            target_compile_options(Toy3dEditorMaterialShaderTests PRIVATE /utf-8)
+        endif()
+        if(WIN32)
+            target_sources(Toy3dEditorMaterialShaderTests PRIVATE "${EDITOR_ICON_FILE}")
+        endif()
+        add_dependencies(Toy3dEditorMaterialShaderTests Toy3dShaders Toy3dShaderCompiler)
+        add_test(NAME Toy3dEditor.MaterialShader COMMAND Toy3dEditorMaterialShaderTests)
+        set_tests_properties(Toy3dEditor.MaterialShader PROPERTIES TIMEOUT 60 RESOURCE_LOCK Toy3dGpuWindow)
+    endif()
+    foreach(TOY3D_SHADER_UI_TEST_TARGET Toy3dEditorMaterialUiTests Toy3dEditorThumbnailTests)
+        if(TARGET ${TOY3D_SHADER_UI_TEST_TARGET})
+            target_link_libraries(${TOY3D_SHADER_UI_TEST_TARGET} PRIVATE Toy3dEditorMaterialShader)
+        endif()
+    endforeach()
 endif()
 
 if(WIN32)

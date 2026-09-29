@@ -23,6 +23,7 @@ namespace toy3d
         for (const StaticMeshAssetSection& section : geometry.sections)
             desc.sections.push_back({section.first_index, section.index_count, section.material_slot});
         desc.material_slots.assign(geometry.material_slots.size(), default_material);
+        desc.material_slot_names = geometry.material_slots;
         return StaticMesh::create(std::move(desc));
     }
 } // namespace toy3d

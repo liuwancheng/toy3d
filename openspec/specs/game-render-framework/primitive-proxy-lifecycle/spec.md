@@ -8,7 +8,7 @@
 ### Requirement: Add 以 fire-and-forget 转移 Proxy ownership
 PrimitiveComponent 在注册到已绑定 SceneInterface，或 World 绑定 SceneInterface 并补建现有 Primitive render state 时，SHALL 执行 `create_render_state()`。StaticMeshComponent 的该流程 MUST 从当前 GT 值构造独占 `StaticMeshSceneProxy`，暂存其 opaque non-owning pointer，并由无返回值 `add_primitive()` 将 ownership 移入 Add RenderCommand；RT MUST 在命令内创建 `PrimitiveSceneInfo` 并注册到 RenderScene。
 
-`add_primitive()`、`update_primitive_transform()` 与 `remove_primitive()` 都是建立在无返回值 `enqueue_render_command()` 上的 fire-and-forget 领域入口，不传播 transport status。只有 `add_primitive()` 正常返回后，Component 才能发布 opaque proxy identity；正常返回 MUST 保证 Proxy ownership 已经同步消费或被 Task Graph transport 接受。GT 始终禁止解引用该 opaque pointer。
+`add_primitive()`、`update_primitive_transform()`、`update_primitive_materials()` 与 `remove_primitive()` 都是建立在无返回值 `enqueue_render_command()` 上的 fire-and-forget 领域入口，不传播 transport status。只有 `add_primitive()` 正常返回后，Component 才能发布 opaque proxy identity；正常返回 MUST 保证 Proxy ownership 已经同步消费或被 Task Graph transport 接受。GT 始终禁止解引用该 opaque pointer。
 
 #### Scenario: Add 成功
 - **WHEN** Add command 执行
@@ -38,7 +38,9 @@ terminal竞争窗口内的`destroy_render_state()` MAY投递一个只进入FIFO 
 ### Requirement: Update 捕获 owned value
 `update_primitive_transform()` MUST接收opaque `PrimitiveSceneProxy*`、按值复制的`Matrix4 world_transform`、`AxisAlignedBounds world_bounds`和`bool visible`。RenderCommand捕获这些独立值，不得捕获World、Actor、Component、Camera或其他GT可变引用，也不新增具名update payload类型。
 
-第一阶段StaticMesh或material-slot reference发生结构变化时 MUST通过`destroy_render_state()`后`create_render_state()`重建Proxy；不得把mesh/material更新偷塞进名称只表达transform的操作，也不得新增尚未确认的resource-update接口。MaterialInstance内部参数变化仍通过稳定`MaterialRenderProxy`的专用material update路径处理，不重建Primitive render state。
+StaticMesh reference发生变化时 MUST通过`destroy_render_state()`后`create_render_state()`重建Proxy。仅material-slot reference变化时，Component MUST通过`update_primitive_materials()`发送完整材质槽列表；不得把mesh/material更新放入名称只表达transform的操作。MaterialInstance内部参数变化仍通过稳定`MaterialRenderProxy`的专用material update路径处理，不重建Primitive render state。
+
+`update_primitive_materials()` MUST接收opaque `PrimitiveSceneProxy*`和按值拥有的完整`MaterialRenderProxy*`列表，RenderCommand不得捕获可变GT对象。RT MUST先验证Proxy仍注册、类型和槽位数量匹配，并初始化新材质引用的Texture representation，再替换材质列表；失败 MUST记录日志并保留旧列表。纯材质槽替换 MUST保留Primitive/HitProxy identity和Mesh render data，不触发几何释放或重新初始化。调用方 MUST将旧MaterialInstance强引用保留至更新后的FIFO命令，并让材质版本所有者将representation保活至对应Proxy更新或移除完成。
 
 #### Scenario: Transform 连续更新
 - **WHEN** GT 连续两次更新 transform 后投递 Draw
@@ -51,6 +53,14 @@ terminal竞争窗口内的`destroy_render_state()` MAY投递一个只进入FIFO 
 #### Scenario: MaterialInstance 参数变化
 - **WHEN** Component引用的同一MaterialInstance只修改scalar/vector/texture参数
 - **THEN** 稳定MaterialRenderProxy MUST通过material update FIFO更新，PrimitiveSceneProxy无需因参数值变化重建
+
+#### Scenario: 材质槽引用变化
+- **WHEN** 已创建render state的StaticMeshComponent替换材质槽引用
+- **THEN** RT MUST按FIFO应用完整材质列表，保留现有Primitive/HitProxy identity与可绘制几何；旧材质representation释放 MUST排在更新完成之后
+
+#### Scenario: 材质槽更新失败
+- **WHEN** 新材质列表的槽位数量不匹配或Texture初始化失败
+- **THEN** RT MUST记录错误并保留旧材质列表，不释放现有几何
 
 ### Requirement: 可见 StaticMeshSceneProxy 贡献 frame-local MeshBatch
 `compute_view_visibility()` MUST 只让通过当前 `ViewInfo` 视锥测试且仍注册在 RenderScene 的 `StaticMeshSceneProxy` 参与 mesh 收集。Proxy SHALL 使用其 StaticMeshRenderData、material slots 和 `LocalVertexFactory` 为当前帧贡献 `MeshBatch`；`MeshBatch` MUST NOT 成为 GT 持久状态或跨帧 ownership 容器。本 requirement 不引入尚未确认名称的收集接口。

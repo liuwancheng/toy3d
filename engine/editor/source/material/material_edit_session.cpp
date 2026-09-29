@@ -31,7 +31,7 @@ namespace toy3d
         return {code, id_, path_.utf8(), {}, {}, message, {}};
     }
 
-    AssetStatus MaterialEditSession::open(const AssetId& id, shader::ShaderParameterSchema schema)
+    AssetStatus MaterialEditSession::open(const AssetId& id, shader::ShaderParameterSchema schema, const std::string& registered_shader_name)
     {
         if (dirty() || gesturing()) return fail(AssetErrorCode::InvalidState, "Resolve unsaved changes before opening another material.");
         const auto* location = workspace_.catalog().index.find(id);
@@ -56,8 +56,8 @@ namespace toy3d
             status = read_material_asset(workspace_.types(), workspace_.files(), location->path, root, &workspace_.catalog().index);
         else return fail(AssetErrorCode::TypeMismatch, "Open a Material or Material Instance asset.");
         if (!status.succeeded()) return status;
-        if ((child ? parent.shader_name : root.shader_name) != "Toy3d/Surface/Phong")
-            return fail(AssetErrorCode::Schema, "This material window currently supports the registered Phong Shader.");
+        if ((child ? parent.shader_name : root.shader_name) != registered_shader_name)
+            return fail(AssetErrorCode::Schema, "Material Shader does not match its registered Program.");
         // Bind a complete candidate first. Failure leaves the previous session
         // intact; the callbacks observe this owner only after publication.
         std::unique_ptr<EditSession<MaterialAssetData>> next_root;
@@ -141,6 +141,25 @@ namespace toy3d
     }
 
     std::vector<MaterialParameterOverride> MaterialEditSession::effective_overrides() const { return effective(overrides()); }
+
+    std::vector<MaterialParameterOverride> MaterialEditSession::effective_overrides(const shader::ShaderParameterSchema& schema) const
+    {
+        std::map<std::string, MaterialParameterOverride> merged;
+        if (instance_)
+            for (const auto& value : parent_.overrides) if (material_override_matches_schema(value, schema)) merged[value.name] = value;
+        for (const auto& value : overrides()) if (material_override_matches_schema(value, schema)) merged[value.name] = value;
+        std::vector<MaterialParameterOverride> values; for (const auto& item : merged) values.push_back(item.second); return values;
+    }
+
+    AssetStatus MaterialEditSession::update_schema(shader::ShaderParameterSchema schema)
+    {
+        if (!active() || gesturing()) return fail(AssetErrorCode::InvalidState, "End the parameter gesture before applying compiled code.");
+        std::string error;
+        if (!shader::validate_shader_parameter_schema(schema, error)) return fail(AssetErrorCode::Schema, error);
+        // Keep persisted overrides and EditSession history. Orphans are computed
+        // against this new schema and become editable again if their type returns.
+        schema_ = std::move(schema); return AssetStatus::success();
+    }
 
     AssetStatus MaterialEditSession::effective_bytes(const std::vector<MaterialParameterOverride>& values,
         std::vector<std::uint8_t>& bytes) const

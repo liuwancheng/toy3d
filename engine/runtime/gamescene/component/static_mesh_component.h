@@ -19,9 +19,12 @@ namespace toy3d
         void set_static_mesh(StaticMeshRef static_mesh);
 
         bool set_material_override(std::uint32_t material_slot, MaterialInstanceRef material);
+        bool clear_material_override(std::uint32_t material_slot);
+        bool has_material_override(std::uint32_t material_slot) const;
         MaterialInstanceRef material_for_slot(std::uint32_t material_slot) const;
 
       private:
+        void send_material_overrides(std::vector<MaterialInstanceRef> previous);
         void update_bounds() override;
         void on_render_state_removed() override;
         std::unique_ptr<PrimitiveSceneProxy> create_scene_proxy() const override;

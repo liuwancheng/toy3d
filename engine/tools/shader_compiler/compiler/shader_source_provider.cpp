@@ -9,29 +9,35 @@ namespace toy3d::shader
     namespace
     {
         constexpr const char* engine_shader_include_root = "/Engine/ShaderIncludes/";
+        constexpr const char* project_shader_include_root = "/Project/ShaderIncludes/";
 
         bool is_allowed_include_path(const std::string& path)
         {
             const auto parsed = VirtualPath::parse(path);
             return parsed.succeeded() && parsed.value().utf8() == path &&
-                   parsed.value().utf8().size() > std::char_traits<char>::length(engine_shader_include_root) &&
-                   parsed.value().utf8().compare(0, std::char_traits<char>::length(engine_shader_include_root),
-                                                 engine_shader_include_root) == 0;
+                (path.compare(0, std::char_traits<char>::length(engine_shader_include_root), engine_shader_include_root) == 0 ||
+                 path.compare(0, std::char_traits<char>::length(project_shader_include_root), project_shader_include_root) == 0);
         }
     } // namespace
 
+    // --------------------------------------------------------------------------
+    // ShaderSourceLoadResult: complete source or a lookup failure
+    // --------------------------------------------------------------------------
     bool ShaderSourceLoadResult::succeeded() const
     {
         return source.has_value() && error.empty();
     }
 
+    // --------------------------------------------------------------------------
+    // RegisteredShaderSourceProvider: immutable virtual include snapshots
+    // --------------------------------------------------------------------------
     RegisteredShaderSourceProvider::RegisteredShaderSourceProvider(std::vector<VirtualIncludeFile> files)
     {
         for (VirtualIncludeFile& file : files)
         {
             if (!is_allowed_include_path(file.virtual_path))
             {
-                validation_error_ = "Include files must use a normalized /Engine/ShaderIncludes/ virtual path.";
+                validation_error_ = "Include files must use a normalized Engine or Project ShaderIncludes path.";
                 continue;
             }
             ShaderSourceRecord record;
@@ -56,7 +62,7 @@ namespace toy3d::shader
         }
         if (!is_allowed_include_path(virtual_path))
         {
-            result.error = "Includes must use a normalized /Engine/ShaderIncludes/ virtual path.";
+            result.error = "Includes must use a normalized Engine or Project ShaderIncludes path.";
             return result;
         }
         const auto found = files_.find(virtual_path);
@@ -72,5 +78,19 @@ namespace toy3d::shader
     const std::string& RegisteredShaderSourceProvider::validation_error() const
     {
         return validation_error_;
+    }
+
+    // --------------------------------------------------------------------------
+    // FileShaderSourceProvider: bounded include reads from explicit FileSystem mounts
+    // --------------------------------------------------------------------------
+    ShaderSourceLoadResult FileShaderSourceProvider::load(const std::string& path) const
+    {
+        ShaderSourceLoadResult result;
+        if (!is_allowed_include_path(path)) { result.error = "Include is outside the registered include roots: " + path; return result; }
+        const auto parsed = VirtualPath::parse(path);
+        const auto text = files_.read_text_utf8(parsed.value(), 4u * 1024u * 1024u);
+        if (!text.succeeded()) { result.error = text.status().message; return result; }
+        result.source = ShaderSourceRecord{path, text.value(), sha256(text.value())};
+        return result;
     }
 } // namespace toy3d::shader

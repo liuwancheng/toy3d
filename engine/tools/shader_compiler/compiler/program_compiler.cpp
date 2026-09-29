@@ -52,6 +52,7 @@ namespace toy3d::shader
             std::ostringstream source;
             for (const HlslBlock& include : asset.includes)
             {
+                source << "#line " << include.location.line << " \"" << asset.location.path << "\"\n";
                 source << include.source << '\n';
             }
             return source.str();
@@ -105,6 +106,7 @@ namespace toy3d::shader
             request_input.generated_bindings = std::move(*bindings.source);
             request_input.shader_include_source = shader_include_source;
             request_input.pass_source = pass.program.source;
+            request_input.pass_source_line = pass.program.location.line;
             request_input.source_provider = input.source_provider;
             request_input.logical_layout_hash = logical_layout.logical_layout_hash;
             request_input.target_binding_hash = target_layout.target_binding_hash;

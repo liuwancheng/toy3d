@@ -93,6 +93,7 @@ namespace toy3d
             desc.indices = prototype->indices();
             desc.sections = prototype->sections();
             desc.material_slots = prototype->material_slots();
+            desc.material_slot_names = prototype->material_slot_names();
             // Each placement has a fresh render-resource lifecycle. Released vertex
             // buffers discard their upload payload and cannot be reused on a redo.
             return StaticMesh::create(std::move(desc));

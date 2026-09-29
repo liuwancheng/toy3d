@@ -29,6 +29,8 @@ namespace toy3d
         void add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy) override;
         void update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
                                         AxisAlignedBounds world_bounds, bool visible) override;
+        void update_primitive_materials(PrimitiveSceneProxy* proxy,
+            std::vector<MaterialRenderProxy*> materials) override;
         void remove_primitive(PrimitiveSceneProxy* proxy) override;
         void add_light(std::unique_ptr<LightSceneProxy> proxy) override;
         void update_light(LightSceneProxy* proxy, LightSceneData data) override;

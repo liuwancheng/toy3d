@@ -5,6 +5,7 @@
 #include "threading/threading_types.h"
 #include "ui/imgui_draw_data.h"
 #include "ui/ui_texture_work.h"
+#include "rendercore/material/material_program_validation.h"
 
 #include <atomic>
 #include <deque>
@@ -96,6 +97,7 @@ namespace toy3d
         SceneInterface* scene_interface() const;
         SceneInterface* preview_scene_interface() const;
         bool poll_ui_texture(UiTextureResult& result);
+        void validate_material_program(MaterialProgramValidationRef request);
 
       private:
         bool is_on_logical_rendering_thread() const;

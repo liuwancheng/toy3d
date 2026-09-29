@@ -1,4 +1,5 @@
 #include "panels/content_browser_panel.h"
+#include "material/material_assignments.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -146,11 +147,11 @@ namespace toy3d
                                  item.asset->file.root_type == "toy3d.MaterialInstanceAssetData");
                             if (is_material && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                                 actions.material_open = item.asset->file.asset_id;
-                            if (item.asset && item.asset->file.root_type == "toy3d.StaticMeshAssetData" && ImGui::BeginDragDropSource())
+                            if (item.asset && (is_material || item.asset->file.root_type == "toy3d.StaticMeshAssetData") && ImGui::BeginDragDropSource())
                             {
                                 const AssetId id = item.asset->file.asset_id;
-                                ImGui::SetDragDropPayload(ASSET_DRAG_PAYLOAD, &id, sizeof(id));
-                                ImGui::Text("Place Static Mesh: %s", item.path.c_str());
+                                ImGui::SetDragDropPayload(is_material ? MATERIAL_ASSET_DRAG_PAYLOAD : ASSET_DRAG_PAYLOAD, &id, sizeof(id));
+                                ImGui::Text("%s: %s", is_material ? "Assign Material" : "Place Static Mesh", item.path.c_str());
                                 ImGui::EndDragDropSource();
                             }
                             auto& draw = *ImGui::GetWindowDrawList();

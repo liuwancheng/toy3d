@@ -19,8 +19,6 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "compiler/dxc_adapter.h"
     "compiler/include_resolver.cpp"
     "compiler/include_resolver.h"
-    "compiler/process_runner.cpp"
-    "compiler/process_runner.h"
     "compiler/program_compiler.cpp"
     "compiler/program_compiler.h"
     "compiler/shader_compiler.cpp"
@@ -63,6 +61,7 @@ target_include_directories(Toy3dShaderCompilerCore
 target_link_libraries(Toy3dShaderCompilerCore
     PUBLIC
         Toy3dFileSystem
+        Toy3dProcess
         Toy3dShaderFormat
         Toy3d::SpirvReflect)
 

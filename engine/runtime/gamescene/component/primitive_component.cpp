@@ -66,6 +66,14 @@ namespace toy3d
         world().mark_scene_changed();
     }
 
+    void PrimitiveComponent::send_render_materials(std::vector<MaterialRenderProxy*> materials)
+    {
+        SceneInterface* const scene = world().scene_interface();
+        if (!scene || !scene_proxy_) return;
+        scene->update_primitive_materials(scene_proxy_, std::move(materials));
+        world().mark_scene_changed();
+    }
+
     void PrimitiveComponent::destroy_render_state()
     {
         if (scene_proxy_ == nullptr)

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <exception>
 #include <utility>
 #include <vector>
 
@@ -12,6 +13,8 @@
 #include "rendercore/render_command_internal.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
+#include "rendercore/shader/shader_graphics_state.h"
+#include "rendercore/geometry/local_vertex_factory.h"
 #include "renderscene/render_resource_manager.h"
 #include "renderscene/renderer_frame.h"
 #include "renderscene/postprocess/tonemap_pass.h"
@@ -892,6 +895,65 @@ namespace toy3d
     }
 
     SceneInterface* Renderer::preview_scene_interface() const { return published_preview_interface_.load(); }
+
+    void Renderer::validate_material_program(MaterialProgramValidationRef request)
+    {
+        enqueue_render_command("ValidateMaterialProgram", [this, request = std::move(request)]() noexcept
+        {
+            if (!request) return;
+            try
+            {
+                request->status = [&]() -> RHIStatus
+                {
+                    if (!device_ || !shader_program_cache_ || !request->program ||
+                        lifecycle_state_.load() != RendererLifecycleState::Running)
+                        return RHIStatus::failure(RHIErrorCode::NotReady, "Material validation requires a running Renderer.");
+                    auto shader = shader_program_cache_->find_or_create(request->program);
+                    if (!shader) return shader.status();
+                    // Representative fixed StaticMesh streams need no uploads or
+                    // submit: the ordinary LocalVertexFactory validates reflection.
+                    RHIBufferDesc position_desc; position_desc.size = 16u; position_desc.usage = RHIResourceUsage::VertexBuffer;
+                    RHIBufferDesc surface_desc; surface_desc.size = 24u; surface_desc.usage = RHIResourceUsage::VertexBuffer;
+                    auto position = device_->create_buffer(position_desc);
+                    if (!position) return position.status();
+                    auto surface = device_->create_buffer(surface_desc);
+                    if (!surface) return surface.status();
+                    LocalVertexFactory factory({
+                        {ShaderVertexAttributeId::Position0, 0u, 0u, 16u, PixelFormat::R32G32B32A32Float, position.value()},
+                        {ShaderVertexAttributeId::Normal0, 1u, 0u, 24u, PixelFormat::R32G32B32A32Float, surface.value()},
+                        {ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u, PixelFormat::R32G32Float, surface.value()}});
+                    RHIGraphicsPipelineDesc pipeline;
+                    std::vector<RHIVertexBufferBinding> bindings;
+                    auto status = factory.build_vertex_input(request->program->data().vertex_inputs,
+                        pipeline.vertex_buffers, pipeline.vertex_attributes, bindings);
+                    if (!status) return status;
+                    pipeline.vertex_shader = shader.value()->vertex_shader;
+                    pipeline.pixel_shader = shader.value()->pixel_shader;
+                    pipeline.binding_layout = shader.value()->binding_layout;
+                    // Use the same Forward attachments as actual scene drawing.
+                    if (!scene_render_targets_ || !scene_render_targets_->scene_color_view() || !scene_render_targets_->scene_depth_view())
+                        return RHIStatus::failure(RHIErrorCode::NotReady, "Scene attachments are not ready for material validation.");
+                    pipeline.color_attachment_count = 1u;
+                    pipeline.color_formats[0] = scene_render_targets_->scene_color_view()->desc().format;
+                    pipeline.depth_stencil_format = scene_render_targets_->scene_depth_view()->desc().format;
+                    pipeline.sample_count = scene_render_targets_->scene_color_texture()->desc().sample_count;
+                    auto state = request->program->data().graphics_pass_state;
+                    auto normal = build_shader_graphics_pipeline_desc(pipeline, state);
+                    if (!normal) return normal.status();
+                    auto created = device_->create_graphics_pipeline(normal.value());
+                    if (!created) return created.status();
+                    state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
+                    auto two_sided = build_shader_graphics_pipeline_desc(pipeline, state);
+                    if (!two_sided) return two_sided.status();
+                    auto double_sided = device_->create_graphics_pipeline(two_sided.value());
+                    return double_sided ? RHIStatus::success() : double_sided.status();
+                }();
+            }
+            catch (const std::exception& error)
+            { request->status = RHIStatus::failure(RHIErrorCode::BackendFailure, error.what()); }
+            request->complete.store(true, std::memory_order_release);
+        });
+    }
 
     void Renderer::draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
                               std::unique_ptr<ImGuiDrawData> ui_draw_data, ViewportFrameOutput output,

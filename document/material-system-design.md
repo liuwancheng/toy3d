@@ -4,7 +4,7 @@
 
 本文是材质资产和 Editor 参数化工作流的 Active 设计。产品范围已确认，新增类型、函数和执行清单是后续实施要求，不表示当前代码已经支持。Shader 语法、参数身份及 GPU 布局继续遵循 [Shader 系统](shader-system-design.md)，文件与编辑事务遵循 [资源基础](editor-resource-foundation-design.md)，GT/RT 更新遵循 [Material updates](../openspec/specs/game-render-framework/material-updates/spec.md)。
 
-当前已落地 M1 的属性格式、编译器输出、默认值解码和 Unlit 颜色消费，M2 的 Material/单层 Instance DTO、编解码、创建框和运行时构建，以及 M3 的参数窗口、EditSession、手势、批次、重置、保存和脏关闭流程。当前仅开放可完整加载的 Phong；材质槽赋值在 M4，Sampler 与 UV 采样在 M5，可见材质预览与已加载引用者传播在 M6，不提前开放包含未支持 Sampler 的 Unlit。
+当前已落地 M1 属性格式、编译器输出、默认值解码和 Unlit 颜色消费，M2 Material/单层 Instance DTO、编解码、创建框和运行时构建，M3 参数窗口、EditSession、手势、重置、保存和脏关闭，以及 M4 Details 槽位选择/拖放、清除覆盖和场景撤销重建。源码迭代工作流已接入：显式登记的项目 Shader 经手动编译与 GPU 预检后可用于创建、编辑及场景赋值；当前资源能力仍受 M5 前的限制。Sampler 与 UV 采样在 M5，可见材质预览、参数保存后的引用者传播与缩略图刷新在 M6，不提前开放含未支持 Sampler 的 Unlit。源码编译接管的槽位刷新见[材质源码迭代](material-source-workflow-design.md)。
 
 首版完成以下能力：
 
@@ -25,10 +25,10 @@ PBR、Normal Map、tangent 生成、透明排序、Masked、静态开关面板�
 | --- | --- | --- |
 | `rendercore/material/material.*` | Material、MaterialInstance、资产构建、schema 默认值、按名 setter、批次、reset 和 replacement | Sampler、已加载资产引用者传播 |
 | `renderscene/material/material_render_proxy.*` | RT 独占状态、persistent Material binding 和按需物化 | 普通 Sampler、经校验的参数批次及完整 schema replacement |
-| `shader/format/shader_format_types.h`、`shader_editor_properties.h` | 完整参数 schema、稳定 ID、布局、默认值、可选属性描述及摘要校验 | Editor 自动控件接入 |
+| `shader/format/shader_format_types.h`、`shader_editor_properties.h` | 完整参数 schema、稳定 ID、布局、默认值、属性描述及自动控件 | 新资源类型对应的控件 |
 | `shader_compiler/frontend/shader_ast.h` | Properties 显示名称、Color、Range、源码位置，已输出独立属性文件 | Editor 使用编译产物，不依赖 AST |
-| `panels/scene_panels.cpp` | Actor Details 与选择路由 | 当前 Asset Details 仅显示外层信息，需正式材质打开与编辑 |
-| `StaticMeshComponent` | 按材质槽赋 override | 清除 override、Editor 资产引用和命令历史 |
+| `panels/scene_panels.cpp` | Actor Details、材质槽赋值与选择路由；独立 MaterialEditorPanel 编辑参数 | 场景资产持久化与更完整 Component 面板 |
+| `StaticMeshComponent` | 按材质槽赋/清除 override、稳定槽名、Editor 资产引用和命令历史 | 场景资产持久化与重导入接管 |
 | `thumbnails/`、`ui/ui_texture_work.h` | 独立预览 World、逻辑纹理、多图和颜色读回 | 材质预览、交互与缩略图调度、显示预览免读回路径 |
 
 当前 ActorFactory 从 schema 填充数值默认值，显式提供内置白纹理；内置对象共用同一 MaterialInstance。不能用修改该实例的方式实现单对象参数编辑。Phong 和 Unlit 当前使用 `Texture.Load(0,0)`，Unlit 已消费 base_color；贴图的 UV 与显式 Sampler 采样仍待 M5。Unlit schema 声明的 Sampler 尚未被运行时材质支持，不能因 Shader 编译成功就向用户开放该材质的完整加载/编辑。StaticMesh 已有 UV0，但没有 tangent，因此不能宣称已支持 Normal Map。
@@ -210,7 +210,7 @@ bool MaterialInstance::reset_parameter(name);                         // M3 已�
 bool MaterialInstance::apply_parameters(const MaterialParameterChanges& changes);
 bool MaterialInstance::validate_parameters(const MaterialParameterChanges& changes) const;
 
-bool StaticMeshComponent::clear_material_override(std::uint32_t slot); // 新增。
+bool StaticMeshComponent::clear_material_override(std::uint32_t slot); // M4 已实现。
 ```
 
 `MaterialTextureValues` 表达本次候选已解析的强 TextureRef（AssetRef 目标和具名内置 fallback），只属于运行时材质构建；不是新增纹理缓存或 AssetRef 替代品。root 构建函数返回可赋给 Mesh 的 runtime MaterialInstance；派生构建函数同时接收父创作数据和共用的 immutable Material，验证 Shader 身份与结构设置一致。`MaterialParameterChanges` 是有限类型的动态参数设置/删除批次，用于复合编辑、重置和撤销，必须预检整个批次和 TextureRef，再投递内部已解析 ID 与 owned 值。setter 共享同一验证入口，检查有限数值、已知名称、类型和有效纹理。批次失败不改变 GT override、不投递部分更新，也不因更新创建 RHI 对象或 flush。
@@ -227,7 +227,7 @@ runtime MaterialRef 不可变，根资产动态配置存在领域数据和对应
 
 ## 7. 编辑会话、手势与资源赋值
 
-EditorWorkspace 持有冻结 TypeRegistry、migration、活动的 Material/Instance EditSession 和已加载资产绑定；EditorApplication/材质工作流持有手势草稿、预览及候选资源。首版一个活动材质窗口，切换或关闭脏资源弹保存/放弃/取消。只读 `/Engine` 可以预览、创建项目实例，不允许覆盖引擎文件。
+EditorWorkspace 持有冻结 TypeRegistry 和活动的 Material/Instance EditSession；EditorApplication 持有 MaterialAssignments、场景命令历史、预览面板及候选资源。MaterialAssignments 接收 Workspace 与已登记 Shader 默认材质，管理场景槽的资产身份和已加载材质版本；不新增全局 registry 或通用缓存。首版一个活动材质窗口，切换或关闭脏资源弹保存/放弃/取消。只读 `/Engine` 可以预览、创建项目实例，不允许覆盖引擎文件。
 
 M3 的正式入口为 `EditorWorkspace::material_edit()`，返回 Workspace 持有的单个 `MaterialEditSession`；内部使用现有 typed EditSession，公开 open、begin_gesture、set_parameter、remove_parameter、finish_gesture、cancel_gesture、undo、redo、save。默认值仍来自 Shader，草稿和历史不新增通用撤销系统。覆盖始终按名称排序；插入、修改和移除统一以生成 DTO 的 overrides 属性 payload 提交一次补丁，不复制容器编解码。拖回原有效值时丢弃草稿，不创建覆盖或历史。
 
@@ -298,7 +298,27 @@ Content Browser 的资产创建与导入入口收敛到资源区空白处右键�
 
 空白处右键与主菜单发出同一种创建请求，由 EditorWorkspace 所属工作流处理，面板不直接写文件。右键入口使用当前目录，主菜单入口预填 Content Browser 当前目录；没有可写项目目录时主菜单创建框要求明确选择项目目录，不静默改用根目录。打开创建框时捕获目标目录，填写资产名并选择 Shader（Material）或根 Material 资产（Material Instance）；确认后校验可写目录、名称冲突和配置，再通过已有 Asset CreateNew 保存 `.asset`、刷新目录并选中新资产。取消不写文件，失败保持创建框并显示错误；`/Engine` 目录的右键菜单禁用创建，实例父材质允许来自只读 Engine 内容。根材质图块右键增加 `Create Material Instance...`，预填父材质，目标使用当前可写项目目录；从只读 Engine 内容触发时必须选择项目目录。首版实例只接受根 Material，不接受另一个实例作为父级。
 
-M2 完成资产创建、保存、加载和选中，M3 已接入双击及右键打开参数化材质窗口。M4 材质图块 payload 仅保存 AssetId，delivery 时检查根类型、依赖和槽位后提交命令；恢复默认调用 clear_material_override。Actor 级 HitProxy 没有 Section 信息，首版通过 Details 明确槽位赋值，不猜测鼠标落点对应哪个材质槽。
+M2 完成资产创建、保存、加载和选中，M3 已接入双击及右键打开参数化材质窗口。M4 在 Actor Details 的 Materials 区列出当前 root StaticMeshComponent 的槽名，每槽提供材质/实例选择框、拖放目标和 Reset。导入槽名由 runtime adapter 原样保留；未命名的旧程序生成网格在创建时取得唯一的 `Material_<序号>`，克隆几何保留这些名称。首期不编辑任意额外 Component 的材质，后续扩展 Component 面板时继续用明确 Component identity。
+
+材质图块使用独立于模型放置的 `MATERIAL_ASSET_DRAG_PAYLOAD`，payload 仅保存 AssetId，delivery 时检查根类型、已发布文件身份、所有 typed 依赖和目标槽位后提交命令；hover 不加载或赋值。若 Content 资源选择取得焦点，拖动材质期间 Details 使用保留的 Actor identity 暴露槽位，成功赋值后恢复 Actor 焦点；未选中 Actor 时无目标。背景拖放不创建 Actor 或修改 World。恢复默认调用 clear_material_override；已有 runtime override 没有 Editor AssetRef 时拒绝首次历史赋值，避免把无法恢复的旧效果记录为默认。Actor 级 HitProxy 没有 Section 信息，首版通过 Details 明确槽位赋值，不猜测鼠标落点对应哪个材质槽。
+
+MaterialAssignments 每次非空赋值从已保存资产读取并校验根及单层父材质；用现有 DTO 编码和 SHA256 为 AssetId 的渲染配置版本建立领域加载记录，签名包含父内容，不包含路径、缩略图或未保存草稿。同一已保存版本可由多个槽共享；保存后的新版本在下一次实际赋值时加载，旧引用者保持原版本，M6 再实现统一传播。重复设置同一 AssetRef 是无历史的 no-op，重新加载可先 Reset 再赋值。Shader 与双面状态随完整候选构建，缺失依赖、未知 Shader 和未支持纹理/Sampler 明确失败，旧槽和 redo 历史保持不变。
+
+历史只保存 old/new AssetRef、Actor/Component ID 和槽名。删除记录捕获所有已赋值槽；撤销删除通过 ActorFactory 重建 root Component，并重映射整个历史中的 Actor/Component 身份。重建任一材质失败则移除候选 Actor，保留可重试的删除记录。重放按名称解析当前槽；槽顺序改变不影响绑定，名称消失报错，不按旧下标猜测。
+
+加载记录在 EditorApplication 生命周期内持有各材质版本的强引用，场景 Component 也持有绑定版本；替换/reset/delete 不在普通编辑帧 flush。旧版本保留到关闭时的明确安全点：先清历史、销毁 Actor、drain Remove/FIFO 捕获，再 MaterialAssignments::shutdown 最终 release，最后释放 ActorFactory 默认材质。首期最多 256 个已加载版本，超限明确报错；自动回收与全引用者传播后续统一完善，不建立额外 GC 或 GPU 同步入口。纯材质槽变更通过 update_primitive_materials 更新现有 Proxy，保持几何资源与 HitProxy 身份；Actor/几何生命周期继续使用 Add/Remove。此逻辑不增加 RHI 接口或后端判断，Vulkan、D3D11、D3D12、移动 Vulkan profile 共用现有 FIFO 与延迟 RHI 销毁协议。
+
+```cpp
+// EditorApplication 所有权；初始化后由同一 GT 执行。
+MaterialAssignments materials;
+materials.initialize(workspace, actor_factory.default_material()->material());
+EditorCommandHistory history(actor_factory, materials);
+AssetRef material; // Strong、根 Material 或 MaterialInstance 类型、非零 AssetId。
+history.assign_material(world, actor_id, component_id, "Body", material, error);
+history.assign_material(world, actor_id, component_id, "Body", {}, error); // 清除覆盖。
+history.undo(world); // 材质赋值沿用场景时间线，资产编辑仍使用 EditSession。
+// 所有场景用户已移除并 drain 之后：materials.shutdown()。
+```
 
 ## 8. Texture2D 生产链
 
@@ -332,7 +352,7 @@ Phong/Unlit vertex entry 传 UV0，pixel entry 使用 `base_color_texture.Sample
 
 ## 10. 外部源码与手动重新编译
 
-Editor 只打开已登记、受允许根约束的源码文件，使用平台文件关联启动，不拼接 shell 命令。用户可自行配置外部编辑器，首版先使用系统关联；打不开显示具体路径和错误。
+Editor 只打开已登记、受允许根约束的源码文件。首版直接启动 VS Code，参数使用 `--reuse-window --goto <source>:<line>:<column>`，不拼接 shell、不使用 `--wait`。平台常见目录探测失败时通过 `--Editor.CodeExecutable=<绝对路径>` 配置；打不开显示具体路径和错误。外部编辑器归用户管理，Editor 退出不关闭 VS Code。材质窗口提供 Open Source、Recompile、编译输出及可定位的根源码错误入口。
 
 项目源码清单由项目配置显式登记（路径与逻辑名校验），与现有引擎编译规则形成唯一来源，不按 Content Browser 中任意文件当 Shader。虚拟 include 允许 `/Engine/ShaderIncludes/` 与登记的 `/Project/ShaderIncludes/`，保持白名单、循环、深度与大小边界；不允许 CWD/系统 include fallback。产物写 build/saved，不写手工源码目录，不持久化本机绝对路径到材质。
 
@@ -340,7 +360,7 @@ Editor 只打开已登记、受允许根约束的源码文件，使用平台文�
 
 编译成功后验证 schema、材质覆盖、依赖、VertexFactory 和 pipeline，RT 完整候选成功才更换显示。首次失败且没有兼容 fallback 时明确未就绪，不借用任意旧 Shader 假装正确。参数重命名/类型变化遵循 orphan 规则；结构性不兼容时保留旧效果并显示原因。编译完成不自动保存材质参数。
 
-当前 compiler 内有 `compiler/process_runner.*` 通用进程执行代码。根据仓库基础设施规范，扩展此能力前必须先形成独立 Core Process 设计（接口/目标、所有权、线程、输出容量、超时、退出与平台测试），迁移 compiler 调用并删除旧通用实现；Editor 不再复制进程启动/输出捕获，也不为了复用 tools 内部 runner 反向依赖其私有接口。该项作为 M7 的明确前置任务，不影响 M1～M6。
+共享进程入口为 `engine/core/process/` 的 `Toy3dProcess`，设计见 [Core Process](core-process-design.md)。Compiler 已迁移并删除私有 `compiler/process_runner.*`；Editor 注入同一服务，不反向依赖 tools 私有接口。源码清单、编译线程、当前 Program、GPU 候选及场景接管由 Editor 领域工作流管理，具体 contract 与目录见[材质源码迭代](material-source-workflow-design.md)。
 
 ## 11. 平台与错误边界
 

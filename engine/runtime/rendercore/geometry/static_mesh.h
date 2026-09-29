@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -38,6 +39,8 @@ namespace toy3d
         StaticMeshIndexData indices;
         std::vector<StaticMeshSection> sections;
         std::vector<MaterialInstanceRef> material_slots;
+        // Stable imported slot names survive geometry reconstruction and reordering.
+        std::vector<std::string> material_slot_names;
     };
 
     class StaticMesh
@@ -56,6 +59,7 @@ namespace toy3d
         const StaticMeshIndexData& indices() const { return indices_; }
         const std::vector<StaticMeshSection>& sections() const { return sections_; }
         const std::vector<MaterialInstanceRef>& material_slots() const { return material_slots_; }
+        const std::vector<std::string>& material_slot_names() const { return material_slot_names_; }
         const AxisAlignedBounds& local_bounds() const { return local_bounds_; }
         StaticMeshRenderData* render_data() const noexcept { return render_data_.get(); }
 
@@ -67,6 +71,7 @@ namespace toy3d
         StaticMeshIndexData indices_;
         std::vector<StaticMeshSection> sections_;
         std::vector<MaterialInstanceRef> material_slots_;
+        std::vector<std::string> material_slot_names_;
         AxisAlignedBounds local_bounds_;
         std::unique_ptr<StaticMeshRenderData> render_data_;
     };
