@@ -1,6 +1,7 @@
 #include "workspace/editor_workspace.h"
 
 #include "asset_file.h"
+#include "asset_tools/material_asset_tools.h"
 
 #include <chrono>
 #include <filesystem>
@@ -107,6 +108,103 @@ int main()
                  virtual_path("/Project/nested")}).succeeded(), "overlapping scan roots must be rejected");
         check(!scan_asset_catalog(workspace.files(), std::vector<VirtualPath>{}).succeeded(),
               "empty scan roots must be rejected");
+
+        shader::ShaderParameterSchema schema;
+        schema.logical_layout_hash = shader::calculate_shader_parameter_logical_layout_hash(schema);
+        schema.schema_identity = shader::calculate_shader_parameter_schema_identity(schema);
+        MaterialAssetData material;
+        material.shader_name = "Toy3d/Surface/Phong";
+        material.two_sided = true;
+        std::string destination;
+        std::string creation_error;
+        check(material_asset_destination("/Project", "M_Test", destination, creation_error) &&
+            destination == "/Project/M_Test.asset", "material destination must use current project directory");
+        check(!material_asset_destination("/Engine", "Forbidden", destination, creation_error) &&
+            !material_asset_destination("/Project", "../escape", destination, creation_error),
+            "read-only or escaping material destination must be rejected");
+        AssetId material_id;
+        check(create_material_asset_in_workspace(workspace, "/Project/M_Test.asset", material, schema, material_id).succeeded() &&
+            material_id.valid(), "material creation must publish and refresh");
+        const auto material_path = virtual_path("/Project/M_Test.asset");
+        const auto original = workspace.files().read_binary(material_path);
+        AssetId rejected_id;
+        check(!create_material_asset_in_workspace(workspace, "/Project/M_Test.asset", material, schema, rejected_id).succeeded() &&
+            !rejected_id.valid(), "same-name creation must reject without publishing an ID");
+        const auto unchanged = workspace.files().read_binary(material_path);
+        check(original.succeeded() && unchanged.succeeded() && original.value() == unchanged.value(),
+            "same-name creation must preserve the existing asset bytes");
+        MaterialAssetData reopened;
+        check(read_material_asset(workspace.types(), workspace.files(), material_path, reopened, &workspace.catalog().index).succeeded() &&
+            reopened.shader_name == material.shader_name && reopened.two_sided, "saved material must load without Shader source files");
+        MaterialInstanceAssetData instance;
+        instance.parent.asset_id = material_id;
+        instance.parent.expected_type = "toy3d.MaterialAssetData";
+        AssetId instance_id;
+        check(create_material_instance_asset_in_workspace(workspace, "/Project/MI_Test.asset", instance, schema, instance_id).succeeded(),
+            "instance must be created with a strong root Material reference");
+        MaterialInstanceAssetData reopened_instance;
+        check(read_material_instance_asset(workspace.types(), workspace.files(), virtual_path("/Project/MI_Test.asset"),
+            reopened_instance, &workspace.catalog().index).succeeded() && reopened_instance.parent.asset_id == material_id,
+            "instance parent must survive save and reload");
+        auto invalid_instance = instance;
+        invalid_instance.parent.asset_id = instance_id;
+        check(!create_material_instance_asset_in_workspace(workspace, "/Project/MI_Nested.asset", invalid_instance, schema, rejected_id).succeeded() &&
+            !workspace.files().stat(virtual_path("/Project/MI_Nested.asset")).succeeded(), "instance parent must not be another instance");
+        auto invalid_material = material;
+        invalid_material.overrides.push_back({"unknown", 1.0f});
+        check(!create_material_asset_in_workspace(workspace, "/Project/M_Invalid.asset", invalid_material, schema, rejected_id).succeeded(),
+            "new material must reject unknown parameters");
+        check(!create_material_asset_in_workspace(workspace, "/Engine/M_Invalid.asset", material, schema, rejected_id).succeeded(),
+            "creation API must enforce the read-only engine root");
+        // Material saves must preserve optional blobs through the existing generic contract.
+        const AssetSegmentData optional_blob{"thumbnail_png", 2, false, {1u, 2u, 3u}};
+        if (original.succeeded())
+        {
+            const auto with_blob = replace_asset_segments(original.value(), {optional_blob});
+            check(with_blob.succeeded(), "optional material blob fixture must encode");
+            if (with_blob.succeeded())
+                check(workspace.files().write_binary_atomic(material_path, with_blob.value(), FilePublishMode::Replace).succeeded(),
+                    "optional material blob fixture must publish");
+        }
+        MaterialAssetData modified = reopened;
+        modified.two_sided = false;
+        const auto* location = workspace.catalog().index.find(material_id);
+        check(location != nullptr, "created material must be indexed");
+        if (location)
+        {
+            check(!save_asset(workspace.types(), SchemaMigrationRegistry{}, workspace.files(), material_path,
+                location->index, modified, [](const MaterialAssetData& value) { return validate_material_asset(value); }).succeeded(),
+                "material save must reject dropping optional blob bytes");
+            check(save_asset(workspace.types(), SchemaMigrationRegistry{}, workspace.files(), material_path,
+                location->index, modified, [](const MaterialAssetData& value) { return validate_material_asset(value); }, {optional_blob}).succeeded(),
+                "existing generic save must support the generated Material DTO");
+            check(read_material_asset(workspace.types(), workspace.files(), material_path, reopened).succeeded() && !reopened.two_sided,
+                "updated Material value must reopen identically");
+        }
+        const auto instance_path = virtual_path("/Project/MI_Test.asset");
+        const auto instance_bytes = workspace.files().read_binary(instance_path);
+        const auto instance_index = inspect_asset(workspace.files(), instance_path);
+        check(instance_bytes.succeeded() && instance_index.succeeded(), "instance index fixture must load");
+        if (instance_bytes.succeeded() && instance_index.succeeded())
+        {
+            ValueWriter typed_writer;
+            check(encode_value(typed_writer, instance).succeeded(), "instance typed fixture must encode");
+            auto mismatched_index = instance_index.value();
+            mismatched_index.dependencies.clear();
+            const auto mismatch = encode_asset_file(mismatched_index, {{"type_data", 1, true, typed_writer.bytes()}});
+            check(mismatch.succeeded(), "mismatched dependency fixture must encode");
+            if (mismatch.succeeded())
+            {
+                check(workspace.files().write_binary_atomic(instance_path, mismatch.value(), FilePublishMode::Replace).succeeded(),
+                    "dependency mismatch fixture must publish");
+                MaterialInstanceAssetData retained = reopened_instance;
+                check(!read_material_instance_asset(workspace.types(), workspace.files(), instance_path, retained,
+                    &workspace.catalog().index).succeeded() && retained.parent.asset_id == material_id,
+                    "dependency mismatch must reject without replacing output");
+                check(workspace.files().write_binary_atomic(instance_path, instance_bytes.value(), FilePublishMode::Replace).succeeded(),
+                    "valid instance fixture must restore");
+            }
+        }
     }
 
     const PhysicalPath deployment_child((fixture / "bin" / "nested").u8string());

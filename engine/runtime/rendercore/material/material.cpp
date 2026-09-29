@@ -6,6 +6,8 @@
 #include "renderscene/material/material_render_proxy.h"
 
 #include <cstddef>
+#include <cmath>
+#include <cstring>
 #include <exception>
 #include <stdexcept>
 #include <utility>
@@ -16,6 +18,10 @@ namespace toy3d
         const shader::ShaderParameterSchema& source)
     {
         shader::ShaderParameterSchema result;
+        result.generated_format_version = source.generated_format_version;
+        result.shader_abi_version = source.shader_abi_version;
+        result.parameter_id_version = source.parameter_id_version;
+        result.editor_properties_hash = source.editor_properties_hash;
         for (const shader::ShaderParameterConstantBufferSchema& buffer : source.constant_buffers)
         {
             if (buffer.group == shader::BindingGroup::Material)
@@ -145,6 +151,73 @@ namespace toy3d
 
     } // namespace
 
+    bool initialize_material_constant_defaults(MaterialDesc& desc, std::string& error)
+    {
+        static_assert(sizeof(float) == sizeof(std::uint32_t), "Material defaults require binary32");
+        if (!shader::validate_shader_parameter_schema(desc.parameter_schema, error))
+            return false;
+        std::unordered_map<ShaderParameterId, float> scalars;
+        std::unordered_map<ShaderParameterId, vec2> vectors2;
+        std::unordered_map<ShaderParameterId, vec3> vectors3;
+        std::unordered_map<ShaderParameterId, vec4> vectors4;
+        for (const auto& buffer : desc.parameter_schema.constant_buffers)
+        {
+            if (buffer.group != shader::BindingGroup::Material)
+            {
+                error = "Material defaults require a Material-only schema.";
+                return false;
+            }
+            for (const auto& member : buffer.members)
+            {
+                std::uint32_t count = 0;
+                switch (member.type)
+                {
+                case shader::ShaderValueType::Float32: count = 1u; break;
+                case shader::ShaderValueType::Float32x2: count = 2u; break;
+                case shader::ShaderValueType::Float32x3: count = 3u; break;
+                case shader::ShaderValueType::Float32x4: count = 4u; break;
+                default: break;
+                }
+                if (count == 0u || member.array_count != 1u || member.array_stride != 0u ||
+                    member.matrix_stride != 0u || member.size != count * sizeof(float) ||
+                    member.default_value.size() != member.size)
+                {
+                    error = "Material default is missing or uses an unsupported constant shape: " + member.name;
+                    return false;
+                }
+                float values[4] = {};
+                for (std::uint32_t component = 0; component < count; ++component)
+                {
+                    std::uint32_t bits = 0;
+                    for (std::uint32_t byte = 0; byte < sizeof(bits); ++byte)
+                        bits |= static_cast<std::uint32_t>(member.default_value[component * sizeof(bits) + byte]) << (byte * 8u);
+                    std::memcpy(&values[component], &bits, sizeof(bits));
+                    if (!std::isfinite(values[component]))
+                    {
+                        error = "Material default is not finite: " + member.name;
+                        return false;
+                    }
+                }
+                switch (count)
+                {
+                case 1u: scalars.emplace(member.parameter_id, values[0]); break;
+                case 2u: vectors2.emplace(member.parameter_id, vec2(values[0], values[1])); break;
+                case 3u: vectors3.emplace(member.parameter_id, vec3(values[0], values[1], values[2])); break;
+                case 4u: vectors4.emplace(member.parameter_id, vec4(values[0], values[1], values[2], values[3])); break;
+                }
+            }
+        }
+        desc.scalar_defaults = std::move(scalars);
+        desc.vector2_defaults = std::move(vectors2);
+        desc.vector3_defaults = std::move(vectors3);
+        desc.vector4_defaults = std::move(vectors4);
+        error.clear();
+        return true;
+    }
+
+    // --------------------------------------------------------------------------
+    // Material: Immutable Shader schema, defaults and structural settings
+    // --------------------------------------------------------------------------
     std::shared_ptr<const Material> Material::create(MaterialDesc desc)
     {
         if (desc.shader_name.empty())
@@ -183,6 +256,9 @@ namespace toy3d
 
     Material::Material(MaterialDesc desc) : desc_(std::move(desc)) {}
 
+    // --------------------------------------------------------------------------
+    // MaterialInstance: Game-side overrides and FIFO Render proxy lifetime
+    // --------------------------------------------------------------------------
     std::shared_ptr<MaterialInstance> MaterialInstance::create(MaterialRef material)
     {
         if (material == nullptr)

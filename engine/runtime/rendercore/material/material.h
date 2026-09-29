@@ -46,6 +46,10 @@ namespace toy3d
         bool two_sided = false;
     };
 
+    // Decodes the complete schema, including inactive constants. Failure keeps
+    // every existing default intact; resources are resolved by the creator.
+    bool initialize_material_constant_defaults(MaterialDesc& desc, std::string& error);
+
     class Material
     {
       public:

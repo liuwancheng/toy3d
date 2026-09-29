@@ -87,10 +87,29 @@ namespace toy3d::shader
 
     ShaderMapEntryWriteResult write_verified_shader_map_entry(PlatformFile& platform_file,
                                                               const PhysicalPath& shader_map_root,
-                                                              const ShaderMapEntry& entry)
+                                                              const ShaderMapEntry& entry,
+                                                              const std::vector<ShaderEditorProperty>& editor_properties)
     {
         ShaderMapEntryWriteResult result;
         std::string schema_error;
+#if WITH_EDITORONLY_DATA
+        std::string editor_text;
+        if (!editor_properties.empty() &&
+            !validate_shader_editor_properties(editor_properties, entry.parameter_schema, schema_error))
+        {
+            add_error(result, schema_error);
+            return result;
+        }
+        if (!editor_properties.empty())
+        {
+            editor_text = serialize_shader_editor_properties(entry.shader_name, entry.parameter_schema, editor_properties);
+            if (editor_text.size() > max_shader_editor_properties_bytes)
+            {
+                add_error(result, "Shader Editor property output exceeds its byte limit.");
+                return result;
+            }
+        }
+#endif
         if (shader_map_root.empty() || entry.shader_name.empty() || entry.pass_name.empty() ||
             entry.target != ShaderTarget::VulkanSpirV || entry.profile != ShaderCompileProfile::VulkanES31 ||
             entry.mapping_version != vulkan_binding_mapping_version || entry.stages.empty() ||
@@ -230,7 +249,22 @@ namespace toy3d::shader
         {
             if (staging.status.code == FileErrorCode::AlreadyExists &&
                 accept_existing_cache_hit(result, platform_file, shader_map_root))
+            {
+#if WITH_EDITORONLY_DATA
+                if (!editor_properties.empty())
+                {
+                    std::vector<ShaderEditorProperty> existing_properties;
+                    if (!read_shader_editor_properties(platform_file, *result.entry_directory, entry.shader_name,
+                                                       entry.parameter_schema, existing_properties, schema_error) ||
+                        existing_properties.empty())
+                    {
+                        add_error(result, "Cached Shader Editor properties are missing or invalid; regenerate output. " + schema_error);
+                        result.entry_directory.reset();
+                    }
+                }
+#endif
                 return result;
+            }
             add_error(result, "Failed to create ShaderMapEntry directory: " + staging.status.message);
             return result;
         }
@@ -319,6 +353,12 @@ namespace toy3d::shader
         bool wrote_all = write_text("manifest.txt", manifest.str()).succeeded() &&
                          write_text("schema.txt", serialize_shader_parameter_schema(entry.parameter_schema)).succeeded() &&
                          write_text("mapping.txt", mapping.str()).succeeded();
+#if WITH_EDITORONLY_DATA
+        if (!editor_properties.empty())
+        {
+            wrote_all = wrote_all && write_text("editor_properties.txt", editor_text).succeeded();
+        }
+#endif
         for (const ShaderCodeEntry& stage : entry.stages)
         {
             const std::string prefix = stage_name(stage.request.stage);

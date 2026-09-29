@@ -163,7 +163,10 @@ namespace toy3d::shader
                                             bool include_defaults)
         {
             if (include_defaults)
+            {
                 append_integer(bytes, schema.generated_format_version);
+                bytes.insert(bytes.end(), schema.editor_properties_hash.begin(), schema.editor_properties_hash.end());
+            }
             append_integer(bytes, schema.shader_abi_version);
             append_integer(bytes, schema.parameter_id_version);
             append_integer(bytes, static_cast<std::uint32_t>(schema.constant_buffers.size()));
@@ -282,6 +285,8 @@ namespace toy3d::shader
         group_schema.generated_format_version = schema.generated_format_version;
         group_schema.shader_abi_version = schema.shader_abi_version;
         group_schema.parameter_id_version = schema.parameter_id_version;
+        if (group == BindingGroup::Material)
+            group_schema.editor_properties_hash = schema.editor_properties_hash;
         for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
         {
             if (buffer.group == group)

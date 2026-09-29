@@ -5,6 +5,7 @@
 #include "file_system/native_platform_file.h"
 #include "hash/sha256.h"
 #include "format/shader_map_entry.h"
+#include "format/shader_editor_properties.h"
 #include "frontend/shader_parser.h"
 #include "layout/binding_allocator.h"
 #include "layout/shader_layout.h"
@@ -294,26 +295,24 @@ Shader "Tests/Layout"
         if (reordered_constant_layout.layout)
         {
             check(first.layout->logical_layout_hash == reordered_constant_layout.layout->logical_layout_hash &&
-                      first.layout->parameter_schema_hash ==
+                      first.layout->parameter_schema_hash !=
                           reordered_constant_layout.layout->parameter_schema_hash,
-                  "constant declaration order must not change canonical offsets or schema identity");
+                  "source display order must change complete schema identity without changing canonical offsets");
         }
 
         const ShaderParameterSchema first_schema = make_shader_parameter_schema(*first.layout);
         const ShaderParameterSchema repeated_schema = make_shader_parameter_schema(*first.layout);
         check(serialize_shader_parameter_schema(first_schema) == serialize_shader_parameter_schema(repeated_schema),
               "the same normalized input must reproduce byte-identical schema records");
-        const std::vector<std::pair<BindingGroup, std::string>> group_identity_golden = {
-            {BindingGroup::Global, "a7c2b48921c1ca26d7d727e64e5775ae2c6cac9319e8726046b8dc0377661ac7"},
-            {BindingGroup::View, "ef98b24a1c90b0357b7ad7d36e6fa6de000ec03eed0b581b5c6c50b54d2a5bf9"},
-            {BindingGroup::Pass, "136393ece4a6e3f0b8b7fa2a67d02503406cdb85567db96f3844f08bce461f42"},
-            {BindingGroup::Material, "dc08ed54b20ac5401825c3f4f40d234e81ccdce791342b4f6f43b87769b7997f"},
-            {BindingGroup::Object, "c6c22f2e79e55c0b85503aa31dda1c8472d6d1e7e3f2960313f66b3c43a9d8fe"}};
-        for (const auto& identity : group_identity_golden)
+        ShaderParameterSchema stripped_ui = first_schema;
+        stripped_ui.editor_properties_hash = {};
+        for (BindingGroup group : {BindingGroup::Global, BindingGroup::View, BindingGroup::Pass,
+                                   BindingGroup::Material, BindingGroup::Object})
         {
-            check(toy3d::sha256_to_hex(calculate_shader_parameter_group_identity(first_schema, identity.first)) ==
-                      identity.second,
-                  "each Global/View/Pass/Material/Object schema identity must retain its golden value");
+            const bool changed_group = calculate_shader_parameter_group_identity(first_schema, group) !=
+                                       calculate_shader_parameter_group_identity(stripped_ui, group);
+            check(changed_group == (group == BindingGroup::Material),
+                  "Editor property digest belongs exclusively to Material group identity");
         }
 
         std::string invalid_default = shader_source_a;
@@ -324,6 +323,102 @@ Shader "Tests/Layout"
         check(!rejected_default.succeeded() &&
                   has_diagnostic(rejected_default.diagnostics, DiagnosticCode::InvalidDefaultValue),
               "default values incompatible with the logical type must fail before codegen");
+    }
+
+    void test_editor_properties()
+    {
+        using namespace toy3d::shader;
+        const auto parsed = parse_shader(shader_source_a, "editor_properties.shader");
+        if (!parsed.asset) return;
+        ShaderAsset asset = *parsed.asset;
+        asset.properties[1].type = PropertyType::Range;
+        asset.properties[1].range_min = 0.0;
+        asset.properties[1].range_max = 1.0;
+        const auto compiled = compile_logical_layout(asset);
+        check(compiled.succeeded(), "Color and Range properties must compile");
+        if (!compiled.layout) return;
+        const auto& properties = compiled.layout->editor_properties;
+        const auto schema = make_shader_parameter_schema(*compiled.layout);
+        check(properties.size() == asset.properties.size() &&
+              properties[0].control == ShaderEditorPropertyControl::Color &&
+              properties[1].control == ShaderEditorPropertyControl::Range &&
+              properties[1].range_min == 0.0f && properties[1].range_max == 1.0f,
+              "complete Editor view must distinguish Color/Range and retain inactive properties");
+        const auto encoded = serialize_shader_editor_properties(asset.name, schema, properties);
+        std::vector<ShaderEditorProperty> decoded;
+        std::string error;
+        check(parse_shader_editor_properties(encoded, asset.name, schema, decoded, error) &&
+              serialize_shader_editor_properties(asset.name, schema, decoded) == encoded,
+              "Editor property format must round-trip deterministically");
+        check(!parse_shader_editor_properties(encoded, "Other/Shader", schema, decoded, error),
+              "Editor properties must reject mismatched Shader owner");
+        std::string damaged = encoded;
+        damaged.replace(damaged.find("Base Color"), 10u, "Other Name");
+        check(!parse_shader_editor_properties(damaged, asset.name, schema, decoded, error) &&
+              decoded[0].display_name == "Base Color", "damaged metadata must preserve previous output");
+        check(!parse_shader_editor_properties(encoded + "unknown", asset.name, schema, decoded, error),
+              "metadata must reject unknown trailing records");
+        auto renamed = asset;
+        renamed.properties[0].display_name = "Tint";
+        const auto changed = compile_logical_layout(renamed);
+        check(changed.layout && changed.layout->logical_layout_hash == compiled.layout->logical_layout_hash &&
+              changed.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
+              "UI display names must affect schema identity without changing GPU layout");
+        auto float4 = asset;
+        float4.properties[0].type = PropertyType::Float4;
+        const auto float4_layout = compile_logical_layout(float4);
+        check(float4_layout.layout && float4_layout.layout->logical_layout_hash == compiled.layout->logical_layout_hash &&
+              float4_layout.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
+              "Color semantic must differ from plain Float4 without changing GPU layout");
+        auto invalid = properties;
+        invalid[1].range_min = 2.0f;
+        auto invalid_schema = schema;
+        invalid_schema.editor_properties_hash = calculate_shader_editor_properties_hash(invalid);
+        invalid_schema.schema_identity = calculate_shader_parameter_schema_identity(invalid_schema);
+        check(!validate_shader_editor_properties(invalid, invalid_schema, error),
+              "inverted bounds must be rejected even with a matching content digest");
+        invalid = properties;
+        invalid[0].name = "missing";
+        invalid_schema.editor_properties_hash = calculate_shader_editor_properties_hash(invalid);
+        invalid_schema.schema_identity = calculate_shader_parameter_schema_identity(invalid_schema);
+        check(!validate_shader_editor_properties(invalid, invalid_schema, error),
+              "metadata must refer to an existing schema member");
+        ShaderParameterSchema roundtrip;
+        check(parse_shader_parameter_schema(serialize_shader_parameter_schema(schema), roundtrip, error) &&
+              roundtrip.editor_properties_hash == schema.editor_properties_hash,
+              "public schema must preserve the Editor digest when display text is stripped");
+        auto old = schema;
+        old.generated_format_version = 1u;
+        old.schema_identity = calculate_shader_parameter_schema_identity(old);
+        check(!parse_shader_parameter_schema(serialize_shader_parameter_schema(old), roundtrip, error),
+              "old generated schema must require regeneration");
+
+        toy3d::NativePlatformFile files;
+        const toy3d::PhysicalPath root(std::string(TOY3D_SHADER_PARAMETERS_WRITER_TEST_DIR) + "_editor_properties");
+        check(files.create_directories(root).succeeded(), "Editor property test directory must be created");
+        const auto path = files.join_relative(root, "editor_properties.txt");
+        if (!path.succeeded()) { check(false, "Editor property test path must resolve"); return; }
+        const auto exists = files.exists(path.value());
+        if (!exists.succeeded()) { check(false, "Editor property test file query must succeed"); return; }
+        if (exists.value()) check(files.remove_file(path.value()).succeeded(), "stale test property file must be removed");
+#if WITH_EDITORONLY_DATA
+        check(read_shader_editor_properties(files, root, asset.name, schema, decoded, error) && decoded.empty(),
+              "absent optional metadata must allow a canonical-name fallback");
+#else
+        check(!read_shader_editor_properties(files, root, asset.name, schema, decoded, error),
+              "Shipping property loading must explicitly report unsupported");
+#endif
+        check(files.write_text_utf8(path.value(), encoded, toy3d::FileWriteMode::CreateNew).succeeded(),
+              "valid property test file must be written");
+#if WITH_EDITORONLY_DATA
+        check(read_shader_editor_properties(files, root, asset.name, schema, decoded, error) && decoded.size() == properties.size(),
+              "bounded optional property file must load");
+        check(files.write_text_utf8(path.value(), damaged, toy3d::FileWriteMode::Truncate).succeeded(),
+              "damaged property test file must be written");
+        check(!read_shader_editor_properties(files, root, asset.name, schema, decoded, error),
+              "damaged optional property data must be rejected independently of runtime schema");
+#endif
+        check(files.remove_directory_tree(root).succeeded(), "property test directory must be removed");
     }
 
     void test_active_layout_allocators_and_codegen()
@@ -693,6 +788,7 @@ int main()
     test_sha256_and_parameter_id();
     test_toy_shader_abi_packing();
     test_logical_layout_determinism();
+    test_editor_properties();
     test_active_layout_allocators_and_codegen();
     test_cpp_identifier_mapping();
     test_shader_parameters_cpp_codegen();

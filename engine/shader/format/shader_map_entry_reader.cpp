@@ -879,7 +879,7 @@ namespace toy3d::shader
             !graphics_pass_state || hash_is_zero(*content_hash) || hash_is_zero(*logical_hash) ||
             hash_is_zero(*binding_hash) || hash_is_zero(*pass_hash) || hash_is_zero(*permutation_key))
         {
-            add_error(result, "ShaderMapEntry manifest contains an unsupported or invalid value.");
+            add_error(result, "ShaderMapEntry manifest contains an unsupported or invalid value; regenerate Shader output for the current format.");
             return result;
         }
 

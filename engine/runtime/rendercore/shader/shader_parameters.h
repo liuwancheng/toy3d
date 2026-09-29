@@ -68,6 +68,7 @@ namespace toy3d
         Sha256Hash group_identity{};
         ShaderParameterConstantBufferMetadata constant_buffer;
         std::vector<ShaderParameterResourceMetadata> resources;
+        Sha256Hash editor_properties_hash{};
     };
 
     struct EncodedShaderTextureValue

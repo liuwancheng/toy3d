@@ -341,7 +341,8 @@ int main(int argument_count, char** arguments)
         if (!compiled.succeeded())
             return 1;
         toy3d::shader::ShaderMapEntryWriteResult written = toy3d::shader::write_verified_shader_map_entry(
-            platform_file, toy3d::PhysicalPath(arguments[command_index + 4]), *compiled.entry);
+            platform_file, toy3d::PhysicalPath(arguments[command_index + 4]), *compiled.entry,
+            compiled.editor_properties);
         for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
             report_diagnostic(diagnostic);
         if (!written.succeeded())

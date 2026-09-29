@@ -12,6 +12,7 @@ set(BUILD_SHARED_LIBS OFF)
 
 include(CMakeDependentOption)
 include(CTest)
+option(TOY3D_SHADER_EDITORONLY_DATA "Generate and load optional Shader Editor property descriptions" ON)
 
 # ---- Include guards ----
 if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)

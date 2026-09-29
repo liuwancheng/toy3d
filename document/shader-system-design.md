@@ -325,7 +325,7 @@ engine/shader/include/<name>.hlsli
 
 源码中的 include 必须使用虚拟路径，例如 `#include "/Engine/ShaderIncludes/ToySurface.hlsli"`，不得写本机绝对路径或相对构建目录。这样 cache key、diagnostics、RenderDoc 源码映射和不同平台 Cook 才保持一致。
 
-未来引入独立游戏工程后，项目 Shader 放在 `<project>/asset/shaders/`，映射为 `/Project/Shaders/`；项目目录不能反向写入 `engine/shader/`。在项目资产系统落地前，Toy3d 仓库内只启用 `/Engine/...` 根。
+项目 Shader 接入按[代码材质设计](material-system-design.md)采用独立 `<project>/shader/`，映射为 `/Project/Shaders/`；共享 include 位于 `<project>/shader/include/`，映射为 `/Project/ShaderIncludes/`。源码与用户自由组织的 `.asset` 内容分开，项目目录不能反向写入 `engine/shader/`。该接入尚未实现，当前源码编译仍以已启用的 `/Engine/...` 根为准。
 
 以下位置禁止保存手写 Shader 源码：
 
@@ -1136,7 +1136,11 @@ Debug 使用低优化、embedded debug 和完整源码；Development 使用正�
 
 ## 15. 与 Material 系统的边界
 
-Material Graph 不生成 SPIR-V、DXBC 或 DXIL，只生成 Material HLSL 函数、Properties schema 和 static permutation。
+当前已确认的产品入口是直接编写 `.shader Properties` 和 HLSL，Editor 依据已验证的完整参数 schema 与独立 UI 属性描述生成参数面板。Material/单层 MaterialInstance 资产只保存 Shader 身份和覆盖，具体数据、元数据 hash/版本迁移及 API 按[材质系统设计](material-system-design.md)实施。Color、Range 与显示名称不能仅停留在 compiler AST；未被当前 Program 使用的参数仍保留在完整 schema。UI 行为与可选数据分别使用 WITH_EDITOR/WITH_EDITORONLY_DATA 隔离，不改变公共类型布局。
+
+属性数据现由 `ShaderEditorProperty` 和可选 `editor_properties.txt` 承载，schema/generated format 为 2、ShaderMapEntry 为 6。摘要参与完整 schema 和 Material group identity；显示文本可按 `TOY3D_SHADER_EDITORONLY_DATA=OFF` 移除。数值默认字节采用 little-endian binary32，编译时拒绝不能表示为有限 binary32 的默认值。GPU Program cache key 使用 logical layout、target mapping、stage bytecode/reflection 与 vertex input，排除完整 schema identity，避免仅修改 UI 或默认值时重建等价 GPU 对象。该 CPU 缓存边界对 Vulkan、D3D11、D3D12 和移动端 Vulkan profile 相同，无新增 capability 或后端 API；数据校验仍由 ShaderMap/RenderCore 完成，不移入 backend。
+
+下图仅保留为将来可选的源码生成边界，不代表首版需要实现 Material Graph。将来若增加该入口，它只生成 Material HLSL 函数、Properties schema 和 static permutation，不生成 SPIR-V、DXBC 或 DXIL。
 
 ```text
 Material Graph

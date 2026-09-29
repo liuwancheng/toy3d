@@ -287,7 +287,9 @@ int main()
     check(differs(changed), "logical layout must participate in the key");
     changed = source;
     changed.parameter_schema.schema_identity[1] ^= 9u;
-    check(differs(changed), "complete parameter schema identity must participate in the key");
+    check(!differs(changed), "complete CPU schema identity must not invalidate an equivalent GPU Program");
+    changed.parameter_schema.editor_properties_hash[0] = 1u;
+    check(!differs(changed), "Editor display metadata must not participate in the GPU Program key");
     changed = source;
     changed.target_binding_hash[1] = 9;
     check(differs(changed), "target layout must participate in the key");

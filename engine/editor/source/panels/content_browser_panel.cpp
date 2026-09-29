@@ -20,7 +20,7 @@ namespace toy3d
             return path.substr(0, path.find_last_of('/'));
         }
 
-        void draw_placeholder(ImDrawList& draw, ImVec2 position, float size, bool folder)
+        void draw_placeholder(ImDrawList& draw, ImVec2 position, float size, bool folder, const std::string& type)
         {
             const ImU32 color = folder ? IM_COL32(190, 151, 74, 255) : IM_COL32(116, 149, 181, 255);
             const ImVec2 a(position.x + size * 0.2f, position.y + size * 0.3f);
@@ -29,6 +29,15 @@ namespace toy3d
             {
                 draw.AddRectFilled(a, b, color, 4);
                 draw.AddRectFilled(ImVec2(a.x, a.y - size * 0.09f), ImVec2(a.x + size * 0.25f, a.y + 4), color, 3);
+            }
+            else if (type == "toy3d.MaterialAssetData" || type == "toy3d.MaterialInstanceAssetData")
+            {
+                const ImVec2 center(position.x + size * 0.5f, position.y + size * 0.5f);
+                draw.AddCircleFilled(center, size * 0.3f, IM_COL32(106, 151, 167, 255), 32);
+                draw.AddCircleFilled(ImVec2(center.x - size * 0.07f, center.y - size * 0.07f),
+                    size * 0.21f, IM_COL32(146, 195, 208, 255), 32);
+                if (type == "toy3d.MaterialInstanceAssetData")
+                    draw.AddText(ImVec2(position.x + size * 0.7f, position.y + size * 0.7f), IM_COL32_WHITE, "MI");
             }
             else
             {
@@ -62,13 +71,6 @@ namespace toy3d
             actions.region_min = Vector2(region.x, region.y);
             actions.region_max = Vector2(region.x + size.x, region.y + size.y);
             const bool writable = folder == "/Project" || folder.compare(0, 9, "/Project/") == 0;
-            ImGui::BeginDisabled(!import_enabled || !writable);
-            if (ImGui::Button("Import...")) actions.import_requested = true;
-            ImGui::EndDisabled();
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                ImGui::SetTooltip(!import_enabled ? "Model import is disabled in this build" : !writable ?
-                    "Engine content is read only" : "Choose model files and confirm import settings");
-            ImGui::SameLine();
             if (ImGui::Button("Refresh"))
             {
                 if (!workspace.refresh()) TOY_LOG_ERROR("Content Browser refresh failed: {}", workspace.error());
@@ -154,7 +156,7 @@ namespace toy3d
                             if (thumbnail.texture_id.valid())
                                 draw.AddImage(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(thumbnail.texture_id.value())),
                                     position, ImVec2(position.x + tile_size, position.y + tile_size));
-                            else draw_placeholder(draw, position, tile_size, !item.asset);
+                            else draw_placeholder(draw, position, tile_size, !item.asset, item.asset ? item.asset->file.root_type : "");
                             const std::string name = item.path.substr(item.path.find_last_of('/') + 1);
                             draw.PushClipRect(position, end, true);
                             draw.AddText(ImVec2(position.x + 4, position.y + tile_size + 3), IM_COL32_WHITE, name.c_str());
@@ -171,6 +173,12 @@ namespace toy3d
                             }
                             if (item.asset && ImGui::BeginPopupContextItem("Asset Actions"))
                             {
+                                if (item.asset->file.root_type == "toy3d.MaterialAssetData" && ImGui::MenuItem("Create Material Instance..."))
+                                {
+                                    actions.material_creation_requested = true;
+                                    actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;
+                                    actions.material_parent = item.asset->file.asset_id;
+                                }
                                 const bool is_mesh = item.asset->file.root_type == "toy3d.StaticMeshAssetData";
                                 const bool writable = item.path.compare(0, 9, "/Project/") == 0;
                                 if (ImGui::MenuItem(writable ? "Generate / Regenerate Thumbnail" : "Generate Thumbnail (memory only)", nullptr, false, is_mesh))
@@ -185,10 +193,21 @@ namespace toy3d
                         ImGui::Dummy(ImVec2(0, 0));
                     }
                 }
-                if (items.empty()) ImGui::TextDisabled("No assets or folders here");
+                if (items.empty()) ImGui::TextDisabled("Right-click here to import or create assets");
                 if (ImGui::BeginPopupContextWindow("Content Actions", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
                 {
                     if (ImGui::MenuItem("Import...", nullptr, false, import_enabled && writable)) actions.import_requested = true;
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Material...", nullptr, false, writable))
+                    {
+                        actions.material_creation_requested = true;
+                        actions.material_creation_kind = MaterialAssetCreationKind::Material;
+                    }
+                    if (ImGui::MenuItem("Material Instance...", nullptr, false, writable))
+                    {
+                        actions.material_creation_requested = true;
+                        actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;
+                    }
                     if (!writable) ImGui::TextDisabled("Engine content is read only");
                     if (!import_enabled) ImGui::TextDisabled("Model import is disabled in this build");
                     ImGui::EndPopup();

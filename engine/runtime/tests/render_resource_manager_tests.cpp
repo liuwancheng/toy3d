@@ -2,6 +2,7 @@
 #include "drivers/rhi/rhi_device.h"
 #include "drivers/rhi/rhi_queue.h"
 #include "rendercore/material/material.h"
+#include "rendercore/material/material_asset_builder.h"
 #include "rendercore/rendering_thread.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/shader/global_shader_map.h"
@@ -487,10 +488,65 @@ namespace
                                             resource_manager, viewport, scene_render_targets, tonemap_pass_resources,
                                             nullptr, viewport_output_target);
     }
+    void test_material_schema_defaults()
+    {
+        using namespace toy3d;
+        MaterialDesc desc;
+        shader::ShaderParameterConstantBufferSchema buffer;
+        buffer.binding_id = shader::make_shader_parameter_id(shader::BindingGroup::Material,
+            shader::ShaderParameterCategory::Constant, "toy_material_data");
+        buffer.name = "toy_material_data";
+        buffer.group = shader::BindingGroup::Material;
+        buffer.size = 48u;
+        const std::vector<shader::ShaderValueType> types = {shader::ShaderValueType::Float32,
+            shader::ShaderValueType::Float32x2, shader::ShaderValueType::Float32x3, shader::ShaderValueType::Float32x4};
+        const std::vector<std::uint32_t> offsets = {0u, 4u, 16u, 32u};
+        std::vector<shader::ReflectedConstantMember> reflected;
+        for (std::uint32_t index = 0; index < types.size(); ++index)
+        {
+            shader::ShaderParameterConstantMemberSchema member;
+            member.name = "value" + std::to_string(index);
+            member.parameter_id = shader::make_shader_parameter_id(buffer.group,
+                shader::ShaderParameterCategory::Constant, member.name);
+            member.type = types[index];
+            member.offset = offsets[index];
+            member.size = (index + 1u) * 4u;
+            // Binary32 little-endian 1.0; schema defaults must not use host padding.
+            for (std::uint32_t component = 0; component <= index; ++component)
+                member.default_value.insert(member.default_value.end(), {0u, 0u, 128u, 63u});
+            reflected.push_back({member.parameter_id, member.name, member.type, member.offset, member.size, 0u, 0u});
+            buffer.members.push_back(std::move(member));
+        }
+        buffer.data_layout_hash = shader::calculate_constant_buffer_data_layout_hash(buffer.group,
+            buffer.binding_id, buffer.size, reflected);
+        desc.parameter_schema.constant_buffers.push_back(buffer);
+        desc.parameter_schema.logical_layout_hash = shader::calculate_shader_parameter_logical_layout_hash(desc.parameter_schema);
+        desc.parameter_schema.schema_identity = shader::calculate_shader_parameter_schema_identity(desc.parameter_schema);
+        std::string error;
+        check(initialize_material_constant_defaults(desc, error) && desc.scalar_defaults.size() == 1u &&
+              desc.vector2_defaults.size() == 1u && desc.vector3_defaults.size() == 1u && desc.vector4_defaults.size() == 1u &&
+              desc.scalar_defaults.at(buffer.members[0].parameter_id) == 1.0f &&
+              desc.vector4_defaults.at(buffer.members[3].parameter_id) == vec4(1.0f),
+              "all scalar/vector schema defaults must decode without enumerating parameter names");
+        auto damaged = desc;
+        auto& member = damaged.parameter_schema.constant_buffers[0].members[3];
+        member.default_value = {0u, 0u, 128u, 127u, 0u, 0u, 128u, 63u, 0u, 0u, 128u, 63u, 0u, 0u, 128u, 63u};
+        damaged.parameter_schema.schema_identity = shader::calculate_shader_parameter_schema_identity(damaged.parameter_schema);
+        damaged.scalar_defaults[buffer.members[0].parameter_id] = 3.0f;
+        check(!initialize_material_constant_defaults(damaged, error) &&
+              damaged.scalar_defaults.at(buffer.members[0].parameter_id) == 3.0f && damaged.vector4_defaults == desc.vector4_defaults,
+              "non-finite schema defaults must fail without partially replacing runtime defaults");
+        damaged = desc;
+        damaged.parameter_schema.constant_buffers[0].members[1].default_value.clear();
+        damaged.parameter_schema.schema_identity = shader::calculate_shader_parameter_schema_identity(damaged.parameter_schema);
+        check(!initialize_material_constant_defaults(damaged, error), "missing defaults must not silently become zero");
+
+    }
 } // namespace
 
 int main()
 {
+    test_material_schema_defaults();
     struct TestQueue final : toy3d::RHIQueue
     {
         using toy3d::RHIQueue::RHIQueue;
@@ -1954,6 +2010,73 @@ int main()
               subset_material->parameter_schema().resources.front().default_value == "Builtin/White" &&
               subset_program->data().bindings.size() == 1u,
           "Material variants with different active resource subsets must share one complete runtime schema");
+
+    {
+        const auto asset_program = load_program(make_material_program("Forward", 110u));
+        toy3d::MaterialTextureValues resolved;
+        resolved.named_defaults.emplace("Builtin/White", texture);
+        toy3d::MaterialAssetData asset_data;
+        asset_data.shader_name = "Toy3d/Test/Material";
+        asset_data.overrides = {{"roughness", 0.75f}, {"base_color", toy3d::Vector4(0.2f, 0.3f, 0.4f, 1.0f)}};
+        toy3d::MaterialInstanceRef root_instance;
+        {
+            const auto built = toy3d::create_material_from_asset(asset_data, asset_program, resolved);
+            check(built.succeeded(), "asset material must build from compiled schema and resolved textures");
+            root_instance = built.value();
+        }
+        const auto root_binding = root_instance->material_render_proxy()->materialize(device, context);
+        float root_scalar = 0;
+        check(root_binding.succeeded() && context.last_buffer_upload_data.size() == 32u, "root material must upload a complete constant buffer");
+        std::memcpy(&root_scalar, context.last_buffer_upload_data.data(), sizeof(root_scalar));
+        check(root_binding.succeeded() && root_scalar == 0.75f &&
+            root_instance->material()->desc().scalar_defaults.at(11u) == 0.25f,
+            "root dynamic overrides must not overwrite immutable Shader defaults");
+        toy3d::MaterialInstanceAssetData child_data;
+        check(toy3d::AssetId::parse("11111111111111111111111111111111", child_data.parent.asset_id), "parent fixture ID failed");
+        child_data.parent.expected_type = "toy3d.MaterialAssetData";
+        child_data.overrides = {{"roughness", 0.9f}};
+        toy3d::MaterialInstanceRef child_instance;
+        {
+            const auto built = toy3d::create_material_instance_from_asset(child_data, asset_data, root_instance->material(), resolved);
+            check(built.succeeded(), "child material must combine parent and child overrides");
+            child_instance = built.value();
+        }
+        const auto child_binding = child_instance->material_render_proxy()->materialize(device, context);
+        float child_scalar = 0;
+        float inherited_color = 0;
+        check(child_binding.succeeded() && context.last_buffer_upload_data.size() == 32u, "child material must upload a complete constant buffer");
+        std::memcpy(&child_scalar, context.last_buffer_upload_data.data(), sizeof(child_scalar));
+        std::memcpy(&inherited_color, context.last_buffer_upload_data.data() + 16u, sizeof(inherited_color));
+        check(child_binding.succeeded() && child_scalar == 0.9f && inherited_color == 0.2f &&
+            child_instance->material() == root_instance->material(), "child must inherit root values and share immutable Material");
+        child_data.overrides.clear();
+        toy3d::MaterialInstanceRef inherited_instance;
+        {
+            const auto built = toy3d::create_material_instance_from_asset(child_data, asset_data, root_instance->material(), resolved);
+            check(built.succeeded(), "empty child override set must inherit parent");
+            inherited_instance = built.value();
+        }
+        check(inherited_instance->material_render_proxy()->materialize(device, context).succeeded(), "inherited instance materialization failed");
+        check(context.last_buffer_upload_data.size() == 32u, "inherited material must upload a complete constant buffer");
+        std::memcpy(&child_scalar, context.last_buffer_upload_data.data(), sizeof(child_scalar));
+        check(child_scalar == 0.75f, "removing a child override must use parent value");
+        auto invalid_data = asset_data;
+        invalid_data.overrides.push_back(invalid_data.overrides.front());
+        check(!toy3d::create_material_from_asset(invalid_data, asset_program, resolved).succeeded(), "duplicate override must reject full candidate");
+        check(!toy3d::create_material_from_asset(asset_data, asset_program, {}).succeeded(), "unresolved default texture must fail");
+        invalid_data = asset_data;
+        invalid_data.overrides.push_back({"removed_parameter", 1.0f});
+        toy3d::MaterialInstanceRef orphan_instance;
+        {
+            const auto built = toy3d::create_material_from_asset(invalid_data, asset_program, resolved);
+            check(built.succeeded(), "known orphan must not stop valid runtime material construction");
+            orphan_instance = built.value();
+        }
+        toy3d::MaterialInstance::release(orphan_instance);
+        toy3d::MaterialInstance::release(inherited_instance);
+        toy3d::MaterialInstance::release(child_instance);
+        toy3d::MaterialInstance::release(root_instance);
+    }
 
     const std::uint32_t invisible_buffer_count = device.buffer_creation_count;
     toy3d::MaterialInstanceRef invisible_material_instance = toy3d::MaterialInstance::create(render_material);

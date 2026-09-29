@@ -86,6 +86,8 @@ composition root 先创建并冻结 `FileSystem` mount，再显式注册及冻�
 
 代表性 fixture 已覆盖五类资源，而不是把这些领域 DTO 变成通用 Asset 文件结构：模型保存源 URI、导入选项、稳定节点及 mesh/material/skeleton 关联，几何顶点仍放独立 blob；后续模型导入器负责外部格式解析、稳定 source key、缺失 Cook 产物重建。动画保存骨架引用、稳定轨道目标、插值、key 与事件，领域验证时间排序、范围和目标存在；后续动画导入器负责压缩曲线和 Cook。碰撞保存 box/sphere/capsule/mesh 的有限变体与局部 Transform，领域验证尺寸和 mesh 引用，后续物理适配器负责后端形状构造。场景保存 Actor/Component ID、root、跨 Actor attachment 与资源引用，领域验证唯一性、端点和无环；本模块不调用 `spawn_actor<T>()`。材质创作数据仅保存 Shader 引用及覆盖，测试适配器直接读取 shader compiler 已解析的 `.shader Properties` 和 `ShaderParameterId` 检查类型、范围及 orphan；后续生产适配器应从已验证 Shader schema 提供只读属性视图，并遵守现有 Material replacement 与 frame safe point，不能按 native slot 猜测或直接写 RenderProxy。
 
+正式材质生产接入遵循[代码材质与参数化编辑设计](material-system-design.md)：Material/单层 Instance DTO 属于独立领域 target，Shader Properties 继续提供参数 schema；Editor 的连续手势使用草稿预览，结束时向现有 EditSession 提交一次复合修改。资源基础不新增材质专用参数注册表、渲染对象或撤销栈。
+
 ## 6. 错误与安全边界
 
 各层通过返回值传播错误码、简短原因和可用的 Asset ID、`VirtualPath`、字段路径或分段身份。I/O 错误保留 `FileStatus` 的操作和错误上下文。底层不弹 Dialog，也不重复记录同一错误；runtime/tools 调用方通过现有 Logger 记录，Editor 调用方在需用户处理时显示 Dialog，并可记录日志。不创建独立诊断框架。

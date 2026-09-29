@@ -50,6 +50,7 @@ namespace toy3d
         if (!window().enable_file_drop(false)) TOY_LOG_WARN("Could not disable external model file drop.");
 #endif
         model_import_.clear();
+        material_create_.clear();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         command_history_.clear();
@@ -75,8 +76,14 @@ namespace toy3d
         {
             if (ImGui::BeginMenu("File"))
             {
+                if (ImGui::BeginMenu("Create Asset", !model_import_.active() && !material_create_.active()))
+                {
+                    if (ImGui::MenuItem("Material...")) material_create_.request(MaterialAssetCreationKind::Material, asset_folder_);
+                    if (ImGui::MenuItem("Material Instance...")) material_create_.request(MaterialAssetCreationKind::MaterialInstance, asset_folder_);
+                    ImGui::EndMenu();
+                }
 #if WITH_MODEL_IMPORT
-                if (ImGui::MenuItem("Import Static Mesh..."))
+                if (ImGui::MenuItem("Import Static Mesh...", nullptr, false, !material_create_.active()))
                 {
                     if (!model_import_.request(asset_folder_)) model_error_ = model_import_.error();
                 }
@@ -201,18 +208,21 @@ namespace toy3d
         scene_viewport_.draw(world(), selection_, command_history_);
         const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
             show_engine_content_, thumbnails_, asset_tile_size_, WITH_MODEL_IMPORT != 0);
+        if (browser.material_creation_requested && !model_import_.active())
+            material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
 #if WITH_MODEL_IMPORT
-        if (browser.import_requested && !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+        if (browser.import_requested && !material_create_.active() && !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
             // External file events cannot replace an active modal transaction.
-            if (!model_import_.active() && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) &&
+            if (!model_import_.active() && !material_create_.active() && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) &&
                 browser.accepts_drop(dropped.position) && !model_import_.request(asset_folder_, dropped.paths))
                 model_error_ = model_import_.error();
         }
         model_import_.draw(window(), workspace_, selection_, thumbnails_);
 #endif
+        material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema());
         AssetPlacementRequest placed;
         if (scene_viewport_.take_asset_placement(placed))
         {

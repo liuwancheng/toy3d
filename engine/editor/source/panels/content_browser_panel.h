@@ -2,6 +2,7 @@
 
 #include <string>
 #include "math/vector2.h"
+#include "asset_tools/material_asset_tools.h"
 
 namespace toy3d
 {
@@ -12,6 +13,9 @@ namespace toy3d
     struct ContentBrowserActions
     {
         bool import_requested = false;
+        bool material_creation_requested = false;
+        MaterialAssetCreationKind material_creation_kind = MaterialAssetCreationKind::Material;
+        AssetId material_parent;
         bool visible = false;
         Vector2 region_min;
         Vector2 region_max;

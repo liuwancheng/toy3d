@@ -13,6 +13,7 @@
 | Asset 容器与身份 | `Toy3dResource` | `asset_file.h`、`asset_identity.h`、`asset_index.h`、`property_path.h`、`edit_session.h` | `engine/core/asset/tests/asset_file_tests.cpp`、`engine/tools/reflection_codegen/tests/codegen_tests.cpp` |
 | 源网格描述 | `Toy3dMeshDescription` | `mesh_description/mesh_description.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
 | StaticMesh 资产 | `Toy3dStaticMeshAsset` | `static_mesh/static_mesh_asset.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
+| Material/Instance 资产 | `Toy3dMaterialAsset` | `material/material_asset.h`、`material/material_asset_data.h` | `engine/core/material/tests/material_asset_tests.cpp`、`engine/editor/tests/workspace_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
 | 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | GPU-ready 格式 | `Toy3dPixelFormat` | `pixel_format/pixel_format.h` | `engine/core/tests/pixel_format_tests.cpp` |
@@ -69,6 +70,8 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 ## Resource
 
 通用 Asset 代码位于 `engine/core/asset`，独立 target 名称暂保留 `Toy3dResource`。`AssetId::try_generate(output)` 生成非零随机 128 位身份，失败不修改输出；不是内容 hash，创建方仍须在 catalog 查重。正式 StaticMesh 领域类型位于 `engine/core/static_mesh`，详细格式与加载流程见 [StaticMesh 生产链](static-mesh-import-design.md)。
+
+`Toy3dMaterialAsset` 已提供正式 Material/Instance DTO 与生成的反射和值编解码。先调用 `register_material_asset_types(types)` 并检查结果，再冻结 TypeRegistry；创建使用 `encode_material_asset()` / `encode_material_instance_asset()` 和 FileSystem 原子 CreateNew，读取使用 `read_material_asset()` / `read_material_instance_asset()`，修改保存沿用 EditSession/save_asset。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用；encode 对覆盖按名称排序，reader 核对 typed 引用与外层依赖索引。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。Texture2D target 尚待实施，不将 `Toy3dTextureAsset` 当作当前可链接目标；自动材质控件、JPEG codec 与共享 Process 的迁移见[材质系统设计](material-system-design.md)。
 
 `AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。`encode_asset_file(index, segments)` 按稳定名称生成完整 Asset 字节；`inspect_asset(files, path)` 只读取固定头和索引。`load_asset<T>(types, migrations, files, path, type_name, output, validate)` 形成完整候选并在领域验证成功后赋值；`save_asset<T>(types, migrations, files, path, index, value, validate, extra_segments)` 先检查已发布文件能无损解码，并要求提供已有大段的字节，再通过 FileSystem 原子发布。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
 

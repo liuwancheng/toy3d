@@ -55,6 +55,8 @@ Editor 专用行为使用 `WITH_EDITOR`，导入和重导入所需的创作数�
 
 ImGui 面板每帧即时绘制，但工作区、选择、活动会话、撤销历史和视口相机跨帧存在。首期不为每个 ImGui 窗口创建一个长期通用 `EditorDocument` 基类；模型等 Asset 使用其领域类型与 `EditSession<T>`，场景文档要等 World 装配/保存 contract 明确后设计。
 
+下一条资源编辑链按已确认的[代码材质与参数化编辑设计](material-system-design.md)执行：Properties/HLSL 源码、Material 与单层 Instance 资产、自动参数窗口、Base Color 贴图、Details 材质槽赋值、独立预览和手动重编译。EditorWorkspace 持有正式领域 EditSession；材质交互只保存手势草稿，一次手势结束才提交一条资源历史。材质资产修改更新当前已加载引用者，单对象修改显式创建独立实例。首版一个活动材质窗口，预览与后台缩略图共用现有 RenderScene 和逻辑纹理分配/退休路径。
+
 ## 4. 输入、修改与撤销
 
 输入优先级为：模态对话框及文本输入 → 正在拖动的 Gizmo → 视口点击 HitProxy → 编辑器快捷键 → 游戏输入。只有鼠标位于实际场景图像区域，且更高优先级操作未消费点击时，才提交 HitProxy 请求。结果返回后校验请求 ID、视口 generation、场景 generation 和对象存活；较晚返回的结果不得覆盖较新的选择。
@@ -115,8 +117,9 @@ engine/editor/
 1. **编辑器交互骨架**：已提取 Actor Selection 与 Scene Viewport，增加 Outliner、位置/缩放 Details 和 Transform 撤销/重做。仍需补全 Details 旋转编辑及实际窗口交互验收：视口/列表双向选中、点击背景、对象销毁、窗口 resize、Gizmo 输入优先级和旋转/缩放。
 2. **Asset workspace 与浏览器**：Editor 入口持有独立创作 FileSystem，项目源目录默认 `project/asset`，`--Editor.AssetRoot=<path>` 可指定；与部署根、引擎资产或界面资源重叠则拒绝初始化。资源层统一扫描项目与引擎 `.asset` 外层，验证 ID 与跨根强依赖，成功后一次发布，失败保留旧索引；Content Browser 默认 `/Project`，通过 `Show Engine Content` 显示只读引擎目录。仍需生产 Asset 创建/ID 生成、可写权限验证、类型注册及资源打开；路径移动和重启后的身份稳定需用生产文件验收。不得编辑部署副本。
 3. **模型生产与资源 Details**：受控网格和真实 FBX 进入同一模型 Asset；类型化打开、预览、编辑、撤销、保存与重开。验证导入失败保留旧预览、blob 保存冲突、未知段只读和脏会话切换。
-4. **场景文档**：Editor World 已隔离 Gameplay 生命周期；补候选装配，再实现持久场景 Actor/Component ID、层级、保存和重新打开；Play 模式另行设计。
-5. **后续领域与多视口**：材质、动画、碰撞的专用编辑和预览；出现同时显示多个预览的实际用例后扩展渲染输出。
+4. **材质编辑链**：按[材质执行清单](material-system-design.md#12-分阶段执行与验收)先完成参数描述、材质资产、编辑与槽位赋值，再补贴图、单层实例、预览及手动源码重编译；本项是当前确定的下一步。
+5. **场景文档**：Editor World 已隔离 Gameplay 生命周期；补候选装配，再实现持久场景 Actor/Component ID、层级、保存和重新打开；Play 模式另行设计。
+6. **后续领域与多视口**：动画、碰撞的专用编辑和预览；出现同时显示多个预览的实际用例后扩展渲染输出。
 
 每批只引入该批需要的类型和接口。实现改动按受影响模块配置、构建和测试；UI/渲染行为用实际窗口验收。本文是 Editor 总体边界，资源格式和编辑会话的规范仍以[编辑器资源基础设计](editor-resource-foundation-design.md)为准，World 生命周期以[GameScene 设计](gamescene-design.md)和[Application 设计](application-design.md)为准。
 

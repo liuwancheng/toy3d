@@ -4,6 +4,7 @@
 #include "compiler/variant_permutation.h"
 #include "format/shader_format_types.h"
 #include "frontend/shader_ast.h"
+#include "format/shader_editor_properties.h"
 
 #include <optional>
 
@@ -24,6 +25,7 @@ namespace toy3d::shader
         // assembled from only a subset of its stages.
         std::optional<ShaderMapEntry> entry;
         std::vector<Diagnostic> diagnostics;
+        std::vector<ShaderEditorProperty> editor_properties;
 
         bool succeeded() const;
     };

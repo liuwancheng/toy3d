@@ -93,7 +93,8 @@ namespace toy3d::shader
         std::ostringstream output;
         output << "schema\t" << schema.generated_format_version << '\t' << schema.shader_abi_version << '\t'
                << schema.parameter_id_version << '\t' << sha256_to_hex(schema.schema_identity) << '\t'
-               << sha256_to_hex(schema.logical_layout_hash) << '\n';
+               << sha256_to_hex(schema.logical_layout_hash) << '\t'
+               << sha256_to_hex(schema.editor_properties_hash) << '\n';
         for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
         {
             output << "buffer\t" << buffer.binding_id << '\t' << buffer.name << '\t'
@@ -132,7 +133,7 @@ namespace toy3d::shader
             return false;
         }
         std::vector<std::string_view> fields = split_tabs(line);
-        if (fields.size() != 6u || fields[0] != "schema" ||
+        if (fields.size() != 7u || fields[0] != "schema" ||
             !parse_unsigned(fields[1], parsed.generated_format_version) ||
             !parse_unsigned(fields[2], parsed.shader_abi_version) ||
             !parse_unsigned(fields[3], parsed.parameter_id_version))
@@ -142,13 +143,15 @@ namespace toy3d::shader
         }
         const auto identity = sha256_from_hex(std::string(fields[4]));
         const auto layout = sha256_from_hex(std::string(fields[5]));
-        if (!identity || !layout)
+        const auto editor_hash = sha256_from_hex(std::string(fields[6]));
+        if (!identity || !layout || !editor_hash)
         {
             error = "Shader parameter schema identity is malformed.";
             return false;
         }
         parsed.schema_identity = *identity;
         parsed.logical_layout_hash = *layout;
+        parsed.editor_properties_hash = *editor_hash;
 
         while (std::getline(input, line))
         {

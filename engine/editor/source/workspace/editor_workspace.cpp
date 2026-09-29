@@ -2,6 +2,8 @@
 
 #include "file_system/directory_file_store.h"
 #include "file_system/virtual_path.h"
+#include "material/material_asset.h"
+#include "static_mesh/static_mesh_asset.h"
 
 #include <algorithm>
 #include <cctype>
@@ -82,6 +84,10 @@ namespace toy3d
             error_ = frozen.message;
             return false;
         }
+        ReflectionStatus registered = register_static_mesh_asset_types(types_);
+        if (registered.succeeded()) registered = register_material_asset_types(types_);
+        if (registered.succeeded()) registered = types_.freeze();
+        if (!registered.succeeded()) { error_ = registered.message; return false; }
         source_root_ = source.value();
         ready_ = true;
         return refresh();

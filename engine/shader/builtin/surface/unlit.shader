@@ -40,7 +40,9 @@ Shader "Toy3d/Surface/Unlit"
 
         float4 ps_main() : SV_Target0
         {
-            return float4(1.0, 1.0, 1.0, 1.0);
+            // UV sampling and runtime Sampler support are introduced together
+            // in M5; M1 makes the existing color and texture defaults observable.
+            return base_color * base_color_texture.Load(int3(0, 0, 0));
         }
         ENDHLSL
     }

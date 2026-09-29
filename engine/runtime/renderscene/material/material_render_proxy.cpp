@@ -25,6 +25,7 @@ namespace toy3d
             metadata.parameter_id_version = schema.parameter_id_version;
             metadata.cpp_identifier_version = shader::shader_parameters_cpp_identifier_version;
             metadata.schema_identity = schema.schema_identity;
+            metadata.editor_properties_hash = schema.editor_properties_hash;
             metadata.group_identity =
                 shader::calculate_shader_parameter_group_identity(schema, shader::BindingGroup::Material);
 

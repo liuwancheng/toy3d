@@ -364,7 +364,9 @@ namespace toy3d::shader
                        << cpp_string_literal(resource.default_value) << ", "
                        << cpp_string_literal(resource.name) << '}';
             }
-            output << "}\n        };\n        return metadata;\n    }\n\n";
+            output << "},\n            ";
+            append_hash(output, group == BindingGroup::Material ? schema.editor_properties_hash : Sha256Hash{});
+            output << "\n        };\n        return metadata;\n    }\n\n";
         }
 
         void append_encoder(std::ostringstream& output, std::string_view type_name,

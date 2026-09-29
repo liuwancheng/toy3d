@@ -9,7 +9,7 @@
 
 namespace toy3d::shader
 {
-    constexpr std::uint32_t shader_map_entry_version = 5;
+    constexpr std::uint32_t shader_map_entry_version = 6;
 
     struct ShaderMapEntryReadResult
     {

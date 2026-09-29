@@ -71,7 +71,6 @@ namespace toy3d
         key.permutation_key = program.permutation_key;
         key.mapping_version = program.mapping_version;
         key.logical_layout_hash = program.logical_layout_hash;
-        key.parameter_schema_identity = program.parameter_schema.schema_identity;
         key.target_binding_hash = program.target_binding_hash;
         key.bindings.reserve(program.bindings.size());
         for (const ShaderMapBinding& source : program.bindings)
@@ -130,7 +129,6 @@ namespace toy3d
         return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
                permutation_key == other.permutation_key && mapping_version == other.mapping_version &&
                logical_layout_hash == other.logical_layout_hash &&
-               parameter_schema_identity == other.parameter_schema_identity &&
                target_binding_hash == other.target_binding_hash &&
                bindings == other.bindings && stages == other.stages && vertex_inputs == other.vertex_inputs;
     }
@@ -144,7 +142,6 @@ namespace toy3d
         hash_content(result, key.permutation_key);
         hash_scalar(result, key.mapping_version);
         hash_content(result, key.logical_layout_hash);
-        hash_content(result, key.parameter_schema_identity);
         hash_content(result, key.target_binding_hash);
         for (const RHIShaderProgramKey::Binding& binding : key.bindings)
         {

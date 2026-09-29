@@ -70,7 +70,6 @@ namespace toy3d
         ShaderContentHash permutation_key{};
         std::uint32_t mapping_version = 0;
         ShaderContentHash logical_layout_hash{};
-        ShaderContentHash parameter_schema_identity{};
         ShaderContentHash target_binding_hash{};
         std::vector<Binding> bindings;
         std::vector<Stage> stages;

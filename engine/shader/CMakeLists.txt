@@ -1,4 +1,5 @@
 add_library(Toy3dShaderFormat STATIC)
+target_compile_definitions(Toy3dShaderFormat PRIVATE WITH_EDITORONLY_DATA=$<BOOL:${TOY3D_SHADER_EDITORONLY_DATA}>)
 target_sources(Toy3dShaderFormat
     PRIVATE
         "builtin_shader_parameters.h"
@@ -6,6 +7,8 @@ target_sources(Toy3dShaderFormat
         "format/shader_format_types.h"
         "format/shader_map_entry.h"
         "format/shader_parameter_schema.cpp"
+        "format/shader_editor_properties.h"
+        "format/shader_editor_properties.cpp"
         "format/shader_map_entry_reader.cpp")
 target_compile_features(Toy3dShaderFormat PUBLIC cxx_std_17)
 set_target_properties(Toy3dShaderFormat PROPERTIES
@@ -14,7 +17,7 @@ set_target_properties(Toy3dShaderFormat PROPERTIES
 target_include_directories(Toy3dShaderFormat
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dFileSystem Toy3dHash)
+target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dFileSystem Toy3dHash PRIVATE Toy3dText)
 
 set(TOY3D_SHADER_MAP_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shader_map")
 set(TOY3D_SHADER_PARAMETERS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shader_parameters")

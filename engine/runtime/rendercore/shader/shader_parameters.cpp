@@ -157,6 +157,7 @@ namespace toy3d
             group_schema.generated_format_version = metadata.generated_format_version;
             group_schema.shader_abi_version = metadata.shader_abi_version;
             group_schema.parameter_id_version = metadata.parameter_id_version;
+            group_schema.editor_properties_hash = metadata.editor_properties_hash;
             if (buffer.size != 0u)
             {
                 shader::ShaderParameterConstantBufferSchema schema_buffer;

@@ -12,6 +12,7 @@
 #include "logging/logger.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/material/material_asset_builder.h"
 
 namespace toy3d
 {
@@ -43,33 +44,18 @@ namespace toy3d
             if (!white_texture)
                 return nullptr;
 
-            MaterialDesc material_desc;
-            material_desc.shader_name = key.shader_name;
-            material_desc.shader_program = std::move(loaded.program);
-            material_desc.parameter_schema = material_parameter_schema_from_shader_schema(
-                material_desc.shader_program->data().parameter_schema);
-            material_desc.vector4_defaults.emplace(
-                shader::make_shader_parameter_id(shader::BindingGroup::Material,
-                                                  shader::ShaderParameterCategory::Constant, "base_color"),
-                vec4(0.85f, 0.32f, 0.18f, 1.0f));
-            const auto constant_id = [](const char* name)
+            MaterialAssetData material_data;
+            material_data.shader_name = key.shader_name;
+            material_data.two_sided = true;
+            MaterialTextureValues textures;
+            textures.named_defaults.emplace("white", std::move(white_texture));
+            auto built = create_material_from_asset(material_data, std::move(loaded.program), textures);
+            if (!built.succeeded())
             {
-                return shader::make_shader_parameter_id(shader::BindingGroup::Material,
-                                                        shader::ShaderParameterCategory::Constant, name);
-            };
-            material_desc.vector4_defaults.emplace(constant_id("ambient_color"),
-                                                   vec4(0.08f, 0.10f, 0.14f, 1.0f));
-            material_desc.vector4_defaults.emplace(constant_id("specular_color"),
-                                                   vec4(1.0f, 0.92f, 0.78f, 1.0f));
-            material_desc.scalar_defaults.emplace(constant_id("specular_power"), 32.0f);
-            material_desc.scalar_defaults.emplace(constant_id("specular_intensity"), 0.35f);
-            material_desc.texture_defaults.emplace(
-                shader::make_shader_parameter_id(shader::BindingGroup::Material,
-                                                  shader::ShaderParameterCategory::SampledTexture,
-                                                  "surface_tint_texture"),
-                std::move(white_texture));
-            material_desc.two_sided = true;
-            MaterialInstanceRef material = MaterialInstance::create(Material::create(std::move(material_desc)));
+                TOY_LOG_ERROR("Editor preview cube material build failed: {}", built.status().message);
+                return nullptr;
+            }
+            MaterialInstanceRef material = built.value();
             if (!material)
                 return nullptr;
 

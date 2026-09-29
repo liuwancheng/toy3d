@@ -18,7 +18,7 @@ namespace toy3d::shader
     constexpr std::uint32_t shader_permutation_version = 1;
     constexpr std::uint32_t toy_shader_abi_version = 1;
     constexpr std::uint32_t shader_parameter_id_version = 1;
-    constexpr std::uint32_t shader_parameters_generated_format_version = 1;
+    constexpr std::uint32_t shader_parameters_generated_format_version = 2;
     constexpr std::uint32_t shader_parameters_cpp_identifier_version = 1;
     constexpr std::uint32_t d3d_binding_mapping_version = 2;
     constexpr std::uint32_t vulkan_binding_mapping_version = 2;
@@ -450,6 +450,8 @@ namespace toy3d::shader
         Sha256Hash logical_layout_hash{};
         std::vector<ShaderParameterConstantBufferSchema> constant_buffers;
         std::vector<ShaderParameterResourceSchema> resources;
+        // Stable even when Shipping strips the optional Editor description file.
+        Sha256Hash editor_properties_hash{};
     };
 
     struct ShaderCodeEntry

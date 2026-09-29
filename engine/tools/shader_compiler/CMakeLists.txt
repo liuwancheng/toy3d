@@ -49,6 +49,7 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "reflection/spirv_reflection.h")
 
 add_library(Toy3dShaderCompilerCore STATIC)
+target_compile_definitions(Toy3dShaderCompilerCore PRIVATE WITH_EDITORONLY_DATA=$<BOOL:${TOY3D_SHADER_EDITORONLY_DATA}>)
 target_sources(Toy3dShaderCompilerCore
     PRIVATE
         ${TOY3D_SHADER_COMPILER_CORE_SOURCES})
@@ -112,6 +113,7 @@ if(BUILD_TESTING)
             Toy3dShaderCompilerCore)
     target_compile_definitions(Toy3dShaderCompilerLayoutTests
         PRIVATE
+            WITH_EDITORONLY_DATA=$<BOOL:${TOY3D_SHADER_EDITORONLY_DATA}>
             "TOY3D_SHADER_PARAMETERS_WRITER_TEST_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/tests/generated/shader_parameters\"")
     add_test(NAME Toy3dShaderCompiler.Layout
         COMMAND Toy3dShaderCompilerLayoutTests)

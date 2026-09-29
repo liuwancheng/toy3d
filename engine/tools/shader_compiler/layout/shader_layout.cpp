@@ -209,7 +209,10 @@ namespace toy3d::shader
                     break;
                 }
                 const float converted = static_cast<float>(value.numbers[index]);
-                std::memcpy(member.default_value.data() + byte_offset, &converted, sizeof(converted));
+                std::uint32_t bits = 0;
+                std::memcpy(&bits, &converted, sizeof(bits));
+                for (std::uint32_t byte = 0; byte < sizeof(bits); ++byte)
+                    member.default_value[byte_offset + byte] = static_cast<std::uint8_t>(bits >> (byte * 8u));
             }
         }
 
@@ -376,8 +379,33 @@ namespace toy3d::shader
         for (const Property& property : asset.properties)
         {
             const auto value_type = property_value_type(property.type);
+            ShaderEditorProperty editor_property;
+            editor_property.name = property.name;
+            editor_property.display_name = property.display_name;
+            editor_property.display_order = static_cast<std::uint32_t>(layout.editor_properties.size());
+            editor_property.control = value_type ? ShaderEditorPropertyControl::Numeric
+                                                 : ShaderEditorPropertyControl::Resource;
+            if (property.type == PropertyType::Color)
+                editor_property.control = ShaderEditorPropertyControl::Color;
+            if (property.type == PropertyType::Range)
+            {
+                editor_property.control = ShaderEditorPropertyControl::Range;
+                if (property.range_min)
+                    editor_property.range_min = static_cast<float>(*property.range_min);
+                if (property.range_max)
+                    editor_property.range_max = static_cast<float>(*property.range_max);
+            }
+            editor_property.parameter_id = make_shader_parameter_id(
+                BindingGroup::Material, value_type ? ShaderParameterCategory::Constant
+                                                  : *resource_category(property_resource_kind(property.type)),
+                property.name);
+            layout.editor_properties.push_back(std::move(editor_property));
             if (value_type)
             {
+                if (std::any_of(property.default_value.numbers.begin(), property.default_value.numbers.end(),
+                                [](double number) { return !std::isfinite(static_cast<float>(number)); }))
+                    add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.location,
+                              "Property default must be representable as finite binary32.");
                 const std::uint32_t expected_count = value_component_count(*value_type);
                 if (property.default_value.kind != DefaultValueKind::Numbers ||
                     property.default_value.numbers.size() != expected_count)
@@ -454,7 +482,7 @@ namespace toy3d::shader
                               " numeric default component(s).");
             }
             if (std::any_of(parameter.default_value.numbers.begin(), parameter.default_value.numbers.end(),
-                            [](double value) { return !std::isfinite(value); }))
+                            [](double value) { return !std::isfinite(static_cast<float>(value)); }))
             {
                 add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
                           "Parameter '" + parameter.name + "' default must be finite.");
@@ -564,6 +592,12 @@ namespace toy3d::shader
                   [](const ConstantBufferLayout& left, const ConstantBufferLayout& right)
                   { return left.group < right.group; });
         const ShaderParameterSchema schema = make_shader_parameter_schema(layout);
+        std::string editor_error;
+        if (!validate_shader_editor_properties(layout.editor_properties, schema, editor_error))
+        {
+            add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, {}, editor_error);
+            return result;
+        }
         layout.parameter_schema_hash = schema.schema_identity;
         layout.logical_layout_hash = schema.logical_layout_hash;
         result.layout = std::move(layout);
@@ -573,6 +607,7 @@ namespace toy3d::shader
     ShaderParameterSchema make_shader_parameter_schema(const LogicalShaderLayout& layout)
     {
         ShaderParameterSchema schema;
+        schema.editor_properties_hash = calculate_shader_editor_properties_hash(layout.editor_properties);
         for (const ConstantBufferLayout& input : layout.constant_buffers)
         {
             ShaderParameterConstantBufferSchema buffer;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "format/shader_map_entry.h"
+#include "format/shader_editor_properties.h"
 #include "frontend/diagnostic.h"
 
 #include <optional>
@@ -22,5 +23,6 @@ namespace toy3d::shader
 
     ShaderMapEntryWriteResult write_verified_shader_map_entry(PlatformFile& platform_file,
                                                               const PhysicalPath& shader_map_root,
-                                                              const ShaderMapEntry& entry);
+                                                              const ShaderMapEntry& entry,
+                                                              const std::vector<ShaderEditorProperty>& editor_properties = {});
 } // namespace toy3d::shader

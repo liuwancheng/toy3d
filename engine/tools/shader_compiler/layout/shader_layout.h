@@ -1,6 +1,7 @@
 #pragma once
 
 #include "format/shader_format_types.h"
+#include "format/shader_editor_properties.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
 
@@ -79,6 +80,7 @@ namespace toy3d::shader
         std::vector<ShaderResourceParameter> resources;
         Sha256Hash parameter_schema_hash{};
         Sha256Hash logical_layout_hash{};
+        std::vector<ShaderEditorProperty> editor_properties;
     };
 
     struct LogicalLayoutResult

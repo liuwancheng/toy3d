@@ -14,6 +14,7 @@
 | `engine/build/windows/resources` | `.rc`、资源 ID、`.ico` | 编译嵌入 exe，不复制到资产目录 |
 | `engine/build/mac/resources` | `.icns`、iconset、plist 模板 | `.icns` 与生成的 plist 进入 `.app`，iconset 不部署 |
 | `engine/shader` | Shader 源码 | 现有 shader 构建规则管理产物 |
+| `project/shader`（拟接入） | 项目 Shader 源码与 include，按[材质设计](material-system-design.md)显式登记 | 编译产物进入 build/saved，独立源码不作为 `.asset` 部署 |
 
 `engine/build` 是受版本管理的构建输入；仓库根 `build` 是不提交的 CMake 输出。`engine/runtime/config` 是 C++ 配置系统代码，与 `engine/config` 数据分开。当前 `project` 仍是 Cube 验证项目，不引入项目描述文件、项目生成器或 Cook。
 

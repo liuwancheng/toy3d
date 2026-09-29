@@ -37,9 +37,9 @@ project/asset/           游戏内容，子目录由用户安排
 Windows `build_win.bat Debug`、macOS `build_macos.sh Debug` 开启 Assimp 导入；手动 CMake 需要 `-DTOY3D_ENABLE_ASSIMP_MODEL_IMPORT=ON`。关闭该选项仍能加载现有 StaticMesh Asset，Editor 隐藏导入菜单。
 
 1. 启动 `bin/Toy3dEditor.exe`，在 Content Browser 选择目标项目文件夹。
-2. `File → Import Static Mesh...`，输入外部 FBX/OBJ/glTF/GLB 文件路径、资产名和 scale。
-3. 导入合并静态 mesh 实例，原子创建 `.asset`，不覆盖同名文件；刷新后选中资产。
-4. 点击 `Add Selected Mesh` 放入当前场景。Actor 可选择、Gizmo 编辑、删除与 undo/redo。
+2. Content Browser 空白处右键 `Import...` 或外部模型文件拖入，共用导入确认框；也可从 `File → Import Static Mesh...` 触发。选择 FBX/OBJ/glTF/GLB，确认资产名和 scale。创建与导入已收敛到菜单，不再提供 Content Browser 工具栏 Import 按钮。
+3. 点击导入后合并静态 mesh 实例，原子创建 `.asset`，不覆盖同名文件；刷新、选中并生成缩略图。
+4. 将 StaticMesh 图块拖入 Scene Viewport 创建 Actor，可选择、Gizmo 编辑、删除与 undo/redo。
 5. 重启后从 Content Browser 重新选中资产并放置；加载不需要原 FBX。场景 Actor 本身目前不保存。
 
 当前仅一个 LOD、UV0、顶点色、材质槽；默认材质用于预览，源材质/纹理/相机/灯光不生成引擎资产。拒绝蒙皮与 morph。资产原点保留，节点变换烘焙；无自动居中或缩放到视口。导入当前同步执行，大模型会阻塞 UI。
@@ -67,7 +67,7 @@ Toy3dModelImport.exe source.fbx new-file.asset
 | 模型体验 | 资产拖入视口、按 bounds 聚焦、只读网格详情 | 共用 Actor 放置/history，不能让面板直接写 RenderProxy |
 | 重导入 | source locator、稳定 material slot/source key、设置与源变更 | 当前只保存源文件名；不能宣称已有自动重导入能力。保留 Asset ID，完整候选成功后原子替换 |
 | 类型化编辑 | 正式领域 schema、EditSession、脏状态和关闭提示 | blob 与 type_data 同 owner 发布，防止旧 blob 覆盖重新导入结果；未知内容保持只读 |
-| 材质资产 | Shader 引用、参数覆盖、MaterialInstance 预览 | Shader Properties 是权威 schema，保留 orphan，不按 native slot 绑定 |
+| 材质资产（当前下一步） | Phong/Unlit、代码参数、Material/单层 Instance、贴图、槽位赋值、预览和手动重编译 | 遵循已确认的[材质设计与 M1～M7 清单](material-system-design.md)，Properties 是权威 schema，保留 orphan，不按 native slot 绑定 |
 | 场景保存 | Actor/Component 身份、层级、资源引用与 staging | 先设计受控装配与生命周期失败回滚，不绕过 World 创建入口 |
 | 动画 | 骨架、轨道、key、事件、压缩产物 | 分离源数据与运行时数据，先建立动画领域对象 |
 | 碰撞 | shape、mesh 引用和物理产物 | 领域验证后由物理适配构造，通用 Asset 不依赖物理后端 |

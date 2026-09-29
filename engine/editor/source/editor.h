@@ -8,6 +8,7 @@
 #include "viewport/scene_viewport.h"
 #include "thumbnails/asset_thumbnail_pool.h"
 #include "panels/static_mesh_import_dialog.h"
+#include "panels/material_create_dialog.h"
 
 #include <string>
 #include <utility>
@@ -51,6 +52,7 @@ namespace toy3d
         std::string asset_folder_ = "/Project";
         bool show_engine_content_ = false;
         StaticMeshImportDialog model_import_;
+        MaterialCreateDialog material_create_;
         std::string model_error_;
 
     };
