@@ -184,7 +184,10 @@ target_include_directories(Toy3dTaskGraph
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
 
+add_subdirectory(hash)
+add_subdirectory(image_codec)
 add_subdirectory(asset)
+add_subdirectory(asset_thumbnail)
 add_subdirectory(mesh_description)
 add_subdirectory(static_mesh)
 

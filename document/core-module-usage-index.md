@@ -16,6 +16,9 @@
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
 | 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | GPU-ready 格式 | `Toy3dPixelFormat` | `pixel_format/pixel_format.h` | `engine/core/tests/pixel_format_tests.cpp` |
+| 内容签名 | `Toy3dHash` | `hash/sha256.h` | `engine/core/asset_thumbnail/tests/asset_thumbnail_tests.cpp` |
+| 内存 PNG | `Toy3dImageCodec` | `image_codec/png_codec.h` | `engine/core/asset_thumbnail/tests/asset_thumbnail_tests.cpp` |
+| Asset 缩略图格式 | `Toy3dAssetThumbnail` | `asset_thumbnail/asset_thumbnail.h` | `engine/editor/tests/thumbnail_integration_tests.cpp` |
 | 线程、事件、Queue | `Toy3dThreading` | `threading/thread.h`、`event.h`、`runnable_thread.h`、`containers/queue.h` | `engine/core/tests/threading_tests.cpp`、`queue_tests.cpp` |
 | Task Graph | `Toy3dTaskGraph` | `task_graph/task_graph.h`、`graph_task.h` | `engine/core/tests/task_graph_tests.cpp`、`task_graph_scheduler_tests.cpp` |
 
@@ -72,6 +75,12 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 旧文件格式通过另一个 `load_asset<T>` 重载显式传入 `AssetFormatMigrationRegistry`，先迁移文件外层，再执行 schema 迁移；未知格式与缺失步骤返回错误且不修改原文件或调用方值。格式版本 0 目前只作迁移测试 fixture。
 
 `access_property(types, type, encoded_value, path)` 读取嵌套字段、数组元素或变体分支；`PropertyPathPart::element_id(identity_property, identity)` 在插入和重排后按作者保存的稳定 ID 选择元素。`EditSession<T>` 在 owner 线程持有快照、撤销记录与脏状态，先 `bind_published(files)`，再用 `apply_edit({patch...})` 提交单次或复合编辑；`undo()` / `redo()` 恢复快照，`save(files, migrations, index, extra_segments)` 仅在目标文件成功原子发布后清脏。调用方提供领域 validator 与可选预览准备/通知回调，使用 `EditChangeKind` 决定 setter、重新导入、Cook 或完整候选替换；失败不发布通知。错误由 Logger 或 Editor Dialog 的调用方处理。
+
+## Hash、PNG 与缩略图
+
+`sha256(bytes/text)` 返回固定 32 字节签名；Shader key 的组装策略仍在 Shader，算法只留 Core 一份。`encode_png(image,bytes)` / `decode_png(bytes,image)` 是有界内存 codec，失败不替换输出，不直接操作文件或 RHI。图像为 top-left、紧凑 RGBA8，调用方负责色彩语义。
+
+`Toy3dAssetThumbnail` 编解码可选图片/源签名段，不依赖 PNG。`replace_asset_segments(original,replacements)` 在 `Toy3dResource` 中保留其他段的原始字节、身份和引用，返回完整候选而不写文件；发布者仍须检查权限/完整文件基线并通过 FileSystem 原子发布。格式、所有权、线程和平台边界见 [Asset 缩略图](asset-thumbnail-design.md)。
 
 ## FileSystem
 

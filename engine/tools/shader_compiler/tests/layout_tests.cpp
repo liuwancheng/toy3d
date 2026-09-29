@@ -3,7 +3,7 @@
 #include "codegen/shader_parameters_codegen.h"
 #include "codegen/shader_parameters_writer.h"
 #include "file_system/native_platform_file.h"
-#include "format/sha256.h"
+#include "hash/sha256.h"
 #include "format/shader_map_entry.h"
 #include "frontend/shader_parser.h"
 #include "layout/binding_allocator.h"
@@ -158,8 +158,8 @@ Shader "Tests/Layout"
 
     void test_sha256_and_parameter_id()
     {
-        const toy3d::shader::Sha256Hash hash = toy3d::shader::sha256("abc");
-        const toy3d::shader::Sha256Hash expected = {0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40,
+        const toy3d::Sha256Hash hash = toy3d::sha256("abc");
+        const toy3d::Sha256Hash expected = {0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40,
                                                     0xde, 0x5d, 0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17,
                                                     0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad};
         check(hash == expected, "SHA-256 must match the standard abc test vector");
@@ -311,7 +311,7 @@ Shader "Tests/Layout"
             {BindingGroup::Object, "c6c22f2e79e55c0b85503aa31dda1c8472d6d1e7e3f2960313f66b3c43a9d8fe"}};
         for (const auto& identity : group_identity_golden)
         {
-            check(sha256_to_hex(calculate_shader_parameter_group_identity(first_schema, identity.first)) ==
+            check(toy3d::sha256_to_hex(calculate_shader_parameter_group_identity(first_schema, identity.first)) ==
                       identity.second,
                   "each Global/View/Pass/Material/Object schema identity must retain its golden value");
         }
@@ -548,8 +548,8 @@ Shader "Toy3d/PostProcess/Tonemap"
             check(tonemap.source->find("inline const ShaderParametersMetadata& shader_parameters_metadata") !=
                           std::string::npos &&
                       tonemap.source->find("inline void encode_shader_parameters") != std::string::npos &&
-                      tonemap.source->find(sha256_to_hex(schema.schema_identity)) != std::string::npos &&
-                      tonemap.source->find(sha256_to_hex(
+                      tonemap.source->find(toy3d::sha256_to_hex(schema.schema_identity)) != std::string::npos &&
+                      tonemap.source->find(toy3d::sha256_to_hex(
                           calculate_shader_parameter_group_identity(schema, BindingGroup::Pass))) != std::string::npos,
                   "Tonemap metadata must carry the canonical full and Pass schema identities");
         }
@@ -584,8 +584,8 @@ Shader "Toy3d/UI/ImGui"
                           imgui.source->find("Matrix4 projection = Matrix4::zero();") != std::string::npos &&
                           imgui.source->find("RHITextureViewRef font_texture{};") != std::string::npos &&
                           imgui.source->find("RHISamplerRef font_sampler{};") != std::string::npos &&
-                          imgui.source->find(sha256_to_hex(imgui_schema.schema_identity)) != std::string::npos &&
-                          imgui.source->find(sha256_to_hex(calculate_shader_parameter_group_identity(
+                          imgui.source->find(toy3d::sha256_to_hex(imgui_schema.schema_identity)) != std::string::npos &&
+                          imgui.source->find(toy3d::sha256_to_hex(calculate_shader_parameter_group_identity(
                               imgui_schema, BindingGroup::Pass))) != std::string::npos,
                       "ImGui generated parameters must preserve matrix and resource field types");
             }
@@ -611,10 +611,10 @@ Shader "Toy3d/UI/ImGui"
                       builtin.source->find("struct ObjectShaderParameters") != std::string::npos &&
                       builtin.source->find("Matrix4 toy_object_to_world = Matrix4::zero();") != std::string::npos,
                   "builtin header must contain canonical View and Object typed fields");
-            check(builtin.source->find(sha256_to_hex(builtin_schema.schema_identity)) != std::string::npos &&
-                      builtin.source->find(sha256_to_hex(calculate_shader_parameter_group_identity(
+            check(builtin.source->find(toy3d::sha256_to_hex(builtin_schema.schema_identity)) != std::string::npos &&
+                      builtin.source->find(toy3d::sha256_to_hex(calculate_shader_parameter_group_identity(
                           builtin_schema, BindingGroup::View))) != std::string::npos &&
-                      builtin.source->find(sha256_to_hex(calculate_shader_parameter_group_identity(
+                      builtin.source->find(toy3d::sha256_to_hex(calculate_shader_parameter_group_identity(
                           builtin_schema, BindingGroup::Object))) != std::string::npos,
                   "builtin View/Object metadata must carry identities derived from their canonical schema");
         }

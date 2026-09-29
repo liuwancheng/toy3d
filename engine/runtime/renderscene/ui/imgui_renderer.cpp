@@ -1,5 +1,8 @@
 #include "renderscene/ui/imgui_renderer.h"
 
+#include <map>
+#include <set>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -311,7 +314,7 @@ namespace toy3d
     RHIStatus ImGuiRenderer::render(RHIDevice& device, RHIGraphicsCommandContext& context,
                                     const ImGuiDrawData& draw_data, const ImGuiPassTarget& target,
                                     const RHITextureViewRef& viewport_texture_view,
-                                    ImGuiTextureId viewport_texture_id)
+                                    ImGuiTextureId viewport_texture_id, const std::vector<ImGuiTextureBinding>& textures)
     {
         if (draw_data.empty())
             return RHIStatus::success();
@@ -384,19 +387,22 @@ namespace toy3d
         if (!binding_set)
             return binding_set.status();
         RHIBindingSetRef font_binding = binding_set.value();
-        RHIBindingSetRef viewport_binding;
-        if (viewport_texture_view)
+        std::vector<ImGuiTextureBinding> sources = textures;
+        if (viewport_texture_view) sources.push_back({viewport_texture_id, viewport_texture_view});
+        std::map<std::uint64_t, RHIBindingSetRef> bindings_by_id;
+        std::set<std::uint64_t> declared_ids{IMGUI_FONT_ATLAS_TEXTURE_ID.value()};
+        bindings_by_id.emplace(IMGUI_FONT_ATLAS_TEXTURE_ID.value(), font_binding);
+        for (const ImGuiTextureBinding& source : sources)
         {
-            if (!viewport_texture_id.valid() || viewport_texture_id == IMGUI_FONT_ATLAS_TEXTURE_ID)
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Viewport texture identity is invalid.");
-            }
-            pass_parameters.font_texture = viewport_texture_view;
-            RHIResult<RHIBindingSetRef> created_viewport_binding =
-                create_transient_shader_binding(device, context, pass_parameters);
-            if (!created_viewport_binding)
-                return created_viewport_binding.status();
-            viewport_binding = created_viewport_binding.value();
+            if (!source.id.valid() || !source.view || !declared_ids.insert(source.id.value()).second)
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "UI texture identity is invalid or duplicated.");
+            const bool referenced = std::any_of(draw_data.commands.begin(), draw_data.commands.end(),
+                [&source](const ImGuiDrawCommand& command) { return command.texture_id == source.id; });
+            if (!referenced) continue;
+            pass_parameters.font_texture = source.view;
+            auto created = create_transient_shader_binding(device, context, pass_parameters);
+            if (!created) return created.status();
+            bindings_by_id.emplace(source.id.value(), created.value());
         }
         RHIBindingSetRef active_binding = font_binding;
 
@@ -451,16 +457,10 @@ namespace toy3d
                     return status;
                 continue;
             }
-            RHIBindingSetRef requested_binding;
-            if (command.texture_id == IMGUI_FONT_ATLAS_TEXTURE_ID)
-                requested_binding = font_binding;
-            else if (viewport_binding && command.texture_id == viewport_texture_id)
-                requested_binding = viewport_binding;
-            else
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "ImGui draw references an unknown texture identity.");
-            }
+            const auto found = bindings_by_id.find(command.texture_id.value());
+            if (found == bindings_by_id.end())
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ImGui draw references an unknown texture identity.");
+            RHIBindingSetRef requested_binding = found->second;
             if (requested_binding != active_binding)
             {
                 active_binding = std::move(requested_binding);

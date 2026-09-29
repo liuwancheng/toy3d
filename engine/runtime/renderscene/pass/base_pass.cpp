@@ -115,7 +115,7 @@ namespace toy3d
             color_attachment.view = inputs.scene_color;
             color_attachment.load = RHILoadOperation::Clear;
             color_attachment.store = RHIStoreOperation::Store;
-            color_attachment.clear_value = RHIClearValue::color_value(vec4(0.0F, 0.0F, 0.0F, 1.0F));
+            color_attachment.clear_value = RHIClearValue::color_value(inputs.clear_color);
             pass_desc.color_attachments.push_back(std::move(color_attachment));
             pass_desc.has_depth_stencil_attachment = true;
             pass_desc.depth_stencil_attachment.view = inputs.scene_depth;
@@ -167,6 +167,8 @@ namespace toy3d
                 if (!shader_program || effective_state == nullptr ||
                     !shader::is_valid_shader_graphics_pass_state(*effective_state))
                 {
+                    if (inputs.require_complete_meshes)
+                        return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Preview material candidate is invalid.");
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because its active Material "
                                   "candidate is invalid.",
                                   view_index, batch_index);
@@ -198,6 +200,7 @@ namespace toy3d
                 }
                 if (!batch_status)
                 {
+                    if (inputs.require_complete_meshes) return batch_status;
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because owner-provided bindings "
                                   "are incomplete or incompatible: {}",
                                   view_index, batch_index, batch_status.message());
@@ -207,6 +210,7 @@ namespace toy3d
                 RHIResult<RHIShaderProgramRef> cached_program = shader_program_cache.find_or_create(shader_program);
                 if (!cached_program)
                 {
+                    if (inputs.require_complete_meshes) return cached_program.status();
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because its RHI Shader Program "
                                   "could not be created: {}",
                                   view_index, batch_index, cached_program.status().message());
@@ -221,6 +225,7 @@ namespace toy3d
                     shader_program->data().vertex_inputs, vertex_layouts, vertex_attributes, vertex_bindings);
                 if (!batch_status)
                 {
+                    if (inputs.require_complete_meshes) return batch_status;
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because its vertex input is "
                                   "incompatible: {}",
                                   view_index, batch_index, batch_status.message());
@@ -238,6 +243,7 @@ namespace toy3d
                 batch_status = apply_attachment_compatibility(pass_desc, pipeline_desc);
                 if (!batch_status)
                 {
+                    if (inputs.require_complete_meshes) return batch_status;
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because attachment compatibility "
                                   "is invalid: {}",
                                   view_index, batch_index, batch_status.message());
@@ -247,6 +253,7 @@ namespace toy3d
                     build_shader_graphics_pipeline_desc(pipeline_desc, *effective_state);
                 if (!shader_pipeline)
                 {
+                    if (inputs.require_complete_meshes) return shader_pipeline.status();
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because its Shader graphics state "
                                   "is invalid: {}",
                                   view_index, batch_index, shader_pipeline.status().message());
@@ -257,6 +264,7 @@ namespace toy3d
                     device.create_graphics_pipeline(std::move(shader_pipeline).value());
                 if (!pipeline)
                 {
+                    if (inputs.require_complete_meshes) return pipeline.status();
                     TOY_LOG_ERROR("Forward Base Pass skipped View {} MeshBatch {} because its pipeline could not be "
                                   "created: {}",
                                   view_index, batch_index, pipeline.status().message());

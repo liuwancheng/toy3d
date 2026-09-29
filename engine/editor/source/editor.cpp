@@ -9,6 +9,7 @@
 #include "math/quaternion.h"
 #include "panels/place_actors_panel.h"
 #include "panels/scene_panels.h"
+#include "panels/content_browser_panel.h"
 #include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
@@ -44,6 +45,7 @@ namespace toy3d
 
     void EditorApplication::on_shutdown()
     {
+        thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         command_history_.clear();
         for (const auto actor_id : world().actor_ids())
@@ -132,8 +134,11 @@ namespace toy3d
         ImGui::SameLine();
         if (ImGui::Button("Redo")) command_history_.redo(world());
         ImGui::SameLine();
-        if (ImGui::Button("Refresh Assets") && !workspace_.refresh())
-            TOY_LOG_ERROR("Editor asset refresh failed: {}", workspace_.error());
+        if (ImGui::Button("Refresh Assets"))
+        {
+            if (!workspace_.refresh()) TOY_LOG_ERROR("Editor asset refresh failed: {}", workspace_.error());
+            else thumbnails_.invalidate();
+        }
         ImGui::SameLine();
         if (ImGui::Button("Add Selected Mesh")) place_selected_static_mesh();
         ImGui::Separator();
@@ -194,7 +199,7 @@ namespace toy3d
             scene_viewport_.cancel_pending_hit();
         draw_details(world(), selection_, command_history_, workspace_, scene_viewport_);
         scene_viewport_.draw(world(), selection_, command_history_);
-        draw_content_browser(workspace_, selection_, asset_folder_, show_engine_content_);
+        draw_content_browser(workspace_, selection_, asset_folder_, show_engine_content_, thumbnails_, asset_tile_size_);
         if (!model_error_.empty())
         {
             if (ImGui::Begin("Model Import / Load"))
@@ -267,6 +272,7 @@ namespace toy3d
                         import_folder_ + "/" + name + ".asset", options, id, model_error_))
                     {
                         selection_.select_asset(id);
+                        thumbnails_.generate(id, true);
                         ImGui::CloseCurrentPopup();
                     }
                     else TOY_LOG_ERROR("Model import failed: {}", model_error_);
@@ -277,6 +283,11 @@ namespace toy3d
             ImGui::EndPopup();
         }
 #endif
+    }
+
+    bool EditorApplication::on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)
+    {
+        return thumbnails_.initialize(scene, actor_factory_.default_material(), tasks);
     }
 
     void EditorApplication::place_selected_static_mesh()

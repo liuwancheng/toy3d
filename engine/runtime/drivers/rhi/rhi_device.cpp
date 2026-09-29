@@ -283,6 +283,27 @@ namespace toy3d
                                                   "This RHI backend does not support pixel readback.");
     }
 
+    RHIResult<RHIReadbackRef> RHIDevice::create_texture_readback(PixelFormat format, Extent extent,
+                                                              const std::string& debug_name)
+    {
+        const RHIStatus creation = begin_creation();
+        if (!creation) return failure_from_status<RHIReadbackRef>(creation);
+        const CreationScope scope(*this);
+        if (!is_initialized_impl())
+            return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::NotReady, "Texture readback requires a device.");
+        if ((format != PixelFormat::R8G8B8A8UNorm && format != PixelFormat::B8G8R8A8UNorm) ||
+            !extent.width || !extent.height || extent.width > rhi_max_texture_readback_dimension || extent.height > rhi_max_texture_readback_dimension)
+            return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::InvalidArgument,
+                "Texture readback requires a bounded RGBA8 or BGRA8 extent.");
+        return finalize_creation_result(create_texture_readback_impl(format, extent, debug_name), "texture readback");
+    }
+
+    RHIResult<RHIReadbackRef> RHIDevice::create_texture_readback_impl(PixelFormat, Extent, const std::string&)
+    {
+        return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::Unsupported,
+            "This RHI backend does not support color texture readback.");
+    }
+
     RHIResult<RHIBufferViewRef> RHIDevice::create_buffer_view(const RHIBufferRef& buffer, const RHIBufferViewDesc& desc)
     {
         if (!buffer)

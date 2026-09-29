@@ -64,8 +64,8 @@ namespace toy3d
         std::uint32_t shader_abi_version = 0;
         std::uint32_t parameter_id_version = 0;
         std::uint32_t cpp_identifier_version = 0;
-        shader::Sha256Hash schema_identity{};
-        shader::Sha256Hash group_identity{};
+        Sha256Hash schema_identity{};
+        Sha256Hash group_identity{};
         ShaderParameterConstantBufferMetadata constant_buffer;
         std::vector<ShaderParameterResourceMetadata> resources;
     };
@@ -175,8 +175,8 @@ namespace toy3d
         std::vector<EncodedShaderSamplerValue> encoded_sampler_values;
         std::vector<EncodedShaderBufferValue> encoded_buffer_values;
         std::string encoder_error;
-        shader::Sha256Hash source_schema_identity{};
-        shader::Sha256Hash source_group_identity{};
+        Sha256Hash source_schema_identity{};
+        Sha256Hash source_group_identity{};
         shader::ShaderDataLayoutHash source_data_layout_hash{};
         shader::BindingGroup source_group = shader::BindingGroup::Global;
         std::uint32_t source_shader_abi_version = 0u;

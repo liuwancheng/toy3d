@@ -61,7 +61,7 @@ namespace toy3d
     RHIResult<RHIReadbackRef> create_vulkan_readback(const RHIDevice& owner, VkDevice device,
                                                      VulkanMemoryManager& memory_manager,
                                                      VulkanDeferredDeletionQueue& deletion_queue,
-                                                     const std::string& debug_name)
+                                                     const std::string& debug_name, PixelFormat format, Extent extent)
     {
         if (device == VK_NULL_HANDLE)
         {
@@ -69,7 +69,7 @@ namespace toy3d
                                                       "Vulkan readback requires a logical device.");
         }
         VkBufferCreateInfo create_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size = sizeof(std::uint32_t);
+        create_info.size = static_cast<VkDeviceSize>(extent.width) * extent.height * sizeof(std::uint32_t);
         create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         auto allocated = memory_manager.create_buffer(create_info, VulkanAllocationUsage::CpuReadback,
@@ -83,7 +83,7 @@ namespace toy3d
                                                       "Vulkan readback allocation is not host mapped.");
         }
         return RHIResult<RHIReadbackRef>::success(std::make_shared<VulkanReadback>(
-            owner, debug_name, memory_manager, deletion_queue, std::move(allocated.value())));
+            owner, debug_name, memory_manager, deletion_queue, std::move(allocated.value()), format, extent));
     }
 
     RHIResult<RHITextureRef> create_vulkan_texture(const RHIDevice& owner, VkPhysicalDevice physical_device,

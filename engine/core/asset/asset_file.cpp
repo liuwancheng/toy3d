@@ -350,4 +350,22 @@ namespace toy3d
         if (!checked.succeeded()) return AssetResult<AssetFileIndex>(checked);
         return AssetResult<AssetFileIndex>(std::move(index));
     }
+    AssetResult<std::vector<std::uint8_t>> replace_asset_segments(const std::vector<std::uint8_t>& original,
+        const std::vector<AssetSegmentData>& replacements, AssetFileLimits limits)
+    {
+        const auto index = inspect_asset_bytes(original, limits);
+        if (!index.succeeded()) return AssetResult<std::vector<std::uint8_t>>(index.status());
+        std::vector<AssetSegmentData> segments;
+        for (const AssetSegment& existing : index.value().segments)
+        {
+            const auto replacement = std::find_if(replacements.begin(), replacements.end(),
+                [&existing](const AssetSegmentData& value) { return value.name == existing.name; });
+            if (replacement != replacements.end()) continue;
+            segments.push_back({existing.name, existing.kind, existing.required,
+                std::vector<std::uint8_t>(original.begin() + static_cast<std::ptrdiff_t>(existing.offset),
+                    original.begin() + static_cast<std::ptrdiff_t>(existing.offset + existing.length))});
+        }
+        segments.insert(segments.end(), replacements.begin(), replacements.end());
+        return encode_asset_file(index.value(), std::move(segments), limits);
+    }
 } // namespace toy3d

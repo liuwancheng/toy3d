@@ -3,6 +3,7 @@
 #include "platform/window_interface.h"
 #include "rendercore/hit_proxy.h"
 #include "rendercore/view/scene_view.h"
+#include "ui/ui_texture_work.h"
 
 #include <vector>
 
@@ -10,6 +11,8 @@ namespace toy3d
 {
     class Engine;
     class World;
+    class SceneInterface;
+    class TaskGraphInterface;
 
     // Application owns project-level policy and state. Engine owns the World
     // and Window and binds them once before World initialization; gameplay
@@ -37,6 +40,11 @@ namespace toy3d
         virtual void on_hit_proxy_result(const HitProxyResult& result) {}
         virtual void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const = 0;
         virtual void on_shutdown() {}
+        virtual bool uses_preview_scene() const { return false; }
+        virtual bool on_initialize_preview_scene(SceneInterface&, TaskGraphInterface&) { return true; }
+        virtual void on_collect_ui_render_work(UiRenderWork&) {}
+        virtual void on_ui_texture_result(UiTextureResult) {}
+        virtual std::vector<ImGuiTextureId> ui_texture_ids() const { return {}; }
 
       private:
         friend class Engine;

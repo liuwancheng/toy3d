@@ -1,11 +1,13 @@
 #pragma once
 
 #include "drivers/rhi/rhi_descriptors.h"
+#include "math/integer_vector.h"
 
 #include <memory>
 #include <atomic>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace toy3d
 {
@@ -64,25 +66,46 @@ namespace toy3d
         RHIBufferDesc resource_desc;
     };
 
-    // A single R32UInt pixel result. The backend chooses its native staging
+    struct RHITextureReadbackData
+    {
+        PixelFormat format = PixelFormat::Unknown;
+        Extent extent;
+        std::uint32_t row_pitch = 0;
+        std::vector<std::uint8_t> bytes;
+    };
+
+    constexpr std::uint32_t rhi_max_texture_readback_dimension = 512;
+
+    // Pixel or bounded color image result. The backend chooses its native staging
     // resource; the caller only polls after the owning queue has completed.
     class RHIReadback : public RHIResource
     {
       public:
-        explicit RHIReadback(const RHIDevice& owner, std::string debug_name = {})
-            : RHIResource(owner, std::move(debug_name))
+        explicit RHIReadback(const RHIDevice& owner, std::string debug_name = {},
+                             PixelFormat format = PixelFormat::R32UInt, Extent extent = {1, 1})
+            : RHIResource(owner, std::move(debug_name)), format_(format), extent_(extent)
         {
         }
 
         RHIResult<std::uint32_t> read_uint32(RHIQueueCompletionValue completed_value) const;
+        RHIResult<RHITextureReadbackData> read_texture(RHIQueueCompletionValue completed_value) const;
         void mark_used(RHIQueueCompletionValue completion_value);
         RHIQueueCompletionValue last_use_completion_value() const;
+        PixelFormat readback_format() const { return format_; }
+        Extent readback_extent() const { return extent_; }
 
       protected:
         virtual RHIResult<std::uint32_t> read_uint32_impl() const;
+        virtual RHIResult<RHITextureReadbackData> read_texture_impl() const;
 
       private:
+        friend class RHICommandContext;
+        // Color image copies consume their destination even when the enclosing
+        // recording is discarded; retries allocate a fresh result object.
+        bool copy_recorded_ = false;
         std::atomic<RHIQueueCompletionValue> last_use_value{0};
+        PixelFormat format_ = PixelFormat::R32UInt;
+        Extent extent_{1, 1};
     };
 
     class RHITexture : public RHIResource

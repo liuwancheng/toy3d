@@ -59,13 +59,15 @@ namespace toy3d
     {
       public:
         VulkanReadback(const RHIDevice& owner, std::string debug_name, VulkanMemoryManager& memory_manager,
-                       VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer);
+                       VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer,
+                       PixelFormat format = PixelFormat::R32UInt, Extent extent = {1, 1});
         ~VulkanReadback() override;
 
         VkBuffer buffer() const { return allocated_buffer.buffer; }
 
       protected:
         RHIResult<std::uint32_t> read_uint32_impl() const override;
+        RHIResult<RHITextureReadbackData> read_texture_impl() const override;
 
       private:
         VulkanMemoryManager* memory_manager_instance = nullptr;

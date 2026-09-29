@@ -1,6 +1,6 @@
 #pragma once
 
-#include "format/sha256.h"
+#include "hash/sha256.h"
 
 #include <cstdint>
 
@@ -11,7 +11,7 @@ namespace toy3d
     using ShaderParameterId = std::uint64_t;
 
     // A full SHA-256 value identifies the canonical constant-buffer byte layout.
-    using ShaderDataLayoutHash = shader::Sha256Hash;
+    using ShaderDataLayoutHash = Sha256Hash;
 }
 
 namespace toy3d::shader

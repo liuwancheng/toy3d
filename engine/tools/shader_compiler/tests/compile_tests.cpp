@@ -45,7 +45,7 @@ namespace
         check(defaults.succeeded(), "Variant schema defaults must resolve to one typed permutation");
         check(defaults.permutation && defaults.permutation->records.size() == 2u,
               "Every declared Variant must produce one canonical permutation record");
-        check(defaults.permutation && sha256_to_hex(defaults.permutation->key) ==
+        check(defaults.permutation && toy3d::sha256_to_hex(defaults.permutation->key) ==
                                           "6a67420b795afb9f008e5710bbc472fafe5bdea607dc887dccbb79fb838905a7",
               "Permutation ABI v1 must retain its golden default key");
         check(defaults.permutation && defaults.permutation->generated_prelude.find(
@@ -392,7 +392,7 @@ namespace
                "\n"
                "dxc.path=bin/dxc\n"
                "dxc.sha256=" +
-               sha256_to_hex(sha256(dxc)) +
+               toy3d::sha256_to_hex(toy3d::sha256(dxc)) +
                "\n"
                "dxc.source_revision=dxc-test-commit\n"
                "dxc.build_parameters=-DTOY3D_TEST=ON\n"
@@ -400,7 +400,7 @@ namespace
                "dxc.source_url=https://github.com/microsoft/DirectXShaderCompiler\n"
                "dxc_library.path=bin/dxcompiler\n"
                "dxc_library.sha256=" +
-               sha256_to_hex(sha256(dxc)) +
+               toy3d::sha256_to_hex(toy3d::sha256(dxc)) +
                "\n"
                "dxc_library.source_revision=dxc-test-commit\n"
                "dxc_library.build_parameters=-DTOY3D_TEST=ON\n"
@@ -408,7 +408,7 @@ namespace
                "dxc_library.source_url=https://github.com/microsoft/DirectXShaderCompiler\n"
                "spirv_val.path=bin/spirv-val\n"
                "spirv_val.sha256=" +
-               sha256_to_hex(sha256(spirv_val)) +
+               toy3d::sha256_to_hex(toy3d::sha256(spirv_val)) +
                "\n"
                "spirv_val.source_revision=spirv-tools-test-commit\n"
                "spirv_val.build_parameters=-DSPIRV_SKIP_TESTS=ON\n"
@@ -416,7 +416,7 @@ namespace
                "spirv_val.source_url=https://github.com/KhronosGroup/SPIRV-Tools\n"
                "spirv_reflect.path=lib/spirv-reflect-static\n"
                "spirv_reflect.sha256=" +
-               sha256_to_hex(sha256(spirv_val)) +
+               toy3d::sha256_to_hex(toy3d::sha256(spirv_val)) +
                "\n"
                "spirv_reflect.source_revision=spirv-reflect-test-commit\n"
                "spirv_reflect.build_parameters=static\n"
@@ -425,7 +425,7 @@ namespace
 #if defined(_WIN32)
                "spirv_reflect_debug.path=lib/spirv-reflect-static-debug\n"
                "spirv_reflect_debug.sha256=" +
-               sha256_to_hex(sha256(spirv_val)) +
+               toy3d::sha256_to_hex(toy3d::sha256(spirv_val)) +
                "\n"
                "spirv_reflect_debug.source_revision=spirv-reflect-test-commit\n"
                "spirv_reflect_debug.build_parameters=static-debug\n"
@@ -434,7 +434,7 @@ namespace
 #endif
                "spirv_reflect_header.path=include/spirv_reflect.h\n"
                "spirv_reflect_header.sha256=" +
-               sha256_to_hex(sha256(spirv_val)) +
+               toy3d::sha256_to_hex(toy3d::sha256(spirv_val)) +
                "\n"
                "spirv_reflect_header.source_revision=spirv-reflect-test-commit\n"
                "spirv_reflect_header.build_parameters=public-header\n"
@@ -442,7 +442,7 @@ namespace
                "spirv_reflect_header.source_url=https://github.com/KhronosGroup/SPIRV-Reflect\n"
                "spirv_header.path=include/include/spirv/unified1/spirv.h\n"
                "spirv_header.sha256=" +
-               sha256_to_hex(sha256(spirv_val)) +
+               toy3d::sha256_to_hex(toy3d::sha256(spirv_val)) +
                "\n"
                "spirv_header.source_revision=spirv-reflect-test-commit\n"
                "spirv_header.build_parameters=vendored-public-header\n"
@@ -578,7 +578,7 @@ namespace
         check(!reflection_failure.succeeded() &&
                   has_diagnostic(reflection_failure.diagnostics, DiagnosticCode::ReflectionFailed),
               "invalid final SPIR-V must fail reflection before ShaderCodeEntry publication");
-        check(!std::filesystem::exists(entry_root / sha256_to_hex(built.request->compile_key)),
+        check(!std::filesystem::exists(entry_root / toy3d::sha256_to_hex(built.request->compile_key)),
               "reflection failure must not publish a compile-key artifact directory");
 
         std::size_t failing_invocation = 0;
@@ -783,7 +783,7 @@ namespace
         ShaderMapEntry conflicting = entry;
         ShaderDependency conflict_dependency;
         conflict_dependency.virtual_path = "/Engine/ShaderIncludes/Conflict.hlsli";
-        conflict_dependency.content_hash = sha256("different dependency");
+        conflict_dependency.content_hash = toy3d::sha256("different dependency");
         conflicting.stages[0].request.dependencies.push_back(conflict_dependency);
         const ShaderMapEntryWriteResult conflict =
             write_verified_shader_map_entry(platform_file, reader_entry_root, conflicting);
@@ -847,7 +847,7 @@ namespace
             if (schema_text.succeeded())
             {
                 std::string changed = schema_text.value();
-                const std::string identity = sha256_to_hex(entry.parameter_schema.schema_identity);
+                const std::string identity = toy3d::sha256_to_hex(entry.parameter_schema.schema_identity);
                 const std::size_t position = changed.find(identity);
                 if (position != std::string::npos)
                     changed[position] = changed[position] == '0' ? '1' : '0';
@@ -911,7 +911,7 @@ namespace
             const std::filesystem::path dependency_path =
                 std::filesystem::u8path(dependency_fixture.second.entry_directory->utf8()) / "vertex.dependencies.txt";
             write_text(dependency_path,
-                       "/Engine/ShaderIncludes/Tampered.hlsli\t" + sha256_to_hex(sha256("tampered")) + "\n");
+                       "/Engine/ShaderIncludes/Tampered.hlsli\t" + toy3d::sha256_to_hex(toy3d::sha256("tampered")) + "\n");
             const ShaderMapEntryReadResult corrupt =
                 read_verified_shader_map_entry(platform_file, physical_path(dependency_fixture.first / "entries"),
                                                dependency_fixture.second.shader_map_key);
@@ -1094,7 +1094,7 @@ namespace
                       has_diagnostic(mismatch.diagnostics, DiagnosticCode::ReflectionUnexpectedResource),
                   "native set/binding mismatch must fail parity validation");
             check(!std::filesystem::exists(working / "mismatch-artifacts" /
-                                           sha256_to_hex(resource_request.request->compile_key)),
+                                           toy3d::sha256_to_hex(resource_request.request->compile_key)),
                   "parity mismatch must not publish a ShaderCodeEntry");
         }
         std::filesystem::remove_all(working);

@@ -2,6 +2,7 @@
 
 #include "drivers/rhi/rhi_viewport_context.h"
 #include "rendercore/hit_proxy.h"
+#include <functional>
 
 namespace toy3d
 {
@@ -16,6 +17,8 @@ namespace toy3d
     class TonemapPassResources;
     class ViewportOutputTarget;
     class GlobalShaderMap;
+    class UiTextureRegistry;
+    class RHIGraphicsCommandContext;
     struct ViewportFrameOutput;
 
     // Executes one explicit viewport-frame transaction. Renderer owns the
@@ -28,6 +31,8 @@ namespace toy3d
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
         ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map = nullptr,
-        RHIReadbackRef* recorded_readback = nullptr, HitProxyTable* hit_proxy_table = nullptr);
+        RHIReadbackRef* recorded_readback = nullptr, HitProxyTable* hit_proxy_table = nullptr,
+        UiTextureRegistry* ui_textures = nullptr,
+        const std::function<RHIStatus(RHIGraphicsCommandContext&)>& record_ui_work = {});
 
 } // namespace toy3d

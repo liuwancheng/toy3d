@@ -3,8 +3,6 @@ target_sources(Toy3dShaderFormat
     PRIVATE
         "builtin_shader_parameters.h"
         "format/shader_format_hash.cpp"
-        "format/sha256.cpp"
-        "format/sha256.h"
         "format/shader_format_types.h"
         "format/shader_map_entry.h"
         "format/shader_parameter_schema.cpp"
@@ -16,7 +14,7 @@ set_target_properties(Toy3dShaderFormat PROPERTIES
 target_include_directories(Toy3dShaderFormat
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dFileSystem)
+target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dFileSystem Toy3dHash)
 
 set(TOY3D_SHADER_MAP_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shader_map")
 set(TOY3D_SHADER_PARAMETERS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shader_parameters")

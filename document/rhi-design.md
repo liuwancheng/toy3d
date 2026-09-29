@@ -898,6 +898,8 @@ D3D11 后端不能提供与 Vulkan/D3D12 等价的显式 barrier 或并行能力
 
 ## 19. 待定事项
 
+有界 RGBA8/BGRA8 颜色区域读回已沿 `RHIReadback`、`create_texture_readback()`、`readback_texture()` 接入；单次录制、owned 紧凑结果、NotReady、跨后端 staging 和图片生命周期规范见 [Asset 缩略图](asset-thumbnail-design.md)。原 R32UInt HitProxy API 保留。
+
 以下事项在对应实现阶段定型，不阻塞当前公共边界：
 
 - GlobalShader/MaterialShader 使用显式 registry 还是轻量注册宏；

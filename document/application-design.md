@@ -45,13 +45,14 @@ World 和 Window 不在每帧回调之间重复传递。Engine 只在内部绑�
 
 第一版所有 Application hook 均在 Game Thread 顺序调用：
 
-protected `starts_world_play() const` 默认为 true。Editor 覆盖为 false，World 仅初始化并绑定 SceneInterface，保持 Initialized，不执行 Gameplay BeginPlay/Tick；Application 的 UI、宿主 tick 和 View 构建仍正常执行。该启动策略不提供 Play 模式切换或第二个 World。
+protected `starts_world_play() const` 默认为 true。Editor 覆盖为 false，主 World 仅初始化并绑定 SceneInterface，保持 Initialized，不执行 Gameplay BeginPlay/Tick；Application 的 UI、宿主 tick 和 View 构建仍正常执行。该启动策略不提供 Play 模式切换；Editor 缩略图另有独立预览 World，不改变主 World 的生命周期。
 
 ```text
 Engine creates Window and rendering framework
 → Engine creates World
 → bind World/Window observers
 → Application::on_initialize()
+→ Application::on_initialize_preview_scene(scene, tasks) # uses_preview_scene() 为 true 时
 → World::initialize()
 → World binds SceneInterface
 → World::begin_play()        # starts_world_play() 为 true 时
@@ -76,6 +77,12 @@ Engine 在调用 `on_initialize()` 前就把 Application 标记为已绑定。�
 
 `on_build_scene_views()` 只构造本帧 owned/copied `SceneView` 输入，不保存 Renderer 或 RenderScene 引用。
 未来 GameViewport/Camera 形成正式 contract 后，可以收窄该 hook，但不得让 Application 直接执行 RHI。
+
+### 编辑器图片接入
+
+`uses_preview_scene()` 在 Renderer 启动前确定独立预览 RenderScene 的创建。Renderer 初始化完成后，Engine 将稳定 non-owning `SceneInterface&` 和现有 `TaskGraphInterface&` 注入预览 hook，有效期覆盖 Application shutdown。Application 只拥有预览 World 和业务作业；Renderer 仍拥有 RenderScene、离屏 targets、UI 纹理和 readback。
+
+每帧 Engine 在宿主 tick 前 poll `UiTextureResult`，在 `on_collect_ui_render_work()` 收集 owned 像素上传、预览 view 值和退休 ID。`ui_texture_ids()` 登记可显示图片，ImGui 快照只保存逻辑 ID，RHI 资源全部留在 RT；具体缓存和保存边界见 [Asset 缩略图](asset-thumbnail-design.md)。
 
 ## 5. 当前项目组织
 

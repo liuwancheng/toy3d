@@ -19,6 +19,7 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | Editor 总体架构 | Draft | `editor-architecture-design.md` | Editor 所有权、面板、选择、视口、编辑命令、场景生命周期与分批实施 |
 | 编辑器资源接入方案 | Draft | `editor-resource-integration-plan.md` | 创作目录、模型生产链、资源编辑与后续资源类型的分批接入计划 |
 | StaticMesh 生产链 | Active | `static-mesh-import-design.md` | MeshDescription、Assimp 导入、网格构建、Asset 保存与运行时适配 |
+| Asset 缩略图 | Active | `asset-thumbnail-design.md` | StaticMesh 独立预览、多 UI 纹理、异步颜色读回、包内 PNG 与缩略图池 contract |
 | Core Math | Active | `core-math-design.md` | 数学类型、坐标、矩阵、Transform 与迁移 contract |
 | 线程与 Task Graph | Active | `threading-task-graph-design.md` | 共享线程、Queue、GraphTask、Named Thread 与同步 contract |
 | GameScene | Active | `gamescene-design.md` | World、Actor、Component、注册与 GameScene 生命周期 |

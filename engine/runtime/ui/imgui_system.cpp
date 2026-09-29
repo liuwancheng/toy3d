@@ -319,7 +319,7 @@ namespace toy3d
         return true;
     }
 
-    ImGuiSnapshotResult ImGuiSystem::end_frame(ImGuiTextureId viewport_texture_id)
+    ImGuiSnapshotResult ImGuiSystem::end_frame(ImGuiTextureId viewport_texture_id, const std::vector<ImGuiTextureId>& textures)
     {
         if (context_ == nullptr || !frame_active_)
         {
@@ -328,10 +328,16 @@ namespace toy3d
         set_current_context(context_);
         ImGui::Render();
         frame_active_ = false;
+        for (std::size_t i = 0; i < textures.size(); ++i)
+        {
+            if (textures[i].value() <= IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value() ||
+                std::find(textures.begin(), textures.begin() + i, textures[i]) != textures.begin() + i)
+                return {nullptr, "Additional UI texture IDs must be valid, unique, and outside reserved IDs."};
+        }
         ImGuiIO& io = ImGui::GetIO();
         InputSystem::get_instance().set_capture_policy({io.WantCaptureMouse, io.WantCaptureKeyboard, io.WantTextInput});
         const ImDrawData* source = ImGui::GetDrawData();
-        return source != nullptr ? snapshot(*source, viewport_texture_id) : ImGuiSnapshotResult{};
+        return source != nullptr ? snapshot(*source, viewport_texture_id, textures) : ImGuiSnapshotResult{};
     }
 
     const ImGuiFontAtlasData& ImGuiSystem::font_atlas() const noexcept
@@ -418,7 +424,7 @@ namespace toy3d
         }
     }
 
-    ImGuiSnapshotResult ImGuiSystem::snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id) const
+    ImGuiSnapshotResult ImGuiSystem::snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id, const std::vector<ImGuiTextureId>& textures) const
     {
         ImGuiSnapshotResult result;
         if (!source.Valid || !finite_pair(source.DisplayPos) || !finite_pair(source.DisplaySize) ||
@@ -521,7 +527,8 @@ namespace toy3d
                 }
                 ImGuiTextureId texture_id;
                 if (!decode_texture_id(source_command.GetTexID(), texture_id) ||
-                    (texture_id != IMGUI_FONT_ATLAS_TEXTURE_ID && texture_id != viewport_texture_id))
+                    (texture_id != IMGUI_FONT_ATLAS_TEXTURE_ID && texture_id != viewport_texture_id &&
+                     std::find(textures.begin(), textures.end(), texture_id) == textures.end()))
                 {
                     return snapshot_failure(static_cast<std::size_t>(list_index),
                                             static_cast<std::size_t>(command_index),

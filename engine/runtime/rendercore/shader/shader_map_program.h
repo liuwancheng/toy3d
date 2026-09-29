@@ -18,7 +18,7 @@ namespace toy3d
         D3D12SM6
     };
 
-    using ShaderContentHash = shader::Sha256Hash;
+    using ShaderContentHash = Sha256Hash;
 
     enum class ShaderValueType
     {

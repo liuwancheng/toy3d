@@ -88,6 +88,13 @@ namespace
         toy3d::RHIStatus draw_indexed(const toy3d::RHIDrawIndexedArgs&) override { return unsupported(); }
 
         int transition_count = 0;
+        int color_readback_count = 0;
+
+        toy3d::RHIStatus readback_texture_impl(const toy3d::RHITextureReadbackDesc&) override
+        {
+            ++color_readback_count;
+            return toy3d::RHIStatus::success();
+        }
 
       protected:
         toy3d::RHIStatus bind_graphics_bindings_impl(const toy3d::RHIGraphicsBindings&) override
@@ -757,6 +764,73 @@ namespace
               "backend without readback creation must return Unsupported");
     }
 
+    // --------------------------------------------------------------------------
+    // ColorReadback: supplies owned asymmetric bytes to verify the public result contract
+    // --------------------------------------------------------------------------
+    class ColorReadback final : public toy3d::RHIReadback
+    {
+      public:
+        explicit ColorReadback(const toy3d::RHIDevice& device)
+            : RHIReadback(device, "Color fixture", toy3d::PixelFormat::R8G8B8A8UNorm, {2, 2}) {}
+        bool bad_pitch = false;
+      protected:
+        toy3d::RHIResult<toy3d::RHITextureReadbackData> read_texture_impl() const override
+        {
+            toy3d::RHITextureReadbackData data;
+            data.format = readback_format();
+            data.extent = readback_extent();
+            data.row_pitch = bad_pitch ? 12 : 8;
+            data.bytes = {255,0,0,255, 0,255,0,255, 0,0,255,255, 17,83,151,255};
+            return toy3d::RHIResult<toy3d::RHITextureReadbackData>::success(std::move(data));
+        }
+    };
+
+    void test_color_readback_frontend()
+    {
+        using namespace toy3d;
+        RecordingDevice first;
+        RecordingDevice second;
+        initialize(first);
+        initialize(second);
+        RHITextureDesc texture_desc;
+        texture_desc.width = texture_desc.height = 4;
+        texture_desc.format = PixelFormat::R8G8B8A8UNorm;
+        texture_desc.usage = RHIResourceUsage::CopySource;
+        const auto texture = first.create_texture(texture_desc);
+        auto context_result = first.create_graphics_command_context();
+        check(texture && context_result, "color readback setup must succeed");
+        if (!texture || !context_result) return;
+        auto* context = dynamic_cast<RecordingContext*>(context_result.value().get());
+        auto readback = std::make_shared<ColorReadback>(first);
+        RHITextureReadbackDesc desc;
+        desc.source.texture = texture.value();
+        desc.source.offset = {1, 1, 0};
+        desc.extent = {2, 2};
+        desc.destination = readback;
+        check(static_cast<bool>(validate_texture_readback_desc(desc)), "bounded nonzero-offset region validates");
+        check(readback->read_texture(0).status().code() == RHIErrorCode::NotReady, "unsubmitted image remains pending");
+        desc.source.offset.x = 3;
+        check(!context->readback_texture(desc) && context->color_readback_count == 0, "out-of-bounds region never reaches backend");
+        desc.source.offset.x = 1;
+        desc.destination = std::make_shared<ColorReadback>(second);
+        check(!context->readback_texture(desc) && context->color_readback_count == 0, "foreign readback rejects before backend");
+        desc.destination = readback;
+        check(static_cast<bool>(context->readback_texture(desc)) && context->color_readback_count == 1, "valid region records once");
+        check(!context->readback_texture(desc) && context->color_readback_count == 1, "image destination cannot be overwritten before submit");
+        readback->mark_used(7);
+        check(readback->read_texture(6).status().code() == RHIErrorCode::NotReady, "in-flight image remains pending");
+        const auto completed = readback->read_texture(7);
+        check(completed && completed.value().bytes[0] == 255 && completed.value().bytes[10] == 255 &&
+            completed.value().bytes[12] == 17, "completed asymmetric image preserves row and channel order");
+        readback->bad_pitch = true;
+        check(readback->read_texture(7).status().code() == RHIErrorCode::BackendFailure, "native padding must be repacked by backend");
+        check(readback->read_uint32(7).status().code() == RHIErrorCode::InvalidArgument, "image cannot be read as integer pixel");
+        check(!first.create_texture_readback(PixelFormat::R32UInt, {2, 2}, "invalid format"), "integer format rejects color creation");
+        check(!first.create_texture_readback(PixelFormat::R8G8B8A8UNorm, {513, 2}, "oversize"), "color allocation is bounded");
+        const auto unsupported = first.create_texture_readback(PixelFormat::R8G8B8A8UNorm, {2, 2}, "unsupported");
+        check(!unsupported && unsupported.status().code() == RHIErrorCode::Unsupported, "missing image backend hook is explicit");
+    }
+
     void test_viewport_frontend_validates_frame_outputs()
     {
         RecordingDevice first;
@@ -893,6 +967,7 @@ int main()
     test_backend_contract_and_unsupported_results();
     test_command_frontend_rejects_cross_device_resources();
     test_pixel_readback_frontend();
+    test_color_readback_frontend();
     test_viewport_frontend_validates_frame_outputs();
     test_admission_and_shutdown_race();
 

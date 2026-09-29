@@ -164,7 +164,9 @@ namespace toy3d
                                       "Pixel readback requires a source texture and destination.");
         }
         const RHITextureDesc& source = desc.source.texture->desc();
-        if (source.dimension != RHIResourceDimension::Texture2D || source.format != PixelFormat::R32UInt ||
+        if (desc.destination->readback_format() != PixelFormat::R32UInt ||
+            desc.destination->readback_extent() != Extent{1, 1} ||
+            source.dimension != RHIResourceDimension::Texture2D || source.format != PixelFormat::R32UInt ||
             source.sample_count != 1 || desc.source.mip >= source.mip_levels ||
             desc.source.layer >= source.array_layers || desc.source.offset.z != 0 ||
             desc.source.offset.x >= std::max(1U, source.width >> desc.source.mip) ||
@@ -178,6 +180,27 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Pixel readback source is missing CopySource usage.");
         }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_texture_readback_desc(const RHITextureReadbackDesc& desc)
+    {
+        if (!desc.source.texture || !desc.destination)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback requires source and destination.");
+        const auto& source = desc.source.texture->desc();
+        if (desc.destination->readback_format() != source.format || desc.destination->readback_extent() != desc.extent)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback destination has incompatible format or extent.");
+        if (source.dimension != RHIResourceDimension::Texture2D || source.sample_count != 1 ||
+            (source.format != PixelFormat::R8G8B8A8UNorm && source.format != PixelFormat::B8G8R8A8UNorm) ||
+            desc.source.mip >= source.mip_levels || desc.source.layer >= source.array_layers || desc.source.offset.z ||
+            !desc.extent.width || !desc.extent.height || desc.extent.width > 512 || desc.extent.height > 512 ||
+            !EnumHasAnyFlags(source.usage, RHIResourceUsage::CopySource))
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback requires a bounded single-sample color region.");
+        const auto width = std::max(1u, source.width >> desc.source.mip);
+        const auto height = std::max(1u, source.height >> desc.source.mip);
+        if (desc.source.offset.x > width || desc.extent.width > width - desc.source.offset.x ||
+            desc.source.offset.y > height || desc.extent.height > height - desc.source.offset.y)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback region is outside its mip.");
         return RHIStatus::success();
     }
 

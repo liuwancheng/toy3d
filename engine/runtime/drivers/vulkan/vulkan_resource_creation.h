@@ -22,7 +22,8 @@ namespace toy3d
     RHIResult<RHIReadbackRef> create_vulkan_readback(const RHIDevice& owner, VkDevice device,
                                                      VulkanMemoryManager& memory_manager,
                                                      VulkanDeferredDeletionQueue& deletion_queue,
-                                                     const std::string& debug_name);
+                                                     const std::string& debug_name,
+                                                     PixelFormat format = PixelFormat::R32UInt, Extent extent = {1, 1});
     RHIResult<RHITextureRef> create_vulkan_texture(const RHIDevice& owner, VkPhysicalDevice physical_device,
                                                    VkDevice device, VulkanMemoryManager& memory_manager,
                                                    VulkanDeferredDeletionQueue& deletion_queue,

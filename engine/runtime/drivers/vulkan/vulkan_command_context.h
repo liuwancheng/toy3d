@@ -148,6 +148,7 @@ namespace toy3d
             const RHITransientUniformDataDesc& desc) override;
         RHIStatus copy_texture_impl(const RHITextureCopyDesc& desc) override;
         RHIStatus readback_texture_pixel_impl(const RHITexturePixelReadbackDesc& desc) override;
+        RHIStatus readback_texture_impl(const RHITextureReadbackDesc& desc) override;
         RHIStatus upload_texture_impl(const RHITextureUploadDesc& desc) override;
         RHIStatus write_gpu_fence_impl(const RHIGPUFenceRef& fence) override;
         RHIResult<RHICommandListRef> finish_recording() override;

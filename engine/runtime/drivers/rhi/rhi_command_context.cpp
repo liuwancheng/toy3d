@@ -135,6 +135,24 @@ namespace toy3d
                                   "This RHI backend does not support pixel readback.");
     }
 
+    RHIStatus RHICommandContext::readback_texture(const RHITextureReadbackDesc& desc)
+    {
+        const RHIStatus validation = validate_texture_readback_desc(desc);
+        if (!validation) return validation;
+        if (!desc.source.texture->is_owned_by(*owner_device()) || !desc.destination->is_owned_by(*owner_device()))
+            return foreign_object("Texture readback");
+        if (desc.destination->copy_recorded_ || desc.destination->last_use_completion_value() != 0)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback is single-use.");
+        const auto status = readback_texture_impl(desc);
+        if (status) desc.destination->copy_recorded_ = true;
+        return status;
+    }
+
+    RHIStatus RHICommandContext::readback_texture_impl(const RHITextureReadbackDesc&)
+    {
+        return RHIStatus::failure(RHIErrorCode::Unsupported, "This RHI backend does not support color readback.");
+    }
+
     RHIStatus RHICommandContext::write_gpu_fence(const RHIGPUFenceRef& fence)
     {
         if (fence && !fence->is_owned_by(*owner_device()))

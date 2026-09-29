@@ -1,6 +1,7 @@
 #include "static_mesh/static_mesh_asset.h"
 
 #include <set>
+#include <algorithm>
 #include <utility>
 
 #include "serialization/math_value_codec.h"
@@ -155,44 +156,57 @@ namespace toy3d
         index.asset_id = id;
         index.root_type = "toy3d.StaticMeshAssetData";
         index.schema_version = 1;
+        // Rebuilding render data invalidates all previous preview metadata.
+        // The importer computes a new source signature after the new package is encoded.
+        editor_segments.erase(std::remove_if(editor_segments.begin(), editor_segments.end(),
+            [](const AssetSegmentData& segment)
+            { return segment.name == "thumbnail_source" || segment.name == "thumbnail"; }), editor_segments.end());
         editor_segments.push_back({"type_data", 1, true, writer.bytes()});
         editor_segments.push_back({"render_geometry", 2, true, blob.value()});
         return encode_asset_file(std::move(index), std::move(editor_segments));
     }
 
-    AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path)
+    AssetResult<StaticMeshAssetGeometry> decode_static_mesh_asset(const std::vector<std::uint8_t>& bytes)
     {
-        TypeRegistry types;
-        const ReflectionStatus registered = register_static_mesh_asset_types(types);
-        if (!registered.succeeded()) return AssetResult<StaticMeshAssetGeometry>(invalid("type registration failed"));
-        const ReflectionStatus frozen = types.freeze();
-        if (!frozen.succeeded()) return AssetResult<StaticMeshAssetGeometry>(invalid("type registry freeze failed"));
-        SchemaMigrationRegistry migrations;
-        StaticMeshAssetData metadata;
-        const AssetStatus loaded = load_asset(types, migrations, files, path, "toy3d.StaticMeshAssetData",
-                                              metadata, validate_metadata);
-        if (!loaded.succeeded()) return AssetResult<StaticMeshAssetGeometry>(loaded);
-        const auto index = inspect_asset(files, path);
+        const auto index = inspect_asset_bytes(bytes);
         if (!index.succeeded()) return AssetResult<StaticMeshAssetGeometry>(index.status());
+        if (index.value().root_type != "toy3d.StaticMeshAssetData" || index.value().schema_version != 1)
+            return AssetResult<StaticMeshAssetGeometry>(invalid("unsupported static mesh root type or schema"));
+        const AssetSegment* typed = nullptr;
+        const AssetSegment* render_geometry = nullptr;
         for (const AssetSegment& segment : index.value().segments)
         {
             if (segment.required && segment.name != "type_data" && segment.name != "render_geometry")
                 return AssetResult<StaticMeshAssetGeometry>(invalid("unknown required static mesh segment"));
+            if (segment.name == "type_data") typed = &segment;
+            if (segment.name == "render_geometry") render_geometry = &segment;
         }
-        for (const AssetSegment& segment : index.value().segments)
-        {
-            if (segment.name != metadata.geometry_segment) continue;
-            if (segment.kind != 2 || !segment.required)
-                return AssetResult<StaticMeshAssetGeometry>(invalid("invalid geometry segment declaration"));
-            const auto blob = read_asset_segment(files, path, index.value().asset_id, segment, ValueLimits{}.max_bytes);
-            if (!blob.succeeded()) return AssetResult<StaticMeshAssetGeometry>(blob.status());
-            const auto geometry = decode_static_mesh_geometry(blob.value());
-            if (!geometry.succeeded()) return geometry;
-            if (geometry.value().vertices.size() != metadata.vertex_count || geometry.value().indices.size() != metadata.index_count ||
-                geometry.value().material_slots != metadata.material_slots)
-                return AssetResult<StaticMeshAssetGeometry>(invalid("metadata and geometry disagree"));
-            return geometry;
-        }
-        return AssetResult<StaticMeshAssetGeometry>(invalid("missing render geometry"));
+        if (!typed || typed->kind != 1 || !typed->required || !render_geometry || render_geometry->kind != 2 ||
+            !render_geometry->required || typed->length > ValueLimits{}.max_bytes || render_geometry->length > ValueLimits{}.max_bytes)
+            return AssetResult<StaticMeshAssetGeometry>(invalid("invalid or oversized static mesh segment declaration"));
+        const std::vector<std::uint8_t> metadata_bytes(bytes.begin() + static_cast<std::ptrdiff_t>(typed->offset),
+            bytes.begin() + static_cast<std::ptrdiff_t>(typed->offset + typed->length));
+        ValueReader reader(metadata_bytes);
+        StaticMeshAssetData metadata;
+        const auto decoded = decode_value(reader, metadata);
+        if (!decoded.succeeded() || !reader.at_end() || !validate_metadata(metadata).succeeded())
+            return AssetResult<StaticMeshAssetGeometry>(invalid("invalid static mesh metadata"));
+        const std::vector<std::uint8_t> geometry_bytes(bytes.begin() + static_cast<std::ptrdiff_t>(render_geometry->offset),
+            bytes.begin() + static_cast<std::ptrdiff_t>(render_geometry->offset + render_geometry->length));
+        const auto geometry = decode_static_mesh_geometry(geometry_bytes);
+        if (!geometry.succeeded()) return geometry;
+        if (geometry.value().vertices.size() != metadata.vertex_count || geometry.value().indices.size() != metadata.index_count ||
+            geometry.value().material_slots != metadata.material_slots)
+            return AssetResult<StaticMeshAssetGeometry>(invalid("metadata and geometry disagree"));
+        return geometry;
+    }
+
+    AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path)
+    {
+        const auto bytes = files.read_binary(path, ValueLimits{}.max_bytes);
+        if (!bytes.succeeded())
+            return AssetResult<StaticMeshAssetGeometry>({AssetErrorCode::Io, {}, path.utf8(), {}, {},
+                bytes.status().message, bytes.status()});
+        return decode_static_mesh_asset(bytes.value());
     }
 } // namespace toy3d

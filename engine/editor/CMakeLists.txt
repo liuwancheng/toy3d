@@ -94,7 +94,11 @@ target_compile_definitions(${TARGET_NAME}
     "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\""
     "TOY3D_EDITOR_LAYOUT_PATH=\"${BINARY_ROOT_DIR}saved/editor_layout.ini\"")
 
-target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource imguizmo)
+target_sources(${TARGET_NAME} PRIVATE
+    "source/thumbnails/thumbnail_preview_scene.h" "source/thumbnails/thumbnail_preview_scene.cpp"
+    "source/thumbnails/asset_thumbnail_pool.h" "source/thumbnails/asset_thumbnail_pool.cpp"
+    "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp")
+target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec imguizmo)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
     target_sources(${TARGET_NAME} PRIVATE
         "source/asset_tools/static_mesh_asset_tools.h" "source/asset_tools/static_mesh_asset_tools.cpp")
@@ -106,6 +110,30 @@ endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
 
 if(BUILD_TESTING)
+    if(TOY3D_ENABLE_VULKAN_RHI AND (WIN32 OR APPLE))
+        add_executable(Toy3dEditorThumbnailTests
+            "tests/thumbnail_integration_tests.cpp"
+            "source/workspace/editor_workspace.cpp"
+            "source/thumbnails/asset_thumbnail_pool.cpp" "source/thumbnails/thumbnail_preview_scene.cpp"
+            "source/panels/content_browser_panel.cpp" "source/selection/editor_selection.cpp"
+            "source/placement/actor_factory.cpp" "source/placement/placement_catalog.cpp")
+        target_compile_features(Toy3dEditorThumbnailTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dEditorThumbnailTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+        target_include_directories(Toy3dEditorThumbnailTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
+        target_link_libraries(Toy3dEditorThumbnailTests PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec imgui)
+        if(WIN32)
+            target_sources(Toy3dEditorThumbnailTests PRIVATE "${EDITOR_ICON_FILE}")
+        endif()
+        target_compile_definitions(Toy3dEditorThumbnailTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
+            "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
+            "TOY3D_THUMBNAIL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/thumbnail-test-output\""
+            "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
+            "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
+            "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
+        target_compile_options(Toy3dEditorThumbnailTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        add_test(NAME Toy3dEditor.Thumbnail COMMAND Toy3dEditorThumbnailTests)
+        set_tests_properties(Toy3dEditor.Thumbnail PROPERTIES TIMEOUT 45 RESOURCE_LOCK Toy3dGpuWindow)
+    endif()
     add_executable(Toy3dEditorWorkspaceTests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/workspace_tests.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/workspace/editor_workspace.cpp")

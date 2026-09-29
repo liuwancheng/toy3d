@@ -85,8 +85,8 @@ namespace toy3d
     VulkanReadback::VulkanReadback(const RHIDevice& owner, std::string debug_name,
                                    VulkanMemoryManager& memory_manager,
                                    VulkanDeferredDeletionQueue& deletion_queue,
-                                   VulkanAllocatedBuffer allocated_buffer)
-        : RHIReadback(owner, std::move(debug_name)), memory_manager_instance(&memory_manager),
+                                   VulkanAllocatedBuffer allocated_buffer, PixelFormat format, Extent extent)
+        : RHIReadback(owner, std::move(debug_name), format, extent), memory_manager_instance(&memory_manager),
           deletion_queue_instance(&deletion_queue), allocated_buffer(std::move(allocated_buffer))
     {
     }
@@ -126,6 +126,22 @@ namespace toy3d
         std::uint32_t result = 0;
         std::memcpy(&result, allocated_buffer.allocation.mapped_data, sizeof(result));
         return RHIResult<std::uint32_t>::success(result);
+    }
+
+    RHIResult<RHITextureReadbackData> VulkanReadback::read_texture_impl() const
+    {
+        if (readback_format() == PixelFormat::R32UInt || !memory_manager_instance || !allocated_buffer.allocation.mapped_data)
+            return RHIResult<RHITextureReadbackData>::failure(RHIErrorCode::InvalidArgument, "Color readback is not mapped.");
+        const std::size_t size = static_cast<std::size_t>(readback_extent().width) * readback_extent().height * 4;
+        const auto status = memory_manager_instance->invalidate_allocation(allocated_buffer.allocation, 0, size);
+        if (!status) return RHIResult<RHITextureReadbackData>::failure(status.code(), status.message());
+        RHITextureReadbackData data;
+        data.format = readback_format();
+        data.extent = readback_extent();
+        data.row_pitch = readback_extent().width * 4;
+        data.bytes.resize(size);
+        std::memcpy(data.bytes.data(), allocated_buffer.allocation.mapped_data, size);
+        return RHIResult<RHITextureReadbackData>::success(std::move(data));
     }
 
     // --------------------------------------------------------------------------

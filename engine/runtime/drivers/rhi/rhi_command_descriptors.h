@@ -96,6 +96,13 @@ namespace toy3d
         RHIReadbackRef destination;
     };
 
+    struct RHITextureReadbackDesc
+    {
+        RHITextureCopyLocation source;
+        Extent extent;
+        RHIReadbackRef destination;
+    };
+
     struct RHITextureUploadDesc
     {
         RHITextureCopyLocation destination;
@@ -191,6 +198,7 @@ namespace toy3d
     RHIStatus validate_transient_uniform_data_desc(const RHITransientUniformDataDesc& desc);
     RHIStatus validate_texture_copy_desc(const RHITextureCopyDesc& desc);
     RHIStatus validate_texture_pixel_readback_desc(const RHITexturePixelReadbackDesc& desc);
+    RHIStatus validate_texture_readback_desc(const RHITextureReadbackDesc& desc);
     RHIStatus validate_texture_upload_desc(const RHITextureUploadDesc& desc);
     RHIStatus validate_render_pass_desc(const RHIRenderPassDesc& desc);
     RHIStatus validate_graphics_bindings(const RHIGraphicsBindings& bindings);

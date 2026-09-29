@@ -388,6 +388,13 @@ namespace toy3d
         return create_vulkan_readback(*this, vk_device, *memory_manager_instance, *deletion_queue, debug_name);
     }
 
+    RHIResult<RHIReadbackRef> VulkanDevice::create_texture_readback_impl(PixelFormat format, Extent extent,
+                                                                      const std::string& debug_name)
+    {
+        return create_vulkan_readback(*this, vk_device, *memory_manager_instance, *deletion_queue,
+                                      debug_name, format, extent);
+    }
+
     RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(const RHIBufferRef& buffer,
                                                                       const RHIBufferViewDesc& desc)
     {

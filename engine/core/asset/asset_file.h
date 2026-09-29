@@ -113,6 +113,10 @@ namespace toy3d
                                               AssetFileLimits limits = {});
     AssetResult<AssetFileIndex> inspect_asset_bytes(const std::vector<std::uint8_t>& bytes,
                                                     AssetFileLimits limits = {});
+    // Builds a complete candidate while preserving the raw bytes of every other segment.
+    AssetResult<std::vector<std::uint8_t>> replace_asset_segments(
+        const std::vector<std::uint8_t>& original, const std::vector<AssetSegmentData>& replacements,
+        AssetFileLimits limits = {});
     AssetResult<std::vector<std::uint8_t>> read_asset_segment(const FileSystem& files,
         const VirtualPath& path, const AssetId& id, const AssetSegment& segment,
         std::size_t max_bytes);

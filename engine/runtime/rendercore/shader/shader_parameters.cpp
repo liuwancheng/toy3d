@@ -16,7 +16,7 @@ namespace toy3d
     {
         constexpr std::uint32_t k_shader_scalar_byte_size = 4u;
 
-        bool hash_is_zero(const shader::Sha256Hash& hash)
+        bool hash_is_zero(const Sha256Hash& hash)
         {
             return std::all_of(hash.begin(), hash.end(), [](std::uint8_t byte) { return byte == 0u; });
         }

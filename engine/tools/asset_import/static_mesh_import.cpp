@@ -1,4 +1,5 @@
 #include "static_mesh_import.h"
+#include "asset_thumbnail/asset_thumbnail.h"
 
 #include <algorithm>
 #include <cctype>
@@ -342,7 +343,13 @@ namespace toy3d
         const auto encoded = encode_static_mesh_asset(id, built.value(),
             {{"source_mesh", 2, false, source_bytes.value()}, info.value()});
         if (!encoded.succeeded()) return AssetResult<StaticMeshImportAsset>(encoded.status());
-        return AssetResult<StaticMeshImportAsset>(StaticMeshImportAsset{encoded.value(), candidate.warnings});
+        const auto signature = calculate_static_mesh_thumbnail_source(encoded.value());
+        if (!signature.succeeded()) return AssetResult<StaticMeshImportAsset>(signature.status());
+        const auto source_segment = encode_thumbnail_source(signature.value());
+        if (!source_segment.succeeded()) return AssetResult<StaticMeshImportAsset>(source_segment.status());
+        const auto published = replace_asset_segments(encoded.value(), {source_segment.value()});
+        if (!published.succeeded()) return AssetResult<StaticMeshImportAsset>(published.status());
+        return AssetResult<StaticMeshImportAsset>(StaticMeshImportAsset{published.value(), candidate.warnings});
     }
 
     AssetResult<AssetSegmentData> encode_static_mesh_import_data(const StaticMeshImportData& data)

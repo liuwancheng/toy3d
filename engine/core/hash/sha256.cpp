@@ -1,9 +1,9 @@
-#include "format/sha256.h"
+#include "hash/sha256.h"
 
 #include <array>
 #include <cstddef>
 
-namespace toy3d::shader
+namespace toy3d
 {
     // This implementation uses string_view for non-owning text hashing and
     // optional to reject malformed hexadecimal hashes without sentinel data.
@@ -155,4 +155,4 @@ namespace toy3d::shader
         }
         return result;
     }
-} // namespace toy3d::shader
+} // namespace toy3d

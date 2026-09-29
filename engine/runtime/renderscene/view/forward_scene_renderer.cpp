@@ -15,6 +15,9 @@
 #include "renderscene/pass/base_pass.h"
 #include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/render_scene.h"
+#include "renderscene/primitive_scene_info.h"
+#include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "renderscene/geometry/static_mesh_render_data.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/view/scene_visibility.h"
 #include "renderscene/view/view_shader_bindings.h"
@@ -23,7 +26,8 @@
 
 namespace toy3d
 {
-    ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family) : SceneRenderer(std::move(view_family)) {}
+    ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview)
+        : SceneRenderer(std::move(view_family)), thumbnail_preview_(thumbnail_preview) {}
 
     RHIStatus ForwardSceneRenderer::render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
                                                       const GlobalShaderMap& global_shader_map,
@@ -58,6 +62,21 @@ namespace toy3d
         }
 
         compute_scene_visibility(render_scene, view_infos());
+        if (thumbnail_preview_)
+        {
+            // A missing draw must not publish a blank image as a valid cache.
+            // Retry after the frame transaction rolls back pending uploads.
+            if (view_infos().size() != 1)
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Thumbnail requires exactly one view.");
+            std::size_t expected = 0;
+            for (const auto* primitive : view_infos().front().visible_primitives())
+            {
+                const auto* proxy = dynamic_cast<const StaticMeshSceneProxy*>(primitive->proxy());
+                if (proxy && proxy->render_data()) expected += proxy->render_data()->sections().size();
+            }
+            if (expected == 0 || view_infos().front().mesh_batches().size() != expected)
+                return RHIStatus::failure(RHIErrorCode::NotReady, "Thumbnail mesh is not completely drawable yet.");
+        }
         RHIStatus status = create_view_shader_bindings(device, context, view_infos());
         if (!status)
         {
@@ -168,6 +187,11 @@ namespace toy3d
         }
         BasePassInputs inputs{view_infos(), scene_render_targets.scene_color_view(),
                               scene_render_targets.scene_depth_view(), std::move(lighting_binding)};
+        if (thumbnail_preview_)
+        {
+            inputs.clear_color = vec4(0.025f, 0.025f, 0.025f, 1.0f);
+            inputs.require_complete_meshes = true;
+        }
 
         return render_base_pass(device, shader_program_cache, context, inputs);
     }

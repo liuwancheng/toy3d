@@ -31,6 +31,8 @@ Tools 仅链接 Core 与第三方，不依赖 runtime/editor。Core 不保存 Ma
 
 ## 4. 坐标与质量
 
+Importer 还写入可选 `thumbnail_source` 内容签名。Editor 在导入成功后独立生成并保存缩略图，图片失败不撤销模型；包内 PNG、源签名失效和写回规范见 [Asset 缩略图](asset-thumbnail-design.md)。`encode_static_mesh_asset()` 重建几何会移除旧图片/签名；`decode_static_mesh_asset(bytes)` 从完整只读快照解码并允许未知可选外层段，既有 `read_static_mesh_asset()` 复用该入口。
+
 输出固定 LH、+X right、+Y up、+Z forward、米、CCW。Assimp FBX 的自动 root 轴向修正会带 UnitScaleFactor，因此明确禁用该项，并使用 FBX metadata 的 Coord/Up/Front axis 与 sign 组成转换，UnitScaleFactor × 0.01 仅应用一次；不再执行 GlobalScale/MakeLeftHanded。OBJ/glTF 使用 RH Y-up 假设与 Z 反射；OBJ 单位默认米，额外用户 scale 显式保存。
 
 层级变换合成后转换位置，法线使用 inverse transpose；负 determinant 反转三角形绕序。奇异/非有限变换失败。缺失法线生成逐面法线；缺失 UV0 置零并提示；缺失顶点色置白。退化面、非法索引与非有限数据拒绝发布。源 slot 名重复时附加源 material index，保留可区分身份。

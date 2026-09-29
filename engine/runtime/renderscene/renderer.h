@@ -4,6 +4,7 @@
 #include "rendercore/hit_proxy.h"
 #include "threading/threading_types.h"
 #include "ui/imgui_draw_data.h"
+#include "ui/ui_texture_work.h"
 
 #include <atomic>
 #include <deque>
@@ -25,6 +26,7 @@ namespace toy3d
     class TonemapPassResources;
     class ImGuiRenderer;
     class ViewportOutputTarget;
+    class UiTextureRegistry;
 
     struct ViewportFrameOutput
     {
@@ -72,7 +74,8 @@ namespace toy3d
         Renderer(TaskGraphInterface& task_graph, RHISurfaceRef primary_surface, RHIViewportContextDesc viewport_desc,
                  std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                  std::shared_ptr<const GlobalShaderMap> global_shader_map,
-                 std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr);
+                 std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr,
+                 bool enable_preview_scene = false);
         ~Renderer();
 
         Renderer(const Renderer&) = delete;
@@ -84,12 +87,15 @@ namespace toy3d
         ThreadStatus teardown();
         void draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
                         std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr,
-                        ViewportFrameOutput output = {});
+                        ViewportFrameOutput output = {}, UiRenderWork work = {},
+                        std::unique_ptr<SceneRenderer> preview_renderer = nullptr);
         RendererStatus status() const;
         bool poll_hit_proxy(HitProxyResult& result);
         // Published only between successful logical-RT initialize and teardown.
         // The pointer is non-owning and exposes no concrete RenderScene state to GT.
         SceneInterface* scene_interface() const;
+        SceneInterface* preview_scene_interface() const;
+        bool poll_ui_texture(UiTextureResult& result);
 
       private:
         bool is_on_logical_rendering_thread() const;
@@ -101,6 +107,8 @@ namespace toy3d
         void append_secondary_diagnostic(const RHIStatus& failure) noexcept;
         void release_domain(bool terminal) noexcept;
         void collect_hit_proxy_readbacks();
+        void collect_ui_readbacks();
+        RHIStatus record_ui_work(RHIGraphicsCommandContext& context, RHIReadbackRef& capture);
 
         struct PendingHitReadback
         {
@@ -120,6 +128,24 @@ namespace toy3d
         std::unique_ptr<RHIShaderProgramCache> shader_program_cache_;
         std::unique_ptr<RenderResourceManager> resource_manager_;
         std::unique_ptr<RenderScene> render_scene_;
+        bool enable_preview_scene_ = false;
+        std::unique_ptr<RenderScene> preview_scene_;
+        std::unique_ptr<SceneRenderTargets> preview_targets_;
+        std::unique_ptr<UiTextureRegistry> ui_textures_;
+        UiRenderWork pending_ui_work_;
+        std::unique_ptr<SceneRenderer> pending_preview_renderer_;
+        struct PendingUiReadback
+        {
+            std::uint64_t request_id = 0;
+            ImGuiTextureId texture_id;
+            Extent extent;
+            RHIReadbackRef readback;
+        };
+        std::deque<PendingUiReadback> pending_ui_readbacks_;
+        std::uint32_t pending_preview_attempts_ = 0;
+        std::deque<UiTextureResult> ui_results_;
+        mutable std::mutex ui_results_mutex_;
+        std::atomic<SceneInterface*> published_preview_interface_{nullptr};
         std::unique_ptr<SceneRenderTargets> scene_render_targets_;
         std::unique_ptr<ViewportOutputTarget> viewport_output_target_;
         std::unique_ptr<TonemapPassResources> tonemap_pass_resources_;

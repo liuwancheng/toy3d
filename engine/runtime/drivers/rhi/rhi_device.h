@@ -60,6 +60,8 @@ namespace toy3d
                                                 const RHIInitialData* initial_data = nullptr);
 
         RHIResult<RHIReadbackRef> create_readback(const std::string& debug_name);
+        RHIResult<RHIReadbackRef> create_texture_readback(PixelFormat format, Extent extent,
+                                                         const std::string& debug_name);
 
         RHIResult<RHIBufferViewRef> create_buffer_view(const RHIBufferRef& buffer, const RHIBufferViewDesc& desc);
 
@@ -89,6 +91,8 @@ namespace toy3d
         virtual RHIResult<RHITextureRef> create_texture_impl(const RHITextureDesc& desc,
                                                              const RHIInitialData* initial_data) = 0;
         virtual RHIResult<RHIReadbackRef> create_readback_impl(const std::string& debug_name);
+        virtual RHIResult<RHIReadbackRef> create_texture_readback_impl(PixelFormat format, Extent extent,
+                                                                      const std::string& debug_name);
         virtual RHIResult<RHIBufferViewRef> create_buffer_view_impl(const RHIBufferRef& buffer,
                                                                     const RHIBufferViewDesc& desc) = 0;
         virtual RHIResult<RHITextureViewRef> create_texture_view_impl(const RHITextureRef& texture,

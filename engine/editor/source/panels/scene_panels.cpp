@@ -20,12 +20,6 @@ namespace toy3d
 {
     namespace
     {
-        std::string parent_folder(const std::string& path)
-        {
-            const std::size_t separator = path.find_last_of('/');
-            return separator == std::string::npos ? std::string() : path.substr(0, separator);
-        }
-
         void draw_transform_field(const char* label, Vector3 Transform::* field, World& world,
                                   Actor& actor, EditorCommandHistory& history)
         {
@@ -168,69 +162,4 @@ namespace toy3d
         ImGui::End();
     }
 
-    void draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
-                              bool& show_engine_content)
-    {
-        if (ImGui::Begin("Content Browser"))
-        {
-            if (ImGui::Button("Refresh") && !workspace.refresh())
-                TOY_LOG_ERROR("Content Browser refresh failed: {}", workspace.error());
-            ImGui::SameLine();
-            if (ImGui::Checkbox("Show Engine Content", &show_engine_content) && !show_engine_content &&
-                (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0))
-                folder = "/Project";
-            ImGui::SameLine();
-            ImGui::TextUnformatted(folder.c_str());
-            if (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(read only)");
-            }
-            if (!workspace.error().empty())
-                ImGui::TextWrapped("Asset scan: %s", workspace.error().c_str());
-            ImGui::Separator();
-
-            if (ImGui::BeginTable("Content Browser Columns", 2, ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_BordersInnerV))
-            {
-                ImGui::TableSetupColumn("Folders", ImGuiTableColumnFlags_WidthFixed, 190.0f);
-                ImGui::TableSetupColumn("Assets", ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                for (const VirtualPath& directory : workspace.catalog().directories)
-                {
-                    const std::string& path = directory.utf8();
-                    if (!show_engine_content && (path == "/Engine" || path.compare(0, 8, "/Engine/") == 0))
-                        continue;
-                    const std::size_t depth = static_cast<std::size_t>(std::count(path.begin(), path.end(), '/'));
-                    ImGui::Indent(static_cast<float>(depth > 0 ? depth - 1 : 0) * 12.0f);
-                    const std::size_t separator = path.find_last_of('/');
-                    const std::string name = path.substr(separator + 1);
-                    ImGui::PushID(path.c_str());
-                    if (ImGui::Selectable(name.c_str(), folder == path)) folder = path;
-                    ImGui::PopID();
-                    ImGui::Unindent(static_cast<float>(depth > 0 ? depth - 1 : 0) * 12.0f);
-                }
-                ImGui::TableSetColumnIndex(1);
-                std::size_t visible_assets = 0;
-                for (const AssetCatalogEntry& asset : workspace.catalog().entries)
-                {
-                    if (parent_folder(asset.path.utf8()) != folder) continue;
-                    ++visible_assets;
-                    const std::string& path = asset.path.utf8();
-                    const std::string name = path.substr(path.find_last_of('/') + 1);
-                    ImGui::PushID(path.c_str());
-                    if (ImGui::Selectable(name.c_str(), selection.asset_id() == asset.file.asset_id))
-                        selection.select_asset(asset.file.asset_id);
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(%s)", asset.file.root_type.c_str());
-                    ImGui::PopID();
-                }
-                if (visible_assets == 0)
-                    ImGui::TextDisabled("No .asset files in this folder");
-                ImGui::EndTable();
-            }
-        }
-        ImGui::End();
-    }
 } // namespace toy3d

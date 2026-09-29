@@ -84,9 +84,9 @@ workspace.save_active_asset(); // 先验证、再原子保存；失败保留脏�
 
 ## 5. 场景、资源与预览边界
 
-当前 Engine 只有一个 World 和一份编辑器场景输出。Application 通过 `starts_world_play()` 声明启动策略：普通应用默认 Playing，Editor 返回 false，仅 initialize 并绑定 SceneInterface，不执行 BeginPlay 或 Gameplay Tick。正式场景 Asset 装配前仍需定义受控候选装配与切换/销毁顺序；Play 模式另行设计。场景保存必须使用持久 Actor/Component 身份，不能把 World 内临时 HitProxy/Actor ID 写入文件。
+当前 Engine 持有主 World，Editor 另持有独立缩略图预览 World，Renderer 显式拥有主/预览 RenderScene 与各自 targets。Application 通过 `starts_world_play()` 声明启动策略：普通应用默认 Playing，Editor 主 World 仅 initialize 并绑定 SceneInterface，不执行 BeginPlay 或 Gameplay Tick。正式场景 Asset 装配前仍需定义候选装配与切换/销毁顺序；Play 模式另行设计。场景保存使用持久 Actor/Component 身份，不能写入临时 HitProxy/Actor ID。
 
-首期仅保持一个 Scene Viewport。模型预览可先替换该视口的受控预览对象，并在候选 StaticMesh 构造成功后发布；候选失败时保留旧预览。真正同时显示场景视口、模型预览和材质预览时，RenderScene/Renderer 需提供多 View/多离屏输出及可动态注册的逻辑纹理身份，不应复制一套 Editor 渲染器或把 RHI texture 交给 ImGui 面板长期持有。缩放、最小化、零尺寸、纹理寿命及多线程提交都要在该扩展中验证。
+保持一个 Scene Viewport；StaticMesh 缩略图通过独立预览 World 和离屏输出生成，不替换场景视口。图片使用动态逻辑纹理 ID，面板不持有 RHI texture；复用现有 Forward/Tonemap 和单 graphics context。池、GPU 寿命和包内 PNG 规范见 [Asset 缩略图](asset-thumbnail-design.md)。完整模型/材质编辑视口的相机交互与更多预览场景仍需按实际用例扩展。
 
 模型、动画、碰撞、场景共享 Asset 外层和 Content Browser，但不共享一个万能预览器。模型从几何 blob 构造 `StaticMesh`；材质属性以 Shader `Properties` 为权威；动画需要轨道/时间线与目标验证；碰撞需要形状/物理后端适配；场景需要 World 候选装配。领域尚未就绪时，浏览器仍可显示 Asset 外层信息，Details 可只读展示可用元数据，并明确报告不能预览或编辑的原因。
 

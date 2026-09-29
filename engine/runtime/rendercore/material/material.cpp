@@ -153,8 +153,8 @@ namespace toy3d
             return nullptr;
         }
         std::string schema_error;
-        if (desc.parameter_schema.schema_identity == shader::Sha256Hash{} &&
-            desc.parameter_schema.logical_layout_hash == shader::Sha256Hash{} &&
+        if (desc.parameter_schema.schema_identity == Sha256Hash{} &&
+            desc.parameter_schema.logical_layout_hash == Sha256Hash{} &&
             desc.parameter_schema.constant_buffers.empty() && desc.parameter_schema.resources.empty())
         {
             desc.parameter_schema.logical_layout_hash =

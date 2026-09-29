@@ -32,6 +32,9 @@ namespace toy3d
     AssetStatus validate_static_mesh_geometry(const StaticMeshAssetGeometry& geometry);
     AssetResult<std::vector<std::uint8_t>> encode_static_mesh_geometry(const StaticMeshAssetGeometry& geometry);
     AssetResult<StaticMeshAssetGeometry> decode_static_mesh_geometry(const std::vector<std::uint8_t>& bytes);
+    // Immutable snapshot decode accepts opaque optional outer segments; it does
+    // not grant permission to re-save them through a typed, lossy writer.
+    AssetResult<StaticMeshAssetGeometry> decode_static_mesh_asset(const std::vector<std::uint8_t>& bytes);
     AssetResult<std::vector<std::uint8_t>> encode_static_mesh_asset(const AssetId& id,
         const StaticMeshAssetGeometry& geometry, std::vector<AssetSegmentData> editor_segments = {});
     AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path);

@@ -159,6 +159,18 @@ int main()
               viewport_texture.draw_data->commands.back().texture_id == IMGUI_SCENE_VIEWPORT_TEXTURE_ID,
           "registered viewport texture identity must survive the UI snapshot");
 
+    check(imgui.begin_frame(window, 1.0 / 60.0), "multiple logical image frame must start");
+    ImGui::GetForegroundDrawList()->AddImage(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(3)),
+        ImVec2(0, 0), ImVec2(20, 20));
+    ImGui::GetForegroundDrawList()->AddImage(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(4)),
+        ImVec2(30, 0), ImVec2(50, 20));
+    const auto images = imgui.end_frame({}, {ImGuiTextureId(3), ImGuiTextureId(4)});
+    check(images.succeeded() && images.draw_data && images.draw_data->commands.size() >= 2 &&
+        images.draw_data->commands[images.draw_data->commands.size() - 2].texture_id == ImGuiTextureId(3) &&
+        images.draw_data->commands.back().texture_id == ImGuiTextureId(4), "multiple IDs must preserve image command identity");
+    check(imgui.begin_frame(window, 1.0 / 60.0), "invalid registry frame must start");
+    const auto duplicates = imgui.end_frame({}, {ImGuiTextureId(3), ImGuiTextureId(3)});
+    check(!duplicates.succeeded(), "duplicate logical IDs must reject registry publication");
     check(imgui.begin_frame(window, 1.0 / 60.0), "callback rejection test frame must start");
     ImGui::GetForegroundDrawList()->AddCallback([](const ImDrawList*, const ImDrawCmd*) {}, nullptr);
     ImGuiSnapshotResult callback = imgui.end_frame();

@@ -1,6 +1,6 @@
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 
-#include "format/sha256.h"
+#include "hash/sha256.h"
 #include "format/shader_map_entry.h"
 
 #include <algorithm>
@@ -236,7 +236,7 @@ namespace toy3d
                 output.stage = to_rhi_stage(stage.request.stage);
                 output.entry_point = stage.request.entry_point;
                 output.binary = stage.binary;
-                output.content_hash = shader::sha256(stage.binary);
+                output.content_hash = sha256(stage.binary);
                 for (const shader::ReflectedBinding& reflected : stage.reflection.bindings)
                 {
                     const auto mapping = std::find_if(entry.bindings.begin(), entry.bindings.end(),
@@ -314,7 +314,7 @@ namespace toy3d
             // filesystem extracts the final host directory component for cache
             // discovery without duplicating platform separator rules.
             const std::string name = std::filesystem::path(directory.path.utf8()).filename().string();
-            const auto entry_key = shader::sha256_from_hex(name);
+            const auto entry_key = sha256_from_hex(name);
             if (!entry_key)
                 continue;
             shader::ShaderMapEntryReadResult read =

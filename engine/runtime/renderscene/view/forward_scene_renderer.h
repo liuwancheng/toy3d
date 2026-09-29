@@ -13,7 +13,7 @@ namespace toy3d
     class ForwardSceneRenderer final : public SceneRenderer
     {
       public:
-        explicit ForwardSceneRenderer(SceneViewFamily view_family);
+        explicit ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview = false);
         ~ForwardSceneRenderer() override = default;
 
       private:
@@ -25,5 +25,6 @@ namespace toy3d
                                    const RHITextureViewRef& id_view, const RHITextureViewRef& depth_view,
                                    HitProxyTable& table) override;
         bool init_views();
+        bool thumbnail_preview_ = false;
     };
 } // namespace toy3d

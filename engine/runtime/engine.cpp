@@ -239,7 +239,8 @@ namespace toy3d
         renderer = std::make_unique<Renderer>(
             *task_graph, rhi_surface, std::move(viewport_desc), []() { return create_default_rhi_device(); },
             global_shader_map,
-            imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr);
+            imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr,
+            application && application->uses_preview_scene());
         rendering_thread = std::make_unique<RenderingThread>(*thread_manager, *task_graph,
                                                              use_rendering_thread ? RenderingThreadMode::MultiThread
                                                                                   : RenderingThreadMode::SingleThread);
@@ -278,6 +279,13 @@ namespace toy3d
                 shutdown_render_framework();
                 return false;
             }
+        }
+        if (application && application->uses_preview_scene() &&
+            (!renderer->preview_scene_interface() || !application->on_initialize_preview_scene(*renderer->preview_scene_interface(), *task_graph)))
+        {
+            TOY_LOG_ERROR("Application could not initialize its preview scene.");
+            shutdown_render_framework();
+            return false;
         }
         world->initialize();
         if (!renderer->scene_interface() || !world->bind_scene(*renderer->scene_interface()))
@@ -330,7 +338,14 @@ namespace toy3d
             scene_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
                 *renderer->scene_interface(), scene_extent, std::move(views)));
         }
-        renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output);
+        UiRenderWork work;
+        std::unique_ptr<SceneRenderer> preview_renderer;
+        if (application) application->on_collect_ui_render_work(work);
+        if (work.preview.request_id && renderer->preview_scene_interface())
+            preview_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
+                *renderer->preview_scene_interface(), work.preview.extent, std::move(work.preview.views)), true);
+        renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output,
+                             std::move(work), std::move(preview_renderer));
     }
 
     void Engine::shutdown_render_framework()
@@ -602,6 +617,8 @@ namespace toy3d
                 HitProxyResult hit;
                 while (renderer->poll_hit_proxy(hit))
                     application->hit_proxy_result(hit);
+                UiTextureResult ui_result;
+                while (renderer->poll_ui_texture(ui_result)) application->on_ui_texture_result(std::move(ui_result));
             }
             if (world)
             {
@@ -632,7 +649,7 @@ namespace toy3d
                             viewport_output.scene_extent.height != 0u
                         ? viewport_output.texture_id
                         : ImGuiTextureId{};
-                ImGuiSnapshotResult ui_result = imgui_system->end_frame(allowed_texture);
+                ImGuiSnapshotResult ui_result = imgui_system->end_frame(allowed_texture, application ? application->ui_texture_ids() : std::vector<ImGuiTextureId>{});
                 if (!ui_result.succeeded())
                 {
                     TOY_LOG_ERROR("Runtime UI frame was rejected: {}", ui_result.diagnostic);

@@ -40,13 +40,15 @@ namespace toy3d
         ImGuiSystemStatus initialize(IWindow& window);
         void shutdown() noexcept;
         bool begin_frame(const IWindow& window, double delta_time);
-        ImGuiSnapshotResult end_frame(ImGuiTextureId viewport_texture_id = {});
+        ImGuiSnapshotResult end_frame(ImGuiTextureId viewport_texture_id = {},
+                                      const std::vector<ImGuiTextureId>& textures = {});
         const ImGuiFontAtlasData& font_atlas() const noexcept;
         bool initialized() const noexcept { return context_ != nullptr; }
 
       private:
         void process_input_event(const InputEvent& event);
-        ImGuiSnapshotResult snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id) const;
+        ImGuiSnapshotResult snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id,
+                                     const std::vector<ImGuiTextureId>& textures) const;
 
         ImGuiContext* context_ = nullptr;
         ImGuiFontAtlasData font_atlas_;

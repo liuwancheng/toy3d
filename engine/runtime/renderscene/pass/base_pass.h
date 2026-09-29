@@ -20,6 +20,8 @@ namespace toy3d
         RHITextureViewRef scene_color;
         RHITextureViewRef scene_depth;
         RHIBindingSetRef lighting_binding;
+        vec4 clear_color{0.0f, 0.0f, 0.0f, 1.0f};
+        bool require_complete_meshes = false;
     };
 
     RHIStatus render_base_pass(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
