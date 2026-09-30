@@ -38,14 +38,17 @@ namespace toy3d
     }
 
     void RenderScene::update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
-                                                 AxisAlignedBounds world_bounds, bool visible)
+                                                 AxisAlignedBounds world_bounds, bool visible, bool cast_shadows,
+                                                 bool receives_shadows)
     {
         enqueue_render_command("UpdatePrimitiveTransform",
                                [this, proxy, world_transform = std::move(world_transform),
-                                world_bounds = std::move(world_bounds), visible]() mutable noexcept
+                                world_bounds = std::move(world_bounds), visible, cast_shadows,
+                                receives_shadows]() mutable noexcept
                                {
                                    update_primitive_transform_render_thread(proxy, std::move(world_transform),
-                                                                            std::move(world_bounds), visible);
+                                                                            std::move(world_bounds), visible,
+                                                                            cast_shadows, receives_shadows);
                                });
     }
 
@@ -126,7 +129,8 @@ namespace toy3d
     }
 
     void RenderScene::update_primitive_transform_render_thread(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
-                                                               AxisAlignedBounds world_bounds, bool visible) noexcept
+                                                               AxisAlignedBounds world_bounds, bool visible,
+                                                               bool cast_shadows, bool receives_shadows) noexcept
     {
         assert(is_on_logical_rendering_thread());
         const auto found =
@@ -138,7 +142,8 @@ namespace toy3d
             return;
         }
 
-        (*found)->proxy()->update_transform(std::move(world_transform), std::move(world_bounds), visible);
+        (*found)->proxy()->update_transform(std::move(world_transform), std::move(world_bounds), visible,
+                                            cast_shadows, receives_shadows);
     }
 
     void RenderScene::remove_primitive_render_thread(PrimitiveSceneProxy* proxy) noexcept

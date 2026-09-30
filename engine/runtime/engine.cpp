@@ -196,19 +196,20 @@ namespace toy3d
         }
         rhi_surface = std::move(created_surface).value();
 
-        if (!initialize_builtin_shader_programs())
+        BuiltinMeshPassPrograms mesh_pass_programs;
+        if (!initialize_builtin_shader_programs(mesh_pass_programs))
         {
             exit();
             return;
         }
 
-        if (!initialize_render_framework())
+        if (!initialize_render_framework(std::move(mesh_pass_programs)))
         {
             exit();
         }
     }
 
-    bool Engine::initialize_render_framework()
+    bool Engine::initialize_render_framework(BuiltinMeshPassPrograms mesh_pass_programs)
     {
         thread_manager = std::make_unique<ThreadManager>();
 
@@ -240,7 +241,7 @@ namespace toy3d
             *task_graph, rhi_surface, std::move(viewport_desc), []() { return create_default_rhi_device(); },
             global_shader_map,
             imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr,
-            application && application->uses_preview_scene());
+            application && application->uses_preview_scene(), std::move(mesh_pass_programs));
         rendering_thread = std::make_unique<RenderingThread>(*thread_manager, *task_graph,
                                                              use_rendering_thread ? RenderingThreadMode::MultiThread
                                                                                   : RenderingThreadMode::SingleThread);
@@ -423,7 +424,7 @@ namespace toy3d
         imgui_system.reset();
     }
 
-    bool Engine::initialize_builtin_shader_programs()
+    bool Engine::initialize_builtin_shader_programs(BuiltinMeshPassPrograms& mesh_pass_programs)
     {
 #if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
         const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
@@ -487,6 +488,17 @@ namespace toy3d
             return false;
         }
         global_shader_map = std::move(loaded.shader_map);
+        ShaderMapProgramKey shadow_key;
+        shadow_key.shader_name = "Toy3d/ShadowDepth/Default";
+        shadow_key.pass_name = "ShadowDepth";
+        shadow_key.platform = shader_platform;
+        ShaderMapProgramResult shadow_loaded = builtin_shader_map->find_or_load(shadow_key);
+        if (!shadow_loaded.succeeded())
+        {
+            TOY_LOG_ERROR("Built-in ShadowDepth ShaderMap failed to load: {}", shadow_loaded.error);
+            return false;
+        }
+        mesh_pass_programs.shadow_depth_default = std::move(shadow_loaded.program);
         return true;
 #else
         TOY_LOG_ERROR("Built-in output ShaderMap loading requires a supported runtime loader.");

@@ -35,7 +35,7 @@ namespace
       public:
         void add_primitive(std::unique_ptr<toy3d::PrimitiveSceneProxy>) override {}
         void update_primitive_transform(toy3d::PrimitiveSceneProxy*, toy3d::Matrix4,
-                                        toy3d::AxisAlignedBounds, bool) override {}
+                                        toy3d::AxisAlignedBounds, bool, bool, bool) override {}
         void remove_primitive(toy3d::PrimitiveSceneProxy*) override {}
         void update_primitive_materials(toy3d::PrimitiveSceneProxy*, std::vector<toy3d::MaterialRenderProxy*>) override {}
         void add_light(std::unique_ptr<toy3d::LightSceneProxy> proxy) override { lights.push_back(std::move(proxy)); }
@@ -217,6 +217,14 @@ int main()
             views.clear();
             viewport.build_scene_views(world, views, Extent{});
             check(views.empty(), "Collapsed viewport must not create a zero-sized View");
+            const std::uint32_t focus_id = world.actor_ids().front();
+            check(viewport.focus_actor(world, focus_id) && viewport.viewed_camera_id(world) == 0,
+                  "Focusing an Actor must leave camera view");
+            views.clear();
+            viewport.build_scene_views(world, views, extent);
+            check(views.size() == 1 && is_finite(views.front().camera_position()) &&
+                  views.front().camera_position() != editor_views.front().camera_position(),
+                  "Focus must move the editor observation camera");
         }
     }
     {
@@ -267,6 +275,13 @@ int main()
             const auto mesh = mesh_actor->static_mesh_component().static_mesh();
             check(mesh && mesh != request.static_mesh && mesh->vertex_colors()[0] == imported.vertices[0].color,
                   "Placement must retain colors and use fresh render-resource ownership");
+            history.begin(world, mesh_id, mesh_actor->root_component()->local_transform(),
+                          EditorTransformSource::Details);
+            mesh_actor->static_mesh_component().set_receives_shadows(false);
+            history.finish(world, EditorTransformSource::Details);
+            check(history.undo(world) && mesh_actor->static_mesh_component().receives_shadows() &&
+                  history.redo(world) && !mesh_actor->static_mesh_component().receives_shadows(),
+                  "Receive Shadows must survive a Details undo and redo");
             check(history.delete_actor(world, mesh_id) && history.undo(world), "Imported mesh delete undo");
             auto restored_id = world.actor_ids().back();
             mesh_actor = dynamic_cast<StaticMeshActor*>(world.find_actor_by_id(restored_id));
@@ -482,6 +497,74 @@ int main()
             check(!viewport.take_hit_request(hit) && world.actor_count() == 0, "Dragging blocks picking and performs no direct scene mutation");
             ImGui::Render();
         }
+        ImGui::DestroyContext(context);
+    }
+    {
+        ImGuiContext* context = ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = ImVec2(1000, 600);
+        unsigned char* pixels = nullptr;
+        int width = 0, height = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        World world;
+        ActorFactory factory;
+        EditorCommandHistory history(factory);
+        EditorSelection selection;
+        SceneViewport viewport;
+        const Extent extent{800, 600};
+        auto draw = [&]()
+        {
+            viewport.begin_frame();
+            ImGui::SetNextWindowPos(ImVec2(200, 0));
+            ImGui::SetNextWindowSize(ImVec2(800, 600));
+            viewport.draw(world, selection, history);
+            ImGui::Render();
+        };
+        std::vector<SceneView> views;
+        viewport.build_scene_views(world, views, extent);
+        const Vector3 initial_position = views.front().camera_position();
+        io.AddMousePosEvent(500, 300);
+        ImGui::NewFrame();
+        draw();
+        io.AddMouseWheelEvent(0.0f, 1.0f);
+        ImGui::NewFrame();
+        draw();
+        views.clear();
+        viewport.build_scene_views(world, views, extent);
+        check(length(Vector3(0, 0, 3) - views.front().camera_position()) <
+                  length(Vector3(0, 0, 3) - initial_position),
+              "Mouse wheel over the Scene image must zoom toward the observer target");
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        ImGui::NewFrame();
+        draw();
+        const Vector3 direction_before_orbit = views.front().camera_direction();
+        io.AddMousePosEvent(550, 320);
+        ImGui::NewFrame();
+        draw();
+        views.clear();
+        viewport.build_scene_views(world, views, extent);
+        check(views.front().camera_direction() != direction_before_orbit,
+              "Right dragging the Scene image must orbit the observer");
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        ImGui::NewFrame();
+        draw();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Middle, true);
+        ImGui::NewFrame();
+        draw();
+        const Vector3 position_before_pan = views.front().camera_position();
+        const Vector3 direction_before_pan = views.front().camera_direction();
+        io.AddMousePosEvent(580, 340);
+        ImGui::NewFrame();
+        draw();
+        views.clear();
+        viewport.build_scene_views(world, views, extent);
+        check(views.front().camera_position() != position_before_pan &&
+                  views.front().camera_direction() == direction_before_pan,
+              "Middle dragging the Scene image must pan without rotating");
+        io.AddMouseButtonEvent(ImGuiMouseButton_Middle, false);
+        ImGui::NewFrame();
+        draw();
         ImGui::DestroyContext(context);
     }
     return failures == 0 ? 0 : 1;

@@ -14,8 +14,15 @@ namespace toy3d
         bool same_state(const EditorActorState& a, const EditorActorState& b)
         {
             return a.transform.translation == b.transform.translation && a.transform.rotation == b.transform.rotation &&
-                   a.transform.scale == b.transform.scale && a.light_enabled == b.light_enabled &&
+                   a.transform.scale == b.transform.scale &&
+                   a.primitive_cast_shadows == b.primitive_cast_shadows &&
+                   a.primitive_receives_shadows == b.primitive_receives_shadows &&
+                   a.light_enabled == b.light_enabled &&
                    a.light_color == b.light_color && a.light_intensity == b.light_intensity && a.light_range == b.light_range &&
+                   a.light_priority == b.light_priority && a.shadow_cast_shadows == b.shadow_cast_shadows &&
+                   a.shadow_distance == b.shadow_distance &&
+                   a.shadow_distance_fade_fraction == b.shadow_distance_fade_fraction &&
+                   a.shadow_bias == b.shadow_bias && a.shadow_slope_bias == b.shadow_slope_bias &&
                    a.camera_vertical_fov == b.camera_vertical_fov && a.camera_near_clip == b.camera_near_clip &&
                    a.camera_far_clip == b.camera_far_clip;
         }

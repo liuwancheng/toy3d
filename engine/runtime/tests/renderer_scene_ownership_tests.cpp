@@ -1,5 +1,6 @@
 #include "rendercore/scene_interface.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "rendercore/scene/light_scene_proxy.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/view/scene_view.h"
@@ -863,6 +864,52 @@ namespace
                       view_infos(finite_renderer)[0].visible_primitives().empty() &&
                       view_infos(finite_renderer)[1].visible_primitives().empty(),
                   "init_views must build two independent ViewInfo values with empty current-frame visibility");
+            toy3d::LightSceneData shadow_light;
+            shadow_light.cast_shadows = true;
+            shadow_light.shadow_distance = 6.0f;
+            shadow_light.direction = toy3d::Vector3(0.0f, -1.0f, 0.0f);
+            const toy3d::RHIStatus shadow_status = toy3d::compute_shadow_visibility(
+                render_scene, &shadow_light, view_infos(finite_renderer));
+            check(shadow_status.succeeded() && view_infos(finite_renderer)[0].shadow_active() &&
+                      view_infos(finite_renderer)[1].shadow_active() &&
+                      toy3d::is_finite(view_infos(finite_renderer)[0].shadow_cascade(0u).world_to_clip) &&
+                      toy3d::is_finite(view_infos(finite_renderer)[0].shadow_cascade(1u).world_to_clip) &&
+                      view_infos(finite_renderer)[0].shadow_cascade(0u).far_distance >
+                          view_infos(finite_renderer)[0].shadow_cascade(1u).near_distance &&
+                      view_infos(finite_renderer)[0].shadow_split_start() <
+                          view_infos(finite_renderer)[0].shadow_split_end() &&
+                      view_infos(finite_renderer)[0].shadow_effective_end() == 6.0f &&
+                      view_infos(finite_renderer)[0].shadow_fade_start() > 5.0f &&
+                      view_infos(finite_renderer)[0].shadow_fade_start() < 6.0f,
+                  "near-vertical light direction must produce finite per-view shadow bases and finite distance");
+            for (const toy3d::ViewInfo& view : view_infos(finite_renderer))
+            {
+                for (std::size_t cascade_index = 0u;
+                     cascade_index < toy3d::ShadowRenderTargets::k_cascade_count; ++cascade_index)
+                {
+                    const toy3d::ShadowCascadeInfo& cascade = view.shadow_cascade(cascade_index);
+                    const float distance = (cascade.near_distance + cascade.far_distance) * 0.5f;
+                    const toy3d::Vector3 receiver = view.scene_view().camera_position() +
+                        toy3d::Vector3(0.0f, 0.0f, distance);
+                    const toy3d::Vector4 clip = cascade.world_to_clip * toy3d::Vector4(receiver, 1.0f);
+                    check(clip.w > 0.0f && std::abs(clip.x / clip.w) < 1.0f &&
+                              std::abs(clip.y / clip.w) < 1.0f && clip.z / clip.w >= 0.0f &&
+                              clip.z / clip.w <= 1.0f,
+                          "each cascade must project its receiver segment into the shadow depth map");
+                }
+            }
+            shadow_light.cast_shadows = false;
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                      view_infos(finite_renderer)).succeeded() &&
+                      !view_infos(finite_renderer)[0].shadow_active() &&
+                      !view_infos(finite_renderer)[1].shadow_active(),
+                  "disabling the selected light's shadow must clear per-view shadow state");
+            shadow_light.cast_shadows = true;
+            shadow_light.shadow_distance = 0.0f;
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                      view_infos(finite_renderer)).succeeded() &&
+                      !view_infos(finite_renderer)[0].shadow_active(),
+                  "zero dynamic shadow distance must disable cascade generation");
 
             std::vector<toy3d::SceneView> invalid_parameter_views;
             invalid_parameter_views.push_back(make_perspective_view(
@@ -908,13 +955,21 @@ namespace
             toy3d::Matrix4 updated_object_transform = toy3d::Matrix4::identity();
             updated_object_transform.at(3u, 0u) = 1.0f;
             render_scene.update_primitive_transform(inside, updated_object_transform,
-                                                    make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false);
+                                                    make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false,
+                                                    true, true);
             compute_visibility(finite_renderer, render_scene);
             check(!visible_contains(view_infos(finite_renderer)[0], inside) &&
                       visible_contains(view_infos(finite_renderer)[0], touching_near) &&
                       inside->object_shader_parameters().toy_object_to_world == updated_object_transform &&
                       inside->object_data_generation() == prior_object_generation + 1u,
                   "scene updates must advance Object data generation and clear stale visibility results");
+            const std::uint64_t shadow_generation = inside->object_data_generation();
+            render_scene.update_primitive_transform(inside, updated_object_transform,
+                make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false, true, false);
+            check(inside->cast_shadows() && !inside->receives_shadows() &&
+                  inside->object_shader_parameters().toy_receives_shadows == 0.0f &&
+                  inside->object_data_generation() == shadow_generation + 1u,
+                  "Receiver toggle must update Object parameters and generation independently of casting");
 
             std::vector<toy3d::SceneView> infinite_views;
             infinite_views.push_back(make_perspective_view(

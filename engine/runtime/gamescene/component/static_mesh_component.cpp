@@ -145,6 +145,7 @@ namespace toy3d
         }
         return std::make_unique<StaticMeshSceneProxy>(world_transform(), world_bounds_, visible(),
                                                       static_mesh_->render_data(), std::move(material_render_proxies),
-                                                      owner().actor_id(), component_id());
+                                                      owner().actor_id(), component_id(), cast_shadows(),
+                                                      receives_shadows());
     }
 } // namespace toy3d

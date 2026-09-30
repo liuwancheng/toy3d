@@ -146,6 +146,9 @@ namespace toy3d
 
         std::vector<MeshPassDrawList> draw_lists;
         draw_lists.reserve(inputs.views.size());
+        if (inputs.lighting_bindings.size() != inputs.views.size())
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Forward Base Pass requires one Pass binding slot per View.");
         for (std::size_t view_index = 0; view_index < inputs.views.size(); ++view_index)
         {
             const ViewInfo& view_info = inputs.views[view_index];
@@ -185,7 +188,8 @@ namespace toy3d
                 }
                 if (batch_status)
                 {
-                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Pass, inputs.lighting_binding,
+                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Pass,
+                                                         inputs.lighting_bindings[view_index],
                                                          owner_bindings.pass);
                 }
                 if (batch_status)

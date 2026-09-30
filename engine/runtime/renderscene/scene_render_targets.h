@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
 #include "math/integer_vector.h"
+#include "renderscene/shadow_render_targets.h"
 
 #include <cstdint>
 
@@ -33,6 +34,7 @@ namespace toy3d
         RHIAccess scene_color_access() const noexcept;
         RHIAccess scene_depth_access() const noexcept;
         void publish_submitted_access(RHIAccess scene_color_access, RHIAccess scene_depth_access) noexcept;
+        ShadowRenderTargets& shadow_targets() noexcept { return shadow_targets_; }
 
       private:
         bool matches(const Extent& extent) const noexcept;
@@ -48,5 +50,6 @@ namespace toy3d
         const RHIDevice* owning_device_ = nullptr;
         RHIAccess scene_color_access_ = RHIAccess::Common;
         RHIAccess scene_depth_access_ = RHIAccess::Common;
+        ShadowRenderTargets shadow_targets_;
     };
 } // namespace toy3d

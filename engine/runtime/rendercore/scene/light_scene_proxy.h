@@ -16,6 +16,11 @@ namespace toy3d
         float range = 10.0f;
         int priority = 0;
         bool enabled = true;
+        bool cast_shadows = false;
+        float shadow_distance = 100.0f;
+        float shadow_distance_fade_fraction = 0.1f;
+        float shadow_bias = 0.5f;
+        float shadow_slope_bias = 0.5f;
     };
 
     // Scene owns the RT mirror; Components retain only an opaque identity.

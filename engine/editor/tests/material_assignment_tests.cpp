@@ -51,7 +51,8 @@ namespace
             toy3d::enqueue_render_command("TestRemovePrimitive", [this, proxy]() noexcept
             { if (proxies_.erase(proxy) == 1u) --count; else ++invalid_removes; });
         }
-        void update_primitive_transform(toy3d::PrimitiveSceneProxy*, toy3d::Matrix4, toy3d::AxisAlignedBounds, bool) override {}
+        void update_primitive_transform(toy3d::PrimitiveSceneProxy*, toy3d::Matrix4,
+                                        toy3d::AxisAlignedBounds, bool, bool, bool) override {}
         void update_primitive_materials(toy3d::PrimitiveSceneProxy* proxy, std::vector<toy3d::MaterialRenderProxy*> materials) override
         {
             toy3d::enqueue_render_command("TestUpdateMaterials", [this, proxy, materials = std::move(materials)]() mutable noexcept

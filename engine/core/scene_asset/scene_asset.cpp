@@ -1,12 +1,12 @@
 #include "scene_asset/scene_asset.h"
 
-#include "serialization/value_codec.h"
-
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include <set>
 #include <utility>
+
+#include "serialization/value_codec.h"
 
 namespace toy3d
 {
@@ -78,6 +78,12 @@ namespace toy3d
                 actor.light_color.y < 0 || actor.light_color.z < 0 ||
                 !std::isfinite(actor.light_intensity) || actor.light_intensity < 0 ||
                 !std::isfinite(actor.light_range) || actor.light_range <= 0 ||
+                !std::isfinite(actor.shadow_distance) || actor.shadow_distance < 0 ||
+                !std::isfinite(actor.shadow_distance_fade_fraction) ||
+                actor.shadow_distance_fade_fraction < 0 || actor.shadow_distance_fade_fraction >= 1 ||
+                !std::isfinite(actor.shadow_bias) || actor.shadow_bias < 0 || actor.shadow_bias > 1 ||
+                !std::isfinite(actor.shadow_slope_bias) || actor.shadow_slope_bias < 0 ||
+                actor.shadow_slope_bias > 1 ||
                 !std::isfinite(actor.camera_vertical_fov) || actor.camera_vertical_fov <= 0 ||
                 actor.camera_vertical_fov >= 180 || !std::isfinite(actor.camera_near_clip) ||
                 actor.camera_near_clip <= 0 || !std::isfinite(actor.camera_far_clip) ||

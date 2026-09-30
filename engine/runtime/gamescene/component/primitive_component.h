@@ -19,6 +19,10 @@ namespace toy3d
         const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
         bool visible() const { return visible_; }
         void set_visible(bool visible);
+        bool cast_shadows() const { return cast_shadows_; }
+        void set_cast_shadows(bool cast_shadows);
+        bool receives_shadows() const { return receives_shadows_; }
+        void set_receives_shadows(bool receives_shadows);
         bool has_render_state() const { return scene_proxy_ != nullptr; }
 
         void create_render_state();
@@ -41,5 +45,7 @@ namespace toy3d
       private:
         PrimitiveSceneProxy* scene_proxy_ = nullptr;
         bool visible_ = true;
+        bool cast_shadows_ = true;
+        bool receives_shadows_ = true;
     };
 } // namespace toy3d

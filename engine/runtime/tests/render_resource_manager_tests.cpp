@@ -808,18 +808,26 @@ int main()
 
     toy3d::Matrix4 object_to_world = toy3d::Matrix4::identity();
     object_to_world.at(3u, 0u) = 13.0f;
-    const toy3d::ObjectShaderParameters object_parameters{object_to_world};
+    toy3d::ObjectShaderParameters object_parameters;
+    object_parameters.toy_object_to_world = object_to_world;
+    object_parameters.toy_object_normal_to_world = toy3d::Matrix4::identity();
+    object_parameters.toy_receives_shadows = 1.0f;
     const auto object_binding = toy3d::create_transient_shader_binding(device, uniform_context, object_parameters);
     float object_translation_x = 0.0f;
-    const bool object_bytes_complete = uniform_context.last_buffer_upload_data.size() == 64u;
+    float normal_diagonal = 0.0f;
+    float receiver_flag = 0.0f;
+    const bool object_bytes_complete = uniform_context.last_buffer_upload_data.size() ==
+        sizeof(toy3d::Matrix4) * 2u + 16u;
     if (object_bytes_complete)
     {
         std::memcpy(&object_translation_x, uniform_context.last_buffer_upload_data.data() + 48u, sizeof(float));
+        std::memcpy(&normal_diagonal, uniform_context.last_buffer_upload_data.data() + 64u, sizeof(float));
+        std::memcpy(&receiver_flag, uniform_context.last_buffer_upload_data.data() + 128u, sizeof(float));
     }
     check(object_binding.succeeded() && object_binding.value() != nullptr &&
               object_binding.value()->group() == toy3d::RHIBindingGroup::Object && object_bytes_complete &&
-              object_translation_x == 13.0f,
-          "Object ABI materialization must write the canonical object matrix");
+              object_translation_x == 13.0f && normal_diagonal == 1.0f && receiver_flag == 1.0f,
+          "Object ABI materialization must write matrices and the receiver flag");
 
     struct GraphicsContext final : toy3d::RHIGraphicsCommandContext
     {
@@ -866,7 +874,7 @@ int main()
             {
                 ++(*view_uniform_upload_count);
             }
-            if (object_uniform_upload_count != nullptr && desc.source.size == 64u)
+            if (object_uniform_upload_count != nullptr && desc.source.size == sizeof(toy3d::Matrix4) * 2u + 16u)
             {
                 ++(*object_uniform_upload_count);
             }
@@ -898,7 +906,7 @@ int main()
             {
                 ++(*view_uniform_upload_count);
             }
-            if (object_uniform_upload_count != nullptr && desc.source.size == 64u)
+            if (object_uniform_upload_count != nullptr && desc.source.size == sizeof(toy3d::Matrix4) * 2u + 16u)
             {
                 ++(*object_uniform_upload_count);
             }
@@ -1435,6 +1443,14 @@ int main()
                                                                     "begin_render_pass",
                                                                     "end_render_pass",
                                                                     "transition",
+                                                                    "transition",
+                                                                    "begin_render_pass",
+                                                                    "end_render_pass",
+                                                                    "transition",
+                                                                    "transition",
+                                                                    "begin_render_pass",
+                                                                    "end_render_pass",
+                                                                    "transition",
                                                                     "upload_transient_uniform",
                                                                     "begin_render_pass",
                                                                     "set_graphics_pipeline",
@@ -1795,6 +1811,14 @@ int main()
     const std::vector<std::string> expected_submit_failed_operations = {"begin_frame",
                                                                         "begin_recording",
                                                                         "record_pending_uploads",
+                                                                        "transition",
+                                                                        "begin_render_pass",
+                                                                        "end_render_pass",
+                                                                        "transition",
+                                                                        "transition",
+                                                                        "begin_render_pass",
+                                                                        "end_render_pass",
+                                                                        "transition",
                                                                         "transition",
                                                                         "begin_render_pass",
                                                                         "end_render_pass",

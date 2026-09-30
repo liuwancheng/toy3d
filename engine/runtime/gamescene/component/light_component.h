@@ -47,6 +47,24 @@ namespace toy3d
       public:
         explicit DirectionalLightComponent(Actor& owner) : LightComponent(owner) {}
         ~DirectionalLightComponent() override = default;
+
+        bool cast_shadows() const { return cast_shadows_; }
+        void set_cast_shadows(bool enabled);
+        float shadow_distance() const { return shadow_distance_; }
+        bool set_shadow_distance(float distance);
+        float shadow_distance_fade_fraction() const { return shadow_distance_fade_fraction_; }
+        bool set_shadow_distance_fade_fraction(float fraction);
+        float shadow_bias() const { return shadow_bias_; }
+        bool set_shadow_bias(float bias);
+        float shadow_slope_bias() const { return shadow_slope_bias_; }
+        bool set_shadow_slope_bias(float bias);
+
+      private:
+        bool cast_shadows_ = false;
+        float shadow_distance_ = 100.0f;
+        float shadow_distance_fade_fraction_ = 0.1f;
+        float shadow_bias_ = 0.5f;
+        float shadow_slope_bias_ = 0.5f;
     };
 
     class LocalLightComponent : public LightComponent

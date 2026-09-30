@@ -1,0 +1,127 @@
+format_version: 2
+asset_id: d1adaf1f86e9442bbc9047a761f10c4e
+root_type: toy3d.SceneAssetData
+schema_version: 3
+dependencies:
+  []
+subresources:
+  []
+data:
+  actors:
+    - primitive_cast_shadows: true
+      primitive_receives_shadows: true
+      camera_far_clip: 1000
+      camera_near_clip: 0.1
+      camera_vertical_fov: 60
+      id: 69273acf197942738df008fe5a638ec9
+      kind: Cube
+      light_color:
+        - 1
+        - 1
+        - 1
+      light_enabled: true
+      light_intensity: 1
+      light_priority: 0
+      light_range: 10
+      parent_component_id: ""
+      resources:
+        []
+      root_component_id: 1edf41ba57ad4e6297492bc18af3c036
+      root_component_type: toy3d.StaticMeshComponent
+      shadow_bias: 0.5
+      shadow_cast_shadows: false
+      shadow_distance: 100
+      shadow_distance_fade_fraction: 0.1
+      shadow_slope_bias: 0.5
+      transform:
+        translation:
+          - 0
+          - 0.75
+          - 3
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - primitive_cast_shadows: true
+      primitive_receives_shadows: true
+      camera_far_clip: 1000
+      camera_near_clip: 0.1
+      camera_vertical_fov: 60
+      id: c43f6e957e574a33bfb2d57f1fbf75e6
+      kind: Plane
+      light_color:
+        - 1
+        - 1
+        - 1
+      light_enabled: true
+      light_intensity: 1
+      light_priority: 0
+      light_range: 10
+      parent_component_id: ""
+      resources:
+        []
+      root_component_id: b3a43838f3d94b2fad5a105e6e53e38e
+      root_component_type: toy3d.StaticMeshComponent
+      shadow_bias: 0.5
+      shadow_cast_shadows: false
+      shadow_distance: 100
+      shadow_distance_fade_fraction: 0.1
+      shadow_slope_bias: 0.5
+      transform:
+        translation:
+          - 0
+          - 0
+          - 3
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1.5
+          - 1
+          - 1.5
+    - primitive_cast_shadows: true
+      primitive_receives_shadows: true
+      camera_far_clip: 1000
+      camera_near_clip: 0.1
+      camera_vertical_fov: 60
+      id: e710ff7e29ea4f82b00d3f52c36bdb72
+      kind: DirectionalLight
+      light_color:
+        - 1
+        - 1
+        - 1
+      light_enabled: true
+      light_intensity: 1
+      light_priority: 10
+      light_range: 10
+      parent_component_id: ""
+      resources:
+        []
+      root_component_id: 7d96c182c32c41f1b27dac242531c757
+      root_component_type: toy3d.DirectionalLightComponent
+      shadow_bias: 0.5
+      shadow_cast_shadows: true
+      shadow_distance: 50
+      shadow_distance_fade_fraction: 0.1
+      shadow_slope_bias: 0.5
+      transform:
+        translation:
+          - -3
+          - 5
+          - 1
+        rotation:
+          - 0.50058997
+          - 0.3128687
+          - 0
+          - 0.8071697
+        scale:
+          - 1
+          - 1
+          - 1

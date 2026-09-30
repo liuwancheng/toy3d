@@ -2,10 +2,11 @@
 
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/hit_proxy.h"
+#include "rendercore/material/material_program_validation.h"
+#include "renderscene/builtin_mesh_pass_programs.h"
 #include "threading/threading_types.h"
 #include "ui/imgui_draw_data.h"
 #include "ui/ui_texture_work.h"
-#include "rendercore/material/material_program_validation.h"
 
 #include <atomic>
 #include <deque>
@@ -76,7 +77,8 @@ namespace toy3d
                  std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                  std::shared_ptr<const GlobalShaderMap> global_shader_map,
                  std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr,
-                 bool enable_preview_scene = false);
+                 bool enable_preview_scene = false,
+                 BuiltinMeshPassPrograms mesh_pass_programs = {});
         ~Renderer();
 
         Renderer(const Renderer&) = delete;
@@ -124,6 +126,7 @@ namespace toy3d
         RHIViewportContextDesc viewport_desc_;
         std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory_;
         std::shared_ptr<const GlobalShaderMap> global_shader_map_input_;
+        BuiltinMeshPassPrograms mesh_pass_programs_input_;
         std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas_input_;
 
         std::unique_ptr<RHIDevice> device_;

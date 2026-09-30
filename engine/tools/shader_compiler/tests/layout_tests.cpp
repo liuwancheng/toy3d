@@ -227,7 +227,7 @@ Shader "Tests/Layout"
         const ShaderParameterGroupInput object_input = builtin_shader_parameter_input(BindingGroup::Object);
         check(global_input.group == BindingGroup::Global && global_input.constant_members.empty() &&
                   view_input.group == BindingGroup::View && view_input.constant_members.size() == 8u &&
-                  object_input.group == BindingGroup::Object && object_input.constant_members.size() == 1u,
+                  object_input.group == BindingGroup::Object && object_input.constant_members.size() == 3u,
               "Global/View/Object schemas must enter the same normalized group input used by declared groups");
         check(
             first.layout->constant_buffers.size() == 4,
@@ -250,10 +250,14 @@ Shader "Tests/Layout"
               "canonical View schema must preserve the real view-projection ToyShaderABI path");
         check(material_buffer != first.layout->constant_buffers.end() && material_buffer->members[0].offset == 0,
               "constant member order must follow Material property source order");
-        check(object_buffer != first.layout->constant_buffers.end() && object_buffer->members.size() == 1 &&
+        check(object_buffer != first.layout->constant_buffers.end() && object_buffer->members.size() == 3 &&
                   object_buffer->members[0].name == "toy_object_to_world" &&
-                  object_buffer->members[0].matrix_stride == 16,
-              "canonical Object schema must preserve the object-to-world ToyShaderABI path");
+                  object_buffer->members[0].matrix_stride == 16 &&
+                  object_buffer->members[1].name == "toy_object_normal_to_world" &&
+                  object_buffer->members[1].offset == 64 && object_buffer->members[1].matrix_stride == 16 &&
+                  object_buffer->members[2].name == "toy_receives_shadows" &&
+                  object_buffer->members[2].offset == 128,
+              "canonical Object schema must include the receiver flag after the two matrices");
         check(pass_buffer != first.layout->constant_buffers.end() && pass_buffer->members.size() == 2 &&
                   pass_buffer->members[0].name == "exposure_ev" && pass_buffer->members[0].offset == 0 &&
                   pass_buffer->members[1].name == "projection" && pass_buffer->members[1].offset == 16 &&
@@ -704,7 +708,9 @@ Shader "Toy3d/UI/ImGui"
                       builtin.source->find("Matrix4 toy_view = Matrix4::zero();") != std::string::npos &&
                       builtin.source->find("Vector3 toy_camera_position{};") != std::string::npos &&
                       builtin.source->find("struct ObjectShaderParameters") != std::string::npos &&
-                      builtin.source->find("Matrix4 toy_object_to_world = Matrix4::zero();") != std::string::npos,
+                      builtin.source->find("Matrix4 toy_object_to_world = Matrix4::zero();") != std::string::npos &&
+                      builtin.source->find("Matrix4 toy_object_normal_to_world = Matrix4::zero();") != std::string::npos &&
+                      builtin.source->find("float toy_receives_shadows{};") != std::string::npos,
                   "builtin header must contain canonical View and Object typed fields");
             check(builtin.source->find(toy3d::sha256_to_hex(builtin_schema.schema_identity)) != std::string::npos &&
                       builtin.source->find(toy3d::sha256_to_hex(calculate_shader_parameter_group_identity(

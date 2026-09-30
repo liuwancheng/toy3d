@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace toy3d
 {
@@ -18,76 +19,78 @@ namespace toy3d
     {
         std::unordered_map<const PrimitiveSceneProxy*, std::unordered_map<std::uint64_t, RHIBindingSetRef>>
             bindings_by_proxy_and_generation;
-        for (const ViewInfo& view_info : view_infos)
+        std::vector<MeshBatch*> batches;
+        for (ViewInfo& view_info : view_infos)
         {
-            for (const MeshBatch& mesh_batch : view_info.mesh_batches())
+            for (MeshBatch& batch : view_info.mesh_batches_) batches.push_back(&batch);
+            for (ShadowCascadeInfo& cascade : view_info.shadow_cascades_)
+                for (MeshBatch& batch : cascade.batches) batches.push_back(&batch);
+        }
+        for (const MeshBatch* mesh_batch_ptr : batches)
+        {
+            const MeshBatch& mesh_batch = *mesh_batch_ptr;
+            const PrimitiveSceneProxy* const proxy = &mesh_batch.scene_proxy();
+            if (!is_finite(mesh_batch.object_shader_parameters().toy_object_to_world) ||
+                !is_finite(mesh_batch.object_shader_parameters().toy_object_normal_to_world) ||
+                mesh_batch.object_data_generation() == 0u)
             {
-                const PrimitiveSceneProxy* const proxy = &mesh_batch.scene_proxy();
-                if (!is_finite(mesh_batch.object_shader_parameters().toy_object_to_world) ||
-                    mesh_batch.object_data_generation() == 0u)
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Object shader binding requires finite current-frame Primitive canonical values.");
+            }
+
+            auto& bindings_by_generation = bindings_by_proxy_and_generation[proxy];
+            const auto found = bindings_by_generation.find(mesh_batch.object_data_generation());
+            if (found != bindings_by_generation.end())
+            {
+                if (found->second && mesh_batch.object_binding() && found->second != mesh_batch.object_binding())
                 {
                     return RHIStatus::failure(
                         RHIErrorCode::InvalidArgument,
-                        "Object shader binding requires finite current-frame Primitive canonical values.");
+                        "Object shader binding found inconsistent frame-local data for one Primitive.");
                 }
+                if (!found->second && mesh_batch.object_binding())
+                {
+                    found->second = mesh_batch.object_binding();
+                }
+            }
+            else
+            {
+                bindings_by_generation.emplace(mesh_batch.object_data_generation(), mesh_batch.object_binding());
+            }
 
-                auto& bindings_by_generation = bindings_by_proxy_and_generation[proxy];
-                const auto found = bindings_by_generation.find(mesh_batch.object_data_generation());
-                if (found != bindings_by_generation.end())
-                {
-                    if (found->second && mesh_batch.object_binding() && found->second != mesh_batch.object_binding())
-                    {
-                        return RHIStatus::failure(
-                            RHIErrorCode::InvalidArgument,
-                            "Object shader binding found inconsistent frame-local data for one Primitive.");
-                    }
-                    if (!found->second && mesh_batch.object_binding())
-                    {
-                        found->second = mesh_batch.object_binding();
-                    }
-                }
-                else
-                {
-                    bindings_by_generation.emplace(mesh_batch.object_data_generation(), mesh_batch.object_binding());
-                }
-
-                if (mesh_batch.object_binding() &&
-                    (!mesh_batch.object_binding()->is_owned_by(device) ||
-                     mesh_batch.object_binding()->group() != RHIBindingGroup::Object))
-                {
-                    return RHIStatus::failure(
-                        RHIErrorCode::InvalidArgument,
-                        "Frame-local Object binding is incompatible with the injected device or logical group.");
-                }
+            if (mesh_batch.object_binding() &&
+                (!mesh_batch.object_binding()->is_owned_by(device) ||
+                 mesh_batch.object_binding()->group() != RHIBindingGroup::Object))
+            {
+                return RHIStatus::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Frame-local Object binding is incompatible with the injected device or logical group.");
             }
         }
 
-        for (ViewInfo& view_info : view_infos)
+        for (MeshBatch* mesh_batch_ptr : batches)
         {
-            for (MeshBatch& mesh_batch : view_info.mesh_batches_)
+            MeshBatch& mesh_batch = *mesh_batch_ptr;
+            RHIBindingSetRef& cached = bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
+                .at(mesh_batch.object_data_generation());
+            if (!cached)
             {
-                RHIBindingSetRef& cached = bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
-                                               .at(mesh_batch.object_data_generation());
-                if (!cached)
+                RHIResult<RHIBindingSetRef> created = create_transient_shader_binding(
+                    device, context, mesh_batch.object_shader_parameters());
+                if (!created)
                 {
-                    RHIResult<RHIBindingSetRef> created = create_transient_shader_binding(
-                        device, context, mesh_batch.object_shader_parameters());
-                    if (!created)
-                    {
-                        return created.status();
-                    }
-                    cached = std::move(created).value();
+                    return created.status();
                 }
+                cached = std::move(created).value();
             }
         }
 
-        for (ViewInfo& view_info : view_infos)
+        for (MeshBatch* mesh_batch_ptr : batches)
         {
-            for (MeshBatch& mesh_batch : view_info.mesh_batches_)
-            {
-                mesh_batch.publish_object_binding(bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
-                                                      .at(mesh_batch.object_data_generation()));
-            }
+            MeshBatch& mesh_batch = *mesh_batch_ptr;
+            mesh_batch.publish_object_binding(bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
+                .at(mesh_batch.object_data_generation()));
         }
         return RHIStatus::success();
     }

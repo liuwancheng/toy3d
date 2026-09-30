@@ -15,6 +15,7 @@ namespace toy3d
     class RHIShaderProgramCache;
     class SceneRenderTargets;
     class GlobalShaderMap;
+    struct BuiltinMeshPassPrograms;
 
     // GT-created one-shot owner transferred into a Draw command. All render-side
     // mutation and destruction happens on the logical Rendering Thread.
@@ -36,7 +37,8 @@ namespace toy3d
         virtual RHIStatus render_scene_passes(RenderScene& render_scene, RHIDevice& device,
                                               RHIShaderProgramCache& shader_program_cache,
                                               RHIGraphicsCommandContext& context,
-                                              SceneRenderTargets& scene_render_targets) = 0;
+                                              SceneRenderTargets& scene_render_targets,
+                                              const BuiltinMeshPassPrograms& mesh_pass_programs) = 0;
         virtual RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
                                            const GlobalShaderMap& global_shader_map,
                                            RHIGraphicsCommandContext& context, const RHITextureViewRef& id_view,

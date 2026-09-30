@@ -149,6 +149,28 @@ namespace
               "Reversed-Z must map near to 1 and finite far to 0");
         check(projection.at(1, 1) > 0.0f, "Projection must not contain a Vulkan-specific Y flip");
 
+        toy3d::OrthographicProjectionDesc shadow_desc;
+        shadow_desc.left = -8.0f;
+        shadow_desc.right = 8.0f;
+        shadow_desc.bottom = -4.0f;
+        shadow_desc.top = 4.0f;
+        shadow_desc.near_clip = 2.0f;
+        shadow_desc.far_clip = 42.0f;
+        toy3d::Matrix4 shadow_projection;
+        check(toy3d::try_make_orthographic_projection(shadow_desc, shadow_projection),
+              "Directional shadow orthographic projection must build");
+        const toy3d::Vector4 shadow_near = shadow_projection * toy3d::Vector4(0.0f, 0.0f, 2.0f, 1.0f);
+        const toy3d::Vector4 shadow_far = shadow_projection * toy3d::Vector4(0.0f, 0.0f, 42.0f, 1.0f);
+        const toy3d::Vector4 shadow_corner = shadow_projection * toy3d::Vector4(8.0f, 4.0f, 2.0f, 1.0f);
+        check(nearly_equal(shadow_near.z, 1.0f) && nearly_equal(shadow_far.z, 0.0f) &&
+                  nearly_equal(shadow_corner.x, 1.0f) && nearly_equal(shadow_corner.y, 1.0f),
+              "Shadow orthographic projection must preserve XY and reversed-Z bounds");
+        toy3d::Matrix4 invalid_shadow = shadow_projection;
+        shadow_desc.far_clip = shadow_desc.near_clip;
+        check(!toy3d::try_make_orthographic_projection(shadow_desc, invalid_shadow) &&
+                  invalid_shadow == shadow_projection,
+              "Invalid shadow projection must fail without changing the output");
+
         toy3d::InfinitePerspectiveProjectionDesc infinite_desc;
         infinite_desc.vertical_fov = desc.vertical_fov;
         infinite_desc.aspect = desc.aspect;

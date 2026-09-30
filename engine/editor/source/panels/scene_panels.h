@@ -12,7 +12,8 @@ namespace toy3d
     class SceneViewport;
     class MaterialAssignments;
 
-    bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history, const ActorFactory& factory);
+    bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history,
+                       const ActorFactory& factory, SceneViewport& viewport);
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,
                       const EditorWorkspace& workspace, SceneViewport& viewport,
                       MaterialAssignments& materials, std::string& material_error);

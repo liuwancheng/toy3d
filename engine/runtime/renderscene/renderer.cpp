@@ -170,10 +170,13 @@ namespace toy3d
                        RHIViewportContextDesc viewport_desc,
                        std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                        std::shared_ptr<const GlobalShaderMap> global_shader_map,
-                       std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas, bool enable_preview_scene)
+                       std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas, bool enable_preview_scene,
+                       BuiltinMeshPassPrograms mesh_pass_programs)
         : task_graph_(task_graph), primary_surface_input_(std::move(primary_surface)),
           viewport_desc_(std::move(viewport_desc)), device_factory_(std::move(device_factory)),
-          global_shader_map_input_(std::move(global_shader_map)), imgui_font_atlas_input_(std::move(imgui_font_atlas)), enable_preview_scene_(enable_preview_scene)
+          global_shader_map_input_(std::move(global_shader_map)),
+          mesh_pass_programs_input_(std::move(mesh_pass_programs)),
+          imgui_font_atlas_input_(std::move(imgui_font_atlas)), enable_preview_scene_(enable_preview_scene)
     {
     }
 
@@ -189,6 +192,7 @@ namespace toy3d
         assert(!imgui_renderer_);
         assert(!primary_viewport_);
         assert(!global_shader_map_input_);
+        assert(!mesh_pass_programs_input_.shadow_depth_default);
     }
 
     ThreadStatus Renderer::initialize()
@@ -464,6 +468,7 @@ namespace toy3d
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
         ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map,
+        const BuiltinMeshPassPrograms& mesh_pass_programs,
         RHIReadbackRef* recorded_readback, HitProxyTable* hit_proxy_table,
         UiTextureRegistry* ui_textures,
         const std::function<RHIStatus(RHIGraphicsCommandContext&)>& record_ui_work)
@@ -561,7 +566,7 @@ namespace toy3d
         if (has_scene)
         {
             status = scene_renderer->render_scene_passes(render_scene, device, shader_program_cache, *context,
-                                                         scene_render_targets);
+                                                          scene_render_targets, mesh_pass_programs);
             if (!status)
                 return abort_recording(status);
             if (output.hit_proxy_request.request_id != 0u)
@@ -774,7 +779,7 @@ namespace toy3d
         status = ui_textures_->create_target(*device_, request.texture_id, request.extent);
         if (!status) return status;
         status = pending_preview_renderer_->render_scene_passes(*preview_scene_, *device_, *shader_program_cache_,
-                                                                context, *preview_targets_);
+                                                                 context, *preview_targets_, mesh_pass_programs_input_);
         if (!status) return status;
         RHIResourceTransition color;
         color.resource = preview_targets_->scene_color_texture();
@@ -821,7 +826,8 @@ namespace toy3d
         HitProxyTable hit_proxy_table;
         auto result = render_viewport_frame(scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_,
             *resource_manager_, *primary_viewport_, *scene_render_targets_, *tonemap_pass_resources_,
-            imgui_renderer_.get(), *viewport_output_target_, global_shader_map_input_.get(), &recorded_readback,
+            imgui_renderer_.get(), *viewport_output_target_, global_shader_map_input_.get(),
+            mesh_pass_programs_input_, &recorded_readback,
             &hit_proxy_table, ui_textures_.get(), [this, &ui_readback, &ui_status](RHIGraphicsCommandContext& context)
             { ui_status = record_ui_work(context, ui_readback); return ui_status; });
         if (result)
@@ -1248,5 +1254,6 @@ namespace toy3d
             device_.reset();
         }
         global_shader_map_input_.reset();
+        mesh_pass_programs_input_ = {};
     }
 } // namespace toy3d

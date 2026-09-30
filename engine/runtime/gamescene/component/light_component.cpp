@@ -66,6 +66,14 @@ namespace toy3d
         data.enabled = enabled_;
         data.priority = render_priority_;
         if (const auto* local = dynamic_cast<const LocalLightComponent*>(this)) data.range = local->range();
+        if (const auto* directional = dynamic_cast<const DirectionalLightComponent*>(this))
+        {
+            data.cast_shadows = directional->cast_shadows();
+            data.shadow_distance = directional->shadow_distance();
+            data.shadow_distance_fade_fraction = directional->shadow_distance_fade_fraction();
+            data.shadow_bias = directional->shadow_bias();
+            data.shadow_slope_bias = directional->shadow_slope_bias();
+        }
         return data;
     }
 
@@ -104,6 +112,63 @@ namespace toy3d
     void LightComponent::on_register() { create_render_state(); }
     void LightComponent::on_unregister() { destroy_render_state(); }
     void LightComponent::on_world_transform_updated() { send_render_update(); }
+
+    // --------------------------------------------------------------------------
+    // DirectionalLightComponent: owns validated per-light shadow settings
+    // --------------------------------------------------------------------------
+    void DirectionalLightComponent::set_cast_shadows(bool enabled)
+    {
+        cast_shadows_ = enabled;
+        send_render_update();
+    }
+
+    bool DirectionalLightComponent::set_shadow_distance(float distance)
+    {
+        if (!is_finite(distance) || distance < 0.0f)
+        {
+            TOY_LOG_ERROR("Directional shadow distance must be finite and non-negative.");
+            return false;
+        }
+        shadow_distance_ = distance;
+        send_render_update();
+        return true;
+    }
+
+    bool DirectionalLightComponent::set_shadow_distance_fade_fraction(float fraction)
+    {
+        if (!is_finite(fraction) || fraction < 0.0f || fraction >= 1.0f)
+        {
+            TOY_LOG_ERROR("Directional shadow fade fraction must be in [0, 1).");
+            return false;
+        }
+        shadow_distance_fade_fraction_ = fraction;
+        send_render_update();
+        return true;
+    }
+
+    bool DirectionalLightComponent::set_shadow_bias(float bias)
+    {
+        if (!is_finite(bias) || bias < 0.0f || bias > 1.0f)
+        {
+            TOY_LOG_ERROR("Directional shadow bias must be in [0, 1].");
+            return false;
+        }
+        shadow_bias_ = bias;
+        send_render_update();
+        return true;
+    }
+
+    bool DirectionalLightComponent::set_shadow_slope_bias(float bias)
+    {
+        if (!is_finite(bias) || bias < 0.0f || bias > 1.0f)
+        {
+            TOY_LOG_ERROR("Directional shadow slope bias must be in [0, 1].");
+            return false;
+        }
+        shadow_slope_bias_ = bias;
+        send_render_update();
+        return true;
+    }
 
     // --------------------------------------------------------------------------
     // LocalLightComponent: validates the finite attenuation radius

@@ -26,7 +26,8 @@ namespace toy3d
 
         virtual void add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy) = 0;
         virtual void update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
-                                                AxisAlignedBounds world_bounds, bool visible) = 0;
+                                                AxisAlignedBounds world_bounds, bool visible,
+                                                bool cast_shadows, bool receives_shadows) = 0;
         virtual void update_primitive_materials(PrimitiveSceneProxy* proxy,
             std::vector<MaterialRenderProxy*> materials) = 0;
         virtual void remove_primitive(PrimitiveSceneProxy* proxy) = 0;

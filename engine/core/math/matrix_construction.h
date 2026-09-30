@@ -28,6 +28,17 @@ namespace toy3d
         float near_clip = 0.1f;
     };
 
+    struct OrthographicProjectionDesc
+    {
+        float left = -1.0f;
+        float right = 1.0f;
+        float bottom = -1.0f;
+        float top = 1.0f;
+        float near_clip = 0.1f;
+        float far_clip = 100.0f;
+    };
+
     bool try_make_perspective_projection(const PerspectiveProjectionDesc& desc, Matrix4& result);
     bool try_make_infinite_perspective_projection(const InfinitePerspectiveProjectionDesc& desc, Matrix4& result);
+    bool try_make_orthographic_projection(const OrthographicProjectionDesc& desc, Matrix4& result);
 } // namespace toy3d

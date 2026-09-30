@@ -6,6 +6,7 @@
 #include "gamescene/actor/actor.h"
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
+#include "gamescene/component/primitive_component.h"
 #include "gamescene/component/static_mesh_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
@@ -122,7 +123,8 @@ namespace toy3d
         }
     } // namespace
 
-    bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history, const ActorFactory& factory)
+    bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history,
+                       const ActorFactory& factory, SceneViewport& viewport)
     {
         bool changed = false;
         if (ImGui::Begin("Outliner"))
@@ -138,6 +140,8 @@ namespace toy3d
                     selection.select_actor(world, actor_id);
                     changed = true;
                 }
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    viewport.focus_actor(world, actor_id);
                 ImGui::PopID();
             }
         }
@@ -185,6 +189,23 @@ namespace toy3d
                     draw_transform_field("Scale", &Transform::scale, world, *actor, history);
                     ImGui::TextDisabled("Rotation: use the viewport gizmo");
                     draw_material_slots(world, *actor, selection, history, workspace, materials, material_error);
+                    if (dynamic_cast<PrimitiveComponent*>(actor->root_component()))
+                    {
+                        ImGui::Separator();
+                        ImGui::TextUnformatted("Shadows");
+                        EditorActorState edited = capture_actor_state(*actor);
+                        bool changed = ImGui::Checkbox("Cast Shadows", &edited.primitive_cast_shadows);
+                        if (ImGui::IsItemActivated())
+                            history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                        if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Primitive shadow cast edit failed.");
+                        if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                        edited = capture_actor_state(*actor);
+                        changed = ImGui::Checkbox("Receive Shadows", &edited.primitive_receives_shadows);
+                        if (ImGui::IsItemActivated())
+                            history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                        if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Primitive shadow receive edit failed.");
+                        if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                    }
                     if (dynamic_cast<CameraComponent*>(actor->root_component()))
                     {
                         ImGui::Separator();
@@ -226,6 +247,11 @@ namespace toy3d
                         if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                         if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Light intensity edit failed.");
                         if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                        edited = capture_actor_state(*actor);
+                        changed = ImGui::DragInt("Priority", &edited.light_priority, 1.0f);
+                        if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                        if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Light priority edit failed.");
+                        if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
                         if (dynamic_cast<LocalLightComponent*>(light))
                         {
                             edited = capture_actor_state(*actor);
@@ -233,6 +259,39 @@ namespace toy3d
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Light range edit failed.");
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                        }
+                        if (dynamic_cast<DirectionalLightComponent*>(light) &&
+                            ImGui::CollapsingHeader("Shadow Map", ImGuiTreeNodeFlags_DefaultOpen))
+                        {
+                            edited = capture_actor_state(*actor);
+                            changed = ImGui::Checkbox("Cast Shadows", &edited.shadow_cast_shadows);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow toggle edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            ImGui::BeginDisabled(!capture_actor_state(*actor).shadow_cast_shadows);
+                            edited = capture_actor_state(*actor);
+                            changed = ImGui::DragFloat("Dynamic Shadow Distance (m)", &edited.shadow_distance, 0.5f, 0.0f, 10000.0f);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow distance edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            edited = capture_actor_state(*actor);
+                            float fade_percent = edited.shadow_distance_fade_fraction * 100.0f;
+                            changed = ImGui::DragFloat("Distance Fade (%)", &fade_percent, 0.1f, 0.0f, 99.9f);
+                            edited.shadow_distance_fade_fraction = fade_percent * 0.01f;
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow fade edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            edited = capture_actor_state(*actor);
+                            changed = ImGui::DragFloat("Shadow Bias", &edited.shadow_bias, 0.005f, 0.0f, 1.0f);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow bias edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            edited = capture_actor_state(*actor);
+                            changed = ImGui::DragFloat("Shadow Slope Bias", &edited.shadow_slope_bias, 0.005f, 0.0f, 1.0f);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow slope bias edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            ImGui::EndDisabled();
                         }
                     }
 

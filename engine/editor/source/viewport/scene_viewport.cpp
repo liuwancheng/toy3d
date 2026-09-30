@@ -1,5 +1,6 @@
 #include "viewport/scene_viewport.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -11,6 +12,7 @@
 #include "commands/editor_command_history.h"
 #include "gamescene/actor/actor.h"
 #include "gamescene/component/camera_component.h"
+#include "gamescene/component/primitive_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "math/matrix_construction.h"
@@ -55,7 +57,10 @@ namespace toy3d
 
     SceneViewport::SceneViewport()
     {
-        if (!try_make_rotation_from_forward_up(Vector3(0, 0, 3) - editor_camera_position_,
+        const Vector3 forward = normalize_unchecked(editor_camera_target_ - editor_camera_position_);
+        editor_camera_yaw_ = std::atan2(forward.x, forward.z);
+        editor_camera_pitch_ = std::asin(forward.y);
+        if (!try_make_rotation_from_forward_up(editor_camera_target_ - editor_camera_position_,
                                                Vector3(0, 1, 0), editor_camera_orientation_))
             TOY_LOG_ERROR("Editor observation camera could not be initialized.");
     }
@@ -75,6 +80,42 @@ namespace toy3d
             ++viewport_generation_;
             cancel_pending_hit();
         }
+        return true;
+    }
+
+    bool SceneViewport::focus_actor(const World& world, std::uint32_t actor_id)
+    {
+        const Actor* actor = world.find_actor_by_id(actor_id);
+        if (!actor || actor->is_pending_destroy() || !actor->root_component()) return false;
+        Vector3 center = transform_position(actor->root_component()->world_transform(), Vector3());
+        float radius = 1.0f;
+        if (const auto* primitive = dynamic_cast<const PrimitiveComponent*>(actor->root_component()))
+        {
+            const AxisAlignedBounds& bounds = primitive->world_bounds();
+            const Vector3 minimum(bounds.minimum.x, bounds.minimum.y, bounds.minimum.z);
+            const Vector3 maximum(bounds.maximum.x, bounds.maximum.y, bounds.maximum.z);
+            if (is_finite(minimum) && is_finite(maximum) &&
+                bounds.minimum.x <= bounds.maximum.x && bounds.minimum.y <= bounds.maximum.y &&
+                bounds.minimum.z <= bounds.maximum.z)
+            {
+                center = (minimum + maximum) * 0.5f;
+                radius = std::max(0.5f, length(maximum - center));
+            }
+        }
+        const float aspect = scene_extent_.height != 0u
+            ? static_cast<float>(scene_extent_.width) / scene_extent_.height : 16.0f / 9.0f;
+        const float half_vertical_fov = tan(to_radians(Degrees(60.0f)) * 0.5f);
+        const float half_horizontal_fov = half_vertical_fov * std::max(aspect, 0.1f);
+        const float distance = std::max(2.0f, radius * 1.25f /
+            std::min(half_vertical_fov, half_horizontal_fov));
+        const Vector3 forward = rotate_vector(editor_camera_orientation_, Vector3(0, 0, 1));
+        const Vector3 position = center - forward * distance;
+        if (!is_finite(center) || !is_finite(distance) || !is_finite(position)) return false;
+        exit_camera_view();
+        editor_camera_target_ = center;
+        editor_camera_position_ = position;
+        ++viewport_generation_;
+        cancel_pending_hit();
         return true;
     }
 
@@ -101,10 +142,13 @@ namespace toy3d
         const auto* camera = actor ? dynamic_cast<const CameraComponent*>(actor->root_component()) : nullptr;
         const Vector3 position = camera ? transform_position(camera->world_transform(), Vector3()) : editor_camera_position_;
         const Quaternion orientation = camera ? camera->world_rotation() : editor_camera_orientation_;
+        // Keep an orbit target in the editor frustum when zooming beyond the default range.
+        const float editor_far_clip = std::max(1000.0f,
+            length(editor_camera_target_ - editor_camera_position_) * 4.0f);
         return SceneView(position, orientation, rotate_vector(orientation, Vector3(0, 0, 1)),
                          IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
                          to_radians(Degrees(camera ? camera->vertical_fov_degrees() : 60.0f)),
-                         camera ? camera->near_clip() : 0.1f, camera ? camera->far_clip() : 1000.0f);
+                         camera ? camera->near_clip() : 0.1f, camera ? camera->far_clip() : editor_far_clip);
     }
 
     void SceneViewport::begin_frame()
@@ -119,7 +163,8 @@ namespace toy3d
     {
         if (camera_actor_id_ != 0 && viewed_camera_id(world) == 0) exit_camera_view();
         // Keep the persisted ImGui window identity while changing its visible title.
-        const bool visible = ImGui::Begin("Scene Viewport###Game Viewport");
+        const bool visible = ImGui::Begin("Scene Viewport###Game Viewport", nullptr,
+                                          ImGuiWindowFlags_NoScrollWithMouse);
         if (visible)
         {
             if (viewed_camera_id(world) != 0)
@@ -129,6 +174,7 @@ namespace toy3d
                 if (ImGui::Button("Exit Camera View")) exit_camera_view();
             }
             else gizmo_.draw_toolbar();
+            ImGui::TextDisabled("Wheel: zoom  |  Right drag: orbit  |  Middle drag: pan");
             const ImVec2 available = ImGui::GetContentRegionAvail();
             const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
             scene_extent_.width = physical_extent(available.x, scale.x);
@@ -140,6 +186,79 @@ namespace toy3d
                 const bool hovered = ImGui::IsItemHovered();
                 const ImVec2 origin = ImGui::GetItemRectMin();
                 const bool viewing = viewed_camera_id(world) != 0;
+                ImGuiIO& io = ImGui::GetIO();
+                if (viewing || ImGui::GetDragDropPayload() != nullptr)
+                {
+                    orbit_drag_active_ = false;
+                    pan_drag_active_ = false;
+                }
+                else
+                {
+                    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) orbit_drag_active_ = true;
+                    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) pan_drag_active_ = true;
+                    if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) orbit_drag_active_ = false;
+                    if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle)) pan_drag_active_ = false;
+                    const Vector3 forward = rotate_vector(editor_camera_orientation_, Vector3(0, 0, 1));
+                    float distance = length(editor_camera_target_ - editor_camera_position_);
+                    bool camera_changed = false;
+                    if (hovered && io.MouseWheel != 0.0f && std::isfinite(io.MouseWheel))
+                    {
+                        constexpr float min_distance = 0.2f;
+                        constexpr float max_distance = 10000.0f;
+                        const float next_distance = std::max(min_distance,
+                            std::min(max_distance, distance * std::pow(0.85f, io.MouseWheel)));
+                        const Vector3 next_position = editor_camera_target_ - forward * next_distance;
+                        if (is_finite(next_position) && next_position != editor_camera_position_)
+                        {
+                            editor_camera_position_ = next_position;
+                            distance = next_distance;
+                            camera_changed = true;
+                        }
+                    }
+                    if (orbit_drag_active_ && ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.0f) &&
+                        (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f))
+                    {
+                        constexpr float radians_per_pixel = 0.005f;
+                        constexpr float pitch_limit = 1.48f;
+                        const float yaw = editor_camera_yaw_ + io.MouseDelta.x * radians_per_pixel;
+                        const float pitch = std::max(-pitch_limit, std::min(pitch_limit,
+                            editor_camera_pitch_ - io.MouseDelta.y * radians_per_pixel));
+                        const Vector3 next_forward(std::sin(yaw) * std::cos(pitch), std::sin(pitch),
+                                                   std::cos(yaw) * std::cos(pitch));
+                        Quaternion orientation;
+                        const Vector3 next_position = editor_camera_target_ - next_forward * distance;
+                        if (is_finite(next_position) &&
+                            try_make_rotation_from_forward_up(next_forward, Vector3(0, 1, 0), orientation))
+                        {
+                            editor_camera_yaw_ = yaw;
+                            editor_camera_pitch_ = pitch;
+                            editor_camera_orientation_ = orientation;
+                            editor_camera_position_ = next_position;
+                            camera_changed = true;
+                        }
+                    }
+                    if (pan_drag_active_ && ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.0f) &&
+                        (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f))
+                    {
+                        const float meters_per_pixel = 2.0f * distance *
+                            tan(to_radians(Degrees(60.0f)) * 0.5f) / available.y;
+                        const Vector3 right = rotate_vector(editor_camera_orientation_, Vector3(1, 0, 0));
+                        const Vector3 up = rotate_vector(editor_camera_orientation_, Vector3(0, 1, 0));
+                        const Vector3 offset = (up * io.MouseDelta.y - right * io.MouseDelta.x) * meters_per_pixel;
+                        if (is_finite(offset) && is_finite(editor_camera_position_ + offset) &&
+                            is_finite(editor_camera_target_ + offset))
+                        {
+                            editor_camera_position_ += offset;
+                            editor_camera_target_ += offset;
+                            camera_changed = true;
+                        }
+                    }
+                    if (camera_changed)
+                    {
+                        ++viewport_generation_;
+                        cancel_pending_hit();
+                    }
+                }
                 if (!viewing) gizmo_.handle_shortcuts(hovered);
                 const SceneView scene_view = current_view(world, scene_extent_);
                 Matrix4 view;

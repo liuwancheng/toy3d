@@ -26,7 +26,7 @@ namespace toy3d
     class GlobalShaderMap;
     class ShaderMap;
     class ShaderMapLoader;
-    class ShaderMapProgram;
+    struct BuiltinMeshPassPrograms;
     struct ImGuiDrawData;
     struct ViewportFrameOutput;
 
@@ -63,8 +63,8 @@ namespace toy3d
 
       private:
         FileStatus initialize_file_system();
-        bool initialize_builtin_shader_programs();
-        bool initialize_render_framework();
+        bool initialize_builtin_shader_programs(BuiltinMeshPassPrograms& mesh_pass_programs);
+        bool initialize_render_framework(BuiltinMeshPassPrograms mesh_pass_programs);
         void shutdown_render_framework();
         void submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data, ViewportFrameOutput output);
 

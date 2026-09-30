@@ -27,6 +27,20 @@ namespace toy3d
         send_render_transform();
     }
 
+    void PrimitiveComponent::set_cast_shadows(bool cast_shadows)
+    {
+        if (cast_shadows_ == cast_shadows) return;
+        cast_shadows_ = cast_shadows;
+        send_render_transform();
+    }
+
+    void PrimitiveComponent::set_receives_shadows(bool receives_shadows)
+    {
+        if (receives_shadows_ == receives_shadows) return;
+        receives_shadows_ = receives_shadows;
+        send_render_transform();
+    }
+
     void PrimitiveComponent::create_render_state()
     {
         if (scene_proxy_ != nullptr)
@@ -62,7 +76,8 @@ namespace toy3d
             return;
         }
 
-        scene->update_primitive_transform(scene_proxy_, world_transform(), world_bounds_, visible_);
+        scene->update_primitive_transform(scene_proxy_, world_transform(), world_bounds_, visible_,
+                                          cast_shadows_, receives_shadows_);
         world().mark_scene_changed();
     }
 

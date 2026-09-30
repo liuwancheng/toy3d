@@ -111,4 +111,26 @@ namespace toy3d
         result = projection;
         return true;
     }
+
+    bool try_make_orthographic_projection(const OrthographicProjectionDesc& desc, Matrix4& result)
+    {
+        if (!is_finite(desc.left) || !is_finite(desc.right) || !is_finite(desc.bottom) ||
+            !is_finite(desc.top) || !is_finite(desc.near_clip) || !is_finite(desc.far_clip) ||
+            desc.left >= desc.right || desc.bottom >= desc.top ||
+            desc.near_clip <= 0.0f || desc.near_clip >= desc.far_clip)
+        {
+            return false;
+        }
+        Matrix4 projection = Matrix4::zero();
+        projection.at(0, 0) = 2.0f / (desc.right - desc.left);
+        projection.at(1, 1) = 2.0f / (desc.top - desc.bottom);
+        projection.at(2, 2) = -1.0f / (desc.far_clip - desc.near_clip);
+        projection.at(3, 0) = -(desc.right + desc.left) / (desc.right - desc.left);
+        projection.at(3, 1) = -(desc.top + desc.bottom) / (desc.top - desc.bottom);
+        projection.at(3, 2) = desc.far_clip / (desc.far_clip - desc.near_clip);
+        projection.at(3, 3) = 1.0f;
+        if (!is_finite(projection)) return false;
+        result = projection;
+        return true;
+    }
 } // namespace toy3d

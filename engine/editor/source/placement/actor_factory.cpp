@@ -108,6 +108,12 @@ namespace toy3d
     {
         EditorActorState state;
         if (actor.root_component()) state.transform = actor.root_component()->local_transform();
+        const auto* primitive = dynamic_cast<const PrimitiveComponent*>(actor.root_component());
+        if (primitive)
+        {
+            state.primitive_cast_shadows = primitive->cast_shadows();
+            state.primitive_receives_shadows = primitive->receives_shadows();
+        }
         const auto* camera = dynamic_cast<const CameraComponent*>(actor.root_component());
         if (camera)
         {
@@ -121,8 +127,18 @@ namespace toy3d
             state.light_enabled = light->enabled();
             state.light_color = light->color();
             state.light_intensity = light->intensity();
+            state.light_priority = light->render_priority();
             const auto* local = dynamic_cast<const LocalLightComponent*>(light);
             if (local) state.light_range = local->range();
+            const auto* directional = dynamic_cast<const DirectionalLightComponent*>(light);
+            if (directional)
+            {
+                state.shadow_cast_shadows = directional->cast_shadows();
+                state.shadow_distance = directional->shadow_distance();
+                state.shadow_distance_fade_fraction = directional->shadow_distance_fade_fraction();
+                state.shadow_bias = directional->shadow_bias();
+                state.shadow_slope_bias = directional->shadow_slope_bias();
+            }
         }
         return state;
     }
@@ -131,7 +147,13 @@ namespace toy3d
     {
         if (!is_finite(state.light_color) || state.light_color.x < 0 || state.light_color.y < 0 ||
             state.light_color.z < 0 || !is_finite(state.light_intensity) || state.light_intensity < 0 ||
-            !is_finite(state.light_range) || state.light_range <= 0) return false;
+            !is_finite(state.light_range) || state.light_range <= 0 ||
+            !is_finite(state.shadow_distance) || state.shadow_distance < 0 ||
+            !is_finite(state.shadow_distance_fade_fraction) ||
+            state.shadow_distance_fade_fraction < 0 || state.shadow_distance_fade_fraction >= 1 ||
+            !is_finite(state.shadow_bias) || state.shadow_bias < 0 || state.shadow_bias > 1 ||
+            !is_finite(state.shadow_slope_bias) || state.shadow_slope_bias < 0 ||
+            state.shadow_slope_bias > 1) return false;
         SceneComponent* root = actor.root_component();
         if (!root) return false;
         auto* camera = dynamic_cast<CameraComponent*>(root);
@@ -146,6 +168,11 @@ namespace toy3d
         const Transform& current = root->local_transform();
         if ((current.translation != state.transform.translation || current.rotation != state.transform.rotation ||
              current.scale != state.transform.scale) && !root->set_local_transform(state.transform)) return false;
+        if (auto* primitive = dynamic_cast<PrimitiveComponent*>(root))
+        {
+            primitive->set_cast_shadows(state.primitive_cast_shadows);
+            primitive->set_receives_shadows(state.primitive_receives_shadows);
+        }
         if (camera && (camera->vertical_fov_degrees() != state.camera_vertical_fov ||
             camera->near_clip() != state.camera_near_clip || camera->far_clip() != state.camera_far_clip) &&
             !camera->set_perspective(state.camera_vertical_fov, state.camera_near_clip, state.camera_far_clip))
@@ -156,8 +183,23 @@ namespace toy3d
             if (light->enabled() != state.light_enabled) light->set_enabled(state.light_enabled);
             if (light->color() != state.light_color && !light->set_color(state.light_color)) return false;
             if (light->intensity() != state.light_intensity && !light->set_intensity(state.light_intensity)) return false;
+            if (light->render_priority() != state.light_priority) light->set_render_priority(state.light_priority);
             auto* local = dynamic_cast<LocalLightComponent*>(light);
             if (local && local->range() != state.light_range && !local->set_range(state.light_range)) return false;
+            auto* directional = dynamic_cast<DirectionalLightComponent*>(light);
+            if (directional)
+            {
+                if (directional->cast_shadows() != state.shadow_cast_shadows)
+                    directional->set_cast_shadows(state.shadow_cast_shadows);
+                if (directional->shadow_distance() != state.shadow_distance &&
+                    !directional->set_shadow_distance(state.shadow_distance)) return false;
+                if (directional->shadow_distance_fade_fraction() != state.shadow_distance_fade_fraction &&
+                    !directional->set_shadow_distance_fade_fraction(state.shadow_distance_fade_fraction)) return false;
+                if (directional->shadow_bias() != state.shadow_bias &&
+                    !directional->set_shadow_bias(state.shadow_bias)) return false;
+                if (directional->shadow_slope_bias() != state.shadow_slope_bias &&
+                    !directional->set_shadow_slope_bias(state.shadow_slope_bias)) return false;
+            }
         }
         return true;
     }

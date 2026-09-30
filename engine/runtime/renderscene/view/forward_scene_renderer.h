@@ -19,7 +19,8 @@ namespace toy3d
       private:
         RHIStatus render_scene_passes(RenderScene& render_scene, RHIDevice& device,
                                       RHIShaderProgramCache& shader_program_cache, RHIGraphicsCommandContext& context,
-                                      SceneRenderTargets& scene_render_targets) override;
+                                      SceneRenderTargets& scene_render_targets,
+                                      const BuiltinMeshPassPrograms& mesh_pass_programs) override;
         RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
                                    const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
                                    const RHITextureViewRef& id_view, const RHITextureViewRef& depth_view,

@@ -84,10 +84,18 @@ namespace toy3d
             if (saved.kind.empty()) { error = "Scene contains an unsupported Actor kind."; return false; }
             const EditorActorState state = capture_actor_state(*actor);
             saved.transform = state.transform;
+            saved.primitive_cast_shadows = state.primitive_cast_shadows;
+            saved.primitive_receives_shadows = state.primitive_receives_shadows;
             saved.light_enabled = state.light_enabled;
             saved.light_color = state.light_color;
             saved.light_intensity = state.light_intensity;
             saved.light_range = state.light_range;
+            saved.light_priority = state.light_priority;
+            saved.shadow_cast_shadows = state.shadow_cast_shadows;
+            saved.shadow_distance = state.shadow_distance;
+            saved.shadow_distance_fade_fraction = state.shadow_distance_fade_fraction;
+            saved.shadow_bias = state.shadow_bias;
+            saved.shadow_slope_bias = state.shadow_slope_bias;
             saved.camera_vertical_fov = state.camera_vertical_fov;
             saved.camera_near_clip = state.camera_near_clip;
             saved.camera_far_clip = state.camera_far_clip;
@@ -146,10 +154,18 @@ namespace toy3d
             { error = "Unsupported Scene Actor kind: " + saved.kind; return false; }
             candidate.placement.transform = saved.transform;
             candidate.state.transform = saved.transform;
+            candidate.state.primitive_cast_shadows = saved.primitive_cast_shadows;
+            candidate.state.primitive_receives_shadows = saved.primitive_receives_shadows;
             candidate.state.light_enabled = saved.light_enabled;
             candidate.state.light_color = saved.light_color;
             candidate.state.light_intensity = saved.light_intensity;
             candidate.state.light_range = saved.light_range;
+            candidate.state.light_priority = saved.light_priority;
+            candidate.state.shadow_cast_shadows = saved.shadow_cast_shadows;
+            candidate.state.shadow_distance = saved.shadow_distance;
+            candidate.state.shadow_distance_fade_fraction = saved.shadow_distance_fade_fraction;
+            candidate.state.shadow_bias = saved.shadow_bias;
+            candidate.state.shadow_slope_bias = saved.shadow_slope_bias;
             candidate.state.camera_vertical_fov = saved.camera_vertical_fov;
             candidate.state.camera_near_clip = saved.camera_near_clip;
             candidate.state.camera_far_clip = saved.camera_far_clip;
@@ -703,7 +719,7 @@ namespace toy3d
         ImGui::End();
 
         draw_place_actors_panel();
-        if (draw_outliner(world(), selection_, command_history_, actor_factory_))
+        if (draw_outliner(world(), selection_, command_history_, actor_factory_, scene_viewport_))
             scene_viewport_.cancel_pending_hit();
         draw_details(world(), selection_, command_history_, workspace_, scene_viewport_, material_assignments_, material_assignment_error_);
         scene_viewport_.draw(world(), selection_, command_history_);

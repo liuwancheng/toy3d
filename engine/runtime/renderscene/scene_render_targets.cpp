@@ -32,6 +32,7 @@ namespace toy3d
 
     void SceneRenderTargets::release() noexcept
     {
+        shadow_targets_.release();
         scene_depth_shader_resource_view_.reset();
         scene_depth_view_.reset();
         scene_depth_texture_.reset();
@@ -88,6 +89,7 @@ namespace toy3d
     {
         scene_color_access_ = scene_color_access;
         scene_depth_access_ = scene_depth_access;
+        shadow_targets_.publish_submitted_access();
     }
 
     bool SceneRenderTargets::matches(const Extent& extent) const noexcept

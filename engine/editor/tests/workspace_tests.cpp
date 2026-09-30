@@ -123,8 +123,35 @@ int main()
         SceneAssetData reopened_scene;
         check(read_scene_asset(workspace.types(), workspace.files(), scene_path, reopened_scene,
             &workspace.catalog().index).succeeded() && reopened_scene.actors.size() == 1u &&
-            reopened_scene.actors[0].id == scene_actor.id,
+            reopened_scene.actors[0].id == scene_actor.id &&
+            reopened_scene.actors[0].primitive_receives_shadows,
             "Scene Actor identity must survive .scene YAML roundtrip");
+        AssetId legacy_id;
+        check(AssetId::parse("88888888888888888888888888888888", legacy_id),
+            "legacy scene identity must parse");
+        const auto legacy_pair = encode_scene_asset_pair(workspace.types(), legacy_id, scene);
+        check(legacy_pair.succeeded(), "legacy scene fixture must encode");
+        if (legacy_pair.succeeded())
+        {
+            std::string legacy_text(legacy_pair.value().asset.begin(), legacy_pair.value().asset.end());
+            const std::string current_version = "schema_version: 3";
+            const std::size_t version_position = legacy_text.find(current_version);
+            check(version_position != std::string::npos, "Scene schema version fixture must be present");
+            if (version_position != std::string::npos)
+            {
+                legacy_text.replace(version_position, current_version.size(), "schema_version: 1");
+                const VirtualPath legacy_path = virtual_path("/Project/legacy.scene");
+                const std::vector<std::uint8_t> legacy_bytes(legacy_text.begin(), legacy_text.end());
+                check(workspace.files().write_binary(legacy_path, legacy_bytes,
+                    FileWriteMode::CreateNew).succeeded(), "legacy scene fixture must be written");
+                SceneAssetData rejected_scene;
+                check(!read_scene_asset(workspace.types(), workspace.files(), legacy_path,
+                    rejected_scene).succeeded() && !workspace.refresh(),
+                    "version-one Scene must fail strict schema validation");
+                check(workspace.files().remove_file(legacy_path).succeeded() && workspace.refresh(),
+                    "workspace must recover after removing unsupported Scene schema");
+            }
+        }
         SceneActorData invalid_child = scene_actor;
         invalid_child.id = "66666666666666666666666666666666";
         invalid_child.root_component_id = "77777777777777777777777777777777";

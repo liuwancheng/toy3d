@@ -33,6 +33,7 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | RHI Binding 聚合 | Active | `rhi-binding-aggregation-design.md` | 五个逻辑 Binding Group、RenderCore typed 创建边界与跨后端聚合 contract |
 | Shader 系统 | Active | `shader-system-design.md` | Shader 语言、编译、generated C++ parameters、反射、ShaderMap、Binding ABI 与运行时加载 |
 | Shader 语言语法 | Active | `shader-language-v1.ebnf` | `.shader` v1 语法定义 |
+| 方向光 ShadowPass | Active | `shadow-pass-design.md` | 单 context、单 list 的动态阴影实现细节；pass 级并行录制后续独立设计 |
 | Vulkan 内存 | Active | `vulkan-memory-management.md` | Vulkan/VMA、上传、completion 与延迟销毁；旧实现评估仅是历史背景 |
 | Runtime Console | Active | `console-manager-design.md` | runtime 配置变量、覆盖顺序与生命周期 |
 | 资源目录与部署 | Active | `resource-directory-design.md` | 引擎/项目资产、配置、Editor 界面资源与平台构建输入的职责及部署 |

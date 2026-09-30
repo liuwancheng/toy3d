@@ -19,7 +19,7 @@ namespace toy3d
         const std::vector<ViewInfo>& views;
         RHITextureViewRef scene_color;
         RHITextureViewRef scene_depth;
-        RHIBindingSetRef lighting_binding;
+        std::vector<RHIBindingSetRef> lighting_bindings;
         vec4 clear_color{0.0f, 0.0f, 0.0f, 1.0f};
         bool require_complete_meshes = false;
     };

@@ -2,6 +2,8 @@
 
 #include "drivers/rhi/rhi_viewport_context.h"
 #include "rendercore/hit_proxy.h"
+#include "renderscene/builtin_mesh_pass_programs.h"
+
 #include <functional>
 
 namespace toy3d
@@ -31,6 +33,7 @@ namespace toy3d
         RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
         ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map = nullptr,
+        const BuiltinMeshPassPrograms& mesh_pass_programs = {},
         RHIReadbackRef* recorded_readback = nullptr, HitProxyTable* hit_proxy_table = nullptr,
         UiTextureRegistry* ui_textures = nullptr,
         const std::function<RHIStatus(RHIGraphicsCommandContext&)>& record_ui_work = {});
