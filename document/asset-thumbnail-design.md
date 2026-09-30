@@ -2,7 +2,7 @@
 
 ## 1. 范围与状态
 
-StaticMesh 已接入独立预览、共享 Forward/Tonemap、多个 ImGui 逻辑纹理、异步颜色读回、外部 PNG 缓存、有界内存池与 Content Browser 图块。职责划分参考 UE4.27 的预览与缩略图边界，资产持久化以 [Asset 描述与处理数据格式](asset-pair-format-design.md) 为准。
+StaticMesh 已接入独立预览、共享 Forward/Tonemap、多个 ImGui 逻辑纹理、异步颜色读回、外部 PNG 缓存、有界内存池与 Content Browser 图块。Texture2D 图块由资产 Mip 生成内存缩略图；独立贴图窗口查看原始 Mip 和 RGBA/R/G/B/A 通道。职责划分参考 UE4.27 的预览与缩略图边界，资产持久化以 [Asset 描述与处理数据格式](asset-pair-format-design.md) 为准。
 
 模型使用现有默认材质。材质/动画/碰撞/场景缩略图和材质依赖加载尚未实现；以后每种资源提供自己的预览策略，共用缓存、图片格式和 UI 纹理通道。源文件拖入与导入确认框属于 [StaticMesh 导入交互](static-mesh-import-design.md#7-editor-导入与拖放交互)，成功发布后调用本模块生成缩略图。
 
@@ -36,7 +36,7 @@ Hash 和 PNG 借用 const 输入，只在成功时发布调用者拥有的输出
 
 Importer 只发布模型描述和几何。缩略图 Worker 从已发布的模型内容计算签名，缓存写入者不改资产；模型变化自然形成新缓存键。未来预览使用材质依赖时，签名须纳入依赖内容。
 
-默认图片 256×256，格式允许每边 1～512、PNG 最大 4 MiB；图片为 top-left、紧凑 RGBA8、已编码 sRGB、alpha=255。PNG codec 校验 signature、chunk 长度/CRC、IEND 和无尾随数据，先检查尺寸再分配，失败不修改输出。缓存 loader 检查 PNG 实际尺寸，源签名与版本由文件名验证。
+Content Browser 图块与生成的缩略图固定为 128×128，不提供动态尺寸设置。StaticMesh PNG 缓存生成器版本为 2，旧 256×256 图片不会命中；通用 PNG codec 仍允许每边 1～512、PNG 最大 4 MiB。缩略图为 top-left、紧凑 RGBA8、已编码 sRGB、alpha=255。PNG codec 校验 signature、chunk 长度/CRC、IEND 和无尾随数据，先检查尺寸再分配，失败不修改输出。缓存 loader 检查 PNG 实际尺寸，源签名与版本由文件名验证。
 
 ## 4. 图片加载与独立预览
 
@@ -52,7 +52,7 @@ Engine 根据 `Application::uses_preview_scene()` 在启动时配置独立预览
 
 ## 5. 多逻辑纹理和 RHI 读回
 
-font ID=1、主视口 ID=2；池从 3 起单调分配图片 ID，在该 Renderer/池生命周期中不复用。GT 只持逻辑 ID，`ui_texture_ids()` 登记可显示图片，ImGui snapshot 拒绝未知、保留区和重复附加 ID。
+font ID=1、主视口 ID=2；缩略图池从 3 起单调分配图片 ID，贴图预览窗口使用高位保留区，在 Renderer 生命周期中不复用。GT 只持逻辑 ID，`ui_texture_ids()` 登记可显示图片，ImGui snapshot 拒绝未知、保留区和重复附加 ID。
 
 RT `UiTextureRegistry` 拥有 SDR texture/SRV/RTV。新图片成功提交/完成后发布 Ready，重生成期间保留旧图。ImGuiRenderer 校验全部 binding ID，仅为本帧引用图片构造 transient binding。退休通过 Render FIFO 删除登记；已提交 Draw 的 binding/view/texture 由 command list 强引用和 backend completion 保活，淘汰不提前销毁 GPU 资源。
 
@@ -74,7 +74,7 @@ auto pixels = result.value()->read_texture(queue.completed_value());
 
 ## 6. 池、Worker 与保存
 
-最多 128 个缓存条目，一次一个 CPU/GPU/保存作业。256² 图片常态约 32 MiB，格式上限 512² 时约 128 MiB，另有一个重生成候选、复用 HDR/depth、staging 和 binding。单资产输入最多 64 MiB，PNG 最多 4 MiB；中间存在有限临时副本，输入上限不代表总进程内存上限。
+最多 128 个缓存条目，一次一个缩略图 CPU/GPU/保存作业。128² 图片常态约 8 MiB，通用格式上限 512² 时约 128 MiB，另有一个重生成候选、复用 HDR/depth、staging 和 binding。Texture2D 缩略图只在内存生成，不写 PNG 缓存；贴图窗口采用独立的只采样 UI 上传路径，最高 4096×4096，不受 512 像素读回上限约束。单资产输入最多 64 MiB，PNG 最多 4 MiB；中间存在有限临时副本，输入上限不代表总进程内存上限。
 
 行 clipper 只请求可见图块，重复请求去重、持久化作业优先。未在本帧使用且不在途/待保存的条目按最近使用淘汰。Failed 仅显式生成或 Refresh 后重试。刷新将活动任务标记 rerun，旧结果完成后丢弃候选、重新排队，不在 GPU 使用期间改预览 World；没有额外文件监视。GPU 结果必须同时匹配请求序号和逻辑纹理 ID。
 

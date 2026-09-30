@@ -1,0 +1,29 @@
+format_version: 2
+asset_id: a82316fbd4a349b8b2dfde23697139fe
+root_type: toy3d.MaterialAssetData
+schema_version: 1
+dependencies:
+  - asset_id: 26e14823067241ee84676de813b2e8c3
+    expected_type: toy3d.Texture2DAssetData
+    strength: strong
+subresources:
+  []
+data:
+  overrides:
+    - name: base_color
+      value:
+        type: Vector4
+        value:
+          - 1
+          - 1
+          - 1
+          - 1
+    - name: surface_tint_texture
+      value:
+        type: AssetRef
+        value:
+          asset_id: 26e14823067241ee84676de813b2e8c3
+          expected_type: toy3d.Texture2DAssetData
+          strength: strong
+  shader_name: Toy3d/Surface/Phong
+  two_sided: false

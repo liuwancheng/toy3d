@@ -3,6 +3,7 @@
 #include "asset_file.h"
 #include "asset_pair.h"
 #include "asset_tools/material_asset_tools.h"
+#include "scene_asset/scene_asset.h"
 
 #include <chrono>
 #include <filesystem>
@@ -103,6 +104,55 @@ int main()
               "duplicate identities across roots must reject refresh and preserve the previous catalog");
         check(workspace.files().remove_file(duplicate).succeeded() && workspace.refresh(),
               "workspace must recover after removing invalid input");
+        AssetId scene_id;
+        check(AssetId::parse("33333333333333333333333333333333", scene_id),
+            "scene identity must parse");
+        SceneAssetData scene;
+        SceneActorData scene_actor;
+        scene_actor.id = "44444444444444444444444444444444";
+        scene_actor.root_component_id = "55555555555555555555555555555555";
+        scene_actor.root_component_type = "toy3d.SceneComponent";
+        scene_actor.kind = "EmptyActor";
+        scene.actors.push_back(scene_actor);
+        const auto scene_pair = encode_scene_asset_pair(workspace.types(), scene_id, scene,
+            &workspace.catalog().index);
+        const VirtualPath scene_path = virtual_path("/Project/scene.scene");
+        check(scene_pair.succeeded() && workspace.asset_pairs().publish(scene_path,
+            scene_pair.value(), FilePublishMode::CreateNew).succeeded() && workspace.refresh(),
+            "Scene must publish and scan beside an ordinary .asset with the same stem");
+        SceneAssetData reopened_scene;
+        check(read_scene_asset(workspace.types(), workspace.files(), scene_path, reopened_scene,
+            &workspace.catalog().index).succeeded() && reopened_scene.actors.size() == 1u &&
+            reopened_scene.actors[0].id == scene_actor.id,
+            "Scene Actor identity must survive .scene YAML roundtrip");
+        SceneActorData invalid_child = scene_actor;
+        invalid_child.id = "66666666666666666666666666666666";
+        invalid_child.root_component_id = "77777777777777777777777777777777";
+        invalid_child.parent_component_id = scene_actor.root_component_id;
+        scene.actors[0].parent_component_id = invalid_child.root_component_id;
+        scene.actors.push_back(invalid_child);
+        check(validate_scene_asset(scene).code == AssetErrorCode::Value,
+            "Scene attachment cycle must be rejected before publishing");
+        scene.actors.pop_back();
+        scene.actors[0].parent_component_id.clear();
+        check(!workspace.asset_pairs().publish(virtual_path("/Project/wrong.asset"),
+            scene_pair.value(), FilePublishMode::CreateNew).succeeded() &&
+            !workspace.asset_pairs().publish(virtual_path("/Project/wrong.scene"),
+            engine_bytes.value(), FilePublishMode::CreateNew).succeeded(),
+            "descriptor extension must match the reflected root type");
+        const VirtualPath copied_scene_path = virtual_path("/Project/scene_copy.scene");
+        const auto copied_scene = workspace.copy_asset(scene_id, copied_scene_path);
+        check(copied_scene.succeeded() && copied_scene.value().valid() &&
+            !(copied_scene.value() == scene_id), "Scene copy must allocate a new Asset ID");
+        if (copied_scene.succeeded())
+        {
+            const VirtualPath moved_scene_path = virtual_path("/Project/scene_moved.scene");
+            check(workspace.move_asset(copied_scene.value(), moved_scene_path).succeeded() &&
+                workspace.catalog().index.find(copied_scene.value())->path == moved_scene_path,
+                "Scene move must preserve identity");
+            check(workspace.delete_asset(copied_scene.value()).succeeded(),
+                "Scene delete must remove its catalog entry");
+        }
         check(!scan_asset_catalog(workspace.types(), workspace.files(), std::vector<VirtualPath>{virtual_path("/Project"),
                  virtual_path("/Project/nested")}).succeeded(), "overlapping scan roots must be rejected");
         check(!scan_asset_catalog(workspace.types(), workspace.files(), std::vector<VirtualPath>{}).succeeded(),

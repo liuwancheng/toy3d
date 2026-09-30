@@ -6,8 +6,8 @@
 
 namespace toy3d
 {
-    constexpr std::uint32_t thumbnail_generator_version = 1;
-    constexpr std::uint32_t thumbnail_default_size = 256;
+    constexpr std::uint32_t thumbnail_generator_version = 2;
+    constexpr std::uint32_t thumbnail_default_size = 128;
     constexpr std::uint32_t thumbnail_max_dimension = 512;
     constexpr std::size_t thumbnail_max_bytes = 4u * 1024u * 1024u;
 

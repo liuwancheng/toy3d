@@ -18,6 +18,10 @@ namespace toy3d
         MaterialAssetCreationKind material_creation_kind = MaterialAssetCreationKind::Material;
         AssetId material_parent;
         AssetId material_open;
+        AssetId scene_open;
+        AssetId texture_open;
+        bool texture_focus = false;
+        bool assets_refreshed = false;
         bool visible = false;
         Vector2 region_min;
         Vector2 region_max;
@@ -29,6 +33,6 @@ namespace toy3d
     };
 
     ContentBrowserActions draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
-                              bool& show_engine_content, AssetThumbnailPool& thumbnails, float& tile_size,
+                              bool& show_engine_content, AssetThumbnailPool& thumbnails,
                               bool import_enabled = false);
 }

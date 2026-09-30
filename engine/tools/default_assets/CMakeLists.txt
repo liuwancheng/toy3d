@@ -1,0 +1,4 @@
+add_executable(Toy3dDefaultAssets "main.cpp")
+target_compile_features(Toy3dDefaultAssets PRIVATE cxx_std_17)
+set_target_properties(Toy3dDefaultAssets PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tools")
+target_link_libraries(Toy3dDefaultAssets PRIVATE Toy3dTextureImport Toy3dMaterialAsset)

@@ -1,0 +1,19 @@
+format_version: 2
+asset_id: 26e14823067241ee84676de813b2e8c3
+root_type: toy3d.Texture2DAssetData
+schema_version: 1
+dependencies:
+  []
+subresources:
+  []
+data:
+  height: 4
+  mip_count: 3
+  pixel_format: 3
+  width: 4
+meta:
+  format_version: 1
+  size: 197
+  sha256: fd3b2a18619a97bce50f6cab14a43b1d6f91b2b6dc9dd27317b1f03a2c72e293
+  required_segments:
+    - texture_mips

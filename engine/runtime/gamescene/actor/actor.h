@@ -5,6 +5,7 @@
 #include "gamescene/world/world_types.h"
 
 #include <memory>
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <utility>
@@ -32,6 +33,7 @@ namespace toy3d
         bool is_tick_enabled() const { return tick_enabled_; }
         void set_tick_enabled(bool enabled) { tick_enabled_ = enabled; }
         SceneComponent* root_component() const { return root_component_; }
+        std::size_t component_count() const { return components_.size(); }
 
         template <typename Component, typename... Args> Component& create_component(Args&&... args)
         {

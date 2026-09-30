@@ -1,4 +1,5 @@
 #include "asset_pair.h"
+#include "asset_descriptor_path.h"
 
 #include <algorithm>
 #include <utility>
@@ -15,15 +16,11 @@ namespace toy3d
 
         AssetResult<VirtualPath> meta_path_for(const VirtualPath& path)
         {
-            const std::string& name = path.utf8();
-            if (name.size() < 6u || name.compare(name.size() - 6u, 6u, ".asset") != 0)
+            VirtualPath paired;
+            if (!asset_meta_path(path, paired))
                 return AssetResult<VirtualPath>(fail(AssetErrorCode::InvalidFormat, {}, path,
-                    "asset path must end in .asset"));
-            const auto parsed = VirtualPath::parse(name.substr(0u, name.size() - 6u) + ".meta");
-            if (!parsed.succeeded())
-                return AssetResult<VirtualPath>(fail(AssetErrorCode::InvalidFormat, {}, path,
-                    "invalid paired meta path", parsed.status()));
-            return AssetResult<VirtualPath>(parsed.value());
+                    "descriptor path must end in .asset or .scene"));
+            return AssetResult<VirtualPath>(paired);
         }
     } // namespace
 
@@ -75,6 +72,12 @@ namespace toy3d
         }
         AssetPair candidate;
         candidate.description = description.value();
+        if (!asset_descriptor_accepts_type(asset_descriptor_kind(asset_path),
+            candidate.description.index.root_type) ||
+            (asset_descriptor_kind(asset_path) == AssetDescriptorKind::Scene && candidate.description.has_meta))
+            return AssetResult<AssetPair>(fail(AssetErrorCode::TypeMismatch,
+                candidate.description.index.asset_id, asset_path,
+                "descriptor extension, root type or Scene payload is invalid"));
         if (!candidate.description.has_meta)
         {
             const auto found = files.stat(paired_path.value());

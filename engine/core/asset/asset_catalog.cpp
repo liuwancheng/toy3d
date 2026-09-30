@@ -1,5 +1,6 @@
 #include "asset_catalog.h"
 #include "asset_pair.h"
+#include "asset_descriptor_path.h"
 
 #include <algorithm>
 #include <set>
@@ -42,7 +43,7 @@ namespace toy3d
                     if (!nested.succeeded()) return nested;
                 }
                 else if (entry.type == FileType::File &&
-                         entry.name.size() >= 6 && entry.name.compare(entry.name.size() - 6, 6, ".asset") == 0)
+                         asset_descriptor_kind(child.value()) != AssetDescriptorKind::Invalid)
                 {
                     if (catalog.entries.size() >= k_max_catalog_entries)
                         return {AssetErrorCode::TooLarge, {}, child.value().utf8(), {}, {},
@@ -50,8 +51,13 @@ namespace toy3d
                     const auto pair = read_asset_pair(types, files, child.value());
                     if (!pair.succeeded()) return pair.status();
                     if (pair.value().description.has_meta)
-                        paired_meta.insert(child.value().utf8().substr(0u,
-                            child.value().utf8().size() - 6u) + ".meta");
+                    {
+                        VirtualPath meta;
+                        if (!asset_meta_path(child.value(), meta))
+                            return {AssetErrorCode::InvalidFormat, {}, child.value().utf8(), {}, {},
+                                    "invalid paired meta path", {}};
+                        paired_meta.insert(meta.utf8());
+                    }
                     const AssetFileIndex& inspected = pair.value().description.index;
                     const AssetStatus added = catalog.index.add(child.value(), inspected);
                     if (!added.succeeded()) return added;

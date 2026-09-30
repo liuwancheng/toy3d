@@ -18,7 +18,8 @@ AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 A
 | 外部进程 | Active | `core-process-design.md` | compiler 和 Editor 共享的有界执行、取消及外部编辑器启动 |
 | 材质源码迭代 | Active | `material-source-workflow-design.md` | 项目源码登记、外部编辑、异步编译与候选接管 |
 | 编辑器资源基础 | Active | `editor-resource-foundation-design.md` | 反射、值编解码、Asset 文件、身份索引与无界面编辑 contract；行为细节见 OpenSpec change `establish-editor-resource-foundation` |
-| Asset 描述与处理数据 | Active | `asset-pair-format-design.md` | `.asset` YAML、可选同名 `.meta`、成对操作、缩略图缓存；旧二进制 Asset 不兼容 |
+| Asset 描述与处理数据 | Active | `asset-pair-format-design.md` | `.asset`/`.scene` YAML、可选配对 `.meta`、成对操作、缩略图缓存；旧二进制 Asset 不兼容 |
+| Scene 文件与保存 | Active | `scene-file-design.md` | `.scene` YAML、场景对象身份、World 快照与 Editor 保存/打开 |
 | Editor 总体架构 | Draft | `editor-architecture-design.md` | Editor 所有权、面板、选择、视口、编辑命令、场景生命周期与分批实施 |
 | 编辑器资源接入方案 | Draft | `editor-resource-integration-plan.md` | 创作目录、模型生产链、资源编辑与后续资源类型的分批接入计划 |
 | 代码材质与参数化编辑 | Active | `material-system-design.md` | 属性、资产、多层实例继承、共享发布、源码迭代和 Texture2D/Sampler 采样；材质预览与缩略图按 M6 实施 |

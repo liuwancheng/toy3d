@@ -8,6 +8,7 @@
 #include "image_codec/png_codec.h"
 #include "logging/logger.h"
 #include "task_graph/graph_task.h"
+#include "texture_asset/texture_asset.h"
 #include "workspace/editor_workspace.h"
 
 namespace toy3d
@@ -30,6 +31,48 @@ namespace toy3d
             for (const auto& asset : workspace.catalog().entries)
                 if (asset.file.asset_id == id) return &asset;
             return nullptr;
+        }
+
+        bool make_texture_thumbnail(const Texture2DAsset& asset, std::vector<std::uint8_t>& bgra)
+        {
+            if (asset.format != PixelFormat::R8G8B8A8UNormSRGB || asset.mips.empty()) return false;
+            std::uint32_t level = 0;
+            std::uint32_t width = asset.width;
+            std::uint32_t height = asset.height;
+            while (level + 1u < asset.mips.size() &&
+                   (width > thumbnail_default_size || height > thumbnail_default_size))
+            { ++level; width = std::max(1u, width / 2u); height = std::max(1u, height / 2u); }
+            const TextureAssetMip& source = asset.mips[level];
+            if (source.row_pitch < width * 4u ||
+                static_cast<std::uint64_t>(source.row_pitch) * height > source.pixels.size()) return false;
+            constexpr std::uint32_t size = thumbnail_default_size;
+            bgra.resize(static_cast<std::size_t>(size) * size * 4u);
+            const float fit = std::min(static_cast<float>(size) / asset.width,
+                                       static_cast<float>(size) / asset.height);
+            const std::uint32_t drawn_width = std::max(1u, static_cast<std::uint32_t>(asset.width * fit));
+            const std::uint32_t drawn_height = std::max(1u, static_cast<std::uint32_t>(asset.height * fit));
+            const std::uint32_t left = (size - drawn_width) / 2u;
+            const std::uint32_t top = (size - drawn_height) / 2u;
+            for (std::uint32_t y = 0; y < size; ++y)
+                for (std::uint32_t x = 0; x < size; ++x)
+                {
+                    const std::size_t dst = (static_cast<std::size_t>(y) * size + x) * 4u;
+                    const std::uint8_t background = ((x / 8u + y / 8u) & 1u) ? 100u : 180u;
+                    bgra[dst] = bgra[dst + 1] = bgra[dst + 2] = background;
+                    bgra[dst + 3] = 255u;
+                    if (x < left || y < top || x >= left + drawn_width || y >= top + drawn_height) continue;
+                    const std::uint32_t sx = std::min(width - 1u, (x - left) * width / drawn_width);
+                    const std::uint32_t sy = std::min(height - 1u, (y - top) * height / drawn_height);
+                    const std::size_t src = static_cast<std::size_t>(sy) * source.row_pitch + sx * 4u;
+                    const std::uint32_t alpha = source.pixels[src + 3];
+                    for (std::uint32_t component = 0; component < 3u; ++component)
+                    {
+                        const std::uint8_t color = source.pixels[src + 2u - component];
+                        bgra[dst + component] = static_cast<std::uint8_t>(
+                            (color * alpha + background * (255u - alpha)) / 255u);
+                    }
+                }
+            return true;
         }
     }
 
@@ -75,7 +118,8 @@ namespace toy3d
 
     AssetThumbnailView AssetThumbnailPool::request(const AssetCatalogEntry& asset)
     {
-        if (!initialized_ || asset.file.root_type != "toy3d.StaticMeshAssetData") return {};
+        if (!initialized_ || (asset.file.root_type != "toy3d.StaticMeshAssetData" &&
+                              asset.file.root_type != "toy3d.Texture2DAssetData")) return {};
         auto it = entries_.find(asset.file.asset_id);
         if (it == entries_.end())
         {
@@ -83,7 +127,7 @@ namespace toy3d
             Entry entry;
             entry.id = asset.file.asset_id;
             entry.path = asset.path.utf8();
-            entry.persist = true;
+            entry.persist = asset.file.root_type == "toy3d.StaticMeshAssetData";
             it = entries_.emplace(entry.id, std::move(entry)).first;
         }
         Entry& entry = it->second;
@@ -126,7 +170,7 @@ namespace toy3d
         if (!asset) { fail(entry, "Asset was removed from the catalog."); return; }
         entry.path = asset->path.utf8();
         if (next_request_ == std::numeric_limits<std::uint64_t>::max() ||
-            next_texture_ == std::numeric_limits<std::uint64_t>::max())
+            next_texture_ >= (1ull << 40))
         { fail(entry, "Thumbnail identifier space exhausted."); return; }
         entry.request_id = next_request_++;
         entry.candidate_texture = ImGuiTextureId(next_texture_++);
@@ -138,13 +182,23 @@ namespace toy3d
         const auto path = asset->path;
         const AssetId id = entry.id;
         const bool force = entry.force;
+        const bool is_texture = asset->file.root_type == "toy3d.Texture2DAssetData";
         FileSystem* files = &workspace_.files();
         AssetPairStore* pairs = &workspace_.asset_pairs();
         cpu_task_ = dispatch_graph_task(*tasks_, "Load asset thumbnail",
-            [result, files, pairs, path, id, force](NamedThread, const GraphEventRef&)
+            [result, files, pairs, path, id, force, is_texture](NamedThread, const GraphEventRef&)
             {
                 try
                 {
+                    if (is_texture)
+                    {
+                        const auto loaded = read_texture_asset(*files, path);
+                        if (!loaded.succeeded()) { result->error = loaded.status().message; return; }
+                        result->extent = {thumbnail_default_size, thumbnail_default_size};
+                        if (!make_texture_thumbnail(loaded.value(), result->pixels))
+                            result->error = "Texture2D thumbnail mip is invalid.";
+                        return;
+                    }
                     const auto original = files->read_binary(path, asset_byte_limit);
                     if (!original.succeeded()) { result->error = original.status().message; return; }
                     const auto pair = pairs->read(path);

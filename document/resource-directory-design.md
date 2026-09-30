@@ -4,7 +4,7 @@
 
 `asset` 对应 UE 的 `Content`。`engine/asset` 保存引擎内置资产，`project/asset` 保存当前游戏项目资产；资产子目录由使用者组织，目录名不决定类型或身份。配置、应用打包输入和 Editor 界面资源各自独立。
 
-资产文件遵循 [Asset 描述与处理数据格式](asset-pair-format-design.md)：`.asset` 是 YAML 描述，处理后数据才有同名 `.meta`；Editor 只显示 `.asset` 并成对操作。缩略图在 `bin/saved/AssetThumbnails/` 缓存，不进入 `project/asset/`。
+资产文件遵循 [Asset 描述与处理数据格式](asset-pair-format-design.md)：一般资产的 `.asset` 与场景的 `.scene` 都是 YAML 描述；处理后数据才有配对 `.meta`，当前 Scene 不产生 meta。Editor 显示两类描述入口并由同一资产服务管理。缩略图在 `bin/saved/AssetThumbnails/` 缓存，不进入 `project/asset/`。
 
 | 源目录 | 职责 | 部署位置 |
 | --- | --- | --- |

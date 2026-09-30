@@ -90,6 +90,8 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 `Toy3dMaterialAsset` 提供 Material/Instance DTO 与生成的反射和值编解码。先注册并冻结 TypeRegistry；领域编码器直接生成 YAML 候选，Editor 经 `AssetPairStore::publish()` 写入纯描述 `.asset`，Material EditSession 也通过 AssetPairStore 保存。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。Texture2D 导入将 GPU ready mip 放入 `.meta`；格式见 [Asset 描述与处理数据格式](asset-pair-format-design.md)。
 
+`Toy3dSceneAsset` 位于 `engine/core/scene_asset`，提供 `SceneAssetData`、生成反射、`validate_scene_asset()`、`encode_scene_asset_pair()` 与 `read_scene_asset()`；只处理 `.scene` 纯描述和 AssetRef，不依赖 World。`EditorApplication` 在 Game Thread 上提取、装配当前支持的 Actor。文件及菜单边界见 [Scene 文件与 Editor 保存](scene-file-design.md)。
+
 `AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。资产以 `encode_asset_pair()` 生成 YAML 与可选 meta，`read_asset_pair()` 验证配对，`AssetPairStore` 执行发布、删除、复制、移动和恢复。旧 `asset_file.h` 编解码接口仅保留给隔离测试，不是生产磁盘格式入口。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
 
 旧 `AssetFormatMigrationRegistry` 仅由历史格式测试覆盖，不在 Editor、runtime 或导入链使用。

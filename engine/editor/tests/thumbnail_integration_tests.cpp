@@ -244,15 +244,17 @@ namespace
         void on_build_ui() override
         {
             ImGui::SetNextWindowSize(ImVec2(620, 320), ImGuiCond_Always);
-            draw_content_browser(workspace_, selection_, folder_, show_engine_, pool_, tile_size_);
+            draw_content_browser(workspace_, selection_, folder_, show_engine_, pool_);
             ImGui::SetNextWindowSize(ImVec2(620, 320), ImGuiCond_Always);
             ImGui::Begin("Thumbnail integration");
             for (const auto& asset : workspace_.catalog().entries)
             {
+                if (!(asset.file.asset_id == first_) && !(asset.file.asset_id == second_)) continue;
                 const auto view = pool_.request(asset);
                 if (view.texture_id.valid())
                 {
-                    ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(view.texture_id.value())), ImVec2(256, 256));
+                    ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(view.texture_id.value())),
+                        ImVec2(thumbnail_default_size, thumbnail_default_size));
                     ImGui::SameLine();
                 }
             }
@@ -288,7 +290,6 @@ namespace
         bool import_dialog_shown_ = false;
         std::string folder_ = "/Project";
         bool show_engine_ = false;
-        float tile_size_ = 112;
         AssetId first_;
         AssetId second_;
         TestState& state_;

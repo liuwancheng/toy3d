@@ -191,6 +191,7 @@ add_subdirectory(asset_thumbnail)
 add_subdirectory(mesh_description)
 add_subdirectory(static_mesh)
 add_subdirectory(material)
+add_subdirectory(scene_asset)
 add_subdirectory(texture_asset)
 add_subdirectory(process)
 

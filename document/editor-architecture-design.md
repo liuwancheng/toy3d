@@ -4,7 +4,7 @@
 
 Editor 是使用现有 Engine、GameScene、RenderScene 和资源基础设施的创作程序，不另建一套运行时对象系统。它需要支持场景对象编辑，以及模型、材质、动画、碰撞和场景 Asset 的浏览、预览、修改与保存。各资源类型共享 Asset 身份、索引和文件外层；导入、领域校验、预览和运行时构造分别由对应领域负责。第一条资源贯通链路仍按[编辑器资源接入方案](editor-resource-integration-plan.md)选择静态模型。
 
-当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、工具栏、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层。启用 Assimp 后，Content Browser 工具栏、空白处右键菜单和外部模型拖入共用导入确认框；保存为 `.asset` 并生成缩略图后，资源图块可拖入 Scene Viewport 创建 Actor，沿同一命令历史撤销重做。生产链遵循 [StaticMesh 设计](static-mesh-import-design.md)。类型化 Asset 编辑、场景文件和 Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
+当前 `Toy3dEditor` 使用一个原生主窗口承载 ImGui Dockspace；场景渲染到离屏纹理后嵌入 `Scene Viewport`。`EditorApplication` 已组合主菜单、状态栏、默认停靠布局、Actor HitProxy 选择与 ImGuizmo 操作。Place Actors 提供内置对象拖放，工厂组合对象，创建、删除、Transform、灯光和相机属性共用撤销历史。`SceneViewport` 持有视口、拾取和 Gizmo 状态，以及独立编辑器观察 pose 和 CameraActor 查看目标；`EditorSelection` 持有场景 Actor 与浏览器 Asset 选择，Outliner、Details 共用该选择。Content Browser 从独立创作 mount 扫描 Asset 外层。启用 Assimp 后，File 菜单、Content Browser 空白处右键菜单和外部模型拖入共用导入确认框；保存为 `.asset` 并生成缩略图后，资源图块可拖入 Scene Viewport 创建 Actor，沿同一命令历史撤销重做。生产链遵循 [StaticMesh 设计](static-mesh-import-design.md)。Scene 使用独立 `.scene` 文件，首期 Editor 保存与打开边界见 [Scene 文件与 Editor 保存](scene-file-design.md)。Details 旋转输入尚未接入。本文其余拟新增接口仍是后续设计，不表示已经实现。
 
 近期不建立插件系统、多文档并发编辑、运行时热重载、Blueprint 式对象系统或通用属性方法调用。先完成单个场景编辑视口、单个活动 Asset 编辑会话和可验证的端到端工作流；扩展到多视口、多预览 World 时再扩展相应的渲染输出 contract。
 
@@ -49,9 +49,11 @@ Editor 专用行为使用 `WITH_EDITOR`，导入和重导入所需的创作数�
 | `Content Browser` | 默认浏览 `/Project`，可开启只读引擎资产显示；从 AssetIndex 展示目录、类型和 Asset | 用文件名推导身份、编辑部署副本 |
 | `EditorWorkspace` | 创作 mount、索引发布、类型化打开/保存、活动 Asset 会话 | ImGui 绘制、运行时 World 生命周期 |
 
-首期默认布局：中央 `Scene Viewport`，右上 `Outliner`，右下 `Details`，底部 `Content Browser`；主菜单、全局工具栏和状态栏位于停靠区域外。面板可停靠，布局保存到 `bin/saved/editor_layout.ini`；用户保存的布局优先于默认布局，可通过 `Window > Reset Layout` 恢复。现有编辑视口已改称 `Scene Viewport`；未来运行游戏的 Game Viewport 是不同用途的面板，不复用编辑相机和 Gizmo 状态。
+首期默认布局：中央 `Scene Viewport`，右上 `Outliner`，右下 `Details`，底部 `Content Browser`；主菜单和状态栏位于停靠区域外。撤销与重做位于 Edit 菜单并提供快捷键，资源重扫入口位于 Content Browser。面板可停靠，布局保存到 `bin/saved/editor_layout.ini`；用户保存的布局优先于默认布局，可通过 `Window > Reset Layout` 恢复。现有编辑视口已改称 `Scene Viewport`；未来运行游戏的 Game Viewport 是不同用途的面板，不复用编辑相机和 Gizmo 状态。
 
 选择以值身份表示。Actor ID 只在当前 World 生命周期内有效，取用前重新查询存活；Asset ID 在文件移动后仍保持稳定。场景 Actor 选择与浏览器 Asset 选择分别保留，最后一次主动选择决定 Details 当前显示哪个目标；在浏览器选中 Asset 不会抹去视口中的 Actor 选择。切换 World、关闭资源、删除对象或收到过期 HitProxy 结果时，对应选择必须失效或重新解析。Outliner、视口和 Content Browser 都写入集中管理的选择状态，Details 只读取它。
+
+资源创建与导入入口放在 File 菜单及 Content Browser 空白处右键菜单，保持完整动作名称；Texture2D 从外部图片导入，当前不提供空白 Texture2D 创建。资源图块固定 128×128，名称在图标下换行显示，特别长的名称可通过悬停提示查看全称；不额外扩展 Content Browser 工具栏。单击 Texture2D 图块打开只读贴图预览，双击聚焦窗口；窗口查看原始 Mip、RGBA/R/G/B/A、缩放与平移，独立于图块分辨率。Content Browser 的 `Rescan Assets` 重新扫描 Project/Engine 资源文件并使缩略图缓存及贴图预览失效，用于识别外部文件变更，不重新导入模型或贴图源文件。
 
 ImGui 面板每帧即时绘制，但工作区、选择、活动会话、撤销历史和视口相机跨帧存在。首期不为每个 ImGui 窗口创建一个长期通用 `EditorDocument` 基类；模型等 Asset 使用其领域类型与 `EditSession<T>`，场景文档要等 World 装配/保存 contract 明确后设计。
 

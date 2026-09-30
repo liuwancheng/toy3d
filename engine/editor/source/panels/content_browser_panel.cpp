@@ -50,6 +50,18 @@ namespace toy3d
                 draw.AddTriangleFilled(ImVec2(a.x + 4, b.y - 4), ImVec2(a.x + size * 0.24f, a.y + size * 0.22f),
                     ImVec2(a.x + size * 0.48f, b.y - 4), IM_COL32(122, 177, 143, 255));
             }
+            else if (type == "toy3d.SceneAssetData")
+            {
+                draw.AddRectFilled(a, b, IM_COL32(57, 82, 105, 255), 4);
+                draw.AddCircleFilled(ImVec2(a.x + size * 0.14f, a.y + size * 0.14f),
+                    size * 0.065f, IM_COL32(245, 199, 103, 255));
+                draw.AddTriangleFilled(ImVec2(a.x + 4, b.y - 4),
+                    ImVec2(a.x + size * 0.25f, a.y + size * 0.2f),
+                    ImVec2(a.x + size * 0.47f, b.y - 4), IM_COL32(115, 163, 130, 255));
+                draw.AddTriangleFilled(ImVec2(a.x + size * 0.25f, b.y - 4),
+                    ImVec2(a.x + size * 0.47f, a.y + size * 0.12f),
+                    ImVec2(b.x - 4, b.y - 4), IM_COL32(150, 185, 150, 255));
+            }
             else
             {
                 const ImVec2 top(position.x + size * 0.5f, position.y + size * 0.18f);
@@ -71,8 +83,9 @@ namespace toy3d
     }
 
     ContentBrowserActions draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
-                              bool& show_engine_content, AssetThumbnailPool& thumbnails, float& tile_size, bool import_enabled)
+                              bool& show_engine_content, AssetThumbnailPool& thumbnails, bool import_enabled)
     {
+        constexpr float tile_size = 128.0f;
         static AssetId pending_delete;
         static std::string delete_error;
         AssetId requested_delete;
@@ -85,17 +98,16 @@ namespace toy3d
             actions.region_min = Vector2(region.x, region.y);
             actions.region_max = Vector2(region.x + size.x, region.y + size.y);
             const bool writable = folder == "/Project" || folder.compare(0, 9, "/Project/") == 0;
-            if (ImGui::Button("Refresh"))
+            if (ImGui::Button("Rescan Assets"))
             {
                 if (!workspace.refresh()) TOY_LOG_ERROR("Content Browser refresh failed: {}", workspace.error());
-                else thumbnails.invalidate();
+                else { thumbnails.invalidate(); actions.assets_refreshed = true; }
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Rescan Project and Engine asset files. This does not reimport source files.");
             ImGui::SameLine();
             if (ImGui::Checkbox("Show Engine Content", &show_engine_content) && !show_engine_content &&
                 (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)) folder = "/Project";
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(120);
-            ImGui::SliderFloat("Tile Size", &tile_size, 96, 160, "%.0f");
             ImGui::TextUnformatted(folder.c_str());
             if (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)
             { ImGui::SameLine(); ImGui::TextDisabled("(read only)"); }
@@ -130,7 +142,9 @@ namespace toy3d
                 for (const auto& asset : workspace.catalog().entries)
                     if (parent_folder(asset.path.utf8()) == folder) items.push_back({asset.path.utf8(), &asset});
                 const float spacing = 12;
-                const float row_height = tile_size + 48;
+                // Three caption lines keep ordinary asset names readable at the smallest tile size.
+                // The existing tooltip remains the full-name fallback for unusually long names.
+                const float row_height = tile_size + 64;
                 const int columns = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / (tile_size + spacing)));
                 const int rows = static_cast<int>((items.size() + columns - 1) / columns);
                 const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -152,7 +166,12 @@ namespace toy3d
                             const bool selected = item.asset && selection.asset_id() == item.asset->file.asset_id;
                             if (ImGui::InvisibleButton("Tile", ImVec2(tile_size, row_height - spacing)))
                             {
-                                if (item.asset) selection.select_asset(item.asset->file.asset_id);
+                                if (item.asset)
+                                {
+                                    selection.select_asset(item.asset->file.asset_id);
+                                    if (item.asset->file.root_type == "toy3d.Texture2DAssetData")
+                                        actions.texture_open = item.asset->file.asset_id;
+                                }
                                 else folder = item.path;
                             }
                             const bool hovered = ImGui::IsItemHovered();
@@ -161,6 +180,12 @@ namespace toy3d
                                  item.asset->file.root_type == "toy3d.MaterialInstanceAssetData");
                             if (is_material && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                                 actions.material_open = item.asset->file.asset_id;
+                            const bool is_scene = item.asset && item.asset->file.root_type == "toy3d.SceneAssetData";
+                            if (is_scene && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                                actions.scene_open = item.asset->file.asset_id;
+                            const bool is_texture = item.asset && item.asset->file.root_type == "toy3d.Texture2DAssetData";
+                            if (is_texture && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                            { actions.texture_open = item.asset->file.asset_id; actions.texture_focus = true; }
                             if (item.asset && (is_material || item.asset->file.root_type == "toy3d.StaticMeshAssetData") && ImGui::BeginDragDropSource())
                             {
                                 const AssetId id = item.asset->file.asset_id;
@@ -186,7 +211,9 @@ namespace toy3d
                             else draw_placeholder(draw, position, tile_size, !item.asset, item.asset ? item.asset->file.root_type : "");
                             const std::string name = item.path.substr(item.path.find_last_of('/') + 1);
                             draw.PushClipRect(position, end, true);
-                            draw.AddText(ImVec2(position.x + 4, position.y + tile_size + 3), IM_COL32_WHITE, name.c_str());
+                            draw.AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                                ImVec2(position.x + 4, position.y + tile_size + 3), IM_COL32_WHITE,
+                                name.c_str(), nullptr, tile_size - 8);
                             if (thumbnail.busy) draw.AddText(ImVec2(position.x + 4, position.y + tile_size - 20), IM_COL32_WHITE, "Generating...");
                             if (!thumbnail.error.empty()) draw.AddText(ImVec2(position.x + 4, position.y + tile_size - 20), IM_COL32(255, 130, 100, 255), "Failed");
                             draw.PopClipRect();
@@ -202,6 +229,10 @@ namespace toy3d
                             {
                                 if (is_material && ImGui::MenuItem("Open Material Editor"))
                                     actions.material_open = item.asset->file.asset_id;
+                                if (is_scene && ImGui::MenuItem("Open Scene"))
+                                    actions.scene_open = item.asset->file.asset_id;
+                                if (is_texture && ImGui::MenuItem("Open Texture Preview"))
+                                { actions.texture_open = item.asset->file.asset_id; actions.texture_focus = true; }
                                 if (is_material && ImGui::MenuItem("Create Material Instance..."))
                                 {
                                     actions.material_creation_requested = true;
@@ -227,15 +258,15 @@ namespace toy3d
                 if (items.empty()) ImGui::TextDisabled("Right-click here to import or create assets");
                 if (ImGui::BeginPopupContextWindow("Content Actions", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
                 {
-                    if (ImGui::MenuItem("Import...", nullptr, false, import_enabled && writable)) actions.import_requested = true;
+                    if (ImGui::MenuItem("Import Static Mesh...", nullptr, false, import_enabled && writable)) actions.import_requested = true;
                     if (ImGui::MenuItem("Import Texture2D...", nullptr, false, writable)) actions.texture_import_requested = true;
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Material...", nullptr, false, writable))
+                    if (ImGui::MenuItem("Create Material...", nullptr, false, writable))
                     {
                         actions.material_creation_requested = true;
                         actions.material_creation_kind = MaterialAssetCreationKind::Material;
                     }
-                    if (ImGui::MenuItem("Material Instance...", nullptr, false, writable))
+                    if (ImGui::MenuItem("Create Material Instance...", nullptr, false, writable))
                     {
                         actions.material_creation_requested = true;
                         actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;

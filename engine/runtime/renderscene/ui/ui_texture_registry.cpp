@@ -39,10 +39,37 @@ namespace toy3d
     RHIStatus UiTextureRegistry::record_upload(RHIDevice& device, RHIGraphicsCommandContext& context,
                                               const UiTextureUpload& upload)
     {
+        // Uploaded editor images can be full-resolution Texture2D assets.
+        // Rendered thumbnail targets retain the separate 512-pixel readback bound.
+        constexpr std::uint32_t max_uploaded_image_dimension = 4096;
+        if (!upload.texture_id.valid() ||
+            upload.texture_id.value() <= IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value() ||
+            entries_.count(upload.texture_id.value()) ||
+            !upload.extent.width || !upload.extent.height ||
+            upload.extent.width > max_uploaded_image_dimension ||
+            upload.extent.height > max_uploaded_image_dimension)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "UI upload image extent or ID is invalid.");
         if (upload.bgra_pixels.size() != static_cast<std::uint64_t>(upload.extent.width) * upload.extent.height * 4)
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "UI upload pixel count is invalid.");
-        RHIStatus status = create_target(device, upload.texture_id, upload.extent);
-        if (!status) return status;
+        RHITextureDesc image_desc;
+        image_desc.width = upload.extent.width;
+        image_desc.height = upload.extent.height;
+        image_desc.format = PixelFormat::B8G8R8A8UNorm;
+        image_desc.usage = RHIResourceUsage::ShaderResource | RHIResourceUsage::CopyDestination;
+        image_desc.initial_access = RHIAccess::Common;
+        image_desc.debug_name = "UiUploadedImage";
+        auto image = device.create_texture(image_desc);
+        if (!image) return image.status();
+        RHITextureViewDesc view_desc;
+        view_desc.format = image_desc.format;
+        view_desc.type = RHIResourceViewType::ShaderResource;
+        auto sampled = device.create_texture_view(image.value(), view_desc);
+        if (!sampled) return sampled.status();
+        Entry entry;
+        entry.texture = image.value();
+        entry.sampled_view = sampled.value();
+        entries_.emplace(upload.texture_id.value(), std::move(entry));
+        RHIStatus status = RHIStatus::success();
         RHIResourceTransition copy;
         copy.resource = texture(upload.texture_id);
         copy.before = RHIAccess::Common;

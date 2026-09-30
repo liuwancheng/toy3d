@@ -1,8 +1,10 @@
 #include "workspace/editor_workspace.h"
+#include "asset_descriptor_path.h"
 
 #include "file_system/directory_file_store.h"
 #include "file_system/virtual_path.h"
 #include "material/material_asset.h"
+#include "scene_asset/scene_asset.h"
 #include "static_mesh/static_mesh_asset.h"
 #include "texture_asset/texture_asset.h"
 
@@ -47,8 +49,8 @@ namespace toy3d
         bool writable_asset_path(const VirtualPath& path)
         {
             const std::string& name = path.utf8();
-            return name.compare(0u, 9u, "/Project/") == 0 && name.size() > 15u &&
-                name.compare(name.size() - 6u, 6u, ".asset") == 0;
+            return name.compare(0u, 9u, "/Project/") == 0 &&
+                asset_descriptor_kind(path) != AssetDescriptorKind::Invalid;
         }
 
         std::string comparable_path(std::string path)
@@ -131,6 +133,7 @@ namespace toy3d
         ReflectionStatus registered = register_static_mesh_asset_types(types_);
         if (registered.succeeded()) registered = register_material_asset_types(types_);
         if (registered.succeeded()) registered = register_texture_asset_types(types_);
+        if (registered.succeeded()) registered = register_scene_asset_types(types_);
         if (registered.succeeded()) registered = types_.freeze();
         if (!registered.succeeded()) { error_ = registered.message; return false; }
         asset_pairs_ = std::make_unique<AssetPairStore>(types_, files_);

@@ -3,11 +3,16 @@
 #include <exception>
 #include <algorithm>
 #include <cctype>
+#include <map>
+#include <set>
 
 #include "imgui.h"
 #include "imgui_internal.h"
 
 #include "gamescene/actor/actor.h"
+#include "gamescene/component/static_mesh_component.h"
+#include "asset_descriptor_path.h"
+#include "rendercore/geometry/static_mesh_asset_loader.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "math/quaternion.h"
@@ -21,6 +26,410 @@
 
 namespace toy3d
 {
+    namespace
+    {
+        const char* scene_kind(PlacementItemId item)
+        {
+            switch (item)
+            {
+            case PlacementItemId::EmptyActor: return "EmptyActor";
+            case PlacementItemId::Cube: return "Cube";
+            case PlacementItemId::Plane: return "Plane";
+            case PlacementItemId::StaticMesh: return "StaticMesh";
+            case PlacementItemId::DirectionalLight: return "DirectionalLight";
+            case PlacementItemId::PointLight: return "PointLight";
+            case PlacementItemId::Camera: return "Camera";
+            }
+            return "";
+        }
+
+        bool placement_kind(const std::string& kind, PlacementItemId& item)
+        {
+            for (const PlacementItem& candidate : placement_catalog())
+                if (kind == scene_kind(candidate.id)) { item = candidate.id; return true; }
+            if (kind == "StaticMesh") { item = PlacementItemId::StaticMesh; return true; }
+            return false;
+        }
+    }
+
+    bool EditorApplication::capture_scene(SceneAssetData& data, std::string& error)
+    {
+        data.actors.clear();
+        const std::vector<std::uint32_t> ids = world().actor_ids();
+        for (const std::uint32_t id : ids)
+        {
+            Actor* actor = world().find_actor_by_id(id);
+            if (!actor || !actor->root_component() || actor->component_count() != 1u)
+            { error = "Scene contains an Actor with unsupported components."; return false; }
+            if (stable_scene_ids_.count(id) == 0u)
+            {
+                AssetId actor_id;
+                AssetId component_id;
+                if (!AssetId::try_generate(actor_id) || !AssetId::try_generate(component_id))
+                { error = "Could not allocate stable Scene object IDs."; return false; }
+                stable_scene_ids_[id] = {actor_id.hex(), component_id.hex()};
+            }
+        }
+        for (const std::uint32_t id : ids)
+        {
+            Actor* actor = world().find_actor_by_id(id);
+            PlacementRequest request;
+            if (!actor_factory_.describe(*actor, request))
+            { error = "Scene contains an Actor without a supported placement description."; return false; }
+            SceneActorData saved;
+            saved.id = stable_scene_ids_.at(id).first;
+            saved.root_component_id = stable_scene_ids_.at(id).second;
+            saved.kind = scene_kind(request.item);
+            saved.root_component_type = scene_root_component_type(saved.kind);
+            if (saved.kind.empty()) { error = "Scene contains an unsupported Actor kind."; return false; }
+            const EditorActorState state = capture_actor_state(*actor);
+            saved.transform = state.transform;
+            saved.light_enabled = state.light_enabled;
+            saved.light_color = state.light_color;
+            saved.light_intensity = state.light_intensity;
+            saved.light_range = state.light_range;
+            saved.camera_vertical_fov = state.camera_vertical_fov;
+            saved.camera_near_clip = state.camera_near_clip;
+            saved.camera_far_clip = state.camera_far_clip;
+            const SceneComponent* parent = actor->root_component()->parent();
+            if (parent)
+            {
+                const auto found = stable_scene_ids_.find(parent->owner().actor_id());
+                if (found == stable_scene_ids_.end() || parent != parent->owner().root_component())
+                { error = "Scene contains an unsupported attachment target."; return false; }
+                saved.parent_component_id = found->second.second;
+            }
+            if (request.item == PlacementItemId::StaticMesh)
+            {
+                if (!request.asset_id.valid())
+                { error = "StaticMesh Actor has no source Asset ID."; return false; }
+                saved.resources.push_back({"mesh", {request.asset_id, {}, "toy3d.StaticMeshAssetData",
+                    AssetRefStrength::Strong}});
+            }
+            const auto* mesh = dynamic_cast<const StaticMeshComponent*>(actor->root_component());
+            const auto assignments = material_assignments_.capture(world(), id);
+            if (!assignments.empty() && !mesh)
+            { error = "Material assignments target a non-mesh Actor."; return false; }
+            if (mesh && mesh->static_mesh())
+            {
+                const auto& slots = mesh->static_mesh()->material_slot_names();
+                for (std::size_t slot = 0; slot < slots.size(); ++slot)
+                {
+                    const auto found = std::find_if(assignments.begin(), assignments.end(),
+                        [&](const MaterialSlotAssignment& assignment)
+                        { return assignment.component_id == mesh->component_id() && assignment.slot_name == slots[slot]; });
+                    if (mesh->has_material_override(static_cast<std::uint32_t>(slot)) != (found != assignments.end()))
+                    { error = "Scene has a material override without an Editor Asset reference."; return false; }
+                    if (found != assignments.end()) saved.resources.push_back({"material:" + slots[slot], found->material});
+                }
+                if (assignments.size() != saved.resources.size() -
+                    (request.item == PlacementItemId::StaticMesh ? 1u : 0u))
+                { error = "Scene has an unknown material slot assignment."; return false; }
+            }
+            data.actors.push_back(std::move(saved));
+        }
+        const AssetStatus valid = validate_scene_asset(data, &workspace_.catalog().index);
+        if (!valid.succeeded()) { error = valid.message; return false; }
+        error.clear();
+        return true;
+    }
+
+    bool EditorApplication::replace_scene(const SceneAssetData& data, std::string& error)
+    {
+        struct PreparedActor { PlacementRequest placement; EditorActorState state; };
+        std::vector<PreparedActor> prepared;
+        prepared.reserve(data.actors.size());
+        for (const SceneActorData& saved : data.actors)
+        {
+            PreparedActor candidate;
+            if (!placement_kind(saved.kind, candidate.placement.item))
+            { error = "Unsupported Scene Actor kind: " + saved.kind; return false; }
+            candidate.placement.transform = saved.transform;
+            candidate.state.transform = saved.transform;
+            candidate.state.light_enabled = saved.light_enabled;
+            candidate.state.light_color = saved.light_color;
+            candidate.state.light_intensity = saved.light_intensity;
+            candidate.state.light_range = saved.light_range;
+            candidate.state.camera_vertical_fov = saved.camera_vertical_fov;
+            candidate.state.camera_near_clip = saved.camera_near_clip;
+            candidate.state.camera_far_clip = saved.camera_far_clip;
+            for (const SceneResourceBinding& binding : saved.resources)
+            {
+                if (binding.role != "mesh") continue;
+                const AssetLocation* location = workspace_.catalog().index.find(binding.reference.asset_id);
+                if (!location) { error = "Scene StaticMesh asset is missing."; return false; }
+                const auto geometry = read_static_mesh_asset(workspace_.files(), location->path);
+                if (!geometry.succeeded()) { error = geometry.status().message; return false; }
+                candidate.placement.asset_id = binding.reference.asset_id;
+                candidate.placement.static_mesh = create_static_mesh_from_asset(geometry.value(),
+                    actor_factory_.default_material());
+                if (!candidate.placement.static_mesh)
+                { error = "Could not construct Scene StaticMesh geometry."; return false; }
+            }
+            prepared.push_back(std::move(candidate));
+        }
+        const std::vector<std::uint32_t> old_ids = world().actor_ids();
+        std::vector<std::uint32_t> new_ids;
+        std::map<std::string, SceneComponent*> components;
+        std::map<std::uint32_t, std::pair<std::string, std::string>> next_stable_ids;
+        auto rollback = [&]()
+        {
+            for (const std::uint32_t id : new_ids)
+            {
+                Actor* actor = world().find_actor_by_id(id);
+                if (actor && !world().destroy_actor(*actor)) TOY_LOG_ERROR("Scene candidate rollback failed.");
+                actor_factory_.forget(id);
+                material_assignments_.forget(id);
+            }
+        };
+        for (std::size_t i = 0; i < data.actors.size(); ++i)
+        {
+            Actor* actor = actor_factory_.create(world(), prepared[i].placement);
+            if (!actor)
+            { error = "Could not construct Scene Actor."; rollback(); return false; }
+            new_ids.push_back(actor->actor_id());
+            components[data.actors[i].root_component_id] = actor->root_component();
+            next_stable_ids[actor->actor_id()] = {data.actors[i].id, data.actors[i].root_component_id};
+            if (!apply_actor_state(*actor, prepared[i].state))
+            { error = "Could not restore Scene Actor properties."; rollback(); return false; }
+            for (const SceneResourceBinding& binding : data.actors[i].resources)
+            {
+                if (binding.role == "mesh") continue;
+                MaterialSlotAssignment assignment;
+                assignment.component_id = actor->root_component()->component_id();
+                assignment.slot_name = binding.role.substr(9u);
+                assignment.material = binding.reference;
+                if (!material_assignments_.assign(world(), actor->actor_id(), assignment, error))
+                { rollback(); return false; }
+            }
+        }
+        for (const SceneActorData& saved : data.actors)
+        {
+            if (saved.parent_component_id.empty()) continue;
+            if (!components.at(saved.root_component_id)->attach_to(
+                components.at(saved.parent_component_id), AttachmentRule::KeepRelative))
+            { error = "Could not restore Scene attachment."; rollback(); return false; }
+        }
+        for (const std::uint32_t id : old_ids)
+        {
+            Actor* actor = world().find_actor_by_id(id);
+            if (actor && !world().destroy_actor(*actor))
+            { error = "Could not remove the previous Scene Actor."; rollback(); return false; }
+            actor_factory_.forget(id);
+            material_assignments_.forget(id);
+        }
+        stable_scene_ids_ = std::move(next_stable_ids);
+        command_history_.clear();
+        selection_.clear_actor();
+        scene_viewport_.exit_camera_view();
+        scene_viewport_.cancel_pending_hit();
+        error.clear();
+        return true;
+    }
+
+    bool EditorApplication::scene_dirty()
+    {
+        if (!scene_id_.valid()) return !world().actor_ids().empty();
+        SceneAssetData snapshot;
+        std::string error;
+        if (!capture_scene(snapshot, error)) return true;
+        const auto encoded = encode_scene_asset_pair(workspace_.types(), scene_id_, snapshot,
+            &workspace_.catalog().index);
+        return !encoded.succeeded() || encoded.value().asset != scene_baseline_;
+    }
+
+    bool EditorApplication::save_scene(const VirtualPath& path, bool create_new)
+    {
+        if (asset_descriptor_kind(path) != AssetDescriptorKind::Scene ||
+            path.utf8().compare(0u, 9u, "/Project/") != 0)
+        { scene_error_ = "Choose a .scene path inside Project assets."; return false; }
+        SceneAssetData snapshot;
+        if (!capture_scene(snapshot, scene_error_)) return false;
+        AssetId id = scene_id_;
+        if (create_new || !id.valid())
+        {
+            if (!AssetId::try_generate(id) || workspace_.catalog().index.find(id))
+            { scene_error_ = "Could not allocate a unique Scene Asset ID."; return false; }
+        }
+        else
+        {
+            const auto disk = workspace_.files().read_binary(path, scene_baseline_.size() + 1u);
+            if (!disk.succeeded() || disk.value() != scene_baseline_)
+            { scene_error_ = "Scene file changed on disk. Use Save Scene As or reopen it."; return false; }
+        }
+        const auto encoded = encode_scene_asset_pair(workspace_.types(), id, snapshot,
+            &workspace_.catalog().index);
+        if (!encoded.succeeded()) { scene_error_ = encoded.status().message; return false; }
+        const AssetStatus published = workspace_.asset_pairs().publish(path, encoded.value(),
+            create_new ? FilePublishMode::CreateNew : FilePublishMode::Replace);
+        if (!published.succeeded()) { scene_error_ = published.message; return false; }
+        scene_id_ = id;
+        scene_path_ = path;
+        scene_baseline_ = encoded.value().asset;
+        if (!workspace_.refresh())
+        { scene_error_ = "Scene was saved, but Content Browser refresh failed: " + workspace_.error(); return false; }
+        selection_.select_asset(id);
+        scene_error_.clear();
+        return true;
+    }
+
+    bool EditorApplication::open_scene(const AssetId& id)
+    {
+        const AssetLocation* location = workspace_.catalog().index.find(id);
+        if (!location || asset_descriptor_kind(location->path) != AssetDescriptorKind::Scene)
+        { scene_error_ = "Scene asset is missing from Content Browser."; return false; }
+        SceneAssetData loaded;
+        const AssetStatus read = read_scene_asset(workspace_.types(), workspace_.files(),
+            location->path, loaded, &workspace_.catalog().index);
+        if (!read.succeeded()) { scene_error_ = read.message; return false; }
+        const auto bytes = workspace_.files().read_binary(location->path);
+        if (!bytes.succeeded()) { scene_error_ = bytes.status().message; return false; }
+        if (!replace_scene(loaded, scene_error_)) return false;
+        scene_id_ = id;
+        scene_path_ = location->path;
+        scene_baseline_ = bytes.value();
+        selection_.select_asset(id);
+        return true;
+    }
+
+    void EditorApplication::new_scene()
+    {
+        command_history_.clear();
+        selection_.clear_actor();
+        scene_viewport_.exit_camera_view();
+        scene_viewport_.cancel_pending_hit();
+        for (const std::uint32_t id : world().actor_ids())
+        {
+            Actor* actor = world().find_actor_by_id(id);
+            if (actor && !world().destroy_actor(*actor))
+            { scene_error_ = "Could not clear the current Scene."; return; }
+            actor_factory_.forget(id);
+            material_assignments_.forget(id);
+        }
+        scene_id_ = {};
+        scene_path_ = {};
+        scene_baseline_.clear();
+        stable_scene_ids_.clear();
+        scene_error_.clear();
+    }
+
+    void EditorApplication::request_scene_action(SceneAction action, const AssetId& id)
+    {
+        pending_scene_action_ = action;
+        pending_scene_id_ = id;
+        if (scene_dirty()) scene_confirm_requested_ = true;
+        else
+        {
+            pending_scene_action_ = SceneAction::None;
+            if (action == SceneAction::New) new_scene();
+            else if (action == SceneAction::Open) open_scene(id);
+            else if (action == SceneAction::Exit) window().close();
+        }
+    }
+
+    bool EditorApplication::on_close_requested()
+    {
+        if (!material_editor_.request_exit()) return false;
+        if (discard_scene_on_exit_) return true;
+        if (!scene_dirty()) return true;
+        pending_scene_action_ = SceneAction::Exit;
+        scene_confirm_requested_ = true;
+        return false;
+    }
+
+    void EditorApplication::draw_scene_dialogs()
+    {
+        if (scene_confirm_requested_)
+        {
+            ImGui::OpenPopup("Unsaved Scene");
+            scene_confirm_requested_ = false;
+        }
+        if (ImGui::BeginPopupModal("Unsaved Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted("The current Scene has unsaved changes.");
+            if (ImGui::Button("Save"))
+            {
+                if (scene_path_.empty())
+                { show_scene_save_as_ = true; ImGui::CloseCurrentPopup(); }
+                else if (save_scene(scene_path_, false))
+                {
+                    const SceneAction action = pending_scene_action_;
+                    const AssetId id = pending_scene_id_;
+                    pending_scene_action_ = SceneAction::None;
+                    ImGui::CloseCurrentPopup();
+                    request_scene_action(action, id);
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Discard"))
+            {
+                const SceneAction action = pending_scene_action_;
+                const AssetId id = pending_scene_id_;
+                pending_scene_action_ = SceneAction::None;
+                ImGui::CloseCurrentPopup();
+                if (action == SceneAction::New) new_scene();
+                else if (action == SceneAction::Open) open_scene(id);
+                else if (action == SceneAction::Exit)
+                { discard_scene_on_exit_ = true; window().close(); }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+            {
+                pending_scene_action_ = SceneAction::None;
+                ImGui::CloseCurrentPopup();
+            }
+            if (!scene_error_.empty()) ImGui::TextWrapped("%s", scene_error_.c_str());
+            ImGui::EndPopup();
+        }
+        if (show_scene_save_as_) ImGui::OpenPopup("Save Scene As");
+        if (ImGui::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Folder: %s", asset_folder_.c_str());
+            ImGui::InputText("Scene name", scene_name_, sizeof(scene_name_));
+            if (ImGui::Button("Save Scene"))
+            {
+                const std::string name = scene_name_;
+                const bool valid_name = !name.empty() && std::all_of(name.begin(), name.end(),
+                    [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '-'; });
+                if (!valid_name) scene_error_ = "Use letters, numbers, underscore or dash for the Scene name.";
+                else
+                {
+                    const auto path = VirtualPath::parse(asset_folder_ + "/" + name + ".scene");
+                    if (!path.succeeded()) scene_error_ = path.status().message;
+                    else if (save_scene(path.value(), true))
+                    {
+                        show_scene_save_as_ = false;
+                        ImGui::CloseCurrentPopup();
+                        if (pending_scene_action_ != SceneAction::None)
+                        {
+                            const SceneAction action = pending_scene_action_;
+                            const AssetId id = pending_scene_id_;
+                            pending_scene_action_ = SceneAction::None;
+                            request_scene_action(action, id);
+                        }
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+            {
+                show_scene_save_as_ = false;
+                pending_scene_action_ = SceneAction::None;
+                ImGui::CloseCurrentPopup();
+            }
+            if (!scene_error_.empty()) ImGui::TextWrapped("%s", scene_error_.c_str());
+            ImGui::EndPopup();
+        }
+        if (!scene_error_.empty() && !show_scene_save_as_ && pending_scene_action_ == SceneAction::None)
+        {
+            if (ImGui::Begin("Scene Error"))
+            {
+                ImGui::TextWrapped("%s", scene_error_.c_str());
+                if (ImGui::Button("Dismiss")) scene_error_.clear();
+            }
+            ImGui::End();
+        }
+    }
     bool EditorApplication::on_initialize()
     {
         if (ImGui::GetCurrentContext() == nullptr)
@@ -87,6 +496,7 @@ namespace toy3d
     void EditorApplication::on_tick(double)
     {
         thumbnails_.tick();
+        texture_preview_.tick();
         if (!shader_workflow_ready_) return;
         shaders_.tick();
         if (!shaders_.candidate_ready()) return;
@@ -126,6 +536,7 @@ namespace toy3d
         model_import_.clear();
         material_create_.clear();
         material_editor_.shutdown();
+        texture_preview_.shutdown();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         command_history_.clear();
@@ -154,19 +565,41 @@ namespace toy3d
         {
             if (ImGui::BeginMenu("File"))
             {
+                if (ImGui::MenuItem("New Scene")) request_scene_action(SceneAction::New);
+                if (ImGui::BeginMenu("Open Scene"))
+                {
+                    for (const AssetCatalogEntry& entry : workspace_.catalog().entries)
+                        if (asset_descriptor_kind(entry.path) == AssetDescriptorKind::Scene &&
+                            ImGui::MenuItem(entry.path.utf8().c_str()))
+                            request_scene_action(SceneAction::Open, entry.file.asset_id);
+                    ImGui::EndMenu();
+                }
+                if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+                {
+                    if (scene_path_.empty()) show_scene_save_as_ = true;
+                    else save_scene(scene_path_, false);
+                }
+                if (ImGui::MenuItem("Save Scene As...")) show_scene_save_as_ = true;
+                ImGui::Separator();
                 if (ImGui::BeginMenu("Create Asset", !model_import_.active() && !texture_import_.active() && !material_create_.active()))
                 {
-                    if (ImGui::MenuItem("Material...")) material_create_.request(MaterialAssetCreationKind::Material, asset_folder_);
-                    if (ImGui::MenuItem("Material Instance...")) material_create_.request(MaterialAssetCreationKind::MaterialInstance, asset_folder_);
+                    if (ImGui::MenuItem("Create Material...")) material_create_.request(MaterialAssetCreationKind::Material, asset_folder_);
+                    if (ImGui::MenuItem("Create Material Instance...")) material_create_.request(MaterialAssetCreationKind::MaterialInstance, asset_folder_);
                     ImGui::EndMenu();
                 }
 #if WITH_MODEL_IMPORT
-                if (ImGui::MenuItem("Import Static Mesh...", nullptr, false, !material_create_.active()))
+                if (ImGui::MenuItem("Import Static Mesh...", nullptr, false,
+                    !material_create_.active() && !texture_import_.active()))
                 {
                     if (!model_import_.request(asset_folder_)) model_error_ = model_import_.error();
                 }
 #endif
-                if (ImGui::MenuItem("Exit")) window().close();
+                if (ImGui::MenuItem("Import Texture2D...", nullptr, false,
+                    !model_import_.active() && !material_create_.active()))
+                {
+                    if (!texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
+                }
+                if (ImGui::MenuItem("Exit")) request_scene_action(SceneAction::Exit);
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Edit"))
@@ -213,20 +646,6 @@ namespace toy3d
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin("Toy3d Editor Dockspace", nullptr, host_flags);
         ImGui::PopStyleVar(3);
-        ImGui::TextUnformatted("TOY3D EDITOR");
-        ImGui::SameLine();
-        ImGui::TextDisabled("  |  Scene");
-        ImGui::SameLine();
-        if (ImGui::Button("Undo")) undo_edit();
-        ImGui::SameLine();
-        if (ImGui::Button("Redo")) redo_edit();
-        ImGui::SameLine();
-        if (ImGui::Button("Refresh Assets"))
-        {
-            if (!workspace_.refresh()) TOY_LOG_ERROR("Editor asset refresh failed: {}", workspace_.error());
-            else thumbnails_.invalidate();
-        }
-        ImGui::Separator();
         const ImGuiID dockspace = ImGui::GetID("Toy3d Editor Dockspace Node");
         if (reset_dock_layout_)
         {
@@ -263,6 +682,7 @@ namespace toy3d
                 ImGui::DockBuilderDockWindow("Scene Viewport###Game Viewport", scene_dock);
                 ImGui::DockBuilderDockWindow("Outliner", outliner_dock);
                 ImGui::DockBuilderDockWindow("Details", details_dock);
+                ImGui::DockBuilderDockWindow("Texture Preview", details_dock);
                 ImGui::DockBuilderDockWindow("Content Browser", content_dock);
                 ImGui::DockBuilderFinish(dockspace);
             }
@@ -270,6 +690,9 @@ namespace toy3d
         ImGui::DockSpace(dockspace, ImVec2(0.0f, -28.0f));
         ImGui::Separator();
         ImGui::Text("Assets: %u", static_cast<unsigned>(workspace_.catalog().entries.size()));
+        ImGui::SameLine();
+        ImGui::TextDisabled("  |  Scene: %s%s", scene_path_.empty() ? "Untitled" : scene_path_.utf8().c_str(),
+            scene_dirty() ? " *" : "");
         ImGui::SameLine();
         ImGui::TextDisabled("  |  Source: %s", workspace_.source_root().utf8().c_str());
         if (!workspace_.error().empty())
@@ -285,7 +708,11 @@ namespace toy3d
         draw_details(world(), selection_, command_history_, workspace_, scene_viewport_, material_assignments_, material_assignment_error_);
         scene_viewport_.draw(world(), selection_, command_history_);
         const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
-            show_engine_content_, thumbnails_, asset_tile_size_, WITH_MODEL_IMPORT != 0);
+            show_engine_content_, thumbnails_, WITH_MODEL_IMPORT != 0);
+        if (browser.assets_refreshed) texture_preview_.invalidate();
+        if (browser.texture_open.valid()) texture_preview_.request_open(browser.texture_open, browser.texture_focus);
+        texture_preview_.draw();
+        if (browser.scene_open.valid()) request_scene_action(SceneAction::Open, browser.scene_open);
         if (browser.material_open.valid() && !model_import_.active() && !texture_import_.active() && !material_create_.active())
             material_editor_.request_open(browser.material_open);
         if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active())
@@ -296,11 +723,6 @@ namespace toy3d
         if (browser.import_requested && !material_create_.active() && !texture_import_.active() &&
             !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
 #endif
-                if (ImGui::MenuItem("Import Texture2D...", nullptr, false,
-                    !model_import_.active() && !material_create_.active()))
-                {
-                    if (!texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
-                }
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
@@ -331,6 +753,7 @@ namespace toy3d
         material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema(),
             shader_workflow_ready_ ? &shaders_ : nullptr);
         material_editor_.draw();
+        draw_scene_dialogs();
         const auto locate = material_editor_.take_locate_parent();
         if (locate.valid())
         {
@@ -367,6 +790,12 @@ namespace toy3d
 
         selection_.resolve_actor(world());
         const ImGuiIO& io = ImGui::GetIO();
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S) && !io.WantTextInput &&
+            !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
+        {
+            if (scene_path_.empty()) show_scene_save_as_ = true;
+            else save_scene(scene_path_, false);
+        }
         const ImGuiWindow* focused = ImGui::GetCurrentContext()->NavWindow;
         if (focused) focused = focused->RootWindow;
         const bool actor_panel_focused = focused &&

@@ -2,13 +2,13 @@
 
 ## 范围与文件
 
-本规范是唯一的生产资产存储约定。项目资产仍放在 `project/asset/`，引擎资产仍放在 `engine/asset/`；子目录由使用者决定，文件名不决定类型。Catalog、Editor 和 runtime 不读取旧二进制 `.asset`。
+本规范是生产资产描述的共同存储约定。项目资产仍放在 `project/asset/`，引擎资产仍放在 `engine/asset/`；子目录由使用者决定。一般资产以 `.asset` 为入口，Scene 以 `.scene` 为入口；扩展名只区分 Scene，精确领域类型仍由 `root_type` 决定。Catalog、Editor 和 runtime 不读取旧二进制 `.asset`。
 
-每项资产以 `<name>.asset` 为入口。它是 UTF-8 YAML，`format_version: 2`，含 `asset_id`、`root_type`、`schema_version`、`dependencies`、`subresources` 和 `data`。`data` 使用冻结的 Reflection 持久化字段名；引用以 Asset ID、可选 Subresource ID、预期类型与强度表达，不以路径表达。编码固定顶层键序、字段排序和换行；读取限制字节、节点、深度、数组与字符串长度，拒绝重复键、别名、自定义标签、无效 UTF-8、非有限数与未知结构。
+一般资产以 `<name>.asset`、Scene 以 `<name>.scene` 为入口。入口是 UTF-8 YAML，`format_version: 2`，含 `asset_id`、`root_type`、`schema_version`、`dependencies`、`subresources` 和 `data`。`data` 使用冻结的 Reflection 持久化字段名；引用以 Asset ID、可选 Subresource ID、预期类型与强度表达，不以路径表达。编码固定顶层键序、字段排序和换行；读取限制字节、节点、深度、数组与字符串长度，拒绝重复键、别名、自定义标签、无效 UTF-8、非有限数与未知结构。`.scene` 的 `root_type` 必须是 `toy3d.SceneAssetData`，该类型不能写入 `.asset`。
 
-仅当资产有处理后数据时，旁边才有同名 `<name>.meta`。YAML 的 `meta` 节给出版本、字节数、SHA-256 和必需段名；没有 `meta` 节时同名 `.meta` 必须不存在。`.meta` 是 `TOY3DMTA` v1 二进制分段容器，记录同一 Asset ID 与有界段目录。StaticMesh 的 `render_geometry`、Texture2D 的 `texture_mips` 存于其中；Material 与 MaterialInstance 仅有 `.asset`。导入源 FBX/OBJ/PNG/JPEG、归一化 `source_mesh`、旧 `import_data` 和缩略图不存入新资产。再次导入需重新选择源文件，导入比例等设置需重新提供。
+仅当资产有处理后数据时，`.asset` 旁边才有同名 `<name>.meta`。`.scene` 首期为纯描述，禁止 meta；为将来预留 `<name>.scene.meta`，避免与同 stem 的 `.asset` 争用文件。YAML 的 `meta` 节给出版本、字节数、SHA-256 和必需段名；没有 `meta` 节时其配对文件必须不存在。`.meta` 是 `TOY3DMTA` v1 二进制分段容器，记录同一 Asset ID 与有界段目录。StaticMesh 的 `render_geometry`、Texture2D 的 `texture_mips` 存于其中；Material 与 MaterialInstance 仅有 `.asset`。导入源 FBX/OBJ/PNG/JPEG、归一化 `source_mesh`、旧 `import_data` 和缩略图不存入新资产。再次导入需重新选择源文件，导入比例等设置需重新提供。
 
-Catalog 只列出 `.asset`，扫描时验证描述、成对关系、重复 ID 和强依赖；孤立 `.meta`、缺少必需 `.meta` 或摘要不匹配均报错。复制分配新 Asset ID，移动保留 ID；删除前 Editor 从 Catalog 的正向依赖构建引用者检查，强引用存在时拒绝。`.meta` 与事务临时文件不作为 Content Browser 图块。
+Catalog 列出 `.asset` 与 `.scene`，扫描时验证描述、扩展名与根类型、成对关系、重复 ID 和强依赖；孤立 `.meta`、缺少必需 `.meta` 或摘要不匹配均报错。复制分配新 Asset ID，移动保留 ID，跨入口扩展名移动或复制拒绝；删除前 Editor 从 Catalog 的正向依赖构建引用者检查，强引用存在时拒绝。`.meta` 与事务临时文件不作为 Content Browser 图块。
 
 ## 发布与恢复
 

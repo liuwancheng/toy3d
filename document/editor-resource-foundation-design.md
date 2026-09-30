@@ -82,7 +82,7 @@ composition root 先创建并冻结 `FileSystem` mount，再显式注册及冻�
 
 编辑会话固定 owner 线程，其他线程修改返回 `InvalidState`。创建后通过 `bind_published()` 捕获基线类型数据；`save()` 在写入前比较已发布类型数据，变化则返回 `Conflict` 并保留编辑和撤销记录，随后调用 `save_asset()` 原子发布；成功才更新基线并清脏。当前冲突检测针对创作数据段；领域导入器若会独立改写大块段，须在其 owner 的发布协议中额外提供相应版本检查。错误由调用方在 runtime/tools 的 Logger 或 Editor Dialog 中呈现；底层不自建日志汇聚或诊断对象，也不在多层重复记录。
 
-场景创作数据只保存 Actor/Component 稳定 ID、类型、属性、root/attachment 与资源引用，验证唯一性、两端存在和无环。当前 GameScene 的 `spawn_actor<T>()` 会立即进入注册生命周期，因此本阶段不装配 World。未来场景加载须另行设计受控 staging/领域创建入口并同步修改 [GameScene 设计](gamescene-design.md)。材质属性以 [Shader 设计](shader-system-design.md) 的 `.shader Properties` 为权威，orphan override 不按 native slot 重新绑定。
+场景创作数据只保存 Actor/Component 稳定 ID、类型、属性、root/attachment 与资源引用，验证唯一性、两端存在和无环。Scene 的生产数据与当前 Editor 装配边界见 [Scene 文件与 Editor 保存](scene-file-design.md)；通用资源层不调用 `spawn_actor<T>()`。材质属性以 [Shader 设计](shader-system-design.md) 的 `.shader Properties` 为权威，orphan override 不按 native slot 重新绑定。
 
 代表性 fixture 已覆盖五类资源，而不是把这些领域 DTO 变成通用 Asset 文件结构：模型保存源 URI、导入选项、稳定节点及 mesh/material/skeleton 关联，几何顶点仍放独立 blob；后续模型导入器负责外部格式解析、稳定 source key、缺失 Cook 产物重建。动画保存骨架引用、稳定轨道目标、插值、key 与事件，领域验证时间排序、范围和目标存在；后续动画导入器负责压缩曲线和 Cook。碰撞保存 box/sphere/capsule/mesh 的有限变体与局部 Transform，领域验证尺寸和 mesh 引用，后续物理适配器负责后端形状构造。场景保存 Actor/Component ID、root、跨 Actor attachment 与资源引用，领域验证唯一性、端点和无环；本模块不调用 `spawn_actor<T>()`。材质创作数据仅保存 Shader 引用及覆盖，测试适配器直接读取 shader compiler 已解析的 `.shader Properties` 和 `ShaderParameterId` 检查类型、范围及 orphan；后续生产适配器应从已验证 Shader schema 提供只读属性视图，并遵守现有 Material replacement 与 frame safe point，不能按 native slot 猜测或直接写 RenderProxy。
 

@@ -125,6 +125,8 @@ target_sources(${TARGET_NAME} PRIVATE
     "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp"
     "source/panels/static_mesh_import_dialog.h" "source/panels/static_mesh_import_dialog.cpp"
     "source/panels/texture_import_dialog.h" "source/panels/texture_import_dialog.cpp"
+    "source/panels/texture_preview_panel.h" "source/panels/texture_preview_panel.cpp"
+    "source/panels/texture_preview_image.h" "source/panels/texture_preview_image.cpp"
     "source/asset_tools/texture_asset_tools.h" "source/asset_tools/texture_asset_tools.cpp"
     "source/panels/material_create_dialog.h" "source/panels/material_create_dialog.cpp"
     "source/asset_tools/material_asset_tools.h" "source/asset_tools/material_asset_tools.cpp"
@@ -144,7 +146,7 @@ else()
 endif()
 target_sources(${TARGET_NAME} PRIVATE "source/platform/model_file_picker.h" "${TOY3D_MODEL_PICKER_SOURCE}")
 target_link_libraries(${TARGET_NAME} PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
-target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec Toy3dTextureImport imguizmo)
+target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource Toy3dSceneAsset Toy3dAssetThumbnail Toy3dImageCodec Toy3dTextureImport imguizmo)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
     target_sources(${TARGET_NAME} PRIVATE
         "source/asset_tools/static_mesh_asset_tools.h" "source/asset_tools/static_mesh_asset_tools.cpp")
@@ -156,6 +158,16 @@ endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
 
 if(BUILD_TESTING)
+    add_executable(Toy3dEditorTexturePreviewTests
+        "tests/texture_preview_image_tests.cpp"
+        "source/panels/texture_preview_image.cpp")
+    target_compile_features(Toy3dEditorTexturePreviewTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorTexturePreviewTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_include_directories(Toy3dEditorTexturePreviewTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
+    target_link_libraries(Toy3dEditorTexturePreviewTests PRIVATE Toy3dTextureAsset)
+    target_compile_options(Toy3dEditorTexturePreviewTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.TexturePreview COMMAND Toy3dEditorTexturePreviewTests)
+
     if(TOY3D_ENABLE_VULKAN_RHI AND (WIN32 OR APPLE))
         add_executable(Toy3dEditorThumbnailTests
             "tests/thumbnail_integration_tests.cpp"
@@ -171,7 +183,7 @@ if(BUILD_TESTING)
         target_compile_features(Toy3dEditorThumbnailTests PRIVATE cxx_std_17)
         set_target_properties(Toy3dEditorThumbnailTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
         target_include_directories(Toy3dEditorThumbnailTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-        target_link_libraries(Toy3dEditorThumbnailTests PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec imgui)
+        target_link_libraries(Toy3dEditorThumbnailTests PRIVATE Toy3dRuntime Toy3dResource Toy3dSceneAsset Toy3dAssetThumbnail Toy3dImageCodec imgui)
         target_link_libraries(Toy3dEditorThumbnailTests PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
         if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
             target_sources(Toy3dEditorThumbnailTests PRIVATE "source/asset_tools/static_mesh_asset_tools.cpp")
@@ -204,7 +216,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dEditorWorkspaceTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorWorkspaceTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
     target_sources(Toy3dEditorWorkspaceTests PRIVATE "source/asset_tools/material_asset_tools.cpp")
-    target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset Toy3dTextureAsset)
+    target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dResource Toy3dSceneAsset Toy3dMaterialAsset Toy3dStaticMeshAsset Toy3dTextureAsset)
     target_compile_options(Toy3dEditorWorkspaceTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     add_test(NAME Toy3dEditor.Workspace COMMAND Toy3dEditorWorkspaceTests)
 
@@ -215,7 +227,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorMaterialTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorMaterialTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorMaterialTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorMaterialTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset Toy3dTextureAsset)
+    target_link_libraries(Toy3dEditorMaterialTests PRIVATE Toy3dResource Toy3dSceneAsset Toy3dMaterialAsset Toy3dStaticMeshAsset Toy3dTextureAsset)
     target_compile_definitions(Toy3dEditorMaterialTests PRIVATE
         "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-editor-test-output\"")
     target_compile_options(Toy3dEditorMaterialTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
@@ -229,7 +241,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorMaterialUiTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorMaterialUiTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorMaterialUiTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorMaterialUiTests PRIVATE Toy3dRuntime Toy3dResource imgui)
+    target_link_libraries(Toy3dEditorMaterialUiTests PRIVATE Toy3dRuntime Toy3dResource Toy3dSceneAsset imgui)
     target_compile_definitions(Toy3dEditorMaterialUiTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-ui-test-output\""
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
@@ -255,7 +267,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorPlacementTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorPlacementTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorPlacementTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorPlacementTests PRIVATE Toy3dRuntime Toy3dResource imguizmo)
+    target_link_libraries(Toy3dEditorPlacementTests PRIVATE Toy3dRuntime Toy3dResource Toy3dSceneAsset imguizmo)
     target_compile_definitions(Toy3dEditorPlacementTests PRIVATE
         WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
@@ -273,7 +285,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorMaterialAssignmentTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorMaterialAssignmentTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorMaterialAssignmentTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dRuntime Toy3dResource imguizmo)
+    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dRuntime Toy3dResource Toy3dSceneAsset imguizmo)
     target_compile_definitions(Toy3dEditorMaterialAssignmentTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-assignment-test-output\""
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
@@ -292,7 +304,7 @@ if(BUILD_TESTING)
             "source/placement/actor_factory.cpp" "source/placement/placement_catalog.cpp")
         target_compile_features(Toy3dEditorMaterialShaderTests PRIVATE cxx_std_17)
         set_target_properties(Toy3dEditorMaterialShaderTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
-        target_link_libraries(Toy3dEditorMaterialShaderTests PRIVATE Toy3dEditorMaterialShader imgui)
+        target_link_libraries(Toy3dEditorMaterialShaderTests PRIVATE Toy3dEditorMaterialShader Toy3dSceneAsset imgui)
         target_compile_definitions(Toy3dEditorMaterialShaderTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
             "TOY3D_SHADER_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-shader-test-output\""
             "TOY3D_SHADER_TEST_SOURCE=\"${TOY3D_ROOT_DIR}/project/shader/painted.shader\""

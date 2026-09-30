@@ -1,4 +1,5 @@
 #include "asset_pair_store.h"
+#include "asset_descriptor_path.h"
 
 #include <algorithm>
 #include <array>
@@ -47,24 +48,23 @@ namespace toy3d
         AssetResult<PairPaths> paths_for(const VirtualPath& path)
         {
             const std::string& name = path.utf8();
-            if (name.size() < 6u || name.compare(name.size() - 6u, 6u, ".asset") != 0)
+            VirtualPath meta_path;
+            if (!asset_meta_path(path, meta_path))
                 return AssetResult<PairPaths>(fail(AssetErrorCode::InvalidFormat, path,
-                    "asset path must end in .asset"));
-            const std::string stem = name.substr(0u, name.size() - 6u);
+                    "descriptor path must end in .asset or .scene"));
             PairPaths paths;
             paths.asset = path;
-            const auto meta = VirtualPath::parse(stem + ".meta");
             const auto journal = VirtualPath::parse(name + ".txn");
             const auto move_journal = VirtualPath::parse(name + ".move");
             const auto asset_stage = VirtualPath::parse(name + ".new");
-            const auto meta_stage = VirtualPath::parse(stem + ".meta.new");
+            const auto meta_stage = VirtualPath::parse(meta_path.utf8() + ".new");
             const auto asset_backup = VirtualPath::parse(name + ".old");
-            const auto meta_backup = VirtualPath::parse(stem + ".meta.old");
-            if (!meta.succeeded() || !journal.succeeded() || !move_journal.succeeded() || !asset_stage.succeeded() ||
+            const auto meta_backup = VirtualPath::parse(meta_path.utf8() + ".old");
+            if (!journal.succeeded() || !move_journal.succeeded() || !asset_stage.succeeded() ||
                 !meta_stage.succeeded() || !asset_backup.succeeded() || !meta_backup.succeeded())
                 return AssetResult<PairPaths>(fail(AssetErrorCode::InvalidFormat, path,
                     "invalid asset transaction path"));
-            paths.meta = meta.value();
+            paths.meta = meta_path;
             paths.journal = journal.value();
             paths.move_journal = move_journal.value();
             paths.asset_stage = asset_stage.value();
@@ -275,7 +275,9 @@ namespace toy3d
         const auto paths = paths_for(path);
         if (!paths.succeeded()) return paths.status();
         const auto parsed = decode_asset_yaml(types_, pair.asset);
-        if (!parsed.succeeded() || pair.has_meta != parsed.value().has_meta)
+        if (!parsed.succeeded() || pair.has_meta != parsed.value().has_meta ||
+            !asset_descriptor_accepts_type(asset_descriptor_kind(path), parsed.value().index.root_type) ||
+            (asset_descriptor_kind(path) == AssetDescriptorKind::Scene && pair.has_meta))
             return fail(AssetErrorCode::InvalidFormat, path, "asset pair candidate description is invalid");
         if (pair.has_meta)
         {
@@ -446,6 +448,9 @@ namespace toy3d
     AssetResult<AssetId> AssetPairStore::copy(const VirtualPath& source,
         const VirtualPath& destination)
     {
+        if (asset_descriptor_kind(source) != asset_descriptor_kind(destination))
+            return AssetResult<AssetId>(fail(AssetErrorCode::TypeMismatch, destination,
+                "copy must preserve descriptor kind"));
         if (source == destination)
             return AssetResult<AssetId>(fail(AssetErrorCode::Conflict, source,
                 "copy destination equals source"));
@@ -469,6 +474,8 @@ namespace toy3d
     AssetStatus AssetPairStore::move(const VirtualPath& source,
         const VirtualPath& destination)
     {
+        if (asset_descriptor_kind(source) != asset_descriptor_kind(destination))
+            return fail(AssetErrorCode::TypeMismatch, destination, "move must preserve descriptor kind");
         if (source == destination)
             return fail(AssetErrorCode::Conflict, source,
                 "move destination equals source");
@@ -673,11 +680,11 @@ namespace toy3d
                 if (!nested.succeeded()) return nested;
             }
             else if (entry.type == FileType::File && entry.name.size() > 10u &&
-                entry.name.compare(entry.name.size() - 10u, 10u, ".asset.txn") == 0)
+                entry.name.compare(entry.name.size() - 4u, 4u, ".txn") == 0)
             {
                 const auto asset = VirtualPath::parse(child.value().utf8().substr(0u,
                     child.value().utf8().size() - 4u));
-                if (!asset.succeeded())
+                if (!asset.succeeded() || asset_descriptor_kind(asset.value()) == AssetDescriptorKind::Invalid)
                     return fail(AssetErrorCode::InvalidFormat, child.value(), "invalid journal name");
                 const AssetStatus recovered = recover_locked(asset.value());
                 if (!recovered.succeeded()) return recovered;
@@ -759,11 +766,11 @@ namespace toy3d
                 if (!nested.succeeded()) return nested;
             }
             else if (entry.type == FileType::File && entry.name.size() > 11u &&
-                entry.name.compare(entry.name.size() - 11u, 11u, ".asset.move") == 0)
+                entry.name.compare(entry.name.size() - 5u, 5u, ".move") == 0)
             {
                 const auto source = VirtualPath::parse(child.value().utf8().substr(0u,
                     child.value().utf8().size() - 5u));
-                if (!source.succeeded()) return fail(AssetErrorCode::InvalidFormat,
+                if (!source.succeeded() || asset_descriptor_kind(source.value()) == AssetDescriptorKind::Invalid) return fail(AssetErrorCode::InvalidFormat,
                     child.value(), "invalid asset move journal name");
                 const AssetStatus recovered = recover_move(source.value());
                 if (!recovered.succeeded()) return recovered;

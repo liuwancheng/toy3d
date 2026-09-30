@@ -1,0 +1,29 @@
+format_version: 2
+asset_id: d736e0dfa85f468392acc08840331c73
+root_type: toy3d.MaterialAssetData
+schema_version: 1
+dependencies:
+  - asset_id: a2d7e64e85c940e583f9ac71f5c44833
+    expected_type: toy3d.Texture2DAssetData
+    strength: strong
+subresources:
+  []
+data:
+  overrides:
+    - name: base_color
+      value:
+        type: Vector4
+        value:
+          - 0
+          - 0
+          - 0
+          - 1
+    - name: base_color_texture
+      value:
+        type: AssetRef
+        value:
+          asset_id: a2d7e64e85c940e583f9ac71f5c44833
+          expected_type: toy3d.Texture2DAssetData
+          strength: strong
+  shader_name: Toy3d/Surface/Unlit
+  two_sided: false
