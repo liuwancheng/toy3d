@@ -1,29 +1,31 @@
 # 代码材质与参数化编辑设计
 
+> 运行时继承、共享加载和发布的详细 contract 见第 12 节。
+
 ## 1. 状态与已确认范围
 
 本文是材质资产和 Editor 参数化工作流的 Active 设计。产品范围已确认，新增类型、函数和执行清单是后续实施要求，不表示当前代码已经支持。Shader 语法、参数身份及 GPU 布局继续遵循 [Shader 系统](shader-system-design.md)，文件与编辑事务遵循 [资源基础](editor-resource-foundation-design.md)，GT/RT 更新遵循 [Material updates](../openspec/specs/game-render-framework/material-updates/spec.md)。
 
-当前已落地 M1 属性格式、编译器输出、默认值解码和 Unlit 颜色消费，M2 Material/单层 Instance DTO、编解码、创建框和运行时构建，M3 参数窗口、EditSession、手势、重置、保存和脏关闭，以及 M4 Details 槽位选择/拖放、清除覆盖和场景撤销重建。源码迭代工作流已接入：显式登记的项目 Shader 经手动编译与 GPU 预检后可用于创建、编辑及场景赋值；当前资源能力仍受 M5 前的限制。Sampler 与 UV 采样在 M5，可见材质预览、参数保存后的引用者传播与缩略图刷新在 M6，不提前开放含未支持 Sampler 的 Unlit。源码编译接管的槽位刷新见[材质源码迭代](material-source-workflow-design.md)。
+当前已落地 M1 属性格式、编译产物、默认值和 Unlit 颜色消费，M2 DTO/编解码/创建，M3 参数窗口/撤销/保存，M4 场景槽位赋值与重建，以及多层 Parent、MaterialInterface、MaterialLibrary 共享发布。显式登记的项目 Shader 经手动编译与 GPU 预检后用于创建、编辑及场景赋值。Sampler 与 UV 采样继续在 M5；材质球预览和缩略图刷新继续在 M6，不提前开放含未支持 Sampler 的 Unlit。源码编译接管见[材质源码迭代](material-source-workflow-design.md)。
 
 首版完成以下能力：
 
 - 使用 `.shader` 的 `Properties` 声明参数，用 HLSL 编写材质效果；源码在外部编辑器中修改，Editor 提供打开源码和手动重新编译。
 - 完善 Phong 和 Unlit；支持 Opaque 和根材质的双面设置。
 - 支持 Base Color Texture2D、PNG/JPEG 导入、UV 缩放和 Sampler preset。
-- Material 和单层 MaterialInstance 均为可保存的 `.asset`，参数面板自动生成。
+- Material 和多层 MaterialInstance 均为可保存的 `.asset`，参数面板自动生成。
 - 支持实时预览、恢复默认、一次手势一次撤销、原子保存及未保存提示。
 - 支持材质图块拖入 Actor Details 的明确材质槽、赋值撤销和恢复网格默认材质。
 - 编辑材质资产时同步更新当前已加载的引用者；只修改一个对象时显式创建独立动态实例。
 - 编译、加载或结构性替换失败保留旧效果；错误通过现有 Logger 和 Editor 提示呈现。
 
-PBR、Normal Map、tangent 生成、透明排序、Masked、静态开关面板、多层实例继承、材质节点图、内置源码编辑器、自动文件监听及完整 Cook 不属于首版。语言能够声明某个参数类型不代表运行时材质已经支持它；首版面板仅开放 Float、Float2/3/4、Color、Range、Texture2D 和普通 Sampler，其余类型明确提示不支持。
+PBR、Normal Map、tangent 生成、透明排序、Masked、静态开关面板、材质节点图、内置源码编辑器、自动文件监听及完整 Cook 不属于首版。多层继承与共享发布见第 12 节。语言能够声明某个参数类型不代表运行时材质已经支持它；首版面板仅开放 Float、Float2/3/4、Color、Range、Texture2D 和普通 Sampler，其余类型明确提示不支持。
 
 ## 2. 现有实现与迁移起点
 
 | 当前入口 | 可以复用 | 需要补齐 |
 | --- | --- | --- |
-| `rendercore/material/material.*` | Material、MaterialInstance、资产构建、schema 默认值、按名 setter、批次、reset 和 replacement | Sampler、已加载资产引用者传播 |
+| `rendercore/material/material.*` | MaterialInterface、Material、MaterialInstance、多层继承、schema 默认值、按名 setter、批次、reset 和完整候选发布 | Sampler |
 | `renderscene/material/material_render_proxy.*` | RT 独占状态、persistent Material binding 和按需物化 | 普通 Sampler、经校验的参数批次及完整 schema replacement |
 | `shader/format/shader_format_types.h`、`shader_editor_properties.h` | 完整参数 schema、稳定 ID、布局、默认值、属性描述及自动控件 | 新资源类型对应的控件 |
 | `shader_compiler/frontend/shader_ast.h` | Properties 显示名称、Color、Range、源码位置，已输出独立属性文件 | Editor 使用编译产物，不依赖 AST |
@@ -67,9 +69,9 @@ PBR、Normal Map、tangent 生成、透明排序、Masked、静态开关面板�
 | MaterialAssetData | Asset ID 位于通用外层；保存 Shader 逻辑名、动态参数覆盖与根材质双面设置 |
 | MaterialInstanceAssetData | 外层 Asset ID；保存强类型父 Material 引用和动态参数覆盖 |
 
-Instance 的 parent 必须为 MaterialAssetData，不得为另一 Instance。首版实例继承父材质 Shader、Pass 和双面设置，只覆盖动态参数。默认使用 `Forward` 和现有默认 permutation；不在资产中持久化平台、native slot 或编译缓存目录。
+Instance 的 parent 可以为 MaterialAssetData 或 MaterialInstanceAssetData，expected_type 记录目标实际 DTO 类型。实例继承父材质 Shader、Pass 和双面设置，只覆盖动态参数。默认使用 `Forward` 和现有默认 permutation；不在资产中持久化平台、native slot 或编译缓存目录。
 
-有效参数值按 `实例覆盖 → 根材质覆盖 → Shader 默认值` 解析。根材质参数面板的恢复默认移除根覆盖；实例取消覆盖移除实例记录。不能把继承值复制保存成覆盖，否则父材质变化后无法继续继承。贴图选择器清空表示移除该层覆盖，继承失败时按 Shader 的具名内置默认贴图解析；不能向现有 set_texture 传空 TextureRef。
+有效参数值按 `本层覆盖 → 直接父级 → 祖先 → 根材质覆盖 → Shader 默认值` 解析。根材质参数面板的恢复默认移除根覆盖；实例取消覆盖移除实例记录。不能把继承值复制保存成覆盖，否则父材质变化后无法继续继承。贴图选择器清空表示移除该层覆盖，继承失败时按 Shader 的具名内置默认贴图解析；不能向现有 set_texture 传空 TextureRef。
 
 以下为拟新增 C++17 DTO 伪代码，正式头文件须显式登记所有反射类型和字段；所有声明遵循现有生成器受限语法：
 
@@ -91,7 +93,7 @@ struct MaterialAssetData
 
 struct MaterialInstanceAssetData
 {
-    AssetRef parent; // expected_type = toy3d.MaterialAssetData，Strong。
+    AssetRef parent; // expected_type 记录目标实际 DTO 类型，Strong。
     std::vector<MaterialParameterOverride> overrides;
 };
 ```
@@ -178,11 +180,11 @@ Shader "Project/Surface/Painted"
 
 M1 已实现 `initialize_material_constant_defaults(MaterialDesc&, std::string& error)`：从完整 Material-only schema 的 little-endian binary32 默认字节填充 Float/Float2/3/4 默认值，包含 inactive 参数；拒绝数组、矩阵、缺失和非有限值，失败不修改任何现有默认值。资源默认值仍由创建方解析，Sampler 在 M5 接入。ActorFactory 已调用该入口，删除了手写数值默认清单，内置 Phong 数值沿用 `.shader Properties`。
 
-M3 已提供 `MaterialParameterChanges`：每条记录按名称提交 float、Core Vector2/3/4、TextureRef 或表示重置的 monostate。`validate_parameters()` 预检整个批次，`apply_parameters()` 在一个 owned RenderCommand 中发布已解析 ID 与值；现有 scalar/vector/texture setter 与资产构建共享此入口，拒绝重复名称、未知参数、类型不符、非有限数值和空纹理。`reset_parameter()` 移除 GT 覆盖并向 RT 发送 Shader default。同一 Proxy 保持地址稳定，不创建 RHI 对象或 flush。Texture 先由 GT 新快照和命令强引用保活，旧引用在整批 RT 更新后释放；命令准入异常恢复 GT 纹理快照，框架准入仍要求活动 facade 和 owner GT。该 CPU/FIFO 层不改变 Vulkan、D3D11 FL11_0/SM5、D3D12 或移动 Vulkan ES3.1 的 binding 映射。
+`MaterialParameterChanges` 按名称提交 float、Core Vector2/3/4、TextureRef 或重置 monostate。validate_parameters 预检整个批次，apply_parameters 用单个 owned RenderCommand 发布完整树；拒绝重复、未知、类型不符、非有限值和空纹理。reset 移除本层覆盖，解析最新 Parent。Proxy 保持稳定，不创建 RHI 对象或 flush。GT 强引用先切换，旧纹理保留到 RT 更新结束；准入异常回滚完整 GT 配置，兼容单线程内联执行。该 CPU/FIFO 层不改变各 RHI 后端 binding 映射。
 
-M2 的正式运行时入口为 `rendercore/material/material_asset_builder.h`：`create_material_from_asset()` 与 `create_material_instance_from_asset()`。`MaterialTextureValues::named_defaults` 提供 Shader 具名默认纹理，`assets` 提供已按 Asset ID 解析的强纹理引用。构建先验证整份领域数据和资源，再按根/子优先级以 M3 的单批次 API 应用合法覆盖；已知 orphan 不应用但仍保留在 DTO 中。调用方必须是已启动 RenderCommand facade 的 GT owner，沿用既有 setter 的框架错误和 FIFO contract。返回的 AssetResult 持有候选强引用，最终释放前先结束结果对象及其他用户的引用，再调用 `MaterialInstance::release()`；不在构建器里新增全局加载缓存。ActorFactory 已迁移到此入口。父配置实时传播在 M6 接入。
+正式共享加载入口为 `rendercore/material/material_library.h`；无共享状态的构建边界仍位于 material_asset_builder.h，ActorFactory 和窗口私有预览复用该边界。named_defaults 提供 Shader 具名纹理，assets 提供按 AssetId 解析的强纹理引用。已知 orphan 留在 DTO。调用方为已启动 RenderCommand facade 的 GT owner；Library 管理共享对象与临时实例释放，独立预览的最后引用调用 MaterialInstance::release，沿用 FIFO contract。
 
-运行时加载由 GT/应用资源 owner 发起，先取得 ShaderMapProgram、领域数据和 TextureRef，再构建 Material/Instance。不可变 runtime Material 保存 Shader schema/default 和根材质结构性设置；Material Asset 的动态覆盖应用到该资产对应的 runtime MaterialInstance。派生 Instance 共享同一个 runtime Material，并在其 runtime MaterialInstance 中组合根覆盖和自身覆盖。不能把经常编辑的根动态配置固化进不可变 MaterialDesc，否则父值更新和 reset 会读到旧默认值。渲染不执行源文件 I/O 或 PNG/JPEG 解码。
+运行时加载由 GT 的 MaterialLibrary 发起，取得已验证 Program、领域数据和 TextureRef，创建根 Material 与直接相连的 MaterialInstance。各层保留自己的覆盖，MaterialDesc 保存 Shader 默认值与结构配置；有效值仅用于 RT 候选，不固化为子级默认值或覆盖。渲染不执行源文件 I/O 或 PNG/JPEG 解码。
 
 当前入口与后续函数边界如下；尚未实施的部分仍为伪代码，实际声明须保持类型独立包含和所有返回值可检查：
 
@@ -194,8 +196,7 @@ AssetResult<MaterialInstanceRef> create_material_from_asset(
 
 AssetResult<MaterialInstanceRef> create_material_instance_from_asset(
     const MaterialInstanceAssetData& data,
-    const MaterialAssetData& parent_data,
-    MaterialRef shader_material,
+    MaterialInterfaceRef parent,
     const MaterialTextureValues& textures);
 
 // 保留现有名字边界；Vector2/3/4 通过公共 Math 类型或明确边界转换接入。
@@ -213,13 +214,13 @@ bool MaterialInstance::validate_parameters(const MaterialParameterChanges& chang
 bool StaticMeshComponent::clear_material_override(std::uint32_t slot); // M4 已实现。
 ```
 
-`MaterialTextureValues` 表达本次候选已解析的强 TextureRef（AssetRef 目标和具名内置 fallback），只属于运行时材质构建；不是新增纹理缓存或 AssetRef 替代品。root 构建函数返回可赋给 Mesh 的 runtime MaterialInstance；派生构建函数同时接收父创作数据和共用的 immutable Material，验证 Shader 身份与结构设置一致。`MaterialParameterChanges` 是有限类型的动态参数设置/删除批次，用于复合编辑、重置和撤销，必须预检整个批次和 TextureRef，再投递内部已解析 ID 与 owned 值。setter 共享同一验证入口，检查有限数值、已知名称、类型和有效纹理。批次失败不改变 GT override、不投递部分更新，也不因更新创建 RHI 对象或 flush。
+`MaterialTextureValues` 表达本次候选已解析的强 TextureRef（AssetRef 目标和具名内置 fallback），只属于运行时材质构建。共享资产由 MaterialLibrary 返回只读 MaterialInterface；私有预览构建函数返回独立实例。派生构建函数接收直接 Parent 的 MaterialInterfaceRef，保留该引用，仅应用本层覆盖。`MaterialParameterChanges` 是有限类型的动态设置/删除批次，用于复合编辑、重置和撤销，先验证名称、类型、有限值和纹理，再发布整个受影响树；失败保持 GT 与 RT 旧状态，不创建 RHI 对象或 flush。
 
-runtime reset_parameter 移除 runtime 覆盖并回到 Shader default；Editor 的实例取消覆盖先按资产三层规则重新解析，父材质仍覆盖该参数时应发送父值，只有各层都没有覆盖才调用 runtime reset。两种 reset 不能混用。
+runtime reset_parameter 移除本层覆盖并恢复最新直接 Parent 有效值，父链均无覆盖时使用 Shader default。Editor 私有预览按作者父链展开有效值，不把展开值写回资产。
 
 普通参数编辑保留同一个 Proxy，RT 合并 dirty 更新并在可见 Draw 前物化。Sampler 由 RT 按 preset 取得现有 device sampler cache，Texture 与 Sampler 独立，多个纹理可以共享 preset。没有实现的 preset/类型明确失败。
 
-runtime MaterialRef 不可变，根资产动态配置存在领域数据和对应 runtime Instance 中。父材质配置发生变化时，动态批次先解析每个引用者的新有效值，所有依赖准备成功后在受控帧边界发布；已加载子实例仅继承未覆盖参数。首次加载从已发布资产解析。所有权由 composition root 的领域加载记录和已绑定 Component/预览的强引用闭合，不新增全局 Material registry、Proxy ID 或共享可变缓存。
+调用方持有的 MaterialInterfaceRef 只读，Library 持有可受控发布的根/实例 owner。父配置变化先解析整个受影响树，准备成功后在单个 FIFO 命令发布；子实例仅继承未覆盖参数。首次加载从已保存资产解析，重复加载保持同一逻辑身份。所有权由 Application 的 Library 与场景/预览强引用闭合，不新增全局 registry 或 Proxy ID。
 
 代码或双面设置走完整 candidate：检查 Shader 身份、schema、LocalVertexFactory 输入、Pass、资源与 pipeline。现有 stage_material_replacement 要求 schema 兼容；布局变化必须建立完整新 Material/Instance 和 binding 候选，不能拿新 Program 拼旧 schema。新布局成功发布时按 canonical name/type 迁移覆盖，失败保持 active state。UI 必须等待 RT 提交结果，enqueue 成功不能显示为替换已成功。
 
@@ -296,22 +297,22 @@ Material/Instance 资产编辑撤销属于活动 EditSession；场景槽位赋�
 
 Content Browser 的资产创建与导入入口收敛到资源区空白处右键的 `Content Actions` 菜单：提供 `Import...`、分隔线、`Material...` / `Material Instance...`。不新增 `Add` 工具栏按钮，现有 `Import...` 工具栏按钮已移除；保留浏览相关的刷新、Engine 内容显示与图块尺寸控件。Editor 顶部主菜单提供 `File > Create Asset > Material... / Material Instance...`，已有 `File > Import Static Mesh...` 继续使用同一导入工作流。主菜单创建是 Toy3d 的补充入口，不宣称与 UE4.27 的 File 菜单完全一致。材质创建可用性不依赖 Assimp/import_enabled。空白处左键不弹菜单，资源图块右键继续使用各自的资产操作菜单。
 
-空白处右键与主菜单发出同一种创建请求，由 EditorWorkspace 所属工作流处理，面板不直接写文件。右键入口使用当前目录，主菜单入口预填 Content Browser 当前目录；没有可写项目目录时主菜单创建框要求明确选择项目目录，不静默改用根目录。打开创建框时捕获目标目录，填写资产名并选择 Shader（Material）或根 Material 资产（Material Instance）；确认后校验可写目录、名称冲突和配置，再通过已有 Asset CreateNew 保存 `.asset`、刷新目录并选中新资产。取消不写文件，失败保持创建框并显示错误；`/Engine` 目录的右键菜单禁用创建，实例父材质允许来自只读 Engine 内容。根材质图块右键增加 `Create Material Instance...`，预填父材质，目标使用当前可写项目目录；从只读 Engine 内容触发时必须选择项目目录。首版实例只接受根 Material，不接受另一个实例作为父级。
+空白右键与主菜单发出同一种请求，由 EditorWorkspace 工作流处理。目标预填当前目录，没有可写目录时要求选择。填写资产名，根材质选择 Shader，实例选择 Material 或 MaterialInstance Parent；确认后校验目录、名称、父链和已验证 Program，通过 CreateNew 保存并刷新选中。取消不写文件，失败保留框并提示。Engine 内容只读，允许作实例 Parent；根和实例图块均提供 Create Material Instance，预填当前资产，保存目标必须是 Project。
 
 M2 完成资产创建、保存、加载和选中，M3 已接入双击及右键打开参数化材质窗口。M4 在 Actor Details 的 Materials 区列出当前 root StaticMeshComponent 的槽名，每槽提供材质/实例选择框、拖放目标和 Reset。导入槽名由 runtime adapter 原样保留；未命名的旧程序生成网格在创建时取得唯一的 `Material_<序号>`，克隆几何保留这些名称。首期不编辑任意额外 Component 的材质，后续扩展 Component 面板时继续用明确 Component identity。
 
 材质图块使用独立于模型放置的 `MATERIAL_ASSET_DRAG_PAYLOAD`，payload 仅保存 AssetId，delivery 时检查根类型、已发布文件身份、所有 typed 依赖和目标槽位后提交命令；hover 不加载或赋值。若 Content 资源选择取得焦点，拖动材质期间 Details 使用保留的 Actor identity 暴露槽位，成功赋值后恢复 Actor 焦点；未选中 Actor 时无目标。背景拖放不创建 Actor 或修改 World。恢复默认调用 clear_material_override；已有 runtime override 没有 Editor AssetRef 时拒绝首次历史赋值，避免把无法恢复的旧效果记录为默认。Actor 级 HitProxy 没有 Section 信息，首版通过 Details 明确槽位赋值，不猜测鼠标落点对应哪个材质槽。
 
-MaterialAssignments 每次非空赋值从已保存资产读取并校验根及单层父材质；用现有 DTO 编码和 SHA256 为 AssetId 的渲染配置版本建立领域加载记录，签名包含父内容，不包含路径、缩略图或未保存草稿。同一已保存版本可由多个槽共享；保存后的新版本在下一次实际赋值时加载，旧引用者保持原版本，M6 再实现统一传播。重复设置同一 AssetRef 是无历史的 no-op，重新加载可先 Reset 再赋值。Shader 与双面状态随完整候选构建，缺失依赖、未知 Shader 和未支持纹理/Sampler 明确失败，旧槽和 redo 历史保持不变。
+MaterialAssignments 每次非空赋值委托 MaterialLibrary 校验完整已保存父链并取得共享只读对象，仅保存槽位 AssetRef 和命令记录。参数保存后 reload 发布到当前对象和后代，保持逻辑对象及 Proxy 身份；重复设置同一 AssetRef 是无历史的 no-op。Shader 与双面状态随完整候选构建，缺失依赖、未知 Shader 和未支持纹理/Sampler 明确失败，旧槽和 redo 历史保持不变。
 
 历史只保存 old/new AssetRef、Actor/Component ID 和槽名。删除记录捕获所有已赋值槽；撤销删除通过 ActorFactory 重建 root Component，并重映射整个历史中的 Actor/Component 身份。重建任一材质失败则移除候选 Actor，保留可重试的删除记录。重放按名称解析当前槽；槽顺序改变不影响绑定，名称消失报错，不按旧下标猜测。
 
-加载记录在 EditorApplication 生命周期内持有各材质版本的强引用，场景 Component 也持有绑定版本；替换/reset/delete 不在普通编辑帧 flush。旧版本保留到关闭时的明确安全点：先清历史、销毁 Actor、drain Remove/FIFO 捕获，再 MaterialAssignments::shutdown 最终 release，最后释放 ActorFactory 默认材质。首期最多 256 个已加载版本，超限明确报错；自动回收与全引用者传播后续统一完善，不建立额外 GC 或 GPU 同步入口。纯材质槽变更通过 update_primitive_materials 更新现有 Proxy，保持几何资源与 HitProxy 身份；Actor/几何生命周期继续使用 Add/Remove。此逻辑不增加 RHI 接口或后端判断，Vulkan、D3D11、D3D12、移动 Vulkan profile 共用现有 FIFO 与延迟 RHI 销毁协议。
+Library 在 EditorApplication 生命周期内持有共享材质逻辑对象及临时实例 owner，Component 持有只读引用；替换/reset/delete 不在普通帧 flush。关闭时先销毁 Actor、drain Remove/FIFO 捕获，再清赋值记录并 MaterialLibrary::shutdown，最后释放 ActorFactory 默认材质。临时实例可通过 release_instance 提前释放：先移除场景和子级用户并 drain，再移交最终 Proxy 所有权。不累计每次保存/编译的历史 Proxy，不建立额外 GC 或 GPU 同步入口。纯槽赋值经 update_primitive_materials 更新现有 Primitive Proxy，配置发布保持材质 Proxy 稳定，两者均保留几何与 HitProxy 身份；Actor/几何生命周期继续使用 Add/Remove。
 
 ```cpp
 // EditorApplication 所有权；初始化后由同一 GT 执行。
 MaterialAssignments materials;
-materials.initialize(workspace, actor_factory.default_material()->material());
+materials.initialize(workspace, material_library);
 EditorCommandHistory history(actor_factory, materials);
 AssetRef material; // Strong、根 Material 或 MaterialInstance 类型、非零 AssetId。
 history.assign_material(world, actor_id, component_id, "Body", material, error);
@@ -368,51 +369,33 @@ Editor 只打开已登记、受允许根约束的源码文件。首版直接启�
 
 Core/领域函数返回现有 AssetStatus/ImageStatus 或模块局部错误，调用方在 Logger/面板/Dialog 一次呈现；不新增诊断框架。Source picker、外部编辑器、编译进程是平台实现，不能把 HWND、Vk*、第三方 importer 或编译器 AST 泄漏到面板/公共领域接口。
 
-## 12. 分阶段执行与验收
+## 12. 多层继承与统一运行时接口
 
-| 阶段 | 执行内容 | 必须通过的验收 |
-| --- | --- | --- |
-| M1 参数描述 | 生成/读取 Editor 元数据，完整 hash 和版本迁移，自动 schema 默认值，修正 Unlit 参数消费 | 属性视图区分 Color/Range（实际控件在 M3）；未使用参数可枚举；默认值确定性；UI 修改不改变 GPU layout/Program 缓存身份；旧编译产物明确重建 |
-| M2 Material 资产 | 新领域 target/DTO/validator/codec，引用、创建菜单、类型注册、运行时构建，迁移 ActorFactory | 创建/保存/重开值一致；无源码也能加载已编译材质；错误引用、重复覆盖、只读根和同名创建拒绝 |
-| M3 参数编辑 | 自动控件、活动 EditSession、手势草稿、批次更新、reset、脏关闭与焦点撤销 | 实时修改和取消恢复；一次拖动一条历史；保存失败保留脏状态；多参数失败无部分更新 |
-| M4 模型赋值 | Details 槽位选择/拖放、clear override、场景命令 old/new 引用 | 多槽分别赋值；恢复默认；undo/redo/delete 重建引用安全；背景拖放不改 World |
-| M5 纹理与采样 | ImageCodec JPEG、TextureAsset/Import、mip/sRGB、Sampler、Phong/Unlit UV 采样 | 非对称 PNG/JPEG 的 UV/颜色正确；Mip 和边界合法；贴图切换不重编 Shader；关闭 Assimp 仍可用 |
-| M6 实例与预览 | 单层 parent、覆盖控件、引用者传播、球/Cube/Plane 预览、显示免读回、图片签名 | 红蓝实例独立保存；父值只影响未覆盖参数；动态独立实例不污染源资产；预览和后台图片无 ID/场景竞争 |
-| M7 源码迭代 | Core Process 前置设计/迁移，项目 Shader 根与清单、外部打开、专用编译执行、新 Program 发布 | 当前源码成功接管；编译失败/过期任务保留旧效果；schema 变化生成完整候选；退出等待安全 |
+保留一个 MaterialInstance，新增公共 MaterialInterface；不引入 Constant/Dynamic 类型或 mode/usage 枚举。Material 是根 Shader、结构配置和本层资产参数，MaterialInstance 保存直接 Parent 和本层覆盖。公共基类提供 schema、参数查询、根材质查询和 opaque RenderProxy；场景材质槽使用 `shared_ptr<const MaterialInterface>`。
 
-M1～M4 是第一条颜色/数值材质内部验收链，M5～M7 完成用户确认的首版；不能把第一条内部链当成首版全部完成。执行每批时同步改直接涉及的长期文档，API 伪代码按实际公共入口收敛，不留下正式双入口。
-
-测试矩阵至少包含：
-
-- 生成/格式：Color 与 Float4、范围、UI 描述缺失/损坏、完整/布局 hash、确定性输出、未知版本/字段/分支。
-- 领域：覆盖优先级、取消覆盖、orphan 类型变化、parent 限制、全量引用验证、重复 ID、文件移动、依赖环/缺失、原子写失败。
-- 编辑：一次手势、无变化、Escape、撤销重做、脏会话切换、只读 Engine、外部修改冲突、保存成功但 catalog 刷新失败。
-- Runtime：默认值与有限性、名字/类型错误无投递、批次无部分更新、Sampler dirty、动态/结构性分支、GPU/引用释放顺序。
-- 纹理：损坏与伪扩展名、大尺寸/溢出、JPEG alpha、奇数尺寸 mip、sRGB 滤波、UV 非对称测试和实际贴图切换。
-- Preview：主场景不变、免读回显示、缩略图签名、共享 allocator、在途暂停/恢复、隐藏/最小化、失败旧图和关闭 drain。
-- 构建：受影响目标重新配置/构建；独立验证者执行测试；模型导入 ON/OFF；实际 Editor 操作和 Vulkan validation；其他平台单独验证。
-
-测试资产与结果隔离在 build 临时目录，不修改或提交用户的 project/asset 测试文件。
-
-## 13. 最终执行流程
-
-```mermaid
-flowchart TD
-    A[代码编写 Properties 和 HLSL] --> B[编译并验证 schema / 元数据 / Program]
-    B --> C[创建 Material Asset]
-    C --> D[选择材质并打开参数窗口]
-    D --> E[手势草稿校验与动态批次预览]
-    E --> F[手势结束提交一次 EditSession 事务]
-    F --> G[保存资产并更新依赖与图片失效]
-    C --> H[创建单层 MaterialInstance]
-    H --> D
-    G --> I[拖入 Actor Details 的材质槽]
-    I --> J[场景赋值命令与 RT FIFO]
-    J --> K[Forward / Tonemap 显示]
-    B --> L{代码或渲染设置改变?}
-    L -->|是| M[完整 Shader / Material / Pipeline 候选]
-    M --> N{RT 验证与提交成功?}
-    N -->|是| O[发布新效果并迁移兼容覆盖]
-    N -->|否| P[保留旧效果并提示]
-    O --> K
+```cpp
+MaterialLibrary materials(types, files, index_provider, program_resolver, textures);
+auto shared = materials.load(asset_ref); // 检查结果后取得共享只读对象。
+auto unique = materials.create_instance(shared.value()); // 独立对象，覆盖为空。
+unique.value()->set_scalar("roughness", 0.3f);
+unique.value()->reset_parameter("roughness"); // 恢复最新 Parent 值。
+component.set_material_override(slot, unique.value());
 ```
+
+MaterialLibrary 属于 Runtime RenderCore 的材质领域能力，由 Application composition root 持有；组合现有 FileSystem、AssetIndex、类型编解码、ShaderMap 和纹理解析，不新增通用缓存、哈希、ID、任务或日志系统。Editor MaterialAssignments 仅维护场景槽位 AssetRef 与命令记录，领域加载与发布委托 Library。`material_descriptor_from_asset()` 和 `material_changes_from_overrides()` 是无共享缓存的构建边界；窗口的 `create_material_from_asset()` 私有预览保留展开有效值的独立实例，不作为共享资产身份。
+
+资产 Parent 只能引用已保存的 Material/Instance。C++ 临时实例可引用其他临时实例，创建后固定 Parent，不持久化指针。Parent 是强引用，反向依赖是弱引用；所有查询、编辑和图发布位于 owner GT。最多 64 层，拒绝自引用、间接环、缺失引用、类型错配和子资源引用。编辑候选引用图复用 AssetIndex 强依赖验证；领域有界读取额外保护尚未刷新的磁盘链。
+
+取消覆盖删除本层记录，继承值不写入 overrides。旧 schema 的已知 orphan 留在作者 DTO，渲染仅应用匹配值。普通 setter 只接受动态值，Shader/Parent/结构变化必须构建完整候选。根资产只能通过 Library 发布；load 返回 const 指针，不暴露 setter。临时实例参与父级传播，修改它不修改父级、兄弟或文件。
+
+Library 保持逻辑对象和 RenderProxy 身份稳定。同一 AssetId 返回同一共享对象；`reload()` 或 Shader 更新收集已加载对象及临时后代，父先子后解析完整候选，全部通过 schema/资源校验后在一个 FIFO 命令发布。RT 只接收 stable Proxy 地址与完整有效状态，不读取 GT 对象、父链、文件或字符串名。Program resolver 必须提供经现有 Program/VF/普通及双面 pipeline 预检的 Program。普通参数更新不创建 RHI 资源、submit 或 wait。仅 Program 变化且 schema/有效值一致时保留 logical binding。
+
+首次加载新子资产或发布子资产时，若发现已加载祖先的磁盘 DTO 与已发布配置不同，拒绝本次操作并提示先 reload Parent；旧图保持不变。祖先发布成功后可以重试，不把尚未生效的磁盘值当成当前 Parent 值。
+
+旧参数和纹理引用保活到 FIFO 更新结束，RHI binding 与 command list 继续保活 GPU 资源到 completion。关闭先移除 World/预览用户并 drain，再退休 Library 的所有 Proxy，最后清空逻辑图；父级强引用不能打乱 Proxy 释放排序。调用者不得在 Library shutdown 后继续使用其逻辑对象。
+
+Editor 根与实例都能创建实例，Parent 选择器支持两类资产，显示父链、来源，支持打开和定位 Parent。切换 Parent 使用已有 EditSession ReplaceCandidate 撤销；undo/redo 重新解析父链和已验证 Program。草稿只更新私有预览，保存后 reload 共享图，不写子文件、不标脏子资产。保存与渲染发布不是同一事务：保存成功而发布失败时显示“已保存，显示旧版本”并提供 Retry Publish，不能假称回滚磁盘。
+
+当前不实现 Cook，未来可以展开静态资产继承，运行时新创建实例仍保留 Parent。Sampler、Texture2D 生产链、材质球预览和缩略图刷新继续按 M5/M6 独立实施，本次只补齐已支持参数的继承和场景传播。
+
+验证覆盖三层继承、空覆盖、父值传播、子/兄弟隔离、reset、资产与临时父链、循环/深度限制、Parent undo/redo、保存发布分离、Shader orphan、只读加载、稳定身份、FIFO/GPU 寿命和关闭释放。公共层不增加后端类型；D3D11 FL11_0/SM5、D3D12 和移动 Vulkan 使用同一逻辑参数与候选边界，实测范围单独报告。

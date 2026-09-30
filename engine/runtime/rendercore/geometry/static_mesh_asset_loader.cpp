@@ -5,7 +5,7 @@
 namespace toy3d
 {
     StaticMeshRef create_static_mesh_from_asset(const StaticMeshAssetGeometry& geometry,
-                                               const MaterialInstanceRef& default_material)
+                                               const MaterialInterfaceRef& default_material)
     {
         if (!default_material || !validate_static_mesh_geometry(geometry).succeeded()) return nullptr;
         StaticMeshDesc desc;

@@ -35,7 +35,22 @@ namespace toy3d
         if (!window().enable_file_drop(true)) TOY_LOG_WARN("External model file drop is unavailable on this platform.");
 #endif
         if (!actor_factory_.initialize()) return false;
-        material_assignments_.initialize(workspace_, actor_factory_.default_material()->material());
+        MaterialTextureValues textures;
+        const auto defaults = actor_factory_.default_material()->material();
+        for (const auto& resource : defaults->parameter_schema().resources)
+        {
+            const auto found = defaults->desc().texture_defaults.find(resource.parameter_id);
+            if (found != defaults->desc().texture_defaults.end()) textures.named_defaults[resource.default_value] = found->second;
+        }
+        materials_ = std::make_unique<MaterialLibrary>(workspace_.types(), workspace_.files(),
+            [this]() -> const AssetIndex& { return workspace_.catalog().index; },
+            [this, defaults](const std::string& name)
+            {
+                return shader_workflow_ready_ ? shaders_.program(name) :
+                    (name == defaults->desc().shader_name ? defaults->desc().shader_program : nullptr);
+            }, std::move(textures));
+        material_assignments_.initialize(workspace_, *materials_);
+        workspace_.material_edit().set_publish([this](const AssetRef& reference) { return materials_->reload(reference); });
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
             PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
         auto& arguments = CommandLineParser::get_instance();
@@ -54,7 +69,7 @@ namespace toy3d
         if (shader_workflow_ready_)
         {
             material_editor_.set_shader_workflow(shaders_);
-            material_assignments_.set_program_resolver([this](const std::string& name) { return shaders_.program(name); });
+
         }
         else TOY_LOG_ERROR("Material source workflow unavailable: {}", shader_error);
         PlacementRequest preview;
@@ -129,6 +144,8 @@ namespace toy3d
         selection_.clear_actor();
         selection_.clear_asset();
         material_assignments_.shutdown();
+        workspace_.material_edit().set_publish({});
+        if (materials_) { materials_->shutdown(); materials_.reset(); }
         actor_factory_.release();
     }
 
@@ -290,6 +307,17 @@ namespace toy3d
         material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema(),
             shader_workflow_ready_ ? &shaders_ : nullptr);
         material_editor_.draw();
+        const auto locate = material_editor_.take_locate_parent();
+        if (locate.valid())
+        {
+            const auto* location = workspace_.catalog().index.find(locate);
+            if (location)
+            {
+                selection_.select_asset(locate);
+                asset_folder_ = location->path.utf8().substr(0, location->path.utf8().find_last_of('/'));
+                if (asset_folder_.compare(0, 7, "/Engine") == 0) show_engine_content_ = true;
+            }
+        }
         if (material_editor_.take_exit()) window().close();
         AssetPlacementRequest placed;
         if (scene_viewport_.take_asset_placement(placed))

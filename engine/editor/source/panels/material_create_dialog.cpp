@@ -71,11 +71,11 @@ namespace toy3d
         {
             const auto* parent = workspace.catalog().index.find(parent_);
             ImGui::SetNextItemWidth(360);
-            if (ImGui::BeginCombo("Parent Material", parent ? parent->path.utf8().c_str() : "Choose a root Material"))
+            if (ImGui::BeginCombo("Parent Material", parent ? parent->path.utf8().c_str() : "Choose a Material or Instance"))
             {
                 for (const auto& entry : workspace.catalog().entries)
                 {
-                    if (entry.file.root_type != "toy3d.MaterialAssetData") continue;
+                    if (!is_material_asset_type(entry.file.root_type)) continue;
                     if (ImGui::Selectable(entry.path.utf8().c_str(), parent_ == entry.file.asset_id)) parent_ = entry.file.asset_id;
                 }
                 ImGui::EndCombo();
@@ -83,10 +83,12 @@ namespace toy3d
             ImGui::TextDisabled("Inherits Shader and Two Sided from its root Material.");
             if (parent)
             {
-                MaterialAssetData root;
-                const auto read = read_material_asset(workspace.types(), workspace.files(), parent->path, root, &workspace.catalog().index);
-                if (read.succeeded()) shader_name_ = root.shader_name;
-                else error_ = read.message;
+                AssetRef reference;
+                reference.asset_id = parent_;
+                reference.expected_type = parent->index.root_type;
+                const auto hierarchy = read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, reference);
+                if (hierarchy.succeeded()) shader_name_ = hierarchy.value().root.shader_name;
+                else error_ = hierarchy.status().message;
             }
         }
         const auto program = shaders ? shaders->program(shader_name_) : nullptr;
@@ -124,7 +126,8 @@ namespace toy3d
             {
                 MaterialInstanceAssetData data;
                 data.parent.asset_id = parent_;
-                data.parent.expected_type = "toy3d.MaterialAssetData";
+                const auto* location = workspace.catalog().index.find(parent_);
+                data.parent.expected_type = location ? location->index.root_type : "";
                 result = create_material_instance_asset_in_workspace(workspace, destination, data, selected_schema, published_id_, shader_name_);
             }
             if (result.succeeded())

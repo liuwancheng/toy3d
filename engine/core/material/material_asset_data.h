@@ -51,7 +51,7 @@ namespace toy3d
     TOY3D_REFLECT_TYPE("toy3d.MaterialInstanceAssetData", 1)
     struct MaterialInstanceAssetData
     {
-        TOY3D_PROPERTY("parent", Visible, AssetType("toy3d.MaterialAssetData"))
+        TOY3D_PROPERTY("parent", Edit)
         AssetRef parent;
 
         TOY3D_PROPERTY("overrides", Edit)

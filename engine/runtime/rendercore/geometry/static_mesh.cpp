@@ -103,7 +103,7 @@ namespace toy3d
                 return nullptr;
             }
         if (std::any_of(desc.material_slots.begin(), desc.material_slots.end(),
-                        [](const MaterialInstanceRef& material) { return material == nullptr; }))
+                        [](const MaterialInterfaceRef& material) { return material == nullptr; }))
         {
             TOY_LOG_ERROR("Every StaticMesh Material slot must reference a MaterialInstance.");
             return nullptr;

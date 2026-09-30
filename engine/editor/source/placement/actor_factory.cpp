@@ -18,7 +18,7 @@ namespace toy3d
 {
     namespace
     {
-        StaticMeshRef make_builtin_cube()
+        StaticMeshRef make_builtin_cube(MaterialInstanceRef& owner)
         {
             ShaderMapEntryLoader loader(PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
             ShaderMap shader_map(loader);
@@ -81,8 +81,11 @@ namespace toy3d
                 0,1,2,0,2,3,4,5,6,4,6,7,8,9,10,8,10,11,
                 12,13,14,12,14,15,16,17,18,16,18,19,20,21,22,20,22,23};
             mesh_desc.sections.push_back({0u, 36u, 0u});
-            mesh_desc.material_slots.push_back(std::move(material));
-            return StaticMesh::create(std::move(mesh_desc));
+            mesh_desc.material_slots.push_back(material);
+            auto mesh = StaticMesh::create(std::move(mesh_desc));
+            if (!mesh) return nullptr;
+            owner = std::move(material);
+            return mesh;
         }
         StaticMeshRef instantiate_geometry(const StaticMeshRef& prototype)
         {
@@ -164,9 +167,8 @@ namespace toy3d
     // --------------------------------------------------------------------------
     bool ActorFactory::initialize()
     {
-        cube_ = make_builtin_cube();
+        cube_ = make_builtin_cube(material_);
         if (!cube_) return false;
-        material_ = cube_->material_slots().front();
         StaticMeshDesc plane;
         plane.vertices = {
             {{-2.5f, 0, -2.5f}, {0, 1, 0}, {0, 0}},

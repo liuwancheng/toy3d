@@ -13,6 +13,7 @@
 namespace toy3d
 {
     class Material;
+    struct MaterialDesc;
     class RHICommandContext;
     class RenderResourceManager;
     class TextureResource;
@@ -23,6 +24,7 @@ namespace toy3d
     {
       public:
         explicit MaterialRenderProxy(const Material& material);
+        explicit MaterialRenderProxy(const MaterialDesc& desc);
 
         RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context);
         RHIStatus begin_init_textures(RenderResourceManager& manager);
@@ -38,6 +40,8 @@ namespace toy3d
 
       private:
         friend class MaterialInstance;
+        friend class MaterialInterface;
+        void replace_state(MaterialRenderProxy&& candidate) noexcept;
 
         void apply_scalar_update(ShaderParameterId parameter_id, float value) noexcept;
         void apply_vector_update(ShaderParameterId parameter_id, const vec2& value) noexcept;

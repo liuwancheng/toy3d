@@ -2037,7 +2037,7 @@ int main()
         child_data.overrides = {{"roughness", 0.9f}};
         toy3d::MaterialInstanceRef child_instance;
         {
-            const auto built = toy3d::create_material_instance_from_asset(child_data, asset_data, root_instance->material(), resolved);
+            const auto built = toy3d::create_material_instance_from_asset(child_data, root_instance, resolved);
             check(built.succeeded(), "child material must combine parent and child overrides");
             child_instance = built.value();
         }
@@ -2052,7 +2052,7 @@ int main()
         child_data.overrides.clear();
         toy3d::MaterialInstanceRef inherited_instance;
         {
-            const auto built = toy3d::create_material_instance_from_asset(child_data, asset_data, root_instance->material(), resolved);
+            const auto built = toy3d::create_material_instance_from_asset(child_data, root_instance, resolved);
             check(built.succeeded(), "empty child override set must inherit parent");
             inherited_instance = built.value();
         }
@@ -2086,6 +2086,20 @@ int main()
         }
         check(batched_binding.succeeded() && batch_scalar == 0.6f && batch_color == 0.3f &&
             root_instance->material_render_proxy() == stable_proxy, "batch preserves proxy and publishes every parameter");
+        const auto inherited_binding = inherited_instance->material_render_proxy()->materialize(device, context);
+        std::memcpy(&child_scalar, context.last_buffer_upload_data.data(), sizeof(child_scalar));
+        std::memcpy(&inherited_color, context.last_buffer_upload_data.data() + 16u, sizeof(inherited_color));
+        check(inherited_binding.succeeded() && child_scalar == 0.6f && inherited_color == 0.3f,
+            "parent updates reach the actual descendant GPU constant binding");
+        auto grand_instance = toy3d::MaterialInstance::create(child_instance);
+        check(grand_instance && grand_instance->parent() == child_instance && !grand_instance->overrides_parameter("roughness"),
+            "runtime third layer retains direct Parent and empty local overrides");
+        check(child_instance->set_scalar("roughness", 0.82f) && grand_instance->set_scalar("roughness", 0.95f) &&
+            grand_instance->reset_parameter("roughness"), "third-layer reset restores latest Parent");
+        const auto grand_binding = grand_instance->material_render_proxy()->materialize(device, context);
+        std::memcpy(&child_scalar, context.last_buffer_upload_data.data(), sizeof(child_scalar));
+        check(grand_binding.succeeded() && child_scalar == 0.82f, "third-layer GPU values use live Parent instead of copied defaults");
+        toy3d::MaterialInstance::release(grand_instance);
         check(!root_instance->apply_parameters({{"roughness", 0.7f}, {"unknown", 1.0f}}) &&
             !root_instance->apply_parameters({{"roughness", 0.7f}, {"roughness", 0.8f}}) &&
             !root_instance->set_scalar("roughness", std::numeric_limits<float>::quiet_NaN()) &&

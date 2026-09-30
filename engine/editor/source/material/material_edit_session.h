@@ -23,6 +23,14 @@ namespace toy3d
                          const std::string& registered_shader_name = "Toy3d/Surface/Phong");
         AssetStatus update_schema(shader::ShaderParameterSchema schema);
         void set_preview(PreviewPrepare prepare, PreviewNotify notify);
+        using SchemaResolver = std::function<AssetResult<shader::ShaderParameterSchema>(const std::string&)>;
+        void set_parent_preview(SchemaResolver schema, std::function<AssetStatus(const MaterialAssetData&)> prepare,
+            std::function<void()> notify);
+        void set_publish(std::function<AssetStatus(const AssetRef&)> publish) { publish_ = std::move(publish); }
+        AssetStatus publish_saved();
+        AssetStatus set_parent(const AssetRef& parent);
+        const std::vector<MaterialAssetLayer>& parent_layers() const { return parent_layers_; }
+        AssetRef parameter_source(const std::string& name) const;
         void clear();
         bool active() const { return root_ || instance_; }
         bool is_instance() const { return instance_ != nullptr; }
@@ -50,6 +58,9 @@ namespace toy3d
 
       private:
         AssetStatus validate_overrides(const std::vector<MaterialParameterOverride>& values) const;
+        AssetStatus validate_instance(const MaterialInstanceAssetData& value) const;
+        AssetStatus prepare_instance(const MaterialInstanceAssetData& value);
+        void notify_instance();
         std::vector<MaterialParameterOverride> effective(const std::vector<MaterialParameterOverride>& values) const;
         AssetStatus effective_bytes(const std::vector<MaterialParameterOverride>& values, std::vector<std::uint8_t>& bytes) const;
         AssetStatus prepare(const std::vector<MaterialParameterOverride>& values) const;
@@ -63,6 +74,15 @@ namespace toy3d
         AssetFileIndex opened_index_;
         shader::ShaderParameterSchema schema_;
         MaterialAssetData parent_;
+        std::vector<MaterialAssetLayer> parent_layers_;
+        MaterialAssetData pending_parent_;
+        std::vector<MaterialAssetLayer> pending_parent_layers_;
+        shader::ShaderParameterSchema pending_parent_schema_;
+        bool parent_prepared_ = false;
+        SchemaResolver schema_resolver_;
+        std::function<AssetStatus(const MaterialAssetData&)> parent_prepare_;
+        std::function<void()> parent_notify_;
+        std::function<AssetStatus(const AssetRef&)> publish_;
         std::unique_ptr<EditSession<MaterialAssetData>> root_;
         std::unique_ptr<EditSession<MaterialInstanceAssetData>> instance_;
         std::vector<MaterialParameterOverride> draft_;

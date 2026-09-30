@@ -30,7 +30,7 @@ namespace toy3d
         create_render_state();
     }
 
-    bool StaticMeshComponent::set_material_override(std::uint32_t material_slot, MaterialInstanceRef material)
+    bool StaticMeshComponent::set_material_override(std::uint32_t material_slot, MaterialInterfaceRef material)
     {
         if (static_mesh_ == nullptr || material_slot >= material_overrides_.size())
         {
@@ -39,7 +39,7 @@ namespace toy3d
         }
         if (material == nullptr)
         {
-            TOY_LOG_ERROR("A StaticMesh Material override must reference a MaterialInstance.");
+            TOY_LOG_ERROR("A StaticMesh Material override must reference a MaterialInterface.");
             return false;
         }
 
@@ -63,7 +63,7 @@ namespace toy3d
         return true;
     }
 
-    void StaticMeshComponent::send_material_overrides(std::vector<MaterialInstanceRef> previous)
+    void StaticMeshComponent::send_material_overrides(std::vector<MaterialInterfaceRef> previous)
     {
         if (!has_render_state()) { create_render_state(); return; }
         std::vector<MaterialRenderProxy*> proxies;
@@ -81,13 +81,13 @@ namespace toy3d
         return material_slot < material_overrides_.size() && material_overrides_[material_slot] != nullptr;
     }
 
-    MaterialInstanceRef StaticMeshComponent::material_for_slot(std::uint32_t material_slot) const
+    MaterialInterfaceRef StaticMeshComponent::material_for_slot(std::uint32_t material_slot) const
     {
         if (static_mesh_ == nullptr || material_slot >= material_overrides_.size())
         {
             return nullptr;
         }
-        const MaterialInstanceRef& material_override = material_overrides_[material_slot];
+        const MaterialInterfaceRef& material_override = material_overrides_[material_slot];
         return material_override != nullptr ? material_override : static_mesh_->material_slots()[material_slot];
     }
 
@@ -140,7 +140,7 @@ namespace toy3d
         material_render_proxies.reserve(static_mesh_->material_slots().size());
         for (std::uint32_t slot = 0u; slot < static_mesh_->material_slots().size(); ++slot)
         {
-            const MaterialInstanceRef material = material_for_slot(slot);
+            const MaterialInterfaceRef material = material_for_slot(slot);
             material_render_proxies.push_back(material != nullptr ? material->material_render_proxy() : nullptr);
         }
         return std::make_unique<StaticMeshSceneProxy>(world_transform(), world_bounds_, visible(),

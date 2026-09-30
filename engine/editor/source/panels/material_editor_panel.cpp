@@ -98,6 +98,7 @@ namespace toy3d
         if (decision == MaterialCloseDecision::Cancel)
         {
             requested_ = {}; close_requested_ = false; exit_requested_ = false;
+            pending_save_failed_ = false;
             return true;
         }
         if (decision == MaterialCloseDecision::Save)
@@ -106,10 +107,10 @@ namespace toy3d
             report(saved);
             if (!saved.succeeded())
             {
-                // A successful atomic publication may be followed by a failed
-                // catalog refresh. Only this clean checkpoint can still close.
-                if (saved.code != AssetErrorCode::InvalidState || workspace_->material_edit().dirty() ||
-                    workspace_->material_edit().gesturing()) return false;
+                // Keep the reported failure visible even when the file reached
+                // its clean checkpoint but catalog/render publication failed.
+                pending_save_failed_ = true;
+                return false;
             }
         }
         else close();
@@ -151,19 +152,12 @@ namespace toy3d
         {
             const auto* location = workspace_->catalog().index.find(id);
             if (!location) { report(parameter_error("Material asset is missing.")); return false; }
-            MaterialAssetData root;
-            AssetStatus read;
-            if (location->index.root_type == "toy3d.MaterialInstanceAssetData")
-            {
-                MaterialInstanceAssetData child;
-                read = read_material_instance_asset(workspace_->types(), workspace_->files(), location->path, child, &workspace_->catalog().index);
-                if (!read.succeeded()) { report(read); return false; }
-                const auto* parent = workspace_->catalog().index.find(child.parent.asset_id);
-                if (!parent) { report(parameter_error("Parent material is missing.")); return false; }
-                read = read_material_asset(workspace_->types(), workspace_->files(), parent->path, root, &workspace_->catalog().index);
-            }
-            else read = read_material_asset(workspace_->types(), workspace_->files(), location->path, root, &workspace_->catalog().index);
-            if (!read.succeeded()) { report(read); return false; }
+            AssetRef reference;
+            reference.asset_id = id;
+            reference.expected_type = location->index.root_type;
+            const auto hierarchy = read_material_hierarchy(workspace_->types(), workspace_->files(), workspace_->catalog().index, reference);
+            if (!hierarchy.succeeded()) { report(hierarchy.status()); return false; }
+            const auto& root = hierarchy.value().root;
             program = shaders_->program(root.shader_name);
             if (!program) { report(parameter_error("Shader has no published Program. Compile it from Create Material first.")); return false; }
         }
@@ -206,6 +200,30 @@ namespace toy3d
                 }
                 catch (const std::exception& exception) { report(parameter_error(exception.what())); }
             });
+        workspace_->material_edit().set_parent_preview(
+            [this](const std::string& name) -> AssetResult<shader::ShaderParameterSchema>
+            {
+                const auto program = shaders_ ? shaders_->program(name) :
+                    (defaults_->desc().shader_name == name ? defaults_->desc().shader_program : nullptr);
+                if (!program) return AssetResult<shader::ShaderParameterSchema>(parameter_error("Compile the Parent Shader before selecting it."));
+                return AssetResult<shader::ShaderParameterSchema>(material_parameter_schema_from_shader_schema(program->data().parameter_schema));
+            },
+            [this](const MaterialAssetData& effective)
+            {
+                discard_shader();
+                const auto program = shaders_ ? shaders_->program(effective.shader_name) : defaults_->desc().shader_program;
+                const auto built = create_material_from_asset(effective, program, textures_);
+                if (!built.succeeded()) return built.status();
+                shader_candidate_ = built.value();
+                candidate_schema_ = shader_candidate_->parameter_schema();
+                if (shaders_)
+                {
+                    const auto* source = shaders_->find(effective.shader_name);
+                    if (source) candidate_properties_ = source->properties;
+                }
+                return AssetStatus::success();
+            },
+            [this]() { publish_shader(); ++session_revision_; });
         error_.clear(); focus_requested_ = true;
         return true;
     }
@@ -257,6 +275,7 @@ namespace toy3d
         else if (close_requested_) close();
         if (exit_requested_) exit_ready_ = true;
         requested_ = {}; close_requested_ = false; exit_requested_ = false;
+        pending_save_failed_ = false;
     }
     void MaterialEditorPanel::shutdown()
     {
@@ -347,7 +366,12 @@ namespace toy3d
             if (ImGui::Button(session.is_instance() ? "Inherit" : "Reset")) report(session.remove_parameter(member.name));
             ImGui::EndDisabled();
             ImGui::EndDisabled();
-            if (!overridden) ImGui::TextDisabled(session.is_instance() && inherited ? "Inherited from parent" : "Shader default");
+            if (!overridden)
+            {
+                const auto source = session.parameter_source(member.name);
+                const auto* location = workspace_->catalog().index.find(source.asset_id);
+                ImGui::TextDisabled("Inherited: %s", location ? location->path.utf8().c_str() : "Shader default");
+            }
             ImGui::PopID();
         }
         for (const auto& resource : session.schema().resources)
@@ -370,7 +394,7 @@ namespace toy3d
         auto& session = workspace_->material_edit();
         if (modal_pending())
         {
-            if (session.dirty() || session.gesturing()) ImGui::OpenPopup("Unsaved Material");
+            if (session.dirty() || session.gesturing() || pending_save_failed_) ImGui::OpenPopup("Unsaved Material");
             else complete_transition();
         }
         if (ImGui::BeginPopupModal("Unsaved Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -418,7 +442,37 @@ namespace toy3d
         {
             ImGui::TextWrapped("%s%s", session.path().utf8().c_str(), session.dirty() ? " *" : "");
             ImGui::TextDisabled("%s%s", session.root_data().shader_name.c_str(), session.writable() ? "" : " | Read only");
-            if (session.is_instance()) ImGui::TextDisabled("Parent: %s", session.instance_data()->parent.asset_id.hex().c_str());
+            if (session.is_instance())
+            {
+                const auto& reference = session.instance_data()->parent;
+                const auto* parent = workspace_->catalog().index.find(reference.asset_id);
+                ImGui::BeginDisabled(!session.writable() || session.gesturing() || modal_pending() || (shaders_ && shaders_->busy()));
+                if (ImGui::BeginCombo("Parent", parent ? parent->path.utf8().c_str() : "Missing Parent"))
+                {
+                    for (const auto& entry : workspace_->catalog().entries)
+                    {
+                        if (!is_material_asset_type(entry.file.root_type) || entry.file.asset_id == session.id()) continue;
+                        if (ImGui::Selectable(entry.path.utf8().c_str(), entry.file.asset_id == reference.asset_id))
+                        {
+                            AssetRef next;
+                            next.asset_id = entry.file.asset_id;
+                            next.expected_type = entry.file.root_type;
+                            report(session.set_parent(next));
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::EndDisabled();
+                if (ImGui::Button("Open Parent")) request_open(session.instance_data()->parent.asset_id);
+                ImGui::SameLine();
+                if (ImGui::Button("Locate Parent")) locate_parent_ = session.instance_data()->parent.asset_id;
+                if (ImGui::CollapsingHeader("Parent Chain"))
+                    for (auto layer = session.parent_layers().rbegin(); layer != session.parent_layers().rend(); ++layer)
+                    {
+                        const auto* location = workspace_->catalog().index.find(layer->reference.asset_id);
+                        ImGui::TextUnformatted(location ? location->path.utf8().c_str() : layer->reference.asset_id.hex().c_str());
+                    }
+            }
             if (shaders_)
             {
                 if (ImGui::Button("Open Source")) shaders_->open_source(session.root_data().shader_name);
@@ -442,7 +496,11 @@ namespace toy3d
             if (ImGui::Button("Redo")) redo();
             ImGui::EndDisabled(); ImGui::EndDisabled();
             if (!metadata_warning_.empty()) ImGui::TextWrapped("Properties unavailable; using schema controls: %s", metadata_warning_.c_str());
-            if (!error_.empty()) ImGui::TextWrapped("%s", error_.c_str());
+            if (!error_.empty())
+            {
+                ImGui::TextWrapped("%s", error_.c_str());
+                if (!session.dirty() && ImGui::Button("Retry Publish")) report(session.publish_saved());
+            }
             ImGui::Separator();
             if (focused_ && ImGui::IsKeyPressed(ImGuiKey_Escape) && session.gesturing())
             {

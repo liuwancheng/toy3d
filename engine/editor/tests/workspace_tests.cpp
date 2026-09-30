@@ -149,7 +149,40 @@ int main()
         auto invalid_instance = instance;
         invalid_instance.parent.asset_id = instance_id;
         check(!create_material_instance_asset_in_workspace(workspace, "/Project/MI_Nested.asset", invalid_instance, schema, rejected_id).succeeded() &&
-            !workspace.files().stat(virtual_path("/Project/MI_Nested.asset")).succeeded(), "instance parent must not be another instance");
+            !workspace.files().stat(virtual_path("/Project/MI_Nested.asset")).succeeded(), "parent expected_type must match its actual instance DTO");
+        invalid_instance.parent.expected_type = "toy3d.MaterialInstanceAssetData";
+        AssetId nested_id;
+        check(create_material_instance_asset_in_workspace(workspace, "/Project/MI_Nested.asset", invalid_instance, schema, nested_id).succeeded(),
+            "nested instance creation must preserve a direct Instance Parent");
+        AssetRef nested_ref;
+        nested_ref.asset_id = nested_id;
+        nested_ref.expected_type = "toy3d.MaterialInstanceAssetData";
+        const auto hierarchy = read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, nested_ref);
+        check(hierarchy.succeeded() && hierarchy.value().layers.size() == 3u && hierarchy.value().layers.back().overrides.empty(),
+            "three-layer root-to-leaf chain resolves without copying defaults into overrides");
+        AssetRef deepest = nested_ref;
+        // Direct encoding builds corrupt/over-limit input independently from
+        // the creation UI, so the bounded reader is exercised on actual files.
+        for (std::size_t depth = 3u; depth <= maximum_material_parent_depth; ++depth)
+        {
+            AssetId next_id;
+            check(AssetId::try_generate(next_id), "allocate depth fixture");
+            MaterialInstanceAssetData layer;
+            layer.parent = deepest;
+            const auto bytes = encode_material_instance_asset(workspace.types(), next_id, layer);
+            const auto path = virtual_path("/Project/MI_Depth" + std::to_string(depth + 1u) + ".asset");
+            check(bytes.succeeded() && workspace.files().write_binary_atomic(path, bytes.value(), FilePublishMode::CreateNew).succeeded(),
+                "publish depth fixture");
+            deepest = {next_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+            if (depth == maximum_material_parent_depth - 1u)
+            {
+                check(workspace.refresh(), "refresh exactly 64 layers");
+                const auto limit = read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, deepest);
+                check(limit.succeeded() && limit.value().layers.size() == maximum_material_parent_depth, "exactly 64 layers must resolve");
+            }
+        }
+        check(workspace.refresh() && !read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, deepest).succeeded(),
+            "65-layer input must fail without unbounded recursion");
         auto invalid_material = material;
         invalid_material.overrides.push_back({"unknown", 1.0f});
         check(!create_material_asset_in_workspace(workspace, "/Project/M_Invalid.asset", invalid_material, schema, rejected_id).succeeded(),

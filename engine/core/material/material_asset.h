@@ -10,6 +10,25 @@
 namespace toy3d
 {
     constexpr std::size_t maximum_material_overrides = 4096u;
+    constexpr std::size_t maximum_material_parent_depth = 64u;
+
+    bool is_material_asset_type(const std::string& type);
+
+    // Ordered root -> leaf. Only each layer's own values are kept; the resolved
+    // view is transient and never replaces the persisted Parent or overrides.
+    struct MaterialAssetLayer
+    {
+        AssetRef reference;
+        std::vector<MaterialParameterOverride> overrides;
+    };
+    struct MaterialAssetHierarchy
+    {
+        MaterialAssetData root;
+        std::vector<MaterialAssetLayer> layers;
+        std::vector<MaterialParameterOverride> effective_overrides(const shader::ShaderParameterSchema& schema) const;
+    };
+    AssetResult<MaterialAssetHierarchy> read_material_hierarchy(const TypeRegistry& types,
+        const FileSystem& files, const AssetIndex& index, const AssetRef& leaf);
 
     AssetStatus validate_material_asset(const MaterialAssetData& data, const AssetIndex* index = nullptr);
     AssetStatus validate_material_instance_asset(const MaterialInstanceAssetData& data, const AssetIndex* index = nullptr);

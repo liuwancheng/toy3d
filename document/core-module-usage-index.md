@@ -99,7 +99,7 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 Editor 的材质编辑入口为 `EditorWorkspace::material_edit()` 和 `material/material_edit_session.h`，内部组合现有 typed EditSession；手势草稿结束后一次提交，save 重新读取所有最新可选段并更新依赖，详见[材质系统设计](material-system-design.md)。该入口属于 Editor 业务，不新增 Core 撤销系统或通用资源内存对象。
 
-Editor 场景材质赋值入口为 `EditorCommandHistory::assign_material()`；EditorApplication 持有并注入 `material/material_assignments.h` 的 MaterialAssignments，组合已有 FileSystem、领域 DTO codec、SHA256 和 RenderCore builder，管理槽位 AssetRef 与已加载版本的生命周期。runtime StaticMeshComponent 仅持有运行时强引用，资产编辑与场景赋值继续使用各自既有历史；这不是新增 Core Asset cache 或撤销系统。
+Editor 场景材质赋值入口为 `EditorCommandHistory::assign_material()`；EditorApplication 持有 Runtime `rendercore/material/material_library.h` 的 MaterialLibrary，并注入 MaterialAssignments。Library 组合既有 FileSystem、领域 DTO 与 RenderCore builder，提供共享只读 MaterialInterface、多层继承、临时实例和受控配置发布；Assignments 仅管理槽位 AssetRef 与命令记录。StaticMeshComponent 持有 MaterialInterfaceRef，资产与场景继续使用各自既有历史，不新增 Core cache 或撤销系统。
 
 `sha256(bytes/text)` 返回固定 32 字节签名；Shader key 的组装策略仍在 Shader，算法只留 Core 一份。`encode_png(image,bytes)` / `decode_png(bytes,image)` 是有界内存 codec，失败不替换输出，不直接操作文件或 RHI。图像为 top-left、紧凑 RGBA8，调用方负责色彩语义。
 

@@ -14,8 +14,14 @@ namespace toy3d
         std::map<AssetId, TextureRef> assets;
     };
 
+    AssetResult<MaterialDesc> material_descriptor_from_asset(const MaterialAssetData& data,
+        std::shared_ptr<const ShaderMapProgram> program, const MaterialTextureValues& textures);
+    AssetResult<MaterialParameterChanges> material_changes_from_overrides(
+        const std::vector<MaterialParameterOverride>& overrides,
+        const shader::ShaderParameterSchema& schema, const MaterialTextureValues& textures);
+
     AssetResult<MaterialInstanceRef> create_material_from_asset(const MaterialAssetData& data,
         std::shared_ptr<const ShaderMapProgram> program, const MaterialTextureValues& textures);
     AssetResult<MaterialInstanceRef> create_material_instance_from_asset(const MaterialInstanceAssetData& data,
-        const MaterialAssetData& parent_data, MaterialRef shader_material, const MaterialTextureValues& textures);
+        MaterialInterfaceRef parent, const MaterialTextureValues& textures);
 }

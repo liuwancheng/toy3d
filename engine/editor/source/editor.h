@@ -47,6 +47,7 @@ namespace toy3d
         EditorWorkspace& workspace_;
         EditorSelection selection_;
         ActorFactory actor_factory_;
+        std::unique_ptr<MaterialLibrary> materials_;
         MaterialAssignments material_assignments_;
         EditorCommandHistory command_history_;
         SceneViewport scene_viewport_;

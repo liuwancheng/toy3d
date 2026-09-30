@@ -79,7 +79,14 @@ int main()
         child_index.value().dependencies[0].strength == AssetRefStrength::Strong, "Parent dependency lost");
     auto invalid_child = child;
     invalid_child.parent.expected_type = "toy3d.MaterialInstanceAssetData";
-    check(!validate_material_instance_asset(invalid_child, &index).succeeded(), "Instance-of-instance parent accepted");
+    check(!validate_material_instance_asset(invalid_child, &index).succeeded(), "Actual root type mismatch accepted");
+    const auto child_path = VirtualPath::parse("/Project/Child.asset");
+    check(child_path.succeeded() && index.add(child_path.value(), child_index.value()).succeeded(), "Child index failed");
+    MaterialInstanceAssetData nested;
+    nested.parent.asset_id = child_id;
+    nested.parent.expected_type = "toy3d.MaterialInstanceAssetData";
+    check(validate_material_instance_asset(nested, &index).succeeded(), "Instance Parent must accept its actual DTO type");
+    check(nested.overrides.empty(), "New instance must not copy inherited overrides");
     invalid_child = child;
     invalid_child.parent.strength = AssetRefStrength::Weak;
     check(!validate_material_instance_asset(invalid_child, &index).succeeded(), "Weak parent accepted");

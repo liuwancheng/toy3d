@@ -111,12 +111,10 @@ namespace toy3d
     {
         AssetStatus valid = validate_material_instance_asset(data, &workspace.catalog().index);
         if (!valid.succeeded()) return valid;
-        const auto* parent = workspace.catalog().index.find(data.parent.asset_id);
-        if (!parent) return fail("The parent Material is missing.");
-        MaterialAssetData parent_data;
-        valid = read_material_asset(workspace.types(), workspace.files(), parent->path, parent_data, &workspace.catalog().index);
-        if (!valid.succeeded()) return valid;
-        if (parent_data.shader_name != registered_shader_name) return fail("Parent Shader does not match its registered Program.");
+        const auto hierarchy = read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, data.parent);
+        if (!hierarchy.succeeded()) return hierarchy.status();
+        if (hierarchy.value().layers.size() >= maximum_material_parent_depth) return fail("Material Parent chain exceeds 64 layers.");
+        if (hierarchy.value().root.shader_name != registered_shader_name) return fail("Parent Shader does not match its registered Program.");
         valid = check_supported_schema(schema);
         if (valid.succeeded()) valid = validate_material_overrides_schema(data.overrides, schema);
         if (!valid.succeeded()) return valid;

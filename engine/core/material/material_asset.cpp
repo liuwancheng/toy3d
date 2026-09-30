@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <map>
 
 #include "text/utf8.h"
 
@@ -123,6 +124,64 @@ namespace toy3d
         }
     }
 
+    bool is_material_asset_type(const std::string& type)
+    {
+        return type == "toy3d.MaterialAssetData" || type == "toy3d.MaterialInstanceAssetData";
+    }
+
+    // --------------------------------------------------------------------------
+    // MaterialAssetHierarchy: Bounded root-to-leaf authoring value resolution
+    // --------------------------------------------------------------------------
+    std::vector<MaterialParameterOverride> MaterialAssetHierarchy::effective_overrides(
+        const shader::ShaderParameterSchema& schema) const
+    {
+        std::map<std::string, MaterialParameterOverride> values;
+        for (const auto& layer : layers)
+            for (const auto& value : layer.overrides)
+                if (material_override_matches_schema(value, schema)) values[value.name] = value;
+        std::vector<MaterialParameterOverride> result;
+        for (const auto& value : values) result.push_back(value.second);
+        return result;
+    }
+
+    AssetResult<MaterialAssetHierarchy> read_material_hierarchy(const TypeRegistry& types,
+        const FileSystem& files, const AssetIndex& index, const AssetRef& leaf)
+    {
+        MaterialAssetHierarchy result;
+        AssetRef current = leaf;
+        std::set<AssetId> visited;
+        while (result.layers.size() < maximum_material_parent_depth)
+        {
+            if (!is_material_asset_type(current.expected_type) || current.subresource_id.valid() ||
+                current.strength != AssetRefStrength::Strong)
+                return AssetResult<MaterialAssetHierarchy>(invalid("parent", "Expected a strong root Material/Instance reference."));
+            const auto resolved = index.resolve(current, "parent");
+            if (!resolved.succeeded()) return AssetResult<MaterialAssetHierarchy>(resolved);
+            if (!visited.insert(current.asset_id).second)
+                return AssetResult<MaterialAssetHierarchy>(AssetStatus{AssetErrorCode::DependencyCycle,
+                    current.asset_id, {}, {}, "parent", "Material Parent chain contains a cycle.", {}});
+            const auto* location = index.find(current.asset_id);
+            const auto published = inspect_asset(files, location->path);
+            if (!published.succeeded()) return AssetResult<MaterialAssetHierarchy>(published.status());
+            if (!(published.value().asset_id == current.asset_id) || published.value().root_type != current.expected_type)
+                return AssetResult<MaterialAssetHierarchy>(invalid("parent", "Published Material identity differs from the catalog."));
+            if (current.expected_type == "toy3d.MaterialAssetData")
+            {
+                const auto read = read_material_asset(types, files, location->path, result.root, &index);
+                if (!read.succeeded()) return AssetResult<MaterialAssetHierarchy>(read);
+                result.layers.push_back({current, result.root.overrides});
+                std::reverse(result.layers.begin(), result.layers.end());
+                return AssetResult<MaterialAssetHierarchy>(std::move(result));
+            }
+            MaterialInstanceAssetData child;
+            const auto read = read_material_instance_asset(types, files, location->path, child, &index);
+            if (!read.succeeded()) return AssetResult<MaterialAssetHierarchy>(read);
+            result.layers.push_back({current, std::move(child.overrides)});
+            current = child.parent;
+        }
+        return AssetResult<MaterialAssetHierarchy>(invalid("parent", "Material Parent chain exceeds the depth limit (64)."));
+    }
+
     AssetStatus validate_material_asset(const MaterialAssetData& data, const AssetIndex* index)
     {
         if (data.shader_name.empty() || data.shader_name.size() > 1024u || !is_valid_utf8(data.shader_name) ||
@@ -135,7 +194,9 @@ namespace toy3d
 
     AssetStatus validate_material_instance_asset(const MaterialInstanceAssetData& data, const AssetIndex* index)
     {
-        const AssetStatus parent = validate_reference(data.parent, "toy3d.MaterialAssetData", "parent", index);
+        if (!is_material_asset_type(data.parent.expected_type))
+            return invalid("parent", "Parent must be a Material or Material Instance asset.");
+        const AssetStatus parent = validate_reference(data.parent, data.parent.expected_type.c_str(), "parent", index);
         return parent.succeeded() ? validate_overrides(data.overrides, index) : parent;
     }
 

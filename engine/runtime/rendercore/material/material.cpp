@@ -1,17 +1,21 @@
 #include "rendercore/material/material.h"
 
-#include "logging/logger.h"
-#include "rendercore/render_command.h"
-#include "rendercore/shader/shader_map.h"
-#include "renderscene/material/material_render_proxy.h"
-
+#include <algorithm>
 #include <cstddef>
 #include <cmath>
 #include <cstring>
 #include <exception>
 #include <stdexcept>
-#include <utility>
+#include <functional>
+#include <map>
 #include <set>
+#include <utility>
+
+#include "logging/logger.h"
+#include "material/material_asset.h"
+#include "rendercore/render_command.h"
+#include "rendercore/shader/shader_map.h"
+#include "renderscene/material/material_render_proxy.h"
 
 namespace toy3d
 {
@@ -49,6 +53,23 @@ namespace toy3d
             ShaderParameterId id = 0;
             MaterialParameterValue value;
         };
+
+        void release_material_textures(MaterialDesc& desc, MaterialParameterChanges& changes)
+        {
+            for (auto& value : desc.texture_defaults)
+            {
+                if (value.second && value.second.use_count() == 1) Texture::release(value.second);
+                else value.second.reset();
+            }
+            for (auto& value : changes)
+            {
+                // C++17 get_if retires only the resource branch of old values.
+                auto* texture = std::get_if<TextureRef>(&value.value);
+                if (!texture) continue;
+                if (*texture && texture->use_count() == 1) Texture::release(*texture);
+                else texture->reset();
+            }
+        }
 
         bool resolve_material_changes(const MaterialDesc& desc, const MaterialParameterChanges& changes,
                                       std::vector<ResolvedMaterialParameter>& resolved)
@@ -295,9 +316,9 @@ namespace toy3d
     }
 
     // --------------------------------------------------------------------------
-    // Material: Immutable Shader schema, defaults and structural settings
+    // Material: Root Shader, defaults and Library-controlled configuration
     // --------------------------------------------------------------------------
-    std::shared_ptr<const Material> Material::create(MaterialDesc desc)
+    std::shared_ptr<Material> Material::create(MaterialDesc desc)
     {
         if (desc.shader_name.empty())
         {
@@ -333,41 +354,23 @@ namespace toy3d
         return std::make_shared<Material>(std::move(material));
     }
 
-    Material::Material(MaterialDesc desc) : desc_(std::move(desc)) {}
+    Material::Material(MaterialDesc desc) : MaterialInterface(std::move(desc)) {}
 
     // --------------------------------------------------------------------------
-    // MaterialInstance: Game-side overrides and FIFO Render proxy lifetime
+    // MaterialInterface: GT configuration and stable FIFO-protected RT identity
     // --------------------------------------------------------------------------
-    std::shared_ptr<MaterialInstance> MaterialInstance::create(MaterialRef material)
-    {
-        if (material == nullptr)
-        {
-            TOY_LOG_ERROR("A MaterialInstance must reference a Material.");
-            return nullptr;
-        }
-        MaterialInstance material_instance(std::move(material));
-        return std::make_shared<MaterialInstance>(std::move(material_instance));
-    }
+    MaterialInterface::MaterialInterface(MaterialDesc desc)
+        : desc_(std::move(desc)), shader_program_(desc_.shader_program), two_sided_(desc_.two_sided),
+          material_render_proxy_(std::make_unique<MaterialRenderProxy>(desc_)) {}
 
-    MaterialInstance::MaterialInstance(MaterialRef material)
-        : material_(std::move(material)), shader_program_(material_->desc().shader_program),
-          two_sided_(material_->desc().two_sided),
-          material_render_proxy_(std::make_unique<MaterialRenderProxy>(*material_))
-    {
-    }
-
-    MaterialInstance::MaterialInstance(MaterialInstance&& other) noexcept
-        : material_(std::move(other.material_)), shader_program_(std::move(other.shader_program_)),
+    MaterialInterface::MaterialInterface(MaterialInterface&& other) noexcept
+        : desc_(std::move(other.desc_)), local_overrides_(std::move(other.local_overrides_)),
+          children_(std::move(other.children_)), shader_program_(std::move(other.shader_program_)),
           pending_shader_program_(std::move(other.pending_shader_program_)), two_sided_(other.two_sided_),
           pending_two_sided_(other.pending_two_sided_),
           replacement_commit_complete_(std::move(other.replacement_commit_complete_)),
           replacement_commit_succeeded_(std::move(other.replacement_commit_succeeded_)),
           replacement_publication_pending_(other.replacement_publication_pending_),
-          scalar_overrides_(std::move(other.scalar_overrides_)),
-          vector2_overrides_(std::move(other.vector2_overrides_)),
-          vector3_overrides_(std::move(other.vector3_overrides_)),
-          vector4_overrides_(std::move(other.vector4_overrides_)),
-          texture_overrides_(std::move(other.texture_overrides_)),
           material_render_proxy_(std::move(other.material_render_proxy_)), render_proxy_used_(other.render_proxy_used_),
           release_enqueued_(other.release_enqueued_)
     {
@@ -376,51 +379,117 @@ namespace toy3d
         other.replacement_publication_pending_ = false;
     }
 
-    MaterialInstance::~MaterialInstance()
+    MaterialInterface::~MaterialInterface()
     {
         if (render_proxy_used_ && !release_enqueued_ && material_render_proxy_)
         {
-            TOY_LOG_ERROR("A used MaterialRenderProxy must be released through MaterialInstance::release().");
+            TOY_LOG_ERROR("A used MaterialRenderProxy requires explicit FIFO release.");
             std::terminate();
         }
     }
 
-    void MaterialInstance::release(std::shared_ptr<MaterialInstance>& material_instance)
+    void MaterialInterface::retire_proxy()
     {
-        if (!material_instance)
-        {
-            return;
-        }
-        if (material_instance.use_count() != 1)
-        {
-            throw std::invalid_argument(
-                "MaterialInstance final release requires the caller to hold the last reference");
-        }
-        if (!material_instance->render_proxy_used_)
-        {
-            material_instance.reset();
-            return;
-        }
-
-        material_instance->release_enqueued_ = true;
-        std::shared_ptr<MaterialInstance> release_owner = material_instance;
+        if (!material_render_proxy_) return;
+        if (!render_proxy_used_) { material_render_proxy_.reset(); return; }
+        // Shared ownership of the unique allocation allows failed admission to
+        // restore the exact address borrowed by previously accepted commands.
+        auto values = std::make_shared<std::pair<MaterialDesc, MaterialParameterChanges>>(desc_, local_overrides_);
+        auto owner = std::make_shared<std::unique_ptr<MaterialRenderProxy>>(std::move(material_render_proxy_));
         try
         {
-            enqueue_render_command("ReleaseMaterialRenderProxy",
-                                   [release_owner = std::move(release_owner)]() noexcept
-                                   {
-                                       // The capture is intentionally destroyed after this body on
-                                       // the logical Rendering Thread.
-                                   });
+            enqueue_render_command("ReleaseMaterialRenderProxy", [owner, values]() noexcept
+            {
+                owner->reset();
+                release_material_textures(values->first, values->second);
+            });
         }
-        catch (...)
-        {
-            material_instance->release_enqueued_ = false;
-            throw;
-        }
-        material_instance.reset();
+        catch (...) { material_render_proxy_ = std::move(*owner); throw; }
+        release_enqueued_ = true;
     }
 
+    void MaterialInterface::release(MaterialInterfaceRef& material)
+    {
+        if (!material) return;
+        if (material.use_count() != 1) throw std::invalid_argument("Material final release requires its last reference");
+        // The last GT owner keeps configuration/TextureRefs alive through final
+        // proxy destruction. Const callers cannot mutate parameter state.
+        if (material->render_proxy_used_)
+        {
+            material->release_enqueued_ = true;
+            try { enqueue_render_command("ReleaseMaterialInterface", [owner = material]() noexcept {}); }
+            catch (...) { material->release_enqueued_ = false; throw; }
+        }
+        material.reset();
+    }
+
+    // --------------------------------------------------------------------------
+    // MaterialInstance: Direct Parent ownership and local mutable overrides
+    // --------------------------------------------------------------------------
+    MaterialInstanceRef MaterialInstance::create(MaterialInterfaceRef parent)
+    {
+        if (!parent) { TOY_LOG_ERROR("A MaterialInstance requires a Parent."); return {}; }
+        MaterialRef root = std::dynamic_pointer_cast<const Material>(parent);
+        if (!root)
+        {
+            const auto instance = std::dynamic_pointer_cast<const MaterialInstance>(parent);
+            if (!instance) return {};
+            root = instance->material();
+        }
+        std::size_t depth = 1u;
+        for (auto ancestor = parent; ancestor; ancestor = ancestor->parent())
+            if (++depth > maximum_material_parent_depth)
+            {
+                TOY_LOG_ERROR("Material Parent depth exceeds {}.", maximum_material_parent_depth);
+                return {};
+            }
+        MaterialInstance value(parent, std::move(root));
+        auto result = std::make_shared<MaterialInstance>(std::move(value));
+        parent->children_.push_back(result);
+        // No inherited value becomes a local override.
+        MaterialDesc effective = result->desc();
+        for (const auto& buffer : effective.parameter_schema.constant_buffers)
+            for (const auto& member : buffer.members)
+            {
+                MaterialParameterValue parameter;
+                if (!parent->parameter_value(member.name, parameter)) return {};
+                // C++17 get_if transfers inherited values into the initial RT
+                // candidate, while the GT local override collection stays empty.
+                if (const auto* number = std::get_if<float>(&parameter)) effective.scalar_defaults[member.parameter_id] = *number;
+                else if (const auto* vector = std::get_if<Vector2>(&parameter)) effective.vector2_defaults[member.parameter_id] = vec2(vector->x, vector->y);
+                else if (const auto* vector = std::get_if<Vector3>(&parameter)) effective.vector3_defaults[member.parameter_id] = vec3(vector->x, vector->y, vector->z);
+                else if (const auto* vector = std::get_if<Vector4>(&parameter)) effective.vector4_defaults[member.parameter_id] = vec4(vector->x, vector->y, vector->z, vector->w);
+            }
+        for (const auto& resource : effective.parameter_schema.resources)
+        {
+            MaterialParameterValue parameter;
+            if (!parent->parameter_value(resource.name, parameter)) return {};
+            const auto* texture = std::get_if<TextureRef>(&parameter);
+            if (!texture) return {};
+            effective.texture_defaults[resource.parameter_id] = *texture;
+        }
+        result->material_render_proxy_ = std::make_unique<MaterialRenderProxy>(effective);
+        return result;
+    }
+
+    MaterialInstance::MaterialInstance(MaterialInterfaceRef parent, MaterialRef root)
+        : MaterialInterface(parent->desc()), parent_(std::move(parent)), material_(std::move(root)) {}
+
+    MaterialInstance::MaterialInstance(MaterialInstance&& other) noexcept
+        : MaterialInterface(std::move(other)), parent_(std::move(other.parent_)), material_(std::move(other.material_)) {}
+
+    void MaterialInstance::release(MaterialInstanceRef& instance)
+    {
+        if (!instance) return;
+        if (instance.use_count() != 1) throw std::invalid_argument("MaterialInstance final release requires its last reference");
+        if (instance->render_proxy_used_)
+        {
+            instance->release_enqueued_ = true;
+            try { enqueue_render_command("ReleaseMaterialInstance", [owner = instance]() noexcept {}); }
+            catch (...) { instance->release_enqueued_ = false; throw; }
+        }
+        instance.reset();
+    }
 
     bool MaterialInstance::set_scalar(std::string_view name, float value)
     {
@@ -447,10 +516,10 @@ namespace toy3d
         return apply_parameters({{std::string(name), std::move(texture)}});
     }
 
-    bool MaterialInstance::validate_parameters(const MaterialParameterChanges& changes) const
+    bool MaterialInterface::validate_parameters(const MaterialParameterChanges& changes) const
     {
         std::vector<ResolvedMaterialParameter> resolved;
-        if (!resolve_material_changes(material_->desc(), changes, resolved))
+        if (!resolve_material_changes(desc_, changes, resolved))
         {
             TOY_LOG_ERROR("Material parameter batch contains duplicate, unknown, incompatible or non-finite values.");
             return false;
@@ -458,74 +527,221 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialInstance::apply_parameters(const MaterialParameterChanges& changes)
+    bool MaterialInterface::overrides_parameter(std::string_view name) const
     {
-        if (!resolve_material_replacement_publication()) return false;
-        std::vector<ResolvedMaterialParameter> resolved;
-        if (!resolve_material_changes(material_->desc(), changes, resolved))
-        {
-            TOY_LOG_ERROR("Material parameter batch contains duplicate, unknown, incompatible or non-finite values.");
-            return false;
-        }
-        if (resolved.empty()) return true;
-        auto scalars = scalar_overrides_;
-        auto vectors2 = vector2_overrides_;
-        auto vectors3 = vector3_overrides_;
-        auto vectors4 = vector4_overrides_;
-        auto textures = texture_overrides_;
-        for (std::size_t i = 0; i < resolved.size(); ++i)
-        {
-            const auto id = resolved[i].id;
-            // C++17 get_if explicitly dispatches the closed value set; resets
-            // erase GT overrides while the RT receives the resolved default.
-            if (std::holds_alternative<std::monostate>(changes[i].value))
+        return std::any_of(local_overrides_.begin(), local_overrides_.end(),
+            [name](const MaterialParameterChange& value) { return value.name == name; });
+    }
+
+    bool MaterialInterface::parameter_value(std::string_view name, MaterialParameterValue& output) const
+    {
+        for (const auto& value : local_overrides_)
+            if (value.name == name)
             {
-                scalars.erase(id); vectors2.erase(id); vectors3.erase(id);
-                vectors4.erase(id); textures.erase(id);
+                std::vector<ResolvedMaterialParameter> resolved;
+                if (resolve_material_changes(desc_, {value}, resolved)) { output = value.value; return true; }
             }
-            else if (const auto* value = std::get_if<float>(&resolved[i].value)) scalars[id] = *value;
-            else if (const auto* value = std::get_if<Vector2>(&resolved[i].value)) vectors2[id] = vec2(value->x, value->y);
-            else if (const auto* value = std::get_if<Vector3>(&resolved[i].value)) vectors3[id] = vec3(value->x, value->y, value->z);
-            else if (const auto* value = std::get_if<Vector4>(&resolved[i].value)) vectors4[id] = vec4(value->x, value->y, value->z, value->w);
-            else if (const auto* value = std::get_if<TextureRef>(&resolved[i].value)) textures[id] = *value;
+        const auto source = parent();
+        if (source) return source->parameter_value(name, output);
+        std::vector<ResolvedMaterialParameter> resolved;
+        if (!resolve_material_changes(desc_, {{std::string(name), std::monostate{}}}, resolved)) return false;
+        output = resolved.front().value;
+        return true;
+    }
+
+    bool MaterialInterface::apply_parameters(const MaterialParameterChanges& changes)
+    {
+        if (!resolve_material_replacement_publication() || !validate_parameters(changes)) return false;
+        if (changes.empty()) return true;
+        auto next = local_overrides_;
+        for (const auto& value : changes)
+        {
+            next.erase(std::remove_if(next.begin(), next.end(), [&value](const MaterialParameterChange& old)
+                { return old.name == value.name; }), next.end());
+            // C++17 monostate means remove this layer's value, not copy Parent.
+            if (!std::holds_alternative<std::monostate>(value.value)) next.push_back(value);
         }
-        MaterialRenderProxy* const proxy = material_render_proxy_.get();
-        auto old_textures = std::make_shared<std::unordered_map<ShaderParameterId, TextureRef>>(texture_overrides_);
-        texture_overrides_.swap(textures);
-        textures.clear();
-        // The new map and owned payload hold every new Texture before admission.
-        // The old map stays alive until the complete RT batch has switched pointers.
+        return publish_tree(desc_, std::move(next));
+    }
+
+    bool MaterialInterface::publish_tree(MaterialDesc desc, MaterialParameterChanges overrides)
+    {
+        return publish_configurations({{this, std::move(desc), std::move(overrides), parent()}});
+    }
+
+    bool MaterialInterface::publish_configurations(std::vector<Configuration> configurations)
+    {
+        struct Revision
+        {
+            Configuration configuration;
+            MaterialRef root;
+            MaterialRef previous_root;
+            bool previously_used = false;
+            std::size_t depth = 1u;
+            MaterialDesc effective;
+            MaterialRenderProxy* destination = nullptr;
+            std::shared_ptr<MaterialRenderProxy> proxy;
+        };
+        std::map<const MaterialInterface*, Configuration> inputs;
+        std::vector<MaterialInstanceRef> owners;
+        std::function<void(MaterialInterface*)> collect = [&](MaterialInterface* target)
+        {
+            if (inputs.count(target)) return;
+            inputs.emplace(target, Configuration{target, target->desc_, target->local_overrides_, target->parent()});
+            for (auto it = target->children_.begin(); it != target->children_.end();)
+            {
+                auto child = it->lock();
+                if (!child) { it = target->children_.erase(it); continue; }
+                ++it;
+                owners.push_back(child);
+                collect(child.get());
+            }
+        };
+        for (const auto& configuration : configurations) collect(configuration.target);
+        for (auto& configuration : configurations) inputs.at(configuration.target) = std::move(configuration);
+        auto revisions = std::make_shared<std::vector<Revision>>();
+        revisions->reserve(inputs.size());
+        std::map<const MaterialInterface*, std::size_t> positions;
+        std::set<const MaterialInterface*> visiting;
+        std::function<bool(MaterialInterface*)> resolve = [&](MaterialInterface* target) -> bool
+        {
+            if (positions.count(target)) return true;
+            if (!visiting.insert(target).second) return false;
+            Revision revision;
+            revision.configuration = inputs.at(target);
+            revision.previously_used = target->render_proxy_used_;
+            if (const auto* child = dynamic_cast<const MaterialInstance*>(target)) revision.previous_root = child->material_;
+            auto source = revision.configuration.parent;
+            if (source)
+            {
+                auto found = inputs.find(source.get());
+                if (found != inputs.end())
+                {
+                    if (!resolve(found->second.target)) return false;
+                    const auto& parent_revision = revisions->at(positions.at(source.get()));
+                    revision.depth = parent_revision.depth + 1u;
+                    revision.configuration.descriptor = parent_revision.configuration.descriptor;
+                    revision.effective = parent_revision.effective;
+                    revision.root = parent_revision.root;
+                }
+                else
+                {
+                    for (auto ancestor = source; ancestor; ancestor = ancestor->parent())
+                        if (++revision.depth > maximum_material_parent_depth) return false;
+                    revision.configuration.descriptor = source->desc();
+                    revision.effective = source->desc();
+                    for (const auto& buffer : revision.effective.parameter_schema.constant_buffers)
+                        for (const auto& member : buffer.members)
+                        {
+                            MaterialParameterValue value;
+                            if (!source->parameter_value(member.name, value)) return false;
+                            // C++17 get_if maps inherited values into owned candidates.
+                            if (const auto* number = std::get_if<float>(&value)) revision.effective.scalar_defaults[member.parameter_id] = *number;
+                            else if (const auto* vector = std::get_if<Vector2>(&value)) revision.effective.vector2_defaults[member.parameter_id] = vec2(vector->x, vector->y);
+                            else if (const auto* vector = std::get_if<Vector3>(&value)) revision.effective.vector3_defaults[member.parameter_id] = vec3(vector->x, vector->y, vector->z);
+                            else if (const auto* vector = std::get_if<Vector4>(&value)) revision.effective.vector4_defaults[member.parameter_id] = vec4(vector->x, vector->y, vector->z, vector->w);
+                        }
+                    for (const auto& resource : revision.effective.parameter_schema.resources)
+                    {
+                        MaterialParameterValue value;
+                        if (!source->parameter_value(resource.name, value)) return false;
+                        const auto* texture = std::get_if<TextureRef>(&value);
+                        if (!texture) return false;
+                        revision.effective.texture_defaults[resource.parameter_id] = *texture;
+                    }
+                }
+                if (!revision.root)
+                {
+                    revision.root = std::dynamic_pointer_cast<const Material>(source);
+                    if (!revision.root) revision.root = std::dynamic_pointer_cast<const MaterialInstance>(source)->material();
+                }
+            }
+            else revision.effective = revision.configuration.descriptor;
+            if (revision.depth > maximum_material_parent_depth) return false;
+            for (const auto& value : revision.configuration.overrides)
+            {
+                std::vector<ResolvedMaterialParameter> resolved;
+                // Old-schema orphans stay in the authoring configuration.
+                if (!resolve_material_changes(revision.configuration.descriptor, {value}, resolved)) continue;
+                const auto& item = resolved.front();
+                // get_if keeps the finite runtime branches explicit.
+                if (const auto* number = std::get_if<float>(&item.value)) revision.effective.scalar_defaults[item.id] = *number;
+                else if (const auto* vector = std::get_if<Vector2>(&item.value)) revision.effective.vector2_defaults[item.id] = vec2(vector->x, vector->y);
+                else if (const auto* vector = std::get_if<Vector3>(&item.value)) revision.effective.vector3_defaults[item.id] = vec3(vector->x, vector->y, vector->z);
+                else if (const auto* vector = std::get_if<Vector4>(&item.value)) revision.effective.vector4_defaults[item.id] = vec4(vector->x, vector->y, vector->z, vector->w);
+                else if (const auto* texture = std::get_if<TextureRef>(&item.value)) revision.effective.texture_defaults[item.id] = *texture;
+            }
+            revision.destination = target->material_render_proxy_.get();
+            if (!revision.destination) return false;
+            revision.proxy = std::make_shared<MaterialRenderProxy>(revision.effective);
+            positions[target] = revisions->size();
+            revisions->push_back(std::move(revision));
+            visiting.erase(target);
+            return true;
+        };
+        for (const auto& input : inputs) if (!resolve(input.second.target)) return false;
+        auto previous = std::make_shared<std::vector<Configuration>>();
+        for (const auto& revision : *revisions)
+        {
+            auto* target = revision.configuration.target;
+            previous->push_back({target, target->desc_, target->local_overrides_, target->parent()});
+            if (revision.configuration.parent != target->parent())
+            {
+                if (const auto old_parent = target->parent())
+                    old_parent->children_.reserve(old_parent->children_.size() + inputs.size());
+                if (revision.configuration.parent)
+                    revision.configuration.parent->children_.reserve(revision.configuration.parent->children_.size() + inputs.size());
+            }
+        }
+        const auto commit = [](Configuration& configuration, MaterialRef& root)
+        {
+            auto* target = configuration.target;
+            target->desc_ = std::move(configuration.descriptor);
+            target->local_overrides_ = std::move(configuration.overrides);
+            target->shader_program_ = target->desc_.shader_program;
+            target->two_sided_ = target->desc_.two_sided;
+            target->render_proxy_used_ = true;
+            auto* child = dynamic_cast<MaterialInstance*>(target);
+            if (child)
+            {
+                if (child->parent_ != configuration.parent)
+                {
+                    auto& old_children = child->parent_->children_;
+                    std::weak_ptr<MaterialInstance> self;
+                    for (const auto& old : old_children)
+                    {
+                        const auto value = old.lock();
+                        if (value.get() == child) { self = old; break; }
+                    }
+                    old_children.erase(std::remove_if(old_children.begin(), old_children.end(), [child](const std::weak_ptr<MaterialInstance>& old)
+                        { const auto value = old.lock(); return !value || value.get() == child; }), old_children.end());
+                    child->parent_ = std::move(configuration.parent);
+                    child->parent_->children_.push_back(std::move(self));
+                }
+                if (root) child->material_ = std::move(root);
+            }
+        };
+        // Publish GT strong references before admission. This is essential when
+        // single-thread mode executes the RT body inline: old TextureRefs must
+        // already live solely in the owned retirement payload at that point.
+        for (auto& revision : *revisions) commit(revision.configuration, revision.root);
         try
         {
-            enqueue_render_command("ApplyMaterialParameters",
-            [proxy, resolved = std::move(resolved), old_textures]() mutable noexcept
+            enqueue_render_command("PublishMaterialHierarchy", [revisions, previous]() noexcept
             {
-                for (const auto& item : resolved)
-                {
-                    // C++17 get_if avoids a generic visitor at the RT boundary.
-                    if (const auto* value = std::get_if<float>(&item.value)) proxy->apply_scalar_update(item.id, *value);
-                    else if (const auto* value = std::get_if<Vector2>(&item.value)) proxy->apply_vector_update(item.id, vec2(value->x, value->y));
-                    else if (const auto* value = std::get_if<Vector3>(&item.value)) proxy->apply_vector_update(item.id, vec3(value->x, value->y, value->z));
-                    else if (const auto* value = std::get_if<Vector4>(&item.value)) proxy->apply_vector_update(item.id, vec4(value->x, value->y, value->z, value->w));
-                    else if (const auto* value = std::get_if<TextureRef>(&item.value)) proxy->apply_texture_update(item.id, (*value)->texture_resource());
-                }
-                for (auto& item : *old_textures)
-                {
-                    if (item.second && item.second.use_count() == 1) Texture::release(item.second);
-                    item.second.reset();
-                }
+                for (auto& revision : *revisions) revision.destination->replace_state(std::move(*revision.proxy));
+                for (auto& old : *previous) release_material_textures(old.descriptor, old.overrides);
             });
         }
         catch (...)
         {
-            texture_overrides_.swap(*old_textures);
+            for (std::size_t i = 0; i < revisions->size(); ++i)
+            {
+                commit(previous->at(i), revisions->at(i).previous_root);
+                previous->at(i).target->render_proxy_used_ = revisions->at(i).previously_used;
+            }
             throw;
         }
-        scalar_overrides_.swap(scalars);
-        vector2_overrides_.swap(vectors2);
-        vector3_overrides_.swap(vectors3);
-        vector4_overrides_.swap(vectors4);
-        render_proxy_used_ = true;
         return true;
     }
 
@@ -535,7 +751,7 @@ namespace toy3d
     }
 
 
-    bool MaterialInstance::stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program,
+    bool MaterialInterface::stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program,
                                                       bool two_sided)
     {
         if (!resolve_material_replacement_publication() || !shader_program || pending_shader_program_)
@@ -544,7 +760,7 @@ namespace toy3d
             return false;
         }
         std::string error;
-        if (!is_program_compatible_with_material(material_->desc(), *shader_program, error))
+        if (!is_program_compatible_with_material(desc_, *shader_program, error))
         {
             TOY_LOG_ERROR("Invalid Material ShaderMap candidate: {}.", error);
             return false;
@@ -567,7 +783,7 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialInstance::publish_material_replacement()
+    bool MaterialInterface::publish_material_replacement()
     {
         if (!resolve_material_replacement_publication() || !pending_shader_program_)
         {
@@ -604,7 +820,7 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialInstance::discard_material_replacement()
+    bool MaterialInterface::discard_material_replacement()
     {
         if (!resolve_material_replacement_publication() || !pending_shader_program_)
         {
@@ -617,7 +833,7 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialInstance::resolve_material_replacement_publication()
+    bool MaterialInterface::resolve_material_replacement_publication()
     {
         if (!replacement_publication_pending_)
         {
@@ -636,6 +852,8 @@ namespace toy3d
         {
             shader_program_ = pending_shader_program_;
             two_sided_ = pending_two_sided_;
+            desc_.shader_program = shader_program_;
+            desc_.two_sided = two_sided_;
         }
         pending_shader_program_.reset();
         pending_two_sided_ = two_sided_;
@@ -643,7 +861,7 @@ namespace toy3d
         return true;
     }
 
-    MaterialRenderProxy* MaterialInstance::material_render_proxy() noexcept
+    MaterialRenderProxy* MaterialInterface::material_render_proxy() const noexcept
     {
         render_proxy_used_ = true;
         return material_render_proxy_.get();

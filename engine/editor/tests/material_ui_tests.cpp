@@ -136,6 +136,38 @@ int main()
             if (const auto* number = std::get_if<float>(&value.value)) inherited = *number == 64.0f;
     }
     check(inherited && session.overrides().empty(), "child inherits parent without serializing copied values");
+    {
+        AssetId alternate_id;
+        AssetId grand_id;
+        check(AssetId::try_generate(alternate_id) && AssetId::try_generate(grand_id), "allocate Parent edit fixtures");
+        MaterialAssetData alternate = root;
+        alternate.overrides = {{"specular_power", 24.0f}};
+        const auto alternate_path = VirtualPath::parse("/Project/M_Alternate.asset");
+        const auto alternate_bytes = encode_material_asset(workspace.types(), alternate_id, alternate);
+        check(alternate_bytes.succeeded() && workspace.files().write_binary_atomic(alternate_path.value(), alternate_bytes.value(),
+            FilePublishMode::CreateNew).succeeded() && workspace.refresh(), "publish alternate Parent");
+        MaterialInstanceAssetData grand;
+        grand.parent = {child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        const auto grand_path = VirtualPath::parse("/Project/MI_UiGrand.asset");
+        const auto grand_bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
+        check(grand_bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), grand_bytes.value(),
+            FilePublishMode::CreateNew).succeeded() && workspace.refresh(), "publish descendant for cycle validation");
+        const AssetRef next{alternate_id, {}, "toy3d.MaterialAssetData", AssetRefStrength::Strong};
+        check(session.set_parent(next).succeeded() && session.instance_data()->parent.asset_id == alternate_id && session.dirty(),
+            "Parent switch uses full preview candidate and records one asset edit");
+        check(session.parameter_source("specular_power").asset_id == alternate_id && session.overrides().empty(),
+            "source identifies the effective Parent without copying values");
+        check(session.undo().succeeded() && session.instance_data()->parent.asset_id == root_id && !session.dirty(),
+            "Parent undo restores original hierarchy and clean checkpoint");
+        check(session.redo().succeeded() && session.instance_data()->parent.asset_id == alternate_id && session.undo().succeeded(),
+            "Parent redo rebuilds the validated candidate");
+        const auto undo_count = session.undo_count();
+        const AssetRef descendant{grand_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        check(!session.set_parent(descendant).succeeded() && session.undo_count() == undo_count && !session.dirty() &&
+            session.instance_data()->parent.asset_id == root_id, "indirect Parent cycle preserves preview, history and file");
+        const AssetRef self{child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        check(!session.set_parent(self).succeeded(), "self Parent is rejected");
+    }
     check(session.set_parameter({"specular_power", 100.0f}).succeeded(), "child draft");
     frame(panel);
     io.AddKeyEvent(ImGuiMod_Ctrl, true);
@@ -157,6 +189,31 @@ int main()
         "Discard clears runtime and session before admitting exit");
     dismiss_popup();
     check(panel.request_exit(), "clean exit is admitted");
+    panel.request_open(child_id);
+    frame(panel);
+    int publications = 0;
+    session.set_publish([&publications](const AssetRef&) -> AssetStatus
+    {
+        ++publications;
+        if (publications == 1) return {AssetErrorCode::InvalidState, {}, {}, {}, {}, "candidate publication failed", {}};
+        return AssetStatus::success();
+    });
+    check(session.set_parameter({"specular_power", 72.0f}).succeeded(), "prepare save/publication failure fixture");
+    check(!panel.request_exit(), "publication failure during close opens the save prompt");
+    frame(panel);
+    check(!panel.resolve_unsaved(MaterialCloseDecision::Save) && !panel.take_exit() && session.active(),
+        "failed publication keeps the session and error visible after successful file save");
+    frame(panel);
+    check(session.active() && panel.modal_pending() && !panel.take_exit(),
+        "next UI frame cannot silently close a clean session after publication failure");
+    MaterialInstanceAssetData saved_child;
+    check(!session.dirty() && publications == 1 &&
+        read_material_instance_asset(workspace.types(), workspace.files(), child_path.value(), saved_child).succeeded() &&
+        saved_child.overrides.size() == 1u, "saved file remains committed when rendering publication fails");
+    check(session.publish_saved().succeeded() && publications == 2 && !session.dirty(), "Retry Publish does not rewrite or dirty the saved asset");
+    check(panel.resolve_unsaved(MaterialCloseDecision::Cancel) && !panel.take_exit(), "cancel pending close after publication retry");
+    dismiss_popup();
+    session.set_publish({});
     panel.shutdown();
     ImGui::DestroyContext();
     MaterialInstance::release(defaults);

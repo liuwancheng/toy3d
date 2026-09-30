@@ -42,6 +42,7 @@ namespace toy3d
         void undo();
         void redo();
         void save();
+        AssetId take_locate_parent() { const auto id = locate_parent_; locate_parent_ = {}; return id; }
         void shutdown();
 
       private:
@@ -65,9 +66,11 @@ namespace toy3d
         std::string metadata_warning_;
         std::string error_;
         AssetId requested_;
+        AssetId locate_parent_;
         bool close_requested_ = false;
         bool exit_requested_ = false;
         bool exit_ready_ = false;
+        bool pending_save_failed_ = false;
         bool focused_ = false;
         bool focus_requested_ = false;
     };

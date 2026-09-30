@@ -19,6 +19,8 @@ list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.cpp$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/example/.*\\.cpp$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/shader/loaders/shader_map_entry_loader\\.cpp$")
+list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/rendercore/material/material_library\\.h$")
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/rendercore/material/material_library\\.cpp$")
 
 # 排除特定平台文件夹
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/platform/(android|mac|win)/.*\\.h$")
@@ -62,6 +64,8 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_F
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dStaticMeshAsset)
 target_sources(${TARGET_NAME} PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.h"

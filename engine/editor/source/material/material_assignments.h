@@ -1,7 +1,7 @@
 #pragma once
 
 #include "asset_identity.h"
-#include "hash/sha256.h"
+#include "rendercore/material/material_library.h"
 #include "rendercore/material/material.h"
 #include "rendercore/shader/shader_map.h"
 #include "material/material_asset_data.h"
@@ -27,13 +27,13 @@ namespace toy3d
 
     constexpr const char* MATERIAL_ASSET_DRAG_PAYLOAD = "TOY3D_MATERIAL_ASSET";
 
-    // Editor-owned asset identities and immutable loaded versions. Runtime
-    // Components only hold MaterialInstanceRef; history never holds a Proxy.
+    // Editor-owned asset identities and slot assignments. Runtime
+    // Components only hold MaterialInterfaceRef; history never holds a Proxy.
     class MaterialAssignments
     {
       public:
-        void initialize(EditorWorkspace& workspace, MaterialRef registered_defaults);
-        void set_program_resolver(std::function<ShaderMapProgramRef(const std::string&)> resolver) { program_resolver_ = std::move(resolver); }
+        void initialize(EditorWorkspace& workspace, MaterialLibrary& library);
+        AssetStatus reload(const AssetRef& reference);
         bool prepare_shader(const ShaderMapProgramRef& program, std::string& error);
         bool publish_shader(std::string& error, bool defer_completion = false);
         void complete_shader();
@@ -47,32 +47,10 @@ namespace toy3d
         void shutdown();
 
       private:
-        struct LoadedMaterial
-        {
-            AssetId id;
-            Sha256Hash signature{};
-            MaterialInstanceRef runtime;
-            Sha256Hash data_signature{};
-            MaterialAssetData root;
-            MaterialInstanceAssetData child;
-            bool is_instance = false;
-        };
-        struct PendingSlot
-        {
-            std::uint32_t actor_id = 0u;
-            MaterialSlotAssignment assignment;
-            MaterialInstanceRef before;
-            MaterialInstanceRef after;
-        };
-        MaterialInstanceRef load(const AssetRef& reference, std::string& error);
+        MaterialInterfaceRef load(const AssetRef& reference, std::string& error);
         EditorWorkspace* workspace_ = nullptr;
         World* world_ = nullptr;
-        MaterialRef defaults_;
-        std::vector<LoadedMaterial> loaded_;
+        MaterialLibrary* library_ = nullptr;
         std::map<std::uint32_t, std::vector<MaterialSlotAssignment>> assignments_;
-        std::function<ShaderMapProgramRef(const std::string&)> program_resolver_;
-        std::vector<LoadedMaterial> pending_versions_;
-        std::vector<PendingSlot> pending_slots_;
-        std::size_t published_slots_ = 0u;
     };
 }

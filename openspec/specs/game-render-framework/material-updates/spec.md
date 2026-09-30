@@ -17,9 +17,16 @@ scalar、vector 和 texture setter SHALL 先通过 Material 完整 parameter sch
 - **THEN** MaterialInstance MUST 保持原 GT override、不 enqueue update并返回可诊断失败
 
 ### Requirement: MaterialRenderProxy ownership 通过 release command 闭合
-MaterialInstance SHALL 独占地址稳定的 `MaterialRenderProxy` allocation，GT 只把其地址作为受 RenderCommand FIFO 和 shutdown drain 保护的 opaque identity，不得读取或修改 Proxy 的 RT state。最终释放前，所有引用该 Proxy 的 `StaticMeshSceneProxy` material update/remove MUST 先 enqueue；随后 MaterialInstance MUST 把 Proxy ownership 移入最后一条 release RenderCommand，由 RT 析构。
+MaterialInterface（根 Material 或 MaterialInstance）SHALL 独占地址稳定的 `MaterialRenderProxy` allocation，GT 只把其地址作为受 RenderCommand FIFO 和 shutdown drain 保护的 opaque identity，不得读取或修改 Proxy 的 RT state。最终释放前，所有引用该 Proxy 的 `StaticMeshSceneProxy` material update/remove MUST 先 enqueue；随后 owner MUST 把 Proxy ownership 移入最后一条 release RenderCommand，由 RT 析构。应用的 MaterialLibrary 管理共享逻辑对象及父子关系，不管理 RenderScene registry 或 GPU submit；关闭前先移除场景引用并 drain，再退休所有 Proxy。
 
-正常 shutdown MUST drain 引用移除与 Proxy release；terminal skip/disposal MUST 安全析构尚未执行的 ownership payload。不得为长期 ownership 新增 Material registry、ID 或 shared mutable cache。
+正常 shutdown MUST drain 引用移除与 Proxy release；terminal skip/disposal MUST 安全析构尚未执行的 ownership payload。不得新增全局 Material registry、Proxy ID 或无受控发布边界的 shared mutable cache。
+
+### Requirement: 多层参数继承在 GT 完整解析
+实例 SHALL 保存直接 MaterialInterface Parent 与本层覆盖；Parent 是强引用，反向子级是弱引用。reset SHALL 删除本层覆盖并使用最新父值。共享资产通过 MaterialLibrary 返回 const 接口，独立可写实例必须显式创建。父更新 SHALL 先解析整个受影响树，在一个 owned FIFO 命令提交所有完整 Proxy 状态，保持逻辑对象和 Proxy 地址；失败准入 MUST 恢复所有 GT 配置。RT MUST NOT 读取 GT Parent 或文件。
+
+#### Scenario: 父材质更新
+- **WHEN** 父级数值变化，两个子级中一个有本层覆盖
+- **THEN** 未覆盖子级 MUST 取得新父值，有覆盖子级 MUST 保持本层值，reset 后 MUST 使用最新父值
 
 #### Scenario: 最后一个 MaterialInstance owner 释放
 - **WHEN** 最后一个 GT MaterialInstance 强引用释放且仍有 StaticMeshSceneProxy 使用其 MaterialRenderProxy

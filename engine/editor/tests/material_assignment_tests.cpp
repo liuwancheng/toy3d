@@ -117,7 +117,120 @@ int main(int argc, char** argv)
     ActorFactory factory;
     if (!factory.initialize()) return 1;
     MaterialAssignments materials;
-    materials.initialize(workspace, factory.default_material()->material());
+    const auto defaults = factory.default_material()->material();
+    MaterialTextureValues textures;
+    for (const auto& resource : defaults->parameter_schema().resources)
+        textures.named_defaults[resource.default_value] = defaults->desc().texture_defaults.at(resource.parameter_id);
+    MaterialLibrary library(workspace.types(), workspace.files(),
+        [&workspace]() -> const AssetIndex& { return workspace.catalog().index; },
+        [defaults](const std::string& name) { return name == defaults->desc().shader_name ? defaults->desc().shader_program : nullptr; }, textures);
+    materials.initialize(workspace, library);
+    {
+        AssetId grand_id;
+        check(AssetId::try_generate(grand_id), "allocate grandchild identity");
+        MaterialInstanceAssetData grand;
+        grand.parent.asset_id = child_id;
+        grand.parent.expected_type = "toy3d.MaterialInstanceAssetData";
+        const auto grand_path = VirtualPath::parse("/Project/MI_Grand.asset");
+        auto bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
+        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::CreateNew).succeeded()
+            && workspace.refresh(), "publish empty third layer");
+        AssetRef grand_ref{grand_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        const auto grand_loaded = library.load(grand_ref);
+        check(grand_loaded.succeeded(), "load three-layer shared graph");
+        auto shared = grand_loaded.value();
+        const auto repeated = library.load(grand_ref);
+        check(repeated.succeeded() && repeated.value() == shared, "repeated load returns stable shared identity");
+        auto first = library.create_instance(shared).value();
+        auto second = library.create_instance(first).value();
+        auto sibling = library.create_instance(shared).value();
+        MaterialParameterValue value;
+        const auto scalar = [&](const MaterialInterfaceRef& material)
+        {
+            if (!material->parameter_value("specular_power", value)) return -1.0f;
+            // C++17 get_if checks the effective query's actual runtime shape.
+            const auto* number = std::get_if<float>(&value);
+            return number ? *number : -1.0f;
+        };
+        check(scalar(second) == 64.0f && !second->overrides_parameter("specular_power"), "temporary chain inherits without local copies");
+        check(first->set_scalar("specular_power", 96.0f) && scalar(second) == 96.0f && scalar(sibling) == 64.0f,
+            "temporary parent updates descendants while keeping siblings isolated");
+        check(second->set_scalar("specular_power", 100.0f) && first->set_scalar("specular_power", 120.0f) && scalar(second) == 100.0f,
+            "local override wins after parent changes");
+        check(second->reset_parameter("specular_power") && scalar(second) == 120.0f && first->reset_parameter("specular_power"),
+            "reset reads latest direct Parent value");
+        auto changed = child;
+        changed.overrides = {{"specular_power", 80.0f}};
+        bytes = encode_material_instance_asset(workspace.types(), child_id, changed, &workspace.catalog().index);
+        check(bytes.succeeded() && workspace.files().write_binary_atomic(child_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+            && workspace.refresh(), "save changed middle layer");
+        AssetRef child_reference{child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        auto* const proxy = shared->material_render_proxy();
+        check(library.reload(child_reference).succeeded() && scalar(shared) == 80.0f && scalar(second) == 80.0f && scalar(sibling) == 80.0f
+            && shared->material_render_proxy() == proxy, "saved middle layer publishes through asset and temporary descendants with stable Proxy");
+        MaterialInstanceAssetData retained;
+        check(read_material_instance_asset(workspace.types(), workspace.files(), grand_path.value(), retained).succeeded() && retained.overrides.empty(),
+            "parent publication does not rewrite child file or copy inherited values");
+        auto saved_blue = blue;
+        saved_blue.two_sided = false;
+        check(write_root(blue_id, saved_blue, blue_path.value(), FilePublishMode::Replace) && workspace.refresh(),
+            "save ancestor without publishing it");
+        AssetId unpublished_child_id;
+        check(AssetId::try_generate(unpublished_child_id), "allocate not-yet-loaded child");
+        MaterialInstanceAssetData unpublished_child;
+        unpublished_child.parent = child_reference;
+        const auto unpublished_path = VirtualPath::parse("/Project/MI_UnpublishedParent.asset");
+        const auto unpublished_bytes = encode_material_instance_asset(workspace.types(), unpublished_child_id,
+            unpublished_child, &workspace.catalog().index);
+        check(unpublished_bytes.succeeded() && workspace.files().write_binary_atomic(unpublished_path.value(),
+            unpublished_bytes.value(), FilePublishMode::CreateNew).succeeded() && workspace.refresh(),
+            "save new descendant of unpublished ancestor");
+        const AssetRef unpublished_reference{unpublished_child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        check(!library.load(unpublished_reference).succeeded(),
+            "new child load cannot mix saved ancestor data with an old active Parent");
+        const auto rejected = library.reload(child_reference);
+        check(!rejected.succeeded() && rejected.message.find("Reload the Parent first") != std::string::npos &&
+            shared->desc().two_sided && scalar(second) == 80.0f && shared->material_render_proxy() == proxy,
+            "child publication rejects unpublished ancestor and preserves active graph");
+        const AssetRef blue_reference{blue_id, {}, "toy3d.MaterialAssetData", AssetRefStrength::Strong};
+        check(library.reload(blue_reference).succeeded() && !shared->desc().two_sided &&
+            !second->desc().two_sided && library.reload(child_reference).succeeded() &&
+            library.load(unpublished_reference).succeeded(),
+            "publishing ancestor makes child retry valid and updates temporary descendants");
+        check(write_root(blue_id, blue, blue_path.value(), FilePublishMode::Replace) && workspace.refresh() &&
+            library.reload(blue_reference).succeeded(), "restore published ancestor fixture");
+        auto deepest = library.create_instance(shared).value();
+        for (std::size_t depth = 4u; depth < maximum_material_parent_depth; ++depth)
+            deepest = library.create_instance(deepest).value();
+        check(!library.create_instance(deepest).succeeded(), "temporary chain also enforces the common 64-layer limit");
+        grand.parent = unpublished_reference;
+        bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
+        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+            && workspace.refresh() && !library.reload(grand_ref).succeeded() && shared->parent() != library.load(unpublished_reference).value(),
+            "reparent rejects a prospective graph that would push temporary descendants beyond the depth limit");
+        grand.parent = child_reference;
+        bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
+        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+            && workspace.refresh() && library.reload(grand_ref).succeeded(), "restore Parent after rejected deep temporary graph");
+        auto disposable = library.create_instance(shared).value();
+        auto borrowed = disposable;
+        check(!library.release_instance(disposable).succeeded() && disposable,
+            "temporary release rejects a remaining user");
+        borrowed.reset();
+        check(library.release_instance(disposable).succeeded() && !disposable,
+            "temporary release removes the library owner and caller reference");
+        grand.parent.asset_id = red_id;
+        grand.parent.expected_type = "toy3d.MaterialAssetData";
+        bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
+        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+            && workspace.refresh() && library.reload(grand_ref).succeeded(), "reparent shared asset to another root");
+        const auto red_loaded = library.load(grand.parent);
+        check(shared->parent() == red_loaded.value() && &second->root_material() == &red_loaded.value()->root_material(),
+            "reparent updates direct Parent and root query for temporary descendants");
+        bytes = encode_material_instance_asset(workspace.types(), child_id, child, &workspace.catalog().index);
+        check(bytes.succeeded() && workspace.files().write_binary_atomic(child_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+            && workspace.refresh() && library.reload(child_reference).succeeded(), "restore middle layer fixture");
+    }
     EditorCommandHistory history(factory, materials);
     TestScene scene;
     World world;
@@ -150,7 +263,7 @@ int main(int argc, char** argv)
     auto old_red = component->material_for_slot(0);
     check(history.assign_material(world, id, component->component_id(), "Trim", blue_ref, error), "assign blue Trim");
     check(component->material_for_slot(0) == old_red && component->material_for_slot(1) != old_red &&
-        component->material_for_slot(1)->material()->desc().two_sided, "slots remain independent and structural root state loads");
+        component->material_for_slot(1)->desc().two_sided, "slots remain independent and structural root state loads");
     check(history.undo(world) && !component->has_material_override(1), "undo second slot assignment");
     AssetRef bad = red_ref; bad.asset_id = missing_id;
     check(!history.assign_material(world, id, component->component_id(), "Trim", bad, error) && !error.empty(), "missing asset rejected");
@@ -163,7 +276,7 @@ int main(int argc, char** argv)
         component->material_for_slot(0) == factory.default_material(), "reset removes override and reveals mesh default");
     check(history.undo(world) && component->material_for_slot(0) == old_red, "undo reset resolves saved material");
     check(history.assign_material(world, id, component->component_id(), "Trim", child_ref, error) &&
-        component->material_for_slot(1)->material()->desc().two_sided, "single-layer instance inherits parent structure");
+        component->material_for_slot(1)->desc().two_sided, "single-layer instance inherits parent structure");
     const auto old_component_id = component->component_id();
     check(history.delete_actor(world, id) && world.actor_count() == 0, "delete captures material references");
     check(history.undo(world), "delete undo rebuilds named assignments");
@@ -179,13 +292,13 @@ int main(int argc, char** argv)
     check(history.undo(world), "material history remaps through repeated reconstruction");
     check(history.redo(world), "redo remapped material command");
 
-    // Reload the same AssetId from saved content. Existing users keep their
-    // previous loaded version until M6 implements publication to all users.
+    // Publication updates the shared identity in every existing slot.
     red.two_sided = true;
     check(write_root(red_id, red, red_path.value(), FilePublishMode::Replace), "publish changed saved material");
     check(history.assign_material(world, id, component->component_id(), "Trim", red_ref, error), "new assignment reads latest saved version");
-    check(component->material_for_slot(1) != old_red && component->material_for_slot(1)->material()->desc().two_sided &&
-        !old_red->material()->desc().two_sided, "new saved version does not mutate existing users");
+    check(materials.reload(red_ref).succeeded(), "reload publishes saved values to all users");
+    check(component->material_for_slot(1) == old_red && old_red->desc().two_sided,
+        "shared material identity is stable after publication");
     auto stable = component->material_for_slot(1);
     MaterialAssetData unsupported = blue; unsupported.shader_name = "Project/Unknown";
     check(write_root(blue_id, unsupported, blue_path.value(), FilePublishMode::Replace), "publish unsupported shader fixture");
@@ -284,7 +397,7 @@ int main(int argc, char** argv)
     for (const auto actor_id : world.actor_ids()) check(world.destroy_actor(*world.find_actor_by_id(actor_id)), "destroy all scene users");
     check(flush_rendering_commands().succeeded() && scene.count == 0 && scene.invalid_removes == 0, "FIFO removes drain before final Material release");
     check(world.unbind_scene(), "unbind scene");
-    materials.shutdown(); factory.release();
+    materials.shutdown(); library.shutdown(); factory.release();
     check(flush_rendering_commands().succeeded(), "drain final releases");
     check(rendering.stop().succeeded() && graph->shutdown(TaskGraphShutdownMode::Drain).succeeded(), "shutdown facade and TaskGraph");
     std::cout << (failures ? "Material assignment tests failed\n" : "Material assignment tests passed\n");

@@ -20,11 +20,11 @@ ShaderMap 提供经验证数据到不可变 Program 的候选创建入口；候�
 
 当前 Forward Pass 的 View/Object/lighting ABI 必须与引擎提供的数据兼容，未知 Pass/Global 资源拒绝；材质资源仍受 M5 前的 Texture2D 内置默认限制。代码支持新数值/Color/Range Properties，删除/类型变化的覆盖按既有 orphan 规则保留。候选窗口 runtime 从当前草稿生成；更新 schema 不丢草稿和原资产撤销历史，结束手势后才接管。源码编译不保存 `.asset`。
 
-MaterialAssignments 从每个已加载版本的已保存有效数据构建新 runtime，全部准备好后再按当前 Component 槽引用替换；保持版本强 owner 到既有 drain 关闭安全点。对仍使用旧版本的对象，旧内容覆盖继续按新 schema 解析，不偷读未保存草稿。旧候选、编译失败、非法 schema/VF/pipeline/资源保留旧效果。场景赋值记录继续保存 AssetRef，后续重放使用已发布 Program。
+MaterialLibrary 从已加载根/实例的已保存 DTO 准备整个候选配置图，临时后代按自己的本层覆盖解析；不读取窗口草稿。一次 FIFO 发布替换完整有效 Proxy 状态，逻辑对象和 Proxy 地址保持稳定，Component 槽位无需换引用。旧候选、编译失败、非法 schema/VF/pipeline/资源保留旧效果。MaterialAssignments 只保留场景 AssetRef 与命令记录，委托 Library prepare/publish/complete/discard。
 
 材质槽更新经 `SceneInterface::update_primitive_materials` 更新现有 StaticMeshSceneProxy 的材质列表，保留几何资源与 HitProxy 身份。不得用末个 Primitive 的 Remove/Add 模拟纯材质切换，因为 Remove 会终止网格资源生命周期。旧材质引用在更新后的 FIFO 保活命令及版本 owner 中保留，资源 release 仍只在既有 drain 安全点执行。
 
-接管在同一次 GT tick 内执行：准备窗口与场景全部候选 → 校验并暂时替换场景槽位 → 再次核对根源码/include hash并原子保存当前请求记录 → 提交 Program 与场景版本 owner → 切换窗口 schema/runtime。保存记录或 hash 核对失败时回滚暂时替换的槽位；从未进入场景的候选可立即释放，已进入 FIFO 的候选由版本 owner 保留到场景 drain。RT 仅通过 FIFO 看见完整版本对象。成功后的参数窗口继续拥有原草稿与撤销记录，编译过程不保存材质资产。
+接管在同一次 GT tick 内执行：准备窗口与 Library 全部候选 → 暂时发布完整共享配置图 → 再次核对根源码/include hash并原子保存当前请求记录 → 提交 Program 和 Library 配置 → 切换窗口 schema/runtime。保存记录或 hash 核对失败时，在本帧 Draw 入队前用同一 FIFO 完整恢复旧配置；旧参数/纹理由发布命令保活。成功后窗口保留草稿与撤销历史，源码编译不保存材质资产。
 
 新 Program 当前 Editor 会话有效；成功接管后保存当前请求目录定位记录，重开 Editor 重新加载并重新 GPU 验证。生成产物不提交，缺少/损坏产物提示重新编译。普通帧不 flush，编译线程和 runtime 生命周期由同一 composition root 显式收尾。
 
@@ -43,4 +43,4 @@ MaterialAssignments 从每个已加载版本的已保存有效数据构建新 ru
 3. 在 VS Code 修改 Properties/HLSL，保存文件，再回材质窗口点击 Recompile。已赋值的场景槽位在新候选验证成功后刷新；未保存参数草稿仍留在材质窗口。
 4. 新源码需在 `project/config/shader_sources.txt` 显式登记逻辑名与相对路径，重开 Editor 读取清单。源身份与 `.shader Shader` 声明名一致。
 
-Windows 缺省检查 LocalAppData/Programs、用户目录的 Program Files 和系统 Program Files 中的 Microsoft VS Code/Code.exe；显式配置优先。VS Code 未安装于这些目录时使用 `Toy3dEditor.exe --Editor.CodeExecutable="D:/Apps/Microsoft VS Code/Code.exe"`。直接启动 Code.exe，不通过 shell 或 code.cmd。当前源码迭代采用手动编译，不监听文件自动编译；完整材质球预览和参数保存后的场景/缩略图刷新仍归 M6。
+Windows 缺省检查 LocalAppData/Programs、用户目录的 Program Files 和系统 Program Files 中的 Microsoft VS Code/Code.exe；显式配置优先。VS Code 未安装于这些目录时使用 `Toy3dEditor.exe --Editor.CodeExecutable="D:/Apps/Microsoft VS Code/Code.exe"`。直接启动 Code.exe，不通过 shell 或 code.cmd。当前采用手动编译；参数保存后通过 MaterialLibrary 发布到场景和后代。完整材质球预览及缩略图刷新继续归 M6。

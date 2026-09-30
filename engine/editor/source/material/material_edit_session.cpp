@@ -41,6 +41,7 @@ namespace toy3d
         MaterialAssetData root;
         MaterialInstanceAssetData instance;
         MaterialAssetData parent;
+        std::vector<MaterialAssetLayer> parent_layers;
         AssetStatus status;
         const bool child = location->index.root_type == "toy3d.MaterialInstanceAssetData";
         if (child)
@@ -48,9 +49,12 @@ namespace toy3d
             status = read_material_instance_asset(workspace_.types(), workspace_.files(), location->path,
                 instance, &workspace_.catalog().index);
             if (!status.succeeded()) return status;
-            const auto* source = workspace_.catalog().index.find(instance.parent.asset_id);
-            if (!source) return fail(AssetErrorCode::MissingReference, "Parent material is missing.");
-            status = read_material_asset(workspace_.types(), workspace_.files(), source->path, parent, &workspace_.catalog().index);
+            const auto hierarchy = read_material_hierarchy(workspace_.types(), workspace_.files(), workspace_.catalog().index, instance.parent);
+            if (!hierarchy.succeeded()) return hierarchy.status();
+            parent = hierarchy.value().root;
+            parent.overrides = hierarchy.value().effective_overrides(schema);
+            parent_layers = hierarchy.value().layers;
+            status = AssetStatus::success();
         }
         else if (location->index.root_type == "toy3d.MaterialAssetData")
             status = read_material_asset(workspace_.types(), workspace_.files(), location->path, root, &workspace_.catalog().index);
@@ -69,10 +73,10 @@ namespace toy3d
             sort_overrides(instance.overrides);
             next_instance = std::make_unique<EditSession<MaterialInstanceAssetData>>(workspace_.types(), *type, id,
                 location->path, instance,
-                [this](const MaterialInstanceAssetData& data) { return validate_material_instance_asset(data, &workspace_.catalog().index); },
+                [this](const MaterialInstanceAssetData& data) { return validate_instance(data); },
                 &workspace_.catalog().index,
-                [this](const MaterialInstanceAssetData& data, EditChangeKind) { return prepare(data.overrides); },
-                [this](const EditRecord&) { notify(instance_->value().overrides); });
+                [this](const MaterialInstanceAssetData& data, EditChangeKind) { return prepare_instance(data); },
+                [this](const EditRecord&) { notify_instance(); });
             status = next_instance->bind_published(workspace_.files());
         }
         else
@@ -94,9 +98,119 @@ namespace toy3d
         opened_index_ = location->index;
         schema_ = std::move(schema);
         parent_ = std::move(parent);
+        parent_layers_ = std::move(parent_layers);
         root_ = std::move(next_root);
         instance_ = std::move(next_instance);
         return AssetStatus::success();
+    }
+
+    void MaterialEditSession::set_parent_preview(SchemaResolver schema,
+        std::function<AssetStatus(const MaterialAssetData&)> prepare_callback, std::function<void()> notify_callback)
+    {
+        schema_resolver_ = std::move(schema);
+        parent_prepare_ = std::move(prepare_callback);
+        parent_notify_ = std::move(notify_callback);
+    }
+
+    AssetStatus MaterialEditSession::validate_instance(const MaterialInstanceAssetData& value) const
+    {
+        const auto valid = validate_material_instance_asset(value, &workspace_.catalog().index);
+        if (!valid.succeeded()) return valid;
+        const auto hierarchy = read_material_hierarchy(workspace_.types(), workspace_.files(), workspace_.catalog().index, value.parent);
+        if (!hierarchy.succeeded()) return hierarchy.status();
+        if (hierarchy.value().layers.size() >= maximum_material_parent_depth)
+            return fail(AssetErrorCode::Value, "Material Parent chain exceeds 64 layers.");
+        // Reuse the generic strong-dependency checker with this draft's edges;
+        // the published catalog and files remain untouched.
+        AssetIndex candidate;
+        for (const auto& entry : workspace_.catalog().entries)
+        {
+            auto file = entry.file;
+            if (file.asset_id == id_) file.dependencies = material_asset_dependencies(value);
+            const auto added = candidate.add(entry.path, file);
+            if (!added.succeeded()) return added;
+        }
+        return candidate.validate_strong_dependencies();
+    }
+
+    AssetStatus MaterialEditSession::prepare_instance(const MaterialInstanceAssetData& value)
+    {
+        parent_prepared_ = false;
+        const auto& current = instance_->value().parent;
+        if (current.asset_id == value.parent.asset_id && current.expected_type == value.parent.expected_type)
+            return prepare(value.overrides);
+        const auto hierarchy = read_material_hierarchy(workspace_.types(), workspace_.files(), workspace_.catalog().index, value.parent);
+        if (!hierarchy.succeeded()) return hierarchy.status();
+        auto schema = schema_;
+        if (schema_resolver_)
+        {
+            const auto resolved = schema_resolver_(hierarchy.value().root.shader_name);
+            if (!resolved.succeeded()) return resolved.status();
+            schema = resolved.value();
+        }
+        else if (hierarchy.value().root.shader_name != parent_.shader_name)
+            return fail(AssetErrorCode::Schema, "A validated Program is required to switch Parent Shader.");
+        MaterialAssetData effective = hierarchy.value().root;
+        MaterialAssetHierarchy all = hierarchy.value();
+        all.layers.push_back({{}, value.overrides});
+        effective.overrides = all.effective_overrides(schema);
+        if (parent_prepare_)
+        {
+            const auto status = parent_prepare_(effective);
+            if (!status.succeeded()) return status;
+        }
+        pending_parent_ = hierarchy.value().root;
+        pending_parent_.overrides = hierarchy.value().effective_overrides(schema);
+        pending_parent_layers_ = hierarchy.value().layers;
+        pending_parent_schema_ = std::move(schema);
+        parent_prepared_ = true;
+        return AssetStatus::success();
+    }
+
+    void MaterialEditSession::notify_instance()
+    {
+        if (parent_prepared_)
+        {
+            parent_ = std::move(pending_parent_);
+            parent_layers_ = std::move(pending_parent_layers_);
+            schema_ = std::move(pending_parent_schema_);
+            parent_prepared_ = false;
+            if (parent_notify_) parent_notify_();
+        }
+        notify(instance_->value().overrides);
+    }
+
+    AssetStatus MaterialEditSession::set_parent(const AssetRef& parent)
+    {
+        if (!instance_ || !writable() || gesturing()) return fail(AssetErrorCode::InvalidState, "End the gesture before changing Parent.");
+        ValueWriter writer;
+        const auto encoded = encode_value(writer, parent);
+        if (!encoded.succeeded()) return fail(AssetErrorCode::Value, encoded.message);
+        PropertyPath path{PropertyPathPart::field("parent")};
+        const auto edited = instance_->apply_edit({EditPatch{path, writer.bytes(), EditChangeKind::ReplaceCandidate}});
+        return edited.succeeded() ? AssetStatus::success() : edited.status();
+    }
+
+    AssetRef MaterialEditSession::parameter_source(const std::string& name) const
+    {
+        for (const auto& value : overrides()) if (value.name == name && material_override_matches_schema(value, schema_)) return {id_, {},
+            is_instance() ? "toy3d.MaterialInstanceAssetData" : "toy3d.MaterialAssetData", AssetRefStrength::Strong};
+        for (auto layer = parent_layers_.rbegin(); layer != parent_layers_.rend(); ++layer)
+            for (const auto& value : layer->overrides)
+                if (value.name == name && material_override_matches_schema(value, schema_)) return layer->reference;
+        return {}; // Shader default.
+    }
+
+    AssetStatus MaterialEditSession::publish_saved()
+    {
+        if (!active()) return fail(AssetErrorCode::InvalidState, "No active Material asset.");
+        if (!publish_) return AssetStatus::success();
+        AssetRef reference;
+        reference.asset_id = id_;
+        reference.expected_type = is_instance() ? "toy3d.MaterialInstanceAssetData" : "toy3d.MaterialAssetData";
+        auto status = publish_(reference);
+        if (!status.succeeded()) status.message = "Asset is saved; rendering still uses the previous version. Retry Publish: " + status.message;
+        return status;
     }
 
     void MaterialEditSession::set_preview(PreviewPrepare prepare_callback, PreviewNotify notify_callback)
@@ -108,6 +222,8 @@ namespace toy3d
     void MaterialEditSession::clear()
     {
         root_.reset(); instance_.reset();
+        parent_layers_.clear(); pending_parent_layers_.clear(); pending_parent_ = {}; pending_parent_schema_ = {};
+        parent_prepared_ = false; schema_resolver_ = {}; parent_prepare_ = {}; parent_notify_ = {};
         preview_prepare_ = {}; preview_notify_ = {};
         draft_.clear(); gesture_before_.clear(); gesture_active_ = false;
         id_ = {}; path_ = {}; opened_index_ = {}; schema_ = {}; parent_ = {};
@@ -351,6 +467,6 @@ namespace toy3d
         if (!status.succeeded()) return status;
         opened_index_ = next;
         if (!workspace_.refresh()) return fail(AssetErrorCode::InvalidState, "Material was saved, but catalog refresh failed: " + workspace_.error());
-        return AssetStatus::success();
+        return publish_saved();
     }
 }

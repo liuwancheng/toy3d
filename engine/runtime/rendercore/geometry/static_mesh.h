@@ -38,7 +38,7 @@ namespace toy3d
         std::vector<std::array<std::uint8_t, 4>> vertex_colors;
         StaticMeshIndexData indices;
         std::vector<StaticMeshSection> sections;
-        std::vector<MaterialInstanceRef> material_slots;
+        std::vector<MaterialInterfaceRef> material_slots;
         // Stable imported slot names survive geometry reconstruction and reordering.
         std::vector<std::string> material_slot_names;
     };
@@ -58,7 +58,7 @@ namespace toy3d
         const std::vector<std::array<std::uint8_t, 4>>& vertex_colors() const { return vertex_colors_; }
         const StaticMeshIndexData& indices() const { return indices_; }
         const std::vector<StaticMeshSection>& sections() const { return sections_; }
-        const std::vector<MaterialInstanceRef>& material_slots() const { return material_slots_; }
+        const std::vector<MaterialInterfaceRef>& material_slots() const { return material_slots_; }
         const std::vector<std::string>& material_slot_names() const { return material_slot_names_; }
         const AxisAlignedBounds& local_bounds() const { return local_bounds_; }
         StaticMeshRenderData* render_data() const noexcept { return render_data_.get(); }
@@ -70,7 +70,7 @@ namespace toy3d
         std::vector<std::array<std::uint8_t, 4>> vertex_colors_;
         StaticMeshIndexData indices_;
         std::vector<StaticMeshSection> sections_;
-        std::vector<MaterialInstanceRef> material_slots_;
+        std::vector<MaterialInterfaceRef> material_slots_;
         std::vector<std::string> material_slot_names_;
         AxisAlignedBounds local_bounds_;
         std::unique_ptr<StaticMeshRenderData> render_data_;

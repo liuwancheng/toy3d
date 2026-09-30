@@ -153,28 +153,53 @@ namespace toy3d
         }
     } // namespace
 
-    MaterialRenderProxy::MaterialRenderProxy(const Material& material)
-        : shader_name_(material.desc().shader_name), parameter_schema_(material.parameter_schema()),
+    MaterialRenderProxy::MaterialRenderProxy(const Material& material) : MaterialRenderProxy(material.desc()) {}
+
+    MaterialRenderProxy::MaterialRenderProxy(const MaterialDesc& desc)
+        : shader_name_(desc.shader_name), parameter_schema_(desc.parameter_schema),
           parameter_metadata_(make_material_parameter_metadata(parameter_schema_)),
-          shader_program_(material.desc().shader_program)
+          shader_program_(desc.shader_program)
     {
         if (shader_program_)
         {
             effective_graphics_pass_state_ = shader_program_->data().graphics_pass_state;
-            if (material.desc().two_sided)
+            if (desc.two_sided)
             {
                 effective_graphics_pass_state_.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
             }
         }
-        scalar_parameters_ = material.desc().scalar_defaults;
-        vector2_parameters_ = material.desc().vector2_defaults;
-        vector3_parameters_ = material.desc().vector3_defaults;
-        vector4_parameters_ = material.desc().vector4_defaults;
-        for (const auto& default_texture : material.desc().texture_defaults)
+        scalar_parameters_ = desc.scalar_defaults;
+        vector2_parameters_ = desc.vector2_defaults;
+        vector3_parameters_ = desc.vector3_defaults;
+        vector4_parameters_ = desc.vector4_defaults;
+        for (const auto& default_texture : desc.texture_defaults)
         {
             texture_parameters_[default_texture.first] =
                 default_texture.second ? default_texture.second->texture_resource() : nullptr;
         }
+    }
+
+    void MaterialRenderProxy::replace_state(MaterialRenderProxy&& candidate) noexcept
+    {
+        // A code-only publication keeps the logical binding independent from
+        // Program/native mappings when schema and all effective values match.
+        if (parameter_schema_.schema_identity == candidate.parameter_schema_.schema_identity &&
+            scalar_parameters_ == candidate.scalar_parameters_ && vector2_parameters_ == candidate.vector2_parameters_ &&
+            vector3_parameters_ == candidate.vector3_parameters_ && vector4_parameters_ == candidate.vector4_parameters_ &&
+            texture_parameters_ == candidate.texture_parameters_)
+        {
+            candidate.binding_set_ = std::move(binding_set_);
+            candidate.texture_generations_ = std::move(texture_generations_);
+            candidate.texture_views_ = std::move(texture_views_);
+            candidate.dirty_ = dirty_;
+        }
+        candidate.resource_manager_ = resource_manager_;
+        if (resource_manager_ != nullptr)
+        {
+            const auto status = candidate.begin_init_textures(*resource_manager_);
+            if (!status) TOY_LOG_ERROR("Material candidate texture initialization failed: {}", status.message());
+        }
+        *this = std::move(candidate);
     }
 
     void MaterialRenderProxy::apply_scalar_update(ShaderParameterId parameter_id, float value) noexcept

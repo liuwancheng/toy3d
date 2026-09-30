@@ -181,7 +181,7 @@ namespace toy3d
                             {
                                 if (is_material && ImGui::MenuItem("Open Material Editor"))
                                     actions.material_open = item.asset->file.asset_id;
-                                if (item.asset->file.root_type == "toy3d.MaterialAssetData" && ImGui::MenuItem("Create Material Instance..."))
+                                if (is_material && ImGui::MenuItem("Create Material Instance..."))
                                 {
                                     actions.material_creation_requested = true;
                                     actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;

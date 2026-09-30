@@ -56,11 +56,18 @@ namespace
         {
             ImGui::GetIO().IniFilename = nullptr;
             if (!factory_.initialize()) return false;
-            materials_.initialize(workspace_, factory_.default_material()->material());
+            const auto defaults = factory_.default_material()->material();
+            MaterialTextureValues textures;
+            for (const auto& resource : defaults->parameter_schema().resources)
+                textures.named_defaults[resource.default_value] = defaults->desc().texture_defaults.at(resource.parameter_id);
+            library_ = std::make_unique<MaterialLibrary>(workspace_.types(), workspace_.files(),
+                [this]() -> const AssetIndex& { return workspace_.catalog().index; },
+                [this](const std::string& name) { return shaders_.program(name); }, std::move(textures));
+            materials_.initialize(workspace_, *library_);
             panel_.initialize(workspace_, factory_.default_material()->material(), PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
             std::string error;
             if (!shaders_.initialize(paths_, factory_.default_material()->material(), error)) { state_.error = error; return false; }
-            materials_.set_program_resolver([this](const std::string& name) { return shaders_.program(name); });
+
             panel_.set_shader_workflow(shaders_);
             if (!shaders_.open_source("Project/Surface/Painted", 12u, 3u) || processes_.parameters.size() != 3u ||
                 processes_.parameters[2].find(":12:3") == std::string::npos || processes_.opened != paths_.code_executable)
@@ -145,7 +152,7 @@ namespace
                 if (!apply_candidate()) return;
                 const auto& session = workspace_.material_edit();
                 if (!session.dirty() || session.undo_count() != undo_count_ ||
-                    component()->material_for_slot(0)->material()->desc().shader_program != shaders_.program("Project/Surface/Painted"))
+                    component()->material_for_slot(0)->desc().shader_program != shaders_.program("Project/Surface/Painted"))
                 { stop("Code publication lost draft/history or failed to refresh scene material."); return; }
                 bool orphan = false;
                 for (const auto& value : session.overrides()) if (value.name == "stripe_scale" && !material_override_matches_schema(value, session.schema())) orphan = true;
@@ -167,7 +174,7 @@ namespace
                 if (drawable < 0) { stop("Material replacement released the active mesh geometry."); return; }
                 if (!shaders_.has_error_location() || !shaders_.open_error() || processes_.parameters[2].find(":1:") == std::string::npos)
                 { stop("Compiler source error location was not forwarded to VS Code."); return; }
-                if (shaders_.program("Project/Surface/Painted") != before_ || component()->material_for_slot(0)->material()->desc().shader_program != before_)
+                if (shaders_.program("Project/Surface/Painted") != before_ || component()->material_for_slot(0)->desc().shader_program != before_)
                 { stop("Compiler failure replaced the old effect."); return; }
                 if (!write_source(revised_)) return;
                 restored_ = std::make_unique<MaterialShaderWorkflow>(processes_, threads_);
@@ -208,7 +215,7 @@ namespace
                 materials_.discard_shader(); panel_.discard_shader();
                 const auto failure = shaders_.error(); shaders_.reject(failure);
                 if (shaders_.program("Project/Surface/Painted") != before_ ||
-                    component()->material_for_slot(0)->material()->desc().shader_program != before_)
+                    component()->material_for_slot(0)->desc().shader_program != before_)
                 { stop("Rejected source publication did not roll back scene slots."); return; }
                 if (!write_source(revised_)) return;
                 state_.complete = true; window().close();
@@ -221,7 +228,7 @@ namespace
             panel_.shutdown();
             for (const auto id : world().actor_ids()) { auto* actor = world().find_actor_by_id(id); if (actor && !world().destroy_actor(*actor)) state_.error = "Actor teardown failed."; }
             if (!flush_rendering_commands().succeeded()) state_.error = "Scene drain failed.";
-            materials_.shutdown(); factory_.release();
+            materials_.shutdown(); library_->shutdown(); library_.reset(); factory_.release();
         }
         EditorWorkspace& workspace_;
         MaterialShaderPaths paths_;
@@ -235,6 +242,7 @@ namespace
         std::unique_ptr<MaterialShaderWorkflow> restored_;
         NativePlatformFile platform_;
         ActorFactory factory_;
+        std::unique_ptr<MaterialLibrary> library_;
         MaterialAssignments materials_;
         MaterialEditorPanel panel_;
         std::uint32_t actor_id_ = 0;
