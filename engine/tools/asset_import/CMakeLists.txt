@@ -1,5 +1,5 @@
 add_library(Toy3dAssetImport STATIC)
-target_sources(Toy3dAssetImport PRIVATE "static_mesh_import.h" "static_mesh_import.cpp" "static_mesh_import_data.h")
+target_sources(Toy3dAssetImport PRIVATE "static_mesh_import.h" "static_mesh_import.cpp")
 target_compile_features(Toy3dAssetImport PUBLIC cxx_std_17)
 set_target_properties(Toy3dAssetImport PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tools")
 target_include_directories(Toy3dAssetImport PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")

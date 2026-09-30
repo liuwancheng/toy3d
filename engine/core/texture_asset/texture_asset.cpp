@@ -1,5 +1,7 @@
 #include "texture_asset/texture_asset.h"
 
+#include "asset_pair.h"
+
 #include <algorithm>
 #include <limits>
 #include <utility>
@@ -160,12 +162,102 @@ namespace toy3d
         return AssetResult<Texture2DAsset>(std::move(candidate));
     }
 
+    AssetResult<AssetPairBytes> encode_texture_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const Texture2DAsset& texture)
+    {
+        const AssetStatus valid = validate_texture_asset(texture);
+        if (!valid.succeeded()) return AssetResult<AssetPairBytes>(valid);
+        if (!id.valid()) return AssetResult<AssetPairBytes>(invalid("Texture2D needs a valid asset ID."));
+        Texture2DAssetData metadata;
+        metadata.width = texture.width;
+        metadata.height = texture.height;
+        metadata.pixel_format = static_cast<std::uint32_t>(texture.format);
+        metadata.mip_count = static_cast<std::uint32_t>(texture.mips.size());
+        ValueWriter writer;
+        if (!encode_value(writer, metadata).succeeded())
+            return AssetResult<AssetPairBytes>(invalid("Texture2D metadata encoding failed."));
+        std::vector<std::uint8_t> payload;
+        append_u32(payload, mip_format_version);
+        append_u32(payload, metadata.mip_count);
+        for (const auto& mip : texture.mips)
+        {
+            append_u32(payload, mip.row_pitch);
+            append_u32(payload, mip.slice_pitch);
+            append_u32(payload, static_cast<std::uint32_t>(mip.pixels.size()));
+            payload.insert(payload.end(), mip.pixels.begin(), mip.pixels.end());
+        }
+        AssetFileIndex index;
+        index.asset_id = id;
+        index.root_type = "toy3d.Texture2DAssetData";
+        index.schema_version = 1u;
+        AssetFileLimits limits;
+        limits.max_file_bytes = maximum_file;
+        return encode_asset_pair(types, std::move(index), writer.bytes(),
+            {{"texture_mips", 2u, true, std::move(payload)}}, limits);
+    }
+
     AssetResult<Texture2DAsset> read_texture_asset(const FileSystem& files, const VirtualPath& path)
     {
-        const auto bytes = files.read_binary(path, maximum_file);
-        if (!bytes.succeeded())
-            return AssetResult<Texture2DAsset>({AssetErrorCode::Io, {}, path.utf8(), {}, {},
-                bytes.status().message, bytes.status()});
-        return decode_texture_asset(bytes.value());
+        TypeRegistry types;
+        const ReflectionStatus registered = register_texture_asset_types(types);
+        if (!registered.succeeded() || !types.freeze().succeeded())
+            return AssetResult<Texture2DAsset>(invalid("Texture2D schema registration failed."));
+        AssetFileLimits limits;
+        limits.max_file_bytes = maximum_file;
+        const auto pair = read_asset_pair(types, files, path, limits);
+        if (!pair.succeeded()) return AssetResult<Texture2DAsset>(pair.status());
+        const auto& description = pair.value().description;
+        if (description.index.root_type != "toy3d.Texture2DAssetData" ||
+            description.index.schema_version != 1u || !description.has_meta ||
+            !description.index.dependencies.empty() || !description.index.subresources.empty())
+            return AssetResult<Texture2DAsset>(invalid("Unsupported Texture2D asset root or dependencies."));
+        ValueReader reader(description.type_data);
+        Texture2DAssetData metadata;
+        if (!decode_value(reader, metadata).succeeded() || !reader.at_end() ||
+            metadata.width == 0 || metadata.height == 0 ||
+            metadata.width > maximum_dimension || metadata.height > maximum_dimension ||
+            metadata.pixel_format != static_cast<std::uint32_t>(PixelFormat::R8G8B8A8UNormSRGB) ||
+            metadata.mip_count != full_mip_count(metadata.width, metadata.height))
+            return AssetResult<Texture2DAsset>(invalid("Texture2D metadata is invalid."));
+        const AssetSegmentData* mips = nullptr;
+        for (const AssetSegmentData& segment : pair.value().meta.segments)
+        {
+            if (segment.name == "texture_mips" && segment.kind == 2u && segment.required)
+                mips = &segment;
+            else if (segment.required)
+                return AssetResult<Texture2DAsset>(invalid("Unknown required Texture2D segment."));
+        }
+        if (!mips || mips->bytes.size() > maximum_payload + 256u)
+            return AssetResult<Texture2DAsset>(invalid("Texture2D mip payload is missing or oversized."));
+        const auto& bytes = mips->bytes;
+        std::size_t cursor = 0u;
+        std::uint32_t version = 0u;
+        std::uint32_t count = 0u;
+        if (!read_u32(bytes, cursor, bytes.size(), version) ||
+            !read_u32(bytes, cursor, bytes.size(), count) ||
+            version != mip_format_version || count != metadata.mip_count)
+            return AssetResult<Texture2DAsset>(invalid("Texture2D mip version or count is invalid."));
+        Texture2DAsset candidate;
+        candidate.width = metadata.width;
+        candidate.height = metadata.height;
+        candidate.format = PixelFormat::R8G8B8A8UNormSRGB;
+        candidate.mips.reserve(count);
+        for (std::uint32_t level = 0u; level < count; ++level)
+        {
+            TextureAssetMip mip;
+            std::uint32_t length = 0u;
+            if (!read_u32(bytes, cursor, bytes.size(), mip.row_pitch) ||
+                !read_u32(bytes, cursor, bytes.size(), mip.slice_pitch) ||
+                !read_u32(bytes, cursor, bytes.size(), length) ||
+                length > bytes.size() - cursor)
+                return AssetResult<Texture2DAsset>(invalid("Texture2D mip payload is truncated."));
+            mip.pixels.assign(bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                bytes.begin() + static_cast<std::ptrdiff_t>(cursor + length));
+            cursor += length;
+            candidate.mips.push_back(std::move(mip));
+        }
+        if (cursor != bytes.size() || !validate_texture_asset(candidate).succeeded())
+            return AssetResult<Texture2DAsset>(invalid("Texture2D mip payload is invalid."));
+        return AssetResult<Texture2DAsset>(std::move(candidate));
     }
 } // namespace toy3d

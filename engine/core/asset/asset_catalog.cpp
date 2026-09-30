@@ -1,6 +1,8 @@
 #include "asset_catalog.h"
+#include "asset_pair.h"
 
 #include <algorithm>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -12,7 +14,8 @@ namespace toy3d
         constexpr std::size_t k_max_directory_depth = 64u;
 
         AssetStatus scan_directory(const FileSystem& files, const VirtualPath& directory,
-                                   AssetCatalog& catalog, std::size_t depth)
+            AssetCatalog& catalog, std::size_t depth, const TypeRegistry& types,
+            std::set<std::string>& paired_meta, std::vector<VirtualPath>& all_meta)
         {
             if (depth > k_max_directory_depth)
                 return {AssetErrorCode::TooLarge, {}, directory.utf8(), {}, {},
@@ -34,7 +37,8 @@ namespace toy3d
                         return {AssetErrorCode::TooLarge, {}, child.value().utf8(), {}, {},
                                 "asset directory count exceeds the scan limit", {}};
                     catalog.directories.push_back(child.value());
-                    const AssetStatus nested = scan_directory(files, child.value(), catalog, depth + 1u);
+                    const AssetStatus nested = scan_directory(files, child.value(), catalog,
+                        depth + 1u, types, paired_meta, all_meta);
                     if (!nested.succeeded()) return nested;
                 }
                 else if (entry.type == FileType::File &&
@@ -43,28 +47,33 @@ namespace toy3d
                     if (catalog.entries.size() >= k_max_catalog_entries)
                         return {AssetErrorCode::TooLarge, {}, child.value().utf8(), {}, {},
                                 "asset file count exceeds the scan limit", {}};
-                    const auto inspected = inspect_asset(files, child.value());
-                    if (!inspected.succeeded()) return inspected.status();
-                    const AssetStatus added = catalog.index.add(child.value(), inspected.value());
+                    const auto pair = read_asset_pair(types, files, child.value());
+                    if (!pair.succeeded()) return pair.status();
+                    if (pair.value().description.has_meta)
+                        paired_meta.insert(child.value().utf8().substr(0u,
+                            child.value().utf8().size() - 6u) + ".meta");
+                    const AssetFileIndex& inspected = pair.value().description.index;
+                    const AssetStatus added = catalog.index.add(child.value(), inspected);
                     if (!added.succeeded()) return added;
-                    catalog.entries.push_back({child.value(), inspected.value()});
+                    catalog.entries.push_back({child.value(), inspected});
                 }
+                else if (entry.type == FileType::File && entry.name.size() >= 5u &&
+                    entry.name.compare(entry.name.size() - 5u, 5u, ".meta") == 0)
+                    all_meta.push_back(child.value());
             }
             return AssetStatus::success();
         }
     } // namespace
 
-    AssetResult<AssetCatalog> scan_asset_catalog(const FileSystem& files, const VirtualPath& root)
-    {
-        return scan_asset_catalog(files, std::vector<VirtualPath>{root});
-    }
-
-    AssetResult<AssetCatalog> scan_asset_catalog(const FileSystem& files, const std::vector<VirtualPath>& roots)
+    static AssetResult<AssetCatalog> scan_asset_catalog_impl(const TypeRegistry& types,
+        const FileSystem& files, const std::vector<VirtualPath>& roots)
     {
         if (roots.empty())
             return AssetResult<AssetCatalog>(AssetStatus{AssetErrorCode::InvalidState, {}, {}, {}, {},
                                                           "asset catalog roots are empty", {}});
         AssetCatalog candidate;
+        std::set<std::string> paired_meta;
+        std::vector<VirtualPath> all_meta;
         for (std::size_t position = 0; position < roots.size(); ++position)
         {
             const VirtualPath& root = roots[position];
@@ -81,9 +90,14 @@ namespace toy3d
                                                                   "asset catalog roots overlap", {}});
             }
             candidate.directories.push_back(root);
-            const AssetStatus scanned = scan_directory(files, root, candidate, 0u);
+            const AssetStatus scanned = scan_directory(files, root, candidate, 0u,
+                types, paired_meta, all_meta);
             if (!scanned.succeeded()) return AssetResult<AssetCatalog>(scanned);
         }
+        for (const VirtualPath& meta : all_meta)
+            if (paired_meta.count(meta.utf8()) == 0u)
+                return AssetResult<AssetCatalog>(AssetStatus{AssetErrorCode::InvalidFormat,
+                    {}, meta.utf8(), {}, {}, "orphan .meta has no matching descriptor", {}});
         const AssetStatus dependencies = candidate.index.validate_strong_dependencies();
         if (!dependencies.succeeded()) return AssetResult<AssetCatalog>(dependencies);
         std::sort(candidate.entries.begin(), candidate.entries.end(),
@@ -93,5 +107,11 @@ namespace toy3d
                   [](const VirtualPath& left, const VirtualPath& right)
                   { return left.utf8() < right.utf8(); });
         return AssetResult<AssetCatalog>(std::move(candidate));
+    }
+
+    AssetResult<AssetCatalog> scan_asset_catalog(const TypeRegistry& types,
+        const FileSystem& files, const std::vector<VirtualPath>& roots)
+    {
+        return scan_asset_catalog_impl(types, files, roots);
     }
 } // namespace toy3d

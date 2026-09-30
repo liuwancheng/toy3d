@@ -39,6 +39,18 @@ namespace toy3d
 
     namespace
     {
+        AssetStatus asset_operation_error(AssetErrorCode code, const std::string& message)
+        {
+            return {code, {}, {}, {}, {}, message, {}};
+        }
+
+        bool writable_asset_path(const VirtualPath& path)
+        {
+            const std::string& name = path.utf8();
+            return name.compare(0u, 9u, "/Project/") == 0 && name.size() > 15u &&
+                name.compare(name.size() - 6u, 6u, ".asset") == 0;
+        }
+
         std::string comparable_path(std::string path)
         {
             std::replace(path.begin(), path.end(), '\\', '/');
@@ -103,6 +115,12 @@ namespace toy3d
         FileStatus mounted = mount_directory(source.value(), "/Project", true);
         if (mounted.succeeded()) mounted = mount_directory(engine.value(), "/Engine", false);
         if (mounted.succeeded()) mounted = mount_directory(resources.value(), "/Editor/Resources", false);
+        const auto saved = platform_file_.join_relative(deployed.value(), "saved");
+        if (mounted.succeeded() && saved.succeeded())
+            mounted = platform_file_.create_directories(saved.value());
+        if (mounted.succeeded() && saved.succeeded())
+            mounted = mount_directory(saved.value(), "/Saved", true);
+        if (!saved.succeeded()) { error_ = saved.status().message; return false; }
         if (!mounted.succeeded()) { error_ = mounted.message; return false; }
         const FileStatus frozen = files_.freeze();
         if (!frozen.succeeded())
@@ -115,6 +133,7 @@ namespace toy3d
         if (registered.succeeded()) registered = register_texture_asset_types(types_);
         if (registered.succeeded()) registered = types_.freeze();
         if (!registered.succeeded()) { error_ = registered.message; return false; }
+        asset_pairs_ = std::make_unique<AssetPairStore>(types_, files_);
         source_root_ = source.value();
         ready_ = true;
         return refresh();
@@ -134,7 +153,14 @@ namespace toy3d
             error_ = "Editor asset catalog roots could not be parsed.";
             return false;
         }
-        auto scanned = scan_asset_catalog(files_, std::vector<VirtualPath>{project_root.value(), engine_root.value()});
+        const AssetStatus recovered = asset_pairs_->recover_tree(project_root.value());
+        if (!recovered.succeeded())
+        {
+            error_ = recovered.virtual_path + ": " + recovered.message;
+            return false;
+        }
+        auto scanned = scan_asset_catalog(types_, files_,
+            std::vector<VirtualPath>{project_root.value(), engine_root.value()});
         if (!scanned.succeeded())
         {
             error_ = scanned.status().virtual_path + ": " + scanned.status().message;
@@ -143,5 +169,63 @@ namespace toy3d
         catalog_ = scanned.value();
         error_.clear();
         return true;
+    }
+
+    AssetStatus EditorWorkspace::delete_asset(const AssetId& id)
+    {
+        if (!ready_) return asset_operation_error(AssetErrorCode::InvalidState,
+            "Editor workspace is not ready.");
+        const auto* location = catalog_.index.find(id);
+        if (!location) return asset_operation_error(AssetErrorCode::MissingReference,
+            "Asset was not found.");
+        if (!writable_asset_path(location->path))
+            return asset_operation_error(AssetErrorCode::ReadOnly,
+                "Only Project assets can be deleted.");
+        for (const AssetCatalogEntry& entry : catalog_.entries)
+            for (const AssetRef& dependency : entry.file.dependencies)
+                if (dependency.asset_id == id && dependency.strength == AssetRefStrength::Strong)
+                    return asset_operation_error(AssetErrorCode::Conflict,
+                        "Asset is used by " + entry.path.utf8() + ". Remove that reference first.");
+        const AssetStatus removed = asset_pairs_->remove(location->path);
+        if (!removed.succeeded()) return removed;
+        if (!refresh()) return asset_operation_error(AssetErrorCode::InvalidState,
+            "Asset was deleted, but refresh failed: " + error_);
+        return AssetStatus::success();
+    }
+
+    AssetStatus EditorWorkspace::move_asset(const AssetId& id,
+        const VirtualPath& destination)
+    {
+        if (!ready_) return asset_operation_error(AssetErrorCode::InvalidState,
+            "Editor workspace is not ready.");
+        const auto* location = catalog_.index.find(id);
+        if (!location) return asset_operation_error(AssetErrorCode::MissingReference,
+            "Asset was not found.");
+        if (!writable_asset_path(location->path) || !writable_asset_path(destination))
+            return asset_operation_error(AssetErrorCode::ReadOnly,
+                "Asset move must stay inside Project assets.");
+        const AssetStatus moved = asset_pairs_->move(location->path, destination);
+        if (!moved.succeeded()) return moved;
+        if (!refresh()) return asset_operation_error(AssetErrorCode::InvalidState,
+            "Asset was moved, but refresh failed: " + error_);
+        return AssetStatus::success();
+    }
+
+    AssetResult<AssetId> EditorWorkspace::copy_asset(const AssetId& id,
+        const VirtualPath& destination)
+    {
+        if (!ready_) return AssetResult<AssetId>(asset_operation_error(
+            AssetErrorCode::InvalidState, "Editor workspace is not ready."));
+        const auto* location = catalog_.index.find(id);
+        if (!location) return AssetResult<AssetId>(asset_operation_error(
+            AssetErrorCode::MissingReference, "Asset was not found."));
+        if (!writable_asset_path(location->path) || !writable_asset_path(destination))
+            return AssetResult<AssetId>(asset_operation_error(AssetErrorCode::ReadOnly,
+                "Asset copy must stay inside Project assets."));
+        const auto copied = asset_pairs_->copy(location->path, destination);
+        if (!copied.succeeded()) return copied;
+        if (!refresh()) return AssetResult<AssetId>(asset_operation_error(
+            AssetErrorCode::InvalidState, "Asset was copied, but refresh failed: " + error_));
+        return copied;
     }
 } // namespace toy3d

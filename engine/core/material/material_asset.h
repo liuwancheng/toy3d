@@ -4,6 +4,7 @@
 #include "format/shader_format_types.h"
 #include "material/material_asset_data.h"
 #include "material_asset_reflection.h"
+#include "asset/asset_pair.h"
 
 #include <cstddef>
 
@@ -44,6 +45,10 @@ namespace toy3d
     AssetResult<std::vector<std::uint8_t>> encode_material_asset(const TypeRegistry& types,
         const AssetId& id, const MaterialAssetData& data, const AssetIndex* index = nullptr);
     AssetResult<std::vector<std::uint8_t>> encode_material_instance_asset(const TypeRegistry& types,
+        const AssetId& id, const MaterialInstanceAssetData& data, const AssetIndex* index = nullptr);
+    AssetResult<AssetPairBytes> encode_material_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const MaterialAssetData& data, const AssetIndex* index = nullptr);
+    AssetResult<AssetPairBytes> encode_material_instance_asset_pair(const TypeRegistry& types,
         const AssetId& id, const MaterialInstanceAssetData& data, const AssetIndex* index = nullptr);
     AssetStatus read_material_asset(const TypeRegistry& types, const FileSystem& files,
         const VirtualPath& path, MaterialAssetData& output, const AssetIndex* index = nullptr);

@@ -30,7 +30,7 @@ namespace toy3d
         ~AssetThumbnailPool();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
         AssetThumbnailView request(const AssetCatalogEntry& asset);
-        void generate(const AssetId& id, bool save);
+        void generate(const AssetId& id);
         void invalidate();
         void tick();
         void collect_render_work(UiRenderWork& work);

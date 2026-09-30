@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset_file.h"
+#include "asset_pair.h"
 #include "pixel_format/pixel_format.h"
 #include "texture_asset/texture_asset_data.h"
 #include "texture_asset_reflection.h"
@@ -28,6 +29,8 @@ namespace toy3d
     AssetStatus validate_texture_asset(const Texture2DAsset& texture);
     AssetResult<std::vector<std::uint8_t>> encode_texture_asset(const AssetId& id,
         const Texture2DAsset& texture, std::vector<AssetSegmentData> optional_segments = {});
+    AssetResult<AssetPairBytes> encode_texture_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const Texture2DAsset& texture);
     AssetResult<Texture2DAsset> decode_texture_asset(const std::vector<std::uint8_t>& bytes);
     AssetResult<Texture2DAsset> read_texture_asset(const FileSystem& files, const VirtualPath& path);
 } // namespace toy3d

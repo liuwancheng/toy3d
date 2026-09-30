@@ -1,5 +1,4 @@
 #include "static_mesh_import.h"
-#include "asset_thumbnail/asset_thumbnail.h"
 
 #include <algorithm>
 #include <cctype>
@@ -19,7 +18,6 @@
 #include <assimp/scene.h>
 
 #include "math/matrix4.h"
-#include "static_mesh_import_data.h"
 #include "mesh_builder/static_mesh_builder.h"
 
 namespace toy3d
@@ -333,33 +331,13 @@ namespace toy3d
         const ImportedStaticMesh& candidate = imported.value().front();
         const auto built = build_static_mesh(candidate.mesh);
         if (!built.succeeded()) return AssetResult<StaticMeshImportAsset>(built.status());
-        const auto source_bytes = encode_mesh_description(candidate.mesh);
-        if (!source_bytes.succeeded()) return AssetResult<StaticMeshImportAsset>(source_bytes.status());
-        StaticMeshImportData data;
-        data.source_file = source.utf8().substr(source.utf8().find_last_of('/') + 1);
-        data.options = options;
-        const auto info = encode_static_mesh_import_data(data);
-        if (!info.succeeded()) return AssetResult<StaticMeshImportAsset>(info.status());
-        const auto encoded = encode_static_mesh_asset(id, built.value(),
-            {{"source_mesh", 2, false, source_bytes.value()}, info.value()});
+        TypeRegistry types;
+        const ReflectionStatus registered = register_static_mesh_asset_types(types);
+        if (!registered.succeeded() || !types.freeze().succeeded())
+            return AssetResult<StaticMeshImportAsset>(invalid("static mesh schema registration failed"));
+        const auto encoded = encode_static_mesh_asset_pair(types, id, built.value());
         if (!encoded.succeeded()) return AssetResult<StaticMeshImportAsset>(encoded.status());
-        const auto signature = calculate_static_mesh_thumbnail_source(encoded.value());
-        if (!signature.succeeded()) return AssetResult<StaticMeshImportAsset>(signature.status());
-        const auto source_segment = encode_thumbnail_source(signature.value());
-        if (!source_segment.succeeded()) return AssetResult<StaticMeshImportAsset>(source_segment.status());
-        const auto published = replace_asset_segments(encoded.value(), {source_segment.value()});
-        if (!published.succeeded()) return AssetResult<StaticMeshImportAsset>(published.status());
-        return AssetResult<StaticMeshImportAsset>(StaticMeshImportAsset{published.value(), candidate.warnings});
-    }
-
-    AssetResult<AssetSegmentData> encode_static_mesh_import_data(const StaticMeshImportData& data)
-    {
-        ValueWriter writer;
-        if (data.source_file.empty() || !is_finite(data.options.scale) || data.options.scale <= 0 ||
-            !writer.write_uint32(1).succeeded() || !writer.write_utf8(data.source_file).succeeded() ||
-            !writer.write_float32(data.options.scale).succeeded())
-            return AssetResult<AssetSegmentData>(invalid("invalid import metadata"));
-        return AssetResult<AssetSegmentData>(AssetSegmentData{"import_data", 2, false, writer.bytes()});
+        return AssetResult<StaticMeshImportAsset>(StaticMeshImportAsset{encoded.value(), candidate.warnings});
     }
 #endif
 } // namespace toy3d

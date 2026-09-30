@@ -53,8 +53,8 @@ namespace toy3d
             if (entry.file.asset_id == id) { error = "Generated Asset ID already exists; retry import."; return false; }
         const auto imported = import_static_mesh_asset(files, input.value(), id, options);
         if (!imported.succeeded()) { error = imported.status().message; return false; }
-        const FileStatus published = workspace.files().write_binary_atomic(output.value(), imported.value().bytes,
-                                                                          FilePublishMode::CreateNew);
+        const AssetStatus published = workspace.asset_pairs().publish(output.value(), imported.value().pair,
+            FilePublishMode::CreateNew);
         if (!published.succeeded()) { error = published.message; return false; }
         published_id = id;
         for (const std::string& warning : imported.value().warnings) TOY_LOG_WARN("Model import: {}", warning);

@@ -2,7 +2,7 @@
 
 ## 1. 范围与状态
 
-StaticMesh 首版已接入：独立预览、共享 Forward/Tonemap、多个 ImGui 逻辑纹理、异步颜色读回、包内 PNG、有界缓存、Content Browser 图块及导入后自动保存。职责划分参考 UE4.27 的 ThumbnailRenderer、ThumbnailHelpers、AssetThumbnail、ObjectThumbnail 和 SavePackageUtilities，保持 Toy3d 的命名和所有权边界。
+StaticMesh 已接入独立预览、共享 Forward/Tonemap、多个 ImGui 逻辑纹理、异步颜色读回、外部 PNG 缓存、有界内存池与 Content Browser 图块。职责划分参考 UE4.27 的预览与缩略图边界，资产持久化以 [Asset 描述与处理数据格式](asset-pair-format-design.md) 为准。
 
 模型使用现有默认材质。材质/动画/碰撞/场景缩略图和材质依赖加载尚未实现；以后每种资源提供自己的预览策略，共用缓存、图片格式和 UI 纹理通道。源文件拖入与导入确认框属于 [StaticMesh 导入交互](static-mesh-import-design.md#7-editor-导入与拖放交互)，成功发布后调用本模块生成缩略图。
 
@@ -16,8 +16,8 @@ StaticMesh 首版已接入：独立预览、共享 Forward/Tonemap、多个 ImGu
 | --- | --- |
 | `engine/core/hash` | `Toy3dHash`；迁移原 Shader SHA-256，内容签名共用算法 |
 | `engine/core/image_codec` | `Toy3dImageCodec`；有界内存 PNG 编解码，复用已有 stb |
-| `engine/core/asset_thumbnail` | `Toy3dAssetThumbnail`；图片段和源签名格式，依赖 Resource/Hash，不依赖 PNG/渲染器 |
-| `engine/core/asset/asset_file.*` | 保留其他原始段的完整候选构造，不自行发布文件 |
+| `engine/core/asset_thumbnail` | `Toy3dAssetThumbnail`；内容签名，依赖 Resource/Hash，不依赖 PNG/渲染器 |
+| `engine/core/asset/asset_pair_store.*` | 新资产成对发布；缩略图缓存不经过资产发布 |
 | `engine/core/static_mesh` | 同一快照的只读模型解码，允许未知可选外层段 |
 | `engine/runtime/ui/ui_texture_work.h` | GT/RT 间 owned 上传、预览请求、退休 ID 和图片结果 |
 | `engine/runtime/renderscene/ui/ui_texture_registry.*` | RT 独占的逻辑 ID 到 RHI texture/view 映射 |
@@ -26,26 +26,21 @@ StaticMesh 首版已接入：独立预览、共享 Forward/Tonemap、多个 ImGu
 
 Core 不依赖 Runtime、Editor 或 ImGui；离线 importer 不依赖 Editor。Runtime 模型加载不需要 PNG；关闭 Assimp 导入不影响已有 `.asset` 的预览和 PNG 显示。Editor 行为留在 Editor target，没有通过宏改变共享 DTO 布局；以后 runtime 的 Editor 行为和数据分别使用 `WITH_EDITOR` / `WITH_EDITORONLY_DATA`。
 
-## 3. 包内格式与失效
+## 3. 缓存格式与失效
 
 Hash 和 PNG 借用 const 输入，只在成功时发布调用者拥有的输出，各次调用使用独立局部状态，可并行处理不同输出。PNG 不提供通用格式导入、文件访问、色彩管理或全局 flip 配置；第三方细节只在 codec 实现。SHA 迁移后删除原 Shader 算法入口，既有 ShaderMap key 和标准向量保持不变。
 
-Asset 外层版本、StaticMesh schema 和身份不变，追加两个可选 kind=2 blob：
-
-| 段 | 内容 |
-| --- | --- |
-| `thumbnail_source` | 格式版本 1、领域预览版本 1、32 字节源签名 |
-| `thumbnail` | 格式版本 1、源签名、生成器版本、width/height、编码标识 1=PNG、长度及 PNG |
+资产不含 `thumbnail_source` 或 `thumbnail` 段。Editor 将 PNG 存于 `/Saved/AssetThumbnails/<AssetId>-<内容签名>-v<生成器版本>.png`。
 
 源签名按固定名称顺序对带长度边界的 `type_data`、`render_geometry` 与领域预览版本计算 SHA-256，不包含偏移、路径、导入源数据或缩略图本身。生成器版本涵盖取景、材质、背景、曝光和相关 Shader 策略，改变时升级版本。将来预览使用材质依赖时，源签名须增加依赖内容签名。
 
-Importer 发布模型时写入新的 `thumbnail_source`。`encode_static_mesh_asset()` 重建模型时移除传入的旧 `thumbnail` / `thumbnail_source`，随后 importer 或缩略图保存者计算新签名。Generic Asset 分段替换不猜测业务规则：其他渲染相关 writer 必须更新签名或移除旧派生段。
+Importer 只发布模型描述和几何。缩略图 Worker 从已发布的模型内容计算签名，缓存写入者不改资产；模型变化自然形成新缓存键。未来预览使用材质依赖时，签名须纳入依赖内容。
 
-默认图片 256×256，格式允许每边 1～512、PNG 最大 4 MiB；图片为 top-left、紧凑 RGBA8、已编码 sRGB、alpha=255。PNG codec 校验 signature、chunk 长度/CRC、IEND 和无尾随数据，先检查尺寸再分配，失败不修改输出。缓存 loader 检查段尺寸与 PNG 实际尺寸、源签名和版本一致。
+默认图片 256×256，格式允许每边 1～512、PNG 最大 4 MiB；图片为 top-left、紧凑 RGBA8、已编码 sRGB、alpha=255。PNG codec 校验 signature、chunk 长度/CRC、IEND 和无尾随数据，先检查尺寸再分配，失败不修改输出。缓存 loader 检查 PNG 实际尺寸，源签名与版本由文件名验证。
 
 ## 4. 图片加载与独立预览
 
-命中时 Worker 只读取索引、源签名和 PNG 小段，解码并转换 BGRA8 上传，不读取几何、不创建 Actor。缺失、损坏或版本不匹配则读取完整有界快照生成；浏览旧资产只补内存图片，不自动改文件。
+命中时 Worker 验证资产配对并计算内容签名，再读取缓存 PNG，解码并转换 BGRA8 上传，不创建预览 Actor。缺失、损坏或版本不匹配则读取有界几何快照生成；缓存更新不修改资产。
 
 `decode_static_mesh_asset(bytes)` 在同一快照中检查 root/schema、已知必需段、元数据/几何和材质槽一致性。未知必需段拒绝；未知可选外层段允许只读预览，写回保留其原始字节。未知 typed 字段仍由当前 schema decoder 拒绝，此入口不授权有损 typed 保存。
 
@@ -90,18 +85,18 @@ AssetThumbnailPool pool(workspace);
 pool.initialize(preview_scene_interface, default_material, tasks);
 pool.tick();                              // 宿主 tick，推进异步作业
 auto image = pool.request(catalog_entry);  // 可见图块，命中或排队
-pool.generate(asset_id, true);             // 重新生成并请求保存
+pool.generate(asset_id);                   // 重新生成并请求写入缓存
 pool.collect_render_work(work);            // Engine move 到 Render FIFO
 pool.on_texture_result(std::move(result)); // Engine 在下一帧 GT poll
 pool.invalidate();                        // Refresh 后重读
 pool.shutdown();                          // Worker 完成，预览 World unbind
 ```
 
-新 Project StaticMesh 导入后 generate(id,true) 自动生成并保存；旧资产右键 Generate / Regenerate 才保存；Engine 只读条目只生成内存图。图片失败不撤销已导入模型，也不冒充保存成功。
+可见 Project StaticMesh 请求自动生成并缓存；右键 Generate / Regenerate 强制重建。Engine 条目也可使用 `/Saved` 缓存。图片失败不撤销已导入模型，也不冒充缓存保存成功。
 
-Worker PNG 编码后用 `replace_asset_segments(original,replacements)` 构造候选，保持 ID、root/schema、引用、子资源和其他段原始字节。GT 发布前确认路径/身份仍有效、Project 可写、当前完整文件 SHA 等于生成快照；失败保留文件和可用内存图，日志及 tooltip 显示原因。atomic Replace 成功后刷新 workspace 索引；目前采用完整扫描，避免引入第二个 catalog 发布入口。
+Worker PNG 编码后将结果交给 GT。GT 保存前确认路径/身份仍有效、当前 `.asset` SHA 等于生成快照，然后只对 `/Saved/AssetThumbnails/` 执行单文件原子写入；失败保留资产与可用内存图，日志及 tooltip 显示原因。缓存写入不刷新 Asset Catalog。
 
-首版按单 Editor writer 串行发布；atomic Replace 无跨进程 CAS，重读和 rename 之间仍有外部竞争窗口。协作写入需另设计锁/CAS。
+缓存按当前 Editor 实例发布；外部并发改动可能让旧 PNG 留在缓存目录，但新内容签名不会命中它。协作写入需另设计锁/CAS。
 
 ## 7. 生命周期与验证
 
@@ -126,11 +121,11 @@ flowchart TD
     G --> H[RT Forward + Tonemap + 区域复制]
     H --> I[队列完成后的 owned 像素]
     I --> J[GT 发布 Ready]
-    I --> K{请求保存且 Project 可写?}
-    K -->|是| L[Worker PNG 编码和保留段候选]
+    I --> K{请求持久缓存?}
+    K -->|是| L[Worker PNG 编码]
     L --> M{GT 基线仍一致?}
-    M -->|是| N[原子保存并刷新索引]
-    M -->|否| O[保留内存图 / 保存冲突]
+    M -->|是| N[原子写入 Saved 缓存]
+    M -->|否| O[保留内存图 / 缓存冲突]
     E --> P[Content Browser 图块]
     J --> P
     N --> C

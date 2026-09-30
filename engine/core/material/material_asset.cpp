@@ -5,6 +5,7 @@
 #include <set>
 #include <map>
 
+#include "asset/asset_pair.h"
 #include "text/utf8.h"
 
 namespace toy3d
@@ -102,12 +103,37 @@ namespace toy3d
         }
 
         template <typename T>
-        AssetStatus check_dependencies(const FileSystem& files, const VirtualPath& path, const T& data)
+        AssetResult<AssetPairBytes> encode_pair(const TypeRegistry& types, const AssetId& id,
+            const std::string& type_name, const T& data)
         {
-            const auto inspected = inspect_asset(files, path);
-            if (!inspected.succeeded()) return inspected.status();
+            const TypeDesc* type = types.find(type_name);
+            if (!types.frozen() || !type)
+                return AssetResult<AssetPairBytes>(invalid({}, "Material types must be registered and frozen."));
+            T sorted = data;
+            std::sort(sorted.overrides.begin(), sorted.overrides.end(),
+                [](const MaterialParameterOverride& a, const MaterialParameterOverride& b)
+                { return a.name < b.name; });
+            ValueWriter writer;
+            const ValueStatus encoded = encode_value(writer, sorted);
+            if (!encoded.succeeded())
+                return AssetResult<AssetPairBytes>(invalid(encoded.property_path, encoded.message));
+            AssetFileIndex file;
+            file.asset_id = id;
+            file.root_type = type_name;
+            file.schema_version = type->schema_version;
+            file.dependencies = material_asset_dependencies(sorted);
+            return encode_asset_pair(types, std::move(file), writer.bytes(), {});
+        }
+
+        template <typename T>
+        AssetStatus check_dependencies(const TypeRegistry& types, const FileSystem& files,
+            const VirtualPath& path, const T& data)
+        {
+            const auto pair = read_asset_pair(types, files, path);
+            if (!pair.succeeded()) return pair.status();
+            const AssetFileIndex& file_index = pair.value().description.index;
             const auto expected = material_asset_dependencies(data);
-            auto actual = inspected.value().dependencies;
+            auto actual = file_index.dependencies;
             std::sort(actual.begin(), actual.end(), [](const AssetRef& a, const AssetRef& b) { return a.asset_id < b.asset_id; });
             bool matches = expected.size() == actual.size();
             for (std::size_t i = 0; i < actual.size(); ++i)
@@ -118,8 +144,33 @@ namespace toy3d
                     matches = false;
             }
             if (!matches)
-                return {AssetErrorCode::Value, inspected.value().asset_id, path.utf8(), "type_data", "dependencies",
+                return {AssetErrorCode::Value, file_index.asset_id, path.utf8(), "type_data", "dependencies",
                     "Material dependency index differs from typed references.", {}};
+            return AssetStatus::success();
+        }
+
+        template <typename T, typename Validator>
+        AssetStatus load_material(const TypeRegistry& types, const FileSystem& files,
+            const VirtualPath& path, const std::string& expected_type, T& output,
+            Validator validate)
+        {
+            const auto pair = read_asset_pair(types, files, path);
+            if (!pair.succeeded()) return pair.status();
+            const auto& description = pair.value().description;
+            const TypeDesc* type = types.find(expected_type);
+            if (!type || description.index.root_type != expected_type ||
+                description.index.schema_version != type->schema_version || description.has_meta)
+                return {AssetErrorCode::Schema, description.index.asset_id, path.utf8(), {}, {},
+                    "Material description type, schema or payload is invalid.", {}};
+            ValueReader reader(description.type_data);
+            T candidate{};
+            const ValueStatus decoded = decode_value(reader, candidate);
+            if (!decoded.succeeded() || !reader.at_end())
+                return {AssetErrorCode::Value, description.index.asset_id, path.utf8(), "type_data",
+                    decoded.property_path, decoded.succeeded() ? "trailing typed data" : decoded.message, {}};
+            const AssetStatus valid = validate(candidate);
+            if (!valid.succeeded()) return valid;
+            output = std::move(candidate);
             return AssetStatus::success();
         }
     }
@@ -169,9 +220,10 @@ namespace toy3d
                 return AssetResult<MaterialAssetHierarchy>(AssetStatus{AssetErrorCode::DependencyCycle,
                     current.asset_id, {}, {}, "parent", "Material Parent chain contains a cycle.", {}});
             const auto* location = index.find(current.asset_id);
-            const auto published = inspect_asset(files, location->path);
-            if (!published.succeeded()) return AssetResult<MaterialAssetHierarchy>(published.status());
-            if (!(published.value().asset_id == current.asset_id) || published.value().root_type != current.expected_type)
+            const auto pair = read_asset_pair(types, files, location->path);
+            if (!pair.succeeded()) return AssetResult<MaterialAssetHierarchy>(pair.status());
+            const AssetFileIndex& published = pair.value().description.index;
+            if (!(published.asset_id == current.asset_id) || published.root_type != current.expected_type)
                 return AssetResult<MaterialAssetHierarchy>(invalid("parent", "Published Material identity differs from the catalog."));
             if (current.expected_type == "toy3d.MaterialAssetData")
             {
@@ -276,14 +328,30 @@ namespace toy3d
         return encode(types, id, "toy3d.MaterialInstanceAssetData", data);
     }
 
+    AssetResult<AssetPairBytes> encode_material_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const MaterialAssetData& data, const AssetIndex* index)
+    {
+        const AssetStatus valid = validate_material_asset(data, index);
+        if (!valid.succeeded()) return AssetResult<AssetPairBytes>(valid);
+        return encode_pair(types, id, "toy3d.MaterialAssetData", data);
+    }
+
+    AssetResult<AssetPairBytes> encode_material_instance_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const MaterialInstanceAssetData& data, const AssetIndex* index)
+    {
+        const AssetStatus valid = validate_material_instance_asset(data, index);
+        if (!valid.succeeded()) return AssetResult<AssetPairBytes>(valid);
+        return encode_pair(types, id, "toy3d.MaterialInstanceAssetData", data);
+    }
+
     AssetStatus read_material_asset(const TypeRegistry& types, const FileSystem& files,
         const VirtualPath& path, MaterialAssetData& output, const AssetIndex* index)
     {
         MaterialAssetData candidate;
-        const AssetStatus loaded = load_asset(types, SchemaMigrationRegistry{}, files, path, "toy3d.MaterialAssetData", candidate,
+        const AssetStatus loaded = load_material(types, files, path, "toy3d.MaterialAssetData", candidate,
             [&](const MaterialAssetData& value) { return validate_material_asset(value, index); });
         if (!loaded.succeeded()) return loaded;
-        const AssetStatus dependencies = check_dependencies(files, path, candidate);
+        const AssetStatus dependencies = check_dependencies(types, files, path, candidate);
         if (!dependencies.succeeded()) return dependencies;
         output = std::move(candidate);
         return AssetStatus::success();
@@ -293,10 +361,10 @@ namespace toy3d
         const VirtualPath& path, MaterialInstanceAssetData& output, const AssetIndex* index)
     {
         MaterialInstanceAssetData candidate;
-        const AssetStatus loaded = load_asset(types, SchemaMigrationRegistry{}, files, path, "toy3d.MaterialInstanceAssetData", candidate,
+        const AssetStatus loaded = load_material(types, files, path, "toy3d.MaterialInstanceAssetData", candidate,
             [&](const MaterialInstanceAssetData& value) { return validate_material_instance_asset(value, index); });
         if (!loaded.succeeded()) return loaded;
-        const AssetStatus dependencies = check_dependencies(files, path, candidate);
+        const AssetStatus dependencies = check_dependencies(types, files, path, candidate);
         if (!dependencies.succeeded()) return dependencies;
         output = std::move(candidate);
         return AssetStatus::success();

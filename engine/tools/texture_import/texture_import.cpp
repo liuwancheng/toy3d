@@ -116,11 +116,4 @@ namespace toy3d
         return AssetResult<Texture2DAsset>(std::move(result));
     }
 
-    AssetResult<std::vector<std::uint8_t>> import_texture_asset(
-        const std::vector<std::uint8_t>& source, const AssetId& id)
-    {
-        const auto imported = import_texture_image(source);
-        if (!imported.succeeded()) return AssetResult<std::vector<std::uint8_t>>(imported.status());
-        return encode_texture_asset(id, imported.value());
-    }
 } // namespace toy3d

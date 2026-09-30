@@ -6,6 +6,7 @@
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
 #include "static_mesh/static_mesh_asset.h"
+#include "asset_pair_store.h"
 
 namespace
 {
@@ -59,7 +60,13 @@ int main(int argc, char** argv)
     if (!toy3d::AssetId::try_generate(id)) { std::cerr << "Asset ID generation failed.\n"; return 1; }
     const auto imported = toy3d::import_static_mesh_asset(files, source.value(), id);
     if (!imported.succeeded()) { std::cerr << imported.status().message << '\n'; return 1; }
-    const auto published = files.write_binary_atomic(destination.value(), imported.value().bytes, toy3d::FilePublishMode::CreateNew);
+    toy3d::TypeRegistry types;
+    const auto registered = toy3d::register_static_mesh_asset_types(types);
+    if (!registered.succeeded() || !types.freeze().succeeded())
+    { std::cerr << "Static mesh schema registration failed.\n"; return 1; }
+    toy3d::AssetPairStore assets(types, files);
+    const auto published = assets.publish(destination.value(), imported.value().pair,
+        toy3d::FilePublishMode::CreateNew);
     if (!published.succeeded()) { std::cerr << published.message << '\n'; return 1; }
     for (const std::string& warning : imported.value().warnings) std::cerr << "Warning: " << warning << '\n';
     const auto loaded = toy3d::read_static_mesh_asset(files, destination.value());

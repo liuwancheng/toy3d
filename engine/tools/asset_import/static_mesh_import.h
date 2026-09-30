@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mesh_description/mesh_description.h"
+#include "asset_pair.h"
 
 namespace toy3d
 {
@@ -21,7 +22,7 @@ namespace toy3d
 
     struct StaticMeshImportAsset
     {
-        std::vector<std::uint8_t> bytes;
+        AssetPairBytes pair;
         std::vector<std::string> warnings;
     };
 

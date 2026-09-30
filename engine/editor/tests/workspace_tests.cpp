@@ -1,6 +1,7 @@
 #include "workspace/editor_workspace.h"
 
 #include "asset_file.h"
+#include "asset_pair.h"
 #include "asset_tools/material_asset_tools.h"
 
 #include <chrono>
@@ -53,31 +54,29 @@ int main()
     check(AssetId::parse("11111111111111111111111111111111", engine_id) &&
               AssetId::parse("22222222222222222222222222222222", project_id), "fixture identities must parse");
     if (!engine_id.valid() || !project_id.valid()) return 1;
-    AssetFileIndex engine_index;
-    engine_index.asset_id = engine_id;
-    engine_index.root_type = "test.EngineMesh";
-    engine_index.schema_version = 1;
-    const std::vector<AssetSegmentData> segments = {{"type_data", 1, true, {1u}}};
-    const auto engine_bytes = encode_asset_file(engine_index, segments);
+    TypeRegistry fixture_types;
+    check(register_material_asset_types(fixture_types).succeeded() && fixture_types.freeze().succeeded(),
+        "fixture material types must register");
+    MaterialAssetData engine_material;
+    engine_material.shader_name = "Toy3d/Surface/Phong";
+    const auto engine_bytes = encode_material_asset_pair(fixture_types, engine_id, engine_material);
     check(engine_bytes.succeeded(), "engine asset fixture must encode");
     if (!engine_bytes.succeeded()) return 1;
     check(platform.write_binary(PhysicalPath((fixture / "engine" / "asset" / "mesh.asset").u8string()),
-                                engine_bytes.value(), FileWriteMode::CreateNew).succeeded(),
+                                engine_bytes.value().asset, FileWriteMode::CreateNew).succeeded(),
           "engine asset fixture must be written");
-    AssetFileIndex project_index;
-    project_index.asset_id = project_id;
-    project_index.root_type = "test.ProjectScene";
-    project_index.schema_version = 1;
     AssetRef engine_reference;
     engine_reference.asset_id = engine_id;
-    engine_reference.expected_type = engine_index.root_type;
+    engine_reference.expected_type = "toy3d.MaterialAssetData";
     engine_reference.strength = AssetRefStrength::Strong;
-    project_index.dependencies.push_back(engine_reference);
-    const auto project_bytes = encode_asset_file(project_index, segments);
+    MaterialInstanceAssetData project_instance;
+    project_instance.parent = engine_reference;
+    const auto project_bytes = encode_material_instance_asset_pair(fixture_types, project_id,
+        project_instance);
     check(project_bytes.succeeded(), "project asset fixture must encode");
     if (!project_bytes.succeeded()) return 1;
     check(platform.write_binary(PhysicalPath((fixture / "project" / "asset" / "scene.asset").u8string()),
-                                project_bytes.value(), FileWriteMode::CreateNew).succeeded(),
+                                project_bytes.value().asset, FileWriteMode::CreateNew).succeeded(),
           "project asset fixture must be written");
 
     {
@@ -98,15 +97,15 @@ int main()
                   !platform.stat(PhysicalPath((fixture / "bin" / "authored.txt").u8string())).succeeded(),
               "project writes must target source assets, never the deployed directory");
         const VirtualPath duplicate = virtual_path("/Project/duplicate.asset");
-        check(workspace.files().write_binary(duplicate, engine_bytes.value(), FileWriteMode::CreateNew).succeeded(),
+        check(workspace.files().write_binary(duplicate, engine_bytes.value().asset, FileWriteMode::CreateNew).succeeded(),
               "duplicate identity fixture must be written");
         check(!workspace.refresh() && workspace.catalog().entries.size() == 2 && !workspace.error().empty(),
               "duplicate identities across roots must reject refresh and preserve the previous catalog");
         check(workspace.files().remove_file(duplicate).succeeded() && workspace.refresh(),
               "workspace must recover after removing invalid input");
-        check(!scan_asset_catalog(workspace.files(), std::vector<VirtualPath>{virtual_path("/Project"),
+        check(!scan_asset_catalog(workspace.types(), workspace.files(), std::vector<VirtualPath>{virtual_path("/Project"),
                  virtual_path("/Project/nested")}).succeeded(), "overlapping scan roots must be rejected");
-        check(!scan_asset_catalog(workspace.files(), std::vector<VirtualPath>{}).succeeded(),
+        check(!scan_asset_catalog(workspace.types(), workspace.files(), std::vector<VirtualPath>{}).succeeded(),
               "empty scan roots must be rejected");
 
         shader::ShaderParameterSchema schema;
@@ -140,7 +139,9 @@ int main()
         instance.parent.asset_id = material_id;
         instance.parent.expected_type = "toy3d.MaterialAssetData";
         AssetId instance_id;
-        check(create_material_instance_asset_in_workspace(workspace, "/Project/MI_Test.asset", instance, schema, instance_id).succeeded(),
+        const auto instance_created = create_material_instance_asset_in_workspace(workspace, "/Project/MI_Test.asset", instance, schema, instance_id);
+        if (!instance_created.succeeded()) std::cerr << "Instance create: " << instance_created.message << '\n';
+        check(instance_created.succeeded(),
             "instance must be created with a strong root Material reference");
         MaterialInstanceAssetData reopened_instance;
         check(read_material_instance_asset(workspace.types(), workspace.files(), virtual_path("/Project/MI_Test.asset"),
@@ -169,9 +170,9 @@ int main()
             check(AssetId::try_generate(next_id), "allocate depth fixture");
             MaterialInstanceAssetData layer;
             layer.parent = deepest;
-            const auto bytes = encode_material_instance_asset(workspace.types(), next_id, layer);
+            const auto bytes = encode_material_instance_asset_pair(workspace.types(), next_id, layer);
             const auto path = virtual_path("/Project/MI_Depth" + std::to_string(depth + 1u) + ".asset");
-            check(bytes.succeeded() && workspace.files().write_binary_atomic(path, bytes.value(), FilePublishMode::CreateNew).succeeded(),
+            check(bytes.succeeded() && workspace.asset_pairs().publish(path, bytes.value(), FilePublishMode::CreateNew).succeeded(),
                 "publish depth fixture");
             deepest = {next_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
             if (depth == maximum_material_parent_depth - 1u)
@@ -189,54 +190,60 @@ int main()
             "new material must reject unknown parameters");
         check(!create_material_asset_in_workspace(workspace, "/Engine/M_Invalid.asset", material, schema, rejected_id).succeeded(),
             "creation API must enforce the read-only engine root");
-        // Material saves must preserve optional blobs through the existing generic contract.
-        const AssetSegmentData optional_blob{"thumbnail_png", 2, false, {1u, 2u, 3u}};
-        if (original.succeeded())
-        {
-            const auto with_blob = replace_asset_segments(original.value(), {optional_blob});
-            check(with_blob.succeeded(), "optional material blob fixture must encode");
-            if (with_blob.succeeded())
-                check(workspace.files().write_binary_atomic(material_path, with_blob.value(), FilePublishMode::Replace).succeeded(),
-                    "optional material blob fixture must publish");
-        }
-        MaterialAssetData modified = reopened;
-        modified.two_sided = false;
-        const auto* location = workspace.catalog().index.find(material_id);
-        check(location != nullptr, "created material must be indexed");
-        if (location)
-        {
-            check(!save_asset(workspace.types(), SchemaMigrationRegistry{}, workspace.files(), material_path,
-                location->index, modified, [](const MaterialAssetData& value) { return validate_material_asset(value); }).succeeded(),
-                "material save must reject dropping optional blob bytes");
-            check(save_asset(workspace.types(), SchemaMigrationRegistry{}, workspace.files(), material_path,
-                location->index, modified, [](const MaterialAssetData& value) { return validate_material_asset(value); }, {optional_blob}).succeeded(),
-                "existing generic save must support the generated Material DTO");
-            check(read_material_asset(workspace.types(), workspace.files(), material_path, reopened).succeeded() && !reopened.two_sided,
-                "updated Material value must reopen identically");
-        }
+        AssetId obsolete_id;
+        check(AssetId::try_generate(obsolete_id), "obsolete fixture ID");
+        const auto obsolete_bytes = encode_material_asset(workspace.types(), obsolete_id, material);
+        const auto obsolete_path = virtual_path("/Project/M_Obsolete.asset");
+        check(obsolete_bytes.succeeded() && workspace.files().write_binary_atomic(obsolete_path,
+            obsolete_bytes.value(), FilePublishMode::CreateNew).succeeded(), "obsolete fixture publication");
+        check(!workspace.refresh() && workspace.catalog().index.find(material_id) != nullptr,
+            "old binary asset must be rejected without losing the last catalog");
+        check(workspace.files().remove_file(obsolete_path).succeeded() && workspace.refresh(),
+            "catalog must recover after obsolete asset removal");
         const auto instance_path = virtual_path("/Project/MI_Test.asset");
-        const auto instance_bytes = workspace.files().read_binary(instance_path);
-        const auto instance_index = inspect_asset(workspace.files(), instance_path);
-        check(instance_bytes.succeeded() && instance_index.succeeded(), "instance index fixture must load");
-        if (instance_bytes.succeeded() && instance_index.succeeded())
+        const auto instance_pair = workspace.asset_pairs().read(instance_path);
+        check(instance_pair.succeeded(), "instance index fixture must load");
+        if (instance_pair.succeeded())
         {
             ValueWriter typed_writer;
             check(encode_value(typed_writer, instance).succeeded(), "instance typed fixture must encode");
-            auto mismatched_index = instance_index.value();
+            auto mismatched_index = instance_pair.value().description.index;
             mismatched_index.dependencies.clear();
-            const auto mismatch = encode_asset_file(mismatched_index, {{"type_data", 1, true, typed_writer.bytes()}});
+            const auto mismatch = encode_asset_pair(workspace.types(), mismatched_index, typed_writer.bytes(), {});
             check(mismatch.succeeded(), "mismatched dependency fixture must encode");
             if (mismatch.succeeded())
             {
-                check(workspace.files().write_binary_atomic(instance_path, mismatch.value(), FilePublishMode::Replace).succeeded(),
+                check(workspace.asset_pairs().publish(instance_path, mismatch.value(), FilePublishMode::Replace).succeeded(),
                     "dependency mismatch fixture must publish");
                 MaterialInstanceAssetData retained = reopened_instance;
                 check(!read_material_instance_asset(workspace.types(), workspace.files(), instance_path, retained,
                     &workspace.catalog().index).succeeded() && retained.parent.asset_id == material_id,
                     "dependency mismatch must reject without replacing output");
-                check(workspace.files().write_binary_atomic(instance_path, instance_bytes.value(), FilePublishMode::Replace).succeeded(),
+                const auto restored = encode_asset_pair(workspace.types(), instance_pair.value().description.index,
+                    instance_pair.value().description.type_data, {});
+                check(restored.succeeded() && workspace.asset_pairs().publish(instance_path,
+                    restored.value(), FilePublishMode::Replace).succeeded(),
                     "valid instance fixture must restore");
             }
+        }
+        check(workspace.delete_asset(material_id).code == AssetErrorCode::Conflict,
+            "strong material references must block deletion");
+        const auto copied_material_path = virtual_path("/Project/M_Test_Copy.asset");
+        const auto copied_material = workspace.copy_asset(material_id, copied_material_path);
+        check(copied_material.succeeded() && !(copied_material.value() == material_id) &&
+            workspace.catalog().index.find(copied_material.value()) != nullptr &&
+            !workspace.files().stat(virtual_path("/Project/M_Test_Copy.meta")).succeeded(),
+            "copy of a descriptive material must assign a new ID without meta");
+        if (copied_material.succeeded())
+        {
+            const auto moved_material_path = virtual_path("/Project/M_Test_Moved.asset");
+            check(workspace.move_asset(copied_material.value(), moved_material_path).succeeded() &&
+                workspace.catalog().index.find(copied_material.value())->path == moved_material_path &&
+                !workspace.files().stat(copied_material_path).succeeded(),
+                "moving a material must retain its ID and remove the old descriptor");
+            check(workspace.delete_asset(copied_material.value()).succeeded() &&
+                !workspace.files().stat(moved_material_path).succeeded(),
+                "deleting a descriptive asset must remove it from the catalog");
         }
     }
 

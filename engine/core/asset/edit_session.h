@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset_index.h"
+#include "asset_pair.h"
 #include "property_path.h"
 
 #include <functional>
@@ -84,6 +85,38 @@ namespace toy3d
             bound_ = true;
             return AssetStatus::success();
         }
+
+        AssetStatus bind_published_pair(const FileSystem& files)
+        {
+            const AssetStatus thread = check_thread();
+            if (!thread.succeeded()) return thread;
+            const auto pair = read_asset_pair(types_, files, path_);
+            if (!pair.succeeded()) return pair.status();
+            const auto& document = pair.value().description;
+            if (!(document.index.asset_id == id_) || document.index.root_type != type_.name)
+                return problem(AssetErrorCode::TypeMismatch, {}, "published asset identity or type differs");
+            published_type_bytes_ = document.type_data;
+            bound_ = true;
+            return AssetStatus::success();
+        }
+
+        AssetStatus mark_pair_saved(const std::vector<std::uint8_t>& published)
+        {
+            const AssetStatus thread = check_thread();
+            if (!thread.succeeded()) return thread;
+            ValueWriter writer;
+            const ValueStatus encoded = encode_value(writer, current_);
+            if (!encoded.succeeded()) return problem(AssetErrorCode::Value,
+                encoded.property_path, encoded.message.c_str());
+            if (writer.bytes() != published)
+                return problem(AssetErrorCode::Conflict, {}, "saved bytes differ from edit session");
+            published_type_bytes_ = published;
+            saved_bytes_ = published;
+            bound_ = true;
+            return AssetStatus::success();
+        }
+
+        const std::vector<std::uint8_t>& published_type_bytes() const { return published_type_bytes_; }
 
         AssetResult<EditRecord> apply_edit(const std::vector<EditPatch>& patches,
                                            ValueLimits limits = {})

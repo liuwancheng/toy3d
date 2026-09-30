@@ -1,5 +1,7 @@
 #include "static_mesh/static_mesh_asset.h"
 
+#include "asset_pair.h"
+
 #include <set>
 #include <algorithm>
 #include <utility>
@@ -201,12 +203,62 @@ namespace toy3d
         return geometry;
     }
 
+    AssetResult<AssetPairBytes> encode_static_mesh_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const StaticMeshAssetGeometry& geometry,
+        std::vector<AssetSegmentData> optional_segments)
+    {
+        const auto blob = encode_static_mesh_geometry(geometry);
+        if (!blob.succeeded()) return AssetResult<AssetPairBytes>(blob.status());
+        StaticMeshAssetData metadata;
+        metadata.material_slots = geometry.material_slots;
+        metadata.vertex_count = static_cast<std::uint32_t>(geometry.vertices.size());
+        metadata.index_count = static_cast<std::uint32_t>(geometry.indices.size());
+        ValueWriter writer;
+        const ValueStatus typed = encode_value(writer, metadata);
+        if (!typed.succeeded())
+            return AssetResult<AssetPairBytes>(invalid("metadata encoding failed"));
+        AssetFileIndex index;
+        index.asset_id = id;
+        index.root_type = "toy3d.StaticMeshAssetData";
+        index.schema_version = 1u;
+        optional_segments.push_back({"render_geometry", 2u, true, blob.value()});
+        return encode_asset_pair(types, std::move(index), writer.bytes(),
+            std::move(optional_segments));
+    }
+
     AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path)
     {
-        const auto bytes = files.read_binary(path, ValueLimits{}.max_bytes);
-        if (!bytes.succeeded())
-            return AssetResult<StaticMeshAssetGeometry>({AssetErrorCode::Io, {}, path.utf8(), {}, {},
-                bytes.status().message, bytes.status()});
-        return decode_static_mesh_asset(bytes.value());
+        TypeRegistry types;
+        const ReflectionStatus registered = register_static_mesh_asset_types(types);
+        if (!registered.succeeded() || !types.freeze().succeeded())
+            return AssetResult<StaticMeshAssetGeometry>(invalid("static mesh schema registration failed"));
+        const auto pair = read_asset_pair(types, files, path);
+        if (!pair.succeeded()) return AssetResult<StaticMeshAssetGeometry>(pair.status());
+        const auto& description = pair.value().description;
+        if (description.index.root_type != "toy3d.StaticMeshAssetData" ||
+            description.index.schema_version != 1u || !description.has_meta)
+            return AssetResult<StaticMeshAssetGeometry>(invalid("unsupported static mesh root type or schema"));
+        ValueReader reader(description.type_data);
+        StaticMeshAssetData metadata;
+        if (!decode_value(reader, metadata).succeeded() || !reader.at_end() ||
+            !validate_metadata(metadata).succeeded())
+            return AssetResult<StaticMeshAssetGeometry>(invalid("invalid static mesh metadata"));
+        const AssetSegmentData* render_geometry = nullptr;
+        for (const AssetSegmentData& segment : pair.value().meta.segments)
+        {
+            if (segment.name == "render_geometry" && segment.kind == 2u && segment.required)
+                render_geometry = &segment;
+            else if (segment.required)
+                return AssetResult<StaticMeshAssetGeometry>(invalid("unknown required static mesh segment"));
+        }
+        if (!render_geometry || render_geometry->bytes.size() > ValueLimits{}.max_bytes)
+            return AssetResult<StaticMeshAssetGeometry>(invalid("missing or oversized render geometry"));
+        const auto geometry = decode_static_mesh_geometry(render_geometry->bytes);
+        if (!geometry.succeeded()) return geometry;
+        if (geometry.value().vertices.size() != metadata.vertex_count ||
+            geometry.value().indices.size() != metadata.index_count ||
+            geometry.value().material_slots != metadata.material_slots)
+            return AssetResult<StaticMeshAssetGeometry>(invalid("metadata and geometry disagree"));
+        return geometry;
     }
 } // namespace toy3d

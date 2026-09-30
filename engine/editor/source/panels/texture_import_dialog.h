@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "asset_identity.h"
+#include "texture_asset/texture_asset.h"
 #include "task_graph/graph_event.h"
 
 namespace toy3d
@@ -34,7 +35,7 @@ namespace toy3d
         {
             AssetId id;
             std::string destination;
-            std::vector<std::uint8_t> bytes;
+            Texture2DAsset texture;
             std::string error;
             bool saved = false;
         };

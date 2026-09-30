@@ -10,7 +10,7 @@
 | 创作数据反射 | `Toy3dReflection` | `reflection/reflection_macros.h`、`reflection/type_registry.h` | `engine/tools/reflection_codegen/tests/codegen_tests.cpp` |
 | UTF-8 校验 | `Toy3dText` | `text/utf8.h` | `engine/core/tests/text_tests.cpp` |
 | 值编解码 | `Toy3dSerialization` | `serialization/value_codec.h`、`serialization/math_value_codec.h`、`serialization/schema_migration.h` | `engine/core/tests/serialization_tests.cpp` |
-| Asset 容器与身份 | `Toy3dResource` | `asset_file.h`、`asset_identity.h`、`asset_index.h`、`property_path.h`、`edit_session.h` | `engine/core/asset/tests/asset_file_tests.cpp`、`engine/tools/reflection_codegen/tests/codegen_tests.cpp` |
+| Asset 容器与身份 | `Toy3dResource` | `asset_pair.h`、`asset_pair_store.h`、`asset_yaml.h`、`asset_meta.h`、`asset_identity.h`、`asset_index.h`、`edit_session.h` | `engine/tools/reflection_codegen/tests/resource_kind_tests.cpp` |
 | 源网格描述 | `Toy3dMeshDescription` | `mesh_description/mesh_description.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
 | StaticMesh 资产 | `Toy3dStaticMeshAsset` | `static_mesh/static_mesh_asset.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
 | Material/Instance 资产 | `Toy3dMaterialAsset` | `material/material_asset.h`、`material/material_asset_data.h` | `engine/core/material/tests/material_asset_tests.cpp`、`engine/editor/tests/workspace_tests.cpp` |
@@ -88,11 +88,11 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 通用 Asset 代码位于 `engine/core/asset`，独立 target 名称暂保留 `Toy3dResource`。`AssetId::try_generate(output)` 生成非零随机 128 位身份，失败不修改输出；不是内容 hash，创建方仍须在 catalog 查重。正式 StaticMesh 领域类型位于 `engine/core/static_mesh`，详细格式与加载流程见 [StaticMesh 生产链](static-mesh-import-design.md)。
 
-`Toy3dMaterialAsset` 已提供正式 Material/Instance DTO 与生成的反射和值编解码。先调用 `register_material_asset_types(types)` 并检查结果，再冻结 TypeRegistry；创建使用 `encode_material_asset()` / `encode_material_instance_asset()` 和 FileSystem 原子 CreateNew，读取使用 `read_material_asset()` / `read_material_instance_asset()`，修改保存沿用 EditSession/save_asset。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用；encode 对覆盖按名称排序，reader 核对 typed 引用与外层依赖索引。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。`Toy3dTextureAsset` 提供 `register_texture_asset_types()`、`encode_texture_asset()`、`read_texture_asset()`；PNG/JPEG 源图通过 `Toy3dTextureImport` 转为 GPU ready mip，再由 Editor 原子 CreateNew。材质控件与源码编译分别使用上述资源入口和 Toy3dProcess，详见[材质系统设计](material-system-design.md)。
+`Toy3dMaterialAsset` 提供 Material/Instance DTO 与生成的反射和值编解码。先注册并冻结 TypeRegistry；领域编码器直接生成 YAML 候选，Editor 经 `AssetPairStore::publish()` 写入纯描述 `.asset`，Material EditSession 也通过 AssetPairStore 保存。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。Texture2D 导入将 GPU ready mip 放入 `.meta`；格式见 [Asset 描述与处理数据格式](asset-pair-format-design.md)。
 
-`AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。`encode_asset_file(index, segments)` 按稳定名称生成完整 Asset 字节；`inspect_asset(files, path)` 只读取固定头和索引。`load_asset<T>(types, migrations, files, path, type_name, output, validate)` 形成完整候选并在领域验证成功后赋值；`save_asset<T>(types, migrations, files, path, index, value, validate, extra_segments)` 先检查已发布文件能无损解码，并要求提供已有大段的字节，再通过 FileSystem 原子发布。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
+`AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。资产以 `encode_asset_pair()` 生成 YAML 与可选 meta，`read_asset_pair()` 验证配对，`AssetPairStore` 执行发布、删除、复制、移动和恢复。旧 `asset_file.h` 编解码接口仅保留给隔离测试，不是生产磁盘格式入口。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
 
-旧文件格式通过另一个 `load_asset<T>` 重载显式传入 `AssetFormatMigrationRegistry`，先迁移文件外层，再执行 schema 迁移；未知格式与缺失步骤返回错误且不修改原文件或调用方值。格式版本 0 目前只作迁移测试 fixture。
+旧 `AssetFormatMigrationRegistry` 仅由历史格式测试覆盖，不在 Editor、runtime 或导入链使用。
 
 `access_property(types, type, encoded_value, path)` 读取嵌套字段、数组元素或变体分支；`PropertyPathPart::element_id(identity_property, identity)` 在插入和重排后按作者保存的稳定 ID 选择元素。`EditSession<T>` 在 owner 线程持有快照、撤销记录与脏状态，先 `bind_published(files)`，再用 `apply_edit({patch...})` 提交单次或复合编辑；`undo()` / `redo()` 恢复快照，`save(files, migrations, index, extra_segments)` 仅在目标文件成功原子发布后清脏。调用方提供领域 validator 与可选预览准备/通知回调，使用 `EditChangeKind` 决定 setter、重新导入、Cook 或完整候选替换；失败不发布通知。错误由 Logger 或 Editor Dialog 的调用方处理。
 
@@ -104,7 +104,7 @@ Editor 场景材质赋值入口为 `EditorCommandHistory::assign_material()`；E
 
 `sha256(bytes/text)` 返回固定 32 字节签名；Shader key 的组装策略仍在 Shader，算法只留 Core 一份。`encode_png(image,bytes)` / `decode_png(bytes,image)` 是有界内存 codec，失败不替换输出，不直接操作文件或 RHI。图像为 top-left、紧凑 RGBA8，调用方负责色彩语义。
 
-`Toy3dAssetThumbnail` 编解码可选图片/源签名段，不依赖 PNG。`replace_asset_segments(original,replacements)` 在 `Toy3dResource` 中保留其他段的原始字节、身份和引用，返回完整候选而不写文件；发布者仍须检查权限/完整文件基线并通过 FileSystem 原子发布。格式、所有权、线程和平台边界见 [Asset 缩略图](asset-thumbnail-design.md)。
+`Toy3dAssetThumbnail` 提供内容签名；缩略图 PNG 写入 `/Saved/AssetThumbnails/`，不改资产描述或 meta。格式、所有权、线程和平台边界见 [Asset 缩略图](asset-thumbnail-design.md)。
 
 ## FileSystem
 

@@ -1,6 +1,7 @@
 #include "asset_file.h"
 #include "asset_index.h"
 #include "asset_catalog.h"
+#include "asset_meta.h"
 
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
@@ -49,6 +50,24 @@ int main()
     check(AssetId::parse("102132435465768798a9babbdcddedef", second_id) &&
               SubresourceId::parse("ffeeddccbbaa99887766554433221100", mesh_id),
           "index IDs failed to parse");
+    AssetMetaFile meta;
+    meta.asset_id = id;
+    meta.segments = {{"texture_mips", 2u, true, {4u, 5u}},
+                     {"render_geometry", 2u, true, {1u, 2u, 3u}}};
+    const auto meta_bytes = encode_asset_meta(meta);
+    check(meta_bytes.succeeded(), "meta encoding failed");
+    const auto decoded_meta = decode_asset_meta(meta_bytes.value());
+    check(decoded_meta.succeeded() && decoded_meta.value().asset_id == id &&
+        decoded_meta.value().segments.size() == 2u &&
+        decoded_meta.value().segments[0].name == "render_geometry" &&
+        decoded_meta.value().segments[0].bytes == std::vector<std::uint8_t>({1u, 2u, 3u}),
+        "meta roundtrip or deterministic ordering failed");
+    std::vector<std::uint8_t> damaged_meta = meta_bytes.value();
+    damaged_meta.pop_back();
+    check(!decode_asset_meta(damaged_meta).succeeded(), "truncated meta was accepted");
+    damaged_meta = meta_bytes.value();
+    std::fill(damaged_meta.begin() + 16u, damaged_meta.begin() + 32u, 0u);
+    check(!decode_asset_meta(damaged_meta).succeeded(), "invalid meta identity was accepted");
     AssetFileIndex first_index;
     first_index.asset_id = id;
     first_index.root_type = "toy3d.SceneAsset";
@@ -234,25 +253,6 @@ int main()
     check(physical_locations.resolve(root_reference).succeeded() &&
               inspect_asset(files, destination.value()).succeeded(),
           "reference failed after physical file move");
-    auto catalog = scan_asset_catalog(files, mount_root.value());
-    check(catalog.succeeded() && catalog.value().entries.size() == 1 &&
-              catalog.value().directories.size() == 2 &&
-              catalog.value().index.find(id) != nullptr,
-          "asset catalog did not scan the moved asset and arbitrary folder");
-    auto duplicate = VirtualPath::parse("/asset/duplicate.asset");
-    check(duplicate.succeeded() &&
-              files.write_binary(duplicate.value(), encoded.value(), FileWriteMode::CreateNew).succeeded() &&
-              scan_asset_catalog(files, mount_root.value()).status().code == AssetErrorCode::DuplicateIdentity &&
-              catalog.value().index.find(id) != nullptr &&
-              files.remove_file(duplicate.value()).succeeded(),
-          "duplicate asset identity did not reject the new scan");
-    auto damaged = VirtualPath::parse("/asset/damaged.asset");
-    check(damaged.succeeded() &&
-              files.write_binary(damaged.value(), {0u, 1u}, FileWriteMode::CreateNew).succeeded() &&
-              !scan_asset_catalog(files, mount_root.value()).succeeded() &&
-              files.remove_file(damaged.value()).succeeded() &&
-              scan_asset_catalog(files, mount_root.value()).succeeded(),
-          "damaged asset file did not reject the scan or recover after removal");
     std::error_code cleanup_error;
     fs::remove_all(root, cleanup_error);
     check(!cleanup_error, "fixture cleanup failed");

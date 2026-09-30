@@ -7,8 +7,8 @@
 
 namespace toy3d
 {
-    bool prepare_texture_asset_from_source(const PhysicalPath& source, const AssetId& id,
-        std::vector<std::uint8_t>& bytes, std::string& error)
+    bool prepare_texture_asset_from_source(const PhysicalPath& source,
+        Texture2DAsset& texture, std::string& error)
     {
         error.clear();
         NativePlatformFile platform;
@@ -37,14 +37,14 @@ namespace toy3d
         if (!frozen.succeeded()) { error = frozen.message; return false; }
         const auto source_bytes = files.read_binary(input.value(), 32u * 1024u * 1024u);
         if (!source_bytes.succeeded()) { error = source_bytes.status().message; return false; }
-        const auto imported = import_texture_asset(source_bytes.value(), id);
+        const auto imported = import_texture_image(source_bytes.value());
         if (!imported.succeeded()) { error = imported.status().message; return false; }
-        bytes = imported.value();
+        texture = imported.value();
         return true;
     }
 
     bool publish_texture_asset(EditorWorkspace& workspace, const std::string& destination,
-        const AssetId& id, const std::vector<std::uint8_t>& bytes, AssetId& published_id, std::string& error)
+        const AssetId& id, const Texture2DAsset& texture, AssetId& published_id, std::string& error)
     {
         error.clear();
         const auto output = VirtualPath::parse(destination);
@@ -55,11 +55,9 @@ namespace toy3d
         if (existing.succeeded()) { error = "Texture asset already exists; choose another resource name."; return false; }
         if (existing.status().code != FileErrorCode::NotFound) { error = existing.status().message; return false; }
         if (workspace.catalog().index.find(id)) { error = "Texture2D ID already exists; retry import."; return false; }
-        const auto inspected = inspect_asset_bytes(bytes);
-        if (!inspected.succeeded() || !(inspected.value().asset_id == id) ||
-            inspected.value().root_type != "toy3d.Texture2DAssetData")
-        { error = "Prepared Texture2D package identity is invalid."; return false; }
-        const FileStatus published = workspace.files().write_binary_atomic(output.value(), bytes,
+        const auto pair = encode_texture_asset_pair(workspace.types(), id, texture);
+        if (!pair.succeeded()) { error = pair.status().message; return false; }
+        const AssetStatus published = workspace.asset_pairs().publish(output.value(), pair.value(),
             FilePublishMode::CreateNew);
         if (!published.succeeded()) { error = published.message; return false; }
         published_id = id;

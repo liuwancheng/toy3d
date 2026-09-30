@@ -17,14 +17,12 @@ namespace toy3d
         constexpr std::size_t cache_capacity = 128;
         constexpr std::size_t asset_byte_limit = 64u * 1024u * 1024u;
 
-        bool same_source(const AssetThumbnailSource& a, const AssetThumbnailSource& b)
+        VirtualPath thumbnail_cache_path(const AssetId& id, const AssetThumbnailSource& source)
         {
-            return a.preview_version == b.preview_version && a.content_hash == b.content_hash;
-        }
-
-        bool project_path(const std::string& path)
-        {
-            return path.compare(0, 9, "/Project/") == 0;
+            const std::string name = "/Saved/AssetThumbnails/" + id.hex() + "-" +
+                sha256_to_hex(source.content_hash) + "-v" +
+                std::to_string(thumbnail_generator_version) + ".png";
+            return VirtualPath::parse(name).value();
         }
 
         const AssetCatalogEntry* find_asset(const EditorWorkspace& workspace, const AssetId& id)
@@ -85,6 +83,7 @@ namespace toy3d
             Entry entry;
             entry.id = asset.file.asset_id;
             entry.path = asset.path.utf8();
+            entry.persist = true;
             it = entries_.emplace(entry.id, std::move(entry)).first;
         }
         Entry& entry = it->second;
@@ -92,7 +91,7 @@ namespace toy3d
         return {entry.texture, entry.stage != Stage::Ready && entry.stage != Stage::Failed, entry.error};
     }
 
-    void AssetThumbnailPool::generate(const AssetId& id, bool save)
+    void AssetThumbnailPool::generate(const AssetId& id)
     {
         const auto* asset = find_asset(workspace_, id);
         if (!asset || asset->file.root_type != "toy3d.StaticMeshAssetData") return;
@@ -100,8 +99,7 @@ namespace toy3d
         const auto it = entries_.find(id);
         if (it == entries_.end()) { TOY_LOG_WARN("Thumbnail cache is busy; retry generation."); return; }
         Entry& entry = it->second;
-        entry.persist = entry.persist || (save && project_path(entry.path));
-        if (save && !project_path(entry.path)) TOY_LOG_WARN("Engine thumbnails are generated in memory only.");
+        entry.persist = true;
         if (entry.id == active_id_) { entry.rerun = true; return; }
         entry.force = true;
         entry.stage = Stage::Queued;
@@ -113,10 +111,11 @@ namespace toy3d
         for (auto& pair : entries_)
         {
             Entry& entry = pair.second;
-            if (entry.id == active_id_) { entry.rerun = true; entry.persist = false; continue; }
+            if (entry.id == active_id_) { entry.rerun = true; entry.persist = true; continue; }
             if (entry.texture.valid()) pending_work_.retire_textures.push_back(entry.texture);
             entry.texture = {};
             entry.stage = Stage::Queued;
+            entry.persist = true;
             entry.error.clear();
         }
     }
@@ -138,65 +137,56 @@ namespace toy3d
         cpu_result_ = result;
         const auto path = asset->path;
         const AssetId id = entry.id;
-        const bool force = entry.force || entry.persist;
+        const bool force = entry.force;
         FileSystem* files = &workspace_.files();
+        AssetPairStore* pairs = &workspace_.asset_pairs();
         cpu_task_ = dispatch_graph_task(*tasks_, "Load asset thumbnail",
-            [result, files, path, id, force](NamedThread, const GraphEventRef&)
+            [result, files, pairs, path, id, force](NamedThread, const GraphEventRef&)
             {
                 try
                 {
-                    const auto index = inspect_asset(*files, path);
-                    if (!index.succeeded()) { result->error = index.status().message; return; }
-                    if (!(index.value().asset_id == id) || index.value().root_type != "toy3d.StaticMeshAssetData")
+                    const auto original = files->read_binary(path, asset_byte_limit);
+                    if (!original.succeeded()) { result->error = original.status().message; return; }
+                    const auto pair = pairs->read(path);
+                    if (!pair.succeeded()) { result->error = pair.status().message; return; }
+                    const auto& index = pair.value().description.index;
+                    if (!(index.asset_id == id) ||
+                        index.root_type != "toy3d.StaticMeshAssetData")
                     { result->error = "Asset identity/type changed during thumbnail load."; return; }
-                    const AssetSegment* source_segment = nullptr;
-                    const AssetSegment* thumbnail_segment = nullptr;
-                    for (const auto& segment : index.value().segments)
-                    {
-                        if (segment.name == "thumbnail_source" && segment.kind == 2 && !segment.required) source_segment = &segment;
-                        if (segment.name == "thumbnail" && segment.kind == 2 && !segment.required) thumbnail_segment = &segment;
-                    }
-                    if (!force && source_segment && thumbnail_segment)
-                    {
-                        const auto source_bytes = read_asset_segment(*files, path, id, *source_segment, 1024);
-                        const auto image_bytes = read_asset_segment(*files, path, id, *thumbnail_segment, thumbnail_max_bytes + 1024);
-                        if (source_bytes.succeeded() && image_bytes.succeeded())
-                        {
-                            const auto source = decode_thumbnail_source(source_bytes.value());
-                            const auto thumbnail = decode_asset_thumbnail(image_bytes.value());
-                            if (source.succeeded() && thumbnail.succeeded() && same_source(source.value(), thumbnail.value().source) &&
-                                thumbnail.value().generator_version == thumbnail_generator_version)
-                            {
-                                Rgba8Image decoded;
-                                const auto status = decode_png(thumbnail.value().png, decoded);
-                                if (status.succeeded() && decoded.width == thumbnail.value().width && decoded.height == thumbnail.value().height)
-                                {
-                                    result->source = source.value();
-                                    result->extent = {decoded.width, decoded.height};
-                                    result->pixels = std::move(decoded.pixels);
-                                    for (std::size_t i = 0; i < result->pixels.size(); i += 4)
-                                    {
-                                        std::swap(result->pixels[i], result->pixels[i + 2]);
-                                        result->pixels[i + 3] = 255;
-                                    }
-                                    return;
-                                }
-                            }
-                        }
-                        result->warning = "Cached thumbnail is invalid or stale; generating a replacement in memory.";
-                    }
-                    const auto bytes = files->read_binary(path, asset_byte_limit);
-                    if (!bytes.succeeded()) { result->error = bytes.status().message; return; }
-                    const auto source = calculate_static_mesh_thumbnail_source(bytes.value());
+                    const auto source = calculate_static_mesh_thumbnail_source(pair.value());
                     if (!source.succeeded()) { result->error = source.status().message; return; }
-                    const auto geometry = decode_static_mesh_asset(bytes.value());
+                    if (!force)
+                    {
+                        const auto image_bytes = files->read_binary(thumbnail_cache_path(id,
+                            source.value()), thumbnail_max_bytes);
+                        if (image_bytes.succeeded())
+                        {
+                            Rgba8Image decoded;
+                            const auto status = decode_png(image_bytes.value(), decoded);
+                            if (status.succeeded() && decoded.width == thumbnail_default_size &&
+                                decoded.height == thumbnail_default_size)
+                            {
+                                result->source = source.value();
+                                result->extent = {decoded.width, decoded.height};
+                                result->pixels = std::move(decoded.pixels);
+                                for (std::size_t i = 0; i < result->pixels.size(); i += 4)
+                                {
+                                    std::swap(result->pixels[i], result->pixels[i + 2]);
+                                    result->pixels[i + 3] = 255;
+                                }
+                                return;
+                            }
+                            result->warning = "Cached thumbnail is invalid or stale; generating a replacement.";
+                        }
+                        else if (image_bytes.status().code != FileErrorCode::NotFound)
+                            result->warning = "Cached thumbnail could not be read; generating a replacement: " +
+                                image_bytes.status().message;
+                    }
+                    const auto geometry = read_static_mesh_asset(*files, path);
                     if (!geometry.succeeded()) { result->error = geometry.status().message; return; }
-                    const auto original_index = inspect_asset_bytes(bytes.value());
-                    if (!original_index.succeeded() || !(original_index.value().asset_id == id))
-                    { result->error = "Asset identity changed during thumbnail generation."; return; }
                     result->source = source.value();
                     result->geometry = geometry.value();
-                    result->original = bytes.value();
+                    result->original = original.value();
                     result->extent = {thumbnail_default_size, thumbnail_default_size};
                 }
                 catch (const std::exception& error) { result->error = error.what(); }
@@ -226,19 +216,10 @@ namespace toy3d
                         std::swap(image.pixels[i], image.pixels[i + 2]);
                         image.pixels[i + 3] = 255;
                     }
-                    AssetThumbnailData thumbnail;
-                    thumbnail.source = result->source;
-                    thumbnail.width = image.width;
-                    thumbnail.height = image.height;
-                    const auto encoded = encode_png(image, thumbnail.png);
+                    std::vector<std::uint8_t> png;
+                    const auto encoded = encode_png(image, png);
                     if (!encoded.succeeded()) { result->error = encoded.message; return; }
-                    const auto source_segment = encode_thumbnail_source(result->source);
-                    const auto image_segment = encode_asset_thumbnail(thumbnail);
-                    if (!source_segment.succeeded() || !image_segment.succeeded())
-                    { result->error = "Thumbnail segment encoding failed."; return; }
-                    const auto replaced = replace_asset_segments(result->original, {source_segment.value(), image_segment.value()});
-                    if (!replaced.succeeded()) { result->error = replaced.status().message; return; }
-                    result->candidate = replaced.value();
+                    result->candidate = std::move(png);
                 }
                 catch (const std::exception& error) { result->error = error.what(); }
             });
@@ -264,7 +245,7 @@ namespace toy3d
                 {
                     const auto* asset = find_asset(workspace_, entry.id);
                     const auto path = VirtualPath::parse(entry.path);
-                    if (!asset || asset->path.utf8() != entry.path || !path.succeeded() || !project_path(entry.path))
+                    if (!asset || asset->path.utf8() != entry.path || !path.succeeded())
                         fail(entry, "Thumbnail save rejected: asset was moved or removed.");
                     else
                     {
@@ -274,13 +255,19 @@ namespace toy3d
                             fail(entry, "Thumbnail save conflict: asset changed; refresh and regenerate.");
                         else
                         {
-                            const auto saved = workspace_.files().write_binary_atomic(path.value(), result->candidate, FilePublishMode::Replace);
-                            if (!saved.succeeded()) fail(entry, saved.message);
+                            const auto directory = VirtualPath::parse("/Saved/AssetThumbnails");
+                            const FileStatus made = directory.succeeded() ?
+                                workspace_.files().create_directories(directory.value()) :
+                                FileStatus{};
+                            if (!directory.succeeded() || !made.succeeded())
+                                fail(entry, "Could not create thumbnail cache directory.");
                             else
                             {
-                                TOY_LOG_INFO("Saved asset thumbnail: {}", entry.path);
-                                if (!workspace_.refresh()) TOY_LOG_WARN("Thumbnail saved, but asset catalog refresh failed: {}", workspace_.error());
-                                finish(entry);
+                                const auto saved = workspace_.files().write_binary_atomic(
+                                    thumbnail_cache_path(entry.id, result->source), result->candidate,
+                                    FilePublishMode::Replace);
+                                if (!saved.succeeded()) fail(entry, saved.message);
+                                else finish(entry);
                             }
                         }
                     }

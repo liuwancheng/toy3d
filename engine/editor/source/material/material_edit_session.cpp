@@ -77,7 +77,7 @@ namespace toy3d
                 &workspace_.catalog().index,
                 [this](const MaterialInstanceAssetData& data, EditChangeKind) { return prepare_instance(data); },
                 [this](const EditRecord&) { notify_instance(); });
-            status = next_instance->bind_published(workspace_.files());
+            status = next_instance->bind_published_pair(workspace_.files());
         }
         else
         {
@@ -89,7 +89,7 @@ namespace toy3d
                 &workspace_.catalog().index,
                 [this](const MaterialAssetData& data, EditChangeKind) { return prepare(data.overrides); },
                 [this](const EditRecord&) { notify(root_->value().overrides); });
-            status = next_root->bind_published(workspace_.files());
+            status = next_root->bind_published_pair(workspace_.files());
         }
         if (!status.succeeded()) return status;
         clear();
@@ -439,34 +439,43 @@ namespace toy3d
         if (!writable()) return fail(AssetErrorCode::ReadOnly, "Engine materials are read only.");
         AssetStatus status = finish_gesture();
         if (!status.succeeded()) return status;
-        const auto inspected = inspect_asset(workspace_.files(), path_);
-        if (!inspected.succeeded()) return inspected.status();
-        const auto& published = inspected.value();
-        if (!(published.asset_id == opened_index_.asset_id) || published.root_type != opened_index_.root_type ||
-            published.schema_version != opened_index_.schema_version || !same_references(published.dependencies, opened_index_.dependencies) ||
-            published.subresources.size() != opened_index_.subresources.size())
-            return fail(AssetErrorCode::Conflict, "Asset identity or dependency index changed since opening.");
-        for (std::size_t i = 0; i < published.subresources.size(); ++i)
-            if (!(published.subresources[i].id == opened_index_.subresources[i].id) ||
-                published.subresources[i].type_name != opened_index_.subresources[i].type_name)
-                return fail(AssetErrorCode::Conflict, "Asset subresources changed since opening.");
-        std::vector<AssetSegmentData> extra;
-        for (const auto& segment : published.segments)
         {
-            if (segment.name == "type_data") continue;
-            const auto bytes = read_asset_segment(workspace_.files(), path_, id_, segment,
-                static_cast<std::size_t>(AssetFileLimits{}.max_file_bytes));
-            if (!bytes.succeeded()) return bytes.status();
-            extra.push_back({segment.name, segment.kind, segment.required, bytes.value()});
+            const auto published = workspace_.asset_pairs().read(path_);
+            if (!published.succeeded()) return published.status();
+            const auto& description = published.value().description;
+            if (!(description.index.asset_id == opened_index_.asset_id) ||
+                description.index.root_type != opened_index_.root_type ||
+                description.index.schema_version != opened_index_.schema_version ||
+                !same_references(description.index.dependencies, opened_index_.dependencies) ||
+                description.index.subresources.size() != opened_index_.subresources.size() ||
+                description.has_meta ||
+                description.type_data != (root_ ? root_->published_type_bytes() :
+                    instance_->published_type_bytes()))
+                return fail(AssetErrorCode::Conflict,
+                    "Material description changed since opening.");
+            for (std::size_t i = 0; i < description.index.subresources.size(); ++i)
+                if (!(description.index.subresources[i].id == opened_index_.subresources[i].id) ||
+                    description.index.subresources[i].type_name != opened_index_.subresources[i].type_name)
+                    return fail(AssetErrorCode::Conflict,
+                        "Material subresources changed since opening.");
+            AssetFileIndex next = description.index;
+            next.dependencies = root_ ? material_asset_dependencies(root_->value()) :
+                material_asset_dependencies(instance_->value());
+            ValueWriter writer;
+            const ValueStatus encoded = root_ ? encode_value(writer, root_->value()) :
+                encode_value(writer, instance_->value());
+            if (!encoded.succeeded()) return fail(AssetErrorCode::Value, encoded.message);
+            const auto candidate = encode_asset_pair(workspace_.types(), next, writer.bytes(), {});
+            if (!candidate.succeeded()) return candidate.status();
+            status = workspace_.asset_pairs().publish(path_, candidate.value(), FilePublishMode::Replace);
+            if (!status.succeeded()) return status;
+            status = root_ ? root_->mark_pair_saved(writer.bytes()) :
+                instance_->mark_pair_saved(writer.bytes());
+            if (!status.succeeded()) return status;
+            opened_index_ = next;
+            if (!workspace_.refresh()) return fail(AssetErrorCode::InvalidState,
+                "Material was saved, but catalog refresh failed: " + workspace_.error());
+            return publish_saved();
         }
-        AssetFileIndex next = published;
-        next.dependencies = root_ ? material_asset_dependencies(root_->value()) : material_asset_dependencies(instance_->value());
-        const SchemaMigrationRegistry migrations;
-        status = root_ ? root_->save(workspace_.files(), migrations, next, std::move(extra)) :
-                         instance_->save(workspace_.files(), migrations, next, std::move(extra));
-        if (!status.succeeded()) return status;
-        opened_index_ = next;
-        if (!workspace_.refresh()) return fail(AssetErrorCode::InvalidState, "Material was saved, but catalog refresh failed: " + workspace_.error());
-        return publish_saved();
     }
 }

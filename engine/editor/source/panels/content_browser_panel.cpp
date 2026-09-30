@@ -73,6 +73,9 @@ namespace toy3d
     ContentBrowserActions draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
                               bool& show_engine_content, AssetThumbnailPool& thumbnails, float& tile_size, bool import_enabled)
     {
+        static AssetId pending_delete;
+        static std::string delete_error;
+        AssetId requested_delete;
         ContentBrowserActions actions;
         if (ImGui::Begin("Content Browser"))
         {
@@ -97,6 +100,7 @@ namespace toy3d
             if (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)
             { ImGui::SameLine(); ImGui::TextDisabled("(read only)"); }
             if (!workspace.error().empty()) ImGui::TextWrapped("Asset scan: %s", workspace.error().c_str());
+            if (!delete_error.empty()) ImGui::TextWrapped("Asset operation: %s", delete_error.c_str());
             ImGui::Separator();
             if (ImGui::BeginTable("Content Browser Columns", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
             {
@@ -206,8 +210,10 @@ namespace toy3d
                                 }
                                 const bool is_mesh = item.asset->file.root_type == "toy3d.StaticMeshAssetData";
                                 const bool writable = item.path.compare(0, 9, "/Project/") == 0;
-                                if (ImGui::MenuItem(writable ? "Generate / Regenerate Thumbnail" : "Generate Thumbnail (memory only)", nullptr, false, is_mesh))
-                                    thumbnails.generate(item.asset->file.asset_id, writable);
+                                if (ImGui::MenuItem("Generate / Regenerate Thumbnail", nullptr, false, is_mesh))
+                                    thumbnails.generate(item.asset->file.asset_id);
+                                if (ImGui::MenuItem("Delete Asset...", nullptr, false, writable))
+                                    requested_delete = item.asset->file.asset_id;
                                 ImGui::EndPopup();
                             }
                             ImGui::PopID();
@@ -240,6 +246,40 @@ namespace toy3d
                 }
                 ImGui::EndChild();
                 ImGui::EndTable();
+            }
+            if (requested_delete.valid())
+            {
+                pending_delete = requested_delete;
+                delete_error.clear();
+                ImGui::OpenPopup("Delete Asset");
+            }
+            if (ImGui::BeginPopupModal("Delete Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                const auto* location = workspace.catalog().index.find(pending_delete);
+                ImGui::TextWrapped("Delete %s and its paired data?",
+                    location ? location->path.utf8().c_str() : "the selected asset");
+                if (ImGui::Button("Delete"))
+                {
+                    const AssetStatus deleted = workspace.delete_asset(pending_delete);
+                    if (deleted.succeeded())
+                    {
+                        if (selection.asset_id() == pending_delete) selection.clear_asset();
+                        thumbnails.invalidate();
+                        pending_delete = {};
+                        delete_error.clear();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else delete_error = deleted.message;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                {
+                    pending_delete = {};
+                    delete_error.clear();
+                    ImGui::CloseCurrentPopup();
+                }
+                if (!delete_error.empty()) ImGui::TextWrapped("%s", delete_error.c_str());
+                ImGui::EndPopup();
             }
         }
         ImGui::End();

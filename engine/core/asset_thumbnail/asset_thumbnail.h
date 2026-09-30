@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset_file.h"
+#include "asset_pair.h"
 #include "hash/sha256.h"
 
 namespace toy3d
@@ -27,6 +28,7 @@ namespace toy3d
 
     AssetResult<AssetThumbnailSource> calculate_static_mesh_thumbnail_source(
         const std::vector<std::uint8_t>& asset_bytes);
+    AssetResult<AssetThumbnailSource> calculate_static_mesh_thumbnail_source(const AssetPair& pair);
     AssetResult<AssetSegmentData> encode_thumbnail_source(const AssetThumbnailSource& source);
     AssetResult<AssetThumbnailSource> decode_thumbnail_source(const std::vector<std::uint8_t>& bytes);
     AssetResult<AssetSegmentData> encode_asset_thumbnail(const AssetThumbnailData& thumbnail);

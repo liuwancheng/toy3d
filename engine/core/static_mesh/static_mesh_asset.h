@@ -3,6 +3,7 @@
 #include "mesh_description/mesh_description.h"
 #include "static_mesh/static_mesh_asset_data.h"
 #include "static_mesh_reflection.h"
+#include "asset_pair.h"
 
 namespace toy3d
 {
@@ -37,5 +38,8 @@ namespace toy3d
     AssetResult<StaticMeshAssetGeometry> decode_static_mesh_asset(const std::vector<std::uint8_t>& bytes);
     AssetResult<std::vector<std::uint8_t>> encode_static_mesh_asset(const AssetId& id,
         const StaticMeshAssetGeometry& geometry, std::vector<AssetSegmentData> editor_segments = {});
+    AssetResult<AssetPairBytes> encode_static_mesh_asset_pair(const TypeRegistry& types,
+        const AssetId& id, const StaticMeshAssetGeometry& geometry,
+        std::vector<AssetSegmentData> optional_segments = {});
     AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path);
 } // namespace toy3d

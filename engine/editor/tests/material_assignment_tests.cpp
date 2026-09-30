@@ -94,10 +94,10 @@ int main(int argc, char** argv)
     imported_texture.height = 1u;
     imported_texture.format = PixelFormat::R8G8B8A8UNormSRGB;
     imported_texture.mips.push_back({4u, 4u, {255u, 64u, 32u, 255u}});
-    const auto texture_bytes = encode_texture_asset(texture_id, imported_texture);
+    const auto texture_bytes = encode_texture_asset_pair(workspace.types(), texture_id, imported_texture);
     const auto texture_path = VirtualPath::parse("/Project/T_Tint.asset");
     if (!texture_bytes.succeeded() || !texture_path.succeeded() ||
-        !workspace.files().write_binary_atomic(texture_path.value(), texture_bytes.value(),
+        !workspace.asset_pairs().publish(texture_path.value(), texture_bytes.value(),
             FilePublishMode::CreateNew).succeeded() || !workspace.refresh()) return 1;
     MaterialAssetData red; red.shader_name = "Toy3d/Surface/Phong";
     red.overrides.push_back({"base_color", Vector4(1, 0, 0, 1)});
@@ -110,17 +110,21 @@ int main(int argc, char** argv)
     if (!red_path.succeeded() || !blue_path.succeeded() || !child_path.succeeded()) return 1;
     auto write_root = [&](const AssetId& id, const MaterialAssetData& data, const VirtualPath& path, FilePublishMode mode)
     {
-        const auto bytes = encode_material_asset(workspace.types(), id, data);
-        return bytes.succeeded() && workspace.files().write_binary_atomic(path, bytes.value(), mode).succeeded();
+        const auto bytes = encode_material_asset_pair(workspace.types(), id, data);
+        return bytes.succeeded() && workspace.asset_pairs().publish(path, bytes.value(), mode).succeeded();
+    };
+    auto write_instance = [&](const AssetId& id, const MaterialInstanceAssetData& data,
+        const VirtualPath& path, FilePublishMode mode)
+    {
+        const auto bytes = encode_material_instance_asset_pair(workspace.types(), id, data, &workspace.catalog().index);
+        return bytes.succeeded() && workspace.asset_pairs().publish(path, bytes.value(), mode).succeeded();
     };
     if (!write_root(red_id, red, red_path.value(), FilePublishMode::CreateNew) ||
         !write_root(blue_id, blue, blue_path.value(), FilePublishMode::CreateNew) || !workspace.refresh()) return 1;
     MaterialInstanceAssetData child;
     child.parent.asset_id = blue_id; child.parent.expected_type = "toy3d.MaterialAssetData";
     child.overrides.push_back({"specular_power", 64.0f});
-    const auto child_bytes = encode_material_instance_asset(workspace.types(), child_id, child, &workspace.catalog().index);
-    if (!child_bytes.succeeded() || !workspace.files().write_binary_atomic(child_path.value(), child_bytes.value(),
-        FilePublishMode::CreateNew).succeeded() || !workspace.refresh()) return 1;
+    if (!write_instance(child_id, child, child_path.value(), FilePublishMode::CreateNew) || !workspace.refresh()) return 1;
     ThreadManager threads;
     auto graph_result = create_task_graph({multithreaded ? 1u : 0u, 256u, multithreaded}, threads);
     if (!graph_result.succeeded()) return 1;
@@ -150,9 +154,8 @@ int main(int argc, char** argv)
         grand.parent.asset_id = child_id;
         grand.parent.expected_type = "toy3d.MaterialInstanceAssetData";
         const auto grand_path = VirtualPath::parse("/Project/MI_Grand.asset");
-        auto bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
-        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::CreateNew).succeeded()
-            && workspace.refresh(), "publish empty third layer");
+        check(write_instance(grand_id, grand, grand_path.value(), FilePublishMode::CreateNew) &&
+            workspace.refresh(), "publish empty third layer");
         AssetRef grand_ref{grand_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
         const auto grand_loaded = library.load(grand_ref);
         check(grand_loaded.succeeded(), "load three-layer shared graph");
@@ -185,9 +188,8 @@ int main(int argc, char** argv)
             "reset reads latest direct Parent value");
         auto changed = child;
         changed.overrides = {{"specular_power", 80.0f}};
-        bytes = encode_material_instance_asset(workspace.types(), child_id, changed, &workspace.catalog().index);
-        check(bytes.succeeded() && workspace.files().write_binary_atomic(child_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
-            && workspace.refresh(), "save changed middle layer");
+        check(write_instance(child_id, changed, child_path.value(), FilePublishMode::Replace) &&
+            workspace.refresh(), "save changed middle layer");
         AssetRef child_reference{child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
         auto* const proxy = shared->material_render_proxy();
         check(library.reload(child_reference).succeeded() && scalar(shared) == 80.0f && scalar(second) == 80.0f && scalar(sibling) == 80.0f
@@ -204,10 +206,8 @@ int main(int argc, char** argv)
         MaterialInstanceAssetData unpublished_child;
         unpublished_child.parent = child_reference;
         const auto unpublished_path = VirtualPath::parse("/Project/MI_UnpublishedParent.asset");
-        const auto unpublished_bytes = encode_material_instance_asset(workspace.types(), unpublished_child_id,
-            unpublished_child, &workspace.catalog().index);
-        check(unpublished_bytes.succeeded() && workspace.files().write_binary_atomic(unpublished_path.value(),
-            unpublished_bytes.value(), FilePublishMode::CreateNew).succeeded() && workspace.refresh(),
+        check(write_instance(unpublished_child_id, unpublished_child, unpublished_path.value(),
+            FilePublishMode::CreateNew) && workspace.refresh(),
             "save new descendant of unpublished ancestor");
         const AssetRef unpublished_reference{unpublished_child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
         check(!library.load(unpublished_reference).succeeded(),
@@ -228,13 +228,11 @@ int main(int argc, char** argv)
             deepest = library.create_instance(deepest).value();
         check(!library.create_instance(deepest).succeeded(), "temporary chain also enforces the common 64-layer limit");
         grand.parent = unpublished_reference;
-        bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
-        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+        check(write_instance(grand_id, grand, grand_path.value(), FilePublishMode::Replace)
             && workspace.refresh() && !library.reload(grand_ref).succeeded() && shared->parent() != library.load(unpublished_reference).value(),
             "reparent rejects a prospective graph that would push temporary descendants beyond the depth limit");
         grand.parent = child_reference;
-        bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
-        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+        check(write_instance(grand_id, grand, grand_path.value(), FilePublishMode::Replace)
             && workspace.refresh() && library.reload(grand_ref).succeeded(), "restore Parent after rejected deep temporary graph");
         auto disposable = library.create_instance(shared).value();
         auto borrowed = disposable;
@@ -245,14 +243,12 @@ int main(int argc, char** argv)
             "temporary release removes the library owner and caller reference");
         grand.parent.asset_id = red_id;
         grand.parent.expected_type = "toy3d.MaterialAssetData";
-        bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
-        check(bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+        check(write_instance(grand_id, grand, grand_path.value(), FilePublishMode::Replace)
             && workspace.refresh() && library.reload(grand_ref).succeeded(), "reparent shared asset to another root");
         const auto red_loaded = library.load(grand.parent);
         check(shared->parent() == red_loaded.value() && &second->root_material() == &red_loaded.value()->root_material(),
             "reparent updates direct Parent and root query for temporary descendants");
-        bytes = encode_material_instance_asset(workspace.types(), child_id, child, &workspace.catalog().index);
-        check(bytes.succeeded() && workspace.files().write_binary_atomic(child_path.value(), bytes.value(), FilePublishMode::Replace).succeeded()
+        check(write_instance(child_id, child, child_path.value(), FilePublishMode::Replace)
             && workspace.refresh() && library.reload(child_reference).succeeded(), "restore middle layer fixture");
     }
     EditorCommandHistory history(factory, materials);

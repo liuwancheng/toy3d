@@ -36,13 +36,14 @@ namespace toy3d
         }
 
         AssetStatus publish(EditorWorkspace& workspace, const std::string& destination, const AssetId& id,
-            const AssetResult<std::vector<std::uint8_t>>& bytes, AssetId& published_id)
+            const AssetResult<AssetPairBytes>& pair, AssetId& published_id)
         {
-            if (!bytes.succeeded()) return bytes.status();
+            if (!pair.succeeded()) return pair.status();
             const auto path = VirtualPath::parse(destination);
             if (!path.succeeded()) return fail(path.status().message);
-            const FileStatus written = workspace.files().write_binary_atomic(path.value(), bytes.value(), FilePublishMode::CreateNew);
-            if (!written.succeeded()) return {AssetErrorCode::Io, {}, destination, {}, {}, written.message, written};
+            const AssetStatus written = workspace.asset_pairs().publish(path.value(), pair.value(),
+                FilePublishMode::CreateNew);
+            if (!written.succeeded()) return written;
             published_id = id;
             if (!workspace.refresh()) return {AssetErrorCode::InvalidState, id, destination, {}, {},
                 "Asset was saved, but catalog refresh failed: " + workspace.error(), {}};
@@ -111,7 +112,7 @@ namespace toy3d
         valid = prepare(workspace, destination, id);
         if (!valid.succeeded()) return valid;
         return publish(workspace, destination, id,
-            encode_material_asset(workspace.types(), id, data, &workspace.catalog().index), published_id);
+            encode_material_asset_pair(workspace.types(), id, data, &workspace.catalog().index), published_id);
     }
 
     AssetStatus create_material_instance_asset_in_workspace(EditorWorkspace& workspace, const std::string& destination,
@@ -131,6 +132,6 @@ namespace toy3d
         valid = prepare(workspace, destination, id);
         if (!valid.succeeded()) return valid;
         return publish(workspace, destination, id,
-            encode_material_instance_asset(workspace.types(), id, data, &workspace.catalog().index), published_id);
+            encode_material_instance_asset_pair(workspace.types(), id, data, &workspace.catalog().index), published_id);
     }
 }

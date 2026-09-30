@@ -2,6 +2,9 @@
 
 #include "asset_file.h"
 #include "asset_index.h"
+#include "asset_yaml.h"
+#include "asset_pair.h"
+#include "asset_pair_store.h"
 #include "edit_session.h"
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
@@ -19,6 +22,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <stdexcept>
 
 namespace
 {
@@ -70,11 +74,56 @@ namespace
     // C++17 filesystem creates only the isolated fixture directory; production
     // resource access stays on the shared FileSystem API.
     namespace fs = std::filesystem;
+    class InterruptingFileStore final : public toy3d::FileStore
+    {
+      public:
+        explicit InterruptingFileStore(std::shared_ptr<toy3d::FileStore> base)
+            : base_(std::move(base)) {}
+
+        void interrupt_descriptor_publish() { interrupt_descriptor_ = true; }
+
+        toy3d::FileStoreCapabilities capabilities() const override { return base_->capabilities(); }
+        toy3d::FileResult<toy3d::FileStat> stat(const toy3d::StorePath& path) const override
+        { return base_->stat(path); }
+        toy3d::FileResult<std::unique_ptr<toy3d::FileHandle>> open(
+            const toy3d::StorePath& path, toy3d::FileOpenMode mode) override
+        { return base_->open(path, mode); }
+        toy3d::FileResult<std::vector<toy3d::StoreDirectoryEntry>> enumerate(
+            const toy3d::StorePath& path) const override
+        { return base_->enumerate(path); }
+        toy3d::FileStatus create_directories(const toy3d::StorePath& path) override
+        { return base_->create_directories(path); }
+        toy3d::FileStatus remove_file(const toy3d::StorePath& path) override
+        { return base_->remove_file(path); }
+        toy3d::FileStatus remove_empty_directory(const toy3d::StorePath& path) override
+        { return base_->remove_empty_directory(path); }
+        toy3d::FileStatus rename_no_replace(const toy3d::StorePath& source,
+            const toy3d::StorePath& destination) override
+        {
+            const std::string& name = source.utf8();
+            if (interrupt_descriptor_ && name.size() >= 10u &&
+                name.compare(name.size() - 10u, 10u, ".asset.new") == 0)
+            {
+                interrupt_descriptor_ = false;
+                throw std::runtime_error("simulated process interruption before descriptor commit");
+            }
+            return base_->rename_no_replace(source, destination);
+        }
+        toy3d::FileStatus replace(const toy3d::StorePath& source,
+            const toy3d::StorePath& destination) override
+        { return base_->replace(source, destination); }
+
+      private:
+        std::shared_ptr<toy3d::FileStore> base_;
+        bool interrupt_descriptor_ = false;
+    };
+
     struct TestFiles
     {
         fs::path root;
         toy3d::NativePlatformFile platform;
         std::shared_ptr<toy3d::DirectoryFileStore> store;
+        std::shared_ptr<InterruptingFileStore> interrupting_store;
         toy3d::FileSystem files;
 
         TestFiles()
@@ -87,12 +136,14 @@ namespace
             auto created = toy3d::DirectoryFileStore::create(platform, desc);
             check(created.succeeded(), "resource fixture store failed");
             store = created.value();
+            interrupting_store = std::make_shared<InterruptingFileStore>(store);
             auto mount_root = toy3d::VirtualPath::parse("/asset");
             check(mount_root.succeeded(), "resource mount path failed");
             toy3d::FileMountDesc mount;
             mount.virtual_root = mount_root.value();
-            mount.store = store;
+            mount.store = interrupting_store;
             mount.access = toy3d::MountAccess::ReadWrite;
+            mount.allow_enumeration = true;
             check(files.add_mount(mount).succeeded() && files.freeze().succeeded(),
                   "resource fixture mount failed");
         }
@@ -153,7 +204,124 @@ namespace
         file_index.subresources.push_back({mesh_id, "toy3d.Mesh"});
         file_index.dependencies.push_back(model.skeleton);
         file_index.dependencies.push_back(node.material_override);
+        AssetYamlDocument yaml_document;
+        yaml_document.index = file_index;
+        yaml_document.type_data = type_bytes;
+        const auto yaml_bytes = encode_asset_yaml(types, yaml_document);
+        check(yaml_bytes.succeeded() &&
+            std::string(yaml_bytes.value().begin(), yaml_bytes.value().end()).find("source/vehicle.gltf") != std::string::npos,
+            "model YAML description encode failed");
+        const auto yaml_read = decode_asset_yaml(types, yaml_bytes.value());
+        if (!yaml_read.succeeded()) std::cerr << yaml_read.status().message << '\n';
+        ModelAssetData yaml_model;
+        if (yaml_read.succeeded())
+        {
+            ValueReader yaml_reader(yaml_read.value().type_data);
+            check(decode_value(yaml_reader, yaml_model).succeeded() && yaml_reader.at_end(),
+                "model YAML typed data decode failed");
+        }
+        check(yaml_read.succeeded() && yaml_read.value().index.asset_id == model_id &&
+            yaml_read.value().index.dependencies.size() == 2u &&
+            yaml_model.source_uri == model.source_uri && yaml_model.nodes.size() == model.nodes.size(),
+            "model YAML description roundtrip failed");
+        auto duplicate_yaml = yaml_bytes.value();
+        const std::string repeated = "format_version: 2\n";
+        duplicate_yaml.insert(duplicate_yaml.end(), repeated.begin(), repeated.end());
+        check(!decode_asset_yaml(types, duplicate_yaml).succeeded(),
+            "duplicate YAML key was accepted");
+        const VirtualPath pure_path = fixture.path("pure_yaml.asset");
+        const VirtualPath pure_meta = fixture.path("pure_yaml.meta");
+        check(fixture.files.write_binary(pure_path, yaml_bytes.value(),
+            FileWriteMode::CreateNew).succeeded() &&
+            read_asset_pair(types, fixture.files, pure_path).succeeded() &&
+            fixture.files.write_binary(pure_meta, {1u, 2u},
+                FileWriteMode::CreateNew).succeeded() &&
+            !read_asset_pair(types, fixture.files, pure_path).succeeded(),
+            "orphan meta beside a descriptive asset was accepted");
         const std::vector<std::uint8_t> vertices(1024 * 1024, 0x77u);
+        const auto pair = encode_asset_pair(types, file_index, type_bytes,
+            {{model.geometry_segment, 2u, true, vertices}});
+        check(pair.succeeded() && pair.value().has_meta, "model asset pair encode failed");
+        const VirtualPath yaml_path = fixture.path("vehicle_yaml.asset");
+        const VirtualPath meta_path = fixture.path("vehicle_yaml.meta");
+        check(fixture.files.write_binary(meta_path, pair.value().meta, FileWriteMode::CreateNew).succeeded() &&
+            fixture.files.write_binary(yaml_path, pair.value().asset, FileWriteMode::CreateNew).succeeded(),
+            "model asset pair fixture write failed");
+        const auto read_pair = read_asset_pair(types, fixture.files, yaml_path);
+        check(read_pair.succeeded() && read_pair.value().meta.asset_id == model_id &&
+            read_pair.value().meta.segments.size() == 1u &&
+            read_pair.value().meta.segments[0].bytes == vertices,
+            "model asset pair roundtrip failed");
+        auto tampered = pair.value().meta;
+        tampered.back() ^= 1u;
+        check(fixture.files.write_binary_atomic(meta_path, tampered,
+            FilePublishMode::Replace).succeeded() &&
+            !read_asset_pair(types, fixture.files, yaml_path).succeeded() &&
+            fixture.files.write_binary_atomic(meta_path, pair.value().meta,
+                FilePublishMode::Replace).succeeded(),
+            "meta SHA-256 mismatch was accepted");
+        check(fixture.files.remove_file(meta_path).succeeded() &&
+            !read_asset_pair(types, fixture.files, yaml_path).succeeded(),
+            "missing required meta was accepted");
+        AssetPairStore pair_store(types, fixture.files);
+        const VirtualPath published_path = fixture.path("vehicle_published.asset");
+        check(pair_store.publish(published_path, pair.value(), FilePublishMode::CreateNew).succeeded(),
+            "pair CreateNew publication failed");
+        check(!pair_store.publish(published_path, pair.value(), FilePublishMode::CreateNew).succeeded(),
+            "pair CreateNew overwrote an existing asset");
+        const auto pair_root = VirtualPath::parse("/asset");
+        check(pair_root.succeeded(), "pair recovery root failed");
+        const AssetStatus replaced_pair = pair_store.publish(published_path, pair.value(), FilePublishMode::Replace);
+        const AssetStatus recovered_pair = pair_store.recover_tree(pair_root.value());
+        const auto published_pair = read_asset_pair(types, fixture.files, published_path);
+        if (!replaced_pair.succeeded()) std::cerr << "replace: " << replaced_pair.message << '\n';
+        if (!recovered_pair.succeeded()) std::cerr << "recovery: " << recovered_pair.message << '\n';
+        if (!published_pair.succeeded()) std::cerr << "read: " << published_pair.status().message << '\n';
+        check(replaced_pair.succeeded() && recovered_pair.succeeded() && published_pair.succeeded(),
+            "pair replacement or recovery failed");
+        const std::vector<std::uint8_t> changed_vertices(vertices.size(), 0x33u);
+        const auto interrupted_pair = encode_asset_pair(types, file_index, type_bytes,
+            {{model.geometry_segment, 2u, true, changed_vertices}});
+        check(interrupted_pair.succeeded(), "interrupted pair fixture encode failed");
+        fixture.interrupting_store->interrupt_descriptor_publish();
+        bool interrupted = false;
+        try
+        {
+            (void)pair_store.publish(published_path, interrupted_pair.value(), FilePublishMode::Replace);
+        }
+        catch (const std::runtime_error&)
+        {
+            interrupted = true;
+        }
+        check(interrupted && pair_store.recover_tree(pair_root.value()).succeeded(),
+            "interrupted pair update did not recover");
+        const auto restored_pair = read_asset_pair(types, fixture.files, published_path);
+        check(restored_pair.succeeded() && restored_pair.value().meta.segments[0].bytes == vertices &&
+            !fixture.files.stat(fixture.path("vehicle_published.asset.txn")).succeeded(),
+            "interrupted pair update did not restore the previous version");
+        const VirtualPath copied_path = fixture.path("vehicle_copy.asset");
+        const auto copied_id = pair_store.copy(published_path, copied_path);
+        const auto copied_pair = read_asset_pair(types, fixture.files, copied_path);
+        check(copied_id.succeeded() && copied_pair.succeeded() &&
+            copied_pair.value().description.index.asset_id == copied_id.value() &&
+            !(copied_id.value() == model_id) &&
+            copied_pair.value().meta.segments[0].bytes == vertices,
+            "pair copy did not assign a new root ID and preserve processed data");
+        check(pair_store.remove(copied_path).succeeded() &&
+            !fixture.files.stat(copied_path).succeeded() &&
+            !fixture.files.stat(fixture.path("vehicle_copy.meta")).succeeded() &&
+            pair_store.recover_tree(pair_root.value()).succeeded(),
+            "pair deletion left a descriptor, meta or transaction");
+        const VirtualPath moved_pair_path = fixture.path("vehicle_moved.asset");
+        check(!pair_store.move(published_path, yaml_path).succeeded() &&
+            read_asset_pair(types, fixture.files, published_path).succeeded(),
+            "move into an existing descriptor changed the source");
+        check(pair_store.move(published_path, moved_pair_path).succeeded() &&
+            !fixture.files.stat(published_path).succeeded() &&
+            !fixture.files.stat(fixture.path("vehicle_published.meta")).succeeded() &&
+            read_asset_pair(types, fixture.files, moved_pair_path).succeeded() &&
+            pair_store.recover_tree(pair_root.value()).succeeded(),
+            "pair move did not preserve identity and remove both old files");
         auto file = encode_asset_file(file_index, {{"type_data", 1, true, type_bytes},
                                                    {model.geometry_segment, 2, false, vertices}});
         check(file.succeeded(), "model asset file encode failed");

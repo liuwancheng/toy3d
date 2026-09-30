@@ -56,17 +56,17 @@ int main()
     if (!workspace.initialize(paths)) { std::cerr << workspace.error(); return 1; }
     MaterialAssetData root;
     root.shader_name = "Toy3d/Surface/Phong";
-    const auto bytes = encode_material_asset(workspace.types(), root_id, root);
+    const auto bytes = encode_material_asset_pair(workspace.types(), root_id, root);
     const auto root_path = VirtualPath::parse("/Project/M_Ui.asset");
     const auto child_path = VirtualPath::parse("/Project/MI_Ui.asset");
     if (!bytes.succeeded() || !root_path.succeeded() || !child_path.succeeded()) return 1;
-    if (!workspace.files().write_binary_atomic(root_path.value(), bytes.value(), FilePublishMode::CreateNew).succeeded() ||
+    if (!workspace.asset_pairs().publish(root_path.value(), bytes.value(), FilePublishMode::CreateNew).succeeded() ||
         !workspace.refresh()) return 1;
     MaterialInstanceAssetData child;
     child.parent.asset_id = root_id;
     child.parent.expected_type = "toy3d.MaterialAssetData";
-    const auto child_bytes = encode_material_instance_asset(workspace.types(), child_id, child, &workspace.catalog().index);
-    if (!child_bytes.succeeded() || !workspace.files().write_binary_atomic(child_path.value(),
+    const auto child_bytes = encode_material_instance_asset_pair(workspace.types(), child_id, child, &workspace.catalog().index);
+    if (!child_bytes.succeeded() || !workspace.asset_pairs().publish(child_path.value(),
         child_bytes.value(), FilePublishMode::CreateNew).succeeded() || !workspace.refresh()) return 1;
     ThreadManager threads;
     auto graph_result = create_task_graph({0u, 256u, false}, threads);
@@ -143,14 +143,14 @@ int main()
         MaterialAssetData alternate = root;
         alternate.overrides = {{"specular_power", 24.0f}};
         const auto alternate_path = VirtualPath::parse("/Project/M_Alternate.asset");
-        const auto alternate_bytes = encode_material_asset(workspace.types(), alternate_id, alternate);
-        check(alternate_bytes.succeeded() && workspace.files().write_binary_atomic(alternate_path.value(), alternate_bytes.value(),
+        const auto alternate_bytes = encode_material_asset_pair(workspace.types(), alternate_id, alternate);
+        check(alternate_bytes.succeeded() && workspace.asset_pairs().publish(alternate_path.value(), alternate_bytes.value(),
             FilePublishMode::CreateNew).succeeded() && workspace.refresh(), "publish alternate Parent");
         MaterialInstanceAssetData grand;
         grand.parent = {child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
         const auto grand_path = VirtualPath::parse("/Project/MI_UiGrand.asset");
-        const auto grand_bytes = encode_material_instance_asset(workspace.types(), grand_id, grand, &workspace.catalog().index);
-        check(grand_bytes.succeeded() && workspace.files().write_binary_atomic(grand_path.value(), grand_bytes.value(),
+        const auto grand_bytes = encode_material_instance_asset_pair(workspace.types(), grand_id, grand, &workspace.catalog().index);
+        check(grand_bytes.succeeded() && workspace.asset_pairs().publish(grand_path.value(), grand_bytes.value(),
             FilePublishMode::CreateNew).succeeded() && workspace.refresh(), "publish descendant for cycle validation");
         const AssetRef next{alternate_id, {}, "toy3d.MaterialAssetData", AssetRefStrength::Strong};
         check(session.set_parent(next).succeeded() && session.instance_data()->parent.asset_id == alternate_id && session.dirty(),

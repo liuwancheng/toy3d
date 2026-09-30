@@ -123,7 +123,7 @@ namespace toy3d
             {
                 AssetId published;
                 publish_texture_asset(workspace, prepared_->destination, prepared_->id,
-                    prepared_->bytes, published, prepared_->error);
+                    prepared_->texture, published, prepared_->error);
                 prepared_->saved = published.valid();
                 if (published.valid()) selection.select_asset(published);
             }
@@ -160,7 +160,7 @@ namespace toy3d
                     task_ = dispatch_graph_task(TaskGraphInterface::get(), "Import Texture2D",
                         [result, source](NamedThread, const GraphEventRef&)
                         {
-                            try { prepare_texture_asset_from_source(source, result->id, result->bytes, result->error); }
+                            try { prepare_texture_asset_from_source(source, result->texture, result->error); }
                             catch (const std::exception& exception) { result->error = exception.what(); }
                         });
                 }

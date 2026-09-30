@@ -171,7 +171,7 @@ namespace toy3d
                 else
                 {
                     selection.select_asset(id);
-                    thumbnails.generate(id, true);
+                    thumbnails.generate(id);
                 }
             }
             candidates_ = std::move(failed);

@@ -7,6 +7,8 @@
 
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
+#include "asset_pair_store.h"
+#include "static_mesh/static_mesh_asset.h"
 #include "mesh_builder/static_mesh_builder.h"
 
 namespace
@@ -75,6 +77,10 @@ int main()
         mount(platform, files, "/Samples", PhysicalPath(TOY3D_IMPORT_TEST_SAMPLES), false);
         mount(platform, files, "/Output", output_root, true);
         require(files.freeze().succeeded(), "freeze failed");
+        TypeRegistry types;
+        require(register_static_mesh_asset_types(types).succeeded() && types.freeze().succeeded(),
+            "static mesh schema registration failed");
+        AssetPairStore assets(types, files);
         AssetId id;
         require(AssetId::parse("1234567890abcdef1234567890abcdef", id), "id parse failed");
         AssetId fresh;
@@ -85,9 +91,17 @@ int main()
             if (!imported.succeeded()) std::cerr << filename << ": " << imported.status().message << '\n';
             require(imported.succeeded(), "sample import failed");
             const auto repeated = import_static_mesh_asset(files, path(std::string("/Samples/") + filename), id);
-            require(repeated.succeeded() && repeated.value().bytes == imported.value().bytes, "nondeterministic import");
+            require(repeated.succeeded() && repeated.value().pair.asset == imported.value().pair.asset &&
+                repeated.value().pair.meta == imported.value().pair.meta, "nondeterministic import");
             const VirtualPath output = path(std::string("/Output/") + filename + ".asset");
-            require(files.write_binary_atomic(output, imported.value().bytes, FilePublishMode::Replace).succeeded(), "publish failed");
+            if (files.stat(output).succeeded())
+            {
+                const AssetStatus removed = assets.remove(output);
+                if (!removed.succeeded())
+                    require(files.remove_file(output).succeeded(), "old fixture cleanup failed");
+            }
+            require(assets.publish(output, imported.value().pair, FilePublishMode::CreateNew).succeeded(),
+                "publish failed");
             const auto loaded = read_static_mesh_asset(files, output);
             require(loaded.succeeded() && !loaded.value().sections.empty(), "asset load failed");
             std::cout << filename << " vertices=" << loaded.value().vertices.size() << " indices=" << loaded.value().indices.size() << '\n';
@@ -129,9 +143,14 @@ int main()
         require(local.succeeded(), "local import failed");
         const VirtualPath new_asset = path("/Output/create_new.asset");
         const auto existed = files.stat(new_asset);
-        if (existed.succeeded()) require(files.remove_file(new_asset).succeeded(), "old fixture cleanup failed");
-        require(files.write_binary_atomic(new_asset, local.value().bytes, FilePublishMode::CreateNew).succeeded(), "first creation failed");
-        require(!files.write_binary_atomic(new_asset, local.value().bytes, FilePublishMode::CreateNew).succeeded(), "overwrite accepted");
+        if (existed.succeeded())
+        {
+            const AssetStatus removed = assets.remove(new_asset);
+            if (!removed.succeeded())
+                require(files.remove_file(new_asset).succeeded(), "old fixture cleanup failed");
+        }
+        require(assets.publish(new_asset, local.value().pair, FilePublishMode::CreateNew).succeeded(), "first creation failed");
+        require(!assets.publish(new_asset, local.value().pair, FilePublishMode::CreateNew).succeeded(), "overwrite accepted");
         require(files.remove_file(path("/Output/local.obj")).succeeded(), "source removal failed");
         require(read_static_mesh_asset(files, new_asset).succeeded(), "source-free load failed");
 

@@ -29,6 +29,22 @@ namespace toy3d
                 if (!reader.read_uint8(byte).succeeded()) return false;
             return true;
         }
+
+        AssetResult<AssetThumbnailSource> source_from_payloads(
+            const std::vector<std::uint8_t>& typed,
+            const std::vector<std::uint8_t>& geometry)
+        {
+            ValueLimits limits;
+            limits.max_bytes = typed.size() + geometry.size() + 1024u;
+            ValueWriter writer(limits);
+            if (!writer.write_uint32(1u).succeeded() ||
+                !writer.write_utf8("type_data").succeeded() ||
+                !writer.write_blob(typed).succeeded() ||
+                !writer.write_utf8("render_geometry").succeeded() ||
+                !writer.write_blob(geometry).succeeded())
+                return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source encoding failed."));
+            return AssetResult<AssetThumbnailSource>(AssetThumbnailSource{1u, sha256(writer.bytes())});
+        }
     }
 
     AssetResult<AssetThumbnailSource> calculate_static_mesh_thumbnail_source(const std::vector<std::uint8_t>& bytes)
@@ -59,6 +75,16 @@ namespace toy3d
         }
         if (!typed || !geometry) return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source segments are missing."));
         return AssetResult<AssetThumbnailSource>(AssetThumbnailSource{1, sha256(writer.bytes())});
+    }
+
+    AssetResult<AssetThumbnailSource> calculate_static_mesh_thumbnail_source(const AssetPair& pair)
+    {
+        if (pair.description.index.root_type != "toy3d.StaticMeshAssetData" || !pair.description.has_meta)
+            return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source requires a StaticMesh pair."));
+        for (const AssetSegmentData& segment : pair.meta.segments)
+            if (segment.name == "render_geometry" && segment.kind == 2u && segment.required)
+                return source_from_payloads(pair.description.type_data, segment.bytes);
+        return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source geometry is missing."));
     }
 
     AssetResult<AssetSegmentData> encode_thumbnail_source(const AssetThumbnailSource& source)

@@ -10,6 +10,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dTextureImportTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Tools")
     target_link_libraries(Toy3dTextureImportTests PRIVATE Toy3dTextureImport Toy3dImageCodec)
     target_compile_definitions(Toy3dTextureImportTests PRIVATE
-        "TOY3D_TEXTURE_TEST_JPEG=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/solid_color.jpg\"")
+        "TOY3D_TEXTURE_TEST_JPEG=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/solid_color.jpg\""
+        "TOY3D_TEXTURE_PAIR_TEST_ROOT=\"${CMAKE_BINARY_DIR}/texture-pair-test-output\"")
     add_test(NAME Toy3dTools.TextureImport COMMAND Toy3dTextureImportTests)
 endif()

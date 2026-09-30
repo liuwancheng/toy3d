@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset_catalog.h"
+#include "asset_pair_store.h"
 #include "file_system/file_system.h"
 #include "file_system/native_platform_file.h"
 #include "file_system/physical_path.h"
@@ -9,6 +10,7 @@
 #include "format/shader_editor_properties.h"
 
 #include <string>
+#include <memory>
 
 namespace toy3d
 {
@@ -33,6 +35,10 @@ namespace toy3d
         const TypeRegistry& types() const { return types_; }
         bool ready() const { return ready_; }
         MaterialEditSession& material_edit() { return material_edit_; }
+        AssetPairStore& asset_pairs() { return *asset_pairs_; }
+        AssetStatus delete_asset(const AssetId& id);
+        AssetStatus move_asset(const AssetId& id, const VirtualPath& destination);
+        AssetResult<AssetId> copy_asset(const AssetId& id, const VirtualPath& destination);
         bool read_material_properties(const PhysicalPath& registered_root, const std::string& shader_name,
             const shader::ShaderParameterSchema& schema, std::vector<shader::ShaderEditorProperty>& properties,
             std::string& error) const;
@@ -43,6 +49,7 @@ namespace toy3d
         PhysicalPath source_root_;
         AssetCatalog catalog_;
         TypeRegistry types_;
+        std::unique_ptr<AssetPairStore> asset_pairs_;
         MaterialEditSession material_edit_{*this};
         std::string error_;
         bool ready_ = false;

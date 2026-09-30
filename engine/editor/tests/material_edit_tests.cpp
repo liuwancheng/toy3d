@@ -84,22 +84,22 @@ int main()
     MaterialAssetData root;
     root.shader_name = "Toy3d/Surface/Phong";
     root.overrides = {{"roughness", 0.5f}, {"old_parameter", Vector2(2, 3)}};
-    const auto root_bytes = encode_material_asset(types, root_id, root);
-    const auto engine_bytes = encode_material_asset(types, engine_id, root);
+    const auto root_bytes = encode_material_asset_pair(types, root_id, root);
+    const auto engine_bytes = encode_material_asset_pair(types, engine_id, root);
     check(root_bytes.succeeded() && engine_bytes.succeeded(), "fixture assets");
     if (!root_bytes.succeeded() || !engine_bytes.succeeded()) return 1;
-    check(platform.write_binary(PhysicalPath(paths.project_assets.utf8() + "/M_Root.asset"), root_bytes.value(),
+    check(platform.write_binary(PhysicalPath(paths.project_assets.utf8() + "/M_Root.asset"), root_bytes.value().asset,
         FileWriteMode::CreateNew).succeeded(), "root publication");
-    check(platform.write_binary(PhysicalPath(paths.engine_assets.utf8() + "/M_Engine.asset"), engine_bytes.value(),
+    check(platform.write_binary(PhysicalPath(paths.engine_assets.utf8() + "/M_Engine.asset"), engine_bytes.value().asset,
         FileWriteMode::CreateNew).succeeded(), "engine publication");
     EditorWorkspace workspace;
     check(workspace.initialize(paths), "workspace");
     MaterialInstanceAssetData child;
     child.parent.asset_id = root_id; child.parent.expected_type = "toy3d.MaterialAssetData";
-    const auto child_bytes = encode_material_instance_asset(types, child_id, child, &workspace.catalog().index);
+    const auto child_bytes = encode_material_instance_asset_pair(types, child_id, child, &workspace.catalog().index);
     check(child_bytes.succeeded(), "child encoding");
     if (!child_bytes.succeeded()) return 1;
-    check(workspace.files().write_binary_atomic(path("/Project/MI_Child.asset"), child_bytes.value(),
+    check(workspace.asset_pairs().publish(path("/Project/MI_Child.asset"), child_bytes.value(),
         FilePublishMode::CreateNew).succeeded() && workspace.refresh(), "child publication");
     const auto schema = make_schema();
     auto& session = workspace.material_edit();
@@ -137,25 +137,10 @@ int main()
         session.overrides().empty() && session.undo_count() == checkpoint, "dragging back to inherited value creates no override or history");
     check(session.set_parameter({"color", Vector4(0, 0, 1, 1)}).succeeded() &&
         session.set_parameter({"roughness", 0.75f}).succeeded(), "compound authored parameters");
-    const auto before = workspace.files().read_binary(path("/Project/MI_Child.asset"));
-    check(before.succeeded(), "read before optional update");
-    const AssetSegmentData thumbnail{"thumbnail_png", 2u, false, {4u, 5u, 6u}};
-    if (before.succeeded())
-    {
-        const auto with_thumbnail = replace_asset_segments(before.value(), {thumbnail});
-        check(with_thumbnail.succeeded() && workspace.files().write_binary_atomic(path("/Project/MI_Child.asset"),
-            with_thumbnail.value(), FilePublishMode::Replace).succeeded(), "independent latest thumbnail update");
-    }
     check(session.save().succeeded() && !session.dirty(), "save clears dirty only after publication");
-    const auto saved = inspect_asset(workspace.files(), path("/Project/MI_Child.asset"));
-    check(saved.succeeded() && saved.value().dependencies.size() == 1u, "save preserves parent dependency");
-    if (saved.succeeded())
-        for (const auto& segment : saved.value().segments)
-            if (segment.name == thumbnail.name)
-            {
-                const auto image = read_asset_segment(workspace.files(), path("/Project/MI_Child.asset"), child_id, segment, 64u);
-                check(image.succeeded() && image.value() == thumbnail.bytes, "save preserves newest optional bytes");
-            }
+    const auto saved = workspace.asset_pairs().read(path("/Project/MI_Child.asset"));
+    check(saved.succeeded() && saved.value().description.index.dependencies.size() == 1u,
+        "save preserves parent dependency");
     MaterialInstanceAssetData reopened;
     check(read_material_instance_asset(types, workspace.files(), path("/Project/MI_Child.asset"), reopened).succeeded() &&
         reopened.overrides.size() == 2u && reopened.overrides.front().name == "color", "deterministic saved override order");
@@ -163,10 +148,10 @@ int main()
         "saved checkpoint survives undo and redo");
     check(session.set_parameter({"roughness", 0.9f}).succeeded(), "dirty before conflict");
     reopened.overrides.back().value = 0.1f;
-    const auto external = encode_material_instance_asset(types, child_id, reopened);
+    const auto external = encode_material_instance_asset_pair(types, child_id, reopened);
     check(external.succeeded(), "external editor encoding");
     if (external.succeeded())
-        check(workspace.files().write_binary_atomic(path("/Project/MI_Child.asset"), external.value(), FilePublishMode::Replace).succeeded(),
+        check(workspace.asset_pairs().publish(path("/Project/MI_Child.asset"), external.value(), FilePublishMode::Replace).succeeded(),
             "external conflict publication");
     const auto conflicting = session.save();
     check(conflicting.code == AssetErrorCode::Conflict && session.dirty(), "conflict retains dirty session");
@@ -179,6 +164,30 @@ int main()
     check(session.open(engine_id, schema).succeeded() && !session.writable() &&
         !session.set_parameter({"roughness", 0.2f}).succeeded() && !session.save().succeeded(), "Engine read only");
     session.clear();
+    AssetId yaml_id;
+    check(AssetId::try_generate(yaml_id), "YAML material ID");
+    MaterialAssetData yaml_material;
+    yaml_material.shader_name = root.shader_name;
+    yaml_material.overrides = {{"roughness", 0.4f}};
+    const auto yaml_pair = encode_material_asset_pair(types, yaml_id, yaml_material);
+    check(yaml_pair.succeeded() && !yaml_pair.value().has_meta &&
+        workspace.asset_pairs().publish(path("/Project/M_Yaml.asset"), yaml_pair.value(),
+            FilePublishMode::CreateNew).succeeded() && workspace.refresh(),
+        "pure YAML material publication");
+    if (yaml_pair.succeeded())
+    {
+        check(session.open(yaml_id, schema).succeeded(), "YAML material editor opening");
+        check(session.set_parameter({"roughness", 0.65f}).succeeded() && session.dirty() &&
+            session.save().succeeded() && !session.dirty(), "YAML material edit/save");
+        MaterialAssetData yaml_reopened;
+        const auto descriptor = workspace.asset_pairs().read(path("/Project/M_Yaml.asset"));
+        check(descriptor.succeeded() && !descriptor.value().description.has_meta &&
+            read_material_asset(types, workspace.files(), path("/Project/M_Yaml.asset"), yaml_reopened).succeeded() &&
+            scalar(yaml_reopened.overrides) == 0.65f &&
+            !workspace.files().stat(path("/Project/M_Yaml.meta")).succeeded(),
+            "edited YAML material remains descriptive only");
+        session.clear();
+    }
     // Fixture lives beneath the configured build root; no user assets are touched.
     std::cout << (failures ? "Material editor tests failed\n" : "Material editor tests passed\n");
     return failures ? 1 : 0;

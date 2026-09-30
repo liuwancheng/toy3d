@@ -1,5 +1,7 @@
 # 代码材质与参数化编辑设计
 
+> 材质领域、参数与渲染约定继续适用。本文提及的包内 `type_data`、包内缩略图与单文件原子保存属于旧格式；新建 Material/MaterialInstance 仅保存 YAML `.asset`，配对和缓存规则以 [Asset 描述与处理数据格式](asset-pair-format-design.md) 为准。
+
 > 运行时继承、共享加载和发布的详细 contract 见第 12 节。
 
 ## 1. 状态与已确认范围
@@ -110,7 +112,7 @@ struct MaterialInstanceAssetData
 
 已知、可无损解码的 orphan 允许原样保存。未知必需类型/variant 分支失败；未知可选 typed 字段无法无损保留时按资源基础只读打开并禁止保存。orphan 中可识别的 AssetRef 仍进入依赖索引；缺失引用显示未就绪并阻止新增非法引用，不能偷偷删掉依赖以通过校验。
 
-材质类型数据写入通用 `type_data`，缩略图为已有可选段。创建使用新 ID、catalog 查重和 CreateNew；保存使用 EditSession、原子 Replace，并保留原文件全部可选段。依赖变化必须更新索引；不得保存旧依赖列表。写前检查当前 type_data、身份和引用索引；缩略图单独更新允许重新读取最新原始段并保留，不能拿打开时的旧 PNG 覆盖新生成图片。冲突保留文件、脏会话和可用预览。
+材质类型数据写入 YAML `.asset` 的 `data`，没有 `.meta`。创建使用新 ID、catalog 查重和成对服务 CreateNew；保存使用 EditSession 与资产服务 Replace。依赖变化必须更新索引；不得保存旧依赖列表。写前检查当前描述、身份和引用索引。缩略图另存 `/Saved/AssetThumbnails/`，不参与材质保存。冲突保留文件、脏会话和可用预览。
 
 ## 5. Shader 属性视图与自动面板
 
@@ -238,7 +240,7 @@ M3 的正式入口为 `EditorWorkspace::material_edit()`，返回 Workspace 持�
 
 窗口按钮与 Ctrl+S / Ctrl+Z / Ctrl+Y 操作活动资产；场景快捷键限于场景面板焦点。顶部 Edit 菜单和历史按钮保留最近的材质/场景历史目标，菜单自身焦点不切换历史，模态和连续手势优先。Save/Discard/Cancel 共用 `resolve_unsaved(MaterialCloseDecision)`，脏切换、窗口关闭和退出均复用这条业务路径。Application 可通过 `on_close_requested()` 延迟原生窗口关闭，Windows/macOS 取消 close flag 并继续 UI 帧；用户取消不退出，保存失败保留会话。其他不支持延迟的平台明确记录错误，见 [Application](application-design.md)。
 
-保存先结束手势，检查原文件身份、版本、引用与子资源基线，重新读取所有最新非 type_data 段，再重算依赖并调用 EditSession 的原子保存。创作段冲突或 I/O 失败保持文件和脏历史；独立缩略图更新允许保留最新原始字节。发布成功后目录刷新失败按“已保存但刷新失败”提示，不能声称写入失败或重复创建资产。未知可选 typed 字段无法无损解码时拒绝编辑，不执行有损保存。
+保存先结束手势，检查原文件身份、版本、引用、子资源和 typed 数据基线，再重算依赖并经资产服务发布纯描述候选。创作数据冲突或 I/O 失败保持文件和脏历史；独立缩略图缓存不改资产。发布成功后目录刷新失败按“已保存但刷新失败”提示，不能声称写入失败或重复创建资产。未知可选 typed 字段无法无损解码时拒绝编辑，不执行有损保存。
 
 现有 EditSession 每次 apply_edit 都创建撤销项，不直接用于每帧滑块更新。一次手势采用以下流程，不新增第二套通用撤销栈：
 
@@ -323,7 +325,7 @@ history.undo(world); // 材质赋值沿用场景时间线，资产编辑仍使�
 
 ## 8. Texture2D 生产链
 
-Texture2D 使用通用 `.asset` 外层：`type_data` 保存尺寸、PixelFormat、mip 数量与颜色用途，必需 `texture_mips` 保存有界、显式 pitch/长度的 GPU-ready 数据。源 PNG/JPEG 可作为 `WITH_EDITORONLY_DATA` 路径生成的可选 source/import 段，runtime 不解码。持久化类型不因宏改变布局；源段可移除，运行段仍完整。
+Texture2D 的 `.asset` YAML `data` 保存尺寸、PixelFormat、mip 数量与颜色用途；同名 `.meta` 的必需 `texture_mips` 保存有界、显式 pitch/长度的 GPU-ready 数据。源 PNG/JPEG 不保存；再次导入需重新选择源文件。持久化类型不因宏改变布局。
 
 首版 Base Color 为 sRGB RGB、线性 alpha；默认输出 RGBA8 sRGB 并生成完整 mip chain 到 1×1，mip RGB 在线性空间滤波后编码回 sRGB，alpha 线性滤波。源图像按 top-left 解码，采样 UV 与现有模型导入约定统一，不增加跨平台 Shader 翻转。PNG/JPEG 只接受受支持的单张 2D 图像，JPEG 补 alpha=1；不根据文件扩展名跳过内容验证。
 
@@ -343,7 +345,7 @@ Phong/Unlit vertex entry 传 UV0，pixel entry 使用 `base_color_texture.Sample
 
 预览按参数、相机、尺寸和依赖 dirty 请求更新，隐藏/最小化时暂停；动态参数不重建 preview Actor/World，不每帧分配新 Material/Texture。跨线程传 owned data、稳定引用和请求身份，GT 不读写 Proxy/RHI。过期编译、图片和资源结果检查活动会话及 request identity 后丢弃。
 
-材质及实例缩略图使用预览球和已有包内 PNG 格式。源签名包含有效参数、父材质内容、使用的 Shader Program 内容、纹理内容和领域预览版本；按稳定名称/身份确定性组装，不把临时路径或 thumbnail 自身加入。未提交草稿只生成内存预览，不持久化缩略图。资产成功保存后标记自身与已加载依赖图片失效，后台只为可见/显式请求项生成，不同步遍历所有资源重绘。
+材质及实例缩略图未来使用预览球与 `/Saved/AssetThumbnails/` PNG 缓存。源签名须包含有效参数、父材质内容、使用的 Shader Program 内容、纹理内容和领域预览版本；按稳定名称/身份确定性组装，不把临时路径或缓存图片本身加入。未提交草稿只生成内存预览。资产成功保存后标记自身与已加载依赖图片失效，后台只为可见/显式请求项生成，不同步遍历所有资源重绘。当前仅 StaticMesh 缩略图已接入。
 
 当前模型缩略图使用默认材质且几何尚无默认材质 AssetRef，不能因场景 Actor override 改变就重写模型资产图片。以后模型保存默认材质引用时，才将该实际依赖加入模型源签名；在此之前场景赋值只影响场景与材质预览。材质 parent/texture 的依赖失效在首版需要支持。
 

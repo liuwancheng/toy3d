@@ -126,11 +126,11 @@ namespace
                 MaterialAssetData data; data.shader_name = "Project/Surface/Painted";
                 data.overrides = {{"stripe_scale", 8.0f}};
                 if (!AssetId::try_generate(material_id_)) { stop("AssetId failed."); return; }
-                const auto bytes = encode_material_asset(workspace_.types(), material_id_, data);
+                const auto bytes = encode_material_asset_pair(workspace_.types(), material_id_, data);
                 const auto path = VirtualPath::parse("/Project/painted.asset");
-                if (!bytes.succeeded() || !workspace_.files().write_binary_atomic(path.value(), bytes.value(), FilePublishMode::CreateNew).succeeded() || !workspace_.refresh())
+                if (!bytes.succeeded() || !workspace_.asset_pairs().publish(path.value(), bytes.value(), FilePublishMode::CreateNew).succeeded() || !workspace_.refresh())
                 { stop("Could not publish isolated test material."); return; }
-                asset_signature_ = sha256(bytes.value());
+                asset_signature_ = sha256(bytes.value().asset);
                 AssetRef reference; reference.asset_id = material_id_; reference.expected_type = "toy3d.MaterialAssetData";
                 std::string error;
                 if (!materials_.assign(world(), actor_id_, {component()->component_id(), "Material_0", reference}, error)) { stop(error); return; }
