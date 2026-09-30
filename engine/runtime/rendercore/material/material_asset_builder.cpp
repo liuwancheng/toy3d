@@ -27,9 +27,6 @@ namespace toy3d
                     if (found == textures.assets.end() || !found->second)
                         return failure("Texture asset is not loaded for parameter: " + item.name);
                 }
-                // Sampler DTOs are persisted now; actual sampling is introduced in M5.
-                if (std::holds_alternative<MaterialSamplerPreset>(item.value))
-                    return failure("Runtime Sampler parameters are not supported yet: " + item.name);
             }
             return AssetStatus::success();
         }
@@ -62,6 +59,7 @@ namespace toy3d
                     else if (const auto* value = std::get_if<Vector3>(&item.value)) change.value = *value;
                     else if (const auto* value = std::get_if<Vector4>(&item.value)) change.value = *value;
                     else if (const auto* value = std::get_if<AssetRef>(&item.value)) change.value = textures.assets.at(value->asset_id);
+                    else if (const auto* value = std::get_if<MaterialSamplerPreset>(&item.value)) change.value = *value;
                     else return AssetResult<MaterialInstanceRef>(failure("Unsupported material parameter: " + item.name));
                     changes.push_back(std::move(change));
                 }
@@ -97,6 +95,16 @@ namespace toy3d
         if (!initialize_material_constant_defaults(desc, error)) return AssetResult<MaterialDesc>(failure(error));
         for (const auto& resource : desc.parameter_schema.resources)
         {
+            if (resource.category == shader::ShaderParameterCategory::Sampler &&
+                resource.resource_kind == shader::ResourceKind::Sampler && resource.array_count == 1u &&
+                resource.default_value_kind == shader::ShaderParameterDefaultValueKind::Identifier)
+            {
+                MaterialSamplerPreset preset{};
+                if (!parse_material_sampler_preset(resource.default_value, preset))
+                    return AssetResult<MaterialDesc>(failure("Unknown material sampler default: " + resource.default_value));
+                desc.sampler_defaults.emplace(resource.parameter_id, preset);
+                continue;
+            }
             if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
                 resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u ||
                 resource.default_value_kind != shader::ShaderParameterDefaultValueKind::String)
@@ -127,6 +135,7 @@ namespace toy3d
             else if (const auto* value = std::get_if<Vector3>(&item.value)) change.value = *value;
             else if (const auto* value = std::get_if<Vector4>(&item.value)) change.value = *value;
             else if (const auto* value = std::get_if<AssetRef>(&item.value)) change.value = textures.assets.at(value->asset_id);
+            else if (const auto* value = std::get_if<MaterialSamplerPreset>(&item.value)) change.value = *value;
             else return AssetResult<MaterialParameterChanges>(failure("Unsupported material value: " + item.name));
             changes.push_back(std::move(change));
         }

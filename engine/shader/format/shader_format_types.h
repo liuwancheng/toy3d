@@ -10,6 +10,23 @@
 
 namespace toy3d::shader
 {
+    constexpr std::uint32_t sampler_preset_count = 7u;
+    // Shader authoring and Material assets share this stable persisted vocabulary.
+    inline const char* sampler_preset_name(std::uint32_t index)
+    {
+        switch (index)
+        {
+        case 0: return "PointClamp";
+        case 1: return "PointWrap";
+        case 2: return "LinearClamp";
+        case 3: return "LinearWrap";
+        case 4: return "TrilinearClamp";
+        case 5: return "TrilinearWrap";
+        case 6: return "ShadowCompareClamp";
+        default: return nullptr;
+        }
+    }
+
     using ShaderVariantId = std::uint64_t;
     using ShaderEnumValueId = std::uint64_t;
 

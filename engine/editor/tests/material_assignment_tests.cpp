@@ -23,6 +23,7 @@
 #include "rendercore/scene_interface.h"
 #include "selection/editor_selection.h"
 #include "task_graph/task_graph.h"
+#include "texture_asset/texture_asset.h"
 #include "threading/thread_manager.h"
 #include "viewport/scene_viewport.h"
 #include "workspace/editor_workspace.h"
@@ -76,9 +77,10 @@ int main(int argc, char** argv)
     using namespace toy3d;
     const bool multithreaded = argc > 1 && std::string(argv[1]) == "--multithread";
     NativePlatformFile platform;
-    AssetId red_id; AssetId blue_id; AssetId child_id; AssetId mesh_id; AssetId missing_id;
+    AssetId red_id; AssetId blue_id; AssetId child_id; AssetId mesh_id; AssetId missing_id; AssetId texture_id;
     if (!AssetId::try_generate(red_id) || !AssetId::try_generate(blue_id) || !AssetId::try_generate(child_id) ||
-        !AssetId::try_generate(mesh_id) || !AssetId::try_generate(missing_id)) return 1;
+        !AssetId::try_generate(mesh_id) || !AssetId::try_generate(missing_id) ||
+        !AssetId::try_generate(texture_id)) return 1;
     EditorWorkspacePaths paths;
     paths.project_assets = PhysicalPath(std::string(TOY3D_MATERIAL_TEST_ROOT) + "/" + red_id.hex());
     paths.engine_assets = PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
@@ -87,8 +89,20 @@ int main(int argc, char** argv)
     if (!platform.create_directories(paths.project_assets).succeeded()) return 1;
     EditorWorkspace workspace;
     if (!workspace.initialize(paths)) { std::cerr << workspace.error(); return 1; }
+    Texture2DAsset imported_texture;
+    imported_texture.width = 1u;
+    imported_texture.height = 1u;
+    imported_texture.format = PixelFormat::R8G8B8A8UNormSRGB;
+    imported_texture.mips.push_back({4u, 4u, {255u, 64u, 32u, 255u}});
+    const auto texture_bytes = encode_texture_asset(texture_id, imported_texture);
+    const auto texture_path = VirtualPath::parse("/Project/T_Tint.asset");
+    if (!texture_bytes.succeeded() || !texture_path.succeeded() ||
+        !workspace.files().write_binary_atomic(texture_path.value(), texture_bytes.value(),
+            FilePublishMode::CreateNew).succeeded() || !workspace.refresh()) return 1;
     MaterialAssetData red; red.shader_name = "Toy3d/Surface/Phong";
     red.overrides.push_back({"base_color", Vector4(1, 0, 0, 1)});
+    red.overrides.push_back({"surface_tint_texture",
+        AssetRef{texture_id, {}, "toy3d.Texture2DAssetData", AssetRefStrength::Strong}});
     MaterialAssetData blue = red; blue.overrides[0].value = Vector4(0, 0, 1, 1); blue.two_sided = true;
     const auto red_path = VirtualPath::parse("/Project/M_Red.asset");
     const auto blue_path = VirtualPath::parse("/Project/M_Blue.asset");
@@ -120,7 +134,11 @@ int main(int argc, char** argv)
     const auto defaults = factory.default_material()->material();
     MaterialTextureValues textures;
     for (const auto& resource : defaults->parameter_schema().resources)
-        textures.named_defaults[resource.default_value] = defaults->desc().texture_defaults.at(resource.parameter_id);
+    {
+        const auto found = defaults->desc().texture_defaults.find(resource.parameter_id);
+        if (found != defaults->desc().texture_defaults.end())
+            textures.named_defaults[resource.default_value] = found->second;
+    }
     MaterialLibrary library(workspace.types(), workspace.files(),
         [&workspace]() -> const AssetIndex& { return workspace.catalog().index; },
         [defaults](const std::string& name) { return name == defaults->desc().shader_name ? defaults->desc().shader_program : nullptr; }, textures);
@@ -139,6 +157,12 @@ int main(int argc, char** argv)
         const auto grand_loaded = library.load(grand_ref);
         check(grand_loaded.succeeded(), "load three-layer shared graph");
         auto shared = grand_loaded.value();
+        MaterialParameterValue tint_value;
+        const bool has_tint = shared->parameter_value("surface_tint_texture", tint_value);
+        const TextureRef* tint = has_tint ? std::get_if<TextureRef>(&tint_value) : nullptr;
+        check(tint && *tint && (*tint)->desc().mip_pixels.size() == 1u &&
+            (*tint)->desc().mip_pixels[0] == imported_texture.mips[0].pixels,
+            "load Texture2D asset through inherited material parameter");
         const auto repeated = library.load(grand_ref);
         check(repeated.succeeded() && repeated.value() == shared, "repeated load returns stable shared identity");
         auto first = library.create_instance(shared).value();

@@ -6,6 +6,7 @@
 #include <memory>
 
 #define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG
 #define STBI_NO_STDIO
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -119,6 +120,35 @@ namespace toy3d
             stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &width, &height, &channels, 4),
             &stbi_image_free);
         if (!pixels) return {"PNG pixel decoding failed."};
+        Rgba8Image candidate;
+        candidate.width = static_cast<unsigned>(width);
+        candidate.height = static_cast<unsigned>(height);
+        candidate.pixels.assign(pixels.get(), pixels.get() + static_cast<std::size_t>(width) * height * 4);
+        output = std::move(candidate);
+        return {};
+    }
+
+    ImageStatus decode_image(const std::vector<std::uint8_t>& bytes, Rgba8Image& output, ImageLimits limits)
+    {
+        constexpr std::array<std::uint8_t, 8> png_signature{137, 80, 78, 71, 13, 10, 26, 10};
+        if (bytes.size() >= png_signature.size() &&
+            std::equal(png_signature.begin(), png_signature.end(), bytes.begin()))
+            return decode_png(bytes, output, limits);
+        if (bytes.size() < 4 || bytes.size() > limits.max_encoded_bytes ||
+            bytes.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+            bytes[0] != 0xff || bytes[1] != 0xd8 || bytes[bytes.size() - 2] != 0xff ||
+            bytes[bytes.size() - 1] != 0xd9)
+            return {"Image input must be a bounded PNG or complete JPEG stream."};
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        if (!stbi_info_from_memory(bytes.data(), static_cast<int>(bytes.size()), &width, &height, &channels) ||
+            width <= 0 || height <= 0 || !valid_size(static_cast<unsigned>(width), static_cast<unsigned>(height), limits))
+            return {"JPEG dimensions exceed the decode limit or the header is invalid."};
+        std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
+            stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &width, &height, &channels, 4),
+            &stbi_image_free);
+        if (!pixels) return {"JPEG pixel decoding failed."};
         Rgba8Image candidate;
         candidate.width = static_cast<unsigned>(width);
         candidate.height = static_cast<unsigned>(height);

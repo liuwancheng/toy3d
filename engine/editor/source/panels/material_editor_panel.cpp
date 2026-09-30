@@ -9,6 +9,7 @@
 
 #include "logging/logger.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/texture/texture_asset_loader.h"
 #include "workspace/editor_workspace.h"
 #include "material/material_shader_workflow.h"
 
@@ -83,6 +84,20 @@ namespace toy3d
         { focus_requested_ = true; return; }
         requested_ = id; close_requested_ = false; exit_requested_ = false;
     }
+
+    AssetStatus MaterialEditorPanel::ensure_texture_values(const std::vector<MaterialParameterOverride>& values)
+    {
+        for (const auto& item : values)
+        {
+            // C++17 get_if keeps asset-backed texture loading at the GT edge.
+            const auto* reference = std::get_if<AssetRef>(&item.value);
+            if (!reference || textures_.assets.count(reference->asset_id)) continue;
+            const auto loaded = load_texture_asset(workspace_->files(), workspace_->catalog().index, *reference);
+            if (!loaded.succeeded()) return loaded.status();
+            textures_.assets.emplace(reference->asset_id, loaded.value());
+        }
+        return AssetStatus::success();
+    }
     void MaterialEditorPanel::request_close() { close_requested_ = true; requested_ = {}; }
     bool MaterialEditorPanel::request_exit()
     {
@@ -139,8 +154,23 @@ namespace toy3d
                 }
                 result.push_back(std::move(change));
             }
-        // Texture editing is opened together with the Texture2D production chain
-        // in M5. Loaded texture defaults remain held by the immutable Material.
+        for (const auto& resource : schema.resources)
+        {
+            MaterialParameterChange change;
+            change.name = resource.name;
+            const auto* override_value = find_override(effective, resource.name);
+            if (override_value)
+            {
+                if (const auto* reference = std::get_if<AssetRef>(&override_value->value))
+                {
+                    const auto found = textures_.assets.find(reference->asset_id);
+                    if (found != textures_.assets.end()) change.value = found->second;
+                }
+                else if (const auto* sampler = std::get_if<MaterialSamplerPreset>(&override_value->value))
+                    change.value = *sampler;
+            }
+            result.push_back(std::move(change));
+        }
         return result;
     }
 
@@ -169,6 +199,8 @@ namespace toy3d
         // to this window and does not mutate ActorFactory's shared default.
         MaterialAssetData effective = candidate.root_data();
         effective.overrides = candidate.effective_overrides();
+        status = ensure_texture_values(effective.overrides);
+        if (!status.succeeded()) { report(status); return false; }
         MaterialInstanceRef next;
         {
             const auto built = create_material_from_asset(effective, program, textures_);
@@ -188,6 +220,8 @@ namespace toy3d
         workspace_->material_edit().set_preview(
             [this](const std::vector<MaterialParameterOverride>& values)
             {
+                const auto textures = ensure_texture_values(values);
+                if (!textures.succeeded()) return textures;
                 return runtime_->validate_parameters(parameter_changes(values)) ? AssetStatus::success() :
                     parameter_error("The complete parameter batch could not be prepared.");
             },
@@ -211,6 +245,8 @@ namespace toy3d
             [this](const MaterialAssetData& effective)
             {
                 discard_shader();
+                const auto textures = ensure_texture_values(effective.overrides);
+                if (!textures.succeeded()) return textures;
                 const auto program = shaders_ ? shaders_->program(effective.shader_name) : defaults_->desc().shader_program;
                 const auto built = create_material_from_asset(effective, program, textures_);
                 if (!built.succeeded()) return built.status();
@@ -246,6 +282,8 @@ namespace toy3d
         MaterialAssetData effective = session.root_data();
         auto schema = material_parameter_schema_from_shader_schema(program->data().parameter_schema);
         effective.overrides = session.effective_overrides(schema);
+        const auto textures = ensure_texture_values(effective.overrides);
+        if (!textures.succeeded()) { error = textures.message; return false; }
         candidate_properties_ = properties;
         candidate_schema_ = std::move(schema);
         const auto built = create_material_from_asset(effective, program, textures_);
@@ -280,7 +318,7 @@ namespace toy3d
     void MaterialEditorPanel::shutdown()
     {
         if (workspace_) close();
-        defaults_.reset(); textures_.named_defaults.clear(); workspace_ = nullptr;
+        defaults_.reset(); textures_.named_defaults.clear(); textures_.assets.clear(); workspace_ = nullptr;
     }
     void MaterialEditorPanel::undo()
     {
@@ -375,7 +413,97 @@ namespace toy3d
             ImGui::PopID();
         }
         for (const auto& resource : session.schema().resources)
-            ImGui::TextDisabled("%s: %s (texture selection unavailable)", resource.name.c_str(), resource.default_value.c_str());
+        {
+            ImGui::PushID(resource.name.c_str());
+            const auto effective = session.effective_overrides();
+            const auto* selected = find_override(effective, resource.name);
+            const bool overridden = find_override(session.overrides(), resource.name) != nullptr;
+            const char* title = resource.name.c_str();
+            for (const auto& property : properties_)
+                if (property.name == resource.name) { title = property.display_name.c_str(); break; }
+            ImGui::TextUnformatted(title);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!session.writable() || session.gesturing());
+            if (resource.category == shader::ShaderParameterCategory::SampledTexture &&
+                resource.resource_kind == shader::ResourceKind::Texture2D)
+            {
+                const auto* reference = selected ? std::get_if<AssetRef>(&selected->value) : nullptr;
+                const auto* location = reference ? workspace_->catalog().index.find(reference->asset_id) : nullptr;
+                const std::string label = location ? location->path.utf8() : "Shader default: " + resource.default_value;
+                if (ImGui::BeginCombo("##Texture", label.c_str()))
+                {
+                    for (const auto& entry : workspace_->catalog().entries)
+                    {
+                        if (entry.file.root_type != "toy3d.Texture2DAssetData") continue;
+                        if (ImGui::Selectable(entry.path.utf8().c_str(), reference && reference->asset_id == entry.file.asset_id))
+                        {
+                            AssetRef next;
+                            next.asset_id = entry.file.asset_id;
+                            next.expected_type = entry.file.root_type;
+                            MaterialParameterOverride value{resource.name, next};
+                            const auto ready = ensure_texture_values({value});
+                            report(ready.succeeded() ? session.set_parameter(value) : ready);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                if (ImGui::BeginDragDropTarget())
+                {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("TOY3D_TEXTURE_ASSET"))
+                    {
+                        if (payload->DataSize == sizeof(AssetId))
+                        {
+                            const auto id = *static_cast<const AssetId*>(payload->Data);
+                            const auto* entry = workspace_->catalog().index.find(id);
+                            if (entry && entry->index.root_type == "toy3d.Texture2DAssetData")
+                            {
+                                AssetRef next;
+                                next.asset_id = id;
+                                next.expected_type = entry->index.root_type;
+                                MaterialParameterOverride value{resource.name, next};
+                                const auto ready = ensure_texture_values({value});
+                                report(ready.succeeded() ? session.set_parameter(value) : ready);
+                            }
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+            }
+            else if (resource.category == shader::ShaderParameterCategory::Sampler &&
+                resource.resource_kind == shader::ResourceKind::Sampler)
+            {
+                MaterialSamplerPreset preset{};
+                if (selected)
+                {
+                    const auto* chosen = std::get_if<MaterialSamplerPreset>(&selected->value);
+                    if (chosen) preset = *chosen;
+                }
+                else parse_material_sampler_preset(resource.default_value, preset);
+                const auto ordinal = static_cast<std::size_t>(preset);
+                const char* label = ordinal < shader::sampler_preset_count - 1u ?
+                    shader::sampler_preset_name(static_cast<std::uint32_t>(ordinal)) : "Unsupported";
+                if (ImGui::BeginCombo("##Sampler", label))
+                {
+                    for (std::uint32_t i = 0; i < shader::sampler_preset_count - 1u; ++i)
+                        if (ImGui::Selectable(shader::sampler_preset_name(i), ordinal == i))
+                            report(session.set_parameter({resource.name, static_cast<MaterialSamplerPreset>(i)}));
+                    ImGui::EndCombo();
+                }
+            }
+            else ImGui::TextDisabled("Unsupported resource type");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!overridden);
+            if (ImGui::Button(session.is_instance() ? "Inherit" : "Reset")) report(session.remove_parameter(resource.name));
+            ImGui::EndDisabled();
+            ImGui::EndDisabled();
+            if (!overridden)
+            {
+                const auto source = session.parameter_source(resource.name);
+                const auto* location = workspace_->catalog().index.find(source.asset_id);
+                ImGui::TextDisabled("Inherited: %s", location ? location->path.utf8().c_str() : "Shader default");
+            }
+            ImGui::PopID();
+        }
         const auto snapshot = session.overrides();
         for (const auto& value : snapshot)
         {

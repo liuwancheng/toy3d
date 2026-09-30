@@ -129,6 +129,14 @@ namespace toy3d
         return type == "toy3d.MaterialAssetData" || type == "toy3d.MaterialInstanceAssetData";
     }
 
+    bool parse_material_sampler_preset(const std::string& name, MaterialSamplerPreset& output)
+    {
+        for (std::uint32_t i = 0; i < shader::sampler_preset_count; ++i)
+            if (name == shader::sampler_preset_name(i))
+            { output = static_cast<MaterialSamplerPreset>(i); return true; }
+        return false;
+    }
+
     // --------------------------------------------------------------------------
     // MaterialAssetHierarchy: Bounded root-to-leaf authoring value resolution
     // --------------------------------------------------------------------------

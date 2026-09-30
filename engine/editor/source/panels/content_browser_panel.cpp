@@ -40,6 +40,16 @@ namespace toy3d
                 if (type == "toy3d.MaterialInstanceAssetData")
                     draw.AddText(ImVec2(position.x + size * 0.7f, position.y + size * 0.7f), IM_COL32_WHITE, "MI");
             }
+            else if (type == "toy3d.Texture2DAssetData")
+            {
+                draw.AddRectFilled(a, b, IM_COL32(124, 151, 173, 255), 3);
+                draw.AddRectFilled(ImVec2(a.x + 4, a.y + 4), ImVec2(b.x - 4, b.y - 4),
+                    IM_COL32(62, 85, 103, 255), 2);
+                draw.AddCircleFilled(ImVec2(a.x + size * 0.17f, a.y + size * 0.16f), size * 0.055f,
+                    IM_COL32(232, 205, 128, 255));
+                draw.AddTriangleFilled(ImVec2(a.x + 4, b.y - 4), ImVec2(a.x + size * 0.24f, a.y + size * 0.22f),
+                    ImVec2(a.x + size * 0.48f, b.y - 4), IM_COL32(122, 177, 143, 255));
+            }
             else
             {
                 const ImVec2 top(position.x + size * 0.5f, position.y + size * 0.18f);
@@ -154,6 +164,13 @@ namespace toy3d
                                 ImGui::Text("%s: %s", is_material ? "Assign Material" : "Place Static Mesh", item.path.c_str());
                                 ImGui::EndDragDropSource();
                             }
+                            if (item.asset && item.asset->file.root_type == "toy3d.Texture2DAssetData" && ImGui::BeginDragDropSource())
+                            {
+                                const AssetId id = item.asset->file.asset_id;
+                                ImGui::SetDragDropPayload("TOY3D_TEXTURE_ASSET", &id, sizeof(id));
+                                ImGui::Text("Assign Texture2D: %s", item.path.c_str());
+                                ImGui::EndDragDropSource();
+                            }
                             auto& draw = *ImGui::GetWindowDrawList();
                             draw.AddRectFilled(position, end, selected ? IM_COL32(48, 89, 126, 255) :
                                 hovered ? IM_COL32(55, 58, 63, 255) : IM_COL32(31, 33, 37, 255), 4);
@@ -205,6 +222,7 @@ namespace toy3d
                 if (ImGui::BeginPopupContextWindow("Content Actions", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
                 {
                     if (ImGui::MenuItem("Import...", nullptr, false, import_enabled && writable)) actions.import_requested = true;
+                    if (ImGui::MenuItem("Import Texture2D...", nullptr, false, writable)) actions.texture_import_requested = true;
                     ImGui::Separator();
                     if (ImGui::MenuItem("Material...", nullptr, false, writable))
                     {

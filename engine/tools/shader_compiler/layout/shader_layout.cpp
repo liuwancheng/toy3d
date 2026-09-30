@@ -139,8 +139,10 @@ namespace toy3d::shader
 
         bool is_sampler_preset(std::string_view value)
         {
-            return value == "PointClamp" || value == "PointWrap" || value == "LinearClamp" || value == "LinearWrap" ||
-                   value == "TrilinearClamp" || value == "TrilinearWrap" || value == "ShadowCompareClamp";
+            // string_view borrows the parsed token while comparing the shared Shader vocabulary.
+            for (std::uint32_t i = 0; i < sampler_preset_count; ++i)
+                if (value == sampler_preset_name(i)) return true;
+            return false;
         }
 
         std::optional<ShaderParameterCategory> resource_category(ResourceKind kind)

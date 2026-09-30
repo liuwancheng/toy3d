@@ -63,11 +63,20 @@ namespace toy3d
                         return fail("This Shader has unsupported material constants.");
             }
             for (const auto& resource : schema.resources)
-                if (resource.group == shader::BindingGroup::Material &&
-                    (resource.category != shader::ShaderParameterCategory::SampledTexture ||
-                     resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u ||
-                     resource.default_value_kind != shader::ShaderParameterDefaultValueKind::String || resource.default_value != "white"))
-                    return fail("This Shader requires resources that are not supported yet.");
+            {
+                if (resource.group != shader::BindingGroup::Material) continue;
+                if (resource.category == shader::ShaderParameterCategory::SampledTexture &&
+                    resource.resource_kind == shader::ResourceKind::Texture2D && resource.array_count == 1u &&
+                    resource.default_value_kind == shader::ShaderParameterDefaultValueKind::String &&
+                    resource.default_value == "white") continue;
+                MaterialSamplerPreset preset{};
+                if (resource.category == shader::ShaderParameterCategory::Sampler &&
+                    resource.resource_kind == shader::ResourceKind::Sampler && resource.array_count == 1u &&
+                    resource.default_value_kind == shader::ShaderParameterDefaultValueKind::Identifier &&
+                    parse_material_sampler_preset(resource.default_value, preset) &&
+                    preset != MaterialSamplerPreset::ShadowCompareClamp) continue;
+                return fail("This Shader requires unsupported material resources.");
+            }
             return AssetStatus::success();
         }
     }

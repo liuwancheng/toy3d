@@ -130,12 +130,24 @@ namespace toy3d
                 for (const auto& resource : desc.parameter_schema.resources)
                     if (resource.name == change.name)
                     {
-                        if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
-                            resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u) return false;
                         item.id = resource.parameter_id;
-                        if (reset) item.value = desc.texture_defaults.at(item.id);
-                        const auto* value = std::get_if<TextureRef>(&item.value);
-                        if (!value || !*value) return false;
+                        if (resource.array_count != 1u) return false;
+                        if (resource.category == shader::ShaderParameterCategory::SampledTexture &&
+                            resource.resource_kind == shader::ResourceKind::Texture2D)
+                        {
+                            if (reset) item.value = desc.texture_defaults.at(item.id);
+                            const auto* value = std::get_if<TextureRef>(&item.value);
+                            if (!value || !*value) return false;
+                        }
+                        else if (resource.category == shader::ShaderParameterCategory::Sampler &&
+                            resource.resource_kind == shader::ResourceKind::Sampler)
+                        {
+                            if (reset) item.value = desc.sampler_defaults.at(item.id);
+                            const auto* value = std::get_if<MaterialSamplerPreset>(&item.value);
+                            if (!value || *value < MaterialSamplerPreset::PointClamp ||
+                                *value > MaterialSamplerPreset::TrilinearWrap) return false;
+                        }
+                        else return false;
                     }
                 if (!item.id) return false;
                 resolved.push_back(std::move(item));
@@ -200,12 +212,27 @@ namespace toy3d
                 return false;
             }
             std::size_t texture_count = 0u;
+            std::size_t sampler_count = 0u;
             for (const shader::ShaderParameterResourceSchema& resource : desc.parameter_schema.resources)
             {
                 if (resource.group != shader::BindingGroup::Material)
                 {
                     error = "Material parameter schema contains a non-Material resource";
                     return false;
+                }
+                if (resource.category == shader::ShaderParameterCategory::Sampler &&
+                    resource.resource_kind == shader::ResourceKind::Sampler && resource.array_count == 1u)
+                {
+                    if (resource.default_value_kind != shader::ShaderParameterDefaultValueKind::Identifier ||
+                        desc.sampler_defaults.count(resource.parameter_id) != 1u ||
+                        desc.sampler_defaults.at(resource.parameter_id) < MaterialSamplerPreset::PointClamp ||
+                        desc.sampler_defaults.at(resource.parameter_id) > MaterialSamplerPreset::TrilinearWrap)
+                    {
+                        error = "Material Sampler schema is missing a supported runtime default";
+                        return false;
+                    }
+                    ++sampler_count;
+                    continue;
                 }
                 if (resource.category != shader::ShaderParameterCategory::SampledTexture ||
                     resource.resource_kind != shader::ResourceKind::Texture2D || resource.array_count != 1u)
@@ -222,7 +249,7 @@ namespace toy3d
                 }
                 ++texture_count;
             }
-            if (texture_count != desc.texture_defaults.size())
+            if (texture_count != desc.texture_defaults.size() || sampler_count != desc.sampler_defaults.size())
             {
                 error = "Material contains a Texture default that is not declared by its complete schema";
                 return false;
@@ -464,9 +491,9 @@ namespace toy3d
         {
             MaterialParameterValue parameter;
             if (!parent->parameter_value(resource.name, parameter)) return {};
-            const auto* texture = std::get_if<TextureRef>(&parameter);
-            if (!texture) return {};
-            effective.texture_defaults[resource.parameter_id] = *texture;
+            if (const auto* texture = std::get_if<TextureRef>(&parameter)) effective.texture_defaults[resource.parameter_id] = *texture;
+            else if (const auto* sampler = std::get_if<MaterialSamplerPreset>(&parameter)) effective.sampler_defaults[resource.parameter_id] = *sampler;
+            else return {};
         }
         result->material_render_proxy_ = std::make_unique<MaterialRenderProxy>(effective);
         return result;
@@ -514,6 +541,11 @@ namespace toy3d
     bool MaterialInstance::set_texture(std::string_view name, TextureRef texture)
     {
         return apply_parameters({{std::string(name), std::move(texture)}});
+    }
+
+    bool MaterialInstance::set_sampler(std::string_view name, MaterialSamplerPreset preset)
+    {
+        return apply_parameters({{std::string(name), preset}});
     }
 
     bool MaterialInterface::validate_parameters(const MaterialParameterChanges& changes) const
@@ -645,9 +677,9 @@ namespace toy3d
                     {
                         MaterialParameterValue value;
                         if (!source->parameter_value(resource.name, value)) return false;
-                        const auto* texture = std::get_if<TextureRef>(&value);
-                        if (!texture) return false;
-                        revision.effective.texture_defaults[resource.parameter_id] = *texture;
+                        if (const auto* texture = std::get_if<TextureRef>(&value)) revision.effective.texture_defaults[resource.parameter_id] = *texture;
+                        else if (const auto* sampler = std::get_if<MaterialSamplerPreset>(&value)) revision.effective.sampler_defaults[resource.parameter_id] = *sampler;
+                        else return false;
                     }
                 }
                 if (!revision.root)
@@ -670,6 +702,7 @@ namespace toy3d
                 else if (const auto* vector = std::get_if<Vector3>(&item.value)) revision.effective.vector3_defaults[item.id] = vec3(vector->x, vector->y, vector->z);
                 else if (const auto* vector = std::get_if<Vector4>(&item.value)) revision.effective.vector4_defaults[item.id] = vec4(vector->x, vector->y, vector->z, vector->w);
                 else if (const auto* texture = std::get_if<TextureRef>(&item.value)) revision.effective.texture_defaults[item.id] = *texture;
+                else if (const auto* sampler = std::get_if<MaterialSamplerPreset>(&item.value)) revision.effective.sampler_defaults[item.id] = *sampler;
             }
             revision.destination = target->material_render_proxy_.get();
             if (!revision.destination) return false;

@@ -66,6 +66,8 @@ target_link_libraries(${TARGET_NAME} PUBLIC Toy3dStaticMeshAsset)
 target_sources(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/texture/texture_asset_loader.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/texture/texture_asset_loader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.h"
@@ -172,6 +174,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC fmt)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMath)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMaterialAsset)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dTextureAsset)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dPixelFormat)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dShaderFormat)

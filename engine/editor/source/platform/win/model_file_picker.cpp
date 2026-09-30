@@ -8,7 +8,9 @@
 
 namespace toy3d
 {
-    bool pick_model_files(IWindow& owner, std::vector<std::string>& paths, std::string& error)
+    namespace
+    {
+    bool pick_files(IWindow& owner, std::vector<std::string>& paths, std::string& error, bool texture)
     {
         paths.clear();
         error.clear();
@@ -19,8 +21,9 @@ namespace toy3d
         OPENFILENAMEW dialog{};
         dialog.lStructSize = sizeof(dialog);
         dialog.hwndOwner = window->get_native_hwnd();
-        dialog.lpstrTitle = L"Import Static Mesh";
-        dialog.lpstrFilter = L"Static Mesh (FBX, OBJ, glTF, GLB)\0*.fbx;*.obj;*.gltf;*.glb\0All files\0*.*\0\0";
+        dialog.lpstrTitle = texture ? L"Import Texture2D" : L"Import Static Mesh";
+        dialog.lpstrFilter = texture ? L"Images (PNG, JPEG)\0*.png;*.jpg;*.jpeg\0All files\0*.*\0\0" :
+            L"Static Mesh (FBX, OBJ, glTF, GLB)\0*.fbx;*.obj;*.gltf;*.glb\0All files\0*.*\0\0";
         dialog.lpstrFile = buffer.data();
         dialog.nMaxFile = static_cast<DWORD>(buffer.size());
         dialog.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_ALLOWMULTISELECT;
@@ -54,4 +57,11 @@ namespace toy3d
         { paths.clear(); error = std::string("Model path conversion failed: ") + exception.what(); return false; }
         return true;
     }
+    }
+
+    bool pick_model_files(IWindow& owner, std::vector<std::string>& paths, std::string& error)
+    { return pick_files(owner, paths, error, false); }
+
+    bool pick_texture_files(IWindow& owner, std::vector<std::string>& paths, std::string& error)
+    { return pick_files(owner, paths, error, true); }
 }

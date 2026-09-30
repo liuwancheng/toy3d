@@ -59,7 +59,11 @@ namespace
             const auto defaults = factory_.default_material()->material();
             MaterialTextureValues textures;
             for (const auto& resource : defaults->parameter_schema().resources)
-                textures.named_defaults[resource.default_value] = defaults->desc().texture_defaults.at(resource.parameter_id);
+            {
+                const auto found = defaults->desc().texture_defaults.find(resource.parameter_id);
+                if (found != defaults->desc().texture_defaults.end())
+                    textures.named_defaults[resource.default_value] = found->second;
+            }
             library_ = std::make_unique<MaterialLibrary>(workspace_.types(), workspace_.files(),
                 [this]() -> const AssetIndex& { return workspace_.catalog().index; },
                 [this](const std::string& name) { return shaders_.program(name); }, std::move(textures));

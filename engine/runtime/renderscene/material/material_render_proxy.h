@@ -4,6 +4,7 @@
 #include "math/math.h"
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/shader/shader_parameters.h"
+#include "material/material_asset_data.h"
 
 #include <cstdint>
 #include <memory>
@@ -66,6 +67,8 @@ namespace toy3d
         std::unordered_map<ShaderParameterId, vec3> vector3_parameters_;
         std::unordered_map<ShaderParameterId, vec4> vector4_parameters_;
         std::unordered_map<ShaderParameterId, TextureResource*> texture_parameters_;
+        std::unordered_map<ShaderParameterId, MaterialSamplerPreset> sampler_parameters_;
+        std::unordered_map<MaterialSamplerPreset, RHISamplerRef> sampler_cache_;
         RHIBindingSetRef binding_set_;
         RHIBindingSetRef staged_binding_set_;
         std::unordered_map<TextureResource*, std::uint64_t> texture_generations_;

@@ -7,6 +7,7 @@ Shader "Toy3d/Surface/Unlit"
         base_color ("Base Color", Color) = (1.0, 1.0, 1.0, 1.0)
         base_color_texture ("Base Color Texture", Texture2D) = "white"
         material_sampler ("Material Sampler", Sampler) = LinearWrap
+        uv_scale ("UV Scale", Float2) = (1.0, 1.0)
     }
 
     Variants
@@ -31,18 +32,31 @@ Shader "Toy3d/Surface/Unlit"
         #pragma vertex vs_main
         #pragma pixel ps_main
 
-        float4 vs_main(float4 position : POSITION0) : SV_Position
+        struct VSInput
         {
+            float4 position : POSITION0;
+            float2 uv : TEXCOORD0;
+        };
+
+        struct VSOutput
+        {
+            float4 clip_position : SV_Position;
+            float2 uv : TEXCOORD0;
+        };
+
+        VSOutput vs_main(VSInput input)
+        {
+            VSOutput output;
             const float4 world_position =
-                mul(toy_object_to_world, float4(position.xyz, 1.0));
-            return mul(toy_view_projection, world_position);
+                mul(toy_object_to_world, float4(input.position.xyz, 1.0));
+            output.clip_position = mul(toy_view_projection, world_position);
+            output.uv = input.uv;
+            return output;
         }
 
-        float4 ps_main() : SV_Target0
+        float4 ps_main(VSOutput input) : SV_Target0
         {
-            // UV sampling and runtime Sampler support are introduced together
-            // in M5; M1 makes the existing color and texture defaults observable.
-            return base_color * base_color_texture.Load(int3(0, 0, 0));
+            return base_color * base_color_texture.Sample(material_sampler, input.uv * uv_scale);
         }
         ENDHLSL
     }

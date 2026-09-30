@@ -18,7 +18,7 @@
 
 ShaderMap 提供经验证数据到不可变 Program 的候选创建入口；候选不自动写进旧 key 的缓存。工作流在 GPU 校验和所有材质候选准备成功后替换自身已发布 Program 记录。RT 预检使用 Renderer 的设备/ShaderProgramCache、LocalVertexFactory 和当前场景 attachment，创建普通及双面 pipeline，无额外 submit/wait_idle；GT 只接收拥有的完成结果，不访问 RHI/Proxy。
 
-当前 Forward Pass 的 View/Object/lighting ABI 必须与引擎提供的数据兼容，未知 Pass/Global 资源拒绝；材质资源仍受 M5 前的 Texture2D 内置默认限制。代码支持新数值/Color/Range Properties，删除/类型变化的覆盖按既有 orphan 规则保留。候选窗口 runtime 从当前草稿生成；更新 schema 不丢草稿和原资产撤销历史，结束手势后才接管。源码编译不保存 `.asset`。
+当前 Forward Pass 的 View/Object/lighting ABI 必须与引擎提供的数据兼容，未知 Pass/Global 资源拒绝；材质资源支持已导入 Texture2D 的强 AssetRef 与普通 Sampler preset，缺失纹理和不受支持的比较采样器使候选接管失败。代码支持新数值/Color/Range Properties，删除/类型变化的覆盖按既有 orphan 规则保留。候选窗口 runtime 从当前草稿生成；更新 schema 不丢草稿和原资产撤销历史，结束手势后才接管。源码编译不保存 `.asset`。
 
 MaterialLibrary 从已加载根/实例的已保存 DTO 准备整个候选配置图，临时后代按自己的本层覆盖解析；不读取窗口草稿。一次 FIFO 发布替换完整有效 Proxy 状态，逻辑对象和 Proxy 地址保持稳定，Component 槽位无需换引用。旧候选、编译失败、非法 schema/VF/pipeline/资源保留旧效果。MaterialAssignments 只保留场景 AssetRef 与命令记录，委托 Library prepare/publish/complete/discard。
 

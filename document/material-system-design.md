@@ -6,7 +6,7 @@
 
 本文是材质资产和 Editor 参数化工作流的 Active 设计。产品范围已确认，新增类型、函数和执行清单是后续实施要求，不表示当前代码已经支持。Shader 语法、参数身份及 GPU 布局继续遵循 [Shader 系统](shader-system-design.md)，文件与编辑事务遵循 [资源基础](editor-resource-foundation-design.md)，GT/RT 更新遵循 [Material updates](../openspec/specs/game-render-framework/material-updates/spec.md)。
 
-当前已落地 M1 属性格式、编译产物、默认值和 Unlit 颜色消费，M2 DTO/编解码/创建，M3 参数窗口/撤销/保存，M4 场景槽位赋值与重建，以及多层 Parent、MaterialInterface、MaterialLibrary 共享发布。显式登记的项目 Shader 经手动编译与 GPU 预检后用于创建、编辑及场景赋值。Sampler 与 UV 采样继续在 M5；材质球预览和缩略图刷新继续在 M6，不提前开放含未支持 Sampler 的 Unlit。源码编译接管见[材质源码迭代](material-source-workflow-design.md)。
+当前已落地 M1 属性格式、编译产物、默认值和 Unlit 颜色消费，M2 DTO/编解码/创建，M3 参数窗口/撤销/保存，M4 场景槽位赋值与重建，以及多层 Parent、MaterialInterface、MaterialLibrary 共享发布。显式登记的项目 Shader 经手动编译与 GPU 预检后用于创建、编辑及场景赋值。M5 已接入 Texture2D `.asset`、PNG/JPEG 导入、UV0 采样、普通 Sampler preset 和材质面板赋值；材质球预览和缩略图刷新继续在 M6。源码编译接管见[材质源码迭代](material-source-workflow-design.md)。
 
 首版完成以下能力：
 
@@ -25,15 +25,15 @@ PBR、Normal Map、tangent 生成、透明排序、Masked、静态开关面板�
 
 | 当前入口 | 可以复用 | 需要补齐 |
 | --- | --- | --- |
-| `rendercore/material/material.*` | MaterialInterface、Material、MaterialInstance、多层继承、schema 默认值、按名 setter、批次、reset 和完整候选发布 | Sampler |
-| `renderscene/material/material_render_proxy.*` | RT 独占状态、persistent Material binding 和按需物化 | 普通 Sampler、经校验的参数批次及完整 schema replacement |
+| `rendercore/material/material.*` | MaterialInterface、Material、MaterialInstance、多层继承、schema 默认值、Sampler setter、按名批次、reset 和完整候选发布 | ComparisonSampler |
+| `renderscene/material/material_render_proxy.*` | RT 独占状态、Texture2D/Sampler persistent Material binding 和按需物化 | ComparisonSampler 与更多贴图类型 |
 | `shader/format/shader_format_types.h`、`shader_editor_properties.h` | 完整参数 schema、稳定 ID、布局、默认值、属性描述及自动控件 | 新资源类型对应的控件 |
 | `shader_compiler/frontend/shader_ast.h` | Properties 显示名称、Color、Range、源码位置，已输出独立属性文件 | Editor 使用编译产物，不依赖 AST |
 | `panels/scene_panels.cpp` | Actor Details、材质槽赋值与选择路由；独立 MaterialEditorPanel 编辑参数 | 场景资产持久化与更完整 Component 面板 |
 | `StaticMeshComponent` | 按材质槽赋/清除 override、稳定槽名、Editor 资产引用和命令历史 | 场景资产持久化与重导入接管 |
 | `thumbnails/`、`ui/ui_texture_work.h` | 独立预览 World、逻辑纹理、多图和颜色读回 | 材质预览、交互与缩略图调度、显示预览免读回路径 |
 
-当前 ActorFactory 从 schema 填充数值默认值，显式提供内置白纹理；内置对象共用同一 MaterialInstance。不能用修改该实例的方式实现单对象参数编辑。Phong 和 Unlit 当前使用 `Texture.Load(0,0)`，Unlit 已消费 base_color；贴图的 UV 与显式 Sampler 采样仍待 M5。Unlit schema 声明的 Sampler 尚未被运行时材质支持，不能因 Shader 编译成功就向用户开放该材质的完整加载/编辑。StaticMesh 已有 UV0，但没有 tangent，因此不能宣称已支持 Normal Map。
+当前 ActorFactory 从 schema 填充数值默认值，显式提供内置白纹理；内置对象共用同一 MaterialInstance。不能用修改该实例的方式实现单对象参数编辑。Phong 和 Unlit 使用 UV0、显式普通 Sampler 和 `uv_scale` 采样 Texture2D。StaticMesh 已有 UV0，但没有 tangent，因此不能宣称已支持 Normal Map。
 
 迁移以保持已有模型可绘制为前提：先建立 schema 驱动的构建入口并覆盖默认值，再迁移 ActorFactory，最后删除手工列举 Shader 参数默认值的创建路径。GT 到 RT 的 FIFO、最终 release 和 GPU completion 保活协议继续使用现有实现。
 
@@ -42,11 +42,11 @@ PBR、Normal Map、tangent 生成、透明排序、Masked、静态开关面板�
 | 位置 | 目标与职责 |
 | --- | --- |
 | `engine/core/material/` | `Toy3dMaterialAsset`：Material/Instance DTO、覆盖记录、验证、引用与编解码 |
-| `engine/core/texture_asset/` | 拟新增 `Toy3dTextureAsset`：Texture2D 元数据、mip payload、引用和格式验证 |
-| `engine/core/image_codec/` | 扩展现有 `Toy3dImageCodec`：有界 JPEG 解码；PNG 原接口和缩略图限制保持有效 |
+| `engine/core/texture_asset/` | `Toy3dTextureAsset`：Texture2D 元数据、mip payload、引用和格式验证 |
+| `engine/core/image_codec/` | `Toy3dImageCodec`：有界 PNG/JPEG 解码；PNG 原接口和缩略图限制保持有效 |
 | `engine/shader/format/` | 扩展 `Toy3dShaderFormat`：只读属性描述格式、hash 与读取校验 |
 | `engine/tools/shader_compiler/` | Properties 元数据生成、项目源码编译和依赖验证 |
-| `engine/tools/texture_import/` | 拟新增 `Toy3dTextureImport`：源图像转 Texture2D Asset 的纯 CPU 生产链 |
+| `engine/tools/texture_import/` | `Toy3dTextureImport`：源图像转 Texture2D Asset 的纯 CPU 生产链 |
 | `engine/runtime/rendercore/material/` | 从领域 DTO 构建 Material/MaterialInstance、参数及候选发布 |
 | `engine/runtime/rendercore/texture/` | 从 Texture2D Asset 构建现有 Texture，不在 runtime 解码 PNG/JPEG |
 | `engine/editor/source/material/` | 参数手势、预览、引用者更新及编译结果接管 |
@@ -218,7 +218,7 @@ bool StaticMeshComponent::clear_material_override(std::uint32_t slot); // M4 已
 
 runtime reset_parameter 移除本层覆盖并恢复最新直接 Parent 有效值，父链均无覆盖时使用 Shader default。Editor 私有预览按作者父链展开有效值，不把展开值写回资产。
 
-普通参数编辑保留同一个 Proxy，RT 合并 dirty 更新并在可见 Draw 前物化。Sampler 由 RT 按 preset 取得现有 device sampler cache，Texture 与 Sampler 独立，多个纹理可以共享 preset。没有实现的 preset/类型明确失败。
+普通参数编辑保留同一个 Proxy，RT 合并 dirty 更新并在可见 Draw 前物化。Sampler 由 RT 按 preset 在该 MaterialRenderProxy 内复用 RHI 对象，Texture 与 Sampler 独立，多个纹理可以共享 preset；后续若引入 device 级缓存再统一收敛。没有实现的 preset/类型明确失败。
 
 调用方持有的 MaterialInterfaceRef 只读，Library 持有可受控发布的根/实例 owner。父配置变化先解析整个受影响树，准备成功后在单个 FIFO 命令发布；子实例仅继承未覆盖参数。首次加载从已保存资产解析，重复加载保持同一逻辑身份。所有权由 Application 的 Library 与场景/预览强引用闭合，不新增全局 registry 或 Proxy ID。
 
@@ -396,6 +396,6 @@ Library 保持逻辑对象和 RenderProxy 身份稳定。同一 AssetId 返回�
 
 Editor 根与实例都能创建实例，Parent 选择器支持两类资产，显示父链、来源，支持打开和定位 Parent。切换 Parent 使用已有 EditSession ReplaceCandidate 撤销；undo/redo 重新解析父链和已验证 Program。草稿只更新私有预览，保存后 reload 共享图，不写子文件、不标脏子资产。保存与渲染发布不是同一事务：保存成功而发布失败时显示“已保存，显示旧版本”并提供 Retry Publish，不能假称回滚磁盘。
 
-当前不实现 Cook，未来可以展开静态资产继承，运行时新创建实例仍保留 Parent。Sampler、Texture2D 生产链、材质球预览和缩略图刷新继续按 M5/M6 独立实施，本次只补齐已支持参数的继承和场景传播。
+当前不实现 Cook，未来可以展开静态资产继承，运行时新创建实例仍保留 Parent。Texture2D 与普通 Sampler 已按 M5 接入；材质球预览和缩略图刷新继续按 M6 实施。
 
 验证覆盖三层继承、空覆盖、父值传播、子/兄弟隔离、reset、资产与临时父链、循环/深度限制、Parent undo/redo、保存发布分离、Shader orphan、只读加载、稳定身份、FIFO/GPU 寿命和关闭释放。公共层不增加后端类型；D3D11 FL11_0/SM5、D3D12 和移动 Vulkan 使用同一逻辑参数与候选边界，实测范围单独报告。

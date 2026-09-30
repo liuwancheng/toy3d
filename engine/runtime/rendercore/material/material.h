@@ -4,6 +4,7 @@
 #include "format/shader_binding_identity.h"
 #include "format/shader_format_types.h"
 #include "rendercore/texture/texture.h"
+#include "material/material_asset_data.h"
 
 #include <atomic>
 #include <cstdint>
@@ -43,6 +44,7 @@ namespace toy3d
         std::unordered_map<ShaderParameterId, vec3> vector3_defaults;
         std::unordered_map<ShaderParameterId, vec4> vector4_defaults;
         std::unordered_map<ShaderParameterId, TextureRef> texture_defaults;
+        std::unordered_map<ShaderParameterId, MaterialSamplerPreset> sampler_defaults;
         MaterialShadingModel shading_model = MaterialShadingModel::Phong;
         MaterialBlendMode blend_mode = MaterialBlendMode::Opaque;
         bool two_sided = false;
@@ -54,7 +56,8 @@ namespace toy3d
 
     // C++17 variant owns the closed runtime value set; monostate removes the
     // local override and restores Parent/default without a nullable resource.
-    using MaterialParameterValue = std::variant<std::monostate, float, Vector2, Vector3, Vector4, TextureRef>;
+    using MaterialParameterValue = std::variant<std::monostate, float, Vector2, Vector3, Vector4,
+        TextureRef, MaterialSamplerPreset>;
     struct MaterialParameterChange
     {
         std::string name;
@@ -152,6 +155,7 @@ namespace toy3d
         bool set_vector(std::string_view parameter_name, const vec3& value);
         bool set_vector(std::string_view parameter_name, const vec4& value);
         bool set_texture(std::string_view parameter_name, TextureRef texture);
+        bool set_sampler(std::string_view parameter_name, MaterialSamplerPreset preset);
         bool reset_parameter(std::string_view parameter_name);
         using MaterialInterface::validate_parameters;
         using MaterialInterface::apply_parameters;

@@ -31,4 +31,7 @@ namespace toy3d
                            ImageLimits limits = {});
     ImageStatus decode_png(const std::vector<std::uint8_t>& bytes, Rgba8Image& output,
                            ImageLimits limits = {});
+    // Source import accepts PNG or JPEG with the caller's larger, explicit budget.
+    ImageStatus decode_image(const std::vector<std::uint8_t>& bytes, Rgba8Image& output,
+                             ImageLimits limits = {});
 } // namespace toy3d

@@ -50,6 +50,7 @@ namespace toy3d
         void close();
         void complete_transition();
         void report(const AssetStatus& status);
+        AssetStatus ensure_texture_values(const std::vector<MaterialParameterOverride>& values);
         MaterialParameterChanges parameter_changes(const std::vector<MaterialParameterOverride>& effective) const;
         void draw_parameters();
 

@@ -151,6 +151,21 @@ namespace toy3d
             }
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material texture resource has an unknown state");
         }
+        RHISamplerDesc material_sampler_desc(MaterialSamplerPreset preset)
+        {
+            RHISamplerDesc desc;
+            const bool point = preset == MaterialSamplerPreset::PointClamp || preset == MaterialSamplerPreset::PointWrap;
+            const bool trilinear = preset == MaterialSamplerPreset::TrilinearClamp ||
+                preset == MaterialSamplerPreset::TrilinearWrap;
+            const bool wrap = preset == MaterialSamplerPreset::PointWrap || preset == MaterialSamplerPreset::LinearWrap ||
+                preset == MaterialSamplerPreset::TrilinearWrap;
+            desc.min_filter = point ? RHIFilter::Nearest : RHIFilter::Linear;
+            desc.mag_filter = desc.min_filter;
+            desc.mip_filter = trilinear ? RHIFilter::Linear : RHIFilter::Nearest;
+            desc.address_u = desc.address_v = desc.address_w = wrap ? RHIAddressMode::Repeat : RHIAddressMode::ClampToEdge;
+            desc.debug_name = "MaterialSampler";
+            return desc;
+        }
     } // namespace
 
     MaterialRenderProxy::MaterialRenderProxy(const Material& material) : MaterialRenderProxy(material.desc()) {}
@@ -177,6 +192,7 @@ namespace toy3d
             texture_parameters_[default_texture.first] =
                 default_texture.second ? default_texture.second->texture_resource() : nullptr;
         }
+        sampler_parameters_ = desc.sampler_defaults;
     }
 
     void MaterialRenderProxy::replace_state(MaterialRenderProxy&& candidate) noexcept
@@ -186,13 +202,14 @@ namespace toy3d
         if (parameter_schema_.schema_identity == candidate.parameter_schema_.schema_identity &&
             scalar_parameters_ == candidate.scalar_parameters_ && vector2_parameters_ == candidate.vector2_parameters_ &&
             vector3_parameters_ == candidate.vector3_parameters_ && vector4_parameters_ == candidate.vector4_parameters_ &&
-            texture_parameters_ == candidate.texture_parameters_)
+            texture_parameters_ == candidate.texture_parameters_ && sampler_parameters_ == candidate.sampler_parameters_)
         {
             candidate.binding_set_ = std::move(binding_set_);
             candidate.texture_generations_ = std::move(texture_generations_);
             candidate.texture_views_ = std::move(texture_views_);
             candidate.dirty_ = dirty_;
         }
+        candidate.sampler_cache_ = std::move(sampler_cache_);
         candidate.resource_manager_ = resource_manager_;
         if (resource_manager_ != nullptr)
         {
@@ -465,6 +482,30 @@ namespace toy3d
         std::unordered_map<TextureResource*, RHITextureViewRef> views;
         for (const ShaderParameterResourceMetadata& resource_metadata : parameter_metadata_.resources)
         {
+            if (resource_metadata.category == shader::ShaderParameterCategory::Sampler)
+            {
+                const auto parameter = sampler_parameters_.find(resource_metadata.parameter_id);
+                if (parameter == sampler_parameters_.end())
+                    return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument,
+                        "Material Sampler value is missing");
+                if (parameter->second < MaterialSamplerPreset::PointClamp ||
+                    parameter->second > MaterialSamplerPreset::TrilinearWrap)
+                    return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::Unsupported,
+                        "Material Sampler preset is not supported by this binding");
+                auto cached = sampler_cache_.find(parameter->second);
+                if (cached == sampler_cache_.end())
+                {
+                    auto created_sampler = device.create_sampler(material_sampler_desc(parameter->second));
+                    if (!created_sampler)
+                        return RHIResult<RHIBindingSetRef>::failure(created_sampler.status().code(),
+                            created_sampler.status().message());
+                    cached = sampler_cache_.emplace(parameter->second, created_sampler.value()).first;
+                }
+                encoder.add_resource(resource_metadata, cached->second);
+                if (!encoder.succeeded())
+                    return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument, encoder.error());
+                continue;
+            }
             const auto parameter = texture_parameters_.find(resource_metadata.parameter_id);
             TextureResource* const resource =
                 parameter != texture_parameters_.end() ? parameter->second : nullptr;

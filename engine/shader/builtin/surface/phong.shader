@@ -10,6 +10,8 @@ Shader "Toy3d/Surface/Phong"
         specular_power ("Specular Power", Float) = 32.0
         specular_intensity ("Specular Intensity", Float) = 0.35
         surface_tint_texture ("Surface Tint Texture", Texture2D) = "white"
+        material_sampler ("Material Sampler", Sampler) = TrilinearWrap
+        uv_scale ("UV Scale", Float2) = (1.0, 1.0)
     }
 
     Parameters
@@ -44,6 +46,7 @@ Shader "Toy3d/Surface/Phong"
         {
             float4 position : POSITION0;
             float4 normal : NORMAL0;
+            float2 uv : TEXCOORD0;
         };
 
         struct VSOutput
@@ -51,6 +54,7 @@ Shader "Toy3d/Surface/Phong"
             float4 clip_position : SV_Position;
             float3 world_position : TEXCOORD0;
             float3 world_normal : TEXCOORD1;
+            float2 uv : TEXCOORD2;
         };
 
         float3 toy_safe_normalize(float3 value, float3 fallback)
@@ -72,6 +76,7 @@ Shader "Toy3d/Surface/Phong"
             output.world_normal = mul(
                 (float3x3)toy_object_to_world,
                 input.normal.xyz);
+            output.uv = input.uv;
             return output;
         }
 
@@ -92,7 +97,7 @@ Shader "Toy3d/Surface/Phong"
                 saturate(dot(view_direction, reflected_light)),
                 max(specular_power, 1.0));
             const float3 texture_tint =
-                surface_tint_texture.Load(int3(0, 0, 0)).rgb;
+                surface_tint_texture.Sample(material_sampler, input.uv * uv_scale).rgb;
 
             float3 point_diffuse = float3(0, 0, 0);
             // Four column-packed lights use the existing matrix ABI; no descriptor arrays are required.

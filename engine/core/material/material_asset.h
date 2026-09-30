@@ -13,6 +13,7 @@ namespace toy3d
     constexpr std::size_t maximum_material_parent_depth = 64u;
 
     bool is_material_asset_type(const std::string& type);
+    bool parse_material_sampler_preset(const std::string& name, MaterialSamplerPreset& output);
 
     // Ordered root -> leaf. Only each layer's own values are kept; the resolved
     // view is transient and never replaces the persisted Parent or overrides.

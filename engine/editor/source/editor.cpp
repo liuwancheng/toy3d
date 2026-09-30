@@ -1,6 +1,8 @@
 #include "editor.h"
 
 #include <exception>
+#include <algorithm>
+#include <cctype>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -31,9 +33,7 @@ namespace toy3d
         ImGui::GetIO().IniFilename = TOY3D_EDITOR_LAYOUT_PATH;
         // Scene-image gestures edit content; dock panels move by their title/tab.
         ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-#if WITH_MODEL_IMPORT
-        if (!window().enable_file_drop(true)) TOY_LOG_WARN("External model file drop is unavailable on this platform.");
-#endif
+        if (!window().enable_file_drop(true)) TOY_LOG_WARN("External asset file drop is unavailable on this platform.");
         if (!actor_factory_.initialize()) return false;
         MaterialTextureValues textures;
         const auto defaults = actor_factory_.default_material()->material();
@@ -122,9 +122,7 @@ namespace toy3d
     void EditorApplication::on_shutdown()
     {
         shaders_.shutdown();
-#if WITH_MODEL_IMPORT
-        if (!window().enable_file_drop(false)) TOY_LOG_WARN("Could not disable external model file drop.");
-#endif
+        if (!window().enable_file_drop(false)) TOY_LOG_WARN("Could not disable external asset file drop.");
         model_import_.clear();
         material_create_.clear();
         material_editor_.shutdown();
@@ -156,7 +154,7 @@ namespace toy3d
         {
             if (ImGui::BeginMenu("File"))
             {
-                if (ImGui::BeginMenu("Create Asset", !model_import_.active() && !material_create_.active()))
+                if (ImGui::BeginMenu("Create Asset", !model_import_.active() && !texture_import_.active() && !material_create_.active()))
                 {
                     if (ImGui::MenuItem("Material...")) material_create_.request(MaterialAssetCreationKind::Material, asset_folder_);
                     if (ImGui::MenuItem("Material Instance...")) material_create_.request(MaterialAssetCreationKind::MaterialInstance, asset_folder_);
@@ -288,22 +286,48 @@ namespace toy3d
         scene_viewport_.draw(world(), selection_, command_history_);
         const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
             show_engine_content_, thumbnails_, asset_tile_size_, WITH_MODEL_IMPORT != 0);
-        if (browser.material_open.valid() && !model_import_.active() && !material_create_.active())
+        if (browser.material_open.valid() && !model_import_.active() && !texture_import_.active() && !material_create_.active())
             material_editor_.request_open(browser.material_open);
-        if (browser.material_creation_requested && !model_import_.active())
+        if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active())
             material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
+        if (browser.texture_import_requested && !material_create_.active() && !model_import_.active() &&
+            !texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
 #if WITH_MODEL_IMPORT
-        if (browser.import_requested && !material_create_.active() && !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+        if (browser.import_requested && !material_create_.active() && !texture_import_.active() &&
+            !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+#endif
+                if (ImGui::MenuItem("Import Texture2D...", nullptr, false,
+                    !model_import_.active() && !material_create_.active()))
+                {
+                    if (!texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
+                }
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
-            // External file events cannot replace an active modal transaction.
-            if (!model_import_.active() && !material_create_.active() && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) &&
-                browser.accepts_drop(dropped.position) && !model_import_.request(asset_folder_, dropped.paths))
-                model_error_ = model_import_.error();
+            if (model_import_.active() || texture_import_.active() || material_create_.active() ||
+                ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || !browser.accepts_drop(dropped.position)) continue;
+            bool image = false;
+            bool model = false;
+            for (const auto& path : dropped.paths)
+            {
+                std::string extension = path.substr(path.find_last_of('.') == std::string::npos ? path.size() : path.find_last_of('.'));
+                std::transform(extension.begin(), extension.end(), extension.begin(),
+                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") image = true;
+                else model = true;
+            }
+            if (image && model) model_error_ = "Drop image and model files separately.";
+            else if (image && !texture_import_.request(asset_folder_, dropped.paths)) model_error_ = texture_import_.error();
+#if WITH_MODEL_IMPORT
+            else if (model && !model_import_.request(asset_folder_, dropped.paths)) model_error_ = model_import_.error();
+#else
+            else if (model) model_error_ = "Model import is disabled in this build.";
+#endif
         }
+#if WITH_MODEL_IMPORT
         model_import_.draw(window(), workspace_, selection_, thumbnails_);
 #endif
+        texture_import_.draw(window(), workspace_, selection_);
         material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema(),
             shader_workflow_ready_ ? &shaders_ : nullptr);
         material_editor_.draw();

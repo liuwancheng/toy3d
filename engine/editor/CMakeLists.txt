@@ -124,6 +124,8 @@ target_sources(${TARGET_NAME} PRIVATE
     "source/thumbnails/asset_thumbnail_pool.h" "source/thumbnails/asset_thumbnail_pool.cpp"
     "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp"
     "source/panels/static_mesh_import_dialog.h" "source/panels/static_mesh_import_dialog.cpp"
+    "source/panels/texture_import_dialog.h" "source/panels/texture_import_dialog.cpp"
+    "source/asset_tools/texture_asset_tools.h" "source/asset_tools/texture_asset_tools.cpp"
     "source/panels/material_create_dialog.h" "source/panels/material_create_dialog.cpp"
     "source/asset_tools/material_asset_tools.h" "source/asset_tools/material_asset_tools.cpp"
     "source/placement/asset_placement.h" "source/placement/asset_placement.cpp")
@@ -142,7 +144,7 @@ else()
 endif()
 target_sources(${TARGET_NAME} PRIVATE "source/platform/model_file_picker.h" "${TOY3D_MODEL_PICKER_SOURCE}")
 target_link_libraries(${TARGET_NAME} PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
-target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec imguizmo)
+target_link_libraries(${TARGET_NAME} PRIVATE Toy3dRuntime Toy3dResource Toy3dAssetThumbnail Toy3dImageCodec Toy3dTextureImport imguizmo)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
     target_sources(${TARGET_NAME} PRIVATE
         "source/asset_tools/static_mesh_asset_tools.h" "source/asset_tools/static_mesh_asset_tools.cpp")
@@ -202,7 +204,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dEditorWorkspaceTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorWorkspaceTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
     target_sources(Toy3dEditorWorkspaceTests PRIVATE "source/asset_tools/material_asset_tools.cpp")
-    target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset)
+    target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset Toy3dTextureAsset)
     target_compile_options(Toy3dEditorWorkspaceTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     add_test(NAME Toy3dEditor.Workspace COMMAND Toy3dEditorWorkspaceTests)
 
@@ -213,7 +215,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorMaterialTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorMaterialTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorMaterialTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorMaterialTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset)
+    target_link_libraries(Toy3dEditorMaterialTests PRIVATE Toy3dResource Toy3dMaterialAsset Toy3dStaticMeshAsset Toy3dTextureAsset)
     target_compile_definitions(Toy3dEditorMaterialTests PRIVATE
         "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-editor-test-output\"")
     target_compile_options(Toy3dEditorMaterialTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")

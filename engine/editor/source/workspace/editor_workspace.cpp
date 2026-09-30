@@ -4,6 +4,7 @@
 #include "file_system/virtual_path.h"
 #include "material/material_asset.h"
 #include "static_mesh/static_mesh_asset.h"
+#include "texture_asset/texture_asset.h"
 
 #include <algorithm>
 #include <cctype>
@@ -111,6 +112,7 @@ namespace toy3d
         }
         ReflectionStatus registered = register_static_mesh_asset_types(types_);
         if (registered.succeeded()) registered = register_material_asset_types(types_);
+        if (registered.succeeded()) registered = register_texture_asset_types(types_);
         if (registered.succeeded()) registered = types_.freeze();
         if (!registered.succeeded()) { error_ = registered.message; return false; }
         source_root_ = source.value();

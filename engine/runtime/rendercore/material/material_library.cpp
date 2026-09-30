@@ -5,6 +5,7 @@
 
 #include "logging/logger.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/texture/texture_asset_loader.h"
 
 namespace toy3d
 {
@@ -26,6 +27,20 @@ namespace toy3d
         : types_(types), files_(files), index_(std::move(index)), programs_(std::move(programs)),
           textures_(std::move(textures)) {}
 
+    AssetStatus MaterialLibrary::ensure_textures(const std::vector<MaterialParameterOverride>& overrides)
+    {
+        for (const auto& item : overrides)
+        {
+            // C++17 get_if selects only persisted Texture2D references.
+            const auto* reference = std::get_if<AssetRef>(&item.value);
+            if (!reference || textures_.assets.count(reference->asset_id)) continue;
+            const auto loaded = load_texture_asset(files_, index_(), *reference);
+            if (!loaded.succeeded()) return loaded.status();
+            textures_.assets.emplace(reference->asset_id, loaded.value());
+        }
+        return AssetStatus::success();
+    }
+
     AssetResult<MaterialInterfaceRef> MaterialLibrary::load(const AssetRef& reference)
     {
         const auto valid = index_().resolve(reference);
@@ -36,6 +51,11 @@ namespace toy3d
         const auto existing = loaded_.find(reference.asset_id);
         const auto hierarchy = read_material_hierarchy(types_, files_, index_(), reference);
         if (!hierarchy.succeeded()) return AssetResult<MaterialInterfaceRef>(hierarchy.status());
+        for (const auto& layer : hierarchy.value().layers)
+        {
+            const auto textures = ensure_textures(layer.overrides);
+            if (!textures.succeeded()) return AssetResult<MaterialInterfaceRef>(textures);
+        }
         const auto program = programs_(hierarchy.value().root.shader_name);
         if (!program) return AssetResult<MaterialInterfaceRef>(failure("Material Shader has no validated published Program. Compile it first."));
         auto descriptor = material_descriptor_from_asset(hierarchy.value().root, program, textures_);
@@ -95,6 +115,10 @@ namespace toy3d
         const MaterialInstanceAssetData& instance, std::shared_ptr<const ShaderMapProgram> program,
         MaterialInterfaceRef parent)
     {
+        const auto root_textures = ensure_textures(root.overrides);
+        if (!root_textures.succeeded()) return root_textures;
+        const auto child_textures = ensure_textures(instance.overrides);
+        if (!child_textures.succeeded()) return child_textures;
         auto descriptor = material_descriptor_from_asset(root, std::move(program), textures_);
         if (!descriptor.succeeded()) return descriptor.status();
         const bool child = loaded.reference.expected_type == "toy3d.MaterialInstanceAssetData";

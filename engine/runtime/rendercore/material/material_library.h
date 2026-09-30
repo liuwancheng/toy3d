@@ -36,6 +36,7 @@ namespace toy3d
             MaterialInstanceAssetData instance;
         };
         AssetStatus prepare(const AssetRef& changed);
+        AssetStatus ensure_textures(const std::vector<MaterialParameterOverride>& overrides);
         AssetStatus validate_loaded_ancestors(const MaterialAssetHierarchy& hierarchy,
             const std::vector<AssetId>& updating) const;
         AssetStatus add_configuration(LoadedMaterial& loaded, const MaterialAssetData& root,
