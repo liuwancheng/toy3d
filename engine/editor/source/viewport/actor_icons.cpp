@@ -55,13 +55,13 @@ namespace toy3d
                 return;
             }
             const Vector2 direction = delta / projected_length;
-            // Keep the indicator readable at a distance, without changing the
-            // direction obtained from the world-space ray's perspective projection.
-            const float display_length = (std::max)(80.0f, (std::min)(160.0f, projected_length));
+            // Projection supplies only direction; a short fixed screen length
+            // keeps this indicator independent of the light's camera distance.
+            constexpr float display_length = 24.0f;
             const Vector2 start = arrow.start + direction * 24.0f;
-            const Vector2 tip = arrow.start + direction * display_length;
-            const Vector2 base = tip - direction * 12.0f;
-            const Vector2 side(-direction.y * 6.0f, direction.x * 6.0f);
+            const Vector2 tip = start + direction * display_length;
+            const Vector2 base = tip - direction * 8.0f;
+            const Vector2 side(-direction.y * 4.0f, direction.x * 4.0f);
             const ImVec2 a(start.x, start.y);
             const ImVec2 b(tip.x, tip.y);
             draw.AddLine(a, b, outline, 5.0f);
@@ -347,7 +347,7 @@ namespace toy3d
                                 view_projection, image_origin, image_size);
         for (const ActorIcon& icon : icons)
         {
-            if (!icon.camera && icon.kind == LightKind::Directional && icon.actor_id == selected_actor_id)
+            if (!icon.camera && icon.kind == LightKind::Directional)
             {
                 DirectionalLightArrow arrow;
                 if (project_light_direction(view_projection, icon.position, icon.direction,

@@ -171,7 +171,7 @@ if (calculate_placement_transform(view, projection, camera_position,
 
 工厂仅编译到 Editor。灯光标记由 SceneViewport 投影 root world position，再通过 ImGui 绘制固定 36 个逻辑像素的图标：方向光为太阳，点光为灯泡；Place Actors 复用同一绘制函数。标记保持朝向屏幕，不受 Actor rotation、scale、距离或场景光照影响，选中与悬停有高亮。图标不创建 Runtime Component 或渲染资源，数据和绘制仅存在于 Editor target；GPU 继续使用现有 ImGui draw data 提交链路。
 
-选中的方向光额外显示金色光线方向箭头。方向与实际光照一致，来自 root world rotation 变换本地 +Z，表示光从灯光朝场景行进；使用 world rotation 而非带 scale 的矩阵列，避免非均匀缩放扭曲方向。将 2 米方向线先裁剪到齐次视锥再投影，屏幕长度限制为 80～160 个逻辑像素以保持可读，箭头不参与选取。投影几乎退化为一点时，用圆点表示光线朝向镜头、叉号表示背离镜头，并显示文字。方向提示随 Gizmo、属性和撤销重做的实际 Transform 更新，仍裁剪在视口图像内。
+视口内的方向光始终显示金色光线方向箭头，不依赖选中状态。方向与实际光照一致，来自 root world rotation 变换本地 +Z，表示光从灯光朝场景行进；使用 world rotation 而非带 scale 的矩阵列，避免非均匀缩放扭曲方向。将 2 米方向线先裁剪到齐次视锥再投影，投影仅用于确定方向，图标外的箭头长度固定为 24 个逻辑像素，不随距离变化，箭头不参与选取。投影几乎退化为一点时，用圆点表示光线朝向镜头、叉号表示背离镜头，并显示文字。方向提示随 Gizmo、属性和撤销重做的实际 Transform 更新，仍裁剪在视口图像内。
 
 首期图标作为编辑器覆盖层显示，未读取场景深度，因此可透过场景几何看到和选中灯光。视锥外、相机后和近远裁剪面外不显示；绘制裁剪到实际视口图像。重叠图标按 reversed-Z 深度绘制和命中最近项，同深度按 World 顺序确定。图标点击检查其屏幕矩形、选择所属 Actor 并取消旧异步拾取结果；Gizmo 和拖放输入优先。模型仍通过 GPU HitProxy Pass 选取。将来需要遮挡和 Component 级图标选取时，再接入渲染器 sprite 与 HitProxy，不能把覆盖层命中当作场景几何命中。
 
