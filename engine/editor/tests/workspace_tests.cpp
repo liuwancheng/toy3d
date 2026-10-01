@@ -113,6 +113,10 @@ int main()
         scene_actor.root_component_id = "55555555555555555555555555555555";
         scene_actor.root_component_type = "toy3d.SceneComponent";
         scene_actor.kind = "EmptyActor";
+        scene_actor.shadow_receiver_bias = 0.4f;
+        scene_actor.shadow_cascade_count = 3;
+        scene_actor.cascade_distribution_exponent = 4.0f;
+        scene_actor.shadow_map_resolution = 1024;
         scene.actors.push_back(scene_actor);
         const auto scene_pair = encode_scene_asset_pair(workspace.types(), scene_id, scene,
             &workspace.catalog().index);
@@ -124,7 +128,11 @@ int main()
         check(read_scene_asset(workspace.types(), workspace.files(), scene_path, reopened_scene,
             &workspace.catalog().index).succeeded() && reopened_scene.actors.size() == 1u &&
             reopened_scene.actors[0].id == scene_actor.id &&
-            reopened_scene.actors[0].primitive_receives_shadows,
+            reopened_scene.actors[0].primitive_receives_shadows &&
+            reopened_scene.actors[0].shadow_receiver_bias == 0.4f &&
+            reopened_scene.actors[0].shadow_cascade_count == 3 &&
+            reopened_scene.actors[0].cascade_distribution_exponent == 4.0f &&
+            reopened_scene.actors[0].shadow_map_resolution == 1024,
             "Scene Actor identity must survive .scene YAML roundtrip");
         AssetId legacy_id;
         check(AssetId::parse("88888888888888888888888888888888", legacy_id),

@@ -23,3 +23,5 @@
 当前 `SceneAssetData` / `SceneActorData` schema 4 固定使用厘米。位置、相机裁剪面、局部光范围和方向光阴影距离均以厘米持久化；scale、rotation、bias 与 fade fraction 保持无量纲语义。旧米制 schema 不自动读取或迁移；已有项目数据只在离线的一次性转换中保持 identity 并缩放长度字段。
 
 验证 `.asset` 原行为、`.scene` 读写及重启扫描、同 stem 两种入口、错配 root type、非法或缺失引用、事务恢复，以及 Editor 场景往返。此前没有生产 Scene 文件，因此无需自动迁移；反射测试 fixture 不是正式格式。完成端到端往返后才启用菜单入口；旧 `.asset` 不改名。
+
+方向光的 Shadow Map 持久化字段包括 `shadow_cascade_count`（默认 1，范围 1～3）、`cascade_distribution_exponent`（默认 3，有限且范围 0.1～10）和 `shadow_map_resolution`（默认 2048，只允许 512/1024/2048，表示最大级联 tile 尺寸）。这些字段与现有阴影属性一起进入完整状态校验、场景快照、装配和 Undo/Redo；沿用当前厘米单位 schema 4，不添加旧场景兼容入口。

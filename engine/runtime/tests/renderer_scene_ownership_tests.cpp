@@ -3,6 +3,7 @@
 #include "rendercore/scene/light_scene_proxy.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/view/scene_view.h"
 #include "shader_map_test_utils.h"
 #include "shader_parameters/builtin_shader_parameters.generated.h"
@@ -25,6 +26,7 @@
 #include "threading/thread_manager.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <functional>
@@ -37,6 +39,7 @@
 
 #include "renderscene/view/forward_scene_renderer.h"
 #include "renderscene/view/scene_visibility.h"
+#include "renderscene/pass/shadow_pass.h"
 #include "renderscene/view/view_shader_bindings.h"
 
 namespace
@@ -343,6 +346,8 @@ namespace
         using toy3d::RHIGraphicsCommandContext::RHIGraphicsCommandContext;
 
         std::uint32_t view_upload_count = 0u;
+        std::vector<toy3d::RHIResourceTransition> recorded_transitions;
+        std::vector<toy3d::RHIRenderPassDesc> recorded_passes;
 
         toy3d::RHIStatus begin_recording(const std::string&) override
         {
@@ -350,8 +355,9 @@ namespace
             return command_list_->begin();
         }
 
-        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
+        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>& transitions) override
         {
+            recorded_transitions.insert(recorded_transitions.end(), transitions.begin(), transitions.end());
             return toy3d::RHIStatus::success();
         }
 
@@ -397,8 +403,9 @@ namespace
             return toy3d::RHIResult<toy3d::RHICommandListRef>::success(std::move(command_list_));
         }
 
-        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc&) override
+        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc& desc) override
         {
+            recorded_passes.push_back(desc);
             return toy3d::RHIStatus::success();
         }
         toy3d::RHIStatus end_render_pass() override { return toy3d::RHIStatus::success(); }
@@ -560,6 +567,7 @@ namespace
         }
         const toy3d::RHICapabilities& capabilities() const override { return capabilities_; }
         const toy3d::RHILimits& limits() const override { return limits_; }
+        void set_texture_dimension_limit(std::uint32_t limit) { limits_.max_texture_dimension_2d = limit; }
         toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override
         {
             toy3d::RHIFormatCapabilities result;
@@ -834,6 +842,106 @@ namespace
 
         {
             RendererTestDevice device;
+            {
+                RendererTestDevice shadow_device;
+                toy3d::RHISurfaceDesc surface_desc;
+                surface_desc.platform = toy3d::RHISurfacePlatform::Glfw;
+                surface_desc.window_handle = reinterpret_cast<void*>(1);
+                toy3d::RHIDeviceDesc device_desc;
+                device_desc.primary_surface = std::make_shared<toy3d::RHISurface>(surface_desc);
+                check(shadow_device.initialize(device_desc).succeeded(), "Shadow target fixture must initialize its fake RHI device");
+                toy3d::ShadowRenderTargets shadow_targets;
+                for (std::uint32_t size : {512u, 1024u, 2048u})
+                {
+                    for (std::size_t count = 1u; count <= toy3d::LightSceneData::k_max_shadow_cascades; ++count)
+                    {
+                        check(shadow_targets.ensure_views(shadow_device, 2u, count, size).succeeded(),
+                              "Every supported cascade count and maximum size must allocate an atlas");
+                        const auto& layout = shadow_targets.layout();
+                        check(layout.cascade_count == count && layout.max_resolution == size &&
+                              layout.width == (count == 1u ? size : size + size / 2u) && layout.height == size &&
+                              shadow_targets.texture(0u)->desc().width == layout.width &&
+                              shadow_targets.texture(0u)->desc().height == layout.height &&
+                              shadow_targets.texture(0u) != shadow_targets.texture(1u),
+                              "Atlas allocation must match the layout and remain isolated per View");
+                        for (std::size_t index = 0u; index < count; ++index)
+                        {
+                            const auto& tile = layout.tiles[index];
+                            check(tile.size == (index == 0u ? size : size / 2u) &&
+                                  tile.resolution() + 2u * toy3d::ShadowCascadeTile::k_border == tile.size &&
+                                  tile.x + tile.size <= layout.width && tile.y + tile.size <= layout.height,
+                                  "Each active tile must include its PCF guard inside atlas bounds");
+                            for (std::size_t other = 0u; other < index; ++other)
+                            {
+                                const auto& neighbor = layout.tiles[other];
+                                check(tile.x >= neighbor.x + neighbor.size || neighbor.x >= tile.x + tile.size ||
+                                      tile.y >= neighbor.y + neighbor.size || neighbor.y >= tile.y + tile.size,
+                                      "Cascade tiles must never overlap");
+                            }
+                        }
+                        for (std::size_t index = count; index < toy3d::LightSceneData::k_max_shadow_cascades; ++index)
+                            check(layout.tiles[index].size == 0u, "Inactive tiles must discard previous configuration");
+                    }
+                }
+                check(shadow_targets.ensure_views(shadow_device, 2u, 1u, 2048u).succeeded(), "Single atlas setup");
+                const toy3d::RHITextureRef retained_texture = shadow_targets.texture(0u);
+                check(shadow_targets.ensure_views(shadow_device, 2u, 1u, 2048u).succeeded() &&
+                      shadow_targets.texture(0u) == retained_texture,
+                      "Unchanged shadow configuration must reuse GPU resources");
+                check(shadow_targets.ensure_views(shadow_device, 2u, 2u, 2048u).succeeded() &&
+                      shadow_targets.texture(0u) != retained_texture && retained_texture->desc().width == 2048u,
+                      "Replacing an atlas must preserve references retained by prior frames");
+                const auto two_cascade_texture = shadow_targets.texture(0u);
+                shadow_targets.publish_submitted_access();
+                check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded() &&
+                      shadow_targets.texture(0u) == two_cascade_texture &&
+                      shadow_targets.access(0u) == toy3d::RHIAccess::ShaderResourceGraphics &&
+                      shadow_targets.layout().tiles[2].size == 1024u,
+                      "Two to three cascades must reuse the atlas and retain submitted access");
+                check(shadow_targets.ensure_views(shadow_device, 2u, 2u, 2048u).succeeded() &&
+                      shadow_targets.texture(0u) == two_cascade_texture && shadow_targets.layout().tiles[2].size == 0u,
+                      "Three to two cascades must clear inactive metadata without reallocating");
+                // An inactive View still clears all atlas tiles to deterministic fully lit depth.
+                toy3d::RenderResourceManager atlas_resource_manager(shadow_device);
+                toy3d::RenderScene atlas_scene(*graph, atlas_resource_manager);
+                std::vector<toy3d::SceneView> atlas_views;
+                atlas_views.push_back(make_perspective_view(toy3d::Vector3(),
+                    toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
+                toy3d::ForwardSceneRenderer atlas_renderer(toy3d::SceneViewFamily(atlas_scene,
+                    toy3d::Extent{128u, 128u}, std::move(atlas_views)));
+                check(init_views(atlas_renderer), "Atlas recording fixture must initialize its View");
+                check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded(), "Three cascade recording setup");
+                RendererTestCommandContext atlas_context(shadow_device);
+                check(atlas_context.begin_recording("AtlasClear").succeeded(), "Atlas fixture recording begins");
+                toy3d::RHIShaderProgramCache atlas_program_cache(shadow_device);
+                check(toy3d::render_shadow_pass(shadow_device, atlas_program_cache, atlas_context,
+                    view_infos(atlas_renderer)[0], shadow_targets, 0u, nullptr).succeeded() &&
+                    atlas_context.recorded_passes.size() == 1u && atlas_context.recorded_transitions.size() == 2u &&
+                    atlas_context.recorded_passes[0].depth_stencil_attachment.depth_load == toy3d::RHILoadOperation::Clear &&
+                    atlas_context.recorded_passes[0].depth_stencil_attachment.clear_value.depth == 0.0f &&
+                    atlas_context.recorded_passes[0].depth_stencil_attachment.view == shadow_targets.depth_view(0u) &&
+                    atlas_context.recorded_transitions[0].resource == shadow_targets.texture(0u) &&
+                    atlas_context.recorded_transitions[1].after == toy3d::RHIAccess::ShaderResourceGraphics,
+                    "Atlas must clear reversed-Z once and transition the whole shared texture to shader read");
+                check(atlas_context.finish_recording().succeeded(), "Atlas fixture recording ends");
+                shadow_device.set_texture_dimension_limit(2048u);
+                check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded() &&
+                      shadow_targets.layout().max_resolution == 1024u && shadow_targets.layout().width == 1536u &&
+                      shadow_targets.layout().cascade_count == 3u && shadow_targets.access(0u) == toy3d::RHIAccess::Common,
+                      "Device fallback must consider the entire atlas width and preserve cascade count");
+                shadow_device.set_texture_dimension_limit(512u);
+                check(shadow_targets.ensure_views(shadow_device, 2u, 1u, 2048u).succeeded() &&
+                      shadow_targets.layout().max_resolution == 512u, "Single cascade may use a 512 device limit");
+                const auto supported_texture = shadow_targets.texture(0u);
+                const auto unsupported_shadow = shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u);
+                check(!unsupported_shadow && unsupported_shadow.code() == toy3d::RHIErrorCode::Unsupported &&
+                      shadow_targets.texture(0u) == supported_texture,
+                      "Unsupported atlas dimensions must fail without destroying previous resources");
+                check(!shadow_targets.ensure_views(shadow_device, 2u, 1u, 256u) &&
+                      !shadow_targets.ensure_views(shadow_device, 2u, 1u, 4096u),
+                      "Only the three configured maximum-size choices are valid");
+                shadow_targets.release();
+            }
             toy3d::RenderResourceManager resource_manager(device);
             toy3d::RenderScene render_scene(*graph, resource_manager);
 
@@ -866,6 +974,8 @@ namespace
                   "init_views must build two independent ViewInfo values with empty current-frame visibility");
             toy3d::LightSceneData shadow_light;
             shadow_light.cast_shadows = true;
+            check(shadow_light.shadow_cascade_count == 1, "Directional shadows default to one cascade");
+            shadow_light.shadow_cascade_count = 2;
             shadow_light.shadow_distance = 6.0f;
             shadow_light.direction = toy3d::Vector3(0.0f, -1.0f, 0.0f);
             const toy3d::RHIStatus shadow_status = toy3d::compute_shadow_visibility(
@@ -876,8 +986,8 @@ namespace
                       toy3d::is_finite(view_infos(finite_renderer)[0].shadow_cascade(1u).world_to_clip) &&
                       view_infos(finite_renderer)[0].shadow_cascade(0u).far_distance >
                           view_infos(finite_renderer)[0].shadow_cascade(1u).near_distance &&
-                      view_infos(finite_renderer)[0].shadow_split_start() <
-                          view_infos(finite_renderer)[0].shadow_split_end() &&
+                      view_infos(finite_renderer)[0].shadow_split(0u).x <
+                          view_infos(finite_renderer)[0].shadow_split(0u).y &&
                       view_infos(finite_renderer)[0].shadow_effective_end() == 6.0f &&
                       view_infos(finite_renderer)[0].shadow_fade_start() > 5.0f &&
                       view_infos(finite_renderer)[0].shadow_fade_start() < 6.0f,
@@ -885,9 +995,11 @@ namespace
             for (const toy3d::ViewInfo& view : view_infos(finite_renderer))
             {
                 for (std::size_t cascade_index = 0u;
-                     cascade_index < toy3d::ShadowRenderTargets::k_cascade_count; ++cascade_index)
+                     cascade_index < view.shadow_cascade_count(); ++cascade_index)
                 {
                     const toy3d::ShadowCascadeInfo& cascade = view.shadow_cascade(cascade_index);
+                    check(toy3d::is_finite(cascade.transition_scale) && cascade.transition_scale > 0.0f,
+                          "Every cascade must provide a finite receiver depth transition");
                     const float distance = (cascade.near_distance + cascade.far_distance) * 0.5f;
                     const toy3d::Vector3 receiver = view.scene_view().camera_position() +
                         toy3d::Vector3(0.0f, 0.0f, distance);
@@ -898,6 +1010,79 @@ namespace
                           "each cascade must project its receiver segment into the shadow depth map");
                 }
             }
+            const float two_cascade_bias = view_infos(finite_renderer)[0].shadow_cascade(0u).bias_parameters.x;
+            for (int count = 1; count <= toy3d::LightSceneData::k_max_shadow_cascades; ++count)
+            {
+                shadow_light.shadow_cascade_count = count;
+                check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                    view_infos(finite_renderer)).succeeded(), "All configured cascade counts must be supported");
+                for (const toy3d::ViewInfo& view : view_infos(finite_renderer))
+                {
+                    check(view.shadow_active() && view.shadow_cascade_count() == static_cast<std::size_t>(count) &&
+                          view.shadow_cascade(0u).near_distance == view.scene_view().near_clip() &&
+                          view.shadow_cascade(count - 1u).far_distance == 6.0f,
+                          "Active cascades must cover the full requested shadow range for each view");
+                    for (std::size_t index = 0; index + 1u < view.shadow_cascade_count(); ++index)
+                    {
+                        check(view.shadow_cascade(index).far_distance == view.shadow_split(index).y &&
+                              view.shadow_cascade(index + 1u).near_distance == view.shadow_split(index).x,
+                              "Neighboring cascades must exactly cover their shared blend interval");
+                    }
+                    for (std::size_t index = view.shadow_cascade_count();
+                         index < toy3d::ShadowRenderTargets::k_max_cascade_count; ++index)
+                        check(view.shadow_cascade(index).batches.empty() && view.shadow_cascade(index).transition_scale == 0,
+                              "Reducing cascade count must clear stale inactive cascade data");
+                }
+            }
+            const toy3d::ViewInfo& three_cascade_view = view_infos(finite_renderer)[0];
+            const float span = 6.0f - three_cascade_view.scene_view().near_clip();
+            check(std::abs((three_cascade_view.shadow_split(0u).x + three_cascade_view.shadow_split(0u).y) * 0.5f -
+                          (0.1f + span / 13.0f)) < 1e-5f &&
+                  std::abs((three_cascade_view.shadow_split(1u).x + three_cascade_view.shadow_split(1u).y) * 0.5f -
+                          (0.1f + span * 4.0f / 13.0f)) < 1e-5f &&
+                  three_cascade_view.shadow_split(0u).y < three_cascade_view.shadow_split(1u).x &&
+                  three_cascade_view.shadow_cascade(0u).bias_parameters.x < two_cascade_bias,
+                  "UE geometric distribution 1:3:9 must improve near texel precision with disjoint blend intervals");
+            shadow_light.cascade_distribution_exponent = 1.0f;
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                view_infos(finite_renderer)).succeeded() &&
+                std::abs((view_infos(finite_renderer)[0].shadow_split(0u).x +
+                          view_infos(finite_renderer)[0].shadow_split(0u).y) * 0.5f - (0.1f + span / 3.0f)) < 1e-5f,
+                "Distribution exponent one must produce uniform segments");
+            for (const float exponent : {0.1f, 10.0f})
+            {
+                shadow_light.cascade_distribution_exponent = exponent;
+                check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                    view_infos(finite_renderer)).succeeded() &&
+                    view_infos(finite_renderer)[0].shadow_split(0u).x > 0.1f &&
+                    view_infos(finite_renderer)[0].shadow_split(0u).y < view_infos(finite_renderer)[0].shadow_split(1u).x &&
+                    view_infos(finite_renderer)[0].shadow_split(1u).y < 6.0f,
+                    "Extreme valid exponents must keep blend intervals inside the range and separate");
+            }
+            shadow_light.cascade_distribution_exponent = 3.0f;
+            shadow_light.shadow_cascade_count = 2;
+            shadow_light.shadow_map_resolution = 1024;
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                view_infos(finite_renderer)).succeeded(), "Low resolution visibility setup");
+            std::array<float, toy3d::LightSceneData::k_max_shadow_cascades> low_resolution_bias{};
+            for (std::size_t index = 0u; index < view_infos(finite_renderer)[0].shadow_cascade_count(); ++index)
+                low_resolution_bias[index] = view_infos(finite_renderer)[0].shadow_cascade(index).bias_parameters.x;
+            shadow_light.shadow_map_resolution = 2048;
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                view_infos(finite_renderer)).succeeded(), "High resolution visibility setup");
+            for (std::size_t index = 0u; index < view_infos(finite_renderer)[0].shadow_cascade_count(); ++index)
+                check(view_infos(finite_renderer)[0].shadow_cascade(index).bias_parameters.x < low_resolution_bias[index],
+                      "Increasing maximum size must reduce world-texel bias in every cascade");
+            shadow_light.shadow_cascade_count = 4;
+            check(!toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer)),
+                  "Render visibility must reject a cascade count beyond supported capacity");
+            shadow_light.shadow_cascade_count = 2;
+            shadow_light.shadow_bias = 0.0f;
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
+                      view_infos(finite_renderer)).succeeded() &&
+                      toy3d::is_finite(view_infos(finite_renderer)[0].shadow_cascade(0u).transition_scale) &&
+                      view_infos(finite_renderer)[0].shadow_cascade(0u).transition_scale > 0.0f,
+                  "Zero caster bias must not produce an infinite receiver transition");
             shadow_light.cast_shadows = false;
             check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
                       view_infos(finite_renderer)).succeeded() &&

@@ -47,7 +47,7 @@ namespace toy3d
         friend void compute_scene_visibility(const RenderScene& render_scene, std::vector<ViewInfo>& view_infos);
         friend RHIStatus compute_shadow_visibility(const RenderScene& render_scene,
                                                    const LightSceneData* directional_light,
-                                                   std::vector<ViewInfo>& view_infos);
+                                                   std::vector<ViewInfo>& view_infos, std::uint32_t shadow_resolution);
 
         const std::vector<std::unique_ptr<PrimitiveSceneInfo>>& primitive_scene_infos() const { return primitives_; }
         bool is_on_logical_rendering_thread() const;

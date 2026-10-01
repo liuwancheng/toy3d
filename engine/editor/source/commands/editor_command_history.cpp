@@ -20,9 +20,13 @@ namespace toy3d
                    a.light_enabled == b.light_enabled &&
                    a.light_color == b.light_color && a.light_intensity == b.light_intensity && a.light_range == b.light_range &&
                    a.light_priority == b.light_priority && a.shadow_cast_shadows == b.shadow_cast_shadows &&
+                   a.shadow_cascade_count == b.shadow_cascade_count &&
+                   a.cascade_distribution_exponent == b.cascade_distribution_exponent &&
+                   a.shadow_map_resolution == b.shadow_map_resolution &&
                    a.shadow_distance == b.shadow_distance &&
                    a.shadow_distance_fade_fraction == b.shadow_distance_fade_fraction &&
                    a.shadow_bias == b.shadow_bias && a.shadow_slope_bias == b.shadow_slope_bias &&
+                   a.shadow_receiver_bias == b.shadow_receiver_bias &&
                    a.camera_vertical_fov == b.camera_vertical_fov && a.camera_near_clip == b.camera_near_clip &&
                    a.camera_far_clip == b.camera_far_clip;
         }

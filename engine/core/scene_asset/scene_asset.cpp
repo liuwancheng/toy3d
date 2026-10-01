@@ -78,12 +78,18 @@ namespace toy3d
                 actor.light_color.y < 0 || actor.light_color.z < 0 ||
                 !std::isfinite(actor.light_intensity) || actor.light_intensity < 0 ||
                 !std::isfinite(actor.light_range) || actor.light_range <= 0 ||
+                actor.shadow_cascade_count < 1 || actor.shadow_cascade_count > 3 ||
+                !std::isfinite(actor.cascade_distribution_exponent) || actor.cascade_distribution_exponent < 0.1f ||
+                actor.cascade_distribution_exponent > 10.0f || actor.shadow_map_resolution < 512 ||
+                actor.shadow_map_resolution > 2048 || (actor.shadow_map_resolution & (actor.shadow_map_resolution - 1)) != 0 ||
                 !std::isfinite(actor.shadow_distance) || actor.shadow_distance < 0 ||
                 !std::isfinite(actor.shadow_distance_fade_fraction) ||
                 actor.shadow_distance_fade_fraction < 0 || actor.shadow_distance_fade_fraction >= 1 ||
                 !std::isfinite(actor.shadow_bias) || actor.shadow_bias < 0 || actor.shadow_bias > 1 ||
                 !std::isfinite(actor.shadow_slope_bias) || actor.shadow_slope_bias < 0 ||
                 actor.shadow_slope_bias > 1 ||
+                !std::isfinite(actor.shadow_receiver_bias) || actor.shadow_receiver_bias < 0 ||
+                actor.shadow_receiver_bias > 1 ||
                 !std::isfinite(actor.camera_vertical_fov) || actor.camera_vertical_fov <= 0 ||
                 actor.camera_vertical_fov >= 180 || !std::isfinite(actor.camera_near_clip) ||
                 actor.camera_near_clip <= 0 || !std::isfinite(actor.camera_far_clip) ||

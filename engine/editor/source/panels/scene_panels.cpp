@@ -270,6 +270,44 @@ namespace toy3d
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
                             ImGui::BeginDisabled(!capture_actor_state(*actor).shadow_cast_shadows);
                             edited = capture_actor_state(*actor);
+                            ImGui::SetNextItemWidth(160.0f);
+                            changed = ImGui::SliderInt("Num Dynamic Shadow Cascades", &edited.shadow_cascade_count,
+                                                       1, LightSceneData::k_max_shadow_cascades);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow cascade count edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            edited = capture_actor_state(*actor);
+                            ImGui::BeginDisabled(edited.shadow_cascade_count == 1);
+                            ImGui::SetNextItemWidth(160.0f);
+                            changed = ImGui::DragFloat("Cascade Distribution Exponent", &edited.cascade_distribution_exponent,
+                                                       0.02f, 0.1f, 10.0f);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Cascade distribution edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            ImGui::EndDisabled();
+                            edited = capture_actor_state(*actor);
+                            const std::string resolution_label = std::to_string(edited.shadow_map_resolution);
+                            ImGui::SetNextItemWidth(160.0f);
+                            if (ImGui::BeginCombo("Max Shadow Map Resolution", resolution_label.c_str()))
+                            {
+                                for (int resolution = LightSceneData::k_min_shadow_resolution;
+                                     resolution <= LightSceneData::k_max_shadow_resolution; resolution *= 2)
+                                {
+                                    const std::string label = std::to_string(resolution);
+                                    if (ImGui::Selectable(label.c_str(), resolution == edited.shadow_map_resolution))
+                                    {
+                                        history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                                        edited.shadow_map_resolution = resolution;
+                                        if (!apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow resolution edit failed.");
+                                        history.finish(world, EditorTransformSource::Details);
+                                    }
+                                }
+                                ImGui::EndCombo();
+                            }
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip("Maximum cascade size. Additional cascades automatically use half this size.");
+                            edited = capture_actor_state(*actor);
+                            ImGui::SetNextItemWidth(160.0f);
                             changed = ImGui::DragFloat("Dynamic Shadow Distance (cm)", &edited.shadow_distance, 50.0f, 0.0f, 1000000.0f);
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow distance edit failed.");
@@ -290,6 +328,12 @@ namespace toy3d
                             changed = ImGui::DragFloat("Shadow Slope Bias", &edited.shadow_slope_bias, 0.005f, 0.0f, 1.0f);
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow slope bias edit failed.");
+                            if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
+                            edited = capture_actor_state(*actor);
+                            ImGui::SetNextItemWidth(160.0f);
+                            changed = ImGui::DragFloat("Shadow Receiver Bias", &edited.shadow_receiver_bias, 0.005f, 0.0f, 1.0f);
+                            if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
+                            if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow receiver bias edit failed.");
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
                             ImGui::EndDisabled();
                         }

@@ -12,10 +12,11 @@ namespace toy3d
     class RHIShaderProgramCache;
     class RHIGraphicsCommandContext;
     class ViewInfo;
+    class ShadowRenderTargets;
 
-    // Records one View cascade's depth pass in the caller's graphics context.
+    // Clears one View atlas once and records all active cascades in the caller's context.
     RHIStatus render_shadow_pass(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                 RHIGraphicsCommandContext& context, const ViewInfo& view, std::size_t cascade_index,
-                                 const RHITextureRef& texture, const RHITextureViewRef& depth_view,
-                                 RHIAccess before_access, const ShaderMapProgramRef& shader_program);
+                                 RHIGraphicsCommandContext& context, const ViewInfo& view,
+                                 const ShadowRenderTargets& targets, std::size_t view_index,
+                                 const ShaderMapProgramRef& shader_program);
 } // namespace toy3d

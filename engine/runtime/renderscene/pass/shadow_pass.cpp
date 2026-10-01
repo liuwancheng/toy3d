@@ -1,5 +1,6 @@
 #include "renderscene/pass/shadow_pass.h"
 
+#include <array>
 #include <utility>
 #include <vector>
 
@@ -20,22 +21,32 @@
 namespace toy3d
 {
     RHIStatus render_shadow_pass(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                 RHIGraphicsCommandContext& context, const ViewInfo& view, std::size_t cascade_index,
-                                 const RHITextureRef& texture, const RHITextureViewRef& depth_view,
-                                 RHIAccess before_access, const ShaderMapProgramRef& shader_program)
+                                 RHIGraphicsCommandContext& context, const ViewInfo& view,
+                                 const ShadowRenderTargets& targets, std::size_t view_index,
+                                 const ShaderMapProgramRef& shader_program)
     {
+        if (view_index >= targets.view_count())
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ShadowPass View index is out of range.");
+        const RHITextureRef& texture = targets.texture(view_index);
+        const RHITextureViewRef& depth_view = targets.depth_view(view_index);
+        const ShadowAtlasLayout& layout = targets.layout();
+        const RHIAccess before_access = targets.access(view_index);
         if (!context.is_owned_by(device) || !texture || !depth_view || depth_view->texture() != texture ||
-            cascade_index >= ShadowRenderTargets::k_cascade_count)
+            layout.cascade_count < 1u || layout.cascade_count > ShadowRenderTargets::k_max_cascade_count ||
+            view.shadow_cascade_count() > layout.cascade_count)
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ShadowPass target or context is invalid.");
-        const ShadowCascadeInfo& cascade = view.shadow_cascade(cascade_index);
         if (view.shadow_active() && !shader_program)
             return RHIStatus::failure(RHIErrorCode::NotReady, "ShadowPass ShaderMap program is unavailable.");
 
-        RHIBindingSetRef pass_binding;
-        RHIShaderProgramRef rhi_program;
-        std::vector<MeshDrawCommand> commands;
-        if (view.shadow_active() && !cascade.batches.empty())
+        // Prepare uploads and pipelines before beginning the shared atlas render pass.
+        std::array<std::vector<MeshDrawCommand>, ShadowRenderTargets::k_max_cascade_count> cascade_commands;
+        for (std::size_t index = 0u; index < view.shadow_cascade_count(); ++index)
         {
+            const ShadowCascadeInfo& cascade = view.shadow_cascade(index);
+            if (!view.shadow_active() || cascade.batches.empty()) continue;
+            RHIBindingSetRef pass_binding;
+            RHIShaderProgramRef rhi_program;
+            std::vector<MeshDrawCommand>& commands = cascade_commands[index];
             ShadowDepthPassParameters parameters;
             parameters.shadow_world_to_clip = cascade.world_to_clip;
             parameters.shadow_light_direction = cascade.light_direction;
@@ -66,7 +77,7 @@ namespace toy3d
                 pipeline_desc.color_attachment_count = 0u;
                 pipeline_desc.depth_stencil_format = PixelFormat::D32Float;
                 pipeline_desc.sample_count = 1u;
-                pipeline_desc.debug_name = "ShadowPass.Opaque";
+                pipeline_desc.debug_name = "ShadowPass.Default";
                 shader::ShaderGraphicsPassState state = shader_program->data().graphics_pass_state;
                 const auto* material_state = batch.material_render_proxy().effective_graphics_pass_state();
                 if (material_state && material_state->cull_mode == shader::ShaderGraphicsPassState::CullMode::None)
@@ -108,23 +119,32 @@ namespace toy3d
         pass.debug_name = "DirectionalShadowPass";
         RHIStatus status = context.begin_render_pass(pass);
         if (!status) return status;
-        RHIViewport viewport;
-        viewport.width = static_cast<float>(ShadowRenderTargets::k_resolution);
-        viewport.height = static_cast<float>(ShadowRenderTargets::k_resolution);
-        RHIRect scissor;
-        scissor.width = ShadowRenderTargets::k_resolution;
-        scissor.height = ShadowRenderTargets::k_resolution;
-        for (const MeshDrawCommand& command : commands)
+        for (std::size_t index = 0u; index < view.shadow_cascade_count(); ++index)
         {
-            status = context.set_graphics_pipeline(command.pipeline);
-            if (status) status = context.set_viewport(viewport);
-            if (status) status = context.set_scissor(scissor);
-            if (status) status = context.set_blend_constants(vec4(1, 1, 1, 1));
-            if (status) status = context.set_stencil_reference(0u);
-            if (status) status = context.set_vertex_buffers(command.vertex_buffers);
-            if (status) status = context.set_index_buffer(command.index_buffer);
-            if (status) status = context.bind_graphics_bindings(command.bindings);
-            if (status) status = context.draw_indexed(command.draw_args);
+            const ShadowCascadeTile& tile = layout.tiles[index];
+            RHIViewport viewport;
+            viewport.x = static_cast<float>(tile.x + ShadowCascadeTile::k_border);
+            viewport.y = static_cast<float>(tile.y + ShadowCascadeTile::k_border);
+            viewport.width = static_cast<float>(tile.resolution());
+            viewport.height = viewport.width;
+            RHIRect scissor;
+            scissor.x = static_cast<std::int32_t>(tile.x + ShadowCascadeTile::k_border);
+            scissor.y = static_cast<std::int32_t>(tile.y + ShadowCascadeTile::k_border);
+            scissor.width = tile.resolution();
+            scissor.height = tile.resolution();
+            for (const MeshDrawCommand& command : cascade_commands[index])
+            {
+                status = context.set_graphics_pipeline(command.pipeline);
+                if (status) status = context.set_viewport(viewport);
+                if (status) status = context.set_scissor(scissor);
+                if (status) status = context.set_blend_constants(vec4(1, 1, 1, 1));
+                if (status) status = context.set_stencil_reference(0u);
+                if (status) status = context.set_vertex_buffers(command.vertex_buffers);
+                if (status) status = context.set_index_buffer(command.index_buffer);
+                if (status) status = context.bind_graphics_bindings(command.bindings);
+                if (status) status = context.draw_indexed(command.draw_args);
+                if (!status) break;
+            }
             if (!status) break;
         }
         const RHIStatus ended = context.end_render_pass();

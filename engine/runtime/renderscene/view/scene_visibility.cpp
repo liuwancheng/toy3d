@@ -195,7 +195,7 @@ namespace toy3d
     }
 
     RHIStatus compute_shadow_visibility(const RenderScene& render_scene, const LightSceneData* directional_light,
-                                        std::vector<ViewInfo>& view_infos)
+                                        std::vector<ViewInfo>& view_infos, std::uint32_t shadow_resolution)
     {
         constexpr float k_parallel_up_threshold = 0.99f;
         constexpr float k_depth_padding_fraction = 0.01f;
@@ -203,18 +203,30 @@ namespace toy3d
         constexpr float k_max_slope = 4.0f;
         constexpr float k_constant_bias_texels = 2.0f;
         constexpr float k_slope_bias_texels = 4.0f;
-        constexpr float k_max_bias_texels = 5.0f;
-        constexpr float k_max_normalized_bias = 0.01f;
-        constexpr float k_near_cascade_fraction = 0.25f;
-        constexpr float k_cascade_blend_fraction = 0.05f;
+        constexpr float k_max_normalized_bias = 0.1f;
+        constexpr float k_min_transition_size = 1.0e-5f;
+        constexpr float k_cascade_blend_fraction = 0.1f;
+        if (directional_light && (directional_light->shadow_cascade_count < 1 ||
+            directional_light->shadow_cascade_count > LightSceneData::k_max_shadow_cascades ||
+            !is_finite(directional_light->cascade_distribution_exponent) ||
+            directional_light->cascade_distribution_exponent < 0.1f ||
+            directional_light->cascade_distribution_exponent > 10.0f))
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Directional shadow cascade settings are invalid.");
+        if (shadow_resolution == 0u)
+            shadow_resolution = directional_light ? static_cast<std::uint32_t>(directional_light->shadow_map_resolution)
+                                                 : LightSceneData::k_default_shadow_resolution;
+        ShadowAtlasLayout atlas_layout;
+        const RHIStatus layout_status = build_shadow_atlas_layout(directional_light
+            ? static_cast<std::size_t>(directional_light->shadow_cascade_count) : 1u, shadow_resolution, atlas_layout);
+        if (!layout_status) return layout_status;
         for (ViewInfo& view : view_infos)
         {
             for (ShadowCascadeInfo& cascade : view.shadow_cascades_) cascade = ShadowCascadeInfo();
             view.shadow_active_ = false;
             view.shadow_effective_end_ = 0.0f;
             view.shadow_fade_start_ = 0.0f;
-            view.shadow_split_start_ = 0.0f;
-            view.shadow_split_end_ = 0.0f;
+            view.shadow_splits_ = {};
+            view.shadow_cascade_count_ = 0u;
             if (!directional_light || !directional_light->cast_shadows ||
                 directional_light->intensity <= 0.0f) continue;
 
@@ -238,19 +250,47 @@ namespace toy3d
                                  static_cast<float>(camera.view_rect().height);
             const float tan_half_fov = std::tan(camera.vertical_fov().value() * 0.5f);
             const float distance_span = end - camera.near_clip();
-            const float split = camera.near_clip() + distance_span * k_near_cascade_fraction;
-            const float blend_half_width = distance_span * k_cascade_blend_fraction;
-            view.shadow_split_start_ = split - blend_half_width;
-            view.shadow_split_end_ = split + blend_half_width;
+            view.shadow_cascade_count_ = static_cast<std::size_t>(directional_light->shadow_cascade_count);
+            // UE4.27 ComputeAccumulatedScale: segment sizes follow 1, E, E^2.
+            // Distance distribution is independent of the atlas tile resolution policy.
+            std::array<float, ShadowRenderTargets::k_max_cascade_count + 1u> boundaries{};
+            boundaries[0] = camera.near_clip();
+            float total_weight = 0.0f;
+            float weight = 1.0f;
+            for (std::size_t index = 0; index < view.shadow_cascade_count_; ++index)
+            {
+                total_weight += weight;
+                weight *= directional_light->cascade_distribution_exponent;
+            }
+            float accumulated_weight = 0.0f;
+            weight = 1.0f;
+            for (std::size_t index = 0; index < view.shadow_cascade_count_; ++index)
+            {
+                accumulated_weight += weight;
+                boundaries[index + 1u] = camera.near_clip() + distance_span * accumulated_weight / total_weight;
+                weight *= directional_light->cascade_distribution_exponent;
+            }
+            boundaries[view.shadow_cascade_count_] = end;
+            for (std::size_t index = 0; index + 1u < view.shadow_cascade_count_; ++index)
+            {
+                const float split = boundaries[index + 1u];
+                // Bound overlap by both neighbors so extreme exponents never
+                // make two different blend intervals overlap or cross the near plane.
+                const float half_width = k_cascade_blend_fraction *
+                    std::min(split - boundaries[index], boundaries[index + 2u] - split);
+                view.shadow_splits_[index] = Vector2(split - half_width, split + half_width);
+                if (!is_finite(view.shadow_splits_[index]) || view.shadow_splits_[index].x >= view.shadow_splits_[index].y)
+                    return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Directional shadow split is degenerate.");
+            }
             view.shadow_effective_end_ = end;
             view.shadow_fade_start_ = std::max(camera.near_clip(),
                 end * (1.0f - directional_light->shadow_distance_fade_fraction));
 
-            for (std::size_t cascade_index = 0; cascade_index < ShadowRenderTargets::k_cascade_count; ++cascade_index)
+            for (std::size_t cascade_index = 0; cascade_index < view.shadow_cascade_count_; ++cascade_index)
             {
                 ShadowCascadeInfo& cascade = view.shadow_cascades_[cascade_index];
-                cascade.near_distance = cascade_index == 0u ? camera.near_clip() : view.shadow_split_start_;
-                cascade.far_distance = cascade_index == 0u ? view.shadow_split_end_ : end;
+                cascade.near_distance = cascade_index == 0u ? camera.near_clip() : view.shadow_splits_[cascade_index - 1u].x;
+                cascade.far_distance = cascade_index + 1u == view.shadow_cascade_count_ ? end : view.shadow_splits_[cascade_index].y;
                 std::array<Vector3, 8> corners;
                 for (std::size_t plane = 0; plane < 2u; ++plane)
                 {
@@ -278,9 +318,10 @@ namespace toy3d
                     !is_finite(radius) || radius <= 0.0f)
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Directional shadow receiver bounds are invalid.");
 
-                const float texel_world = 2.0f * radius / ShadowRenderTargets::k_resolution;
+                const float resolution = static_cast<float>(atlas_layout.tiles[cascade_index].resolution());
+                const float texel_world = 2.0f * radius / resolution;
                 const float extent = radius + 2.0f * texel_world;
-                const float texel_step = 2.0f * extent / ShadowRenderTargets::k_resolution;
+                const float texel_step = 2.0f * extent / resolution;
                 const float center_x = std::round(dot(right, sphere_center) / texel_step) * texel_step;
                 const float center_y = std::round(dot(up, sphere_center) / texel_step) * texel_step;
                 float minimum_z = receiver.min_z;
@@ -352,16 +393,20 @@ namespace toy3d
                 const float depth_span = projection_desc.far_clip - projection_desc.near_clip;
                 const float depth_per_texel = texel_step / depth_span;
                 cascade.light_direction = Vector4(forward, 0.0f);
-                // Scale both user controls independently in world texels; the bounded caster bias
-                // must cover the Gather PCF footprint without detaching contact shadows.
+                // Bound slope, not the normal operating texel compensation. A fixed
+                // five-texel total cap truncates slanted receivers' Gather footprint.
+                // The normalized cap only protects exceptionally shallow depth ranges.
                 cascade.bias_parameters = Vector4(directional_light->shadow_bias * k_constant_bias_texels * depth_per_texel,
                     directional_light->shadow_slope_bias * k_slope_bias_texels * depth_per_texel,
-                    k_max_slope, std::min(k_max_bias_texels * depth_per_texel, k_max_normalized_bias));
-                if (!is_finite(cascade.world_to_clip) || !is_finite(cascade.bias_parameters))
+                    k_max_slope, k_max_normalized_bias);
+                // UE's CSM transition uses the constant-bias world-texel scale.
+                // Keep it finite when the user explicitly sets caster bias to zero.
+                cascade.transition_scale = 1.0f / std::max(cascade.bias_parameters.x, k_min_transition_size);
+                if (!is_finite(cascade.world_to_clip) || !is_finite(cascade.bias_parameters) ||
+                    !is_finite(cascade.transition_scale))
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Directional shadow data is not finite.");
             }
-            view.shadow_active_ = is_finite(view.shadow_fade_start_) &&
-                is_finite(view.shadow_split_start_) && is_finite(view.shadow_split_end_);
+            view.shadow_active_ = is_finite(view.shadow_fade_start_);
             if (!view.shadow_active_)
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Directional shadow split is not finite.");
         }

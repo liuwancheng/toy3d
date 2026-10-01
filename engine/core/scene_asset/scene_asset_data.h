@@ -52,6 +52,12 @@ namespace toy3d
         std::int32_t light_priority = 0;
         TOY3D_PROPERTY("shadow_cast_shadows", Edit)
         bool shadow_cast_shadows = false;
+        TOY3D_PROPERTY("shadow_cascade_count", Edit)
+        std::int32_t shadow_cascade_count = 1;
+        TOY3D_PROPERTY("cascade_distribution_exponent", Edit)
+        float cascade_distribution_exponent = 3.0f;
+        TOY3D_PROPERTY("shadow_map_resolution", Edit)
+        std::int32_t shadow_map_resolution = 2048;
         TOY3D_PROPERTY("shadow_distance", Edit)
         float shadow_distance = 10000.0f;
         TOY3D_PROPERTY("shadow_distance_fade_fraction", Edit)
@@ -60,6 +66,8 @@ namespace toy3d
         float shadow_bias = 0.5f;
         TOY3D_PROPERTY("shadow_slope_bias", Edit)
         float shadow_slope_bias = 0.5f;
+        TOY3D_PROPERTY("shadow_receiver_bias", Edit)
+        float shadow_receiver_bias = 0.9f;
         TOY3D_PROPERTY("camera_vertical_fov", Edit)
         float camera_vertical_fov = 60.0f;
         TOY3D_PROPERTY("camera_near_clip", Edit)

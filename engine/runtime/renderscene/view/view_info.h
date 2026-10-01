@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_resource.h"
 #include "math/geometry/convex_volume.h"
 #include "math/matrix4.h"
+#include "math/vector2.h"
 #include "rendercore/view/scene_view.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/shadow_render_targets.h"
@@ -28,6 +29,8 @@ namespace toy3d
         Matrix4 world_to_clip;
         Vector4 light_direction;
         Vector4 bias_parameters;
+        // Receiver soft comparison is measured in this cascade's normalized depth.
+        float transition_scale = 0.0f;
         float near_distance = 0.0f;
         float far_distance = 0.0f;
     };
@@ -52,8 +55,8 @@ namespace toy3d
         bool shadow_active() const { return shadow_active_; }
         float shadow_effective_end() const { return shadow_effective_end_; }
         float shadow_fade_start() const { return shadow_fade_start_; }
-        float shadow_split_start() const { return shadow_split_start_; }
-        float shadow_split_end() const { return shadow_split_end_; }
+        std::size_t shadow_cascade_count() const { return shadow_cascade_count_; }
+        const Vector2& shadow_split(std::size_t index) const { return shadow_splits_.at(index); }
         const RHIBindingSetRef& view_binding() const { return view_binding_; }
         // create_view_shader_bindings() is the only frame-local creation path;
         // business passes consume the published owner reference directly.
@@ -64,7 +67,7 @@ namespace toy3d
         friend void compute_scene_visibility(const RenderScene& render_scene, std::vector<ViewInfo>& view_infos);
         friend RHIStatus compute_shadow_visibility(const RenderScene& render_scene,
                                                    const LightSceneData* directional_light,
-                                                   std::vector<ViewInfo>& view_infos);
+                                                   std::vector<ViewInfo>& view_infos, std::uint32_t shadow_resolution);
         friend RHIStatus create_object_shader_bindings(RHIDevice& device, RHICommandContext& context,
                                                        std::vector<ViewInfo>& view_infos);
         friend RHIStatus create_material_shader_bindings(RHIDevice& device, RHICommandContext& context,
@@ -86,11 +89,11 @@ namespace toy3d
         RHIBindingSetRef view_binding_;
         std::vector<PrimitiveSceneInfo*> visible_primitives_;
         std::vector<MeshBatch> mesh_batches_;
-        std::array<ShadowCascadeInfo, ShadowRenderTargets::k_cascade_count> shadow_cascades_;
+        std::array<ShadowCascadeInfo, ShadowRenderTargets::k_max_cascade_count> shadow_cascades_;
         float shadow_effective_end_ = 0.0f;
         float shadow_fade_start_ = 0.0f;
-        float shadow_split_start_ = 0.0f;
-        float shadow_split_end_ = 0.0f;
+        std::array<Vector2, ShadowRenderTargets::k_max_cascade_count - 1u> shadow_splits_{};
+        std::size_t shadow_cascade_count_ = 0u;
         bool shadow_active_ = false;
     };
 

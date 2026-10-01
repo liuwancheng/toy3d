@@ -69,10 +69,14 @@ namespace toy3d
         if (const auto* directional = dynamic_cast<const DirectionalLightComponent*>(this))
         {
             data.cast_shadows = directional->cast_shadows();
+            data.shadow_cascade_count = directional->shadow_cascade_count();
+            data.cascade_distribution_exponent = directional->cascade_distribution_exponent();
+            data.shadow_map_resolution = directional->shadow_map_resolution();
             data.shadow_distance = directional->shadow_distance();
             data.shadow_distance_fade_fraction = directional->shadow_distance_fade_fraction();
             data.shadow_bias = directional->shadow_bias();
             data.shadow_slope_bias = directional->shadow_slope_bias();
+            data.shadow_receiver_bias = directional->shadow_receiver_bias();
         }
         return data;
     }
@@ -122,6 +126,43 @@ namespace toy3d
         send_render_update();
     }
 
+    bool DirectionalLightComponent::set_shadow_cascade_count(int count)
+    {
+        if (count < 1 || count > LightSceneData::k_max_shadow_cascades)
+        {
+            TOY_LOG_ERROR("Directional shadow cascade count must be in [1, {}].", LightSceneData::k_max_shadow_cascades);
+            return false;
+        }
+        shadow_cascade_count_ = count;
+        send_render_update();
+        return true;
+    }
+
+    bool DirectionalLightComponent::set_cascade_distribution_exponent(float exponent)
+    {
+        if (!is_finite(exponent) || exponent < 0.1f || exponent > 10.0f)
+        {
+            TOY_LOG_ERROR("Cascade distribution exponent must be finite and in [0.1, 10].");
+            return false;
+        }
+        cascade_distribution_exponent_ = exponent;
+        send_render_update();
+        return true;
+    }
+
+    bool DirectionalLightComponent::set_shadow_map_resolution(int resolution)
+    {
+        if (resolution < LightSceneData::k_min_shadow_resolution ||
+            resolution > LightSceneData::k_max_shadow_resolution || (resolution & (resolution - 1)) != 0)
+        {
+            TOY_LOG_ERROR("Shadow maximum resolution must be 512, 1024 or 2048.");
+            return false;
+        }
+        shadow_map_resolution_ = resolution;
+        send_render_update();
+        return true;
+    }
+
     bool DirectionalLightComponent::set_shadow_distance(float distance)
     {
         if (!is_finite(distance) || distance < 0.0f)
@@ -166,6 +207,18 @@ namespace toy3d
             return false;
         }
         shadow_slope_bias_ = bias;
+        send_render_update();
+        return true;
+    }
+
+    bool DirectionalLightComponent::set_shadow_receiver_bias(float bias)
+    {
+        if (!is_finite(bias) || bias < 0.0f || bias > 1.0f)
+        {
+            TOY_LOG_ERROR("Directional shadow receiver bias must be in [0, 1].");
+            return false;
+        }
+        shadow_receiver_bias_ = bias;
         send_render_update();
         return true;
     }

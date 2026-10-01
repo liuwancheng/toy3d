@@ -50,6 +50,12 @@ namespace toy3d
 
         bool cast_shadows() const { return cast_shadows_; }
         void set_cast_shadows(bool enabled);
+        int shadow_cascade_count() const { return shadow_cascade_count_; }
+        bool set_shadow_cascade_count(int count);
+        float cascade_distribution_exponent() const { return cascade_distribution_exponent_; }
+        bool set_cascade_distribution_exponent(float exponent);
+        int shadow_map_resolution() const { return shadow_map_resolution_; }
+        bool set_shadow_map_resolution(int resolution);
         float shadow_distance() const { return shadow_distance_; }
         bool set_shadow_distance(float distance);
         float shadow_distance_fade_fraction() const { return shadow_distance_fade_fraction_; }
@@ -58,13 +64,19 @@ namespace toy3d
         bool set_shadow_bias(float bias);
         float shadow_slope_bias() const { return shadow_slope_bias_; }
         bool set_shadow_slope_bias(float bias);
+        float shadow_receiver_bias() const { return shadow_receiver_bias_; }
+        bool set_shadow_receiver_bias(float bias);
 
       private:
         bool cast_shadows_ = false;
+        int shadow_cascade_count_ = 1;
+        float cascade_distribution_exponent_ = 3.0f;
+        int shadow_map_resolution_ = LightSceneData::k_default_shadow_resolution;
         float shadow_distance_ = 10000.0f;
         float shadow_distance_fade_fraction_ = 0.1f;
         float shadow_bias_ = 0.5f;
         float shadow_slope_bias_ = 0.5f;
+        float shadow_receiver_bias_ = 0.9f;
     };
 
     class LocalLightComponent : public LightComponent

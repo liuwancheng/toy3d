@@ -134,10 +134,14 @@ namespace toy3d
             if (directional)
             {
                 state.shadow_cast_shadows = directional->cast_shadows();
+                state.shadow_cascade_count = directional->shadow_cascade_count();
+                state.cascade_distribution_exponent = directional->cascade_distribution_exponent();
+                state.shadow_map_resolution = directional->shadow_map_resolution();
                 state.shadow_distance = directional->shadow_distance();
                 state.shadow_distance_fade_fraction = directional->shadow_distance_fade_fraction();
                 state.shadow_bias = directional->shadow_bias();
                 state.shadow_slope_bias = directional->shadow_slope_bias();
+                state.shadow_receiver_bias = directional->shadow_receiver_bias();
             }
         }
         return state;
@@ -148,12 +152,19 @@ namespace toy3d
         if (!is_finite(state.light_color) || state.light_color.x < 0 || state.light_color.y < 0 ||
             state.light_color.z < 0 || !is_finite(state.light_intensity) || state.light_intensity < 0 ||
             !is_finite(state.light_range) || state.light_range <= 0 ||
+            state.shadow_cascade_count < 1 || state.shadow_cascade_count > LightSceneData::k_max_shadow_cascades ||
+            !is_finite(state.cascade_distribution_exponent) || state.cascade_distribution_exponent < 0.1f ||
+            state.cascade_distribution_exponent > 10.0f ||
+            state.shadow_map_resolution < LightSceneData::k_min_shadow_resolution ||
+            state.shadow_map_resolution > LightSceneData::k_max_shadow_resolution ||
+            (state.shadow_map_resolution & (state.shadow_map_resolution - 1)) != 0 ||
             !is_finite(state.shadow_distance) || state.shadow_distance < 0 ||
             !is_finite(state.shadow_distance_fade_fraction) ||
             state.shadow_distance_fade_fraction < 0 || state.shadow_distance_fade_fraction >= 1 ||
             !is_finite(state.shadow_bias) || state.shadow_bias < 0 || state.shadow_bias > 1 ||
             !is_finite(state.shadow_slope_bias) || state.shadow_slope_bias < 0 ||
-            state.shadow_slope_bias > 1) return false;
+            state.shadow_slope_bias > 1 || !is_finite(state.shadow_receiver_bias) ||
+            state.shadow_receiver_bias < 0 || state.shadow_receiver_bias > 1) return false;
         SceneComponent* root = actor.root_component();
         if (!root) return false;
         auto* camera = dynamic_cast<CameraComponent*>(root);
@@ -191,6 +202,12 @@ namespace toy3d
             {
                 if (directional->cast_shadows() != state.shadow_cast_shadows)
                     directional->set_cast_shadows(state.shadow_cast_shadows);
+                if (directional->shadow_cascade_count() != state.shadow_cascade_count &&
+                    !directional->set_shadow_cascade_count(state.shadow_cascade_count)) return false;
+                if (directional->cascade_distribution_exponent() != state.cascade_distribution_exponent &&
+                    !directional->set_cascade_distribution_exponent(state.cascade_distribution_exponent)) return false;
+                if (directional->shadow_map_resolution() != state.shadow_map_resolution &&
+                    !directional->set_shadow_map_resolution(state.shadow_map_resolution)) return false;
                 if (directional->shadow_distance() != state.shadow_distance &&
                     !directional->set_shadow_distance(state.shadow_distance)) return false;
                 if (directional->shadow_distance_fade_fraction() != state.shadow_distance_fade_fraction &&
@@ -199,6 +216,8 @@ namespace toy3d
                     !directional->set_shadow_bias(state.shadow_bias)) return false;
                 if (directional->shadow_slope_bias() != state.shadow_slope_bias &&
                     !directional->set_shadow_slope_bias(state.shadow_slope_bias)) return false;
+                if (directional->shadow_receiver_bias() != state.shadow_receiver_bias &&
+                    !directional->set_shadow_receiver_bias(state.shadow_receiver_bias)) return false;
             }
         }
         return true;

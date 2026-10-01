@@ -247,6 +247,66 @@ int main()
         check(world.unbind_scene(), "Empty World should unbind");
     }
     {
+        TestScene scene;
+        World world;
+        auto& light = world.spawn_actor<DirectionalLightActor>();
+        world.initialize();
+        check(world.bind_scene(scene), "Receiver bias fixture must bind the scene");
+        ActorFactory factory;
+        EditorCommandHistory history(factory);
+        history.begin(world, light.actor_id(), light.root_component()->local_transform(), EditorTransformSource::Details);
+        EditorActorState edited = capture_actor_state(light);
+        check(edited.shadow_cascade_count == 1 && edited.cascade_distribution_exponent == 3.0f &&
+              edited.shadow_map_resolution == 2048, "Directional shadow defaults must use one cascade");
+        edited.shadow_cascade_count = 3;
+        edited.cascade_distribution_exponent = 4.0f;
+        edited.shadow_map_resolution = 1024;
+        edited.shadow_receiver_bias = 0.4f;
+        check(apply_actor_state(light, edited) && scene.lights.front()->data.shadow_receiver_bias == 0.4f,
+              "Receiver bias edits must publish to the render scene");
+        check(scene.lights.front()->data.shadow_cascade_count == 3 &&
+              scene.lights.front()->data.cascade_distribution_exponent == 4.0f &&
+              scene.lights.front()->data.shadow_map_resolution == 1024, "All shadow settings must reach the render mirror");
+        history.finish(world, EditorTransformSource::Details);
+        check(history.undo(world) && light.light_component().shadow_cascade_count() == 1 &&
+              light.light_component().cascade_distribution_exponent() == 3.0f &&
+              light.light_component().shadow_map_resolution() == 2048 &&
+              light.light_component().shadow_receiver_bias() == 0.9f &&
+              history.redo(world) && light.light_component().shadow_receiver_bias() == 0.4f,
+              "Receiver bias must survive Details undo and redo");
+        check(light.light_component().shadow_cascade_count() == 3 &&
+              light.light_component().cascade_distribution_exponent() == 4.0f &&
+              light.light_component().shadow_map_resolution() == 1024, "Redo must restore all cascade and resolution settings");
+        const int updates = scene.updates;
+        check(!light.light_component().set_shadow_cascade_count(0) &&
+              !light.light_component().set_shadow_cascade_count(4) &&
+              !light.light_component().set_cascade_distribution_exponent(0.0f) &&
+              !light.light_component().set_cascade_distribution_exponent(11.0f) &&
+              !light.light_component().set_cascade_distribution_exponent((std::numeric_limits<float>::quiet_NaN)()) &&
+              !light.light_component().set_shadow_map_resolution(256) &&
+              !light.light_component().set_shadow_map_resolution(4096) &&
+              !light.light_component().set_shadow_map_resolution(1000) &&
+              !light.light_component().set_shadow_map_resolution(8192) && scene.updates == updates,
+              "Invalid cascade and resolution edits must not publish partial updates");
+        check(!light.light_component().set_shadow_receiver_bias(-0.1f) &&
+              !light.light_component().set_shadow_receiver_bias(1.1f) &&
+              !light.light_component().set_shadow_receiver_bias((std::numeric_limits<float>::quiet_NaN)()) &&
+              light.light_component().shadow_receiver_bias() == 0.4f && scene.updates == updates,
+              "Invalid receiver bias must preserve the current light and render state");
+        edited = capture_actor_state(light);
+        const Transform before = edited.transform;
+        edited.transform.translation.x += 100.0f;
+        edited.shadow_receiver_bias = 2.0f;
+        check(!apply_actor_state(light, edited) && light.root_component()->local_transform().translation == before.translation,
+              "An invalid receiver bias must reject the entire edit before changing Transform");
+        edited = capture_actor_state(light);
+        edited.transform.translation.x += 100;
+        edited.shadow_cascade_count = 4;
+        check(!apply_actor_state(light, edited) && light.root_component()->local_transform().translation == before.translation,
+              "Invalid cascade count must reject the complete editor state atomically");
+        check(world.unbind_scene(), "Receiver bias fixture must unbind the scene");
+    }
+    {
         ActorFactory factory;
         check(factory.initialize(), "Builtin mesh creation must use the compiled shader schema");
         World world;

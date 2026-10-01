@@ -80,8 +80,14 @@ namespace toy3d
                 if (!directional_light) directional_light = light;
                 ++directional_count;
             }
-        RHIStatus status = compute_shadow_visibility(render_scene,
-            thumbnail_preview_ ? nullptr : directional_light, view_infos());
+        ShadowRenderTargets& shadow_targets = scene_render_targets.shadow_targets();
+        const LightSceneData* shadow_light = thumbnail_preview_ ? nullptr : directional_light;
+        const std::size_t cascade_count = shadow_light ? static_cast<std::size_t>(shadow_light->shadow_cascade_count) : 1u;
+        const std::uint32_t requested_resolution = shadow_light
+            ? static_cast<std::uint32_t>(shadow_light->shadow_map_resolution) : LightSceneData::k_default_shadow_resolution;
+        RHIStatus status = shadow_targets.ensure_views(device, view_infos().size(), cascade_count, requested_resolution);
+        if (!status) return status;
+        status = compute_shadow_visibility(render_scene, shadow_light, view_infos(), shadow_targets.layout().max_resolution);
         if (!status) return status;
         if (thumbnail_preview_)
         {
@@ -114,20 +120,11 @@ namespace toy3d
             return status;
         }
 
-        ShadowRenderTargets& shadow_targets = scene_render_targets.shadow_targets();
-        status = shadow_targets.ensure_views(device, view_infos().size());
-        if (!status) return status;
         for (std::size_t view_index = 0; view_index < view_infos().size(); ++view_index)
         {
-            for (std::size_t cascade_index = 0; cascade_index < ShadowRenderTargets::k_cascade_count; ++cascade_index)
-            {
-                status = render_shadow_pass(device, shader_program_cache, context, view_infos()[view_index],
-                                            cascade_index, shadow_targets.texture(view_index, cascade_index),
-                                            shadow_targets.depth_view(view_index, cascade_index),
-                                            shadow_targets.access(view_index, cascade_index),
-                                            mesh_pass_programs.shadow_depth_default);
-                if (!status) return status;
-            }
+            status = render_shadow_pass(device, shader_program_cache, context, view_infos()[view_index],
+                                        shadow_targets, view_index, mesh_pass_programs.shadow_depth_default);
+            if (!status) return status;
         }
 
         std::vector<RHIResourceTransition> scene_attachment_transitions;
@@ -210,17 +207,31 @@ namespace toy3d
                     ++point_count;
                 }
                 lighting.point_light_count = static_cast<float>(std::min(point_count, max_point_lights));
-                lighting.shadow_near_world_to_clip = view.shadow_cascade(0u).world_to_clip;
-                lighting.shadow_far_world_to_clip = view.shadow_cascade(1u).world_to_clip;
+                lighting.shadow_cascade_0_world_to_clip = view.shadow_cascade(0u).world_to_clip;
+                lighting.shadow_cascade_1_world_to_clip = view.shadow_cascade(1u).world_to_clip;
+                lighting.shadow_cascade_2_world_to_clip = view.shadow_cascade(2u).world_to_clip;
                 lighting.shadow_distance_data = Vector4(view.shadow_effective_end(), view.shadow_fade_start(),
-                                                         view.shadow_active() ? 1.0f : 0.0f, 0.0f);
-                lighting.shadow_split_data = Vector4(view.shadow_split_start(), view.shadow_split_end(), 0.0f, 0.0f);
-                constexpr float shadow_texel = 1.0f / ShadowRenderTargets::k_resolution;
-                lighting.shadow_texel_size = Vector4(shadow_texel, shadow_texel,
-                    static_cast<float>(ShadowRenderTargets::k_resolution),
-                    static_cast<float>(ShadowRenderTargets::k_resolution));
-                lighting.shadow_near_map = shadow_targets.shader_view(view_index, 0u);
-                lighting.shadow_far_map = shadow_targets.shader_view(view_index, 1u);
+                                                         view.shadow_active() ? static_cast<float>(view.shadow_cascade_count()) : 0.0f, 0.0f);
+                lighting.shadow_split_data = Vector4(view.shadow_split(0u).x, view.shadow_split(0u).y,
+                                                     view.shadow_split(1u).x, view.shadow_split(1u).y);
+                lighting.shadow_receiver_parameters = Vector4(view.shadow_cascade(0u).transition_scale,
+                    view.shadow_cascade(1u).transition_scale,
+                    view.shadow_cascade(2u).transition_scale,
+                    directional_light ? directional_light->shadow_receiver_bias : 0.0f);
+                const ShadowAtlasLayout& atlas = shadow_targets.layout();
+                lighting.shadow_texel_size = Vector4(1.0f / static_cast<float>(atlas.width),
+                    1.0f / static_cast<float>(atlas.height), static_cast<float>(atlas.width), static_cast<float>(atlas.height));
+                // Regions are pixel offsets and usable sizes. Inactive regions remain zero and are never sampled.
+                const auto tile_region = [](const ShadowCascadeTile& tile)
+                {
+                    return Vector4(static_cast<float>(tile.x + ShadowCascadeTile::k_border),
+                        static_cast<float>(tile.y + ShadowCascadeTile::k_border),
+                        static_cast<float>(tile.resolution()), static_cast<float>(tile.resolution()));
+                };
+                lighting.shadow_cascade_0_region = tile_region(atlas.tiles[0]);
+                lighting.shadow_cascade_1_region = tile_region(atlas.tiles[1]);
+                lighting.shadow_cascade_2_region = tile_region(atlas.tiles[2]);
+                lighting.shadow_atlas = shadow_targets.shader_view(view_index);
                 lighting.shadow_sampler = shadow_targets.sampler();
                 auto created = create_transient_shader_binding(device, context, lighting);
                 if (!created) return created.status();
