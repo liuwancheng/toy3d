@@ -9,6 +9,14 @@
 
 namespace toy3d
 {
+    std::vector<std::uint32_t> Actor::component_ids() const
+    {
+        std::vector<std::uint32_t> ids;
+        ids.reserve(components_.size());
+        for (const auto& component : components_) ids.push_back(component->component_id());
+        return ids;
+    }
+
     Actor::~Actor()
     {
         unregister_all_components();
@@ -21,9 +29,13 @@ namespace toy3d
             TOY_LOG_ERROR("An Actor root component must be owned by that Actor.");
             return false;
         }
+        if (root_component_ == component) return true;
         root_component_ = component;
+        mark_content_changed();
         return true;
     }
+
+    void Actor::mark_content_changed() { world_.mark_content_changed(); }
 
     bool Actor::owns_component(const ActorComponent& component) const
     {

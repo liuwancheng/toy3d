@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/length_units.h"
+#include "scene_data/component_settings.h"
 #include "math/vector3.h"
 
 namespace toy3d
@@ -9,27 +9,27 @@ namespace toy3d
 
     struct LightSceneData
     {
-        static constexpr int k_max_shadow_cascades = 3;
-        static constexpr int k_min_shadow_resolution = 512;
-        static constexpr int k_max_shadow_resolution = 2048;
-        static constexpr int k_default_shadow_resolution = 2048;
+        static constexpr int k_max_shadow_cascades = DirectionalShadowSettings::k_max_cascades;
+        static constexpr int k_min_shadow_resolution = DirectionalShadowSettings::k_min_resolution;
+        static constexpr int k_max_shadow_resolution = DirectionalShadowSettings::k_max_resolution;
+        static constexpr int k_default_shadow_resolution = DirectionalShadowSettings{}.map_resolution;
         LightKind kind = LightKind::Directional;
         Vector3 position;
         Vector3 direction{0, 0, 1};
-        Vector3 color{1.0f};
-        float intensity = 1.0f;
-        float range = meters_to_centimeters(10.0f);
-        int priority = 0;
-        bool enabled = true;
-        bool cast_shadows = false;
-        int shadow_cascade_count = 1;
-        float cascade_distribution_exponent = 3.0f;
-        int shadow_map_resolution = 2048;
-        float shadow_distance = meters_to_centimeters(100.0f);
-        float shadow_distance_fade_fraction = 0.1f;
-        float shadow_bias = 0.5f;
-        float shadow_slope_bias = 0.5f;
-        float shadow_receiver_bias = 0.9f;
+        Vector3 color = LightSettings{}.color;
+        float intensity = LightSettings{}.intensity;
+        float range = LocalLightSettings{}.range;
+        int priority = LightSettings{}.priority;
+        bool enabled = LightSettings{}.enabled;
+        bool cast_shadows = DirectionalShadowSettings{}.cast_shadows;
+        int shadow_cascade_count = DirectionalShadowSettings{}.cascade_count;
+        float cascade_distribution_exponent = DirectionalShadowSettings{}.distribution_exponent;
+        int shadow_map_resolution = DirectionalShadowSettings{}.map_resolution;
+        float shadow_distance = DirectionalShadowSettings{}.distance;
+        float shadow_distance_fade_fraction = DirectionalShadowSettings{}.fade_fraction;
+        float shadow_bias = DirectionalShadowSettings{}.bias;
+        float shadow_slope_bias = DirectionalShadowSettings{}.slope_bias;
+        float shadow_receiver_bias = DirectionalShadowSettings{}.receiver_bias;
     };
 
     // Scene owns the RT mirror; Components retain only an opaque identity.

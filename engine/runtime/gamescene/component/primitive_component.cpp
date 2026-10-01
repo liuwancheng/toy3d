@@ -17,28 +17,33 @@ namespace toy3d
         assert(scene_proxy_ == nullptr);
     }
 
+    void PrimitiveComponent::set_primitive_settings(const PrimitiveSettings& settings)
+    {
+        if (settings_ == settings) return;
+        settings_ = settings;
+        world().mark_content_changed();
+        send_render_transform();
+    }
+
     void PrimitiveComponent::set_visible(bool visible)
     {
-        if (visible_ == visible)
-        {
-            return;
-        }
-        visible_ = visible;
-        send_render_transform();
+        PrimitiveSettings candidate = settings_;
+        candidate.visible = visible;
+        set_primitive_settings(candidate);
     }
 
     void PrimitiveComponent::set_cast_shadows(bool cast_shadows)
     {
-        if (cast_shadows_ == cast_shadows) return;
-        cast_shadows_ = cast_shadows;
-        send_render_transform();
+        PrimitiveSettings candidate = settings_;
+        candidate.cast_shadows = cast_shadows;
+        set_primitive_settings(candidate);
     }
 
     void PrimitiveComponent::set_receives_shadows(bool receives_shadows)
     {
-        if (receives_shadows_ == receives_shadows) return;
-        receives_shadows_ = receives_shadows;
-        send_render_transform();
+        PrimitiveSettings candidate = settings_;
+        candidate.receives_shadows = receives_shadows;
+        set_primitive_settings(candidate);
     }
 
     void PrimitiveComponent::create_render_state()
@@ -76,8 +81,8 @@ namespace toy3d
             return;
         }
 
-        scene->update_primitive_transform(scene_proxy_, world_transform(), world_bounds_, visible_,
-                                          cast_shadows_, receives_shadows_);
+        scene->update_primitive_transform(scene_proxy_, world_transform(), world_bounds_, settings_.visible,
+                                          settings_.cast_shadows, settings_.receives_shadows);
         world().mark_scene_changed();
     }
 

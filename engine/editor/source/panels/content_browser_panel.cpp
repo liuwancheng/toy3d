@@ -82,12 +82,16 @@ namespace toy3d
         };
     }
 
-    ContentBrowserActions draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
+    void ContentBrowserPanel::clear()
+    {
+        pending_delete_ = {};
+        delete_error_.clear();
+    }
+
+    ContentBrowserActions ContentBrowserPanel::draw(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
                               bool& show_engine_content, AssetThumbnailPool& thumbnails, bool import_enabled)
     {
         constexpr float tile_size = 128.0f;
-        static AssetId pending_delete;
-        static std::string delete_error;
         AssetId requested_delete;
         ContentBrowserActions actions;
         if (ImGui::Begin("Content Browser"))
@@ -112,7 +116,7 @@ namespace toy3d
             if (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)
             { ImGui::SameLine(); ImGui::TextDisabled("(read only)"); }
             if (!workspace.error().empty()) ImGui::TextWrapped("Asset scan: %s", workspace.error().c_str());
-            if (!delete_error.empty()) ImGui::TextWrapped("Asset operation: %s", delete_error.c_str());
+            if (!delete_error_.empty()) ImGui::TextWrapped("Asset operation: %s", delete_error_.c_str());
             ImGui::Separator();
             if (ImGui::BeginTable("Content Browser Columns", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
             {
@@ -170,7 +174,7 @@ namespace toy3d
                                 {
                                     selection.select_asset(item.asset->file.asset_id);
                                     if (item.asset->file.root_type == "toy3d.Texture2DAssetData")
-                                        actions.texture_open = item.asset->file.asset_id;
+                                        actions.asset_open = item.asset->file.asset_id;
                                 }
                                 else folder = item.path;
                             }
@@ -178,14 +182,8 @@ namespace toy3d
                             const bool is_material = item.asset &&
                                 (item.asset->file.root_type == "toy3d.MaterialAssetData" ||
                                  item.asset->file.root_type == "toy3d.MaterialInstanceAssetData");
-                            if (is_material && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                                actions.material_open = item.asset->file.asset_id;
-                            const bool is_scene = item.asset && item.asset->file.root_type == "toy3d.SceneAssetData";
-                            if (is_scene && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                                actions.scene_open = item.asset->file.asset_id;
-                            const bool is_texture = item.asset && item.asset->file.root_type == "toy3d.Texture2DAssetData";
-                            if (is_texture && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                            { actions.texture_open = item.asset->file.asset_id; actions.texture_focus = true; }
+                            if (item.asset && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                            { actions.asset_open = item.asset->file.asset_id; actions.asset_focus = true; }
                             if (item.asset && (is_material || item.asset->file.root_type == "toy3d.StaticMeshAssetData") && ImGui::BeginDragDropSource())
                             {
                                 const AssetId id = item.asset->file.asset_id;
@@ -227,12 +225,8 @@ namespace toy3d
                             }
                             if (item.asset && ImGui::BeginPopupContextItem("Asset Actions"))
                             {
-                                if (is_material && ImGui::MenuItem("Open Material Editor"))
-                                    actions.material_open = item.asset->file.asset_id;
-                                if (is_scene && ImGui::MenuItem("Open Scene"))
-                                    actions.scene_open = item.asset->file.asset_id;
-                                if (is_texture && ImGui::MenuItem("Open Texture Preview"))
-                                { actions.texture_open = item.asset->file.asset_id; actions.texture_focus = true; }
+                                if (ImGui::MenuItem("Open"))
+                                { actions.asset_open = item.asset->file.asset_id; actions.asset_focus = true; }
                                 if (is_material && ImGui::MenuItem("Create Material Instance..."))
                                 {
                                     actions.material_creation_requested = true;
@@ -280,36 +274,36 @@ namespace toy3d
             }
             if (requested_delete.valid())
             {
-                pending_delete = requested_delete;
-                delete_error.clear();
+                pending_delete_ = requested_delete;
+                delete_error_.clear();
                 ImGui::OpenPopup("Delete Asset");
             }
             if (ImGui::BeginPopupModal("Delete Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
             {
-                const auto* location = workspace.catalog().index.find(pending_delete);
+                const auto* location = workspace.catalog().index.find(pending_delete_);
                 ImGui::TextWrapped("Delete %s and its paired data?",
                     location ? location->path.utf8().c_str() : "the selected asset");
                 if (ImGui::Button("Delete"))
                 {
-                    const AssetStatus deleted = workspace.delete_asset(pending_delete);
+                    const AssetStatus deleted = workspace.delete_asset(pending_delete_);
                     if (deleted.succeeded())
                     {
-                        if (selection.asset_id() == pending_delete) selection.clear_asset();
+                        if (selection.asset_id() == pending_delete_) selection.clear_asset();
                         thumbnails.invalidate();
-                        pending_delete = {};
-                        delete_error.clear();
+                        pending_delete_ = {};
+                        delete_error_.clear();
                         ImGui::CloseCurrentPopup();
                     }
-                    else delete_error = deleted.message;
+                    else delete_error_ = deleted.message;
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {
-                    pending_delete = {};
-                    delete_error.clear();
+                    pending_delete_ = {};
+                    delete_error_.clear();
                     ImGui::CloseCurrentPopup();
                 }
-                if (!delete_error.empty()) ImGui::TextWrapped("%s", delete_error.c_str());
+                if (!delete_error_.empty()) ImGui::TextWrapped("%s", delete_error_.c_str());
                 ImGui::EndPopup();
             }
         }

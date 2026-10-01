@@ -14,7 +14,7 @@ Catalog 列出 `.asset` 与 `.scene`，扫描时验证描述、扩展名与根�
 
 `Toy3dResource` 的 `AssetPairStore` 拥有双文件事务策略，`Toy3dFileSystem` 仍只承诺单文件原子写入。创建或更新先写 `.asset.txn` 记录和 `.new` 候选，再保留旧文件为 `.old`，先发布 `.meta`、最后发布 `.asset`。最后一步是该 owner 的提交点。Editor 在扫描前恢复：若新描述及 meta 摘要吻合则完成清理，否则从已校验的备份回滚；无法判定时保留现场并报错。删除先隐藏 `.asset`，再移除 `.meta`；移动用 `.asset.move` 记录目标，崩溃恢复时完成或撤销目标发布。复制与原资产读取、目标创建也由资产服务处理。
 
-Editor 创作 owner 串行调用发布接口，Worker 通过 store 读取一致的成对快照。外部进程与 runtime 读取时重新校验配对和摘要，发现不一致即失败；两个固定文件名无法提供跨进程瞬时原子观察，也不宣称断电持久事务。成对操作失败不得猜测删除用户文件；只清理由本事务记录拥有且摘要相符的临时文件。
+Editor 创作 owner 串行调用发布接口，Worker 通过 store 读取一致的成对快照。读取结果保留本次已验证的描述原始字节，场景内容解码与保存冲突基线共用这些字节，禁止为建立基线再次读取文件。外部进程与 runtime 读取时重新校验配对和摘要，发现不一致即失败；两个固定文件名无法提供跨进程瞬时原子观察，也不宣称断电持久事务。成对操作失败不得猜测删除用户文件；只清理由本事务记录拥有且摘要相符的临时文件。
 
 ## 缩略图
 
@@ -22,7 +22,7 @@ StaticMesh 缩略图 PNG 放在 `/Saved/AssetThumbnails/`（Editor 的部署侧 
 
 ## 世界单位与领域版本
 
-世界长度统一以厘米存储。SceneAssetData / SceneActorData schema 4 与 StaticMeshAssetData schema 2、render_geometry version 2 表示厘米语义；旧米制领域版本明确拒绝，不在读取端隐式换算。YAML format_version 2 与 TOY3DMTA v1 容器版本保持不变。
+世界长度统一以厘米存储。SceneAssetData / SceneActorData schema 5 与 StaticMeshAssetData schema 2、render_geometry version 2 表示厘米语义；旧米制领域版本明确拒绝，不在读取端隐式换算。YAML format_version 2 与 TOY3DMTA v1 容器版本保持不变。
 
 ## 格式边界
 

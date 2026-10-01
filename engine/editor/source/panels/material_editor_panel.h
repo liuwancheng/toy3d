@@ -1,6 +1,8 @@
 #pragma once
 
 #include "asset_identity.h"
+#include "material/material_edit_session.h"
+#include <memory>
 #include "format/shader_editor_properties.h"
 #include "rendercore/material/material_asset_builder.h"
 #include "rendercore/shader/shader_map.h"
@@ -20,12 +22,13 @@ namespace toy3d
         Cancel
     };
 
-    // Application owns the active runtime candidate. Workspace owns its
-    // authoring session and history; switching is a Save/Discard/Cancel flow.
+    // The asset editor owns its author session, history and runtime preview.
+    // Workspace provides file/catalog services; switching uses Save/Discard/Cancel.
     class MaterialEditorPanel final
     {
       public:
         void initialize(EditorWorkspace& workspace, MaterialRef defaults, const PhysicalPath& shader_root);
+        MaterialEditSession& edit_session() { return *session_; }
         void set_shader_workflow(MaterialShaderWorkflow& workflow) { shaders_ = &workflow; }
         bool prepare_shader(const ShaderMapProgramRef& program, const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
         void publish_shader();
@@ -54,6 +57,7 @@ namespace toy3d
         MaterialParameterChanges parameter_changes(const std::vector<MaterialParameterOverride>& effective) const;
         void draw_parameters();
 
+        std::unique_ptr<MaterialEditSession> session_;
         EditorWorkspace* workspace_ = nullptr;
         MaterialRef defaults_;
         MaterialTextureValues textures_;

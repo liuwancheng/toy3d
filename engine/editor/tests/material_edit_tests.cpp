@@ -102,7 +102,7 @@ int main()
     check(workspace.asset_pairs().publish(path("/Project/MI_Child.asset"), child_bytes.value(),
         FilePublishMode::CreateNew).succeeded() && workspace.refresh(), "child publication");
     const auto schema = make_schema();
-    auto& session = workspace.material_edit();
+    MaterialEditSession session(workspace);
     check(session.open(child_id, schema).succeeded() && session.is_instance() && !session.dirty(), "child opening");
     check(scalar(session.effective_overrides()) == 0.5f && session.overrides().empty(), "parent inherited without copied overrides");
     std::vector<MaterialParameterOverride> preview;

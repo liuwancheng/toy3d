@@ -1,6 +1,7 @@
 #include "gamescene/component/scene_component.h"
 
 #include "logging/logger.h"
+#include "gamescene/world/world.h"
 
 #include <algorithm>
 
@@ -60,8 +61,12 @@ namespace toy3d
             return false;
         }
 
-        local_transform_ = transform;
-        local_transform_.rotation = normalize_unchecked(local_transform_.rotation);
+        Transform candidate = transform;
+        candidate.rotation = normalize_unchecked(candidate.rotation);
+        if (local_transform_.translation == candidate.translation && local_transform_.rotation == candidate.rotation &&
+            local_transform_.scale == candidate.scale) return true;
+        local_transform_ = candidate;
+        world().mark_content_changed();
         update_component_to_world();
         return true;
     }
@@ -122,6 +127,7 @@ namespace toy3d
             parent_->remove_child(*this);
         }
         parent_ = new_parent;
+        world().mark_content_changed();
         local_transform_ = new_local_transform;
         update_component_to_world();
         return true;

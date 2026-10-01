@@ -37,7 +37,7 @@ UE4.27 的参考是按视图建立方向光投影阴影、筛选投射物、绘�
 
 方向光选择在 `ForwardSceneRenderer` 集中执行一次：从 `RenderScene::lights()` 取出已启用方向光，按 `priority` 降序稳定排序，选排序后的第一盏，保存该 `LightSceneData` 供照明和 ShadowPass 共用。现有 `intensity > 0` 预过滤需从方向光选择中移除；点光仍沿用现有过滤、排序和数量限制。同优先级时 `stable_sort` 保留注册顺序，这是现有代码的平局规则，注册顺序不应盖过不同的 `priority`。若选中灯的 `cast_shadows=false` 或 `intensity=0`，低优先级灯也不能替补；强度为零的灯仍是所选灯，只是照明贡献为零。光的 `direction` 是从光源指向场景的传播方向，Phong 当前用于 `N·L` 的 `scene_light_direction` 取其相反数。超额方向光诊断需说明“仅最高优先级的已启用方向光生效”。
 
-`visible` 是 Primitive 的整体渲染开关；不可见 Primitive 不投射。`cast_shadows` 与 `receives_shadows` 是独立的 Primitive 属性，默认都为 true。前者筛选 ShadowDepth draw，后者由 Object shader 参数 `toy_receives_shadows` 传到 Phong，在 false 时跳过阴影图采样，仍保留方向光、点光和环境光照明。两项通过 RenderScene 的 FIFO Primitive 更新传播；接收开关改变时 Object 数据 generation 必须增加。Details 的 Shadows 分组分别编辑两项，EditorActorState、Undo/Redo 与 `.scene` schema 4 持久化都保存它们。
+`visible` 是 Primitive 的整体渲染开关；不可见 Primitive 不投射。`cast_shadows` 与 `receives_shadows` 是独立的 Primitive 属性，默认都为 true。前者筛选 ShadowDepth draw，后者由 Object shader 参数 `toy_receives_shadows` 传到 Phong，在 false 时跳过阴影图采样，仍保留方向光、点光和环境光照明。两项通过 RenderScene 的 FIFO Primitive 更新传播；接收开关改变时 Object 数据 generation 必须增加。Details 的 Shadows 分组分别编辑两项，EditorActorState、Undo/Redo 与 `.scene` schema 5 持久化都保存它们。
 
 ### Editor 属性与 Scene 持久化
 

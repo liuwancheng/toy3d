@@ -17,10 +17,8 @@ namespace toy3d
         bool material_creation_requested = false;
         MaterialAssetCreationKind material_creation_kind = MaterialAssetCreationKind::Material;
         AssetId material_parent;
-        AssetId material_open;
-        AssetId scene_open;
-        AssetId texture_open;
-        bool texture_focus = false;
+        AssetId asset_open;
+        bool asset_focus = false;
         bool assets_refreshed = false;
         bool visible = false;
         Vector2 region_min;
@@ -32,7 +30,15 @@ namespace toy3d
         }
     };
 
-    ContentBrowserActions draw_content_browser(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
-                              bool& show_engine_content, AssetThumbnailPool& thumbnails,
-                              bool import_enabled = false);
+    class ContentBrowserPanel final
+    {
+      public:
+        ContentBrowserActions draw(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
+                                  bool& show_engine_content, AssetThumbnailPool& thumbnails, bool import_enabled = false);
+        void clear();
+
+      private:
+        AssetId pending_delete_;
+        std::string delete_error_;
+    };
 }

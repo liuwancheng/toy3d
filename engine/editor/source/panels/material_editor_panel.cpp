@@ -56,6 +56,7 @@ namespace toy3d
     void MaterialEditorPanel::initialize(EditorWorkspace& workspace, MaterialRef defaults, const PhysicalPath& shader_root)
     {
         workspace_ = &workspace;
+        session_ = std::make_unique<MaterialEditSession>(workspace);
         defaults_ = std::move(defaults);
         textures_.named_defaults.clear();
         if (defaults_)
@@ -80,7 +81,7 @@ namespace toy3d
     void MaterialEditorPanel::request_open(const AssetId& id)
     {
         if (!workspace_) return;
-        if (workspace_->material_edit().active() && workspace_->material_edit().id() == id)
+        if (edit_session().active() && edit_session().id() == id)
         { focus_requested_ = true; return; }
         requested_ = id; close_requested_ = false; exit_requested_ = false;
     }
@@ -101,7 +102,7 @@ namespace toy3d
     void MaterialEditorPanel::request_close() { close_requested_ = true; requested_ = {}; }
     bool MaterialEditorPanel::request_exit()
     {
-        if (!workspace_ || (!workspace_->material_edit().dirty() && !workspace_->material_edit().gesturing())) return true;
+        if (!workspace_ || (!edit_session().dirty() && !edit_session().gesturing())) return true;
         exit_requested_ = true; close_requested_ = true; requested_ = {};
         return false;
     }
@@ -118,7 +119,7 @@ namespace toy3d
         }
         if (decision == MaterialCloseDecision::Save)
         {
-            const auto saved = workspace_->material_edit().save();
+            const auto saved = edit_session().save();
             report(saved);
             if (!saved.succeeded())
             {
@@ -207,7 +208,7 @@ namespace toy3d
             if (!built.succeeded()) { report(built.status()); return false; }
             next = built.value();
         }
-        status = workspace_->material_edit().open(id, schema, program->data().shader_name);
+        status = edit_session().open(id, schema, program->data().shader_name);
         if (!status.succeeded()) { MaterialInstance::release(next); report(status); return false; }
         if (runtime_) MaterialInstance::release(runtime_);
         runtime_ = std::move(next);
@@ -217,7 +218,7 @@ namespace toy3d
             const auto* source = shaders_->find(program->data().shader_name);
             if (source) properties_ = source->properties;
         }
-        workspace_->material_edit().set_preview(
+        edit_session().set_preview(
             [this](const std::vector<MaterialParameterOverride>& values)
             {
                 const auto textures = ensure_texture_values(values);
@@ -234,7 +235,7 @@ namespace toy3d
                 }
                 catch (const std::exception& exception) { report(parameter_error(exception.what())); }
             });
-        workspace_->material_edit().set_parent_preview(
+        edit_session().set_parent_preview(
             [this](const std::string& name) -> AssetResult<shader::ShaderParameterSchema>
             {
                 const auto program = shaders_ ? shaders_->program(name) :
@@ -267,7 +268,7 @@ namespace toy3d
     void MaterialEditorPanel::close()
     {
         discard_shader(); ++session_revision_;
-        workspace_->material_edit().clear();
+        edit_session().clear();
         if (runtime_) MaterialInstance::release(runtime_);
         focused_ = false;
     }
@@ -276,7 +277,7 @@ namespace toy3d
         const std::vector<shader::ShaderEditorProperty>& properties, std::string& error)
     {
         discard_shader();
-        auto& session = workspace_->material_edit();
+        auto& session = edit_session();
         if (!session.active() || session.root_data().shader_name != program->data().shader_name) return true;
         if (session.gesturing()) { error = "Finish the parameter gesture before applying compiled code."; return false; }
         MaterialAssetData effective = session.root_data();
@@ -294,7 +295,7 @@ namespace toy3d
     void MaterialEditorPanel::publish_shader()
     {
         if (!shader_candidate_) return;
-        auto& session = workspace_->material_edit();
+        auto& session = edit_session();
         const auto status = session.update_schema(std::move(candidate_schema_));
         if (!status.succeeded()) { report(status); discard_shader(); return; }
         if (runtime_) MaterialInstance::release(runtime_);
@@ -317,25 +318,27 @@ namespace toy3d
     }
     void MaterialEditorPanel::shutdown()
     {
+        if (session_) session_->set_publish({});
         if (workspace_) close();
         defaults_.reset(); textures_.named_defaults.clear(); textures_.assets.clear(); workspace_ = nullptr;
+        session_.reset();
     }
     void MaterialEditorPanel::undo()
     {
-        if (workspace_ && workspace_->material_edit().undo_count()) report(workspace_->material_edit().undo());
+        if (workspace_ && edit_session().undo_count()) report(edit_session().undo());
     }
     void MaterialEditorPanel::redo()
     {
-        if (workspace_ && workspace_->material_edit().redo_count()) report(workspace_->material_edit().redo());
+        if (workspace_ && edit_session().redo_count()) report(edit_session().redo());
     }
     void MaterialEditorPanel::save()
     {
-        if (workspace_ && workspace_->material_edit().active()) report(workspace_->material_edit().save());
+        if (workspace_ && edit_session().active()) report(edit_session().save());
     }
 
     void MaterialEditorPanel::draw_parameters()
     {
-        auto& session = workspace_->material_edit();
+        auto& session = edit_session();
         struct ParameterRow
         {
             const shader::ShaderParameterConstantMemberSchema* member = nullptr;
@@ -519,7 +522,7 @@ namespace toy3d
     void MaterialEditorPanel::draw()
     {
         if (!workspace_) return;
-        auto& session = workspace_->material_edit();
+        auto& session = edit_session();
         if (modal_pending())
         {
             if (session.dirty() || session.gesturing() || pending_save_failed_) ImGui::OpenPopup("Unsaved Material");
@@ -636,13 +639,7 @@ namespace toy3d
                 ImGui::ClearActiveID();
             }
             draw_parameters();
-            const auto& io = ImGui::GetIO();
-            if (focused_ && !modal_pending() && io.KeyCtrl && !io.WantTextInput && !ImGui::IsAnyItemActive())
-            {
-                if (ImGui::IsKeyPressed(ImGuiKey_S)) save();
-                if (ImGui::IsKeyPressed(ImGuiKey_Z)) { if (io.KeyShift) redo(); else undo(); }
-                else if (ImGui::IsKeyPressed(ImGuiKey_Y)) redo();
-            }
+
         }
         else if (session.gesturing()) report(session.cancel_gesture());
         ImGui::End();

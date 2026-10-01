@@ -351,7 +351,7 @@ namespace toy3d
                 SceneComponent* const root = selected != nullptr ? selected->root_component() : nullptr;
                 if (root != nullptr && !placement_active && !viewing && matrices_valid)
                 {
-                    if (history.active_for(EditorTransformSource::Details) &&
+                    if (hovered && history.active_for(EditorTransformSource::Details) &&
                         ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                         history.finish(world, EditorTransformSource::Details);
                     const Transform before = root->local_transform();

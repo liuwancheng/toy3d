@@ -43,6 +43,7 @@ toy3d/
 ### 文档读取与规范优先级
 
 - `document/index.md` 是设计文档状态和规范入口的唯一索引。AI 开始架构、实现或审查任务时，应先按任务涉及的模块读取索引中标记为 `Active` 的对应文档，不得默认遍历全部 `document/`。
+- Editor 框架、组件属性、面板和资产编辑器接入统一遵循 `document/editor-development-guide.md`；这是唯一 Editor 开发规范，不得新建重复总体方案或接入台账。
 - `document/archive/` 只保存历史方案、旧施工台账和已被替代的说明，不构成当前实现约束。除非用户明确要求追溯历史、比较旧方案或恢复背景，否则 AI 不得读取、引用或依据该目录内容作出设计和实现决定。
 - 文档发生冲突时，优先级依次为：`AGENTS.md`、`document/index.md` 指向的 `Active` 专项设计、当前公共接口与测试、`Draft` 文档。`Historical` 与 `Superseded` 文档没有规范效力。
 - 施工进度、验证流水账和阶段性评审记录不得混入长期 contract；完成后应归档或压缩为设计文档中的简短状态摘要。

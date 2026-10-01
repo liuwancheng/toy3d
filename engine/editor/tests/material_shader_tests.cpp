@@ -136,9 +136,9 @@ namespace
                 if (!materials_.assign(world(), actor_id_, {component()->component_id(), "Material_0", reference}, error)) { stop(error); return; }
                 panel_.request_open(material_id_); phase_ = 1; return;
             }
-            if (phase_ == 1 && workspace_.material_edit().active() && !second_compile_)
+            if (phase_ == 1 && panel_.edit_session().active() && !second_compile_)
             {
-                auto& session = workspace_.material_edit();
+                auto& session = panel_.edit_session();
                 if (!session.begin_gesture().succeeded() || !session.set_parameter({"base_color", Vector4(1, 0, 0, 1)}).succeeded() || !session.finish_gesture().succeeded())
                 { stop("Could not prepare a dirty material parameter gesture."); return; }
                 undo_count_ = session.undo_count();
@@ -154,7 +154,7 @@ namespace
             {
                 if (shaders_.candidate() == before_) { stop("Same logical key reused the old Program."); return; }
                 if (!apply_candidate()) return;
-                const auto& session = workspace_.material_edit();
+                const auto& session = panel_.edit_session();
                 if (!session.dirty() || session.undo_count() != undo_count_ ||
                     component()->material_for_slot(0)->desc().shader_program != shaders_.program("Project/Surface/Painted"))
                 { stop("Code publication lost draft/history or failed to refresh scene material."); return; }

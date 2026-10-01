@@ -6,7 +6,7 @@
 
 ## 1. 状态与已确认范围
 
-本文是材质资产和 Editor 参数化工作流的 Active 设计。产品范围已确认，新增类型、函数和执行清单是后续实施要求，不表示当前代码已经支持。Shader 语法、参数身份及 GPU 布局继续遵循 [Shader 系统](shader-system-design.md)，文件与编辑事务遵循 [资源基础](editor-resource-foundation-design.md)，GT/RT 更新遵循 [Material updates](../openspec/specs/game-render-framework/material-updates/spec.md)。
+本文是材质资产和 Editor 参数化工作流的 Active 设计。产品范围已确认，新增类型、函数和执行清单是后续实施要求，不表示当前代码已经支持。Shader 语法、参数身份及 GPU 布局继续遵循 [Shader 系统](shader-system-design.md)，文件与编辑事务遵循 [资源基础](editor-development-guide.md)，GT/RT 更新遵循 [Material updates](../openspec/specs/game-render-framework/material-updates/spec.md)。
 
 当前已落地 M1 属性格式、编译产物、默认值和 Unlit 颜色消费，M2 DTO/编解码/创建，M3 参数窗口/撤销/保存，M4 场景槽位赋值与重建，以及多层 Parent、MaterialInterface、MaterialLibrary 共享发布。显式登记的项目 Shader 经手动编译与 GPU 预检后用于创建、编辑及场景赋值。M5 已接入 Texture2D `.asset`、PNG/JPEG 导入、UV0 采样、普通 Sampler preset 和材质面板赋值；材质球预览和缩略图刷新继续在 M6。源码编译接管见[材质源码迭代](material-source-workflow-design.md)。
 
@@ -230,11 +230,11 @@ runtime reset_parameter 移除本层覆盖并恢复最新直接 Parent 有效值
 
 ## 7. 编辑会话、手势与资源赋值
 
-EditorWorkspace 持有冻结 TypeRegistry 和活动的 Material/Instance EditSession；EditorApplication 持有 MaterialAssignments、场景命令历史、预览面板及候选资源。MaterialAssignments 接收 Workspace 与已登记 Shader 默认材质，管理场景槽的资产身份和已加载材质版本；不新增全局 registry 或通用缓存。首版一个活动材质窗口，切换或关闭脏资源弹保存/放弃/取消。只读 `/Engine` 可以预览、创建项目实例，不允许覆盖引擎文件。
+EditorWorkspace 持有冻结 TypeRegistry 与文件/索引服务；MaterialEditorPanel 持有活动的 Material/Instance EditSession，EditorSceneSession 持有场景命令历史；EditorApplication 持有 MaterialAssignments、面板及候选资源。MaterialAssignments 接收 Workspace 与已登记 Shader 默认材质，管理场景槽的资产身份和已加载材质版本；不新增全局 registry 或通用缓存。首版一个活动材质窗口，切换或关闭脏资源弹保存/放弃/取消。只读 `/Engine` 可以预览、创建项目实例，不允许覆盖引擎文件。
 
-M3 的正式入口为 `EditorWorkspace::material_edit()`，返回 Workspace 持有的单个 `MaterialEditSession`；内部使用现有 typed EditSession，公开 open、begin_gesture、set_parameter、remove_parameter、finish_gesture、cancel_gesture、undo、redo、save。默认值仍来自 Shader，草稿和历史不新增通用撤销系统。覆盖始终按名称排序；插入、修改和移除统一以生成 DTO 的 overrides 属性 payload 提交一次补丁，不复制容器编解码。拖回原有效值时丢弃草稿，不创建覆盖或历史。
+M3 的正式入口为 `MaterialEditorPanel::edit_session()`，返回材质编辑器持有的单个 `MaterialEditSession`；内部使用现有 typed EditSession，公开 open、begin_gesture、set_parameter、remove_parameter、finish_gesture、cancel_gesture、undo、redo、save。默认值仍来自 Shader，草稿和历史不新增通用撤销系统。覆盖始终按名称排序；插入、修改和移除统一以生成 DTO 的 overrides 属性 payload 提交一次补丁，不复制容器编解码。拖回原有效值时丢弃草稿，不创建覆盖或历史。
 
-`MaterialEditorPanel` 由 EditorApplication 持有，通过 Content Browser 材质图块双击或右键 Open Material Editor 打开。完整 Program schema 验证的可选 UI 属性决定显示名、顺序、Color 和 Range；缺失或损坏则提示并回退到 schema 控件。当前 Phong 的数值与颜色可编辑，纹理仅显示具名默认值，根 Shader 和双面设置只读。每个参数提供本层覆盖开关和 Reset/Inherit；orphan 可保留或显式删除并撤销。父数据在打开时读取；取消本层覆盖按父值更新窗口专有 runtime Instance，不能直接混用 runtime reset 与父继承。
+`MaterialEditorPanel` 由 EditorApplication 持有，通过 Content Browser 材质图块双击或右键 Open 打开。完整 Program schema 验证的可选 UI 属性决定显示名、顺序、Color 和 Range；缺失或损坏则提示并回退到 schema 控件。当前 Phong 的数值与颜色可编辑，纹理仅显示具名默认值，根 Shader 和双面设置只读。每个参数提供本层覆盖开关和 Reset/Inherit；orphan 可保留或显式删除并撤销。父数据在打开时读取；取消本层覆盖按父值更新窗口专有 runtime Instance，不能直接混用 runtime reset 与父继承。
 
 连续输入只更改领域草稿和窗口专有 runtime Instance，结束后提交一次 EditSession，Escape 恢复已提交有效值；没有参数变化不增加历史。预览准备回调检查整个 batch，通知使用 session 当前快照，因此 undo 不误用记录中的 new_value。此 Instance 为后续交互预览提供稳定参数适配入口；当前没有可见球体预览或场景引用者绑定，不修改内置 Cube 的共享默认材质。
 

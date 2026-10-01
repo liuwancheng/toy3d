@@ -3,16 +3,12 @@
 #include <exception>
 #include <algorithm>
 #include <cctype>
-#include <map>
-#include <set>
 
 #include "imgui.h"
 #include "imgui_internal.h"
 
 #include "gamescene/actor/actor.h"
-#include "gamescene/component/static_mesh_component.h"
 #include "asset_descriptor_path.h"
-#include "rendercore/geometry/static_mesh_asset_loader.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
@@ -27,315 +23,26 @@
 
 namespace toy3d
 {
-    namespace
-    {
-        const char* scene_kind(PlacementItemId item)
-        {
-            switch (item)
-            {
-            case PlacementItemId::EmptyActor: return "EmptyActor";
-            case PlacementItemId::Cube: return "Cube";
-            case PlacementItemId::Plane: return "Plane";
-            case PlacementItemId::StaticMesh: return "StaticMesh";
-            case PlacementItemId::DirectionalLight: return "DirectionalLight";
-            case PlacementItemId::PointLight: return "PointLight";
-            case PlacementItemId::Camera: return "Camera";
-            }
-            return "";
-        }
-
-        bool placement_kind(const std::string& kind, PlacementItemId& item)
-        {
-            for (const PlacementItem& candidate : placement_catalog())
-                if (kind == scene_kind(candidate.id)) { item = candidate.id; return true; }
-            if (kind == "StaticMesh") { item = PlacementItemId::StaticMesh; return true; }
-            return false;
-        }
-    }
-
-    bool EditorApplication::capture_scene(SceneAssetData& data, std::string& error)
-    {
-        data.actors.clear();
-        const std::vector<std::uint32_t> ids = world().actor_ids();
-        for (const std::uint32_t id : ids)
-        {
-            Actor* actor = world().find_actor_by_id(id);
-            if (!actor || !actor->root_component() || actor->component_count() != 1u)
-            { error = "Scene contains an Actor with unsupported components."; return false; }
-            if (stable_scene_ids_.count(id) == 0u)
-            {
-                AssetId actor_id;
-                AssetId component_id;
-                if (!AssetId::try_generate(actor_id) || !AssetId::try_generate(component_id))
-                { error = "Could not allocate stable Scene object IDs."; return false; }
-                stable_scene_ids_[id] = {actor_id.hex(), component_id.hex()};
-            }
-        }
-        for (const std::uint32_t id : ids)
-        {
-            Actor* actor = world().find_actor_by_id(id);
-            PlacementRequest request;
-            if (!actor_factory_.describe(*actor, request))
-            { error = "Scene contains an Actor without a supported placement description."; return false; }
-            SceneActorData saved;
-            saved.id = stable_scene_ids_.at(id).first;
-            saved.root_component_id = stable_scene_ids_.at(id).second;
-            saved.kind = scene_kind(request.item);
-            saved.root_component_type = scene_root_component_type(saved.kind);
-            if (saved.kind.empty()) { error = "Scene contains an unsupported Actor kind."; return false; }
-            const EditorActorState state = capture_actor_state(*actor);
-            saved.transform = state.transform;
-            saved.primitive_cast_shadows = state.primitive_cast_shadows;
-            saved.primitive_receives_shadows = state.primitive_receives_shadows;
-            saved.light_enabled = state.light_enabled;
-            saved.light_color = state.light_color;
-            saved.light_intensity = state.light_intensity;
-            saved.light_range = state.light_range;
-            saved.light_priority = state.light_priority;
-            saved.shadow_cast_shadows = state.shadow_cast_shadows;
-            saved.shadow_cascade_count = state.shadow_cascade_count;
-            saved.cascade_distribution_exponent = state.cascade_distribution_exponent;
-            saved.shadow_map_resolution = state.shadow_map_resolution;
-            saved.shadow_distance = state.shadow_distance;
-            saved.shadow_distance_fade_fraction = state.shadow_distance_fade_fraction;
-            saved.shadow_bias = state.shadow_bias;
-            saved.shadow_slope_bias = state.shadow_slope_bias;
-            saved.shadow_receiver_bias = state.shadow_receiver_bias;
-            saved.camera_vertical_fov = state.camera_vertical_fov;
-            saved.camera_near_clip = state.camera_near_clip;
-            saved.camera_far_clip = state.camera_far_clip;
-            const SceneComponent* parent = actor->root_component()->parent();
-            if (parent)
-            {
-                const auto found = stable_scene_ids_.find(parent->owner().actor_id());
-                if (found == stable_scene_ids_.end() || parent != parent->owner().root_component())
-                { error = "Scene contains an unsupported attachment target."; return false; }
-                saved.parent_component_id = found->second.second;
-            }
-            if (request.item == PlacementItemId::StaticMesh)
-            {
-                if (!request.asset_id.valid())
-                { error = "StaticMesh Actor has no source Asset ID."; return false; }
-                saved.resources.push_back({"mesh", {request.asset_id, {}, "toy3d.StaticMeshAssetData",
-                    AssetRefStrength::Strong}});
-            }
-            const auto* mesh = dynamic_cast<const StaticMeshComponent*>(actor->root_component());
-            const auto assignments = material_assignments_.capture(world(), id);
-            if (!assignments.empty() && !mesh)
-            { error = "Material assignments target a non-mesh Actor."; return false; }
-            if (mesh && mesh->static_mesh())
-            {
-                const auto& slots = mesh->static_mesh()->material_slot_names();
-                for (std::size_t slot = 0; slot < slots.size(); ++slot)
-                {
-                    const auto found = std::find_if(assignments.begin(), assignments.end(),
-                        [&](const MaterialSlotAssignment& assignment)
-                        { return assignment.component_id == mesh->component_id() && assignment.slot_name == slots[slot]; });
-                    if (mesh->has_material_override(static_cast<std::uint32_t>(slot)) != (found != assignments.end()))
-                    { error = "Scene has a material override without an Editor Asset reference."; return false; }
-                    if (found != assignments.end()) saved.resources.push_back({"material:" + slots[slot], found->material});
-                }
-                if (assignments.size() != saved.resources.size() -
-                    (request.item == PlacementItemId::StaticMesh ? 1u : 0u))
-                { error = "Scene has an unknown material slot assignment."; return false; }
-            }
-            data.actors.push_back(std::move(saved));
-        }
-        const AssetStatus valid = validate_scene_asset(data, &workspace_.catalog().index);
-        if (!valid.succeeded()) { error = valid.message; return false; }
-        error.clear();
-        return true;
-    }
-
-    bool EditorApplication::replace_scene(const SceneAssetData& data, std::string& error)
-    {
-        struct PreparedActor { PlacementRequest placement; EditorActorState state; };
-        std::vector<PreparedActor> prepared;
-        prepared.reserve(data.actors.size());
-        for (const SceneActorData& saved : data.actors)
-        {
-            PreparedActor candidate;
-            if (!placement_kind(saved.kind, candidate.placement.item))
-            { error = "Unsupported Scene Actor kind: " + saved.kind; return false; }
-            candidate.placement.transform = saved.transform;
-            candidate.state.transform = saved.transform;
-            candidate.state.primitive_cast_shadows = saved.primitive_cast_shadows;
-            candidate.state.primitive_receives_shadows = saved.primitive_receives_shadows;
-            candidate.state.light_enabled = saved.light_enabled;
-            candidate.state.light_color = saved.light_color;
-            candidate.state.light_intensity = saved.light_intensity;
-            candidate.state.light_range = saved.light_range;
-            candidate.state.light_priority = saved.light_priority;
-            candidate.state.shadow_cast_shadows = saved.shadow_cast_shadows;
-            candidate.state.shadow_cascade_count = saved.shadow_cascade_count;
-            candidate.state.cascade_distribution_exponent = saved.cascade_distribution_exponent;
-            candidate.state.shadow_map_resolution = saved.shadow_map_resolution;
-            candidate.state.shadow_distance = saved.shadow_distance;
-            candidate.state.shadow_distance_fade_fraction = saved.shadow_distance_fade_fraction;
-            candidate.state.shadow_bias = saved.shadow_bias;
-            candidate.state.shadow_slope_bias = saved.shadow_slope_bias;
-            candidate.state.shadow_receiver_bias = saved.shadow_receiver_bias;
-            candidate.state.camera_vertical_fov = saved.camera_vertical_fov;
-            candidate.state.camera_near_clip = saved.camera_near_clip;
-            candidate.state.camera_far_clip = saved.camera_far_clip;
-            for (const SceneResourceBinding& binding : saved.resources)
-            {
-                if (binding.role != "mesh") continue;
-                const AssetLocation* location = workspace_.catalog().index.find(binding.reference.asset_id);
-                if (!location) { error = "Scene StaticMesh asset is missing."; return false; }
-                const auto geometry = read_static_mesh_asset(workspace_.files(), location->path);
-                if (!geometry.succeeded()) { error = geometry.status().message; return false; }
-                candidate.placement.asset_id = binding.reference.asset_id;
-                candidate.placement.static_mesh = create_static_mesh_from_asset(geometry.value(),
-                    actor_factory_.default_material());
-                if (!candidate.placement.static_mesh)
-                { error = "Could not construct Scene StaticMesh geometry."; return false; }
-            }
-            prepared.push_back(std::move(candidate));
-        }
-        const std::vector<std::uint32_t> old_ids = world().actor_ids();
-        std::vector<std::uint32_t> new_ids;
-        std::map<std::string, SceneComponent*> components;
-        std::map<std::uint32_t, std::pair<std::string, std::string>> next_stable_ids;
-        auto rollback = [&]()
-        {
-            for (const std::uint32_t id : new_ids)
-            {
-                Actor* actor = world().find_actor_by_id(id);
-                if (actor && !world().destroy_actor(*actor)) TOY_LOG_ERROR("Scene candidate rollback failed.");
-                actor_factory_.forget(id);
-                material_assignments_.forget(id);
-            }
-        };
-        for (std::size_t i = 0; i < data.actors.size(); ++i)
-        {
-            Actor* actor = actor_factory_.create(world(), prepared[i].placement);
-            if (!actor)
-            { error = "Could not construct Scene Actor."; rollback(); return false; }
-            new_ids.push_back(actor->actor_id());
-            components[data.actors[i].root_component_id] = actor->root_component();
-            next_stable_ids[actor->actor_id()] = {data.actors[i].id, data.actors[i].root_component_id};
-            if (!apply_actor_state(*actor, prepared[i].state))
-            { error = "Could not restore Scene Actor properties."; rollback(); return false; }
-            for (const SceneResourceBinding& binding : data.actors[i].resources)
-            {
-                if (binding.role == "mesh") continue;
-                MaterialSlotAssignment assignment;
-                assignment.component_id = actor->root_component()->component_id();
-                assignment.slot_name = binding.role.substr(9u);
-                assignment.material = binding.reference;
-                if (!material_assignments_.assign(world(), actor->actor_id(), assignment, error))
-                { rollback(); return false; }
-            }
-        }
-        for (const SceneActorData& saved : data.actors)
-        {
-            if (saved.parent_component_id.empty()) continue;
-            if (!components.at(saved.root_component_id)->attach_to(
-                components.at(saved.parent_component_id), AttachmentRule::KeepRelative))
-            { error = "Could not restore Scene attachment."; rollback(); return false; }
-        }
-        for (const std::uint32_t id : old_ids)
-        {
-            Actor* actor = world().find_actor_by_id(id);
-            if (actor && !world().destroy_actor(*actor))
-            { error = "Could not remove the previous Scene Actor."; rollback(); return false; }
-            actor_factory_.forget(id);
-            material_assignments_.forget(id);
-        }
-        stable_scene_ids_ = std::move(next_stable_ids);
-        command_history_.clear();
-        selection_.clear_actor();
-        scene_viewport_.exit_camera_view();
-        scene_viewport_.cancel_pending_hit();
-        error.clear();
-        return true;
-    }
-
-    bool EditorApplication::scene_dirty()
-    {
-        if (!scene_id_.valid()) return !world().actor_ids().empty();
-        SceneAssetData snapshot;
-        std::string error;
-        if (!capture_scene(snapshot, error)) return true;
-        const auto encoded = encode_scene_asset_pair(workspace_.types(), scene_id_, snapshot,
-            &workspace_.catalog().index);
-        return !encoded.succeeded() || encoded.value().asset != scene_baseline_;
-    }
+    bool EditorApplication::scene_dirty() const { return scene_session_.dirty(); }
 
     bool EditorApplication::save_scene(const VirtualPath& path, bool create_new)
     {
-        if (asset_descriptor_kind(path) != AssetDescriptorKind::Scene ||
-            path.utf8().compare(0u, 9u, "/Project/") != 0)
-        { scene_error_ = "Choose a .scene path inside Project assets."; return false; }
-        SceneAssetData snapshot;
-        if (!capture_scene(snapshot, scene_error_)) return false;
-        AssetId id = scene_id_;
-        if (create_new || !id.valid())
-        {
-            if (!AssetId::try_generate(id) || workspace_.catalog().index.find(id))
-            { scene_error_ = "Could not allocate a unique Scene Asset ID."; return false; }
-        }
-        else
-        {
-            const auto disk = workspace_.files().read_binary(path, scene_baseline_.size() + 1u);
-            if (!disk.succeeded() || disk.value() != scene_baseline_)
-            { scene_error_ = "Scene file changed on disk. Use Save Scene As or reopen it."; return false; }
-        }
-        const auto encoded = encode_scene_asset_pair(workspace_.types(), id, snapshot,
-            &workspace_.catalog().index);
-        if (!encoded.succeeded()) { scene_error_ = encoded.status().message; return false; }
-        const AssetStatus published = workspace_.asset_pairs().publish(path, encoded.value(),
-            create_new ? FilePublishMode::CreateNew : FilePublishMode::Replace);
-        if (!published.succeeded()) { scene_error_ = published.message; return false; }
-        scene_id_ = id;
-        scene_path_ = path;
-        scene_baseline_ = encoded.value().asset;
-        if (!workspace_.refresh())
-        { scene_error_ = "Scene was saved, but Content Browser refresh failed: " + workspace_.error(); return false; }
-        selection_.select_asset(id);
-        scene_error_.clear();
-        return true;
+        const bool saved = scene_session_.save(path, create_new);
+        scene_error_ = scene_session_.error();
+        return saved;
     }
 
     bool EditorApplication::open_scene(const AssetId& id)
     {
-        const AssetLocation* location = workspace_.catalog().index.find(id);
-        if (!location || asset_descriptor_kind(location->path) != AssetDescriptorKind::Scene)
-        { scene_error_ = "Scene asset is missing from Content Browser."; return false; }
-        SceneAssetData loaded;
-        const AssetStatus read = read_scene_asset(workspace_.types(), workspace_.files(),
-            location->path, loaded, &workspace_.catalog().index);
-        if (!read.succeeded()) { scene_error_ = read.message; return false; }
-        const auto bytes = workspace_.files().read_binary(location->path);
-        if (!bytes.succeeded()) { scene_error_ = bytes.status().message; return false; }
-        if (!replace_scene(loaded, scene_error_)) return false;
-        scene_id_ = id;
-        scene_path_ = location->path;
-        scene_baseline_ = bytes.value();
-        selection_.select_asset(id);
-        return true;
+        const bool opened = scene_session_.open(id);
+        scene_error_ = scene_session_.error();
+        return opened;
     }
 
     void EditorApplication::new_scene()
     {
-        command_history_.clear();
-        selection_.clear_actor();
-        scene_viewport_.exit_camera_view();
-        scene_viewport_.cancel_pending_hit();
-        for (const std::uint32_t id : world().actor_ids())
-        {
-            Actor* actor = world().find_actor_by_id(id);
-            if (actor && !world().destroy_actor(*actor))
-            { scene_error_ = "Could not clear the current Scene."; return; }
-            actor_factory_.forget(id);
-            material_assignments_.forget(id);
-        }
-        scene_id_ = {};
-        scene_path_ = {};
-        scene_baseline_.clear();
-        stable_scene_ids_.clear();
-        scene_error_.clear();
+        if (!scene_session_.new_scene()) TOY_LOG_ERROR("New Scene failed: {}", scene_session_.error());
+        scene_error_ = scene_session_.error();
     }
 
     void EditorApplication::request_scene_action(SceneAction action, const AssetId& id)
@@ -374,9 +81,9 @@ namespace toy3d
             ImGui::TextUnformatted("The current Scene has unsaved changes.");
             if (ImGui::Button("Save"))
             {
-                if (scene_path_.empty())
+                if (scene_session_.path().empty())
                 { show_scene_save_as_ = true; ImGui::CloseCurrentPopup(); }
-                else if (save_scene(scene_path_, false))
+                else if (save_scene(scene_session_.path(), false))
                 {
                     const SceneAction action = pending_scene_action_;
                     const AssetId id = pending_scene_id_;
@@ -469,6 +176,7 @@ namespace toy3d
         ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
         if (!window().enable_file_drop(true)) TOY_LOG_WARN("External asset file drop is unavailable on this platform.");
         if (!actor_factory_.initialize()) return false;
+        scene_session_.bind(world());
         MaterialTextureValues textures;
         const auto defaults = actor_factory_.default_material()->material();
         for (const auto& resource : defaults->parameter_schema().resources)
@@ -484,9 +192,10 @@ namespace toy3d
                     (name == defaults->desc().shader_name ? defaults->desc().shader_program : nullptr);
             }, std::move(textures));
         material_assignments_.initialize(workspace_, *materials_);
-        workspace_.material_edit().set_publish([this](const AssetRef& reference) { return materials_->reload(reference); });
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
             PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+        material_editor_.edit_session().set_publish([this](const AssetRef& reference) { return materials_->reload(reference); });
+
         auto& arguments = CommandLineParser::get_instance();
         MaterialShaderPaths shader_paths;
         shader_paths.project_shader = PhysicalPath(arguments.get_option("Editor.ProjectShaderRoot", TOY3D_EDITOR_PROJECT_SHADER_ROOT));
@@ -515,17 +224,18 @@ namespace toy3d
         if (!try_make_rotation_from_forward_up(Vector3(-0.35f, -0.55f, 0.75f),
                                                 Vector3(0, 1, 0), preview.transform.rotation)) return false;
         if (!actor_factory_.create(world(), preview)) return false;
-        return true;
+        return register_panels();
     }
 
     void EditorApplication::on_tick(double)
     {
+        scene_session_.history().synchronize(world());
         thumbnails_.tick();
         texture_preview_.tick();
         if (!shader_workflow_ready_) return;
         shaders_.tick();
         if (!shaders_.candidate_ready()) return;
-        auto& session = workspace_.material_edit();
+        auto& session = material_editor_.edit_session();
         if (shaders_.origin().valid() && (!session.active() || !(session.id() == shaders_.origin()) ||
             material_editor_.session_revision() != shaders_.origin_revision()))
         { shaders_.reject("The material session changed during compilation. Recompile from the current session."); return; }
@@ -556,6 +266,10 @@ namespace toy3d
 
     void EditorApplication::on_shutdown()
     {
+        panels_.clear();
+        asset_editors_.clear();
+        place_actors_.clear();
+        content_browser_.clear();
         shaders_.shutdown();
         if (!window().enable_file_drop(false)) TOY_LOG_WARN("Could not disable external asset file drop.");
         model_import_.clear();
@@ -564,7 +278,7 @@ namespace toy3d
         texture_preview_.shutdown();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
-        command_history_.clear();
+        scene_session_.history().clear();
         for (const auto actor_id : world().actor_ids())
         {
             Actor* actor = world().find_actor_by_id(actor_id);
@@ -574,13 +288,106 @@ namespace toy3d
         if (!drained.succeeded())
             TOY_LOG_ERROR("Editor preview scene could not drain before material release: {}",
                           drained.framework_status().message);
-        command_history_.cancel();
+        scene_session_.history().cancel();
         selection_.clear_actor();
         selection_.clear_asset();
         material_assignments_.shutdown();
-        workspace_.material_edit().set_publish({});
         if (materials_) { materials_->shutdown(); materials_.reset(); }
         actor_factory_.release();
+    }
+
+    bool EditorApplication::register_panels()
+    {
+        auto add_scene_panel = [this](const char* id, const char* title, const char* window, std::function<void()> draw)
+        {
+            EditorPanel panel;
+            panel.id = id; panel.title = title; panel.window_name = window; panel.draw = std::move(draw);
+            panel.undo = [this]() { apply_scene_history(false); };
+            panel.redo = [this]() { apply_scene_history(true); };
+            panel.save = [this]()
+            {
+                if (scene_session_.path().empty()) show_scene_save_as_ = true;
+                else save_scene(scene_session_.path(), false);
+            };
+            panel.focused = [window]()
+            {
+                const ImGuiWindow* focused = ImGui::GetCurrentContext()->NavWindow;
+                return focused && focused->RootWindow == ImGui::FindWindowByName(window);
+            };
+            return panels_.add(std::move(panel));
+        };
+        if (!panels_.add({"place_actors", "Place Actors", "Place Actors", [this]() { place_actors_.draw(); }, {}, {}, {}}) ||
+            !add_scene_panel("outliner", "Outliner", "Outliner", [this]()
+            {
+                if (draw_outliner(world(), selection_, scene_session_.history(), actor_factory_, scene_viewport_))
+                    scene_viewport_.cancel_pending_hit();
+            }) ||
+            !add_scene_panel("details", "Details", "Details", [this]()
+            {
+                draw_details(world(), selection_, scene_session_.history(), workspace_, scene_viewport_,
+                             material_assignments_, material_assignment_error_);
+            }) ||
+            !add_scene_panel("scene_viewport", "Scene Viewport", "Scene Viewport###Game Viewport", [this]()
+            { scene_viewport_.draw(world(), selection_, scene_session_.history()); }) ||
+            !panels_.add({"content_browser", "Content Browser", "Content Browser", [this]() { draw_asset_browser(); }, {}, {}, {}}) ||
+            !panels_.add({"texture_preview", "Texture Preview", "Texture Preview", [this]() { texture_preview_.draw(); }, {}, {}, {}}) ||
+            !panels_.add({"material_editor", "Material Editor", "Material Editor", [this]() { material_editor_.draw(); },
+                [this]() { material_editor_.undo(); }, [this]() { material_editor_.redo(); },
+                [this]() { return material_editor_.focused(); }, [this]() { material_editor_.save(); }})) return false;
+        panels_.freeze();
+        auto material_open = [this](const AssetId& id, bool) { material_editor_.request_open(id); };
+        if (!asset_editors_.add({"toy3d.SceneAssetData", [this](const AssetId& id, bool)
+                { request_scene_action(SceneAction::Open, id); }}) ||
+            !asset_editors_.add({"toy3d.MaterialAssetData", material_open}) ||
+            !asset_editors_.add({"toy3d.MaterialInstanceAssetData", material_open}) ||
+            !asset_editors_.add({"toy3d.Texture2DAssetData", [this](const AssetId& id, bool focus)
+                { texture_preview_.request_open(id, focus); }})) return false;
+        asset_editors_.freeze();
+        return true;
+    }
+
+    void EditorApplication::draw_asset_browser()
+    {
+        const ContentBrowserActions browser = content_browser_.draw(workspace_, selection_, asset_folder_,
+            show_engine_content_, thumbnails_, WITH_MODEL_IMPORT != 0);
+        if (browser.assets_refreshed) texture_preview_.invalidate();
+        if (browser.asset_open.valid() && !model_import_.active() && !texture_import_.active() && !material_create_.active())
+        {
+            const auto* asset = workspace_.catalog().index.find(browser.asset_open);
+            if (!asset || !asset_editors_.request_open(asset->index.root_type, browser.asset_open, browser.asset_focus))
+                model_error_ = "This asset has no registered editor.";
+        }
+        if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active())
+            material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
+        if (browser.texture_import_requested && !material_create_.active() && !model_import_.active() &&
+            !texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
+#if WITH_MODEL_IMPORT
+        if (browser.import_requested && !material_create_.active() && !texture_import_.active() &&
+            !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+#endif
+        FileDropEvent dropped;
+        while (window().take_file_drop(dropped))
+        {
+            if (model_import_.active() || texture_import_.active() || material_create_.active() ||
+                ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || !browser.accepts_drop(dropped.position)) continue;
+            bool image = false;
+            bool model = false;
+            for (const auto& path : dropped.paths)
+            {
+                std::string extension = path.substr(path.find_last_of('.') == std::string::npos ? path.size() : path.find_last_of('.'));
+                std::transform(extension.begin(), extension.end(), extension.begin(),
+                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") image = true;
+                else model = true;
+            }
+            if (image && model) model_error_ = "Drop image and model files separately.";
+            else if (image && !texture_import_.request(asset_folder_, dropped.paths)) model_error_ = texture_import_.error();
+#if WITH_MODEL_IMPORT
+            else if (model && !model_import_.request(asset_folder_, dropped.paths)) model_error_ = model_import_.error();
+#else
+            else if (model) model_error_ = "Model import is disabled in this build.";
+#endif
+        }
     }
 
     void EditorApplication::on_build_ui()
@@ -601,8 +408,8 @@ namespace toy3d
                 }
                 if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
                 {
-                    if (scene_path_.empty()) show_scene_save_as_ = true;
-                    else save_scene(scene_path_, false);
+                    if (scene_session_.path().empty()) show_scene_save_as_ = true;
+                    else save_scene(scene_session_.path(), false);
                 }
                 if (ImGui::MenuItem("Save Scene As...")) show_scene_save_as_ = true;
                 ImGui::Separator();
@@ -637,11 +444,7 @@ namespace toy3d
             {
                 if (ImGui::MenuItem("Reset Layout")) reset_dock_layout_ = true;
                 ImGui::Separator();
-                if (ImGui::MenuItem("Scene Viewport")) ImGui::SetWindowFocus("Scene Viewport###Game Viewport");
-                if (ImGui::MenuItem("Place Actors")) ImGui::SetWindowFocus("Place Actors");
-                if (ImGui::MenuItem("Outliner")) ImGui::SetWindowFocus("Outliner");
-                if (ImGui::MenuItem("Details")) ImGui::SetWindowFocus("Details");
-                if (ImGui::MenuItem("Content Browser")) ImGui::SetWindowFocus("Content Browser");
+                panels_.draw_window_menu();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Help"))
@@ -716,7 +519,7 @@ namespace toy3d
         ImGui::Separator();
         ImGui::Text("Assets: %u", static_cast<unsigned>(workspace_.catalog().entries.size()));
         ImGui::SameLine();
-        ImGui::TextDisabled("  |  Scene: %s%s", scene_path_.empty() ? "Untitled" : scene_path_.utf8().c_str(),
+        ImGui::TextDisabled("  |  Scene: %s%s", scene_session_.path().empty() ? "Untitled" : scene_session_.path().utf8().c_str(),
             scene_dirty() ? " *" : "");
         ImGui::SameLine();
         ImGui::TextDisabled("  |  Source: %s", workspace_.source_root().utf8().c_str());
@@ -727,57 +530,13 @@ namespace toy3d
         }
         ImGui::End();
 
-        draw_place_actors_panel();
-        if (draw_outliner(world(), selection_, command_history_, actor_factory_, scene_viewport_))
-            scene_viewport_.cancel_pending_hit();
-        draw_details(world(), selection_, command_history_, workspace_, scene_viewport_, material_assignments_, material_assignment_error_);
-        scene_viewport_.draw(world(), selection_, command_history_);
-        const ContentBrowserActions browser = draw_content_browser(workspace_, selection_, asset_folder_,
-            show_engine_content_, thumbnails_, WITH_MODEL_IMPORT != 0);
-        if (browser.assets_refreshed) texture_preview_.invalidate();
-        if (browser.texture_open.valid()) texture_preview_.request_open(browser.texture_open, browser.texture_focus);
-        texture_preview_.draw();
-        if (browser.scene_open.valid()) request_scene_action(SceneAction::Open, browser.scene_open);
-        if (browser.material_open.valid() && !model_import_.active() && !texture_import_.active() && !material_create_.active())
-            material_editor_.request_open(browser.material_open);
-        if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active())
-            material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
-        if (browser.texture_import_requested && !material_create_.active() && !model_import_.active() &&
-            !texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
-#if WITH_MODEL_IMPORT
-        if (browser.import_requested && !material_create_.active() && !texture_import_.active() &&
-            !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
-#endif
-        FileDropEvent dropped;
-        while (window().take_file_drop(dropped))
-        {
-            if (model_import_.active() || texture_import_.active() || material_create_.active() ||
-                ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || !browser.accepts_drop(dropped.position)) continue;
-            bool image = false;
-            bool model = false;
-            for (const auto& path : dropped.paths)
-            {
-                std::string extension = path.substr(path.find_last_of('.') == std::string::npos ? path.size() : path.find_last_of('.'));
-                std::transform(extension.begin(), extension.end(), extension.begin(),
-                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") image = true;
-                else model = true;
-            }
-            if (image && model) model_error_ = "Drop image and model files separately.";
-            else if (image && !texture_import_.request(asset_folder_, dropped.paths)) model_error_ = texture_import_.error();
-#if WITH_MODEL_IMPORT
-            else if (model && !model_import_.request(asset_folder_, dropped.paths)) model_error_ = model_import_.error();
-#else
-            else if (model) model_error_ = "Model import is disabled in this build.";
-#endif
-        }
+        panels_.draw();
 #if WITH_MODEL_IMPORT
         model_import_.draw(window(), workspace_, selection_, thumbnails_);
 #endif
         texture_import_.draw(window(), workspace_, selection_);
         material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema(),
             shader_workflow_ready_ ? &shaders_ : nullptr);
-        material_editor_.draw();
         draw_scene_dialogs();
         const auto locate = material_editor_.take_locate_parent();
         if (locate.valid())
@@ -795,7 +554,7 @@ namespace toy3d
         if (scene_viewport_.take_asset_placement(placed))
         {
             const std::uint32_t actor_id = place_static_mesh_asset(workspace_, world(), actor_factory_,
-                command_history_, placed, model_error_);
+                scene_session_.history(), placed, model_error_);
             if (actor_id)
             {
                 selection_.select_actor(world(), actor_id);
@@ -815,55 +574,51 @@ namespace toy3d
 
         selection_.resolve_actor(world());
         const ImGuiIO& io = ImGui::GetIO();
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S) && !io.WantTextInput &&
-            !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
-        {
-            if (scene_path_.empty()) show_scene_save_as_ = true;
-            else save_scene(scene_path_, false);
-        }
         const ImGuiWindow* focused = ImGui::GetCurrentContext()->NavWindow;
         if (focused) focused = focused->RootWindow;
         const bool actor_panel_focused = focused &&
             (focused == ImGui::FindWindowByName("Scene Viewport###Game Viewport") ||
              focused == ImGui::FindWindowByName("Outliner") || focused == ImGui::FindWindowByName("Details"));
-        if (material_editor_.focused()) material_history_target_ = true;
-        else if (actor_panel_focused) material_history_target_ = false;
-        const bool modal_active = model_import_.active() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        const bool modal_active = model_import_.active() || texture_import_.active() ||
+            material_create_.active() || material_editor_.modal_pending() ||
+            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
         if (!modal_active && actor_panel_focused && selection_.focus() == EditorSelectionFocus::Actor &&
             !io.WantTextInput && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Delete))
         {
-            if (command_history_.delete_actor(world(), selection_.actor_id()))
+            if (scene_session_.history().delete_actor(world(), selection_.actor_id()))
             {
                 selection_.clear_actor();
                 scene_viewport_.cancel_pending_hit();
             }
         }
-        if (!modal_active && actor_panel_focused && io.KeyCtrl && !io.WantTextInput && !ImGui::IsAnyItemActive())
+        panels_.process_shortcuts(model_import_.active() || texture_import_.active() ||
+                                  material_create_.active() || material_editor_.modal_pending());
+    }
+
+    void EditorApplication::apply_scene_history(bool redo)
+    {
+        auto& history = scene_session_.history();
+        const bool applied = redo ? history.redo(world()) : history.undo(world());
+        if (!applied && !history.error().empty())
         {
-            if (ImGui::IsKeyPressed(ImGuiKey_Z))
-            {
-                if (io.KeyShift)
-                    command_history_.redo(world());
-                else
-                    command_history_.undo(world());
-            }
-            else if (ImGui::IsKeyPressed(ImGuiKey_Y))
-                command_history_.redo(world());
+            scene_error_ = history.error();
+            TOY_LOG_ERROR("Scene history: {}", scene_error_);
         }
+        else if (applied) scene_error_.clear();
     }
 
     void EditorApplication::undo_edit()
     {
-        if (ImGui::IsAnyItemActive() || model_import_.active() || material_create_.active() || material_editor_.modal_pending()) return;
-        if (material_history_target_) material_editor_.undo();
-        else command_history_.undo(world());
+        if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() ||
+            material_create_.active() || material_editor_.modal_pending()) return;
+        panels_.undo();
     }
 
     void EditorApplication::redo_edit()
     {
-        if (ImGui::IsAnyItemActive() || model_import_.active() || material_create_.active() || material_editor_.modal_pending()) return;
-        if (material_history_target_) material_editor_.redo();
-        else command_history_.redo(world());
+        if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() ||
+            material_create_.active() || material_editor_.modal_pending()) return;
+        panels_.redo();
     }
 
     bool EditorApplication::on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)

@@ -59,7 +59,7 @@ namespace toy3d
     {
         const auto paired_path = meta_path_for(asset_path);
         if (!paired_path.succeeded()) return AssetResult<AssetPair>(paired_path.status());
-        const auto description_bytes = files.read_binary(asset_path, limits.max_index_bytes);
+        auto description_bytes = files.read_binary(asset_path, limits.max_index_bytes);
         if (!description_bytes.succeeded())
             return AssetResult<AssetPair>(fail(AssetErrorCode::Io, {}, asset_path,
                 "asset description read failed", description_bytes.status()));
@@ -72,6 +72,7 @@ namespace toy3d
         }
         AssetPair candidate;
         candidate.description = description.value();
+        candidate.description_bytes = std::move(description_bytes.value());
         if (!asset_descriptor_accepts_type(asset_descriptor_kind(asset_path),
             candidate.description.index.root_type) ||
             (asset_descriptor_kind(asset_path) == AssetDescriptorKind::Scene && candidate.description.has_meta))

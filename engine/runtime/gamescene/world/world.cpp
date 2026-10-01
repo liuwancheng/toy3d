@@ -152,6 +152,7 @@ namespace toy3d
 
         (*found)->mark_pending_destroy();
         mark_scene_changed();
+        mark_content_changed();
         if (ticking_ || dispatching_lifecycle_)
         {
             return true;
@@ -213,6 +214,12 @@ namespace toy3d
                 ids.push_back(actor->actor_id());
         }
         return ids;
+    }
+
+    void World::mark_content_changed()
+    {
+        content_revision_ = content_revision_ == (std::numeric_limits<std::uint64_t>::max)()
+                                ? 1u : content_revision_ + 1u;
     }
 
     void World::mark_scene_changed()

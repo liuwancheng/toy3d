@@ -8,17 +8,16 @@
 
 namespace toy3d
 {
-    void draw_place_actors_panel()
+    void PlaceActorsPanel::draw()
     {
         if (ImGui::Begin("Place Actors"))
         {
-            static ImGuiTextFilter filter;
-            filter.Draw("Search", -1.0f);
+            filter_.Draw("Search", -1.0f);
             ImGui::TextDisabled("Drag into the Scene Viewport");
             const char* category = nullptr;
             for (const PlacementItem& item : placement_catalog())
             {
-                if (!filter.PassFilter(item.name)) continue;
+                if (!filter_.PassFilter(item.name)) continue;
                 if (category == nullptr || std::strcmp(category, item.category) != 0)
                 {
                     category = item.category;

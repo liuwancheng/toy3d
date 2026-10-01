@@ -56,11 +56,13 @@ namespace toy3d
             {
                 result.begin_play();
             }
+            mark_content_changed();
             return result;
         }
 
         bool set_root_component(SceneComponent* component);
         ActorComponent* find_component_by_id(std::uint32_t component_id) const;
+        std::vector<std::uint32_t> component_ids() const;
 
       protected:
         virtual void on_initialize() {}
@@ -73,6 +75,7 @@ namespace toy3d
 
         bool owns_component(const ActorComponent& component) const;
         std::uint32_t allocate_component_id();
+        void mark_content_changed();
         void register_all_components();
         void initialize_actor();
         void begin_play();

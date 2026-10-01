@@ -244,7 +244,7 @@ namespace
         void on_build_ui() override
         {
             ImGui::SetNextWindowSize(ImVec2(620, 320), ImGuiCond_Always);
-            draw_content_browser(workspace_, selection_, folder_, show_engine_, pool_);
+            browser_.draw(workspace_, selection_, folder_, show_engine_, pool_);
             ImGui::SetNextWindowSize(ImVec2(620, 320), ImGuiCond_Always);
             ImGui::Begin("Thumbnail integration");
             for (const auto& asset : workspace_.catalog().entries)
@@ -285,6 +285,7 @@ namespace
         AssetThumbnailPool pool_;
         ActorFactory factory_;
         EditorCommandHistory history_;
+        ContentBrowserPanel browser_;
         EditorSelection selection_;
         StaticMeshImportDialog import_dialog_;
         bool import_dialog_shown_ = false;

@@ -33,6 +33,7 @@ namespace toy3d
             result.actor_id_ = allocate_actor_id();
             actors_.push_back(std::move(actor));
             mark_scene_changed();
+            mark_content_changed();
             result.register_all_components();
             if (lifecycle_state_ != WorldLifecycleState::Created)
             {
@@ -55,6 +56,9 @@ namespace toy3d
         std::vector<std::uint32_t> actor_ids() const;
         std::uint64_t scene_generation() const { return scene_generation_; }
         void mark_scene_changed();
+        // Content mutations also exist before a SceneInterface is bound.
+        std::uint64_t content_revision() const { return content_revision_; }
+        void mark_content_changed();
         bool bind_scene(SceneInterface& scene);
         bool unbind_scene();
         SceneInterface* scene_interface() const { return scene_interface_; }
@@ -78,6 +82,7 @@ namespace toy3d
         std::uint64_t next_actor_id_ = 1;
         std::uint64_t next_component_id_ = 1;
         std::uint64_t scene_generation_ = 1;
+        std::uint64_t content_revision_ = 1;
         WorldLifecycleState lifecycle_state_ = WorldLifecycleState::Created;
         double world_time_seconds_ = 0.0;
         std::uint64_t frame_number_ = 0;

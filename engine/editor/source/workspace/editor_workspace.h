@@ -6,7 +6,6 @@
 #include "file_system/native_platform_file.h"
 #include "file_system/physical_path.h"
 #include "reflection/type_registry.h"
-#include "material/material_edit_session.h"
 #include "format/shader_editor_properties.h"
 
 #include <string>
@@ -34,7 +33,6 @@ namespace toy3d
         FileSystem& files() { return files_; }
         const TypeRegistry& types() const { return types_; }
         bool ready() const { return ready_; }
-        MaterialEditSession& material_edit() { return material_edit_; }
         AssetPairStore& asset_pairs() { return *asset_pairs_; }
         AssetStatus delete_asset(const AssetId& id);
         AssetStatus move_asset(const AssetId& id, const VirtualPath& destination);
@@ -50,7 +48,6 @@ namespace toy3d
         AssetCatalog catalog_;
         TypeRegistry types_;
         std::unique_ptr<AssetPairStore> asset_pairs_;
-        MaterialEditSession material_edit_{*this};
         std::string error_;
         bool ready_ = false;
     };

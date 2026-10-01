@@ -35,6 +35,10 @@ namespace toy3d
     struct TexturePreviewPanel::CpuResult
     {
         std::uint64_t revision = 0;
+        AssetId asset_id;
+        std::string path;
+        std::uint32_t mip = 0;
+        TexturePreviewChannel channel = TexturePreviewChannel::RGBA;
         std::shared_ptr<const Texture2DAsset> asset;
         Extent extent;
         std::vector<std::uint8_t> pixels;
@@ -52,21 +56,16 @@ namespace toy3d
         if (!id.valid()) return;
         open_ = true;
         focus_requested_ = focus;
-        if (asset_id_ == id)
+        if (requested_asset_id_ == id)
         {
-            if (!asset_ && !cpu_task_) needs_prepare_ = true;
+            if (!asset_ && !cpu_task_ && !candidate_id_.valid()) needs_prepare_ = true;
             return;
         }
-        if (texture_id_.valid()) pending_work_.retire_textures.push_back(texture_id_);
-        texture_id_ = {};
-        image_extent_ = {};
-        asset_id_ = id;
-        asset_.reset();
-        path_.clear();
+        requested_asset_id_ = id;
         error_.clear();
-        mip_ = 0;
-        channel_ = TexturePreviewChannel::RGBA;
-        zoom_ = pan_x_ = pan_y_ = 0.0f;
+        requested_mip_ = id == asset_id_ ? mip_ : 0;
+        requested_channel_ = id == asset_id_ ? channel_ : TexturePreviewChannel::RGBA;
+        reload_requested_ = !(id == asset_id_);
         ++revision_;
         needs_prepare_ = true;
     }
@@ -74,24 +73,23 @@ namespace toy3d
     void TexturePreviewPanel::invalidate()
     {
         if (!open_) return;
-        asset_.reset();
+        reload_requested_ = true;
         ++revision_;
         needs_prepare_ = true;
     }
 
     void TexturePreviewPanel::set_channel(TexturePreviewChannel channel)
     {
-        if (channel_ == channel) return;
-        channel_ = channel;
+        if (requested_channel_ == channel) return;
+        requested_channel_ = channel;
         ++revision_;
         needs_prepare_ = true;
     }
 
     void TexturePreviewPanel::set_mip(std::uint32_t mip)
     {
-        if (mip_ == mip) return;
-        mip_ = mip;
-        zoom_ = pan_x_ = pan_y_ = 0.0f;
+        if (requested_mip_ == mip) return;
+        requested_mip_ = mip;
         ++revision_;
         needs_prepare_ = true;
     }
@@ -107,38 +105,41 @@ namespace toy3d
             if (open_ && result->revision == revision_)
             {
                 if (!result->error.empty())
-                { error_ = std::move(result->error); needs_prepare_ = false; TOY_LOG_ERROR("Texture preview: {}", error_); }
+                { reject_preview(std::move(result->error)); }
                 else
                 {
-                    asset_ = std::move(result->asset);
                     if (next_texture_ == std::numeric_limits<std::uint64_t>::max() ||
                         next_request_ == std::numeric_limits<std::uint64_t>::max())
-                    { error_ = "Texture preview ID space exhausted."; needs_prepare_ = false; }
+                    { reject_preview("Texture preview ID space exhausted."); }
                     else
                     {
                         candidate_id_ = ImGuiTextureId(next_texture_++);
                         candidate_revision_ = revision_;
                         pending_work_.uploads.push_back({next_request_++, candidate_id_, result->extent,
                             std::move(result->pixels)});
+                        candidate_result_ = std::move(result);
                     }
                 }
             }
         }
         if (!open_ || !needs_prepare_ || cpu_task_ || candidate_id_.valid()) return;
-        const AssetLocation* location = workspace_.catalog().index.find(asset_id_);
+        const AssetLocation* location = workspace_.catalog().index.find(requested_asset_id_);
         if (!location || location->index.root_type != "toy3d.Texture2DAssetData")
-        { error_ = "Texture asset is missing from the catalog."; needs_prepare_ = false; return; }
+        { reject_preview("Texture asset is missing from the catalog."); return; }
         if (!TaskGraphInterface::is_running())
-        { error_ = "Texture preview requires a running Task Graph."; needs_prepare_ = false; return; }
-        path_ = location->path.utf8();
+        { reject_preview("Texture preview requires a running Task Graph."); return; }
         auto result = std::make_shared<CpuResult>();
         result->revision = revision_;
+        result->asset_id = requested_asset_id_;
+        result->path = location->path.utf8();
+        result->mip = requested_mip_;
+        result->channel = requested_channel_;
         cpu_result_ = result;
         const auto path = location->path;
-        auto existing = asset_;
+        auto existing = !reload_requested_ && requested_asset_id_ == asset_id_ ? asset_ : nullptr;
         FileSystem* files = &workspace_.files();
-        const auto mip = mip_;
-        const auto channel = channel_;
+        const auto mip = requested_mip_;
+        const auto channel = requested_channel_;
         try
         {
             cpu_task_ = dispatch_graph_task(TaskGraphInterface::get(), "Load texture preview",
@@ -153,8 +154,9 @@ namespace toy3d
                             if (!read.succeeded()) { result->error = read.status().message; return; }
                             result->asset = std::make_shared<Texture2DAsset>(std::move(read.value()));
                         }
-                        make_texture_preview_pixels(*result->asset, mip, channel,
-                            result->extent.width, result->extent.height, result->pixels, result->error);
+                        if (!make_texture_preview_pixels(*result->asset, mip, channel,
+                            result->extent.width, result->extent.height, result->pixels, result->error) && result->error.empty())
+                            result->error = "Could not prepare the requested texture preview.";
                     }
                     catch (const std::exception& exception) { result->error = exception.what(); }
                 });
@@ -162,7 +164,18 @@ namespace toy3d
             error_.clear();
         }
         catch (const std::exception& exception)
-        { cpu_result_.reset(); error_ = exception.what(); needs_prepare_ = false; TOY_LOG_ERROR("Texture preview: {}", error_); }
+        { cpu_result_.reset(); reject_preview(exception.what()); }
+    }
+
+    void TexturePreviewPanel::reject_preview(std::string error)
+    {
+        error_ = std::move(error);
+        needs_prepare_ = false;
+        requested_asset_id_ = asset_id_;
+        requested_mip_ = mip_;
+        requested_channel_ = channel_;
+        reload_requested_ = false;
+        TOY_LOG_ERROR("Texture preview: {}", error_);
     }
 
     void TexturePreviewPanel::on_texture_result(UiTextureResult result)
@@ -170,16 +183,24 @@ namespace toy3d
         if (!candidate_id_.valid() || result.texture_id != candidate_id_) return;
         const ImGuiTextureId completed = candidate_id_;
         candidate_id_ = {};
+        auto candidate = std::move(candidate_result_);
         if (!result.succeeded() || !open_ || candidate_revision_ != revision_)
         {
             pending_work_.retire_textures.push_back(completed);
             if (!result.succeeded() && candidate_revision_ == revision_)
-            { error_ = std::move(result.error); TOY_LOG_ERROR("Texture preview: {}", error_); }
+            { reject_preview(std::move(result.error)); }
             return;
         }
         if (texture_id_.valid()) pending_work_.retire_textures.push_back(texture_id_);
         texture_id_ = completed;
         image_extent_ = result.extent;
+        if (!(asset_id_ == candidate->asset_id) || mip_ != candidate->mip) zoom_ = pan_x_ = pan_y_ = 0.0f;
+        asset_id_ = candidate->asset_id;
+        path_ = std::move(candidate->path);
+        asset_ = std::move(candidate->asset);
+        mip_ = candidate->mip;
+        channel_ = candidate->channel;
+        reload_requested_ = false;
         error_.clear();
     }
 
@@ -204,6 +225,7 @@ namespace toy3d
         image_extent_ = {};
         asset_.reset();
         asset_id_ = {};
+        requested_asset_id_ = {};
         needs_prepare_ = false;
     }
 
@@ -216,11 +238,20 @@ namespace toy3d
         }
         cpu_task_.reset();
         cpu_result_.reset();
+        candidate_result_.reset();
         asset_.reset();
         pending_work_ = {};
         candidate_id_ = {};
         texture_id_ = {};
         open_ = false;
+        asset_id_ = {};
+        requested_asset_id_ = {};
+        needs_prepare_ = false;
+        reload_requested_ = false;
+        path_.clear();
+        error_.clear();
+        image_extent_ = {};
+        focus_requested_ = false;
     }
 
     void TexturePreviewPanel::draw()
@@ -237,12 +268,13 @@ namespace toy3d
                     asset_->width, asset_->height, static_cast<unsigned>(asset_->mips.size()));
             if (!error_.empty()) ImGui::TextWrapped("Preview: %s", error_.c_str());
             if (cpu_task_ || candidate_id_.valid() || needs_prepare_) ImGui::TextDisabled("Loading preview...");
+            ImGui::BeginDisabled(!(requested_asset_id_ == asset_id_) || !asset_);
             for (const auto channel : {TexturePreviewChannel::RGBA, TexturePreviewChannel::Red,
                                        TexturePreviewChannel::Green, TexturePreviewChannel::Blue,
                                        TexturePreviewChannel::Alpha})
             {
                 if (channel != TexturePreviewChannel::RGBA) ImGui::SameLine();
-                if (ImGui::RadioButton(channel_name(channel), channel_ == channel)) set_channel(channel);
+                if (ImGui::RadioButton(channel_name(channel), requested_channel_ == channel)) set_channel(channel);
             }
             if (asset_ && ImGui::BeginCombo("Mip", std::to_string(mip_).c_str()))
             {
@@ -250,6 +282,7 @@ namespace toy3d
                     if (ImGui::Selectable(std::to_string(level).c_str(), mip_ == level)) set_mip(level);
                 ImGui::EndCombo();
             }
+            ImGui::EndDisabled();
             if (ImGui::Button("Fit")) zoom_ = pan_x_ = pan_y_ = 0.0f;
             ImGui::SameLine();
             if (ImGui::Button("100%")) { zoom_ = 1.0f; pan_x_ = pan_y_ = 0.0f; }

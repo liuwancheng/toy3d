@@ -14,6 +14,8 @@
 | 源网格描述 | `Toy3dMeshDescription` | `mesh_description/mesh_description.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
 | StaticMesh 资产 | `Toy3dStaticMeshAsset` | `static_mesh/static_mesh_asset.h` | `engine/tools/model_import/tests/static_mesh_import_tests.cpp` |
 | Material/Instance 资产 | `Toy3dMaterialAsset` | `material/material_asset.h`、`material/material_asset_data.h` | `engine/core/material/tests/material_asset_tests.cpp`、`engine/editor/tests/workspace_tests.cpp` |
+| 场景领域设置 | `Toy3dSceneData` | `scene_data/component_settings.h` | `engine/editor/tests/editor_framework_tests.cpp` |
+| 场景资产 | `Toy3dSceneAsset` | `scene_asset/scene_asset.h` | `engine/editor/tests/workspace_tests.cpp` |
 | Texture2D 资产 | `Toy3dTextureAsset` | `texture_asset/texture_asset.h` | `engine/tools/texture_import/tests/texture_import_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
 | 外部进程 | `Toy3dProcess` | `process/process.h` | `engine/core/process/tests/process_tests.cpp` |
@@ -57,7 +59,7 @@ Shader Compiler 已迁移到此服务并删除私有 runner。Editor 的源码�
 
 ## Reflection
 
-创作数据头文件显式包含 `reflection/reflection_macros.h`，在公开 `struct` 与字段前分别放置稳定名称标记；无标记字段不进入 schema。`Edit` 可编辑、`Visible` 只读、`Transient` 不保存，已标记字段无 `Transient` 时默认保存。`Category`、`Range`、`Unit`、`AssetType` 只提供编辑提示。受限声明语法、支持类型和失败边界见 `document/editor-resource-foundation-design.md`。
+创作数据头文件显式包含 `reflection/reflection_macros.h`，在公开 `struct` 与字段前分别放置稳定名称标记；无标记字段不进入 schema。`Edit` 可编辑、`Visible` 只读、`Transient` 不保存，已标记字段无 `Transient` 时默认保存。`Category`、`Range`、`Unit`、`AssetType` 只提供编辑提示。受限声明语法、支持类型和失败边界见 `document/editor-development-guide.md`。
 
 构建时以明确的 `--input` 清单调用 `Toy3dReflectionCodegen`，并给出构建目录中的 `--header`、`--source` 和唯一 `--function` 名；把生成 `.cpp` 加入使用目标。生成文件只放 build 目录，使用目标链接 `Toy3dReflection` 与 `Toy3dSerialization`。生成函数由 composition root 显式调用，检查返回值后冻结注册表：
 
@@ -90,7 +92,7 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 `Toy3dMaterialAsset` 提供 Material/Instance DTO 与生成的反射和值编解码。先注册并冻结 TypeRegistry；领域编码器直接生成 YAML 候选，Editor 经 `AssetPairStore::publish()` 写入纯描述 `.asset`，Material EditSession 也通过 AssetPairStore 保存。领域 validator 可接收 AssetIndex，完整检查父级及所有 Texture2D 覆盖引用。运行时构建入口位于 `rendercore/material/material_asset_builder.h`，不属于 Core。Texture2D 导入将 GPU ready mip 放入 `.meta`；格式见 [Asset 描述与处理数据格式](asset-pair-format-design.md)。
 
-`Toy3dSceneAsset` 位于 `engine/core/scene_asset`，提供 `SceneAssetData`、生成反射、`validate_scene_asset()`、`encode_scene_asset_pair()` 与 `read_scene_asset()`；只处理 `.scene` 纯描述和 AssetRef，不依赖 World。`EditorApplication` 在 Game Thread 上提取、装配当前支持的 Actor。文件及菜单边界见 [Scene 文件与 Editor 保存](scene-file-design.md)。
+`Toy3dSceneAsset` 位于 `engine/core/scene_asset`，提供 `SceneAssetData`、生成反射、`validate_scene_asset()`、`encode_scene_asset_pair()` 与 `read_scene_asset()`；只处理 `.scene` 纯描述和 AssetRef，不依赖 World。`EditorSceneSession` 在 Game Thread 上提取、装配当前支持的 Actor/Component 图。文件及菜单边界见 [Scene 文件与 Editor 保存](editor-development-guide.md)。
 
 `AssetId::parse()` 接受非零 32 字符小写十六进制 ID；`AssetRef` 保存目标 ID、可选子资源 ID、预期类型与强/弱/延迟语义。资产以 `encode_asset_pair()` 生成 YAML 与可选 meta，`read_asset_pair()` 验证配对，`AssetPairStore` 执行发布、删除、复制、移动和恢复。旧 `asset_file.h` 编解码接口仅保留给隔离测试，不是生产磁盘格式入口。`AssetIndex` 由 composition root 持有，串行添加、移动和校验引用/强依赖环；`match_subresources()` 返回匹配、新增键与 orphan，不按数组下标重新绑定。
 
@@ -100,7 +102,7 @@ const toy3d::TypeDesc* type = registry.find("toy3d.ModelAsset");
 
 ## Hash、PNG 与缩略图
 
-Editor 的材质编辑入口为 `EditorWorkspace::material_edit()` 和 `material/material_edit_session.h`，内部组合现有 typed EditSession；手势草稿结束后一次提交，save 重新读取所有最新可选段并更新依赖，详见[材质系统设计](material-system-design.md)。该入口属于 Editor 业务，不新增 Core 撤销系统或通用资源内存对象。
+Editor 的材质编辑入口为 `MaterialEditorPanel::edit_session()` 和 `material/material_edit_session.h`，内部组合现有 typed EditSession；手势草稿结束后一次提交，save 重新读取所有最新可选段并更新依赖，详见[材质系统设计](material-system-design.md)。该入口属于 Editor 业务，不新增 Core 撤销系统或通用资源内存对象。
 
 Editor 场景材质赋值入口为 `EditorCommandHistory::assign_material()`；EditorApplication 持有 Runtime `rendercore/material/material_library.h` 的 MaterialLibrary，并注入 MaterialAssignments。Library 组合既有 FileSystem、领域 DTO 与 RenderCore builder，提供共享只读 MaterialInterface、多层继承、临时实例和受控配置发布；Assignments 仅管理槽位 AssetRef 与命令记录。StaticMeshComponent 持有 MaterialInterfaceRef，资产与场景继续使用各自既有历史，不新增 Core cache 或撤销系统。
 

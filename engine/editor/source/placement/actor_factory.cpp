@@ -1,6 +1,7 @@
 #include "placement/actor_factory.h"
 
 #include <utility>
+#include <algorithm>
 
 #include "file_system/physical_path.h"
 #include "format/shader_binding_identity.h"
@@ -104,130 +105,12 @@ namespace toy3d
     } // namespace
 
 
-    EditorActorState capture_actor_state(const Actor& actor)
-    {
-        EditorActorState state;
-        if (actor.root_component()) state.transform = actor.root_component()->local_transform();
-        const auto* primitive = dynamic_cast<const PrimitiveComponent*>(actor.root_component());
-        if (primitive)
-        {
-            state.primitive_cast_shadows = primitive->cast_shadows();
-            state.primitive_receives_shadows = primitive->receives_shadows();
-        }
-        const auto* camera = dynamic_cast<const CameraComponent*>(actor.root_component());
-        if (camera)
-        {
-            state.camera_vertical_fov = camera->vertical_fov_degrees();
-            state.camera_near_clip = camera->near_clip();
-            state.camera_far_clip = camera->far_clip();
-        }
-        const auto* light = dynamic_cast<const LightComponent*>(actor.root_component());
-        if (light)
-        {
-            state.light_enabled = light->enabled();
-            state.light_color = light->color();
-            state.light_intensity = light->intensity();
-            state.light_priority = light->render_priority();
-            const auto* local = dynamic_cast<const LocalLightComponent*>(light);
-            if (local) state.light_range = local->range();
-            const auto* directional = dynamic_cast<const DirectionalLightComponent*>(light);
-            if (directional)
-            {
-                state.shadow_cast_shadows = directional->cast_shadows();
-                state.shadow_cascade_count = directional->shadow_cascade_count();
-                state.cascade_distribution_exponent = directional->cascade_distribution_exponent();
-                state.shadow_map_resolution = directional->shadow_map_resolution();
-                state.shadow_distance = directional->shadow_distance();
-                state.shadow_distance_fade_fraction = directional->shadow_distance_fade_fraction();
-                state.shadow_bias = directional->shadow_bias();
-                state.shadow_slope_bias = directional->shadow_slope_bias();
-                state.shadow_receiver_bias = directional->shadow_receiver_bias();
-            }
-        }
-        return state;
-    }
-
-    bool apply_actor_state(Actor& actor, const EditorActorState& state)
-    {
-        if (!is_finite(state.light_color) || state.light_color.x < 0 || state.light_color.y < 0 ||
-            state.light_color.z < 0 || !is_finite(state.light_intensity) || state.light_intensity < 0 ||
-            !is_finite(state.light_range) || state.light_range <= 0 ||
-            state.shadow_cascade_count < 1 || state.shadow_cascade_count > LightSceneData::k_max_shadow_cascades ||
-            !is_finite(state.cascade_distribution_exponent) || state.cascade_distribution_exponent < 0.1f ||
-            state.cascade_distribution_exponent > 10.0f ||
-            state.shadow_map_resolution < LightSceneData::k_min_shadow_resolution ||
-            state.shadow_map_resolution > LightSceneData::k_max_shadow_resolution ||
-            (state.shadow_map_resolution & (state.shadow_map_resolution - 1)) != 0 ||
-            !is_finite(state.shadow_distance) || state.shadow_distance < 0 ||
-            !is_finite(state.shadow_distance_fade_fraction) ||
-            state.shadow_distance_fade_fraction < 0 || state.shadow_distance_fade_fraction >= 1 ||
-            !is_finite(state.shadow_bias) || state.shadow_bias < 0 || state.shadow_bias > 1 ||
-            !is_finite(state.shadow_slope_bias) || state.shadow_slope_bias < 0 ||
-            state.shadow_slope_bias > 1 || !is_finite(state.shadow_receiver_bias) ||
-            state.shadow_receiver_bias < 0 || state.shadow_receiver_bias > 1) return false;
-        SceneComponent* root = actor.root_component();
-        if (!root) return false;
-        auto* camera = dynamic_cast<CameraComponent*>(root);
-        // Validate the complete camera edit before writing its Transform. A rejected
-        // projection must not partially apply a history record.
-        if (camera && !CameraComponent::is_valid_perspective(state.camera_vertical_fov,
-                                                            state.camera_near_clip, state.camera_far_clip))
-        {
-            TOY_LOG_ERROR("Camera edit rejected an invalid or unrepresentable perspective projection.");
-            return false;
-        }
-        const Transform& current = root->local_transform();
-        if ((current.translation != state.transform.translation || current.rotation != state.transform.rotation ||
-             current.scale != state.transform.scale) && !root->set_local_transform(state.transform)) return false;
-        if (auto* primitive = dynamic_cast<PrimitiveComponent*>(root))
-        {
-            primitive->set_cast_shadows(state.primitive_cast_shadows);
-            primitive->set_receives_shadows(state.primitive_receives_shadows);
-        }
-        if (camera && (camera->vertical_fov_degrees() != state.camera_vertical_fov ||
-            camera->near_clip() != state.camera_near_clip || camera->far_clip() != state.camera_far_clip) &&
-            !camera->set_perspective(state.camera_vertical_fov, state.camera_near_clip, state.camera_far_clip))
-            return false;
-        auto* light = dynamic_cast<LightComponent*>(root);
-        if (light)
-        {
-            if (light->enabled() != state.light_enabled) light->set_enabled(state.light_enabled);
-            if (light->color() != state.light_color && !light->set_color(state.light_color)) return false;
-            if (light->intensity() != state.light_intensity && !light->set_intensity(state.light_intensity)) return false;
-            if (light->render_priority() != state.light_priority) light->set_render_priority(state.light_priority);
-            auto* local = dynamic_cast<LocalLightComponent*>(light);
-            if (local && local->range() != state.light_range && !local->set_range(state.light_range)) return false;
-            auto* directional = dynamic_cast<DirectionalLightComponent*>(light);
-            if (directional)
-            {
-                if (directional->cast_shadows() != state.shadow_cast_shadows)
-                    directional->set_cast_shadows(state.shadow_cast_shadows);
-                if (directional->shadow_cascade_count() != state.shadow_cascade_count &&
-                    !directional->set_shadow_cascade_count(state.shadow_cascade_count)) return false;
-                if (directional->cascade_distribution_exponent() != state.cascade_distribution_exponent &&
-                    !directional->set_cascade_distribution_exponent(state.cascade_distribution_exponent)) return false;
-                if (directional->shadow_map_resolution() != state.shadow_map_resolution &&
-                    !directional->set_shadow_map_resolution(state.shadow_map_resolution)) return false;
-                if (directional->shadow_distance() != state.shadow_distance &&
-                    !directional->set_shadow_distance(state.shadow_distance)) return false;
-                if (directional->shadow_distance_fade_fraction() != state.shadow_distance_fade_fraction &&
-                    !directional->set_shadow_distance_fade_fraction(state.shadow_distance_fade_fraction)) return false;
-                if (directional->shadow_bias() != state.shadow_bias &&
-                    !directional->set_shadow_bias(state.shadow_bias)) return false;
-                if (directional->shadow_slope_bias() != state.shadow_slope_bias &&
-                    !directional->set_shadow_slope_bias(state.shadow_slope_bias)) return false;
-                if (directional->shadow_receiver_bias() != state.shadow_receiver_bias &&
-                    !directional->set_shadow_receiver_bias(state.shadow_receiver_bias)) return false;
-            }
-        }
-        return true;
-    }
-
     // --------------------------------------------------------------------------
     // ActorFactory: owns builtin geometry and describes editor-created Actors
     // --------------------------------------------------------------------------
     bool ActorFactory::initialize()
     {
+        if (!component_editors_.freeze()) return false;
         cube_ = make_builtin_cube(material_);
         if (!cube_) return false;
         StaticMeshDesc plane;
@@ -245,9 +128,63 @@ namespace toy3d
         return plane_ != nullptr;
     }
 
+    StaticMeshRef ActorFactory::instantiate_builtin(const std::string& kind) const
+    {
+        if (kind == "Cube") return instantiate_geometry(cube_);
+        if (kind == "Plane") return instantiate_geometry(plane_);
+        return {};
+    }
+
+    void ActorFactory::remember(const Actor& actor, const PlacementRequest& request)
+    {
+        placed_items_[actor.actor_id()] = request;
+    }
+
+    EditorActorState ActorFactory::capture(const Actor& actor) const
+    {
+        EditorActorState state = capture_actor_state(actor, component_editors_);
+        for (auto& snapshot : state.components)
+        {
+            // C++17 get_if augments mesh snapshots with their author identity.
+            if (auto* mesh = std::get_if<SceneMeshData>(&snapshot.data.properties))
+            {
+                const auto* component = dynamic_cast<const SceneComponent*>(actor.find_component_by_id(snapshot.component_id));
+                SceneMeshData source;
+                if (component && mesh_source(*component, source))
+                {
+                    source.settings = mesh->settings;
+                    *mesh = std::move(source);
+                }
+            }
+        }
+        return state;
+    }
+
+    bool ActorFactory::mesh_source(const SceneComponent& component, SceneMeshData& data) const
+    {
+        const auto found = mesh_sources_.find(component.component_id());
+        const auto* mesh = dynamic_cast<const StaticMeshComponent*>(&component);
+        if (!mesh || found == mesh_sources_.end() || found->second.geometry != mesh->static_mesh()) return false;
+        data = found->second.data;
+        data.settings = mesh->primitive_settings();
+        return true;
+    }
+
+    void ActorFactory::remember_mesh(const SceneComponent& component, const SceneMeshData& data)
+    {
+        const auto* mesh = dynamic_cast<const StaticMeshComponent*>(&component);
+        if (!mesh) return;
+        SceneMeshData source = data;
+        // Material asset identities belong to MaterialAssignments, not geometry provenance.
+        source.resources.erase(std::remove_if(source.resources.begin(), source.resources.end(),
+            [](const SceneResourceBinding& binding) { return binding.role != "mesh"; }), source.resources.end());
+        mesh_sources_[component.component_id()] = {component.owner().actor_id(), mesh->static_mesh(), std::move(source)};
+    }
+
     void ActorFactory::release()
     {
         placed_items_.clear();
+        mesh_sources_.clear();
         cube_.reset();
         plane_.reset();
         MaterialInstance::release(material_);
@@ -307,14 +244,90 @@ namespace toy3d
         if (auto* mesh_actor = dynamic_cast<StaticMeshActor*>(actor))
             mesh_actor->static_mesh_component().set_static_mesh(std::move(geometry));
         placed_items_[actor->actor_id()] = request;
+        if (auto* mesh = dynamic_cast<StaticMeshComponent*>(actor->root_component()))
+        {
+            SceneMeshData source;
+            if (request.item == PlacementItemId::Cube) source.builtin_mesh = "Cube";
+            else if (request.item == PlacementItemId::Plane) source.builtin_mesh = "Plane";
+            else source.resources.push_back({"mesh", {request.asset_id, {}, "toy3d.StaticMeshAssetData", AssetRefStrength::Strong}});
+            remember_mesh(*mesh, source);
+        }
         return actor;
+    }
+
+    Actor* ActorFactory::restore(World& world, const PlacementRequest& request, const EditorActorState& state,
+                                 std::map<std::uint32_t, std::uint32_t>& component_ids)
+    {
+        if (!state.valid || state.components.empty()) return nullptr;
+        for (const auto& snapshot : state.components)
+            if (!component_editors_.find(snapshot.data.type) || !validate_component_data(snapshot.data)) return nullptr;
+        Actor* actor = request.item == PlacementItemId::EmptyActor ? &world.spawn_actor<Actor>() : create(world, request);
+        if (!actor) return nullptr;
+        EditorActorState restored = state;
+        std::vector<std::uint32_t> unused = actor->component_ids();
+        bool valid = true;
+        for (auto& snapshot : restored.components)
+        {
+            SceneComponent* component = nullptr;
+            for (auto entry = unused.begin(); entry != unused.end(); ++entry)
+            {
+                auto* candidate = dynamic_cast<SceneComponent*>(actor->find_component_by_id(*entry));
+                const auto* editor = candidate ? component_editors_.find(*candidate) : nullptr;
+                if (editor && editor->persistent_type == snapshot.data.type)
+                {
+                    component = candidate;
+                    unused.erase(entry);
+                    break;
+                }
+            }
+            if (!component) component = &component_editors_.find(snapshot.data.type)->create(*actor);
+            component_ids.emplace(snapshot.component_id, component->component_id());
+            snapshot.component_id = component->component_id();
+            if (auto* mesh = dynamic_cast<StaticMeshComponent*>(component))
+            {
+                if (!snapshot.mesh) { valid = false; break; }
+                mesh->set_static_mesh(instantiate_geometry(snapshot.mesh));
+                if (!mesh->static_mesh()) { valid = false; break; }
+                // C++17 get_if restores the geometry source alongside the new Component ID.
+                if (const auto* data = std::get_if<SceneMeshData>(&snapshot.data.properties)) remember_mesh(*mesh, *data);
+            }
+        }
+        if (!unused.empty()) valid = false;
+        const auto root = component_ids.find(state.root_component_id);
+        if (root == component_ids.end()) valid = false;
+        if (valid)
+        {
+            restored.root_component_id = root->second;
+            for (auto& snapshot : restored.components)
+            {
+                const auto parent = component_ids.find(snapshot.parent_component_id);
+                if (parent != component_ids.end())
+                {
+                    snapshot.parent_actor_id = actor->actor_id();
+                    snapshot.parent_component_id = parent->second;
+                }
+            }
+            valid = actor->set_root_component(static_cast<SceneComponent*>(actor->find_component_by_id(root->second))) &&
+                    apply_actor_state(*actor, restored, component_editors_) && restore_actor_attachments(*actor, restored);
+        }
+        if (valid) { remember(*actor, request); return actor; }
+        const auto id = actor->actor_id();
+        if (!world.destroy_actor(*actor)) TOY_LOG_ERROR("Component reconstruction rollback failed.");
+        forget(id);
+        component_ids.clear();
+        return nullptr;
     }
 
     bool ActorFactory::describe(const Actor& actor, PlacementRequest& request) const
     {
         const auto found = placed_items_.find(actor.actor_id());
-        if (found == placed_items_.end() || !actor.root_component()) return false;
-        request = found->second;
+        if (!actor.root_component()) return false;
+        if (found != placed_items_.end()) request = found->second;
+        else if (typeid(actor) == typeid(Actor)) request.item = PlacementItemId::EmptyActor;
+        else if (typeid(actor) == typeid(DirectionalLightActor)) request.item = PlacementItemId::DirectionalLight;
+        else if (typeid(actor) == typeid(PointLightActor)) request.item = PlacementItemId::PointLight;
+        else if (typeid(actor) == typeid(CameraActor)) request.item = PlacementItemId::Camera;
+        else return false;
         request.transform = actor.root_component()->local_transform();
         return true;
     }
@@ -327,5 +340,11 @@ namespace toy3d
         return item ? item->name : "Actor";
     }
 
-    void ActorFactory::forget(std::uint32_t actor_id) { placed_items_.erase(actor_id); }
+    void ActorFactory::forget(std::uint32_t actor_id)
+    {
+        placed_items_.erase(actor_id);
+        for (auto item = mesh_sources_.begin(); item != mesh_sources_.end();)
+            if (item->second.actor_id == actor_id) item = mesh_sources_.erase(item);
+            else ++item;
+    }
 } // namespace toy3d

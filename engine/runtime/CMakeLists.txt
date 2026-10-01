@@ -62,7 +62,7 @@ set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
 add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dStaticMeshAsset)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dStaticMeshAsset Toy3dSceneData)
 target_sources(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.cpp"

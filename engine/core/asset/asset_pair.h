@@ -16,6 +16,8 @@ namespace toy3d
     {
         AssetYamlDocument description;
         AssetMetaFile meta;
+        // The validated descriptor and conflict baseline must come from the same read.
+        std::vector<std::uint8_t> description_bytes;
     };
 
     AssetResult<AssetPairBytes> encode_asset_pair(const TypeRegistry& types,

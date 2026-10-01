@@ -7,6 +7,7 @@
 
 #include "logging/logger.h"
 #include "gamescene/actor/actor.h"
+#include "gamescene/world/world.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/render_command.h"
 
@@ -14,6 +15,7 @@ namespace toy3d
 {
     void StaticMeshComponent::set_static_mesh(StaticMeshRef static_mesh)
     {
+        if (static_mesh_ == static_mesh) return;
         const bool rebuild_render_state = has_render_state();
         if (rebuild_render_state)
         {
@@ -21,6 +23,7 @@ namespace toy3d
         }
 
         static_mesh_ = std::move(static_mesh);
+        world().mark_content_changed();
         material_overrides_.clear();
         if (static_mesh_ != nullptr)
         {
@@ -43,6 +46,7 @@ namespace toy3d
             return false;
         }
 
+        world().mark_content_changed();
         auto previous = material_overrides_;
         material_overrides_[material_slot] = std::move(material);
         send_material_overrides(std::move(previous));
@@ -57,6 +61,7 @@ namespace toy3d
             return false;
         }
         if (!material_overrides_[material_slot]) return true;
+        world().mark_content_changed();
         auto previous = material_overrides_;
         material_overrides_[material_slot].reset();
         send_material_overrides(std::move(previous));

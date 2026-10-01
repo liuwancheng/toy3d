@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/length_units.h"
+#include "scene/editor_actor_state.h"
 #include "placement/placement_catalog.h"
 #include "rendercore/geometry/static_mesh.h"
 
@@ -11,48 +11,38 @@ namespace toy3d
     class Actor;
     class World;
 
-    struct EditorActorState
-    {
-        Transform transform;
-        bool primitive_cast_shadows = true;
-        bool primitive_receives_shadows = true;
-        bool light_enabled = true;
-        Vector3 light_color{1.0f};
-        float light_intensity = 1.0f;
-        float light_range = meters_to_centimeters(10.0f);
-        int light_priority = 0;
-        bool shadow_cast_shadows = false;
-        int shadow_cascade_count = 1;
-        float cascade_distribution_exponent = 3.0f;
-        int shadow_map_resolution = 2048;
-        float shadow_distance = meters_to_centimeters(100.0f);
-        float shadow_distance_fade_fraction = 0.1f;
-        float shadow_bias = 0.5f;
-        float shadow_slope_bias = 0.5f;
-        float shadow_receiver_bias = 0.9f;
-        float camera_vertical_fov = 60.0f;
-        float camera_near_clip = meters_to_centimeters(0.1f);
-        float camera_far_clip = meters_to_centimeters(1000.0f);
-    };
-
-    EditorActorState capture_actor_state(const Actor& actor);
-    bool apply_actor_state(Actor& actor, const EditorActorState& state);
-
     // Holds geometry across add/remove commands; release only after scene drain.
     class ActorFactory
     {
       public:
+        ComponentEditorRegistry& component_editors() { return component_editors_; }
+        const ComponentEditorRegistry& component_editors() const { return component_editors_; }
+        StaticMeshRef instantiate_builtin(const std::string& kind) const;
+        void remember(const Actor& actor, const PlacementRequest& request);
+        EditorActorState capture(const Actor& actor) const;
+        bool mesh_source(const SceneComponent& component, SceneMeshData& data) const;
+        void remember_mesh(const SceneComponent& component, const SceneMeshData& data);
         bool initialize();
         void release();
         Actor* create(World& world, const PlacementRequest& request);
+        Actor* restore(World& world, const PlacementRequest& request, const EditorActorState& state,
+                       std::map<std::uint32_t, std::uint32_t>& component_ids);
         bool describe(const Actor& actor, PlacementRequest& request) const;
         const char* label(std::uint32_t actor_id) const;
         void forget(std::uint32_t actor_id);
         const MaterialInstanceRef& default_material() const { return material_; }
       private:
+        ComponentEditorRegistry component_editors_;
         StaticMeshRef cube_;
         StaticMeshRef plane_;
         MaterialInstanceRef material_;
         std::map<std::uint32_t, PlacementRequest> placed_items_;
+        struct MeshSource
+        {
+            std::uint32_t actor_id = 0;
+            StaticMeshRef geometry;
+            SceneMeshData data;
+        };
+        std::map<std::uint32_t, MeshSource> mesh_sources_;
     };
 }

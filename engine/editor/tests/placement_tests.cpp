@@ -138,21 +138,22 @@ int main()
             viewport.build_scene_views(world, views, extent);
             check(views.size() == 1 && views.front().camera_position() == request.transform.translation &&
                   views.front().vertical_fov() == to_radians(Degrees(75)), "Camera view must copy world pose and projection");
-            EditorActorState invalid = capture_actor_state(*actor);
-            invalid.transform.translation = Vector3(99);
-            invalid.camera_near_clip = invalid.camera_far_clip;
-            check(!apply_actor_state(*actor, invalid) && actor->root_component()->local_transform().translation ==
+            // C++17 get selects the known camera payload in this fixture.
+        EditorActorState invalid = capture_actor_state(*actor, factory.component_editors());
+            invalid.components.front().data.transform.translation = Vector3(99);
+            std::get<CameraSettings>(invalid.components.front().data.properties).near_clip = std::get<CameraSettings>(invalid.components.front().data.properties).far_clip;
+            check(!apply_actor_state(*actor, invalid, factory.component_editors()) && actor->root_component()->local_transform().translation ==
                   request.transform.translation, "Invalid projection must not partially apply its Transform");
             const float bad_values[] = {0, 180, std::numeric_limits<float>::denorm_min(), std::numeric_limits<float>::infinity(),
                                         std::numeric_limits<float>::quiet_NaN()};
             for (const float value : bad_values)
                 check(!actor->camera_component().set_perspective(value, 0.1f, 100) &&
                       actor->camera_component().vertical_fov_degrees() == 75, "Invalid FOV must preserve camera settings");
-            invalid = capture_actor_state(*actor);
-            invalid.transform.translation = Vector3(99);
-            invalid.camera_near_clip = 1e30f;
-            invalid.camera_far_clip = 2e30f;
-            check(!apply_actor_state(*actor, invalid) && actor->root_component()->local_transform().translation ==
+            invalid = capture_actor_state(*actor, factory.component_editors());
+            invalid.components.front().data.transform.translation = Vector3(99);
+            std::get<CameraSettings>(invalid.components.front().data.properties).near_clip = 1e30f;
+            std::get<CameraSettings>(invalid.components.front().data.properties).far_clip = 2e30f;
+            check(!apply_actor_state(*actor, invalid, factory.component_editors()) && actor->root_component()->local_transform().translation ==
                   request.transform.translation && actor->camera_component().near_clip() == 0.2f,
                   "Unrepresentable clipping projection must not mutate Transform or camera state");
             check(!actor->camera_component().set_perspective(60, std::numeric_limits<float>::denorm_min(),
@@ -255,14 +256,15 @@ int main()
         ActorFactory factory;
         EditorCommandHistory history(factory);
         history.begin(world, light.actor_id(), light.root_component()->local_transform(), EditorTransformSource::Details);
-        EditorActorState edited = capture_actor_state(light);
-        check(edited.shadow_cascade_count == 1 && edited.cascade_distribution_exponent == 3.0f &&
-              edited.shadow_map_resolution == 2048, "Directional shadow defaults must use one cascade");
-        edited.shadow_cascade_count = 3;
-        edited.cascade_distribution_exponent = 4.0f;
-        edited.shadow_map_resolution = 1024;
-        edited.shadow_receiver_bias = 0.4f;
-        check(apply_actor_state(light, edited) && scene.lights.front()->data.shadow_receiver_bias == 0.4f,
+        // C++17 get selects the known directional light payload in this fixture.
+        EditorActorState edited = capture_actor_state(light, factory.component_editors());
+        check(std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.cascade_count == 1 && std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.distribution_exponent == 3.0f &&
+              std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.map_resolution == 2048, "Directional shadow defaults must use one cascade");
+        std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.cascade_count = 3;
+        std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.distribution_exponent = 4.0f;
+        std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.map_resolution = 1024;
+        std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.receiver_bias = 0.4f;
+        check(apply_actor_state(light, edited, factory.component_editors()) && scene.lights.front()->data.shadow_receiver_bias == 0.4f,
               "Receiver bias edits must publish to the render scene");
         check(scene.lights.front()->data.shadow_cascade_count == 3 &&
               scene.lights.front()->data.cascade_distribution_exponent == 4.0f &&
@@ -293,16 +295,16 @@ int main()
               !light.light_component().set_shadow_receiver_bias((std::numeric_limits<float>::quiet_NaN)()) &&
               light.light_component().shadow_receiver_bias() == 0.4f && scene.updates == updates,
               "Invalid receiver bias must preserve the current light and render state");
-        edited = capture_actor_state(light);
-        const Transform before = edited.transform;
-        edited.transform.translation.x += 100.0f;
-        edited.shadow_receiver_bias = 2.0f;
-        check(!apply_actor_state(light, edited) && light.root_component()->local_transform().translation == before.translation,
+        edited = capture_actor_state(light, factory.component_editors());
+        const Transform before = edited.components.front().data.transform;
+        edited.components.front().data.transform.translation.x += 100.0f;
+        std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.receiver_bias = 2.0f;
+        check(!apply_actor_state(light, edited, factory.component_editors()) && light.root_component()->local_transform().translation == before.translation,
               "An invalid receiver bias must reject the entire edit before changing Transform");
-        edited = capture_actor_state(light);
-        edited.transform.translation.x += 100;
-        edited.shadow_cascade_count = 4;
-        check(!apply_actor_state(light, edited) && light.root_component()->local_transform().translation == before.translation,
+        edited = capture_actor_state(light, factory.component_editors());
+        edited.components.front().data.transform.translation.x += 100;
+        std::get<SceneDirectionalLightData>(edited.components.front().data.properties).shadow.cascade_count = 4;
+        check(!apply_actor_state(light, edited, factory.component_editors()) && light.root_component()->local_transform().translation == before.translation,
               "Invalid cascade count must reject the complete editor state atomically");
         check(world.unbind_scene(), "Receiver bias fixture must unbind the scene");
     }

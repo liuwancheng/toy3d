@@ -111,12 +111,17 @@ int main()
         SceneActorData scene_actor;
         scene_actor.id = "44444444444444444444444444444444";
         scene_actor.root_component_id = "55555555555555555555555555555555";
-        scene_actor.root_component_type = "toy3d.SceneComponent";
-        scene_actor.kind = "EmptyActor";
-        scene_actor.shadow_receiver_bias = 0.4f;
-        scene_actor.shadow_cascade_count = 3;
-        scene_actor.cascade_distribution_exponent = 4.0f;
-        scene_actor.shadow_map_resolution = 1024;
+        scene_actor.kind = "DirectionalLight";
+        SceneComponentData root;
+        root.id = scene_actor.root_component_id;
+        root.type = "toy3d.DirectionalLightComponent";
+        SceneDirectionalLightData light;
+        light.shadow.receiver_bias = 0.4f;
+        light.shadow.cascade_count = 3;
+        light.shadow.distribution_exponent = 4.0f;
+        light.shadow.map_resolution = 1024;
+        root.properties = light;
+        scene_actor.components.push_back(root);
         scene.actors.push_back(scene_actor);
         const auto scene_pair = encode_scene_asset_pair(workspace.types(), scene_id, scene,
             &workspace.catalog().index);
@@ -124,15 +129,15 @@ int main()
         check(scene_pair.succeeded() && workspace.asset_pairs().publish(scene_path,
             scene_pair.value(), FilePublishMode::CreateNew).succeeded() && workspace.refresh(),
             "Scene must publish and scan beside an ordinary .asset with the same stem");
+        // C++17 get checks the known typed payload after the YAML roundtrip.
         SceneAssetData reopened_scene;
         check(read_scene_asset(workspace.types(), workspace.files(), scene_path, reopened_scene,
             &workspace.catalog().index).succeeded() && reopened_scene.actors.size() == 1u &&
             reopened_scene.actors[0].id == scene_actor.id &&
-            reopened_scene.actors[0].primitive_receives_shadows &&
-            reopened_scene.actors[0].shadow_receiver_bias == 0.4f &&
-            reopened_scene.actors[0].shadow_cascade_count == 3 &&
-            reopened_scene.actors[0].cascade_distribution_exponent == 4.0f &&
-            reopened_scene.actors[0].shadow_map_resolution == 1024,
+            std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties).shadow.receiver_bias == 0.4f &&
+            std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties).shadow.cascade_count == 3 &&
+            std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties).shadow.distribution_exponent == 4.0f &&
+            std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties).shadow.map_resolution == 1024,
             "Scene Actor identity must survive .scene YAML roundtrip");
         AssetId legacy_id;
         check(AssetId::parse("88888888888888888888888888888888", legacy_id),
@@ -142,7 +147,7 @@ int main()
         if (legacy_pair.succeeded())
         {
             std::string legacy_text(legacy_pair.value().asset.begin(), legacy_pair.value().asset.end());
-            const std::string current_version = "schema_version: 4";
+            const std::string current_version = "schema_version: 5";
             const std::size_t version_position = legacy_text.find(current_version);
             check(version_position != std::string::npos, "Scene schema version fixture must be present");
             if (version_position != std::string::npos)
@@ -163,13 +168,14 @@ int main()
         SceneActorData invalid_child = scene_actor;
         invalid_child.id = "66666666666666666666666666666666";
         invalid_child.root_component_id = "77777777777777777777777777777777";
-        invalid_child.parent_component_id = scene_actor.root_component_id;
-        scene.actors[0].parent_component_id = invalid_child.root_component_id;
+        invalid_child.components[0].id = invalid_child.root_component_id;
+        invalid_child.components[0].parent_component_id = scene_actor.root_component_id;
+        scene.actors[0].components[0].parent_component_id = invalid_child.root_component_id;
         scene.actors.push_back(invalid_child);
         check(validate_scene_asset(scene).code == AssetErrorCode::Value,
             "Scene attachment cycle must be rejected before publishing");
         scene.actors.pop_back();
-        scene.actors[0].parent_component_id.clear();
+        scene.actors[0].components[0].parent_component_id.clear();
         check(!workspace.asset_pairs().publish(virtual_path("/Project/wrong.asset"),
             scene_pair.value(), FilePublishMode::CreateNew).succeeded() &&
             !workspace.asset_pairs().publish(virtual_path("/Project/wrong.scene"),

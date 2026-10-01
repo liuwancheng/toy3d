@@ -30,117 +30,123 @@ namespace toy3d
         std::vector<AssetRef> dependencies(const SceneAssetData& data)
         {
             std::vector<AssetRef> refs;
-            for (const SceneActorData& actor : data.actors)
-                for (const SceneResourceBinding& binding : actor.resources)
-                    if (std::none_of(refs.begin(), refs.end(), [&](const AssetRef& ref)
-                        { return ref.asset_id == binding.reference.asset_id; }))
-                        refs.push_back(binding.reference);
+            for (const auto& actor : data.actors)
+                for (const auto& component : actor.components)
+                {
+                    // C++17 get_if reads resource references only from mesh author data.
+                    const auto* mesh = std::get_if<SceneMeshData>(&component.properties);
+                    if (!mesh) continue;
+                    for (const auto& binding : mesh->resources)
+                        if (std::none_of(refs.begin(), refs.end(), [&](const AssetRef& ref)
+                            { return ref.asset_id == binding.reference.asset_id; }))
+                            refs.push_back(binding.reference);
+                }
             std::sort(refs.begin(), refs.end(), [](const AssetRef& a, const AssetRef& b)
                 { return a.asset_id < b.asset_id; });
             return refs;
         }
     }
 
-    const char* scene_root_component_type(const std::string& kind)
+    bool validate_component_data(const SceneComponentData& component)
     {
-        if (kind == "EmptyActor") return "toy3d.SceneComponent";
-        if (kind == "Cube" || kind == "Plane" || kind == "StaticMesh")
-            return "toy3d.StaticMeshComponent";
-        if (kind == "DirectionalLight") return "toy3d.DirectionalLightComponent";
-        if (kind == "PointLight") return "toy3d.PointLightComponent";
-        if (kind == "Camera") return "toy3d.CameraComponent";
-        return "";
+        const Transform& transform = component.transform;
+        Quaternion normalized;
+        if (!is_finite(transform.translation) || !is_finite(transform.scale) ||
+            transform.scale.x <= k_default_float_tolerance || transform.scale.y <= k_default_float_tolerance ||
+            transform.scale.z <= k_default_float_tolerance || !try_normalize(transform.rotation, normalized)) return false;
+        // C++17 get_if makes the finite schema branches explicit and readable.
+        if (std::get_if<SceneNodeData>(&component.properties))
+            return component.type == "toy3d.SceneComponent";
+        if (const auto* mesh = std::get_if<SceneMeshData>(&component.properties))
+        {
+            if (component.type != "toy3d.StaticMeshComponent" ||
+                (!mesh->builtin_mesh.empty() && mesh->builtin_mesh != "Cube" && mesh->builtin_mesh != "Plane")) return false;
+            std::set<std::string> roles;
+            bool has_mesh = false;
+            for (const auto& binding : mesh->resources)
+            {
+                const AssetRef& ref = binding.reference;
+                if (!roles.insert(binding.role).second || !ref.asset_id.valid() ||
+                    ref.subresource_id.valid() || ref.strength != AssetRefStrength::Strong) return false;
+                if (binding.role == "mesh")
+                {
+                    has_mesh = true;
+                    if (ref.expected_type != "toy3d.StaticMeshAssetData") return false;
+                }
+                else if (binding.role.compare(0, 9, "material:") != 0 || binding.role.size() <= 9 ||
+                         (ref.expected_type != "toy3d.MaterialAssetData" &&
+                          ref.expected_type != "toy3d.MaterialInstanceAssetData")) return false;
+            }
+            return !has_mesh || mesh->builtin_mesh.empty();
+        }
+        if (const auto* light = std::get_if<SceneDirectionalLightData>(&component.properties))
+            return component.type == "toy3d.DirectionalLightComponent" && is_valid(light->light) && is_valid(light->shadow);
+        if (const auto* light = std::get_if<ScenePointLightData>(&component.properties))
+            return component.type == "toy3d.PointLightComponent" && is_valid(light->light) && is_valid(light->attenuation);
+        if (const auto* camera = std::get_if<CameraSettings>(&component.properties))
+            return component.type == "toy3d.CameraComponent" && is_valid(*camera);
+        return false;
     }
 
     AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index)
     {
         if (data.actors.size() > k_max_scene_actors) return invalid("scene actor count exceeds limit");
-        std::set<std::string> actor_ids;
-        std::set<std::string> object_ids;
-        std::map<std::string, std::string> component_owner;
-        std::map<std::string, std::string> component_parent;
-        for (const SceneActorData& actor : data.actors)
+        constexpr std::size_t k_max_components = 1000000u;
+        std::set<std::string> ids;
+        std::map<std::string, std::string> parents;
+        std::map<AssetId, std::string> reference_types;
+        for (const auto& actor : data.actors)
         {
             AssetId id;
-            AssetId component_id;
-            if (!AssetId::parse(actor.id, id) || !AssetId::parse(actor.root_component_id, component_id) ||
-                !actor_ids.insert(actor.id).second ||
-                !object_ids.insert(actor.id).second ||
-                !object_ids.insert(actor.root_component_id).second ||
-                !component_owner.emplace(actor.root_component_id, actor.id).second ||
-                !valid_kind(actor.kind) || actor.root_component_type != scene_root_component_type(actor.kind))
-                return invalid("invalid or duplicate scene object identity or type");
-            component_parent.emplace(actor.root_component_id, actor.parent_component_id);
-            if (!is_finite(actor.transform.translation) || !is_finite(actor.transform.rotation) ||
-                !is_finite(actor.transform.scale) || actor.transform.scale.x <= 0 ||
-                actor.transform.scale.y <= 0 || actor.transform.scale.z <= 0 ||
-                !is_finite(actor.light_color) || actor.light_color.x < 0 ||
-                actor.light_color.y < 0 || actor.light_color.z < 0 ||
-                !std::isfinite(actor.light_intensity) || actor.light_intensity < 0 ||
-                !std::isfinite(actor.light_range) || actor.light_range <= 0 ||
-                actor.shadow_cascade_count < 1 || actor.shadow_cascade_count > 3 ||
-                !std::isfinite(actor.cascade_distribution_exponent) || actor.cascade_distribution_exponent < 0.1f ||
-                actor.cascade_distribution_exponent > 10.0f || actor.shadow_map_resolution < 512 ||
-                actor.shadow_map_resolution > 2048 || (actor.shadow_map_resolution & (actor.shadow_map_resolution - 1)) != 0 ||
-                !std::isfinite(actor.shadow_distance) || actor.shadow_distance < 0 ||
-                !std::isfinite(actor.shadow_distance_fade_fraction) ||
-                actor.shadow_distance_fade_fraction < 0 || actor.shadow_distance_fade_fraction >= 1 ||
-                !std::isfinite(actor.shadow_bias) || actor.shadow_bias < 0 || actor.shadow_bias > 1 ||
-                !std::isfinite(actor.shadow_slope_bias) || actor.shadow_slope_bias < 0 ||
-                actor.shadow_slope_bias > 1 ||
-                !std::isfinite(actor.shadow_receiver_bias) || actor.shadow_receiver_bias < 0 ||
-                actor.shadow_receiver_bias > 1 ||
-                !std::isfinite(actor.camera_vertical_fov) || actor.camera_vertical_fov <= 0 ||
-                actor.camera_vertical_fov >= 180 || !std::isfinite(actor.camera_near_clip) ||
-                actor.camera_near_clip <= 0 || !std::isfinite(actor.camera_far_clip) ||
-                actor.camera_far_clip <= actor.camera_near_clip)
-                return invalid("invalid scene transform, light or camera property");
-            std::set<std::string> roles;
-            bool has_mesh = false;
-            for (const SceneResourceBinding& binding : actor.resources)
+            if (!AssetId::parse(actor.id, id) || id.hex() != actor.id || !ids.insert(actor.id).second || !valid_kind(actor.kind) ||
+                actor.components.empty()) return invalid("invalid scene actor identity or type");
+            bool has_root = false;
+            for (const auto& component : actor.components)
             {
-                if (!roles.insert(binding.role).second || !binding.reference.asset_id.valid() ||
-                    binding.reference.subresource_id.valid() ||
-                    binding.reference.strength != AssetRefStrength::Strong)
-                    return invalid("invalid or duplicate scene resource binding");
-                if (binding.role == "mesh")
+                if (parents.size() >= k_max_components || !AssetId::parse(component.id, id) || id.hex() != component.id ||
+                    !ids.insert(component.id).second || !validate_component_data(component))
+                    return invalid("invalid scene component identity, properties or type");
+                has_root = has_root || component.id == actor.root_component_id;
+                parents.emplace(component.id, component.parent_component_id);
+                // C++17 get_if selects the only branch containing resource bindings.
+                if (const auto* mesh = std::get_if<SceneMeshData>(&component.properties))
                 {
-                    has_mesh = true;
-                    if (actor.kind != "StaticMesh" ||
-                        binding.reference.expected_type != "toy3d.StaticMeshAssetData")
-                        return invalid("invalid StaticMesh reference");
-                }
-                else if (binding.role.compare(0u, 9u, "material:") != 0 ||
-                    binding.role.size() == 9u ||
-                    (actor.kind != "Cube" && actor.kind != "Plane" && actor.kind != "StaticMesh") ||
-                    (binding.reference.expected_type != "toy3d.MaterialAssetData" &&
-                     binding.reference.expected_type != "toy3d.MaterialInstanceAssetData"))
-                    return invalid("invalid material slot reference");
-                if (index)
-                {
-                    const AssetStatus resolved = index->resolve(binding.reference, binding.role);
-                    if (!resolved.succeeded()) return resolved;
+                    bool has_source = !mesh->builtin_mesh.empty();
+                    for (const auto& binding : mesh->resources)
+                        has_source = has_source || binding.role == "mesh";
+                    if (!has_source) return invalid("scene mesh has no restorable geometry source");
+                    for (const auto& binding : mesh->resources)
+                    {
+                        const auto existing = reference_types.find(binding.reference.asset_id);
+                        if (existing != reference_types.end() && existing->second != binding.reference.expected_type)
+                            return invalid("scene references the same asset with conflicting types");
+                        reference_types.emplace(binding.reference.asset_id, binding.reference.expected_type);
+                        if (index)
+                        {
+                            const AssetStatus resolved = index->resolve(binding.reference, binding.role);
+                            if (!resolved.succeeded()) return resolved;
+                        }
+                    }
                 }
             }
-            if (has_mesh != (actor.kind == "StaticMesh"))
-                return invalid("StaticMesh actor must have one mesh reference");
+            if (!has_root) return invalid("scene root component is not owned by its actor");
         }
-        std::map<std::string, std::uint8_t> attachment_state;
-        for (const SceneActorData& actor : data.actors)
+        std::map<std::string, std::uint8_t> visited;
+        for (const auto& entry : parents)
         {
-            std::string component = actor.root_component_id;
+            std::string current = entry.first;
             std::vector<std::string> chain;
-            while (!component.empty())
+            while (!current.empty())
             {
-                if (attachment_state[component] == 1u) return invalid("scene attachment cycle");
-                if (attachment_state[component] == 2u) break;
-                attachment_state[component] = 1u;
-                chain.push_back(component);
-                const auto found = component_parent.find(component);
-                if (found == component_parent.end()) return invalid("scene attachment parent is absent");
-                component = found->second;
+                if (visited[current] == 1u) return invalid("scene attachment cycle");
+                if (visited[current] == 2u) break;
+                const auto parent = parents.find(current);
+                if (parent == parents.end()) return invalid("scene attachment parent is absent");
+                visited[current] = 1u;
+                chain.push_back(current);
+                current = parent->second;
             }
-            for (const std::string& visited : chain) attachment_state[visited] = 2u;
+            for (const auto& component : chain) visited[component] = 2u;
         }
         return AssetStatus::success();
     }
@@ -165,7 +171,8 @@ namespace toy3d
     }
 
     AssetStatus read_scene_asset(const TypeRegistry& types, const FileSystem& files,
-        const VirtualPath& path, SceneAssetData& output, const AssetIndex* index)
+        const VirtualPath& path, SceneAssetData& output, const AssetIndex* index,
+        std::vector<std::uint8_t>* source_bytes)
     {
         const auto pair = read_asset_pair(types, files, path);
         if (!pair.succeeded()) return pair.status();
@@ -194,6 +201,7 @@ namespace toy3d
                 expected[i].strength != actual.strength)
                 return invalid("Scene dependency index differs from resource bindings");
         }
+        if (source_bytes) *source_bytes = pair.value().description_bytes;
         output = std::move(candidate);
         return AssetStatus::success();
     }

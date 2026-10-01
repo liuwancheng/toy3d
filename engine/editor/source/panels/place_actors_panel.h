@@ -1,6 +1,16 @@
 #pragma once
 
+#include "imgui.h"
+
 namespace toy3d
 {
-    void draw_place_actors_panel();
+    class PlaceActorsPanel final
+    {
+      public:
+        void draw();
+        void clear() { filter_.Clear(); }
+
+      private:
+        ImGuiTextFilter filter_;
+    };
 }

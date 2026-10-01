@@ -29,6 +29,8 @@ namespace toy3d
         void collect_render_work(UiRenderWork& work);
         void on_texture_result(UiTextureResult result);
         std::vector<ImGuiTextureId> texture_ids() const;
+        const AssetId& asset_id() const { return asset_id_; }
+        const std::string& error() const { return error_; }
         void shutdown();
 
     private:
@@ -36,6 +38,7 @@ namespace toy3d
         void set_channel(TexturePreviewChannel channel);
         void set_mip(std::uint32_t mip);
         void close();
+        void reject_preview(std::string error);
 
         EditorWorkspace& workspace_;
         AssetId asset_id_;
@@ -43,6 +46,8 @@ namespace toy3d
         std::string error_;
         std::shared_ptr<const Texture2DAsset> asset_;
         std::shared_ptr<CpuResult> cpu_result_;
+        // Decoded candidates stay separate from the displayed asset until GPU upload succeeds.
+        std::shared_ptr<CpuResult> candidate_result_;
         GraphEventRef cpu_task_;
         UiRenderWork pending_work_;
         ImGuiTextureId texture_id_;
@@ -56,6 +61,10 @@ namespace toy3d
         std::uint64_t next_texture_ = 1ull << 40;
         std::uint32_t mip_ = 0;
         TexturePreviewChannel channel_ = TexturePreviewChannel::RGBA;
+        AssetId requested_asset_id_;
+        std::uint32_t requested_mip_ = 0;
+        TexturePreviewChannel requested_channel_ = TexturePreviewChannel::RGBA;
+        bool reload_requested_ = false;
         float zoom_ = 0.0f;
         float pan_x_ = 0.0f;
         float pan_y_ = 0.0f;

@@ -8,7 +8,7 @@ StaticMesh 已接入独立预览、共享 Forward/Tonemap、多个 ImGui 逻辑�
 
 材质与单层实例的后续接入遵循[代码材质设计](material-system-design.md#9-预览缩略图与线程生命周期)：活动预览优先使用现有 preview scene，后台图片等待其使用权释放；共用逻辑纹理 ID 分配/退休路径。交互显示不强制颜色读回，缩略图仍取得 owned 像素。材质图片签名包含 parent、Shader 和纹理内容；未保存草稿仅用于内存预览。当前模型没有默认材质 AssetRef，场景 Actor 的材质 override 不回写模型缩略图；以后模型正式保存该依赖时才扩展模型源签名。本段为拟实施扩展，现有池仍只处理 StaticMesh。
 
-规范边界见 [资源基础](editor-resource-foundation-design.md)、[StaticMesh 生产链](static-mesh-import-design.md)、[Application](application-design.md)、[RHI](rhi-design.md) 和 [Game/Render contract](../openspec/specs/game-render-framework/)。
+规范边界见 [资源基础](editor-development-guide.md)、[StaticMesh 生产链](static-mesh-import-design.md)、[Application](application-design.md)、[RHI](rhi-design.md) 和 [Game/Render contract](../openspec/specs/game-render-framework/)。
 
 ## 2. 目录与依赖
 

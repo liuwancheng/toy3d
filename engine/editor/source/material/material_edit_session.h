@@ -10,7 +10,7 @@ namespace toy3d
 {
     class EditorWorkspace;
 
-    // Workspace owns one authoring session. Runtime values and GPU ownership
+    // The asset editor owns its authoring session. Runtime values and GPU ownership
     // belong to the injected preview adapter, never to the persisted snapshots.
     class MaterialEditSession final
     {

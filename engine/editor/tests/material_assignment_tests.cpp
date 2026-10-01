@@ -332,14 +332,18 @@ int main(int argc, char** argv)
     auto invalid_red = red; invalid_red.shader_name = "Project/Unknown";
     check(write_root(red_id, invalid_red, red_path.value(), FilePublishMode::Replace), "invalidate reconstruction root");
     check(!history.undo(world) && world.actor_count() == 0, "failed reconstruction removes candidate and preserves history");
+    check(!history.error().empty(), "failed reconstruction exposes a reason for the Editor UI");
     check(write_root(red_id, red, red_path.value(), FilePublishMode::Replace) &&
         write_root(blue_id, blue, blue_path.value(), FilePublishMode::Replace) && history.undo(world), "retry reconstruction after dependency repair");
+    check(history.error().empty(), "successful retry clears the previous history error");
     id = world.actor_ids().front(); actor = dynamic_cast<StaticMeshActor*>(world.find_actor_by_id(id));
     component = &actor->static_mesh_component();
 
     ImGui::CreateContext();
     auto& io = ImGui::GetIO();
     io.IniFilename = nullptr; io.DisplaySize = ImVec2(1200, 700); io.DeltaTime = 1.0f / 60.0f;
+    // Match the Editor: a material drag in panel content cannot move the window.
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
     unsigned char* pixels = nullptr; int width = 0; int height = 0;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
     EditorSelection selection; selection.select_actor(world, id);
@@ -352,7 +356,10 @@ int main(int argc, char** argv)
     ImGui::NewFrame(); details(); ImGui::Render();
     check(ImGui::GetDrawData()->TotalVtxCount > 0, "actual Details panel produces material controls");
     selection.select_asset(blue_id);
-    const ImGuiID slot_id = ImHashStr("Body", 0, ImGui::FindWindowByName("Details")->ID);
+    const int component_index = static_cast<int>(component->component_id());
+    const ImGuiID component_scope = ImHashData(&component_index, sizeof(component_index),
+        ImGui::FindWindowByName("Details")->ID);
+    const ImGuiID slot_id = ImHashStr("Body", 0, component_scope);
     const ImGuiID combo_id = ImHashStr("##Material", 0, slot_id);
     float target_y = 0;
     for (float y = 80; y < 350 && target_y == 0; y += 8)

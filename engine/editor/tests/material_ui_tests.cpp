@@ -1,4 +1,5 @@
 #include "panels/material_editor_panel.h"
+#include "panels/editor_panel_registry.h"
 
 #include <iostream>
 #include <memory>
@@ -21,10 +22,11 @@ namespace
         if (!value) { std::cerr << "FAILED: " << message << '\n'; ++failures; }
     }
 
-    void frame(toy3d::MaterialEditorPanel& panel)
+    void frame(toy3d::MaterialEditorPanel& panel, toy3d::EditorPanelRegistry& panels)
     {
         ImGui::NewFrame();
-        panel.draw();
+        panels.draw();
+        panels.process_shortcuts(panel.modal_pending());
         ImGui::Render();
     }
 
@@ -101,29 +103,36 @@ int main()
     io.Fonts->GetTexDataAsRGBA32(&font_pixels, &font_width, &font_height);
     check(font_pixels && font_width > 0 && font_height > 0, "ImGui font atlas");
     MaterialEditorPanel panel;
+    // Engine teardown also runs when initialization failed before a session existed.
+    panel.shutdown();
     panel.initialize(workspace, defaults->material(), PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+    EditorPanelRegistry panels;
+    check(panels.add({"material", "Material Editor", "Material Editor", [&]() { panel.draw(); },
+        [&]() { panel.undo(); }, [&]() { panel.redo(); }, [&]() { return panel.focused(); },
+        [&]() { panel.save(); }}), "Material panel registers command callbacks");
+    panels.freeze();
     panel.request_open(root_id);
-    frame(panel);
-    auto& session = workspace.material_edit();
+    frame(panel, panels);
+    auto& session = panel.edit_session();
     check(session.active() && session.id() == root_id && ImGui::GetDrawData()->TotalVtxCount > 0,
         "real material panel opens and submits controls");
     check(session.begin_gesture().succeeded() && session.set_parameter({"specular_power", 80.0f}).succeeded(),
         "UI adapter accepts a draft batch");
     io.AddKeyEvent(ImGuiKey_Escape, true);
-    frame(panel);
+    frame(panel, panels);
     check(!session.gesturing() && !session.dirty() && session.undo_count() == 0u,
         "Escape routed by actual panel cancels draft without history");
     io.AddKeyEvent(ImGuiKey_Escape, false);
-    frame(panel);
+    frame(panel, panels);
     check(session.set_parameter({"specular_power", 64.0f}).succeeded(), "root edit through active adapter");
     panel.request_open(child_id);
-    frame(panel);
+    frame(panel, panels);
     check(session.id() == root_id && session.dirty() && panel.modal_pending(), "dirty switch defers and shows modal");
     check(panel.resolve_unsaved(MaterialCloseDecision::Cancel) && session.id() == root_id && session.dirty(),
         "Cancel retains old session and draft");
     dismiss_popup();
     panel.request_open(child_id);
-    frame(panel);
+    frame(panel, panels);
     check(panel.resolve_unsaved(MaterialCloseDecision::Save) && session.id() == child_id && !session.dirty(),
         "Save then switch loads child inheriting saved parent");
     dismiss_popup();
@@ -169,28 +178,28 @@ int main()
         check(!session.set_parent(self).succeeded(), "self Parent is rejected");
     }
     check(session.set_parameter({"specular_power", 100.0f}).succeeded(), "child draft");
-    frame(panel);
+    frame(panel, panels);
     io.AddKeyEvent(ImGuiMod_Ctrl, true);
     io.AddKeyEvent(ImGuiKey_Z, true);
-    frame(panel);
+    frame(panel, panels);
     check(session.overrides().empty() && !session.dirty(), "Ctrl+Z routed to the asset history");
     io.AddKeyEvent(ImGuiKey_Z, false);
     io.AddKeyEvent(ImGuiMod_Ctrl, false);
-    frame(panel);
+    frame(panel, panels);
     check(session.set_parameter({"specular_power", 90.0f}).succeeded() && !panel.request_exit(),
         "dirty application close defers to save prompt");
-    frame(panel);
+    frame(panel, panels);
     check(panel.resolve_unsaved(MaterialCloseDecision::Cancel) && !panel.take_exit() && session.dirty(),
         "Cancel exit preserves unsaved asset");
     dismiss_popup();
     check(!panel.request_exit(), "second dirty exit request");
-    frame(panel);
+    frame(panel, panels);
     check(panel.resolve_unsaved(MaterialCloseDecision::Discard) && panel.take_exit() && !session.active(),
         "Discard clears runtime and session before admitting exit");
     dismiss_popup();
     check(panel.request_exit(), "clean exit is admitted");
     panel.request_open(child_id);
-    frame(panel);
+    frame(panel, panels);
     int publications = 0;
     session.set_publish([&publications](const AssetRef&) -> AssetStatus
     {
@@ -200,10 +209,10 @@ int main()
     });
     check(session.set_parameter({"specular_power", 72.0f}).succeeded(), "prepare save/publication failure fixture");
     check(!panel.request_exit(), "publication failure during close opens the save prompt");
-    frame(panel);
+    frame(panel, panels);
     check(!panel.resolve_unsaved(MaterialCloseDecision::Save) && !panel.take_exit() && session.active(),
         "failed publication keeps the session and error visible after successful file save");
-    frame(panel);
+    frame(panel, panels);
     check(session.active() && panel.modal_pending() && !panel.take_exit(),
         "next UI frame cannot silently close a clean session after publication failure");
     MaterialInstanceAssetData saved_child;
@@ -214,6 +223,8 @@ int main()
     check(panel.resolve_unsaved(MaterialCloseDecision::Cancel) && !panel.take_exit(), "cancel pending close after publication retry");
     dismiss_popup();
     session.set_publish({});
+    panels.clear();
+    panel.shutdown();
     panel.shutdown();
     ImGui::DestroyContext();
     MaterialInstance::release(defaults);
