@@ -10,6 +10,7 @@
 #include "gamescene/component/static_mesh_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
+#include "math/length_units.h"
 #include "selection/editor_selection.h"
 #include "workspace/editor_workspace.h"
 #include "viewport/scene_viewport.h"
@@ -23,6 +24,14 @@ namespace toy3d
 {
     namespace
     {
+        constexpr float k_translation_drag_step_cm = meters_to_centimeters(0.05f);
+        constexpr float k_near_clip_drag_step_cm = 1.0f;
+        constexpr float k_far_clip_drag_step_cm = meters_to_centimeters(1.0f);
+        constexpr float k_light_range_drag_step_cm = meters_to_centimeters(0.1f);
+        constexpr float k_min_light_range_cm = 1.0f;
+        constexpr float k_shadow_distance_drag_step_cm = meters_to_centimeters(0.5f);
+        constexpr float k_max_light_distance_cm = meters_to_centimeters(10000.0f);
+
         void draw_material_slots(World& world, Actor& actor, EditorSelection& selection, EditorCommandHistory& history,
             const EditorWorkspace& workspace, MaterialAssignments& materials, std::string& error)
         {
@@ -101,7 +110,7 @@ namespace toy3d
             SceneComponent* const root = actor.root_component();
             Transform edited = root->local_transform();
             Vector3& value = edited.*field;
-            const float speed = field == &Transform::scale ? 0.01f : 5.0f;
+            const float speed = field == &Transform::scale ? 0.01f : k_translation_drag_step_cm;
             const bool changed = ImGui::DragFloat3(label, value.data(), speed);
             if (ImGui::IsItemActivated() && !history.active())
                 history.begin(world, actor.actor_id(), root->local_transform(), EditorTransformSource::Details);
@@ -213,9 +222,9 @@ namespace toy3d
                         draw_camera_field("Vertical FOV (degrees)", &EditorActorState::camera_vertical_fov,
                                           0.25f, world, *actor, history);
                         draw_camera_field("Near Clip (cm)", &EditorActorState::camera_near_clip,
-                                          1.0f, world, *actor, history);
+                                          k_near_clip_drag_step_cm, world, *actor, history);
                         draw_camera_field("Far Clip (cm)", &EditorActorState::camera_far_clip,
-                                          100.0f, world, *actor, history);
+                                          k_far_clip_drag_step_cm, world, *actor, history);
                         ImGui::TextDisabled("Aspect ratio follows the viewport");
                         ImGui::TextDisabled("Camera scale does not affect projection");
                         if (viewport.viewed_camera_id(world) == actor->actor_id())
@@ -255,7 +264,9 @@ namespace toy3d
                         if (dynamic_cast<LocalLightComponent*>(light))
                         {
                             edited = capture_actor_state(*actor);
-                            changed = ImGui::DragFloat("Range (cm)", &edited.light_range, 10.0f, 1.0f, 1000000.0f);
+                            changed = ImGui::DragFloat("Range (cm)", &edited.light_range,
+                                                      k_light_range_drag_step_cm, k_min_light_range_cm,
+                                                      k_max_light_distance_cm);
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Light range edit failed.");
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
@@ -308,7 +319,9 @@ namespace toy3d
                                 ImGui::SetTooltip("Maximum cascade size. Additional cascades automatically use half this size.");
                             edited = capture_actor_state(*actor);
                             ImGui::SetNextItemWidth(160.0f);
-                            changed = ImGui::DragFloat("Dynamic Shadow Distance (cm)", &edited.shadow_distance, 50.0f, 0.0f, 1000000.0f);
+                            changed = ImGui::DragFloat("Dynamic Shadow Distance (cm)", &edited.shadow_distance,
+                                                      k_shadow_distance_drag_step_cm, 0.0f,
+                                                      k_max_light_distance_cm);
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow distance edit failed.");
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);

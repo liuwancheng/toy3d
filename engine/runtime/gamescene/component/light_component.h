@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gamescene/component/scene_component.h"
+#include "math/length_units.h"
 #include "math/vector3.h"
 #include "rendercore/scene/light_scene_proxy.h"
 
@@ -72,7 +73,7 @@ namespace toy3d
         int shadow_cascade_count_ = 1;
         float cascade_distribution_exponent_ = 3.0f;
         int shadow_map_resolution_ = LightSceneData::k_default_shadow_resolution;
-        float shadow_distance_ = 10000.0f;
+        float shadow_distance_ = meters_to_centimeters(100.0f);
         float shadow_distance_fade_fraction_ = 0.1f;
         float shadow_bias_ = 0.5f;
         float shadow_slope_bias_ = 0.5f;
@@ -91,7 +92,7 @@ namespace toy3d
         explicit LocalLightComponent(Actor& owner) : LightComponent(owner) {}
 
       private:
-        float range_ = 1000.0f;
+        float range_ = meters_to_centimeters(10.0f);
     };
 
     class PointLightComponent final : public LocalLightComponent

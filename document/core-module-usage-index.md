@@ -17,7 +17,7 @@
 | Texture2D 资产 | `Toy3dTextureAsset` | `texture_asset/texture_asset.h` | `engine/tools/texture_import/tests/texture_import_tests.cpp` |
 | 日志 | `Toy3dLogging` | `logging/logger.h` | `engine/core/logging/logger.cpp` |
 | 外部进程 | `Toy3dProcess` | `process/process.h` | `engine/core/process/tests/process_tests.cpp` |
-| 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
+| 数学 | `Toy3dMath` | `math/math.h`、`math/angle.h`、`math/length_units.h`、`math/transform.h`、`math/matrix_construction.h`、`math/geometry/plane.h`、`math/geometry/convex_volume.h`、`math/random.h` | `engine/core/tests/math_tests.cpp` |
 | GPU-ready 格式 | `Toy3dPixelFormat` | `pixel_format/pixel_format.h` | `engine/core/tests/pixel_format_tests.cpp` |
 | 内容签名 | `Toy3dHash` | `hash/sha256.h` | `engine/core/asset_thumbnail/tests/asset_thumbnail_tests.cpp` |
 | 内存 PNG/JPEG 解码 | `Toy3dImageCodec` | `image_codec/png_codec.h` | `engine/core/asset_thumbnail/tests/asset_thumbnail_tests.cpp`、`engine/tools/texture_import/tests/texture_import_tests.cpp` |
@@ -139,6 +139,8 @@ TOY_LOG_ERROR("Load failed: {}", error_message);
 ```
 
 数学聚合入口为 `math/math.h`；编译时间敏感的调用方可直接包含 `math/angle.h`、`math/scalar_math.h` 或 `math/math_constants.h`。角度使用显式 `toy3d::Radians`、`toy3d::Degrees` 和 `to_radians()`/`to_degrees()`，裸 `float` 不隐式表达角度单位。随机数必须单独包含 `math/random.h`。
+
+长度单位入口为 `math/length_units.h`，归 `Toy3dMath`：世界长度固定以厘米保存；`meters_to_centimeters()` / `centimeters_to_meters()` 用于明确的单位换算，`k_centimeters_per_meter` 用于导入调用方的源单位倍率。预览半径、相机距离等业务默认值仍留在所属模块；百分比和屏幕像素不使用长度倍率。
 
 新向量代码使用 `Vector2`、`Vector3`、`Vector4` 与 `UIntVector2/3/4`，并根据退化输入语义选择 `try_normalize()`、`normalized_or_zero()` 或 `normalize_unchecked()`。`vec*`、`mat*`、`quat` 仍是受控迁移期的旧 GLM aliases，不得新增调用点。渲染坐标与矩阵约定以 `AGENTS.md` 和 `document/core-math-design.md` 为准，不在业务模块建立另一套类型别名。
 

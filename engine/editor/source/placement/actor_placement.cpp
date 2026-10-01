@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "math/length_units.h"
+
 namespace toy3d
 {
     bool calculate_placement_transform(const Matrix4& view, const Matrix4& projection,
@@ -20,14 +22,14 @@ namespace toy3d
         Vector3 direction;
         if (!try_normalize(Vector3(far_world.x, far_world.y, far_world.z) / far_world.w - camera_position,
                            direction)) return false;
-        constexpr float default_distance = 800.0f;
-        constexpr float maximum_ground_distance = 10000.0f;
-        float distance = default_distance;
+        constexpr float k_default_distance_cm = meters_to_centimeters(8.0f);
+        constexpr float k_maximum_ground_distance_cm = meters_to_centimeters(100.0f);
+        float distance = k_default_distance_cm;
         bool ground = false;
         if (std::abs(direction.y) > 1.0e-5f)
         {
             const float intersection = -camera_position.y / direction.y;
-            ground = intersection > 0 && intersection <= maximum_ground_distance;
+            ground = intersection > 0 && intersection <= k_maximum_ground_distance_cm;
             if (ground) distance = intersection;
         }
         Transform placed;

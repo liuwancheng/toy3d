@@ -101,6 +101,7 @@ target_sources(Toy3dMath
         "math/geometry/plane.cpp"
         "math/geometry/plane.h"
         "math/integer_vector.h"
+        "math/length_units.h"
         "math/matrix3.cpp"
         "math/matrix3.h"
         "math/matrix_construction.cpp"

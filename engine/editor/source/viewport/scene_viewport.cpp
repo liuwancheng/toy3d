@@ -15,6 +15,7 @@
 #include "gamescene/component/primitive_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
+#include "math/length_units.h"
 #include "math/matrix_construction.h"
 #include "placement/actor_placement.h"
 #include "selection/editor_selection.h"
@@ -25,6 +26,14 @@ namespace toy3d
 {
     namespace
     {
+        constexpr float k_default_focus_radius_cm = meters_to_centimeters(1.0f);
+        constexpr float k_min_focus_radius_cm = meters_to_centimeters(0.5f);
+        constexpr float k_min_focus_distance_cm = meters_to_centimeters(2.0f);
+        constexpr float k_editor_near_clip_cm = meters_to_centimeters(0.1f);
+        constexpr float k_editor_far_clip_cm = meters_to_centimeters(1000.0f);
+        constexpr float k_min_orbit_distance_cm = meters_to_centimeters(0.2f);
+        constexpr float k_max_orbit_distance_cm = meters_to_centimeters(10000.0f);
+
         bool make_view_matrices(const SceneView& scene_view, Matrix4& view, Matrix4& projection)
         {
             PerspectiveProjectionDesc desc;
@@ -88,7 +97,7 @@ namespace toy3d
         const Actor* actor = world.find_actor_by_id(actor_id);
         if (!actor || actor->is_pending_destroy() || !actor->root_component()) return false;
         Vector3 center = transform_position(actor->root_component()->world_transform(), Vector3());
-        float radius = 100.0f;
+        float radius = k_default_focus_radius_cm;
         if (const auto* primitive = dynamic_cast<const PrimitiveComponent*>(actor->root_component()))
         {
             const AxisAlignedBounds& bounds = primitive->world_bounds();
@@ -99,14 +108,14 @@ namespace toy3d
                 bounds.minimum.z <= bounds.maximum.z)
             {
                 center = (minimum + maximum) * 0.5f;
-                radius = std::max(50.0f, length(maximum - center));
+                radius = std::max(k_min_focus_radius_cm, length(maximum - center));
             }
         }
         const float aspect = scene_extent_.height != 0u
             ? static_cast<float>(scene_extent_.width) / scene_extent_.height : 16.0f / 9.0f;
         const float half_vertical_fov = tan(to_radians(Degrees(60.0f)) * 0.5f);
         const float half_horizontal_fov = half_vertical_fov * std::max(aspect, 0.1f);
-        const float distance = std::max(200.0f, radius * 1.25f /
+        const float distance = std::max(k_min_focus_distance_cm, radius * 1.25f /
             std::min(half_vertical_fov, half_horizontal_fov));
         const Vector3 forward = rotate_vector(editor_camera_orientation_, Vector3(0, 0, 1));
         const Vector3 position = center - forward * distance;
@@ -143,12 +152,13 @@ namespace toy3d
         const Vector3 position = camera ? transform_position(camera->world_transform(), Vector3()) : editor_camera_position_;
         const Quaternion orientation = camera ? camera->world_rotation() : editor_camera_orientation_;
         // Keep an orbit target in the editor frustum when zooming beyond the default range.
-        const float editor_far_clip = std::max(100000.0f,
+        const float editor_far_clip = std::max(k_editor_far_clip_cm,
             length(editor_camera_target_ - editor_camera_position_) * 4.0f);
         return SceneView(position, orientation, rotate_vector(orientation, Vector3(0, 0, 1)),
                          IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
                          to_radians(Degrees(camera ? camera->vertical_fov_degrees() : 60.0f)),
-                         camera ? camera->near_clip() : 10.0f, camera ? camera->far_clip() : editor_far_clip);
+                         camera ? camera->near_clip() : k_editor_near_clip_cm,
+                         camera ? camera->far_clip() : editor_far_clip);
     }
 
     void SceneViewport::begin_frame()
@@ -203,10 +213,8 @@ namespace toy3d
                     bool camera_changed = false;
                     if (hovered && io.MouseWheel != 0.0f && std::isfinite(io.MouseWheel))
                     {
-                        constexpr float min_distance = 20.0f;
-                        constexpr float max_distance = 1000000.0f;
-                        const float next_distance = std::max(min_distance,
-                            std::min(max_distance, distance * std::pow(0.85f, io.MouseWheel)));
+                        const float next_distance = std::max(k_min_orbit_distance_cm,
+                            std::min(k_max_orbit_distance_cm, distance * std::pow(0.85f, io.MouseWheel)));
                         const Vector3 next_position = editor_camera_target_ - forward * next_distance;
                         if (is_finite(next_position) && next_position != editor_camera_position_)
                         {

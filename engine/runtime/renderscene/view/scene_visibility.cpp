@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "logging/logger.h"
+#include "math/length_units.h"
 #include "math/matrix_construction.h"
 #include "math/vector3.h"
 #include "rendercore/geometry/local_vertex_factory.h"
@@ -199,7 +200,7 @@ namespace toy3d
     {
         constexpr float k_parallel_up_threshold = 0.99f;
         constexpr float k_depth_padding_fraction = 0.01f;
-        constexpr float k_min_depth_padding = 10.0f;
+        constexpr float k_min_depth_padding_cm = meters_to_centimeters(0.1f);
         constexpr float k_max_slope = 4.0f;
         constexpr float k_constant_bias_texels = 2.0f;
         constexpr float k_slope_bias_texels = 4.0f;
@@ -372,7 +373,7 @@ namespace toy3d
                         maximum_z = std::max(maximum_z, caster.max_z);
                     }
                 }
-                const float padding = std::max(k_min_depth_padding,
+                const float padding = std::max(k_min_depth_padding_cm,
                                                (maximum_z - minimum_z) * k_depth_padding_fraction);
                 Matrix4 light_view;
                 light_view.at(0, 0) = right.x; light_view.at(1, 0) = right.y; light_view.at(2, 0) = right.z;

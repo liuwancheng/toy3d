@@ -10,6 +10,7 @@
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
 #include "gamescene/world/world.h"
+#include "math/length_units.h"
 
 namespace toy3d
 {
@@ -17,7 +18,7 @@ namespace toy3d
     {
         constexpr int k_sun_ray_count = 8;
         constexpr float k_full_turn = 6.283185307f;
-        constexpr float k_direction_preview_length = 200.0f;
+        constexpr float k_direction_preview_length_cm = meters_to_centimeters(2.0f);
 
         struct ActorIcon
         {
@@ -82,7 +83,7 @@ namespace toy3d
         if (!project_actor_icon(view_projection, position, image_origin, image_size, candidate.start, depth) ||
             !try_normalize(direction, normalized_direction))
             return false;
-        const Vector3 end = position + normalized_direction * k_direction_preview_length;
+        const Vector3 end = position + normalized_direction * k_direction_preview_length_cm;
         const Vector4 a = view_projection * Vector4(position.x, position.y, position.z, 1.0f);
         const Vector4 b = view_projection * Vector4(end.x, end.y, end.z, 1.0f);
         if (!is_finite(b)) return false;

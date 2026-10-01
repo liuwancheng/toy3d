@@ -8,6 +8,7 @@
 #include "format/shader_format_types.h"
 #include "gamescene/world/world.h"
 #include "math/angle.h"
+#include "math/length_units.h"
 #include "math/quaternion.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
@@ -33,7 +34,7 @@
 namespace
 {
     constexpr std::uint64_t k_destroy_actor_frame = 120u;
-    constexpr float k_cube_half_extent = 45.0f;
+    constexpr float k_cube_half_extent = toy3d::meters_to_centimeters(0.45f);
 
     toy3d::ShaderParameterId material_constant_id(const char* name)
     {
@@ -394,10 +395,11 @@ void CubeApplication::on_build_ui()
 
 void CubeApplication::on_build_scene_views(std::vector<toy3d::SceneView>& views, const toy3d::Extent& extent) const
 {
-    views.emplace_back(toy3d::Vector3(camera_x_, 150.0f, -600.0f), toy3d::Quaternion::identity(),
+    views.emplace_back(toy3d::Vector3(camera_x_, toy3d::meters_to_centimeters(1.5f),
+                                    toy3d::meters_to_centimeters(-6.0f)), toy3d::Quaternion::identity(),
                        toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, extent.width, extent.height}, extent,
-                       toy3d::CameraProjectionMode::Perspective, toy3d::to_radians(toy3d::Degrees(60.0f)), 10.0f,
-                       100000.0f);
+                       toy3d::CameraProjectionMode::Perspective, toy3d::to_radians(toy3d::Degrees(60.0f)),
+                       toy3d::meters_to_centimeters(0.1f), toy3d::meters_to_centimeters(1000.0f));
 }
 
 void CubeApplication::on_shutdown()

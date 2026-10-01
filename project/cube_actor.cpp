@@ -3,6 +3,7 @@
 #include "gamescene/component/scene_component.h"
 #include "gamescene/component/static_mesh_component.h"
 #include "math/angle.h"
+#include "math/length_units.h"
 #include "math/quaternion.h"
 #include "math/transform.h"
 
@@ -11,6 +12,9 @@
 
 namespace
 {
+    constexpr float k_root_distance_cm = toy3d::meters_to_centimeters(4.0f);
+    constexpr float k_cube_spacing_cm = toy3d::meters_to_centimeters(1.5f);
+
     toy3d::Quaternion make_axis_rotation(const toy3d::Vector3& axis, float radians)
     {
         toy3d::Quaternion rotation = toy3d::Quaternion::identity();
@@ -37,9 +41,10 @@ CubeActor::CubeActor(toy3d::World& world, toy3d::StaticMeshRef mesh) : Actor(wor
     toy3d::SceneComponent& root = create_component<toy3d::SceneComponent>();
     set_root_component(&root);
     root_ = &root;
-    root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, 400.0f), toy3d::Quaternion::identity(), 1.0f));
+    root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, k_root_distance_cm),
+                                              toy3d::Quaternion::identity(), 1.0f));
 
-    const std::array<float, 3> offsets = {-150.0f, 0.0f, 150.0f};
+    const std::array<float, 3> offsets = {-k_cube_spacing_cm, 0.0f, k_cube_spacing_cm};
     for (std::size_t index = 0; index < cubes_.size(); ++index)
     {
         toy3d::StaticMeshComponent& cube = create_component<toy3d::StaticMeshComponent>();
@@ -57,7 +62,7 @@ void CubeActor::tick(const toy3d::WorldTickContext& context)
     const float time = static_cast<float>(context.world_time_seconds);
     if (root_ != nullptr)
     {
-        root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, 400.0f),
+        root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, k_root_distance_cm),
                                                   make_axis_rotation(toy3d::Vector3(0.0f, 1.0f, 0.0f), time), 1.0f));
     }
 

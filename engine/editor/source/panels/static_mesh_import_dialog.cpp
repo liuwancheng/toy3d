@@ -115,7 +115,7 @@ namespace toy3d
         // Format suggestions are editable UI policy, never importer assumptions.
         candidate.is_fbx = extension == ".fbx";
         candidate.use_file_unit = candidate.is_fbx;
-        candidate.source_unit_in_centimeters = candidate.use_file_unit ? 1.0f : 100.0f;
+        candidate.source_unit_in_centimeters = candidate.use_file_unit ? 1.0f : k_centimeters_per_meter;
     }
 
     void StaticMeshImportDialog::draw(IWindow& window, EditorWorkspace& workspace,

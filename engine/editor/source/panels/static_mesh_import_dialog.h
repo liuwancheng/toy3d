@@ -1,5 +1,7 @@
 #pragma once
 
+#include "math/length_units.h"
+
 #include <array>
 #include <string>
 #include <vector>
@@ -30,7 +32,7 @@ namespace toy3d
             std::array<char, 4097> source{};
             std::array<char, 256> name{};
             std::string error;
-            float source_unit_in_centimeters = 100.0f;
+            float source_unit_in_centimeters = k_centimeters_per_meter;
             bool use_file_unit = false;
             bool is_fbx = false;
         };

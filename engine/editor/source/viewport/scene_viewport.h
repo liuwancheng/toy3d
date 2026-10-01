@@ -2,6 +2,7 @@
 
 #include "application/application.h"
 #include "editor_viewport_gizmo.h"
+#include "math/length_units.h"
 #include "placement/asset_placement.h"
 
 #include <cstdint>
@@ -33,8 +34,9 @@ namespace toy3d
         SceneView current_view(const World& world, const Extent& extent) const;
         // GT-only observation pose survives camera viewing. World is compared
         // for identity; every camera access resolves an Actor ID in the caller's World.
-        Vector3 editor_camera_position_{300.0f, 250.0f, -600.0f};
-        Vector3 editor_camera_target_{0.0f, 0.0f, 300.0f};
+        Vector3 editor_camera_position_{meters_to_centimeters(3.0f), meters_to_centimeters(2.5f),
+                                       meters_to_centimeters(-6.0f)};
+        Vector3 editor_camera_target_{0.0f, 0.0f, meters_to_centimeters(3.0f)};
         Quaternion editor_camera_orientation_;
         float editor_camera_yaw_ = 0.0f;
         float editor_camera_pitch_ = 0.0f;

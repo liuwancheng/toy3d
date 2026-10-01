@@ -17,6 +17,7 @@
 #endif
 
 #include "logging/logger.h"
+#include "math/length_units.h"
 #include "generated/defines.h"
 #include "drivers/rhi/rhi_factory.h"
 #include "gamescene/world/world.h"
@@ -322,10 +323,11 @@ namespace toy3d
         }
         else if (scene_extent.width != 0u && scene_extent.height != 0u)
         {
-            views.emplace_back(Vector3(0.0f, 150.0f, -600.0f), Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
+            views.emplace_back(Vector3(0.0f, meters_to_centimeters(1.5f), meters_to_centimeters(-6.0f)),
+                               Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
                                IntRect{0, 0, scene_extent.width, scene_extent.height}, scene_extent,
                                CameraProjectionMode::Perspective,
-                               to_radians(Degrees(60.0f)), 10.0f, 100000.0f);
+                               to_radians(Degrees(60.0f)), meters_to_centimeters(0.1f), meters_to_centimeters(1000.0f));
         }
         if (views.empty() && scene_extent.width != 0u && scene_extent.height != 0u)
         {

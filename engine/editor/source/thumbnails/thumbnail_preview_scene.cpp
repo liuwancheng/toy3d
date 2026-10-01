@@ -9,10 +9,19 @@
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "logging/logger.h"
+#include "math/length_units.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
 
 namespace toy3d
 {
+    namespace
+    {
+        // Normalize only the preview copy; these lengths do not alter asset units.
+        constexpr double k_preview_radius_cm = meters_to_centimeters(1.0f);
+        constexpr float k_preview_near_clip_cm = meters_to_centimeters(0.05f);
+        constexpr float k_preview_far_clip_cm = meters_to_centimeters(20.0f);
+    }
+
     bool ThumbnailPreviewScene::initialize(SceneInterface& scene, MaterialInstanceRef material)
     {
         if (!material || !world_.bind_scene(scene)) return false;
@@ -58,9 +67,9 @@ namespace toy3d
         if (!(radius > 0.0) || !std::isfinite(radius)) return false;
         for (auto& vertex : geometry.vertices)
         {
-            vertex.position = Vector3(static_cast<float>((vertex.position.x - center_x) * 100.0 / radius),
-                                      static_cast<float>((vertex.position.y - center_y) * 100.0 / radius),
-                                      static_cast<float>((vertex.position.z - center_z) * 100.0 / radius));
+            vertex.position = Vector3(static_cast<float>((vertex.position.x - center_x) * k_preview_radius_cm / radius),
+                                      static_cast<float>((vertex.position.y - center_y) * k_preview_radius_cm / radius),
+                                      static_cast<float>((vertex.position.z - center_z) * k_preview_radius_cm / radius));
         }
         auto mesh = create_static_mesh_from_asset(geometry, material_);
         if (!mesh) return false;
@@ -72,7 +81,8 @@ namespace toy3d
 
     SceneView ThumbnailPreviewScene::view() const
     {
-        const Vector3 position(250.0f, 170.0f, -300.0f);
+        const Vector3 position(meters_to_centimeters(2.5f), meters_to_centimeters(1.7f),
+                               meters_to_centimeters(-3.0f));
         Vector3 direction;
         Quaternion rotation;
         if (!try_normalize(-position, direction) ||
@@ -81,7 +91,8 @@ namespace toy3d
         const Extent extent{thumbnail_default_size, thumbnail_default_size};
         return SceneView(position, rotation, direction,
                          IntRect{0, 0, extent.width, extent.height}, extent,
-                         CameraProjectionMode::Perspective, Radians(0.785398163f), 5.0f, 2000.0f);
+                         CameraProjectionMode::Perspective, Radians(0.785398163f),
+                         k_preview_near_clip_cm, k_preview_far_clip_cm);
     }
 
     void ThumbnailPreviewScene::clear_mesh()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "math/angle.h"
+#include "math/length_units.h"
 #include "math/quaternion.h"
 
 namespace toy3d
@@ -17,25 +18,25 @@ namespace toy3d
     {
         Radians vertical_fov{Radians(k_pi / 3.0f)};
         float aspect = 1.0f;
-        float near_clip = 10.0f;
-        float far_clip = 100000.0f;
+        float near_clip = meters_to_centimeters(0.1f);
+        float far_clip = meters_to_centimeters(1000.0f);
     };
 
     struct InfinitePerspectiveProjectionDesc
     {
         Radians vertical_fov{Radians(k_pi / 3.0f)};
         float aspect = 1.0f;
-        float near_clip = 10.0f;
+        float near_clip = meters_to_centimeters(0.1f);
     };
 
     struct OrthographicProjectionDesc
     {
-        float left = -100.0f;
-        float right = 100.0f;
-        float bottom = -100.0f;
-        float top = 100.0f;
-        float near_clip = 10.0f;
-        float far_clip = 10000.0f;
+        float left = meters_to_centimeters(-1.0f);
+        float right = meters_to_centimeters(1.0f);
+        float bottom = meters_to_centimeters(-1.0f);
+        float top = meters_to_centimeters(1.0f);
+        float near_clip = meters_to_centimeters(0.1f);
+        float far_clip = meters_to_centimeters(100.0f);
     };
 
     bool try_make_perspective_projection(const PerspectiveProjectionDesc& desc, Matrix4& result);

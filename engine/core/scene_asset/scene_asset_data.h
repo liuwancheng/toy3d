@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset_identity.h"
+#include "math/length_units.h"
 #include "math/transform.h"
 #include "math/vector3.h"
 #include "reflection/reflection_macros.h"
@@ -47,7 +48,7 @@ namespace toy3d
         TOY3D_PROPERTY("light_intensity", Edit)
         float light_intensity = 1.0f;
         TOY3D_PROPERTY("light_range", Edit)
-        float light_range = 1000.0f;
+        float light_range = meters_to_centimeters(10.0f);
         TOY3D_PROPERTY("light_priority", Edit)
         std::int32_t light_priority = 0;
         TOY3D_PROPERTY("shadow_cast_shadows", Edit)
@@ -59,7 +60,7 @@ namespace toy3d
         TOY3D_PROPERTY("shadow_map_resolution", Edit)
         std::int32_t shadow_map_resolution = 2048;
         TOY3D_PROPERTY("shadow_distance", Edit)
-        float shadow_distance = 10000.0f;
+        float shadow_distance = meters_to_centimeters(100.0f);
         TOY3D_PROPERTY("shadow_distance_fade_fraction", Edit)
         float shadow_distance_fade_fraction = 0.1f;
         TOY3D_PROPERTY("shadow_bias", Edit)
@@ -71,9 +72,9 @@ namespace toy3d
         TOY3D_PROPERTY("camera_vertical_fov", Edit)
         float camera_vertical_fov = 60.0f;
         TOY3D_PROPERTY("camera_near_clip", Edit)
-        float camera_near_clip = 10.0f;
+        float camera_near_clip = meters_to_centimeters(0.1f);
         TOY3D_PROPERTY("camera_far_clip", Edit)
-        float camera_far_clip = 100000.0f;
+        float camera_far_clip = meters_to_centimeters(1000.0f);
     };
 
     TOY3D_REFLECT_TYPE("toy3d.SceneAssetData", 4)

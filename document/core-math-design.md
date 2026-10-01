@@ -16,6 +16,14 @@
 
 位置、网格顶点、bounds、长度、裁剪距离、灯光范围和阴影距离均以厘米保存并计算；Editor 直接显示厘米。Transform scale、单位方向、角度、UV、颜色与淡出比例不随单位改变。矩阵和 RHI ABI 不做额外单位换算。相机默认 near/far 为 `10/100000 cm`，方向光默认动态阴影距离为 `10000 cm`。有物理长度含义的最小距离/padding 使用厘米值；归一化、角度和矩阵可逆性容差保持各自数学语义，不能统一乘以 100。
 
+### 长度单位入口
+
+`math/length_units.h` 归现有 `Toy3dMath` target，提供不可变的 `k_centimeters_per_meter` 与 `meters_to_centimeters(float)` / `centimeters_to_meters(float)`。这些函数为无状态 `constexpr` 标量运算，无资源所有权、生命周期、线程状态、I/O 或平台分支；遵循普通浮点乘除语义，不单独校验输入或记录错误。位置和矩阵仍使用现有 float / Vector 类型，不增加长度包装类型或运行时世界单位设置。
+
+导入调用方使用共享倍率提供可编辑的源单位默认值；底层 importer 继续只消费显式传参。相机默认值、预览半径、放置距离、阴影深度 padding 等业务长度由所属模块声明或初始化，使用具名 `*_cm` 常量或换算函数表达，不能下沉为 Core Math 的业务配置。百分比、像素、方向、scale 和归一化深度不使用长度倍率。
+
+迁移仅替换源码中的长度表达，不改变既有厘米数值、资产 schema 或保存数据，也不添加旧单位兼容路径。验证复用 Math、GameScene、Editor 预览/放置和模型导入测试，并构建实际调用目标；不引入新的依赖 target。
+
 ## 2. 设计来源与取舍
 
 ### 2.1 UE4.27Plus 源码结论
@@ -90,6 +98,7 @@ engine/core/math/
 ├── math_constants.h
 ├── scalar_math.h
 ├── angle.h
+├── length_units.h
 ├── vector2.h
 ├── vector3.h
 ├── vector4.h

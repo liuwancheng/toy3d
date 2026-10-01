@@ -4,6 +4,7 @@
 #include "math/geometry/convex_volume.h"
 #include "math/geometry/plane.h"
 #include "math/integer_vector.h"
+#include "math/length_units.h"
 #include "math/matrix_construction.h"
 #include "math/matrix3.h"
 #include "math/matrix4.h"

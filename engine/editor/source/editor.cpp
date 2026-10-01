@@ -15,6 +15,7 @@
 #include "rendercore/geometry/static_mesh_asset_loader.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
+#include "math/length_units.h"
 #include "math/quaternion.h"
 #include "panels/place_actors_panel.h"
 #include "panels/scene_panels.h"
@@ -507,10 +508,10 @@ namespace toy3d
         else TOY_LOG_ERROR("Material source workflow unavailable: {}", shader_error);
         PlacementRequest preview;
         preview.item = PlacementItemId::Cube;
-        preview.transform.translation = Vector3(0.0f, 75.0f, 300.0f);
+        preview.transform.translation = Vector3(0.0f, meters_to_centimeters(0.75f), meters_to_centimeters(3.0f));
         if (!actor_factory_.create(world(), preview)) return false;
         preview.item = PlacementItemId::DirectionalLight;
-        preview.transform.translation = Vector3(0.0f, 300.0f, 300.0f);
+        preview.transform.translation = Vector3(0.0f, meters_to_centimeters(3.0f), meters_to_centimeters(3.0f));
         if (!try_make_rotation_from_forward_up(Vector3(-0.35f, -0.55f, 0.75f),
                                                 Vector3(0, 1, 0), preview.transform.rotation)) return false;
         if (!actor_factory_.create(world(), preview)) return false;

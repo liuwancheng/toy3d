@@ -7,6 +7,7 @@
 
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
+#include "math/length_units.h"
 #include "static_mesh/static_mesh_asset.h"
 #include "asset_pair_store.h"
 
@@ -48,7 +49,7 @@ int main(int argc, char** argv)
     for (char& c : source_extension) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + ('a' - 'A'));
     // Like the Editor, the CLI supplies format suggestions to the importer.
     options.use_file_unit = source_extension == ".fbx";
-    options.source_unit_in_centimeters = options.use_file_unit ? 1.0f : 100.0f;
+    options.source_unit_in_centimeters = options.use_file_unit ? 1.0f : toy3d::k_centimeters_per_meter;
     for (int i = 3; i < argc; ++i)
     {
         const std::string argument(argv[i]);
