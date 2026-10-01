@@ -16,9 +16,11 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32)
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #include <Windows.h>
-#elif defined(__APPLE__)
+#elif WITH_MAC
 #include <mach-o/dyld.h>
 #endif
 
@@ -75,7 +77,7 @@ namespace
                                                                    const char* fallback_path, std::string& error)
     {
         toy3d::PhysicalPath path;
-#if defined(_WIN32)
+#if WITH_WIN
         std::wstring buffer(32768u, L'\0');
         const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
         if (length != 0 && length < buffer.size())
@@ -93,7 +95,7 @@ namespace
                 }
             }
         }
-#elif defined(__APPLE__)
+#elif WITH_MAC
         std::uint32_t size = 0;
         _NSGetExecutablePath(nullptr, &size);
         if (size != 0)

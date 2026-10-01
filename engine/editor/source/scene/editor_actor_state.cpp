@@ -1,6 +1,6 @@
 #include "scene/editor_actor_state.h"
 
-#include "scene_asset/scene_asset.h"
+#include "asset/scene/scene_asset.h"
 
 #include "gamescene/actor/actor.h"
 #include "gamescene/world/world.h"

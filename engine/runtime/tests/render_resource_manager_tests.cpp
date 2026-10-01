@@ -12,24 +12,24 @@
 #include "rendercore/texture/texture.h"
 #include "shader_map_test_utils.h"
 #include "shader_parameters/builtin_shader_parameters.generated.h"
-#include "renderscene/geometry/static_mesh_render_data.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
 #include "renderscene/material/material_shader_bindings.h"
-#include "renderscene/material/material_render_proxy.h"
+#include "rendercore/material/material_render_proxy.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/object_shader_bindings.h"
 #include "renderscene/pass/mesh_draw_command.h"
 #include "renderscene/render_scene.h"
-#include "renderscene/render_resource.h"
-#include "renderscene/render_resource_manager.h"
+#include "rendercore/render_resource.h"
+#include "rendercore/render_resource_manager.h"
 #include "renderscene/renderer_frame.h"
 #include "renderscene/renderer.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/viewport_output_target.h"
-#include "renderscene/texture/texture_resource.h"
+#include "rendercore/texture/texture_resource.h"
 #include "renderscene/view/forward_scene_renderer.h"
 #include "renderscene/view/view_shader_bindings.h"
-#include "task_graph/task_graph.h"
+#include "threading/task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
 #include <algorithm>
@@ -1436,30 +1436,35 @@ int main()
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> submitted_frame_result =
         render_test_frame(submitted_frame_renderer, *frame_render_scene, device, frame_manager, frame_viewport,
                           submitted_scene_render_targets, tonemap_resources);
-    const std::vector<std::string> expected_submitted_operations = {"begin_frame",
-                                                                    "begin_recording",
-                                                                    "record_pending_uploads",
-                                                                    "transition",
-                                                                    "begin_render_pass",
-                                                                    "end_render_pass",
-                                                                    "transition",
-                                                                    "transition",
-                                                                    "begin_render_pass",
-                                                                    "end_render_pass",
-                                                                    "transition",
-                                                                    "transition",
-                                                                    "begin_render_pass",
-                                                                    "end_render_pass",
-                                                                    "transition",
-                                                                    "upload_transient_uniform",
-                                                                    "begin_render_pass",
-                                                                    "set_graphics_pipeline",
-                                                                    "draw",
-                                                                    "end_render_pass",
-                                                                    "transition",
-                                                                    "finish_recording",
-                                                                    "end_frame",
-                                                                    "commit_recording"};
+    // The shadow atlas is cleared once, then Base Pass and Tonemap share the frame transaction.
+    const std::vector<std::string> expected_submitted_operations = {
+        "begin_frame",
+        "begin_recording",
+        "record_pending_uploads",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "upload_transient_uniform",
+        "begin_render_pass",
+        "set_graphics_pipeline",
+        "draw",
+        "end_render_pass",
+        "transition",
+        "finish_recording",
+        "end_frame",
+        "commit_recording"};
+    if (submitted_frame_operations != expected_submitted_operations)
+    {
+        std::cerr << "Actual frame operations:";
+        for (const std::string& operation : submitted_frame_operations)
+            std::cerr << ' ' << operation;
+        std::cerr << '\n';
+    }
     check(submitted_frame_result.succeeded() && submitted_frame_result.value().completion_value == 42u &&
               submitted_frame_resource.state() == toy3d::RenderResourceState::Ready &&
               submitted_scene_render_targets.scene_color_texture() != nullptr &&
@@ -1808,30 +1813,27 @@ int main()
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> submit_failed_result =
         render_test_frame(submit_failed_renderer, *frame_render_scene, device, frame_manager, frame_viewport,
                           submit_failed_scene_render_targets, tonemap_resources);
-    const std::vector<std::string> expected_submit_failed_operations = {"begin_frame",
-                                                                        "begin_recording",
-                                                                        "record_pending_uploads",
-                                                                        "transition",
-                                                                        "begin_render_pass",
-                                                                        "end_render_pass",
-                                                                        "transition",
-                                                                        "transition",
-                                                                        "begin_render_pass",
-                                                                        "end_render_pass",
-                                                                        "transition",
-                                                                        "transition",
-                                                                        "begin_render_pass",
-                                                                        "end_render_pass",
-                                                                        "transition",
-                                                                        "upload_transient_uniform",
-                                                                        "begin_render_pass",
-                                                                        "set_graphics_pipeline",
-                                                                        "draw",
-                                                                        "end_render_pass",
-                                                                        "transition",
-                                                                        "finish_recording",
-                                                                        "end_frame",
-                                                                        "discard_recording"};
+    const std::vector<std::string> expected_submit_failed_operations = {
+        "begin_frame",
+        "begin_recording",
+        "record_pending_uploads",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "transition",
+        "begin_render_pass",
+        "end_render_pass",
+        "transition",
+        "upload_transient_uniform",
+        "begin_render_pass",
+        "set_graphics_pipeline",
+        "draw",
+        "end_render_pass",
+        "transition",
+        "finish_recording",
+        "end_frame",
+        "discard_recording"};
     check(!submit_failed_result && submit_failed_resource.state() == toy3d::RenderResourceState::PendingUpload &&
               submit_failed_resource.discard_count == 1 &&
               submit_failed_scene_render_targets.scene_color_access() == toy3d::RHIAccess::Common &&

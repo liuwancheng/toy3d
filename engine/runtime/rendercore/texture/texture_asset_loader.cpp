@@ -1,6 +1,6 @@
 #include "rendercore/texture/texture_asset_loader.h"
 
-#include "texture_asset/texture_asset.h"
+#include "asset/texture/texture_asset.h"
 
 namespace toy3d
 {

@@ -2,7 +2,7 @@
 
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 #include "math/integer_vector.h"
 #include "math/matrix3.h"
 #include "math/matrix4.h"

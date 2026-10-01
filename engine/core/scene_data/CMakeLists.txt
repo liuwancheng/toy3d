@@ -1,6 +1,0 @@
-add_library(Toy3dSceneData STATIC)
-target_sources(Toy3dSceneData PRIVATE "component_settings.h" "component_settings.cpp")
-target_compile_features(Toy3dSceneData PUBLIC cxx_std_17)
-set_target_properties(Toy3dSceneData PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
-target_include_directories(Toy3dSceneData PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")
-target_link_libraries(Toy3dSceneData PUBLIC Toy3dMath)

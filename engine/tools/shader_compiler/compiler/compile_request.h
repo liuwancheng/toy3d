@@ -1,7 +1,7 @@
 #pragma once
 
 #include "compiler/include_resolver.h"
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 #include "layout/binding_allocator.h"
 
 #include <optional>

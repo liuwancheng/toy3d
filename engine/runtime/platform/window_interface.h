@@ -4,7 +4,7 @@
 #include "math/integer_vector.h"
 #include "platform/platform_input_interface.h"
 #include "math/vector2.h"
-#include "text/utf8.h"
+#include "misc/utf8.h"
 
 #include <cmath>
 #include <cstddef>

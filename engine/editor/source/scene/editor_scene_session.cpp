@@ -1,12 +1,12 @@
 #include "scene/editor_scene_session.h"
 
 #include <algorithm>
-#include "asset_descriptor_path.h"
+#include "asset/asset_descriptor_path.h"
 #include "gamescene/component/static_mesh_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
-#include "selection/editor_selection.h"
+#include "scene/editor_selection.h"
 #include "viewport/scene_viewport.h"
 #include "workspace/editor_workspace.h"
 

@@ -1,7 +1,7 @@
 #include "generated/fixture_reflection.h"
-#include "asset_file.h"
-#include "property_path.h"
-#include "edit_session.h"
+#include "asset/asset_file.h"
+#include "asset/property_path.h"
+#include "asset/edit_session.h"
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
 

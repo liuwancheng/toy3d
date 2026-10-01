@@ -15,14 +15,14 @@
 #include "rendercore/material/material.h"
 #include "gamescene/world/world.h"
 #include "renderscene/primitive_scene_info.h"
-#include "renderscene/render_resource_manager.h"
+#include "rendercore/render_resource_manager.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/renderer.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/ui/imgui_renderer.h"
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_queue.h"
-#include "task_graph/task_graph.h"
+#include "threading/task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 
 #include <algorithm>

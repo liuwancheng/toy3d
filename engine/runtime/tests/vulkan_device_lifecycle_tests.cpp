@@ -5,6 +5,8 @@
 #include <iostream>
 #include <memory>
 
+#include "platform/platform_defines.h"
+
 namespace
 {
     void require(bool condition, const char* message)
@@ -22,7 +24,7 @@ int main()
     using namespace toy3d;
 
     RHISurfaceDesc surface_desc;
-#if WITH_WIN64
+#if WITH_WIN
     surface_desc.platform = RHISurfacePlatform::MacOS;
 #elif WITH_MAC
     surface_desc.platform = RHISurfacePlatform::Win32;

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "application/application.h"
-#include "editor_viewport_gizmo.h"
+#include "viewport/editor_viewport_gizmo.h"
 #include "math/length_units.h"
-#include "placement/asset_placement.h"
+#include "scene/placement/asset_placement.h"
 
 #include <cstdint>
 

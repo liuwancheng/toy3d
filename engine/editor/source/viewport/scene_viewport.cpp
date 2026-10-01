@@ -9,7 +9,7 @@
 #include "imgui.h"
 #include "ImGuizmo.h"
 
-#include "commands/editor_command_history.h"
+#include "scene/editor_command_history.h"
 #include "gamescene/actor/actor.h"
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/primitive_component.h"
@@ -17,8 +17,8 @@
 #include "logging/logger.h"
 #include "math/length_units.h"
 #include "math/matrix_construction.h"
-#include "placement/actor_placement.h"
-#include "selection/editor_selection.h"
+#include "scene/placement/actor_placement.h"
+#include "scene/editor_selection.h"
 #include "ui/imgui_draw_data.h"
 #include "viewport/actor_icons.h"
 

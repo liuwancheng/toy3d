@@ -2,7 +2,7 @@
 
 ## 定位
 
-Toy3dThreading：engine/core/threading 的 Thread/Event/RunnableThread/ThreadManager/容器；Toy3dTaskGraph：engine/core/task_graph 的 TaskGraph/GraphTask/GraphEvent/NamedThread，传递依赖 Threading。Game/Render 策略在 [Render Framework](render-framework.md)。
+Toy3dCore 提供 engine/core/threading 的 Thread/Event/RunnableThread/ThreadManager/容器，以及其 task_graph 子目录的 TaskGraph/GraphTask/GraphEvent/NamedThread；两者共用一个库。Game/Render 策略在 [Render Framework](render-framework.md)。
 
 完整调用见 engine/core/tests/threading_tests.cpp、queue_tests.cpp、task_graph_tests.cpp、task_graph_scheduler_tests.cpp。
 

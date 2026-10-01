@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "platform/platform_defines.h"
+
 namespace
 {
     // filesystem creates isolated host fixtures for integration tests; product
@@ -679,7 +681,7 @@ namespace
     }
     void test_windows_long_native_paths()
     {
-#if defined(_WIN32)
+#if WITH_WIN
         TestDirectory directory = make_test_directory();
         toy3d::NativePlatformFile files;
         fs::path nested = directory.path;

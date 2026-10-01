@@ -2,8 +2,8 @@
 
 #include "rendercore/render_command.h"
 #include "rendercore/render_command_internal.h"
-#include "task_graph/graph_task.h"
-#include "task_graph/task_graph_interface.h"
+#include "threading/task_graph/graph_task.h"
+#include "threading/task_graph/task_graph_interface.h"
 #include "threading/event.h"
 #include "threading/thread.h"
 #include "threading/thread_manager.h"

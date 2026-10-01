@@ -1,6 +1,6 @@
 #pragma once
 
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 #include "compiler/shader_source_provider.h"
 #include "frontend/diagnostic.h"
 

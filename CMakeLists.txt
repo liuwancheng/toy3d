@@ -27,21 +27,16 @@ set(CMAKE_INSTALL_PREFIX "${TOY3D_ROOT_DIR}/bin")
 set(BINARY_ROOT_DIR "${CMAKE_INSTALL_PREFIX}/")
 
 
-if(WIN32)
-    add_compile_definitions(WITH_WIN64=1)
-elseif(UNIX)
-    if(APPLE)
-        add_compile_definitions(WITH_MAC=1)
-    else()
-        add_compile_definitions(WITH_LINUX=1)
-    endif()
-elseif(ANDROID)
-    add_compile_definitions(WITH_ANDROID=1)
-elseif(IOS)
-    add_compile_definitions(WITH_IOS=1)
-else()
-    message(FATAL_ERROR "unknown platform")
+# Platform selectors are provided by core/platform/platform_defines.h rather
+# than directory-wide compiler definitions (including third-party targets).
+if(NOT (WIN32 OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Darwin"
+        OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+    message(FATAL_ERROR "Unsupported Toy3d target OS: ${CMAKE_SYSTEM_NAME}")
 endif()
 
 add_subdirectory(engine)
-add_subdirectory(project)
+if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
+    add_subdirectory(project)
+else()
+    message(STATUS "Toy3dCubeTest is disabled: development ShaderMapEntry loading is required.")
+endif()

@@ -7,9 +7,11 @@
 #include <limits>
 #include <utility>
 
-#include "text/utf8.h"
+#include "misc/utf8.h"
 
-#if defined(_WIN32)
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -34,7 +36,7 @@ namespace toy3d
         constexpr std::size_t maximum_argument_bytes = 32768u;
         constexpr std::size_t maximum_capture_bytes = 16u * 1024u * 1024u;
         constexpr std::uint32_t poll_interval_ms = 10u;
-#if defined(_WIN32)
+#if WITH_WIN
         constexpr DWORD cleanup_timeout_ms = 2000u;
 #endif
 
@@ -70,7 +72,7 @@ namespace toy3d
             { result.error = ProcessError::Timeout; result.message = "Process timed out."; return true; }
             return false;
         }
-#if defined(_WIN32)
+#if WITH_WIN
         // --------------------------------------------------------------------------
         // NativeHandle: per-call ownership of Windows process and pipe handles
         // --------------------------------------------------------------------------
@@ -205,7 +207,7 @@ namespace toy3d
         const auto started = std::chrono::steady_clock::now();
         if (stop_requested(options, started, result)) return result;
         std::array<char, 4096u> buffer{};
-#if defined(_WIN32)
+#if WITH_WIN
         std::wstring application, line;
         if (!command(executable, arguments, application, line, result)) return result;
         SECURITY_ATTRIBUTES security{}; security.nLength = sizeof(security); security.bInheritHandle = TRUE;
@@ -332,7 +334,7 @@ namespace toy3d
     {
         ProcessResult result;
         if (!validate(executable, arguments, result)) return result;
-#if defined(_WIN32)
+#if WITH_WIN
         std::wstring application, line;
         if (!command(executable, arguments, application, line, result)) return result;
         STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION info{};

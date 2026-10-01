@@ -2,7 +2,7 @@
 
 ## 定位与模型
 
-core/material 的 Toy3dMaterialAsset 保存 DTO/schema/验证，不含 Program/Proxy/RHI。runtime/rendercore/material 提供 MaterialInterface、Material、MaterialInstance、MaterialRenderProxy、MaterialLibrary。Shader schema 见 [Shader](shader.md)，资产发布见 [Assets](assets.md)，窗口/history 见 [Editor](editor.md)。
+core/asset/material 的 Toy3dAssets 保存 DTO/schema/验证，不含 Program/Proxy/RHI。runtime/rendercore/material 提供 MaterialInterface、Material、MaterialInstance、MaterialRenderProxy、MaterialLibrary。Shader schema 见 [Shader](shader.md)，资产发布见 [Assets](assets.md)，窗口/history 见 [Editor](editor.md)。
 
 MaterialInterface 是当前根/实例共同抽象，不应因旧 RHI 文档曾禁止此名而另建体系。Properties default/schema 来自 ShaderRootMaterial；RT 只消费已解析参数/资源和 Program，不读 YAML/反射或 UI。
 
@@ -50,6 +50,6 @@ Saved/requests/<随机 AssetId>/ 独占产物，不覆盖旧目录；验证完�
 
 ## 修改与验证
 
-代码入口 rendercore/material/material.h、material_instance、material_render_proxy；Editor source/material/material_shader_workflow.h。测试 core/material/tests/material_asset_tests.cpp，editor/tests/material_edit_tests.cpp、material_assignment_tests.cpp、material_shader_tests.cpp、material_ui_tests.cpp。
+代码入口 rendercore/material/material.h、material_instance、material_render_proxy；Editor source/assets/material/material_shader_workflow.h。测试 core/tests/material_asset_tests.cpp，editor/tests/material_edit_tests.cpp、material_assignment_tests.cpp、material_shader_tests.cpp、material_ui_tests.cpp。
 
 覆盖继承/cycle/孤儿字段、原子 setter、Texture generation、草稿与共享配置隔离、Save 冲突、同 key 新候选、过期请求、真实 compiler 失败、include escape/循环、GPU 预检与回滚、退出取消。测试写 build 隔离目录，不改用户 asset；普通帧不 flush。

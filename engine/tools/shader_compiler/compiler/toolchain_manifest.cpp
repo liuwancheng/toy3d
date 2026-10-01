@@ -5,6 +5,8 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "platform/platform_defines.h"
+
 namespace toy3d::shader
 {
     // Manifest parsing uses optional for required values that may be rejected
@@ -177,17 +179,17 @@ namespace toy3d::shader
 
     std::string shader_toolchain_host_platform()
     {
-#if defined(_WIN32) && defined(_M_X64)
+#if WITH_WIN && TOY3D_ARCH_X64
         return "windows-x64";
-#elif defined(_WIN32) && defined(_M_ARM64)
+#elif WITH_WIN && TOY3D_ARCH_ARM64
         return "windows-arm64";
-#elif defined(__APPLE__) && defined(__aarch64__)
+#elif WITH_MAC && TOY3D_ARCH_ARM64
         return "macos-arm64";
-#elif defined(__APPLE__) && defined(__x86_64__)
+#elif WITH_MAC && TOY3D_ARCH_X64
         return "macos-x64";
-#elif defined(__linux__) && defined(__aarch64__)
+#elif WITH_LINUX && TOY3D_ARCH_ARM64
         return "linux-arm64";
-#elif defined(__linux__) && defined(__x86_64__)
+#elif WITH_LINUX && TOY3D_ARCH_X64
         return "linux-x64";
 #else
         return "unknown";
@@ -245,7 +247,7 @@ namespace toy3d::shader
         load_artifact(*fields, "dxc_library", manifest.dxc_library, result.diagnostics);
         load_artifact(*fields, "spirv_val", manifest.spirv_val, result.diagnostics);
         load_artifact(*fields, "spirv_reflect", manifest.spirv_reflect, result.diagnostics);
-#if defined(_WIN32)
+#if WITH_WIN
         load_artifact(*fields, "spirv_reflect_debug", manifest.spirv_reflect_debug, result.diagnostics);
 #endif
         load_artifact(*fields, "spirv_reflect_header", manifest.spirv_reflect_header, result.diagnostics);
@@ -274,7 +276,7 @@ namespace toy3d::shader
                         discovered.spirv_val_path, result.diagnostics);
         verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_reflect, "SPIRV-Reflect",
                         discovered.spirv_reflect_path, result.diagnostics);
-#if defined(_WIN32)
+#if WITH_WIN
         verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_reflect_debug,
                         "SPIRV-Reflect Debug", discovered.spirv_reflect_debug_path, result.diagnostics);
 #endif

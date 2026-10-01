@@ -2,7 +2,7 @@
 
 #include <string>
 #include "math/vector2.h"
-#include "asset_tools/material_asset_tools.h"
+#include "assets/material/material_asset_tools.h"
 
 namespace toy3d
 {

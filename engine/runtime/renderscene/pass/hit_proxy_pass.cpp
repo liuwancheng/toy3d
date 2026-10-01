@@ -14,7 +14,7 @@
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_graphics_state.h"
 #include "rendercore/shader/shader_parameters.h"
-#include "renderscene/geometry/static_mesh_render_data.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/view/view_info.h"
 #include "shader_parameters/toy3d_editor_hitproxy.generated.h"

@@ -1,201 +1,231 @@
-add_library(Toy3dText INTERFACE)
-target_compile_features(Toy3dText INTERFACE cxx_std_17)
-target_include_directories(Toy3dText
-    INTERFACE
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-
-add_library(Toy3dFileSystem STATIC)
-target_sources(Toy3dFileSystem
-    PRIVATE
-        "file_system/file_error.cpp"
-        "file_system/file_error.h"
-        "file_system/file_handle.h"
-        "file_system/file_store.h"
-        "file_system/file_system.cpp"
-        "file_system/file_system.h"
-        "file_system/directory_file_store.cpp"
-        "file_system/directory_file_store.h"
-        "file_system/native_platform_file.cpp"
-        "file_system/native_platform_file.h"
-        "file_system/physical_path.cpp"
-        "file_system/physical_path.h"
-        "file_system/platform_file.h"
-        "file_system/store_path.cpp"
-        "file_system/store_path.h"
-        "file_system/virtual_path.cpp"
-        "file_system/virtual_path.h")
-target_compile_features(Toy3dFileSystem PUBLIC cxx_std_17)
-set_target_properties(Toy3dFileSystem PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dFileSystem
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dFileSystem PUBLIC Toy3dText)
-
-add_library(Toy3dReflection STATIC)
-target_sources(Toy3dReflection
-    PRIVATE
-        "reflection/reflection_macros.h"
-        "reflection/type_registry.cpp"
-        "reflection/type_registry.h")
-target_compile_features(Toy3dReflection PUBLIC cxx_std_17)
-set_target_properties(Toy3dReflection PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dReflection
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-
-add_library(Toy3dSerialization STATIC)
-target_sources(Toy3dSerialization
-    PRIVATE
-        "serialization/math_value_codec.cpp"
-        "serialization/math_value_codec.h"
-        "serialization/schema_migration.cpp"
-        "serialization/schema_migration.h"
-        "serialization/value_codec.cpp"
-        "serialization/value_codec.h")
-target_compile_features(Toy3dSerialization PUBLIC cxx_std_17)
-set_target_properties(Toy3dSerialization PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dSerialization
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dSerialization PUBLIC Toy3dReflection Toy3dText Toy3dMath)
-
-add_library(Toy3dLogging STATIC)
-target_sources(Toy3dLogging
-    PRIVATE
-        "logging/logger.cpp"
-        "logging/logger.h")
-target_compile_features(Toy3dLogging PUBLIC cxx_std_17)
-set_target_properties(Toy3dLogging PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dLogging
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dLogging PUBLIC spdlog)
-
-add_library(Toy3dPixelFormat STATIC)
-target_sources(Toy3dPixelFormat
-    PRIVATE
-        "pixel_format/pixel_format.cpp"
-        "pixel_format/pixel_format.h")
-target_compile_features(Toy3dPixelFormat PUBLIC cxx_std_17)
-set_target_properties(Toy3dPixelFormat PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dPixelFormat
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-
-add_library(Toy3dMath STATIC)
-target_sources(Toy3dMath
-    PRIVATE
-        "math/angle.h"
-        "math/geometry/convex_volume.cpp"
-        "math/geometry/convex_volume.h"
-        "math/geometry/plane.cpp"
-        "math/geometry/plane.h"
-        "math/integer_vector.h"
-        "math/length_units.h"
-        "math/matrix3.cpp"
-        "math/matrix3.h"
-        "math/matrix_construction.cpp"
-        "math/matrix_construction.h"
-        "math/matrix4.cpp"
-        "math/matrix4.h"
-        "math/math.cpp"
-        "math/math.h"
-        "math/math_constants.h"
-        "math/quaternion.cpp"
-        "math/quaternion.h"
-        "math/random.h"
-        "math/scalar_math.h"
-        "math/transform.cpp"
-        "math/transform.h"
-        "math/vector2.h"
-        "math/vector3.h"
-        "math/vector4.h"
-        "misc/enum_class_utils.h")
-target_compile_features(Toy3dMath PUBLIC cxx_std_17)
-set_target_properties(Toy3dMath PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dMath
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dMath PUBLIC glm::glm)
-if(WIN32)
-    # Toy3dMath publicly declares min/max functions, so every Windows consumer
-    # must suppress the conflicting windows.h function-like macros.
-    target_compile_definitions(Toy3dMath PUBLIC NOMINMAX)
-endif()
-
 find_package(Threads REQUIRED)
 
-add_library(Toy3dThreading STATIC)
-target_sources(Toy3dThreading
-    PRIVATE
-        "threading/event.cpp"
-        "threading/event.h"
-        "threading/containers/bounded_mpmc_queue.h"
-        "threading/containers/queue.h"
-        "threading/runnable.h"
-        "threading/runnable_thread.cpp"
-        "threading/runnable_thread.h"
-        "threading/thread.cpp"
-        "threading/thread.h"
-        "threading/thread_manager.cpp"
-        "threading/thread_manager.h"
-        "threading/threading_types.h")
-target_compile_features(Toy3dThreading PUBLIC cxx_std_17)
-set_target_properties(Toy3dThreading PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dThreading
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dThreading PRIVATE Threads::Threads)
+add_library(Toy3dCore STATIC)
+target_sources(Toy3dCore PRIVATE
+    "file_system/directory_file_store.cpp"
+    "file_system/directory_file_store.h"
+    "file_system/file_error.cpp"
+    "file_system/file_error.h"
+    "file_system/file_handle.h"
+    "file_system/file_store.h"
+    "file_system/file_system.cpp"
+    "file_system/file_system.h"
+    "file_system/native_platform_file.cpp"
+    "file_system/native_platform_file.h"
+    "file_system/physical_path.cpp"
+    "file_system/physical_path.h"
+    "file_system/platform_file.h"
+    "file_system/store_path.cpp"
+    "file_system/store_path.h"
+    "file_system/virtual_path.cpp"
+    "file_system/virtual_path.h"
+    "image/pixel_format.cpp"
+    "image/pixel_format.h"
+    "image/png_codec.cpp"
+    "image/png_codec.h"
+    "logging/logger.cpp"
+    "logging/logger.h"
+    "math/angle.h"
+    "math/geometry/convex_volume.cpp"
+    "math/geometry/convex_volume.h"
+    "math/geometry/plane.cpp"
+    "math/geometry/plane.h"
+    "math/integer_vector.h"
+    "math/length_units.h"
+    "math/math.cpp"
+    "math/math.h"
+    "math/math_constants.h"
+    "math/matrix3.cpp"
+    "math/matrix3.h"
+    "math/matrix4.cpp"
+    "math/matrix4.h"
+    "math/matrix_construction.cpp"
+    "math/matrix_construction.h"
+    "math/quaternion.cpp"
+    "math/quaternion.h"
+    "math/random.h"
+    "math/scalar_math.h"
+    "math/transform.cpp"
+    "math/transform.h"
+    "math/vector2.h"
+    "math/vector3.h"
+    "math/vector4.h"
+    "misc/enum_class_utils.h"
+    "misc/sha256.cpp"
+    "misc/sha256.h"
+    "misc/utf8.h"
+    "platform/platform_defines.h"
+    "process/process.cpp"
+    "process/process.h"
+    "reflection/reflection_macros.h"
+    "reflection/type_registry.cpp"
+    "reflection/type_registry.h"
+    "serialization/math_value_codec.cpp"
+    "serialization/math_value_codec.h"
+    "serialization/schema_migration.cpp"
+    "serialization/schema_migration.h"
+    "serialization/value_codec.cpp"
+    "serialization/value_codec.h"
+    "threading/containers/bounded_mpmc_queue.h"
+    "threading/containers/queue.h"
+    "threading/event.cpp"
+    "threading/event.h"
+    "threading/runnable.h"
+    "threading/runnable_thread.cpp"
+    "threading/runnable_thread.h"
+    "threading/task_graph/base_graph_task.cpp"
+    "threading/task_graph/base_graph_task.h"
+    "threading/task_graph/graph_event.cpp"
+    "threading/task_graph/graph_event.h"
+    "threading/task_graph/graph_task.cpp"
+    "threading/task_graph/graph_task.h"
+    "threading/task_graph/stalling_task_queue.cpp"
+    "threading/task_graph/stalling_task_queue.h"
+    "threading/task_graph/task_graph.cpp"
+    "threading/task_graph/task_graph.h"
+    "threading/task_graph/task_graph_interface.h"
+    "threading/task_graph/task_graph_types.h"
+    "threading/thread.cpp"
+    "threading/thread.h"
+    "threading/thread_manager.cpp"
+    "threading/thread_manager.h"
+    "threading/threading_types.h"
+)
+target_compile_features(Toy3dCore PUBLIC cxx_std_17)
+set_target_properties(Toy3dCore PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
+target_include_directories(Toy3dCore PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+    PRIVATE "${THIRD_PARTY_DIR}/stb")
+target_link_libraries(Toy3dCore PUBLIC glm::glm spdlog PRIVATE Threads::Threads)
+target_compile_options(Toy3dCore PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+if(WIN32)
+    target_compile_definitions(Toy3dCore PUBLIC NOMINMAX)
+endif()
 
-add_library(Toy3dTaskGraph STATIC)
-target_sources(Toy3dTaskGraph
-    PRIVATE
-        "task_graph/base_graph_task.cpp"
-        "task_graph/base_graph_task.h"
-        "task_graph/graph_event.cpp"
-        "task_graph/graph_event.h"
-        "task_graph/graph_task.cpp"
-        "task_graph/graph_task.h"
-        "task_graph/stalling_task_queue.cpp"
-        "task_graph/stalling_task_queue.h"
-        "task_graph/task_graph.cpp"
-        "task_graph/task_graph.h"
-        "task_graph/task_graph_interface.h"
-        "task_graph/task_graph_types.h")
-target_compile_features(Toy3dTaskGraph PUBLIC cxx_std_17)
-set_target_properties(Toy3dTaskGraph PROPERTIES
-    CXX_EXTENSIONS OFF
-    FOLDER "Engine/Core")
-target_include_directories(Toy3dTaskGraph
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
-target_link_libraries(Toy3dTaskGraph PUBLIC Toy3dThreading)
+add_library(Toy3dShaderFormat STATIC)
+target_sources(Toy3dShaderFormat PRIVATE
+    "shader/builtin_shader_parameters.h"
+    "shader/shader_binding_identity.h"
+    "shader/shader_editor_properties.cpp"
+    "shader/shader_editor_properties.h"
+    "shader/shader_format_hash.cpp"
+    "shader/shader_format_types.h"
+    "shader/shader_map_entry.h"
+    "shader/shader_map_entry_reader.cpp"
+    "shader/shader_parameter_schema.cpp"
+)
+target_compile_features(Toy3dShaderFormat PUBLIC cxx_std_17)
+set_target_properties(Toy3dShaderFormat PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
+target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dCore)
+target_compile_definitions(Toy3dShaderFormat PRIVATE WITH_EDITORONLY_DATA=$<BOOL:${TOY3D_SHADER_EDITORONLY_DATA}>)
 
-add_subdirectory(hash)
-add_subdirectory(image_codec)
-add_subdirectory(asset)
-add_subdirectory(asset_thumbnail)
-add_subdirectory(mesh_description)
-add_subdirectory(static_mesh)
-add_subdirectory(material)
-add_subdirectory(scene_data)
-add_subdirectory(scene_asset)
-add_subdirectory(texture_asset)
-add_subdirectory(process)
+add_library(Toy3dAssets STATIC)
+target_sources(Toy3dAssets PRIVATE
+    "asset/asset_catalog.cpp"
+    "asset/asset_catalog.h"
+    "asset/asset_descriptor_path.cpp"
+    "asset/asset_descriptor_path.h"
+    "asset/asset_file.cpp"
+    "asset/asset_file.h"
+    "asset/asset_format_migration.cpp"
+    "asset/asset_identity.cpp"
+    "asset/asset_identity.h"
+    "asset/asset_index.cpp"
+    "asset/asset_index.h"
+    "asset/asset_meta.cpp"
+    "asset/asset_meta.h"
+    "asset/asset_pair.cpp"
+    "asset/asset_pair.h"
+    "asset/asset_pair_store.cpp"
+    "asset/asset_pair_store.h"
+    "asset/asset_value_codec.cpp"
+    "asset/asset_yaml.cpp"
+    "asset/asset_yaml.h"
+    "asset/edit_session.h"
+    "asset/material/material_asset.cpp"
+    "asset/material/material_asset.h"
+    "asset/material/material_asset_data.h"
+    "asset/mesh/mesh_description.cpp"
+    "asset/mesh/mesh_description.h"
+    "asset/mesh/static_mesh_asset.cpp"
+    "asset/mesh/static_mesh_asset.h"
+    "asset/mesh/static_mesh_asset_data.h"
+    "asset/property_path.cpp"
+    "asset/property_path.h"
+    "asset/scene/component_settings.cpp"
+    "asset/scene/component_settings.h"
+    "asset/scene/scene_asset.cpp"
+    "asset/scene/scene_asset.h"
+    "asset/scene/scene_asset_data.h"
+    "asset/texture/texture_asset.cpp"
+    "asset/texture/texture_asset.h"
+    "asset/texture/texture_asset_data.h"
+    "asset/thumbnail/asset_thumbnail.cpp"
+    "asset/thumbnail/asset_thumbnail.h"
+)
+target_compile_features(Toy3dAssets PUBLIC cxx_std_17)
+set_target_properties(Toy3dAssets PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
+target_link_libraries(Toy3dAssets PUBLIC Toy3dCore Toy3dShaderFormat PRIVATE yaml-cpp Threads::Threads)
+set(TOY3D_ASSET_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_include_directories(Toy3dAssets PUBLIC "$<BUILD_INTERFACE:${TOY3D_ASSET_GENERATED_DIR}>")
+
+# Reflection registration is generated by the standalone scanner, never by Runtime.
+set(TOY3D_GENERATED_HEADER "${TOY3D_ASSET_GENERATED_DIR}/material_asset_reflection.h")
+set(TOY3D_GENERATED_SOURCE "${TOY3D_ASSET_GENERATED_DIR}/material_asset_reflection.cpp")
+add_custom_command(
+    OUTPUT "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_ASSET_GENERATED_DIR}"
+    COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
+        --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/material/material_asset_data.h"
+        --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
+        --function register_material_asset_types
+    DEPENDS Toy3dReflectionCodegen
+        "${CMAKE_CURRENT_SOURCE_DIR}/asset/material/material_asset_data.h"
+    VERBATIM)
+target_sources(Toy3dAssets PRIVATE "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}")
+
+set(TOY3D_GENERATED_HEADER "${TOY3D_ASSET_GENERATED_DIR}/static_mesh_reflection.h")
+set(TOY3D_GENERATED_SOURCE "${TOY3D_ASSET_GENERATED_DIR}/static_mesh_reflection.cpp")
+add_custom_command(
+    OUTPUT "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_ASSET_GENERATED_DIR}"
+    COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
+        --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/mesh/static_mesh_asset_data.h"
+        --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
+        --function register_static_mesh_asset_types
+    DEPENDS Toy3dReflectionCodegen
+        "${CMAKE_CURRENT_SOURCE_DIR}/asset/mesh/static_mesh_asset_data.h"
+    VERBATIM)
+target_sources(Toy3dAssets PRIVATE "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}")
+
+set(TOY3D_GENERATED_HEADER "${TOY3D_ASSET_GENERATED_DIR}/texture_asset_reflection.h")
+set(TOY3D_GENERATED_SOURCE "${TOY3D_ASSET_GENERATED_DIR}/texture_asset_reflection.cpp")
+add_custom_command(
+    OUTPUT "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_ASSET_GENERATED_DIR}"
+    COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
+        --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/texture/texture_asset_data.h"
+        --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
+        --function register_texture_asset_types
+    DEPENDS Toy3dReflectionCodegen
+        "${CMAKE_CURRENT_SOURCE_DIR}/asset/texture/texture_asset_data.h"
+    VERBATIM)
+target_sources(Toy3dAssets PRIVATE "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}")
+
+set(TOY3D_GENERATED_HEADER "${TOY3D_ASSET_GENERATED_DIR}/scene_asset_reflection.h")
+set(TOY3D_GENERATED_SOURCE "${TOY3D_ASSET_GENERATED_DIR}/scene_asset_reflection.cpp")
+add_custom_command(
+    OUTPUT "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_ASSET_GENERATED_DIR}"
+    COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
+        --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/scene/component_settings.h"
+        --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/scene/scene_asset_data.h"
+        --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
+        --function register_scene_asset_types
+    DEPENDS Toy3dReflectionCodegen
+        "${CMAKE_CURRENT_SOURCE_DIR}/asset/scene/component_settings.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/asset/scene/scene_asset_data.h"
+    VERBATIM)
+target_sources(Toy3dAssets PRIVATE "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}")
 
 if(BUILD_TESTING)
     add_executable(Toy3dSerializationTests "tests/serialization_tests.cpp")
@@ -203,7 +233,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dSerializationTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dSerializationTests PRIVATE Toy3dSerialization)
+    target_link_libraries(Toy3dSerializationTests PRIVATE Toy3dCore)
     add_test(NAME Toy3dCore.Serialization COMMAND Toy3dSerializationTests)
 
     add_executable(Toy3dTextTests "tests/text_tests.cpp")
@@ -211,7 +241,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dTextTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dTextTests PRIVATE Toy3dText)
+    target_link_libraries(Toy3dTextTests PRIVATE Toy3dCore)
     add_test(NAME Toy3dCore.Text COMMAND Toy3dTextTests)
 
     add_executable(Toy3dReflectionTests "tests/reflection_tests.cpp")
@@ -219,7 +249,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dReflectionTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dReflectionTests PRIVATE Toy3dReflection Threads::Threads)
+    target_link_libraries(Toy3dReflectionTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dCore.Reflection COMMAND Toy3dReflectionTests)
 
     add_executable(Toy3dPixelFormatTests "tests/pixel_format_tests.cpp")
@@ -227,7 +257,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dPixelFormatTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dPixelFormatTests PRIVATE Toy3dPixelFormat)
+    target_link_libraries(Toy3dPixelFormatTests PRIVATE Toy3dCore)
     add_test(NAME Toy3dCore.PixelFormat COMMAND Toy3dPixelFormatTests)
 
     add_executable(Toy3dMathTests "tests/math_tests.cpp")
@@ -235,7 +265,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dMathTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dMathTests PRIVATE Toy3dMath)
+    target_link_libraries(Toy3dMathTests PRIVATE Toy3dCore)
     add_test(NAME Toy3dCore.Math COMMAND Toy3dMathTests)
 
     add_executable(Toy3dFileSystemTests "tests/file_system_tests.cpp")
@@ -243,7 +273,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dFileSystemTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dFileSystemTests PRIVATE Toy3dFileSystem Threads::Threads)
+    target_link_libraries(Toy3dFileSystemTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dCore.FileSystem COMMAND Toy3dFileSystemTests)
 
     add_executable(Toy3dThreadingTests "tests/threading_tests.cpp")
@@ -251,7 +281,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dThreadingTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dThreadingTests PRIVATE Toy3dThreading Threads::Threads)
+    target_link_libraries(Toy3dThreadingTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dCore.Threading COMMAND Toy3dThreadingTests)
 
     add_executable(Toy3dQueueTests "tests/queue_tests.cpp")
@@ -259,7 +289,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dQueueTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dQueueTests PRIVATE Toy3dThreading Threads::Threads)
+    target_link_libraries(Toy3dQueueTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dCore.Queue COMMAND Toy3dQueueTests)
 
     add_executable(Toy3dTaskGraphTests "tests/task_graph_tests.cpp")
@@ -267,7 +297,7 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dTaskGraphTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dTaskGraphTests PRIVATE Toy3dTaskGraph Threads::Threads)
+    target_link_libraries(Toy3dTaskGraphTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dCore.TaskGraph COMMAND Toy3dTaskGraphTests)
 
     add_executable(Toy3dTaskGraphSchedulerTests "tests/task_graph_scheduler_tests.cpp")
@@ -275,6 +305,58 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dTaskGraphSchedulerTests PROPERTIES
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
-    target_link_libraries(Toy3dTaskGraphSchedulerTests PRIVATE Toy3dTaskGraph Threads::Threads)
+    target_link_libraries(Toy3dTaskGraphSchedulerTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dCore.TaskGraphScheduler COMMAND Toy3dTaskGraphSchedulerTests)
+endif()
+if(BUILD_TESTING)
+    add_executable(Toy3dAssetFileTests "tests/asset_file_tests.cpp")
+    target_compile_features(Toy3dAssetFileTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dAssetFileTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dAssetFileTests PRIVATE Toy3dAssets)
+    add_test(NAME Toy3dAssets.AssetFile COMMAND Toy3dAssetFileTests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(Toy3dAssetThumbnailTests "tests/asset_thumbnail_tests.cpp")
+    target_compile_features(Toy3dAssetThumbnailTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dAssetThumbnailTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dAssetThumbnailTests PRIVATE Toy3dAssets Toy3dCore)
+    add_test(NAME Toy3dAsset.Thumbnail COMMAND Toy3dAssetThumbnailTests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(Toy3dMaterialAssetTests "tests/material_asset_tests.cpp")
+    target_compile_features(Toy3dMaterialAssetTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dMaterialAssetTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Core")
+    target_link_libraries(Toy3dMaterialAssetTests PRIVATE Toy3dAssets)
+    add_test(NAME Toy3dCore.MaterialAsset COMMAND Toy3dMaterialAssetTests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(Toy3dProcessHelper "tests/process_helper.cpp")
+    add_executable(Toy3dProcessTests "tests/process_tests.cpp")
+    set(TOY3D_PROCESS_TEST_TARGETS Toy3dProcessHelper Toy3dProcessTests)
+    if(WIN32)
+        add_executable(Toy3dWindowsProcessCleanupTests "tests/windows_cleanup_tests.cpp")
+        target_link_libraries(Toy3dWindowsProcessCleanupTests PRIVATE Toy3dCore)
+        list(APPEND TOY3D_PROCESS_TEST_TARGETS Toy3dWindowsProcessCleanupTests)
+        add_test(NAME Toy3dCore.WindowsProcessCleanup
+            COMMAND Toy3dWindowsProcessCleanupTests "$<TARGET_FILE:Toy3dProcessHelper>")
+        set_tests_properties(Toy3dCore.WindowsProcessCleanup PROPERTIES TIMEOUT 15)
+    endif()
+    foreach(TOY3D_PROCESS_TEST_TARGET IN LISTS TOY3D_PROCESS_TEST_TARGETS)
+        target_link_libraries(${TOY3D_PROCESS_TEST_TARGET} PRIVATE Toy3dCore)
+        target_compile_features(${TOY3D_PROCESS_TEST_TARGET} PRIVATE cxx_std_17)
+        set_target_properties(${TOY3D_PROCESS_TEST_TARGET} PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+        if(MSVC)
+            target_compile_options(${TOY3D_PROCESS_TEST_TARGET} PRIVATE /utf-8)
+        endif()
+    endforeach()
+    target_link_libraries(Toy3dProcessTests PRIVATE Toy3dCore)
+    add_dependencies(Toy3dProcessTests Toy3dProcessHelper)
+    if(WIN32)
+        add_dependencies(Toy3dWindowsProcessCleanupTests Toy3dProcessHelper)
+    endif()
+    add_test(NAME Toy3dCore.Process COMMAND Toy3dProcessTests "$<TARGET_FILE:Toy3dProcessHelper>")
+    set_tests_properties(Toy3dCore.Process PROPERTIES TIMEOUT 20)
 endif()

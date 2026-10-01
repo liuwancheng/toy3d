@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gamescene/component/scene_component.h"
-#include "scene_data/component_settings.h"
+#include "asset/scene/component_settings.h"
 #include "math/vector3.h"
 #include "rendercore/scene/light_scene_proxy.h"
 

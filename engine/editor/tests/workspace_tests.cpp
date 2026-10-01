@@ -1,9 +1,9 @@
 #include "workspace/editor_workspace.h"
 
-#include "asset_file.h"
-#include "asset_pair.h"
-#include "asset_tools/material_asset_tools.h"
-#include "scene_asset/scene_asset.h"
+#include "asset/asset_file.h"
+#include "asset/asset_pair.h"
+#include "assets/material/material_asset_tools.h"
+#include "asset/scene/scene_asset.h"
 
 #include <chrono>
 #include <filesystem>

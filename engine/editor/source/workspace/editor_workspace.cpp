@@ -1,16 +1,18 @@
 #include "workspace/editor_workspace.h"
-#include "asset_descriptor_path.h"
+#include "asset/asset_descriptor_path.h"
 
 #include "file_system/directory_file_store.h"
 #include "file_system/virtual_path.h"
-#include "material/material_asset.h"
-#include "scene_asset/scene_asset.h"
-#include "static_mesh/static_mesh_asset.h"
-#include "texture_asset/texture_asset.h"
+#include "asset/material/material_asset.h"
+#include "asset/scene/scene_asset.h"
+#include "asset/mesh/static_mesh_asset.h"
+#include "asset/texture/texture_asset.h"
 
 #include <algorithm>
 #include <cctype>
 #include <utility>
+
+#include "platform/platform_defines.h"
 
 namespace toy3d
 {
@@ -57,7 +59,7 @@ namespace toy3d
         {
             std::replace(path.begin(), path.end(), '\\', '/');
             while (path.size() > 1 && path.back() == '/') path.pop_back();
-#if defined(_WIN32)
+#if WITH_WIN
             std::transform(path.begin(), path.end(), path.begin(),
                            [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 #endif

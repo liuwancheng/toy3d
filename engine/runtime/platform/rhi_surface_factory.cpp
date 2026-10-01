@@ -2,7 +2,9 @@
 
 #include "platform/window_interface.h"
 
-#if WITH_WIN64
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #include "platform/win/win32_window.h"
 #elif WITH_MAC
 #include "platform/mac/mac_window.h"
@@ -19,7 +21,7 @@ namespace toy3d
         RHISurfaceDesc desc;
         desc.debug_name = "MainWindowSurface";
 
-#if WITH_WIN64
+#if WITH_WIN
         auto* win32_window = dynamic_cast<Win32Window*>(&window);
         if (win32_window == nullptr)
         {

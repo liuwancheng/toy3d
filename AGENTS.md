@@ -19,14 +19,15 @@
 | `engine/editor/` | Editor 入口、面板、资产编辑器和界面 resources |
 | `engine/tools/` | 离线 compiler、codegen、import/build 工具 |
 | `engine/shader/`、`engine/asset/`、`engine/config/` | 引擎 shader、内置资产、默认配置 |
-| `engine/build/`、`engine/template/` | 受版本管理的平台部署输入和模板 |
+| `engine/build/` | 受版本管理的平台部署输入和 plist 模板 |
 | `project/` | 验证项目代码、源码侧 asset/config/shader |
 | `document/` | 按功能维护的知识与规范 |
-| `.codex/skills/`、`.agents/skills/` | 按任务触发的方法，不复制模块知识 |
+| `.codex/skills/` | 仓库级任务方法，不复制模块知识 |
 | 根 `build/`、`bin/` | 构建与部署产物，不提交 |
 
 - runtime 代码放职责最近的模块，不建笼统的 runtime/core。工具不得依赖 runtime/editor 来复用能力；共享实现放 core，业务策略留调用方。
-- 新增文件、日志、进程、时间、任务、序列化、缓存、哈希、ID、分配器或容器前先搜索现有实现。即使仅一个调用方，确认通用的能力也成为独立 core target，不再封装语义重复的系统。
+- 新增文件、日志、进程、时间、任务、序列化、缓存、哈希、ID、分配器或容器前先搜索现有实现。通用能力归入 Core 中职责最近的功能目录，不再封装语义重复的系统，也不按每个类或小功能新建 target。
+- 目录表达功能，target 表达独立依赖、构建选项或部署边界。共享库统一为 Toy3dCore、Toy3dShaderFormat、Toy3dAssets；资产处理复用 Toy3dAssetPipeline，Editor 共用代码放 Toy3dEditorCore。新增库须有不能被现有模块承载的稳定边界；不保留旧路径转发头或旧 target 别名。
 - 共享服务优先接口注入，由 composition root 持有；不新增不可替换全局单例。现有受控 active 入口见模块文档，不构成扩大全局状态的理由。
 - Shader include 白名单、ShaderMap key、RHI resource state、pass 调度留各业务模块。重复基础设施停止扩展，设计共享入口，按可独立验证的小批次迁移并删除旧入口，不长期双轨。
 - Editor 写源码侧 project/asset，禁止写 bin 部署副本；资产子目录由使用者组织。engine/build 不是根构建目录。除升级依赖外不修改 engine/thirdparty。
@@ -35,6 +36,7 @@
 
 - 第一方 C++17、UTF-8、四空格缩进。文件/函数/变量 snake_case，类型/target PascalCase，宏 UPPER_SNAKE_CASE；只整理直接涉及区域。
 - 头文件 `#pragma once`、可独立包含、无 using namespace；cpp 先对应头，再标准库、第三方、项目头。多态基类虚析构、重写 override、单参数构造默认 explicit、无行为构造/析构 = default。
+- 第一方 C++ 平台判断先显式包含 `platform/platform_defines.h`，统一用 `#if WITH_WIN` 等数值判断；原生 OS/架构宏只在该入口检测，禁止使用 `WITH_WIN64` 或依赖 PCH、runtime/generated/defines.h、全局编译定义。OS 与 CPU 架构分开，架构用 `TOY3D_ARCH_X64/TOY3D_ARCH_ARM64`；系统能力宏仍在具体实现检查，宏为真不代表模块已支持该平台。定义和最小示例见 `document/core.md`。
 - 初始化所有值和原生句柄，禁止 C 风格转换。RAII 管资源，独占 unique_ptr，确有共享所有权才 shared_ptr；新代码不直接 new/delete。
 - 新类型必须表达稳定的领域、所有权、生命周期、同步或错误语义。禁止只为访问控制、模板或第三方 API 增加 Key/Token/Enabler/Storage 伪概念；先简化 factory/private constructor/智能指针完整创建链。不可替代例外限 cpp 并解释原因。
 - 优先普通函数、重载和显式分支；固定少量 variant 类型优先 get_if。visitor、泛型 lambda、SFINAE、tag dispatch、复杂 traits 只在实质减少复杂度时使用。
@@ -54,7 +56,7 @@
 
 - 根文件声明 cmake_minimum_required/project，不复制历史重复。第一方 target 用 target_compile_features(... cxx_std_17) 并关闭扩展；配置绑定具体 target，正确区分 PRIVATE/PUBLIC/INTERFACE。
 - 变量 TOY3D_UPPER_SNAKE_CASE，路径加双引号；平台顺序 WIN32、APPLE、ANDROID、其他 UNIX。后端独立选项/条件源码，配置检查 SDK/头/库。新源码优先显式 target_sources，glob 必须 CONFIGURE_DEPENDS。
-- 生成头写 build，target include 使用；engine/runtime/generated/defines.h 是待迁移历史，禁止扩展/手改。资源操作用 `${CMAKE_COMMAND} -E`，构建后命令明确 POST_BUILD，禁止源码内构建。
+- 生成头写 build，target include 使用；部署资源根通过 Toy3dRuntime PRIVATE 编译定义提供，不在源码目录生成配置头。资源操作用 `${CMAKE_COMMAND} -E`，构建后命令明确 POST_BUILD，禁止源码内构建。
 - CMake 修改重新配置并构建受影响目标，只迁移直接相关旧配置。C++ 主 agent 分析/设计/实现/最终复查；完成后必须交 sub-agent 使用 verify-toy3d-build 独立构建/测试，再据结果修复。
 - 文档/skill 检查链接、结构、事实、示例与接口，不构建 C++。验证结果写交付/PR，不混入长期文档；未运行不声称通过。
 

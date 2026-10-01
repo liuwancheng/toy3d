@@ -2,9 +2,9 @@
 
 #include "compiler/shader_compiler.h"
 #include "compiler/variant_permutation.h"
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 #include "frontend/shader_ast.h"
-#include "format/shader_editor_properties.h"
+#include "shader/shader_editor_properties.h"
 
 #include <optional>
 

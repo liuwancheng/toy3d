@@ -6,7 +6,7 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
 #include "logging/logger.h"
-#include "renderscene/material/material_render_proxy.h"
+#include "rendercore/material/material_render_proxy.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/view/view_info.h"
 

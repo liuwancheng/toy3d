@@ -7,22 +7,26 @@
 #include <mutex>
 #include <system_error>
 
-#if defined(_WIN32)
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <Windows.h>
 #else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#if defined(__APPLE__)
+#if (WITH_MAC || WITH_IOS)
 #include <stdio.h>
-#elif defined(__linux__)
+#elif (WITH_LINUX || WITH_ANDROID)
 #include <sys/syscall.h>
 #endif
 #endif
 
-#include "text/utf8.h"
+#include "misc/utf8.h"
 
 namespace toy3d
 {
@@ -107,7 +111,7 @@ namespace toy3d
         fs::path to_native(const PhysicalPath& path)
         {
             fs::path native = fs::u8path(path.utf8());
-#if defined(_WIN32)
+#if WITH_WIN
             if (native.is_absolute())
             {
                 std::wstring text = native.lexically_normal().make_preferred().native();
@@ -121,7 +125,7 @@ namespace toy3d
 
         PhysicalPath from_native(const fs::path& path)
         {
-#if defined(_WIN32)
+#if WITH_WIN
             const std::wstring& text = path.native();
             if (text.compare(0u, 8u, L"\\\\?\\UNC\\") == 0u)
                 return PhysicalPath(fs::path(L"\\\\" + text.substr(8u)).u8string());
@@ -131,7 +135,7 @@ namespace toy3d
             return PhysicalPath(path.u8string());
         }
 
-#if defined(_WIN32)
+#if WITH_WIN
         FileResult<std::wstring> windows_api_path(const PhysicalPath& path)
         {
             // filesystem normalizes a trusted host path before adding Win32's
@@ -178,7 +182,7 @@ namespace toy3d
         class NativeFileHandle final : public FileHandle
         {
           public:
-#if defined(_WIN32)
+#if WITH_WIN
             NativeFileHandle(HANDLE handle, PhysicalPath path, bool readable, bool writable)
                 : handle_(handle), path_(std::move(path)), readable_(readable), writable_(writable)
             {
@@ -199,7 +203,7 @@ namespace toy3d
                 {
                     return FileResult<std::uint64_t>(invalid_state("size"));
                 }
-#if defined(_WIN32)
+#if WITH_WIN
                 LARGE_INTEGER value{};
                 if (!GetFileSizeEx(handle_, &value))
                 {
@@ -249,7 +253,7 @@ namespace toy3d
                 }
                 if (byte_count == 0)
                     return FileResult<std::size_t>(std::size_t{0});
-#if defined(_WIN32)
+#if WITH_WIN
                 const DWORD requested =
                     static_cast<DWORD>(std::min<std::size_t>(byte_count, std::numeric_limits<DWORD>::max()));
                 DWORD written = 0;
@@ -277,7 +281,7 @@ namespace toy3d
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
                     return FileResult<std::uint64_t>(invalid_state("tell"));
-#if defined(_WIN32)
+#if WITH_WIN
                 LARGE_INTEGER distance{};
                 LARGE_INTEGER position{};
                 if (!SetFilePointerEx(handle_, distance, &position, FILE_CURRENT))
@@ -300,7 +304,7 @@ namespace toy3d
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
                     return invalid_state("seek");
-#if defined(_WIN32)
+#if WITH_WIN
                 if (offset > static_cast<std::uint64_t>(std::numeric_limits<LONGLONG>::max()))
                 {
                     return handle_error(FileErrorCode::TooLarge, "seek", path_, "offset is too large");
@@ -335,7 +339,7 @@ namespace toy3d
                 {
                     return FileResult<std::size_t>(invalid_path("read_at", path_, "destination is null"));
                 }
-#if defined(_WIN32)
+#if WITH_WIN
                 LARGE_INTEGER current{};
                 LARGE_INTEGER zero{};
                 if (!SetFilePointerEx(handle_, zero, &current, FILE_CURRENT))
@@ -385,7 +389,7 @@ namespace toy3d
                     return invalid_state("flush");
                 if (!writable_)
                     return FileStatus::success();
-#if defined(_WIN32)
+#if WITH_WIN
                 if (!FlushFileBuffers(handle_))
                     return last_error("flush");
 #else
@@ -400,7 +404,7 @@ namespace toy3d
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
                     return FileStatus::success();
-#if defined(_WIN32)
+#if WITH_WIN
                 const HANDLE closing = handle_;
                 handle_ = INVALID_HANDLE_VALUE;
                 if (!CloseHandle(closing))
@@ -417,7 +421,7 @@ namespace toy3d
           private:
             bool is_open() const
             {
-#if defined(_WIN32)
+#if WITH_WIN
                 return handle_ != INVALID_HANDLE_VALUE;
 #else
                 return handle_ >= 0;
@@ -431,7 +435,7 @@ namespace toy3d
 
             FileStatus last_error(const char* operation) const
             {
-#if defined(_WIN32)
+#if WITH_WIN
                 return make_error(operation, path_,
                                   std::error_code(static_cast<int>(GetLastError()), std::system_category()));
 #else
@@ -443,7 +447,7 @@ namespace toy3d
             {
                 if (byte_count == 0)
                     return FileResult<std::size_t>(std::size_t{0});
-#if defined(_WIN32)
+#if WITH_WIN
                 const DWORD requested =
                     static_cast<DWORD>(std::min<std::size_t>(byte_count, std::numeric_limits<DWORD>::max()));
                 DWORD read_count = 0;
@@ -466,7 +470,7 @@ namespace toy3d
 #endif
             }
 
-#if defined(_WIN32)
+#if WITH_WIN
             mutable HANDLE handle_ = INVALID_HANDLE_VALUE;
 #else
             mutable int handle_ = -1;
@@ -482,7 +486,7 @@ namespace toy3d
     {
         PlatformFileCapabilities result;
         result.supports_atomic_replace = true;
-#if !defined(_WIN32) && !defined(__APPLE__) && !(defined(__linux__) && defined(SYS_renameat2))
+#if !WITH_WIN && !(WITH_MAC || WITH_IOS) && !((WITH_LINUX || WITH_ANDROID) && defined(SYS_renameat2))
         result.supports_atomic_rename = false;
 #endif
         return result;
@@ -497,7 +501,7 @@ namespace toy3d
         const fs::path native_path = to_native(path);
         const bool readable = mode == FileOpenMode::Read || mode == FileOpenMode::ReadWrite;
         const bool writable = mode != FileOpenMode::Read;
-#if defined(_WIN32)
+#if WITH_WIN
         const auto windows_path = windows_api_path(path);
         if (!windows_path.succeeded()) return FileResult<std::unique_ptr<FileHandle>>(windows_path.status());
         const DWORD access = (readable ? GENERIC_READ : 0u) | (writable ? GENERIC_WRITE : 0u);
@@ -780,7 +784,7 @@ namespace toy3d
                 return invalid_path("rename_no_replace", destination,
                                     "rename must stay within the same parent directory");
             }
-#if defined(_WIN32)
+#if WITH_WIN
             const auto windows_source = windows_api_path(source);
             const auto windows_destination = windows_api_path(destination);
             if (!windows_source.succeeded()) return windows_source.status();
@@ -790,12 +794,12 @@ namespace toy3d
                 return make_error("rename_no_replace", destination,
                                   std::error_code(static_cast<int>(GetLastError()), std::system_category()));
             }
-#elif defined(__APPLE__)
+#elif (WITH_MAC || WITH_IOS)
             if (::renamex_np(native_source.c_str(), native_destination.c_str(), RENAME_EXCL) != 0)
             {
                 return make_error("rename_no_replace", destination, std::error_code(errno, std::generic_category()));
             }
-#elif defined(__linux__) && defined(SYS_renameat2)
+#elif (WITH_LINUX || WITH_ANDROID) && defined(SYS_renameat2)
             constexpr unsigned int rename_no_replace = 1u;
             if (::syscall(SYS_renameat2, AT_FDCWD, native_source.c_str(), AT_FDCWD, native_destination.c_str(),
                           rename_no_replace) != 0)
@@ -832,7 +836,7 @@ namespace toy3d
             {
                 return invalid_path("replace", destination, "replace must stay within the same parent directory");
             }
-#if defined(_WIN32)
+#if WITH_WIN
             const auto windows_source = windows_api_path(source);
             const auto windows_destination = windows_api_path(destination);
             if (!windows_source.succeeded()) return windows_source.status();

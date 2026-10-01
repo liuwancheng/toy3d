@@ -28,7 +28,7 @@ case "${generator}" in
     Xcode)
         build_dir="${script_dir}/build/macos-xcode"
         cache_file="${build_dir}/CMakeCache.txt"
-        xcode_no_sign_config="${script_dir}/cmake/xcode_no_sign.xcconfig"
+        xcode_no_sign_config="${script_dir}/engine/build/mac/xcode_no_sign.xcconfig"
         if [[ -f "${cache_file}" ]] && ! grep -q '^CMAKE_CXX_COMPILER:' "${cache_file}"; then
             echo "Removing incomplete Xcode configuration: ${build_dir}"
             cmake -E remove_directory "${build_dir}"

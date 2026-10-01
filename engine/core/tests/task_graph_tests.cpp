@@ -1,6 +1,6 @@
-#include "task_graph/base_graph_task.h"
-#include "task_graph/graph_task.h"
-#include "task_graph/task_graph_interface.h"
+#include "threading/task_graph/base_graph_task.h"
+#include "threading/task_graph/graph_task.h"
+#include "threading/task_graph/task_graph_interface.h"
 
 #include <algorithm>
 #include <deque>

@@ -1,11 +1,13 @@
 #pragma once
 
+#include "platform/platform_defines.h"
+
 #include "drivers/rhi/rhi_device.h"
 #include "drivers/vulkan/vulkan_memory_manager.h"
 #include "drivers/vulkan/vulkan_upload_manager.h"
 #include "drivers/vulkan/vulkan_descriptor_pool_manager.h"
 
-#if WITH_WIN64
+#if WITH_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

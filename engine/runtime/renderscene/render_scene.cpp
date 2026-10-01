@@ -8,11 +8,11 @@
 #include "rendercore/render_command.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "renderscene/geometry/static_mesh_render_data.h"
-#include "renderscene/material/material_render_proxy.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
+#include "rendercore/material/material_render_proxy.h"
 #include "renderscene/primitive_scene_info.h"
-#include "renderscene/render_resource_manager.h"
-#include "task_graph/task_graph_interface.h"
+#include "rendercore/render_resource_manager.h"
+#include "threading/task_graph/task_graph_interface.h"
 
 namespace toy3d
 {

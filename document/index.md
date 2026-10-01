@@ -4,9 +4,9 @@
 
 | 任务 | 主文档 | 从哪里核对代码 |
 | --- | --- | --- |
-| 文件、进程、日志、文本、哈希、图像与格式能力 | [Core](core.md) | `engine/core/` 公共头及 CMake target |
+| 平台定义、文件、进程、日志、文本、哈希、图像与格式能力 | [Core](core.md) | `engine/core/` 公共头及 CMake target |
 | 坐标、矩阵、Transform、几何、厘米与角度 | [Math](math.md) | `engine/core/math/`、`engine/core/tests/math_tests.cpp` |
-| 线程、Queue、TaskGraph、等待/退出 | [Threading](threading.md) | `engine/core/threading/`、`engine/core/task_graph/` |
+| 线程、Queue、TaskGraph、等待/退出 | [Threading](threading.md) | `engine/core/threading/`、`engine/core/threading/task_graph/` |
 | 反射、序列化、Asset 身份、YAML/meta、导入/缓存 | [Assets](assets.md) | `engine/core/asset/`、reflection、serialization、`engine/tools/` |
 | Engine/Application、配置、输入、平台、资源部署 | [Runtime](runtime.md) | `engine/runtime/engine.*`、application、config、platform、input |
 | World/Actor/Component、注册、挂接、settings 更新 | [GameScene](gamescene.md) | `engine/runtime/gamescene/` |
@@ -14,7 +14,7 @@
 | View、可见性、MeshBatch、Shadow/Base/Tonemap/UI、预览 | [Renderer](renderer.md) | `engine/runtime/renderscene/` |
 | 公共 RHI、后端、GPU 状态/同步、binding、Vulkan/VMA/WSI | [RHI](rhi.md) | `engine/runtime/drivers/rhi/`、`drivers/vulkan/` |
 | Shader 语言/ABI/compiler/codegen/ShaderMap | [Shader](shader.md) | `engine/tools/shader_compiler/`、`rendercore/shader/`、[语法](shader-language-v1.ebnf) |
-| 材质、实例继承、参数、纹理、源码重编译/候选发布 | [Material](material.md) | `rendercore/material/`、`engine/core/material/`、Editor 工作流 |
+| 材质、实例继承、参数、纹理、源码重编译/候选发布 | [Material](material.md) | `rendercore/material/`、`engine/core/asset/material/`、Editor 工作流 |
 | 面板/组件/资产编辑器、Workspace、场景保存、撤销/异步 | [Editor](editor.md) | `engine/editor/`、其 tests |
 
 ## 使用与维护
@@ -30,4 +30,4 @@
 - `.codex/skills/design-rhi/`：公共 RHI/后端设计与审查方法，产品约束只在功能文档。
 - `.codex/skills/verify-toy3d-build/`：按改动范围独立构建/测试。
 - `.codex/skills/grilling/`：用户要求压力测试想法时使用。
-- `.agents/skills/openspec-*/`：显式 OpenSpec 工作流，关闭隐式触发。
+- OpenSpec skills：仅在用户显式选择该工作流时使用，以会话实际提供的安装位置为准。

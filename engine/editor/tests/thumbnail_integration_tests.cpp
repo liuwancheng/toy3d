@@ -10,7 +10,9 @@
 #include <utility>
 
 #include "imgui.h"
-#if WITH_WIN64
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #include <windows.h>
 #include <shlobj.h>
 #include "platform/win/win32_window.h"
@@ -19,21 +21,21 @@
 #include "config/command_line_parser.h"
 #include "engine.h"
 #include "file_system/native_platform_file.h"
-#include "image_codec/png_codec.h"
-#include "placement/actor_factory.h"
-#include "placement/asset_placement.h"
-#include "commands/editor_command_history.h"
+#include "image/png_codec.h"
+#include "scene/placement/actor_factory.h"
+#include "scene/placement/asset_placement.h"
+#include "scene/editor_command_history.h"
 #include "gamescene/world/world.h"
 #include "gamescene/actor/actor.h"
 #include "panels/content_browser_panel.h"
-#include "panels/static_mesh_import_dialog.h"
-#include "selection/editor_selection.h"
+#include "assets/mesh/static_mesh_import_dialog.h"
+#include "scene/editor_selection.h"
 #include "rendercore/frame_synchronization.h"
-#include "thumbnails/asset_thumbnail_pool.h"
+#include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
 #if WITH_MODEL_IMPORT
-#include "asset_tools/static_mesh_asset_tools.h"
-#include "asset_import/static_mesh_import.h"
+#include "assets/mesh/static_mesh_asset_tools.h"
+#include "asset_pipeline/static_mesh_import.h"
 #endif
 
 namespace
@@ -58,7 +60,7 @@ namespace
         bool on_initialize() override
         {
             ImGui::GetIO().IniFilename = nullptr;
-#if WITH_WIN64
+#if WITH_WIN
             if (!verify_native_drop()) return false;
 #endif
             return factory_.initialize();
@@ -211,7 +213,7 @@ namespace
             history_.clear();
             return true;
         }
-#if WITH_WIN64
+#if WITH_WIN
         bool verify_native_drop()
         {
             auto* native = dynamic_cast<Win32Window*>(&window());
@@ -379,7 +381,7 @@ int main()
         config.path = PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
         engine.set_shader_load_config(std::move(config));
         engine.set_application(std::make_unique<ThumbnailTestApplication>(workspace, first, second, state));
-#if WITH_WIN64
+#if WITH_WIN
         engine.init(static_cast<void*>(GetModuleHandleW(nullptr)));
 #else
         engine.init(nullptr);

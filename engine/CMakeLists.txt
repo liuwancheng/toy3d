@@ -1,7 +1,3 @@
-
-cmake_minimum_required(VERSION 3.19)
-project(Toy3dEngine)
-
 set(ENGINE_ROOT_DIR "${TOY3D_ROOT_DIR}/engine")
 set(THIRD_PARTY_DIR "${ENGINE_ROOT_DIR}/thirdparty")
 set(ENGINE_RUNTIME_DIR "${ENGINE_ROOT_DIR}/runtime")
@@ -33,15 +29,6 @@ else()
   message(FATAL_ERROR "unknown platform")
 endif()
 
-# 生成配置头文件
-set(ENGINE_ASSET_ROOT "${BINARY_ROOT_DIR}") 
-set(ENGINE_SAVED_ROOT "${BINARY_ROOT_DIR}saved") 
-
-configure_file(
-  ${ENGINE_ROOT_DIR}/template/defines.h.in
-  ${ENGINE_RUNTIME_DIR}/generated/defines.h
-)
-
 # 构建子文件夹cmake工程
 add_subdirectory(thirdparty)
 add_subdirectory(core)
@@ -49,4 +36,8 @@ add_subdirectory(core)
 add_subdirectory(tools)
 add_subdirectory(shader)
 add_subdirectory(runtime)
-add_subdirectory(editor)
+if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
+    add_subdirectory(editor)
+else()
+    message(STATUS "Toy3dEditor is disabled: development ShaderMapEntry loading is required.")
+endif()

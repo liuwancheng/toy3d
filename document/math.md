@@ -2,7 +2,7 @@
 
 ## 定位与基线
 
-target Toy3dMath，公共头 engine/core/math/math.h 及同目录专项头；测试 engine/core/tests/math_tests.cpp。Shader、场景、导入、Editor、RHI 共用：
+target Toy3dCore，公共头 engine/core/math/math.h 及同目录专项头；测试 engine/core/tests/math_tests.cpp。Shader、场景、导入、Editor、RHI 共用：
 
 | 项 | 固定语义 |
 | --- | --- |
@@ -32,7 +32,7 @@ Transform 是 positive-scale TRS；分解拒绝 shear、镜像/负 scale、零 s
 
 Perspective 默认 fov=π/3 rad、aspect=1、near=10 cm、far=100000 cm；无限远仍有正 near。Orthographic 边界/near/far 是厘米且非退化。Plane 正半空间为 inside，有限 reversed-Z frustum 六平面、无限远五平面，不硬套传统深度公式；AABB 接触判 intersect。
 
-当前 math.h 仍公开部分 GLM aliases，Toy3dMath 传播 glm；这是实现边界未完全封闭，不应继续直接扩散第三方算法或宣称公共层已脱离 GLM。
+当前 math.h 仍公开部分 GLM aliases，Toy3dCore 传播 glm；这是实现边界未完全封闭，不应继续直接扩散第三方算法或宣称公共层已脱离 GLM。
 
 实际投影调用片段（matrix_construction.h；失败时调用方必须停止接管该 View，不使用未生成的矩阵）：
 

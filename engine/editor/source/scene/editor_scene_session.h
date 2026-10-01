@@ -1,7 +1,7 @@
 #pragma once
 
-#include "commands/editor_command_history.h"
-#include "scene_asset/scene_asset.h"
+#include "scene/editor_command_history.h"
+#include "asset/scene/scene_asset.h"
 #include <map>
 #include <string>
 #include <vector>

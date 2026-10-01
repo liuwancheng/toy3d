@@ -20,7 +20,7 @@ World/Actor/Component 的创建、注册、begin/end play、卸载有显式生�
 
 World 的 content revision 用于 Editor 脏状态/外部修改检测，不是帧号或 undo 栈深度。变更内容才增加，读取/纯渲染不增加；Undo 回到已保存内容需要正确身份判断，不能仅靠“同栈深”判干净。
 
-Scene DTO/反射在 core/scene_data、core/scene_asset，不能持 runtime 指针。当前 SceneActor/Scene schema 5 持久化 Component 身份、类型、settings、附着及阴影属性。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
+Scene DTO/反射在 core/asset/scene、core/asset/scene，不能持 runtime 指针。当前 SceneActor/Scene schema 5 持久化 Component 身份、类型、settings、附着及阴影属性。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
 
 ## 开发入口与验证
 

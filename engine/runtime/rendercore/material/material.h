@@ -1,10 +1,10 @@
 #pragma once
 
 #include "math/math.h"
-#include "format/shader_binding_identity.h"
-#include "format/shader_format_types.h"
+#include "shader/shader_binding_identity.h"
+#include "shader/shader_format_types.h"
 #include "rendercore/texture/texture.h"
-#include "material/material_asset_data.h"
+#include "asset/material/material_asset_data.h"
 
 #include <atomic>
 #include <cstdint>

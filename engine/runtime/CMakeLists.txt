@@ -4,9 +4,6 @@ option(TOY3D_ENABLE_VULKAN_RHI "Build the Vulkan RHI backend" OFF)
 option(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
     "Build the development ShaderMapEntry loading path" ON)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
- 
 file(GLOB_RECURSE ALL_HEADER_FILES CONFIGURE_DEPENDS "*.h")
 file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 
@@ -17,62 +14,40 @@ list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/tests/.*\\.cpp$")
 # when TOY3D_ENABLE_VULKAN_RHI is enabled.
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.cpp$")
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/drivers/example/.*\\.cpp$")
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/shader/loaders/shader_map_entry_loader\\.cpp$")
-list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/rendercore/material/material_library\\.h$")
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/rendercore/material/material_library\\.cpp$")
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/rendercore/shader/loaders/shader_map_entry_loader\\.cpp$")
 
 # 排除特定平台文件夹
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/platform/(android|mac|win)/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/platform/(android|mac|win)/.*\\.cpp$")
 
-
 # 添加当前平台特定的源文件
-if(APPLE)
-    file(GLOB_RECURSE PLATFORM_HEADER_FILES 
+if(WIN32)
+    file(GLOB_RECURSE PLATFORM_HEADER_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/win/*.h")
+    file(GLOB_RECURSE PLATFORM_SOURCE_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/win/*.cpp")
+elseif(APPLE)
+    file(GLOB_RECURSE PLATFORM_HEADER_FILES CONFIGURE_DEPENDS
          "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.h")
-    file(GLOB_RECURSE PLATFORM_SOURCE_FILES 
+    file(GLOB_RECURSE PLATFORM_SOURCE_FILES CONFIGURE_DEPENDS
          "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.cpp"
          "${CMAKE_CURRENT_SOURCE_DIR}/platform/mac/*.mm")
-elseif(WIN32)
-    file(GLOB_RECURSE PLATFORM_HEADER_FILES 
-        "${CMAKE_CURRENT_SOURCE_DIR}/platform/win/*.h")
-    file(GLOB_RECURSE PLATFORM_SOURCE_FILES 
-        "${CMAKE_CURRENT_SOURCE_DIR}/platform/win/*.cpp")
 elseif(ANDROID)
-    file(GLOB_RECURSE PLATFORM_HEADER_FILES 
+    file(GLOB_RECURSE PLATFORM_HEADER_FILES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/android/*.h")
-    file(GLOB_RECURSE PLATFORM_SOURCE_FILES 
+    file(GLOB_RECURSE PLATFORM_SOURCE_FILES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/android/*.cpp")
 endif()
 
-# 合并源文件
-list(REMOVE_ITEM ALL_HEADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/scene/light_scene_proxy.h")
-list(REMOVE_ITEM ALL_SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.cpp")
-list(REMOVE_ITEM ALL_SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.cpp")
 set(HEADER_FILES ${ALL_HEADER_FILES} ${PLATFORM_HEADER_FILES})
 set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
-
-# message(STATUS \"HEADER_FILES:\")
-# foreach(file ${HEADER_FILES})
-#     message(STATUS \"  ${file}\")
-# endforeach()
-
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
-add_library(${TARGET_NAME} ${HEADER_FILES} ${SOURCE_FILES})
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dStaticMeshAsset Toy3dSceneData)
-target_sources(${TARGET_NAME} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/material/material_library.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/texture/texture_asset_loader.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/texture/texture_asset_loader.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/camera_actor.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gamescene/actor/light_actor.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/rendercore/scene/light_scene_proxy.h")
+add_library(${TARGET_NAME} STATIC ${HEADER_FILES} ${SOURCE_FILES})
+target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
+target_link_libraries(${TARGET_NAME} PUBLIC Toy3dAssets)
+target_compile_definitions(${TARGET_NAME} PRIVATE
+    "ENGINE_ASSET_ROOT=\"${BINARY_ROOT_DIR}\""
+    "ENGINE_SAVED_ROOT=\"${BINARY_ROOT_DIR}saved\"")
 add_dependencies(${TARGET_NAME} Toy3dShaders)
 add_dependencies(${TARGET_NAME} Toy3dShaderParameters)
 set_source_files_properties(${TOY3D_SHADER_PARAMETERS_HEADERS} PROPERTIES GENERATED TRUE)
@@ -167,20 +142,12 @@ target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
 target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 
-# Link dependencies    
+# Link dependencies
 target_link_libraries(${TARGET_NAME} PRIVATE tinyobjloader stb)
 target_link_libraries(${TARGET_NAME} PUBLIC glfw)
 target_link_libraries(${TARGET_NAME} PRIVATE imgui)
 target_link_libraries(${TARGET_NAME} PUBLIC glm::glm)
 target_link_libraries(${TARGET_NAME} PUBLIC fmt)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMath)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dMaterialAsset)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dTextureAsset)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dFileSystem)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dPixelFormat)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dShaderFormat)
-target_link_libraries(${TARGET_NAME} PUBLIC Toy3dTaskGraph)
 if(WIN32)
     target_link_libraries(${TARGET_NAME} PRIVATE shell32)
 elseif(APPLE)
@@ -192,27 +159,26 @@ elseif(APPLE)
             "${TOY3D_QUARTZ_CORE_FRAMEWORK}")
 endif()
 
-
 # 添加项目根目录为包含目录
 # target_include_directories(
 #     ${TARGET_NAME}
 #     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 target_include_directories(
-    ${TARGET_NAME} 
+    ${TARGET_NAME}
     PUBLIC $<BUILD_INTERFACE:${ENGINE_ROOT_DIR}/runtime>)
 
 target_include_directories(
-    ${TARGET_NAME} 
+    ${TARGET_NAME}
     PUBLIC $<BUILD_INTERFACE:${ENGINE_ROOT_DIR}/runtime/drivers>)
 
 # add generated files
 target_include_directories(
-    ${TARGET_NAME} 
+    ${TARGET_NAME}
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
-  
+
 # win32 resouce.h
 if(WIN32)
     target_include_directories(${TARGET_NAME} PRIVATE "${ENGINE_ROOT_DIR}/build/windows/resources")
@@ -255,7 +221,7 @@ if(BUILD_TESTING)
     target_compile_options(Toy3dConsoleManagerTests
         PRIVATE
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-    target_link_libraries(Toy3dConsoleManagerTests PRIVATE Toy3dFileSystem Threads::Threads)
+    target_link_libraries(Toy3dConsoleManagerTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dRuntime.ConsoleManager COMMAND Toy3dConsoleManagerTests)
 
     add_executable(Toy3dImGuiSystemTests
@@ -485,7 +451,7 @@ if(BUILD_TESTING)
     target_compile_options(Toy3dRenderingThreadTests
         PRIVATE
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-    target_link_libraries(Toy3dRenderingThreadTests PRIVATE Toy3dTaskGraph Threads::Threads)
+    target_link_libraries(Toy3dRenderingThreadTests PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dRuntime.RenderingThread COMMAND Toy3dRenderingThreadTests)
 
     add_executable(Toy3dFrameSynchronizationTests
@@ -508,7 +474,7 @@ if(BUILD_TESTING)
         PRIVATE
             "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     target_link_libraries(Toy3dFrameSynchronizationTests
-        PRIVATE Toy3dTaskGraph Threads::Threads)
+        PRIVATE Toy3dCore Threads::Threads)
     add_test(NAME Toy3dRuntime.FrameSynchronization
         COMMAND Toy3dFrameSynchronizationTests)
 

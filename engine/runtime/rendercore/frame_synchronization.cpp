@@ -1,8 +1,8 @@
 #include "rendercore/frame_synchronization.h"
 
 #include "rendercore/render_command.h"
-#include "task_graph/graph_task.h"
-#include "task_graph/task_graph_interface.h"
+#include "threading/task_graph/graph_task.h"
+#include "threading/task_graph/task_graph_interface.h"
 
 #include <exception>
 #include <utility>

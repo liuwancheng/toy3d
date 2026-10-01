@@ -1,6 +1,6 @@
 #pragma once
 
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 #include "frontend/source_location.h"
 
 #include <cstdint>

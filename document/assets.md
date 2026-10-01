@@ -6,13 +6,13 @@ CPU DTO/验证/格式在 engine/core，导入与构建在 engine/tools，运行�
 
 | 能力 | target / 主要代码 |
 | --- | --- |
-| 反射元数据 | Toy3dReflection：reflection/；Toy3dReflectionCodegen：tools/reflection_codegen/ |
-| 编解码/迁移 | Toy3dSerialization：serialization/ |
-| 身份、描述、meta、事务、索引、编辑 | Toy3dResource：core/asset/ |
-| MeshDescription/StaticMesh | Toy3dMeshDescription、Toy3dStaticMeshAsset |
-| Material/Scene/Texture DTO | Toy3dMaterialAsset、Toy3dSceneData、Toy3dSceneAsset、Toy3dTextureAsset |
-| 导入/构建 | Toy3dAssetImport（Assimp 私有）、Toy3dMeshBuilder、Toy3dModelImport、Toy3dTextureImport |
-| 外部缩略图缓存 | Toy3dAssetThumbnail：core/asset_thumbnail/ |
+| 反射元数据 | Toy3dCore：reflection/；Toy3dReflectionCodegen：tools/reflection_codegen/ |
+| 编解码/迁移 | Toy3dCore：serialization/ |
+| 身份、描述、meta、事务、索引、编辑 | Toy3dAssets：core/asset/ |
+| MeshDescription/StaticMesh | Toy3dAssets：core/asset/mesh/ |
+| Material/Scene/Texture DTO | Toy3dAssets：core/asset/{material,scene,texture}/ |
+| 导入/构建 | Toy3dAssetPipeline：tools/asset_pipeline/，Assimp 私有且可关闭；CLI 为 Toy3dModelImport / Toy3dDefaultAssets |
+| 外部缩略图缓存 | Toy3dAssets：core/asset/thumbnail/ |
 
 下文 core 路径相对 engine/core，工具相对 engine/tools；runtime/Editor 行为分别见 [Material](material.md)、[Editor](editor.md)、[Renderer](renderer.md)。
 
@@ -28,7 +28,7 @@ CPU DTO/验证/格式在 engine/core，导入与构建在 engine/tools，运行�
 
 修改反射字段要补 codegen 输入、值/整体验证、序列化 round-trip、未知字段处理；运行时组件还需 [GameScene](gamescene.md) 与 Editor 接入。
 
-真实声明片段，摘自 core/static_mesh/static_mesh_asset_data.h；省略同一 struct 的其它字段，不是新类型或独立可编译文件：
+真实声明片段，摘自 core/asset/mesh/static_mesh_asset_data.h；省略同一 struct 的其它字段，不是新类型或独立可编译文件：
 
 ```cpp
 TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 2)
@@ -64,7 +64,7 @@ AssetPairStore 是配对一致性入口；调用方不能自己分别写 YAML/me
 - Copy 新 ID，Move 保持 ID/扩展名；强依赖阻止不安全删除。成功磁盘提交后 Catalog/UI 刷新失败单独报错，不能反向宣称保存未发生。
 - Editor 只写源码侧 project/asset，不写 bin；目录组织由使用者决定，不在 core 写死业务命名空间。
 
-完整失败/恢复用例：asset/tests/asset_file_tests.cpp；编辑入口 asset/edit_session.h。当前 Catalog 扫描可能验证完整 meta/payload，内容规模扩大后的按需读取优化需独立评估，不能在文档宣称已有 lazy metadata。
+完整失败/恢复用例：tests/asset_file_tests.cpp；编辑入口 asset/edit_session.h。当前 Catalog 扫描可能验证完整 meta/payload，内容规模扩大后的按需读取优化需独立评估，不能在文档宣称已有 lazy metadata。
 
 ## StaticMesh 与 Texture 生产链
 
@@ -85,4 +85,4 @@ Texture：PNG/JPEG 导入为 GPU-ready mip；普通色彩为 RGBA8 sRGB，RGB �
 
 缩略图缓存位于 /Saved/AssetThumbnails，以 AssetId、内容摘要、generator version 为身份；StaticMesh 使用独立 preview World、渲染和异步读回生成 PNG。Material 预览/缩略图的未完成扩展不作为现有能力。失败/缓存丢失不回滚已保存资产，结果还须核对请求代次和当前资源。
 
-代表性测试：core/tests/reflection_tests.cpp、serialization_tests.cpp；tools/reflection_codegen/tests/codegen_tests.cpp、resource_kind_tests.cpp；tools/model_import/tests/static_mesh_import_tests.cpp、texture_import/tests/texture_import_tests.cpp；core/material/tests/material_asset_tests.cpp、asset_thumbnail/tests/asset_thumbnail_tests.cpp；engine/editor/tests/workspace_tests.cpp、thumbnail_integration_tests.cpp。先从 CMake 确认 target/条件，构建受影响链，再测 round-trip、损坏/上限、发布中断恢复、ID/引用、旧版本拒绝和候选失败保留旧结果。
+代表性测试：core/tests/reflection_tests.cpp、serialization_tests.cpp；tools/reflection_codegen/tests/codegen_tests.cpp、resource_kind_tests.cpp；tools/asset_pipeline/tests/static_mesh_import_tests.cpp、asset_pipeline/tests/texture_import_tests.cpp；core/tests/material_asset_tests.cpp、tests/asset_thumbnail_tests.cpp；engine/editor/tests/workspace_tests.cpp、thumbnail_integration_tests.cpp。先从 CMake 确认 target/条件，构建受影响链，再测 round-trip、损坏/上限、发布中断恢复、ID/引用、旧版本拒绝和候选失败保留旧结果。

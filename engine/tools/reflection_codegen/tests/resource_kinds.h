@@ -1,6 +1,6 @@
 #pragma once
 
-#include "asset_identity.h"
+#include "asset/asset_identity.h"
 #include "math/transform.h"
 #include "reflection/reflection_macros.h"
 

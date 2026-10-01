@@ -1,7 +1,7 @@
 #pragma once
 
-#include "task_graph/graph_event.h"
-#include "task_graph/task_graph_types.h"
+#include "threading/task_graph/graph_event.h"
+#include "threading/task_graph/task_graph_types.h"
 
 #include <array>
 #include <cstddef>

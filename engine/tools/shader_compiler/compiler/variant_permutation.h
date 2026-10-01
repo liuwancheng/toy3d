@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hash/sha256.h"
+#include "misc/sha256.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "compiler/compile_request.h"
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 
 #include <optional>
 #include <vector>

@@ -2,7 +2,7 @@
 
 ## 定位
 
-Toy3dRuntime 包含 engine/runtime 的 Engine/Application、config/platform/input、gamescene/rendercore/renderscene/drivers；这些目录当前不等于独立 CMake target。项目程序在 project，Editor 入口在 engine/editor。共享能力复用 [Core](core.md)，不从 runtime 输出通用工具库。
+Toy3dRuntime 包含 engine/runtime 的 Engine/Application、config/platform/input、gamescene/rendercore/renderscene/drivers；这些目录当前不等于独立 CMake target。项目程序代码在 project/src，Editor 入口在 engine/editor。共享能力复用 [Core](core.md)，不从 runtime 输出通用工具库。
 
 ## 启动与退出
 
@@ -27,17 +27,21 @@ ConsoleManager 当前受控全局入口随运行生命周期初始化/关闭；�
 | engine/config、project/config | 引擎默认和项目策略 |
 | engine/shader、project/shader | Shader 源与显式登记，编译器实现另放 tools |
 | engine/editor/resources | Editor 界面资源 |
-| engine/build、engine/template | 图标、plist、平台部署及配置模板 |
+| engine/build | 图标、plist 模板与平台部署输入 |
 | 根 build、bin | 生成/部署副本，不能当创作源 |
 
 FileSystem 在 startup 注册/冻结 mounts，源码/部署模式均显式确定根，无 cwd fallback。Saved cache 可重建，不承载不可丢失业务资产；runtime 加载部署输入，Editor 修改源输入，禁止混用。
 
-新增资源同批更新 CMake 拷贝/部署规则及 lookup 路径；引擎资产、配置和 UI 资源不混入单一 resources 目录。构建生成头放 build；runtime/generated/defines.h 为历史待迁移，不手工扩展。
+新增资源同批更新 CMake 拷贝/部署规则及 lookup 路径；引擎资产、配置和 UI 资源不混入单一 resources 目录。构建生成头放 build；资源根由 Runtime PRIVATE 编译定义提供，不在源码目录生成配置头。
 
 ## Platform/Input 与修改检查
 
 OS/window/input 细节留 platform，runtime input 表达状态、映射和项目策略，不透出图形 native 类型。Editor 输入优先级见 [Editor](editor.md)。Android/Linux 等未验证路径不能因为有目录就声称生产可用。
 
+平台选择复用 [Core 平台定义](core.md#平台定义)，显式包含 platform/platform_defines.h；Toy3dRuntime 通过 PUBLIC Toy3dAssets 传递 Toy3dCore 供头文件中的平台判断使用。ENGINE_ASSET_ROOT/ENGINE_SAVED_ROOT 由 Runtime PRIVATE 编译定义提供，保持既有 bin/saved 路径；根 CMake 不再向全仓或第三方注入 WITH_* 平台宏。CMake 仍用目标平台变量选择源码/库，OS 与架构、构建宿主与编译目标分别判断。
+
 Vulkan loader/VMA/SDK include 仅在 TOY3D_ENABLE_VULKAN_RHI 开启时加入 Runtime，属于 PRIVATE 实现依赖；直接测试 native Vulkan 的四个 target 独立声明依赖并受同一开关控制。关闭后不链接 loader、不传播 SDK/VMA include；Shader 离线编译工具链独立于该 backend 开关。GLFW/GLM 等现有 PUBLIC 依赖尚未整体迁移，新增 target 不复制历史配置。
+
+TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING 关闭时不编译开发加载器；当前 Editor/Cube 依赖它，因此不注册这两个程序及 Editor 测试，配置阶段明确提示。Core、Shader compiler、资产处理、Runtime 与其独立测试仍可构建；不会靠失效排除路径偷偷保留加载器实现。
 
 改启动/平台/CMake 需重新配置、构建受影响程序，检查失败回滚、无窗口/最小化、退出中异步任务、源/部署模式及资源缺失；普通配置补 Console 测试。命令从 AGENTS 和平台脚本取得，不把某次机器日志保留为 contract。

@@ -5,20 +5,22 @@
 #include <string>
 
 #include "imgui.h"
-#if WITH_WIN64
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #include <Windows.h>
 #endif
 #include "config/command_line_parser.h"
 #include "engine.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/world/world.h"
-#include "material/material_assignments.h"
-#include "material/material_shader_workflow.h"
-#include "panels/material_editor_panel.h"
-#include "placement/actor_factory.h"
+#include "scene/material_assignments.h"
+#include "assets/material/material_shader_workflow.h"
+#include "assets/material/material_editor_panel.h"
+#include "scene/placement/actor_factory.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/render_command.h"
-#include "renderscene/geometry/static_mesh_render_data.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
 #include "workspace/editor_workspace.h"
 
 namespace
@@ -302,7 +304,7 @@ int main()
         Engine engine;
         engine.set_shader_load_config({ShaderLoadMode::ShaderMapEntry, PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT)});
         engine.set_application(std::make_unique<ShaderTestApplication>(workspace, paths, source, text.value(), state));
-#if WITH_WIN64
+#if WITH_WIN
         engine.init(static_cast<void*>(GetModuleHandleW(nullptr)));
 #else
         engine.init(nullptr);

@@ -1,5 +1,5 @@
-#include "task_graph/graph_task.h"
-#include "task_graph/task_graph.h"
+#include "threading/task_graph/graph_task.h"
+#include "threading/task_graph/task_graph.h"
 #include "threading/event.h"
 #include "threading/thread_manager.h"
 

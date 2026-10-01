@@ -1,7 +1,7 @@
 #include "panels/place_actors_panel.h"
 
 #include "imgui.h"
-#include "placement/placement_catalog.h"
+#include "scene/placement/placement_catalog.h"
 #include "viewport/actor_icons.h"
 
 #include <cstring>

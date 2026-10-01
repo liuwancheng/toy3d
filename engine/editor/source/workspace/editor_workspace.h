@@ -1,12 +1,12 @@
 #pragma once
 
-#include "asset_catalog.h"
-#include "asset_pair_store.h"
+#include "asset/asset_catalog.h"
+#include "asset/asset_pair_store.h"
 #include "file_system/file_system.h"
 #include "file_system/native_platform_file.h"
 #include "file_system/physical_path.h"
 #include "reflection/type_registry.h"
-#include "format/shader_editor_properties.h"
+#include "shader/shader_editor_properties.h"
 
 #include <string>
 #include <memory>

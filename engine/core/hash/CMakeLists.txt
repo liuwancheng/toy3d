@@ -1,5 +1,0 @@
-add_library(Toy3dHash STATIC)
-target_sources(Toy3dHash PRIVATE "sha256.cpp" "sha256.h")
-target_compile_features(Toy3dHash PUBLIC cxx_std_17)
-set_target_properties(Toy3dHash PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
-target_include_directories(Toy3dHash PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")

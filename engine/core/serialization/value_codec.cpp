@@ -5,7 +5,7 @@
 #include <limits>
 #include <utility>
 
-#include "text/utf8.h"
+#include "misc/utf8.h"
 
 namespace toy3d
 {

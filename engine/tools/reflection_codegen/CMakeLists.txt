@@ -41,7 +41,7 @@ if(BUILD_TESTING)
         CXX_EXTENSIONS OFF
         FOLDER "Engine/Tests")
     target_include_directories(Toy3dReflectionCodegenTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-    target_link_libraries(Toy3dReflectionCodegenTests PRIVATE Toy3dReflection Toy3dSerialization Toy3dResource)
+    target_link_libraries(Toy3dReflectionCodegenTests PRIVATE Toy3dCore Toy3dAssets)
     add_test(NAME Toy3dCore.ReflectionCodegen COMMAND Toy3dReflectionCodegenTests)
 
     add_executable(Toy3dResourceKindTests
@@ -51,10 +51,10 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dResourceKindTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dResourceKindTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
     target_include_directories(Toy3dResourceKindTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-    target_link_libraries(Toy3dResourceKindTests PRIVATE Toy3dResource Toy3dShaderCompilerCore)
+    target_link_libraries(Toy3dResourceKindTests PRIVATE Toy3dAssets Toy3dShaderCompilerCore)
     target_compile_definitions(Toy3dResourceKindTests PRIVATE
         "TOY3D_RESOURCE_SHADER_FIXTURE=\"${CMAKE_CURRENT_SOURCE_DIR}/../shader_compiler/tests/data/frontend_valid.shader\"")
-    add_test(NAME Toy3dResource.Kinds COMMAND Toy3dResourceKindTests)
+    add_test(NAME Toy3dAssets.Kinds COMMAND Toy3dResourceKindTests)
     add_test(NAME Toy3dCore.ReflectionCodegenInvalidUsage
         COMMAND "${CMAKE_COMMAND}"
             "-DGENERATOR=$<TARGET_FILE:Toy3dReflectionCodegen>"

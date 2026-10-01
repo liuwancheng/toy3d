@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gamescene/component/scene_component.h"
-#include "scene_data/component_settings.h"
+#include "asset/scene/component_settings.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
 
 #include <memory>

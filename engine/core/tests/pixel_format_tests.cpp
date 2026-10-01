@@ -1,4 +1,4 @@
-#include "pixel_format/pixel_format.h"
+#include "image/pixel_format.h"
 
 #include <iostream>
 #include <limits>

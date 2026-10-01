@@ -3,19 +3,19 @@
 #include <filesystem>
 #include <algorithm>
 #include <iostream>
-#include "asset_tools/asset_editor_registry.h"
+#include "assets/asset_editor_registry.h"
 #include "file_system/directory_file_store.h"
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
 #include "gamescene/world/world.h"
 #include "panels/editor_panel_registry.h"
 #include "panels/scene_panels.h"
-#include "panels/texture_preview_panel.h"
+#include "assets/texture/texture_preview_panel.h"
 #include "imgui.h"
 #include "imgui_internal.h"
-#include "task_graph/task_graph.h"
+#include "threading/task_graph/task_graph.h"
 #include "threading/thread_manager.h"
-#include "selection/editor_selection.h"
+#include "scene/editor_selection.h"
 #include "viewport/scene_viewport.h"
 #include "workspace/editor_workspace.h"
 

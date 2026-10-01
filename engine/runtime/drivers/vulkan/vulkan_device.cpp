@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include "platform/platform_defines.h"
+
 namespace toy3d
 {
     namespace
@@ -86,7 +88,7 @@ namespace toy3d
 
         RHIStatus configure_vulkan_environment(bool enable_validation)
         {
-#if WITH_WIN64
+#if WITH_WIN
             if (!enable_validation || GetEnvironmentVariableA("VK_LAYER_PATH", nullptr, 0) != 0)
             {
                 return RHIStatus::success();
@@ -486,7 +488,7 @@ namespace toy3d
         }
 
         std::vector<const char*> extensions;
-#if WITH_WIN64
+#if WITH_WIN
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #elif WITH_MAC
@@ -623,7 +625,7 @@ namespace toy3d
 
     RHIStatus VulkanDevice::create_primary_surface(const RHISurfaceDesc& desc)
     {
-#if WITH_WIN64
+#if WITH_WIN
         if (desc.platform != RHISurfacePlatform::Win32)
         {
             return RHIStatus::failure(RHIErrorCode::Unsupported, "Vulkan device currently requires a Win32 surface.");

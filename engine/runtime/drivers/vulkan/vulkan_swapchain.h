@@ -1,10 +1,12 @@
 #pragma once
 
+#include "platform/platform_defines.h"
+
 #include "drivers/rhi/rhi_resource.h"
 #include "drivers/rhi/rhi_result.h"
 #include "drivers/rhi/rhi_viewport_context.h"
 
-#if WITH_WIN64
+#if WITH_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

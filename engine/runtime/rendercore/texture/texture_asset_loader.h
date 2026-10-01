@@ -1,6 +1,6 @@
 #pragma once
 
-#include "asset_index.h"
+#include "asset/asset_index.h"
 #include "rendercore/texture/texture.h"
 
 namespace toy3d

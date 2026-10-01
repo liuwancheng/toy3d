@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drivers/rhi/rhi.h"
-#include "format/shader_format_types.h"
+#include "shader/shader_format_types.h"
 
 namespace toy3d
 {

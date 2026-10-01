@@ -1,7 +1,7 @@
 #include "codegen/shader_parameters_codegen.h"
 
 #include "codegen/cpp_identifier.h"
-#include "hash/sha256.h"
+#include "misc/sha256.h"
 
 #include <algorithm>
 #include <iterator>

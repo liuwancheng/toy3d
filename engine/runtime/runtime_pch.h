@@ -33,7 +33,6 @@
 #include <chrono>
 #include <atomic>
 #include <functional>
-#include "generated/defines.h"
 
 // 8-bit unsigned integer
 typedef uint8_t uint8;

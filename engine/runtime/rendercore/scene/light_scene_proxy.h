@@ -1,6 +1,6 @@
 #pragma once
 
-#include "scene_data/component_settings.h"
+#include "asset/scene/component_settings.h"
 #include "math/vector3.h"
 
 namespace toy3d

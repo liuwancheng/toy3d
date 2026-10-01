@@ -1,7 +1,7 @@
 #pragma once
 
-#include "format/shader_format_types.h"
-#include "format/shader_editor_properties.h"
+#include "shader/shader_format_types.h"
+#include "shader/shader_editor_properties.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
 

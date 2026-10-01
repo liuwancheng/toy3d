@@ -1,9 +1,9 @@
 set(TOY3D_CUBE_TEST_SOURCES
-    "cube_actor.cpp"
-    "cube_actor.h"
-    "cube_application.cpp"
-    "cube_application.h"
-    "cube_test.cpp")
+    "src/cube_actor.cpp"
+    "src/cube_actor.h"
+    "src/cube_application.cpp"
+    "src/cube_application.h"
+    "src/cube_test.cpp")
 
 if(WIN32)
     set(TOY3D_CUBE_RESOURCE_DIR "${TOY3D_ROOT_DIR}/engine/build/windows/resources")

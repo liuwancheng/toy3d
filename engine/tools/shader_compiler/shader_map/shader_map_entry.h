@@ -1,7 +1,7 @@
 #pragma once
 
-#include "format/shader_map_entry.h"
-#include "format/shader_editor_properties.h"
+#include "shader/shader_map_entry.h"
+#include "shader/shader_editor_properties.h"
 #include "frontend/diagnostic.h"
 
 #include <optional>

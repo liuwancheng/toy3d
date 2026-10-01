@@ -5,7 +5,9 @@
 #include "config/console_manager.h"
 #include "config/render_backend_shader_platform.h"
 
-#if WITH_WIN64
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #include "platform/win/win32_platform.h"
 #include "platform/win/win32_window.h"
 #elif WITH_MAC
@@ -18,7 +20,6 @@
 
 #include "logging/logger.h"
 #include "math/length_units.h"
-#include "generated/defines.h"
 #include "drivers/rhi/rhi_factory.h"
 #include "gamescene/world/world.h"
 #include "platform/rhi_surface_factory.h"
@@ -34,7 +35,7 @@
 #include "renderscene/renderer.h"
 #include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/view/forward_scene_renderer.h"
-#include "task_graph/task_graph.h"
+#include "threading/task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 #include "ui/imgui_system.h"
 
@@ -143,7 +144,7 @@ namespace toy3d
     {
         pre_init();
         // 1.创建平台
-#if WITH_WIN64
+#if WITH_WIN
         platform = std::make_unique<Win32Platform>();
 #elif WITH_MAC
         platform = std::make_unique<MacPlatform>();
@@ -160,7 +161,7 @@ namespace toy3d
         platform_initialized = true;
 
         // 2.创建窗口
-#if WITH_WIN64
+#if WITH_WIN
         window = std::make_unique<Win32Window>(static_cast<HINSTANCE>(hInstance));
 #elif WITH_MAC
         window = std::make_unique<MacWindow>();

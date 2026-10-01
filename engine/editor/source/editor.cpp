@@ -8,7 +8,7 @@
 #include "imgui_internal.h"
 
 #include "gamescene/actor/actor.h"
-#include "asset_descriptor_path.h"
+#include "asset/asset_descriptor_path.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
@@ -18,7 +18,7 @@
 #include "panels/content_browser_panel.h"
 #include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
-#include "placement/asset_placement.h"
+#include "scene/placement/asset_placement.h"
 #include "config/command_line_parser.h"
 
 namespace toy3d

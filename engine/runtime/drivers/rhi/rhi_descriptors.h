@@ -4,7 +4,7 @@
 #include "drivers/rhi/rhi_capabilities.h"
 #include "drivers/rhi/rhi_public_definitions.h"
 #include "drivers/rhi/rhi_result.h"
-#include "format/shader_binding_identity.h"
+#include "shader/shader_binding_identity.h"
 
 #include <array>
 #include <cstddef>

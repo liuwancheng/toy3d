@@ -1,8 +1,8 @@
 #pragma once
 
 #include "drivers/rhi/rhi_public_definitions.h"
-#include "format/shader_format_types.h"
-#include "format/shader_binding_identity.h"
+#include "shader/shader_format_types.h"
+#include "shader/shader_binding_identity.h"
 #include "rendercore/shader/shader_vertex_input.h"
 
 #include <cstdint>

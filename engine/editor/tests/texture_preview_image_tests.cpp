@@ -1,4 +1,4 @@
-#include "panels/texture_preview_image.h"
+#include "assets/texture/texture_preview_image.h"
 
 #include <cstdlib>
 #include <iostream>

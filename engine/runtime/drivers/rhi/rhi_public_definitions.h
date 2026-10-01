@@ -1,7 +1,7 @@
 #pragma once
 
 #include "misc/enum_class_utils.h"
-#include "pixel_format/pixel_format.h"
+#include "image/pixel_format.h"
 
 #include <cstdint>
 

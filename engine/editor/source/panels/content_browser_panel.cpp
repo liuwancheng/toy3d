@@ -1,5 +1,5 @@
 #include "panels/content_browser_panel.h"
-#include "material/material_assignments.h"
+#include "scene/material_assignments.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -7,9 +7,9 @@
 
 #include "imgui.h"
 #include "logging/logger.h"
-#include "placement/asset_placement.h"
-#include "selection/editor_selection.h"
-#include "thumbnails/asset_thumbnail_pool.h"
+#include "scene/placement/asset_placement.h"
+#include "scene/editor_selection.h"
+#include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
 
 namespace toy3d

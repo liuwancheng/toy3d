@@ -1,6 +1,6 @@
 #pragma once
 
-#include "material/material_asset.h"
+#include "asset/material/material_asset.h"
 #include "rendercore/material/material.h"
 
 #include <map>

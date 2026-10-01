@@ -17,6 +17,8 @@
 #include <thread>
 #include <vector>
 
+#include "platform/platform_defines.h"
+
 namespace
 {
     // filesystem manages isolated compiler fixtures and artifact assertions in
@@ -432,7 +434,7 @@ namespace
                "spirv_reflect.build_parameters=static\n"
                "spirv_reflect.license=Apache-2.0\n"
                "spirv_reflect.source_url=https://github.com/KhronosGroup/SPIRV-Reflect\n"
-#if defined(_WIN32)
+#if WITH_WIN
                "spirv_reflect_debug.path=lib/spirv-reflect-static-debug\n"
                "spirv_reflect_debug.sha256=" +
                toy3d::sha256_to_hex(toy3d::sha256(spirv_val)) +
@@ -479,7 +481,7 @@ namespace
         std::filesystem::create_directories(root / "lib");
         std::filesystem::create_directories(root / "include");
         write_bytes(root / "lib/spirv-reflect-static", spirv_val);
-#if defined(_WIN32)
+#if WITH_WIN
         write_bytes(root / "lib/spirv-reflect-static-debug", spirv_val);
 #endif
         write_bytes(root / "include/spirv_reflect.h", spirv_val);

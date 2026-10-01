@@ -1,7 +1,7 @@
 #pragma once
 
 #include "asset_file.h"
-#include "hash/sha256.h"
+#include "misc/sha256.h"
 
 namespace toy3d
 {

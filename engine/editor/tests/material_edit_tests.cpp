@@ -1,4 +1,4 @@
-#include "material/material_edit_session.h"
+#include "assets/material/material_edit_session.h"
 
 #include <chrono>
 #include <iostream>

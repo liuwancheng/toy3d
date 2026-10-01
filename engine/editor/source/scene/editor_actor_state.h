@@ -1,6 +1,6 @@
 #pragma once
 
-#include "components/component_editor_registry.h"
+#include "scene/components/component_editor_registry.h"
 #include <cstdint>
 #include <vector>
 

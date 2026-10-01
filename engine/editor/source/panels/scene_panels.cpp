@@ -2,11 +2,11 @@
 
 #include <string>
 #include "imgui.h"
-#include "commands/editor_command_history.h"
-#include "components/component_details.h"
+#include "scene/editor_command_history.h"
+#include "scene/components/component_details.h"
 #include "gamescene/actor/actor.h"
 #include "gamescene/world/world.h"
-#include "selection/editor_selection.h"
+#include "scene/editor_selection.h"
 #include "workspace/editor_workspace.h"
 #include "viewport/scene_viewport.h"
 

@@ -1,4 +1,4 @@
-#include "material/material_assignments.h"
+#include "scene/material_assignments.h"
 
 #include <algorithm>
 #include <atomic>
@@ -11,7 +11,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
-#include "commands/editor_command_history.h"
+#include "scene/editor_command_history.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/world/world.h"
 #include "panels/scene_panels.h"
@@ -21,9 +21,9 @@
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/scene_interface.h"
-#include "selection/editor_selection.h"
-#include "task_graph/task_graph.h"
-#include "texture_asset/texture_asset.h"
+#include "scene/editor_selection.h"
+#include "threading/task_graph/task_graph.h"
+#include "asset/texture/texture_asset.h"
 #include "threading/thread_manager.h"
 #include "viewport/scene_viewport.h"
 #include "workspace/editor_workspace.h"

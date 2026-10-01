@@ -1,10 +1,12 @@
 #pragma once
 
+#include "platform/platform_defines.h"
+
 #include "drivers/rhi/rhi_device.h"
 #include "drivers/rhi/rhi_command_descriptors.h"
 #include "drivers/vulkan/vulkan_resource.h"
 
-#if WITH_WIN64
+#if WITH_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

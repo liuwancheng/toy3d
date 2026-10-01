@@ -1,8 +1,8 @@
-#include "commands/editor_command_history.h"
-#include "placement/actor_placement.h"
+#include "scene/editor_command_history.h"
+#include "scene/placement/actor_placement.h"
 #include "viewport/actor_icons.h"
 #include "viewport/scene_viewport.h"
-#include "selection/editor_selection.h"
+#include "scene/editor_selection.h"
 
 #include <cmath>
 #include <iostream>

@@ -15,7 +15,7 @@
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_graphics_state.h"
 #include "rendercore/geometry/local_vertex_factory.h"
-#include "renderscene/render_resource_manager.h"
+#include "rendercore/render_resource_manager.h"
 #include "renderscene/renderer_frame.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/ui/imgui_renderer.h"
@@ -24,7 +24,7 @@
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/viewport_output_target.h"
 #include "renderscene/view/scene_renderer.h"
-#include "task_graph/task_graph_interface.h"
+#include "threading/task_graph/task_graph_interface.h"
 
 namespace toy3d
 {

@@ -1,7 +1,7 @@
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 
-#include "hash/sha256.h"
-#include "format/shader_map_entry.h"
+#include "misc/sha256.h"
+#include "shader/shader_map_entry.h"
 
 #include <algorithm>
 #include <filesystem>

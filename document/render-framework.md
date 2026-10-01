@@ -2,7 +2,7 @@
 
 ## 定位与 ownership
 
-engine/runtime/rendercore 的 rendering_thread、render_command、frame_synchronization 是 Game/Render 桥；renderscene 的 Renderer/RenderResource/Manager 管渲染生命周期。当前都属于 Toy3dRuntime，不能臆造独立 Toy3dRenderCore target。
+engine/runtime/rendercore 的 rendering_thread、render_command、frame_synchronization 是 Game/Render 桥；rendercore 的 RenderResource/RenderResourceManager、材质代理、网格渲染数据和纹理资源管理通用渲染资源；renderscene 的 Renderer 管场景与帧调度。当前都属于 Toy3dRuntime，不能臆造独立 Toy3dRenderCore target。
 
 GT 拥有可变 World/组件和游戏侧表示；RT 拥有 SceneProxy、资源渲染状态与记录上下文；RHI 持有 GPU in-flight 引用。SceneInterface 是 root 管理的非 owning 桥，只在 Running 到 teardown 边界内发布，不存第二套命令队列。
 

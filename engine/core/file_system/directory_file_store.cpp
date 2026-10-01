@@ -4,6 +4,8 @@
 #include <cctype>
 #include <utility>
 
+#include "platform/platform_defines.h"
+
 namespace toy3d
 {
     namespace
@@ -15,7 +17,7 @@ namespace toy3d
             {
                 path.pop_back();
             }
-#if defined(_WIN32)
+#if WITH_WIN
             std::transform(path.begin(), path.end(), path.begin(),
                            [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 #endif

@@ -2,7 +2,7 @@
 
 ## 定位与 ownership
 
-engine/editor/source，程序 Toy3dEditor；可复用 target Toy3dEditorScene、Toy3dEditorMaterialShader。EditorApplication 是 GT composition root，持 Workspace、selection/history、registries、异步工作流并明确退出；runtime/core 不依赖 ImGui/Editor。
+engine/editor/source，程序 Toy3dEditor；可复用库 Toy3dEditorCore。功能目录为 scene（history/selection/placement/components）、viewport、assets（material/texture/mesh/thumbnails）、panels、workspace、platform；资产专属窗口放对应 assets 子目录，通用面板注册留 panels。EditorApplication 是 GT composition root，持 Workspace、selection/history、registries、异步工作流并明确退出；runtime/core 不依赖 ImGui/Editor。
 
 Engine 拥有主 World，EditorSceneSession 管描述身份、读取/装配/保存状态，不复制另一套可变 World。Editor 不启动主 World gameplay；preview World 独立。文件创作写 project/asset，Engine 资产只读，Saved 仅缓存，不写 bin。
 
@@ -39,6 +39,6 @@ worker 结果带 AssetId/source content/request/session generation；GT 接管�
 
 ## 开发入口与验证
 
-代表代码 source/components/component_editor_registry.h、asset_tools/asset_editor_registry.h、scene/editor_scene_session.h、commands/editor_command_history.h、placement/actor_factory.h 和 panels。先沿已有同类接入走完整调用链，避免加第二份通用“Editor 接入台账”。
+代表代码 source/scene/components/component_editor_registry.h、assets/asset_editor_registry.h、scene/editor_scene_session.h、scene/editor_command_history.h、scene/placement/actor_factory.h 和 panels。先沿已有同类接入走完整调用链，避免加第二份通用“Editor 接入台账”。
 
 测试 engine/editor/tests/editor_framework_tests.cpp、workspace_tests.cpp、placement_tests.cpp、material_edit_tests.cpp、material_assignment_tests.cpp、texture_preview_image_tests.cpp、thumbnail_integration_tests.cpp。验证字段全链、失败原子性、Undo/Redo/dirty 分支、跨 Actor graph、Save 冲突、过期异步、多窗口资源与退出；UI 行为变化补真实交互/截图，不以纯 DTO round-trip 当界面已验证。

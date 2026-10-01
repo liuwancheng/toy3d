@@ -12,10 +12,10 @@
 #include <utility>
 
 #include "logging/logger.h"
-#include "material/material_asset.h"
+#include "asset/material/material_asset.h"
 #include "rendercore/render_command.h"
 #include "rendercore/shader/shader_map.h"
-#include "renderscene/material/material_render_proxy.h"
+#include "rendercore/material/material_render_proxy.h"
 
 namespace toy3d
 {

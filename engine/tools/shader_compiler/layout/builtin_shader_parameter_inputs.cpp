@@ -1,6 +1,6 @@
 #include "layout/shader_layout.h"
 
-#include "builtin_shader_parameters.h"
+#include "shader/builtin_shader_parameters.h"
 
 namespace toy3d::shader
 {

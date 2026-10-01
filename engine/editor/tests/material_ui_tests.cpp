@@ -1,4 +1,4 @@
-#include "panels/material_editor_panel.h"
+#include "assets/material/material_editor_panel.h"
 #include "panels/editor_panel_registry.h"
 
 #include <iostream>
@@ -10,7 +10,7 @@
 #include "rendercore/rendering_thread.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/shader_map.h"
-#include "task_graph/task_graph.h"
+#include "threading/task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 #include "workspace/editor_workspace.h"
 

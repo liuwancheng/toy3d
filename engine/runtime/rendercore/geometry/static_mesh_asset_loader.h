@@ -1,7 +1,7 @@
 #pragma once
 
 #include "rendercore/geometry/static_mesh.h"
-#include "static_mesh/static_mesh_asset.h"
+#include "asset/mesh/static_mesh_asset.h"
 
 namespace toy3d
 {

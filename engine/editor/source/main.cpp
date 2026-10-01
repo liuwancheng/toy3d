@@ -6,7 +6,9 @@
 #include <iostream>
 #include <utility>
 
-#if WITH_WIN64
+#include "platform/platform_defines.h"
+
+#if WITH_WIN
 #include <windows.h>
 #endif
 
@@ -26,7 +28,7 @@ std::string wchar2string(const wchar_t* wstr)
 // 引擎主函数声明
 int engine_main(void* hInstance);
 
-#if WITH_WIN64
+#if WITH_WIN
 
 BOOL WINAPI ConsoleCtrlHandler(DWORD ctrlType)
 {

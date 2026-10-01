@@ -1,7 +1,7 @@
 #include "rendercore/geometry/static_mesh.h"
 
 #include "logging/logger.h"
-#include "renderscene/geometry/static_mesh_render_data.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
 
 #include <algorithm>
 #include <cmath>

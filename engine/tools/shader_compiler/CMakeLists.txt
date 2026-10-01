@@ -59,11 +59,12 @@ target_include_directories(Toy3dShaderCompilerCore
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>")
 target_link_libraries(Toy3dShaderCompilerCore
+    PRIVATE
+ Toy3dCore
     PUBLIC
-        Toy3dFileSystem
-        Toy3dProcess
-        Toy3dShaderFormat
-        Toy3d::SpirvReflect)
+
+ Toy3dShaderFormat
+ Toy3d::SpirvReflect)
 
 add_executable(Toy3dShaderCompiler "main.cpp")
 target_compile_features(Toy3dShaderCompiler PRIVATE cxx_std_17)
@@ -72,8 +73,9 @@ set_target_properties(Toy3dShaderCompiler PROPERTIES
     FOLDER "Engine/Tools")
 target_link_libraries(Toy3dShaderCompiler
     PRIVATE
-        Toy3dLogging
-        Toy3dShaderCompilerCore)
+ Toy3dCore
+
+ Toy3dShaderCompilerCore)
 target_compile_definitions(Toy3dShaderCompiler
     PRIVATE
         "TOY3D_SHADER_COMPILER_LOG_DIR=\"${BINARY_ROOT_DIR}saved/logs\"")
@@ -95,7 +97,7 @@ if(BUILD_TESTING)
         FOLDER "Engine/Tests")
     target_link_libraries(Toy3dShaderCompilerFrontendTests
         PRIVATE
-            Toy3dShaderCompilerCore)
+ Toy3dShaderCompilerCore)
     target_compile_definitions(Toy3dShaderCompilerFrontendTests
         PRIVATE
             "TOY3D_SHADER_TEST_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/data\"")
@@ -109,7 +111,7 @@ if(BUILD_TESTING)
         FOLDER "Engine/Tests")
     target_link_libraries(Toy3dShaderCompilerLayoutTests
         PRIVATE
-            Toy3dShaderCompilerCore)
+ Toy3dShaderCompilerCore)
     target_compile_definitions(Toy3dShaderCompilerLayoutTests
         PRIVATE
             WITH_EDITORONLY_DATA=$<BOOL:${TOY3D_SHADER_EDITORONLY_DATA}>
@@ -124,7 +126,8 @@ if(BUILD_TESTING)
         FOLDER "Engine/Tests")
     target_link_libraries(Toy3dShaderCompilerCompileTests
         PRIVATE
-            Toy3dShaderCompilerCore)
+ Toy3dCore
+ Toy3dShaderCompilerCore)
     set(TOY3D_SHADER_TEST_DXC "" CACHE FILEPATH "Explicit DXC executable used only by Shader compiler integration tests")
     set(TOY3D_SHADER_TEST_SPIRV_VAL "" CACHE FILEPATH "Explicit spirv-val executable used only by Shader compiler integration tests")
     set(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT "${TOY3D_SHADER_TOOLCHAIN_ROOT}" CACHE PATH
