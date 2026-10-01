@@ -1,4 +1,4 @@
-#include "process/process.h"
+#include "platform/platform_services.h"
 
 #include <iostream>
 #include <chrono>
@@ -19,6 +19,15 @@ int main(int count, char** values)
     if (count != 2) return 2;
     const toy3d::NativeProcessService process;
     const toy3d::PhysicalPath helper(values[1]);
+    std::string directory_error;
+    bool passed = check(!toy3d::open_directory_on_desktop({}, directory_error) && !directory_error.empty(),
+                        "empty desktop directory rejected with diagnostic");
+    passed &= check(!toy3d::open_directory_on_desktop(toy3d::PhysicalPath("relative-directory"), directory_error) &&
+                    !directory_error.empty(), "relative desktop directory rejected");
+    passed &= check(!toy3d::open_directory_on_desktop(helper, directory_error) && !directory_error.empty(),
+                    "desktop directory operation rejects a regular executable file");
+    passed &= check(!toy3d::open_directory_on_desktop(toy3d::PhysicalPath(helper.utf8() + ".missing-directory"), directory_error) &&
+                    !directory_error.empty(), "missing desktop directory rejected");
     const std::vector<std::string> arguments = {"", "hello world", "quote\"here", "ends \\", "中文", "$(not-a-shell);&"};
     std::vector<std::string> input = {"echo"}; input.insert(input.end(), arguments.begin(), arguments.end());
     std::string expected; for (const auto& argument : arguments) expected += std::to_string(argument.size()) + ":" + argument + "\n";
@@ -28,7 +37,7 @@ int main(int count, char** values)
 #else
     const std::string& normalized = echoed.output;
 #endif
-    bool passed = check(echoed.succeeded() && normalized == expected, "exact argv including empty and UTF-8");
+    passed &= check(echoed.succeeded() && normalized == expected, "exact argv including empty and UTF-8");
     const auto failed = process.run(helper, {"fail"});
     passed &= check(failed.launched && failed.error == toy3d::ProcessError::None && failed.exit_code == 7 && failed.output == "failure", "nonzero exit");
     const auto missing = process.run(toy3d::PhysicalPath(helper.utf8() + ".missing"), {});

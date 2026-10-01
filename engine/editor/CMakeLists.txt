@@ -39,6 +39,8 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/scene/components/camera_component_editor.cpp"
     "source/scene/components/mesh_component_editor.cpp"
     "source/panels/editor_panel_registry.cpp"
+    "source/panels/console_panel.h"
+    "source/panels/console_panel.cpp"
     "source/assets/asset_editor_registry.cpp"
 )
 target_compile_features(Toy3dEditorCore PUBLIC cxx_std_17)
@@ -173,6 +175,16 @@ endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
 
 if(BUILD_TESTING)
+    add_executable(Toy3dEditorConsoleTests "tests/console_tests.cpp")
+    target_compile_features(Toy3dEditorConsoleTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorConsoleTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_link_libraries(Toy3dEditorConsoleTests PRIVATE Toy3dEditorCore)
+    target_compile_definitions(Toy3dEditorConsoleTests PRIVATE
+        "TOY3D_CONSOLE_TEST_ROOT=\"${CMAKE_CURRENT_BINARY_DIR}/console-test-output\"")
+    target_compile_options(Toy3dEditorConsoleTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.Console COMMAND Toy3dEditorConsoleTests)
+    set_tests_properties(Toy3dEditor.Console PROPERTIES TIMEOUT 30)
+
     add_executable(Toy3dEditorFrameworkTests
         "tests/editor_framework_tests.cpp" "source/workspace/editor_workspace.cpp"
         "source/assets/texture/texture_preview_panel.cpp" "source/assets/texture/texture_preview_image.cpp")

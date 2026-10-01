@@ -25,6 +25,8 @@ target_sources(Toy3dCore PRIVATE
     "image/png_codec.h"
     "logging/logger.cpp"
     "logging/logger.h"
+    "logging/log_buffer.cpp"
+    "logging/log_buffer.h"
     "math/angle.h"
     "math/geometry/convex_volume.cpp"
     "math/geometry/convex_volume.h"
@@ -55,8 +57,8 @@ target_sources(Toy3dCore PRIVATE
     "misc/sha256.h"
     "misc/utf8.h"
     "platform/platform_defines.h"
-    "process/process.cpp"
-    "process/process.h"
+    "platform/platform_services.cpp"
+    "platform/platform_services.h"
     "reflection/reflection_macros.h"
     "reflection/type_registry.cpp"
     "reflection/type_registry.h"
@@ -96,9 +98,22 @@ set_target_properties(Toy3dCore PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Cor
 target_include_directories(Toy3dCore PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
     PRIVATE "${THIRD_PARTY_DIR}/stb")
 target_link_libraries(Toy3dCore PUBLIC glm::glm spdlog PRIVATE Threads::Threads)
+
+if(BUILD_TESTING)
+    add_executable(Toy3dLoggingTests "tests/logging_tests.cpp")
+    target_compile_features(Toy3dLoggingTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dLoggingTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Core")
+    target_link_libraries(Toy3dLoggingTests PRIVATE Toy3dCore Threads::Threads)
+    target_compile_definitions(Toy3dLoggingTests PRIVATE
+        "TOY3D_LOGGING_TEST_ROOT=\"${CMAKE_CURRENT_BINARY_DIR}/logging-test-output\"")
+    target_compile_options(Toy3dLoggingTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dCore.Logging COMMAND Toy3dLoggingTests)
+    set_tests_properties(Toy3dCore.Logging PROPERTIES TIMEOUT 20)
+endif()
 target_compile_options(Toy3dCore PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 if(WIN32)
     target_compile_definitions(Toy3dCore PUBLIC NOMINMAX)
+    target_link_libraries(Toy3dCore PRIVATE shell32)
 endif()
 
 add_library(Toy3dShaderFormat STATIC)

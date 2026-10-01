@@ -1,7 +1,7 @@
 #pragma once
 
 #include "compiler/compile_request.h"
-#include "process/process.h"
+#include "platform/platform_services.h"
 #include "compiler/toolchain_manifest.h"
 
 #include <functional>

@@ -1,11 +1,14 @@
 #pragma once
 
+#include "logging/log_buffer.h"
+
 #include <spdlog/spdlog.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace toy3d
@@ -17,6 +20,7 @@ namespace toy3d
         // backend instead of rebuilding platform separators as strings.
         std::filesystem::path log_directory;
         std::string file_name;
+        std::shared_ptr<LogBuffer> memory_output;
         bool console_output = true;
         bool file_output = true;
         std::size_t max_file_size = 10u * 1024u * 1024u;
@@ -26,16 +30,7 @@ namespace toy3d
     class Logger
     {
       public:
-        enum class Level : std::uint8_t
-        {
-            TOY_TRACE,
-            TOY_DEBUG,
-            TOY_INFO,
-            TOY_WARN,
-            TOY_ERROR,
-            TOY_CRITICAL,
-            TOY_OFF
-        };
+        using Level = LogLevel;
 
         static Logger& get_instance();
 
@@ -63,13 +58,17 @@ namespace toy3d
         Logger(const Logger&) = delete;
         Logger& operator=(const Logger&) = delete;
 
+        // Serialize fan-out and shutdown so a file flush cannot race a producer.
+        std::mutex mutex_;
         std::string logger_name;
         std::shared_ptr<spdlog::logger> spd_logger;
+        bool registered_ = false;
     };
 
     template <typename... Args>
     void Logger::trace(const char* file, int line, const std::string& fmt, const Args&... args)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::trace, fmt, args...);
     }
@@ -77,6 +76,7 @@ namespace toy3d
     template <typename... Args>
     void Logger::debug(const char* file, int line, const std::string& fmt, const Args&... args)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::debug, fmt, args...);
     }
@@ -84,6 +84,7 @@ namespace toy3d
     template <typename... Args>
     void Logger::info(const char* file, int line, const std::string& fmt, const Args&... args)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::info, fmt, args...);
     }
@@ -91,6 +92,7 @@ namespace toy3d
     template <typename... Args>
     void Logger::warn(const char* file, int line, const std::string& fmt, const Args&... args)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::warn, fmt, args...);
     }
@@ -98,6 +100,7 @@ namespace toy3d
     template <typename... Args>
     void Logger::error(const char* file, int line, const std::string& fmt, const Args&... args)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::err, fmt, args...);
     }
@@ -105,6 +108,7 @@ namespace toy3d
     template <typename... Args>
     void Logger::critical(const char* file, int line, const std::string& fmt, const Args&... args)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::critical, fmt, args...);
     }

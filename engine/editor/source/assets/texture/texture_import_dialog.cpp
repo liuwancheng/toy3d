@@ -129,6 +129,7 @@ namespace toy3d
             }
             if (!prepared_->error.empty())
             {
+                TOY_LOG_ERROR("Texture2D import [{} -> {}]: {}", candidates_[next_].source.data(), prepared_->destination, prepared_->error);
                 candidates_[next_].error = prepared_->error;
                 if (!prepared_->saved) failed_.push_back(std::move(candidates_[next_]));
                 else error_ += prepared_->error + "\n";
@@ -142,13 +143,16 @@ namespace toy3d
                 auto& candidate = candidates_[next_];
                 std::string path;
                 if (!destination(candidate.source.data(), folder_, candidate.name.data(), path, candidate.error))
-                { failed_.push_back(std::move(candidate)); ++next_; continue; }
+                { TOY_LOG_ERROR("Texture2D import [{}]: {}", candidate.source.data(), candidate.error);
+                  failed_.push_back(std::move(candidate)); ++next_; continue; }
                 AssetId id;
                 if (!AssetId::try_generate(id) || workspace.catalog().index.find(id))
                 { candidate.error = "Could not generate a unique Texture2D asset ID.";
+                  TOY_LOG_ERROR("Texture2D import [{}]: {}", candidate.source.data(), candidate.error);
                   failed_.push_back(std::move(candidate)); ++next_; continue; }
                 if (!TaskGraphInterface::is_running())
                 { candidate.error = "Texture import requires a running Task Graph.";
+                  TOY_LOG_ERROR("Texture2D import [{}]: {}", candidate.source.data(), candidate.error);
                   failed_.push_back(std::move(candidate)); ++next_; continue; }
                 prepared_ = std::make_shared<Prepared>();
                 prepared_->id = id;
@@ -165,7 +169,9 @@ namespace toy3d
                         });
                 }
                 catch (const std::exception& exception)
-                { candidate.error = exception.what(); failed_.push_back(std::move(candidate));
+                { candidate.error = exception.what();
+                  TOY_LOG_ERROR("Texture2D import [{}]: {}", candidate.source.data(), candidate.error);
+                  failed_.push_back(std::move(candidate));
                   prepared_.reset(); ++next_; }
             }
             if (next_ == candidates_.size() && !task_)

@@ -16,6 +16,7 @@ namespace toy3d
         std::function<void()> redo;
         std::function<bool()> focused;
         std::function<void()> save;
+        std::function<void()> open;
     };
 
     // Application owns callbacks and their dependencies through the entire UI lifetime.

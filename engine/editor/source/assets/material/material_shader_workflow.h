@@ -4,7 +4,7 @@
 #include "file_system/file_system.h"
 #include "file_system/native_platform_file.h"
 #include "shader/shader_editor_properties.h"
-#include "process/process.h"
+#include "platform/platform_services.h"
 #include "rendercore/material/material_program_validation.h"
 #include "rendercore/material/material.h"
 #include "threading/thread.h"
@@ -74,6 +74,7 @@ namespace toy3d
             ProcessResult process;
             std::atomic<bool> complete{false};
         };
+        bool request_failed(const std::string& operation, const std::string& name);
         bool read_sources(std::string& error);
         bool physical_source(const MaterialShaderSource& source, PhysicalPath& path, std::string& error) const;
         bool load_candidate(const PhysicalPath& directory, const std::string& name, std::string& error);

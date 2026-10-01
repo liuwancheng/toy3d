@@ -8,7 +8,7 @@ Core 不依赖 runtime/editor，不承载业务策略。先找 target 与公共�
 
 | target | 内容与目录 | 依赖边界 |
 | --- | --- | --- |
-| Toy3dCore | platform、misc（UTF-8/SHA-256/enum flags）、file_system、process、logging、math、threading（含 task_graph）、reflection、serialization、image（格式/PNG） | 基础设施，不依赖资产、Shader、Runtime 或 Editor；GLM/spdlog 公共，stb/Threads 实现依赖 |
+| Toy3dCore | platform（平台定义、进程与桌面服务）、misc（UTF-8/SHA-256/enum flags）、file_system、logging、math、threading（含 task_graph）、reflection、serialization、image（格式/PNG） | 基础设施，不依赖资产、Shader、Runtime 或 Editor；GLM/spdlog 公共，stb/Threads 实现依赖 |
 | Toy3dShaderFormat | shader/：跨 compiler/runtime 的格式、Binding、参数 ABI、内置 schema | 只依赖 Core；Editor 属性数据开关仅在此库定义，不反向依赖 compiler |
 | Toy3dAssets | asset/：持久化/身份/索引/编辑；mesh、material、texture、scene、thumbnail 子目录 | 依赖 Core/ShaderFormat，yaml-cpp 私有；资产反射由独立 codegen 生成到 build |
 
@@ -55,6 +55,8 @@ target_link_libraries(MyAssetTool PRIVATE Toy3dAssets) # 同时获得 Core/Shade
 
 ## 外部进程
 
+平台外部操作统一声明于 `platform/platform_services.h`，实现在对应 cpp，归属 Toy3dCore；Windows 的 shell32 为该目标的 PRIVATE 依赖。文件承载进程执行、用户所有的 detached 程序和桌面目录打开，类型仍使用 ProcessService/NativeProcessService；文件读写、线程和 runtime 窗口行为各归原模块。
+
 ProcessService 可注入，NativeProcessService 为本机实现、可并发调用；接收绝对 PhysicalPath 和 argv 数组，无 shell 求值/PATH 搜索，校验 UTF-8、NUL、输入上限。
 
 run 同步拥有进程树，stdout/stderr 合流，有界收集且截断后继续排空；默认 timeout=30000 ms、输出=1 MiB，timeout 必须非零、捕获上限最多16 MiB，cancel atomic 的生命周期覆盖调用。当前 argv 最多256项、每项小于32768字节，Windows 还受整条 native command line 长度限制。超时/取消停止所属进程树并回收，失败保留 ProcessError/message。
@@ -63,7 +65,7 @@ launch_detached 启动用户所有 GUI，Toy3d 退出不杀它；成功只表示
 
 Windows 在回收前显式关闭所属 Job，kill-on-close 终止关联树；未成功加入 Job 的 suspended root 单独终止。执行 deadline 之外最多等待2000 ms确认 root 退出，清理失败追加诊断并保留最初错误，未确认退出时 exit_code 保持 -1，不无限等待或声称回收成功。对应失败用例见 tests/windows_cleanup_tests.cpp。
 
-最小片段：executable 是调用方已验证的绝对 PhysicalPath；真实签名见 process/process.h，完整失败用例见 tests/process_tests.cpp。
+最小片段：executable 是调用方已验证的绝对 PhysicalPath；真实签名见 platform/platform_services.h，完整失败用例见 tests/process_tests.cpp。
 
 ```cpp
 toy3d::NativeProcessService processes;
@@ -78,7 +80,21 @@ if (!result.succeeded())
 
 succeeded = launched && error=None && exit_code=0，不能只看 launched。路径白名单、编译策略、Editor 设置留业务层；同步编译使用专用线程，避免占用 TaskGraph worker。
 
+`open_directory_on_desktop(path, error)` 用系统文件管理器打开已有绝对目录，不执行 shell 文本、不提供文件读写或进程回收。Windows 使用 ShellExecuteW，macOS 复用 launch_detached 启动 `/usr/bin/open`，其他平台明确返回不支持；打开的界面归用户所有，成功仅表示请求被接受。函数可按需同步调用，不持有会话状态、不记录日志，调用方负责报告 error；Console 选择日志目录的策略仍留 Editor。空路径、相对路径、缺失目录和普通文件失败见 tests/process_tests.cpp。
+
 ## 其它共享能力与验证
+
+### 日志分发
+
+Logger 将同一事件分发到终端、滚动文件和可选 LogBuffer。LogBuffer 由启动入口创建并注入，不依赖 Editor/ImGui；记录拥有正文、时间、等级、线程和源码位置，按采集序号稳定排列。缓冲按条数和字节数有界，超长记录明确截断、淘汰计数可见，完整正文仍按文件滚动策略保留。只读快照不持锁绘制，过滤/清空由消费者决定，不修改文件或生产者等级。
+
+默认保留最近10000条、16 MiB（记录元数据及文本字节，不含消费者持有的快照和容器开销）。快照共享不可变记录，消费者应替换旧快照，避免无限持有历史。文件输出沿用10 MiB/5份滚动备份，Warning及以上立即 flush，退出最终 flush；文件失败的那条正文可能未写入文件，Console 中仍保留并显示文件健康状态。
+
+启动入口在业务初始化前创建 `std::make_shared<LogBuffer>()`，赋给 `LogConfig::memory_output` 后调用 `Logger::init(config, &error)`；Editor 通过 `Engine::initialize_logging(buffer)` 使用既定 `saved/logs/toy3d.log` 路径。业务继续使用 `TOY_LOG_ERROR("Material [{}]: {}", asset_id.hex(), error)`；UI 从 `buffer->snapshot()` 读取，不访问 spdlog sink 或设置 Logger 等级。接口见 logging/log_buffer.h、logger.h，完整失败和并发示例见 tests/logging_tests.cpp。
+
+文件创建、轮转或 flush 失败时保留其他输出，通过缓冲健康状态和 stderr 报警，不递归调用 Logger。init 返回 false 表示所请求输出没有全部成功，不代表剩余输出失效。生命周期由启动/退出入口持有：先初始化日志再初始化业务；工作线程停止后 flush/exit，Logger 的写入与 exit 互斥。Editor 注入会话缓冲，工具可只使用现有终端/文件。新增实现放 logging，仍属于 Toy3dCore，不增加库。
+
+验证覆盖文件/缓冲同一事件、多线程与退出、条数/字节上限、轮转、初始化和运行中写入失败；Editor 的显示策略见 Editor 文档。
 
 - Logger 现有全局入口由启动/退出链管理，这是现状，不允许据此增加单例；日志失败不影响必要资源释放。
 - UTF-8 校验先于解析，限制注明字节/元素，不用 locale 隐式转换。

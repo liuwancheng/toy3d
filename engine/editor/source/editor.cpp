@@ -29,6 +29,7 @@ namespace toy3d
     {
         const bool saved = scene_session_.save(path, create_new);
         scene_error_ = scene_session_.error();
+        if (!saved) TOY_LOG_ERROR("Save Scene [{}]: {}", path.utf8(), scene_error_);
         return saved;
     }
 
@@ -36,6 +37,7 @@ namespace toy3d
     {
         const bool opened = scene_session_.open(id);
         scene_error_ = scene_session_.error();
+        if (!opened) TOY_LOG_ERROR("Open Scene [{}]: {}", id.hex(), scene_error_);
         return opened;
     }
 
@@ -334,6 +336,11 @@ namespace toy3d
             !panels_.add({"material_editor", "Material Editor", "Material Editor", [this]() { material_editor_.draw(); },
                 [this]() { material_editor_.undo(); }, [this]() { material_editor_.redo(); },
                 [this]() { return material_editor_.focused(); }, [this]() { material_editor_.save(); }})) return false;
+        EditorPanel console;
+        console.id = "console"; console.title = "Console"; console.window_name = "Console";
+        console.draw = [this]() { console_.draw(); };
+        console.open = [this]() { console_.open(); };
+        if (!panels_.add(std::move(console))) return false;
         panels_.freeze();
         auto material_open = [this](const AssetId& id, bool) { material_editor_.request_open(id); };
         if (!asset_editors_.add({"toy3d.SceneAssetData", [this](const AssetId& id, bool)
@@ -355,15 +362,26 @@ namespace toy3d
         {
             const auto* asset = workspace_.catalog().index.find(browser.asset_open);
             if (!asset || !asset_editors_.request_open(asset->index.root_type, browser.asset_open, browser.asset_focus))
+            {
                 model_error_ = "This asset has no registered editor.";
+                TOY_LOG_ERROR("Open asset [{}]: {}", browser.asset_open.hex(), model_error_);
+            }
         }
         if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active())
             material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
         if (browser.texture_import_requested && !material_create_.active() && !model_import_.active() &&
-            !texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
+            !texture_import_.request(asset_folder_))
+        {
+            model_error_ = texture_import_.error();
+            TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
+        }
 #if WITH_MODEL_IMPORT
         if (browser.import_requested && !material_create_.active() && !texture_import_.active() &&
-            !model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+            !model_import_.request(asset_folder_))
+        {
+            model_error_ = model_import_.error();
+            TOY_LOG_ERROR("Request model import: {}", model_error_);
+        }
 #endif
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
@@ -380,12 +398,28 @@ namespace toy3d
                 if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") image = true;
                 else model = true;
             }
-            if (image && model) model_error_ = "Drop image and model files separately.";
-            else if (image && !texture_import_.request(asset_folder_, dropped.paths)) model_error_ = texture_import_.error();
+            if (image && model)
+            {
+                model_error_ = "Drop image and model files separately.";
+                TOY_LOG_ERROR("Asset drop: {}", model_error_);
+            }
+            else if (image && !texture_import_.request(asset_folder_, dropped.paths))
+            {
+                model_error_ = texture_import_.error();
+                TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
+            }
 #if WITH_MODEL_IMPORT
-            else if (model && !model_import_.request(asset_folder_, dropped.paths)) model_error_ = model_import_.error();
+            else if (model && !model_import_.request(asset_folder_, dropped.paths))
+            {
+                model_error_ = model_import_.error();
+                TOY_LOG_ERROR("Request model import: {}", model_error_);
+            }
 #else
-            else if (model) model_error_ = "Model import is disabled in this build.";
+            else if (model)
+            {
+                model_error_ = "Model import is disabled in this build.";
+                TOY_LOG_ERROR("Asset drop: {}", model_error_);
+            }
 #endif
         }
     }
@@ -423,13 +457,21 @@ namespace toy3d
                 if (ImGui::MenuItem("Import Static Mesh...", nullptr, false,
                     !material_create_.active() && !texture_import_.active()))
                 {
-                    if (!model_import_.request(asset_folder_)) model_error_ = model_import_.error();
+                    if (!model_import_.request(asset_folder_))
+                    {
+                        model_error_ = model_import_.error();
+                        TOY_LOG_ERROR("Request model import: {}", model_error_);
+                    }
                 }
 #endif
                 if (ImGui::MenuItem("Import Texture2D...", nullptr, false,
                     !model_import_.active() && !material_create_.active()))
                 {
-                    if (!texture_import_.request(asset_folder_)) model_error_ = texture_import_.error();
+                    if (!texture_import_.request(asset_folder_))
+                    {
+                        model_error_ = texture_import_.error();
+                        TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
+                    }
                 }
                 if (ImGui::MenuItem("Exit")) request_scene_action(SceneAction::Exit);
                 ImGui::EndMenu();
@@ -512,12 +554,17 @@ namespace toy3d
                 ImGui::DockBuilderDockWindow("Details", details_dock);
                 ImGui::DockBuilderDockWindow("Texture Preview", details_dock);
                 ImGui::DockBuilderDockWindow("Content Browser", content_dock);
+                ImGui::DockBuilderDockWindow("Console", content_dock);
                 ImGui::DockBuilderFinish(dockspace);
             }
         }
         ImGui::DockSpace(dockspace, ImVec2(0.0f, -28.0f));
         ImGui::Separator();
         ImGui::Text("Assets: %u", static_cast<unsigned>(workspace_.catalog().entries.size()));
+        ImGui::SameLine();
+        const std::string console_status = "Console E:" + std::to_string(console_.error_count()) +
+            " W:" + std::to_string(console_.warning_count()) + "###ConsoleStatus";
+        if (ImGui::SmallButton(console_status.c_str())) console_.open();
         ImGui::SameLine();
         ImGui::TextDisabled("  |  Scene: %s%s", scene_session_.path().empty() ? "Untitled" : scene_session_.path().utf8().c_str(),
             scene_dirty() ? " *" : "");

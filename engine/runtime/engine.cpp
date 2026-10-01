@@ -90,20 +90,25 @@ namespace toy3d
         }
     }
 
-    void Engine::pre_init()
+    bool Engine::initialize_logging(std::shared_ptr<LogBuffer> buffer)
     {
-        // 初始化日志系统
+        if (logging_started_) return logging_outputs_ready_;
         LogConfig log_config;
         log_config.logger_name = "Toy3dRuntime";
         // filesystem composes the platform-native saved/log path without manual
         // separator handling at the runtime composition root.
         log_config.log_directory = std::filesystem::path(ENGINE_SAVED_ROOT) / "logs";
         log_config.file_name = "toy3d.log";
+        log_config.memory_output = std::move(buffer);
         std::string log_error;
-        if (!Logger::get_instance().init(log_config, &log_error))
-        {
-            std::cerr << "Failed to initialize Toy3d logging: " << log_error << '\n';
-        }
+        logging_outputs_ready_ = Logger::get_instance().init(log_config, &log_error);
+        logging_started_ = true;
+        return logging_outputs_ready_;
+    }
+
+    void Engine::pre_init()
+    {
+        initialize_logging();
 
         // 1. Initialize the shared file system.
         const FileStatus file_system_status = initialize_file_system();

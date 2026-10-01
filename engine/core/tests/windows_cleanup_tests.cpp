@@ -1,4 +1,4 @@
-#include "process/process.h"
+#include "platform/platform_services.h"
 
 #include <chrono>
 #include <iostream>
@@ -12,7 +12,7 @@
 // Compile the actual implementation into this Windows-only fault-path test.
 // Restricted real handles exercise private cleanup without public test hooks
 // or a parallel mock implementation of the process lifecycle.
-#include "../process/process.cpp"
+#include "../platform/platform_services.cpp"
 
 namespace
 {

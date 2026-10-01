@@ -30,7 +30,11 @@ namespace toy3d
     void EditorPanelRegistry::draw_window_menu() const
     {
         for (const auto& panel : panels_)
-            if (ImGui::MenuItem(panel.title.c_str())) ImGui::SetWindowFocus(panel.window_name.c_str());
+            if (ImGui::MenuItem(panel.title.c_str()))
+            {
+                if (panel.open) panel.open();
+                else ImGui::SetWindowFocus(panel.window_name.c_str());
+            }
     }
 
     const EditorPanel* EditorPanelRegistry::history_target() const

@@ -13,6 +13,7 @@
 namespace toy3d
 {
     class Application;
+    class LogBuffer;
     class FrameEndSync;
     class IPlatform;
     class IWindow;
@@ -49,6 +50,9 @@ namespace toy3d
         ~Engine();
 
         void pre_init();
+        // Call before pre_init() to capture startup diagnostics. Subsequent calls
+        // reuse the session outputs; they do not attach a new buffer or reconfigure.
+        bool initialize_logging(std::shared_ptr<LogBuffer> buffer = {});
 
         void init(void* hInstance);
 
@@ -73,6 +77,8 @@ namespace toy3d
         int frame_count = 0;
 
         NativePlatformFile native_platform_file;
+        bool logging_started_ = false;
+        bool logging_outputs_ready_ = false;
         std::shared_ptr<DirectoryFileStore> engine_asset_store;
         std::shared_ptr<DirectoryFileStore> engine_shader_store;
         std::shared_ptr<DirectoryFileStore> saved_store;

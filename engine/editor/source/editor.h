@@ -13,6 +13,7 @@
 #include "assets/material/material_editor_panel.h"
 #include "panels/editor_panel_registry.h"
 #include "panels/content_browser_panel.h"
+#include "panels/console_panel.h"
 #include "panels/place_actors_panel.h"
 #include "assets/asset_editor_registry.h"
 #include "assets/texture/texture_preview_panel.h"
@@ -30,7 +31,9 @@ namespace toy3d
     class EditorApplication final : public Application
     {
       public:
-        explicit EditorApplication(EditorWorkspace& workspace) : workspace_(workspace), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_), thumbnails_(workspace), texture_preview_(workspace) {}
+        explicit EditorApplication(EditorWorkspace& workspace, std::shared_ptr<LogBuffer> log_buffer = {})
+            : workspace_(workspace), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
+              thumbnails_(workspace), texture_preview_(workspace), console_(std::move(log_buffer)) {}
 
       protected:
         bool on_initialize() override;
@@ -77,6 +80,7 @@ namespace toy3d
         MaterialShaderWorkflow shaders_{processes_, shader_threads_};
         bool shader_workflow_ready_ = false;
         EditorPanelRegistry panels_;
+        ConsolePanel console_;
         PlaceActorsPanel place_actors_;
         ContentBrowserPanel content_browser_;
         AssetEditorRegistry asset_editors_;

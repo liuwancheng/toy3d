@@ -1,4 +1,4 @@
-#include "process/process.h"
+#include "platform/platform_services.h"
 
 #include <algorithm>
 #include <array>
@@ -16,6 +16,7 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+#include <shellapi.h>
 #else
 #include <cerrno>
 #include <cstring>
@@ -195,7 +196,7 @@ namespace toy3d
     }
 
     // --------------------------------------------------------------------------
-    // NativeProcessService: bounded execution and user-owned external editor launch
+    // NativeProcessService: bounded execution and user-owned detached process launch
     // --------------------------------------------------------------------------
     ProcessResult NativeProcessService::run(const PhysicalPath& executable, const std::vector<std::string>& arguments,
                                             const ProcessRunOptions& options) const
@@ -339,7 +340,7 @@ namespace toy3d
         if (!command(executable, arguments, application, line, result)) return result;
         STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION info{};
         if (!CreateProcessW(application.c_str(), line.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &info))
-        { windows_error(result, ProcessError::Launch, "Open external editor"); return result; }
+        { windows_error(result, ProcessError::Launch, "Launch detached process"); return result; }
         NativeHandle process(info.hProcess), thread(info.hThread);
         result.launched = true; result.exit_code = 0;
 #else
@@ -374,5 +375,34 @@ namespace toy3d
         result.launched = true; result.exit_code = 0;
 #endif
         return result;
+    }
+
+    bool open_directory_on_desktop(const PhysicalPath& path, std::string& error)
+    {
+        error.clear();
+        if (!path.valid() || path.empty()) { error = "The directory path is invalid."; return false; }
+        // C++17 filesystem preserves native UTF-16 for ShellExecute and checks
+        // that this desktop action opens an existing absolute directory.
+        const auto native = std::filesystem::u8path(path.utf8());
+        std::error_code status;
+        if (!native.is_absolute() || !std::filesystem::is_directory(native, status))
+        {
+            error = "Cannot open directory: " + path.utf8();
+            if (status) error += " (" + status.message() + ")";
+            return false;
+        }
+#if WITH_WIN
+        const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", native.c_str(),
+                                                                  nullptr, nullptr, SW_SHOWNORMAL));
+        if (result <= 32) { error = "Unable to open directory (code " + std::to_string(result) + ")."; return false; }
+        return true;
+#elif WITH_MAC
+        const auto result = NativeProcessService{}.launch_detached(PhysicalPath("/usr/bin/open"), {path.utf8()});
+        if (!result.succeeded()) { error = result.message; return false; }
+        return true;
+#else
+        error = "Opening a desktop directory is unsupported on this platform.";
+        return false;
+#endif
     }
 }

@@ -172,10 +172,16 @@ namespace toy3d
         output = canonical_file.value(); return true;
     }
 
+    bool MaterialShaderWorkflow::request_failed(const std::string& operation, const std::string& name)
+    {
+        TOY_LOG_ERROR("Material Shader {} [{}]: {}", operation, name, error_);
+        return false;
+    }
+
     bool MaterialShaderWorkflow::open_source(const std::string& name, std::uint32_t line, std::uint32_t column)
     {
         const auto* source = find(name); PhysicalPath physical;
-        if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader source is not registered: " + name; return false; }
+        if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader source is not registered: " + name; return request_failed("Open source", name); }
         PhysicalPath executable = paths_.code_executable;
         if (executable.empty())
         {
@@ -192,41 +198,41 @@ namespace toy3d
             for (const auto& candidate : candidates)
             {
                 const auto exists = platform_.exists(PhysicalPath(candidate));
-                if (!exists.succeeded()) { error_ = exists.status().message; return false; }
+                if (!exists.succeeded()) { error_ = exists.status().message; return request_failed("Open source", name); }
                 if (exists.value()) { executable = PhysicalPath(candidate); break; }
             }
         }
-        if (executable.empty()) { error_ = "VS Code was not found. Start Editor with --Editor.CodeExecutable=<absolute Code.exe path>."; return false; }
+        if (executable.empty()) { error_ = "VS Code was not found. Start Editor with --Editor.CodeExecutable=<absolute Code.exe path>."; return request_failed("Open source", name); }
         const auto opened = processes_.launch_detached(executable,
             {"--reuse-window", "--goto", physical.utf8() + ":" + std::to_string(std::max(line, 1u)) + ":" + std::to_string(std::max(column, 1u))});
-        if (!opened.succeeded()) { error_ = opened.message; TOY_LOG_ERROR("Open material source: {}", error_); return false; }
+        if (!opened.succeeded()) { error_ = opened.message; return request_failed("Open source", name); }
         error_.clear(); status_ = "Opened source in VS Code: " + physical.utf8(); return true;
     }
 
     bool MaterialShaderWorkflow::recompile(const std::string& name, AssetId origin, std::uint64_t session_revision)
     {
-        if (busy()) { error_ = "A Shader compile/publication is already in progress."; return false; }
+        if (busy()) { error_ = "A Shader compile/publication is already in progress."; return request_failed("Recompile", name); }
         const auto* source = find(name); PhysicalPath physical;
-        if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader is not registered."; return false; }
+        if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader is not registered."; return request_failed("Recompile", name); }
         const auto text = files_.read_text_utf8(source->path, 4u * 1024u * 1024u);
-        if (!text.succeeded()) { error_ = text.status().message; return false; }
-        if (!AssetId::try_generate(request_id_)) { error_ = "Unable to allocate Shader compile request identity."; return false; }
+        if (!text.succeeded()) { error_ = text.status().message; return request_failed("Recompile", name); }
+        if (!AssetId::try_generate(request_id_)) { error_ = "Unable to allocate Shader compile request identity."; return request_failed("Recompile", name); }
         request_name_ = name; origin_ = origin; origin_revision_ = session_revision; source_hash_ = sha256(text.value());
         candidate_relative_ = "requests/" + request_id_.hex();
         const auto directory = platform_.join_relative(paths_.saved, candidate_relative_);
-        if (!directory.succeeded()) { error_ = directory.status().message; return false; }
+        if (!directory.succeeded()) { error_ = directory.status().message; return request_failed("Recompile", name); }
         request_directory_ = directory.value();
         const auto made = platform_.create_directories(request_directory_);
-        if (!made.succeeded()) { error_ = made.message; return false; }
+        if (!made.succeeded()) { error_ = made.message; return request_failed("Recompile", name); }
         const auto output = platform_.join_relative(request_directory_, "entries");
         const auto work = platform_.join_relative(request_directory_, "work");
-        if (!output.succeeded() || !work.succeeded()) { error_ = "Unable to resolve Shader compile output paths."; return false; }
+        if (!output.succeeded() || !work.succeeded()) { error_ = "Unable to resolve Shader compile output paths."; return request_failed("Recompile", name); }
         std::vector<std::string> arguments = {"--toolchain-root", paths_.toolchain.utf8(), "compile-vulkan", physical.utf8(),
             source->path.utf8(), "Forward", output.value().utf8(), work.value().utf8(), "--engine-include-root", paths_.engine_include.utf8()};
         const auto project_include = platform_.join_relative(paths_.project_shader, "include");
-        if (!project_include.succeeded()) { error_ = project_include.status().message; return false; }
+        if (!project_include.succeeded()) { error_ = project_include.status().message; return request_failed("Recompile", name); }
         const auto includes_exist = platform_.exists(project_include.value());
-        if (!includes_exist.succeeded()) { error_ = includes_exist.status().message; return false; }
+        if (!includes_exist.succeeded()) { error_ = includes_exist.status().message; return request_failed("Recompile", name); }
         if (includes_exist.value()) { arguments.push_back("--project-include-root"); arguments.push_back(project_include.value().utf8()); }
         cancel_.store(false); result_ = std::make_shared<CompileResult>();
         try
@@ -242,7 +248,7 @@ namespace toy3d
                 result->complete.store(true, std::memory_order_release);
             });
         }
-        catch (const std::exception& error) { result_.reset(); error_ = error.what(); return false; }
+        catch (const std::exception& error) { result_.reset(); error_ = error.what(); return request_failed("Recompile", name); }
         error_.clear(); output_.clear(); status_ = "Compiling " + name + " (saved files)..."; return true;
     }
 
@@ -277,7 +283,7 @@ namespace toy3d
     bool MaterialShaderWorkflow::open_error()
     {
         std::uint32_t line = 0u, column = 0u;
-        if (!error_location(line, column)) { error_ = "No registered source location was found in compiler output."; return false; }
+        if (!error_location(line, column)) { error_ = "No registered source location was found in compiler output."; return request_failed("Open diagnostic", request_name_); }
         return open_source(request_name_, line, column);
     }
 
@@ -388,6 +394,19 @@ namespace toy3d
             worker_->join(); worker_.reset();
             output_ = result_->process.output;
             if (!result_->process.succeeded()) { reject(result_->process.message + "\n" + output_); result_.reset(); return; }
+            // Successful compilation may still emit warnings. Forward its diagnostics
+            // once; failed processes already include the full output in reject().
+            std::istringstream diagnostics(output_);
+            std::string diagnostic;
+            while (std::getline(diagnostics, diagnostic))
+            {
+                if (diagnostic.empty()) continue;
+                if (diagnostic.find("[error]") != std::string::npos || diagnostic.find(": error:") != std::string::npos)
+                    TOY_LOG_ERROR("Shader compiler [{}]: {}", request_name_, diagnostic);
+                else if (diagnostic.find("[warning]") != std::string::npos || diagnostic.find(": warning:") != std::string::npos)
+                    TOY_LOG_WARN("Shader compiler [{}]: {}", request_name_, diagnostic);
+                else TOY_LOG_INFO("Shader compiler [{}]: {}", request_name_, diagnostic);
+            }
             result_.reset();
             const auto* source = find(request_name_);
             if (!source) { reject("Shader source registration changed during compilation."); return; }
@@ -448,7 +467,7 @@ namespace toy3d
     }
 
     void MaterialShaderWorkflow::reject(const std::string& error)
-    { error_ = error.empty() ? "Shader compilation failed." : error; status_ = "Failed; previous material remains active."; candidate_.reset(); validation_.reset(); candidate_properties_.clear(); candidate_dependencies_.clear(); TOY_LOG_ERROR("Material Shader: {}", error_); }
+    { error_ = error.empty() ? "Shader compilation failed." : error; status_ = "Failed; previous material remains active."; candidate_.reset(); validation_.reset(); candidate_properties_.clear(); candidate_dependencies_.clear(); TOY_LOG_ERROR("Material Shader [{}]: {}", request_name_, error_); }
 
     void MaterialShaderWorkflow::shutdown()
     {

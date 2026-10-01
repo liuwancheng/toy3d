@@ -10,6 +10,11 @@
 
 namespace toy3d
 {
+    // Open an existing absolute directory in the user's desktop file manager.
+    // Success confirms the request was accepted, not that the UI finished opening.
+    // Failure returns a diagnostic for the caller; this function does not log.
+    bool open_directory_on_desktop(const PhysicalPath& path, std::string& error);
+
     enum class ProcessError { None, InvalidArgument, Launch, Io, Wait, Timeout, Cancelled };
 
     struct ProcessRunOptions

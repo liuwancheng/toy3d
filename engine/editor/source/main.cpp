@@ -16,6 +16,7 @@
 #include "engine.h"
 #include "editor.h"
 #include "workspace/editor_workspace.h"
+#include "logging/logger.h"
 
 toy3d::Engine g_engine;
 
@@ -93,6 +94,8 @@ int main(int argc, char* argv[])
 
 int engine_main(void* hInstance)
 {
+    const auto log_buffer = std::make_shared<toy3d::LogBuffer>();
+    g_engine.initialize_logging(log_buffer);
     toy3d::CommandLineParser& arguments = toy3d::CommandLineParser::get_instance();
     std::vector<std::string> editor_defaults = {"Toy3dEditor"};
     if (!arguments.has_option("Window.Title"))
@@ -114,12 +117,12 @@ int engine_main(void* hInstance)
     workspace_paths.deployment = toy3d::PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
     const bool workspace_ready = workspace.initialize(workspace_paths);
     if (!workspace_ready)
-        std::cerr << "Editor workspace: " << workspace.error() << '\n';
+        TOY_LOG_ERROR("Editor workspace initialization: {}", workspace.error());
     toy3d::ShaderLoadConfig shader_config;
     shader_config.mode = toy3d::ShaderLoadMode::ShaderMapEntry;
     shader_config.path = toy3d::PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
     g_engine.set_shader_load_config(std::move(shader_config));
-    g_engine.set_application(std::make_unique<toy3d::EditorApplication>(workspace));
+    g_engine.set_application(std::make_unique<toy3d::EditorApplication>(workspace, log_buffer));
     g_engine.init(hInstance);
     g_engine.main_loop();
     g_engine.exit();

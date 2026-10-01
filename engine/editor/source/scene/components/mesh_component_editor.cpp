@@ -45,10 +45,15 @@ namespace toy3d
                             asset->index.root_type != "toy3d.MaterialInstanceAssetData"))
                         { error = "The selected Material asset is missing or has changed type. Refresh Content Browser."; }
                         else { reference.asset_id = id; reference.expected_type = asset->index.root_type; }
-                        if (!reference.asset_id.valid()) { TOY_LOG_ERROR("Material assignment: {}", error); return; }
+                        if (!reference.asset_id.valid())
+                        {
+                            TOY_LOG_ERROR("Material assignment [Actor {} Component {} slot '{}' Asset {}]: {}",
+                                actor.actor_id(), component->component_id(), name, id.hex(), error); return;
+                        }
                     }
                     if (!history.assign_material(world, actor.actor_id(), component->component_id(), name, reference, error))
-                        TOY_LOG_ERROR("Material assignment: {}", error);
+                        TOY_LOG_ERROR("Material assignment [Actor {} Component {} slot '{}' Asset {}]: {}",
+                            actor.actor_id(), component->component_id(), name, id.hex(), error);
                     else selection.select_actor(world, actor.actor_id());
                 };
                 ImGui::BeginDisabled(history.active());
@@ -73,7 +78,12 @@ namespace toy3d
                         AssetId id;
                         if (payload->DataSize == sizeof(AssetId)) std::memcpy(&id, payload->Data, sizeof(id));
                         if (id.valid()) assign(id);
-                        else { error = "The dragged material has an invalid asset identity."; TOY_LOG_ERROR("Material assignment: {}", error); }
+                        else
+                        {
+                            error = "The dragged material has an invalid asset identity.";
+                            TOY_LOG_ERROR("Material assignment [Actor {} Component {} slot '{}']: {}",
+                                actor.actor_id(), component->component_id(), name, error);
+                        }
                     }
                     ImGui::EndDragDropTarget();
                 }

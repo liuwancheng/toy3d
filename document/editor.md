@@ -14,6 +14,10 @@ Engine 拥有主 World，EditorSceneSession 管描述身份、读取/装配/保�
 - AssetEditorRegistry 按 root_type 注册，不只按扩展名；窗口保 own session/dirty/history，候选读取失败保持旧 preview/session，不能先清空再加载。
 - Texture preview 等资源须 GPU-ready 才替换显示；Editor 不保 Vk* 或私建 device/view ownership。
 
+Console 作为 PanelRegistry 中的普通面板，由 EditorApplication 持有。读取启动入口注入的 Core LogBuffer，生产线程不调用 ImGui；关闭窗口继续采集，打开后可查看启动日志。Trace/Debug/Info/Warning/Error/Critical 独立勾选，默认 Info 及以上，提供全选/仅错误/恢复默认，文本搜索与等级过滤同时生效。清空仅移动显示起点，不清文件；等级计数、截断/淘汰和文件写入故障必须可见。支持复制正文、自动滚动和打开日志目录，不抢编辑焦点、不成为 Undo/Save 目标。Console 面板只查看日志，命令/变量能力仍属 Runtime config。
+
+失败在最终处理操作的入口上报一次，低层保留 status 返回，消息附 Actor/Component/slot/Asset 等上下文。已上报的材质赋值、RHI、Vulkan validation 不重复记录；外部编译器诊断由 Process 捕获后转入 Logger，不能依靠重定向全进程 stdout/stderr 收集。
+
 ## 选择、交互与 Undo
 
 selection 保存稳定 Actor/Component/Asset ID，使用时解析，删除/切 World 清理失效选择；不长期缓存裸指针。Input 优先级 modal/text → gizmo → viewport → shortcuts → game。
@@ -42,3 +46,5 @@ worker 结果带 AssetId/source content/request/session generation；GT 接管�
 代表代码 source/scene/components/component_editor_registry.h、assets/asset_editor_registry.h、scene/editor_scene_session.h、scene/editor_command_history.h、scene/placement/actor_factory.h 和 panels。先沿已有同类接入走完整调用链，避免加第二份通用“Editor 接入台账”。
 
 测试 engine/editor/tests/editor_framework_tests.cpp、workspace_tests.cpp、placement_tests.cpp、material_edit_tests.cpp、material_assignment_tests.cpp、texture_preview_image_tests.cpp、thumbnail_integration_tests.cpp。验证字段全链、失败原子性、Undo/Redo/dirty 分支、跨 Actor graph、Save 冲突、过期异步、多窗口资源与退出；UI 行为变化补真实交互/截图，不以纯 DTO round-trip 当界面已验证。
+
+Console 见 panels/console_panel.h 和 tests/console_tests.cpp：真实 ImGui 帧验证六个勾选、预设、清空、关闭后采集及 Window 菜单重开，同时核对文件仍包含被隐藏的记录。Core 的 tests/logging_tests.cpp 验证并发快照、缓冲边界、文件创建/轮转失败与恢复。

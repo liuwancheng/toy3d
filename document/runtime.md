@@ -12,6 +12,8 @@ root 持有文件系统、任务调度、Engine/Renderer 等服务；World 在 G
 
 Editor 启动策略不进入 main World play，不能顺带运行 gameplay tick；缩略图/预览使用独立 World，不污染主场景。
 
+Editor 入口在 Workspace 初始化前创建 LogBuffer 并调用 Engine::initialize_logging(buffer)，随后 pre_init 复用同一 Logger，避免丢失启动记录；业务/渲染线程退出后才关闭日志并最终 flush。Core 日志 contract 见 [Core](core.md#日志分发)，查看面板见 [Editor](editor.md)。
+
 ## Console 与配置
 
 Runtime Console 由 config 模块实现，变量登记、类型、默认值、可修改阶段与覆盖来源明确；读取和赋值不能绕 typed validation。覆盖遵循现有默认/配置/命令行顺序，平台路径和用户配置由 composition root 决定。
