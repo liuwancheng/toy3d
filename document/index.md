@@ -1,57 +1,33 @@
-# Toy3d 设计文档索引
+# Toy3d 功能文档入口
 
-本文是 `document/` 的规范入口。状态含义如下：
+日常开发按下表选一份主文档，再读相关章节、公共接口与测试。跨模块改动只补读直接关联文档。本文和功能文档组成长期知识库，AGENTS 规定全仓协作；skill 只提供特定任务的方法。
 
-- `Active`：当前规范，涉及对应模块的设计、实现或审查应读取；
-- `Draft`：尚未定型，只能作为讨论输入，不得覆盖 Active contract；
-- `Historical`：历史记录，不构成当前约束；
-- `Superseded`：已被其他文档替代，不构成当前约束。
-
-AI 不应默认读取全部设计文档，只读取当前任务直接涉及的 Active 文档及其明确引用。
-
-## 快速入口
-
-| 领域 | 状态 | 规范入口 | 说明 |
-| --- | --- | --- | --- |
-| 公共模块使用 | Active | `core-module-usage-index.md` | 查找 `engine/core/` target、公共头文件和最小用例的首选入口 |
-| 共享文件系统 | Active | `core-infrastructure-design.md` | 文件、路径、mount、存储后端与 I/O contract |
-| 外部进程 | Active | `core-process-design.md` | compiler 和 Editor 共享的有界执行、取消及外部编辑器启动 |
-| 材质源码迭代 | Active | `material-source-workflow-design.md` | 项目源码登记、外部编辑、异步编译与候选接管 |
-| Editor 框架与开发规范 | Active | `editor-development-guide.md` | 当前框架、Runtime/反射边界、组件/面板/资产接入、场景保存与 AI 施工规则的唯一入口 |
-| Asset 描述与处理数据 | Active | `asset-pair-format-design.md` | `.asset`/`.scene` YAML、可选配对 `.meta`、成对操作、缩略图缓存；旧二进制 Asset 不兼容 |
-| 代码材质与参数化编辑 | Active | `material-system-design.md` | 属性、资产、多层实例继承、共享发布、源码迭代和 Texture2D/Sampler 采样；材质预览与缩略图按 M6 实施 |
-| StaticMesh 生产链 | Active | `static-mesh-import-design.md` | MeshDescription、Assimp 导入、网格构建、Asset 保存与运行时适配 |
-| Asset 缩略图 | Active | `asset-thumbnail-design.md` | StaticMesh 独立预览、多 UI 纹理、异步颜色读回与可重建的外部 PNG 缓存 |
-| Core Math | Active | `core-math-design.md` | 数学类型、坐标、矩阵、Transform 与迁移 contract |
-| 线程与 Task Graph | Active | `threading-task-graph-design.md` | 共享线程、Queue、GraphTask、Named Thread 与同步 contract |
-| GameScene | Active | `gamescene-design.md` | World、Actor、Component、注册与 GameScene 生命周期 |
-| Game/Render 多线程与 Renderer Foundation | Active | `../openspec/specs/game-render-framework/` | 1 个总控与 17 个子 capability specs 是当前框架行为 contract 的唯一规范入口；已完成 change 的设计与任务记录位于 OpenSpec archive |
-| RHI | Active | `rhi-design.md` | 公共 RHI、资源、命令、同步、typed parameter/RHI 分层、后端与上层边界 |
-| RHI Binding 聚合 | Active | `rhi-binding-aggregation-design.md` | 五个逻辑 Binding Group、RenderCore typed 创建边界与跨后端聚合 contract |
-| Shader 系统 | Active | `shader-system-design.md` | Shader 语言、编译、generated C++ parameters、反射、ShaderMap、Binding ABI 与运行时加载 |
-| Shader 语言语法 | Active | `shader-language-v1.ebnf` | `.shader` v1 语法定义 |
-| 方向光 ShadowPass | Active | `shadow-pass-design.md` | 单 context、单 list 的动态阴影实现细节；pass 级并行录制后续独立设计 |
-| Vulkan 内存 | Active | `vulkan-memory-management.md` | Vulkan/VMA、上传、completion 与延迟销毁；旧实现评估仅是历史背景 |
-| Runtime Console | Active | `console-manager-design.md` | runtime 配置变量、覆盖顺序与生命周期 |
-| 资源目录与部署 | Active | `resource-directory-design.md` | 引擎/项目资产、配置、Editor 界面资源与平台构建输入的职责及部署 |
-| Application 与验证项目 | Active | `application-design.md` | 项目侧启动策略、Engine 绑定边界与当前 Cube 案例组织 |
-
-## 历史文档
-
-
-历史文档统一位于 `archive/`，默认不得作为 AI 上下文或实现依据：
-
-| 文档 | 状态 | 替代入口或归档原因 |
+| 任务 | 主文档 | 从哪里核对代码 |
 | --- | --- | --- |
-| `archive/legacy-readme.txt` | Superseded | 项目结构以 `AGENTS.md` 为准 |
-| `archive/rendering-engine-foundation-progress.md` | Historical | 旧 Foundation 施工与验证台账；当前状态以代码、测试和专项设计为准 |
-| `archive/game-render-thread-design.md` | Superseded | 旧版 Game/Render 线程方案，最终由 OpenSpec change `establish-game-render-framework` 取代 |
-| `archive/game-render-thread-framework-design.md` | Superseded | 框架讨论中间稿，包含已撤销的命令参数设计；由 OpenSpec change `establish-game-render-framework` 取代 |
-| `archive/rendering-engine-foundation-design.md` | Superseded | 旧 Renderer Foundation 总设计，包含已撤销的资源缓存与跨线程身份设计；由 OpenSpec change `establish-game-render-framework` 取代 |
+| 文件、进程、日志、文本、哈希、图像与格式能力 | [Core](core.md) | `engine/core/` 公共头及 CMake target |
+| 坐标、矩阵、Transform、几何、厘米与角度 | [Math](math.md) | `engine/core/math/`、`engine/core/tests/math_tests.cpp` |
+| 线程、Queue、TaskGraph、等待/退出 | [Threading](threading.md) | `engine/core/threading/`、`engine/core/task_graph/` |
+| 反射、序列化、Asset 身份、YAML/meta、导入/缓存 | [Assets](assets.md) | `engine/core/asset/`、reflection、serialization、`engine/tools/` |
+| Engine/Application、配置、输入、平台、资源部署 | [Runtime](runtime.md) | `engine/runtime/engine.*`、application、config、platform、input |
+| World/Actor/Component、注册、挂接、settings 更新 | [GameScene](gamescene.md) | `engine/runtime/gamescene/` |
+| GT/RT、RenderCommand、CPU fence、资源上传/退出 | [Render Framework](render-framework.md) | `engine/runtime/rendercore/`、`renderscene/renderer.*` |
+| View、可见性、MeshBatch、Shadow/Base/Tonemap/UI、预览 | [Renderer](renderer.md) | `engine/runtime/renderscene/` |
+| 公共 RHI、后端、GPU 状态/同步、binding、Vulkan/VMA/WSI | [RHI](rhi.md) | `engine/runtime/drivers/rhi/`、`drivers/vulkan/` |
+| Shader 语言/ABI/compiler/codegen/ShaderMap | [Shader](shader.md) | `engine/tools/shader_compiler/`、`rendercore/shader/`、[语法](shader-language-v1.ebnf) |
+| 材质、实例继承、参数、纹理、源码重编译/候选发布 | [Material](material.md) | `rendercore/material/`、`engine/core/material/`、Editor 工作流 |
+| 面板/组件/资产编辑器、Workspace、场景保存、撤销/异步 | [Editor](editor.md) | `engine/editor/`、其 tests |
 
-## 维护规则
+## 使用与维护
 
-- 新增设计文档时必须在本索引登记状态、领域和规范入口。
-- 新文档取代旧文档时，同一批次更新所有规范性引用，并将旧文档标记为 `Superseded` 或移入 `archive/`。
-- Active 文档不得同时宣称两个相互冲突的“唯一入口”。
-- 仅记录构建命令、提交号和逐轮验证结果的内容应进入提交记录、PR 或历史台账，不应长期占用 Active 设计文档。
+- 先定位真实 target、公共头、完整调用链和失败测试，再修改；文档例子只演示现有 API。片段前置条件写在相邻文字中，完整创建/清理见所列测试，禁止根据类名臆造接口。
+- 每份文档保存核心 contract、关键流程、修改检查点和验证入口；算法以注明的代码为证据，不复制整段源码。未实现范围明确标注，不能当成可调用能力。
+- 改公开接口、格式、默认值或生命周期时同批更新主文档和示例；不增加第二份模块总设计、长期进度表、状态评审记录或每模块 skill。
+- 大改可临时写一份短计划；已确认长期决策合并到主文档，任务/验证记录放 PR，完成后删除计划。普通维护直接改代码和对应章节。
+- OpenSpec 仅在用户明确选择时使用；旧内容供显式追溯，不参与规范路由。历史文档从 Git 查阅，不在知识库复制保存。
+
+## Skills
+
+- `.codex/skills/design-rhi/`：公共 RHI/后端设计与审查方法，产品约束只在功能文档。
+- `.codex/skills/verify-toy3d-build/`：按改动范围独立构建/测试。
+- `.codex/skills/grilling/`：用户要求压力测试想法时使用。
+- `.agents/skills/openspec-*/`：显式 OpenSpec 工作流，关闭隐式触发。

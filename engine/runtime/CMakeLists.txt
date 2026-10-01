@@ -102,6 +102,10 @@ if(TOY3D_ENABLE_VULKAN_RHI)
         message(FATAL_ERROR "The macOS Vulkan RHI backend requires the bundled MoltenVK ICD and library.")
     endif()
 
+    target_link_libraries(${TARGET_NAME} PRIVATE "${vulkan_lib}" vma)
+    target_include_directories(${TARGET_NAME}
+        PRIVATE "$<BUILD_INTERFACE:${vulkan_include}>")
+
     target_sources(${TARGET_NAME}
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/vulkan/vulkan_device.cpp"
@@ -167,8 +171,6 @@ target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>
 target_link_libraries(${TARGET_NAME} PRIVATE tinyobjloader stb)
 target_link_libraries(${TARGET_NAME} PUBLIC glfw)
 target_link_libraries(${TARGET_NAME} PRIVATE imgui)
-target_link_libraries(${TARGET_NAME} PUBLIC ${vulkan_lib})
-target_link_libraries(${TARGET_NAME} PUBLIC vma)
 target_link_libraries(${TARGET_NAME} PUBLIC glm::glm)
 target_link_libraries(${TARGET_NAME} PUBLIC fmt)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dLogging)
@@ -190,10 +192,6 @@ elseif(APPLE)
             "${TOY3D_QUARTZ_CORE_FRAMEWORK}")
 endif()
 
-
-target_include_directories(
-  ${TARGET_NAME}
-  PUBLIC $<BUILD_INTERFACE:${vulkan_include}>)
 
 # 添加项目根目录为包含目录
 # target_include_directories(
@@ -419,19 +417,31 @@ if(BUILD_TESTING)
         target_link_libraries(Toy3dVulkanSwapchainTests PRIVATE Toy3dRuntime)
         add_test(NAME Toy3dRuntime.VulkanSwapchain
             COMMAND Toy3dVulkanSwapchainTests)
-    endif()
 
-    add_executable(Toy3dRHIResourceStateTests
-        "tests/rhi_resource_state_tests.cpp")
-    target_compile_features(Toy3dRHIResourceStateTests PRIVATE cxx_std_17)
-    set_target_properties(Toy3dRHIResourceStateTests PROPERTIES
-        CXX_EXTENSIONS OFF
-        FOLDER "Engine/Tests")
-    target_compile_options(Toy3dRHIResourceStateTests
-        PRIVATE
-            "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-    target_link_libraries(Toy3dRHIResourceStateTests PRIVATE Toy3dRuntime Threads::Threads)
-    add_test(NAME Toy3dRuntime.RHIResourceState COMMAND Toy3dRHIResourceStateTests)
+        # This suite directly exercises Vulkan state tracking, not only public RHI.
+        add_executable(Toy3dRHIResourceStateTests
+            "tests/rhi_resource_state_tests.cpp")
+        target_compile_features(Toy3dRHIResourceStateTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dRHIResourceStateTests PROPERTIES
+            CXX_EXTENSIONS OFF
+            FOLDER "Engine/Tests")
+        target_compile_options(Toy3dRHIResourceStateTests
+            PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_link_libraries(Toy3dRHIResourceStateTests PRIVATE Toy3dRuntime Threads::Threads)
+        add_test(NAME Toy3dRuntime.RHIResourceState COMMAND Toy3dRHIResourceStateTests)
+
+        foreach(TOY3D_VULKAN_TEST_TARGET IN ITEMS
+                Toy3dVulkanTypeMappingTests
+                Toy3dVulkanDeviceLifecycleTests
+                Toy3dVulkanSwapchainTests
+                Toy3dRHIResourceStateTests)
+            target_include_directories(${TOY3D_VULKAN_TEST_TARGET}
+                PRIVATE "${vulkan_include}")
+            target_link_libraries(${TOY3D_VULKAN_TEST_TARGET}
+                PRIVATE "${vulkan_lib}" vma)
+        endforeach()
+    endif()
 
     add_executable(Toy3dRenderResourceManagerTests
         "tests/render_resource_manager_tests.cpp")

@@ -34,6 +34,9 @@ namespace toy3d
         constexpr std::size_t maximum_argument_bytes = 32768u;
         constexpr std::size_t maximum_capture_bytes = 16u * 1024u * 1024u;
         constexpr std::uint32_t poll_interval_ms = 10u;
+#if defined(_WIN32)
+        constexpr DWORD cleanup_timeout_ms = 2000u;
+#endif
 
         bool valid_text(const std::string& value)
         {
@@ -79,6 +82,12 @@ namespace toy3d
             NativeHandle(const NativeHandle&) = delete;
             NativeHandle& operator=(const NativeHandle&) = delete;
             HANDLE get() const { return value_; }
+            bool close_now() noexcept
+            {
+                if (value_ && value_ != INVALID_HANDLE_VALUE && !CloseHandle(value_)) return false;
+                value_ = nullptr;
+                return true;
+            }
           private:
             HANDLE value_ = nullptr;
         };
@@ -118,7 +127,44 @@ namespace toy3d
             return true;
         }
         void windows_error(ProcessResult& result, ProcessError error, const char* operation)
-        { result.error = error; result.message = std::string(operation) + " failed (Win32 " + std::to_string(GetLastError()) + ")."; }
+        {
+            const DWORD code = GetLastError();
+            if (result.error == ProcessError::None) result.error = error;
+            if (!result.message.empty()) result.message += " ";
+            result.message += std::string(operation) + " failed (Win32 " + std::to_string(code) + ").";
+        }
+        void finish_windows_process(HANDLE process, NativeHandle& job, bool job_assigned, ProcessResult& result)
+        {
+            // This call owns the last Job handle. Close it before waiting so
+            // kill-on-close stops the entire tree even on an error path.
+            const bool job_closed = job.close_now();
+            if (!job_closed) windows_error(result, ProcessError::Wait, "Close process job");
+            if (!job_assigned || !job_closed)
+            {
+                // Assignment can fail while the newly created root is suspended.
+                // Such a root is not covered by the Job's kill-on-close policy.
+                const DWORD observed = WaitForSingleObject(process, 0u);
+                if (observed != WAIT_OBJECT_0 && !TerminateProcess(process, 1u))
+                    windows_error(result, ProcessError::Wait, "Terminate uncontained process");
+            }
+            const DWORD waited = WaitForSingleObject(process, cleanup_timeout_ms);
+            if (waited == WAIT_TIMEOUT)
+            {
+                if (result.error == ProcessError::None) result.error = ProcessError::Wait;
+                if (!result.message.empty()) result.message += " ";
+                result.message += "Process cleanup exceeded its " + std::to_string(cleanup_timeout_ms) +
+                                  " ms deadline; exit was not confirmed.";
+                return;
+            }
+            if (waited != WAIT_OBJECT_0)
+            {
+                windows_error(result, ProcessError::Wait, "Reap process");
+                return;
+            }
+            DWORD code = 0;
+            if (GetExitCodeProcess(process, &code)) result.exit_code = static_cast<int>(code);
+            else windows_error(result, ProcessError::Wait, "GetExitCodeProcess");
+        }
 #else
         // --------------------------------------------------------------------------
         // NativeFd: per-call ownership of POSIX pipe descriptors
@@ -197,8 +243,13 @@ namespace toy3d
         CloseHandle(write_value);
         if (!launched) return result;
         NativeHandle process(info.hProcess), thread(info.hThread);
-        if (!AssignProcessToJobObject(job.get(), process.get()) || ResumeThread(thread.get()) == static_cast<DWORD>(-1))
-        { windows_error(result, ProcessError::Launch, "Assign/resume process job"); TerminateProcess(process.get(), 1u); WaitForSingleObject(process.get(), INFINITE); return result; }
+        const bool job_assigned = AssignProcessToJobObject(job.get(), process.get()) != FALSE;
+        if (!job_assigned || ResumeThread(thread.get()) == static_cast<DWORD>(-1))
+        {
+            windows_error(result, ProcessError::Launch, "Assign/resume process job");
+            finish_windows_process(process.get(), job, job_assigned, result);
+            return result;
+        }
         result.launched = true;
         bool exited = false;
         for (;;)
@@ -222,12 +273,7 @@ namespace toy3d
             if (waited == WAIT_FAILED) { windows_error(result, ProcessError::Wait, "WaitForSingleObject"); break; }
             exited = waited == WAIT_OBJECT_0;
         }
-        if (result.error != ProcessError::None)
-            if (!TerminateJobObject(job.get(), 1u)) result.message += " TerminateJobObject failed: " + std::to_string(GetLastError());
-        if (WaitForSingleObject(process.get(), INFINITE) == WAIT_FAILED) windows_error(result, ProcessError::Wait, "Reap process");
-        DWORD code = 0;
-        if (GetExitCodeProcess(process.get(), &code)) result.exit_code = static_cast<int>(code);
-        else windows_error(result, ProcessError::Wait, "GetExitCodeProcess");
+        finish_windows_process(process.get(), job, job_assigned, result);
 #else
         int descriptors[2]{};
         if (pipe(descriptors) != 0) { posix_error(result, ProcessError::Io, "pipe", errno); return result; }

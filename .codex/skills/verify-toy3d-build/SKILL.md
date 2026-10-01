@@ -1,20 +1,13 @@
 ---
 name: verify-toy3d-build
-description: 独立验证 Toy3d 的 C++、CMake、平台或渲染改动。完成代码修改后，或用户要求配置、构建、测试和核对构建结果时使用；由验证者运行适合当前平台和改动范围的命令并报告证据，不代替实现者修改代码。
+description: 独立验证 Toy3d 的 C++、CMake、平台或渲染改动；完成代码实现后或用户要求构建/测试时使用。按改动选择最小充分检查，报告真实证据，不修改实现。
 ---
 
-# Toy3d 构建验证
+# 独立验证
 
-## 职责
-
-独立验证改动，保留工作区中的既有内容。不要修复实现；失败时记录最早的可操作诊断并交回主 agent。
-
-## 工作流
-
-1. 检查 `git status --short` 和相关 diff，区分待验证改动与用户已有改动。
-2. 根据改动选择最小充分验证：纯文档和 skill 改动只做结构检查；CMake 改动必须重新配置；C++ 改动至少构建受影响目标。
-3. 在 macOS 默认运行 `./build_macos.sh Debug`，该脚本完成配置并构建 `Toy3dEditor`。需要其他配置时传入 `Release`、`RelWithDebInfo` 或 `MinSizeRel`。
-4. 在 Windows 运行 `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`，再运行 `cmake --build build --config Debug --target Toy3dEditor`。
-5. 存在已配置且与当前平台、生成器和选项匹配的构建目录时，可以复用；不得进行 CMake 源码内构建。
-6. 存在相关 CTest 时，运行 `ctest --test-dir <build-dir> -C Debug --output-on-failure`；没有测试时明确说明。
-7. 报告实际命令、成功项、失败项、首个关键诊断和未覆盖平台。不要把未运行的检查描述为通过。
+1. 检查 status/diff，保留用户既有内容；按 document/index.md 找模块测试与 CMake target，核对平台/选项。
+2. 纯文档/skill 只检查链接、结构、接口示例和重复规范；C++ 构建受影响 target，CMake 先重新配置。影响程序启动/部署再构建 Editor/验证程序，不能每次固定全量构建。
+3. 可复用平台、generator、选项匹配的 build；禁止源码内构建，不覆盖不匹配 cache。基础命令见根 AGENTS。
+4. 测试先从 CMake/CTest 登记确定名字与条件，再运行相关测试；关键正确性改动检查失败路径、生命周期和真实集成。渲染/WSI 变化需要实际画面/重建/退出检查时明确补充。
+5. 失败保留首个可操作诊断交主 agent，不自行修复实现；缺 SDK/工具或平台未覆盖如实说明。
+6. 报告实际命令、成功/失败、关键诊断、未覆盖范围；不把未运行、只编译或 mock 通过写成全部功能通过。验证日志放交付/PR，不另建长期台账。

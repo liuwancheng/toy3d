@@ -21,7 +21,7 @@
 namespace toy3d
 {
     // GLM remains the public storage type only during the staged migration
-    // described by core-math-design.md. New code must use Toy3d types.
+    // described by document/math.md. New code must use Toy3d types.
     using vec2 = glm::vec2;
     using vec3 = glm::vec3;
     using vec4 = glm::vec4;

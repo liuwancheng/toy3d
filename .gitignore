@@ -9,9 +9,13 @@ doxygen/
 tests/system_test/artifacts
 tests/system_test/tmp
 output/*
-/.agents/
+/.agents/**
+!/.agents/skills/
+!/.agents/skills/openspec-*/
+!/.agents/skills/openspec-*/SKILL.md
+!/.agents/skills/openspec-*/agents/
+!/.agents/skills/openspec-*/agents/openai.yaml
 /project/asset-v1-backup-*/
-.codex/memory/
 __pycache__/
 *.aps
 engine/generated/*
