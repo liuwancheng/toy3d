@@ -60,6 +60,10 @@ namespace toy3d
 
         bool initialized() const noexcept;
         bool ready() const noexcept;
+        // RT-only candidate pipeline; font atlas/pages stay active through reload.
+        RHIStatus prepare_shader(RHIDevice& device, RHIShaderProgramCache& cache, const GlobalShaderMap& shaders);
+        void publish_shader() noexcept;
+        void discard_shader() noexcept;
 
       private:
         struct BufferPage
@@ -84,6 +88,8 @@ namespace toy3d
         RHITextureViewRef font_texture_view_;
         RHISamplerRef font_sampler_;
         RHIGraphicsPipelineRef pipeline_;
+        RHIShaderProgramRef pending_program_;
+        RHIGraphicsPipelineRef pending_pipeline_;
         std::vector<BufferPage> buffer_pages_;
         std::size_t recording_page_index_ = INVALID_PAGE_INDEX;
         bool bootstrap_complete_ = false;

@@ -335,6 +335,18 @@ int main()
         check(found.succeeded() && found.program != nullptr, "frozen map must support typed immutable lookup");
         check(!loaded.shader_map->find(different_type).succeeded(),
               "same type name with a different descriptor must fail lookup");
+        check(!loaded.shader_map->replace({}).succeeded(), "incomplete Global replacement must not publish");
+        check(!loaded.shader_map->replace({nullptr}).succeeded(), "null Global replacement must not publish");
+        const auto replaced = loaded.shader_map->replace({found.program});
+        check(replaced.succeeded() && replaced.shader_map != loaded.shader_map &&
+                  loaded.shader_map->find(equal_type).program == found.program,
+              "validated replacement creates a new frozen map and leaves the old revision intact");
+        const auto wrong_data = make_program_for_type(different_type, 41u);
+        toy3d::ShaderMapProgramKey wrong_key;
+        wrong_key.shader_name = wrong_data.shader_name; wrong_key.pass_name = wrong_data.pass_name;
+        const auto wrong = toy3d::ShaderMap::create_candidate(wrong_data, wrong_key);
+        check(wrong.succeeded() && !loaded.shader_map->replace({wrong.program}).succeeded(),
+              "replacement must reject a Program outside the frozen Global type contract");
     }
 
     toy3d::GlobalShaderMapResult loaded_again =

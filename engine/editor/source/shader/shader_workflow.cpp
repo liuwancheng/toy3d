@@ -1,4 +1,4 @@
-#include "assets/material/material_shader_workflow.h"
+#include "shader/shader_workflow.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -18,6 +18,8 @@
 #include "misc/utf8.h"
 
 #include "platform/platform_defines.h"
+#include "frontend/shader_parser.h"
+#include "compiler/variant_permutation.h"
 
 namespace toy3d
 {
@@ -45,9 +47,12 @@ namespace toy3d
         }
     }
 
-    MaterialShaderWorkflow::~MaterialShaderWorkflow() { shutdown(); }
+    // --------------------------------------------------------------------------
+    // ShaderWorkflow: GT source registration, isolated compilation and publication
+    // --------------------------------------------------------------------------
+    ShaderWorkflow::~ShaderWorkflow() { shutdown(); }
 
-    bool MaterialShaderWorkflow::mount(const PhysicalPath& root, const std::string& name, bool writable, std::string& error)
+    bool ShaderWorkflow::mount(const PhysicalPath& root, const std::string& name, bool writable, std::string& error)
     {
         DirectoryFileStoreDesc desc; desc.physical_root = root; desc.writable = writable;
         const auto store = DirectoryFileStore::create(platform_, desc);
@@ -61,7 +66,7 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialShaderWorkflow::initialize(MaterialShaderPaths paths, MaterialRef defaults, std::string& error)
+    bool ShaderWorkflow::initialize(ShaderWorkflowPaths paths, MaterialRef defaults, std::string& error)
     {
         paths_ = std::move(paths); defaults_ = std::move(defaults);
         if (!defaults_ || !defaults_->desc().shader_program) { error = "Default material Shader is unavailable."; return false; }
@@ -69,8 +74,8 @@ namespace toy3d
         if (!made.succeeded()) { error = made.message; return false; }
         if (!mount(paths_.engine_shader, "/Engine/Shaders", false, error) ||
             !mount(paths_.engine_include, "/Engine/ShaderIncludes", false, error) ||
-            !mount(paths_.project_shader, "/Project/Shaders", false, error) ||
-            !mount(paths_.project_config, "/Project/Config", false, error) ||
+            !mount(paths_.project_shader, "/Project/Shaders", true, error) ||
+            !mount(paths_.project_config, "/Project/Config", true, error) ||
             !mount(paths_.saved, "/Saved", true, error)) return false;
         const auto include = platform_.join_relative(paths_.project_shader, "include");
         if (!include.succeeded()) { error = include.status().message; return false; }
@@ -80,48 +85,72 @@ namespace toy3d
         const auto frozen = files_.freeze();
         if (!frozen.succeeded()) { error = frozen.message; return false; }
         if (!read_sources(error)) return false;
+        const auto global_path = VirtualPath::parse("/Saved/globals.txt");
+        const auto global_text = files_.read_text_utf8(global_path.value(), maximum_shader_manifest_bytes);
+        if (global_text.succeeded())
+        {
+            std::istringstream records(global_text.value()); std::string header, line;
+            bool valid = std::getline(records, header) && header == "Toy3dGlobalShaders 1";
+            while (valid && std::getline(records, line))
+            {
+                const auto first = line.find('\t'), last = line.rfind('\t');
+                if (first == std::string::npos || first == last) { valid = false; break; }
+                const std::string name = line.substr(0, first);
+                const auto* source = find(name);
+                const std::string relative = line.substr(first + 1u, last - first - 1u);
+                // optional represents a malformed digest without accepting zero.
+                const auto hash = sha256_from_hex(line.substr(last + 1u));
+                if (!source || source->usage != BuiltinShaderUsage::Global || !hash || !safe_relative(relative) ||
+                    !global_restore_.emplace(name, std::make_pair(relative, *hash)).second) valid = false;
+            }
+            std::size_t required = 0u;
+            for (const auto& source : sources_) if (source.usage == BuiltinShaderUsage::Global) ++required;
+            if (!valid || global_restore_.size() != required)
+            { global_restore_.clear(); TOY_LOG_WARN("Saved Global Shader record is invalid; validating deployed versions."); }
+        }
+        else if (global_text.status().code != FileErrorCode::NotFound)
+            TOY_LOG_WARN("Cannot read Saved Global Shader record: {}. Validating deployed versions.", global_text.status().message);
         for (const auto& source : sources_)
         {
             const auto pointer = VirtualPath::parse("/Saved/" + sha256_to_hex(sha256(source.name)) + "/current.txt");
-            if (!pointer.succeeded()) { error = pointer.status().message; return false; }
             const auto existing = files_.stat(pointer.value());
-            if (existing.succeeded()) restore_queue_.push_back(source.name);
+            if (!source.artifacts.empty() || existing.succeeded()) restore_queue_.push_back(source.name);
             else if (existing.status().code != FileErrorCode::NotFound)
-            { error = existing.status().message; return false; }
+                TOY_LOG_WARN("Cannot inspect Saved Shader [{}]: {}", source.name, existing.status().message);
         }
+        begin_task(restore_queue_.size(), true);
         status_ = "Ready. Save source in VS Code, then Recompile.";
         return true;
     }
 
-    bool MaterialShaderWorkflow::read_sources(std::string& error)
+    bool ShaderWorkflow::read_sources(std::string& error)
     {
-        std::vector<MaterialShaderSource> values;
-        const auto builtin = VirtualPath::parse("/Engine/Shaders/surface/phong.shader");
-        if (!builtin.succeeded()) { error = builtin.status().message; return false; }
-        values.push_back({defaults_->desc().shader_name, builtin.value(), defaults_->desc().shader_program, {}});
-        if (!paths_.builtin_entries.empty())
+        std::vector<EditorShaderSource> values;
+        for (const auto& builtin : builtin_shader_sources)
         {
-            const auto entries = platform_.enumerate_directory(paths_.builtin_entries);
-            if (!entries.succeeded()) { error = entries.status().message; return false; }
-            for (const auto& entry : entries.value())
-            {
-                if (entry.type != FileType::Directory) continue;
-                const auto basename = entry.path.utf8().substr(entry.path.utf8().find_last_of("/\\") + 1u);
-                // optional distinguishes non-entry directories from valid entry hashes.
-                if (!sha256_from_hex(basename)) continue;
-                if (!shader::read_shader_editor_properties(platform_, entry.path, values.front().name,
-                    values.front().program->data().parameter_schema, values.front().properties, error)) return false;
-            }
+            const auto path = VirtualPath::parse(std::string("/Engine/Shaders/") + builtin.source);
+            const auto artifacts = platform_.join_relative(paths_.builtin_root, builtin.directory);
+            if (!path.succeeded() || !artifacts.succeeded()) { error = "Cannot resolve builtin Shader registration."; return false; }
+            EditorShaderSource source; source.name = builtin.name; source.path = path.value();
+            source.pass = builtin.pass; source.usage = builtin.usage; source.artifacts = artifacts.value();
+            values.push_back(std::move(source));
         }
         const auto manifest = VirtualPath::parse("/Project/Config/shader_sources.txt");
         if (!manifest.succeeded()) { error = manifest.status().message; return false; }
-        const auto text = files_.read_text_utf8(manifest.value(), 64u * 1024u);
+        const auto text = files_.read_text_utf8(manifest.value(), maximum_shader_manifest_bytes);
         if (!text.succeeded()) { error = "Cannot read project Shader source manifest: " + text.status().message; return false; }
         std::istringstream input(text.value()); std::string line;
         if (!std::getline(input, line)) { error = "Empty Shader source manifest."; return false; }
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line != "Toy3dShaderSources 1") { error = "Unsupported Shader source manifest header."; return false; }
         std::set<std::string> names, paths;
+        for (const auto& source : values)
+        {
+            names.insert(source.name);
+            PhysicalPath physical;
+            if (!physical_source(source, physical, error)) return false;
+            paths.insert(comparable(physical.utf8()));
+        }
         while (std::getline(input, line))
         {
             if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -129,10 +158,10 @@ namespace toy3d
             const auto separator = line.find('\t');
             if (separator == std::string::npos || line.find('\t', separator + 1u) != std::string::npos)
             { error = "Shader source entries require logical name, TAB, relative path."; return false; }
-            MaterialShaderSource source; source.name = line.substr(0, separator);
+            EditorShaderSource source; source.name = line.substr(0, separator);
             const std::string relative = line.substr(separator + 1u);
             MaterialAssetData descriptor; descriptor.shader_name = source.name;
-            if (values.size() >= 256u || source.name.compare(0, 16u, "Project/Surface/") != 0 ||
+            if (values.size() >= maximum_registered_shader_sources || source.name.compare(0, 16u, "Project/Surface/") != 0 ||
                 !validate_material_asset(descriptor).succeeded() || !safe_relative(relative) ||
                 relative.size() < 7u || relative.compare(relative.size() - 7u, 7u, ".shader") != 0 ||
                 !names.insert(source.name).second)
@@ -146,18 +175,20 @@ namespace toy3d
             { error = "Multiple Shader names refer to the same physical source."; return false; }
             values.push_back(std::move(source));
         }
+        registered_manifest_ = text.value();
         sources_ = std::move(values);
         return true;
     }
 
-    const MaterialShaderSource* MaterialShaderWorkflow::find(const std::string& name) const
+    const EditorShaderSource* ShaderWorkflow::find(const std::string& name) const
     { for (const auto& source : sources_) if (source.name == name) return &source; return nullptr; }
-    ShaderMapProgramRef MaterialShaderWorkflow::program(const std::string& name) const
+    ShaderMapProgramRef ShaderWorkflow::program(const std::string& name) const
     { const auto* source = find(name); return source ? source->program : nullptr; }
 
-    bool MaterialShaderWorkflow::physical_source(const MaterialShaderSource& source, PhysicalPath& output, std::string& error) const
+    bool ShaderWorkflow::physical_source(const EditorShaderSource& source, PhysicalPath& output, std::string& error) const
     {
-        const bool engine = source.path.utf8().compare(0, 16u, "/Engine/Shaders/") == 0;
+        const std::string engine_prefix = "/Engine/Shaders/";
+        const bool engine = source.path.utf8().compare(0, engine_prefix.size(), engine_prefix) == 0;
         const PhysicalPath& root = engine ? paths_.engine_shader : paths_.project_shader;
         const std::string prefix = engine ? "/Engine/Shaders/" : "/Project/Shaders/";
         if (source.path.utf8().compare(0, prefix.size(), prefix) != 0) { error = "Shader source has no allowed root."; return false; }
@@ -167,18 +198,23 @@ namespace toy3d
         const auto canonical_file = platform_.canonical(joined.value());
         if (!canonical_root.succeeded() || !canonical_file.succeeded() || !contains(canonical_root.value(), canonical_file.value()))
         { error = "Shader source is missing or escapes its registered root."; return false; }
-        const auto checked = files_.read_text_utf8(source.path, 4u * 1024u * 1024u);
+        const auto checked = files_.read_text_utf8(source.path, maximum_shader_source_bytes);
         if (!checked.succeeded()) { error = checked.status().message; return false; }
         output = canonical_file.value(); return true;
     }
 
-    bool MaterialShaderWorkflow::request_failed(const std::string& operation, const std::string& name)
+    bool ShaderWorkflow::request_failed(const std::string& operation, const std::string& name)
     {
-        TOY_LOG_ERROR("Material Shader {} [{}]: {}", operation, name, error_);
+        if (operation == "Recompile")
+        {
+            for (auto& source : sources_) if (source.name == name) source.diagnostic = error_;
+            record_task_error(name, error_);
+        }
+        TOY_LOG_ERROR("Shader {} [{}]: {}", operation, name, error_);
         return false;
     }
 
-    bool MaterialShaderWorkflow::open_source(const std::string& name, std::uint32_t line, std::uint32_t column)
+    bool ShaderWorkflow::open_source(const std::string& name, std::uint32_t line, std::uint32_t column)
     {
         const auto* source = find(name); PhysicalPath physical;
         if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader source is not registered: " + name; return request_failed("Open source", name); }
@@ -209,12 +245,13 @@ namespace toy3d
         error_.clear(); status_ = "Opened source in VS Code: " + physical.utf8(); return true;
     }
 
-    bool MaterialShaderWorkflow::recompile(const std::string& name, AssetId origin, std::uint64_t session_revision)
+    bool ShaderWorkflow::start_compile(const std::string& name, AssetId origin, std::uint64_t session_revision)
     {
-        if (busy()) { error_ = "A Shader compile/publication is already in progress."; return request_failed("Recompile", name); }
+        restoring_ = false; request_name_ = name; error_.clear(); output_.clear();
+        task_.current_source = name; task_.phase = ShaderTaskPhase::Compiling;
         const auto* source = find(name); PhysicalPath physical;
         if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader is not registered."; return request_failed("Recompile", name); }
-        const auto text = files_.read_text_utf8(source->path, 4u * 1024u * 1024u);
+        const auto text = files_.read_text_utf8(source->path, maximum_shader_source_bytes);
         if (!text.succeeded()) { error_ = text.status().message; return request_failed("Recompile", name); }
         if (!AssetId::try_generate(request_id_)) { error_ = "Unable to allocate Shader compile request identity."; return request_failed("Recompile", name); }
         request_name_ = name; origin_ = origin; origin_revision_ = session_revision; source_hash_ = sha256(text.value());
@@ -228,7 +265,7 @@ namespace toy3d
         const auto work = platform_.join_relative(request_directory_, "work");
         if (!output.succeeded() || !work.succeeded()) { error_ = "Unable to resolve Shader compile output paths."; return request_failed("Recompile", name); }
         std::vector<std::string> arguments = {"--toolchain-root", paths_.toolchain.utf8(), "compile-vulkan", physical.utf8(),
-            source->path.utf8(), "Forward", output.value().utf8(), work.value().utf8(), "--engine-include-root", paths_.engine_include.utf8()};
+            source->path.utf8(), source->pass, output.value().utf8(), work.value().utf8(), "--engine-include-root", paths_.engine_include.utf8()};
         const auto project_include = platform_.join_relative(paths_.project_shader, "include");
         if (!project_include.succeeded()) { error_ = project_include.status().message; return request_failed("Recompile", name); }
         const auto includes_exist = platform_.exists(project_include.value());
@@ -237,7 +274,7 @@ namespace toy3d
         cancel_.store(false); result_ = std::make_shared<CompileResult>();
         try
         {
-            worker_ = std::make_unique<Thread>(threads_, "MaterialShaderCompiler", [this, result = result_, arguments = std::move(arguments)]()
+            worker_ = std::make_unique<Thread>(threads_, "ShaderCompiler", [this, result = result_, arguments = std::move(arguments)]()
             {
                 try
                 {
@@ -252,7 +289,7 @@ namespace toy3d
         error_.clear(); output_.clear(); status_ = "Compiling " + name + " (saved files)..."; return true;
     }
 
-    bool MaterialShaderWorkflow::error_location(std::uint32_t& line, std::uint32_t& column) const
+    bool ShaderWorkflow::error_location(std::uint32_t& line, std::uint32_t& column) const
     {
         const auto* source = find(request_name_);
         if (!source || error_.empty()) return false;
@@ -278,16 +315,16 @@ namespace toy3d
         return found;
     }
 
-    bool MaterialShaderWorkflow::has_error_location() const
+    bool ShaderWorkflow::has_error_location() const
     { std::uint32_t line = 0u, column = 0u; return error_location(line, column); }
-    bool MaterialShaderWorkflow::open_error()
+    bool ShaderWorkflow::open_error()
     {
         std::uint32_t line = 0u, column = 0u;
         if (!error_location(line, column)) { error_ = "No registered source location was found in compiler output."; return request_failed("Open diagnostic", request_name_); }
         return open_source(request_name_, line, column);
     }
 
-    bool MaterialShaderWorkflow::validate_interface(const ShaderMapProgram& candidate, std::string& error) const
+    bool ShaderWorkflow::validate_interface(const ShaderMapProgram& candidate, std::string& error) const
     {
         if (candidate.data().pass_name != "Forward" || candidate.data().platform != ShaderPlatform::VulkanES31)
         { error = "Only the current Vulkan ES3.1 Forward compile target is available."; return false; }
@@ -305,32 +342,63 @@ namespace toy3d
         return true;
     }
 
-    bool MaterialShaderWorkflow::load_candidate(const PhysicalPath& directory, const std::string& name, std::string& error)
+    bool ShaderWorkflow::load_candidate(const PhysicalPath& directory, const std::string& name, std::string& error)
     {
-        ShaderMapEntryLoader loader(directory);
-        ShaderMapProgramKey key{name, "Forward", ShaderPlatform::VulkanES31};
+        // Cache locators stay within the configured Saved/deployment roots,
+        // including when an on-disk directory is a link or junction.
+        const auto canonical = platform_.canonical(directory);
+        const auto saved = platform_.canonical(paths_.saved);
+        const auto builtin = platform_.canonical(paths_.builtin_root);
+        if (!canonical.succeeded())
+        { error = "Cannot resolve Shader artifacts " + directory.utf8() + ": " + canonical.status().message; return false; }
+        if (!((saved.succeeded() && contains(saved.value(), canonical.value())) ||
+              (builtin.succeeded() && contains(builtin.value(), canonical.value()))))
+        { error = "Shader artifact directory escapes its configured root: " + directory.utf8(); return false; }
+        ShaderMapEntryLoader loader(canonical.value());
+        const auto* source = find(name);
+        if (!source) { error = "Shader source is not registered."; return false; }
+        ShaderMapProgramKey key{name, source->pass, ShaderPlatform::VulkanES31};
+        const auto text = files_.read_text_utf8(source->path, maximum_shader_source_bytes);
+        if (!text.succeeded()) { error = text.status().message; return false; }
+        // Reuse the compiler's typed default selection, including nonempty
+        // domains (Unlit has USE_VERTEX_COLOR=false). An empty-domain key does
+        // not mean "default" for every Shader; never choose the first cache entry.
+        const auto parsed = shader::parse_shader(text.value(), source->path.utf8());
+        if (!parsed.succeeded())
+        {
+            error = "Cannot parse registered Shader source.";
+            for (const auto& diagnostic : parsed.diagnostics) error += "\n" + shader::format_diagnostic(diagnostic);
+            return false;
+        }
+        if (parsed.asset->name != name) { error = "Shader declaration does not match its registered name."; return false; }
+        const auto permutation = shader::resolve_shader_permutation(*parsed.asset, {});
+        if (!permutation.succeeded()) { error = "Cannot resolve default Shader permutation."; return false; }
+        key.permutation_key = permutation.permutation->key;
         auto data = loader.load_program(key);
         if (!data.succeeded()) { error = data.error; return false; }
         auto candidate = ShaderMap::create_candidate(std::move(*data.program), key);
         if (!candidate.succeeded()) { error = candidate.error; return false; }
-        if (!validate_interface(*candidate.program, error)) return false;
-        // Validate the supported material model even when no window or scene
-        // user exists yet. Reuse the runtime builder, including its resource
-        // and default-value rules, before calling a Shader ready for creation.
-        MaterialTextureValues textures;
-        for (const auto& resource : defaults_->parameter_schema().resources)
+        if (source->usage == BuiltinShaderUsage::Material && !validate_interface(*candidate.program, error)) return false;
+        if (source->usage == BuiltinShaderUsage::Material)
         {
-            const auto found = defaults_->desc().texture_defaults.find(resource.parameter_id);
-            if (found != defaults_->desc().texture_defaults.end()) textures.named_defaults[resource.default_value] = found->second;
+            // Validate the supported material model even when no window or scene
+            // user exists yet. Reuse the runtime builder, including its resource
+            // and default-value rules, before calling a Shader ready for creation.
+            MaterialTextureValues textures;
+            for (const auto& resource : defaults_->parameter_schema().resources)
+            {
+                const auto found = defaults_->desc().texture_defaults.find(resource.parameter_id);
+                if (found != defaults_->desc().texture_defaults.end()) textures.named_defaults[resource.default_value] = found->second;
+            }
+            MaterialInstanceRef checked;
+            {
+                MaterialAssetData descriptor; descriptor.shader_name = name;
+                const auto built = create_material_from_asset(descriptor, candidate.program, textures);
+                if (!built.succeeded()) { error = built.status().message; return false; }
+                checked = built.value();
+            }
+            MaterialInstance::release(checked);
         }
-        MaterialInstanceRef checked;
-        {
-            MaterialAssetData descriptor; descriptor.shader_name = name;
-            const auto built = create_material_from_asset(descriptor, candidate.program, textures);
-            if (!built.succeeded()) { error = built.status().message; return false; }
-            checked = built.value();
-        }
-        MaterialInstance::release(checked);
         const auto directories = platform_.enumerate_directory(directory);
         if (!directories.succeeded()) { error = directories.status().message; return false; }
         std::vector<shader::ShaderEditorProperty> properties;
@@ -342,57 +410,132 @@ namespace toy3d
             const auto hash = sha256_from_hex(basename);
             if (!hash) continue;
             const auto verified = shader::read_verified_shader_map_entry(platform_, directory, *hash);
-            if (!verified.succeeded()) { error = "ShaderMapEntry changed during publication."; return false; }
+            if (!verified.succeeded())
+            {
+                error = "Cannot verify ShaderMapEntry " + entry.path.utf8();
+                for (const auto& diagnostic : verified.diagnostics) error += "\n" + diagnostic;
+                return false;
+            }
+            if (verified.entry->shader_name != name || verified.entry->pass_name != source->pass ||
+                verified.entry->permutation_key != key.permutation_key) continue;
             for (const auto& stage : verified.entry->stages)
                 for (const auto& dependency : stage.request.dependencies)
                 {
                     if (dependency.virtual_path.compare(0, 11u, "/Generated/") == 0 || dependency.virtual_path.compare(0, 10u, "builtin://") == 0) continue;
                     const auto path = VirtualPath::parse(dependency.virtual_path);
                     if (!path.succeeded()) { error = path.status().message; return false; }
-                    const auto current = files_.read_text_utf8(path.value(), 4u * 1024u * 1024u);
-                    if (!current.succeeded() || sha256(current.value()) != dependency.content_hash)
-                    { error = "Shader dependency changed or disappeared. Save files and recompile: " + dependency.virtual_path; return false; }
+                    const auto current = files_.read_text_utf8(path.value(), maximum_shader_source_bytes);
+                    if (!current.succeeded())
+                    { error = "Cannot read Shader dependency " + dependency.virtual_path + ": " + current.status().message; return false; }
+                    if (sha256(current.value()) != dependency.content_hash)
+                    { error = "Shader dependency changed. Save files and recompile: " + dependency.virtual_path; return false; }
                     dependencies[dependency.virtual_path] = dependency.content_hash;
                 }
-            if (!shader::read_shader_editor_properties(platform_, entry.path, name, candidate.program->data().parameter_schema, properties, error)) return false;
+            if (source->usage == BuiltinShaderUsage::Material &&
+                !shader::read_shader_editor_properties(platform_, entry.path, name, candidate.program->data().parameter_schema, properties, error)) return false;
         }
         candidate_ = std::move(candidate.program); candidate_properties_ = std::move(properties);
         candidate_dependencies_ = std::move(dependencies);
-        validation_ = std::make_shared<MaterialProgramValidation>(); validation_->program = candidate_;
+        if (source->usage == BuiltinShaderUsage::Material)
+        { validation_ = std::make_shared<MaterialProgramValidation>(); validation_->program = candidate_; }
         validation_sent_ = false; validation_attempts_ = 0u;
         return true;
     }
 
-    void MaterialShaderWorkflow::tick()
+    void ShaderWorkflow::tick()
     {
-        if (!busy() && !restore_queue_.empty())
+        if (!busy() && task_.phase != ShaderTaskPhase::Idle && task_.phase != ShaderTaskPhase::Completed) complete_task();
+        if (builtin_update_)
         {
-            request_name_ = restore_queue_.back(); restore_queue_.pop_back(); origin_ = {}; origin_revision_ = 0u;
-            const auto pointer = VirtualPath::parse("/Saved/" + sha256_to_hex(sha256(request_name_)) + "/current.txt");
-            const auto text = files_.read_text_utf8(pointer.value(), 512u);
-            if (!text.succeeded()) { reject(text.status().message); return; }
-            std::istringstream input(text.value()); std::string signature;
-            std::getline(input, candidate_relative_); std::getline(input, signature);
-            const std::string prefix = "requests/";
-            const auto hash = sha256_from_hex(signature);
-            AssetId saved_request;
-            if (!hash || !safe_relative(candidate_relative_) || candidate_relative_.compare(0, prefix.size(), prefix) != 0 ||
-                !AssetId::parse(candidate_relative_.substr(prefix.size()), saved_request))
-            { reject("Invalid saved Shader publication record. Recompile the source."); return; }
-            source_hash_ = *hash;
-            const auto* source = find(request_name_);
-            const auto current = files_.read_text_utf8(source->path, 4u * 1024u * 1024u);
-            if (!current.succeeded() || sha256(current.value()) != source_hash_)
-            { reject("Saved Shader source changed. Recompile " + request_name_); return; }
-            const auto directory = platform_.join_relative(paths_.saved, candidate_relative_ + "/entries");
-            std::string error;
-            if (!directory.succeeded() || !load_candidate(directory.value(), request_name_, error)) { reject(error); return; }
-            status_ = "Validating saved Shader...";
+            if (builtin_update_->prepared.load(std::memory_order_acquire) &&
+                builtin_update_->decision.load() == BuiltinShaderDecision::Pending)
+            {
+                if (!builtin_update_->status.succeeded())
+                {
+                    error_ = builtin_update_->status.message();
+                    bool saved = false;
+                    for (const auto& revision : builtin_revisions_)
+                        saved = saved || revision.relative.compare(0u, 9u, "requests/") == 0;
+                    if (restoring_ && saved)
+                    {
+                        std::vector<std::string> fallback;
+                        for (const auto& revision : builtin_revisions_)
+                        { fallback.push_back(revision.name); global_restore_.erase(revision.name); ignore_saved_.insert(revision.name); }
+                        restore_queue_.insert(restore_queue_.begin(), fallback.begin(), fallback.end());
+                        TOY_LOG_WARN("Saved builtin Shader group failed validation: {}. Validating deployed group.", error_);
+                        builtin_update_.reset(); builtin_revisions_.clear(); error_.clear(); return;
+                    }
+                    for (auto& source : sources_) for (const auto& revision : builtin_revisions_)
+                        if (source.name == revision.name) source.diagnostic = error_;
+                    status_ = "Builtin Shader validation failed; previous programs remain active.";
+                    for (const auto& revision : builtin_revisions_) record_task_error(revision.name, error_);
+                    TOY_LOG_ERROR("Builtin Shader validation failed: {}", error_);
+                    finish_batch_item(false, builtin_revisions_.size());
+                    builtin_update_.reset(); builtin_revisions_.clear(); return;
+                }
+                if (batch_cancelled_ || !publish_builtin())
+                {
+                    if (!batch_cancelled_)
+                    {
+                        for (const auto& revision : builtin_revisions_) record_task_error(revision.name, error_);
+                        TOY_LOG_ERROR("Builtin Shader publication failed: {}", error_);
+                    }
+                    builtin_update_->decision.store(BuiltinShaderDecision::Discard, std::memory_order_release);
+                }
+                else
+                {
+                    task_.phase = ShaderTaskPhase::Publishing;
+                    builtin_update_->decision.store(BuiltinShaderDecision::Commit, std::memory_order_release);
+                }
+            }
+            if (builtin_update_->resolved.load(std::memory_order_acquire))
+            {
+                const bool applied = builtin_update_->applied;
+                if (applied)
+                {
+                    for (auto& revision : builtin_revisions_)
+                        for (auto& source : sources_) if (source.name == revision.name)
+                        { source.program = revision.program; source.diagnostic.clear(); }
+                    status_ = "Applied builtin Shaders.";
+                    TOY_LOG_INFO("Applied {} builtin Shader revisions.", builtin_revisions_.size());
+                }
+                finish_batch_item(applied, builtin_revisions_.size());
+                builtin_update_.reset(); builtin_revisions_.clear();
+                if (!busy()) complete_task();
+            }
+            return;
+        }
+        if (!active())
+        {
+            const auto& queue = batch_active_ ? compile_queue_ : restore_queue_;
+            const std::size_t index = batch_active_ ? compile_index_ : 0u;
+            const auto* next = index < queue.size() ? find(queue[index]) : nullptr;
+            if ((!global_candidates_.empty() || global_failed_) && (!next || next->usage != BuiltinShaderUsage::Global))
+            { finish_global_group(); return; }
+            if (batch_active_)
+            {
+                if (compile_index_ < compile_queue_.size() && !batch_cancelled_)
+                {
+                    const auto name = compile_queue_[compile_index_++];
+                    if (!start_compile(name, {}, 0u))
+                    {
+                        if (find(name)->usage == BuiltinShaderUsage::Global) global_failed_ = true;
+                        else finish_batch_item(false);
+                    }
+                }
+                else { finish_batch(); return; }
+            }
+            else if (!restore_queue_.empty())
+            {
+                const auto name = restore_queue_.front(); restore_queue_.erase(restore_queue_.begin());
+                restore(name);
+            }
         }
         if (worker_ && result_->complete.load(std::memory_order_acquire))
         {
             worker_->join(); worker_.reset();
             output_ = result_->process.output;
+            if (batch_cancelled_) { result_.reset(); reject("Shader compilation cancelled."); return; }
             if (!result_->process.succeeded()) { reject(result_->process.message + "\n" + output_); result_.reset(); return; }
             // Successful compilation may still emit warnings. Forward its diagnostics
             // once; failed processes already include the full output in reject().
@@ -410,12 +553,13 @@ namespace toy3d
             result_.reset();
             const auto* source = find(request_name_);
             if (!source) { reject("Shader source registration changed during compilation."); return; }
-            const auto text = files_.read_text_utf8(source->path, 4u * 1024u * 1024u);
+            const auto text = files_.read_text_utf8(source->path, maximum_shader_source_bytes);
             if (!text.succeeded() || sha256(text.value()) != source_hash_)
             { reject("Source changed during compilation. Save it and recompile."); return; }
             const auto entries = platform_.join_relative(request_directory_, "entries");
             std::string error;
             if (!entries.succeeded() || !load_candidate(entries.value(), request_name_, error)) { reject(error); return; }
+            task_.phase = ShaderTaskPhase::Validating;
             status_ = "Validating Shader pipeline on Rendering Thread...";
         }
         if (validation_ && validation_->complete.load(std::memory_order_acquire))
@@ -425,54 +569,86 @@ namespace toy3d
                 auto next = std::make_shared<MaterialProgramValidation>(); next->program = candidate_;
                 validation_ = std::move(next); validation_sent_ = false; ++validation_attempts_; return;
             }
-            if (!validation_->status.succeeded()) { reject(validation_->status.message()); return; }
-            validation_.reset(); status_ = "Shader candidate ready.";
+            if (!validation_->status.succeeded())
+            {
+                const auto failure = validation_->status.message();
+                validation_.reset(); candidate_.reset();
+                const auto* source = find(request_name_);
+                if (restoring_ && saved_candidate_ && source && !source->artifacts.empty())
+                {
+                    saved_candidate_ = false;
+                    std::string error;
+                    if (load_candidate(source->artifacts, request_name_, error))
+                    {
+                        candidate_relative_ = "deployment/" + source->artifacts.utf8().substr(source->artifacts.utf8().find_last_of("/\\") + 1u);
+                        TOY_LOG_WARN("Saved Shader [{}] failed validation: {}. Validating deployed version.", request_name_, failure);
+                        return;
+                    }
+                    reject(failure + " Deployed version: " + error); return;
+                }
+                reject(failure); return;
+            }
+            validation_.reset(); task_.phase = ShaderTaskPhase::Publishing; status_ = "Shader candidate ready.";
         }
+        if (candidate_ && !validation_ && find(request_name_)->usage != BuiltinShaderUsage::Material) stage_builtin();
     }
 
-    void MaterialShaderWorkflow::collect_validation(std::vector<MaterialProgramValidationRef>& requests)
+    void ShaderWorkflow::collect_validation(std::vector<MaterialProgramValidationRef>& requests)
     { if (validation_ && !validation_sent_) { requests.push_back(validation_); validation_sent_ = true; } }
 
-    bool MaterialShaderWorkflow::publish()
+    bool ShaderWorkflow::publish()
     {
         if (!candidate_ || validation_) { error_ = "Shader candidate validation is incomplete."; return false; }
         const auto* registered = find(request_name_);
         if (!registered) { error_ = "Shader source registration changed."; return false; }
-        const auto source_text = files_.read_text_utf8(registered->path, 4u * 1024u * 1024u);
-        if (!source_text.succeeded() || sha256(source_text.value()) != source_hash_)
+        const auto source_text = files_.read_text_utf8(registered->path, maximum_shader_source_bytes);
+        if (!source_text.succeeded()) { error_ = "Cannot read Shader source: " + source_text.status().message; return false; }
+        if (sha256(source_text.value()) != source_hash_)
         { error_ = "Source changed during pipeline validation. Save files and recompile."; return false; }
         for (const auto& dependency : candidate_dependencies_)
         {
             const auto path = VirtualPath::parse(dependency.first);
             if (!path.succeeded()) { error_ = path.status().message; return false; }
-            const auto current = files_.read_text_utf8(path.value(), 4u * 1024u * 1024u);
-            if (!current.succeeded() || sha256(current.value()) != dependency.second)
+            const auto current = files_.read_text_utf8(path.value(), maximum_shader_source_bytes);
+            if (!current.succeeded())
+            { error_ = "Cannot read Shader dependency " + dependency.first + ": " + current.status().message; return false; }
+            if (sha256(current.value()) != dependency.second)
             { error_ = "Shader dependency changed during pipeline validation. Recompile: " + dependency.first; return false; }
         }
-        const auto pointer = VirtualPath::parse("/Saved/" + sha256_to_hex(sha256(request_name_)) + "/current.txt");
-        if (!pointer.succeeded()) { error_ = pointer.status().message; return false; }
-        const auto record_directory = platform_.join_relative(paths_.saved, sha256_to_hex(sha256(request_name_)));
-        if (!record_directory.succeeded()) { error_ = "Cannot resolve Shader publication directory: " + record_directory.status().message; return false; }
-        const auto made = platform_.create_directories(record_directory.value());
-        if (!made.succeeded()) { error_ = "Cannot create Shader publication directory: " + made.message; return false; }
-        const std::string text = candidate_relative_ + "\n" + sha256_to_hex(source_hash_) + "\n";
-        std::string next_status = "Compiled and applied " + request_name_;
-        const auto saved = files_.write_binary_atomic(pointer.value(), std::vector<std::uint8_t>(text.begin(), text.end()), FilePublishMode::Replace);
-        if (!saved.succeeded()) { error_ = "Cannot save Shader publication record: " + saved.message; return false; }
+        if (!restoring_ && !write_publication(request_name_, candidate_relative_, source_hash_)) return false;
+        std::string next_status = "Applied " + request_name_;
         for (auto& source : sources_) if (source.name == request_name_)
-        { source.program = candidate_; source.properties = std::move(candidate_properties_); }
+        { source.program = candidate_; source.properties = std::move(candidate_properties_); source.diagnostic.clear(); }
         status_ = std::move(next_status); error_.clear();
         candidate_.reset(); candidate_dependencies_.clear();
+        finish_batch_item(true);
+        if (!busy()) complete_task();
         return true;
     }
 
-    void MaterialShaderWorkflow::reject(const std::string& error)
-    { error_ = error.empty() ? "Shader compilation failed." : error; status_ = "Failed; previous material remains active."; candidate_.reset(); validation_.reset(); candidate_properties_.clear(); candidate_dependencies_.clear(); TOY_LOG_ERROR("Material Shader [{}]: {}", request_name_, error_); }
-
-    void MaterialShaderWorkflow::shutdown()
+    void ShaderWorkflow::reject(const std::string& error)
     {
-        cancel_.store(true, std::memory_order_release);
+        error_ = error.empty() ? "Shader compilation failed." : error;
+        status_ = "Failed; previous Shader remains active.";
+        const auto* source = find(request_name_);
+        if (!batch_cancelled_)
+        {
+            for (auto& item : sources_) if (item.name == request_name_) item.diagnostic = error_;
+            if (source && source->usage == BuiltinShaderUsage::Global) global_failed_ = true;
+            else finish_batch_item(false);
+            record_task_error(request_name_, error_);
+            TOY_LOG_ERROR("Shader [{}]: {}", request_name_, error_);
+        }
+        candidate_.reset(); validation_.reset(); candidate_properties_.clear(); candidate_dependencies_.clear();
+        if (!busy()) complete_task();
+    }
+
+    void ShaderWorkflow::shutdown()
+    {
+        cancel();
         if (worker_) { worker_->join(); worker_.reset(); }
         result_.reset(); validation_.reset(); candidate_.reset(); sources_.clear(); defaults_.reset();
+        restore_queue_.clear(); compile_queue_.clear(); global_candidates_.clear(); builtin_revisions_.clear();
+        builtin_update_.reset(); batch_active_ = false;
     }
 }

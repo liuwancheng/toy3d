@@ -5,6 +5,8 @@
 #include "rendercore/material/material.h"
 #include "rendercore/shader/shader_map.h"
 #include "asset/material/material_asset_data.h"
+#include "rendercore/geometry/static_mesh.h"
+#include "misc/sha256.h"
 
 #include <cstdint>
 #include <functional>
@@ -17,6 +19,8 @@ namespace toy3d
 {
     class EditorWorkspace;
     class World;
+    class ShaderWorkflow;
+    class EditorCommandHistory;
 
     struct MaterialSlotAssignment
     {
@@ -33,6 +37,11 @@ namespace toy3d
     {
       public:
         void initialize(EditorWorkspace& workspace, MaterialLibrary& library);
+        void set_shader_workflow(ShaderWorkflow& shaders) { shaders_ = &shaders; }
+        bool offer_compile_assignment(World& world, std::uint32_t actor_id, const MaterialSlotAssignment& assignment);
+        bool can_compile_assignment() const;
+        bool compile_assignment(std::string& error);
+        void tick_compile_assignment(World& world, EditorCommandHistory& history, std::string& error);
         AssetStatus reload(const AssetRef& reference);
         bool prepare_shader(const ShaderMapProgramRef& program, std::string& error);
         bool publish_shader(std::string& error, bool defer_completion = false);
@@ -51,6 +60,20 @@ namespace toy3d
         EditorWorkspace* workspace_ = nullptr;
         World* world_ = nullptr;
         MaterialLibrary* library_ = nullptr;
+        ShaderWorkflow* shaders_ = nullptr;
+        struct PendingAssignment
+        {
+            World* world = nullptr;
+            std::uint64_t generation = 0u;
+            std::uint32_t actor_id = 0u;
+            MaterialSlotAssignment assignment;
+            StaticMeshRef mesh;
+            MaterialInterfaceRef previous;
+            std::string shader;
+            std::map<AssetId, Sha256Hash> descriptions;
+            bool compiling = false;
+        };
+        PendingAssignment pending_assignment_;
         std::map<std::uint32_t, std::vector<MaterialSlotAssignment>> assignments_;
     };
 }

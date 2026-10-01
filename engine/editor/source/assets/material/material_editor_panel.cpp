@@ -11,7 +11,7 @@
 #include "rendercore/shader/shader_map.h"
 #include "rendercore/texture/texture_asset_loader.h"
 #include "workspace/editor_workspace.h"
-#include "assets/material/material_shader_workflow.h"
+#include "shader/shader_workflow.h"
 
 namespace toy3d
 {

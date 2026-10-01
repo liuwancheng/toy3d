@@ -57,7 +57,14 @@ namespace toy3d
             if (!textures.succeeded()) return AssetResult<MaterialInterfaceRef>(textures);
         }
         const auto program = programs_(hierarchy.value().root.shader_name);
-        if (!program) return AssetResult<MaterialInterfaceRef>(failure("Material Shader has no validated published Program. Compile it first."));
+        if (!program)
+        {
+            const auto* location = index_().find(reference.asset_id);
+            const std::string reason = shader_diagnostic_ ? shader_diagnostic_(hierarchy.value().root.shader_name) :
+                "Shader '" + hierarchy.value().root.shader_name + "' has no validated Program. Compile it first.";
+            return AssetResult<MaterialInterfaceRef>(failure("Material " +
+                (location ? location->path.utf8() : reference.asset_id.hex()) + ": " + reason));
+        }
         auto descriptor = material_descriptor_from_asset(hierarchy.value().root, program, textures_);
         if (!descriptor.succeeded()) return AssetResult<MaterialInterfaceRef>(descriptor.status());
         if (existing != loaded_.end()) return AssetResult<MaterialInterfaceRef>(MaterialInterfaceRef(existing->second.runtime));
@@ -232,6 +239,18 @@ namespace toy3d
     {
         discard();
         if (!program) return failure("Material Shader candidate is missing.");
+        if (default_material_ && default_material_->desc().shader_name == program->data().shader_name)
+        {
+            MaterialAssetData data; data.shader_name = program->data().shader_name;
+            data.two_sided = default_material_->desc().two_sided;
+            const auto descriptor = material_descriptor_from_asset(data, program, textures_);
+            if (!descriptor.succeeded()) return descriptor.status();
+            // The root was created mutable; its public MaterialRef is read-only.
+            // Only this GT publisher can replace its complete configuration.
+            auto* target = const_cast<Material*>(default_material_.get());
+            pending_.push_back({target, descriptor.value(), target->local_overrides_, {}});
+            previous_.push_back({target, target->desc_, target->local_overrides_, {}});
+        }
         for (auto& item : loaded_)
         {
             auto& loaded = item.second;
@@ -287,6 +306,7 @@ namespace toy3d
         // Parent references therefore cannot reorder proxy ownership transfers.
         for (auto it = temporary_.rbegin(); it != temporary_.rend(); ++it) (*it)->retire_proxy();
         for (auto& item : loaded_) item.second.runtime->retire_proxy();
-        temporary_.clear(); loaded_.clear(); textures_ = {};
+        if (default_material_) const_cast<Material*>(default_material_.get())->retire_proxy();
+        temporary_.clear(); loaded_.clear(); textures_ = {}; default_material_.reset(); shader_diagnostic_ = {};
     }
 }

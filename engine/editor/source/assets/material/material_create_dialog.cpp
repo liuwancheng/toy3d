@@ -6,7 +6,7 @@
 #include "logging/logger.h"
 #include "scene/editor_selection.h"
 #include "workspace/editor_workspace.h"
-#include "assets/material/material_shader_workflow.h"
+#include "shader/shader_workflow.h"
 
 namespace toy3d
 {
@@ -37,7 +37,7 @@ namespace toy3d
     }
 
     void MaterialCreateDialog::draw(EditorWorkspace& workspace, EditorSelection& selection,
-        std::string& browser_folder, const shader::ShaderParameterSchema& schema, MaterialShaderWorkflow* shaders)
+        std::string& browser_folder, const shader::ShaderParameterSchema& schema, ShaderWorkflow* shaders)
     {
         if (!active_) return;
         const char* title = kind_ == MaterialAssetCreationKind::Material ? "Create Material" : "Create Material Instance";
@@ -61,7 +61,7 @@ namespace toy3d
             if (shaders && ImGui::BeginCombo("Shader", shader_name_.c_str()))
             {
                 for (const auto& source : shaders->sources())
-                    if (ImGui::Selectable(source.name.c_str(), source.name == shader_name_)) shader_name_ = source.name;
+                    if (source.usage == BuiltinShaderUsage::Material && ImGui::Selectable(source.name.c_str(), source.name == shader_name_)) shader_name_ = source.name;
                 ImGui::EndCombo();
             }
             if (!shaders) ImGui::TextUnformatted("Shader: Toy3d/Surface/Phong");

@@ -8,14 +8,14 @@ namespace toy3d
 {
     class EditorSelection;
     class EditorWorkspace;
-    class MaterialShaderWorkflow;
+    class ShaderWorkflow;
 
     class MaterialCreateDialog final
     {
       public:
         void request(MaterialAssetCreationKind kind, const std::string& folder, AssetId parent = {});
         void draw(EditorWorkspace& workspace, EditorSelection& selection, std::string& browser_folder,
-            const shader::ShaderParameterSchema& schema, MaterialShaderWorkflow* shaders = nullptr);
+            const shader::ShaderParameterSchema& schema, ShaderWorkflow* shaders = nullptr);
         bool active() const { return active_; }
         void clear();
 

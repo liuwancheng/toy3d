@@ -13,7 +13,7 @@
 namespace toy3d
 {
     class EditorWorkspace;
-    class MaterialShaderWorkflow;
+    class ShaderWorkflow;
 
     enum class MaterialCloseDecision
     {
@@ -29,7 +29,7 @@ namespace toy3d
       public:
         void initialize(EditorWorkspace& workspace, MaterialRef defaults, const PhysicalPath& shader_root);
         MaterialEditSession& edit_session() { return *session_; }
-        void set_shader_workflow(MaterialShaderWorkflow& workflow) { shaders_ = &workflow; }
+        void set_shader_workflow(ShaderWorkflow& workflow) { shaders_ = &workflow; }
         bool prepare_shader(const ShaderMapProgramRef& program, const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
         void publish_shader();
         void discard_shader();
@@ -65,7 +65,7 @@ namespace toy3d
         MaterialInstanceRef shader_candidate_;
         std::vector<shader::ShaderEditorProperty> candidate_properties_;
         shader::ShaderParameterSchema candidate_schema_;
-        MaterialShaderWorkflow* shaders_ = nullptr;
+        ShaderWorkflow* shaders_ = nullptr;
         std::uint64_t session_revision_ = 0u;
         std::vector<shader::ShaderEditorProperty> properties_;
         std::string metadata_warning_;

@@ -8,6 +8,7 @@
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_graphics_state.h"
 #include "shader_parameters/toy3d_postprocess_tonemap.generated.h"
 
 namespace toy3d
@@ -92,14 +93,19 @@ namespace toy3d
         pipeline_desc.pixel_shader = created_program.value()->pixel_shader;
         pipeline_desc.binding_layout = created_program.value()->binding_layout;
         pipeline_desc.primitive_topology = RHIPrimitiveTopology::TriangleList;
-        pipeline_desc.rasterization.cull_mode = RHICullMode::None;
-        pipeline_desc.depth_stencil.depth_test_enable = false;
-        pipeline_desc.depth_stencil.depth_write_enable = false;
         pipeline_desc.color_attachment_count = 1u;
         pipeline_desc.color_formats[0] = PixelFormat::B8G8R8A8UNorm;
         pipeline_desc.sample_count = 1u;
         pipeline_desc.debug_name = "TonemapPipeline";
-        RHIResult<RHIGraphicsPipelineRef> created_pipeline = device.create_graphics_pipeline(pipeline_desc);
+        const auto translated = build_shader_graphics_pipeline_desc(pipeline_desc, shader_program->data().graphics_pass_state);
+        if (!translated) return translated.status();
+        const auto& depth = translated.value().depth_stencil;
+        // Tonemap renders into a color-only output; reject incompatible source
+        // state before a new Global Shader group can become active.
+        if (depth.depth_test_enable || depth.depth_write_enable || depth.stencil_test_enable)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Tonemap Shader cannot enable depth or stencil without a depth attachment.");
+        RHIResult<RHIGraphicsPipelineRef> created_pipeline = device.create_graphics_pipeline(translated.value());
         if (!created_pipeline)
         {
             return created_pipeline.status();

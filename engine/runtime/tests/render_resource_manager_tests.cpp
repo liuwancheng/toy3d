@@ -382,6 +382,11 @@ namespace
         program.mapping_version = toy3d::shader::vulkan_binding_mapping_version;
         program.logical_layout_hash = nonzero_hash(70u);
         program.target_binding_hash = nonzero_hash(71u);
+        // Match the authored color-only Tonemap pass; pipeline creation now
+        // consumes Shader state instead of overriding it with hardcoded values.
+        program.graphics_pass_state.cull_mode = toy3d::shader::ShaderGraphicsPassState::CullMode::None;
+        program.graphics_pass_state.depth_test_enable = false;
+        program.graphics_pass_state.depth_write_enable = false;
         program.pass_template_hash =
             toy3d::shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state);
         program.permutation_key = toy3d::shader::default_shader_permutation_key;

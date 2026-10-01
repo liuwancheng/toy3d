@@ -14,6 +14,10 @@ Engine 拥有主 World，EditorSceneSession 管描述身份、读取/装配/保�
 - AssetEditorRegistry 按 root_type 注册，不只按扩展名；窗口保 own session/dirty/history，候选读取失败保持旧 preview/session，不能先清空再加载。
 - Texture preview 等资源须 GPU-ready 才替换显示；Editor 不保 Vk* 或私建 device/view ownership。
 
+Tools 是 Scene、Create、Import、Shaders、日志目录与退出的统一菜单入口；资产右键和材质窗口复用已有工作流，不重复实现命令。Ctrl+S/Z/Y 与未保存确认保持原有路由。Recompile Shaders 编译全部登记源的已保存源码；批次禁重复启动，可取消。单窗口和批量共用 source/shader/ShaderWorkflow 的独占队列，不绑定某个材质窗口、不保存草稿/history。用途、发布分组、缓存恢复见 [Shader](shader.md)，材质事务见 [Material](material.md)。
+
+消息提示由 EditorApplication 持有、在 GT 绘制于主窗口右下角，不参与 docking、不自动抢焦点。Shader 任务使用结构化身份/阶段/发布计数/诊断；同一任务原位更新，不能解析状态文字推测成功。成功短时显示、悬停暂停，失败不自动计时消失；取消等待实际结束，关闭提示不取消任务。普通 Error/Critical 从同一 LogBuffer 按 sequence 聚合，启动旧日志不重放；编译日志关联任务提示避免重复，文件日志故障持续可见。最多三张卡片，优先淘汰成功提示，详细输出和超出上限的旧错误仍在 Console/文件；定位被过滤或清空的日志时显式展示独立目标详情，不改过滤设置。退出不保留捕获已销毁窗口的回调。该展示机制限 Editor，不新增共享任务或日志系统及 target。
+
 Console 作为 PanelRegistry 中的普通面板，由 EditorApplication 持有。读取启动入口注入的 Core LogBuffer，生产线程不调用 ImGui；关闭窗口继续采集，打开后可查看启动日志。Trace/Debug/Info/Warning/Error/Critical 独立勾选，默认 Info 及以上，提供全选/仅错误/恢复默认，文本搜索与等级过滤同时生效。清空仅移动显示起点，不清文件；等级计数、截断/淘汰和文件写入故障必须可见。支持复制正文、自动滚动和打开日志目录，不抢编辑焦点、不成为 Undo/Save 目标。Console 面板只查看日志，命令/变量能力仍属 Runtime config。
 
 失败在最终处理操作的入口上报一次，低层保留 status 返回，消息附 Actor/Component/slot/Asset 等上下文。已上报的材质赋值、RHI、Vulkan validation 不重复记录；外部编译器诊断由 Process 捕获后转入 Logger，不能依靠重定向全进程 stdout/stderr 收集。
@@ -47,4 +51,4 @@ worker 结果带 AssetId/source content/request/session generation；GT 接管�
 
 测试 engine/editor/tests/editor_framework_tests.cpp、workspace_tests.cpp、placement_tests.cpp、material_edit_tests.cpp、material_assignment_tests.cpp、texture_preview_image_tests.cpp、thumbnail_integration_tests.cpp。验证字段全链、失败原子性、Undo/Redo/dirty 分支、跨 Actor graph、Save 冲突、过期异步、多窗口资源与退出；UI 行为变化补真实交互/截图，不以纯 DTO round-trip 当界面已验证。
 
-Console 见 panels/console_panel.h 和 tests/console_tests.cpp：真实 ImGui 帧验证六个勾选、预设、清空、关闭后采集及 Window 菜单重开，同时核对文件仍包含被隐藏的记录。Core 的 tests/logging_tests.cpp 验证并发快照、缓冲边界、文件创建/轮转失败与恢复。
+Console 与消息提示见 panels/console_panel.h、editor_notifications.h 和 tests/console_tests.cpp：真实 ImGui 帧验证等级/预设/清空/重开、通知不抢焦点、取消等待、失败保留、日志定位与文件故障恢复，同时核对文件包含被隐藏的记录。Core 的 tests/logging_tests.cpp 验证并发快照、缓冲边界、文件创建/轮转失败与恢复。实际界面测试可用 Editor.ProjectShaderRoot、Editor.ShaderConfigRoot、Editor.ShaderSavedRoot 指定隔离源码、登记和缓存目录，不能把测试 Shader 创建到真实 project。

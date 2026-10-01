@@ -41,14 +41,17 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/panels/editor_panel_registry.cpp"
     "source/panels/console_panel.h"
     "source/panels/console_panel.cpp"
+    "source/panels/editor_notifications.h" "source/panels/editor_notifications.cpp"
     "source/assets/asset_editor_registry.cpp"
 )
 target_compile_features(Toy3dEditorCore PUBLIC cxx_std_17)
 set_target_properties(Toy3dEditorCore PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Editor")
 target_include_directories(Toy3dEditorCore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/source")
 target_link_libraries(Toy3dEditorCore PUBLIC Toy3dRuntime Toy3dAssets imguizmo)
+target_link_libraries(Toy3dEditorCore PRIVATE Toy3dShaderCompilerCore)
 target_compile_definitions(Toy3dEditorCore PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
     "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
+target_compile_definitions(Toy3dEditorCore PUBLIC "TOY3D_BUILTIN_SHADER_ROOT=\"${BINARY_ROOT_DIR}shader\"")
 target_compile_options(Toy3dEditorCore PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 list(REMOVE_ITEM EDITOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/editor_viewport_gizmo.cpp")
 
@@ -130,7 +133,10 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     "TOY3D_EDITOR_SHADER_TOOLCHAIN=\"${TOY3D_SHADER_TOOLCHAIN_ROOT}\"")
 
 target_sources(Toy3dEditorCore PRIVATE
-    "source/assets/material/material_shader_workflow.h" "source/assets/material/material_shader_workflow.cpp")
+    "source/shader/shader_workflow.h" "source/shader/shader_workflow.cpp"
+    "source/shader/shader_workflow_queue.cpp"
+    "source/shader/shader_source_creation.cpp"
+    "source/shader/shader_create_dialog.h" "source/shader/shader_create_dialog.cpp")
 target_link_libraries(${TARGET_NAME} PRIVATE Toy3dEditorCore)
 
 target_sources(${TARGET_NAME} PRIVATE
@@ -349,7 +355,7 @@ if(BUILD_TESTING)
         endif()
         add_dependencies(Toy3dEditorMaterialShaderTests Toy3dShaders Toy3dShaderCompiler)
         add_test(NAME Toy3dEditor.MaterialShader COMMAND Toy3dEditorMaterialShaderTests)
-        set_tests_properties(Toy3dEditor.MaterialShader PROPERTIES TIMEOUT 60 RESOURCE_LOCK Toy3dGpuWindow)
+        set_tests_properties(Toy3dEditor.MaterialShader PROPERTIES TIMEOUT 150 RESOURCE_LOCK Toy3dGpuWindow)
     endif()
     foreach(TOY3D_SHADER_UI_TEST_TARGET Toy3dEditorMaterialUiTests Toy3dEditorThumbnailTests)
         if(TARGET ${TOY3D_SHADER_UI_TEST_TARGET})

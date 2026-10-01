@@ -32,6 +32,9 @@ namespace toy3d
                                           const std::vector<const GlobalShaderType*>& required_types);
 
         ShaderMapProgramResult find(const GlobalShaderType& type) const;
+        // Validate a complete replacement set against this frozen type contract.
+        // Does not mutate the active map or accept new GlobalShaderTypes.
+        GlobalShaderMapResult replace(const std::vector<ShaderMapProgramRef>& programs) const;
         ShaderPlatform platform() const { return platform_; }
         std::size_t size() const { return programs_.size(); }
 

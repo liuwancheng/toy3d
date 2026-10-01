@@ -15,6 +15,7 @@
 #include "drivers/rhi/rhi_queue.h"
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_graphics_state.h"
 #include "shader_parameters/toy3d_ui_imgui.generated.h"
 
 namespace toy3d
@@ -103,19 +104,6 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "ImGuiRenderer requires a valid one-time font atlas.");
         }
-        const ShaderMapProgramResult found = global_shader_map.find(imgui_global_shader_type());
-        if (!found.succeeded())
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "ImGui Global Shader lookup failed: " + found.error);
-        }
-        const ShaderMapProgramRef& shader_program = found.program;
-        const ShaderMapProgramData& data = shader_program->data();
-
-        RHIResult<RHIShaderProgramRef> created_program = shader_program_cache.find_or_create(shader_program);
-        if (!created_program)
-            return created_program.status();
-
         RHITextureDesc font_desc;
         font_desc.width = font_atlas.width;
         font_desc.height = font_atlas.height;
@@ -144,14 +132,28 @@ namespace toy3d
         if (!created_sampler)
             return created_sampler.status();
 
+        RHIStatus prepared = prepare_shader(device, shader_program_cache, global_shader_map);
+        if (!prepared) return prepared;
+        font_texture_ = std::move(created_texture).value();
+        font_texture_view_ = std::move(created_view).value();
+        font_sampler_ = std::move(created_sampler).value();
+        publish_shader();
+        return RHIStatus::success();
+    }
+
+    RHIStatus ImGuiRenderer::prepare_shader(RHIDevice& device, RHIShaderProgramCache& cache, const GlobalShaderMap& shaders)
+    {
+        discard_shader();
+        const auto found = shaders.find(imgui_global_shader_type());
+        if (!found.succeeded()) return RHIStatus::failure(RHIErrorCode::InvalidArgument, found.error);
+        const auto& data = found.program->data();
+        auto created_program = cache.find_or_create(found.program);
+        if (!created_program) return created_program.status();
         RHIGraphicsPipelineDesc pipeline_desc;
         pipeline_desc.vertex_shader = created_program.value()->vertex_shader;
         pipeline_desc.pixel_shader = created_program.value()->pixel_shader;
         pipeline_desc.binding_layout = created_program.value()->binding_layout;
         pipeline_desc.primitive_topology = RHIPrimitiveTopology::TriangleList;
-        pipeline_desc.rasterization.cull_mode = RHICullMode::None;
-        pipeline_desc.depth_stencil.depth_test_enable = false;
-        pipeline_desc.depth_stencil.depth_write_enable = false;
         pipeline_desc.color_attachment_count = 1u;
         pipeline_desc.color_formats[0] = PixelFormat::B8G8R8A8UNorm;
         pipeline_desc.sample_count = 1u;
@@ -189,23 +191,33 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "ImGui vertex reflection must contain position, UV and color.");
         }
-        auto& blend = pipeline_desc.color_blend_attachments[0];
-        blend.blend_enable = true;
-        blend.source_color_factor = RHIBlendFactor::SourceAlpha;
-        blend.destination_color_factor = RHIBlendFactor::OneMinusSourceAlpha;
-        blend.source_alpha_factor = RHIBlendFactor::One;
-        blend.destination_alpha_factor = RHIBlendFactor::OneMinusSourceAlpha;
         pipeline_desc.debug_name = "ImGuiPipeline";
-        RHIResult<RHIGraphicsPipelineRef> created_pipeline = device.create_graphics_pipeline(pipeline_desc);
+        const auto translated = build_shader_graphics_pipeline_desc(pipeline_desc, data.graphics_pass_state);
+        if (!translated) return translated.status();
+        const auto& depth = translated.value().depth_stencil;
+        // UI has only a color attachment; incompatible state must fail before
+        // publication instead of silently retaining the previous pipeline state.
+        if (depth.depth_test_enable || depth.depth_write_enable || depth.stencil_test_enable)
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "ImGui Shader cannot enable depth or stencil without a depth attachment.");
+        RHIResult<RHIGraphicsPipelineRef> created_pipeline = device.create_graphics_pipeline(translated.value());
         if (!created_pipeline)
             return created_pipeline.status();
 
-        rhi_program_ = std::move(created_program).value();
-        font_texture_ = std::move(created_texture).value();
-        font_texture_view_ = std::move(created_view).value();
-        font_sampler_ = std::move(created_sampler).value();
-        pipeline_ = std::move(created_pipeline).value();
+        pending_program_ = std::move(created_program).value();
+        pending_pipeline_ = std::move(created_pipeline).value();
         return RHIStatus::success();
+    }
+
+    void ImGuiRenderer::publish_shader() noexcept
+    {
+        rhi_program_ = std::move(pending_program_);
+        pipeline_ = std::move(pending_pipeline_);
+    }
+
+    void ImGuiRenderer::discard_shader() noexcept
+    {
+        pending_pipeline_.reset(); pending_program_.reset();
     }
 
     RHIStatus ImGuiRenderer::record_font_upload(RHIGraphicsCommandContext& context,
@@ -248,6 +260,7 @@ namespace toy3d
 
     void ImGuiRenderer::release() noexcept
     {
+        discard_shader();
         recording_page_index_ = INVALID_PAGE_INDEX;
         buffer_pages_.clear();
         bootstrap_complete_ = false;

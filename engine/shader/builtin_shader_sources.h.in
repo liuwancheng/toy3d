@@ -1,0 +1,19 @@
+#pragma once
+
+#include <array>
+
+namespace toy3d
+{
+    enum class BuiltinShaderUsage { Material, Global, MeshPass };
+    struct BuiltinShaderSource
+    {
+        const char* name;
+        const char* source;
+        const char* pass;
+        const char* directory;
+        BuiltinShaderUsage usage;
+    };
+    // Configure-time records shared with Toy3dShaders, never a second source list.
+    static constexpr std::array<BuiltinShaderSource, @TOY3D_BUILTIN_SHADER_COUNT@> builtin_shader_sources = {{
+@TOY3D_BUILTIN_SHADER_RECORDS@    }};
+}

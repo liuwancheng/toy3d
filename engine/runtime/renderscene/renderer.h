@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/hit_proxy.h"
 #include "rendercore/material/material_program_validation.h"
+#include "rendercore/shader/builtin_shader_update.h"
 #include "renderscene/builtin_mesh_pass_programs.h"
 #include "threading/threading_types.h"
 #include "ui/imgui_draw_data.h"
@@ -100,6 +101,7 @@ namespace toy3d
         SceneInterface* preview_scene_interface() const;
         bool poll_ui_texture(UiTextureResult& result);
         void validate_material_program(MaterialProgramValidationRef request);
+        void prepare_builtin_shaders(BuiltinShaderUpdateRef request);
 
       private:
         bool is_on_logical_rendering_thread() const;
@@ -112,6 +114,8 @@ namespace toy3d
         void release_domain(bool terminal) noexcept;
         void collect_hit_proxy_readbacks();
         void collect_ui_readbacks();
+        void resolve_builtin_shaders();
+        RHIStatus validate_mesh_shader(const ShaderMapProgramRef& program, bool shadow);
         RHIStatus record_ui_work(RHIGraphicsCommandContext& context, RHIReadbackRef& capture);
 
         struct PendingHitReadback
@@ -155,6 +159,10 @@ namespace toy3d
         std::unique_ptr<ViewportOutputTarget> viewport_output_target_;
         std::unique_ptr<TonemapPassResources> tonemap_pass_resources_;
         std::unique_ptr<ImGuiRenderer> imgui_renderer_;
+        BuiltinShaderUpdateRef builtin_update_;
+        std::shared_ptr<const GlobalShaderMap> pending_global_shaders_;
+        std::unique_ptr<TonemapPassResources> pending_tonemap_resources_;
+        ShaderMapProgramRef pending_shadow_shader_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;
         RHITextureRef placeholder_texture_;
         RHITextureViewRef placeholder_texture_view_;

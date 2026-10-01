@@ -26,12 +26,12 @@ MaterialAssignments 保存场景 AssetRef/命令记录，Library 准备/发布/�
 
 ## 源码登记与外部编辑
 
-EditorApplication 持有 ProcessService、专用 ThreadManager、MaterialShaderWorkflow，并注入窗口/创建框/Assignments；不是全局 Asset cache。
+EditorApplication 持有 ProcessService、专用 ThreadManager、ShaderWorkflow，并注入窗口/创建框/Assignments；不是全局 Asset cache。
 
 源码 project/shader，清单 project/config/shader_sources.txt 首行 Toy3dShaderSources 1，其余为逻辑名 TAB 相对路径；示例 Project/Surface/Painted 对应 project/shader/painted.shader。
 
 - 含内置源最多256条、清单64 KiB、单源码4 MiB；拒绝重复身份/物理源、越界/symlink escape/非规范路径，Shader 声明名与登记名一致，不能覆盖内置源。
-- 不扫描 Content 猜 shader；创建 Material 只列登记源，成功编译后才创建；实例沿根找 source。现有根 shader 改身份需保存/取消草稿，不能强行改名。
+- 内置 Phong/Unlit 与项目源统一查询；创建 Material 只列 Material 用途的登记源，Program 完成 artifact/ABI/GPU 验证后才创建；实例沿根找 source。不扫描 Content 猜 Shader。现有根 shader 改身份需保存/取消草稿，不能强行改名。
 - Open Source 使用登记路径；VS Code --reuse-window/--goto，不用 --wait；本机 Editor.CodeExecutable 可配置，找不到明确提示。外部 GUI 属用户，关闭 Toy3d 不杀它。
 - Open Error 仅对可解析的根源码位置；include/generated/任意日志路径不直接启动。引擎源为共享实现，项目效果放项目 source。
 
@@ -46,10 +46,12 @@ Saved/requests/<随机 AssetId>/ 独占产物，不覆盖旧目录；验证完�
 - 窗口候选从当前草稿生成，手势结束才接管，保留草稿/history；Library 从已保存 DTO 准备完整共享配置图，不偷读窗口草稿。
 - 同一 GT tick：准备所有候选 → FIFO 暂时发布完整图 → 再核 source/include hash 并原子保存请求定位记录 → commit Program/Library → 窗口切 schema/runtime。中途失败在本帧 Draw 入队前用同 FIFO 恢复旧图，旧 refs 仍保活。
 - 过期请求、编译/ABI/VF/pipeline/resource 失败不替换旧效果；源码编译不保存 .asset。
-- 已发布 Program 当次会话有效，重开加载请求定位记录并重新 GPU 验证；产物缺失/损坏提示重编，不提交生成缓存。内置 ActorFactory 缺省材质随 app 构建加载，当前手动重编刷新已赋值材质资产的场景槽。
+- 已发布 Program 当次会话有效，重开加载请求定位记录并重新 GPU 验证；产物缺失/损坏提示重编，不提交生成缓存。内置 ActorFactory 缺省材质随 app 构建加载，其共享 root 加入 Library 同一配置图事务，重编刷新资产槽与默认几何，保持 Proxy/geometry 身份。
+
+无可用 Program 时赋值返回资产路径、Shader 身份与登记/验证/失败原因。Compile and Assign 捕获 scene generation、Actor/Component/slot、mesh/旧材质和继承链文件摘要；成功后重新验证目标与文件，再走原 Undo 命令。目标改变、编译失败或过期都保原槽，不自动保存材质。
 
 ## 修改与验证
 
-代码入口 rendercore/material/material.h、material_instance、material_render_proxy；Editor source/assets/material/material_shader_workflow.h。测试 core/tests/material_asset_tests.cpp，editor/tests/material_edit_tests.cpp、material_assignment_tests.cpp、material_shader_tests.cpp、material_ui_tests.cpp。
+代码入口 rendercore/material/material.h、material_instance、material_render_proxy；Editor source/shader/shader_workflow.h。测试 core/tests/material_asset_tests.cpp，editor/tests/material_edit_tests.cpp、material_assignment_tests.cpp、material_shader_tests.cpp、material_ui_tests.cpp。
 
 覆盖继承/cycle/孤儿字段、原子 setter、Texture generation、草稿与共享配置隔离、Save 冲突、同 key 新候选、过期请求、真实 compiler 失败、include escape/循环、GPU 预检与回滚、退出取消。测试写 build 隔离目录，不改用户 asset；普通帧不 flush。

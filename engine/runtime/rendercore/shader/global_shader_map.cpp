@@ -204,6 +204,28 @@ namespace toy3d
         return {std::make_shared<GlobalShaderMap>(std::move(candidate)), {}};
     }
 
+    GlobalShaderMapResult GlobalShaderMap::replace(const std::vector<ShaderMapProgramRef>& programs) const
+    {
+        if (programs.size() != programs_.size())
+            return {nullptr, "Global Shader replacement requires the complete frozen type set."};
+        GlobalShaderMap candidate(platform_);
+        for (const auto& program : programs)
+        {
+            if (!program) return {nullptr, "Global Shader replacement contains a null Program."};
+            const Entry* matched = nullptr;
+            for (const auto& entry : programs_)
+                if (entry.second.type.shader_name() == program->data().shader_name &&
+                    entry.second.type.pass_name() == program->data().pass_name) matched = &entry.second;
+            if (!matched) return {nullptr, "Global Shader replacement contains an unregistered Program."};
+            std::string error;
+            if (!validate_program(matched->type, platform_, program->data(), error))
+                return {nullptr, error + " Rebuild the application if generated parameters changed."};
+            if (!candidate.programs_.emplace(matched->type.type_name(), Entry{matched->type, program}).second)
+                return {nullptr, "Global Shader replacement contains duplicate Programs."};
+        }
+        return {std::make_shared<GlobalShaderMap>(std::move(candidate)), {}};
+    }
+
     ShaderMapProgramResult GlobalShaderMap::find(const GlobalShaderType& type) const
     {
         const auto found = programs_.find(type.type_name());

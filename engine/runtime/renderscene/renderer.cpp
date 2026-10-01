@@ -978,6 +978,7 @@ namespace toy3d
                     TOY_LOG_ERROR("Renderer Draw requires a complete Running domain and valid frame inputs.");
                     return;
                 }
+                resolve_builtin_shaders();
                 collect_hit_proxy_readbacks();
                 collect_ui_readbacks();
 
@@ -1173,6 +1174,12 @@ namespace toy3d
 
     void Renderer::release_domain(bool terminal) noexcept
     {
+        if (builtin_update_)
+        {
+            builtin_update_->decision.store(BuiltinShaderDecision::Discard, std::memory_order_release);
+            resolve_builtin_shaders();
+        }
+
         pending_hit_readbacks_.clear();
         {
             std::lock_guard<std::mutex> lock(hit_results_mutex_);

@@ -52,8 +52,11 @@ namespace toy3d
                         }
                     }
                     if (!history.assign_material(world, actor.actor_id(), component->component_id(), name, reference, error))
+                    {
+                        materials.offer_compile_assignment(world, actor.actor_id(), {component->component_id(), name, reference});
                         TOY_LOG_ERROR("Material assignment [Actor {} Component {} slot '{}' Asset {}]: {}",
                             actor.actor_id(), component->component_id(), name, id.hex(), error);
+                    }
                     else selection.select_actor(world, actor.actor_id());
                 };
                 ImGui::BeginDisabled(history.active());
@@ -98,6 +101,7 @@ namespace toy3d
             if (!error.empty())
             {
                 ImGui::TextWrapped("Material assignment failed: %s", error.c_str());
+                if (materials.can_compile_assignment() && ImGui::Button("Compile and Assign")) materials.compile_assignment(error);
                 if (ImGui::Button("Dismiss Material Error")) error.clear();
             }
         }

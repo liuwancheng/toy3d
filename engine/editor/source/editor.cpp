@@ -193,19 +193,21 @@ namespace toy3d
                 return shader_workflow_ready_ ? shaders_.program(name) :
                     (name == defaults->desc().shader_name ? defaults->desc().shader_program : nullptr);
             }, std::move(textures));
+        materials_->set_default_material(defaults);
+        materials_->set_shader_diagnostic([this](const std::string& name) { return shaders_.unavailable_reason(name); });
         material_assignments_.initialize(workspace_, *materials_);
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
             PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
         material_editor_.edit_session().set_publish([this](const AssetRef& reference) { return materials_->reload(reference); });
 
         auto& arguments = CommandLineParser::get_instance();
-        MaterialShaderPaths shader_paths;
+        ShaderWorkflowPaths shader_paths;
         shader_paths.project_shader = PhysicalPath(arguments.get_option("Editor.ProjectShaderRoot", TOY3D_EDITOR_PROJECT_SHADER_ROOT));
         shader_paths.project_config = PhysicalPath(arguments.get_option("Editor.ShaderConfigRoot", TOY3D_EDITOR_PROJECT_CONFIG_ROOT));
         shader_paths.engine_shader = PhysicalPath(TOY3D_EDITOR_ENGINE_SHADER_ROOT);
         shader_paths.engine_include = PhysicalPath(TOY3D_EDITOR_ENGINE_INCLUDE_ROOT);
-        shader_paths.builtin_entries = PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
-        shader_paths.saved = PhysicalPath(TOY3D_EDITOR_SHADER_SAVED_ROOT);
+        shader_paths.builtin_root = PhysicalPath(TOY3D_BUILTIN_SHADER_ROOT);
+        shader_paths.saved = PhysicalPath(arguments.get_option("Editor.ShaderSavedRoot", TOY3D_EDITOR_SHADER_SAVED_ROOT));
         shader_paths.compiler = PhysicalPath(TOY3D_EDITOR_SHADER_COMPILER);
         shader_paths.toolchain = PhysicalPath(TOY3D_EDITOR_SHADER_TOOLCHAIN);
         shader_paths.code_executable = PhysicalPath(arguments.get_option("Editor.CodeExecutable", ""));
@@ -214,6 +216,7 @@ namespace toy3d
         if (shader_workflow_ready_)
         {
             material_editor_.set_shader_workflow(shaders_);
+            material_assignments_.set_shader_workflow(shaders_);
 
         }
         else TOY_LOG_ERROR("Material source workflow unavailable: {}", shader_error);
@@ -236,6 +239,7 @@ namespace toy3d
         texture_preview_.tick();
         if (!shader_workflow_ready_) return;
         shaders_.tick();
+        material_assignments_.tick_compile_assignment(world(), scene_session_.history(), material_assignment_error_);
         if (!shaders_.candidate_ready()) return;
         auto& session = material_editor_.edit_session();
         if (shaders_.origin().valid() && (!session.active() || !(session.id() == shaders_.origin()) ||
@@ -358,7 +362,7 @@ namespace toy3d
         const ContentBrowserActions browser = content_browser_.draw(workspace_, selection_, asset_folder_,
             show_engine_content_, thumbnails_, WITH_MODEL_IMPORT != 0);
         if (browser.assets_refreshed) texture_preview_.invalidate();
-        if (browser.asset_open.valid() && !model_import_.active() && !texture_import_.active() && !material_create_.active())
+        if (browser.asset_open.valid() && !model_import_.active() && !texture_import_.active() && (!material_create_.active() && !shader_create_.active()))
         {
             const auto* asset = workspace_.catalog().index.find(browser.asset_open);
             if (!asset || !asset_editors_.request_open(asset->index.root_type, browser.asset_open, browser.asset_focus))
@@ -367,16 +371,16 @@ namespace toy3d
                 TOY_LOG_ERROR("Open asset [{}]: {}", browser.asset_open.hex(), model_error_);
             }
         }
-        if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active())
+        if (browser.material_creation_requested && !model_import_.active() && !texture_import_.active() && !shader_create_.active())
             material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
-        if (browser.texture_import_requested && !material_create_.active() && !model_import_.active() &&
+        if (browser.texture_import_requested && (!material_create_.active() && !shader_create_.active()) && !model_import_.active() &&
             !texture_import_.request(asset_folder_))
         {
             model_error_ = texture_import_.error();
             TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
         }
 #if WITH_MODEL_IMPORT
-        if (browser.import_requested && !material_create_.active() && !texture_import_.active() &&
+        if (browser.import_requested && (!material_create_.active() && !shader_create_.active()) && !texture_import_.active() &&
             !model_import_.request(asset_folder_))
         {
             model_error_ = model_import_.error();
@@ -386,7 +390,7 @@ namespace toy3d
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
-            if (model_import_.active() || texture_import_.active() || material_create_.active() ||
+            if (model_import_.active() || texture_import_.active() || material_create_.active() || shader_create_.active() ||
                 ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || !browser.accepts_drop(dropped.position)) continue;
             bool image = false;
             bool model = false;
@@ -427,75 +431,10 @@ namespace toy3d
     void EditorApplication::on_build_ui()
     {
         scene_viewport_.begin_frame();
-        if (ImGui::BeginMainMenuBar())
-        {
-            if (ImGui::BeginMenu("File"))
-            {
-                if (ImGui::MenuItem("New Scene")) request_scene_action(SceneAction::New);
-                if (ImGui::BeginMenu("Open Scene"))
-                {
-                    for (const AssetCatalogEntry& entry : workspace_.catalog().entries)
-                        if (asset_descriptor_kind(entry.path) == AssetDescriptorKind::Scene &&
-                            ImGui::MenuItem(entry.path.utf8().c_str()))
-                            request_scene_action(SceneAction::Open, entry.file.asset_id);
-                    ImGui::EndMenu();
-                }
-                if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
-                {
-                    if (scene_session_.path().empty()) show_scene_save_as_ = true;
-                    else save_scene(scene_session_.path(), false);
-                }
-                if (ImGui::MenuItem("Save Scene As...")) show_scene_save_as_ = true;
-                ImGui::Separator();
-                if (ImGui::BeginMenu("Create Asset", !model_import_.active() && !texture_import_.active() && !material_create_.active()))
-                {
-                    if (ImGui::MenuItem("Create Material...")) material_create_.request(MaterialAssetCreationKind::Material, asset_folder_);
-                    if (ImGui::MenuItem("Create Material Instance...")) material_create_.request(MaterialAssetCreationKind::MaterialInstance, asset_folder_);
-                    ImGui::EndMenu();
-                }
-#if WITH_MODEL_IMPORT
-                if (ImGui::MenuItem("Import Static Mesh...", nullptr, false,
-                    !material_create_.active() && !texture_import_.active()))
-                {
-                    if (!model_import_.request(asset_folder_))
-                    {
-                        model_error_ = model_import_.error();
-                        TOY_LOG_ERROR("Request model import: {}", model_error_);
-                    }
-                }
-#endif
-                if (ImGui::MenuItem("Import Texture2D...", nullptr, false,
-                    !model_import_.active() && !material_create_.active()))
-                {
-                    if (!texture_import_.request(asset_folder_))
-                    {
-                        model_error_ = texture_import_.error();
-                        TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
-                    }
-                }
-                if (ImGui::MenuItem("Exit")) request_scene_action(SceneAction::Exit);
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Edit"))
-            {
-                if (ImGui::MenuItem("Undo", "Ctrl+Z")) undo_edit();
-                if (ImGui::MenuItem("Redo", "Ctrl+Y")) redo_edit();
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Window"))
-            {
-                if (ImGui::MenuItem("Reset Layout")) reset_dock_layout_ = true;
-                ImGui::Separator();
-                panels_.draw_window_menu();
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Help"))
-            {
-                if (ImGui::MenuItem("About Toy3d Editor")) ImGui::OpenPopup("About Toy3d Editor");
-                ImGui::EndMenu();
-            }
-            ImGui::EndMainMenuBar();
-        }
+        // Observe a completed task before a menu/panel can start its successor
+        // in this same frame; otherwise its previous card would remain active.
+        notifications_.update(shaders_.task_status());
+        draw_main_menu();
         if (ImGui::BeginPopupModal("About Toy3d Editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::TextUnformatted("Toy3d Editor");
@@ -584,6 +523,7 @@ namespace toy3d
         texture_import_.draw(window(), workspace_, selection_);
         material_create_.draw(workspace_, selection_, asset_folder_, actor_factory_.default_material()->material()->parameter_schema(),
             shader_workflow_ready_ ? &shaders_ : nullptr);
+        shader_create_.draw(shaders_, notifications_);
         draw_scene_dialogs();
         const auto locate = material_editor_.take_locate_parent();
         if (locate.valid())
@@ -627,7 +567,7 @@ namespace toy3d
             (focused == ImGui::FindWindowByName("Scene Viewport###Game Viewport") ||
              focused == ImGui::FindWindowByName("Outliner") || focused == ImGui::FindWindowByName("Details"));
         const bool modal_active = model_import_.active() || texture_import_.active() ||
-            material_create_.active() || material_editor_.modal_pending() ||
+            material_create_.active() || shader_create_.active() || material_editor_.modal_pending() ||
             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
         if (!modal_active && actor_panel_focused && selection_.focus() == EditorSelectionFocus::Actor &&
             !io.WantTextInput && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Delete))
@@ -639,7 +579,9 @@ namespace toy3d
             }
         }
         panels_.process_shortcuts(model_import_.active() || texture_import_.active() ||
-                                  material_create_.active() || material_editor_.modal_pending());
+                                  material_create_.active() || shader_create_.active() || material_editor_.modal_pending());
+        notifications_.update(shaders_.task_status());
+        notifications_.draw(console_, shaders_);
     }
 
     void EditorApplication::apply_scene_history(bool redo)
@@ -657,14 +599,14 @@ namespace toy3d
     void EditorApplication::undo_edit()
     {
         if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() ||
-            material_create_.active() || material_editor_.modal_pending()) return;
+            material_create_.active() || shader_create_.active() || material_editor_.modal_pending()) return;
         panels_.undo();
     }
 
     void EditorApplication::redo_edit()
     {
         if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() ||
-            material_create_.active() || material_editor_.modal_pending()) return;
+            material_create_.active() || shader_create_.active() || material_editor_.modal_pending()) return;
         panels_.redo();
     }
 

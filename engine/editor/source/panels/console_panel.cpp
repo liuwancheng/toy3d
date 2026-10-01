@@ -78,6 +78,17 @@ namespace toy3d
     // --------------------------------------------------------------------------
     ConsolePanel::ConsolePanel(std::shared_ptr<LogBuffer> buffer) : buffer_(std::move(buffer)) {}
     void ConsolePanel::open() { open_ = true; focus_requested_ = true; }
+    void ConsolePanel::reveal(std::shared_ptr<const LogRecord> record)
+    { revealed_ = std::move(record); open(); }
+    void ConsolePanel::open_log_directory()
+    {
+        refresh();
+        const auto separator = snapshot_.file_path.find_last_of("/\\");
+        std::string error = "The log file path has no directory.";
+        if (separator == std::string::npos ||
+            !open_directory_on_desktop(PhysicalPath(snapshot_.file_path.substr(0u, separator)), error))
+            TOY_LOG_ERROR("Open log directory: {}", error);
+    }
     void ConsolePanel::refresh()
     {
         if (!buffer_ || buffer_->revision() == snapshot_.revision) return;
@@ -121,19 +132,28 @@ namespace toy3d
         ImGui::InputTextWithHint("##log_search", "Search message or source", filter_.search.data(), filter_.search.size());
         ImGui::SameLine();
         ImGui::BeginDisabled(!snapshot_.file_requested || snapshot_.file_path.empty());
-        if (ImGui::Button("Open Log Directory"))
-        {
-            const auto separator = snapshot_.file_path.find_last_of("/\\");
-            std::string error = "The log file path has no directory.";
-            if (separator == std::string::npos ||
-                !open_directory_on_desktop(PhysicalPath(snapshot_.file_path.substr(0, separator)), error))
-                TOY_LOG_ERROR("Open log directory: {}", error);
-        }
+        if (ImGui::Button("Open Log Directory")) open_log_directory();
         ImGui::EndDisabled();
         ImGui::TextDisabled("History evicted: %llu | File: %s", static_cast<unsigned long long>(snapshot_.evicted_records),
             snapshot_.file_requested ? (snapshot_.file_ready ? "Writing" : "FAILED") : "Disabled");
         if (snapshot_.file_requested && !snapshot_.file_ready)
             ImGui::TextColored(level_color(LogLevel::TOY_ERROR), "File logging failed. %s", snapshot_.output_error.c_str());
+
+        if (revealed_)
+        {
+            // Notification navigation is independent of checkbox/search/clear.
+            // A shared record keeps its full details available after buffer eviction.
+            ImGui::Separator();
+            ImGui::TextColored(level_color(revealed_->level), "Notification: %s", source_text(*revealed_).c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Dismiss Details")) revealed_.reset();
+            if (revealed_)
+            {
+                ImGui::BeginChild("NotificationDetails", ImVec2(0, 95), true, ImGuiWindowFlags_HorizontalScrollbar);
+                ImGui::TextUnformatted(revealed_->message.c_str());
+                ImGui::EndChild();
+            }
+        }
 
         std::vector<const LogRecord*> visible;
         for (const auto& record : snapshot_.records)

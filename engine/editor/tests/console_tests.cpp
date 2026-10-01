@@ -9,6 +9,7 @@
 #include "imgui_internal.h"
 #include "logging/logger.h"
 #include "panels/editor_panel_registry.h"
+#include "panels/editor_notifications.h"
 
 namespace
 {
@@ -143,11 +144,80 @@ namespace
               file.find("arrived while closed") != std::string::npos, "Checkboxes, clear and window close do not alter file output");
         ImGui::DestroyContext();
     }
+
+    void notification_interaction()
+    {
+        using namespace toy3d;
+        const auto buffer = std::make_shared<LogBuffer>(LogBufferLimits{2u, 4096u});
+        LogRecord old; old.level = LogLevel::TOY_ERROR; old.message = "old startup error"; buffer->append(old);
+        EditorNotifications notifications(buffer);
+        ConsolePanel console(buffer);
+        NativeProcessService processes; ThreadManager threads; ShaderWorkflow shaders(processes, threads);
+        notifications.update({}); check(notifications.count() == 0u, "Old startup logs are not replayed as cards");
+        ImGui::CreateContext();
+        auto& io = ImGui::GetIO(); io.IniFilename = nullptr; io.DisplaySize = ImVec2(1200, 900);
+        io.DeltaTime = 1.0f / 60.0f; io.ConfigInputTrickleEventQueue = false;
+        unsigned char* pixels = nullptr; int width = 0, height = 0; io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        std::string rendered;
+        io.ClipboardUserData = &rendered;
+        io.SetClipboardTextFn = [](void* data, const char* text) { *static_cast<std::string*>(data) = text; };
+        io.GetClipboardTextFn = [](void* data) { return static_cast<std::string*>(data)->c_str(); };
+        const auto frame = [&](bool capture = false, bool capture_console = false)
+        {
+            ImGui::NewFrame();
+            if (capture && capture_console) ImGui::LogToClipboard();
+            ImGui::SetNextWindowPos(ImVec2(0, 0)); ImGui::SetNextWindowSize(ImVec2(760, 700));
+            console.draw();
+            // ImGui ends logging at each top-level End(). Capture the intended
+            // window explicitly, rather than accidentally inspecting Console text.
+            if (capture && !capture_console) ImGui::LogToClipboard();
+            notifications.draw(console, shaders);
+            if (capture) ImGui::LogFinish();
+            ImGui::Render();
+        };
+        frame(); frame();
+        auto* focused = ImGui::GetCurrentContext()->NavWindow;
+        ShaderTaskStatus task; task.id = 1u; task.total = 7u; task.phase = ShaderTaskPhase::Compiling;
+        task.current_source = "Toy3d/Surface/Phong";
+        notifications.update(task); frame(true);
+        check(notifications.count() == 1u && rendered.find("Compiling saved source") != std::string::npos,
+              "Structured task renders a single progress card");
+        check(ImGui::GetCurrentContext()->NavWindow == focused, "Task card does not take keyboard focus on appearance");
+        task.phase = ShaderTaskPhase::Cancelling; notifications.update(task); frame(true);
+        check(notifications.count() == 1u && rendered.find("waiting for work") != std::string::npos,
+              "Cancel stays on the same card until real completion");
+        task.phase = ShaderTaskPhase::Completed; task.applied = 2u; task.cancelled = 5u;
+        notifications.update(task); io.DeltaTime = 5.0f; frame();
+        check(notifications.count() == 0u, "Completed non-error task expires"); io.DeltaTime = 1.0f / 60.0f;
+        task.id = 2u; task.phase = ShaderTaskPhase::Completed; task.failed = 1u; task.cancelled = 0u;
+        task.diagnostics = {{"Project/Surface/Broken", "shader diagnostic", 12u, 3u}};
+        LogRecord record; record.level = LogLevel::TOY_ERROR; record.source_file = "shader_workflow.cpp";
+        record.message = "Shader [Project/Surface/Broken]: shader diagnostic"; buffer->append(record);
+        notifications.update(task); frame(true);
+        check(notifications.count() == 1u && rendered.find("shader diagnostic") != std::string::npos,
+              "Shader diagnostic and its log share one failed task card");
+        io.DeltaTime = 5.0f; frame(); check(notifications.count() == 1u, "Failure card persists past success timeout");
+        io.DeltaTime = 1.0f / 60.0f;
+        const auto retained = buffer->snapshot().records.back();
+        console.clear_display(); console.reveal(retained);
+        for (int i = 0; i < 3; ++i) { record.message = "later error " + std::to_string(i); buffer->append(record); }
+        frame(true, true);
+        check(rendered.find("Notification: shader_workflow.cpp") != std::string::npos &&
+              rendered.find("shader diagnostic") != std::string::npos,
+              "Notification reveals full details even after clear and buffer eviction");
+        buffer->configure_file(true, "test.log", false); buffer->report_output_error("disk write rejected", true);
+        notifications.update(task); frame(true);
+        check(rendered.find("File logging failed") != std::string::npos && notifications.count() <= 3u,
+              "File failure is persistent and the card count remains bounded");
+        buffer->file_flushed(); notifications.update(task); frame(true);
+        check(rendered.find("File logging restored") != std::string::npos, "Recovered file output updates its existing card");
+        ImGui::DestroyContext();
+    }
 }
 
 int main()
 {
-    filter_contract(); panel_interaction();
+    filter_contract(); panel_interaction(); notification_interaction();
     std::cout << "Console checks: " << (failures == 0 ? "passed" : "failed") << '\n';
     return failures == 0 ? 0 : 1;
 }

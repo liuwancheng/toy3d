@@ -14,10 +14,12 @@
 #include "panels/editor_panel_registry.h"
 #include "panels/content_browser_panel.h"
 #include "panels/console_panel.h"
+#include "panels/editor_notifications.h"
+#include "shader/shader_create_dialog.h"
 #include "panels/place_actors_panel.h"
 #include "assets/asset_editor_registry.h"
 #include "assets/texture/texture_preview_panel.h"
-#include "assets/material/material_shader_workflow.h"
+#include "shader/shader_workflow.h"
 #include "asset/scene/scene_asset.h"
 
 #include <string>
@@ -33,7 +35,7 @@ namespace toy3d
       public:
         explicit EditorApplication(EditorWorkspace& workspace, std::shared_ptr<LogBuffer> log_buffer = {})
             : workspace_(workspace), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
-              thumbnails_(workspace), texture_preview_(workspace), console_(std::move(log_buffer)) {}
+              thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer), notifications_(std::move(log_buffer)) {}
 
       protected:
         bool on_initialize() override;
@@ -49,6 +51,7 @@ namespace toy3d
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override;
         void on_tick(double) override;
         void on_collect_material_validation(std::vector<MaterialProgramValidationRef>& requests) override { if (shader_workflow_ready_) shaders_.collect_validation(requests); }
+        void on_collect_builtin_shader_updates(std::vector<BuiltinShaderUpdateRef>& requests) override { if (shader_workflow_ready_) shaders_.collect_builtin_updates(requests); }
         void on_collect_ui_render_work(UiRenderWork& work) override
         { thumbnails_.collect_render_work(work); texture_preview_.collect_render_work(work); }
         void on_ui_texture_result(UiTextureResult result) override
@@ -77,14 +80,17 @@ namespace toy3d
         MaterialEditorPanel material_editor_;
         NativeProcessService processes_;
         ThreadManager shader_threads_;
-        MaterialShaderWorkflow shaders_{processes_, shader_threads_};
+        ShaderWorkflow shaders_{processes_, shader_threads_};
         bool shader_workflow_ready_ = false;
         EditorPanelRegistry panels_;
         ConsolePanel console_;
+        EditorNotifications notifications_;
+        ShaderCreateDialog shader_create_;
         PlaceActorsPanel place_actors_;
         ContentBrowserPanel content_browser_;
         AssetEditorRegistry asset_editors_;
         bool register_panels();
+        void draw_main_menu();
         void draw_asset_browser();
         void undo_edit();
         void redo_edit();

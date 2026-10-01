@@ -21,6 +21,10 @@ namespace toy3d
         AssetStatus release_instance(MaterialInstanceRef& instance);
         AssetStatus reload(const AssetRef& reference);
         AssetStatus prepare_shader(std::shared_ptr<const ShaderMapProgram> program);
+        // Composition root enrolls its shared mesh default in the same graph
+        // transaction; asset users and default users retain stable Proxy identities.
+        void set_default_material(MaterialRef material) { default_material_ = std::move(material); }
+        void set_shader_diagnostic(std::function<std::string(const std::string&)> diagnostic) { shader_diagnostic_ = std::move(diagnostic); }
         AssetStatus publish(bool defer_completion = false);
         void complete();
         void discard();
@@ -47,6 +51,8 @@ namespace toy3d
         std::function<const AssetIndex&()> index_;
         std::function<std::shared_ptr<const ShaderMapProgram>(const std::string&)> programs_;
         MaterialTextureValues textures_;
+        MaterialRef default_material_;
+        std::function<std::string(const std::string&)> shader_diagnostic_;
         std::map<AssetId, LoadedMaterial> loaded_;
         std::vector<MaterialInstanceRef> temporary_;
         std::vector<MaterialInterface::Configuration> pending_;

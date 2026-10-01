@@ -77,6 +77,16 @@ program-independent group snapshot 随当前 active layout 验证，不能把 Pr
 - writer 用 owned staging/no-replace rename；已存在必须用同 reader 全验证且 key/content 相同才 cache_hit，损坏/冲突诊断、不覆盖/删 final。
 - reader 只验 artifact，当前源码/include/toolchain identity 由 compile/cache 调用方验证；不存在“缓存文件在就可信”的捷径。
 
+## Editor 全量重编译
+
+内置登记统一由 engine/shader 的构建描述生成，记录逻辑名、源码、Pass、用途与部署子目录；项目材质源沿用 shader_sources.txt。全量动作编译全部登记源的当前 Vulkan ES3.1/default permutation，不扫描目录猜身份，不枚举尚未支持的全部 permutation。默认 permutation 必须由 compiler 的 typed domain/default selection 解析；例如 Unlit 的 USE_VERTEX_COLOR=false，不能用空 domain key 或首个缓存项代替。Include 作为依赖验证并参与构建失效。
+
+Editor 独占编译队列一次一个任务，复用 Core Process/Thread；失败继续下一项，取消保留已提交版本。材质逐项预检和发布；Tonemap/ImGui/HitProxy 完整候选作为一组预检后在 RT 帧边界接管，ShadowDepth 独立验证。管线采用候选 Shader 的 Pass state；ImGui/Tonemap 没有 depth attachment，启用 depth/stencil 必须拒绝。C++ generated ABI 不兼容时要求重建程序；旧 GPU refs 按原提交生命周期保活。
+
+Saved 恢复先验证源码/include/产物；无效时验证部署版本，有有效回退才降为 Warning。Program 可用性与最近编译结果分开；真实编译/读取/验证错误保留具体诊断，不能把所有失败归为源码变化。Tools → Shaders 提供重编译/取消；右下角消息卡片展示结构化阶段、进度、结果，所有诊断同时进入 Console 与文件。
+
+Tools → Create → Shader 创建项目 Material Shader，模板来自现有 Unlit/Phong 源码，名称限定 Project/Surface/，路径限定 project/shader 内规范相对 .shader；不开放 Global/生成 ABI 创建。创建先解析模板与新声明、拒绝重复/越界/已存在路径，再用 Core FileSystem 的 CreateNew 原子发布源码、Replace 原子发布登记清单，并立即加入现有 registry，保留已发布 Program。清单与读取时的 bytes 不同则拒绝；发布前再次检查外部修改。单文件原子不等于多文件/外部编辑器 CAS：不支持并发修改同一登记清单，崩溃可能留下未登记源码；普通失败只回滚可确认未修改的自建源码，失败/冲突明确诊断。源码创建、编译与 Material 创建分别反馈，不因编译失败删除源码。验证在隔离目录覆盖真实 Unlit/Phong 编译、冲突/非法路径/不覆盖和重启登记。
+
 ## 修改与验证
 
 改语言/ABI 同批修改 parser/AST/layout/generated C++/HLSL/reflection/manifest reader/真实示例；确认版本和内容身份变化。Vulkan 验 explicit offset、reflection 与 spirv-val --target-env vulkan1.1；后端 slot 不成为通用语义。

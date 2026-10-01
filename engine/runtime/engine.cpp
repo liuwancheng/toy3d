@@ -355,6 +355,9 @@ namespace toy3d
             std::vector<MaterialProgramValidationRef> validations;
             application->on_collect_material_validation(validations);
             for (auto& validation : validations) renderer->validate_material_program(std::move(validation));
+            std::vector<BuiltinShaderUpdateRef> builtin_updates;
+            application->on_collect_builtin_shader_updates(builtin_updates);
+            for (auto& update : builtin_updates) renderer->prepare_builtin_shaders(std::move(update));
         }
         if (work.preview.request_id && renderer->preview_scene_interface())
             preview_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
