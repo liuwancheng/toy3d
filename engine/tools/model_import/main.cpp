@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <string>
+#include <cmath>
+#include <cstdlib>
 
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
@@ -32,10 +34,40 @@ namespace
 
 int main(int argc, char** argv)
 {
-    if (argc != 3)
+    if (argc < 3)
     {
-        std::cerr << "Usage: Toy3dModelImport <source.fbx|obj|gltf|glb> <new-file.asset>\n";
+        std::cerr << "Usage: Toy3dModelImport <source.fbx|obj|gltf|glb> <new-file.asset> "
+                     "[--scale N] [--source-unit-cm N] [--no-convert-scene-unit] [--ignore-file-unit]\n"
+                     "Defaults: FBX file units; OBJ/glTF/GLB 100 cm per source unit.\n";
         return 2;
+    }
+    toy3d::StaticMeshImportOptions options;
+    std::string source_extension(argv[1]);
+    const auto dot = source_extension.find_last_of('.');
+    source_extension = dot == std::string::npos ? "" : source_extension.substr(dot);
+    for (char& c : source_extension) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + ('a' - 'A'));
+    // Like the Editor, the CLI supplies format suggestions to the importer.
+    options.use_file_unit = source_extension == ".fbx";
+    options.source_unit_in_centimeters = options.use_file_unit ? 1.0f : 100.0f;
+    for (int i = 3; i < argc; ++i)
+    {
+        const std::string argument(argv[i]);
+        if (argument == "--no-convert-scene-unit") options.convert_scene_unit = false;
+        else if (argument == "--ignore-file-unit") options.use_file_unit = false;
+        else if ((argument == "--scale" || argument == "--source-unit-cm") && i + 1 < argc)
+        {
+            char* end = nullptr;
+            const float value = std::strtof(argv[++i], &end);
+            if (!end || end == argv[i] || *end != '\0' || !std::isfinite(value) || value <= 0)
+            { std::cerr << "Scale and source unit must be finite and greater than zero.\n"; return 2; }
+            if (argument == "--scale") options.import_uniform_scale = value;
+            else
+            {
+                options.source_unit_in_centimeters = value;
+                options.use_file_unit = false;
+            }
+        }
+        else { std::cerr << "Unknown option or missing value: " << argument << '\n'; return 2; }
     }
     toy3d::NativePlatformFile platform;
     const auto input = platform.canonical(toy3d::PhysicalPath(argv[1]));
@@ -58,7 +90,7 @@ int main(int argc, char** argv)
     if (!frozen.succeeded()) { std::cerr << frozen.message << '\n'; return 1; }
     toy3d::AssetId id;
     if (!toy3d::AssetId::try_generate(id)) { std::cerr << "Asset ID generation failed.\n"; return 1; }
-    const auto imported = toy3d::import_static_mesh_asset(files, source.value(), id);
+    const auto imported = toy3d::import_static_mesh_asset(files, source.value(), id, options);
     if (!imported.succeeded()) { std::cerr << imported.status().message << '\n'; return 1; }
     toy3d::TypeRegistry types;
     const auto registered = toy3d::register_static_mesh_asset_types(types);

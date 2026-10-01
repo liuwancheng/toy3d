@@ -17,25 +17,25 @@ namespace toy3d
     {
         Radians vertical_fov{Radians(k_pi / 3.0f)};
         float aspect = 1.0f;
-        float near_clip = 0.1f;
-        float far_clip = 1000.0f;
+        float near_clip = 10.0f;
+        float far_clip = 100000.0f;
     };
 
     struct InfinitePerspectiveProjectionDesc
     {
         Radians vertical_fov{Radians(k_pi / 3.0f)};
         float aspect = 1.0f;
-        float near_clip = 0.1f;
+        float near_clip = 10.0f;
     };
 
     struct OrthographicProjectionDesc
     {
-        float left = -1.0f;
-        float right = 1.0f;
-        float bottom = -1.0f;
-        float top = 1.0f;
-        float near_clip = 0.1f;
-        float far_clip = 100.0f;
+        float left = -100.0f;
+        float right = 100.0f;
+        float bottom = -100.0f;
+        float top = 100.0f;
+        float near_clip = 10.0f;
+        float far_clip = 10000.0f;
     };
 
     bool try_make_perspective_projection(const PerspectiveProjectionDesc& desc, Matrix4& result);

@@ -37,9 +37,9 @@ CubeActor::CubeActor(toy3d::World& world, toy3d::StaticMeshRef mesh) : Actor(wor
     toy3d::SceneComponent& root = create_component<toy3d::SceneComponent>();
     set_root_component(&root);
     root_ = &root;
-    root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, 4.0f), toy3d::Quaternion::identity(), 1.0f));
+    root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, 400.0f), toy3d::Quaternion::identity(), 1.0f));
 
-    const std::array<float, 3> offsets = {-1.5f, 0.0f, 1.5f};
+    const std::array<float, 3> offsets = {-150.0f, 0.0f, 150.0f};
     for (std::size_t index = 0; index < cubes_.size(); ++index)
     {
         toy3d::StaticMeshComponent& cube = create_component<toy3d::StaticMeshComponent>();
@@ -57,7 +57,7 @@ void CubeActor::tick(const toy3d::WorldTickContext& context)
     const float time = static_cast<float>(context.world_time_seconds);
     if (root_ != nullptr)
     {
-        root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, 4.0f),
+        root_->set_local_transform(make_transform(toy3d::Vector3(0.0f, 0.0f, 400.0f),
                                                   make_axis_rotation(toy3d::Vector3(0.0f, 1.0f, 0.0f), time), 1.0f));
     }
 

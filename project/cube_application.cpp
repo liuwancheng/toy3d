@@ -33,7 +33,7 @@
 namespace
 {
     constexpr std::uint64_t k_destroy_actor_frame = 120u;
-    constexpr float k_cube_half_extent = 0.45f;
+    constexpr float k_cube_half_extent = 45.0f;
 
     toy3d::ShaderParameterId material_constant_id(const char* name)
     {
@@ -98,7 +98,11 @@ namespace
         desc.vector4_defaults.emplace(material_constant_id("specular_color"), toy3d::vec4(1.0f, 0.92f, 0.78f, 1.0f));
         desc.scalar_defaults.emplace(material_constant_id("specular_power"), 32.0f);
         desc.scalar_defaults.emplace(material_constant_id("specular_intensity"), 0.35f);
+        desc.vector2_defaults.emplace(material_constant_id("uv_scale"), toy3d::vec2(1.0f, 1.0f));
         desc.texture_defaults.emplace(material_texture_id("surface_tint_texture"), initial_texture);
+        desc.sampler_defaults.emplace(toy3d::shader::make_shader_parameter_id(
+            toy3d::shader::BindingGroup::Material, toy3d::shader::ShaderParameterCategory::Sampler,
+            "material_sampler"), toy3d::MaterialSamplerPreset::TrilinearWrap);
 
         toy3d::MaterialRef material = toy3d::Material::create(std::move(desc));
         return material != nullptr ? toy3d::MaterialInstance::create(std::move(material)) : nullptr;
@@ -305,7 +309,7 @@ void CubeApplication::on_tick(double delta_time)
     }
     if (animate_camera_)
     {
-        camera_x_ = 0.45f * std::sin(time * 0.55f);
+        camera_x_ = 45.0f * std::sin(time * 0.55f);
     }
     if (animate_material_ && material_instance_)
     {
@@ -390,10 +394,10 @@ void CubeApplication::on_build_ui()
 
 void CubeApplication::on_build_scene_views(std::vector<toy3d::SceneView>& views, const toy3d::Extent& extent) const
 {
-    views.emplace_back(toy3d::Vector3(camera_x_, 1.5f, -6.0f), toy3d::Quaternion::identity(),
+    views.emplace_back(toy3d::Vector3(camera_x_, 150.0f, -600.0f), toy3d::Quaternion::identity(),
                        toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, extent.width, extent.height}, extent,
-                       toy3d::CameraProjectionMode::Perspective, toy3d::to_radians(toy3d::Degrees(60.0f)), 0.1f,
-                       1000.0f);
+                       toy3d::CameraProjectionMode::Perspective, toy3d::to_radians(toy3d::Degrees(60.0f)), 10.0f,
+                       100000.0f);
 }
 
 void CubeApplication::on_shutdown()

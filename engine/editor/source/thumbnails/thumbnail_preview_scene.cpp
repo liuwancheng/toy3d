@@ -58,9 +58,9 @@ namespace toy3d
         if (!(radius > 0.0) || !std::isfinite(radius)) return false;
         for (auto& vertex : geometry.vertices)
         {
-            vertex.position = Vector3(static_cast<float>((vertex.position.x - center_x) / radius),
-                                      static_cast<float>((vertex.position.y - center_y) / radius),
-                                      static_cast<float>((vertex.position.z - center_z) / radius));
+            vertex.position = Vector3(static_cast<float>((vertex.position.x - center_x) * 100.0 / radius),
+                                      static_cast<float>((vertex.position.y - center_y) * 100.0 / radius),
+                                      static_cast<float>((vertex.position.z - center_z) * 100.0 / radius));
         }
         auto mesh = create_static_mesh_from_asset(geometry, material_);
         if (!mesh) return false;
@@ -72,7 +72,7 @@ namespace toy3d
 
     SceneView ThumbnailPreviewScene::view() const
     {
-        const Vector3 position(2.5f, 1.7f, -3.0f);
+        const Vector3 position(250.0f, 170.0f, -300.0f);
         Vector3 direction;
         Quaternion rotation;
         if (!try_normalize(-position, direction) ||
@@ -81,7 +81,7 @@ namespace toy3d
         const Extent extent{thumbnail_default_size, thumbnail_default_size};
         return SceneView(position, rotation, direction,
                          IntRect{0, 0, extent.width, extent.height}, extent,
-                         CameraProjectionMode::Perspective, Radians(0.785398163f), 0.05f, 20.0f);
+                         CameraProjectionMode::Perspective, Radians(0.785398163f), 5.0f, 2000.0f);
     }
 
     void ThumbnailPreviewScene::clear_mesh()

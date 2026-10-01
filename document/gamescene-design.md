@@ -250,6 +250,6 @@ StaticMesh 的 `material_slot_names()` 与默认材质槽一一对应且非空�
 
 `CameraActor` 独占默认 `CameraComponent` 并设为 root，仅提供独立放置和组件访问。它不选择活动视角、不创建 SceneProxy、不控制 Window 或 Renderer。CameraComponent 可以被其他 Actor 组合并挂接 SceneComponent，继续使用现有注册、attachment 和 Transform 生命周期。
 
-首期 CameraComponent 支持有限远平面的透视相机，默认垂直 FOV 为 60 度、near 为 0.1 米、far 为 1000 米；`set_perspective()` 原子校验有限值、`0 < FOV < 180` 与 `0 < near < far`，失败记录日志并保留旧参数。纯查询 `is_valid_perspective()` 还通过 Core Math 验证参考宽高比 1 下的投影、逆矩阵及有限视锥可表示，拒绝角度/乘积下溢、乘积溢出或退化视锥；真正的 View 仍按实际宽高比验证派生矩阵。Editor 复用此查询，在应用历史记录的 Transform 前校验相机参数。`CameraProjectionMode` 中的其他枚举不表示 CameraComponent 已提供对应 setter 或 Renderer 已支持所有模式。
+首期 CameraComponent 支持有限远平面的透视相机，默认垂直 FOV 为 60 度、near 为 10 厘米、far 为 100000 厘米；`set_perspective()` 原子校验有限值、`0 < FOV < 180` 与 `0 < near < far`，失败记录日志并保留旧参数。纯查询 `is_valid_perspective()` 还通过 Core Math 验证参考宽高比 1 下的投影、逆矩阵及有限视锥可表示，拒绝角度/乘积下溢、乘积溢出或退化视锥；真正的 View 仍按实际宽高比验证派生矩阵。Editor 复用此查询，在应用历史记录的 Transform 前校验相机参数。`CameraProjectionMode` 中的其他枚举不表示 CameraComponent 已提供对应 setter 或 Renderer 已支持所有模式。
 
 View 构建方从组件复制 world position、world rotation 和投影输入，按输出尺寸确定宽高比；方向由 world rotation 变换本地 +Z 获得。组件及父级的 scale 不改变 FOV 或方向，父级 TRS 对世界位置的影响仍遵守 SceneComponent contract。Rendering Thread 只消费 owned `SceneView`，不得保留或读取 CameraActor/CameraComponent 指针。GameApplication 选择哪个相机仍属于项目策略，不自动采用 World 中第一台相机。

@@ -49,6 +49,9 @@ namespace toy3d
         return true;
     }
 
+    // --------------------------------------------------------------------------
+    // StaticMeshImportDialog: per-file unit policy and batch import interaction
+    // --------------------------------------------------------------------------
     void StaticMeshImportDialog::clear()
     {
         candidates_.clear();
@@ -70,6 +73,7 @@ namespace toy3d
         { error_ = "Import at most 32 model files at a time."; return false; }
         folder_ = folder;
         scale_ = 1;
+        convert_scene_unit_ = true;
         set_sources(sources);
         active_ = true;
         open_ = true;
@@ -96,9 +100,22 @@ namespace toy3d
                 if (name.size() >= candidate.name.size()) candidate.error = "Source name is too long; enter a shorter resource name.";
                 else std::memcpy(candidate.name.data(), name.c_str(), name.size() + 1);
             }
+            suggest_source_unit(candidate);
             candidates_.push_back(std::move(candidate));
         }
         if (candidates_.empty()) candidates_.push_back(Candidate{});
+    }
+
+    void StaticMeshImportDialog::suggest_source_unit(Candidate& candidate)
+    {
+        std::string source(candidate.source.data());
+        const auto dot = source.find_last_of('.');
+        std::string extension = dot == std::string::npos ? "" : source.substr(dot);
+        for (char& c : extension) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + ('a' - 'A'));
+        // Format suggestions are editable UI policy, never importer assumptions.
+        candidate.is_fbx = extension == ".fbx";
+        candidate.use_file_unit = candidate.is_fbx;
+        candidate.source_unit_in_centimeters = candidate.use_file_unit ? 1.0f : 100.0f;
     }
 
     void StaticMeshImportDialog::draw(IWindow& window, EditorWorkspace& workspace,
@@ -126,25 +143,36 @@ namespace toy3d
         if (ImGui::Button("Choose Files...")) browse_ = true;
         ImGui::SameLine();
         ImGui::TextDisabled("FBX / OBJ / glTF / GLB | up to 32 files");
-        const float height = std::max(85.0f, std::min(std::min(310.0f, display.y - 290),
-            static_cast<float>(candidates_.size()) * 115.0f));
+        ImGui::Checkbox("Convert Scene Unit", &convert_scene_unit_);
+        ImGui::SetNextItemWidth(160);
+        ImGui::InputFloat("Import Uniform Scale", &scale_);
+        ImGui::TextWrapped("World units: centimeters. Source Unit = cm per source unit (cm: 1, m: 100, mm: 0.1). OBJ defaults to meters; override it to match your file.");
+        const float height = std::max(85.0f, std::min(std::min(310.0f, display.y - 370),
+            static_cast<float>(candidates_.size()) * 170.0f));
         ImGui::BeginChild("Import Candidates", ImVec2(0, height), true);
         for (std::size_t i = 0; i < candidates_.size(); ++i)
         {
             Candidate& candidate = candidates_[i];
             ImGui::PushID(static_cast<int>(i));
             ImGui::SetNextItemWidth(std::max(150.0f, ImGui::GetContentRegionAvail().x - 120));
-            ImGui::InputText("Source", candidate.source.data(), candidate.source.size());
+            if (ImGui::InputText("Source", candidate.source.data(), candidate.source.size()))
+                suggest_source_unit(candidate);
             ImGui::SetNextItemWidth(std::max(150.0f, ImGui::GetContentRegionAvail().x - 120));
             ImGui::InputText("Resource Name", candidate.name.data(), candidate.name.size());
+            ImGui::BeginDisabled(!convert_scene_unit_);
+            ImGui::BeginDisabled(!candidate.is_fbx);
+            ImGui::Checkbox("Use FBX File Units", &candidate.use_file_unit);
+            ImGui::EndDisabled();
+            ImGui::BeginDisabled(candidate.use_file_unit);
+            ImGui::SetNextItemWidth(160);
+            ImGui::InputFloat("Source Unit (cm)", &candidate.source_unit_in_centimeters);
+            ImGui::EndDisabled();
+            ImGui::EndDisabled();
             if (!candidate.error.empty()) ImGui::TextWrapped("%s", candidate.error.c_str());
             ImGui::Separator();
             ImGui::PopID();
         }
         ImGui::EndChild();
-        ImGui::SetNextItemWidth(160);
-        ImGui::InputFloat("Scale Multiplier", &scale_);
-        ImGui::TextDisabled("FBX metadata units are applied automatically; OBJ assumes meters.");
         if (!error_.empty()) ImGui::TextWrapped("%s", error_.c_str());
 #if WITH_MODEL_IMPORT
         ImGui::BeginDisabled(candidates_.empty());
@@ -157,7 +185,10 @@ namespace toy3d
                 std::string destination;
                 AssetId id;
                 StaticMeshImportOptions options;
-                options.scale = scale_;
+                options.import_uniform_scale = scale_;
+                options.convert_scene_unit = convert_scene_unit_;
+                options.use_file_unit = candidate.use_file_unit;
+                options.source_unit_in_centimeters = candidate.source_unit_in_centimeters;
                 if (!static_mesh_import_destination(candidate.source.data(), folder_, candidate.name.data(),
                     scale_, destination, candidate.error) || !import_static_mesh_to_workspace(workspace,
                     PhysicalPath(candidate.source.data()), destination, options, id, candidate.error))

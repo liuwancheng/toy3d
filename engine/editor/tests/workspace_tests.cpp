@@ -134,12 +134,12 @@ int main()
         if (legacy_pair.succeeded())
         {
             std::string legacy_text(legacy_pair.value().asset.begin(), legacy_pair.value().asset.end());
-            const std::string current_version = "schema_version: 3";
+            const std::string current_version = "schema_version: 4";
             const std::size_t version_position = legacy_text.find(current_version);
             check(version_position != std::string::npos, "Scene schema version fixture must be present");
             if (version_position != std::string::npos)
             {
-                legacy_text.replace(version_position, current_version.size(), "schema_version: 1");
+                legacy_text.replace(version_position, current_version.size(), "schema_version: 3");
                 const VirtualPath legacy_path = virtual_path("/Project/legacy.scene");
                 const std::vector<std::uint8_t> legacy_bytes(legacy_text.begin(), legacy_text.end());
                 check(workspace.files().write_binary(legacy_path, legacy_bytes,
@@ -147,7 +147,7 @@ int main()
                 SceneAssetData rejected_scene;
                 check(!read_scene_asset(workspace.types(), workspace.files(), legacy_path,
                     rejected_scene).succeeded() && !workspace.refresh(),
-                    "version-one Scene must fail strict schema validation");
+                    "meter Scene must fail strict centimeter schema validation");
                 check(workspace.files().remove_file(legacy_path).succeeded() && workspace.refresh(),
                     "workspace must recover after removing unsupported Scene schema");
             }

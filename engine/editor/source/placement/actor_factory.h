@@ -18,16 +18,16 @@ namespace toy3d
         bool light_enabled = true;
         Vector3 light_color{1.0f};
         float light_intensity = 1.0f;
-        float light_range = 10.0f;
+        float light_range = 1000.0f;
         int light_priority = 0;
         bool shadow_cast_shadows = false;
-        float shadow_distance = 100.0f;
+        float shadow_distance = 10000.0f;
         float shadow_distance_fade_fraction = 0.1f;
         float shadow_bias = 0.5f;
         float shadow_slope_bias = 0.5f;
         float camera_vertical_fov = 60.0f;
-        float camera_near_clip = 0.1f;
-        float camera_far_clip = 1000.0f;
+        float camera_near_clip = 10.0f;
+        float camera_far_clip = 100000.0f;
     };
 
     EditorActorState capture_actor_state(const Actor& actor);

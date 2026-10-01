@@ -20,6 +20,10 @@ Editor 创作 owner 串行调用发布接口，Worker 通过 store 读取一致�
 
 StaticMesh 缩略图 PNG 放在 `/Saved/AssetThumbnails/`（Editor 的部署侧 `bin/saved/AssetThumbnails/`），按 Asset ID、模型内容签名与生成器版本命名。缓存缺失、损坏或版本过期时重新渲染；写缓存不修改 `.asset` 或 `.meta`，失败也不撤销资产。它可删除重建，不进入源码资产与部署清单。未来材质缩略图的签名还须纳入父材质、Shader 与纹理内容；当前池只实现 StaticMesh。
 
+## 世界单位与领域版本
+
+世界长度统一以厘米存储。SceneAssetData / SceneActorData schema 4 与 StaticMeshAssetData schema 2、render_geometry version 2 表示厘米语义；旧米制领域版本明确拒绝，不在读取端隐式换算。YAML format_version 2 与 TOY3DMTA v1 容器版本保持不变。
+
 ## 格式边界
 
 新建模型、贴图和材质直接编码 YAML 描述与可选 meta，不生成旧二进制 Asset 包作为中间产物。旧二进制 `.asset` 遇到生产读取入口时明确失败；不提供旧格式转换工具或自动兼容路径。此前手工转换时留下的原字节备份属于用户数据，位于资产目录之外，由用户自行保管。

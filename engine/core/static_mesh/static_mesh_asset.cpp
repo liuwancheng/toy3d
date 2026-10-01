@@ -12,6 +12,9 @@ namespace toy3d
 {
     namespace
     {
+        constexpr std::uint32_t k_static_mesh_schema_version = 2;
+        constexpr std::uint32_t k_geometry_version = 2;
+
         AssetStatus invalid(const char* message)
         {
             return {AssetErrorCode::Value, {}, {}, "render_geometry", {}, message, {}};
@@ -68,7 +71,7 @@ namespace toy3d
         const AssetStatus valid = validate_static_mesh_geometry(geometry);
         if (!valid.succeeded()) return AssetResult<std::vector<std::uint8_t>>(valid);
         ValueWriter writer;
-        if (!writer.write_uint32(1).succeeded() ||
+        if (!writer.write_uint32(k_geometry_version).succeeded() ||
             !writer.write_array_length(static_cast<std::uint32_t>(geometry.vertices.size())).succeeded())
             return AssetResult<std::vector<std::uint8_t>>(invalid("geometry encoding failed"));
         for (const StaticMeshAssetVertex& vertex : geometry.vertices)
@@ -105,7 +108,7 @@ namespace toy3d
         StaticMeshAssetGeometry geometry;
         std::uint32_t version = 0;
         std::uint32_t count = 0;
-        if (!reader.read_uint32(version).succeeded() || version != 1 || !reader.read_array_length(count).succeeded())
+        if (!reader.read_uint32(version).succeeded() || version != k_geometry_version || !reader.read_array_length(count).succeeded())
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid geometry version or vertex count"));
         geometry.vertices.resize(count);
         for (StaticMeshAssetVertex& vertex : geometry.vertices)
@@ -157,7 +160,7 @@ namespace toy3d
         AssetFileIndex index;
         index.asset_id = id;
         index.root_type = "toy3d.StaticMeshAssetData";
-        index.schema_version = 1;
+        index.schema_version = k_static_mesh_schema_version;
         // Rebuilding render data invalidates all previous preview metadata.
         // The importer computes a new source signature after the new package is encoded.
         editor_segments.erase(std::remove_if(editor_segments.begin(), editor_segments.end(),
@@ -172,7 +175,7 @@ namespace toy3d
     {
         const auto index = inspect_asset_bytes(bytes);
         if (!index.succeeded()) return AssetResult<StaticMeshAssetGeometry>(index.status());
-        if (index.value().root_type != "toy3d.StaticMeshAssetData" || index.value().schema_version != 1)
+        if (index.value().root_type != "toy3d.StaticMeshAssetData" || index.value().schema_version != k_static_mesh_schema_version)
             return AssetResult<StaticMeshAssetGeometry>(invalid("unsupported static mesh root type or schema"));
         const AssetSegment* typed = nullptr;
         const AssetSegment* render_geometry = nullptr;
@@ -220,7 +223,7 @@ namespace toy3d
         AssetFileIndex index;
         index.asset_id = id;
         index.root_type = "toy3d.StaticMeshAssetData";
-        index.schema_version = 1u;
+        index.schema_version = k_static_mesh_schema_version;
         optional_segments.push_back({"render_geometry", 2u, true, blob.value()});
         return encode_asset_pair(types, std::move(index), writer.bytes(),
             std::move(optional_segments));
@@ -236,7 +239,7 @@ namespace toy3d
         if (!pair.succeeded()) return AssetResult<StaticMeshAssetGeometry>(pair.status());
         const auto& description = pair.value().description;
         if (description.index.root_type != "toy3d.StaticMeshAssetData" ||
-            description.index.schema_version != 1u || !description.has_meta)
+            description.index.schema_version != k_static_mesh_schema_version || !description.has_meta)
             return AssetResult<StaticMeshAssetGeometry>(invalid("unsupported static mesh root type or schema"));
         ValueReader reader(description.type_data);
         StaticMeshAssetData metadata;

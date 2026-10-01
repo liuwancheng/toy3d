@@ -24,7 +24,7 @@ namespace toy3d
       private:
         CameraProjectionMode projection_mode_ = CameraProjectionMode::Perspective;
         float vertical_fov_degrees_ = 60.0f;
-        float near_clip_ = 0.1f;
-        float far_clip_ = 1000.0f;
+        float near_clip_ = 10.0f;
+        float far_clip_ = 100000.0f;
     };
 } // namespace toy3d

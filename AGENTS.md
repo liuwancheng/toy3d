@@ -106,7 +106,7 @@ toy3d/
 - 公共枚举到后端枚举的转换必须集中在后端实现中，禁止依赖枚举数值相同进行强制转换。
 - 修改 RHI 公共接口时必须同时评估 Vulkan、DirectX 11、DirectX 12 和移动端 Vulkan profile 的可实现性，不得为单一后端破坏公共抽象。平台差异通过 capability、limits、format support 和 profile 表达，禁止在上层散布图形 API 或操作系统判断。
 - 默认移动端基线为 `Vulkan ES3.1 profile`（Vulkan 1.1、SPIR-V 1.3、最多四个 bound descriptor sets）。Cook 与 runtime 都要验证 required capabilities/limits；不得按当前桌面 GPU 自动抬高基线。
-- 全引擎坐标和矩阵约定固定为 left-handed、+X right、+Y up、+Z forward、1 unit=1 meter、column-vector、column-major storage、HLSL `mul(matrix, vector)`。clip depth 为 0..1 reversed-Z：near=1、far=0、clear=0.0、默认 `GreaterEqual`；公共 front face 为 CounterClockwise。Vulkan 由 backend 使用 negative viewport height 处理 Y 并修正 native front face，Shader 禁止手写平台翻转。
+- 全引擎坐标和矩阵约定固定为 left-handed、+X right、+Y up、+Z forward、1 unit=1 centimeter、column-vector、column-major storage、HLSL `mul(matrix, vector)`。位置、长度、相机裁剪距离、灯光范围与阴影距离统一使用厘米；Transform scale、方向与比例为无量纲值。clip depth 为 0..1 reversed-Z：near=1、far=0、clear=0.0、默认 `GreaterEqual`；公共 front face 为 CounterClockwise。Vulkan 由 backend 使用 negative viewport height 处理 Y 并修正 native front face，Shader 禁止手写平台翻转。
 - Shader 的 Global、View、Pass、Material、Object 是五个逻辑 Binding Group，不等于 descriptor set。Vulkan portable 映射为 set 0=Global+View、set 1=Pass、set 2=Material、set 3=Object，set 内紧凑分配；D3D11/D3D12 使用 target/stage/register-class 独立映射。跨 target reflection 不比较 native slot 数字。
 - 暂未实现的能力必须明确返回不支持或产生可诊断错误，禁止无操作后返回成功。
 - 可参考 UE4.27 的架构和命名思想，但保持本项目现有命名体系，不引入 UE 的宏系统和对象系统。

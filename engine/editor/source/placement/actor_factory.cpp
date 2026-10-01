@@ -59,7 +59,7 @@ namespace toy3d
             if (!material)
                 return nullptr;
 
-            constexpr float h = 0.75f;
+            constexpr float h = 75.0f;
             StaticMeshDesc mesh_desc;
             // Each face has its own normal; sharing corner vertices would smooth
             // the primitive and conceal the direction of editor lights.
@@ -213,10 +213,10 @@ namespace toy3d
         if (!cube_) return false;
         StaticMeshDesc plane;
         plane.vertices = {
-            {{-2.5f, 0, -2.5f}, {0, 1, 0}, {0, 0}},
-            {{ 2.5f, 0, -2.5f}, {0, 1, 0}, {1, 0}},
-            {{ 2.5f, 0,  2.5f}, {0, 1, 0}, {1, 1}},
-            {{-2.5f, 0,  2.5f}, {0, 1, 0}, {0, 1}}};
+            {{-250.0f, 0, -250.0f}, {0, 1, 0}, {0, 0}},
+            {{ 250.0f, 0, -250.0f}, {0, 1, 0}, {1, 0}},
+            {{ 250.0f, 0,  250.0f}, {0, 1, 0}, {1, 1}},
+            {{-250.0f, 0,  250.0f}, {0, 1, 0}, {0, 1}}};
         // A fixed UInt16 alternative matches the small builtin geometry.
         plane.indices = std::vector<std::uint16_t>{0, 2, 1, 0, 3, 2};
         plane.sections.push_back({0, 6, 0});

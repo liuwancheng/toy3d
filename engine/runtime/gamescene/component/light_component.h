@@ -61,7 +61,7 @@ namespace toy3d
 
       private:
         bool cast_shadows_ = false;
-        float shadow_distance_ = 100.0f;
+        float shadow_distance_ = 10000.0f;
         float shadow_distance_fade_fraction_ = 0.1f;
         float shadow_bias_ = 0.5f;
         float shadow_slope_bias_ = 0.5f;
@@ -79,7 +79,7 @@ namespace toy3d
         explicit LocalLightComponent(Actor& owner) : LightComponent(owner) {}
 
       private:
-        float range_ = 10.0f;
+        float range_ = 1000.0f;
     };
 
     class PointLightComponent final : public LocalLightComponent

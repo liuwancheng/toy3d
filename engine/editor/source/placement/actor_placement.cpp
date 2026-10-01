@@ -14,12 +14,14 @@ namespace toy3d
         if (!try_inverse(projection * view, inverse)) return false;
         const Vector4 far_clip(image_position.x * 2 - 1, 1 - image_position.y * 2, 0, 1);
         const Vector4 far_world = inverse * far_clip;
-        if (!is_finite(far_world) || std::abs(far_world.w) < 1.0e-6f) return false;
+        // Homogeneous w is inverse length here. A fixed epsilon would reject
+        // distant centimeter frusta; division and normalization check finiteness.
+        if (!is_finite(far_world) || far_world.w == 0.0f) return false;
         Vector3 direction;
         if (!try_normalize(Vector3(far_world.x, far_world.y, far_world.z) / far_world.w - camera_position,
                            direction)) return false;
-        constexpr float default_distance = 8.0f;
-        constexpr float maximum_ground_distance = 100.0f;
+        constexpr float default_distance = 800.0f;
+        constexpr float maximum_ground_distance = 10000.0f;
         float distance = default_distance;
         bool ground = false;
         if (std::abs(direction.y) > 1.0e-5f)

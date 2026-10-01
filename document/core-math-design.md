@@ -6,13 +6,15 @@
 
 - Toy3d 第一方模块只使用 Toy3d 公共数学类型和函数，不直接包含或调用 GLM；GLM 是 `Toy3dMath` 的实现依赖，不是引擎公共 API。
 - 公共类型采用 Toy3d 自有名称、稳定标量存储和显式布局，不使用 `using Vector3 = glm::vec3`，也不在公共接口暴露 `glm::*` 转换。
-- 全引擎空间 contract 固定为 left-handed、`+X` right、`+Y` up、`+Z` forward、1 unit = 1 meter、column vector、column-major storage、HLSL `mul(matrix, vector)`。
+- 全引擎空间 contract 固定为 left-handed、`+X` right、`+Y` up、`+Z` forward、1 unit = 1 centimeter、column vector、column-major storage、HLSL `mul(matrix, vector)`。
 - clip depth 固定为 0..1 reversed-Z：near = 1、far = 0。Vulkan viewport Y 修正仍由 backend 完成，Core Math 不生成后端专用投影。
 - `Transform`、方向到 rotation、LookAt、投影矩阵和通用几何值属于 Core Math；Scene hierarchy、Camera 行为、Editor orbit/undo、RenderScene View 组装仍属于各自业务模块。
 - 非法或退化构造使用显式 checked API，失败不写入输出、不记录日志、不静默选择备用方向。
 - 迁移按可独立验证的小批次进行；旧 GLM aliases 与新类型只在受控迁移期并存，并设置删除条件，不建立长期双轨入口。
 
 本文是实施前设计基线。若后续实现需要改变公共类型布局、坐标约定、错误模型或依赖方向，必须先更新本文。
+
+位置、网格顶点、bounds、长度、裁剪距离、灯光范围和阴影距离均以厘米保存并计算；Editor 直接显示厘米。Transform scale、单位方向、角度、UV、颜色与淡出比例不随单位改变。矩阵和 RHI ABI 不做额外单位换算。相机默认 near/far 为 `10/100000 cm`，方向光默认动态阴影距离为 `10000 cm`。有物理长度含义的最小距离/padding 使用厘米值；归一化、角度和矩阵可逆性容差保持各自数学语义，不能统一乘以 100。
 
 ## 2. 设计来源与取舍
 
@@ -379,8 +381,8 @@ struct PerspectiveProjectionDesc
 {
     Radians vertical_fov;
     float aspect = 1.0f;
-    float near_clip = 0.1f;
-    float far_clip = 1000.0f;
+    float near_clip = 10.0f;
+    float far_clip = 100000.0f;
 };
 
 bool try_make_perspective_projection(
@@ -391,7 +393,7 @@ struct InfinitePerspectiveProjectionDesc
 {
     Radians vertical_fov;
     float aspect = 1.0f;
-    float near_clip = 0.1f;
+    float near_clip = 10.0f;
 };
 
 bool try_make_infinite_perspective_projection(

@@ -322,10 +322,10 @@ namespace toy3d
         }
         else if (scene_extent.width != 0u && scene_extent.height != 0u)
         {
-            views.emplace_back(Vector3(0.0f, 1.5f, -6.0f), Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
+            views.emplace_back(Vector3(0.0f, 150.0f, -600.0f), Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
                                IntRect{0, 0, scene_extent.width, scene_extent.height}, scene_extent,
                                CameraProjectionMode::Perspective,
-                               to_radians(Degrees(60.0f)), 0.1f, 1000.0f);
+                               to_radians(Degrees(60.0f)), 10.0f, 100000.0f);
         }
         if (views.empty() && scene_extent.width != 0u && scene_extent.height != 0u)
         {

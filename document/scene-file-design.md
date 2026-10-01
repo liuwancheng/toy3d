@@ -20,4 +20,6 @@
 
 ## 验证与迁移
 
+当前 `SceneAssetData` / `SceneActorData` schema 4 固定使用厘米。位置、相机裁剪面、局部光范围和方向光阴影距离均以厘米持久化；scale、rotation、bias 与 fade fraction 保持无量纲语义。旧米制 schema 不自动读取或迁移；已有项目数据只在离线的一次性转换中保持 identity 并缩放长度字段。
+
 验证 `.asset` 原行为、`.scene` 读写及重启扫描、同 stem 两种入口、错配 root type、非法或缺失引用、事务恢复，以及 Editor 场景往返。此前没有生产 Scene 文件，因此无需自动迁移；反射测试 fixture 不是正式格式。完成端到端往返后才启用菜单入口；旧 `.asset` 不改名。

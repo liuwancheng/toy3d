@@ -88,7 +88,7 @@ namespace toy3d
         const Actor* actor = world.find_actor_by_id(actor_id);
         if (!actor || actor->is_pending_destroy() || !actor->root_component()) return false;
         Vector3 center = transform_position(actor->root_component()->world_transform(), Vector3());
-        float radius = 1.0f;
+        float radius = 100.0f;
         if (const auto* primitive = dynamic_cast<const PrimitiveComponent*>(actor->root_component()))
         {
             const AxisAlignedBounds& bounds = primitive->world_bounds();
@@ -99,14 +99,14 @@ namespace toy3d
                 bounds.minimum.z <= bounds.maximum.z)
             {
                 center = (minimum + maximum) * 0.5f;
-                radius = std::max(0.5f, length(maximum - center));
+                radius = std::max(50.0f, length(maximum - center));
             }
         }
         const float aspect = scene_extent_.height != 0u
             ? static_cast<float>(scene_extent_.width) / scene_extent_.height : 16.0f / 9.0f;
         const float half_vertical_fov = tan(to_radians(Degrees(60.0f)) * 0.5f);
         const float half_horizontal_fov = half_vertical_fov * std::max(aspect, 0.1f);
-        const float distance = std::max(2.0f, radius * 1.25f /
+        const float distance = std::max(200.0f, radius * 1.25f /
             std::min(half_vertical_fov, half_horizontal_fov));
         const Vector3 forward = rotate_vector(editor_camera_orientation_, Vector3(0, 0, 1));
         const Vector3 position = center - forward * distance;
@@ -143,12 +143,12 @@ namespace toy3d
         const Vector3 position = camera ? transform_position(camera->world_transform(), Vector3()) : editor_camera_position_;
         const Quaternion orientation = camera ? camera->world_rotation() : editor_camera_orientation_;
         // Keep an orbit target in the editor frustum when zooming beyond the default range.
-        const float editor_far_clip = std::max(1000.0f,
+        const float editor_far_clip = std::max(100000.0f,
             length(editor_camera_target_ - editor_camera_position_) * 4.0f);
         return SceneView(position, orientation, rotate_vector(orientation, Vector3(0, 0, 1)),
                          IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
                          to_radians(Degrees(camera ? camera->vertical_fov_degrees() : 60.0f)),
-                         camera ? camera->near_clip() : 0.1f, camera ? camera->far_clip() : editor_far_clip);
+                         camera ? camera->near_clip() : 10.0f, camera ? camera->far_clip() : editor_far_clip);
     }
 
     void SceneViewport::begin_frame()
@@ -203,8 +203,8 @@ namespace toy3d
                     bool camera_changed = false;
                     if (hovered && io.MouseWheel != 0.0f && std::isfinite(io.MouseWheel))
                     {
-                        constexpr float min_distance = 0.2f;
-                        constexpr float max_distance = 10000.0f;
+                        constexpr float min_distance = 20.0f;
+                        constexpr float max_distance = 1000000.0f;
                         const float next_distance = std::max(min_distance,
                             std::min(max_distance, distance * std::pow(0.85f, io.MouseWheel)));
                         const Vector3 next_position = editor_camera_target_ - forward * next_distance;
@@ -240,11 +240,11 @@ namespace toy3d
                     if (pan_drag_active_ && ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.0f) &&
                         (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f))
                     {
-                        const float meters_per_pixel = 2.0f * distance *
+                        const float centimeters_per_pixel = 2.0f * distance *
                             tan(to_radians(Degrees(60.0f)) * 0.5f) / available.y;
                         const Vector3 right = rotate_vector(editor_camera_orientation_, Vector3(1, 0, 0));
                         const Vector3 up = rotate_vector(editor_camera_orientation_, Vector3(0, 1, 0));
-                        const Vector3 offset = (up * io.MouseDelta.y - right * io.MouseDelta.x) * meters_per_pixel;
+                        const Vector3 offset = (up * io.MouseDelta.y - right * io.MouseDelta.x) * centimeters_per_pixel;
                         if (is_finite(offset) && is_finite(editor_camera_position_ + offset) &&
                             is_finite(editor_camera_target_ + offset))
                         {

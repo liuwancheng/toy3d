@@ -199,7 +199,7 @@ namespace toy3d
     {
         constexpr float k_parallel_up_threshold = 0.99f;
         constexpr float k_depth_padding_fraction = 0.01f;
-        constexpr float k_min_depth_padding = 0.1f;
+        constexpr float k_min_depth_padding = 10.0f;
         constexpr float k_max_slope = 4.0f;
         constexpr float k_constant_bias_texels = 2.0f;
         constexpr float k_slope_bias_texels = 4.0f;

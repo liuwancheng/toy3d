@@ -136,8 +136,18 @@ namespace toy3d
                            Vector4(source.a4, source.b4, source.c4, source.d4));
         }
 
-        bool source_conversion(const aiScene& scene, bool fbx, float scale, Matrix4& output)
+        bool source_conversion(const aiScene& scene, bool fbx, const StaticMeshImportOptions& options, Matrix4& output)
         {
+            float unit = options.convert_scene_unit ? options.source_unit_in_centimeters : 1.0f;
+            if (fbx && options.convert_scene_unit && options.use_file_unit && scene.mMetaData &&
+                scene.mMetaData->HasKey("UnitScaleFactor"))
+            {
+                // Assimp stores FBX UnitScaleFactor as float, in cm per source unit.
+                // Ignore invalid file units when the caller explicitly bypasses them.
+                if (!scene.mMetaData->Get("UnitScaleFactor", unit)) return false;
+            }
+            const float scale = unit * options.import_uniform_scale;
+            if (!is_finite(scale) || scale <= 0) return false;
             output = Matrix4();
             if (!fbx)
             {
@@ -150,25 +160,19 @@ namespace toy3d
             // explicit axis/unit conversion; GlobalScale would apply units twice.
             std::int32_t right = 0, up = 1, front = 2;
             std::int32_t right_sign = 1, up_sign = 1, front_sign = -1;
-            // Assimp 6.0.5 FBXDocument exposes UnitScaleFactor as float; metadata
-            // Get() requires the exact stored type and performs no conversion.
-            float unit = 1.0f;
             if (scene.mMetaData)
             {
                 if (!scene.mMetaData->Get("CoordAxis", right) || !scene.mMetaData->Get("CoordAxisSign", right_sign) ||
                     !scene.mMetaData->Get("UpAxis", up) || !scene.mMetaData->Get("UpAxisSign", up_sign) ||
-                    !scene.mMetaData->Get("FrontAxis", front) || !scene.mMetaData->Get("FrontAxisSign", front_sign) ||
-                    !scene.mMetaData->Get("UnitScaleFactor", unit)) return false;
+                    !scene.mMetaData->Get("FrontAxis", front) || !scene.mMetaData->Get("FrontAxisSign", front_sign)) return false;
             }
             if (right < 0 || right > 2 || up < 0 || up > 2 || front < 0 || front > 2 ||
                 right == up || right == front || up == front || (right_sign != 1 && right_sign != -1) ||
-                (up_sign != 1 && up_sign != -1) || (front_sign != 1 && front_sign != -1) || !std::isfinite(unit) || unit <= 0) return false;
-            const float meters = static_cast<float>(unit * 0.01 * scale);
-            if (!is_finite(meters) || meters <= 0) return false;
+                (up_sign != 1 && up_sign != -1) || (front_sign != 1 && front_sign != -1)) return false;
             output = Matrix4(0);
-            output.at(right, 0) = right_sign * meters;
-            output.at(up, 1) = up_sign * meters;
-            output.at(front, 2) = front_sign * meters;
+            output.at(right, 0) = right_sign * scale;
+            output.at(up, 1) = up_sign * scale;
+            output.at(front, 2) = front_sign * scale;
             output.at(3, 3) = 1;
             return true;
         }
@@ -279,7 +283,8 @@ namespace toy3d
         const VirtualPath& source, const StaticMeshImportOptions& options)
     {
         using Result = AssetResult<std::vector<ImportedStaticMesh>>;
-        if (!is_finite(options.scale) || options.scale <= 0) return Result(invalid("invalid import scale"));
+        if (!is_finite(options.import_uniform_scale) || options.import_uniform_scale <= 0)
+            return Result(invalid("import scale must be finite and greater than zero"));
         const std::string& path = source.utf8();
         const std::size_t dot = path.find_last_of('.');
         std::string extension = dot == std::string::npos ? "" : path.substr(dot + 1);
@@ -304,8 +309,8 @@ namespace toy3d
         }
         ImportedStaticMesh result;
         Matrix4 conversion;
-        if (!source_conversion(*scene, extension == "fbx", options.scale, conversion))
-            return Result(invalid("invalid FBX axis or unit metadata"));
+        if (!source_conversion(*scene, extension == "fbx", options, conversion))
+            return Result(invalid("invalid axis metadata or effective unit/scale conversion"));
         std::map<unsigned, std::uint32_t> slots;
         std::size_t nodes = 0;
         if (!append_node(*scene, *scene->mRootNode, Matrix4(), conversion, slots, result, 0, nodes))

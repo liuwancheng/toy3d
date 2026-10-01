@@ -97,14 +97,14 @@ int main()
         auto* actor = dynamic_cast<PointLightActor*>(world.find_actor_by_id(id));
         check(actor != nullptr, "Point light placement must compose a light root");
         history.begin(world, id, actor->root_component()->local_transform(), EditorTransformSource::Details);
-        check(actor->light_component().set_intensity(5) && actor->light_component().set_range(12), "Light property gesture");
+        check(actor->light_component().set_intensity(5) && actor->light_component().set_range(1200), "Light property gesture");
         history.finish(world, EditorTransformSource::Details);
-        check(history.undo(world) && actor->light_component().intensity() == 1 && actor->light_component().range() == 10,
+        check(history.undo(world) && actor->light_component().intensity() == 1 && actor->light_component().range() == 1000,
               "Undo must restore all light properties in one gesture");
         check(history.redo(world) && actor->light_component().intensity() == 5, "Redo must restore edited light values");
         check(history.delete_actor(world, id) && history.undo(world), "Light deletion must reconstruct a typed Actor");
         actor = dynamic_cast<PointLightActor*>(world.find_actor_by_id(world.actor_ids().front()));
-        check(actor && actor->light_component().range() == 12 && actor->light_component().intensity() == 5,
+        check(actor && actor->light_component().range() == 1200 && actor->light_component().intensity() == 5,
               "Deletion undo must preserve light values");
         check(history.undo(world) && actor->light_component().intensity() == 1,
               "Property undo must follow the reconstructed light ID");
@@ -252,7 +252,16 @@ int main()
         World world;
         PlacementRequest request;
         request.item = PlacementItemId::Cube;
-        check(factory.create(world, request) != nullptr, "Cube geometry should be reusable");
+        Actor* cube_actor = factory.create(world, request);
+        check(cube_actor != nullptr, "Cube geometry should be reusable");
+        if (auto* cube = dynamic_cast<StaticMeshActor*>(cube_actor))
+        {
+            const auto bounds = cube->static_mesh_component().world_bounds();
+            const Vector3 size(bounds.maximum.x - bounds.minimum.x, bounds.maximum.y - bounds.minimum.y,
+                               bounds.maximum.z - bounds.minimum.z);
+            check(is_nearly_equal(size, Vector3(150)),
+                  "Builtin cube must measure 150 cm with unit Transform scale");
+        }
         request.item = PlacementItemId::Plane;
         check(factory.create(world, request) != nullptr, "Plane geometry should be reusable");
         StaticMeshAssetGeometry imported;
@@ -303,14 +312,14 @@ int main()
         Matrix4 view;
         Matrix4 projection;
         Quaternion rotation;
-        const Vector3 camera(0, 5, -5);
+        const Vector3 camera(0, 500, -500);
         check(try_make_rotation_from_forward_up(Vector3(0, -1, 1), Vector3(0, 1, 0), rotation) &&
               try_make_view_matrix(camera, rotation, view), "Placement camera construction");
         PerspectiveProjectionDesc desc;
         desc.vertical_fov = to_radians(Degrees(60));
         desc.aspect = 1;
-        desc.near_clip = 0.1f;
-        desc.far_clip = 1000;
+        desc.near_clip = 10.0f;
+        desc.far_clip = 100000;
         check(try_make_perspective_projection(desc, projection), "Placement projection construction");
         Transform result;
         const PlacementItem& cube = *find_placement_item(PlacementItemId::Cube);
@@ -324,6 +333,11 @@ int main()
         check(try_make_view_matrix(camera, Quaternion::identity(), view) &&
               calculate_placement_transform(view, projection, camera, Vector2(0.5f), cube, result) &&
               result.translation.z > camera.z, "Parallel ground ray must fall back in front of camera");
+        desc.far_clip = 4000000;
+        check(try_make_perspective_projection(desc, projection) &&
+              calculate_placement_transform(view, projection, camera, Vector2(0.5f), cube, result) &&
+              is_nearly_equal(result.translation, camera + Vector3(0, 0, 800)),
+              "Placement must work at the editor's maximum centimeter zoom range");
     }
     {
         Matrix4 projection;
@@ -397,9 +411,9 @@ int main()
         auto& near_light = world.spawn_actor<PointLightActor>();
         auto& far_light = world.spawn_actor<DirectionalLightActor>();
         Transform transform;
-        transform.translation = Vector3(0, 0, 2);
+        transform.translation = Vector3(0, 0, 200);
         check(near_light.root_component()->set_local_transform(transform), "Near icon transform");
-        transform.translation.z = 5;
+        transform.translation.z = 500;
         check(far_light.root_component()->set_local_transform(transform), "Far icon transform");
         Matrix4 projection;
         PerspectiveProjectionDesc desc;
@@ -411,15 +425,15 @@ int main()
         ImGui::Begin("Icon hit test");
         auto& camera = world.spawn_actor<CameraActor>();
         Transform camera_transform;
-        camera_transform.translation = Vector3(0, 0, 1);
+        camera_transform.translation = Vector3(0, 0, 100);
         check(camera.root_component()->set_local_transform(camera_transform), "Camera icon transform");
         check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), camera.actor_id(), true, 2.0f) ==
               camera.actor_id(), "Camera and light icons must share frontmost picking");
-        camera_transform.translation = Vector3(0, 0, 9);
+        camera_transform.translation = Vector3(0, 0, 900);
         check(camera.root_component()->set_local_transform(camera_transform) &&
               draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), camera.actor_id(), true, 2.0f) ==
               near_light.actor_id(), "A farther camera must not steal a nearer light hit");
-        camera_transform.translation = Vector3(0, 0, -2);
+        camera_transform.translation = Vector3(0, 0, -200);
         check(camera.root_component()->set_local_transform(camera_transform), "Clipped camera icon transform");
         check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, true, 2.0f) ==
               near_light.actor_id(), "Overlapping light icons must select the frontmost Actor");
@@ -428,13 +442,13 @@ int main()
         near_light.light_component().set_enabled(false);
         check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), near_light.actor_id(), true, 2.0f) ==
               near_light.actor_id(), "Disabled lights must remain selectable for editing");
-        transform.translation = Vector3(0, 0, -2);
+        transform.translation = Vector3(0, 0, -200);
         check(near_light.root_component()->set_local_transform(transform), "Move near icon behind camera");
         check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), 0, true, 2.0f) ==
               far_light.actor_id(), "A clipped light must not intercept another icon");
         check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), far_light.actor_id(), true, 2.0f) ==
               far_light.actor_id(), "Selected directional-light depth cues must preserve icon hits");
-        transform.translation = Vector3(0, 0, 5);
+        transform.translation = Vector3(0, 0, 500);
         check(try_make_rotation_from_forward_up(Vector3(1, -1, 1), Vector3(0, 1, 0), transform.rotation) &&
               far_light.root_component()->set_local_transform(transform), "Rotate the directional-light indicator");
         check(draw_actor_icons(world, projection, Vector2(100, 50), Vector2(800, 400), far_light.actor_id(), true, 2.0f) ==
@@ -532,8 +546,8 @@ int main()
         draw();
         views.clear();
         viewport.build_scene_views(world, views, extent);
-        check(length(Vector3(0, 0, 3) - views.front().camera_position()) <
-                  length(Vector3(0, 0, 3) - initial_position),
+        check(length(Vector3(0, 0, 300) - views.front().camera_position()) <
+                  length(Vector3(0, 0, 300) - initial_position),
               "Mouse wheel over the Scene image must zoom toward the observer target");
         io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
         ImGui::NewFrame();

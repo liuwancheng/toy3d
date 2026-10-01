@@ -8,6 +8,7 @@
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
 #include "asset_pair_store.h"
+#include "asset_descriptor_path.h"
 #include "static_mesh/static_mesh_asset.h"
 #include "mesh_builder/static_mesh_builder.h"
 
@@ -41,6 +42,19 @@ namespace
     {
         const std::vector<std::uint8_t> bytes(text.begin(), text.end());
         require(files.write_binary_atomic(path(name), bytes, toy3d::FilePublishMode::Replace).succeeded(), "fixture write failed");
+    }
+    void clear_asset_fixture(toy3d::FileSystem& files, const toy3d::VirtualPath& asset)
+    {
+        // These exact paths belong to this test. Older schema outputs cannot be
+        // decoded by AssetPairStore, so remove both members before regeneration.
+        toy3d::VirtualPath meta;
+        require(toy3d::asset_meta_path(asset, meta), "fixture meta path failed");
+        for (const toy3d::VirtualPath& file : {asset, meta})
+        {
+            const auto found = files.stat(file);
+            if (found.succeeded()) require(files.remove_file(file).succeeded(), "old fixture cleanup failed");
+            else require(found.status().code == toy3d::FileErrorCode::NotFound, "fixture stat failed");
+        }
     }
     std::string fbx_fixture(int up_axis, int front_axis, int front_sign, double units, bool mirror)
     {
@@ -85,25 +99,37 @@ int main()
         require(AssetId::parse("1234567890abcdef1234567890abcdef", id), "id parse failed");
         AssetId fresh;
         require(AssetId::try_generate(fresh) && fresh.valid(), "id generation failed");
+        const StaticMeshImportOptions file_unit_options;
         for (const char* filename : {"triangle.obj", "phong_cube.fbx", "triangle.gltf", "triangle.glb"})
         {
-            const auto imported = import_static_mesh_asset(files, path(std::string("/Samples/") + filename), id);
+            StaticMeshImportOptions options;
+            options.use_file_unit = std::string(filename) == "phong_cube.fbx";
+            options.source_unit_in_centimeters = options.use_file_unit ? 1.0f : 100.0f;
+            const auto imported = import_static_mesh_asset(files, path(std::string("/Samples/") + filename), id, options);
             if (!imported.succeeded()) std::cerr << filename << ": " << imported.status().message << '\n';
             require(imported.succeeded(), "sample import failed");
-            const auto repeated = import_static_mesh_asset(files, path(std::string("/Samples/") + filename), id);
+            const auto repeated = import_static_mesh_asset(files, path(std::string("/Samples/") + filename), id, options);
             require(repeated.succeeded() && repeated.value().pair.asset == imported.value().pair.asset &&
                 repeated.value().pair.meta == imported.value().pair.meta, "nondeterministic import");
             const VirtualPath output = path(std::string("/Output/") + filename + ".asset");
-            if (files.stat(output).succeeded())
-            {
-                const AssetStatus removed = assets.remove(output);
-                if (!removed.succeeded())
-                    require(files.remove_file(output).succeeded(), "old fixture cleanup failed");
-            }
+            clear_asset_fixture(files, output);
             require(assets.publish(output, imported.value().pair, FilePublishMode::CreateNew).succeeded(),
                 "publish failed");
             const auto loaded = read_static_mesh_asset(files, output);
             require(loaded.succeeded() && !loaded.value().sections.empty(), "asset load failed");
+            if (!options.use_file_unit)
+            {
+                // OBJ/glTF have no implicit backend scale: caller controls it.
+                options.convert_scene_unit = false;
+                const auto raw = import_static_meshes(files, path(std::string("/Samples/") + filename), options);
+                require(raw.succeeded(), "unit bypass failed");
+                const auto raw_geometry = build_static_mesh(raw.value()[0].mesh);
+                require(raw_geometry.succeeded() && raw_geometry.value().vertices.size() == loaded.value().vertices.size(),
+                        "unit conversion changed topology");
+                for (std::size_t vertex = 0; vertex < loaded.value().vertices.size(); ++vertex)
+                    require(is_nearly_equal(loaded.value().vertices[vertex].position,
+                        raw_geometry.value().vertices[vertex].position * 100.0f), "explicit source unit ignored");
+            }
             std::cout << filename << " vertices=" << loaded.value().vertices.size() << " indices=" << loaded.value().indices.size() << '\n';
         }
 
@@ -124,6 +150,9 @@ int main()
         require(!build_static_mesh(bad_source).succeeded(), "bad source accepted");
         const auto encoded = encode_static_mesh_geometry(built.value());
         require(encoded.succeeded(), "geometry codec failed");
+        auto old_geometry = encoded.value();
+        old_geometry[0] = 1;
+        require(!decode_static_mesh_geometry(old_geometry).succeeded(), "meter geometry version accepted");
         auto truncated = encoded.value();
         truncated.pop_back();
         require(!decode_static_mesh_geometry(truncated).succeeded(), "truncation accepted");
@@ -139,44 +168,68 @@ int main()
 
         // Disk loading is independent of the external source file and importer.
         replace_text(files, "/Output/local.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
-        const auto local = import_static_mesh_asset(files, path("/Output/local.obj"), id);
+        const auto local = import_static_mesh_asset(files, path("/Output/local.obj"), id, file_unit_options);
         require(local.succeeded(), "local import failed");
         const VirtualPath new_asset = path("/Output/create_new.asset");
-        const auto existed = files.stat(new_asset);
-        if (existed.succeeded())
-        {
-            const AssetStatus removed = assets.remove(new_asset);
-            if (!removed.succeeded())
-                require(files.remove_file(new_asset).succeeded(), "old fixture cleanup failed");
-        }
+        clear_asset_fixture(files, new_asset);
         require(assets.publish(new_asset, local.value().pair, FilePublishMode::CreateNew).succeeded(), "first creation failed");
         require(!assets.publish(new_asset, local.value().pair, FilePublishMode::CreateNew).succeeded(), "overwrite accepted");
         require(files.remove_file(path("/Output/local.obj")).succeeded(), "source removal failed");
         require(read_static_mesh_asset(files, new_asset).succeeded(), "source-free load failed");
 
         replace_text(files, "/Output/axis.fbx", fbx_fixture(1, 2, -1, 1, false));
-        const auto centimeter = import_static_meshes(files, path("/Output/axis.fbx"));
+        const auto centimeter = import_static_meshes(files, path("/Output/axis.fbx"), file_unit_options);
         if (!centimeter.succeeded()) std::cerr << centimeter.status().message << '\n';
         require(centimeter.succeeded(), "synthetic FBX failed");
         const Vector3 a = centimeter.value()[0].mesh.positions[0];
         const Vector3 b = centimeter.value()[0].mesh.positions[1];
-        require(is_nearly_equal(a, Vector3(.1f,.2f,-.3f)), "FBX node translation/unit conversion wrong");
-        require(is_nearly_equal(b.x - a.x, 1.0f), "FBX units applied twice");
+        require(is_nearly_equal(a, Vector3(10,20,-30)), "FBX node translation/unit conversion wrong");
+        require(is_nearly_equal(b.x - a.x, 100.0f), "FBX units applied twice");
         replace_text(files, "/Output/axis.fbx", fbx_fixture(2, 1, 1, 100, true));
-        const auto meter_z_up = import_static_meshes(files, path("/Output/axis.fbx"));
+        const auto meter_z_up = import_static_meshes(files, path("/Output/axis.fbx"), file_unit_options);
         require(meter_z_up.succeeded(), "Z-up meter FBX failed");
         const MeshDescription& converted = meter_z_up.value()[0].mesh;
-        require(is_nearly_equal(converted.positions[0], Vector3(10,30,20)), "Z-up conversion wrong");
+        require(is_nearly_equal(converted.positions[0], Vector3(1000,3000,2000)), "Z-up conversion wrong");
         const auto& triangle = converted.triangles[0];
         const Vector3 p0 = converted.positions[converted.corners[triangle.corners[0]].vertex];
         const Vector3 p1 = converted.positions[converted.corners[triangle.corners[1]].vertex];
         const Vector3 p2 = converted.positions[converted.corners[triangle.corners[2]].vertex];
         require(dot(cross(p1-p0, p2-p0), converted.corners[triangle.corners[0]].normal) > 0, "mirror winding/normal mismatch");
+        StaticMeshImportOptions scaled_options;
+        scaled_options.import_uniform_scale = 0.5f;
+        const auto scaled = import_static_meshes(files, path("/Output/axis.fbx"), scaled_options);
+        require(scaled.succeeded(), "uniform scale failed");
+        for (std::size_t vertex = 0; vertex < converted.positions.size(); ++vertex)
+            require(is_nearly_equal(scaled.value()[0].mesh.positions[vertex], converted.positions[vertex] * 0.5f),
+                    "uniform scale did not apply once to geometry and node translation");
+        scaled_options.convert_scene_unit = false;
+        const auto bypass = import_static_meshes(files, path("/Output/axis.fbx"), scaled_options);
+        require(bypass.succeeded() && is_nearly_equal(bypass.value()[0].mesh.positions[0], Vector3(5,15,10)),
+                "unit bypass lost uniform scale or axis conversion");
+        scaled_options.convert_scene_unit = true;
+        scaled_options.use_file_unit = false;
+        scaled_options.source_unit_in_centimeters = 2;
+        const auto overridden = import_static_meshes(files, path("/Output/axis.fbx"), scaled_options);
+        require(overridden.succeeded() && is_nearly_equal(overridden.value()[0].mesh.positions[0], Vector3(10,30,20)),
+                "explicit unit override ignored");
         StaticMeshImportOptions bad_options;
-        bad_options.scale = 0;
+        bad_options.import_uniform_scale = 0;
         require(!import_static_meshes(files, path("/Output/axis.fbx"), bad_options).succeeded(), "zero scale accepted");
+        bad_options.import_uniform_scale = 1;
+        bad_options.use_file_unit = false;
+        bad_options.source_unit_in_centimeters = 0;
+        require(!import_static_meshes(files, path("/Output/axis.fbx"), bad_options).succeeded(), "zero source unit accepted");
+        bad_options.source_unit_in_centimeters = std::numeric_limits<float>::infinity();
+        require(!import_static_meshes(files, path("/Output/axis.fbx"), bad_options).succeeded(), "infinite source unit accepted");
+        bad_options.convert_scene_unit = false;
+        require(import_static_meshes(files, path("/Output/axis.fbx"), bad_options).succeeded(),
+                "disabled unit conversion must ignore the unused unit input");
+        bad_options.convert_scene_unit = true;
+        bad_options.source_unit_in_centimeters = 100;
+        bad_options.import_uniform_scale = std::numeric_limits<float>::max();
+        require(!import_static_meshes(files, path("/Output/axis.fbx"), bad_options).succeeded(), "overflowing scale accepted");
         replace_text(files, "/Output/broken.fbx", "broken");
-        require(!import_static_mesh_asset(files, path("/Output/broken.fbx"), id).succeeded(), "broken FBX accepted");
+        require(!import_static_mesh_asset(files, path("/Output/broken.fbx"), id, file_unit_options).succeeded(), "broken FBX accepted");
         std::cout << "StaticMesh import tests passed\n";
         return 0;
     }

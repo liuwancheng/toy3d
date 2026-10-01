@@ -8,7 +8,7 @@
 
 namespace toy3d
 {
-    TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 1)
+    TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 2)
     struct StaticMeshAssetData
     {
         TOY3D_PROPERTY("material_slots", Visible)

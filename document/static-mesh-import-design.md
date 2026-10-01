@@ -25,7 +25,7 @@ Tools 仅链接 Core 与第三方，不依赖 runtime/editor。Core 不保存 Ma
 
 `MeshDescription` 将位置与逐角 normal/UV/color 分开，三角形引用 corner ID 和 material slot；不按位置焊接，避免 UV 接缝与硬边丢失。首版构建每个角一个 render vertex，按材质组生成连续 section 和 UInt32 索引；暂不进行顶点优化或切线生成。
 
-根类型 `toy3d.StaticMeshAssetData`、schema 1，由现有 ReflectionCodegen 显式生成注册与 codec，保存槽位名、顶点/索引数量及几何段名。必需 `render_geometry` 段位于同名 `.meta`，有独立版本与显式 little-endian 定宽字段。新导入不保存 `source_mesh`、`import_data` 或源文件；再次导入需重新选择源文件和设置。无通用 AssetDocument，不写 C++ 内存布局。
+根类型 `toy3d.StaticMeshAssetData`、schema 2，由现有 ReflectionCodegen 显式生成注册与 codec，保存槽位名、顶点/索引数量及几何段名。必需 `render_geometry` 段位于同名 `.meta`，几何 version 2 表示厘米坐标，使用显式 little-endian 定宽字段；旧米制 schema/geometry 不由运行时自动转换。新导入不保存 `source_mesh`、`import_data` 或源文件；再次导入需重新选择源文件和设置。无通用 AssetDocument，不写 C++ 内存布局。
 
 只有全部候选、源数据与几何编码成功后才能通过 `AssetPairStore::publish(CreateNew)` 成对发布。重名拒绝覆盖，索引刷新失败保留旧 catalog 并明确报告已发布路径；不谎称跨磁盘与索引事务。
 
@@ -33,7 +33,9 @@ Tools 仅链接 Core 与第三方，不依赖 runtime/editor。Core 不保存 Ma
 
 Editor 在导入成功后独立生成缩略图，图片失败不撤销模型；PNG 存于 `/Saved/AssetThumbnails/`，缓存失效见 [Asset 缩略图](asset-thumbnail-design.md)。读取模型时先校验 `.asset`/`.meta`，再建立只读几何候选；旧二进制 Asset 不受支持。
 
-输出固定 LH、+X right、+Y up、+Z forward、米、CCW。Assimp FBX 的自动 root 轴向修正会带 UnitScaleFactor，因此明确禁用该项，并使用 FBX metadata 的 Coord/Up/Front axis 与 sign 组成转换，UnitScaleFactor × 0.01 仅应用一次；不再执行 GlobalScale/MakeLeftHanded。OBJ/glTF 使用 RH Y-up 假设与 Z 反射；OBJ 单位默认米，额外用户 scale 在导入时应用，重新导入时需再次指定。
+输出固定 LH、+X right、+Y up、+Z forward、厘米、CCW。导入参数采用 UE4.27 的 `Import Uniform Scale` 与 `Convert Scene Unit` 语义：转换开启时，最终系数为 `source_unit_in_centimeters * import_uniform_scale`；关闭时仅应用 `import_uniform_scale`，将源数字直接作为厘米。源单位可由调用方明确提供；`use_file_unit` 开启且为 FBX 时从 metadata 读取 `UnitScaleFactor`（每源单位的厘米数），否则使用调用方给定的系数。Assimp FBX 的自动 root 修正禁用，轴转换读取 Coord/Up/Front axis 与 sign；单位换算只执行一次，不执行 GlobalScale/MakeLeftHanded。OBJ/glTF 使用 RH Y-up 与 Z 反射，底层不内置米到厘米的强制倍率。
+
+Editor 按文件给出可编辑的源单位参数：FBX 默认使用文件单位，缺失单位时使用显式 fallback `1 cm/unit`；glTF/GLB 默认 `100 cm/unit`；无单位声明的 OBJ 默认建议 `100 cm/unit`，用户可改为 `1`（厘米）、`0.1`（毫米）或其他值。批量文件分别保存源单位设置，共享 `Convert Scene Unit` 和 `Import Uniform Scale`。CLI 同样显式接收 scale、源单位系数及单位转换开关。调用者必须传入导入选项，不能依赖底层按格式隐藏选取倍率。
 
 层级变换合成后转换位置，法线使用 inverse transpose；负 determinant 反转三角形绕序。奇异/非有限变换失败。缺失法线生成逐面法线；缺失 UV0 置零并提示；缺失顶点色置白。退化面、非法索引与非有限数据拒绝发布。源 slot 名重复时附加源 material index，保留可区分身份。
 
@@ -63,7 +65,7 @@ Windows/macOS 共用格式与转换；macOS 没有实机验证时如实说明。
 
 ## 7. Editor 导入与拖放交互
 
-Content Browser 工具栏及资源区空白处右键菜单提供 `Import...`。原生选择文件与外部文件拖入均只建立导入候选，统一打开 `StaticMeshImportDialog`，点击确认才写入项目当前目录；不允许写入 `/Engine`。设置包括源文件、资源名和统一 scale，显示合并静态实例、默认材质及不导入动画/碰撞的实际范围。批量文件最多 32 项，逐文件确认名称并串行发布；重名拒绝覆盖，成功项移出候选，失败项保留原因，取消不撤销已经明确发布的项。当前解析仍在 GT 串行执行，大文件可能阻塞 UI；后续异步化必须将 Worker 候选生产与 GT catalog 发布分开。
+Content Browser 工具栏及资源区空白处右键菜单提供 `Import...`。原生选择文件与外部文件拖入均只建立导入候选，统一打开 `StaticMeshImportDialog`，点击确认才写入项目当前目录；不允许写入 `/Engine`。设置包括源文件、资源名、每文件的源单位与 FBX 文件单位开关，以及共享的 Convert Scene Unit 和 Import Uniform Scale，显示合并静态实例、默认材质及不导入动画/碰撞的实际范围。批量文件最多 32 项，逐文件确认名称并串行发布；重名拒绝覆盖，成功项移出候选，失败项保留原因，取消不撤销已经明确发布的项。当前解析仍在 GT 串行执行，大文件可能阻塞 UI；后续异步化必须将 Worker 候选生产与 GT catalog 发布分开。
 
 `source/asset_tools` 保留导入业务策略，`source/panels/static_mesh_import_dialog.*` 持有候选与 ImGui 状态；`source/platform` 只负责该模型工作流的原生选择窗口（Windows common dialog、macOS NSOpenPanel）。文件 IO 仍调用 Core FileSystem/NativePlatformFile，不建立第二套文件服务。没有引入通用 Dialog manager。
 

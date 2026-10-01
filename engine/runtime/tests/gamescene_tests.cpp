@@ -286,11 +286,14 @@ int main()
           "Primitive bounds must follow component transforms without World collection");
 
     CameraComponent& camera = world.spawn_actor().create_component<CameraComponent>();
+    check(nearly_equal(camera.near_clip(), 10.0f) && nearly_equal(camera.far_clip(), 100000.0f),
+          "Default camera clipping distances must preserve 0.1 m / 1000 m in centimeters");
     check(camera.set_perspective(75.0f, 0.25f, 500.0f) && !camera.set_perspective(180.0f, 0.25f, 500.0f) &&
               nearly_equal(camera.vertical_fov_degrees(), 75.0f),
           "CameraComponent must retain valid camera properties without building ViewportFrame");
 
     PointLightComponent& point = world.spawn_actor().create_component<PointLightComponent>();
+    check(nearly_equal(point.range(), 1000.0f), "Default point range must preserve 10 meters in centimeters");
     check(point.set_range(20.0f) && !point.set_range(0.0f) && nearly_equal(point.range(), 20.0f),
           "LightComponent validation must remain in the GameScene domain");
 

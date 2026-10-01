@@ -101,7 +101,7 @@ namespace toy3d
             SceneComponent* const root = actor.root_component();
             Transform edited = root->local_transform();
             Vector3& value = edited.*field;
-            const float speed = field == &Transform::scale ? 0.01f : 0.05f;
+            const float speed = field == &Transform::scale ? 0.01f : 5.0f;
             const bool changed = ImGui::DragFloat3(label, value.data(), speed);
             if (ImGui::IsItemActivated() && !history.active())
                 history.begin(world, actor.actor_id(), root->local_transform(), EditorTransformSource::Details);
@@ -185,7 +185,7 @@ namespace toy3d
                 ImGui::Text("Actor ID: %u", actor->actor_id());
                 if (actor->root_component() != nullptr)
                 {
-                    draw_transform_field("Location", &Transform::translation, world, *actor, history);
+                    draw_transform_field("Location (cm)", &Transform::translation, world, *actor, history);
                     draw_transform_field("Scale", &Transform::scale, world, *actor, history);
                     ImGui::TextDisabled("Rotation: use the viewport gizmo");
                     draw_material_slots(world, *actor, selection, history, workspace, materials, material_error);
@@ -212,10 +212,10 @@ namespace toy3d
                         ImGui::TextUnformatted("Perspective Camera");
                         draw_camera_field("Vertical FOV (degrees)", &EditorActorState::camera_vertical_fov,
                                           0.25f, world, *actor, history);
-                        draw_camera_field("Near Clip (m)", &EditorActorState::camera_near_clip,
-                                          0.01f, world, *actor, history);
-                        draw_camera_field("Far Clip (m)", &EditorActorState::camera_far_clip,
+                        draw_camera_field("Near Clip (cm)", &EditorActorState::camera_near_clip,
                                           1.0f, world, *actor, history);
+                        draw_camera_field("Far Clip (cm)", &EditorActorState::camera_far_clip,
+                                          100.0f, world, *actor, history);
                         ImGui::TextDisabled("Aspect ratio follows the viewport");
                         ImGui::TextDisabled("Camera scale does not affect projection");
                         if (viewport.viewed_camera_id(world) == actor->actor_id())
@@ -255,7 +255,7 @@ namespace toy3d
                         if (dynamic_cast<LocalLightComponent*>(light))
                         {
                             edited = capture_actor_state(*actor);
-                            changed = ImGui::DragFloat("Range", &edited.light_range, 0.1f, 0.01f, 10000.0f);
+                            changed = ImGui::DragFloat("Range (cm)", &edited.light_range, 10.0f, 1.0f, 1000000.0f);
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Light range edit failed.");
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
@@ -270,7 +270,7 @@ namespace toy3d
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);
                             ImGui::BeginDisabled(!capture_actor_state(*actor).shadow_cast_shadows);
                             edited = capture_actor_state(*actor);
-                            changed = ImGui::DragFloat("Dynamic Shadow Distance (m)", &edited.shadow_distance, 0.5f, 0.0f, 10000.0f);
+                            changed = ImGui::DragFloat("Dynamic Shadow Distance (cm)", &edited.shadow_distance, 50.0f, 0.0f, 1000000.0f);
                             if (ImGui::IsItemActivated()) history.begin(world, actor->actor_id(), edited.transform, EditorTransformSource::Details);
                             if (changed && !apply_actor_state(*actor, edited)) TOY_LOG_ERROR("Shadow distance edit failed.");
                             if (ImGui::IsItemDeactivated()) history.finish(world, EditorTransformSource::Details);

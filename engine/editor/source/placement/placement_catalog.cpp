@@ -6,11 +6,11 @@ namespace toy3d
     {
         static const std::vector<PlacementItem> items = {
             {PlacementItemId::EmptyActor, "Empty Actor", "Basic", 0.0f},
-            {PlacementItemId::Camera, "Camera", "Basic", 1.5f},
-            {PlacementItemId::Cube, "Cube", "Shapes", 0.75f},
+            {PlacementItemId::Camera, "Camera", "Basic", 150.0f},
+            {PlacementItemId::Cube, "Cube", "Shapes", 75.0f},
             {PlacementItemId::Plane, "Plane", "Shapes", 0.0f},
-            {PlacementItemId::DirectionalLight, "Directional Light", "Lights", 2.0f},
-            {PlacementItemId::PointLight, "Point Light", "Lights", 2.0f}};
+            {PlacementItemId::DirectionalLight, "Directional Light", "Lights", 200.0f},
+            {PlacementItemId::PointLight, "Point Light", "Lights", 200.0f}};
         return items;
     }
 

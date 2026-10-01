@@ -17,7 +17,7 @@ namespace toy3d
     {
         constexpr int k_sun_ray_count = 8;
         constexpr float k_full_turn = 6.283185307f;
-        constexpr float k_direction_preview_length = 2.0f;
+        constexpr float k_direction_preview_length = 200.0f;
 
         struct ActorIcon
         {
@@ -202,7 +202,7 @@ namespace toy3d
         if (!is_finite(aspect) || aspect <= 0) return;
         // A three-metre diagram shows viewing direction and FOV; it does not
         // pretend to draw the camera's potentially kilometre-long clipping range.
-        constexpr float preview_length = 3.0f;
+        constexpr float preview_length = 300.0f;
         const float half_height = std::tan(to_radians(Degrees(camera.vertical_fov_degrees())).value() * 0.5f) * preview_length;
         const float half_width = half_height * aspect;
         const Vector3 local_corners[] = {{-half_width, -half_height, preview_length},
