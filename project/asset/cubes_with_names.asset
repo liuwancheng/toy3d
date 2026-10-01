@@ -1,0 +1,21 @@
+format_version: 2
+asset_id: be8961056cb1612c669e22eeabeedeee
+root_type: toy3d.StaticMeshAssetData
+schema_version: 2
+dependencies:
+  []
+subresources:
+  []
+data:
+  geometry_segment: render_geometry
+  index_count: 1260
+  material_slots:
+    - Mat_Green_0
+    - Mat_Red_1
+  vertex_count: 1260
+meta:
+  format_version: 1
+  size: 50544
+  sha256: 3e7870593aa50780ea7d003bc8fe9fa1065f2870d58c81c56681df737062a247
+  required_segments:
+    - render_geometry

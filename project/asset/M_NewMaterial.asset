@@ -1,0 +1,13 @@
+format_version: 2
+asset_id: 5e915970a839c37c066778960680902d
+root_type: toy3d.MaterialAssetData
+schema_version: 1
+dependencies:
+  []
+subresources:
+  []
+data:
+  overrides:
+    []
+  shader_name: Toy3d/Surface/Phong
+  two_sided: false
