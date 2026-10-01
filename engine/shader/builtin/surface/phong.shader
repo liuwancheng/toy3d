@@ -22,6 +22,7 @@ Shader "Toy3d/Surface/Phong"
             scene_light_color : Float4 = (0.0, 0.0, 0.0, 0.0)
             point_light_positions : Float4x4
             point_light_colors : Float4x4
+            point_light_count : Float
             shadow_near_world_to_clip : Float4x4
             shadow_far_world_to_clip : Float4x4
             shadow_distance_data : Float4
@@ -200,8 +201,8 @@ Shader "Toy3d/Surface/Phong"
             }
 
             float3 point_diffuse = float3(0, 0, 0);
-            // Four column-packed lights use the existing matrix ABI; no descriptor arrays are required.
-            for (int i = 0; i < 4; ++i)
+            // The pass supplies the number of valid columns in the fixed-capacity light matrices.
+            for (int i = 0; i < int(point_light_count); ++i)
             {
                 const float3 position = float3(point_light_positions[0][i], point_light_positions[1][i], point_light_positions[2][i]);
                 const float radius = point_light_positions[3][i];

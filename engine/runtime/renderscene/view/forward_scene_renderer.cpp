@@ -184,6 +184,7 @@ namespace toy3d
                 lighting.scene_light_color = Vector4();
                 lighting.point_light_positions = Matrix4::zero();
                 lighting.point_light_colors = Matrix4::zero();
+                lighting.point_light_count = 0.0f;
                 if (directional_light)
                 {
                     const Vector3 radiance = directional_light->color * directional_light->intensity;
@@ -208,6 +209,7 @@ namespace toy3d
                     }
                     ++point_count;
                 }
+                lighting.point_light_count = static_cast<float>(std::min(point_count, max_point_lights));
                 lighting.shadow_near_world_to_clip = view.shadow_cascade(0u).world_to_clip;
                 lighting.shadow_far_world_to_clip = view.shadow_cascade(1u).world_to_clip;
                 lighting.shadow_distance_data = Vector4(view.shadow_effective_end(), view.shadow_fade_start(),
