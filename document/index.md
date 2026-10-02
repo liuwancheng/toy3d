@@ -14,7 +14,7 @@
 | GT/RT、RenderCommand、CPU fence、资源上传/退出 | [Render Framework](render-framework.md) | `engine/runtime/rendercore/`、`renderscene/renderer.*` |
 | View、可见性、MeshBatch、Shadow/Base/Tonemap/UI、预览 | [Renderer](renderer.md) | `engine/runtime/renderscene/` |
 | 公共 RHI、后端、GPU 状态/同步、binding、Vulkan/VMA/WSI | [RHI](rhi.md) | `engine/runtime/drivers/rhi/`、`drivers/vulkan/` |
-| Shader 语言/ABI/compiler/codegen/ShaderMap | [Shader](shader.md) | `engine/tools/shader_compiler/`、`rendercore/shader/`、[语法](shader-language-v1.ebnf) |
+| Shader 语言/ABI/compiler/codegen/ShaderMap | [Shader](shader.md) | `engine/tools/shader_compiler/`、`rendercore/shader/`、[语法](shader-language-v2.ebnf) |
 | 材质、实例继承、参数、纹理、源码重编译/候选发布 | [Material](material.md) | `rendercore/material/`、`engine/core/asset/material/`、Editor 工作流 |
 | 面板/组件/资产编辑器、Workspace、场景保存、撤销/异步 | [Editor](editor.md) | `engine/editor/`、其 tests |
 

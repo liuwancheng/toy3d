@@ -14,9 +14,9 @@ namespace toy3d
         {
             return num_bone_influences_;
         }
-        shader::MeshVertexFactoryType type() const override
+        shader::VertexFactoryType type() const override
         {
-            return shader::MeshVertexFactoryType::GPUSkin;
+            return shader::VertexFactoryType::GPUSkin;
         }
         RHIStatus validate_streams() const;
         RHIStatus build_vertex_input(const std::vector<ShaderVertexInput>& shader_inputs,

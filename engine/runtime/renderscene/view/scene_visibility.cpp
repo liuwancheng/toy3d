@@ -327,8 +327,8 @@ namespace toy3d
                     bool added = false;
                     for (const auto& batch : candidates)
                     {
-                        const auto* state = batch.material_render_proxy().effective_graphics_pass_state();
-                        if (!state || state->blend.enabled)
+                        const auto selected = batch.material_program();
+                        if (!selected.succeeded() || selected.program->data().graphics_pass_state.blend.enabled)
                         {
                             continue;
                         }

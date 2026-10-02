@@ -1,17 +1,13 @@
 Shader "Toy3d/Editor/HitProxy"
 {
-    Version 1
-
-    Parameters
-    {
-        Pass
-        {
-            hit_proxy_id_parts : Float2 = (0.0, 0.0)
-        }
-    }
+    Version 2
+    Usage MeshPass
+    Geometry Custom
+    VertexFactories { Local, GPUSkin }
 
     Pass "HitProxy"
     {
+        Role HitProxy
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Off
@@ -23,9 +19,8 @@ Shader "Toy3d/Editor/HitProxy"
         Blend Off
         ColorWrite R
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
-        #pragma pixel ps_main
 
         #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
         struct VSInput
@@ -42,9 +37,14 @@ Shader "Toy3d/Editor/HitProxy"
                        mul(toy_object_to_world, float4(mesh_position, 1.0)));
         }
 
+        ENDHLSL
+
+        HLSLPS
+        #pragma pixel ps_main
+
         uint ps_main() : SV_Target0
         {
-            // Each 16-bit lane is exactly representable by Float32 Parameters v1.
+            // Each 16-bit lane is exactly representable by Float32 Parameters.
             return uint(hit_proxy_id_parts.x) | (uint(hit_proxy_id_parts.y) << 16u);
         }
         ENDHLSL

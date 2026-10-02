@@ -1,6 +1,7 @@
 Shader "Tests/FrontendValid"
 {
-    Version 1
+    Version 2
+    Usage Global
 
     Properties
     {
@@ -47,6 +48,7 @@ Shader "Tests/FrontendValid"
 
     Pass "Forward"
     {
+        Role Global
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Back
@@ -73,8 +75,21 @@ Shader "Tests/FrontendValid"
         }
         ColorWrite RGB
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
+
+        float4 vs_main(float3 position : POSITION0) : SV_Position
+        {
+            return float4(position, 1.0);
+        }
+
+        float4 ps_main() : SV_Target0
+        {
+            return shared_color();
+        }
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
 
         float4 vs_main(float3 position : POSITION0) : SV_Position

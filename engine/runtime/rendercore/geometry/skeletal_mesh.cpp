@@ -28,6 +28,22 @@ namespace toy3d
             return AssetResult<SkeletalMeshRef>(
                 AssetStatus{AssetErrorCode::Value, {}, {}, {}, {}, "Mesh requires every material slot.", {}});
         }
+        for (std::size_t slot = 0; slot < materials.size(); ++slot)
+        {
+            std::string error;
+            // Skin render data always supplies COLOR0, using white for absent authored colors.
+            if (!validate_material_geometry(materials[slot]->desc(), shader::VertexFactoryType::GPUSkin, true, error))
+            {
+                return AssetResult<SkeletalMeshRef>(
+                    AssetStatus{AssetErrorCode::Value,
+                                {},
+                                {},
+                                {},
+                                {},
+                                "SkeletalMesh material slot " + std::to_string(slot) + ": " + error,
+                                {}});
+            }
+        }
         SkeletalMesh candidate(std::move(layout), std::move(asset), std::move(materials));
         return AssetResult<SkeletalMeshRef>(std::make_shared<SkeletalMesh>(std::move(candidate)));
     }

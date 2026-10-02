@@ -12,6 +12,25 @@
 
 namespace toy3d
 {
+    bool SkeletalMeshComponent::supports_shadow_casting() const
+    {
+        if (!mesh_)
+        {
+            return true;
+        }
+        for (std::uint32_t slot = 0; slot < mesh_->material_slots().size(); ++slot)
+        {
+            std::string error;
+            if (!validate_material_mesh_pass(material_for_slot(slot)->desc(), shader::ShaderPassRole::ShadowDepth,
+                                             shader::VertexFactoryType::GPUSkin, error))
+            {
+                TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
+                return false;
+            }
+        }
+        return true;
+    }
+
     SkeletalMeshComponent::SkeletalMeshComponent(Actor& owner) : PrimitiveComponent(owner)
     {
         set_tick_enabled(true);
@@ -47,6 +66,18 @@ namespace toy3d
             update_bounds();
             world().mark_content_changed();
             return AssetStatus::success();
+        }
+        if (cast_shadows())
+        {
+            for (const auto& material : mesh->material_slots())
+            {
+                std::string error;
+                if (!validate_material_mesh_pass(material->desc(), shader::ShaderPassRole::ShadowDepth,
+                                                 shader::VertexFactoryType::GPUSkin, error))
+                {
+                    return AssetStatus{AssetErrorCode::Value, {}, {}, {}, {}, error, {}};
+                }
+            }
         }
         AnimationInstance animation;
         std::vector<AnimationSequenceInput> inputs;
@@ -257,6 +288,18 @@ namespace toy3d
         {
             return false;
         }
+        std::string error;
+        if (!validate_material_geometry(material->desc(), shader::VertexFactoryType::GPUSkin, true, error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
+            return false;
+        }
+        if (cast_shadows() && !validate_material_mesh_pass(material->desc(), shader::ShaderPassRole::ShadowDepth,
+                                                           shader::VertexFactoryType::GPUSkin, error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
+            return false;
+        }
         auto previous = material_overrides_;
         material_overrides_[slot] = std::move(material);
         send_material_overrides(std::move(previous));
@@ -273,6 +316,20 @@ namespace toy3d
         if (!material_overrides_[slot])
         {
             return true;
+        }
+        std::string error;
+        if (!validate_material_geometry(mesh_->material_slots()[slot]->desc(), shader::VertexFactoryType::GPUSkin, true,
+                                        error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
+            return false;
+        }
+        if (cast_shadows() &&
+            !validate_material_mesh_pass(mesh_->material_slots()[slot]->desc(), shader::ShaderPassRole::ShadowDepth,
+                                         shader::VertexFactoryType::GPUSkin, error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
+            return false;
         }
         auto previous = material_overrides_;
         material_overrides_[slot].reset();

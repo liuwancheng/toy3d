@@ -5,7 +5,7 @@
 #include "file_system/native_platform_file.h"
 #include "shader/shader_editor_properties.h"
 #include "platform/platform_services.h"
-#include "rendercore/material/material_program_validation.h"
+#include "rendercore/material/material_shader_map_validation.h"
 #include "rendercore/material/material.h"
 #include "rendercore/shader/builtin_shader_update.h"
 #include "shader_parameters/builtin_shader_sources.generated.h"
@@ -73,7 +73,7 @@ namespace toy3d
     {
         std::string name;
         VirtualPath path;
-        ShaderMapProgramRef program;
+        ShaderMapCollectionRef shader_map;
         std::vector<shader::ShaderEditorProperty> properties;
         std::string pass = "Forward";
         BuiltinShaderUsage usage = BuiltinShaderUsage::Material;
@@ -97,7 +97,7 @@ namespace toy3d
         {
             return sources_;
         }
-        ShaderMapProgramRef program(const std::string& name) const;
+        ShaderMapCollectionRef shader_map(const std::string& name) const;
         const EditorShaderSource* find(const std::string& name) const;
         bool open_source(const std::string& name, std::uint32_t line = 1u, std::uint32_t column = 1u);
         bool has_error_location() const;
@@ -116,14 +116,14 @@ namespace toy3d
         }
         std::string unavailable_reason(const std::string& name) const;
         void tick();
-        void collect_validation(std::vector<MaterialProgramValidationRef>& requests);
+        void collect_validation(std::vector<MaterialShaderMapValidationRef>& requests);
         void collect_builtin_updates(std::vector<BuiltinShaderUpdateRef>& requests);
         bool busy() const
         {
             return active() || !restore_queue_.empty() || !global_candidates_.empty() || global_failed_ ||
                    batch_active_;
         }
-        const ShaderMapProgramRef& candidate() const
+        const ShaderMapCollectionRef& candidate() const
         {
             return candidate_;
         }
@@ -161,7 +161,7 @@ namespace toy3d
         struct Revision
         {
             std::string name;
-            ShaderMapProgramRef program;
+            ShaderMapCollectionRef shader_map;
             std::vector<shader::ShaderEditorProperty> properties;
             Sha256Hash source_hash{};
             std::map<std::string, Sha256Hash> dependencies;
@@ -193,7 +193,7 @@ namespace toy3d
         bool read_sources(std::string& error);
         bool physical_source(const EditorShaderSource& source, PhysicalPath& path, std::string& error) const;
         bool load_candidate(const PhysicalPath& directory, const std::string& name, std::string& error);
-        bool validate_interface(const ShaderMapProgram& program, std::string& error) const;
+        bool validate_interface(const ShaderMapCollection& shader_map, std::string& error) const;
         bool mount(const PhysicalPath& root, const std::string& virtual_root, bool writable, std::string& error);
         bool error_location(std::uint32_t& line, std::uint32_t& column) const;
         ProcessService& processes_;
@@ -213,10 +213,10 @@ namespace toy3d
         AssetId request_id_;
         Sha256Hash source_hash_{};
         PhysicalPath request_directory_;
-        MaterialProgramValidationRef validation_;
+        MaterialShaderMapValidationRef validation_;
         bool validation_sent_ = false;
         std::uint32_t validation_attempts_ = 0u;
-        ShaderMapProgramRef candidate_;
+        ShaderMapCollectionRef candidate_;
         std::vector<shader::ShaderEditorProperty> candidate_properties_;
         std::map<std::string, Sha256Hash> candidate_dependencies_;
         std::string candidate_relative_;

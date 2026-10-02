@@ -2,7 +2,7 @@
 
 #include "drivers/rhi/rhi_command_descriptors.h"
 #include "rendercore/shader/shader_vertex_input.h"
-#include "shader/mesh_shader_permutation.h"
+#include "shader/shader_program_contract.h"
 
 #include <cstdint>
 #include <memory>
@@ -28,9 +28,9 @@ namespace toy3d
     {
       public:
         virtual ~VertexFactory() = default;
-        virtual shader::MeshVertexFactoryType type() const
+        virtual shader::VertexFactoryType type() const
         {
-            return shader::MeshVertexFactoryType::Local;
+            return shader::VertexFactoryType::Local;
         }
 
         virtual RHIStatus build_vertex_input(const std::vector<ShaderVertexInput>& shader_inputs,

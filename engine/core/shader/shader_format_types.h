@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shader/shader_binding_identity.h"
+#include "shader/shader_program_contract.h"
 
 #include <cstdint>
 #include <optional>
@@ -38,7 +39,7 @@ namespace toy3d::shader
     using ShaderVariantId = std::uint64_t;
     using ShaderEnumValueId = std::uint64_t;
 
-    constexpr std::uint32_t shader_compile_request_version = 1;
+    constexpr std::uint32_t shader_compile_request_version = 2;
     constexpr std::uint32_t shader_variant_id_version = 1;
     constexpr std::uint32_t shader_permutation_version = 1;
     constexpr std::uint32_t toy_shader_abi_version = 1;
@@ -490,6 +491,7 @@ namespace toy3d::shader
     {
         std::string shader_name;
         std::string pass_name;
+        ShaderProgramContract contract;
         ShaderTarget target = ShaderTarget::VulkanSpirV;
         ShaderCompileProfile profile = ShaderCompileProfile::VulkanES31;
         Sha256Hash logical_layout_hash{};

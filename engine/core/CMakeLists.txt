@@ -125,17 +125,29 @@ target_sources(Toy3dShaderFormat PRIVATE
     "shader/shader_editor_properties.cpp"
     "shader/shader_editor_properties.h"
     "shader/shader_format_hash.cpp"
-    "shader/mesh_shader_permutation.cpp"
-    "shader/mesh_shader_permutation.h"
+    "shader/shader_program_contract.cpp"
+    "shader/shader_program_contract.h"
     "shader/shader_format_types.h"
     "shader/shader_map_entry.h"
     "shader/shader_map_entry_reader.cpp"
+    "shader/shader_map_index.cpp"
+    "shader/shader_map_index.h"
     "shader/shader_parameter_schema.cpp"
+    "shader/shader_permutation.cpp"
+    "shader/shader_permutation.h"
 )
 target_compile_features(Toy3dShaderFormat PUBLIC cxx_std_17)
 set_target_properties(Toy3dShaderFormat PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
 target_link_libraries(Toy3dShaderFormat PUBLIC Toy3dCore)
 target_compile_definitions(Toy3dShaderFormat PRIVATE WITH_EDITORONLY_DATA=$<BOOL:${TOY3D_SHADER_EDITORONLY_DATA}>)
+
+if(BUILD_TESTING)
+    add_executable(Toy3dShaderPermutationTests "tests/shader_permutation_tests.cpp")
+    target_compile_features(Toy3dShaderPermutationTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dShaderPermutationTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Core")
+    target_link_libraries(Toy3dShaderPermutationTests PRIVATE Toy3dShaderFormat)
+    add_test(NAME Toy3dShaderFormat.Permutation COMMAND Toy3dShaderPermutationTests)
+endif()
 
 add_library(Toy3dAssets STATIC)
 target_sources(Toy3dAssets PRIVATE

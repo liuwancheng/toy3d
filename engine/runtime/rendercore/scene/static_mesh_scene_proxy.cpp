@@ -72,7 +72,7 @@ namespace toy3d
                 section.index_count % 3u != 0 || section.first_index > render_data_->index_count() ||
                 section.index_count > render_data_->index_count() - section.first_index ||
                 section.material_slot >= materials.size() || !materials[section.material_slot] ||
-                !materials[section.material_slot]->shader_program())
+                !materials[section.material_slot]->shader_map())
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "StaticMesh section or material is invalid.");
             }

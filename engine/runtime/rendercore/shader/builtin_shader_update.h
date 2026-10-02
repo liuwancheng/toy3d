@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drivers/rhi/rhi_result.h"
-#include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 
 #include <atomic>
 #include <memory>
@@ -21,7 +21,7 @@ namespace toy3d
     // Prepared GPU resources stay exclusively in Renderer, never in this object.
     struct BuiltinShaderUpdate
     {
-        std::vector<ShaderMapProgramRef> programs;
+        std::vector<ShaderMapCollectionRef> shader_maps;
         RHIStatus status;
         std::atomic<bool> prepared{false};
         std::atomic<BuiltinShaderDecision> decision{BuiltinShaderDecision::Pending};

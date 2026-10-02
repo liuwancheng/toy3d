@@ -47,8 +47,10 @@ namespace toy3d
         {
             return bone_matrices_;
         }
-        ShaderMapProgramResult resolve_program(const ShaderMapProgramRef& local) const;
+        ShaderMapProgramResult find_program(const ShaderMapCollection& shader_map, shader::ShaderPassRole role) const;
         ShaderMapProgramResult material_program() const;
+        ShaderMapProgramResult mesh_pass_program(shader::ShaderPassRole role,
+                                                 const ShaderMapCollection& default_shader_map) const;
         std::uint64_t object_data_generation() const
         {
             return object_data_generation_;

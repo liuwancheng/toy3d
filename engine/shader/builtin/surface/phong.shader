@@ -1,6 +1,9 @@
 Shader "Toy3d/Surface/Phong"
 {
-    Version 1
+    Version 2
+    Usage Material
+    Geometry Custom
+    VertexFactories { Local, GPUSkin }
 
     Properties
     {
@@ -47,6 +50,7 @@ Shader "Toy3d/Surface/Phong"
 
     Pass "Forward"
     {
+        Role Forward
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Back
@@ -58,9 +62,8 @@ Shader "Toy3d/Surface/Phong"
         Blend Off
         ColorWrite RGBA
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
-        #pragma pixel ps_main
 
         #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
 
@@ -71,6 +74,44 @@ Shader "Toy3d/Surface/Phong"
             float4 normal : NORMAL0;
             float2 uv : TEXCOORD0;
         };
+
+        struct VSOutput
+        {
+            float4 clip_position : SV_Position;
+            float3 world_position : TEXCOORD0;
+            float3 world_normal : TEXCOORD1;
+            float2 uv : TEXCOORD2;
+        };
+
+        float3 toy_safe_normalize(float3 value, float3 fallback)
+        {
+            const float length_squared = dot(value, value);
+            return length_squared > 1.0e-8
+                ? value * rsqrt(length_squared)
+                : fallback;
+        }
+
+        VSOutput vs_main(VSInput input)
+        {
+            float3 mesh_position, mesh_normal;
+            TOY3D_DEFORM_VERTEX(input, mesh_position, mesh_normal);
+            VSOutput output;
+            const float4 world_position =
+                mul(toy_object_to_world, float4(mesh_position, 1.0));
+            output.clip_position =
+                mul(toy_view_projection, world_position);
+            output.world_position = world_position.xyz;
+            output.world_normal = mul(
+                (float3x3)toy_object_normal_to_world,
+                mesh_normal);
+            output.uv = input.uv;
+            return output;
+        }
+
+        ENDHLSL
+
+        HLSLPS
+        #pragma pixel ps_main
 
         struct VSOutput
         {
@@ -157,23 +198,6 @@ Shader "Toy3d/Surface/Phong"
                     world_position, shadow_receiver_parameters.y * receiver_scale);
             return toy_sample_shadow(shadow_cascade_2_world_to_clip, shadow_cascade_2_region,
                 world_position, shadow_receiver_parameters.z * receiver_scale);
-        }
-
-        VSOutput vs_main(VSInput input)
-        {
-            float3 mesh_position, mesh_normal;
-            TOY3D_DEFORM_VERTEX(input, mesh_position, mesh_normal);
-            VSOutput output;
-            const float4 world_position =
-                mul(toy_object_to_world, float4(mesh_position, 1.0));
-            output.clip_position =
-                mul(toy_view_projection, world_position);
-            output.world_position = world_position.xyz;
-            output.world_normal = mul(
-                (float3x3)toy_object_normal_to_world,
-                mesh_normal);
-            output.uv = input.uv;
-            return output;
         }
 
         float4 ps_main(VSOutput input) : SV_Target0

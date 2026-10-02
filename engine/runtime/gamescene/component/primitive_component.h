@@ -60,6 +60,7 @@ namespace toy3d
         void on_unregister() override;
         void on_world_transform_updated() override;
         virtual void update_bounds() = 0;
+        virtual bool supports_shadow_casting() const;
         void send_render_materials(std::vector<MaterialRenderProxy*> materials);
         virtual void on_render_state_removed()
         {

@@ -15,14 +15,14 @@ namespace toy3d
     };
 
     AssetResult<MaterialDesc> material_descriptor_from_asset(const MaterialAssetData& data,
-                                                             std::shared_ptr<const ShaderMapProgram> program,
+                                                             ShaderMapCollectionRef program,
                                                              const MaterialTextureValues& textures);
     AssetResult<MaterialParameterChanges> material_changes_from_overrides(
         const std::vector<MaterialParameterOverride>& overrides, const shader::ShaderParameterSchema& schema,
         const MaterialTextureValues& textures);
 
     AssetResult<MaterialInstanceRef> create_material_from_asset(const MaterialAssetData& data,
-                                                                std::shared_ptr<const ShaderMapProgram> program,
+                                                                ShaderMapCollectionRef program,
                                                                 const MaterialTextureValues& textures);
     AssetResult<MaterialInstanceRef> create_material_instance_from_asset(const MaterialInstanceAssetData& data,
                                                                          MaterialInterfaceRef parent,

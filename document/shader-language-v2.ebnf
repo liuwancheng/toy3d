@@ -1,10 +1,18 @@
-(* Toy3d Shader asset language, version 1.
-   HLSL bodies are opaque text. New optional language features may be added by
-   later v1 compiler revisions; an older compiler reports
-   UnsupportedLanguageFeature. Unknown keywords are always errors. *)
+(* Toy3d Shader asset language, version 2.
+   HLSL bodies are opaque text. Version 1 and its implicit role/geometry
+   protocol are rejected. Unknown keywords are always errors. *)
 
-shader          = "Shader", shader_name, "{", "Version", "1",
+shader          = "Shader", shader_name, "{", "Version", "2", "Usage", usage,
+                  [ mesh_geometry ],
                   { top_level_item }, "}" ;
+usage           = "Global" | "Material" | "MeshPass" ;
+mesh_geometry   = "Geometry", "Custom", "VertexFactories", "{",
+                  vertex_factory, { ",", vertex_factory }, "}" ;
+vertex_factory  = "Local" | "GPUSkin" ;
+(* mesh_geometry is mandatory for Material/MeshPass, forbidden for Global.
+   Standard wrappers, engine feature declarations and stage option effects
+   are not available in this implementation yet. *)
+
 top_level_item  = properties | parameters | resources | variants
                 | hlsl_include | pass ;
 
@@ -70,8 +78,14 @@ variant         = identifier, ":", "bool", "=", boolean
                 | identifier, ":", "enum", "{", identifier,
                   { ",", identifier }, "}", "=", identifier ;
 
-pass            = "Pass", string, "{", { pass_item }, hlsl_program, "}" ;
-pass_item       = "Requires", identifier
+pass            = "Pass", string, "{", { pass_item | hlsl_program }, "}" ;
+pass_role       = "Global" | "Forward" | "ShadowDepth" | "HitProxy" ;
+(* Exactly one Role per Pass. Global usage requires Global role.
+   Material requires exactly one Forward; each mesh role is unique.
+   MeshPass accepts ShadowDepth/HitProxy only. *)
+
+pass_item       = "Role", pass_role
+                | "Requires", identifier
                 | "PrimitiveTopology", topology
                 | "Cull", ( "Off" | "Front" | "Back" )
                 | "FrontFace", ( "Clockwise" | "CounterClockwise" )
@@ -115,7 +129,7 @@ color_write_mask = "None" | "R" | "G" | "B" | "A"
                  | "RG" | "RGB" | "RGBA" ;
 
 hlsl_include    = "HLSLINCLUDE", opaque_text, "ENDHLSL" ;
-hlsl_program    = "HLSLPROGRAM", opaque_text, "ENDHLSL" ;
+hlsl_program    = ( "HLSLVS" | "HLSLPS" | "HLSLCS" ), opaque_text, "ENDHLSL" ;
 topology        = "PointList" | "LineList" | "LineStrip"
                 | "TriangleList" | "TriangleStrip" ;
 depth_compare_operation = "Off" | stencil_compare_operation ;
@@ -138,9 +152,9 @@ shader_name     = string ;
    - comments use // or slash-star syntax;
    - ENDHLSL ends a raw block only as the first non-whitespace token on its own
      source line;
-   - Parameters v1 only accepts the Pass group; omitted parameter defaults are
+   - Parameters currently only accepts the Pass group; omitted parameter defaults are
      zero-initialized; arrays, structs and native cbuffer/register/set syntax
-     are not part of v1;
+     are not part of v2;
    - duplicate sections, duplicate Pass state, unknown keywords, invalid masks,
      invalid resource element types, and a Shader without Pass are errors;
    - typed Texture/Buffer element types require target format support;
@@ -148,3 +162,11 @@ shader_name     = string ;
    - Program kind is inferred from pragmas: graphics has exactly one vertex and
      optional pixel entry; compute has exactly one compute entry and no graphics
      state. *)
+
+(* Each program block contains exactly one matching stage pragma; duplicate
+   stages and mixed compute/graphics are rejected. HLSLINCLUDE has no pragmas.
+   Usage/Role/factory support are validated and persisted in entry format 7.
+   Mesh roles cannot use compute; Forward/HitProxy require vertex and pixel;
+   ShadowDepth allows vertex-only graphics.
+   Custom mesh sources supply their required depth/picking roles and may
+   control depth test/write/output; transparent blending is not supported. *)

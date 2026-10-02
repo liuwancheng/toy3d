@@ -1,6 +1,7 @@
 Shader "Toy3d/UI/ImGui"
 {
-    Version 1
+    Version 2
+    Usage Global
 
     Parameters
     {
@@ -21,6 +22,7 @@ Shader "Toy3d/UI/ImGui"
 
     Pass "ImGui"
     {
+        Role Global
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Off
@@ -36,9 +38,8 @@ Shader "Toy3d/UI/ImGui"
         }
         ColorWrite RGBA
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
-        #pragma pixel ps_main
 
         struct VSInput
         {
@@ -62,6 +63,18 @@ Shader "Toy3d/UI/ImGui"
             output.color = input.color;
             return output;
         }
+
+        ENDHLSL
+
+        HLSLPS
+        #pragma pixel ps_main
+
+        struct VSOutput
+        {
+            float4 clip_position : SV_Position;
+            float2 uv : TEXCOORD0;
+            float4 color : COLOR0;
+        };
 
         float4 ps_main(VSOutput input) : SV_Target0
         {

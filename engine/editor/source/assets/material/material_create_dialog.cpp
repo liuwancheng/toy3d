@@ -134,7 +134,7 @@ namespace toy3d
                 }
             }
         }
-        const auto program = shaders ? shaders->program(shader_name_) : nullptr;
+        const auto program = shaders ? shaders->shader_map(shader_name_) : nullptr;
         if (shaders)
         {
             if (ImGui::Button("Open Source"))
@@ -155,7 +155,8 @@ namespace toy3d
             }
         }
         const auto selected_schema =
-            program ? material_parameter_schema_from_shader_schema(program->data().parameter_schema) : schema;
+            program ? material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema)
+                    : schema;
         std::string destination;
         std::string destination_error;
         const bool valid_destination =

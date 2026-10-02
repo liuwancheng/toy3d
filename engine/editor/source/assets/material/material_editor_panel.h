@@ -40,7 +40,7 @@ namespace toy3d
         {
             shaders_ = &workflow;
         }
-        bool prepare_shader(const ShaderMapProgramRef& program,
+        bool prepare_shader(const ShaderMapCollectionRef& program,
                             const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
         void publish_shader();
         void discard_shader();

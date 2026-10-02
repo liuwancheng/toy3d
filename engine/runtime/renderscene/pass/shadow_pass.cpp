@@ -22,7 +22,7 @@ namespace toy3d
     RHIStatus render_shadow_pass(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
                                  RHIGraphicsCommandContext& context, const ViewInfo& view,
                                  const ShadowRenderTargets& targets, std::size_t view_index,
-                                 const ShaderMapProgramRef& shader_program)
+                                 const ShaderMapCollectionRef& shader_map)
     {
         if (view_index >= targets.view_count())
         {
@@ -38,7 +38,7 @@ namespace toy3d
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ShadowPass target or context is invalid.");
         }
-        if (view.shadow_active() && !shader_program)
+        if (view.shadow_active() && !shader_map)
         {
             return RHIStatus::failure(RHIErrorCode::NotReady, "ShadowPass ShaderMap program is unavailable.");
         }
@@ -68,7 +68,7 @@ namespace toy3d
             commands.reserve(cascade.batches.size());
             for (const MeshBatch& batch : cascade.batches)
             {
-                const auto selected = batch.resolve_program(shader_program);
+                const auto selected = batch.mesh_pass_program(shader::ShaderPassRole::ShadowDepth, *shader_map);
                 if (!selected.succeeded())
                 {
                     return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
@@ -103,11 +103,7 @@ namespace toy3d
                 pipeline_desc.sample_count = 1u;
                 pipeline_desc.debug_name = "ShadowPass.Default";
                 shader::ShaderGraphicsPassState state = selected.program->data().graphics_pass_state;
-                const auto* material_state = batch.material_render_proxy().effective_graphics_pass_state();
-                if (material_state && material_state->cull_mode == shader::ShaderGraphicsPassState::CullMode::None)
-                {
-                    state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
-                }
+                state = batch.material_render_proxy().effective_graphics_pass_state(*selected.program);
                 auto shader_pipeline = build_shader_graphics_pipeline_desc(pipeline_desc, state);
                 if (!shader_pipeline)
                 {
@@ -122,8 +118,27 @@ namespace toy3d
                 command.pipeline = std::move(pipeline).value();
                 command.vertex_buffers = std::move(buffers);
                 command.index_buffer = batch.index_buffer_binding();
-                command.bindings.pass = pass_binding;
-                command.bindings.object = batch.object_binding();
+                status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Material,
+                                                   batch.material_binding(), command.bindings.material);
+                if (status)
+                {
+                    status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::View,
+                                                       view.view_binding(), command.bindings.view);
+                }
+                if (status)
+                {
+                    status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Pass, pass_binding,
+                                                       command.bindings.pass);
+                }
+                if (status)
+                {
+                    status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Object,
+                                                       batch.object_binding(), command.bindings.object);
+                }
+                if (!status)
+                {
+                    return status;
+                }
                 command.draw_args.index_count = batch.index_count();
                 command.draw_args.first_index = batch.first_index();
                 commands.push_back(std::move(command));

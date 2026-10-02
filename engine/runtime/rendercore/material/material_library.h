@@ -13,13 +13,13 @@ namespace toy3d
     {
       public:
         MaterialLibrary(const TypeRegistry& types, const FileSystem& files, std::function<const AssetIndex&()> index,
-                        std::function<std::shared_ptr<const ShaderMapProgram>(const std::string&)> programs,
+                        std::function<ShaderMapCollectionRef(const std::string&)> programs,
                         MaterialTextureValues textures);
         AssetResult<MaterialInterfaceRef> load(const AssetRef& reference);
         AssetResult<MaterialInstanceRef> create_instance(MaterialInterfaceRef parent);
         AssetStatus release_instance(MaterialInstanceRef& instance);
         AssetStatus reload(const AssetRef& reference);
-        AssetStatus prepare_shader(std::shared_ptr<const ShaderMapProgram> program);
+        AssetStatus prepare_shader(ShaderMapCollectionRef program);
         // Composition root enrolls its shared mesh default in the same graph
         // transaction; asset users and default users retain stable Proxy identities.
         void set_default_material(MaterialRef material)
@@ -49,12 +49,12 @@ namespace toy3d
         AssetStatus validate_loaded_ancestors(const MaterialAssetHierarchy& hierarchy,
                                               const std::vector<AssetId>& updating) const;
         AssetStatus add_configuration(LoadedMaterial& loaded, const MaterialAssetData& root,
-                                      const MaterialInstanceAssetData& instance,
-                                      std::shared_ptr<const ShaderMapProgram> program, MaterialInterfaceRef parent);
+                                      const MaterialInstanceAssetData& instance, ShaderMapCollectionRef program,
+                                      MaterialInterfaceRef parent);
         const TypeRegistry& types_;
         const FileSystem& files_;
         std::function<const AssetIndex&()> index_;
-        std::function<std::shared_ptr<const ShaderMapProgram>(const std::string&)> programs_;
+        std::function<ShaderMapCollectionRef(const std::string&)> programs_;
         MaterialTextureValues textures_;
         MaterialRef default_material_;
         std::function<std::string(const std::string&)> shader_diagnostic_;

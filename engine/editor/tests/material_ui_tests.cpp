@@ -119,7 +119,9 @@ int main()
     ShaderMapProgramKey key;
     key.shader_name = root.shader_name;
     key.pass_name = "Forward";
-    const auto program = map.find_or_load(key);
+    key.role = shader::ShaderPassRole::Forward;
+    key.vertex_factory = shader::VertexFactoryType::Local;
+    const auto program = map.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
     if (!program.succeeded())
     {
         std::cerr << program.error;
@@ -137,7 +139,7 @@ int main()
     {
         MaterialTextureValues textures;
         textures.named_defaults.emplace("white", texture);
-        const auto built = create_material_from_asset(root, program.program, textures);
+        const auto built = create_material_from_asset(root, program.collection, textures);
         if (!built.succeeded())
         {
             std::cerr << built.status().message;

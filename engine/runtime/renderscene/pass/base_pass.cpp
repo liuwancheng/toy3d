@@ -21,40 +21,6 @@ namespace toy3d
 {
     namespace
     {
-        bool program_declares_group(const ShaderMapProgram& program, RHIBindingGroup group)
-        {
-            for (const ShaderMapBinding& binding : program.data().bindings)
-            {
-                if (binding.group == group)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        RHIStatus resolve_owner_binding(RHIDevice& device, const ShaderMapProgram& program, RHIBindingGroup group,
-                                        const RHIBindingSetRef& owner_binding, RHIBindingSetRef& resolved_binding)
-        {
-            resolved_binding.reset();
-            if (!program_declares_group(program, group))
-            {
-                return RHIStatus::success();
-            }
-            if (!owner_binding)
-            {
-                return RHIStatus::failure(RHIErrorCode::NotReady,
-                                          "Program requires a logical binding that its owner did not provide.");
-            }
-            if (!owner_binding->is_owned_by(device) || owner_binding->group() != group)
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Owner-provided logical binding has an incompatible device or group.");
-            }
-            resolved_binding = owner_binding;
-            return RHIStatus::success();
-        }
-
         RHIStatus apply_attachment_compatibility(const RHIRenderPassDesc& pass_desc,
                                                  RHIGraphicsPipelineDesc& pipeline_desc)
         {
@@ -177,9 +143,8 @@ namespace toy3d
                     continue;
                 }
                 const ShaderMapProgramRef& shader_program = selected.program;
-                const shader::ShaderGraphicsPassState* effective_state = material_proxy.effective_graphics_pass_state();
-                if (!shader_program || effective_state == nullptr ||
-                    !shader::is_valid_shader_graphics_pass_state(*effective_state))
+                const auto effective_state = material_proxy.effective_graphics_pass_state(*shader_program);
+                if (!shader_program || !shader::is_valid_shader_graphics_pass_state(effective_state))
                 {
                     if (inputs.require_complete_meshes)
                     {
@@ -193,27 +158,27 @@ namespace toy3d
                 }
 
                 RHIGraphicsBindings owner_bindings;
-                RHIStatus batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Global,
-                                                               nullptr, owner_bindings.global);
+                RHIStatus batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::Global,
+                                                                   nullptr, owner_bindings.global);
                 if (batch_status)
                 {
-                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::View,
-                                                         view_info.view_binding(), owner_bindings.view);
+                    batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::View,
+                                                             view_info.view_binding(), owner_bindings.view);
                 }
                 if (batch_status)
                 {
-                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Pass,
-                                                         inputs.lighting_bindings[view_index], owner_bindings.pass);
+                    batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::Pass,
+                                                             inputs.lighting_bindings[view_index], owner_bindings.pass);
                 }
                 if (batch_status)
                 {
-                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Material,
-                                                         mesh_batch.material_binding(), owner_bindings.material);
+                    batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::Material,
+                                                             mesh_batch.material_binding(), owner_bindings.material);
                 }
                 if (batch_status)
                 {
-                    batch_status = resolve_owner_binding(device, *shader_program, RHIBindingGroup::Object,
-                                                         mesh_batch.object_binding(), owner_bindings.object);
+                    batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::Object,
+                                                             mesh_batch.object_binding(), owner_bindings.object);
                 }
                 if (!batch_status)
                 {
@@ -279,7 +244,7 @@ namespace toy3d
                     continue;
                 }
                 RHIResult<RHIGraphicsPipelineDesc> shader_pipeline =
-                    build_shader_graphics_pipeline_desc(pipeline_desc, *effective_state);
+                    build_shader_graphics_pipeline_desc(pipeline_desc, effective_state);
                 if (!shader_pipeline)
                 {
                     if (inputs.require_complete_meshes)

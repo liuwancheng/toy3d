@@ -1,4 +1,5 @@
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 
 #include <functional>
 #include <utility>
@@ -15,11 +16,6 @@ namespace toy3d
 
     ShaderMapProgram::ShaderMapProgram(ShaderMapProgramData data) : data_(std::move(data))
     {
-        if (data_.gpu_skin_program)
-        {
-            ShaderMapProgram companion(*data_.gpu_skin_program);
-            gpu_skin_program_ = std::make_shared<ShaderMapProgram>(std::move(companion));
-        }
         for (const ShaderMapBinding& binding : data_.bindings)
         {
             if (binding.type == RHIResourceBindingType::UniformBuffer)
@@ -54,11 +50,6 @@ namespace toy3d
         return data_;
     }
 
-    const std::shared_ptr<const ShaderMapProgram>& ShaderMapProgram::gpu_skin_program() const
-    {
-        return gpu_skin_program_;
-    }
-
     const ShaderParameterBinding* ShaderMapProgram::find_parameter_binding(ShaderParameterId parameter_id) const
     {
         const auto found = parameter_bindings_.find(parameter_id);
@@ -88,7 +79,7 @@ namespace toy3d
     bool ShaderMap::ProgramKey::operator==(const ProgramKey& other) const
     {
         return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
-               permutation_key == other.permutation_key;
+               permutation_key == other.permutation_key && role == other.role && vertex_factory == other.vertex_factory;
     }
 
     std::size_t ShaderMap::ProgramKeyHash::operator()(const ProgramKey& key) const
@@ -96,6 +87,8 @@ namespace toy3d
         std::size_t result = std::hash<std::string>{}(key.shader_name);
         hash_combine(result, std::hash<std::string>{}(key.pass_name));
         hash_combine(result, static_cast<std::size_t>(key.platform));
+        hash_combine(result, static_cast<std::size_t>(key.role));
+        hash_combine(result, static_cast<std::size_t>(key.vertex_factory));
         for (std::uint8_t byte : key.permutation_key)
         {
             hash_combine(result, byte);
@@ -105,12 +98,40 @@ namespace toy3d
 
     ShaderMap::ProgramKey ShaderMap::make_key(const ShaderMapProgramData& program)
     {
-        return {program.shader_name, program.pass_name, program.platform, program.permutation_key};
+        return {program.shader_name,     program.pass_name,     program.platform,
+                program.permutation_key, program.contract.role, program.contract.vertex_factory};
     }
 
     ShaderMap::ProgramKey ShaderMap::make_key(const ShaderMapProgramKey& key)
     {
-        return {key.shader_name, key.pass_name, key.platform, key.permutation_key};
+        return {key.shader_name, key.pass_name, key.platform, key.permutation_key, key.role, key.vertex_factory};
+    }
+
+    ShaderMapCollectionResult ShaderMap::find_or_load_collection(const std::string& name, ShaderPlatform platform,
+                                                                 const ShaderContentHash& permutation)
+    {
+        ShaderMapProgramKey query;
+        query.shader_name = name;
+        query.platform = platform;
+        query.permutation_key = permutation;
+        const auto key = make_key(query);
+        const auto found = collections_.find(key);
+        if (found != collections_.end())
+        {
+            return {found->second, {}};
+        }
+        auto loaded = ShaderMapCollection::create_candidate(loader_.load_collection(name, platform, permutation));
+        if (!loaded.succeeded())
+        {
+            return loaded;
+        }
+        if (loaded.collection->index().shader_name != name ||
+            loaded.collection->index().permutation_key != permutation || platform != ShaderPlatform::VulkanES31)
+        {
+            return {nullptr, "ShaderMap collection does not match the requested source/configuration/platform."};
+        }
+        collections_.emplace(key, loaded.collection);
+        return loaded;
     }
 
     ShaderMapProgramResult ShaderMap::find_or_load(const ShaderMapProgramKey& key)

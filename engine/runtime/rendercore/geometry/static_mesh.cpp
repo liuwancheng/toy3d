@@ -117,6 +117,16 @@ namespace toy3d
             TOY_LOG_ERROR("Every StaticMesh Material slot must reference a MaterialInstance.");
             return nullptr;
         }
+        for (std::size_t slot = 0; slot < desc.material_slots.size(); ++slot)
+        {
+            std::string error;
+            if (!validate_material_geometry(desc.material_slots[slot]->desc(), shader::VertexFactoryType::Local,
+                                            !desc.vertex_colors.empty(), error))
+            {
+                TOY_LOG_ERROR("StaticMesh material slot {} rejected: {}", slot, error);
+                return nullptr;
+            }
+        }
         if (!indices_reference_existing_vertices(desc.indices, desc.vertices.size()))
         {
             TOY_LOG_ERROR("StaticMesh index data references a missing vertex.");

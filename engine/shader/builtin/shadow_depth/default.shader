@@ -1,19 +1,13 @@
 Shader "Toy3d/ShadowDepth/Default"
 {
-    Version 1
-
-    Parameters
-    {
-        Pass
-        {
-            shadow_world_to_clip : Float4x4
-            shadow_light_direction : Float4
-            shadow_bias_parameters : Float4
-        }
-    }
+    Version 2
+    Usage MeshPass
+    Geometry Custom
+    VertexFactories { Local, GPUSkin }
 
     Pass "ShadowDepth"
     {
+        Role ShadowDepth
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Back
@@ -25,9 +19,8 @@ Shader "Toy3d/ShadowDepth/Default"
         Blend Off
         ColorWrite None
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
-        #pragma pixel ps_main
 
         #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
 
@@ -54,6 +47,11 @@ Shader "Toy3d/ShadowDepth/Default"
             clip.z = max(0.0, clip.z - bias * clip.w);
             return clip;
         }
+
+        ENDHLSL
+
+        HLSLPS
+        #pragma pixel ps_main
 
         void ps_main() {}
         ENDHLSL

@@ -1,8 +1,10 @@
 Shader "Tests/UnterminatedHlsl"
 {
-    Version 1
+    Version 2
+    Usage Global
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
         #pragma pixel ps_main

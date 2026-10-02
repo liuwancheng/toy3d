@@ -81,10 +81,14 @@ namespace toy3d
                 }
             }
         }
-        if (defaults_ && defaults_->desc().shader_program &&
-            !workspace.read_material_properties(shader_root, defaults_->desc().shader_name,
-                                                defaults_->desc().shader_program->data().parameter_schema, properties_,
-                                                metadata_warning_))
+        if (defaults_ && defaults_->desc().shader_map &&
+            !workspace.read_material_properties(
+                shader_root, defaults_->desc().shader_name,
+                defaults_->desc()
+                    .shader_map->find(shader::ShaderPassRole::Forward, shader::VertexFactoryType::Local)
+                    .program->data()
+                    .parameter_schema,
+                properties_, metadata_warning_))
         {
             TOY_LOG_WARN("Material UI properties ignored: {}", metadata_warning_);
         }
@@ -256,12 +260,12 @@ namespace toy3d
 
     bool MaterialEditorPanel::open(const AssetId& id)
     {
-        if (!defaults_ || !defaults_->desc().shader_program)
+        if (!defaults_ || !defaults_->desc().shader_map)
         {
             report(parameter_error("The registered Phong Shader is unavailable."));
             return false;
         }
-        ShaderMapProgramRef program = defaults_->desc().shader_program;
+        ShaderMapCollectionRef program = defaults_->desc().shader_map;
         if (shaders_)
         {
             const auto* location = workspace_->catalog().index.find(id);
@@ -281,16 +285,17 @@ namespace toy3d
                 return false;
             }
             const auto& root = hierarchy.value().root;
-            program = shaders_->program(root.shader_name);
+            program = shaders_->shader_map(root.shader_name);
             if (!program)
             {
                 report(parameter_error("Shader has no published Program. Compile it from Create Material first."));
                 return false;
             }
         }
-        const auto schema = material_parameter_schema_from_shader_schema(program->data().parameter_schema);
+        const auto schema =
+            material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema);
         MaterialEditSession candidate(*workspace_);
-        auto status = candidate.open(id, schema, program->data().shader_name);
+        auto status = candidate.open(id, schema, program->index().shader_name);
         if (!status.succeeded())
         {
             report(status);
@@ -316,7 +321,7 @@ namespace toy3d
             }
             next = built.value();
         }
-        status = edit_session().open(id, schema, program->data().shader_name);
+        status = edit_session().open(id, schema, program->index().shader_name);
         if (!status.succeeded())
         {
             MaterialInstance::release(next);
@@ -332,7 +337,7 @@ namespace toy3d
         ++session_revision_;
         if (shaders_)
         {
-            const auto* source = shaders_->find(program->data().shader_name);
+            const auto* source = shaders_->find(program->index().shader_name);
             if (source)
             {
                 properties_ = source->properties;
@@ -368,15 +373,15 @@ namespace toy3d
             [this](const std::string& name) -> AssetResult<shader::ShaderParameterSchema>
             {
                 const auto program =
-                    shaders_ ? shaders_->program(name)
-                             : (defaults_->desc().shader_name == name ? defaults_->desc().shader_program : nullptr);
+                    shaders_ ? shaders_->shader_map(name)
+                             : (defaults_->desc().shader_name == name ? defaults_->desc().shader_map : nullptr);
                 if (!program)
                 {
                     return AssetResult<shader::ShaderParameterSchema>(
                         parameter_error("Compile the Parent Shader before selecting it."));
                 }
                 return AssetResult<shader::ShaderParameterSchema>(
-                    material_parameter_schema_from_shader_schema(program->data().parameter_schema));
+                    material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema));
             },
             [this](const MaterialAssetData& effective)
             {
@@ -387,7 +392,7 @@ namespace toy3d
                     return textures;
                 }
                 const auto program =
-                    shaders_ ? shaders_->program(effective.shader_name) : defaults_->desc().shader_program;
+                    shaders_ ? shaders_->shader_map(effective.shader_name) : defaults_->desc().shader_map;
                 const auto built = create_material_from_asset(effective, program, textures_);
                 if (!built.succeeded())
                 {
@@ -427,13 +432,13 @@ namespace toy3d
         focused_ = false;
     }
 
-    bool MaterialEditorPanel::prepare_shader(const ShaderMapProgramRef& program,
+    bool MaterialEditorPanel::prepare_shader(const ShaderMapCollectionRef& program,
                                              const std::vector<shader::ShaderEditorProperty>& properties,
                                              std::string& error)
     {
         discard_shader();
         auto& session = edit_session();
-        if (!session.active() || session.root_data().shader_name != program->data().shader_name)
+        if (!session.active() || session.root_data().shader_name != program->index().shader_name)
         {
             return true;
         }
@@ -443,7 +448,8 @@ namespace toy3d
             return false;
         }
         MaterialAssetData effective = session.root_data();
-        auto schema = material_parameter_schema_from_shader_schema(program->data().parameter_schema);
+        auto schema =
+            material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema);
         effective.overrides = session.effective_overrides(schema);
         const auto textures = ensure_texture_values(effective.overrides);
         if (!textures.succeeded())
@@ -606,7 +612,12 @@ namespace toy3d
             ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextUnformatted(row.property ? row.property->display_name.c_str() : member.name.c_str());
-            if (!defaults_->desc().shader_program->find_parameter_binding(member.parameter_id))
+            const auto& programs = defaults_->desc().shader_map->programs();
+            if (std::none_of(programs.begin(), programs.end(),
+                             [&member](const ShaderMapProgramRef& program)
+                             {
+                                 return program->find_parameter_binding(member.parameter_id) != nullptr;
+                             }))
             {
                 ImGui::SameLine();
                 ImGui::TextDisabled("(unused in this variant)");

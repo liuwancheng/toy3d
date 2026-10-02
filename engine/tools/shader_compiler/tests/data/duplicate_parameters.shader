@@ -1,11 +1,13 @@
 Shader "Tests/DuplicateParameters"
 {
-    Version 1
+    Version 2
+    Usage Global
     Parameters { Pass { exposure_ev : Float } }
     Parameters { Pass { projection : Float4x4 } }
     Pass "Main"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
         ENDHLSL
     }

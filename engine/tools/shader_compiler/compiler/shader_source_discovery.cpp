@@ -100,9 +100,12 @@ namespace toy3d::shader
                     else
                     {
                         source.name = parsed.asset->name;
+                        source.usage = parsed.asset->usage;
+                        source.vertex_factory_support = parsed.asset->vertex_factory_support;
                         for (const auto& pass : parsed.asset->passes)
                         {
                             source.pass_names.push_back(pass.name);
+                            source.pass_roles.push_back(pass.role);
                         }
                     }
                 }

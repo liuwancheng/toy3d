@@ -145,6 +145,60 @@ namespace
               "RHI Shader conversion must preserve semantic, location, and data shape");
     }
 
+    void test_role_and_factory_cache_identity()
+    {
+        class ContractLoader final : public toy3d::ShaderMapLoader
+        {
+          public:
+            toy3d::ShaderMapProgramLoadResult load_program(const toy3d::ShaderMapProgramKey& key) const override
+            {
+                ++load_count;
+                auto program = make_program();
+                program.contract = {toy3d::shader::ShaderUsage::Material, key.role,
+                                    toy3d::shader::ShaderGeometryMode::Custom, key.vertex_factory,
+                                    toy3d::shader::all_vertex_factory_support};
+                toy3d::ShaderMapStage pixel;
+                pixel.stage = toy3d::RHIShaderStage::Pixel;
+                pixel.entry_point = "ps_main";
+                pixel.binary = {1, 2, 3, 4};
+                pixel.content_hash = nonzero_hash(6);
+                program.stages.push_back(std::move(pixel));
+                return {std::move(program), {}};
+            }
+
+            mutable unsigned load_count = 0u;
+        } loader;
+        toy3d::ShaderMap map(loader);
+        const auto data = make_program();
+        toy3d::ShaderMapProgramKey key;
+        key.shader_name = data.shader_name;
+        key.pass_name = data.pass_name;
+        key.permutation_key = data.permutation_key;
+        key.role = toy3d::shader::ShaderPassRole::Forward;
+        key.vertex_factory = toy3d::shader::VertexFactoryType::Local;
+        const auto local = map.find_or_load(key);
+        check(local.succeeded(), local.error.c_str());
+        key.vertex_factory = toy3d::shader::VertexFactoryType::GPUSkin;
+        const auto skin = map.find_or_load(key);
+        check(skin.succeeded() && skin.program != local.program,
+              "Same material permutation must not alias Local and GPUSkin metadata");
+        key.vertex_factory = toy3d::shader::VertexFactoryType::Local;
+        key.role = toy3d::shader::ShaderPassRole::ShadowDepth;
+        const auto shadow = map.find_or_load(key);
+        check(shadow.succeeded() && shadow.program != local.program, "Role must distinguish identical display names");
+        key.role = toy3d::shader::ShaderPassRole::HitProxy;
+        const auto hit = map.find_or_load(key);
+        check(hit.succeeded() && hit.program != shadow.program && hit.program != local.program,
+              "HitProxy must have its own cache identity");
+        key.role = toy3d::shader::ShaderPassRole::Forward;
+        check(map.find_or_load(key).program == local.program && loader.load_count == 4u,
+              "Exact role/factory lookup must retain its original cached program");
+        auto mismatched = local.program->data();
+        key.vertex_factory = toy3d::shader::VertexFactoryType::GPUSkin;
+        check(!toy3d::ShaderMap::create_candidate(std::move(mismatched), key).succeeded(),
+              "Candidate validation must reject a factory mismatch with the same static key");
+    }
+
     void test_invalid_metadata_and_identity_fail()
     {
         toy3d::ShaderMapProgramData program = make_program();
@@ -292,6 +346,7 @@ int main()
     {
         test_shader_map_caches_full_identity_and_indexes_parameters();
         test_invalid_metadata_and_identity_fail();
+        test_role_and_factory_cache_identity();
         test_local_vertex_factory_matches_fixed_shader_inputs();
     }
     catch (const std::exception& exception)

@@ -71,6 +71,30 @@ namespace toy3d
             return fail("Builtin Shader template has an invalid declaration.");
         }
         created.replace(offset, declaration.size(), "Shader \"" + name + "\"");
+        for (const std::string role_source : {"Toy3d/ShadowDepth/Default", "Toy3d/Editor/HitProxy"})
+        {
+            const auto* mesh_source = find(role_source);
+            if (!mesh_source)
+            {
+                return fail("Mesh Pass template is unavailable: " + role_source);
+            }
+            const auto mesh_text = files_.read_text_utf8(mesh_source->path, maximum_shader_source_bytes);
+            const auto mesh_asset = mesh_text.succeeded()
+                                        ? shader::parse_shader(mesh_text.value(), mesh_source->path.utf8())
+                                        : shader::ParseResult{};
+            if (!mesh_text.succeeded() || !mesh_asset.succeeded() || mesh_asset.asset->passes.size() != 1u)
+            {
+                return fail("Mesh Pass template is invalid: " + role_source);
+            }
+            const auto pass_start = mesh_text.value().find("    Pass \"");
+            const auto source_end = mesh_text.value().rfind('}');
+            const auto target_end = created.rfind('}');
+            if (pass_start == std::string::npos || source_end <= pass_start || target_end == std::string::npos)
+            {
+                return fail("Mesh Pass template cannot be copied: " + role_source);
+            }
+            created.insert(target_end, mesh_text.value().substr(pass_start, source_end - pass_start));
+        }
         const auto parsed = shader::parse_shader(created, destination.value().utf8());
         if (!parsed.succeeded() || parsed.asset->name != name)
         {

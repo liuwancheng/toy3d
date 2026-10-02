@@ -686,18 +686,63 @@ namespace toy3d::shader
 
         if (!match_identifier("Version"))
         {
-            add_error(DiagnosticCode::InvalidVersion, peek().location, "Shader asset must declare Version 1 first.");
+            add_error(DiagnosticCode::InvalidVersion, peek().location, "Shader asset must declare Version 2 first.");
         }
         if (const auto version = expect(TokenKind::Number, "Expected numeric Shader version."))
         {
-            if (version->text != "1")
+            if (version->text != "2")
             {
                 add_error(DiagnosticCode::InvalidVersion, version->location,
-                          "Only Shader asset Version 1 is supported.");
+                          "Only Shader asset Version 2 is supported. Rewrite the source using the v2 protocol.");
             }
             else
             {
-                asset.version = 1;
+                asset.version = 2;
+            }
+        }
+
+        if (!match_identifier("Usage"))
+        {
+            add_error(DiagnosticCode::InvalidShaderName, peek().location, "Version 2 requires an explicit Usage.");
+        }
+        else if (const auto usage = expect_identifier("Expected Global, Material or MeshPass after Usage."))
+        {
+            if (usage->text == "Material")
+            {
+                asset.usage = ShaderUsage::Material;
+            }
+            else if (usage->text == "MeshPass")
+            {
+                asset.usage = ShaderUsage::MeshPass;
+            }
+            else if (usage->text != "Global")
+            {
+                add_error(DiagnosticCode::InvalidShaderName, usage->location, "Unknown Shader Usage.");
+            }
+        }
+        if (asset.usage != ShaderUsage::Global)
+        {
+            if (!match_identifier("Geometry"))
+            {
+                add_error(DiagnosticCode::InvalidShaderName, peek().location, "Mesh sources require Geometry Custom.");
+            }
+            else if (const auto geometry = expect_identifier("Expected Custom after Geometry."))
+            {
+                if (geometry->text != "Custom")
+                {
+                    add_error(DiagnosticCode::InvalidShaderName, geometry->location,
+                              "Only Custom geometry is currently implemented; Standard wrappers are not available.");
+                }
+                asset.geometry = ShaderGeometryMode::Custom;
+            }
+            if (!match_identifier("VertexFactories"))
+            {
+                add_error(DiagnosticCode::InvalidShaderName, peek().location,
+                          "Mesh sources require explicit VertexFactories.");
+            }
+            else
+            {
+                parse_vertex_factories(asset);
             }
         }
 
@@ -750,6 +795,11 @@ namespace toy3d::shader
             {
                 HlslBlock block;
                 parse_hlsl_block(block);
+                if (!block.entry_points.empty())
+                {
+                    add_error(DiagnosticCode::UnknownPragma, block.location,
+                              "HLSLINCLUDE cannot declare stage entries.");
+                }
                 asset.includes.push_back(std::move(block));
             }
             else if (match_identifier("Pass"))
@@ -772,6 +822,41 @@ namespace toy3d::shader
         {
             add_error(DiagnosticCode::MissingEntryPoint, asset.location,
                       "Shader asset must contain at least one Pass.");
+        }
+        bool has_forward = false;
+        std::unordered_set<std::uint32_t> roles;
+        for (const ShaderPass& pass : asset.passes)
+        {
+            ShaderProgramContract contract;
+            contract.usage = asset.usage;
+            contract.geometry = asset.geometry;
+            contract.role = pass.role;
+            contract.vertex_factory_support = asset.vertex_factory_support;
+            contract.vertex_factory =
+                asset.usage == ShaderUsage::Global
+                    ? VertexFactoryType::None
+                    : (supports_vertex_factory(asset.vertex_factory_support, VertexFactoryType::Local)
+                           ? VertexFactoryType::Local
+                           : VertexFactoryType::GPUSkin);
+            std::string error;
+            if (!validate_shader_program_contract(contract, error))
+            {
+                add_error(DiagnosticCode::InvalidPassName, pass.location, error);
+            }
+            if (asset.usage != ShaderUsage::Global && !roles.insert(static_cast<std::uint32_t>(pass.role)).second)
+            {
+                add_error(DiagnosticCode::DuplicatePass, pass.location, "A mesh role may only be implemented once.");
+            }
+            if (asset.usage != ShaderUsage::Global && pass.state.blend.enabled)
+            {
+                add_error(DiagnosticCode::InvalidPassState, pass.location,
+                          "Mesh shaders do not support transparent blending.");
+            }
+            has_forward = has_forward || pass.role == ShaderPassRole::Forward;
+        }
+        if (asset.usage == ShaderUsage::Material && !has_forward)
+        {
+            add_error(DiagnosticCode::InvalidPassName, asset.location, "Material requires a Forward role.");
         }
 
         copy_tokenizer_diagnostics();
@@ -1006,7 +1091,7 @@ namespace toy3d::shader
         if (!valid_group)
         {
             add_error(DiagnosticCode::InvalidParameterGroup, group_token->location,
-                      "Parameters v1 only supports the Pass Binding Group.");
+                      "Parameters only supports the Pass Binding Group.");
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the parameter Binding Group.");
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
@@ -1035,7 +1120,7 @@ namespace toy3d::shader
                 if (!parsed_type)
                 {
                     add_error(DiagnosticCode::InvalidParameterType, type->location,
-                              "Parameters v1 does not support type '" + type->text + "'.");
+                              "Parameters does not support type '" + type->text + "'.");
                 }
                 else
                 {
@@ -1201,6 +1286,38 @@ namespace toy3d::shader
         return true;
     }
 
+    bool ShaderParser::parse_vertex_factories(ShaderAsset& asset)
+    {
+        if (!expect(TokenKind::LeftBrace, "Expected '{' after VertexFactories."))
+        {
+            return false;
+        }
+        do
+        {
+            const auto factory = expect_identifier("Expected Local or GPUSkin.");
+            if (!factory)
+            {
+                break;
+            }
+            std::uint32_t flag = 0u;
+            if (factory->text == "Local")
+            {
+                flag = local_vertex_factory_support;
+            }
+            else if (factory->text == "GPUSkin")
+            {
+                flag = gpu_skin_vertex_factory_support;
+            }
+            if (flag == 0u || (asset.vertex_factory_support & flag) != 0u)
+            {
+                add_error(DiagnosticCode::InvalidShaderName, factory->location, "Unknown or duplicate VertexFactory.");
+            }
+            asset.vertex_factory_support |= flag;
+        } while (match(TokenKind::Comma));
+        expect(TokenKind::RightBrace, "Expected '}' after VertexFactories.");
+        return true;
+    }
+
     bool ShaderParser::parse_pass(ShaderAsset& asset)
     {
         const auto name = expect(TokenKind::StringLiteral, "Expected the Pass name.");
@@ -1219,7 +1336,7 @@ namespace toy3d::shader
             }
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the Pass name.");
-        bool has_program = false;
+        bool has_role = false;
         std::unordered_set<std::string> declared_states;
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
         {
@@ -1231,15 +1348,66 @@ namespace toy3d::shader
                 }
                 continue;
             }
-            if (match_identifier("HLSLPROGRAM"))
+            if (match_identifier("Role"))
             {
-                if (has_program)
+                if (has_role)
                 {
-                    add_error(DiagnosticCode::DuplicateSection, peek().location,
-                              "Pass may only contain one HLSLPROGRAM block.");
+                    add_error(DiagnosticCode::DuplicatePassState, peek().location,
+                              "Pass must declare Role exactly once.");
                 }
-                has_program = true;
-                parse_hlsl_block(pass.program);
+                has_role = true;
+                if (const auto role = expect_identifier("Expected a Pass role."))
+                {
+                    if (role->text == "Forward")
+                    {
+                        pass.role = ShaderPassRole::Forward;
+                    }
+                    else if (role->text == "ShadowDepth")
+                    {
+                        pass.role = ShaderPassRole::ShadowDepth;
+                    }
+                    else if (role->text == "HitProxy")
+                    {
+                        pass.role = ShaderPassRole::HitProxy;
+                    }
+                    else if (role->text != "Global")
+                    {
+                        add_error(DiagnosticCode::InvalidPassName, role->location, "Unknown Pass role.");
+                    }
+                }
+                continue;
+            }
+            if (check_identifier("HLSLVS") || check_identifier("HLSLPS") || check_identifier("HLSLCS"))
+            {
+                const Token block_name = consume();
+                const ShaderStage stage =
+                    block_name.text == "HLSLVS"
+                        ? ShaderStage::Vertex
+                        : (block_name.text == "HLSLPS" ? ShaderStage::Pixel : ShaderStage::Compute);
+                HlslBlock block;
+                parse_hlsl_block(block);
+                if (block.entry_points.empty())
+                {
+                    add_error(DiagnosticCode::MissingEntryPoint, block_name.location,
+                              "Stage block is missing its entry pragma.");
+                }
+                else if (block.entry_points.size() != 1u || block.entry_points.front().stage != stage)
+                {
+                    add_error(DiagnosticCode::MixedProgramStages, block_name.location,
+                              "Each stage block requires exactly one matching stage pragma.");
+                }
+                const bool duplicate = std::any_of(pass.programs.begin(), pass.programs.end(),
+                                                   [&](const HlslBlock& existing)
+                                                   {
+                                                       return !existing.entry_points.empty() &&
+                                                              existing.entry_points.front().stage == stage;
+                                                   });
+                if (duplicate)
+                {
+                    add_error(DiagnosticCode::DuplicateEntryPoint, block_name.location,
+                              "Duplicate stage program block.");
+                }
+                pass.programs.push_back(std::move(block));
                 continue;
             }
 
@@ -1319,9 +1487,13 @@ namespace toy3d::shader
                       "Unknown Pass field '" + unexpected.text + "'.");
         }
         expect(TokenKind::RightBrace, "Expected '}' to close the Pass.");
-        if (!has_program)
+        if (!has_role)
         {
-            add_error(DiagnosticCode::MissingEntryPoint, pass.location, "Pass is missing HLSLPROGRAM.");
+            add_error(DiagnosticCode::InvalidPassName, pass.location, "Pass requires an explicit Role.");
+        }
+        if (pass.programs.empty())
+        {
+            add_error(DiagnosticCode::MissingEntryPoint, pass.location, "Pass is missing a stage program block.");
         }
         else
         {
@@ -1668,24 +1840,33 @@ namespace toy3d::shader
 
     void ShaderParser::validate_program(ShaderPass& pass)
     {
-        const bool has_vertex = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
-                                            [](const EntryPoint& entry)
+        const bool has_vertex = std::any_of(pass.programs.begin(), pass.programs.end(),
+                                            [](const HlslBlock& block)
                                             {
-                                                return entry.stage == ShaderStage::Vertex;
+                                                return !block.entry_points.empty() &&
+                                                       block.entry_points.front().stage == ShaderStage::Vertex;
                                             });
-        const bool has_pixel = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
-                                           [](const EntryPoint& entry)
+        const bool has_pixel = std::any_of(pass.programs.begin(), pass.programs.end(),
+                                           [](const HlslBlock& block)
                                            {
-                                               return entry.stage == ShaderStage::Pixel;
+                                               return !block.entry_points.empty() &&
+                                                      block.entry_points.front().stage == ShaderStage::Pixel;
                                            });
-        const bool has_compute = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
-                                             [](const EntryPoint& entry)
+        const bool has_compute = std::any_of(pass.programs.begin(), pass.programs.end(),
+                                             [](const HlslBlock& block)
                                              {
-                                                 return entry.stage == ShaderStage::Compute;
+                                                 return !block.entry_points.empty() &&
+                                                        block.entry_points.front().stage == ShaderStage::Compute;
                                              });
+        if (pass.role != ShaderPassRole::Global &&
+            (has_compute || (!has_pixel && pass.role != ShaderPassRole::ShadowDepth)))
+        {
+            add_error(DiagnosticCode::MixedProgramStages, pass.location,
+                      "Mesh roles require graphics stages; Forward and HitProxy require HLSLVS and HLSLPS.");
+        }
         if (has_compute && (has_vertex || has_pixel))
         {
-            add_error(DiagnosticCode::MixedProgramStages, pass.program.location,
+            add_error(DiagnosticCode::MixedProgramStages, pass.location,
                       "A Pass cannot mix compute and graphics entry points.");
         }
         else if (has_compute)
@@ -1699,7 +1880,7 @@ namespace toy3d::shader
         }
         else if (!has_vertex)
         {
-            add_error(DiagnosticCode::MissingEntryPoint, pass.program.location,
+            add_error(DiagnosticCode::MissingEntryPoint, pass.location,
                       "Graphics Pass requires a vertex pragma; pixel is optional.");
         }
     }

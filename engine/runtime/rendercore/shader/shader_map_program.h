@@ -52,6 +52,8 @@ namespace toy3d
         std::string pass_name;
         ShaderPlatform platform = ShaderPlatform::VulkanES31;
         ShaderContentHash permutation_key = shader::default_shader_permutation_key;
+        shader::ShaderPassRole role = shader::ShaderPassRole::Global;
+        shader::VertexFactoryType vertex_factory = shader::VertexFactoryType::None;
     };
 
     struct ShaderMapBinding
@@ -95,6 +97,7 @@ namespace toy3d
     {
         std::string shader_name;
         std::string pass_name;
+        shader::ShaderProgramContract contract;
         ShaderPlatform platform = ShaderPlatform::VulkanES31;
         std::uint32_t mapping_version = 0;
         ShaderContentHash logical_layout_hash{};
@@ -106,7 +109,5 @@ namespace toy3d
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderMapStage> stages;
         std::vector<ShaderVertexInput> vertex_inputs;
-        // Complete immutable companion for mesh sources, validated with the Local candidate.
-        std::shared_ptr<const ShaderMapProgramData> gpu_skin_program;
     };
 } // namespace toy3d

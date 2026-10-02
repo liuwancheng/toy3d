@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "file_system/file_system.h"
+#include "shader/shader_program_contract.h"
 
 namespace toy3d::shader
 {
@@ -12,6 +13,9 @@ namespace toy3d::shader
         VirtualPath path;
         std::string name;
         std::vector<std::string> pass_names;
+        ShaderUsage usage = ShaderUsage::Global;
+        std::uint32_t vertex_factory_support = 0u;
+        std::vector<ShaderPassRole> pass_roles;
         std::string error;
         bool name_conflict = false;
     };

@@ -1,10 +1,12 @@
 Shader "Tests/InvalidParameterGroup"
 {
-    Version 1
+    Version 2
+    Usage Global
     Parameters { View { exposure_ev : Float } }
     Pass "Main"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
         ENDHLSL
     }

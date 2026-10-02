@@ -87,7 +87,7 @@ namespace toy3d
         }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override;
         void on_tick(double) override;
-        void on_collect_material_validation(std::vector<MaterialProgramValidationRef>& requests) override
+        void on_collect_material_validation(std::vector<MaterialShaderMapValidationRef>& requests) override
         {
             if (shader_workflow_ready_)
             {

@@ -28,6 +28,7 @@ namespace toy3d
         MaterialInterfaceRef material_for_slot(std::uint32_t slot) const;
 
       private:
+        bool supports_shadow_casting() const override;
         bool tick_component(const WorldTickContext& context) override;
         AssetStatus commit_animation(AnimationInstance candidate);
         void publish_pose();

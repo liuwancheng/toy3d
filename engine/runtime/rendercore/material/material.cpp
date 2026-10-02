@@ -19,6 +19,69 @@
 
 namespace toy3d
 {
+    bool validate_material_mesh_pass(const MaterialDesc& desc, shader::ShaderPassRole role,
+                                     shader::VertexFactoryType factory, std::string& error)
+    {
+        if (!desc.shader_map)
+        {
+            return true;
+        }
+        const auto selected = desc.shader_map->find(role, factory);
+        if (selected.succeeded())
+        {
+            return true;
+        }
+        const auto& name = desc.shader_map->index().shader_name;
+        if (role != shader::ShaderPassRole::Forward && (name == "Toy3d/Surface/Phong" || name == "Toy3d/Surface/Unlit"))
+        {
+            return true;
+        }
+        error = "Custom material " + name + " is missing the required mesh Pass role: " + selected.error;
+        return false;
+    }
+
+    bool validate_material_geometry(const MaterialDesc& desc, shader::VertexFactoryType factory, bool has_vertex_colors,
+                                    std::string& error)
+    {
+        if (!desc.shader_map)
+        {
+            return true;
+        }
+        const auto forward = desc.shader_map->find(shader::ShaderPassRole::Forward, factory);
+        if (!forward.succeeded())
+        {
+            error = forward.error;
+            return false;
+        }
+        for (const auto& program : desc.shader_map->programs())
+        {
+            if (program->data().contract.vertex_factory != factory)
+            {
+                continue;
+            }
+            for (const auto& input : program->data().vertex_inputs)
+            {
+                if (factory == shader::VertexFactoryType::Local &&
+                    (input.attribute_id == ShaderVertexAttributeId::BlendIndices0 ||
+                     input.attribute_id == ShaderVertexAttributeId::BlendIndices1 ||
+                     input.attribute_id == ShaderVertexAttributeId::BlendWeights0 ||
+                     input.attribute_id == ShaderVertexAttributeId::BlendWeights1))
+                {
+                    error = desc.shader_name + "/" + program->data().pass_name +
+                            " requires skin attributes on a Local mesh.";
+                    return false;
+                }
+                if (input.attribute_id == ShaderVertexAttributeId::Color0 && !has_vertex_colors)
+                {
+                    error = desc.shader_name + "/" + program->data().pass_name +
+                            " requires COLOR0, but the mesh has no vertex colors.";
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     shader::ShaderParameterSchema material_parameter_schema_from_shader_schema(
         const shader::ShaderParameterSchema& source)
     {
@@ -321,17 +384,18 @@ namespace toy3d
             return true;
         }
 
-        bool is_program_compatible_with_material(const MaterialDesc& desc, const ShaderMapProgram& program,
-                                                 std::string& error)
+        bool is_shader_map_compatible_with_material(const MaterialDesc& desc, const ShaderMapCollection& program,
+                                                    std::string& error)
         {
             error.clear();
-            if (program.data().shader_name != desc.shader_name)
+            if (program.index().shader_name != desc.shader_name ||
+                program.programs().front()->data().contract.usage != shader::ShaderUsage::Material)
             {
                 error = "ShaderMap Program identity does not match the Material shader";
                 return false;
             }
             const shader::ShaderParameterSchema program_material_schema =
-                material_parameter_schema_from_shader_schema(program.data().parameter_schema);
+                material_parameter_schema_from_shader_schema(program.programs().front()->data().parameter_schema);
             if (program_material_schema.schema_identity != desc.parameter_schema.schema_identity)
             {
                 error = "ShaderMap Program complete Material schema does not match the Material schema identity";
@@ -454,10 +518,10 @@ namespace toy3d
             TOY_LOG_ERROR("Invalid Material parameter schema: {}.", schema_error);
             return nullptr;
         }
-        if (desc.shader_program)
+        if (desc.shader_map)
         {
             std::string error;
-            if (!is_program_compatible_with_material(desc, *desc.shader_program, error))
+            if (!is_shader_map_compatible_with_material(desc, *desc.shader_map, error))
             {
                 TOY_LOG_ERROR("Invalid Material ShaderMap Program: {}.", error);
                 return nullptr;
@@ -475,15 +539,15 @@ namespace toy3d
     // MaterialInterface: GT configuration and stable FIFO-protected RT identity
     // --------------------------------------------------------------------------
     MaterialInterface::MaterialInterface(MaterialDesc desc)
-        : desc_(std::move(desc)), shader_program_(desc_.shader_program), two_sided_(desc_.two_sided),
+        : desc_(std::move(desc)), shader_map_(desc_.shader_map), two_sided_(desc_.two_sided),
           material_render_proxy_(std::make_unique<MaterialRenderProxy>(desc_))
     {
     }
 
     MaterialInterface::MaterialInterface(MaterialInterface&& other) noexcept
         : desc_(std::move(other.desc_)), local_overrides_(std::move(other.local_overrides_)),
-          children_(std::move(other.children_)), shader_program_(std::move(other.shader_program_)),
-          pending_shader_program_(std::move(other.pending_shader_program_)), two_sided_(other.two_sided_),
+          children_(std::move(other.children_)), shader_map_(std::move(other.shader_map_)),
+          pending_shader_map_(std::move(other.pending_shader_map_)), two_sided_(other.two_sided_),
           pending_two_sided_(other.pending_two_sided_),
           replacement_commit_complete_(std::move(other.replacement_commit_complete_)),
           replacement_commit_succeeded_(std::move(other.replacement_commit_succeeded_)),
@@ -1040,7 +1104,7 @@ namespace toy3d
             auto* target = configuration.target;
             target->desc_ = std::move(configuration.descriptor);
             target->local_overrides_ = std::move(configuration.overrides);
-            target->shader_program_ = target->desc_.shader_program;
+            target->shader_map_ = target->desc_.shader_map;
             target->two_sided_ = target->desc_.two_sided;
             target->render_proxy_used_ = true;
             auto* child = dynamic_cast<MaterialInstance*>(target);
@@ -1114,30 +1178,29 @@ namespace toy3d
         return apply_parameters({{std::string(name), std::monostate{}}});
     }
 
-    bool MaterialInterface::stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program,
-                                                       bool two_sided)
+    bool MaterialInterface::stage_material_replacement(ShaderMapCollectionRef shader_map, bool two_sided)
     {
-        if (!resolve_material_replacement_publication() || !shader_program || pending_shader_program_)
+        if (!resolve_material_replacement_publication() || !shader_map || pending_shader_map_)
         {
             TOY_LOG_ERROR("Material ShaderMap replacement requires one complete candidate.");
             return false;
         }
         std::string error;
-        if (!is_program_compatible_with_material(desc_, *shader_program, error))
+        if (!is_shader_map_compatible_with_material(desc_, *shader_map, error))
         {
             TOY_LOG_ERROR("Invalid Material ShaderMap candidate: {}.", error);
             return false;
         }
 
-        pending_shader_program_ = shader_program;
+        pending_shader_map_ = shader_map;
         pending_two_sided_ = two_sided;
         render_proxy_used_ = true;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command("StageMaterialCandidate",
-                               [proxy, shader_program = std::move(shader_program), two_sided]() noexcept
+                               [proxy, shader_map = std::move(shader_map), two_sided]() noexcept
                                {
                                    const RHIStatus status =
-                                       proxy->stage_material_candidate(std::move(shader_program), two_sided);
+                                       proxy->stage_material_candidate(std::move(shader_map), two_sided);
                                    if (!status)
                                    {
                                        TOY_LOG_ERROR("Material candidate staging failed: {}", status.message());
@@ -1148,7 +1211,7 @@ namespace toy3d
 
     bool MaterialInterface::publish_material_replacement()
     {
-        if (!resolve_material_replacement_publication() || !pending_shader_program_)
+        if (!resolve_material_replacement_publication() || !pending_shader_map_)
         {
             TOY_LOG_ERROR("Material has no ShaderMap candidate to publish.");
             return false;
@@ -1185,11 +1248,11 @@ namespace toy3d
 
     bool MaterialInterface::discard_material_replacement()
     {
-        if (!resolve_material_replacement_publication() || !pending_shader_program_)
+        if (!resolve_material_replacement_publication() || !pending_shader_map_)
         {
             return false;
         }
-        pending_shader_program_.reset();
+        pending_shader_map_.reset();
         pending_two_sided_ = two_sided_;
         MaterialRenderProxy* const proxy = material_render_proxy_.get();
         enqueue_render_command("DiscardMaterialCandidate",
@@ -1217,12 +1280,12 @@ namespace toy3d
         const bool commit_succeeded = replacement_commit_succeeded_->load(std::memory_order_relaxed);
         if (commit_succeeded)
         {
-            shader_program_ = pending_shader_program_;
+            shader_map_ = pending_shader_map_;
             two_sided_ = pending_two_sided_;
-            desc_.shader_program = shader_program_;
+            desc_.shader_map = shader_map_;
             desc_.two_sided = two_sided_;
         }
-        pending_shader_program_.reset();
+        pending_shader_map_.reset();
         pending_two_sided_ = two_sided_;
         replacement_publication_pending_ = false;
         return true;

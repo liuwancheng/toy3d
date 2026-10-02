@@ -10,11 +10,46 @@
 #include "rendercore/scene/skeletal_mesh_scene_proxy.h"
 #include "rendercore/material/material_render_proxy.h"
 #include "renderscene/primitive_scene_info.h"
+#include "renderscene/mesh_batch.h"
 #include "rendercore/render_resource_manager.h"
 #include "threading/task_graph/task_graph_interface.h"
 
 namespace toy3d
 {
+    RHIStatus RenderScene::collect_material_mesh_batches(const std::string& shader_name,
+                                                         std::vector<MeshBatch>& batches) const
+    {
+        assert(is_on_logical_rendering_thread());
+        for (const auto& info : primitives_)
+        {
+            const auto& proxy = *info->proxy();
+            const bool used =
+                std::any_of(proxy.material_render_proxies().begin(), proxy.material_render_proxies().end(),
+                            [&shader_name](const MaterialRenderProxy* material)
+                            {
+                                return material && material->shader_map() &&
+                                       material->shader_map()->index().shader_name == shader_name;
+                            });
+            if (!used)
+            {
+                continue;
+            }
+            if (!proxy.resources_drawable())
+            {
+                return RHIStatus::failure(RHIErrorCode::NotReady, "Material user geometry is not ready: Actor " +
+                                                                      std::to_string(proxy.actor_id()) +
+                                                                      ", Component " +
+                                                                      std::to_string(proxy.component_id()));
+            }
+            const auto status = proxy.collect_mesh_batches(batches);
+            if (!status)
+            {
+                return status;
+            }
+        }
+        return RHIStatus::success();
+    }
+
     RenderScene::RenderScene(TaskGraphInterface& task_graph, RenderResourceManager& resource_manager)
         : task_graph_(task_graph), resource_manager_(resource_manager)
     {

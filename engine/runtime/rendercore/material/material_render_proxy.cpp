@@ -113,27 +113,6 @@ namespace toy3d
                                        : RHIStatus::failure(RHIErrorCode::InvalidArgument, encoder.error());
         }
 
-        RHIStatus derive_effective_graphics_pass_state(const ShaderMapProgramRef& shader_program, bool two_sided,
-                                                       shader::ShaderGraphicsPassState& effective_state)
-        {
-            if (!shader_program)
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Material candidate requires a ShaderMap Program");
-            }
-            effective_state = shader_program->data().graphics_pass_state;
-            if (two_sided)
-            {
-                effective_state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
-            }
-            if (!shader::is_valid_shader_graphics_pass_state(effective_state))
-            {
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Material candidate produced an invalid effective graphics Pass state");
-            }
-            return RHIStatus::success();
-        }
-
         RHIStatus begin_init_texture_resource(TextureResource& resource, RenderResourceManager& manager)
         {
             switch (resource.state())
@@ -177,16 +156,9 @@ namespace toy3d
 
     MaterialRenderProxy::MaterialRenderProxy(const MaterialDesc& desc)
         : shader_name_(desc.shader_name), parameter_schema_(desc.parameter_schema),
-          parameter_metadata_(make_material_parameter_metadata(parameter_schema_)), shader_program_(desc.shader_program)
+          parameter_metadata_(make_material_parameter_metadata(parameter_schema_)), shader_map_(desc.shader_map),
+          two_sided_(desc.two_sided)
     {
-        if (shader_program_)
-        {
-            effective_graphics_pass_state_ = shader_program_->data().graphics_pass_state;
-            if (desc.two_sided)
-            {
-                effective_graphics_pass_state_.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
-            }
-        }
         scalar_parameters_ = desc.scalar_defaults;
         vector2_parameters_ = desc.vector2_defaults;
         vector3_parameters_ = desc.vector3_defaults;
@@ -238,7 +210,7 @@ namespace toy3d
         }
         scalar_parameters_[parameter_id] = value;
         dirty_ = true;
-        staged_dirty_ = staged_shader_program_ != nullptr;
+        staged_dirty_ = staged_shader_map_ != nullptr;
     }
 
     void MaterialRenderProxy::apply_vector_update(ShaderParameterId parameter_id, const vec2& value) noexcept
@@ -250,7 +222,7 @@ namespace toy3d
         }
         vector2_parameters_[parameter_id] = value;
         dirty_ = true;
-        staged_dirty_ = staged_shader_program_ != nullptr;
+        staged_dirty_ = staged_shader_map_ != nullptr;
     }
 
     void MaterialRenderProxy::apply_vector_update(ShaderParameterId parameter_id, const vec3& value) noexcept
@@ -263,7 +235,7 @@ namespace toy3d
         }
         vector3_parameters_[parameter_id] = value;
         dirty_ = true;
-        staged_dirty_ = staged_shader_program_ != nullptr;
+        staged_dirty_ = staged_shader_map_ != nullptr;
     }
 
     void MaterialRenderProxy::apply_vector_update(ShaderParameterId parameter_id, const vec4& value) noexcept
@@ -276,7 +248,7 @@ namespace toy3d
         }
         vector4_parameters_[parameter_id] = value;
         dirty_ = true;
-        staged_dirty_ = staged_shader_program_ != nullptr;
+        staged_dirty_ = staged_shader_map_ != nullptr;
     }
 
     void MaterialRenderProxy::apply_texture_update(ShaderParameterId parameter_id,
@@ -298,7 +270,7 @@ namespace toy3d
             }
         }
         dirty_ = true;
-        staged_dirty_ = staged_shader_program_ != nullptr;
+        staged_dirty_ = staged_shader_map_ != nullptr;
     }
 
     RHIStatus MaterialRenderProxy::begin_init_textures(RenderResourceManager& manager)
@@ -363,39 +335,32 @@ namespace toy3d
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize(RHIDevice& device, RHICommandContext& context)
     {
-        return materialize_program(device, context, shader_program_, false);
+        return materialize_configuration(device, context, shader_map_, false);
     }
 
-    RHIStatus MaterialRenderProxy::stage_material_candidate(ShaderMapProgramRef shader_program, bool two_sided)
+    RHIStatus MaterialRenderProxy::stage_material_candidate(ShaderMapCollectionRef shader_map, bool two_sided)
     {
-        if (!shader_program || staged_shader_program_)
+        if (!shader_map || staged_shader_map_)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "MaterialRenderProxy requires exactly one complete staged ShaderMap Program");
+                                      "MaterialRenderProxy requires exactly one complete staged ShaderMap collection");
         }
-        if (shader_program->data().shader_name != shader_name_)
+        if (shader_map->index().shader_name != shader_name_)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Staged ShaderMap Program does not match the Material identity");
+                                      "Staged ShaderMap collection does not match the Material identity");
         }
         const shader::ShaderParameterSchema candidate_schema =
-            material_parameter_schema_from_shader_schema(shader_program->data().parameter_schema);
+            material_parameter_schema_from_shader_schema(shader_map->programs().front()->data().parameter_schema);
         if (candidate_schema.schema_identity != parameter_schema_.schema_identity)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Staged ShaderMap Program has a different complete Material schema");
+                                      "Staged ShaderMap collection has a different complete Material schema");
         }
 
-        shader::ShaderGraphicsPassState effective_state;
-        const RHIStatus state_status = derive_effective_graphics_pass_state(shader_program, two_sided, effective_state);
-        if (!state_status)
-        {
-            return state_status;
-        }
-
-        staged_shader_program_ = std::move(shader_program);
-        staged_effective_graphics_pass_state_ = effective_state;
-        // A Program candidate does not participate in the Material logical cache key.
+        staged_shader_map_ = std::move(shader_map);
+        staged_two_sided_ = two_sided;
+        // A Collection candidate does not participate in the Material logical cache key.
         // Copying the immutable active snapshot preserves publication isolation while
         // the normal value/view/generation checks still rebuild a genuinely stale candidate.
         staged_binding_set_ = binding_set_;
@@ -408,14 +373,14 @@ namespace toy3d
 
     RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_staged(RHIDevice& device, RHICommandContext& context)
     {
-        RHIResult<RHIBindingSetRef> result = materialize_program(device, context, staged_shader_program_, true);
+        RHIResult<RHIBindingSetRef> result = materialize_configuration(device, context, staged_shader_map_, true);
         staged_materialized_ = result.succeeded();
         return result;
     }
 
     RHIStatus MaterialRenderProxy::commit_material_candidate()
     {
-        if (!staged_shader_program_ || !staged_materialized_ || !staged_binding_set_ || staged_dirty_ ||
+        if (!staged_shader_map_ || !staged_materialized_ || !staged_binding_set_ || staged_dirty_ ||
             !texture_views_match(true))
         {
             const RHIStatus status = RHIStatus::failure(
@@ -430,8 +395,8 @@ namespace toy3d
             generation.second = generation.first->binding_generation();
         }
 
-        shader_program_ = std::move(staged_shader_program_);
-        effective_graphics_pass_state_ = staged_effective_graphics_pass_state_;
+        shader_map_ = std::move(staged_shader_map_);
+        two_sided_ = staged_two_sided_;
         binding_set_ = std::move(staged_binding_set_);
         texture_generations_ = std::move(staged_texture_generations_);
         texture_views_ = std::move(staged_texture_views_);
@@ -443,8 +408,8 @@ namespace toy3d
 
     void MaterialRenderProxy::discard_material_candidate() noexcept
     {
-        staged_shader_program_.reset();
-        staged_effective_graphics_pass_state_ = {};
+        staged_shader_map_.reset();
+        staged_two_sided_ = false;
         staged_binding_set_.reset();
         staged_texture_generations_.clear();
         staged_texture_views_.clear();
@@ -452,19 +417,26 @@ namespace toy3d
         staged_materialized_ = false;
     }
 
-    const shader::ShaderGraphicsPassState* MaterialRenderProxy::effective_graphics_pass_state() const noexcept
+    shader::ShaderGraphicsPassState MaterialRenderProxy::effective_graphics_pass_state(
+        const ShaderMapProgram& program) const noexcept
     {
-        return shader_program_ ? &effective_graphics_pass_state_ : nullptr;
+        auto state = program.data().graphics_pass_state;
+        if (two_sided_)
+        {
+            state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
+        }
+        return state;
     }
 
-    RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_program(RHIDevice& device, RHICommandContext& context,
-                                                                         const ShaderMapProgramRef& shader_program,
-                                                                         bool staged)
+    RHIResult<RHIBindingSetRef> MaterialRenderProxy::materialize_configuration(RHIDevice& device,
+                                                                               RHICommandContext& context,
+                                                                               const ShaderMapCollectionRef& shader_map,
+                                                                               bool staged)
     {
-        if (!shader_program)
+        if (!shader_map)
         {
             return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady,
-                                                        "Material binding requires a ShaderMap Program");
+                                                        "Material binding requires a ShaderMap collection");
         }
 
         RHIBindingSetRef& cached_set = staged ? staged_binding_set_ : binding_set_;

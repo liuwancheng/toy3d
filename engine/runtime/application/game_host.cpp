@@ -121,7 +121,7 @@ namespace toy3d
                     return false;
                 }
                 catalog_ = scanned.value();
-                const auto phong = load_program("Toy3d/Surface/Phong");
+                const auto phong = load_shader_map("Toy3d/Surface/Phong");
                 if (!phong || !geometry_.initialize(PhysicalPath(paths_.deployment.utf8() + "/shader/phong"), phong))
                 {
                     return false;
@@ -144,11 +144,11 @@ namespace toy3d
                     },
                     [this](const std::string& name)
                     {
-                        return load_program(name);
+                        return load_shader_map(name);
                     },
                     std::move(textures));
                 materials_->set_default_material(defaults);
-                programs_[defaults->desc().shader_name] = defaults->desc().shader_program;
+                shader_maps_[defaults->desc().shader_name] = defaults->desc().shader_map;
                 auto& arguments = CommandLineParser::get_instance();
                 std::string scene =
                     arguments.get_option("PlayScene", ConsoleManager::get_instance().get_string("Game.StartupScene"));
@@ -258,10 +258,10 @@ namespace toy3d
             }
 
           private:
-            ShaderMapProgramRef load_program(const std::string& name)
+            ShaderMapCollectionRef load_shader_map(const std::string& name)
             {
-                const auto cached = programs_.find(name);
-                if (cached != programs_.end())
+                const auto cached = shader_maps_.find(name);
+                if (cached != shader_maps_.end())
                 {
                     return cached->second;
                 }
@@ -337,15 +337,12 @@ namespace toy3d
                 }
                 ShaderMapProgramKey key;
                 key.shader_name = name;
-                key.pass_name = "Forward";
                 key.platform = ShaderPlatform::VulkanES31;
                 std::string error;
                 for (const auto& entry : entries)
                 {
-                    // Development publication/build emits one permutation per material.
-                    // Obtain its validated key from the artifact; an empty variant domain
-                    // is not the default key for a shader that declares Variants.
-                    const auto directories = platform_.enumerate_directory(entry);
+                    // Discover configuration indexes, never infer peers from entry directories.
+                    const auto directories = platform_.enumerate_directory(PhysicalPath(entry.utf8() + "/shader_maps"));
                     bool found = false;
                     if (directories.succeeded())
                     {
@@ -357,33 +354,43 @@ namespace toy3d
                             }
                             const auto filename =
                                 directory.path.utf8().substr(directory.path.utf8().find_last_of("/\\") + 1u);
-                            // C++17 optional marks non-entry directories without inventing a key.
-                            const auto entry_key = sha256_from_hex(filename);
-                            if (!entry_key)
+                            // C++17 optional distinguishes configuration hashes from unrelated names.
+                            const auto index_key = sha256_from_hex(filename);
+                            if (!index_key)
                             {
                                 continue;
                             }
-                            const auto verified = shader::read_verified_shader_map_entry(platform_, entry, *entry_key);
-                            if (!verified.succeeded())
+                            const PhysicalPath path(directory.path.utf8() + "/index.txt");
+                            const auto info = platform_.stat(path);
+                            if (!info.succeeded() || info.value().type != FileType::File ||
+                                info.value().size > shader::max_shader_map_index_bytes)
                             {
-                                error = "Published ShaderMapEntry failed verification.";
+                                error = "Published ShaderMap index is unreadable or oversized.";
                                 continue;
                             }
-                            if (verified.entry->shader_name != name || verified.entry->pass_name != key.pass_name ||
-                                verified.entry->target != shader::ShaderTarget::VulkanSpirV ||
-                                verified.entry->profile != shader::ShaderCompileProfile::VulkanES31)
+                            const auto text = platform_.read_text_utf8(path);
+                            shader::ShaderMapIndex index;
+                            if (!text.succeeded() || !shader::parse_shader_map_index(text.value(), index, error) ||
+                                shader::calculate_shader_map_index_key(index.shader_name, index.target, index.profile,
+                                                                       index.permutation_key) != *index_key)
+                            {
+                                error = "Published ShaderMap index failed verification.";
+                                continue;
+                            }
+                            if (index.shader_name != name || index.target != shader::ShaderTarget::VulkanSpirV ||
+                                index.profile != shader::ShaderCompileProfile::VulkanES31)
                             {
                                 continue;
                             }
-                            if (found && key.permutation_key != verified.entry->permutation_key)
+                            if (found && key.permutation_key != index.permutation_key)
                             {
-                                TOY_LOG_ERROR("Game Shader [{}] has multiple published permutations; an explicit "
+                                TOY_LOG_ERROR("Game Shader [{}] has multiple published configurations; explicit "
                                               "selection is required.",
                                               name);
                                 return {};
                             }
                             found = true;
-                            key.permutation_key = verified.entry->permutation_key;
+                            key.permutation_key = index.permutation_key;
                         }
                     }
                     if (!found)
@@ -392,23 +399,23 @@ namespace toy3d
                     }
                     ShaderMapEntryLoader loader(entry);
                     ShaderMap map(loader);
-                    auto loaded = map.find_or_load(key);
+                    auto loaded = map.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
                     if (loaded.succeeded())
                     {
-                        programs_[name] = loaded.program;
-                        return loaded.program;
+                        shader_maps_[name] = loaded.collection;
+                        return loaded.collection;
                     }
                     error = loaded.error;
                 }
                 TOY_LOG_ERROR(
-                    "Game Shader [{}] has no validated published Program: {}. Compile it in the project Editor.", name,
-                    error);
+                    "Game Shader [{}] has no validated published ShaderMap: {}. Compile it in the project Editor.",
+                    name, error);
 #else
                 TOY_LOG_ERROR("Game Shader loading is disabled: {}", name);
 #endif
                 return {};
             }
-            std::map<std::string, ShaderMapProgramRef> programs_;
+            std::map<std::string, ShaderMapCollectionRef> shader_maps_;
             GameHostPaths paths_;
             PhysicalPath root_;
             PhysicalPath saved_;

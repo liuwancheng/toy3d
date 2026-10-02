@@ -2,11 +2,42 @@
 
 #include "rendercore/shader/shader_parameters.h"
 #include "rendercore/shader/shader_map_program.h"
+#include "rendercore/shader/shader_map_collection.h"
 
 #include <algorithm>
 
 namespace toy3d::tests
 {
+    inline ShaderMapCollectionResult make_material_shader_map(const ShaderMapProgram& program)
+    {
+        ShaderMapCollectionLoadResult loaded;
+        auto data = program.data();
+        if (std::none_of(data.stages.begin(), data.stages.end(),
+                         [](const ShaderMapStage& stage)
+                         {
+                             return stage.stage == RHIShaderStage::Pixel;
+                         }))
+        {
+            ShaderMapStage pixel;
+            pixel.stage = RHIShaderStage::Pixel;
+            pixel.entry_point = "ps_main";
+            pixel.binary = {1u, 2u, 3u, 4u};
+            pixel.content_hash = sha256("mock material pixel");
+            data.stages.push_back(std::move(pixel));
+        }
+        data.contract = {shader::ShaderUsage::Material, shader::ShaderPassRole::Forward,
+                         shader::ShaderGeometryMode::Custom, shader::VertexFactoryType::Local,
+                         shader::local_vertex_factory_support};
+        loaded.index.shader_name = data.shader_name;
+        loaded.index.source_hash = sha256("mock material source");
+        loaded.index.permutation_key = data.permutation_key;
+        loaded.index.passes.push_back({data.pass_name, data.contract.role});
+        loaded.index.programs.push_back(
+            {data.pass_name, data.contract, sha256("mock entry"), sha256("mock entry content")});
+        loaded.programs.push_back(std::move(data));
+        return ShaderMapCollection::create_candidate(std::move(loaded));
+    }
+
     inline void append_shader_parameters_metadata(const ShaderParametersMetadata& metadata,
                                                   shader::ShaderParameterSchema& schema)
     {

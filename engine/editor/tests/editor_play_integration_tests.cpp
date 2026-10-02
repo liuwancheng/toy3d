@@ -110,7 +110,7 @@ namespace
                                    [this](const std::string& name)
                                    {
                                        const auto material = factory_.default_material()->material();
-                                       return name == material->desc().shader_name ? material->desc().shader_program
+                                       return name == material->desc().shader_name ? material->desc().shader_map
                                                                                    : nullptr;
                                    },
                                    *scene_))

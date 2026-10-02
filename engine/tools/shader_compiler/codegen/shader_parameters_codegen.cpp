@@ -519,7 +519,7 @@ namespace toy3d::shader
             append_encoder(output, type_name, buffer, resources);
         }
 
-        ShaderParameterSchema make_builtin_schema(MeshVertexFactoryType factory = MeshVertexFactoryType::Local)
+        ShaderParameterSchema make_builtin_schema(VertexFactoryType factory = VertexFactoryType::Local)
         {
             LogicalShaderLayout layout;
             for (BindingGroup group : {BindingGroup::Global, BindingGroup::View, BindingGroup::Object})
@@ -535,7 +535,7 @@ namespace toy3d::shader
                     layout.constant_buffers.push_back(std::move(*packed.layout));
                 }
             }
-            if (factory == MeshVertexFactoryType::GPUSkin)
+            if (factory == VertexFactoryType::GPUSkin)
             {
                 layout.resources.push_back(builtin_gpu_skin_resource());
             }
@@ -573,9 +573,18 @@ namespace toy3d::shader
         result.output_name = identifiers.identifiers->header_stem + ".generated.h";
         std::ostringstream output;
         append_preamble(output);
-        for (const CppShaderPassIdentifiers& pass : identifiers.identifiers->passes)
+        for (std::size_t number = 0; number < identifiers.identifiers->passes.size(); ++number)
         {
-            append_group(output, pass.parameters_type, BindingGroup::Pass, schema);
+            const auto& pass = identifiers.identifiers->passes[number];
+            const auto role_layout = compile_logical_layout(asset, VertexFactoryType::Local, asset.passes[number].role);
+            if (!role_layout.succeeded())
+            {
+                result.diagnostics.insert(result.diagnostics.end(), role_layout.diagnostics.begin(),
+                                          role_layout.diagnostics.end());
+                return result;
+            }
+            append_group(output, pass.parameters_type, BindingGroup::Pass,
+                         make_shader_parameter_schema(*role_layout.layout));
         }
         output << "} // namespace toy3d\n";
         result.source = output.str();
@@ -593,7 +602,7 @@ namespace toy3d::shader
         append_group(output, "ViewShaderParameters", BindingGroup::View, schema);
         append_group(output, "ObjectShaderParameters", BindingGroup::Object, schema);
         append_group(output, "GPUSkinObjectShaderParameters", BindingGroup::Object,
-                     make_builtin_schema(MeshVertexFactoryType::GPUSkin));
+                     make_builtin_schema(VertexFactoryType::GPUSkin));
         output << "} // namespace toy3d\n";
         result.source = output.str();
         return result;

@@ -20,7 +20,7 @@ namespace toy3d
 
     bool EditorPlaySession::start(const SceneAssetData& data, EditorWorkspace& workspace,
                                   const ActorTypeRegistry& actors,
-                                  const std::function<ShaderMapProgramRef(const std::string&)>& programs,
+                                  const std::function<ShaderMapCollectionRef(const std::string&)>& programs,
                                   SceneInterface& scene)
     {
         if (active())

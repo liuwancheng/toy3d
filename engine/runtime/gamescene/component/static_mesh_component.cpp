@@ -13,11 +13,43 @@
 
 namespace toy3d
 {
+    bool StaticMeshComponent::supports_shadow_casting() const
+    {
+        if (!static_mesh_)
+        {
+            return true;
+        }
+        for (std::uint32_t slot = 0; slot < static_mesh_->material_slots().size(); ++slot)
+        {
+            std::string error;
+            if (!validate_material_mesh_pass(material_for_slot(slot)->desc(), shader::ShaderPassRole::ShadowDepth,
+                                             shader::VertexFactoryType::Local, error))
+            {
+                TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
+                return false;
+            }
+        }
+        return true;
+    }
+
     void StaticMeshComponent::set_static_mesh(StaticMeshRef static_mesh)
     {
         if (static_mesh_ == static_mesh)
         {
             return;
+        }
+        if (static_mesh && cast_shadows())
+        {
+            for (const auto& material : static_mesh->material_slots())
+            {
+                std::string error;
+                if (!validate_material_mesh_pass(material->desc(), shader::ShaderPassRole::ShadowDepth,
+                                                 shader::VertexFactoryType::Local, error))
+                {
+                    TOY_LOG_ERROR("StaticMesh replacement rejected: {}", error);
+                    return;
+                }
+            }
         }
         const bool rebuild_render_state = has_render_state();
         if (rebuild_render_state)
@@ -49,6 +81,19 @@ namespace toy3d
             return false;
         }
 
+        std::string error;
+        if (!validate_material_geometry(material->desc(), shader::VertexFactoryType::Local,
+                                        !static_mesh_->vertex_colors().empty(), error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", material_slot, error);
+            return false;
+        }
+        if (cast_shadows() && !validate_material_mesh_pass(material->desc(), shader::ShaderPassRole::ShadowDepth,
+                                                           shader::VertexFactoryType::Local, error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", material_slot, error);
+            return false;
+        }
         world().mark_content_changed();
         auto previous = material_overrides_;
         material_overrides_[material_slot] = std::move(material);
@@ -66,6 +111,21 @@ namespace toy3d
         if (!material_overrides_[material_slot])
         {
             return true;
+        }
+        std::string error;
+        if (!validate_material_geometry(static_mesh_->material_slots()[material_slot]->desc(),
+                                        shader::VertexFactoryType::Local, !static_mesh_->vertex_colors().empty(),
+                                        error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", material_slot, error);
+            return false;
+        }
+        if (cast_shadows() &&
+            !validate_material_mesh_pass(static_mesh_->material_slots()[material_slot]->desc(),
+                                         shader::ShaderPassRole::ShadowDepth, shader::VertexFactoryType::Local, error))
+        {
+            TOY_LOG_ERROR("Material slot {} rejected: {}", material_slot, error);
+            return false;
         }
         world().mark_content_changed();
         auto previous = material_overrides_;

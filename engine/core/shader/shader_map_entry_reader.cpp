@@ -849,6 +849,11 @@ namespace toy3d::shader
                                                        "entry_content_hash",
                                                        "shader_name",
                                                        "pass_name",
+                                                       "usage",
+                                                       "role",
+                                                       "geometry",
+                                                       "vertex_factory",
+                                                       "vertex_factory_support",
                                                        "target",
                                                        "profile",
                                                        "mapping_version",
@@ -901,6 +906,11 @@ namespace toy3d::shader
         const auto variant_id_version = parse_unsigned<std::uint32_t>(manifest->at("variant_id_version"));
         const auto permutation_version = parse_unsigned<std::uint32_t>(manifest->at("permutation_version"));
         const auto stage_count = parse_unsigned<std::uint32_t>(manifest->at("stage_count"));
+        const auto usage = parse_unsigned<std::uint32_t>(manifest->at("usage"));
+        const auto role = parse_unsigned<std::uint32_t>(manifest->at("role"));
+        const auto geometry = parse_unsigned<std::uint32_t>(manifest->at("geometry"));
+        const auto vertex_factory = parse_unsigned<std::uint32_t>(manifest->at("vertex_factory"));
+        const auto vertex_factory_support = parse_unsigned<std::uint32_t>(manifest->at("vertex_factory_support"));
         const auto content_hash = parse_hash(manifest->at("entry_content_hash"), result, "entry_content_hash");
         const auto logical_hash = parse_hash(manifest->at("logical_layout_hash"), result, "logical_layout_hash");
         const auto schema_identity =
@@ -909,9 +919,9 @@ namespace toy3d::shader
         const auto pass_hash = parse_hash(manifest->at("pass_template_hash"), result, "pass_template_hash");
         const auto permutation_key = parse_hash(manifest->at("permutation_key"), result, "permutation_key");
         const auto graphics_pass_state = parse_graphics_pass_state(*manifest, result);
-        if (!entry_version || *entry_version != shader_map_entry_version ||
-            manifest->at("shader_map_key") != key_text || !shader_name(manifest->at("shader_name")) ||
-            !safe_scalar(manifest->at("pass_name")) || !target ||
+        if (!usage || !role || !geometry || !vertex_factory || !vertex_factory_support || !entry_version ||
+            *entry_version != shader_map_entry_version || manifest->at("shader_map_key") != key_text ||
+            !shader_name(manifest->at("shader_name")) || !safe_scalar(manifest->at("pass_name")) || !target ||
             *target != static_cast<std::uint32_t>(ShaderTarget::VulkanSpirV) || !profile ||
             *profile != static_cast<std::uint32_t>(ShaderCompileProfile::VulkanES31) || !mapping_version ||
             *mapping_version != vulkan_binding_mapping_version || !generated_format_version ||
@@ -930,6 +940,17 @@ namespace toy3d::shader
         ShaderMapEntry entry;
         entry.shader_name = manifest->at("shader_name");
         entry.pass_name = manifest->at("pass_name");
+        entry.contract.usage = static_cast<ShaderUsage>(*usage);
+        entry.contract.role = static_cast<ShaderPassRole>(*role);
+        entry.contract.geometry = static_cast<ShaderGeometryMode>(*geometry);
+        entry.contract.vertex_factory = static_cast<VertexFactoryType>(*vertex_factory);
+        entry.contract.vertex_factory_support = *vertex_factory_support;
+        std::string contract_error;
+        if (!validate_shader_program_contract(entry.contract, contract_error))
+        {
+            add_error(result, contract_error);
+            return result;
+        }
         entry.target = static_cast<ShaderTarget>(*target);
         entry.profile = static_cast<ShaderCompileProfile>(*profile);
         entry.mapping_version = *mapping_version;
@@ -1065,11 +1086,8 @@ namespace toy3d::shader
         {
             stage_mask |= static_cast<std::uint32_t>(stage.request.stage);
         }
-        const std::uint32_t graphics_mask =
-            static_cast<std::uint32_t>(ShaderStageFlags::Vertex) | static_cast<std::uint32_t>(ShaderStageFlags::Pixel);
-        const bool valid_program = stage_mask == static_cast<std::uint32_t>(ShaderStageFlags::Vertex) ||
-                                   stage_mask == graphics_mask ||
-                                   stage_mask == static_cast<std::uint32_t>(ShaderStageFlags::Compute);
+        const bool valid_program =
+            validate_shader_program_stages(entry.contract, static_cast<ShaderStageFlags>(stage_mask), contract_error);
         const bool mapping_stages_exist =
             std::all_of(entry.bindings.begin(), entry.bindings.end(),
                         [&](const ShaderMapBinding& binding)

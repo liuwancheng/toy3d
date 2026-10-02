@@ -103,14 +103,16 @@ bool check_editor_play(toy3d::EditorWorkspace& workspace, const toy3d::ActorType
     ShaderMapProgramKey key;
     key.shader_name = "Toy3d/Surface/Phong";
     key.pass_name = "Forward";
+    key.role = shader::ShaderPassRole::Forward;
+    key.vertex_factory = shader::VertexFactoryType::Local;
     key.platform = ShaderPlatform::VulkanES31;
-    const auto loaded = shaders.find_or_load(key);
+    const auto loaded = shaders.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
     check(loaded.succeeded(), "Published fixture Shader Program loads");
     if (!loaded.succeeded())
     {
         return false;
     }
-    auto programs = [program = loaded.program](const std::string& name)
+    auto programs = [program = loaded.collection](const std::string& name)
     {
         return name == "Toy3d/Surface/Phong" ? program : nullptr;
     };

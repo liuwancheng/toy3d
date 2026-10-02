@@ -114,10 +114,11 @@ namespace toy3d::shader
     struct ShaderPass
     {
         std::string name;
+        ShaderPassRole role = ShaderPassRole::Global;
         std::vector<std::string> requirements;
         ShaderGraphicsPassState state;
         bool has_explicit_graphics_state = false;
-        HlslBlock program;
+        std::vector<HlslBlock> programs;
         SourceLocation location;
     };
 
@@ -125,6 +126,9 @@ namespace toy3d::shader
     {
         std::string name;
         std::uint32_t version = 0;
+        ShaderUsage usage = ShaderUsage::Global;
+        ShaderGeometryMode geometry = ShaderGeometryMode::None;
+        std::uint32_t vertex_factory_support = 0u;
         std::vector<Property> properties;
         std::vector<Parameter> parameters;
         std::vector<Resource> resources;

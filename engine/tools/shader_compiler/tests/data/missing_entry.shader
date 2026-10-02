@@ -1,9 +1,11 @@
 Shader "Tests/MissingEntry"
 {
-    Version 1
+    Version 2
+    Usage Global
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLPS
         #pragma pixel ps_main
         ENDHLSL
     }

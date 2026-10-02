@@ -1,11 +1,13 @@
 Shader "Tests/DuplicatePassState"
 {
-    Version 1
+    Version 2
+    Usage Global
     Pass "Forward"
     {
+        Role Global
         Cull Back
         Cull Front
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
         float4 vs_main() : SV_Position { return 0.0; }
         ENDHLSL

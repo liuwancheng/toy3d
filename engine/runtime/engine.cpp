@@ -31,6 +31,7 @@
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 #include "rendercore/view/scene_view.h"
 #include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/postprocess/tonemap_pass.h"
@@ -406,11 +407,11 @@ namespace toy3d
         }
         if (application)
         {
-            std::vector<MaterialProgramValidationRef> validations;
+            std::vector<MaterialShaderMapValidationRef> validations;
             application->on_collect_material_validation(validations);
             for (auto& validation : validations)
             {
-                renderer->validate_material_program(std::move(validation));
+                renderer->validate_material_shader_map(std::move(validation));
             }
             std::vector<BuiltinShaderUpdateRef> builtin_updates;
             application->on_collect_builtin_shader_updates(builtin_updates);
@@ -544,11 +545,6 @@ namespace toy3d
             TOY_LOG_ERROR("Tonemap Global Shader requirement failed: {}", requirement_error);
             return false;
         }
-        if (!requirements.add(hit_proxy_global_shader_type(), requirement_error))
-        {
-            TOY_LOG_ERROR("HitProxy Global Shader requirement failed: {}", requirement_error);
-            return false;
-        }
         if (imgui_system != nullptr)
         {
             if (!requirements.add(imgui_global_shader_type(), requirement_error))
@@ -566,17 +562,28 @@ namespace toy3d
             return false;
         }
         global_shader_map = std::move(loaded.shader_map);
-        ShaderMapProgramKey shadow_key;
-        shadow_key.shader_name = "Toy3d/ShadowDepth/Default";
-        shadow_key.pass_name = "ShadowDepth";
-        shadow_key.platform = shader_platform;
-        ShaderMapProgramResult shadow_loaded = builtin_shader_map->find_or_load(shadow_key);
-        if (!shadow_loaded.succeeded())
+        const auto shadow = builtin_shader_map->find_or_load_collection("Toy3d/ShadowDepth/Default", shader_platform,
+                                                                        shader::default_shader_permutation_key);
+        const auto hit = builtin_shader_map->find_or_load_collection("Toy3d/Editor/HitProxy", shader_platform,
+                                                                     shader::default_shader_permutation_key);
+        if (!shadow.succeeded() || !hit.succeeded())
         {
-            TOY_LOG_ERROR("Built-in ShadowDepth ShaderMap failed to load: {}", shadow_loaded.error);
+            TOY_LOG_ERROR("Built-in mesh ShaderMap failed to load: {}", !shadow.succeeded() ? shadow.error : hit.error);
             return false;
         }
-        mesh_pass_programs.shadow_depth_default = std::move(shadow_loaded.program);
+        mesh_pass_programs.shadow_depth_default = shadow.collection;
+        mesh_pass_programs.hit_proxy = hit.collection;
+        for (const auto factory : {shader::VertexFactoryType::Local, shader::VertexFactoryType::GPUSkin})
+        {
+            const auto shadow_program = shadow.collection->find(shader::ShaderPassRole::ShadowDepth, factory);
+            const auto hit_program = hit.collection->find(shader::ShaderPassRole::HitProxy, factory);
+            if (!shadow_program.succeeded() || !hit_program.succeeded())
+            {
+                TOY_LOG_ERROR("Built-in mesh Pass coverage is incomplete: {}",
+                              !shadow_program.succeeded() ? shadow_program.error : hit_program.error);
+                return false;
+            }
+        }
         return true;
 #else
         TOY_LOG_ERROR("Built-in output ShaderMap loading requires a supported runtime loader.");

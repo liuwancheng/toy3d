@@ -574,9 +574,14 @@ if(BUILD_TESTING)
                     "/Engine/Tests/Shaders/gpu_skin.shader" "GPUSkin"
                     "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/gpu_skin" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/gpu_skin/work"
                     --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/custom_mesh.shader"
+                    "/Engine/Tests/Shaders/custom_mesh.shader" "Forward"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/custom_mesh" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/custom_mesh/work"
+                    --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
                 COMMAND "${CMAKE_COMMAND}" -E touch "${TOY3D_TYPED_BUFFER_SHADER_STAMP}"
                 DEPENDS Toy3dShaderCompiler "tests/fixtures/shaders/typed_buffer.shader"
-                    "tests/fixtures/shaders/gpu_skin.shader"
+                    "tests/fixtures/shaders/gpu_skin.shader" "tests/fixtures/shaders/custom_mesh.shader"
                     "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyGPUSkin.hlsli" VERBATIM)
             add_custom_target(Toy3dTypedBufferShaderFixture DEPENDS "${TOY3D_TYPED_BUFFER_SHADER_STAMP}")
             add_executable(Toy3dTypedBufferVulkanTests "tests/typed_buffer_vulkan_tests.cpp")

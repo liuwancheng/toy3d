@@ -1,10 +1,12 @@
 Shader "Tests/InvalidParameterType"
 {
-    Version 1
+    Version 2
+    Usage Global
     Parameters { Pass { exposure_ev : Texture2D } }
     Pass "Main"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
         ENDHLSL
     }

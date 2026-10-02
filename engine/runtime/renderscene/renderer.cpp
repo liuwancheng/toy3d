@@ -21,6 +21,10 @@
 #include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/ui/ui_texture_registry.h"
 #include "renderscene/render_scene.h"
+#include "renderscene/mesh_batch.h"
+#include "rendercore/material/material_render_proxy.h"
+#include "rendercore/material/material.h"
+#include "rendercore/scene/primitive_scene_proxy.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/viewport_output_target.h"
 #include "renderscene/view/scene_renderer.h"
@@ -32,7 +36,7 @@ namespace toy3d
     {
         RHIStatus record_hit_proxy(SceneRenderer& scene_renderer, RHIDevice& device,
                                    RHIShaderProgramCache& shader_program_cache,
-                                   const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                   const ShaderMapCollection& hit_proxy_shaders, RHIGraphicsCommandContext& context,
                                    const Extent& extent, const HitProxyRequest& request,
                                    RHIReadbackRef& recorded_readback, HitProxyTable& table)
         {
@@ -124,7 +128,7 @@ namespace toy3d
             {
                 return status;
             }
-            status = scene_renderer.render_hit_proxy(device, shader_program_cache, global_shader_map, context,
+            status = scene_renderer.render_hit_proxy(device, shader_program_cache, hit_proxy_shaders, context,
                                                      id_view.value(), depth_view.value(), table);
             if (!status)
             {
@@ -600,13 +604,14 @@ namespace toy3d
             }
             if (output.hit_proxy_request.request_id != 0u)
             {
-                if (global_shader_map == nullptr || recorded_readback == nullptr || hit_proxy_table == nullptr)
+                if (!mesh_pass_programs.hit_proxy || recorded_readback == nullptr || hit_proxy_table == nullptr)
                 {
                     return abort_recording(RHIStatus::failure(
                         RHIErrorCode::InvalidArgument, "HitProxy frame requires its ShaderMap and readback owner."));
                 }
-                status = record_hit_proxy(*scene_renderer, device, shader_program_cache, *global_shader_map, *context,
-                                          scene_extent, output.hit_proxy_request, *recorded_readback, *hit_proxy_table);
+                status = record_hit_proxy(*scene_renderer, device, shader_program_cache, *mesh_pass_programs.hit_proxy,
+                                          *context, scene_extent, output.hit_proxy_request, *recorded_readback,
+                                          *hit_proxy_table);
                 if (!status)
                 {
                     return abort_recording(status);
@@ -1060,7 +1065,7 @@ namespace toy3d
         return published_preview_interface_.load();
     }
 
-    void Renderer::validate_material_program(MaterialProgramValidationRef request)
+    void Renderer::validate_material_shader_map(MaterialShaderMapValidationRef request)
     {
         enqueue_render_command(
             "ValidateMaterialProgram",
@@ -1074,84 +1079,85 @@ namespace toy3d
                 {
                     request->status = [&]() -> RHIStatus
                     {
-                        if (!device_ || !shader_program_cache_ || !request->program ||
+                        if (!device_ || !shader_program_cache_ || !request->shader_map ||
                             lifecycle_state_.load() != RendererLifecycleState::Running)
                         {
                             return RHIStatus::failure(RHIErrorCode::NotReady,
                                                       "Material validation requires a running Renderer.");
                         }
-                        auto shader = shader_program_cache_->find_or_create(request->program);
-                        if (!shader)
+                        for (const auto& program : request->shader_map->programs())
                         {
-                            return shader.status();
+                            if (program->data().contract.usage != shader::ShaderUsage::Material)
+                            {
+                                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                                          "Material validation requires a Material collection.");
+                            }
+                            const auto status = validate_mesh_shader(program);
+                            if (!status)
+                            {
+                                return status;
+                            }
                         }
-                        // Representative fixed StaticMesh streams need no uploads or
-                        // submit: the ordinary LocalVertexFactory validates reflection.
-                        RHIBufferDesc position_desc;
-                        position_desc.size = 16u;
-                        position_desc.usage = RHIResourceUsage::VertexBuffer;
-                        RHIBufferDesc surface_desc;
-                        surface_desc.size = 24u;
-                        surface_desc.usage = RHIResourceUsage::VertexBuffer;
-                        auto position = device_->create_buffer(position_desc);
-                        if (!position)
+                        for (const auto* scene : {render_scene_.get(), preview_scene_.get(), play_scene_.get()})
                         {
-                            return position.status();
+                            if (!scene)
+                            {
+                                continue;
+                            }
+                            std::vector<MeshBatch> batches;
+                            const auto collected =
+                                scene->collect_material_mesh_batches(request->shader_map->index().shader_name, batches);
+                            if (!collected)
+                            {
+                                return collected;
+                            }
+                            for (const auto& batch : batches)
+                            {
+                                const auto& current = batch.material_render_proxy().shader_map();
+                                if (!current ||
+                                    current->index().shader_name != request->shader_map->index().shader_name)
+                                {
+                                    continue;
+                                }
+                                const auto forward =
+                                    batch.find_program(*request->shader_map, shader::ShaderPassRole::Forward);
+                                const auto context = " Actor " + std::to_string(batch.scene_proxy().actor_id()) +
+                                                     ", Component " +
+                                                     std::to_string(batch.scene_proxy().component_id()) + ", Section " +
+                                                     std::to_string(batch.section_index());
+                                if (!forward.succeeded())
+                                {
+                                    return RHIStatus::failure(RHIErrorCode::Unsupported, forward.error + context);
+                                }
+                                MaterialDesc descriptor;
+                                descriptor.shader_name = request->shader_map->index().shader_name;
+                                descriptor.shader_map = request->shader_map;
+                                std::string role_error;
+                                if ((batch.scene_proxy().cast_shadows() &&
+                                     !validate_material_mesh_pass(descriptor, shader::ShaderPassRole::ShadowDepth,
+                                                                  batch.vertex_factory().type(), role_error)) ||
+                                    (enable_preview_scene_ && scene != preview_scene_.get() &&
+                                     !validate_material_mesh_pass(descriptor, shader::ShaderPassRole::HitProxy,
+                                                                  batch.vertex_factory().type(), role_error)))
+                                {
+                                    return RHIStatus::failure(RHIErrorCode::Unsupported, role_error + context);
+                                }
+                                for (const auto& program : request->shader_map->programs())
+                                {
+                                    if (program->data().contract.vertex_factory != batch.vertex_factory().type())
+                                    {
+                                        continue;
+                                    }
+                                    const auto status = validate_mesh_shader(program, &batch.vertex_factory());
+                                    if (!status)
+                                    {
+                                        return RHIStatus::failure(status.code(), program->data().pass_name + ": " +
+                                                                                     status.message() + context);
+                                    }
+                                }
+                            }
                         }
-                        auto surface = device_->create_buffer(surface_desc);
-                        if (!surface)
-                        {
-                            return surface.status();
-                        }
-                        LocalVertexFactory factory({{ShaderVertexAttributeId::Position0, 0u, 0u, 16u,
-                                                     PixelFormat::R32G32B32A32Float, position.value()},
-                                                    {ShaderVertexAttributeId::Normal0, 1u, 0u, 24u,
-                                                     PixelFormat::R32G32B32A32Float, surface.value()},
-                                                    {ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u,
-                                                     PixelFormat::R32G32Float, surface.value()}});
-                        RHIGraphicsPipelineDesc pipeline;
-                        std::vector<RHIVertexBufferBinding> bindings;
-                        auto status =
-                            factory.build_vertex_input(request->program->data().vertex_inputs, pipeline.vertex_buffers,
-                                                       pipeline.vertex_attributes, bindings);
-                        if (!status)
-                        {
-                            return status;
-                        }
-                        pipeline.vertex_shader = shader.value()->vertex_shader;
-                        pipeline.pixel_shader = shader.value()->pixel_shader;
-                        pipeline.binding_layout = shader.value()->binding_layout;
-                        // Use the same Forward attachments as actual scene drawing.
-                        if (!scene_render_targets_ || !scene_render_targets_->scene_color_view() ||
-                            !scene_render_targets_->scene_depth_view())
-                        {
-                            return RHIStatus::failure(RHIErrorCode::NotReady,
-                                                      "Scene attachments are not ready for material validation.");
-                        }
-                        pipeline.color_attachment_count = 1u;
-                        pipeline.color_formats[0] = scene_render_targets_->scene_color_view()->desc().format;
-                        pipeline.depth_stencil_format = scene_render_targets_->scene_depth_view()->desc().format;
-                        pipeline.sample_count = scene_render_targets_->scene_color_texture()->desc().sample_count;
-                        auto state = request->program->data().graphics_pass_state;
-                        auto normal = build_shader_graphics_pipeline_desc(pipeline, state);
-                        if (!normal)
-                        {
-                            return normal.status();
-                        }
-                        auto created = device_->create_graphics_pipeline(normal.value());
-                        if (!created)
-                        {
-                            return created.status();
-                        }
-                        state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
-                        auto two_sided = build_shader_graphics_pipeline_desc(pipeline, state);
-                        if (!two_sided)
-                        {
-                            return two_sided.status();
-                        }
-                        auto double_sided = device_->create_graphics_pipeline(two_sided.value());
-                        return double_sided ? validate_gpu_skin_shader(request->program, pipeline)
-                                            : double_sided.status();
+                        return RHIStatus::success();
                     }();
                 }
                 catch (const std::exception& error)

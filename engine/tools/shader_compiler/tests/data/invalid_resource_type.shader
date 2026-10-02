@@ -1,6 +1,7 @@
 Shader "Tests/InvalidResourceType"
 {
-    Version 1
+    Version 2
+    Usage Global
     Resources
     {
         Material
@@ -10,7 +11,8 @@ Shader "Tests/InvalidResourceType"
     }
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
         float4 vs_main() : SV_Position { return 0.0; }
         ENDHLSL

@@ -10,11 +10,11 @@ namespace toy3d
 {
     // RT writes status once, then releases complete. GT reads status only after
     // acquire; this is owned completion data, never access to Renderer or RHI.
-    struct MaterialProgramValidation
+    struct MaterialShaderMapValidation
     {
-        ShaderMapProgramRef program;
+        ShaderMapCollectionRef shader_map;
         RHIStatus status;
         std::atomic<bool> complete{false};
     };
-    using MaterialProgramValidationRef = std::shared_ptr<MaterialProgramValidation>;
+    using MaterialShaderMapValidationRef = std::shared_ptr<MaterialShaderMapValidation>;
 } // namespace toy3d

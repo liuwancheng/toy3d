@@ -97,7 +97,7 @@ namespace
                 },
                 [this](const std::string& name)
                 {
-                    return shaders_.program(name);
+                    return shaders_.shader_map(name);
                 },
                 std::move(textures));
             library_->set_default_material(defaults);
@@ -145,7 +145,7 @@ namespace
                                IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
                                Radians(0.785398163f), 0.1f, 100.0f);
         }
-        void on_collect_material_validation(std::vector<MaterialProgramValidationRef>& requests) override
+        void on_collect_material_validation(std::vector<MaterialShaderMapValidationRef>& requests) override
         {
             shaders_.collect_validation(requests);
             if (restored_)
@@ -229,7 +229,7 @@ namespace
                     return;
                 }
                 if (shaders_.task_status().phase != ShaderTaskPhase::Completed ||
-                    !shaders_.program("Toy3d/Surface/Unlit") || !shaders_.program("Toy3d/Surface/Phong") ||
+                    !shaders_.shader_map("Toy3d/Surface/Unlit") || !shaders_.shader_map("Toy3d/Surface/Phong") ||
                     !shaders_.error().empty())
                 {
                     stop("Builtin startup validation failed: " + shaders_.error());
@@ -301,7 +301,7 @@ namespace
                 return;
             }
             if (restored_ && restored_->candidate_ready() &&
-                restored_->candidate()->data().shader_name != "Project/Surface/Painted")
+                restored_->candidate()->index().shader_name != "Project/Surface/Painted")
             {
                 if (!restored_->publish())
                 {
@@ -364,7 +364,7 @@ namespace
                     stop(shaders_.error());
                     return;
                 }
-                before_ = shaders_.program("Project/Surface/Painted");
+                before_ = shaders_.shader_map("Project/Surface/Painted");
                 second_compile_ = true;
                 return;
             }
@@ -381,8 +381,8 @@ namespace
                 }
                 const auto& session = panel_.edit_session();
                 if (!session.dirty() || session.undo_count() != undo_count_ ||
-                    component()->material_for_slot(0)->desc().shader_program !=
-                        shaders_.program("Project/Surface/Painted"))
+                    component()->material_for_slot(0)->desc().shader_map !=
+                        shaders_.shader_map("Project/Surface/Painted"))
                 {
                     stop("Code publication lost draft/history or failed to refresh scene material.");
                     return;
@@ -407,7 +407,7 @@ namespace
                     stop("Recompile saved or modified the material asset.");
                     return;
                 }
-                before_ = shaders_.program("Project/Surface/Painted");
+                before_ = shaders_.shader_map("Project/Surface/Painted");
                 mesh_gate_ = std::make_shared<std::atomic<int>>(0);
                 enqueue_render_command("VerifyCompiledMeshDrawable",
                                        [mesh = component()->static_mesh(), gate = mesh_gate_]() noexcept
@@ -446,30 +446,30 @@ namespace
                     stop("Compiler source error location was not forwarded to VS Code.");
                     return;
                 }
-                if (shaders_.program("Project/Surface/Painted") != before_ ||
-                    component()->material_for_slot(0)->desc().shader_program != before_)
+                if (shaders_.shader_map("Project/Surface/Painted") != before_ ||
+                    component()->material_for_slot(0)->desc().shader_map != before_)
                 {
                     stop("Compiler failure replaced the old effect.");
                     return;
                 }
                 std::string unsupported = revised_;
-                const auto pass = unsupported.find("Pass \"Forward\"");
-                if (pass == std::string::npos)
+                const auto role = unsupported.find("Role ShadowDepth");
+                if (role == std::string::npos)
                 {
-                    stop("Policy fixture has no Forward Pass.");
+                    stop("Multi-role fixture lost its custom ShadowDepth.");
                     return;
                 }
-                unsupported.replace(pass, std::string("Pass \"Forward\"").size(), "Pass \"Preview\"");
+                unsupported.replace(role, std::string("Role ShadowDepth").size(), "Role Forward");
                 if (!write_source(unsupported))
                 {
                     return;
                 }
                 if (shaders_.recompile("Project/Surface/Painted") || shaders_.busy() ||
-                    shaders_.error().find("one Forward Material pass") == std::string::npos ||
-                    shaders_.program("Project/Surface/Painted") != before_ ||
-                    component()->material_for_slot(0)->desc().shader_program != before_)
+                    shaders_.error().find("role") == std::string::npos ||
+                    shaders_.shader_map("Project/Surface/Painted") != before_ ||
+                    component()->material_for_slot(0)->desc().shader_map != before_)
                 {
-                    stop("Editor Pass policy must reject before compiling and preserve the published effect.");
+                    stop("Duplicate Forward role must reject before compiling and preserve the published collection.");
                     return;
                 }
                 if (!write_source(revised_))
@@ -489,7 +489,7 @@ namespace
                 }
                 if (shaders_.recompile("Shared/Effects/Painted") || shaders_.busy() ||
                     shaders_.error().find("Project/Surface/") == std::string::npos ||
-                    shaders_.program("Project/Surface/Painted") != before_)
+                    shaders_.shader_map("Project/Surface/Painted") != before_)
                 {
                     stop("Editor name policy must reject discovered declarations outside the project namespace.");
                     return;
@@ -511,7 +511,7 @@ namespace
             }
             if (phase_ == 3 && restored_->candidate_ready())
             {
-                if (!restored_->publish() || !restored_->program("Project/Surface/Painted"))
+                if (!restored_->publish() || !restored_->shader_map("Project/Surface/Painted"))
                 {
                     stop(restored_->error());
                     return;
@@ -531,22 +531,25 @@ namespace
                     stop(shaders_.error());
                     return;
                 }
+                component()->set_visible(false);
                 phase_ = 4;
                 return;
             }
             if (phase_ == 4 && !shaders_.busy() && !shaders_.error().empty())
             {
-                if (shaders_.error().find("VertexFactory") == std::string::npos)
+                if (shaders_.error().find("VertexFactory") == std::string::npos ||
+                    shaders_.error().find("Actor ") == std::string::npos)
                 {
                     stop("GPU/VF candidate was not rejected for incompatible vertex inputs: " + shaders_.error());
                     return;
                 }
-                if (shaders_.program("Project/Surface/Painted") != before_ ||
-                    component()->material_for_slot(0)->desc().shader_program != before_)
+                if (shaders_.shader_map("Project/Surface/Painted") != before_ ||
+                    component()->material_for_slot(0)->desc().shader_map != before_)
                 {
                     stop("GPU/VF candidate rejection did not retain the previous program and scene effect.");
                     return;
                 }
+                component()->set_visible(true);
                 if (!write_source(revised_))
                 {
                     return;
@@ -584,8 +587,8 @@ namespace
                 panel_.discard_shader();
                 const auto failure = shaders_.error();
                 shaders_.reject(failure);
-                if (shaders_.program("Project/Surface/Painted") != before_ ||
-                    component()->material_for_slot(0)->desc().shader_program != before_)
+                if (shaders_.shader_map("Project/Surface/Painted") != before_ ||
+                    component()->material_for_slot(0)->desc().shader_map != before_)
                 {
                     stop("Rejected source publication did not roll back scene slots.");
                     return;
@@ -622,8 +625,8 @@ namespace
                     shaders_.task_status().diagnostics.back().message.empty() ||
                     shaders_.task_status().diagnostics.back().message.front() == '\n' ||
                     shaders_.status().find("6 applied, 1 failed") == std::string::npos ||
-                    shaders_.program("Project/Surface/Painted") != before_ ||
-                    factory_.default_material()->desc().shader_program != shaders_.program("Toy3d/Surface/Phong"))
+                    shaders_.shader_map("Project/Surface/Painted") != before_ ||
+                    factory_.default_material()->desc().shader_map != shaders_.shader_map("Toy3d/Surface/Phong"))
                 {
                     stop("Batch failure did not preserve the old project effect or refresh the shared default: " +
                          shaders_.status());
@@ -694,7 +697,7 @@ namespace
                 {
                     if (source.usage == BuiltinShaderUsage::Global)
                     {
-                        global_before_.push_back(source.program);
+                        global_before_.push_back(source.shader_map);
                     }
                 }
                 std::string incompatible = imgui_text_;
@@ -729,7 +732,7 @@ namespace
                 {
                     if (source.usage == BuiltinShaderUsage::Global)
                     {
-                        if (source.program != global_before_[index++])
+                        if (source.shader_map != global_before_[index++])
                         {
                             stop("Failed Global group replaced a published Program.");
                             return;
@@ -737,7 +740,7 @@ namespace
                     }
                 }
                 const auto record = platform_.read_text_utf8(PhysicalPath(paths_.saved.utf8() + "/globals.txt"));
-                if (shaders_.status().find("4 applied, 3 failed") == std::string::npos || !record.succeeded() ||
+                if (shaders_.status().find("5 applied, 2 failed") == std::string::npos || !record.succeeded() ||
                     record.value() != global_record_)
                 {
                     stop("Failed Global group changed Saved publication or stopped later jobs: " + shaders_.status());
@@ -790,13 +793,13 @@ namespace
                 {
                     return;
                 }
-                if (!restored_->error().empty() || !restored_->program("Toy3d/UI/ImGui") ||
-                    !restored_->program("Toy3d/Surface/Unlit"))
+                if (!restored_->error().empty() || !restored_->shader_map("Toy3d/UI/ImGui") ||
+                    !restored_->shader_map("Toy3d/Surface/Unlit"))
                 {
                     stop("Published Global/material versions did not restore: " + restored_->error());
                     return;
                 }
-                const auto published = shaders_.program("Toy3d/Surface/Phong");
+                const auto published = shaders_.shader_map("Toy3d/Surface/Phong");
                 if (shaders_.create_source("Toy3d/Surface/Overwrite", "overwrite.shader", "Toy3d/Surface/Unlit") ||
                     shaders_.create_source("Project/Surface/Escape", "../escape.shader", "Toy3d/Surface/Unlit") ||
                     shaders_.create_source("Project/Surface/Overwrite", "painted.shader", "Toy3d/Surface/Unlit") ||
@@ -809,7 +812,7 @@ namespace
                                             "Toy3d/Surface/Unlit") ||
                     !shaders_.create_source("Project/Surface/CreatedPhong", "created/phong.shader",
                                             "Toy3d/Surface/Phong") ||
-                    shaders_.program("Toy3d/Surface/Phong") != published ||
+                    shaders_.shader_map("Toy3d/Surface/Phong") != published ||
                     !shaders_.find("Project/Surface/CreatedUnlit") ||
                     !shaders_.recompile("Project/Surface/CreatedUnlit"))
                 {
@@ -830,7 +833,7 @@ namespace
                     return;
                 }
                 const std::string name = phase_ == 13 ? "Project/Surface/CreatedUnlit" : "Project/Surface/CreatedPhong";
-                if (!shaders_.program(name) || !shaders_.error().empty())
+                if (!shaders_.shader_map(name) || !shaders_.error().empty())
                 {
                     stop("New template Shader did not compile/validate: " + shaders_.error());
                     return;
@@ -910,11 +913,11 @@ namespace
         PhysicalPath imgui_source_;
         std::string imgui_text_;
         std::string global_record_;
-        std::vector<ShaderMapProgramRef> global_before_;
+        std::vector<ShaderMapCollectionRef> global_before_;
         std::uint32_t actor_id_ = 0;
         AssetId material_id_;
         Sha256Hash asset_signature_{};
-        ShaderMapProgramRef before_;
+        ShaderMapCollectionRef before_;
         std::shared_ptr<std::atomic<int>> mesh_gate_;
         std::size_t undo_count_ = 0;
         int phase_ = -1;
@@ -978,7 +981,20 @@ int main()
     }
     const auto text = platform.read_text_utf8(PhysicalPath(TOY3D_SHADER_TEST_SOURCE));
     const PhysicalPath source(paths.project_shader.utf8() + "/painted.shader");
-    if (!text.succeeded() || !platform.write_text_utf8(source, text.value(), FileWriteMode::CreateNew).succeeded())
+    if (!text.succeeded())
+    {
+        return 1;
+    }
+    std::string source_text = text.value();
+    const auto display_pass = source_text.find("Pass \"Forward\"");
+    if (display_pass == std::string::npos)
+    {
+        return 1;
+    }
+    // Display names do not select a renderer role: the complete real compile,
+    // assignment, publication and restore path must accept Role Forward here.
+    source_text.replace(display_pass, std::string("Pass \"Forward\"").size(), "Pass \"Preview\"");
+    if (!platform.write_text_utf8(source, source_text, FileWriteMode::CreateNew).succeeded())
     {
         return 1;
     }
@@ -1010,7 +1026,7 @@ int main()
     {
         Engine engine;
         engine.set_shader_load_config({ShaderLoadMode::ShaderMapEntry, PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT)});
-        engine.set_application(std::make_unique<ShaderTestApplication>(workspace, paths, source, text.value(), state));
+        engine.set_application(std::make_unique<ShaderTestApplication>(workspace, paths, source, source_text, state));
 #if WITH_WIN
         engine.init(static_cast<void*>(GetModuleHandleW(nullptr)));
 #else

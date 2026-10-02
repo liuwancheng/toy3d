@@ -63,9 +63,8 @@ namespace toy3d
                         [this, defaults](const std::string& name)
                         {
                             return shader_workflow_ready_
-                                       ? shaders_.program(name)
-                                       : (name == defaults->desc().shader_name ? defaults->desc().shader_program
-                                                                               : nullptr);
+                                       ? shaders_.shader_map(name)
+                                       : (name == defaults->desc().shader_name ? defaults->desc().shader_map : nullptr);
                         },
                         *play_scene_))
                 {

@@ -531,8 +531,8 @@ namespace toy3d
         return validate_metadata(metadata);
     }
 
-    RHIStatus validate_shader_parameters_metadata_against_schema(const ShaderParametersMetadata& metadata,
-                                                                 const shader::ShaderParameterSchema& schema)
+    RHIStatus validate_shader_parameters_group_against_schema(const ShaderParametersMetadata& metadata,
+                                                              const shader::ShaderParameterSchema& schema)
     {
         const RHIStatus metadata_status = validate_metadata(metadata);
         if (!metadata_status)
@@ -547,8 +547,23 @@ namespace toy3d
         if (metadata.generated_format_version != schema.generated_format_version ||
             metadata.shader_abi_version != schema.shader_abi_version ||
             metadata.parameter_id_version != schema.parameter_id_version ||
-            metadata.schema_identity != schema.schema_identity ||
             metadata.group_identity != shader::calculate_shader_parameter_group_identity(schema, metadata.group))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Generated Shader parameter group does not match the declared group ABI.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_shader_parameters_metadata_against_schema(const ShaderParametersMetadata& metadata,
+                                                                 const shader::ShaderParameterSchema& schema)
+    {
+        const auto status = validate_shader_parameters_group_against_schema(metadata, schema);
+        if (!status)
+        {
+            return status;
+        }
+        if (metadata.schema_identity != schema.schema_identity)
         {
             return RHIStatus::failure(
                 RHIErrorCode::InvalidArgument,

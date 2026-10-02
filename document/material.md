@@ -4,7 +4,7 @@
 
 core/asset/material 的 Toy3dAssets 保存 DTO/schema/验证，不含 Program/Proxy/RHI。runtime/rendercore/material 提供 MaterialInterface、Material、MaterialInstance、MaterialRenderProxy、MaterialLibrary。Shader schema 见 [Shader](shader.md)，资产发布见 [Assets](assets.md)，窗口/history 见 [Editor](editor.md)。
 
-MaterialInterface 是当前根/实例共同抽象，不应因旧 RHI 文档曾禁止此名而另建体系。Properties default/schema 来自 ShaderRootMaterial；RT 只消费已解析参数/资源和 Program，不读 YAML/反射或 UI。
+MaterialInterface 是当前根/实例共同抽象，不应因旧 RHI 文档曾禁止此名而另建体系。Properties default/schema 来自 ShaderRootMaterial；RT 只消费已解析参数/资源和不可变 ShaderMapCollection，不读 YAML/反射或 UI。MaterialDesc::shader_map、MaterialInterface 与稳定 MaterialRenderProxy 持有同一 source/configuration revision 的集合；Program 是集合内可独立查询的结果，不承担其他 factory 的所有权。
 
 ## 参数、实例与资源
 
@@ -28,7 +28,7 @@ MaterialAssignments 保存场景 AssetRef/命令记录，Library 准备/发布/�
 
 EditorApplication 持有 ProcessService、专用 ThreadManager、ShaderWorkflow，并注入窗口/创建框/Assignments；不是全局 Asset cache。
 
-当前工程 shader 下的 .shader 由 parser 自动发现，读取声明名和 Material/Forward Pass，不保留手工清单；详见 [Shader](shader.md#项目源码自动发现)。内置用途仍由构建登记，统一 Program 查询。
+当前工程 shader 下的 .shader 由 parser 自动发现，读取声明名、Usage Material 和 Role Forward，不按 Pass 显示名推断用途；Editor 发布包含 Forward 及声明的 ShadowDepth/HitProxy roles、全部声明 factories 的完整集合，详见 [Shader](shader.md#项目源码自动发现)。内置用途仍由构建登记，材质统一查询集合，绘制再按 role/factory 取 Program。
 
 - 项目源最多 250 条、单源 4 MiB、有界目录与总字节；重名/非法声明/链接带具体路径诊断，不能覆盖内置源。
 - 内置 Phong/Unlit 与项目源统一查询；创建 Material 只列 Material 用途的登记源，Program 完成 artifact/ABI/GPU 验证后才创建；实例沿根找 source。不扫描 Content 猜 Shader。现有根 shader 改身份需保存/取消草稿，不能强行改名。
@@ -39,16 +39,24 @@ EditorApplication 持有 ProcessService、专用 ThreadManager、ShaderWorkflow�
 
 每请求捕获 Shader identity、活动 AssetId/session generation、source hash；从磁盘保存的源码编译。专用 Thread 同步跑锁定 compiler，120 s、输出1 MiB，一次一个作业，GT poll 完成后 join，退出 cancel/join。
 
-Saved/requests/<随机 AssetId>/ 独占产物，不覆盖旧目录；验证完整 ShaderMapEntry、逻辑名/Pass/profile/default permutation、当前 source/include hash。当前外部 compile-vulkan，D3D 不声称完成。
+Saved/requests/<随机 AssetId>/ 独占产物，不覆盖旧目录；验证完整集合索引及全部引用的 ShaderMapEntry、逻辑名/Pass/profile/default permutation、当前 source/include hash。索引及不可变集合边界见 [Shader](shader.md#完整集合索引与候选)。Material/Proxy/Library 和编辑器草稿统一接管完整集合，不保留 Local 主程序或 GPU companion。当前外部 compile-vulkan，D3D 不声称完成。
 
-- ShaderMap 创建不可变候选 Program，不覆写旧 key 缓存；RT 用当前 device/cache/LocalVertexFactory/attachments 预检普通及双面 pipeline，不额外 submit/wait_idle。
+- ShaderMap::find_or_load_collection 按 Shader/profile/Material permutation 缓存不可变集合；新 revision 从独占目录建立候选，不覆写旧集合。RT 逐 role/factory 使用当前 device/cache/attachments 预检普通及双面 pipeline，不额外 submit/wait_idle。
+- 再收集主场景、预览和 Play 的全部已注册使用者，包含隐藏物体，检查候选 Forward/factory、启用的 mesh roles 与真实顶点布局。几何未就绪返回 NotReady；缺 factory/COLOR0/角色等带 Actor、Component、Section 诊断，保留原集合。
+- 新网格创建、override/clear 在 GT 检查 factory 与可选颜色；组件接入/启用投影检查 ShadowDepth，Editor 可拾取赋值检查 HitProxy，失败不改变原槽。无集合的材质仅表示 CPU/编辑阶段对象，不能据此视为可绘制。
 - Forward View/Object/lighting ABI 与引擎数据一致，未知 Pass/Global 资源拒绝；GT 只收 owned result，不访问 Proxy/RHI。
 - 窗口候选从当前草稿生成，手势结束才接管，保留草稿/history；Library 从已保存 DTO 准备完整共享配置图，不偷读窗口草稿。
-- 同一 GT tick：准备所有候选 → FIFO 暂时发布完整图 → 再核 source/include hash 并原子保存请求定位记录 → commit Program/Library → 窗口切 schema/runtime。中途失败在本帧 Draw 入队前用同 FIFO 恢复旧图，旧 refs 仍保活。
+- 同一 GT tick：准备所有候选 → FIFO 暂时发布完整图 → 再核 source/include hash 并原子保存请求定位记录 → commit ShaderMapCollection/Library → 窗口切 schema/runtime。中途失败在本帧 Draw 入队前用同 FIFO 恢复旧图，旧 refs 仍保活。
 - 过期请求、编译/ABI/VF/pipeline/resource 失败不替换旧效果；源码编译不保存 .asset。
-- 已发布 Program 当次会话有效，重开加载请求定位记录并重新 GPU 验证；产物缺失/损坏提示重编，不提交生成缓存。内置 ActorFactory 缺省材质随 app 构建加载，其共享 root 加入 Library 同一配置图事务，重编刷新资产槽与默认几何，保持 Proxy/geometry 身份。
+- 已发布集合当次会话有效，重开加载请求定位记录并重新 GPU 验证；产物缺失/损坏提示重编，不提交生成缓存。内置 ActorFactory 缺省材质随 app 构建加载，其共享 root 加入 Library 同一配置图事务，重编刷新资产槽与默认几何，保持 Proxy/geometry 身份。
 
-无可用 Program 时赋值返回资产路径、Shader 身份与登记/验证/失败原因。Compile and Assign 捕获 scene generation、Actor/Component/slot、mesh/旧材质和继承链文件摘要；成功后重新验证目标与文件，再走原 Undo 命令。目标改变、编译失败或过期都保原槽，不自动保存材质。
+无可用集合时赋值返回资产路径、Shader 身份与登记/验证/失败原因。Compile and Assign 捕获 scene generation、Actor/Component/slot、mesh/旧材质和继承链文件摘要；成功后重新验证目标与文件，再走原 Undo 命令。目标改变、编译失败或过期都保原槽，不自动保存材质。
+
+## 绘制查询与参数绑定
+
+Base Pass 从材质集合精确查询 Forward + 当前 VertexFactory；已声明的 ShadowDepth/HitProxy 从同一材质集合精确查询，缺 factory 不换用其他程序。当前只有引擎登记的 Phong/Unlit 使用独立内置默认深度/拾取集合；项目 Custom 必须提供所请求的角色。Standard/Masked 的完整编译策略仍见 Shader 中已确认的后续方案。
+
+MaterialRenderProxy 维护一份完整逻辑 Material group binding，各角色消费其 active 子集，参数身份与 native slot、Program 地址无关。准备覆盖相机与离屏 shadow batches；不能仅凭 Forward 是否使用 Material 决定是否准备。每个 Pass 的状态从实际查询的 Program 获取，再叠加实例 two_sided；集合、参数图和逻辑 binding 按已有候选事务一起接管。
 
 ## 修改与验证
 

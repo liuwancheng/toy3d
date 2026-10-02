@@ -827,6 +827,52 @@ namespace
                   duplicate.entry_content_hash == published.entry_content_hash,
               "an existing identical ShaderMapEntry must return a deterministic cache hit");
 
+        ShaderMapIndex index;
+        index.passes = {{entry.pass_name, entry.contract.role}};
+        index.shader_name = entry.shader_name;
+        index.permutation_key = entry.permutation_key;
+        index.source_hash = toy3d::sha256("source revision");
+        index.programs.push_back(
+            {entry.pass_name, entry.contract, published.shader_map_key, published.entry_content_hash});
+        std::string index_error;
+        check(write_verified_shader_map_index(platform_file, reader_entry_root, index, index_error),
+              "Complete verified entry set must publish its final index");
+        ShaderMapIndex restored_index;
+        check(read_shader_map_index(platform_file, reader_entry_root, entry.shader_name, entry.target, entry.profile,
+                                    entry.permutation_key, restored_index, index_error) &&
+                  shader_map_index_matches_entry(restored_index, restored_index.programs.front(), read),
+              "Published index must bind the query identity to the verified content entry");
+        auto incomplete_index = index;
+        incomplete_index.programs.front().entry_key = toy3d::sha256("missing entry");
+        check(!write_verified_shader_map_index(platform_file, physical_path(reader_root / "incomplete"),
+                                               incomplete_index, index_error),
+              "Missing entries must suppress index publication");
+        check(!read_shader_map_index(platform_file, physical_path(reader_root / "incomplete"), entry.shader_name,
+                                     entry.target, entry.profile, entry.permutation_key, restored_index, index_error),
+              "An incomplete job must have no loadable index");
+        auto conflicting_index = index;
+        conflicting_index.source_hash = toy3d::sha256("conflicting revision");
+        check(!write_verified_shader_map_index(platform_file, reader_entry_root, conflicting_index, index_error) &&
+                  read_shader_map_index(platform_file, reader_entry_root, entry.shader_name, entry.target,
+                                        entry.profile, entry.permutation_key, restored_index, index_error) &&
+                  restored_index.source_hash == index.source_hash,
+              "Conflicting revision must preserve the published index");
+        for (const auto failure :
+             {FaultInjectingPlatformFile::Failure::WriteText, FaultInjectingPlatformFile::Failure::Rename})
+        {
+            const auto failure_root = physical_path(reader_root / std::to_string(static_cast<unsigned>(failure)));
+            check(write_verified_shader_map_entry(platform_file, failure_root, entry).succeeded(),
+                  "Index failure fixture must have complete verified entries");
+            FaultInjectingPlatformFile faulting_file(failure);
+            check(!write_verified_shader_map_index(faulting_file, failure_root, index, index_error),
+                  "Index write/rename failure must suppress publication");
+            check(!read_shader_map_index(platform_file, failure_root, entry.shader_name, entry.target, entry.profile,
+                                         entry.permutation_key, restored_index, index_error),
+                  "Failed publication must not expose a final index");
+            check(write_verified_shader_map_index(platform_file, failure_root, index, index_error),
+                  "Failed staging must not prevent a later complete publication");
+        }
+
         ShaderMapEntry conflicting = entry;
         ShaderDependency conflict_dependency;
         conflict_dependency.virtual_path = "/Engine/ShaderIncludes/Conflict.hlsli";
@@ -876,7 +922,7 @@ namespace
                 const std::size_t version = changed.find(current_version);
                 if (version != std::string::npos)
                 {
-                    changed.replace(version, current_version.size(), "shader_map_entry_version=999");
+                    changed.replace(version, current_version.size(), "shader_map_entry_version=6");
                 }
                 write_text(manifest_path, changed);
             }
@@ -886,6 +932,35 @@ namespace
                   "unsupported ShaderMapEntry versions must be rejected");
         }
         std::filesystem::remove_all(version_fixture.first);
+
+        for (const std::string& field : {"usage", "role", "geometry", "vertex_factory", "vertex_factory_support"})
+        {
+            auto fixture = publish_corrupt_fixture("storage_corrupt_" + field);
+            if (fixture.second.entry_directory)
+            {
+                // filesystem composes isolated corruption paths across supported test hosts.
+                const std::filesystem::path manifest_path =
+                    std::filesystem::u8path(fixture.second.entry_directory->utf8()) / "manifest.txt";
+                const auto manifest = platform_file.read_text_utf8(physical_path(manifest_path));
+                if (manifest.succeeded())
+                {
+                    std::string changed = manifest.value();
+                    const std::string prefix = "\n" + field + "=";
+                    const auto at = changed.find(prefix);
+                    check(at != std::string::npos, "Format 7 must persist every declared contract field");
+                    if (at != std::string::npos)
+                    {
+                        const auto end = changed.find('\n', at + 1u);
+                        changed.replace(at + 1u, end - at - 1u, field + "=255");
+                        write_text(manifest_path, changed);
+                    }
+                }
+                const auto corrupt = read_verified_shader_map_entry(
+                    platform_file, physical_path(fixture.first / "entries"), fixture.second.shader_map_key);
+                check(!corrupt.succeeded(), "Unknown usage/role/geometry/factory metadata must be rejected");
+            }
+            std::filesystem::remove_all(fixture.first);
+        }
 
         auto schema_fixture = publish_corrupt_fixture("storage_corrupt_schema_identity");
         if (schema_fixture.second.entry_directory)
@@ -1193,7 +1268,8 @@ namespace
         const std::string source = R"(
 Shader "Tests/ProgramCompile"
 {
-    Version 1
+    Version 2
+    Usage Global
     Properties
     {
         tint ("Tint", Color) = (1.0, 1.0, 1.0, 1.0)
@@ -1206,8 +1282,33 @@ Shader "Tests/ProgramCompile"
     }
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
+        struct Varyings
+        {
+            float4 position : SV_Position;
+            float2 uv : TEXCOORD0;
+        };
+        Varyings vs_main(uint vertex_id : SV_VertexID)
+        {
+            Varyings output;
+            output.position = float4(vertex_id == 1 ? 1.0 : -1.0,
+                vertex_id == 2 ? 1.0 : -1.0, 0.0, 1.0);
+            output.uv = float2(0.5, 0.5);
+            return output;
+        }
+        float4 ps_main(Varyings input) : SV_Target0
+        {
+#if TOY3D_VARIANT_USE_TINT
+            return source_texture.Sample(source_sampler, input.uv) * tint;
+#else
+            return source_texture.Sample(source_sampler, input.uv) * tint;
+#endif
+        }
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         struct Varyings
         {

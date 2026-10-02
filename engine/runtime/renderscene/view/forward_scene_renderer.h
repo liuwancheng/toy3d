@@ -22,7 +22,7 @@ namespace toy3d
                                       SceneRenderTargets& scene_render_targets,
                                       const BuiltinMeshPassPrograms& mesh_pass_programs) override;
         RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                   const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                   const ShaderMapCollection& shader_map, RHIGraphicsCommandContext& context,
                                    const RHITextureViewRef& id_view, const RHITextureViewRef& depth_view,
                                    HitProxyTable& table) override;
         bool init_views();

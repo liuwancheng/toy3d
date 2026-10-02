@@ -29,6 +29,7 @@ namespace toy3d
         MaterialInterfaceRef material_for_slot(std::uint32_t material_slot) const;
 
       private:
+        bool supports_shadow_casting() const override;
         void send_material_overrides(std::vector<MaterialInterfaceRef> previous);
         void update_bounds() override;
         void on_render_state_removed() override;

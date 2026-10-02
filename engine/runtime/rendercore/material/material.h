@@ -1,6 +1,7 @@
 #pragma once
 
 #include "math/math.h"
+#include "rendercore/shader/shader_map_collection.h"
 #include "shader/shader_binding_identity.h"
 #include "shader/shader_format_types.h"
 #include "rendercore/texture/texture.h"
@@ -18,7 +19,6 @@
 namespace toy3d
 {
     class MaterialRenderProxy;
-    class ShaderMapProgram;
 
     enum class MaterialShadingModel
     {
@@ -38,7 +38,7 @@ namespace toy3d
     {
         std::string shader_name;
         shader::ShaderParameterSchema parameter_schema;
-        std::shared_ptr<const ShaderMapProgram> shader_program;
+        ShaderMapCollectionRef shader_map;
         std::unordered_map<ShaderParameterId, float> scalar_defaults;
         std::unordered_map<ShaderParameterId, vec2> vector2_defaults;
         std::unordered_map<ShaderParameterId, vec3> vector3_defaults;
@@ -53,6 +53,14 @@ namespace toy3d
     // Decodes the complete schema, including inactive constants. Failure keeps
     // every existing default intact; resources are resolved by the creator.
     bool initialize_material_constant_defaults(MaterialDesc& desc, std::string& error);
+
+    // CPU admission for the existing mesh formats. An absent map represents an
+    // authoring-only material; render preparation still requires a loaded map.
+    bool validate_material_geometry(const MaterialDesc& desc, shader::VertexFactoryType factory, bool has_vertex_colors,
+                                    std::string& error);
+
+    bool validate_material_mesh_pass(const MaterialDesc& desc, shader::ShaderPassRole role,
+                                     shader::VertexFactoryType factory, std::string& error);
 
     // C++17 variant owns the closed runtime value set; monostate removes the
     // local override and restores Parent/default without a nullable resource.
@@ -106,7 +114,7 @@ namespace toy3d
         explicit MaterialInterface(MaterialDesc desc);
         bool validate_parameters(const MaterialParameterChanges& changes) const;
         bool apply_parameters(const MaterialParameterChanges& changes);
-        bool stage_material_replacement(std::shared_ptr<const ShaderMapProgram> shader_program, bool two_sided);
+        bool stage_material_replacement(ShaderMapCollectionRef shader_map, bool two_sided);
         bool publish_material_replacement();
         bool discard_material_replacement();
         void retire_proxy();
@@ -127,8 +135,8 @@ namespace toy3d
         MaterialDesc desc_;
         MaterialParameterChanges local_overrides_;
         mutable std::vector<std::weak_ptr<MaterialInstance>> children_;
-        std::shared_ptr<const ShaderMapProgram> shader_program_;
-        std::shared_ptr<const ShaderMapProgram> pending_shader_program_;
+        ShaderMapCollectionRef shader_map_;
+        ShaderMapCollectionRef pending_shader_map_;
         bool two_sided_ = false;
         bool pending_two_sided_ = false;
         std::shared_ptr<std::atomic<bool>> replacement_commit_complete_ = std::make_shared<std::atomic<bool>>(false);

@@ -6,15 +6,15 @@ tools/shader_compiler 为 frontend/layout/codegen/CLI，rendercore/shader 为 Sh
 
 Shader logical schema 是权威；reflection 验证字节码并提供 native mapping，不能反向补出未声明业务参数。RHI 不解析 .shader、C++ generated metadata 或 Material 属性。
 
-当前生产外部编译入口 compile-vulkan；D3D11 FXC/SM5、D3D12 DXC 的工具链设计不等于已完成外部编译或后端。Cook/Shipping ShaderCodeLibrary 的只读去重发布仍为演进范围，不能虚构完整 cooker/loader。Editor 消费已验证 loose ShaderMapEntry。
+当前生产外部编译入口 compile-vulkan；D3D11 FXC/SM5、D3D12 DXC 的工具链设计不等于已完成外部编译或后端。Cook/Shipping ShaderCodeLibrary 的只读去重发布仍为演进范围，不能虚构完整 cooker/loader。Editor 消费集合索引及其引用的已验证 loose ShaderMapEntry。
 
 ## 语言与源码边界
 
-语言 Version 1：不改变既有语义的可选增量可在 v1 扩展，旧 compiler 明确 UnsupportedLanguageFeature；packing/默认语义变更提升 language/ABI major，未知关键词错误。
+语言只接受 Version 2，旧源明确失败并要求按新协议重写；packing/默认语义变更仍须提升 language/ABI major，未知关键词错误。
 
-语法权威 [shader-language-v1.ebnf](shader-language-v1.ebnf)，可用真实示例 engine/editor/tests/fixtures/shader/painted.shader 与 engine/shader 内置文件，不写想象的 DSL。
+语法权威 [shader-language-v2.ebnf](shader-language-v2.ebnf)，可用真实示例 engine/editor/tests/fixtures/shader/painted.shader 与 engine/shader 内置文件，不写想象的 DSL。源码声明 Usage=Global/Material/MeshPass；Material/MeshPass 当前使用 Geometry Custom 并显式列出 VertexFactories，Global 没有 mesh geometry。每个 Pass 的显示名与 Role 分开，独立 HLSLVS/HLSLPS/HLSLCS 块各声明一个匹配的 stage pragma，HLSLINCLUDE 不声明入口。Forward/HitProxy 必须有 VS/PS，ShadowDepth 允许只含 VS，compute 仅属于 Global。当前尚未实现 Standard 包装、engine feature 声明及 stage 影响语法，不能据此假称完成整个统一材质方案。
 
-- Properties 是 Material 属性，保留源码顺序/typed default/UI；不是任意 HLSL struct。v1 不开放属性数组，矩阵为 Matrix4x4。
+- Properties 是 Material 属性，保留源码顺序/typed default/UI；不是任意 HLSL struct。当前不开放属性数组，矩阵为 Matrix4x4。
 - Parameters 首批只 Pass group 的 Float/Float2/Float3/Float4/Float4x4；省略 default 全零，显式 default 分量类型/有限性一致，不开放数组/struct。
 - Resources 受控 Texture2D/2DArray/3D/Cube/2DMS、Sampler/ComparisonSampler、Buffer/ByteAddressBuffer/StructuredBuffer 和 EBNF 中 RW 类型。语言识别不保证当前 backend/material 支持所有组合。
 - Texture 与 Sampler 独立，不隐式生成；Texture2DMS 只 Load。Sampler preset 修改不重编，相同 descriptor device 去重；ShadowCompareClamp 使用 reversed-Z GreaterEqual。
@@ -49,9 +49,11 @@ VariantId/EnumValueId 用带 little-endian uint32 长度前缀的 FNV domain；v
 
 compiler 按 schema 补 defaults，拒绝未知/重复/非法选择和碰撞；按 VariantId 排序，序列化版本/count/ID/kind 与 bool uint32 0/1 或 EnumValueId，SHA-256 得 permutation key；空 domain 也有非零带版本 key。
 
+规范化实现位于 Toy3dShaderFormat 的 `shader/shader_permutation.h`：共享 domain 与 typed selection 不依赖 AST/Runtime，Tools 的 `compiler/variant_permutation` 只转换 AST/CLI 文本并补源码位置诊断。Material/Pass scope 分离 ID 与 generated 宏；每域最多 32 维、每 enum 最多 32 值。默认值、显式 kind、孤儿/重复选择、非法声明及宏碰撞必须整体校验后才能发布结果。共享入口支持按单个 stage 投影并先验证完整配置；当前语言尚无 stage 声明，生产 compiler 仍保守使用完整域，不宣称已实现 VS/PS 编译复用。独立 Core 验证入口为 `Toy3dShaderFormat.Permutation`，只依赖 Toy3dShaderFormat。
+
 generated prelude 的 TOY3D_VARIANT_* 名字检查碰撞；enum options 按 ID 生成 dense integer，不依赖源码顺序。不能用任意 HLSL define 绕 typed selection/key。
 
-mesh shader 另有 engine-owned `MeshVertexFactoryType`（Local/GPUSkin），不进入用户 variant 声明。Local 保留上述 key；GPUSkin 按版本/类型与材质 key 生成分域组合 key。显式 include `/Engine/ShaderIncludes/ToyMeshVertex.hlsli` 的源由 CLI 产出完整配对；GPUSkin 注入 Object 的 `toy_bone_matrices` typed resource 并生成 `GPUSkinObjectShaderParameters`，静态 schema 不要求骨骼资源。配对加载、兼容验证与 4/8 共用 shader 见 [Animation](animation.md#公共网格边界与-permutation)。
+mesh shader 的 engine-owned `VertexFactoryType`（None/Local/GPUSkin）是独立身份字段，不进入用户 variant 声明，也不派生或修改 Material permutation key。factory 支持由源码声明，编译请求与 Runtime 校验同一 Core contract；不按原始 include 或依赖文本猜测。GPUSkin 注入 Object 的 `toy_bone_matrices` typed resource 并生成 `GPUSkinObjectShaderParameters`，静态 schema 不要求骨骼资源。语言、集合和 Editor 允许只声明 GPUSkin；实际网格使用前检查 factory，Local 网格不能借用 GPUSkin 程序；4/8 共用 shader 见 [Animation](animation.md#公共网格边界与-permutation)。
 
 ## Typed parameters 与 Program
 
@@ -71,9 +73,15 @@ auto binding = toy3d::create_transient_shader_binding(
 
 program-independent group snapshot 随当前 active layout 验证，不能把 Program/native slot 写进 Material 参数身份。GlobalShaderMap::load(shader_map, platform, required_types) 返回不可变 map，find(type) 查预先验证 Program；Renderer start 处理 missing/incompatible，不在 draw 注册类型或编译。
 
+mesh role 的 Pass 参数由 compiler 统一注入：ShadowDepth 使用 shadow_world_to_clip/shadow_light_direction/shadow_bias_parameters，HitProxy 使用 hit_proxy_id_parts；Material/MeshPass 源码根 Parameters/Resources 的 Pass 声明描述 Forward，不能改写这两个角色 ABI。Global 的源码参数保持既有规则。C++ codegen 按各 Pass 实际 role 生成参数类型，不把 Forward schema 复制给其他角色。
+
+`validate_shader_parameters_metadata_against_schema` 继续验证完整 schema 身份；`validate_shader_parameters_group_against_schema` 验证版本与完整单组 ABI，供引擎 Pass group 跨材质源复用。Custom 的 Material/其他组可以不同，不能因此跳过 Pass 字段/资源类型、数量、offset/stride/default 的校验。
+
 ## ShaderMapEntry 与缓存
 
 目录按调用方期望 shader_map_key 定位，reader 重算身份，不相信 manifest 自报 key/扫描猜测。required 文件：manifest.txt、mapping.txt，每 stage 的 manifest/spv/reflection/dependencies；vertex、vertex+pixel、compute 组合需 stage/entry/mapping/reflection 一致。
+
+entry format 7 持久化并验证 Usage、Role、Geometry、所选 VertexFactory 及源的 factory 支持范围，这些字段均进入内容身份。Program 查询缓存分别比较 role/factory/static key，Local 与 GPUSkin 不再共享同一查询身份。compile-request 为版本 2；reader 只读新格式，旧 entry 重新编译。Runtime 与 Editor 必须读取集合索引，不扫描目录寻找程序；没有索引的旧产物需要重编译。
 
 - UTF-8 LF、唯一 key=value、版本定界 record；未知/重复/缺字段、非 canonical 数字/小写摘要、非法 flags/enums/paths、重复 binding/stage、未排序 dependencies 拒绝。
 - manifest ≤64 KiB，metadata 单文件 ≤4 MiB，stage binary ≤64 MiB，各类 record ≤4096。先限大小/hash，再解析/重算 semantic hash，最后重算 shader_map_key/entry_content_hash。
@@ -81,23 +89,35 @@ program-independent group snapshot 随当前 active layout 验证，不能把 Pr
 - writer 用 owned staging/no-replace rename；已存在必须用同 reader 全验证且 key/content 相同才 cache_hit，损坏/冲突诊断、不覆盖/删 final。
 - reader 只验 artifact，当前源码/include/toolchain identity 由 compile/cache 调用方验证；不存在“缓存文件在就可信”的捷径。
 
+## 完整集合索引与候选
+
+`shader/shader_map_index.h` 是 Core 的集合协议，index version 1 位于产物根的 `shader_maps/<configuration_key>/index.txt`。配置查询 key 覆盖逻辑 Shader 名、target/profile、已解析 Material permutation；源全文 SHA-256 独立标识 revision，不把 source revision 混入配置查询。每个编译输出根只发布该配置的一份不可变 revision；相同内容可复用，冲突保留原产物，Editor 新 revision 使用独占请求目录。
+
+索引独立保存源码声明的 Pass 显示名/Role 列表，再记录各 Pass/VertexFactory 对应的 entry key 与 entry content hash。声明列表乘源码 factory 支持范围必须完整覆盖；Global 每个具名 Pass 对应 None，mesh role 唯一，Material 必须有 Forward。缺掉整个 Pass、缺一个 factory、重复身份、未知声明及 entry 不匹配均失败。Pass/程序各不超过 1024 项，索引不超过 4 MiB；规范排序、UTF-8 LF 与 payload 摘要同时验证，拒绝未知记录、损坏内容及链接路径。
+
+`compile-vulkan` 一次编译同一源码的所有声明 Pass 和 factory，现有 Pass 参数用于检查请求入口是否存在；当前配置仍由 typed Material selection/defaults 决定。每个 entry 先独立完成内容寻址发布，全部通过同一 reader 验证后，索引最后用 owned staging/no-replace rename 发布。中途失败允许留下可复用的 entry，但不产生可加载的半集合索引，也不覆盖旧索引。这里只覆盖当前语言已声明的组合；engine Pass selections、required 组合规划与 stage 编译去重仍待实现。
+
+Runtime 的 `ShaderMapEntryLoader::load_collection` 验证索引及全部 entry，失败不返回部分程序。`ShaderMapCollection::create_candidate` 再检查程序契约、完整覆盖与 schema，产生共享不可变集合；同一 Material 的全部 roles/factories 保持完整 Material schema，同 Pass 的 factories 保持 Pass schema/graphics state。GPUSkin peer 必须具有 Object 的骨骼 typed buffer 与两组 influence 输入。`find(role, factory)` 精确查询网格程序，Global 查询还须显式提供 Pass 显示名，缺项不回退。
+
+集合内 Local/GPUSkin 是独立 Program，没有互相挂接。`ShaderMap::find_or_load_collection` 按逻辑名/profile/Material permutation 缓存不可变集合，MaterialDesc/Proxy/Library/Editor 接管整个集合。Base/Shadow/HitProxy 从实际 owner 精确查询角色与 factory；旧集合/Program refs 维持既有 GPU 生命周期。GlobalShaderMap 只接纳 Usage Global、Role Global、factory None，Tonemap/ImGui 继续用显式 GlobalShaderType 查询；HitProxy 与 ShadowDepth 由内置 MeshPass 集合持有。单 Program 的 load_program 仍供 Global/cache 等明确 entry 查询使用，先验证完整索引，但不建立其他 Program 附属关系。
+
 ## Editor 全量重编译
 
-内置登记统一由 engine/shader 的构建描述生成，记录逻辑名、源码、Pass、用途与部署子目录；项目材质源由 parser 自动发现。全量动作编译全部内置登记/项目发现源的当前 Vulkan ES3.1/default permutation，声明身份由 parser 校验，显式适配公共 mesh helper 的源同时编译 Local/GPUSkin；不枚举尚未支持的全部用户 permutation。默认 permutation 必须由 compiler 的 typed domain/default selection 解析；例如 Unlit 的 USE_VERTEX_COLOR=false，不能用空 domain key 或首个缓存项代替。Include 作为依赖验证并参与构建失效。
+内置登记统一由 engine/shader 的构建描述生成，记录逻辑名、源码、Pass、用途与部署子目录；项目材质源由 parser 自动发现。全量动作编译全部内置登记/项目发现源的当前 Vulkan ES3.1/default permutation，声明身份由 parser 校验，按 VertexFactories 声明编译 Local/GPUSkin；不枚举尚未支持的全部用户 permutation。默认 permutation 必须由 compiler 的 typed domain/default selection 解析；例如 Unlit 的 USE_VERTEX_COLOR=false，不能用空 domain key 或首个缓存项代替。Include 作为依赖验证并参与构建失效。HitProxy 登记及候选发布已归入 MeshPass，与 ShadowDepth 各自完整验证所需 role + Local/GPUSkin。
 
-Editor 独占编译队列一次一个任务，复用 Core Process/Thread；失败继续下一项，取消保留已提交版本。材质逐项预检和发布；Tonemap/ImGui/HitProxy 完整候选作为一组预检后在 RT 帧边界接管，ShadowDepth 独立验证。管线采用候选 Shader 的 Pass state；ImGui/Tonemap 没有 depth attachment，启用 depth/stencil 必须拒绝。C++ generated ABI 不兼容时要求重建程序；旧 GPU refs 按原提交生命周期保活。
+Editor 独占编译队列一次一个任务，复用 Core Process/Thread；失败继续下一项，取消保留已提交版本。材质逐项预检和发布；Tonemap/ImGui 完整候选作为一组预检后在 RT 帧边界接管，ShadowDepth/HitProxy 集合分别预检与接管，失败清除暂存候选并保留原 owner。管线采用候选 Shader 的 Pass state；ImGui/Tonemap 没有 depth attachment，启用 depth/stencil 必须拒绝。C++ generated ABI 不兼容时要求重建程序；旧 GPU refs 按原提交生命周期保活。
 
 Saved 恢复先验证源码/include/产物；无效时验证部署版本，有有效回退才降为 Warning。Program 可用性与最近编译结果分开；真实编译/读取/验证错误保留具体诊断，不能把所有失败归为源码变化。Tools → Shaders 提供重编译/取消；右下角消息卡片展示结构化阶段、进度、结果，所有诊断同时进入 Console 与文件。
 
-Tools → Create → Shader 创建项目 Material Shader，模板来自现有 Unlit/Phong 源码，名称限定 Project/Surface/，路径限定 project/shader 内规范相对 .shader；不开放 Global/生成 ABI 创建。创建先解析模板与新声明、拒绝重复/越界/已存在路径，以 Core CreateNew 原子发布单文件源码，再刷新发现索引；外部冲突保留源文件并诊断，不新增人工登记清单。源码创建、编译与 Material 创建分别反馈，不因编译失败删除源码。验证在隔离目录覆盖真实 Unlit/Phong 编译、冲突/非法路径/不覆盖和重启发现。
+Tools → Create → Shader 创建项目 Material Shader，模板来自现有 Unlit/Phong 源码，名称限定 Project/Surface/，路径限定 project/shader 内规范相对 .shader；不开放 Global/生成 ABI 创建。创建先解析模板与新声明、拒绝重复/越界/已存在路径，以 Core CreateNew 原子发布单文件源码，再刷新发现索引；外部冲突保留源文件并诊断，不新增人工登记清单。模板显式复制内置默认 ShadowDepth/HitProxy 的角色实现；作者修改 Custom 顶点或 coverage 时须同步这些实现。源码创建、编译与 Material 创建分别反馈，不因编译失败删除源码。验证在隔离目录覆盖真实 Unlit/Phong 编译、冲突/非法路径/不覆盖和重启发现。
 
 ## 项目源码自动发现
 
-工程根由 [Runtime](runtime.md#工程与分层配置) 注入。启动、创建成功和 Recompile 前调用 compiler/shader_source_discovery.h 的 discover_shader_sources(files, root)，通过 Core FileSystem 有界扫描 shader/**/*.shader、复用 Parser 提取名称和 Pass 名称列表、诊断重名；.hlsli 只参与 include 依赖。发现器不限制名称前缀或 Pass 用途，项目材质的 Project/Surface/ 和单 Forward Pass 规则由 Editor ShaderWorkflow::read_sources 校验。没有文件监听，批次固定快照；无工程仅处理内置源。
+工程根由 [Runtime](runtime.md#工程与分层配置) 注入。启动、创建成功和 Recompile 前调用 compiler/shader_source_discovery.h 的 discover_shader_sources(files, root)，通过 Core FileSystem 有界扫描 shader/**/*.shader、复用 Parser 提取名称和 Pass 名称列表、诊断重名；.hlsli 只参与 include 依赖。发现器不限制名称前缀或 Pass 用途，项目材质的 Project/Surface/、Usage Material 与必须具有唯一 Forward role 规则由 Editor ShaderWorkflow::read_sources 校验。没有文件监听，批次固定快照；无工程仅处理内置源。
 
-项目名称限定 Project/Surface/，当前支持一个 Forward Material Pass，不猜第一个 Pass。最多 250 项、2048 目录、16 层、单源 4 MiB、总源 64 MiB；确定顺序，拒绝链接。重名的所有项、损坏/不支持的声明带路径诊断并计入批次失败，合法项继续编译。损坏的外部编辑保留已发布的旧 Program，并可定位 parser 行号；重名/删除移除查询身份。刷新按逻辑身份保留旧 Program，后续编译/恢复仍验证 source/include/hash；索引身份不代表当前源码已验证。删除/冲突项不从 Saved 复活，已有 GPU refs 保持既有提交生命周期；改声明名使旧名称引用失效，移文件不改变逻辑名。
+项目名称限定 Project/Surface/，Editor 支持含 Forward 的多 role Material 集合，显示名不限为 Forward；各 role 在同一源中最多一个实现，按声明支持 Local/GPUSkin 或单一 factory。最多 250 项、2048 目录、16 层、单源 4 MiB、总源 64 MiB；确定顺序，拒绝链接。重名的所有项、损坏/不支持的声明带路径诊断并计入批次失败，合法项继续编译。损坏的外部编辑保留已发布的旧 Program，并可定位 parser 行号；重名/删除移除查询身份。刷新按逻辑身份保留旧 Program，后续编译/恢复仍验证 source/include/hash；索引身份不代表当前源码已验证。删除/冲突项不从 Saved 复活，已有 GPU refs 保持既有提交生命周期；改声明名使旧名称引用失效，移文件不改变逻辑名。
 
-Create Shader 是验证后单文件 CreateNew，再刷新发现索引；外部冲突明确报错并保留文件，不增加清单/两文件回滚。shader_sources.txt 已移除；Saved/编译产物的 manifest/hash 校验仍保留，builtin_shader_sources.h.in 仍表达内置用途/ABI/部署记录。测试夹具位于 editor/tests/fixtures/shader，不要求项目保留示例 Shader。发现失败路径见 editor/tests/project_tests.cpp；真实创建/编译/重启发现见 material_shader_tests.cpp。项目 C++ Game 宿主见 [Runtime](runtime.md#工程与分层配置)，它读取已发布 ShaderMapEntry，不现场编译项目源码；独立发行 Cook/Shader 打包尚未接入。
+Create Shader 是验证后单文件 CreateNew，再刷新发现索引；外部冲突明确报错并保留文件，不增加清单/两文件回滚。shader_sources.txt 已移除；Saved/编译产物的 manifest/hash 校验仍保留，builtin_shader_sources.h.in 仍表达内置用途/ABI/部署记录。测试夹具位于 editor/tests/fixtures/shader，不要求项目保留示例 Shader。发现失败路径见 editor/tests/project_tests.cpp；真实创建/编译/重启发现见 material_shader_tests.cpp。项目 C++ Game 宿主见 [Runtime](runtime.md#工程与分层配置)，它从已发布配置索引读取 permutation，再通过完整集合 reader 验证全部 entry，不扫描程序目录猜配对，也不现场编译项目源码；独立发行 Cook/Shader 打包尚未接入。
 
 ## 修改与验证
 
@@ -105,9 +125,9 @@ Create Shader 是验证后单文件 CreateNew，再刷新发现索引；外部�
 
 测试 tools/shader_compiler/tests/frontend_tests.cpp、layout_tests.cpp、compile_tests.cpp；runtime/tests/shader_parameters_tests.cpp、generated_shader_parameters_compile_tests.cpp、shader_map_tests.cpp、shader_map_entry_loader_tests.cpp、global_shader_map_tests.cpp、shader_graphics_state_tests.cpp。构建 target 从 CMake 查，失败/非法布局/缓存篡改和跨层验证比复制 happy-path 更重要。
 
-## 统一材质与 Shader 方案（待审核）
+## 统一材质与 Shader 方案（已确认，实施中）
 
-本节是尚未实施的完整设计，等待用户审核；以上章节仍描述当前实现。本节涉及的类型、声明和查询均不是现有 API。实现后将这里的 contract 合并到对应正文，删除本节，避免长期保留两套规范。材质持久化及实例行为归 [Material](material.md)，Pass 调度归 [Renderer](renderer.md)，资产格式归 [Assets](assets.md)，蒙皮约束归 [Animation](animation.md)；本节是此次跨模块方案的唯一入口。
+本节是已确认的目标 contract，按下述批次实施；正文只描述已落地能力。这里的拟定类型、声明和查询在对应实现落地前不是可用 API。实施时将已完成的 contract 合并到对应正文，最终删除本节，避免长期保留两套规范。材质持久化及实例行为归 [Material](material.md)，Pass 调度归 [Renderer](renderer.md)，资产格式归 [Assets](assets.md)，蒙皮约束归 [Animation](animation.md)；本节是此次跨模块方案的唯一入口。
 
 ### 目标与边界
 
@@ -145,13 +165,15 @@ Pass 的源码名字与语义 role 分开。首版 Material roles 为 Forward、
 标准几何与完全自定义几何明确分开：
 
 - Standard：使用编译器指定的公共 mesh vertex 入口；引擎负责标准位置/法线/切线变换及 Local/GPUSkin，用户可以完整编写 PS。标准入口输出已定义 varyings，用户 PS 可消费兼容子集。此模式不能自定义 VS entry point，所以默认 Pass 复用有可检查的依据。
-- Custom：用户自定义 VS/varyings 或顶点位移，显式声明支持的 VertexFactory，自行调用公开 helper。需要阴影/拾取时必须提供对应 role，复用相同位移/蒙皮/裁剪逻辑，不能沿用标准默认几何。用户只提供 Forward 时仍可用于不投影且不拾取的用途；要求缺失 role 的赋值/功能启用预检失败。
+- Custom：用户自定义 VS/varyings 或顶点位移，显式声明支持的 VertexFactory，自行调用公开 helper；允许控制深度测试、深度写入和自定义 fragment depth 输出。作者提供所需 ShadowDepth/HitProxy role，并负责其位移、蒙皮、coverage 与深度行为；不能沿用标准默认几何。引擎继续控制附件、调度、资源协议与各 role 的输出类型。用户只提供 Forward 时仍可用于不投影且不拾取的用途；要求缺失 role 的赋值/功能启用预检失败。首版仍只支持 Opaque/Masked，不开放透明混合或任意帧调度。
 
 内置 Unlit/Phong/PBR 使用 Standard 几何。Opaque 的 ShadowDepth/HitProxy 集合引用共享引擎默认程序；Masked 使用该表面源的 mask 函数与材质纹理生成对应程序。公共函数共享 alpha 判定，三种 Pass 使用同一个阈值，不允许仅 Forward discard。Custom 即使当前无位移，也不靠字符串检查或作者声明“无位移”自动取得 Standard 的默认复用资格。
 
 Standard 的默认复用还要求 coverage 合约：Opaque 的用户 PS 及依赖不得 discard/clip、输出自定义深度或启用 alpha-to-coverage，编译后验证禁止的 fragment 行为与输出。Masked 必须提供共享 coverage 函数，编译器生成三种 role 的入口包装并调用它，用户 Forward 着色函数不能追加另一套 discard/深度逻辑。coverage 只能依赖公共 UV/颜色、Material 参数/纹理及标准 Object 数据，不能依赖仅 Forward 可见的灯光或屏幕颜色。需要这些自由度时选择 Custom 并提供所需 Pass；不能仅凭 Geometry=Standard 就保证所有轮廓一致。
 
 Source 显式声明适配范围与已接受 engine features，compiler 根据解析后的声明和 include 依赖验证，不继续搜索原始 include 字符串。标准 schema/varyings 由编译器和公共 include 提供；Material 所有 Properties 的 full schema 在其变种/Pass 间保持稳定，active layout 可以不同。Pass 的参数 schema 按 role 定义，不能要求 Forward、ShadowDepth、HitProxy 拥有相同 Pass 参数。
+
+Standard 的着色/coverage 函数签名、公共输入字段和包装入口须与 v2 EBNF、最小真实示例一起固定后再实现；禁止根据拟定类型名臆造 API。验证区分接口/资源检查与可检测的字节码行为，不宣称 reflection 可证明任意 HLSL 的语义。共享 coverage 表达同一裁剪策略，不保证不同投影、采样 LOD 的逐像素结果相等。
 
 ### 声明模型与通用变体
 
@@ -189,7 +211,9 @@ MaterialShaderMap 对应一个 Shader source revision、已解析的 Material �
 
 MaterialInstance 可覆盖本地静态选项，engine selection 不出现在 Material 资产覆盖列表。Global 和默认 MeshPass 采用同一 permutation/entry/cache 机制，只是前者没有 VertexFactory、后二者没有用户 Material 静态域；共用集合查询实现，不另造三套 compiler。
 
-共享域不要求模板技巧：Core 保存 ShaderPermutationDomain/Selection/records、VertexFactory 类型及格式定义；RenderCore 保存 MaterialShaderMap、immutable Program 与缓存；Pass descriptor/支持策略留 RenderScene；compiler 完成源解析、组合规划、编译和 artifact 写入；Editor 完成源发现与请求/候选 UI。全部复用 Toy3dShaderFormat、Toy3dAssets、Toy3dAssetPipeline、Toy3dRuntime、Toy3dEditorCore，不新增库。
+静态 override 持久化为名字、明确 kind 与 bool/enum 值；ID 从规范化声明推导，不重复保存另一份权威值。实例支持继承和清除覆盖，未知名字、类型改变、删除的 enum 值均为错误；不开放 float 静态选项。
+
+共享域不要求模板技巧：Core 保存 permutation domain/typed selection/records、VertexFactory 类型、声明式 Pass 协议、静态支持条件及格式定义，供 Tools 与 Runtime 共用；RenderCore 保存 MaterialShaderMap、immutable Program 与缓存；RenderScene 负责 View/Primitive 到 Pass selection 的动态选择与调度，不能作为 Tools 的依赖；compiler 完成源解析、组合规划、编译和 artifact 写入；Editor 完成源发现与请求/候选 UI。全部复用 Toy3dShaderFormat、Toy3dAssets、Toy3dAssetPipeline、Toy3dRuntime、Toy3dEditorCore，不新增库。
 
 查询 key 与内容身份分开：
 
@@ -203,6 +227,8 @@ v2 提供独立 VS/PS 源块，公共 include 的宏依赖纳入闭包；缺少�
 首批 stage 影响默认值：标准 Local/GPUSkin 选择仅影响 VS；Forward 的 SHADOW_MODE/ENVIRONMENT_MODE 仅影响 PS；PBR 的普通着色选项仅影响 Forward PS，SURFACE_MODE 与参与 alpha 的纹理/颜色选项同时影响各 coverage PS。标准 Forward VS 保持同源各变种的插值接口，法线/切线输出能力由源的标准接口声明决定；不得把实际改变 VS 输入/输出的优化偷偷记成 PS-only。ShadowDepth Opaque 无 PS，HitProxy 默认 PS 不因 factory 重编。
 
 Material 保存 full 参数 schema；不同 Program 可有不同 active resources。Material/View/Pass/Object 绑定缓存按 active group layout + owner/value generation + resource view generation 查询，Material bind 与 Object bind 不再固定挂一份适用于所有 Pass 的对象。合法的无阴影程序无需 dummy shadow atlas；无法线贴图程序不要求 normal texture。相同 group layout 才共享 binding，所有 GPU refs 持续到真实 completion。
+
+Material 保存不可变、Program-independent 的逻辑参数快照；RenderCore 按所选 Program 的 active layout 派生并缓存 binding，RHI 只处理 native mapping。默认纹理由 Shader 属性声明：内置白 BaseColor、白 MRO、平面法线及黑 emissive。active 的必需纹理为空且未声明默认时失败，inactive 资源不要求绑定；显式资源引用损坏仍失败，不静默替换为默认。
 
 ### 哪些组合需要编译
 
@@ -224,7 +250,7 @@ policy 是有版本的 project/config 数据，使用现有 config/FileSystem；
 
 规划必须在展开前计算组合上界、在过滤后计算实际数量。首版每源最多 32 个 typed 维度、每 enum 最多 32 值；单个作业最多 4096 个 required Program 条目，单源最多 1024 个，超过限制明确失败并列出主要乘积维度，不能静默剥离合法需求。限制集中具名定义，与 reader/candidate 容量共同验证；分批编译不绕过最终集合完整性。输出 declared/required/filtered/cache-hit/stage 编译数量，便于定位组合膨胀，记录放构建结果而非长期文档。
 
-发布完整集合索引，显式记录每个查询身份到 entry content key 的映射及 required coverage；索引、selection records、source dependency 和 entry 均验证。替换后删除当前 loader 按目录搜索 Local 和派生 skin key 的路径。Cook/独立部署使用同一索引，可以在现有 loose artifacts 上实现完整组合发布；本轮不要求建立新的压缩 ShaderCodeLibrary。部署只包含 required 列表所引用的 entry/stage，不能删除 Shader 后从旧 Saved 目录复活。
+集合索引已覆盖当前声明的 Pass/factory，见[现有接口](#完整集合索引与候选)；后续扩展为规划后的查询身份与 required coverage，加入 Pass selection records，并验证 source dependency 和 entry。Cook/独立部署使用同一索引，在现有 loose artifacts 上完成 required 组合发布；本轮不要求建立新的压缩 ShaderCodeLibrary。部署只包含 required 列表所引用的 entry/stage，不能删除 Shader 后从旧 Saved 目录复活。
 
 ### PBR 的具体算法
 
@@ -260,6 +286,8 @@ Runtime 为场景提供一个 owned environment snapshot（Cube 资源、旋转�
 
 法线贴图增加 Tangent0：StaticMesh/SkeletalMesh 共享切线方向与 handedness，导入/构建按 UV seams/hard edges 生成或验证，缺有效 UV/tangent 的几何不能静默启用 normal map。当前依赖只有 Assimp 的 CalcTangentsProcess，未发现 MikkTSpace；首版统一采用 [MikkTSpace 官方实现](https://github.com/mmikk/MikkTSpace)，不能把自写近似命名为 MikkTSpace。作为 Tools 的固定 revision 构建依赖，源码缓存放根 build 下并支持离线指定已核对源，不改 engine/thirdparty，不让 Runtime 依赖生成器。构建时不跟随浮动 master，也不因缺依赖退回另一算法。旧 mesh payload 不由 Runtime 补切线或兼容读取，要求离线从源重建新格式，不能在 draw 热路径生成。
 
+MikkTSpace 按 corner 生成结果，拆分顶点必须同步复制颜色、所有 UV、骨骼索引/权重及其他顶点属性并重建 indices。资产显式记录有效切线状态；NormalMap=Off 可使用已初始化的安全切线，启用时必须具备有效 UV/切线。环境 Cube 大小限定 2..512 的二次幂并包含完整 mip 链；源/烘焙结果不能表示为有限非负 FP16 时导入失败，不静默截断。材质的数值范围由 schema 与编辑/加载边界共同验证。
+
 蒙皮位置/切线按线性变换 rows，法线按已有 inverse-transpose normal rows；随后 Gram-Schmidt 正交化切线并用 handedness 重建 bitangent。Object 非均匀 scale 同样处理；退化 frame 报告并使用具名安全法线，不能产生 NaN。重用现有六 Float4/bone typed 数据，不新增骨骼 StructuredBuffer，不改变正 scale 与 4/8 共用 Shader contract。切线和新的法线约定要覆盖 static、GPUSkin、镜像 UV 和三种 Pass。
 
 PBR 不在材质 Shader 内做 tonemap/gamma；仍输出线性 HDR，经当前 Tonemap/UI 路径。新增 HDR 纹理/Cube 时逐 profile 检查 sampled/filter/limits support；Vulkan ES3.1 不因桌面能力抬高 SPIR-V 版本、descriptor set 数或可选能力要求。能力不足明确不支持该环境配置，不能上层判断 Vk/D3D 后偷改算法。
@@ -269,6 +297,8 @@ PBR 不在材质 Shader 内做 tonemap/gamma；仍输出线性 HDR，经当前 T
 Source/domain、CPU 资产、ShaderMap revision 不可变并可共享；MaterialInterface/Library/编辑草稿是 GT owner，MaterialRenderProxy 与 binding/cache 是逻辑 RT owner。组合规划/编译可走现有 Editor worker；只把 owned 候选发送 GT，再 FIFO 发送 RT 验证结果，不从 worker 读可变 World/Proxy/RHI。不新增线程池、Process 封装或全局材质服务。
 
 改变静态选项、父材质、源码或构建 policy 需要完整候选。先校验 source/domain/full schema/required coverage，再校验每种所需 stage/link/VertexFactory/附件及 binding，成功后一次提交完整配置图；失败保留旧参数、静态配置、Proxy 地址、程序集合与画面。普通参数仍无需编译。源重命名/删除、新旧 domain 不兼容和孤儿静态 override 具体报告；不能猜 default 将错误候选当成功。多个实例解析同一配置复用 map，编辑草稿与已保存 Library 不共享可变状态。
+
+factory 编译支持与实际几何属性分开验证。材质赋值时校验目标 mesh；更新共享材质时校验所有当前使用者，任何对象/slot 缺少新要求的属性或 role 都拒绝整个候选发布，并保留旧有效配置。诊断列出对象、slot 与缺失项，草稿仍可编辑；不部分发布或让不兼容对象消失。
 
 Editor UI 区分 Properties、Static Options 与只读 Shader capabilities；只显示该 Shader 声明的选项。编译请求标明目标配置与所需组合，编译完成之前继续显示旧效果；提供来源/Pass/VF/selection/profile 的缺失诊断。不在 draw 执行文件发现、加载、编译或 schema 修复；启动/加载预检 mandatory 集合。运行时选择缺失明确失败，不近似选最近 variant，也不自动用 Local 替代 GPUSkin。
 
@@ -288,15 +318,15 @@ Editor UI 区分 Properties、Static Options 与只读 Shader capabilities；只
 
 ### 验证与旧入口删除条件
 
-实施分为共享 domain/格式与规划、集合加载/Material 静态继承、mesh Pass 与绑定、PBR/资产基础、Editor/部署五个可独立验证的批次；全部按本节同一方案，不在每批新增另一份总体设计。此顺序用于保持可构建，不缩减最终验收范围。
+先迁移不改变生产格式的共享 domain 基础，随后以一个可构建的纵向批次同时切换 v2 EBNF/AST/parser/codegen、产物 reader、内置源/模板/测试和部署；集合加载/Material 静态继承、mesh Pass 与绑定、PBR/资产基础、Editor/部署继续分批推进。不能为了保持可构建加入旧格式兼容 reader。集合索引在全部所需 entry 验证成功后最后发布；全部按本节同一方案，不在每批新增另一份总体设计，不缩减最终验收范围。
 
 必须覆盖声明/default/排序与稳定身份、重复/非法/条件过滤/组合预算、Local/GPUSkin 同等查询、stage-only 复用与跨 stage 接口错误、source revision 与索引篡改、静态实例继承/保存/循环/孤儿/回滚、缺失 mandatory 程序、无阴影/无 normal map 的资源缺省、active-layout 缓存失效、透明裁剪三 Pass 一致、Player 排除 Editor-only 及额外运行时配置部署，以及旧语言/产物/受影响资产版本明确拒绝、不自动迁移。
 
 PBR 独立 CPU reference 与 GPU readback 验 F0、metallic 端点、Mobile GGX 及 2048 上界、简化 visibility/EnvBRDFApprox、roughness 下界、grazing、零灯/自发光、禁用光照、带/不带 shadow/镜面 IBL、不同参数不重编；测试不是复制同一 helper 自证。增加 constant-white 环境/方向 face 图检查预过滤、Cube orientation、粗糙度 mip，验证无直接光时不产生环境漫反射，并验证 Color/LinearData/Normal mips 与 texture usage 保存/重新导入。真实 Vulkan 场景覆盖 StaticMesh/GPUSkin 4/8、阴影、拾取、Masked、非均匀 scale、预览/缩略图、旧资源 GPU 保活和候选失败。手机、D3D 支持必须有实际 profile/backend 证据，未运行不能声称通过。
 
-新 compiler 只接受 Shader language v2，v1 明确报版本不支持；内置、模板、项目示例与测试同批重写，不提供兼容 parser 或旧 Pass 隐式映射。当前 entry format 为版本 6，统一身份替换后提升到版本 7；permutation record/version、compile-request 与必要 ABI 版本同步提升，旧 compiled artifacts 拒绝并要求重编译，不保留 Local 特殊旧 key。Material/Instance、texture import、mesh payload 与 Scene/environment 按实际 contract 变更提升格式版本，reader 只接受新 contract；需要更新的仓库资产显式重建或重新导入，不保留自动转换链，不覆盖用户原文件。
+新 compiler 只接受 Shader language v2，v1 明确报版本不支持；内置、模板、项目示例与测试同批重写，不提供兼容 parser 或旧 Pass 隐式映射。entry format 已提升到版本 7，compile-request 已提升到版本 2；Material permutation record 保持现有规范化格式，factory 迁移为独立身份字段，旧 compiled artifacts 拒绝并要求重编译。后续 Pass selection/ABI 按实际 contract 变更提升对应版本。Material/Instance、texture import、mesh payload 与 Scene/environment 同样按实际变更提升格式版本，reader 只接受新 contract；需要更新的仓库资产显式重建或重新导入，不保留自动转换链，不覆盖用户原文件。
 
-完全切换后删除 `mesh_shader_permutation.*`、`MeshVertexFactoryType` 的旧命名/派生 key、`gpu_skin_program` 数据与访问器、`MeshBatch::resolve_program` skin 分支、原始 include 字符串识别、skin 配对目录扫描与 Editor 双程序发布逻辑。删除默认 Forward 单 Pass 限制及固定单 binding 假设；保留真实 ShaderMap/entry/cache/resource 共享基础设施，不保留转发头、旧 target alias 或永久双轨。完成后将本节拆回正文及各主文档职责处，只保留一个方案入口和真实接口。
+已删除独立的 mesh permutation 入口、旧 factory 类型名、派生 key 与程序目录扫描，并改为显式声明支持范围及完整集合索引。`gpu_skin_program` 数据/访问器、`MeshBatch::resolve_program` skin 分支及材质单 Program 发布路径已删除；Editor 的单 Forward/Local 限制已解除，仍需完成 Standard/Masked 包装、Pass selection/planner、stage 编译复用和 PBR 接入；保留真实 ShaderMap/entry/cache/resource 共享基础设施，不保留转发头、旧 target alias 或永久双轨。完成后将本节拆回正文及各主文档职责处，只保留一个方案入口和真实接口。
 
 ### 参考依据
 

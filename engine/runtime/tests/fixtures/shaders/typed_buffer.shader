@@ -1,6 +1,7 @@
 Shader "Toy3d/Test/TypedBuffer"
 {
-    Version 1
+    Version 2
+    Usage Global
     Resources
     {
         Object
@@ -10,6 +11,7 @@ Shader "Toy3d/Test/TypedBuffer"
     }
     Pass "TypedBuffer"
     {
+        Role Global
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Off
@@ -20,8 +22,27 @@ Shader "Toy3d/Test/TypedBuffer"
         Stencil Off
         Blend Off
         ColorWrite RGBA
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
+        struct PixelInput
+        {
+            float4 position : SV_Position;
+            float4 color : COLOR0;
+        };
+        PixelInput vs_main(uint vertex_id : SV_VertexID)
+        {
+            PixelInput output;
+            output.position = bone_matrix_buffer.Load(vertex_id);
+            output.color = bone_matrix_buffer.Load(3);
+            return output;
+        }
+        float4 ps_main(PixelInput input) : SV_Target0
+        {
+            return input.color;
+        }
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         struct PixelInput
         {

@@ -1,6 +1,7 @@
 Shader "Toy3d/PostProcess/Tonemap"
 {
-    Version 1
+    Version 2
+    Usage Global
 
     Parameters
     {
@@ -21,6 +22,7 @@ Shader "Toy3d/PostProcess/Tonemap"
 
     Pass "Tonemap"
     {
+        Role Global
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Off
@@ -32,9 +34,8 @@ Shader "Toy3d/PostProcess/Tonemap"
         Blend Off
         ColorWrite RGBA
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
-        #pragma pixel ps_main
 
         struct VSOutput
         {
@@ -52,6 +53,17 @@ Shader "Toy3d/PostProcess/Tonemap"
                 1.0);
             return output;
         }
+
+        ENDHLSL
+
+        HLSLPS
+        #pragma pixel ps_main
+
+        struct VSOutput
+        {
+            float4 clip_position : SV_Position;
+            float2 uv : TEXCOORD0;
+        };
 
         float sanitize_hdr_component(float value)
         {

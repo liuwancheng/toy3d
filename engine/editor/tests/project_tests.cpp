@@ -136,25 +136,28 @@ int main()
           "External source addition fixture written");
     auto sources = discover();
     check(sources.succeeded() && sources.value().size() == 1u && sources.value()[0].name == "Project/Surface/Painted" &&
-              sources.value()[0].error.empty() && sources.value()[0].pass_names == std::vector<std::string>{"Forward"},
+              sources.value()[0].error.empty() &&
+              sources.value()[0].pass_names == std::vector<std::string>{"Forward", "ShadowDepth", "HitProxy"} &&
+              sources.value()[0].usage == shader::ShaderUsage::Material &&
+              sources.value()[0].vertex_factory_support == shader::local_vertex_factory_support,
           "A source is discovered by its declaration and Pass metadata without a registration list");
     std::string generic = fixture.value();
     generic.replace(generic.find("Project/Surface/Painted"), std::string("Project/Surface/Painted").size(),
                     "Shared/Effects/Painted");
-    const auto pass_begin = generic.find("    Pass \"Forward\"");
-    const auto shader_end = generic.rfind('}');
-    if (pass_begin == std::string::npos || shader_end == std::string::npos || shader_end <= pass_begin)
+    const auto shadow_name = generic.find("Pass \"ShadowDepth\"");
+    if (shadow_name == std::string::npos)
     {
-        check(false, "Fixture contains a complete Pass for the multi-Pass declaration test");
+        check(false, "Fixture contains a ShadowDepth role with an independent Pass display name");
         return 1;
     }
-    std::string depth_pass = generic.substr(pass_begin, shader_end - pass_begin);
-    depth_pass.replace(depth_pass.find("\"Forward\""), std::string("\"Forward\"").size(), "\"Depth\"");
-    generic.insert(shader_end, depth_pass);
+    generic.replace(shadow_name, std::string("Pass \"ShadowDepth\"").size(), "Pass \"Depth\"");
     check(write(project.files(), "/Game/shader/new.shader", generic), "Generic multi-Pass source fixture written");
     sources = discover();
     check(sources.succeeded() && sources.value().size() == 1u && sources.value()[0].name == "Shared/Effects/Painted" &&
-              sources.value()[0].pass_names == std::vector<std::string>{"Forward", "Depth"} &&
+              sources.value()[0].pass_names == std::vector<std::string>{"Forward", "Depth", "HitProxy"} &&
+              sources.value()[0].pass_roles == std::vector<shader::ShaderPassRole>{shader::ShaderPassRole::Forward,
+                                                                                   shader::ShaderPassRole::ShadowDepth,
+                                                                                   shader::ShaderPassRole::HitProxy} &&
               sources.value()[0].error.empty(),
           "Discovery accepts non-project names and all parsed Passes without Editor Material policy");
     check(write(project.files(), "/Game/shader/new.shader", fixture.value()), "Project Material declaration restored");

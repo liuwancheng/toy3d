@@ -2,7 +2,7 @@
 
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/hit_proxy.h"
-#include "rendercore/material/material_program_validation.h"
+#include "rendercore/material/material_shader_map_validation.h"
 #include "rendercore/shader/builtin_shader_update.h"
 #include "renderscene/builtin_mesh_pass_programs.h"
 #include "threading/threading_types.h"
@@ -18,6 +18,7 @@
 
 namespace toy3d
 {
+    class VertexFactory;
     class RenderResourceManager;
     class RenderScene;
     class SceneRenderTargets;
@@ -102,7 +103,7 @@ namespace toy3d
         SceneInterface* preview_scene_interface() const;
         SceneInterface* play_scene_interface() const;
         bool poll_ui_texture(UiTextureResult& result);
-        void validate_material_program(MaterialProgramValidationRef request);
+        void validate_material_shader_map(MaterialShaderMapValidationRef request);
         void prepare_builtin_shaders(BuiltinShaderUpdateRef request);
 
       private:
@@ -117,8 +118,7 @@ namespace toy3d
         void collect_hit_proxy_readbacks();
         void collect_ui_readbacks();
         void resolve_builtin_shaders();
-        RHIStatus validate_mesh_shader(const ShaderMapProgramRef& program, bool shadow);
-        RHIStatus validate_gpu_skin_shader(const ShaderMapProgramRef& local, RHIGraphicsPipelineDesc pipeline);
+        RHIStatus validate_mesh_shader(const ShaderMapProgramRef& program, const VertexFactory* geometry = nullptr);
         RHIStatus record_ui_work(RHIGraphicsCommandContext& context, RHIReadbackRef& capture);
 
         struct PendingHitReadback
@@ -168,7 +168,7 @@ namespace toy3d
         BuiltinShaderUpdateRef builtin_update_;
         std::shared_ptr<const GlobalShaderMap> pending_global_shaders_;
         std::unique_ptr<TonemapPassResources> pending_tonemap_resources_;
-        ShaderMapProgramRef pending_shadow_shader_;
+        BuiltinMeshPassPrograms pending_mesh_pass_programs_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;
         RHITextureRef placeholder_texture_;
         RHITextureViewRef placeholder_texture_view_;

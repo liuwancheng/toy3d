@@ -372,8 +372,45 @@ namespace toy3d::shader
         return result;
     }
 
-    LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset, MeshVertexFactoryType factory)
+    LogicalLayoutResult compile_logical_layout(const ShaderAsset& source_asset, VertexFactoryType factory,
+                                               ShaderPassRole role)
     {
+        // Mesh role Pass ABI belongs to the engine. Root Parameters/Resources Pass
+        // describe Forward; ShadowDepth/HitProxy receive their canonical group instead.
+        ShaderAsset asset = source_asset;
+        if (asset.usage != ShaderUsage::Global &&
+            (role == ShaderPassRole::ShadowDepth || role == ShaderPassRole::HitProxy))
+        {
+            asset.parameters.clear();
+            asset.resources.erase(std::remove_if(asset.resources.begin(), asset.resources.end(),
+                                                 [](const Resource& resource)
+                                                 {
+                                                     return resource.group == BindingGroup::Pass;
+                                                 }),
+                                  asset.resources.end());
+            if (role == ShaderPassRole::ShadowDepth)
+            {
+                for (const auto& member :
+                     std::vector<ConstantMemberInput>{{"shadow_world_to_clip", ShaderValueType::Float32x4x4},
+                                                      {"shadow_light_direction", ShaderValueType::Float32x4},
+                                                      {"shadow_bias_parameters", ShaderValueType::Float32x4}})
+                {
+                    Parameter parameter;
+                    parameter.name = member.name;
+                    parameter.type = member.type;
+                    asset.parameters.push_back(std::move(parameter));
+                }
+            }
+            else
+            {
+                Parameter parameter;
+                parameter.name = "hit_proxy_id_parts";
+                parameter.type = ShaderValueType::Float32x2;
+                parameter.default_value.kind = DefaultValueKind::Numbers;
+                parameter.default_value.numbers = {0, 0};
+                asset.parameters.push_back(std::move(parameter));
+            }
+        }
         LogicalLayoutResult result;
         LogicalShaderLayout layout;
 
@@ -587,7 +624,7 @@ namespace toy3d::shader
             resource.parameter_id = make_shader_parameter_id(resource.group, resource.category, resource.name);
             layout.resources.push_back(std::move(resource));
         }
-        if (factory == MeshVertexFactoryType::GPUSkin)
+        if (factory == VertexFactoryType::GPUSkin)
         {
             layout.resources.push_back(builtin_gpu_skin_resource());
         }

@@ -2,7 +2,7 @@
 
 #include "file_system/physical_path.h"
 #include "rendercore/geometry/static_mesh.h"
-#include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 
 namespace toy3d
 {
@@ -10,7 +10,7 @@ namespace toy3d
     class SceneGeometry
     {
       public:
-        bool initialize(const PhysicalPath& shader_entries, ShaderMapProgramRef program = {});
+        bool initialize(const PhysicalPath& shader_entries, ShaderMapCollectionRef program = {});
         void release();
         StaticMeshRef instantiate(const std::string& kind) const;
         const MaterialInstanceRef& default_material() const

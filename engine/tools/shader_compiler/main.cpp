@@ -10,6 +10,7 @@
 #include "frontend/shader_parser.h"
 
 #include <cstdint>
+#include <algorithm>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -413,62 +414,84 @@ int main(int argument_count, char** arguments)
         }
         const toy3d::shader::FileShaderSourceProvider source_provider(includes);
         compile_input.source_provider = &source_provider;
-        toy3d::shader::ShaderMapEntryCompileResult compiled = toy3d::shader::compile_vulkan_shader_map_entry(
-            *result.asset, compile_input, *discovered.toolchain, platform_file,
-            toy3d::PhysicalPath(arguments[command_index + 5]));
-        for (const toy3d::shader::Diagnostic& diagnostic : compiled.diagnostics)
+        const auto requested_pass = std::find_if(result.asset->passes.begin(), result.asset->passes.end(),
+                                                 [&](const toy3d::shader::ShaderPass& pass)
+                                                 {
+                                                     return pass.name == compile_input.pass_name;
+                                                 });
+        if (requested_pass == result.asset->passes.end())
         {
-            report_diagnostic(diagnostic);
-        }
-        if (!compiled.succeeded())
-        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, "Requested Pass is not declared by this source.");
             return 1;
         }
-        toy3d::shader::ShaderMapEntryWriteResult written = toy3d::shader::write_verified_shader_map_entry(
-            platform_file, toy3d::PhysicalPath(arguments[command_index + 4]), *compiled.entry,
-            compiled.editor_properties);
-        for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
+        toy3d::shader::ShaderMapIndex map_index;
+        map_index.shader_name = result.asset->name;
+        map_index.source_hash = toy3d::sha256(source);
+        const std::size_t factory_count =
+            result.asset->vertex_factory_support == toy3d::shader::all_vertex_factory_support ? 2u : 1u;
+        if (result.asset->passes.size() > toy3d::shader::max_shader_map_index_programs / factory_count)
         {
-            report_diagnostic(diagnostic);
-        }
-        if (!written.succeeded())
-        {
+            report_message(toy3d::Logger::Level::TOY_ERROR,
+                           "Source exceeds the ShaderMap program budget before compilation.");
             return 1;
         }
-        std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/" << compiled.entry->pass_name
-                  << "' to " << written.entry_directory->utf8() << '\n';
-        if (toy3d::shader::supports_gpu_skin(*result.asset, compile_input.pass_name))
+        const toy3d::PhysicalPath output_root(arguments[command_index + 4]);
+        const toy3d::PhysicalPath work_root(arguments[command_index + 5]);
+        std::size_t pass_number = 0u;
+        for (const auto& pass : result.asset->passes)
         {
-            compile_input.vertex_factory = toy3d::shader::MeshVertexFactoryType::GPUSkin;
-            const auto skin_work =
-                platform_file.join_relative(toy3d::PhysicalPath(arguments[command_index + 5]), "gpu_skin");
-            if (!skin_work.succeeded())
+            map_index.passes.push_back({pass.name, pass.role});
+            compile_input.pass_name = pass.name;
+            for (const auto factory : {toy3d::shader::VertexFactoryType::None, toy3d::shader::VertexFactoryType::Local,
+                                       toy3d::shader::VertexFactoryType::GPUSkin})
             {
-                report_message(toy3d::Logger::Level::TOY_ERROR, skin_work.status().message);
-                return 1;
+                if (!toy3d::shader::supports_vertex_factory(result.asset->vertex_factory_support, factory))
+                {
+                    continue;
+                }
+                compile_input.vertex_factory = factory;
+                const auto work =
+                    platform_file.join_relative(work_root, "pass_" + std::to_string(pass_number) + "/factory_" +
+                                                               std::to_string(static_cast<unsigned>(factory)));
+                if (!work.succeeded())
+                {
+                    report_message(toy3d::Logger::Level::TOY_ERROR, work.status().message);
+                    return 1;
+                }
+                const auto compiled = toy3d::shader::compile_vulkan_shader_map_entry(
+                    *result.asset, compile_input, *discovered.toolchain, platform_file, work.value());
+                for (const auto& diagnostic : compiled.diagnostics)
+                {
+                    report_diagnostic(diagnostic);
+                }
+                if (!compiled.succeeded())
+                {
+                    return 1;
+                }
+                const auto written = toy3d::shader::write_verified_shader_map_entry(
+                    platform_file, output_root, *compiled.entry, compiled.editor_properties);
+                for (const auto& diagnostic : written.diagnostics)
+                {
+                    report_diagnostic(diagnostic);
+                }
+                if (!written.succeeded())
+                {
+                    return 1;
+                }
+                map_index.permutation_key = compiled.entry->permutation_key;
+                map_index.programs.push_back(
+                    {pass.name, compiled.entry->contract, written.shader_map_key, written.entry_content_hash});
+                std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/" << pass.name << "' to "
+                          << written.entry_directory->utf8() << '\n';
             }
-            auto skin = toy3d::shader::compile_vulkan_shader_map_entry(
-                *result.asset, compile_input, *discovered.toolchain, platform_file, skin_work.value());
-            for (const auto& diagnostic : skin.diagnostics)
-            {
-                report_diagnostic(diagnostic);
-            }
-            if (!skin.succeeded())
-            {
-                return 1;
-            }
-            auto skin_written = toy3d::shader::write_verified_shader_map_entry(
-                platform_file, toy3d::PhysicalPath(arguments[command_index + 4]), *skin.entry, skin.editor_properties);
-            for (const auto& diagnostic : skin_written.diagnostics)
-            {
-                report_diagnostic(diagnostic);
-            }
-            if (!skin_written.succeeded())
-            {
-                return 1;
-            }
-            std::cout << "Compiled GPUSkin ShaderMapEntry to " << skin_written.entry_directory->utf8() << '\n';
+            ++pass_number;
         }
+        if (!toy3d::shader::write_verified_shader_map_index(platform_file, output_root, map_index, error))
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, "ShaderMap index publication failed: " + error);
+            return 1;
+        }
+        std::cout << "Published complete ShaderMap index with " << map_index.programs.size() << " program(s).\n";
         return 0;
     }
 

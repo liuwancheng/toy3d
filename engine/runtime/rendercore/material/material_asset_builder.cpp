@@ -131,7 +131,7 @@ namespace toy3d
     } // namespace
 
     AssetResult<MaterialDesc> material_descriptor_from_asset(const MaterialAssetData& data,
-                                                             std::shared_ptr<const ShaderMapProgram> program,
+                                                             ShaderMapCollectionRef program,
                                                              const MaterialTextureValues& textures)
     {
         const AssetStatus valid = validate_material_asset(data);
@@ -139,14 +139,18 @@ namespace toy3d
         {
             return AssetResult<MaterialDesc>(valid);
         }
-        if (!program || program->data().shader_name != data.shader_name || program->data().pass_name != "Forward")
+        if (!program || program->index().shader_name != data.shader_name ||
+            program->programs().front()->data().contract.usage != shader::ShaderUsage::Material ||
+            !program->find(shader::ShaderPassRole::Forward, program->programs().front()->data().contract.vertex_factory)
+                 .succeeded())
         {
             return AssetResult<MaterialDesc>(failure("A matching compiled Forward Shader program is required."));
         }
         MaterialDesc desc;
         desc.shader_name = data.shader_name;
-        desc.parameter_schema = material_parameter_schema_from_shader_schema(program->data().parameter_schema);
-        desc.shader_program = std::move(program);
+        desc.parameter_schema =
+            material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema);
+        desc.shader_map = std::move(program);
         desc.two_sided = data.two_sided;
         std::string error;
         if (!initialize_material_constant_defaults(desc, error))
@@ -238,7 +242,7 @@ namespace toy3d
     }
 
     AssetResult<MaterialInstanceRef> create_material_from_asset(const MaterialAssetData& data,
-                                                                std::shared_ptr<const ShaderMapProgram> program,
+                                                                ShaderMapCollectionRef program,
                                                                 const MaterialTextureValues& textures)
     {
         auto descriptor = material_descriptor_from_asset(data, std::move(program), textures);

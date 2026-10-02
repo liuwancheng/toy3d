@@ -11,6 +11,8 @@ namespace toy3d
         explicit ShaderMapEntryLoader(PhysicalPath entry_root);
 
         ShaderMapProgramLoadResult load_program(const ShaderMapProgramKey& key) const override;
+        ShaderMapCollectionLoadResult load_collection(const std::string& shader_name, ShaderPlatform platform,
+                                                      const ShaderContentHash& permutation_key) const override;
 
       private:
         NativePlatformFile platform_file_;

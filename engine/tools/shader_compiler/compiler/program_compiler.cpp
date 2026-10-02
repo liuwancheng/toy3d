@@ -105,8 +105,20 @@ namespace toy3d::shader
             request_input.generated_prelude = permutation.generated_prelude;
             request_input.generated_bindings = std::move(*bindings.source);
             request_input.shader_include_source = shader_include_source;
-            request_input.pass_source = pass.program.source;
-            request_input.pass_source_line = pass.program.location.line;
+            const auto program = std::find_if(pass.programs.begin(), pass.programs.end(),
+                                              [&](const HlslBlock& block)
+                                              {
+                                                  return block.entry_points.size() == 1u &&
+                                                         block.entry_points.front().stage == entry.stage;
+                                              });
+            if (program == pass.programs.end())
+            {
+                output.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::MissingEntryPoint,
+                                              pass.location, "Missing stage source block."});
+                return output;
+            }
+            request_input.pass_source = program->source;
+            request_input.pass_source_line = program->location.line;
             request_input.source_provider = input.source_provider;
             request_input.logical_layout_hash = logical_layout.logical_layout_hash;
             request_input.target_binding_hash = target_layout.target_binding_hash;
@@ -217,22 +229,12 @@ namespace toy3d::shader
 
     bool supports_gpu_skin(const ShaderAsset& asset, const std::string& pass_name)
     {
-        const std::string include = "#include \"/Engine/ShaderIncludes/ToyMeshVertex.hlsli\"";
-        for (const auto& block : asset.includes)
-        {
-            if (block.source.find(include) != std::string::npos)
-            {
-                return true;
-            }
-        }
-        for (const auto& pass : asset.passes)
-        {
-            if (pass.name == pass_name && pass.program.source.find(include) != std::string::npos)
-            {
-                return true;
-            }
-        }
-        return false;
+        return supports_vertex_factory(asset.vertex_factory_support, VertexFactoryType::GPUSkin) &&
+               std::any_of(asset.passes.begin(), asset.passes.end(),
+                           [&](const ShaderPass& pass)
+                           {
+                               return pass.name == pass_name;
+                           });
     }
 
     bool ShaderMapEntryCompileResult::succeeded() const
@@ -251,7 +253,7 @@ namespace toy3d::shader
                                            return candidate.name == input.pass_name;
                                        });
         if (pass == asset.passes.end() || input.source_virtual_path.empty() || input.source_provider == nullptr ||
-            pass->program.entry_points.empty())
+            pass->programs.empty() || asset.version != 2u)
         {
             result.diagnostics.push_back(
                 {DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, asset.location,
@@ -265,33 +267,46 @@ namespace toy3d::shader
             return result;
         }
 
-        if (input.vertex_factory != MeshVertexFactoryType::Local &&
-            input.vertex_factory != MeshVertexFactoryType::GPUSkin)
+        ShaderProgramContract contract;
+        contract.usage = asset.usage;
+        contract.role = pass->role;
+        contract.geometry = asset.geometry;
+        contract.vertex_factory_support = asset.vertex_factory_support;
+        contract.vertex_factory = input.vertex_factory;
+        std::string contract_error;
+        if (!validate_shader_program_contract(contract, contract_error))
         {
-            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
-                                          asset.location, "Unknown mesh vertex factory."});
+            result.diagnostics.push_back(
+                {DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, asset.location, contract_error});
             return result;
         }
-        if (input.vertex_factory == MeshVertexFactoryType::GPUSkin && !supports_gpu_skin(asset, input.pass_name))
+        if (input.vertex_factory == VertexFactoryType::GPUSkin && !supports_gpu_skin(asset, input.pass_name))
         {
             result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
-                                          asset.location, "GPUSkin requires the public ToyMeshVertex include."});
+                                          asset.location, "GPUSkin requires explicit VertexFactories support."});
             return result;
         }
-        permutation.permutation->key = mesh_shader_permutation_key(permutation.permutation->key, input.vertex_factory);
-        permutation.permutation->generated_prelude += input.vertex_factory == MeshVertexFactoryType::GPUSkin
+        permutation.permutation->generated_prelude += input.vertex_factory == VertexFactoryType::GPUSkin
                                                           ? "#define TOY3D_GPU_SKIN 1\n"
                                                           : "#define TOY3D_GPU_SKIN 0\n";
-        LogicalLayoutResult logical = compile_logical_layout(asset, input.vertex_factory);
+        LogicalLayoutResult logical = compile_logical_layout(asset, input.vertex_factory, pass->role);
         if (!logical.succeeded())
         {
             result.diagnostics = std::move(logical.diagnostics);
             return result;
         }
         ShaderStageFlags program_stages = ShaderStageFlags::None;
-        for (const EntryPoint& entry : pass->program.entry_points)
+        std::vector<EntryPoint> entry_points;
+        for (const HlslBlock& block : pass->programs)
         {
-            program_stages |= stage_flag(entry.stage);
+            if (block.entry_points.size() != 1u)
+            {
+                result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
+                                              block.location, "Each stage block requires one entry point."});
+                return result;
+            }
+            entry_points.push_back(block.entry_points.front());
+            program_stages |= stage_flag(block.entry_points.front().stage);
         }
         ActiveLayoutResult discovery_active =
             build_active_layout(*logical.layout, all_parameter_usage(*logical.layout, program_stages));
@@ -318,7 +333,7 @@ namespace toy3d::shader
             return result;
         }
         std::vector<ParameterUsage> reflected_usage;
-        for (const EntryPoint& entry : pass->program.entry_points)
+        for (const EntryPoint& entry : entry_points)
         {
             const FileResult<PhysicalPath> stage_working_directory =
                 platform_file.join_relative(discovery_root.value(), stage_directory_name(stage_flag(entry.stage)));
@@ -358,6 +373,7 @@ namespace toy3d::shader
         ShaderMapEntry entry;
         entry.shader_name = asset.name;
         entry.pass_name = pass->name;
+        entry.contract = contract;
         entry.target = ShaderTarget::VulkanSpirV;
         entry.profile = ShaderCompileProfile::VulkanES31;
         entry.logical_layout_hash = logical.layout->logical_layout_hash;
@@ -377,7 +393,7 @@ namespace toy3d::shader
                                       binding.descriptor_binding, binding.data_size, binding.data_layout_hash,
                                       binding.shader_abi_version});
         }
-        for (const EntryPoint& entry_point : pass->program.entry_points)
+        for (const EntryPoint& entry_point : entry_points)
         {
             const FileResult<PhysicalPath> stage_working_directory =
                 platform_file.join_relative(final_root.value(), stage_directory_name(stage_flag(entry_point.stage)));

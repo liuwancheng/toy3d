@@ -8,37 +8,21 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/geometry/vertex_factory.h"
+#include "rendercore/material/material_render_proxy.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
-#include "rendercore/shader/global_shader_map.h"
-#include "rendercore/shader/global_shader_type_registry.h"
+#include "rendercore/shader/shader_map_collection.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_graphics_state.h"
 #include "rendercore/shader/shader_parameters.h"
 #include "renderscene/mesh_batch.h"
+#include "renderscene/pass/mesh_draw_command.h"
 #include "renderscene/view/view_info.h"
 #include "shader_parameters/toy3d_editor_hitproxy.generated.h"
 
 namespace toy3d
 {
-    const GlobalShaderType& hit_proxy_global_shader_type()
-    {
-        static const HitProxyPassParameters parameters;
-        const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
-        static const GlobalShaderType type(
-            "HitProxyGlobalShader", "Toy3d/Editor/HitProxy", "HitProxy", shader::default_shader_permutation_key,
-            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel, metadata,
-            {GlobalShaderBindingRequirement(metadata.constant_buffer.binding_id, RHIBindingGroup::Pass,
-                                            RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Pixel)});
-        return type;
-    }
-
-    namespace
-    {
-        const GlobalShaderTypeRegistration hit_proxy_registration(hit_proxy_global_shader_type());
-    } // namespace
-
     RHIStatus render_hit_proxy_pass(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                    const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                    const ShaderMapCollection& shader_map, RHIGraphicsCommandContext& context,
                                     const std::vector<ViewInfo>& views, const RHITextureViewRef& id_view,
                                     const RHITextureViewRef& depth_view, HitProxyTable& table)
     {
@@ -49,13 +33,6 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "HitProxyPass requires R32UInt and D32Float targets.");
         }
-        const ShaderMapProgramResult found = global_shader_map.find(hit_proxy_global_shader_type());
-        if (!found.succeeded())
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "HitProxy Shader lookup failed: " + found.error);
-        }
-        const ShaderMapProgramRef& shader_program = found.program;
-
         RHIRenderPassDesc pass_desc;
         RHIColorAttachmentDesc color;
         color.view = id_view;
@@ -118,7 +95,7 @@ namespace toy3d
                     hit_id.value = static_cast<std::uint32_t>(table.size());
                 }
 
-                const auto selected = batch.resolve_program(shader_program);
+                const auto selected = batch.mesh_pass_program(shader::ShaderPassRole::HitProxy, shader_map);
                 if (!selected.succeeded())
                 {
                     return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
@@ -148,8 +125,8 @@ namespace toy3d
                 desc.depth_stencil_format = PixelFormat::D32Float;
                 desc.sample_count = 1u;
                 desc.debug_name = "HitProxyPipeline";
-                RHIResult<RHIGraphicsPipelineDesc> configured =
-                    build_shader_graphics_pipeline_desc(desc, selected.program->data().graphics_pass_state);
+                RHIResult<RHIGraphicsPipelineDesc> configured = build_shader_graphics_pipeline_desc(
+                    desc, batch.material_render_proxy().effective_graphics_pass_state(*selected.program));
                 if (!configured)
                 {
                     return configured.status();
@@ -162,7 +139,7 @@ namespace toy3d
                 }
                 draw.pipeline = std::move(pipeline).value();
                 HitProxyPassParameters parameters;
-                // Parameters v1 exposes Float2; two exact 16-bit lanes retain all
+                // Parameters exposes Float2; two exact 16-bit lanes retain all
                 // 32 HitProxy ID bits without changing the shared Shader language.
                 parameters.hit_proxy_id_parts =
                     Vector2(static_cast<float>(hit_id.value & 0xffffu), static_cast<float>(hit_id.value >> 16u));
@@ -171,9 +148,27 @@ namespace toy3d
                 {
                     return pass_binding.status();
                 }
-                draw.bindings.view = view.view_binding();
-                draw.bindings.pass = std::move(pass_binding).value();
-                draw.bindings.object = batch.object_binding();
+                status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Material,
+                                                   batch.material_binding(), draw.bindings.material);
+                if (status)
+                {
+                    status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::View,
+                                                       view.view_binding(), draw.bindings.view);
+                }
+                if (status)
+                {
+                    status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Pass,
+                                                       pass_binding.value(), draw.bindings.pass);
+                }
+                if (status)
+                {
+                    status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Object,
+                                                       batch.object_binding(), draw.bindings.object);
+                }
+                if (!status)
+                {
+                    return status;
+                }
                 draw.indices = batch.index_buffer_binding();
                 draw.args.index_count = batch.index_count();
                 draw.args.first_index = batch.first_index();

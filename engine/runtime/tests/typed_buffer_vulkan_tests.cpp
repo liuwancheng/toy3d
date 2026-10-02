@@ -2,8 +2,10 @@
 #include "gamescene/actor/skeletal_mesh_actor.h"
 #include "gamescene/world/world.h"
 #include "rendercore/material/material_asset_builder.h"
+#include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/rendering_thread.h"
 #include "rendercore/shader/global_shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 #include "renderscene/builtin_mesh_pass_programs.h"
 #include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/postprocess/tonemap_pass.h"
@@ -134,7 +136,7 @@ namespace
         std::cout << "Skeletal resources influence count " << num_bone_influences
                   << " discard/retry/completion passed\n";
     }
-    void test_production_skeletal_passes(toy3d::RHIDevice& device, std::uint32_t influences)
+    void test_production_skeletal_passes(toy3d::RHIDevice& device, std::uint32_t influences, bool custom_roles = false)
     {
         using namespace toy3d;
         ThreadManager threads;
@@ -148,18 +150,128 @@ namespace
             const auto fixture = tests::make_skeletal_fixture(influences, true);
             ShaderMapEntryLoader phong_loader(PhysicalPath(std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/phong"));
             ShaderMap phong_map(phong_loader);
-            const auto phong = phong_map.find_or_load({"Toy3d/Surface/Phong", "Forward"});
-            check(phong.succeeded() && phong.program->gpu_skin_program(), phong.error.c_str());
+            const auto collection = ShaderMapCollection::create_candidate(phong_loader.load_collection(
+                "Toy3d/Surface/Phong", ShaderPlatform::VulkanES31, shader::default_shader_permutation_key));
+            check(collection.succeeded(), collection.error.c_str());
+            const auto local_program =
+                collection.collection->find(shader::ShaderPassRole::Forward, shader::VertexFactoryType::Local);
+            const auto skin_program =
+                collection.collection->find(shader::ShaderPassRole::Forward, shader::VertexFactoryType::GPUSkin);
+            check(local_program.succeeded() && skin_program.succeeded() &&
+                      local_program.program != skin_program.program &&
+                      local_program.program->data().permutation_key == skin_program.program->data().permutation_key,
+                  "Real indexed mesh collection has peer Local/GPUSkin programs with the same material configuration");
+            check(!collection.collection->find(shader::ShaderPassRole::HitProxy, shader::VertexFactoryType::GPUSkin)
+                       .succeeded(),
+                  "Missing mesh roles cannot fall back to Forward");
+            auto skin_only = phong_loader.load_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31,
+                                                          shader::default_shader_permutation_key);
+            skin_only.programs.erase(std::remove_if(skin_only.programs.begin(), skin_only.programs.end(),
+                                                    [](const ShaderMapProgramData& data)
+                                                    {
+                                                        return data.contract.vertex_factory ==
+                                                               shader::VertexFactoryType::Local;
+                                                    }),
+                                     skin_only.programs.end());
+            skin_only.index.programs.erase(
+                std::remove_if(skin_only.index.programs.begin(), skin_only.index.programs.end(),
+                               [](const shader::ShaderMapIndexProgram& record)
+                               {
+                                   return record.contract.vertex_factory == shader::VertexFactoryType::Local;
+                               }),
+                skin_only.index.programs.end());
+            for (auto& data : skin_only.programs)
+            {
+                data.contract.vertex_factory_support = shader::gpu_skin_vertex_factory_support;
+            }
+            for (auto& record : skin_only.index.programs)
+            {
+                record.contract.vertex_factory_support = shader::gpu_skin_vertex_factory_support;
+            }
+            const auto skin_only_map = ShaderMapCollection::create_candidate(std::move(skin_only));
+            check(skin_only_map.succeeded(), skin_only_map.error.c_str());
+            MaterialDesc skin_only_descriptor;
+            skin_only_descriptor.shader_map = skin_only_map.collection;
+            std::string admission_error;
+            check(!validate_material_geometry(skin_only_descriptor, shader::VertexFactoryType::Local, false,
+                                              admission_error) &&
+                      validate_material_geometry(skin_only_descriptor, shader::VertexFactoryType::GPUSkin, true,
+                                                 admission_error),
+                  "New mesh admission rejects Local use of a skin-only Material before publication");
+            auto invalid_collection = phong_loader.load_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31,
+                                                                   shader::default_shader_permutation_key);
+            for (auto& program : invalid_collection.programs)
+            {
+                if (program.contract.vertex_factory == shader::VertexFactoryType::GPUSkin)
+                {
+                    program.vertex_inputs.erase(
+                        std::remove_if(program.vertex_inputs.begin(), program.vertex_inputs.end(),
+                                       [](const ShaderVertexInput& input)
+                                       {
+                                           return input.attribute_id == ShaderVertexAttributeId::BlendWeights1;
+                                       }),
+                        program.vertex_inputs.end());
+                }
+            }
+            check(!ShaderMapCollection::create_candidate(std::move(invalid_collection)).succeeded(),
+                  "An independent GPUSkin peer must validate both influence groups before publication");
+            ShaderMapProgramKey phong_key;
+            phong_key.shader_name = "Toy3d/Surface/Phong";
+            phong_key.pass_name = "Forward";
+            phong_key.role = shader::ShaderPassRole::Forward;
+            phong_key.vertex_factory = shader::VertexFactoryType::Local;
+            const auto phong =
+                phong_map.find_or_load_collection(phong_key.shader_name, phong_key.platform, phong_key.permutation_key);
+            check(phong.succeeded(), phong.error.c_str());
             ShaderMapEntryLoader shadow_loader(PhysicalPath(std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/shadow"));
             ShaderMap shadow_map(shadow_loader);
-            const auto shadow = shadow_map.find_or_load({"Toy3d/ShadowDepth/Default", "ShadowDepth"});
-            check(shadow.succeeded() && shadow.program->gpu_skin_program(), shadow.error.c_str());
+            ShaderMapProgramKey shadow_key;
+            shadow_key.shader_name = "Toy3d/ShadowDepth/Default";
+            shadow_key.pass_name = "ShadowDepth";
+            shadow_key.role = shader::ShaderPassRole::ShadowDepth;
+            shadow_key.vertex_factory = shader::VertexFactoryType::Local;
+            const auto shadow = shadow_map.find_or_load_collection(shadow_key.shader_name, shadow_key.platform,
+                                                                   shadow_key.permutation_key);
+            check(shadow.succeeded(), shadow.error.c_str());
             ShaderMapEntryLoader global_loader(PhysicalPath(TOY3D_OUTPUT_SHADER_ROOT));
             ShaderMap global_map(global_loader);
             const auto globals =
-                GlobalShaderMap::load(global_map, ShaderPlatform::VulkanES31,
-                                      {&hit_proxy_global_shader_type(), &tonemap_global_shader_type()});
+                GlobalShaderMap::load(global_map, ShaderPlatform::VulkanES31, {&tonemap_global_shader_type()});
             check(globals.succeeded(), globals.error.c_str());
+            const auto hit = global_map.find_or_load_collection("Toy3d/Editor/HitProxy", ShaderPlatform::VulkanES31,
+                                                                shader::default_shader_permutation_key);
+            check(hit.succeeded(), hit.error.c_str());
+            ShaderMapCollectionRef material_map = phong.collection;
+            if (custom_roles)
+            {
+                ShaderMapEntryLoader custom_loader(
+                    PhysicalPath(std::string(TOY3D_TYPED_BUFFER_SHADER_ROOT) + "/custom_mesh"));
+                ShaderMap custom_map(custom_loader);
+                const auto custom = custom_map.find_or_load_collection(
+                    "Toy3d/Test/CustomMesh", ShaderPlatform::VulkanES31, shader::default_shader_permutation_key);
+                check(custom.succeeded(), custom.error.c_str());
+                material_map = custom.collection;
+                const auto cached_custom = custom_map.find_or_load_collection(
+                    "Toy3d/Test/CustomMesh", ShaderPlatform::VulkanES31, shader::default_shader_permutation_key);
+                check(cached_custom.collection == material_map, "Collection cache reuses the immutable configuration");
+                const auto forward =
+                    material_map->find(shader::ShaderPassRole::Forward, shader::VertexFactoryType::GPUSkin);
+                const auto custom_shadow =
+                    material_map->find(shader::ShaderPassRole::ShadowDepth, shader::VertexFactoryType::GPUSkin);
+                check(forward.succeeded() && custom_shadow.succeeded() &&
+                          std::none_of(forward.program->data().bindings.begin(), forward.program->data().bindings.end(),
+                                       [](const ShaderMapBinding& binding)
+                                       {
+                                           return binding.group == RHIBindingGroup::Material;
+                                       }) &&
+                          std::any_of(custom_shadow.program->data().bindings.begin(),
+                                      custom_shadow.program->data().bindings.end(),
+                                      [](const ShaderMapBinding& binding)
+                                      {
+                                          return binding.group == RHIBindingGroup::Material;
+                                      }),
+                      "Custom Shadow consumes Material even when Forward does not");
+            }
             TextureDesc texture_desc;
             texture_desc.width = texture_desc.height = 1;
             texture_desc.format = PixelFormat::R8G8B8A8UNorm;
@@ -173,9 +285,9 @@ namespace
                 MaterialTextureValues defaults;
                 defaults.named_defaults["white"] = white;
                 MaterialAssetData descriptor;
-                descriptor.shader_name = "Toy3d/Surface/Phong";
+                descriptor.shader_name = material_map->index().shader_name;
                 descriptor.two_sided = true;
-                const auto made = create_material_from_asset(descriptor, phong.program, defaults);
+                const auto made = create_material_from_asset(descriptor, material_map, defaults);
                 check(made.succeeded(), made.status().message.c_str());
                 material = made.value();
             }
@@ -205,6 +317,16 @@ namespace
                 auto& actor = world.spawn_actor<SkeletalMeshActor>();
                 auto& component = actor.skeletal_mesh_component();
                 check(component.set_assets(mesh, fixture.sequence).succeeded(), "Native component assets");
+                SkeletalMeshComponent* offscreen = nullptr;
+                if (custom_roles)
+                {
+                    auto& offscreen_actor = world.spawn_actor<SkeletalMeshActor>();
+                    offscreen = &offscreen_actor.skeletal_mesh_component();
+                    check(offscreen->set_assets(mesh, fixture.sequence).succeeded(), "Offscreen Custom caster assets");
+                    Transform transform;
+                    transform.translation = Vector3(6, 0, 0);
+                    check(offscreen->set_local_transform(transform), "Offscreen caster transform");
+                }
                 check(world.bind_scene(scene), "Native component registration");
                 world.begin_play();
                 check(component.set_playing(false).succeeded(), "Native paused seek fixture");
@@ -220,17 +342,34 @@ namespace
                     ForwardSceneRenderer forward(SceneViewFamily(scene, {32, 32}, {view}));
                     SceneRenderer& scene_renderer = forward;
                     BuiltinMeshPassPrograms passes;
-                    passes.shadow_depth_default = shadow.program;
+                    passes.shadow_depth_default = shadow.collection;
+                    passes.hit_proxy = hit.collection;
                     check_status(
                         scene_renderer.render_scene_passes(scene, device, programs, *ctx.value(), targets, passes));
                     const SceneRenderer& prepared = scene_renderer;
                     check(prepared.view_infos().size() == 1, "Native skeletal prepared view");
                     const auto& prepared_view = prepared.view_infos().front();
+                    check(prepared_view.mesh_batches().size() == 2u,
+                          "Offscreen caster is excluded from the camera while its Shadow role remains drawable");
                     check(prepared_view.shadow_active() && prepared_view.shadow_cascade_count() > 0 &&
-                              prepared_view.shadow_cascade(0).batches.size() == 2,
+                              prepared_view.shadow_cascade(0).batches.size() == (custom_roles ? 4u : 2u),
                           "Production Shadow pass must include both skeletal sections");
                     for (const auto& shadow_batch : prepared_view.shadow_cascade(0).batches)
                     {
+                        if (custom_roles)
+                        {
+                            const auto selected =
+                                shadow_batch.mesh_pass_program(shader::ShaderPassRole::ShadowDepth, *shadow.collection);
+                            const auto own = material_map->find(shader::ShaderPassRole::ShadowDepth,
+                                                                shader::VertexFactoryType::GPUSkin);
+                            check(selected.program == own.program && shadow_batch.material_binding(),
+                                  "Custom caster selects its own role and has a prepared logical Material binding");
+                        }
+                        if (offscreen && shadow_batch.scene_proxy().component_id() == offscreen->component_id() &&
+                            shadow_batch.scene_proxy().actor_id() != actor.actor_id())
+                        {
+                            continue;
+                        }
                         const auto& base_batch = prepared_view.mesh_batches().at(shadow_batch.section_index());
                         check(base_batch.bone_matrices() == shadow_batch.bone_matrices() &&
                                   base_batch.object_binding() == shadow_batch.object_binding(),
@@ -279,7 +418,7 @@ namespace
                          {depth.value(), depth_view_desc.subresources, RHIAccess::Common,
                           RHIAccess::DepthStencilWrite}}));
                     HitProxyTable table;
-                    check_status(scene_renderer.render_hit_proxy(device, programs, *globals.shader_map, *ctx.value(),
+                    check_status(scene_renderer.render_hit_proxy(device, programs, *hit.collection, *ctx.value(),
                                                                  id_view.value(), depth_view.value(), table));
                     check(table.size() == 2 && table.front().actor_id == actor.actor_id() &&
                               table.front().component_id == component.component_id(),
@@ -641,6 +780,7 @@ int main()
     test_skeletal_resources(device, 8);
     test_production_skeletal_passes(device, 4);
     test_production_skeletal_passes(device, 8);
+    test_production_skeletal_passes(device, 8, true);
     check_status(device.shutdown());
     check(DestroyWindow(window) != FALSE, "hidden surface destruction");
     std::cout << "Vulkan typed buffer VS read and completion lifetime passed\n";

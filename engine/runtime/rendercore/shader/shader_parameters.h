@@ -178,6 +178,9 @@ namespace toy3d
     };
 
     RHIStatus validate_shader_parameters_metadata(const ShaderParametersMetadata& metadata);
+    // Engine-owned groups can be shared across sources with different Material/other groups.
+    RHIStatus validate_shader_parameters_group_against_schema(const ShaderParametersMetadata& metadata,
+                                                              const shader::ShaderParameterSchema& schema);
     RHIStatus validate_shader_parameters_metadata_against_schema(const ShaderParametersMetadata& metadata,
                                                                  const shader::ShaderParameterSchema& schema);
 

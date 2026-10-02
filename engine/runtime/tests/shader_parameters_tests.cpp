@@ -1,4 +1,5 @@
 #include "rendercore/shader/shader_parameters.h"
+#include "shader_map_test_utils.h"
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
@@ -390,6 +391,29 @@ int main()
     encoder.add_resource(metadata.resources[2], RHIBufferViewRef{});
 
     bool success = true;
+    shader::ShaderParameterSchema shared_pass_schema;
+    const auto& canonical_pass = shader_parameters_metadata(TonemapPassParameters{});
+    tests::append_shader_parameters_metadata(canonical_pass, shared_pass_schema);
+    shader::ShaderParameterResourceSchema extra;
+    extra.name = "custom_texture";
+    extra.group = shader::BindingGroup::Material;
+    extra.category = shader::ShaderParameterCategory::SampledTexture;
+    extra.resource_kind = shader::ResourceKind::Texture2D;
+    extra.parameter_id = shader::make_shader_parameter_id(extra.group, extra.category, extra.name);
+    extra.default_value_kind = shader::ShaderParameterDefaultValueKind::String;
+    extra.default_value = "white";
+    shared_pass_schema.resources.push_back(extra);
+    shared_pass_schema.logical_layout_hash = shader::calculate_shader_parameter_logical_layout_hash(shared_pass_schema);
+    shared_pass_schema.schema_identity = shader::calculate_shader_parameter_schema_identity(shared_pass_schema);
+    success &= check(validate_shader_parameters_group_against_schema(canonical_pass, shared_pass_schema) &&
+                         !validate_shader_parameters_metadata_against_schema(canonical_pass, shared_pass_schema),
+                     "Canonical Pass group can serve a Custom Material without accepting an unrelated complete schema");
+    shared_pass_schema.resources.front().array_count += 1u;
+    shared_pass_schema.logical_layout_hash = shader::calculate_shader_parameter_logical_layout_hash(shared_pass_schema);
+    shared_pass_schema.schema_identity = shader::calculate_shader_parameter_schema_identity(shared_pass_schema);
+    success &= check(!validate_shader_parameters_group_against_schema(canonical_pass, shared_pass_schema),
+                     "Group validation still rejects changed engine Pass resource ABI");
+
     success &= check(encoder.succeeded(), encoder.error().c_str());
     const std::vector<std::uint8_t>& bytes = encoder.constant_bytes();
     success &= check(bytes.size() == 272u, "Encoder did not allocate the canonical constant byte size");

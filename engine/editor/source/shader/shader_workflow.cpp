@@ -11,7 +11,10 @@
 
 #include "file_system/directory_file_store.h"
 #include "shader/shader_map_entry.h"
-#include "shader/mesh_shader_permutation.h"
+#include "shader/shader_program_contract.h"
+#include "rendercore/shader/shader_map_collection.h"
+#include "shader_parameters/toy3d_editor_hitproxy.generated.h"
+#include "shader_parameters/toy3d_shadowdepth_default.generated.h"
 #include "logging/logger.h"
 #include "asset/material/material_asset.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
@@ -100,7 +103,7 @@ namespace toy3d
     {
         paths_ = std::move(paths);
         defaults_ = std::move(defaults);
-        if (!defaults_ || !defaults_->desc().shader_program)
+        if (!defaults_ || !defaults_->desc().shader_map)
         {
             error = "Default material Shader is unavailable.";
             return false;
@@ -252,16 +255,26 @@ namespace toy3d
                 EditorShaderSource source;
                 source.path = item.path;
                 source.name = item.name;
+                if (item.pass_names.size() == 1u)
+                {
+                    source.pass = item.pass_names.front();
+                }
                 source.discovery_error = item.error;
                 source.name_conflict = item.name_conflict;
-                // Project Material support is an Editor policy, independent of
-                // the compiler's general declaration discovery and parsing.
+                // Material admission follows roles and declared factories, independently
+                // of authored Pass display names or a preferred primary factory.
+                const auto forward =
+                    std::find(item.pass_roles.begin(), item.pass_roles.end(), shader::ShaderPassRole::Forward);
                 if (source.discovery_error.empty() &&
-                    (source.name.compare(0u, 16u, "Project/Surface/") != 0 || item.pass_names.size() != 1u ||
-                     item.pass_names.front() != "Forward"))
+                    (source.name.compare(0u, 16u, "Project/Surface/") != 0 ||
+                     item.usage != shader::ShaderUsage::Material || forward == item.pass_roles.end()))
                 {
                     source.discovery_error =
-                        "Project sources require a Project/Surface/ name and one Forward Material pass.";
+                        "Project sources require Usage Material, a Project/Surface/ name and a Forward role.";
+                }
+                if (forward != item.pass_roles.end())
+                {
+                    source.pass = item.pass_names[static_cast<std::size_t>(forward - item.pass_roles.begin())];
                 }
                 if (source.name.empty())
                 {
@@ -293,7 +306,7 @@ namespace toy3d
             {
                 // A malformed edit does not invalidate a previously published
                 // Program. Conflicting/deleted identities cannot revive it.
-                source.program = old->program;
+                source.shader_map = old->shader_map;
                 source.properties = old->properties;
                 if (source.discovery_error.empty())
                 {
@@ -316,10 +329,10 @@ namespace toy3d
         }
         return nullptr;
     }
-    ShaderMapProgramRef ShaderWorkflow::program(const std::string& name) const
+    ShaderMapCollectionRef ShaderWorkflow::shader_map(const std::string& name) const
     {
         const auto* source = find(name);
-        return source ? source->program : nullptr;
+        return source ? source->shader_map : nullptr;
     }
 
     bool ShaderWorkflow::physical_source(const EditorShaderSource& source, PhysicalPath& output,
@@ -621,33 +634,59 @@ namespace toy3d
         return open_source(request_name_, line, column);
     }
 
-    bool ShaderWorkflow::validate_interface(const ShaderMapProgram& candidate, std::string& error) const
+    bool ShaderWorkflow::validate_interface(const ShaderMapCollection& candidate, std::string& error) const
     {
-        if (candidate.data().pass_name != "Forward" || candidate.data().platform != ShaderPlatform::VulkanES31)
+        for (const auto& program : candidate.programs())
         {
-            error = "Only the current Vulkan ES3.1 Forward compile target is available.";
-            return false;
-        }
-        for (const auto& binding : candidate.data().bindings)
-        {
-            if (binding.group == RHIBindingGroup::Material)
+            const auto& data = program->data();
+            if (data.contract.usage != shader::ShaderUsage::Material || data.platform != ShaderPlatform::VulkanES31)
             {
-                continue;
-            }
-            const auto& known = defaults_->desc().shader_program->data().bindings;
-            const auto found =
-                std::find_if(known.begin(), known.end(),
-                             [&binding](const ShaderMapBinding& value)
-                             {
-                                 return value.group == binding.group && value.parameter_id == binding.parameter_id;
-                             });
-            if (found == known.end() || found->type != binding.type || found->array_count != binding.array_count ||
-                found->data_layout_hash != binding.data_layout_hash ||
-                found->constant_buffer_size != binding.constant_buffer_size ||
-                found->shader_abi_version != binding.shader_abi_version)
-            {
-                error = "Shader changed an engine-owned View, Object, Global or Forward lighting contract.";
+                error = "Only the current Vulkan ES3.1 Material compile target is available.";
                 return false;
+            }
+            const auto reference =
+                defaults_->desc().shader_map->find(shader::ShaderPassRole::Forward, data.contract.vertex_factory);
+            if (!reference.succeeded())
+            {
+                error = reference.error;
+                return false;
+            }
+            if (data.contract.role != shader::ShaderPassRole::Forward)
+            {
+                const ShadowDepthPassParameters shadow;
+                const HitProxyPassParameters hit;
+                const auto& metadata = data.contract.role == shader::ShaderPassRole::ShadowDepth
+                                           ? shader_parameters_metadata(shadow)
+                                           : shader_parameters_metadata(hit);
+                const auto status = validate_shader_parameters_group_against_schema(metadata, data.parameter_schema);
+                if (!status)
+                {
+                    error = "Material mesh Pass parameters must match the engine role: " + status.message();
+                    return false;
+                }
+            }
+            for (const auto& binding : data.bindings)
+            {
+                if (binding.group == RHIBindingGroup::Material ||
+                    (binding.group == RHIBindingGroup::Pass && data.contract.role != shader::ShaderPassRole::Forward))
+                {
+                    continue;
+                }
+                const auto& known = reference.program->data().bindings;
+                const auto found =
+                    std::find_if(known.begin(), known.end(),
+                                 [&binding](const ShaderMapBinding& value)
+                                 {
+                                     return value.group == binding.group && value.parameter_id == binding.parameter_id;
+                                 });
+                if (found == known.end() || found->type != binding.type || found->array_count != binding.array_count ||
+                    found->data_layout_hash != binding.data_layout_hash ||
+                    found->constant_buffer_size != binding.constant_buffer_size ||
+                    found->shader_abi_version != binding.shader_abi_version)
+                {
+                    error = "Shader changed an engine-owned View, Object, Global or Forward lighting contract.";
+                    return false;
+                }
             }
         }
         return true;
@@ -710,19 +749,31 @@ namespace toy3d
             return false;
         }
         key.permutation_key = permutation.permutation->key;
-        auto data = loader.load_program(key);
-        if (!data.succeeded())
+        const auto pass = std::find_if(parsed.asset->passes.begin(), parsed.asset->passes.end(),
+                                       [&](const shader::ShaderPass& value)
+                                       {
+                                           return value.name == source->pass;
+                                       });
+        if (pass == parsed.asset->passes.end())
         {
-            error = data.error;
+            error = "Registered pass is missing from Shader declaration.";
             return false;
         }
-        auto candidate = ShaderMap::create_candidate(std::move(*data.program), key);
+        key.role = pass->role;
+        key.vertex_factory = parsed.asset->usage == shader::ShaderUsage::Global
+                                 ? shader::VertexFactoryType::None
+                                 : (shader::supports_vertex_factory(parsed.asset->vertex_factory_support,
+                                                                    shader::VertexFactoryType::Local)
+                                        ? shader::VertexFactoryType::Local
+                                        : shader::VertexFactoryType::GPUSkin);
+        auto candidate =
+            ShaderMapCollection::create_candidate(loader.load_collection(name, key.platform, key.permutation_key));
         if (!candidate.succeeded())
         {
             error = candidate.error;
             return false;
         }
-        if (source->usage == BuiltinShaderUsage::Material && !validate_interface(*candidate.program, error))
+        if (source->usage == BuiltinShaderUsage::Material && !validate_interface(*candidate.collection, error))
         {
             return false;
         }
@@ -744,7 +795,7 @@ namespace toy3d
             {
                 MaterialAssetData descriptor;
                 descriptor.shader_name = name;
-                const auto built = create_material_from_asset(descriptor, candidate.program, textures);
+                const auto built = create_material_from_asset(descriptor, candidate.collection, textures);
                 if (!built.succeeded())
                 {
                     error = built.status().message;
@@ -754,42 +805,30 @@ namespace toy3d
             }
             MaterialInstance::release(checked);
         }
-        const auto directories = platform_.enumerate_directory(directory);
-        if (!directories.succeeded())
+        shader::ShaderMapIndex index;
+        if (!shader::read_shader_map_index(platform_, directory, name, shader::ShaderTarget::VulkanSpirV,
+                                           shader::ShaderCompileProfile::VulkanES31, key.permutation_key, index, error))
         {
-            error = directories.status().message;
+            return false;
+        }
+        if (index.source_hash != sha256(text.value()))
+        {
+            error = "Shader source changed. Save files and recompile: " + source->path.utf8();
             return false;
         }
         std::vector<shader::ShaderEditorProperty> properties;
         std::map<std::string, Sha256Hash> dependencies;
-        for (const auto& entry : directories.value())
+        for (const auto& record : index.programs)
         {
-            if (entry.type != FileType::Directory)
+            const auto verified = shader::read_verified_shader_map_entry(platform_, directory, record.entry_key);
+            if (!shader::shader_map_index_matches_entry(index, record, verified))
             {
-                continue;
-            }
-            const auto basename = entry.path.utf8().substr(entry.path.utf8().find_last_of("/\\") + 1u);
-            const auto hash = sha256_from_hex(basename);
-            if (!hash)
-            {
-                continue;
-            }
-            const auto verified = shader::read_verified_shader_map_entry(platform_, directory, *hash);
-            if (!verified.succeeded())
-            {
-                error = "Cannot verify ShaderMapEntry " + entry.path.utf8();
+                error = "Cannot verify indexed ShaderMapEntry " + sha256_to_hex(record.entry_key);
                 for (const auto& diagnostic : verified.diagnostics)
                 {
                     error += "\n" + diagnostic;
                 }
                 return false;
-            }
-            if (verified.entry->shader_name != name || verified.entry->pass_name != source->pass ||
-                (verified.entry->permutation_key != key.permutation_key &&
-                 verified.entry->permutation_key !=
-                     shader::mesh_shader_permutation_key(key.permutation_key, shader::MeshVertexFactoryType::GPUSkin)))
-            {
-                continue;
             }
             for (const auto& stage : verified.entry->stages)
             {
@@ -822,20 +861,23 @@ namespace toy3d
                 }
             }
             if (source->usage == BuiltinShaderUsage::Material &&
-                verified.entry->permutation_key == key.permutation_key &&
-                !shader::read_shader_editor_properties(platform_, entry.path, name,
-                                                       candidate.program->data().parameter_schema, properties, error))
+                verified.entry->contract.vertex_factory == key.vertex_factory &&
+                verified.entry->contract.role == key.role && verified.entry->pass_name == key.pass_name &&
+                !shader::read_shader_editor_properties(
+                    platform_, *verified.entry_directory, name,
+                    candidate.collection->find(key.role, key.vertex_factory).program->data().parameter_schema,
+                    properties, error))
             {
                 return false;
             }
         }
-        candidate_ = std::move(candidate.program);
+        candidate_ = std::move(candidate.collection);
         candidate_properties_ = std::move(properties);
         candidate_dependencies_ = std::move(dependencies);
         if (source->usage == BuiltinShaderUsage::Material)
         {
-            validation_ = std::make_shared<MaterialProgramValidation>();
-            validation_->program = candidate_;
+            validation_ = std::make_shared<MaterialShaderMapValidation>();
+            validation_->shader_map = candidate_;
         }
         validation_sent_ = false;
         validation_attempts_ = 0u;
@@ -928,7 +970,7 @@ namespace toy3d
                         {
                             if (source.name == revision.name)
                             {
-                                source.program = revision.program;
+                                source.shader_map = revision.shader_map;
                                 source.diagnostic.clear();
                             }
                         }
@@ -1054,8 +1096,8 @@ namespace toy3d
         {
             if (validation_->status.code() == RHIErrorCode::NotReady && validation_attempts_ < 120u)
             {
-                auto next = std::make_shared<MaterialProgramValidation>();
-                next->program = candidate_;
+                auto next = std::make_shared<MaterialShaderMapValidation>();
+                next->shader_map = candidate_;
                 validation_ = std::move(next);
                 validation_sent_ = false;
                 ++validation_attempts_;
@@ -1095,7 +1137,7 @@ namespace toy3d
         }
     }
 
-    void ShaderWorkflow::collect_validation(std::vector<MaterialProgramValidationRef>& requests)
+    void ShaderWorkflow::collect_validation(std::vector<MaterialShaderMapValidationRef>& requests)
     {
         if (validation_ && !validation_sent_)
         {
@@ -1157,7 +1199,7 @@ namespace toy3d
         {
             if (source.name == request_name_)
             {
-                source.program = candidate_;
+                source.shader_map = candidate_;
                 source.properties = std::move(candidate_properties_);
                 source.diagnostic.clear();
             }

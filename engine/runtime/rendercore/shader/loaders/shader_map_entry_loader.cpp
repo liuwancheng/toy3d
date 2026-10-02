@@ -1,14 +1,14 @@
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 
-#include "misc/sha256.h"
-#include "shader/shader_map_entry.h"
-#include "shader/mesh_shader_permutation.h"
-
 #include <algorithm>
-#include <filesystem>
 #include <set>
 #include <sstream>
 #include <utility>
+
+#include "misc/sha256.h"
+#include "rendercore/shader/shader_map_collection.h"
+#include "shader/shader_map_entry.h"
+#include "shader/shader_program_contract.h"
 
 namespace toy3d
 {
@@ -197,6 +197,7 @@ namespace toy3d
             ShaderMapProgramData program;
             program.shader_name = entry.shader_name;
             program.pass_name = entry.pass_name;
+            program.contract = entry.contract;
             program.platform = ShaderPlatform::VulkanES31;
             program.mapping_version = entry.mapping_version;
             program.logical_layout_hash = entry.logical_layout_hash;
@@ -323,110 +324,77 @@ namespace toy3d
             result.error = "ShaderMapEntry loader does not support the requested ShaderPlatform.";
             return result;
         }
-        const auto entries = platform_file_.enumerate_directory(entry_root_);
-        if (!entries.succeeded())
+        auto candidate =
+            ShaderMapCollection::create_candidate(load_collection(key.shader_name, key.platform, key.permutation_key));
+        if (!candidate.succeeded())
         {
-            result.error = "Unable to enumerate ShaderMapEntry root: " + entries.status().message;
+            result.error = std::move(candidate.error);
             return result;
         }
-
-        std::shared_ptr<const ShaderMapProgramData> skin_candidate;
-        bool requires_skin = false;
-        ShaderMapProgramKey skin_key = key;
-        skin_key.permutation_key =
-            shader::mesh_shader_permutation_key(key.permutation_key, shader::MeshVertexFactoryType::GPUSkin);
-        for (const DirectoryEntry& directory : entries.value())
+        auto selected = candidate.collection->find(key.role, key.vertex_factory,
+                                                   key.role == shader::ShaderPassRole::Global ? key.pass_name : "");
+        if (!selected.succeeded())
         {
-            if (directory.type != FileType::Directory)
+            result.error = std::move(selected.error);
+            return result;
+        }
+        if (selected.program->data().pass_name != key.pass_name)
+        {
+            result.error = "ShaderMap query Pass name does not match its declared role.";
+            return result;
+        }
+        return validate_shader_map_program(selected.program->data(), key);
+    }
+
+    ShaderMapCollectionLoadResult ShaderMapEntryLoader::load_collection(const std::string& name,
+                                                                        ShaderPlatform platform,
+                                                                        const ShaderContentHash& permutation) const
+    {
+        ShaderMapCollectionLoadResult result;
+        if (platform != ShaderPlatform::VulkanES31)
+        {
+            result.error = "ShaderMapEntry collection loader does not support the requested ShaderPlatform.";
+            return result;
+        }
+        if (!shader::read_shader_map_index(platform_file_, entry_root_, name, shader::ShaderTarget::VulkanSpirV,
+                                           shader::ShaderCompileProfile::VulkanES31, permutation, result.index,
+                                           result.error))
+        {
+            return result;
+        }
+        for (const auto& record : result.index.programs)
+        {
+            const auto read = shader::read_verified_shader_map_entry(platform_file_, entry_root_, record.entry_key);
+            if (!shader::shader_map_index_matches_entry(result.index, record, read))
             {
-                continue;
-            }
-            // filesystem extracts the final host directory component for cache
-            // discovery without duplicating platform separator rules.
-            const std::string name = std::filesystem::path(directory.path.utf8()).filename().string();
-            const auto entry_key = sha256_from_hex(name);
-            if (!entry_key)
-            {
-                continue;
-            }
-            shader::ShaderMapEntryReadResult read =
-                shader::read_verified_shader_map_entry(platform_file_, entry_root_, *entry_key);
-            if (!read.succeeded())
-            {
-                result.error = "ShaderMapEntry verification failed: " + diagnostics_text(read.diagnostics);
+                result.programs.clear();
+                result.error = "ShaderMap collection contains a missing, damaged or mismatched entry: " +
+                               diagnostics_text(read.diagnostics);
                 return result;
             }
-            if (read.entry->shader_name != key.shader_name || read.entry->pass_name != key.pass_name ||
-                (read.entry->permutation_key != key.permutation_key &&
-                 read.entry->permutation_key != skin_key.permutation_key))
+            std::string error;
+            auto program = convert_entry(*read.entry, error);
+            if (!program)
             {
-                continue;
-            }
-            std::string conversion_error;
-            auto converted = convert_entry(*read.entry, conversion_error);
-            if (!converted)
-            {
-                result.error = std::move(conversion_error);
+                result.programs.clear();
+                result.error = std::move(error);
                 return result;
             }
-            const bool companion = read.entry->permutation_key == skin_key.permutation_key;
-            ShaderMapProgramLoadResult validated =
-                validate_shader_map_program(std::move(*converted), companion ? skin_key : key);
+            ShaderMapProgramKey key;
+            key.shader_name = name;
+            key.pass_name = record.pass_name;
+            key.platform = platform;
+            key.permutation_key = permutation;
+            key.role = record.contract.role;
+            key.vertex_factory = record.contract.vertex_factory;
+            auto validated = validate_shader_map_program(std::move(*program), key);
             if (!validated.succeeded())
             {
+                result.programs.clear();
                 result.error = std::move(validated.error);
                 return result;
             }
-            if (companion)
-            {
-                if (skin_candidate)
-                {
-                    result.error = "ShaderMapEntry lookup returned duplicate GPUSkin identities.";
-                    return result;
-                }
-                skin_candidate = std::make_shared<const ShaderMapProgramData>(std::move(*validated.program));
-                continue;
-            }
-            const bool reads_bones = std::any_of(read.entry->bindings.begin(), read.entry->bindings.end(),
-                                                 [](const shader::ShaderMapBinding& binding)
-                                                 {
-                                                     return binding.name == "toy_bone_matrices";
-                                                 });
-            if (!reads_bones)
-            {
-                for (const auto& stage : read.entry->stages)
-                {
-                    for (const auto& dependency : stage.request.dependencies)
-                    {
-                        if (dependency.virtual_path == "/Engine/ShaderIncludes/ToyMeshVertex.hlsli")
-                        {
-                            requires_skin = true;
-                        }
-                    }
-                }
-            }
-            if (result.program)
-            {
-                result.program.reset();
-                result.error = "ShaderMapEntry lookup returned duplicate Program identities.";
-                return result;
-            }
-            result.program = std::move(validated.program);
-        }
-        if (!result.program)
-        {
-            result.error = "ShaderMapEntry storage does not contain the requested Program.";
-        }
-        if (result.program && requires_skin)
-        {
-            if (!skin_candidate)
-            {
-                result.program.reset();
-                result.error = "Mesh ShaderMapEntry is missing its GPUSkin companion. Recompile both factories.";
-                return result;
-            }
-            result.program->gpu_skin_program = std::move(skin_candidate);
-            return validate_shader_map_program(std::move(*result.program), key);
+            result.programs.push_back(std::move(*validated.program));
         }
         return result;
     }

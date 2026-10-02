@@ -640,6 +640,11 @@ namespace toy3d::shader
         append_integer(bytes, shader_map_entry_version);
         append_string(bytes, entry.shader_name);
         append_string(bytes, entry.pass_name);
+        append_enum(bytes, entry.contract.usage);
+        append_enum(bytes, entry.contract.role);
+        append_enum(bytes, entry.contract.geometry);
+        append_enum(bytes, entry.contract.vertex_factory);
+        append_integer(bytes, entry.contract.vertex_factory_support);
         append_enum(bytes, entry.target);
         append_enum(bytes, entry.profile);
         append_integer(bytes, entry.mapping_version);

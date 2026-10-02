@@ -13,7 +13,7 @@ namespace toy3d
     namespace
     {
         StaticMeshRef make_builtin_cube(MaterialInstanceRef& owner, const PhysicalPath& shader_entries,
-                                        ShaderMapProgramRef program)
+                                        ShaderMapCollectionRef program)
         {
 #if !TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
             (void)owner;
@@ -24,18 +24,20 @@ namespace toy3d
             ShaderMapProgramKey key;
             key.shader_name = "Toy3d/Surface/Phong";
             key.pass_name = "Forward";
+            key.role = shader::ShaderPassRole::Forward;
+            key.vertex_factory = shader::VertexFactoryType::Local;
             key.platform = ShaderPlatform::VulkanES31;
             if (!program)
             {
                 ShaderMapEntryLoader loader(shader_entries);
                 ShaderMap shader_map(loader);
-                auto loaded = shader_map.find_or_load(key);
+                auto loaded = shader_map.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
                 if (!loaded.succeeded())
                 {
                     TOY_LOG_ERROR("Builtin scene shader load failed: {}", loaded.error);
                     return nullptr;
                 }
-                program = std::move(loaded.program);
+                program = std::move(loaded.collection);
             }
 
             TextureDesc white_desc;
@@ -122,7 +124,7 @@ namespace toy3d
     // --------------------------------------------------------------------------
     // SceneGeometry: shared builtin geometry and default Material
     // --------------------------------------------------------------------------
-    bool SceneGeometry::initialize(const PhysicalPath& shader_entries, ShaderMapProgramRef program)
+    bool SceneGeometry::initialize(const PhysicalPath& shader_entries, ShaderMapCollectionRef program)
     {
         cube_ = make_builtin_cube(material_, shader_entries, std::move(program));
         if (!cube_)

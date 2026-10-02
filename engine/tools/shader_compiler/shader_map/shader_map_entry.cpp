@@ -116,8 +116,9 @@ namespace toy3d::shader
             }
         }
 #endif
-        if (shader_map_root.empty() || entry.shader_name.empty() || entry.pass_name.empty() ||
-            entry.target != ShaderTarget::VulkanSpirV || entry.profile != ShaderCompileProfile::VulkanES31 ||
+        if (!validate_shader_program_contract(entry.contract, schema_error) || shader_map_root.empty() ||
+            entry.shader_name.empty() || entry.pass_name.empty() || entry.target != ShaderTarget::VulkanSpirV ||
+            entry.profile != ShaderCompileProfile::VulkanES31 ||
             entry.mapping_version != vulkan_binding_mapping_version || entry.stages.empty() ||
             hash_is_zero(entry.logical_layout_hash) || hash_is_zero(entry.target_binding_hash) ||
             hash_is_zero(entry.pass_template_hash) || !is_valid_shader_graphics_pass_state(entry.graphics_pass_state) ||
@@ -166,10 +167,7 @@ namespace toy3d::shader
             }
             stage_mask |= stage_value;
         }
-        const std::uint32_t graphics_mask =
-            static_cast<std::uint32_t>(ShaderStageFlags::Vertex) | static_cast<std::uint32_t>(ShaderStageFlags::Pixel);
-        if (stage_mask != static_cast<std::uint32_t>(ShaderStageFlags::Vertex) && stage_mask != graphics_mask &&
-            stage_mask != static_cast<std::uint32_t>(ShaderStageFlags::Compute))
+        if (!validate_shader_program_stages(entry.contract, static_cast<ShaderStageFlags>(stage_mask), schema_error))
         {
             add_error(result, "ShaderMapEntry contains an invalid Program stage set.");
             return result;
@@ -289,6 +287,11 @@ namespace toy3d::shader
                  << "entry_content_hash=" << sha256_to_hex(result.entry_content_hash) << '\n'
                  << "shader_name=" << entry.shader_name << '\n'
                  << "pass_name=" << entry.pass_name << '\n'
+                 << "usage=" << static_cast<std::uint32_t>(entry.contract.usage) << '\n'
+                 << "role=" << static_cast<std::uint32_t>(entry.contract.role) << '\n'
+                 << "geometry=" << static_cast<std::uint32_t>(entry.contract.geometry) << '\n'
+                 << "vertex_factory=" << static_cast<std::uint32_t>(entry.contract.vertex_factory) << '\n'
+                 << "vertex_factory_support=" << entry.contract.vertex_factory_support << '\n'
                  << "target=" << static_cast<std::uint32_t>(entry.target) << '\n'
                  << "profile=" << static_cast<std::uint32_t>(entry.profile) << '\n'
                  << "mapping_version=" << entry.mapping_version << '\n'
@@ -423,5 +426,92 @@ namespace toy3d::shader
         }
         result.entry_directory = *staging.final_directory;
         return result;
+    }
+    bool write_verified_shader_map_index(PlatformFile& files, const PhysicalPath& root, const ShaderMapIndex& index,
+                                         std::string& error)
+    {
+        if (!validate_shader_map_index(index, error))
+        {
+            return false;
+        }
+        for (const auto& program : index.programs)
+        {
+            const auto entry = read_verified_shader_map_entry(files, root, program.entry_key);
+            if (!shader_map_index_matches_entry(index, program, entry))
+            {
+                error = "ShaderMap index publication requires all referenced entries to match their complete records.";
+                return false;
+            }
+        }
+        const auto text = serialize_shader_map_index(index);
+        if (text.size() > max_shader_map_index_bytes)
+        {
+            error = "ShaderMap index exceeds its publication size limit.";
+            return false;
+        }
+        const auto index_root = files.join_relative(root, "shader_maps");
+        if (!index_root.succeeded())
+        {
+            error = index_root.status().message;
+            return false;
+        }
+        const auto key =
+            calculate_shader_map_index_key(index.shader_name, index.target, index.profile, index.permutation_key);
+        const auto existing_matches = [&]()
+        {
+            ShaderMapIndex existing;
+            if (!read_shader_map_index(files, root, index.shader_name, index.target, index.profile,
+                                       index.permutation_key, existing, error))
+            {
+                return false;
+            }
+            if (serialize_shader_map_index(existing) != text)
+            {
+                error = "ShaderMap index revision conflicts with an existing published configuration; use a new output "
+                        "root.";
+                return false;
+            }
+            return true;
+        };
+        auto staging = create_shader_entry_staging_directory(files, index_root.value(), sha256_to_hex(key));
+        if (!staging.succeeded())
+        {
+            if (staging.status.code == FileErrorCode::AlreadyExists)
+            {
+                return existing_matches();
+            }
+            error = staging.status.message;
+            return false;
+        }
+        const auto path = files.join_relative(*staging.staging_directory, "index.txt");
+        FileStatus status;
+        if (!path.succeeded())
+        {
+            status = path.status();
+        }
+        else
+        {
+            status = files.write_text_utf8(path.value(), text, FileWriteMode::CreateNew);
+        }
+        if (status.succeeded())
+        {
+            status = publish_shader_entry_directory(files, *staging.staging_directory, *staging.final_directory);
+        }
+        if (!status.succeeded())
+        {
+            const auto cleaned = cleanup_shader_entry_staging_directory(files, *staging.staging_directory);
+            if (!cleaned.succeeded())
+            {
+                error = status.message + " Staging cleanup failed: " + cleaned.message;
+                return false;
+            }
+            if (status.code == FileErrorCode::AlreadyExists)
+            {
+                return existing_matches();
+            }
+            error = status.message;
+            return false;
+        }
+        return true;
     }
 } // namespace toy3d::shader

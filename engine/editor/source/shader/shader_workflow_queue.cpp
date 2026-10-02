@@ -98,7 +98,7 @@ namespace toy3d
         {
             return "Shader '" + name + "' is not a Material Shader.";
         }
-        if (source->program)
+        if (source->shader_map)
         {
             return {};
         }
@@ -394,7 +394,7 @@ namespace toy3d
     {
         Revision result;
         result.name = request_name_;
-        result.program = std::move(candidate_);
+        result.shader_map = std::move(candidate_);
         result.properties = std::move(candidate_properties_);
         result.source_hash = source_hash_;
         result.dependencies = std::move(candidate_dependencies_);
@@ -414,9 +414,9 @@ namespace toy3d
         {
             builtin_revisions_.push_back(take_revision());
             builtin_update_ = std::make_shared<BuiltinShaderUpdate>();
-            builtin_update_->programs.push_back(builtin_revisions_.front().program);
+            builtin_update_->shader_maps.push_back(builtin_revisions_.front().shader_map);
             builtin_sent_ = false;
-            status_ = "Validating ShadowDepth pipeline...";
+            status_ = "Validating mesh Pass pipelines...";
         }
     }
 
@@ -443,12 +443,12 @@ namespace toy3d
         builtin_update_ = std::make_shared<BuiltinShaderUpdate>();
         for (const auto& revision : builtin_revisions_)
         {
-            builtin_update_->programs.push_back(revision.program);
+            builtin_update_->shader_maps.push_back(revision.shader_map);
         }
         task_.phase = ShaderTaskPhase::Validating;
-        task_.current_source = "Tonemap / ImGui / HitProxy";
+        task_.current_source = "Tonemap / ImGui";
         builtin_sent_ = false;
-        status_ = "Validating Tonemap, ImGui and HitProxy pipelines...";
+        status_ = "Validating Tonemap and ImGui pipelines...";
     }
 
     bool ShaderWorkflow::validate_revision(const Revision& revision, std::string& error) const

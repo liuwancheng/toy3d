@@ -14,7 +14,7 @@ namespace toy3d
     class RHIGraphicsCommandContext;
     class RHIShaderProgramCache;
     class SceneRenderTargets;
-    class GlobalShaderMap;
+    class ShaderMapCollection;
     struct BuiltinMeshPassPrograms;
 
     // GT-created one-shot owner transferred into a Draw command. All render-side
@@ -49,7 +49,7 @@ namespace toy3d
                                               SceneRenderTargets& scene_render_targets,
                                               const BuiltinMeshPassPrograms& mesh_pass_programs) = 0;
         virtual RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                           const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                           const ShaderMapCollection& shader_map, RHIGraphicsCommandContext& context,
                                            const RHITextureViewRef& id_view, const RHITextureViewRef& depth_view,
                                            HitProxyTable& table) = 0;
 

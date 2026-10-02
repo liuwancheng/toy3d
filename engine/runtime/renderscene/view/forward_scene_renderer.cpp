@@ -33,12 +33,12 @@ namespace toy3d
     }
 
     RHIStatus ForwardSceneRenderer::render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                                     const GlobalShaderMap& global_shader_map,
+                                                     const ShaderMapCollection& shader_map,
                                                      RHIGraphicsCommandContext& context,
                                                      const RHITextureViewRef& id_view,
                                                      const RHITextureViewRef& depth_view, HitProxyTable& table)
     {
-        return render_hit_proxy_pass(device, shader_program_cache, global_shader_map, context, view_infos(), id_view,
+        return render_hit_proxy_pass(device, shader_program_cache, shader_map, context, view_infos(), id_view,
                                      depth_view, table);
     }
 

@@ -2,7 +2,7 @@
 
 #include "drivers/rhi/rhi_device.h"
 #include "math/math.h"
-#include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 #include "rendercore/shader/shader_parameters.h"
 #include "asset/material/material_asset_data.h"
 
@@ -30,20 +30,24 @@ namespace toy3d
         RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context);
         RHIStatus begin_init_textures(RenderResourceManager& manager);
 
-        RHIStatus stage_material_candidate(ShaderMapProgramRef shader_program, bool two_sided);
+        RHIStatus stage_material_candidate(ShaderMapCollectionRef shader_map, bool two_sided);
         RHIResult<RHIBindingSetRef> materialize_staged(RHIDevice& device, RHICommandContext& context);
         RHIStatus commit_material_candidate();
         void discard_material_candidate() noexcept;
 
-        const ShaderMapProgramRef& shader_program() const noexcept
+        const ShaderMapCollectionRef& shader_map() const noexcept
         {
-            return shader_program_;
+            return shader_map_;
         }
         const shader::ShaderParameterSchema& parameter_schema() const noexcept
         {
             return parameter_schema_;
         }
-        const shader::ShaderGraphicsPassState* effective_graphics_pass_state() const noexcept;
+        shader::ShaderGraphicsPassState effective_graphics_pass_state(const ShaderMapProgram& program) const noexcept;
+        bool two_sided() const noexcept
+        {
+            return two_sided_;
+        }
 
       private:
         friend class MaterialInstance;
@@ -56,18 +60,18 @@ namespace toy3d
         void apply_vector_update(ShaderParameterId parameter_id, const vec4& value) noexcept;
         void apply_texture_update(ShaderParameterId parameter_id, TextureResource* texture_resource) noexcept;
 
-        RHIResult<RHIBindingSetRef> materialize_program(RHIDevice& device, RHICommandContext& context,
-                                                        const ShaderMapProgramRef& shader_program, bool staged);
+        RHIResult<RHIBindingSetRef> materialize_configuration(RHIDevice& device, RHICommandContext& context,
+                                                              const ShaderMapCollectionRef& shader_map, bool staged);
         bool texture_cache_matches(bool staged) const noexcept;
         bool texture_views_match(bool staged) const noexcept;
 
         std::string shader_name_;
         shader::ShaderParameterSchema parameter_schema_;
         ShaderParametersMetadata parameter_metadata_;
-        ShaderMapProgramRef shader_program_;
-        ShaderMapProgramRef staged_shader_program_;
-        shader::ShaderGraphicsPassState effective_graphics_pass_state_;
-        shader::ShaderGraphicsPassState staged_effective_graphics_pass_state_;
+        ShaderMapCollectionRef shader_map_;
+        ShaderMapCollectionRef staged_shader_map_;
+        bool two_sided_ = false;
+        bool staged_two_sided_ = false;
         std::unordered_map<ShaderParameterId, float> scalar_parameters_;
         std::unordered_map<ShaderParameterId, vec2> vector2_parameters_;
         std::unordered_map<ShaderParameterId, vec3> vector3_parameters_;

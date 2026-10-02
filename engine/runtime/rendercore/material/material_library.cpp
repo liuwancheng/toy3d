@@ -20,10 +20,10 @@ namespace toy3d
     // --------------------------------------------------------------------------
     // MaterialLibrary: Stable asset owners and whole-graph GT publication
     // --------------------------------------------------------------------------
-    MaterialLibrary::MaterialLibrary(
-        const TypeRegistry& types, const FileSystem& files, std::function<const AssetIndex&()> index,
-        std::function<std::shared_ptr<const ShaderMapProgram>(const std::string&)> programs,
-        MaterialTextureValues textures)
+    MaterialLibrary::MaterialLibrary(const TypeRegistry& types, const FileSystem& files,
+                                     std::function<const AssetIndex&()> index,
+                                     std::function<ShaderMapCollectionRef(const std::string&)> programs,
+                                     MaterialTextureValues textures)
         : types_(types), files_(files), index_(std::move(index)), programs_(std::move(programs)),
           textures_(std::move(textures))
     {
@@ -182,8 +182,7 @@ namespace toy3d
 
     AssetStatus MaterialLibrary::add_configuration(LoadedMaterial& loaded, const MaterialAssetData& root,
                                                    const MaterialInstanceAssetData& instance,
-                                                   std::shared_ptr<const ShaderMapProgram> program,
-                                                   MaterialInterfaceRef parent)
+                                                   ShaderMapCollectionRef program, MaterialInterfaceRef parent)
     {
         const auto root_textures = ensure_textures(root.overrides);
         if (!root_textures.succeeded())
@@ -364,17 +363,17 @@ namespace toy3d
         return publish();
     }
 
-    AssetStatus MaterialLibrary::prepare_shader(std::shared_ptr<const ShaderMapProgram> program)
+    AssetStatus MaterialLibrary::prepare_shader(ShaderMapCollectionRef program)
     {
         discard();
         if (!program)
         {
             return failure("Material Shader candidate is missing.");
         }
-        if (default_material_ && default_material_->desc().shader_name == program->data().shader_name)
+        if (default_material_ && default_material_->desc().shader_name == program->index().shader_name)
         {
             MaterialAssetData data;
-            data.shader_name = program->data().shader_name;
+            data.shader_name = program->index().shader_name;
             data.two_sided = default_material_->desc().two_sided;
             const auto descriptor = material_descriptor_from_asset(data, program, textures_);
             if (!descriptor.succeeded())
@@ -390,7 +389,7 @@ namespace toy3d
         for (auto& item : loaded_)
         {
             auto& loaded = item.second;
-            if (loaded.runtime->desc().shader_name != program->data().shader_name)
+            if (loaded.runtime->desc().shader_name != program->index().shader_name)
             {
                 continue;
             }

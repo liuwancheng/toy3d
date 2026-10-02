@@ -1,6 +1,9 @@
 Shader "Toy3d/Surface/Unlit"
 {
-    Version 1
+    Version 2
+    Usage Material
+    Geometry Custom
+    VertexFactories { Local, GPUSkin }
 
     Properties
     {
@@ -17,6 +20,7 @@ Shader "Toy3d/Surface/Unlit"
 
     Pass "Forward"
     {
+        Role Forward
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Back
@@ -28,9 +32,8 @@ Shader "Toy3d/Surface/Unlit"
         Blend Off
         ColorWrite RGBA
 
-        HLSLPROGRAM
+        HLSLVS
         #pragma vertex vs_main
-        #pragma pixel ps_main
 
         #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
 
@@ -59,6 +62,17 @@ Shader "Toy3d/Surface/Unlit"
             output.uv = input.uv;
             return output;
         }
+
+        ENDHLSL
+
+        HLSLPS
+        #pragma pixel ps_main
+
+        struct VSOutput
+        {
+            float4 clip_position : SV_Position;
+            float2 uv : TEXCOORD0;
+        };
 
         float4 ps_main(VSOutput input) : SV_Target0
         {

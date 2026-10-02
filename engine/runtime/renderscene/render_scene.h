@@ -5,11 +5,13 @@
 
 #include <memory>
 #include <vector>
+#include <string>
 
 namespace toy3d
 {
     class TaskGraphInterface;
     class ViewInfo;
+    class MeshBatch;
     class PrimitiveSceneInfo;
     class PrimitiveSceneProxy;
     class RenderResourceManager;
@@ -46,6 +48,8 @@ namespace toy3d
         // Read only on the logical Rendering Thread while constructing forward pass parameters.
         const std::vector<std::unique_ptr<LightSceneProxy>>& lights() const;
         RHIStatus preparation_status() const;
+        // RT-only validation includes hidden registered users, independently of View visibility.
+        RHIStatus collect_material_mesh_batches(const std::string& shader_name, std::vector<MeshBatch>& batches) const;
         bool light_limit_reported() const
         {
             return light_limit_reported_;

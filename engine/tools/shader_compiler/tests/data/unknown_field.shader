@@ -1,11 +1,16 @@
 Shader "Tests/UnknownField"
 {
-    Version 1
+    Version 2
+    Usage Global
     Fallback "Hidden/InternalError"
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         ENDHLSL
     }

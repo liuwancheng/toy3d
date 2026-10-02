@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "gamescene/world/world.h"
+#include "logging/logger.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/scene_interface.h"
 
@@ -23,9 +24,19 @@ namespace toy3d
         {
             return;
         }
+        if (settings.cast_shadows && !supports_shadow_casting())
+        {
+            TOY_LOG_ERROR("Primitive settings rejected: current materials do not support ShadowDepth.");
+            return;
+        }
         settings_ = settings;
         world().mark_content_changed();
         send_render_transform();
+    }
+
+    bool PrimitiveComponent::supports_shadow_casting() const
+    {
+        return true;
     }
 
     void PrimitiveComponent::set_visible(bool visible)

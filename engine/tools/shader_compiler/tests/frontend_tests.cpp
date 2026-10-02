@@ -61,7 +61,7 @@ namespace
         }
         const toy3d::shader::ShaderAsset& asset = *result.asset;
         check(asset.name == "Tests/FrontendValid", "Shader name must be preserved");
-        check(asset.version == 1, "Shader version must be parsed");
+        check(asset.version == 2, "Shader version must be parsed");
         check(asset.properties.size() == 3, "all Properties must be parsed");
         check(asset.parameters.size() == 2, "all Pass Parameters must be parsed");
         check(asset.resources.size() == 4, "all Resources must be parsed");
@@ -70,7 +70,7 @@ namespace
         check(asset.passes.size() == 1, "Pass must be parsed");
         if (!asset.passes.empty())
         {
-            check(asset.passes[0].program.entry_points.size() == 2, "graphics entry points must be extracted");
+            check(asset.passes[0].programs.size() == 2, "independent graphics stage blocks must be extracted");
             const toy3d::shader::ShaderPass& pass = asset.passes[0];
             check(pass.state.stencil.mode == toy3d::shader::ShaderGraphicsPassState::StencilMode::FrontAndBack,
                   "structured Stencil state must be parsed");
@@ -125,6 +125,80 @@ namespace
                   "/Engine/Test.shader:12:7: error [IncludeCycle]: include cycle detected",
               "diagnostics must use the shared stable display format");
     }
+
+    void test_v2_contract()
+    {
+        using namespace toy3d::shader;
+        const std::string source = R"(
+Shader "Tests/V2Contract"
+{
+    Version 2
+    Usage Material
+    Geometry Custom
+    VertexFactories { Local, GPUSkin }
+    Pass "DisplayName"
+    {
+        Role Forward
+        DepthTest Always
+        DepthWrite Off
+        HLSLVS
+        #pragma vertex vs_main
+        float4 vs_main() : SV_Position { return 0; }
+        ENDHLSL
+        HLSLPS
+        #pragma pixel ps_main
+        float4 ps_main() : SV_Target0 { return 1; }
+        ENDHLSL
+    }
+})";
+        const auto parsed = parse_shader(source, "v2_contract.shader");
+        check(parsed.succeeded(), "Explicit v2 Custom mesh source must parse");
+        if (parsed.asset)
+        {
+            check(parsed.asset->usage == ShaderUsage::Material &&
+                      parsed.asset->geometry == ShaderGeometryMode::Custom &&
+                      parsed.asset->vertex_factory_support == all_vertex_factory_support &&
+                      parsed.asset->passes.front().name == "DisplayName" &&
+                      parsed.asset->passes.front().role == ShaderPassRole::Forward,
+                  "Usage, role and factory support must come from declarations, not names/includes");
+            const auto& pass = parsed.asset->passes.front();
+            check(pass.programs[0].source.find("ps_main") == std::string::npos &&
+                      pass.programs[1].source.find("vs_main") == std::string::npos,
+                  "Distinct stage sources must remain independent in the AST");
+            check(!pass.state.depth_write_enable &&
+                      pass.state.depth_compare_operation == ShaderGraphicsPassState::CompareOperation::Always,
+                  "Custom source retains its author-defined depth strategy");
+        }
+        const auto replaced = [&](const std::string& from, const std::string& to)
+        {
+            std::string changed = source;
+            const auto at = changed.find(from);
+            check(at != std::string::npos, "Test mutation must target an existing declaration");
+            changed.replace(at, from.size(), to);
+            return parse_shader(changed, "v2_invalid.shader");
+        };
+        check(contains_diagnostic(replaced("Version 2", "Version 1"), DiagnosticCode::InvalidVersion),
+              "Version 1 must be rejected rather than interpreted or migrated");
+        check(!replaced("Usage Material", "").succeeded(), "Missing Usage must fail");
+        check(!replaced("Role Forward", "").succeeded(), "Missing Role must fail");
+        check(!replaced("Role Forward", "Role Unknown").succeeded(), "Unknown role must fail");
+        check(!replaced("Local, GPUSkin", "Local, Local").succeeded(), "Duplicate factories must fail");
+        check(!replaced("Local, GPUSkin", "Unknown").succeeded(), "Unknown factories must fail");
+        check(replaced("Local, GPUSkin", "GPUSkin").succeeded(),
+              "Offline authoring supports a declared factory subset independent of Editor publication policy");
+        check(!replaced("Geometry Custom", "Geometry Standard").succeeded(),
+              "Unimplemented Standard wrapper must fail explicitly");
+        check(!replaced("HLSLPS", "HLSLVS").succeeded(), "Stage block/pragma mismatch must fail");
+        check(!replaced("HLSLPS\n        #pragma pixel ps_main\n        float4 ps_main() : SV_Target0 { return 1; }\n  "
+                        "      ENDHLSL",
+                        "")
+                   .succeeded(),
+              "Forward without a pixel stage must fail");
+        check(!replaced("Role Forward", "Role Forward\n Role Forward").succeeded(),
+              "Duplicate role declaration must fail");
+        check(!replaced("DepthWrite Off", "DepthWrite Off\n Blend On").succeeded(),
+              "Mesh transparent blending must fail");
+    }
 } // namespace
 
 int main()
@@ -132,6 +206,7 @@ int main()
     test_valid_shader();
     test_vertex_only_graphics_pass();
     test_diagnostic_formatting();
+    test_v2_contract();
     test_error("duplicate_property.shader", toy3d::shader::DiagnosticCode::DuplicateProperty);
     test_error("missing_entry.shader", toy3d::shader::DiagnosticCode::MissingEntryPoint);
     test_error("invalid_state.shader", toy3d::shader::DiagnosticCode::InvalidPassState);

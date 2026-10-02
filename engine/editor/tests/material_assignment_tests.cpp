@@ -245,7 +245,7 @@ int main(int argc, char** argv)
         },
         [defaults](const std::string& name)
         {
-            return name == defaults->desc().shader_name ? defaults->desc().shader_program : nullptr;
+            return name == defaults->desc().shader_name ? defaults->desc().shader_map : nullptr;
         },
         textures);
     materials.initialize(workspace, library);

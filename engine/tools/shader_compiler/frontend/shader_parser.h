@@ -49,6 +49,7 @@ namespace toy3d::shader
         bool parse_resource_group(ShaderAsset& asset);
         bool parse_resource_type(Resource& resource);
         bool parse_variants(ShaderAsset& asset);
+        bool parse_vertex_factories(ShaderAsset& asset);
         bool parse_variant(ShaderAsset& asset);
         bool parse_pass(ShaderAsset& asset);
         bool parse_stencil_state(ShaderPass& pass);

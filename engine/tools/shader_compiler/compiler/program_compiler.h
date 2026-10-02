@@ -16,7 +16,7 @@ namespace toy3d::shader
         std::string source_virtual_path;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
         std::vector<ShaderVariantSelection> variant_selections;
-        MeshVertexFactoryType vertex_factory = MeshVertexFactoryType::Local;
+        VertexFactoryType vertex_factory = VertexFactoryType::None;
         const ShaderSourceProvider* source_provider = nullptr;
     };
 

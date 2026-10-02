@@ -4,7 +4,7 @@
 #include "rendercore/hit_proxy.h"
 #include "rendercore/view/scene_view.h"
 #include "ui/ui_texture_work.h"
-#include "rendercore/material/material_program_validation.h"
+#include "rendercore/material/material_shader_map_validation.h"
 #include "rendercore/shader/builtin_shader_update.h"
 
 #include <vector>
@@ -98,7 +98,7 @@ namespace toy3d
         virtual void on_collect_ui_render_work(UiRenderWork&)
         {
         }
-        virtual void on_collect_material_validation(std::vector<MaterialProgramValidationRef>&)
+        virtual void on_collect_material_validation(std::vector<MaterialShaderMapValidationRef>&)
         {
         }
         virtual void on_collect_builtin_shader_updates(std::vector<BuiltinShaderUpdateRef>&)

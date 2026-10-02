@@ -174,17 +174,17 @@ typed buffer 接入需要贯穿公共 buffer binding 的 typed/structured/raw �
 
 ### 公共网格边界与 permutation
 
-Shader 编译输入的 `MeshVertexFactoryType` 是 engine-owned Local/GPUSkin 维度，Local 保留原 typed variant key；GPUSkin 用版本化、分域的组合 key。shader 通过 `/Engine/ShaderIncludes/ToyMeshVertex.hlsli` 显式适配，CLI 为这些源编译两种完整候选；缺少该入口的项目 shader 不能用于 GPU Skin。矩阵资源只注入 GPUSkin logical schema，C++ codegen 生成单独的 `GPUSkinObjectShaderParameters`；4/8 influence 不参与编译身份。程序候选携带验证过的 GPUSkin 程序，材质参数与 Pass schema 必须跨 factory 一致，重编译时一起接管。
+Shader 编译输入的 `VertexFactoryType` 是 engine-owned None/Local/GPUSkin 身份字段，与 Material typed permutation key 分开；Local/GPUSkin 使用相同 Material key。v2 源显式声明 VertexFactories，CLI 按声明编译，不能从 include 字符串推断支持范围。`/Engine/ShaderIncludes/ToyMeshVertex.hlsli` 提供网格变换 helper；矩阵资源只注入 GPUSkin logical schema，C++ codegen 生成单独的 `GPUSkinObjectShaderParameters`；4/8 influence 不参与编译身份。Local/GPUSkin 是不可变 ShaderMapCollection 中的独立程序，Material/Proxy 接管完整集合；Material schema 跨全部角色和 factory 一致，同 Pass 的 schema/state 跨 factory 一致。MeshBatch 按实际角色与 factory 精确查询，完整协议见 [Shader](shader.md)。
 
 MeshBatch 使用 PrimitiveSceneProxy、VertexFactory、frame-local geometry draw range/index binding、MaterialRenderProxy 与 Object snapshot；不要求所有网格伪装为 StaticMeshRenderData。不新增只有转发成员的通用 MeshRenderData 基类，持久资源生命周期留各 mesh 实现。
 
 场景收集让各 proxy 输出自己的公共 mesh inputs，准备资源和构造 batch 在 begin_render_pass 前；camera 与 shadow 使用同一入口。RenderScene 注册/材质更新/释放采用真正的 primitive/resource 行为，移除依赖 StaticMesh dynamic_cast 的假通用分支。MeshDrawCommand 保持仅 RHI refs/value/draw args，execute 不识别 skeleton/asset/动画。
 
-渲染内部的 Local/GPUSkin vertex factory permutation 维度由 MeshBatch/pass 自动选择；不是用户材质的播放或 skin 属性。身份必须进入 typed permutation、ShaderMap key、reflection 和加载验证。factory 仍不选择 shader。
+渲染内部的 Local/GPUSkin vertex factory 由 MeshBatch/pass 自动选择；不是用户材质的播放或 skin 属性。身份进入 ShaderMap key、artifact contract 和加载验证，reflection 验证实际顶点输入与骨骼资源；factory 仍不选择 shader。
 
 compiler 根据该维度注入 engine-owned Object 骨骼矩阵数组 schema 与受控 include；静态 default permutation 不增加骨骼资源要求。shader 作者通过公共 vertex input/deformation helper 获取 mesh-local position/normal，之后沿用 surface 材质逻辑。内置 Unlit/Phong、ShadowDepth 和 HitProxy 共用该 helper，禁止复制三份 skin 公式。项目自定义 shader 必须显式适配公共顶点入口，缺 GPUSkin permutation 时给出不支持诊断，不能自动把任意 HLSL 改写成 skinned shader。
 
-Editor/CMake 经 compiler CLI 为显式适配公共顶点入口的 shader 编译、部署 default 材质选择下的 Local/GPUSkin 两种程序。加载和重编译候选必须包含完整配对，缺失 GPUSkin 或 schema/state 不兼容拒绝接管；Renderer 预检两种 factory 的实际 pipeline。Material 参数 schema/override 保持跨这两种 factory 一致，允许 vertex input/Object active layout 不同；不能只编译一个 skinned Phong 绕开现有材质系统。重编译完整候选后接管，旧 refs 保持 GPU 生命周期。
+Editor/CMake 经 compiler CLI 为显式适配公共顶点入口的 shader 编译、部署 default 材质选择下的 Local/GPUSkin 两种程序。加载和重编译候选必须完整覆盖源声明的角色与 factories；缺少声明的 GPUSkin、typed 骨骼资源、两组影响输入，或同 Pass schema/state 不兼容均拒绝接管。Renderer 逐程序预检，并检查实际已有网格的 factory 与布局；只声明 GPUSkin 的材质不允许赋给 Local 网格。Material 参数 schema/override 保持跨这两种 factory 一致，允许 vertex input/Object active layout 不同；不能只编译一个 skinned Phong 绕开现有材质系统。重编译完整候选后接管，旧 refs 保持 GPU 生命周期。
 
 ### Bounds 与裁剪
 

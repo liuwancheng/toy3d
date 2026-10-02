@@ -9,6 +9,10 @@
 
 namespace toy3d
 {
+    class ShaderMapCollection;
+    struct ShaderMapCollectionResult;
+    using ShaderMapCollectionRef = std::shared_ptr<const ShaderMapCollection>;
+
     class ShaderMapProgram final
     {
       public:
@@ -20,7 +24,6 @@ namespace toy3d
         ShaderMapProgram& operator=(ShaderMapProgram&&) noexcept = default;
 
         const ShaderMapProgramData& data() const;
-        const std::shared_ptr<const ShaderMapProgram>& gpu_skin_program() const;
 
         const ShaderParameterBinding* find_parameter_binding(ShaderParameterId parameter_id) const;
 
@@ -30,7 +33,6 @@ namespace toy3d
         explicit ShaderMapProgram(ShaderMapProgramData data);
 
         ShaderMapProgramData data_;
-        std::shared_ptr<const ShaderMapProgram> gpu_skin_program_;
 
         std::unordered_map<ShaderParameterId, ShaderParameterBinding> parameter_bindings_;
     };
@@ -51,6 +53,8 @@ namespace toy3d
         explicit ShaderMap(ShaderMapLoader& loader);
 
         ShaderMapProgramResult find_or_load(const ShaderMapProgramKey& key);
+        ShaderMapCollectionResult find_or_load_collection(const std::string& shader_name, ShaderPlatform platform,
+                                                          const ShaderContentHash& permutation_key);
         // Build an immutable, verified revision without mutating a cached key.
         // The caller publishes it only after its material/pipeline checks pass.
         static ShaderMapProgramResult create_candidate(ShaderMapProgramData data, const ShaderMapProgramKey& key);
@@ -62,6 +66,8 @@ namespace toy3d
             std::string pass_name;
             ShaderPlatform platform = ShaderPlatform::VulkanES31;
             ShaderContentHash permutation_key{};
+            shader::ShaderPassRole role = shader::ShaderPassRole::Global;
+            shader::VertexFactoryType vertex_factory = shader::VertexFactoryType::None;
 
             bool operator==(const ProgramKey& other) const;
         };
@@ -76,5 +82,6 @@ namespace toy3d
 
         ShaderMapLoader& loader_;
         std::unordered_map<ProgramKey, ShaderMapProgramRef, ProgramKeyHash> programs_;
+        std::unordered_map<ProgramKey, ShaderMapCollectionRef, ProgramKeyHash> collections_;
     };
 } // namespace toy3d

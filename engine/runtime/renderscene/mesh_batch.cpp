@@ -1,6 +1,7 @@
 #include "renderscene/mesh_batch.h"
 
 #include <utility>
+#include <algorithm>
 
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/geometry/vertex_factory.h"
@@ -21,31 +22,50 @@ namespace toy3d
         object_shader_parameters_.toy_num_bone_influences = num_bone_influences;
     }
 
-    ShaderMapProgramResult MeshBatch::resolve_program(const ShaderMapProgramRef& local) const
+    ShaderMapProgramResult MeshBatch::find_program(const ShaderMapCollection& shader_map,
+                                                   shader::ShaderPassRole role) const
     {
-        if (!local)
-        {
-            return {nullptr, "Mesh shader program is missing."};
-        }
-        if (vertex_factory_->type() == shader::MeshVertexFactoryType::Local)
-        {
-            return {local, {}};
-        }
-        if (!local->gpu_skin_program())
-        {
-            return {nullptr, "Material/pass shader does not support GPUSkin. Adapt ToyMeshVertex and recompile."};
-        }
-        return {local->gpu_skin_program(), {}};
+        return shader_map.find(role, vertex_factory_->type());
     }
 
     ShaderMapProgramResult MeshBatch::material_program() const
     {
-        return resolve_program(material_render_proxy_->shader_program());
+        const auto& shader_map = material_render_proxy_->shader_map();
+        return shader_map ? find_program(*shader_map, shader::ShaderPassRole::Forward)
+                          : ShaderMapProgramResult{nullptr, "Material ShaderMap collection is missing."};
     }
 
     void MeshBatch::publish_material_binding(RHIBindingSetRef binding_set)
     {
         material_binding_ = std::move(binding_set);
+    }
+
+    ShaderMapProgramResult MeshBatch::mesh_pass_program(shader::ShaderPassRole role,
+                                                        const ShaderMapCollection& default_shader_map) const
+    {
+        const auto& material_map = material_render_proxy_->shader_map();
+        if (!material_map)
+        {
+            return {nullptr, "Material ShaderMap collection is missing."};
+        }
+        const auto& passes = material_map->index().passes;
+        const bool declared = std::any_of(passes.begin(), passes.end(),
+                                          [role](const shader::ShaderMapIndexPass& pass)
+                                          {
+                                              return pass.role == role;
+                                          });
+        // A declared custom role must resolve exactly. Engine defaults apply
+        // only when this opaque material does not declare that role.
+        if (declared)
+        {
+            return find_program(*material_map, role);
+        }
+        const auto& name = material_map->index().shader_name;
+        if (name == "Toy3d/Surface/Phong" || name == "Toy3d/Surface/Unlit")
+        {
+            return find_program(default_shader_map, role);
+        }
+        return {nullptr, "Custom material " + name + " does not declare the required mesh Pass role."};
     }
 
     void MeshBatch::publish_object_binding(RHIBindingSetRef binding_set)

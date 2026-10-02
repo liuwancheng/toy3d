@@ -119,8 +119,13 @@ namespace toy3d
         bool validate_program(const GlobalShaderType& type, ShaderPlatform platform,
                               const ShaderMapProgramData& program, std::string& error)
         {
-            if (program.shader_name != type.shader_name() || program.pass_name != type.pass_name() ||
-                program.permutation_key != type.permutation_key() || program.platform != platform)
+            if (program.contract.usage != shader::ShaderUsage::Global ||
+                program.contract.role != shader::ShaderPassRole::Global ||
+                program.contract.vertex_factory != shader::VertexFactoryType::None ||
+                program.shader_name != type.shader_name() || program.pass_name != type.pass_name() ||
+                program.permutation_key != type.permutation_key() || program.platform != platform ||
+                program.contract.role != shader::ShaderPassRole::Global ||
+                program.contract.vertex_factory != shader::VertexFactoryType::None)
             {
                 error = type_context(type) + " loaded a Program with mismatched identity, permutation, or platform.";
                 return false;
@@ -188,6 +193,8 @@ namespace toy3d
             key.pass_name = type->pass_name();
             key.platform = platform;
             key.permutation_key = type->permutation_key();
+            key.role = shader::ShaderPassRole::Global;
+            key.vertex_factory = shader::VertexFactoryType::None;
             ShaderMapProgramResult loaded = shader_map.find_or_load(key);
             if (!loaded.succeeded())
             {

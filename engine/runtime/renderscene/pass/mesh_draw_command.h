@@ -8,6 +8,12 @@
 
 namespace toy3d
 {
+    class RHIDevice;
+    class ShaderMapProgram;
+
+    RHIStatus resolve_mesh_draw_binding(RHIDevice& device, const ShaderMapProgram& program, RHIBindingGroup group,
+                                        const RHIBindingSetRef& owner_binding, RHIBindingSetRef& resolved_binding);
+
     // Frame-local, fully resolved input for one indexed mesh draw. RHI strong
     // references are intentionally copied into the command so execution never
     // reads scene, proxy, material, or MeshBatch preparation sources.

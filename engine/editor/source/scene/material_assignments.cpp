@@ -75,6 +75,13 @@ namespace toy3d
             error = "A default material assignment must have an empty reference.";
             return false;
         }
+        const auto target = material ? material : component->static_mesh()->material_slots()[slot];
+        if (!validate_material_mesh_pass(target->desc(), shader::ShaderPassRole::HitProxy,
+                                         shader::VertexFactoryType::Local, error))
+        {
+            error += " Actor " + std::to_string(actor_id) + ", Slot " + assignment.slot_name;
+            return false;
+        }
         if (world_ != &world)
         {
             assignments_.clear();
@@ -144,7 +151,7 @@ namespace toy3d
         assignments_.erase(actor_id);
     }
 
-    bool MaterialAssignments::prepare_shader(const ShaderMapProgramRef& program, std::string& error)
+    bool MaterialAssignments::prepare_shader(const ShaderMapCollectionRef& program, std::string& error)
     {
         if (!library_)
         {
@@ -206,7 +213,7 @@ namespace toy3d
             return false;
         }
         const auto* shader = shaders_->find(hierarchy.value().root.shader_name);
-        if (!shader || shader->usage != BuiltinShaderUsage::Material || shader->program)
+        if (!shader || shader->usage != BuiltinShaderUsage::Material || shader->shader_map)
         {
             return false;
         }
@@ -319,7 +326,7 @@ namespace toy3d
             error = "Compile and Assign cancelled: target slot, scene or Material asset changed.";
             TOY_LOG_WARN("{}", error);
         }
-        else if (!shaders_->program(pending.shader))
+        else if (!shaders_->shader_map(pending.shader))
         {
             error = shaders_->unavailable_reason(pending.shader);
             TOY_LOG_WARN("Compile and Assign did not apply: {}", error);

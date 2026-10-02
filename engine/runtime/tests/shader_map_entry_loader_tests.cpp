@@ -2,6 +2,7 @@
 
 #include "rendercore/shader/rhi_shader_program.h"
 #include "rendercore/shader/shader_map.h"
+#include "rendercore/shader/shader_map_collection.h"
 
 #include <algorithm>
 #include <iostream>
@@ -47,6 +48,21 @@ namespace
         key.pass_name = "TestPass";
         toy3d::ShaderMapProgramLoadResult loaded = loader.load_program(key);
         check(loaded.succeeded(), loaded.error.c_str());
+        const auto collection = toy3d::ShaderMapCollection::create_candidate(
+            loader.load_collection(key.shader_name, key.platform, key.permutation_key));
+        check(collection.succeeded(), collection.error.c_str());
+        const auto queried = collection.collection->find(toy3d::shader::ShaderPassRole::Global,
+                                                         toy3d::shader::VertexFactoryType::None, key.pass_name);
+        check(queried.succeeded() && queried.program->data().pass_name == key.pass_name,
+              "Collection queries return independent immutable programs");
+        check(
+            !collection.collection->find(toy3d::shader::ShaderPassRole::Global, toy3d::shader::VertexFactoryType::None)
+                 .succeeded(),
+            "Global query cannot guess a Pass name");
+        auto incomplete = loader.load_collection(key.shader_name, key.platform, key.permutation_key);
+        incomplete.programs.clear();
+        check(!toy3d::ShaderMapCollection::create_candidate(std::move(incomplete)).succeeded(),
+              "Incomplete collection cannot publish any program");
         check(loaded.program->stages.size() == 2, "test Program must contain vertex and pixel stages");
         check(loaded.program->vertex_inputs.empty(),
               "SV_VertexID-only test Shader must not invent a logical vertex input");

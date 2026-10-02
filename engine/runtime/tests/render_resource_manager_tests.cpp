@@ -476,6 +476,13 @@ namespace
         return result.program;
     }
 
+    toy3d::ShaderMapCollectionRef material_shader_map(const toy3d::ShaderMapProgramRef& program)
+    {
+        auto result = toy3d::tests::make_material_shader_map(*program);
+        check(result.succeeded(), result.error.c_str());
+        return result.collection;
+    }
+
     std::shared_ptr<const toy3d::GlobalShaderMap> load_tonemap_global_map()
     {
         toy3d::ShaderMapProgramData program = make_tonemap_program();
@@ -1616,9 +1623,10 @@ int main()
           "hidden embedded viewport must present UI without allocating a scene target");
 
     const toy3d::ShaderMapProgramRef base_pass_program = load_program(make_base_pass_program());
+    const auto base_pass_shader_map = material_shader_map(base_pass_program);
     toy3d::MaterialDesc base_pass_material_desc;
     base_pass_material_desc.shader_name = "Toy3d/Test/ViewObject";
-    base_pass_material_desc.shader_program = base_pass_program;
+    base_pass_material_desc.shader_map = base_pass_shader_map;
     const toy3d::MaterialRef base_pass_material = toy3d::Material::create(std::move(base_pass_material_desc));
     toy3d::MaterialInstanceRef base_pass_material_instance = toy3d::MaterialInstance::create(base_pass_material);
     toy3d::StaticMeshDesc base_pass_mesh_desc;
@@ -1730,16 +1738,17 @@ int main()
           "successful Base Pass draw resource must be releasable");
 
     const toy3d::ShaderMapProgramRef mixed_program = load_program(make_base_pass_program_with_required_material());
+    const auto mixed_shader_map = material_shader_map(mixed_program);
     toy3d::MaterialDesc missing_material_desc;
     missing_material_desc.shader_name = "Toy3d/Test/ViewObjectMaterial";
     missing_material_desc.parameter_schema = material_schema_from_program(*mixed_program);
-    missing_material_desc.shader_program = mixed_program;
+    missing_material_desc.shader_map = mixed_shader_map;
     missing_material_desc.scalar_defaults.emplace(11u, 0.25F);
     const toy3d::MaterialRef missing_material = toy3d::Material::create(std::move(missing_material_desc));
     toy3d::MaterialDesc complete_material_desc;
     complete_material_desc.shader_name = "Toy3d/Test/ViewObjectMaterial";
     complete_material_desc.parameter_schema = material_schema_from_program(*mixed_program);
-    complete_material_desc.shader_program = mixed_program;
+    complete_material_desc.shader_map = mixed_shader_map;
     complete_material_desc.scalar_defaults.emplace(11u, 0.5F);
     const toy3d::MaterialRef complete_material = toy3d::Material::create(std::move(complete_material_desc));
     const toy3d::MaterialInstanceRef missing_material_instance = toy3d::MaterialInstance::create(missing_material);
@@ -2069,8 +2078,11 @@ int main()
     mapping_only_program_data.stages.front().reflection = mapping_only_program_data.bindings;
     mapping_only_program_data.target_binding_hash = nonzero_hash(90u);
     const toy3d::ShaderMapProgramRef active_program = load_program(std::move(active_program_data));
+    const auto active_shader_map = material_shader_map(active_program);
     const toy3d::ShaderMapProgramRef mapping_only_program = load_program(std::move(mapping_only_program_data));
+    const auto mapping_only_shader_map = material_shader_map(mapping_only_program);
     const toy3d::ShaderMapProgramRef candidate_program = load_program(make_material_program("Candidate", 40u));
+    const auto candidate_shader_map = material_shader_map(candidate_program);
     toy3d::ShaderMapProgramData subset_program_data = make_material_program("TextureInactive", 50u);
     subset_program_data.bindings.erase(
         std::remove_if(subset_program_data.bindings.begin(), subset_program_data.bindings.end(),
@@ -2081,6 +2093,7 @@ int main()
         subset_program_data.bindings.end());
     subset_program_data.stages.front().reflection = subset_program_data.bindings;
     const toy3d::ShaderMapProgramRef subset_program = load_program(std::move(subset_program_data));
+    const auto subset_shader_map = material_shader_map(subset_program);
     toy3d::ShaderMapProgramData incompatible_schema_program_data = make_material_program("IncompleteCandidate", 60u);
     incompatible_schema_program_data.bindings.front().constant_members.erase(
         incompatible_schema_program_data.bindings.front().constant_members.begin());
@@ -2088,10 +2101,11 @@ int main()
     toy3d::tests::finalize_test_program_parameter_schema(incompatible_schema_program_data);
     const toy3d::ShaderMapProgramRef incompatible_schema_program =
         load_program(std::move(incompatible_schema_program_data));
+    const auto incompatible_schema_shader_map = material_shader_map(incompatible_schema_program);
     toy3d::MaterialDesc render_material_desc;
     render_material_desc.shader_name = "Toy3d/Test/Material";
     render_material_desc.parameter_schema = material_schema_from_program(*active_program);
-    render_material_desc.shader_program = active_program;
+    render_material_desc.shader_map = active_shader_map;
     render_material_desc.scalar_defaults.emplace(11u, 0.25f);
     render_material_desc.vector4_defaults.emplace(13u, toy3d::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     render_material_desc.texture_defaults.emplace(12u, texture);
@@ -2099,7 +2113,7 @@ int main()
     toy3d::MaterialDesc subset_material_desc;
     subset_material_desc.shader_name = "Toy3d/Test/Material";
     subset_material_desc.parameter_schema = material_schema_from_program(*active_program);
-    subset_material_desc.shader_program = subset_program;
+    subset_material_desc.shader_map = subset_shader_map;
     subset_material_desc.scalar_defaults.emplace(11u, 0.25f);
     subset_material_desc.vector4_defaults.emplace(13u, toy3d::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     subset_material_desc.texture_defaults.emplace(12u, texture);
@@ -2129,6 +2143,7 @@ int main()
 
     {
         const auto asset_program = load_program(make_material_program("Forward", 110u));
+        const auto asset_shader_map = material_shader_map(asset_program);
         toy3d::MaterialTextureValues resolved;
         resolved.named_defaults.emplace("Builtin/White", texture);
         toy3d::MaterialAssetData asset_data;
@@ -2136,7 +2151,7 @@ int main()
         asset_data.overrides = {{"roughness", 0.75f}, {"base_color", toy3d::Vector4(0.2f, 0.3f, 0.4f, 1.0f)}};
         toy3d::MaterialInstanceRef root_instance;
         {
-            const auto built = toy3d::create_material_from_asset(asset_data, asset_program, resolved);
+            const auto built = toy3d::create_material_from_asset(asset_data, asset_shader_map, resolved);
             check(built.succeeded(), "asset material must build from compiled schema and resolved textures");
             root_instance = built.value();
         }
@@ -2184,15 +2199,15 @@ int main()
         check(child_scalar == 0.75f, "removing a child override must use parent value");
         auto invalid_data = asset_data;
         invalid_data.overrides.push_back(invalid_data.overrides.front());
-        check(!toy3d::create_material_from_asset(invalid_data, asset_program, resolved).succeeded(),
+        check(!toy3d::create_material_from_asset(invalid_data, asset_shader_map, resolved).succeeded(),
               "duplicate override must reject full candidate");
-        check(!toy3d::create_material_from_asset(asset_data, asset_program, {}).succeeded(),
+        check(!toy3d::create_material_from_asset(asset_data, asset_shader_map, {}).succeeded(),
               "unresolved default texture must fail");
         invalid_data = asset_data;
         invalid_data.overrides.push_back({"removed_parameter", 1.0f});
         toy3d::MaterialInstanceRef orphan_instance;
         {
-            const auto built = toy3d::create_material_from_asset(invalid_data, asset_program, resolved);
+            const auto built = toy3d::create_material_from_asset(invalid_data, asset_shader_map, resolved);
             check(built.succeeded(), "known orphan must not stop valid runtime material construction");
             orphan_instance = built.value();
         }
@@ -2370,31 +2385,31 @@ int main()
 
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_candidate_binding =
         material_proxy->materialize(device, context);
-    check(active_candidate_binding.succeeded() && material_proxy->effective_graphics_pass_state() != nullptr &&
-              material_proxy->effective_graphics_pass_state()->cull_mode ==
-                  toy3d::shader::ShaderGraphicsPassState::CullMode::Front,
+    check(active_candidate_binding.succeeded() && material_proxy->shader_map() != nullptr &&
+              material_proxy->effective_graphics_pass_state(*material_proxy->shader_map()->programs().front())
+                      .cull_mode == toy3d::shader::ShaderGraphicsPassState::CullMode::Front,
           "a single-sided active candidate must preserve the Shader Pass cull mode");
 
-    const toy3d::RHIStatus direct_incomplete_stage = material_proxy->stage_material_candidate(candidate_program, true);
+    const toy3d::RHIStatus direct_incomplete_stage =
+        material_proxy->stage_material_candidate(candidate_shader_map, true);
     const toy3d::RHIStatus direct_incomplete_commit = material_proxy->commit_material_candidate();
-    const toy3d::RHIStatus direct_retry_stage = material_proxy->stage_material_candidate(candidate_program, true);
+    const toy3d::RHIStatus direct_retry_stage = material_proxy->stage_material_candidate(candidate_shader_map, true);
     check(direct_incomplete_stage && !direct_incomplete_commit && direct_retry_stage,
           "a failed direct candidate commit must discard staged state and allow retry");
     material_proxy->discard_material_candidate();
-    check(!material_proxy->stage_material_candidate(incompatible_schema_program, true),
+    check(!material_proxy->stage_material_candidate(incompatible_schema_shader_map, true),
           "the Render-side Material schema must reject a candidate with a different complete identity");
 
     const bool incomplete_candidate_staged =
-        render_material_instance->stage_material_replacement(incompatible_schema_program, true);
+        render_material_instance->stage_material_replacement(incompatible_schema_shader_map, true);
     const bool incomplete_candidate_published = render_material_instance->publish_material_replacement();
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_binding_after_failed_candidate =
         material_proxy->materialize(device, context);
     const bool old_schema_scalar_accepted = render_material_instance->set_scalar("roughness", 0.75f);
     check(!incomplete_candidate_staged && !incomplete_candidate_published &&
-              material_proxy->shader_program() == active_program &&
-              material_proxy->effective_graphics_pass_state() != nullptr &&
-              material_proxy->effective_graphics_pass_state()->cull_mode ==
-                  toy3d::shader::ShaderGraphicsPassState::CullMode::Front &&
+              material_proxy->shader_map() == active_shader_map && material_proxy->shader_map() != nullptr &&
+              material_proxy->effective_graphics_pass_state(*material_proxy->shader_map()->programs().front())
+                      .cull_mode == toy3d::shader::ShaderGraphicsPassState::CullMode::Front &&
               active_binding_after_failed_candidate.succeeded() &&
               active_binding_after_failed_candidate.value() == active_candidate_binding.value() &&
               old_schema_scalar_accepted,
@@ -2404,48 +2419,47 @@ int main()
     check(active_program->data().target_binding_hash != mapping_only_program->data().target_binding_hash &&
               active_program->data().bindings[0u].target_binding !=
                   mapping_only_program->data().bindings[0u].target_binding &&
-              render_material_instance->stage_material_replacement(mapping_only_program, false),
+              render_material_instance->stage_material_replacement(mapping_only_shader_map, false),
           "a schema-compatible Program mapping candidate must stage successfully");
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> mapping_candidate_binding =
         material_proxy->materialize_staged(device, context);
     check(mapping_candidate_binding.succeeded() &&
               mapping_candidate_binding.value() == binding_before_mapping_candidate &&
               render_material_instance->publish_material_replacement() &&
-              material_proxy->shader_program() == mapping_only_program &&
+              material_proxy->shader_map() == mapping_only_shader_map &&
               material_proxy->materialize(device, context).value() == binding_before_mapping_candidate,
           "a Program target-mapping change must publish while reusing the Program-independent Material binding");
-    check(render_material_instance->stage_material_replacement(active_program, false) &&
+    check(render_material_instance->stage_material_replacement(active_shader_map, false) &&
               material_proxy->materialize_staged(device, context).value() == binding_before_mapping_candidate &&
               render_material_instance->publish_material_replacement(),
           "restoring the original Program mapping must also reuse the Material logical binding");
 
-    check(render_material_instance->stage_material_replacement(subset_program, false),
+    check(render_material_instance->stage_material_replacement(subset_shader_map, false),
           "a Program candidate with a smaller active Material subset must stage successfully");
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> subset_candidate_binding =
         material_proxy->materialize_staged(device, context);
     check(subset_candidate_binding.succeeded() &&
               subset_candidate_binding.value() == binding_before_mapping_candidate &&
               render_material_instance->publish_material_replacement() &&
-              material_proxy->shader_program() == subset_program &&
+              material_proxy->shader_map() == subset_shader_map &&
               material_proxy->materialize(device, context).value() == binding_before_mapping_candidate,
           "an active-subset-only Program change must reuse the complete Material logical superset");
-    check(render_material_instance->stage_material_replacement(active_program, false) &&
+    check(render_material_instance->stage_material_replacement(active_shader_map, false) &&
               material_proxy->materialize_staged(device, context).value() == binding_before_mapping_candidate &&
               render_material_instance->publish_material_replacement(),
           "restoring the full active subset must not rebuild the unchanged Material logical superset");
 
-    check(render_material_instance->stage_material_replacement(candidate_program, true) &&
+    check(render_material_instance->stage_material_replacement(candidate_shader_map, true) &&
               material_proxy->materialize_staged(device, context).succeeded() &&
               render_material_instance->discard_material_replacement() &&
-              material_proxy->shader_program() == active_program &&
-              material_proxy->effective_graphics_pass_state() != nullptr &&
-              material_proxy->effective_graphics_pass_state()->cull_mode ==
-                  toy3d::shader::ShaderGraphicsPassState::CullMode::Front,
+              material_proxy->shader_map() == active_shader_map && material_proxy->shader_map() != nullptr &&
+              material_proxy->effective_graphics_pass_state(*material_proxy->shader_map()->programs().front())
+                      .cull_mode == toy3d::shader::ShaderGraphicsPassState::CullMode::Front,
           "discarding a fully materialized candidate must preserve active Program and state");
 
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_binding_before_replacement =
         material_proxy->materialize(device, context);
-    const bool staged_two_sided = render_material_instance->stage_material_replacement(candidate_program, true);
+    const bool staged_two_sided = render_material_instance->stage_material_replacement(candidate_shader_map, true);
     toy3d::RHIResult<toy3d::RHIBindingSetRef> staged_two_sided_binding =
         material_proxy->materialize_staged(device, context);
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> active_binding_while_candidate_staged =
@@ -2454,21 +2468,19 @@ int main()
               active_binding_while_candidate_staged.succeeded() &&
               active_binding_while_candidate_staged.value() == active_binding_before_replacement.value() &&
               staged_two_sided_binding.value() == active_binding_before_replacement.value() &&
-              material_proxy->shader_program() == active_program &&
+              material_proxy->shader_map() == active_shader_map &&
               render_material_instance->publish_material_replacement() &&
-              material_proxy->shader_program() == candidate_program &&
-              material_proxy->effective_graphics_pass_state() != nullptr &&
-              material_proxy->effective_graphics_pass_state()->cull_mode ==
-                  toy3d::shader::ShaderGraphicsPassState::CullMode::None &&
+              material_proxy->shader_map() == candidate_shader_map && material_proxy->shader_map() != nullptr &&
+              material_proxy->effective_graphics_pass_state(*material_proxy->shader_map()->programs().front())
+                      .cull_mode == toy3d::shader::ShaderGraphicsPassState::CullMode::None &&
               material_proxy->materialize(device, context).value() == staged_two_sided_binding.value(),
           "two-sided publication must atomically commit Program, CullMode::None, and binding");
 
-    check(render_material_instance->stage_material_replacement(candidate_program, false) &&
+    check(render_material_instance->stage_material_replacement(candidate_shader_map, false) &&
               material_proxy->materialize_staged(device, context).succeeded() &&
-              render_material_instance->publish_material_replacement() &&
-              material_proxy->effective_graphics_pass_state() != nullptr &&
-              material_proxy->effective_graphics_pass_state()->cull_mode ==
-                  candidate_program->data().graphics_pass_state.cull_mode,
+              render_material_instance->publish_material_replacement() && material_proxy->shader_map() != nullptr &&
+              material_proxy->effective_graphics_pass_state(*material_proxy->shader_map()->programs().front())
+                      .cull_mode == candidate_program->data().graphics_pass_state.cull_mode,
           "disabling two-sided must restore the Shader Pass cull mode in the next candidate");
     toy3d::MaterialInstance::release(render_material_instance);
     check(!render_material_instance && material_rendering_thread.stop().succeeded(),

@@ -39,6 +39,67 @@ namespace
                            });
     }
 
+    void test_mesh_role_parameter_schemas()
+    {
+        using namespace toy3d::shader;
+        ShaderAsset asset;
+        asset.name = "Project/Surface/RoleABI";
+        asset.usage = ShaderUsage::Material;
+        asset.geometry = ShaderGeometryMode::Custom;
+        asset.vertex_factory_support = local_vertex_factory_support;
+        Parameter forward_parameter;
+        forward_parameter.group = BindingGroup::Pass;
+        forward_parameter.name = "forward_only";
+        forward_parameter.type = ShaderValueType::Float32;
+        asset.parameters.push_back(forward_parameter);
+        for (const auto role : {ShaderPassRole::Forward, ShaderPassRole::ShadowDepth, ShaderPassRole::HitProxy})
+        {
+            ShaderPass pass;
+            pass.role = role;
+            pass.name = role == ShaderPassRole::Forward
+                            ? "Forward"
+                            : (role == ShaderPassRole::ShadowDepth ? "ShadowDepth" : "HitProxy");
+            asset.passes.push_back(std::move(pass));
+        }
+        const auto forward = compile_logical_layout(asset, VertexFactoryType::Local, ShaderPassRole::Forward);
+        const auto shadow = compile_logical_layout(asset, VertexFactoryType::Local, ShaderPassRole::ShadowDepth);
+        const auto hit = compile_logical_layout(asset, VertexFactoryType::Local, ShaderPassRole::HitProxy);
+        check(forward.succeeded() && shadow.succeeded() && hit.succeeded(),
+              "Each mesh role has a complete logical schema");
+        if (!forward.succeeded() || !shadow.succeeded() || !hit.succeeded())
+        {
+            return;
+        }
+        const auto forward_schema = make_shader_parameter_schema(*forward.layout);
+        const auto shadow_schema = make_shader_parameter_schema(*shadow.layout);
+        const auto hit_schema = make_shader_parameter_schema(*hit.layout);
+        check(calculate_shader_parameter_group_identity(forward_schema, BindingGroup::Material) ==
+                      calculate_shader_parameter_group_identity(shadow_schema, BindingGroup::Material) &&
+                  calculate_shader_parameter_group_identity(shadow_schema, BindingGroup::Material) ==
+                      calculate_shader_parameter_group_identity(hit_schema, BindingGroup::Material) &&
+                  calculate_shader_parameter_group_identity(forward_schema, BindingGroup::Pass) !=
+                      calculate_shader_parameter_group_identity(shadow_schema, BindingGroup::Pass) &&
+                  calculate_shader_parameter_group_identity(shadow_schema, BindingGroup::Pass) !=
+                      calculate_shader_parameter_group_identity(hit_schema, BindingGroup::Pass),
+              "Material stays stable while Forward, ShadowDepth and HitProxy have distinct Pass ABIs");
+        const auto generated = generate_shader_parameters_header(asset, *forward.layout);
+        check(generated.succeeded(), "Multi-role generated parameters use the declared roles");
+        if (generated.succeeded())
+        {
+            const auto& text = *generated.source;
+            const auto shadow_start = text.find("struct ShadowDepthPassParameters");
+            const auto hit_start = text.find("struct HitProxyPassParameters");
+            check(shadow_start != std::string::npos && hit_start != std::string::npos &&
+                      text.substr(shadow_start, text.find("\n    };", shadow_start) - shadow_start)
+                              .find("shadow_world_to_clip") != std::string::npos &&
+                      text.substr(hit_start, text.find("\n    };", hit_start) - hit_start).find("hit_proxy_id_parts") !=
+                          std::string::npos &&
+                      text.substr(hit_start, text.find("\n    };", hit_start) - hit_start).find("forward_only") ==
+                          std::string::npos,
+                  "Generated role structs cannot accidentally share Forward parameters");
+        }
+    }
+
     void test_constant_buffer_data_layout_hash()
     {
         using namespace toy3d::shader;
@@ -82,7 +143,8 @@ namespace
     const char* shader_source_a = R"(
 Shader "Tests/Layout"
 {
-    Version 1
+    Version 2
+    Usage Global
     Properties
     {
         base_color ("Base Color", Color) = (1.0, 0.5, 0.25, 1.0)
@@ -113,8 +175,12 @@ Shader "Tests/Layout"
     }
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         ENDHLSL
     }
@@ -124,7 +190,8 @@ Shader "Tests/Layout"
     const char* shader_source_reordered_resources = R"(
 Shader "Tests/Layout"
 {
-    Version 1
+    Version 2
+    Usage Global
     Properties
     {
         base_color ("Base Color", Color) = (1.0, 0.5, 0.25, 1.0)
@@ -152,8 +219,12 @@ Shader "Tests/Layout"
     }
     Pass "Forward"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         ENDHLSL
     }
@@ -667,13 +738,18 @@ Shader "Tests/Layout"
         const char* tonemap_source = R"(
 Shader "Toy3d/PostProcess/Tonemap"
 {
-    Version 1
+    Version 2
+    Usage Global
     Parameters { Pass { exposure_ev : Float = 0.0 } }
     Resources { Pass { scene_color : Texture2D<Float4> scene_sampler : Sampler = LinearClamp } }
     Pass "Tonemap"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         ENDHLSL
     }
@@ -715,13 +791,18 @@ Shader "Toy3d/PostProcess/Tonemap"
         const char* imgui_source = R"(
 Shader "Toy3d/UI/ImGui"
 {
-    Version 1
+    Version 2
+    Usage Global
     Parameters { Pass { projection : Float4x4 } }
     Resources { Pass { font_texture : Texture2D<Float4> font_sampler : Sampler = LinearClamp } }
     Pass "ImGui"
     {
-        HLSLPROGRAM
+        Role Global
+        HLSLVS
         #pragma vertex vs_main
+        ENDHLSL
+
+        HLSLPS
         #pragma pixel ps_main
         ENDHLSL
     }
@@ -854,6 +935,7 @@ Shader "Toy3d/UI/ImGui"
 
 int main()
 {
+    test_mesh_role_parameter_schemas();
     test_constant_buffer_data_layout_hash();
     test_sha256_and_parameter_id();
     test_toy_shader_abi_packing();
