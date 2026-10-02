@@ -25,8 +25,12 @@ namespace toy3d
     TOY3D_REFLECT_TYPE("toy3d.CapsuleData", 1)
     struct CapsuleData
     {
+        // Keep physical wrapping to exercise declaration and initializer parsing.
+        // clang-format off
         TOY3D_PROPERTY("radius", Edit)
-        float radius = 0.0f;
+        float radius =
+            0.0f;
+        // clang-format on
     };
 
     TOY3D_REFLECT_TYPE("toy3d.NestedAsset", 1)
@@ -36,8 +40,12 @@ namespace toy3d
         std::vector<BoxData> boxes;
 
         // variant makes the finite shape branches explicit for generated data.
+        // clang-format off
         TOY3D_PROPERTY("shape", Edit)
-        std::variant<BoxData, CapsuleData> shape;
+        std::variant<BoxData,
+                     CapsuleData>
+            shape;
+        // clang-format on
 
         TOY3D_PROPERTY("mode", Edit)
         ShapeMode mode = ShapeMode::Solid;

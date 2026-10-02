@@ -28,6 +28,7 @@ namespace toy3d
         void clear_display();
         std::size_t error_count();
         std::size_t warning_count();
+
       private:
         void refresh();
         std::shared_ptr<LogBuffer> buffer_;
@@ -42,4 +43,4 @@ namespace toy3d
         bool focus_requested_ = false;
         bool auto_scroll_ = true;
     };
-}
+} // namespace toy3d

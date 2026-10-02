@@ -27,8 +27,7 @@ namespace toy3d
         const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
         static const GlobalShaderType type(
             "HitProxyGlobalShader", "Toy3d/Editor/HitProxy", "HitProxy", shader::default_shader_permutation_key,
-            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel,
-            metadata,
+            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel, metadata,
             {GlobalShaderBindingRequirement(metadata.constant_buffer.binding_id, RHIBindingGroup::Pass,
                                             RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Pixel)});
         return type;
@@ -48,7 +47,8 @@ namespace toy3d
         if (!id_view || !depth_view || !id_view->texture() || !depth_view->texture() ||
             id_view->desc().format != PixelFormat::R32UInt || depth_view->desc().format != PixelFormat::D32Float)
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "HitProxyPass requires R32UInt and D32Float targets.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "HitProxyPass requires R32UInt and D32Float targets.");
         }
         const ShaderMapProgramResult found = global_shader_map.find(hit_proxy_global_shader_type());
         if (!found.succeeded())
@@ -58,7 +58,9 @@ namespace toy3d
         const ShaderMapProgramRef& shader_program = found.program;
         RHIResult<RHIShaderProgramRef> cached = shader_program_cache.find_or_create(shader_program);
         if (!cached)
+        {
             return cached.status();
+        }
 
         RHIRenderPassDesc pass_desc;
         RHIColorAttachmentDesc color;
@@ -95,7 +97,9 @@ namespace toy3d
                 const std::uint32_t actor_id = batch.scene_proxy().actor_id();
                 const std::uint32_t component_id = batch.scene_proxy().component_id();
                 if (actor_id == 0u || component_id == 0u)
+                {
                     continue;
+                }
 
                 // Reuse the same pixel ID when the same section appears in
                 // multiple Views of this one submission.
@@ -113,7 +117,9 @@ namespace toy3d
                 if (hit_id.value == 0u)
                 {
                     if (table.size() >= std::numeric_limits<std::uint32_t>::max())
+                    {
                         return RHIStatus::failure(RHIErrorCode::InvalidArgument, "HitProxy ID space exhausted.");
+                    }
                     table.push_back({HitProxyTargetKind::MeshSection, actor_id, component_id, batch.section_index()});
                     hit_id.value = static_cast<std::uint32_t>(table.size());
                 }
@@ -121,10 +127,12 @@ namespace toy3d
                 HitDraw draw;
                 std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> layouts;
                 std::vector<RHIGraphicsPipelineDesc::VertexAttribute> attributes;
-                RHIStatus status = batch.vertex_factory().build_vertex_input(
-                    shader_program->data().vertex_inputs, layouts, attributes, draw.vertices);
+                RHIStatus status = batch.vertex_factory().build_vertex_input(shader_program->data().vertex_inputs,
+                                                                             layouts, attributes, draw.vertices);
                 if (!status)
+                {
                     return status;
+                }
                 RHIGraphicsPipelineDesc desc;
                 desc.vertex_shader = cached.value()->vertex_shader;
                 desc.pixel_shader = cached.value()->pixel_shader;
@@ -139,19 +147,26 @@ namespace toy3d
                 RHIResult<RHIGraphicsPipelineDesc> configured =
                     build_shader_graphics_pipeline_desc(desc, shader_program->data().graphics_pass_state);
                 if (!configured)
+                {
                     return configured.status();
-                RHIResult<RHIGraphicsPipelineRef> pipeline = device.create_graphics_pipeline(std::move(configured).value());
+                }
+                RHIResult<RHIGraphicsPipelineRef> pipeline =
+                    device.create_graphics_pipeline(std::move(configured).value());
                 if (!pipeline)
+                {
                     return pipeline.status();
+                }
                 draw.pipeline = std::move(pipeline).value();
                 HitProxyPassParameters parameters;
                 // Parameters v1 exposes Float2; two exact 16-bit lanes retain all
                 // 32 HitProxy ID bits without changing the shared Shader language.
-                parameters.hit_proxy_id_parts = Vector2(static_cast<float>(hit_id.value & 0xffffu),
-                                                        static_cast<float>(hit_id.value >> 16u));
+                parameters.hit_proxy_id_parts =
+                    Vector2(static_cast<float>(hit_id.value & 0xffffu), static_cast<float>(hit_id.value >> 16u));
                 RHIResult<RHIBindingSetRef> pass_binding = create_transient_shader_binding(device, context, parameters);
                 if (!pass_binding)
+                {
                     return pass_binding.status();
+                }
                 draw.bindings.view = view.view_binding();
                 draw.bindings.pass = std::move(pass_binding).value();
                 draw.bindings.object = batch.object_binding();
@@ -169,20 +184,48 @@ namespace toy3d
 
         RHIStatus status = context.begin_render_pass(pass_desc);
         if (!status)
+        {
             return status;
+        }
         for (const HitDraw& draw : draws)
         {
             status = context.set_graphics_pipeline(draw.pipeline);
-            if (status) status = context.set_viewport(draw.viewport);
-            if (status) status = context.set_scissor(draw.scissor);
-            if (status) status = context.set_blend_constants(vec4(1.0f));
-            if (status) status = context.set_stencil_reference(0u);
-            if (status) status = context.set_vertex_buffers(draw.vertices);
-            if (status) status = context.set_index_buffer(draw.indices);
-            if (status) status = context.bind_graphics_bindings(draw.bindings);
-            if (status) status = context.draw_indexed(draw.args);
+            if (status)
+            {
+                status = context.set_viewport(draw.viewport);
+            }
+            if (status)
+            {
+                status = context.set_scissor(draw.scissor);
+            }
+            if (status)
+            {
+                status = context.set_blend_constants(vec4(1.0f));
+            }
+            if (status)
+            {
+                status = context.set_stencil_reference(0u);
+            }
+            if (status)
+            {
+                status = context.set_vertex_buffers(draw.vertices);
+            }
+            if (status)
+            {
+                status = context.set_index_buffer(draw.indices);
+            }
+            if (status)
+            {
+                status = context.bind_graphics_bindings(draw.bindings);
+            }
+            if (status)
+            {
+                status = context.draw_indexed(draw.args);
+            }
             if (!status)
+            {
                 break;
+            }
         }
         const RHIStatus ended = context.end_render_pass();
         return status ? ended : status;

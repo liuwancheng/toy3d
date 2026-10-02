@@ -25,7 +25,10 @@ namespace toy3d
         ImGuiSystemError code = ImGuiSystemError::None;
         std::string message;
 
-        bool succeeded() const noexcept { return code == ImGuiSystemError::None; }
+        bool succeeded() const noexcept
+        {
+            return code == ImGuiSystemError::None;
+        }
     };
 
     class ImGuiSystem final
@@ -43,7 +46,10 @@ namespace toy3d
         ImGuiSnapshotResult end_frame(ImGuiTextureId viewport_texture_id = {},
                                       const std::vector<ImGuiTextureId>& textures = {});
         const ImGuiFontAtlasData& font_atlas() const noexcept;
-        bool initialized() const noexcept { return context_ != nullptr; }
+        bool initialized() const noexcept
+        {
+            return context_ != nullptr;
+        }
 
       private:
         void process_input_event(const InputEvent& event);

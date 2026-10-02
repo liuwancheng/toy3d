@@ -18,19 +18,44 @@ namespace toy3d
         ActorComponent(const ActorComponent&) = delete;
         ActorComponent& operator=(const ActorComponent&) = delete;
 
-        Actor& owner() const { return owner_; }
-        std::uint32_t component_id() const { return component_id_; }
+        Actor& owner() const
+        {
+            return owner_;
+        }
+        std::uint32_t component_id() const
+        {
+            return component_id_;
+        }
         World& world() const;
-        bool is_registered() const { return registered_; }
-        bool is_initialized() const { return initialized_; }
-        bool has_begun_play() const { return begun_play_; }
+        bool is_registered() const
+        {
+            return registered_;
+        }
+        bool is_initialized() const
+        {
+            return initialized_;
+        }
+        bool has_begun_play() const
+        {
+            return begun_play_;
+        }
 
       protected:
-        virtual void on_register() {}
-        virtual void on_initialize() {}
-        virtual void on_begin_play() {}
-        virtual void on_end_play(EndPlayReason) {}
-        virtual void on_unregister() {}
+        virtual void on_register()
+        {
+        }
+        virtual void on_initialize()
+        {
+        }
+        virtual void on_begin_play()
+        {
+        }
+        virtual void on_end_play(EndPlayReason)
+        {
+        }
+        virtual void on_unregister()
+        {
+        }
 
       private:
         friend class Actor;

@@ -12,4 +12,4 @@ namespace toy3d
     };
     int run_editor_host(void* native_instance, const EditorHostConfig& config = {});
     GameModuleRegistration linked_game_module();
-}
+} // namespace toy3d

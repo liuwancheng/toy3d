@@ -14,7 +14,7 @@ namespace
             std::exit(1);
         }
     }
-}
+} // namespace
 
 int main()
 {

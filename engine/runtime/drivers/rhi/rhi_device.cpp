@@ -85,14 +85,18 @@ namespace toy3d
         }
     } // namespace
 
-    RHIDevice::CreationScope::CreationScope(RHIDevice& owner) : device(owner) {}
+    RHIDevice::CreationScope::CreationScope(RHIDevice& owner) : device(owner)
+    {
+    }
 
     RHIDevice::CreationScope::~CreationScope()
     {
         device.end_creation();
     }
 
-    RHIDevice::RHIDevice() : graphics_pipeline_cache(std::make_unique<RHIGraphicsPipelineCache>()) {}
+    RHIDevice::RHIDevice() : graphics_pipeline_cache(std::make_unique<RHIGraphicsPipelineCache>())
+    {
+    }
 
     RHIDevice::~RHIDevice() = default;
 
@@ -119,7 +123,11 @@ namespace toy3d
                 return RHIStatus::failure(RHIErrorCode::NotReady, "RHI device shutdown is already in progress.");
             }
             shutting_down = true;
-            lifecycle_changed.wait(lock, [this]() { return active_creations == 0; });
+            lifecycle_changed.wait(lock,
+                                   [this]()
+                                   {
+                                       return active_creations == 0;
+                                   });
         }
 
         const RHIStatus wait_status = wait_for_idle ? wait_idle_before_shutdown_impl() : RHIStatus::success();
@@ -267,7 +275,9 @@ namespace toy3d
     {
         const RHIStatus creation_status = begin_creation();
         if (!creation_status)
+        {
             return failure_from_status<RHIReadbackRef>(creation_status);
+        }
         const CreationScope creation_scope(*this);
         if (!is_initialized_impl())
         {
@@ -284,24 +294,32 @@ namespace toy3d
     }
 
     RHIResult<RHIReadbackRef> RHIDevice::create_texture_readback(PixelFormat format, Extent extent,
-                                                              const std::string& debug_name)
+                                                                 const std::string& debug_name)
     {
         const RHIStatus creation = begin_creation();
-        if (!creation) return failure_from_status<RHIReadbackRef>(creation);
+        if (!creation)
+        {
+            return failure_from_status<RHIReadbackRef>(creation);
+        }
         const CreationScope scope(*this);
         if (!is_initialized_impl())
+        {
             return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::NotReady, "Texture readback requires a device.");
-        if ((format != PixelFormat::R8G8B8A8UNorm && format != PixelFormat::B8G8R8A8UNorm) ||
-            !extent.width || !extent.height || extent.width > rhi_max_texture_readback_dimension || extent.height > rhi_max_texture_readback_dimension)
+        }
+        if ((format != PixelFormat::R8G8B8A8UNorm && format != PixelFormat::B8G8R8A8UNorm) || !extent.width ||
+            !extent.height || extent.width > rhi_max_texture_readback_dimension ||
+            extent.height > rhi_max_texture_readback_dimension)
+        {
             return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::InvalidArgument,
-                "Texture readback requires a bounded RGBA8 or BGRA8 extent.");
+                                                      "Texture readback requires a bounded RGBA8 or BGRA8 extent.");
+        }
         return finalize_creation_result(create_texture_readback_impl(format, extent, debug_name), "texture readback");
     }
 
     RHIResult<RHIReadbackRef> RHIDevice::create_texture_readback_impl(PixelFormat, Extent, const std::string&)
     {
         return RHIResult<RHIReadbackRef>::failure(RHIErrorCode::Unsupported,
-            "This RHI backend does not support color texture readback.");
+                                                  "This RHI backend does not support color texture readback.");
     }
 
     RHIResult<RHIBufferViewRef> RHIDevice::create_buffer_view(const RHIBufferRef& buffer, const RHIBufferViewDesc& desc)
@@ -524,7 +542,7 @@ namespace toy3d
                   [](const RHIBindingValue& left, const RHIBindingValue& right)
                   {
                       return left.binding_id != right.binding_id ? left.binding_id < right.binding_id
-                                                                  : left.array_index < right.array_index;
+                                                                 : left.array_index < right.array_index;
                   });
         return RHIResult<RHIBindingSetRef>::success(std::make_shared<RHIBindingSet>(*this, std::move(canonical_desc)));
     }
@@ -594,8 +612,11 @@ namespace toy3d
         }
 
         return graphics_pipeline_cache->get_or_create(
-            desc, [this](const RHIGraphicsPipelineDesc& canonical_desc)
-            { return finalize_creation_result(create_graphics_pipeline_impl(canonical_desc), "graphics pipeline"); });
+            desc,
+            [this](const RHIGraphicsPipelineDesc& canonical_desc)
+            {
+                return finalize_creation_result(create_graphics_pipeline_impl(canonical_desc), "graphics pipeline");
+            });
     }
 
     RHIResult<RHIGPUFenceRef> RHIDevice::create_gpu_fence(const std::string& debug_name)

@@ -31,7 +31,9 @@ namespace toy3d
                     changed = true;
                 }
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                {
                     viewport.focus_actor(world, actor_id);
+                }
                 ImGui::PopID();
             }
         }
@@ -40,8 +42,8 @@ namespace toy3d
     }
 
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,
-                      const EditorWorkspace& workspace, SceneViewport& viewport,
-                      MaterialAssignments& materials, std::string& error)
+                      const EditorWorkspace& workspace, SceneViewport& viewport, MaterialAssignments& materials,
+                      std::string& error)
     {
         if (ImGui::Begin("Details"))
         {
@@ -59,7 +61,10 @@ namespace toy3d
                     ImGui::Text("Schema version: %u", asset->index.schema_version);
                     ImGui::Text("Dependencies: %u", static_cast<unsigned>(asset->index.dependencies.size()));
                 }
-                else ImGui::TextUnformatted("No Asset selected");
+                else
+                {
+                    ImGui::TextUnformatted("No Asset selected");
+                }
             }
             else if (Actor* actor = selection.resolve_actor(world))
             {
@@ -68,27 +73,39 @@ namespace toy3d
                 for (const auto id : actor->component_ids())
                 {
                     auto* component = dynamic_cast<SceneComponent*>(actor->find_component_by_id(id));
-                    if (!component) continue;
+                    if (!component)
+                    {
+                        continue;
+                    }
                     const auto* editor = history.component_editors().find(*component);
                     ImGui::PushID(static_cast<int>(id));
-                    if (!editor) ImGui::TextDisabled("Unsupported component: %u", id);
+                    if (!editor)
+                    {
+                        ImGui::TextDisabled("Unsupported component: %u", id);
+                    }
                     else if (ImGui::CollapsingHeader(editor->display_name, ImGuiTreeNodeFlags_DefaultOpen))
                     {
-                        ComponentDetailsContext context{world, *actor, *component, history, workspace,
-                                                        selection, viewport, materials, error};
-                        ImGui::TextDisabled("Component: %u%s", id, component == actor->root_component() ? " (Root)" : "");
+                        ComponentDetailsContext context{world,     *actor,   *component, history, workspace,
+                                                        selection, viewport, materials,  error};
+                        ImGui::TextDisabled("Component: %u%s", id,
+                                            component == actor->root_component() ? " (Root)" : "");
                         draw_component_transform(context);
                         editor->draw_details(context);
                     }
                     ImGui::PopID();
                 }
             }
-            else ImGui::TextUnformatted("No Actor selected");
+            else
+            {
+                ImGui::TextUnformatted("No Actor selected");
+            }
         }
         ImGui::End();
         // A collapsed/hidden control no longer submits its deactivation callback.
         // End its gesture once ImGui releases the active item, even with the viewport hidden.
         if (history.active_for(EditorTransformSource::Details) && !ImGui::IsAnyItemActive())
+        {
             history.finish(world, EditorTransformSource::Details);
+        }
     }
-}
+} // namespace toy3d

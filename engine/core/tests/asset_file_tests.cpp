@@ -22,14 +22,15 @@ namespace
             std::exit(1);
         }
     }
-}
+} // namespace
 
 int main()
 {
     using namespace toy3d;
     AssetId id;
     check(AssetId::parse("00112233445566778899aabbccddeeff", id) && id.valid() &&
-              id.hex() == "00112233445566778899aabbccddeeff", "asset ID roundtrip failed");
+              id.hex() == "00112233445566778899aabbccddeeff",
+          "asset ID roundtrip failed");
     AssetId rejected = id;
     check(!AssetId::parse("00112233445566778899AABBCCDDEEFF", rejected) && rejected == id,
           "noncanonical ID changed caller value");
@@ -52,16 +53,15 @@ int main()
           "index IDs failed to parse");
     AssetMetaFile meta;
     meta.asset_id = id;
-    meta.segments = {{"texture_mips", 2u, true, {4u, 5u}},
-                     {"render_geometry", 2u, true, {1u, 2u, 3u}}};
+    meta.segments = {{"texture_mips", 2u, true, {4u, 5u}}, {"render_geometry", 2u, true, {1u, 2u, 3u}}};
     const auto meta_bytes = encode_asset_meta(meta);
     check(meta_bytes.succeeded(), "meta encoding failed");
     const auto decoded_meta = decode_asset_meta(meta_bytes.value());
     check(decoded_meta.succeeded() && decoded_meta.value().asset_id == id &&
-        decoded_meta.value().segments.size() == 2u &&
-        decoded_meta.value().segments[0].name == "render_geometry" &&
-        decoded_meta.value().segments[0].bytes == std::vector<std::uint8_t>({1u, 2u, 3u}),
-        "meta roundtrip or deterministic ordering failed");
+              decoded_meta.value().segments.size() == 2u &&
+              decoded_meta.value().segments[0].name == "render_geometry" &&
+              decoded_meta.value().segments[0].bytes == std::vector<std::uint8_t>({1u, 2u, 3u}),
+          "meta roundtrip or deterministic ordering failed");
     std::vector<std::uint8_t> damaged_meta = meta_bytes.value();
     damaged_meta.pop_back();
     check(!decode_asset_meta(damaged_meta).succeeded(), "truncated meta was accepted");
@@ -82,12 +82,12 @@ int main()
     auto first_path = VirtualPath::parse("/asset/scenes/first.asset");
     auto second_path = VirtualPath::parse("/asset/arbitrary/model.asset");
     auto moved_path = VirtualPath::parse("/asset/other/model.asset");
-    check(first_path.succeeded() && second_path.succeeded() && moved_path.succeeded(),
-          "index virtual paths failed");
+    check(first_path.succeeded() && second_path.succeeded() && moved_path.succeeded(), "index virtual paths failed");
     AssetIndex locations;
     check(locations.add(first_path.value(), first_index).succeeded() &&
               locations.add(second_path.value(), second_index).succeeded() &&
-              locations.validate_strong_dependencies().succeeded(), "asset index setup failed");
+              locations.validate_strong_dependencies().succeeded(),
+          "asset index setup failed");
     check(locations.add(moved_path.value(), second_index).code == AssetErrorCode::DuplicateIdentity,
           "duplicate asset ID was accepted");
     check(locations.move(second_id, moved_path.value()).succeeded() &&
@@ -105,8 +105,7 @@ int main()
     check(SubresourceId::parse("0123456789abcdef0123456789abcdef", absent_mesh), "missing subresource fixture failed");
     mesh_ref.subresource_id = absent_mesh;
     const AssetStatus missing_mesh = locations.resolve(mesh_ref, "model.mesh_override");
-    check(missing_mesh.code == AssetErrorCode::MissingReference &&
-              missing_mesh.property_path == "model.mesh_override",
+    check(missing_mesh.code == AssetErrorCode::MissingReference && missing_mesh.property_path == "model.mesh_override",
           "missing subresource did not report the reference location");
     AssetId missing_id;
     check(AssetId::parse("ffffffffffffffffffffffffffffffff", missing_id), "missing ID fixture failed");
@@ -120,10 +119,10 @@ int main()
     back_ref.expected_type = "toy3d.SceneAsset";
     second_index.dependencies.push_back(back_ref);
     check(cyclic.add(first_path.value(), first_index).succeeded() &&
-              cyclic.add(second_path.value(), second_index).succeeded(), "cycle fixture setup failed");
+              cyclic.add(second_path.value(), second_index).succeeded(),
+          "cycle fixture setup failed");
     const AssetStatus cycle = cyclic.validate_strong_dependencies();
-    check(cycle.code == AssetErrorCode::DependencyCycle &&
-              cycle.message.find(id.hex()) != std::string::npos &&
+    check(cycle.code == AssetErrorCode::DependencyCycle && cycle.message.find(id.hex()) != std::string::npos &&
               cycle.message.find(second_id.hex()) != std::string::npos,
           "strong dependency cycle was not reported with its path");
     AssetIndex deferred;
@@ -134,25 +133,22 @@ int main()
           "explicit deferred dependency was treated as a strong cycle");
     const std::vector<ImportedSubresource> previous = {{"node_left", mesh_id}};
     auto matching = match_subresources(previous, {"new_node", "node_left"});
-    check(matching.succeeded() && matching.value().matched.size() == 1 &&
-              matching.value().matched[0].id == mesh_id &&
+    check(matching.succeeded() && matching.value().matched.size() == 1 && matching.value().matched[0].id == mesh_id &&
               matching.value().new_source_keys.size() == 1 && matching.value().orphaned.empty(),
           "source node reorder rebound a subresource ID");
     auto orphaned = match_subresources(previous, {"new_node"});
-    check(orphaned.succeeded() && orphaned.value().orphaned.size() == 1 &&
-              orphaned.value().orphaned[0].id == mesh_id,
+    check(orphaned.succeeded() && orphaned.value().orphaned.size() == 1 && orphaned.value().orphaned[0].id == mesh_id,
           "missing source node silently reassigned an old subresource ID");
     AssetFileIndex index;
     index.asset_id = id;
     index.root_type = "toy3d.ModelAssetData";
     index.schema_version = 2;
-    std::vector<AssetSegmentData> segments = {
-        {"vertices", 2, false, std::vector<std::uint8_t>(1024 * 1024, 0xabu)},
-        {"type_data", 1, true, {1u, 2u, 3u}}};
+    std::vector<AssetSegmentData> segments = {{"vertices", 2, false, std::vector<std::uint8_t>(1024 * 1024, 0xabu)},
+                                              {"type_data", 1, true, {1u, 2u, 3u}}};
     auto encoded = encode_asset_file(index, segments);
     check(encoded.succeeded(), "asset file encode failed");
-    check(encoded.value().size() > 1024 * 1024 && encoded.value()[0] == 'T' &&
-              encoded.value()[7] == 'T' && encoded.value()[8] == 1u && encoded.value()[9] == 0u,
+    check(encoded.value().size() > 1024 * 1024 && encoded.value()[0] == 'T' && encoded.value()[7] == 'T' &&
+              encoded.value()[8] == 1u && encoded.value()[9] == 0u,
           "magic or little-endian version changed");
     std::reverse(segments.begin(), segments.end());
     auto reordered = encode_asset_file(index, segments);
@@ -184,28 +180,32 @@ int main()
           "fixture file write failed");
     auto summary = inspect_asset(files, path.value());
     check(summary.succeeded() && summary.value().asset_id == id &&
-              summary.value().root_type == "toy3d.ModelAssetData" &&
-              summary.value().segments.size() == 2 &&
-              summary.value().segments[1].name == "vertices" &&
-              summary.value().segments[1].length == 1024 * 1024,
+              summary.value().root_type == "toy3d.ModelAssetData" && summary.value().segments.size() == 2 &&
+              summary.value().segments[1].name == "vertices" && summary.value().segments[1].length == 1024 * 1024,
           "index inspection failed");
     std::vector<std::uint8_t> overlap = encoded.value();
     const std::uint64_t second_offset = summary.value().segments[1].offset;
     const std::uint64_t first_offset = summary.value().segments[0].offset;
     bool patched_offset = false;
-    const std::uint32_t index_size = static_cast<std::uint32_t>(overlap[12]) |
-        (static_cast<std::uint32_t>(overlap[13]) << 8u) |
-        (static_cast<std::uint32_t>(overlap[14]) << 16u) |
-        (static_cast<std::uint32_t>(overlap[15]) << 24u);
+    const std::uint32_t index_size =
+        static_cast<std::uint32_t>(overlap[12]) | (static_cast<std::uint32_t>(overlap[13]) << 8u) |
+        (static_cast<std::uint32_t>(overlap[14]) << 16u) | (static_cast<std::uint32_t>(overlap[15]) << 24u);
     for (std::size_t position = 16; position + 8 <= 16u + index_size; ++position)
     {
         bool matches = true;
         for (std::size_t byte = 0; byte < 8; ++byte)
-            matches = matches && overlap[position + byte] ==
-                static_cast<std::uint8_t>((second_offset >> (byte * 8u)) & 0xffu);
-        if (!matches) continue;
+        {
+            matches = matches &&
+                      overlap[position + byte] == static_cast<std::uint8_t>((second_offset >> (byte * 8u)) & 0xffu);
+        }
+        if (!matches)
+        {
+            continue;
+        }
         for (std::size_t byte = 0; byte < 8; ++byte)
+        {
             overlap[position + byte] = static_cast<std::uint8_t>((first_offset >> (byte * 8u)) & 0xffu);
+        }
         patched_offset = true;
         break;
     }
@@ -214,8 +214,8 @@ int main()
           "overlapping segments were accepted");
     std::vector<std::uint8_t> unknown_kind = encoded.value();
     const std::string segment_name = "vertices";
-    auto name_at = std::search(unknown_kind.begin() + 16, unknown_kind.begin() + 16 + index_size,
-                               segment_name.begin(), segment_name.end());
+    auto name_at = std::search(unknown_kind.begin() + 16, unknown_kind.begin() + 16 + index_size, segment_name.begin(),
+                               segment_name.end());
     check(name_at != unknown_kind.begin() + 16 + index_size, "segment name fixture missing");
     *(name_at + static_cast<std::ptrdiff_t>(segment_name.size())) = 99u;
     check(files.write_binary(path.value(), unknown_kind, FileWriteMode::Truncate).succeeded() &&

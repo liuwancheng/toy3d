@@ -534,7 +534,10 @@ namespace toy3d
                                           "Shader reflection bindings require a name and non-zero array count.");
             }
             const bool data_hash_is_zero = std::all_of(binding.data_layout_hash.begin(), binding.data_layout_hash.end(),
-                                                       [](std::uint8_t byte) { return byte == 0u; });
+                                                       [](std::uint8_t byte)
+                                                       {
+                                                           return byte == 0u;
+                                                       });
             if ((binding.type == RHIResourceBindingType::UniformBuffer &&
                  (binding.data_size == 0 || data_hash_is_zero || binding.shader_abi_version == 0)) ||
                 (binding.type != RHIResourceBindingType::UniformBuffer &&
@@ -543,8 +546,7 @@ namespace toy3d
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Shader reflection binding data ABI metadata is invalid.");
             }
-            if (!reflected_bindings
-                     .emplace(binding.group, binding_register_class(binding.type), binding.target_binding)
+            if (!reflected_bindings.emplace(binding.group, binding_register_class(binding.type), binding.target_binding)
                      .second)
             {
                 return RHIStatus::failure(
@@ -603,7 +605,10 @@ namespace toy3d
                     "Binding layout entries require a stable ID, logical group, and non-zero array count.");
             }
             const bool data_hash_is_zero = std::all_of(entry.data_layout_hash.begin(), entry.data_layout_hash.end(),
-                                                       [](std::uint8_t byte) { return byte == 0u; });
+                                                       [](std::uint8_t byte)
+                                                       {
+                                                           return byte == 0u;
+                                                       });
             if ((entry.type == RHIResourceBindingType::UniformBuffer &&
                  (entry.data_size == 0 || data_hash_is_zero || entry.shader_abi_version == 0)) ||
                 (entry.type != RHIResourceBindingType::UniformBuffer &&
@@ -688,7 +693,10 @@ namespace toy3d
                                               "Uniform-buffer binding range is invalid.");
                 }
                 const bool hash_is_zero = std::all_of(value.data_layout_hash.begin(), value.data_layout_hash.end(),
-                                                      [](std::uint8_t byte) { return byte == 0u; });
+                                                      [](std::uint8_t byte)
+                                                      {
+                                                          return byte == 0u;
+                                                      });
                 if (hash_is_zero || value.shader_abi_version == 0)
                 {
                     return RHIStatus::failure(
@@ -698,7 +706,10 @@ namespace toy3d
             }
             else if (value.buffer_offset != 0 || value.buffer_size != 0 || value.shader_abi_version != 0 ||
                      std::any_of(value.data_layout_hash.begin(), value.data_layout_hash.end(),
-                                 [](std::uint8_t byte) { return byte != 0u; }))
+                                 [](std::uint8_t byte)
+                                 {
+                                     return byte != 0u;
+                                 }))
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Buffer range and data ABI are valid only for uniform-buffer bindings.");
@@ -771,15 +782,20 @@ namespace toy3d
             }
             const auto layout = std::find_if(desc.vertex_buffers.begin(), desc.vertex_buffers.end(),
                                              [&](const RHIGraphicsPipelineDesc::VertexBufferLayout& candidate)
-                                             { return candidate.binding == attribute.binding; });
+                                             {
+                                                 return candidate.binding == attribute.binding;
+                                             });
             if (attribute.offset > layout->stride || byte_size > layout->stride - attribute.offset)
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Vertex attribute byte range exceeds its buffer stride.");
             }
-            const auto reflected = std::find_if(
-                desc.vertex_shader->desc().vertex_inputs.begin(), desc.vertex_shader->desc().vertex_inputs.end(),
-                [&](const RHIShaderVertexInputReflection& input) { return input.location == attribute.location; });
+            const auto reflected = std::find_if(desc.vertex_shader->desc().vertex_inputs.begin(),
+                                                desc.vertex_shader->desc().vertex_inputs.end(),
+                                                [&](const RHIShaderVertexInputReflection& input)
+                                                {
+                                                    return input.location == attribute.location;
+                                                });
             if (reflected == desc.vertex_shader->desc().vertex_inputs.end() || reflected->scalar_type != scalar_type ||
                 reflected->component_count != component_count)
             {

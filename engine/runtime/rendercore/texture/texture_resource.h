@@ -22,8 +22,14 @@ namespace toy3d
         RHIStatus release(RenderResourceManager& manager);
 
         const RHITextureViewRef& view_for_current_recording() const noexcept;
-        const RHITextureViewRef& active_view() const noexcept { return active_view_; }
-        std::uint64_t binding_generation() const noexcept { return binding_generation_; }
+        const RHITextureViewRef& active_view() const noexcept
+        {
+            return active_view_;
+        }
+        std::uint64_t binding_generation() const noexcept
+        {
+            return binding_generation_;
+        }
 
       private:
         friend class Texture;

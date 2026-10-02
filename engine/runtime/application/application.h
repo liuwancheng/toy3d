@@ -31,26 +31,63 @@ namespace toy3d
         const IWindow& window() const;
 
         virtual bool on_initialize() = 0;
-        virtual bool starts_world_play() const { return true; }
-        virtual void on_tick(double) {}
+        virtual bool starts_world_play() const
+        {
+            return true;
+        }
+        virtual void on_tick(double)
+        {
+        }
         // Called only while the GT Dear ImGui frame is active. Applications
         // may build widgets through ImGui core but receive no renderer service.
-        virtual void on_build_ui() {}
+        virtual void on_build_ui()
+        {
+        }
         // An embedded scene viewport supplies its own pixel extent after UI layout.
-        virtual bool on_scene_viewport_extent(Extent& extent) const { return false; }
-        virtual bool on_hit_proxy_request(HitProxyRequest& request) { return false; }
-        virtual void on_hit_proxy_result(const HitProxyResult& result) {}
+        virtual bool on_scene_viewport_extent(Extent& extent) const
+        {
+            return false;
+        }
+        virtual bool on_hit_proxy_request(HitProxyRequest& request)
+        {
+            return false;
+        }
+        virtual void on_hit_proxy_result(const HitProxyResult& result)
+        {
+        }
         virtual void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const = 0;
-        virtual void on_shutdown() {}
+        virtual void on_shutdown()
+        {
+        }
         // Editor may keep the frame loop alive while resolving unsaved work.
-        virtual bool on_close_requested() { return true; }
-        virtual bool uses_preview_scene() const { return false; }
-        virtual bool on_initialize_preview_scene(SceneInterface&, TaskGraphInterface&) { return true; }
-        virtual void on_collect_ui_render_work(UiRenderWork&) {}
-        virtual void on_collect_material_validation(std::vector<MaterialProgramValidationRef>&) {}
-        virtual void on_collect_builtin_shader_updates(std::vector<BuiltinShaderUpdateRef>&) {}
-        virtual void on_ui_texture_result(UiTextureResult) {}
-        virtual std::vector<ImGuiTextureId> ui_texture_ids() const { return {}; }
+        virtual bool on_close_requested()
+        {
+            return true;
+        }
+        virtual bool uses_preview_scene() const
+        {
+            return false;
+        }
+        virtual bool on_initialize_preview_scene(SceneInterface&, TaskGraphInterface&)
+        {
+            return true;
+        }
+        virtual void on_collect_ui_render_work(UiRenderWork&)
+        {
+        }
+        virtual void on_collect_material_validation(std::vector<MaterialProgramValidationRef>&)
+        {
+        }
+        virtual void on_collect_builtin_shader_updates(std::vector<BuiltinShaderUpdateRef>&)
+        {
+        }
+        virtual void on_ui_texture_result(UiTextureResult)
+        {
+        }
+        virtual std::vector<ImGuiTextureId> ui_texture_ids() const
+        {
+            return {};
+        }
 
       private:
         friend class Engine;

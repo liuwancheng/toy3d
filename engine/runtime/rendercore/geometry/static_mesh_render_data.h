@@ -19,8 +19,14 @@ namespace toy3d
       public:
         explicit PositionVertexBuffer(const std::vector<StaticMeshVertex>& vertices);
 
-        const RHIBufferRef& buffer() const { return rhi_buffer_; }
-        std::uint32_t stride() const { return 16u; }
+        const RHIBufferRef& buffer() const
+        {
+            return rhi_buffer_;
+        }
+        std::uint32_t stride() const
+        {
+            return 16u;
+        }
 
       private:
         RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) override;
@@ -37,8 +43,14 @@ namespace toy3d
       public:
         explicit StaticMeshVertexBuffer(const std::vector<StaticMeshVertex>& vertices);
 
-        const RHIBufferRef& buffer() const { return rhi_buffer_; }
-        std::uint32_t stride() const { return 24u; }
+        const RHIBufferRef& buffer() const
+        {
+            return rhi_buffer_;
+        }
+        std::uint32_t stride() const
+        {
+            return 24u;
+        }
 
       private:
         RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) override;
@@ -55,8 +67,14 @@ namespace toy3d
       public:
         explicit ColorVertexBuffer(std::vector<std::array<std::uint8_t, 4>> colors);
 
-        const RHIBufferRef& buffer() const { return rhi_buffer_; }
-        std::uint32_t stride() const { return 4u; }
+        const RHIBufferRef& buffer() const
+        {
+            return rhi_buffer_;
+        }
+        std::uint32_t stride() const
+        {
+            return 4u;
+        }
 
       private:
         RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) override;
@@ -73,8 +91,14 @@ namespace toy3d
       public:
         explicit StaticMeshIndexBuffer(const StaticMeshIndexData& indices);
 
-        const RHIBufferRef& buffer() const { return rhi_buffer_; }
-        RHIIndexFormat format() const { return format_; }
+        const RHIBufferRef& buffer() const
+        {
+            return rhi_buffer_;
+        }
+        RHIIndexFormat format() const
+        {
+            return format_;
+        }
 
       private:
         RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) override;
@@ -105,10 +129,19 @@ namespace toy3d
         RHIStatus release(RenderResourceManager& manager);
 
         bool is_drawable() const;
-        const LocalVertexFactory* vertex_factory() const { return local_vertex_factory_.get(); }
+        const LocalVertexFactory* vertex_factory() const
+        {
+            return local_vertex_factory_.get();
+        }
         RHIIndexBufferBinding index_buffer_binding() const;
-        const std::vector<StaticMeshSection>& sections() const { return sections_; }
-        std::size_t index_count() const { return index_count_; }
+        const std::vector<StaticMeshSection>& sections() const
+        {
+            return sections_;
+        }
+        std::size_t index_count() const
+        {
+            return index_count_;
+        }
 
       private:
         PositionVertexBuffer position_vertex_buffer_;

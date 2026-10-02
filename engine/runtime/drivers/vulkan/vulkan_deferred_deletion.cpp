@@ -18,9 +18,11 @@ namespace toy3d
 
     void VulkanDeferredDeletionQueue::release_completed(VkDevice device, RHIQueueCompletionValue completed_value)
     {
-        const auto first_pending =
-            std::stable_partition(entries.begin(), entries.end(), [completed_value](const Entry& entry)
-                                  { return entry.retire_value > completed_value; });
+        const auto first_pending = std::stable_partition(entries.begin(), entries.end(),
+                                                         [completed_value](const Entry& entry)
+                                                         {
+                                                             return entry.retire_value > completed_value;
+                                                         });
         for (auto iterator = first_pending; iterator != entries.end(); ++iterator)
         {
             iterator->callback(device);

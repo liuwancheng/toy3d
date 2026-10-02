@@ -22,7 +22,8 @@ namespace toy3d
 
     // First version combines static instances; a collection allows later split mode.
     AssetResult<std::vector<ImportedStaticMesh>> import_static_meshes(const FileSystem& files,
-        const VirtualPath& source, const StaticMeshImportOptions& options);
+                                                                      const VirtualPath& source,
+                                                                      const StaticMeshImportOptions& options);
 
     struct StaticMeshImportAsset
     {
@@ -30,6 +31,7 @@ namespace toy3d
         std::vector<std::string> warnings;
     };
 
-    AssetResult<StaticMeshImportAsset> import_static_mesh_asset(const FileSystem& files,
-        const VirtualPath& source, const AssetId& id, const StaticMeshImportOptions& options);
+    AssetResult<StaticMeshImportAsset> import_static_mesh_asset(const FileSystem& files, const VirtualPath& source,
+                                                                const AssetId& id,
+                                                                const StaticMeshImportOptions& options);
 } // namespace toy3d

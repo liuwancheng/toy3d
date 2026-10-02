@@ -34,11 +34,17 @@ namespace toy3d
         {
             RHIShaderStageFlags result = RHIShaderStageFlags::None;
             if (shader::has_stage(stages, shader::ShaderStageFlags::Vertex))
+            {
                 result |= RHIShaderStageFlags::Vertex;
+            }
             if (shader::has_stage(stages, shader::ShaderStageFlags::Pixel))
+            {
                 result |= RHIShaderStageFlags::Pixel;
+            }
             if (shader::has_stage(stages, shader::ShaderStageFlags::Compute))
+            {
                 result |= RHIShaderStageFlags::Compute;
+            }
             return result;
         }
 
@@ -212,9 +218,13 @@ namespace toy3d
                     const auto reflected =
                         std::find_if(stage.reflection.bindings.begin(), stage.reflection.bindings.end(),
                                      [&](const shader::ReflectedBinding& value)
-                                     { return value.parameter_id == binding.binding_id; });
+                                     {
+                                         return value.parameter_id == binding.binding_id;
+                                     });
                     if (reflected == stage.reflection.bindings.end())
+                    {
                         continue;
+                    }
                     if (reflected_layout && !same_reflected_layout(*reflected_layout, *reflected))
                     {
                         error = "ShaderMap entry has inconsistent reflected binding metadata.";
@@ -241,7 +251,9 @@ namespace toy3d
                 {
                     const auto mapping = std::find_if(entry.bindings.begin(), entry.bindings.end(),
                                                       [&](const shader::ShaderMapBinding& binding)
-                                                      { return binding.binding_id == reflected.parameter_id; });
+                                                      {
+                                                          return binding.binding_id == reflected.parameter_id;
+                                                      });
                     if (mapping == entry.bindings.end() || !to_rhi_type(mapping->category))
                     {
                         error = "ShaderMap reflection has no supported target mapping.";
@@ -283,14 +295,18 @@ namespace toy3d
             for (std::size_t index = 0; index < diagnostics.size(); ++index)
             {
                 if (index != 0)
+                {
                     stream << ' ';
+                }
                 stream << diagnostics[index];
             }
             return stream.str();
         }
     } // namespace
 
-    ShaderMapEntryLoader::ShaderMapEntryLoader(PhysicalPath entry_root) : entry_root_(std::move(entry_root)) {}
+    ShaderMapEntryLoader::ShaderMapEntryLoader(PhysicalPath entry_root) : entry_root_(std::move(entry_root))
+    {
+    }
 
     ShaderMapProgramLoadResult ShaderMapEntryLoader::load_program(const ShaderMapProgramKey& key) const
     {
@@ -310,13 +326,17 @@ namespace toy3d
         for (const DirectoryEntry& directory : entries.value())
         {
             if (directory.type != FileType::Directory)
+            {
                 continue;
+            }
             // filesystem extracts the final host directory component for cache
             // discovery without duplicating platform separator rules.
             const std::string name = std::filesystem::path(directory.path.utf8()).filename().string();
             const auto entry_key = sha256_from_hex(name);
             if (!entry_key)
+            {
                 continue;
+            }
             shader::ShaderMapEntryReadResult read =
                 shader::read_verified_shader_map_entry(platform_file_, entry_root_, *entry_key);
             if (!read.succeeded())

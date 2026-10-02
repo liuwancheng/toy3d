@@ -7,5 +7,7 @@ namespace toy3d
         return true;
     }
 
-    void MacPlatform::exit() {}
+    void MacPlatform::exit()
+    {
+    }
 } // namespace toy3d

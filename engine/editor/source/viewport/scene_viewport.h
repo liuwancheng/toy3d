@@ -35,7 +35,7 @@ namespace toy3d
         // GT-only observation pose survives camera viewing. World is compared
         // for identity; every camera access resolves an Actor ID in the caller's World.
         Vector3 editor_camera_position_{meters_to_centimeters(3.0f), meters_to_centimeters(2.5f),
-                                       meters_to_centimeters(-6.0f)};
+                                        meters_to_centimeters(-6.0f)};
         Vector3 editor_camera_target_{0.0f, 0.0f, meters_to_centimeters(3.0f)};
         Quaternion editor_camera_orientation_;
         float editor_camera_yaw_ = 0.0f;

@@ -42,6 +42,7 @@ namespace toy3d
     };
 
     AssetResult<PropertyAccess> access_property(const TypeRegistry& types, const TypeDesc& root_type,
-        const std::vector<std::uint8_t>& root_bytes, const PropertyPath& path,
-        const std::vector<std::uint8_t>* replacement = nullptr, ValueLimits limits = {});
+                                                const std::vector<std::uint8_t>& root_bytes, const PropertyPath& path,
+                                                const std::vector<std::uint8_t>* replacement = nullptr,
+                                                ValueLimits limits = {});
 } // namespace toy3d

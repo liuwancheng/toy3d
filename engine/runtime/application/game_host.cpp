@@ -35,13 +35,23 @@ namespace toy3d
 {
     namespace
     {
-        FileStatus mount_game_directory(FileSystem& files, NativePlatformFile& platform, const PhysicalPath& physical, const char* root)
+        FileStatus mount_game_directory(FileSystem& files, NativePlatformFile& platform, const PhysicalPath& physical,
+                                        const char* root)
         {
-            DirectoryFileStoreDesc desc; desc.physical_root = physical; desc.writable = false; desc.debug_name = root;
+            DirectoryFileStoreDesc desc;
+            desc.physical_root = physical;
+            desc.writable = false;
+            desc.debug_name = root;
             const auto store = DirectoryFileStore::create(platform, desc);
-            if (!store.succeeded()) return store.status();
-            FileMountDesc mount; mount.virtual_root = VirtualPath::parse(root).value(); mount.store = store.value();
-            mount.allow_enumeration = true; mount.access = MountAccess::ReadOnly;
+            if (!store.succeeded())
+            {
+                return store.status();
+            }
+            FileMountDesc mount;
+            mount.virtual_root = VirtualPath::parse(root).value();
+            mount.store = store.value();
+            mount.allow_enumeration = true;
+            mount.access = MountAccess::ReadOnly;
             return files.add_mount(mount);
         }
         // --------------------------------------------------------------------------
@@ -52,72 +62,164 @@ namespace toy3d
           public:
             GameApplication(const GameHostPaths& paths, PhysicalPath project_root, PhysicalPath saved,
                             GameModuleRegistration module)
-                : paths_(paths), root_(std::move(project_root)), saved_(std::move(saved)), module_(std::move(module)) {}
+                : paths_(paths), root_(std::move(project_root)), saved_(std::move(saved)), module_(std::move(module))
+            {
+            }
+
           protected:
             bool on_initialize() override
             {
                 auto registered = register_static_mesh_asset_types(types_);
-                if (registered.succeeded()) registered = register_material_asset_types(types_);
-                if (registered.succeeded()) registered = register_texture_asset_types(types_);
-                if (registered.succeeded()) registered = register_scene_asset_types(types_);
+                if (registered.succeeded())
+                {
+                    registered = register_material_asset_types(types_);
+                }
+                if (registered.succeeded())
+                {
+                    registered = register_texture_asset_types(types_);
+                }
+                if (registered.succeeded())
+                {
+                    registered = register_scene_asset_types(types_);
+                }
                 if (!registered.succeeded() || !module_.register_types || !module_.register_types(types_, actors_) ||
                     !types_.freeze().succeeded() || !actors_.freeze(types_))
-                { TOY_LOG_ERROR("Game type registration failed."); return false; }
+                {
+                    TOY_LOG_ERROR("Game type registration failed.");
+                    return false;
+                }
                 auto mounted = mount_game_directory(files_, platform_, paths_.engine_assets, "/Engine");
-                if (mounted.succeeded()) mounted = mount_game_directory(files_, platform_, PhysicalPath(root_.utf8() + "/asset"), "/Project");
-                if (mounted.succeeded()) mounted = mount_game_directory(files_, platform_, saved_, "/Saved");
-                if (mounted.succeeded()) mounted = files_.freeze();
-                if (!mounted.succeeded()) { TOY_LOG_ERROR("Game content mounts: {}", mounted.message); return false; }
-                const auto scanned = scan_asset_catalog(types_, files_, {VirtualPath::parse("/Engine").value(), VirtualPath::parse("/Project").value()});
-                if (!scanned.succeeded()) { TOY_LOG_ERROR("Game asset catalog: {}", scanned.status().message); return false; }
+                if (mounted.succeeded())
+                {
+                    mounted =
+                        mount_game_directory(files_, platform_, PhysicalPath(root_.utf8() + "/asset"), "/Project");
+                }
+                if (mounted.succeeded())
+                {
+                    mounted = mount_game_directory(files_, platform_, saved_, "/Saved");
+                }
+                if (mounted.succeeded())
+                {
+                    mounted = files_.freeze();
+                }
+                if (!mounted.succeeded())
+                {
+                    TOY_LOG_ERROR("Game content mounts: {}", mounted.message);
+                    return false;
+                }
+                const auto scanned = scan_asset_catalog(
+                    types_, files_, {VirtualPath::parse("/Engine").value(), VirtualPath::parse("/Project").value()});
+                if (!scanned.succeeded())
+                {
+                    TOY_LOG_ERROR("Game asset catalog: {}", scanned.status().message);
+                    return false;
+                }
                 catalog_ = scanned.value();
                 const auto phong = load_program("Toy3d/Surface/Phong");
-                if (!phong || !geometry_.initialize(PhysicalPath(paths_.deployment.utf8() + "/shader/phong"), phong)) return false;
+                if (!phong || !geometry_.initialize(PhysicalPath(paths_.deployment.utf8() + "/shader/phong"), phong))
+                {
+                    return false;
+                }
                 const auto defaults = geometry_.default_material()->material();
                 MaterialTextureValues textures;
                 for (const auto& resource : defaults->parameter_schema().resources)
                 {
                     const auto found = defaults->desc().texture_defaults.find(resource.parameter_id);
-                    if (found != defaults->desc().texture_defaults.end()) textures.named_defaults[resource.default_value] = found->second;
+                    if (found != defaults->desc().texture_defaults.end())
+                    {
+                        textures.named_defaults[resource.default_value] = found->second;
+                    }
                 }
-                materials_ = std::make_unique<MaterialLibrary>(types_, files_, [this]() -> const AssetIndex& { return catalog_.index; },
-                    [this](const std::string& name) { return load_program(name); }, std::move(textures));
+                materials_ = std::make_unique<MaterialLibrary>(
+                    types_, files_,
+                    [this]() -> const AssetIndex&
+                    {
+                        return catalog_.index;
+                    },
+                    [this](const std::string& name)
+                    {
+                        return load_program(name);
+                    },
+                    std::move(textures));
                 materials_->set_default_material(defaults);
                 programs_[defaults->desc().shader_name] = defaults->desc().shader_program;
                 auto& arguments = CommandLineParser::get_instance();
-                std::string scene = arguments.get_option("PlayScene", ConsoleManager::get_instance().get_string("Game.StartupScene"));
-                if (scene.empty()) scene = "/Engine/Scenes/Default.scene";
+                std::string scene =
+                    arguments.get_option("PlayScene", ConsoleManager::get_instance().get_string("Game.StartupScene"));
+                if (scene.empty())
+                {
+                    scene = "/Engine/Scenes/Default.scene";
+                }
                 const auto path = VirtualPath::parse(scene);
-                if (!path.succeeded() || (scene.compare(0, 9, "/Project/") != 0 && scene.compare(0, 8, "/Engine/") != 0 && scene.compare(0, 12, "/Saved/play/") != 0))
-                { TOY_LOG_ERROR("Game startup Scene path is invalid: {}", scene); return false; }
+                if (!path.succeeded() ||
+                    (scene.compare(0, 9, "/Project/") != 0 && scene.compare(0, 8, "/Engine/") != 0 &&
+                     scene.compare(0, 12, "/Saved/play/") != 0))
+                {
+                    TOY_LOG_ERROR("Game startup Scene path is invalid: {}", scene);
+                    return false;
+                }
                 SceneAssetData data;
                 const auto read = read_scene_asset(types_, files_, path.value(), data, &catalog_.index);
-                if (!read.succeeded()) { TOY_LOG_ERROR("Game Scene [{}]: {}", scene, read.message); return false; }
+                if (!read.succeeded())
+                {
+                    TOY_LOG_ERROR("Game Scene [{}]: {}", scene, read.message);
+                    return false;
+                }
                 SceneAssemblyServices services;
                 services.load_mesh = [this](const SceneMeshData& mesh, std::string& error) -> StaticMeshRef
                 {
-                    if (!mesh.builtin_mesh.empty()) return geometry_.instantiate(mesh.builtin_mesh);
-                    const auto source = std::find_if(mesh.resources.begin(), mesh.resources.end(), [](const SceneResourceBinding& value) { return value.role == "mesh"; });
-                    const auto* location = source == mesh.resources.end() ? nullptr : catalog_.index.find(source->reference.asset_id);
-                    if (!location) { error = "Scene mesh asset is missing."; return {}; }
+                    if (!mesh.builtin_mesh.empty())
+                    {
+                        return geometry_.instantiate(mesh.builtin_mesh);
+                    }
+                    const auto source = std::find_if(mesh.resources.begin(), mesh.resources.end(),
+                                                     [](const SceneResourceBinding& value)
+                                                     {
+                                                         return value.role == "mesh";
+                                                     });
+                    const auto* location =
+                        source == mesh.resources.end() ? nullptr : catalog_.index.find(source->reference.asset_id);
+                    if (!location)
+                    {
+                        error = "Scene mesh asset is missing.";
+                        return {};
+                    }
                     const auto loaded = read_static_mesh_asset(files_, location->path);
-                    if (!loaded.succeeded()) { error = loaded.status().message; return {}; }
+                    if (!loaded.succeeded())
+                    {
+                        error = loaded.status().message;
+                        return {};
+                    }
                     return create_static_mesh_from_asset(loaded.value(), geometry_.default_material());
                 };
-                services.assign_material = [this](Actor&, StaticMeshComponent& component, const std::string& slot, const AssetRef& reference, std::string& error)
+                services.assign_material = [this](Actor&, StaticMeshComponent& component, const std::string& slot,
+                                                  const AssetRef& reference, std::string& error)
                 {
                     const auto loaded = materials_->load(reference);
-                    if (!loaded.succeeded()) { error = loaded.status().message; return false; }
+                    if (!loaded.succeeded())
+                    {
+                        error = loaded.status().message;
+                        return false;
+                    }
                     const auto& slots = component.static_mesh()->material_slot_names();
                     const auto found = std::find(slots.begin(), slots.end(), slot);
-                    if (found == slots.end()) { error = "Unknown Material slot: " + slot; return false; }
-                    return component.set_material_override(static_cast<std::uint32_t>(found - slots.begin()), loaded.value());
+                    if (found == slots.end())
+                    {
+                        error = "Unknown Material slot: " + slot;
+                        return false;
+                    }
+                    return component.set_material_override(static_cast<std::uint32_t>(found - slots.begin()),
+                                                           loaded.value());
                 };
                 SceneAssemblyResult result;
                 std::string error;
                 if (!assemble_scene(world(), data, actors_, types_, services, result, error, &catalog_.index))
-                { TOY_LOG_ERROR("Game Scene assembly [{}]: {}", scene, error); return false; }
-                TOY_LOG_INFO("Game loaded Scene [{}] with {} Actors; gameplay starts after renderer binding.", scene, world().actor_count());
+                {
+                    TOY_LOG_ERROR("Game Scene assembly [{}]: {}", scene, error);
+                    return false;
+                }
+                TOY_LOG_INFO("Game loaded Scene [{}] with {} Actors; gameplay starts after renderer binding.", scene,
+                             world().actor_count());
                 return true;
             }
             void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
@@ -126,80 +228,141 @@ namespace toy3d
                 {
                     const Actor* actor = world().find_actor_by_id(id);
                     for (const auto component_id : actor->component_ids())
-                        if (const auto* camera = dynamic_cast<const CameraComponent*>(actor->find_component_by_id(component_id)))
+                    {
+                        if (const auto* camera =
+                                dynamic_cast<const CameraComponent*>(actor->find_component_by_id(component_id)))
                         {
                             const auto& settings = camera->camera_settings();
-                            const Vector3 position(camera->world_transform().at(3, 0), camera->world_transform().at(3, 1), camera->world_transform().at(3, 2));
+                            const Vector3 position(camera->world_transform().at(3, 0),
+                                                   camera->world_transform().at(3, 1),
+                                                   camera->world_transform().at(3, 2));
                             const auto rotation = camera->world_rotation();
                             views.emplace_back(position, rotation, rotate_vector(rotation, Vector3(0, 0, 1)),
-                                IntRect{0, 0, extent.width, extent.height}, extent,
-                                camera->projection_mode(), to_radians(Degrees(settings.vertical_fov)), settings.near_clip, settings.far_clip);
+                                               IntRect{0, 0, extent.width, extent.height}, extent,
+                                               camera->projection_mode(), to_radians(Degrees(settings.vertical_fov)),
+                                               settings.near_clip, settings.far_clip);
                             return;
                         }
+                    }
                 }
                 // A scene without a Camera still has a useful Game preview viewpoint.
                 const Vector3 position(650, 450, -900);
                 const Vector3 direction = normalized_or_zero(Vector3(0, 100, 0) - position);
                 Quaternion rotation;
-                if (!try_make_rotation_from_forward_up(direction, Vector3(0, 1, 0), rotation)) return;
-                views.emplace_back(position, rotation, direction, IntRect{0, 0, extent.width, extent.height},
-                    extent, CameraProjectionMode::Perspective, to_radians(Degrees(60)), 10.0f, 100000.0f);
+                if (!try_make_rotation_from_forward_up(direction, Vector3(0, 1, 0), rotation))
+                {
+                    return;
+                }
+                views.emplace_back(position, rotation, direction, IntRect{0, 0, extent.width, extent.height}, extent,
+                                   CameraProjectionMode::Perspective, to_radians(Degrees(60)), 10.0f, 100000.0f);
             }
             void on_shutdown() override
             {
                 for (const auto id : world().actor_ids())
+                {
                     if (auto* actor = world().find_actor_by_id(id))
-                        if (!world().destroy_actor(*actor)) TOY_LOG_ERROR("Game Actor teardown failed: {}", id);
+                    {
+                        if (!world().destroy_actor(*actor))
+                        {
+                            TOY_LOG_ERROR("Game Actor teardown failed: {}", id);
+                        }
+                    }
+                }
                 const auto drained = flush_rendering_commands();
-                if (!drained.succeeded()) TOY_LOG_ERROR("Game scene teardown could not drain rendering commands.");
-                if (materials_) { materials_->shutdown(); materials_.reset(); }
+                if (!drained.succeeded())
+                {
+                    TOY_LOG_ERROR("Game scene teardown could not drain rendering commands.");
+                }
+                if (materials_)
+                {
+                    materials_->shutdown();
+                    materials_.reset();
+                }
                 geometry_.release();
             }
+
           private:
             ShaderMapProgramRef load_program(const std::string& name)
             {
                 const auto cached = programs_.find(name);
-                if (cached != programs_.end()) return cached->second;
+                if (cached != programs_.end())
+                {
+                    return cached->second;
+                }
 #if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
                 std::vector<PhysicalPath> entries;
-                const auto record_path = VirtualPath::parse("/Saved/shader/" + sha256_to_hex(sha256(name)) + "/current.txt").value();
+                const auto record_path =
+                    VirtualPath::parse("/Saved/shader/" + sha256_to_hex(sha256(name)) + "/current.txt").value();
                 const auto record = files_.read_text_utf8(record_path, 4096u);
                 if (record.succeeded())
                 {
-                    std::istringstream lines(record.value()); std::string relative, hash, extra;
-                    std::getline(lines, relative); std::getline(lines, hash);
+                    std::istringstream lines(record.value());
+                    std::string relative, hash, extra;
+                    std::getline(lines, relative);
+                    std::getline(lines, hash);
                     AssetId request;
                     // C++17 optional distinguishes invalid publication hashes from valid digests.
                     if (relative.size() != 41u || relative.compare(0, 9, "requests/") != 0 ||
                         !AssetId::parse(relative.substr(9), request) || request.hex() != relative.substr(9) ||
                         !sha256_from_hex(hash) || std::getline(lines, extra))
-                    { TOY_LOG_ERROR("Game Shader [{}] has an invalid Saved publication record.", name); return {}; }
+                    {
+                        TOY_LOG_ERROR("Game Shader [{}] has an invalid Saved publication record.", name);
+                        return {};
+                    }
                     const auto shader_root = platform_.canonical(PhysicalPath(saved_.utf8() + "/shader"));
-                    const auto target = platform_.canonical(PhysicalPath(saved_.utf8() + "/shader/" + relative + "/entries"));
+                    const auto target =
+                        platform_.canonical(PhysicalPath(saved_.utf8() + "/shader/" + relative + "/entries"));
                     auto comparable = [](std::string value)
                     {
                         std::replace(value.begin(), value.end(), '\\', '/');
-                        while (!value.empty() && value.back() == '/') value.pop_back();
+                        while (!value.empty() && value.back() == '/')
+                        {
+                            value.pop_back();
+                        }
 #if WITH_WIN
-                        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                        std::transform(value.begin(), value.end(), value.begin(),
+                                       [](unsigned char c)
+                                       {
+                                           return static_cast<char>(std::tolower(c));
+                                       });
 #endif
                         return value;
                     };
                     if (!shader_root.succeeded() || !target.succeeded() ||
-                        comparable(target.value().utf8()).compare(0, comparable(shader_root.value().utf8()).size() + 1u, comparable(shader_root.value().utf8()) + "/") != 0)
-                    { TOY_LOG_ERROR("Game Shader [{}] artifact directory escapes Saved/shader.", name); return {}; }
+                        comparable(target.value().utf8())
+                                .compare(0, comparable(shader_root.value().utf8()).size() + 1u,
+                                         comparable(shader_root.value().utf8()) + "/") != 0)
+                    {
+                        TOY_LOG_ERROR("Game Shader [{}] artifact directory escapes Saved/shader.", name);
+                        return {};
+                    }
                     entries.push_back(target.value());
                 }
                 else if (record.status().code != FileErrorCode::NotFound)
-                { TOY_LOG_ERROR("Game Shader publication read: {}", record.status().message); return {}; }
+                {
+                    TOY_LOG_ERROR("Game Shader publication read: {}", record.status().message);
+                    return {};
+                }
                 // Game consumes published artifacts. Source editing/compilation remains an Editor workflow.
                 if (entries.empty())
                 {
-                    const auto deployed = platform_.enumerate_directory(PhysicalPath(paths_.deployment.utf8() + "/shader"));
-                    if (deployed.succeeded()) for (const auto& directory : deployed.value())
-                        if (directory.type == FileType::Directory) entries.push_back(directory.path);
+                    const auto deployed =
+                        platform_.enumerate_directory(PhysicalPath(paths_.deployment.utf8() + "/shader"));
+                    if (deployed.succeeded())
+                    {
+                        for (const auto& directory : deployed.value())
+                        {
+                            if (directory.type == FileType::Directory)
+                            {
+                                entries.push_back(directory.path);
+                            }
+                        }
+                    }
                 }
-                ShaderMapProgramKey key; key.shader_name = name; key.pass_name = "Forward"; key.platform = ShaderPlatform::VulkanES31;
+                ShaderMapProgramKey key;
+                key.shader_name = name;
+                key.pass_name = "Forward";
+                key.platform = ShaderPlatform::VulkanES31;
                 std::string error;
                 for (const auto& entry : entries)
                 {
@@ -208,28 +371,62 @@ namespace toy3d
                     // is not the default key for a shader that declares Variants.
                     const auto directories = platform_.enumerate_directory(entry);
                     bool found = false;
-                    if (directories.succeeded()) for (const auto& directory : directories.value())
+                    if (directories.succeeded())
                     {
-                        if (directory.type != FileType::Directory) continue;
-                        const auto filename = directory.path.utf8().substr(directory.path.utf8().find_last_of("/\\") + 1u);
-                        // C++17 optional marks non-entry directories without inventing a key.
-                        const auto entry_key = sha256_from_hex(filename);
-                        if (!entry_key) continue;
-                        const auto verified = shader::read_verified_shader_map_entry(platform_, entry, *entry_key);
-                        if (!verified.succeeded()) { error = "Published ShaderMapEntry failed verification."; continue; }
-                        if (verified.entry->shader_name != name || verified.entry->pass_name != key.pass_name ||
-                            verified.entry->target != shader::ShaderTarget::VulkanSpirV || verified.entry->profile != shader::ShaderCompileProfile::VulkanES31) continue;
-                        if (found && key.permutation_key != verified.entry->permutation_key)
-                        { TOY_LOG_ERROR("Game Shader [{}] has multiple published permutations; an explicit selection is required.", name); return {}; }
-                        found = true; key.permutation_key = verified.entry->permutation_key;
+                        for (const auto& directory : directories.value())
+                        {
+                            if (directory.type != FileType::Directory)
+                            {
+                                continue;
+                            }
+                            const auto filename =
+                                directory.path.utf8().substr(directory.path.utf8().find_last_of("/\\") + 1u);
+                            // C++17 optional marks non-entry directories without inventing a key.
+                            const auto entry_key = sha256_from_hex(filename);
+                            if (!entry_key)
+                            {
+                                continue;
+                            }
+                            const auto verified = shader::read_verified_shader_map_entry(platform_, entry, *entry_key);
+                            if (!verified.succeeded())
+                            {
+                                error = "Published ShaderMapEntry failed verification.";
+                                continue;
+                            }
+                            if (verified.entry->shader_name != name || verified.entry->pass_name != key.pass_name ||
+                                verified.entry->target != shader::ShaderTarget::VulkanSpirV ||
+                                verified.entry->profile != shader::ShaderCompileProfile::VulkanES31)
+                            {
+                                continue;
+                            }
+                            if (found && key.permutation_key != verified.entry->permutation_key)
+                            {
+                                TOY_LOG_ERROR("Game Shader [{}] has multiple published permutations; an explicit "
+                                              "selection is required.",
+                                              name);
+                                return {};
+                            }
+                            found = true;
+                            key.permutation_key = verified.entry->permutation_key;
+                        }
                     }
-                    if (!found) continue;
-                    ShaderMapEntryLoader loader(entry); ShaderMap map(loader);
+                    if (!found)
+                    {
+                        continue;
+                    }
+                    ShaderMapEntryLoader loader(entry);
+                    ShaderMap map(loader);
                     auto loaded = map.find_or_load(key);
-                    if (loaded.succeeded()) { programs_[name] = loaded.program; return loaded.program; }
+                    if (loaded.succeeded())
+                    {
+                        programs_[name] = loaded.program;
+                        return loaded.program;
+                    }
                     error = loaded.error;
                 }
-                TOY_LOG_ERROR("Game Shader [{}] has no validated published Program: {}. Compile it in the project Editor.", name, error);
+                TOY_LOG_ERROR(
+                    "Game Shader [{}] has no validated published Program: {}. Compile it in the project Editor.", name,
+                    error);
 #else
                 TOY_LOG_ERROR("Game Shader loading is disabled: {}", name);
 #endif
@@ -248,45 +445,88 @@ namespace toy3d
             SceneGeometry geometry_;
             std::unique_ptr<MaterialLibrary> materials_;
         };
-    }
+    } // namespace
 
     int run_game_host(const GameHostPaths& paths, const GameModuleRegistration& module, void* native_instance)
     {
         NativePlatformFile platform;
         const auto descriptor = platform.canonical(paths.descriptor);
-        if (!descriptor.succeeded()) { std::cerr << "Game project descriptor: " << descriptor.status().message << '\n'; return 1; }
+        if (!descriptor.succeeded())
+        {
+            std::cerr << "Game project descriptor: " << descriptor.status().message << '\n';
+            return 1;
+        }
         const auto parent = platform.parent_path(descriptor.value());
-        if (!parent.succeeded()) { std::cerr << parent.status().message << '\n'; return 1; }
+        if (!parent.succeeded())
+        {
+            std::cerr << parent.status().message << '\n';
+            return 1;
+        }
         const auto filename = descriptor.value().utf8().substr(descriptor.value().utf8().find_last_of("/\\") + 1u);
         if (filename.size() <= 4u || filename.compare(filename.size() - 4u, 4u, ".toy") != 0)
-        { std::cerr << "Game needs a .toy descriptor.\n"; return 1; }
+        {
+            std::cerr << "Game needs a .toy descriptor.\n";
+            return 1;
+        }
         FileSystem bootstrap;
         auto mounted = mount_game_directory(bootstrap, platform, parent.value(), "/Game");
-        if (mounted.succeeded()) mounted = bootstrap.freeze();
-        if (!mounted.succeeded()) { std::cerr << mounted.message << '\n'; return 1; }
+        if (mounted.succeeded())
+        {
+            mounted = bootstrap.freeze();
+        }
+        if (!mounted.succeeded())
+        {
+            std::cerr << mounted.message << '\n';
+            return 1;
+        }
         const auto project = read_game_project(bootstrap, VirtualPath::parse("/Game/" + filename).value());
-        if (!project.succeeded()) { std::cerr << "Game project: " << project.status().message << '\n'; return 1; }
+        if (!project.succeeded())
+        {
+            std::cerr << "Game project: " << project.status().message << '\n';
+            return 1;
+        }
         if (project.value().engine_association != "toy3d_dev" || project.value().modules.size() != 1u ||
-            project.value().modules.front().type != GameModuleType::Runtime || project.value().modules.front().name != module.name)
-        { std::cerr << "Game host requires one matching Runtime module (" << module.name << ").\n"; return 1; }
+            project.value().modules.front().type != GameModuleType::Runtime ||
+            project.value().modules.front().name != module.name)
+        {
+            std::cerr << "Game host requires one matching Runtime module (" << module.name << ").\n";
+            return 1;
+        }
         const PhysicalPath saved(parent.value().utf8() + "/saved");
         const auto made = platform.create_directories(saved);
-        if (!made.succeeded()) { std::cerr << "Game Saved: " << made.message << '\n'; return 1; }
+        if (!made.succeeded())
+        {
+            std::cerr << "Game Saved: " << made.message << '\n';
+            return 1;
+        }
         AssetId session;
-        if (!AssetId::try_generate(session)) return 1;
+        if (!AssetId::try_generate(session))
+        {
+            return 1;
+        }
         Engine engine;
         EngineStartupPaths startup;
-        startup.engine_assets = paths.engine_assets; startup.engine_config = paths.engine_config;
+        startup.engine_assets = paths.engine_assets;
+        startup.engine_config = paths.engine_config;
         startup.project_assets = PhysicalPath(parent.value().utf8() + "/asset");
-        startup.project_config = PhysicalPath(parent.value().utf8() + "/config"); startup.saved = saved;
+        startup.project_config = PhysicalPath(parent.value().utf8() + "/config");
+        startup.saved = saved;
         startup.log_file_name = "game-" + session.hex() + ".log";
-        if (!engine.set_startup_paths(std::move(startup)) || !engine.initialize_logging()) return 1;
-        engine.set_shader_load_config({ShaderLoadMode::ShaderMapEntry, PhysicalPath(paths.deployment.utf8() + "/shader/phong")});
+        if (!engine.set_startup_paths(std::move(startup)) || !engine.initialize_logging())
+        {
+            return 1;
+        }
+        engine.set_shader_load_config(
+            {ShaderLoadMode::ShaderMapEntry, PhysicalPath(paths.deployment.utf8() + "/shader/phong")});
         engine.set_application(std::make_unique<GameApplication>(paths, parent.value(), saved, module));
         engine.init(native_instance);
         const bool initialized = engine.initialized();
-        if (initialized) engine.main_loop();
-        engine.exit(); engine.set_application(nullptr);
+        if (initialized)
+        {
+            engine.main_loop();
+        }
+        engine.exit();
+        engine.set_application(nullptr);
         return initialized ? 0 : 1;
     }
-}
+} // namespace toy3d

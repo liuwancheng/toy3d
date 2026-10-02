@@ -32,11 +32,20 @@ namespace toy3d
         void update();
 
       public:
-        std::shared_ptr<KeyboardDevice> get_keyboard_device() { return keyboard_device; }
-        std::shared_ptr<MouseDevice> get_mouse_device() { return mouse_device; }
+        std::shared_ptr<KeyboardDevice> get_keyboard_device()
+        {
+            return keyboard_device;
+        }
+        std::shared_ptr<MouseDevice> get_mouse_device()
+        {
+            return mouse_device;
+        }
 
         // ctrl+shift+alt这种可能需要按键判断
-        bool is_pressed(KeyCode key_code) const { return keyboard_device->is_key_pressed(key_code); }
+        bool is_pressed(KeyCode key_code) const
+        {
+            return keyboard_device->is_key_pressed(key_code);
+        }
 
         // 上下文管理
         InputBindingContext& create_binding_context(const std::string& name, int priority = 0);
@@ -81,7 +90,9 @@ namespace toy3d
     {
         auto it = binding_contexts.find(context_name);
         if (it == binding_contexts.end())
+        {
             return;
+        }
 
         auto& action = it->second.create_action(action_name);
         action.add_binding(key_code, click_status, std::forward<callback>(cb));
@@ -93,7 +104,9 @@ namespace toy3d
     {
         auto it = binding_contexts.find(context_name);
         if (it == binding_contexts.end())
+        {
             return;
+        }
 
         auto& action = it->second.create_action(action_name);
         action.add_axis_binding(key_code, scale, std::forward<callback>(cb));

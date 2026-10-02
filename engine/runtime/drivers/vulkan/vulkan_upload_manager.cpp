@@ -89,7 +89,9 @@ namespace toy3d
         return page ? page->buffer() : VK_NULL_HANDLE;
     }
 
-    VulkanUploadManager::VulkanUploadManager(VulkanMemoryManager& memory_manager) : memory_manager(memory_manager) {}
+    VulkanUploadManager::VulkanUploadManager(VulkanMemoryManager& memory_manager) : memory_manager(memory_manager)
+    {
+    }
 
     RHIResult<VulkanUploadAllocation> VulkanUploadManager::upload(const void* source_data, std::size_t source_size,
                                                                   VkDeviceSize alignment)

@@ -40,11 +40,17 @@ namespace toy3d
         Texture(Texture&& other) noexcept;
         Texture& operator=(Texture&&) noexcept = delete;
 
-        const TextureDesc& desc() const { return desc_; }
+        const TextureDesc& desc() const
+        {
+            return desc_;
+        }
 
         // This pointer is an opaque cross-side identity. GT callers must not
         // read or mutate TextureResource state through it.
-        TextureResource* texture_resource() const noexcept { return texture_resource_.get(); }
+        TextureResource* texture_resource() const noexcept
+        {
+            return texture_resource_.get();
+        }
 
       private:
         explicit Texture(TextureDesc desc);

@@ -20,7 +20,7 @@
 | `engine/tools/` | 离线 compiler、codegen、import/build 工具 |
 | `engine/shader/`、`engine/asset/`、`engine/config/` | 引擎 shader、内置资产、默认配置 |
 | `engine/build/` | 受版本管理的平台部署输入和 plist 模板 |
-| `project/` | 资源工程 .toy、源码侧 asset/config/shader；C++ 模块尚未接入 |
+| `project/` | 验证工程 .toy、源码侧 asset/config/shader、src 原生模块与项目测试 |
 | `document/` | 按功能维护的知识与规范 |
 | `.codex/skills/` | 仓库级任务方法，不复制模块知识 |
 | 根 `build/`、`bin/` | 构建与部署产物，不提交 |
@@ -35,6 +35,8 @@
 ## C++ 与接口
 
 - 第一方 C++17、UTF-8、四空格缩进。文件/函数/变量 snake_case，类型/target PascalCase，宏 UPPER_SNAKE_CASE；只整理直接涉及区域。
+- 第一方 C/C++ 格式以根 `.clang-format` 为准：函数（含构造函数、getter、头文件内联函数）、lambda 和控制流块使用 Allman 大括号，`{`、`}` 各占一行，禁止单行函数体或执行块；`if/else/for/while/do` 的受控语句必须加大括号，预处理器附近的自动补括号需人工核对。无行为构造/析构仍用 `= default`。
+- 使用 clang-format 15+；日常运行 `./scripts/format-cpp.ps1 -Changed`，交付前必须通过 `./scripts/format-cpp.ps1 -Changed -Check`。脚本覆盖已暂存、未暂存和未跟踪的新文件，排除第三方、生成代码及 build/bin；不加 `-Changed` 扫描全部第一方文件。格式整理只改变排版和控制流括号，不顺带修改业务逻辑。
 - 头文件 `#pragma once`、可独立包含、无 using namespace；cpp 先对应头，再标准库、第三方、项目头。多态基类虚析构、重写 override、单参数构造默认 explicit、无行为构造/析构 = default。
 - 第一方 C++ 平台判断先显式包含 `platform/platform_defines.h`，统一用 `#if WITH_WIN` 等数值判断；原生 OS/架构宏只在该入口检测，禁止使用 `WITH_WIN64` 或依赖 PCH、runtime/generated/defines.h、全局编译定义。OS 与 CPU 架构分开，架构用 `TOY3D_ARCH_X64/TOY3D_ARCH_ARM64`；系统能力宏仍在具体实现检查，宏为真不代表模块已支持该平台。定义和最小示例见 `document/core.md`。
 - 初始化所有值和原生句柄，禁止 C 风格转换。RAII 管资源，独占 unique_ptr，确有共享所有权才 shared_ptr；新代码不直接 new/delete。

@@ -63,7 +63,9 @@ namespace toy3d::shader
                                           "The locked Shader compiler identity is unavailable."});
         }
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
 
         std::ostringstream source;
         source << "#line 1 \"/Generated/ToyShaderPrelude.hlsli\"\n" << input.generated_prelude << '\n';

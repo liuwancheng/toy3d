@@ -1,12 +1,14 @@
 #include "rhi_resource.h"
 
-
 namespace toy3d
 {
     RHIResult<std::uint32_t> RHIReadback::read_uint32(RHIQueueCompletionValue completed_value) const
     {
         if (readback_format() != PixelFormat::R32UInt)
-            return RHIResult<std::uint32_t>::failure(RHIErrorCode::InvalidArgument, "Readback does not contain an integer pixel.");
+        {
+            return RHIResult<std::uint32_t>::failure(RHIErrorCode::InvalidArgument,
+                                                     "Readback does not contain an integer pixel.");
+        }
         const RHIQueueCompletionValue submitted = last_use_completion_value();
         if (submitted == 0 || completed_value < submitted)
         {
@@ -28,23 +30,31 @@ namespace toy3d
     {
         const auto submitted = last_use_completion_value();
         if (!submitted || completed_value < submitted)
+        {
             return RHIResult<RHITextureReadbackData>::failure(RHIErrorCode::NotReady,
-                "Texture readback requires a completed GPU submission.");
+                                                              "Texture readback requires a completed GPU submission.");
+        }
         auto result = read_texture_impl();
-        if (!result) return result;
+        if (!result)
+        {
+            return result;
+        }
         const auto& data = result.value();
         const std::uint64_t row_pitch = static_cast<std::uint64_t>(extent_.width) * 4;
         if (data.format != format_ || data.extent != extent_ || data.row_pitch != row_pitch ||
             data.bytes.size() != row_pitch * extent_.height)
-            return RHIResult<RHITextureReadbackData>::failure(RHIErrorCode::BackendFailure,
+        {
+            return RHIResult<RHITextureReadbackData>::failure(
+                RHIErrorCode::BackendFailure,
                 "Backend color readback must return matching tightly packed image bytes.");
+        }
         return result;
     }
 
     RHIResult<RHITextureReadbackData> RHIReadback::read_texture_impl() const
     {
         return RHIResult<RHITextureReadbackData>::failure(RHIErrorCode::Unsupported,
-            "This RHI backend does not support color texture readback.");
+                                                          "This RHI backend does not support color texture readback.");
     }
 
     RHIQueueCompletionValue RHIReadback::last_use_completion_value() const

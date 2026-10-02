@@ -93,10 +93,16 @@ namespace toy3d
 
     bool Win32Window::enable_file_drop(bool enabled)
     {
-        if (!hWnd) return false;
+        if (!hWnd)
+        {
+            return false;
+        }
         DragAcceptFiles(hWnd, enabled ? TRUE : FALSE);
         file_drop_enabled_ = enabled;
-        if (!enabled) clear_file_drops();
+        if (!enabled)
+        {
+            clear_file_drops();
+        }
         return true;
     }
 
@@ -106,11 +112,20 @@ namespace toy3d
         struct DropRelease
         {
             HDROP handle = nullptr;
-            ~DropRelease() { DragFinish(handle); }
+            ~DropRelease()
+            {
+                DragFinish(handle);
+            }
         } release{drop};
-        if (!file_drop_enabled_) return;
+        if (!file_drop_enabled_)
+        {
+            return;
+        }
         POINT point{};
-        if (!DragQueryPoint(drop, &point)) return; // Non-client-area delivery.
+        if (!DragQueryPoint(drop, &point))
+        {
+            return; // Non-client-area delivery.
+        }
         const UINT count = DragQueryFileW(drop, 0xFFFFFFFFu, nullptr, 0);
         if (count == 0 || count > maximum_file_drop_paths)
         {
@@ -123,10 +138,16 @@ namespace toy3d
         {
             const UINT length = DragQueryFileW(drop, i, nullptr, 0);
             if (length == 0 || length > maximum_file_drop_path_bytes)
-            { TOY_LOG_ERROR("Dropped file path is empty or too long."); return; }
+            {
+                TOY_LOG_ERROR("Dropped file path is empty or too long.");
+                return;
+            }
             std::vector<wchar_t> path(length + 1, L'\0');
             if (DragQueryFileW(drop, i, path.data(), static_cast<UINT>(path.size())) != length)
-            { TOY_LOG_ERROR("Dropped file path query failed."); return; }
+            {
+                TOY_LOG_ERROR("Dropped file path query failed.");
+                return;
+            }
             try
             {
                 // C++17 filesystem converts the native UTF-16 selection to
@@ -134,9 +155,15 @@ namespace toy3d
                 event.paths.push_back(std::filesystem::path(path.data()).u8string());
             }
             catch (const std::exception& error)
-            { TOY_LOG_ERROR("Dropped file path conversion failed: {}", error.what()); return; }
+            {
+                TOY_LOG_ERROR("Dropped file path conversion failed: {}", error.what());
+                return;
+            }
         }
-        if (!enqueue_file_drop(std::move(event))) TOY_LOG_ERROR("File drop queue rejected invalid or excessive input.");
+        if (!enqueue_file_drop(std::move(event)))
+        {
+            TOY_LOG_ERROR("File drop queue rejected invalid or excessive input.");
+        }
     }
     void Win32Window::process_events()
     {
@@ -189,13 +216,17 @@ namespace toy3d
         properties.mode = console.get_bool("Window.Fullscreen", false) ? Mode::Fullscreen : Mode::Default;
 
         HICON hIcon = static_cast<HICON>(
-            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 128, 128,
-                        LR_DEFAULTCOLOR | LR_SHARED));
-        if (hIcon == nullptr) TOY_LOG_ERROR("Application icon loading failed: {}", GetLastError());
+            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 128, 128, LR_DEFAULTCOLOR | LR_SHARED));
+        if (hIcon == nullptr)
+        {
+            TOY_LOG_ERROR("Application icon loading failed: {}", GetLastError());
+        }
         HICON hIconSm = static_cast<HICON>(
-            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 32, 32,
-                        LR_DEFAULTCOLOR | LR_SHARED));
-        if (hIconSm == nullptr) TOY_LOG_ERROR("Small application icon loading failed: {}", GetLastError());
+            ::LoadImage(hInstance, MAKEINTRESOURCE(IDI_TOY3D_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR | LR_SHARED));
+        if (hIconSm == nullptr)
+        {
+            TOY_LOG_ERROR("Small application icon loading failed: {}", GetLastError());
+        }
         // LR_SHARED keeps executable icons alive for the registered window
         // class lifetime; the window must not destroy these shared handles.
 

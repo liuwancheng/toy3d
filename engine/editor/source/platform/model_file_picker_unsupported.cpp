@@ -15,8 +15,16 @@ namespace toy3d
         return false;
     }
     bool pick_project_file(IWindow&, std::string& path, std::string& error)
-    { path.clear(); error = "Native project selection is unsupported. Launch with --Project=<file.toy>."; return false; }
+    {
+        path.clear();
+        error = "Native project selection is unsupported. Launch with --Project=<file.toy>.";
+        return false;
+    }
     bool pick_project_folder(IWindow&, std::string& path, std::string& error)
-    { path.clear(); error = "Native folder selection is unsupported. Enter a parent folder path."; return false; }
+    {
+        path.clear();
+        error = "Native folder selection is unsupported. Enter a parent folder path.";
+        return false;
+    }
 
-}
+} // namespace toy3d

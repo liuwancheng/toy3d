@@ -102,7 +102,10 @@ namespace toy3d::shader
         for (const auto& selection : selected_values)
         {
             const auto found = std::find_if(asset.variants.begin(), asset.variants.end(),
-                                            [&](const Variant& variant) { return variant.name == selection.first; });
+                                            [&](const Variant& variant)
+                                            {
+                                                return variant.name == selection.first;
+                                            });
             if (found == asset.variants.end())
             {
                 add_error(result, DiagnosticCode::InvalidVariantSelection, asset.location,
@@ -110,7 +113,9 @@ namespace toy3d::shader
             }
         }
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
 
         struct ResolvedVariant
         {
@@ -164,14 +169,22 @@ namespace toy3d::shader
                     item.options.emplace_back(option_id, option);
                 }
                 std::sort(item.options.begin(), item.options.end(),
-                          [](const auto& left, const auto& right) { return left.first < right.first; });
+                          [](const auto& left, const auto& right)
+                          {
+                              return left.first < right.first;
+                          });
             }
             resolved.push_back(std::move(item));
         }
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         std::sort(resolved.begin(), resolved.end(),
-                  [](const ResolvedVariant& left, const ResolvedVariant& right) { return left.id < right.id; });
+                  [](const ResolvedVariant& left, const ResolvedVariant& right)
+                  {
+                      return left.id < right.id;
+                  });
 
         ShaderPermutation permutation;
         std::map<std::string, std::uint32_t> macros;
@@ -206,7 +219,9 @@ namespace toy3d::shader
             permutation.records.push_back(record);
         }
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
 
         std::vector<std::uint8_t> key_bytes;
         append_integer(key_bytes, permutation.variant_id_version);
@@ -217,9 +232,13 @@ namespace toy3d::shader
             append_integer(key_bytes, record.variant_id);
             append_integer(key_bytes, static_cast<std::uint32_t>(record.kind));
             if (record.kind == ShaderPermutationValueKind::Boolean)
+            {
                 append_integer(key_bytes, record.boolean_value ? 1u : 0u);
+            }
             else
+            {
                 append_integer(key_bytes, record.enum_value_id);
+            }
         }
         permutation.key = sha256(key_bytes);
 
@@ -227,7 +246,9 @@ namespace toy3d::shader
         prelude << "// Toy3d Shader Variant ID v" << permutation.variant_id_version << ", permutation ABI v"
                 << permutation.version << '\n';
         for (const auto& macro : macros)
+        {
             prelude << "#define " << macro.first << ' ' << macro.second << '\n';
+        }
         permutation.generated_prelude = prelude.str();
         result.permutation = std::move(permutation);
         return result;

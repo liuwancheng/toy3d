@@ -72,10 +72,12 @@ namespace toy3d
         create_info.size = static_cast<VkDeviceSize>(extent.width) * extent.height * sizeof(std::uint32_t);
         create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        auto allocated = memory_manager.create_buffer(create_info, VulkanAllocationUsage::CpuReadback,
-                                                       debug_name.c_str());
+        auto allocated =
+            memory_manager.create_buffer(create_info, VulkanAllocationUsage::CpuReadback, debug_name.c_str());
         if (!allocated)
+        {
             return RHIResult<RHIReadbackRef>::failure(allocated.status().code(), allocated.status().message());
+        }
         if (allocated.value().allocation.mapped_data == nullptr)
         {
             memory_manager.destroy_buffer(allocated.value());
@@ -267,7 +269,10 @@ namespace toy3d
         }
         std::string target = desc.bytecode.target;
         std::transform(target.begin(), target.end(), target.begin(),
-                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+                       [](unsigned char value)
+                       {
+                           return static_cast<char>(std::tolower(value));
+                       });
         if (target != "spirv" && target != "spir-v")
         {
             return RHIResult<RHIShaderRef>::failure(RHIErrorCode::Unsupported,

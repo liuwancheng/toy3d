@@ -192,7 +192,8 @@ namespace toy3d
         if (result != VK_SUCCESS)
         {
             return RHIStatus::failure(allocation_error_code(result), "vmaInvalidateAllocation failed with VkResult " +
-                                                                         std::to_string(static_cast<int>(result)) + ".");
+                                                                         std::to_string(static_cast<int>(result)) +
+                                                                         ".");
         }
         return RHIStatus::success();
     }

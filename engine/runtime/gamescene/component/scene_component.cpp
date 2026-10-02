@@ -64,7 +64,10 @@ namespace toy3d
         Transform candidate = transform;
         candidate.rotation = normalize_unchecked(candidate.rotation);
         if (local_transform_.translation == candidate.translation && local_transform_.rotation == candidate.rotation &&
-            local_transform_.scale == candidate.scale) return true;
+            local_transform_.scale == candidate.scale)
+        {
+            return true;
+        }
         local_transform_ = candidate;
         world().mark_content_changed();
         update_component_to_world();

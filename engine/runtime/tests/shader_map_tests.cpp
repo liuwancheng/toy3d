@@ -12,7 +12,9 @@ namespace
     void check(bool condition, const char* message)
     {
         if (!condition)
+        {
             throw std::runtime_error(message);
+        }
     }
 
     toy3d::ShaderContentHash nonzero_hash(std::uint8_t value)
@@ -72,7 +74,9 @@ namespace
     class CountingLoader final : public toy3d::ShaderMapLoader
     {
       public:
-        explicit CountingLoader(toy3d::ShaderMapProgramData program) : program_(std::move(program)) {}
+        explicit CountingLoader(toy3d::ShaderMapProgramData program) : program_(std::move(program))
+        {
+        }
 
         toy3d::ShaderMapProgramLoadResult load_program(const toy3d::ShaderMapProgramKey&) const override
         {
@@ -159,16 +163,13 @@ namespace
         schema_buffer.members[0].offset = 16u;
         schema_buffer.data_layout_hash = toy3d::shader::calculate_constant_buffer_data_layout_hash(
             schema_buffer.group, schema_buffer.binding_id, schema_buffer.size,
-            {{schema_buffer.members[0].parameter_id, schema_buffer.members[0].name,
-              schema_buffer.members[0].type, schema_buffer.members[0].offset,
-              schema_buffer.members[0].size, schema_buffer.members[0].array_stride,
+            {{schema_buffer.members[0].parameter_id, schema_buffer.members[0].name, schema_buffer.members[0].type,
+              schema_buffer.members[0].offset, schema_buffer.members[0].size, schema_buffer.members[0].array_stride,
               schema_buffer.members[0].matrix_stride}});
         different_layout.parameter_schema.logical_layout_hash =
-            toy3d::shader::calculate_shader_parameter_logical_layout_hash(
-                different_layout.parameter_schema);
+            toy3d::shader::calculate_shader_parameter_logical_layout_hash(different_layout.parameter_schema);
         different_layout.parameter_schema.schema_identity =
-            toy3d::shader::calculate_shader_parameter_schema_identity(
-                different_layout.parameter_schema);
+            toy3d::shader::calculate_shader_parameter_schema_identity(different_layout.parameter_schema);
         different_layout.logical_layout_hash = different_layout.parameter_schema.logical_layout_hash;
         check(!toy3d::validate_shader_map_program(std::move(different_layout), key).succeeded(),
               "equal-size active constants with a different schema layout identity must fail publication");

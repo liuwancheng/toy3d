@@ -19,7 +19,10 @@ namespace toy3d
             TOY_LOG_ERROR("Invalid LightSettings.");
             return false;
         }
-        if (light_settings_ == settings) return true;
+        if (light_settings_ == settings)
+        {
+            return true;
+        }
         light_settings_ = settings;
         world().mark_content_changed();
         send_render_update();
@@ -36,7 +39,10 @@ namespace toy3d
     {
         LightSettings candidate = light_settings_;
         candidate.enabled = enabled;
-        if (!set_light_settings(candidate)) TOY_LOG_ERROR("Light edit rejected invalid settings.");
+        if (!set_light_settings(candidate))
+        {
+            TOY_LOG_ERROR("Light edit rejected invalid settings.");
+        }
     }
 
     bool LightComponent::set_color(const Vector3& color)
@@ -57,9 +63,11 @@ namespace toy3d
     {
         LightSettings candidate = light_settings_;
         candidate.priority = render_priority;
-        if (!set_light_settings(candidate)) TOY_LOG_ERROR("Light edit rejected invalid settings.");
+        if (!set_light_settings(candidate))
+        {
+            TOY_LOG_ERROR("Light edit rejected invalid settings.");
+        }
     }
-
 
     LightSceneData LightComponent::scene_data() const
     {
@@ -71,7 +79,10 @@ namespace toy3d
         data.intensity = light_settings_.intensity;
         data.enabled = light_settings_.enabled;
         data.priority = light_settings_.priority;
-        if (const auto* local = dynamic_cast<const LocalLightComponent*>(this)) data.range = local->range();
+        if (const auto* local = dynamic_cast<const LocalLightComponent*>(this))
+        {
+            data.range = local->range();
+        }
         if (const auto* directional = dynamic_cast<const DirectionalLightComponent*>(this))
         {
             data.cast_shadows = directional->cast_shadows();
@@ -89,7 +100,10 @@ namespace toy3d
 
     void LightComponent::create_render_state()
     {
-        if (scene_proxy_ || !is_registered() || !world().scene_interface()) return;
+        if (scene_proxy_ || !is_registered() || !world().scene_interface())
+        {
+            return;
+        }
         if (dynamic_cast<SpotLightComponent*>(this))
         {
             TOY_LOG_ERROR("Spot light rendering is not supported yet.");
@@ -105,7 +119,10 @@ namespace toy3d
 
     void LightComponent::destroy_render_state()
     {
-        if (!scene_proxy_) return;
+        if (!scene_proxy_)
+        {
+            return;
+        }
         assert(world().scene_interface());
         world().scene_interface()->remove_light(scene_proxy_);
         scene_proxy_ = nullptr;
@@ -114,14 +131,26 @@ namespace toy3d
 
     void LightComponent::send_render_update()
     {
-        if (!scene_proxy_ || !world().scene_interface()) return;
+        if (!scene_proxy_ || !world().scene_interface())
+        {
+            return;
+        }
         world().scene_interface()->update_light(scene_proxy_, scene_data());
         world().mark_scene_changed();
     }
 
-    void LightComponent::on_register() { create_render_state(); }
-    void LightComponent::on_unregister() { destroy_render_state(); }
-    void LightComponent::on_world_transform_updated() { send_render_update(); }
+    void LightComponent::on_register()
+    {
+        create_render_state();
+    }
+    void LightComponent::on_unregister()
+    {
+        destroy_render_state();
+    }
+    void LightComponent::on_world_transform_updated()
+    {
+        send_render_update();
+    }
 
     // --------------------------------------------------------------------------
     // DirectionalLightComponent: owns validated per-light shadow settings
@@ -133,7 +162,10 @@ namespace toy3d
             TOY_LOG_ERROR("Invalid DirectionalShadowSettings.");
             return false;
         }
-        if (shadow_settings_ == settings) return true;
+        if (shadow_settings_ == settings)
+        {
+            return true;
+        }
         shadow_settings_ = settings;
         world().mark_content_changed();
         send_render_update();
@@ -144,7 +176,10 @@ namespace toy3d
     {
         DirectionalShadowSettings candidate = shadow_settings_;
         candidate.cast_shadows = enabled;
-        if (!set_shadow_settings(candidate)) TOY_LOG_ERROR("Light edit rejected invalid settings.");
+        if (!set_shadow_settings(candidate))
+        {
+            TOY_LOG_ERROR("Light edit rejected invalid settings.");
+        }
     }
 
     bool DirectionalLightComponent::set_shadow_cascade_count(int count)
@@ -213,7 +248,10 @@ namespace toy3d
             TOY_LOG_ERROR("Invalid LocalLightSettings.");
             return false;
         }
-        if (local_settings_ == settings) return true;
+        if (local_settings_ == settings)
+        {
+            return true;
+        }
         local_settings_ = settings;
         world().mark_content_changed();
         send_render_update();

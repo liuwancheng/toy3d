@@ -5,19 +5,40 @@
 namespace toy3d
 {
     AssetResult<TextureRef> load_texture_asset(const FileSystem& files, const AssetIndex& index,
-        const AssetRef& reference)
+                                               const AssetRef& reference)
     {
         const AssetStatus resolved = index.resolve(reference, "texture");
-        if (!resolved.succeeded()) return AssetResult<TextureRef>(resolved);
+        if (!resolved.succeeded())
+        {
+            return AssetResult<TextureRef>(resolved);
+        }
         if (reference.expected_type != "toy3d.Texture2DAssetData" || reference.subresource_id.valid() ||
             reference.strength != AssetRefStrength::Strong)
-            return AssetResult<TextureRef>({AssetErrorCode::TypeMismatch, reference.asset_id, {}, {}, "texture",
-                "Material texture must reference a strong Texture2D root.", {}});
+        {
+            return AssetResult<TextureRef>({AssetErrorCode::TypeMismatch,
+                                            reference.asset_id,
+                                            {},
+                                            {},
+                                            "texture",
+                                            "Material texture must reference a strong Texture2D root.",
+                                            {}});
+        }
         const AssetLocation* location = index.find(reference.asset_id);
-        if (!location) return AssetResult<TextureRef>({AssetErrorCode::MissingReference, reference.asset_id, {}, {},
-            "texture", "Texture2D asset was not found.", {}});
+        if (!location)
+        {
+            return AssetResult<TextureRef>({AssetErrorCode::MissingReference,
+                                            reference.asset_id,
+                                            {},
+                                            {},
+                                            "texture",
+                                            "Texture2D asset was not found.",
+                                            {}});
+        }
         const auto loaded = read_texture_asset(files, location->path);
-        if (!loaded.succeeded()) return AssetResult<TextureRef>(loaded.status());
+        if (!loaded.succeeded())
+        {
+            return AssetResult<TextureRef>(loaded.status());
+        }
         TextureDesc desc;
         desc.width = loaded.value().width;
         desc.height = loaded.value().height;
@@ -29,8 +50,16 @@ namespace toy3d
             desc.mip_pixels.push_back(mip.pixels);
         }
         TextureRef texture = Texture::create(std::move(desc));
-        if (!texture) return AssetResult<TextureRef>({AssetErrorCode::Value, reference.asset_id,
-            location->path.utf8(), "texture_mips", {}, "Texture2D runtime descriptor is invalid.", {}});
+        if (!texture)
+        {
+            return AssetResult<TextureRef>({AssetErrorCode::Value,
+                                            reference.asset_id,
+                                            location->path.utf8(),
+                                            "texture_mips",
+                                            {},
+                                            "Texture2D runtime descriptor is invalid.",
+                                            {}});
+        }
         return AssetResult<TextureRef>(std::move(texture));
     }
 } // namespace toy3d

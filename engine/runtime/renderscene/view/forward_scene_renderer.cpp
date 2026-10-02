@@ -29,16 +29,18 @@
 namespace toy3d
 {
     ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview)
-        : SceneRenderer(std::move(view_family)), thumbnail_preview_(thumbnail_preview) {}
+        : SceneRenderer(std::move(view_family)), thumbnail_preview_(thumbnail_preview)
+    {
+    }
 
     RHIStatus ForwardSceneRenderer::render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                                      const GlobalShaderMap& global_shader_map,
-                                                      RHIGraphicsCommandContext& context,
-                                                      const RHITextureViewRef& id_view,
-                                                      const RHITextureViewRef& depth_view, HitProxyTable& table)
+                                                     const GlobalShaderMap& global_shader_map,
+                                                     RHIGraphicsCommandContext& context,
+                                                     const RHITextureViewRef& id_view,
+                                                     const RHITextureViewRef& depth_view, HitProxyTable& table)
     {
-        return render_hit_proxy_pass(device, shader_program_cache, global_shader_map, context, view_infos(),
-                                     id_view, depth_view, table);
+        return render_hit_proxy_pass(device, shader_program_cache, global_shader_map, context, view_infos(), id_view,
+                                     depth_view, table);
     }
 
     RHIStatus ForwardSceneRenderer::render_scene_passes(RenderScene& render_scene, RHIDevice& device,
@@ -47,12 +49,10 @@ namespace toy3d
                                                         SceneRenderTargets& scene_render_targets,
                                                         const BuiltinMeshPassPrograms& mesh_pass_programs)
     {
-        const bool scene_targets_complete = scene_render_targets.scene_color_texture() &&
-                                            scene_render_targets.scene_color_view() &&
-                                            scene_render_targets.scene_color_shader_resource_view() &&
-                                            scene_render_targets.scene_depth_texture() &&
-                                            scene_render_targets.scene_depth_view() &&
-                                            scene_render_targets.scene_depth_shader_resource_view();
+        const bool scene_targets_complete =
+            scene_render_targets.scene_color_texture() && scene_render_targets.scene_color_view() &&
+            scene_render_targets.scene_color_shader_resource_view() && scene_render_targets.scene_depth_texture() &&
+            scene_render_targets.scene_depth_view() && scene_render_targets.scene_depth_shader_resource_view();
         if (!scene_targets_complete)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -67,42 +67,71 @@ namespace toy3d
         compute_scene_visibility(render_scene, view_infos());
         std::vector<const LightSceneData*> enabled_lights;
         for (const auto& light : render_scene.lights())
-            if (light->data.enabled) enabled_lights.push_back(&light->data);
+        {
+            if (light->data.enabled)
+            {
+                enabled_lights.push_back(&light->data);
+            }
+        }
         // Priority selects the sole directional light; registration order only breaks ties.
         std::stable_sort(enabled_lights.begin(), enabled_lights.end(),
-            [](const LightSceneData* left, const LightSceneData* right)
-            { return left->priority > right->priority; });
+                         [](const LightSceneData* left, const LightSceneData* right)
+                         {
+                             return left->priority > right->priority;
+                         });
         const LightSceneData* directional_light = nullptr;
         std::size_t directional_count = 0u;
         for (const LightSceneData* light : enabled_lights)
+        {
             if (light->kind == LightKind::Directional)
             {
-                if (!directional_light) directional_light = light;
+                if (!directional_light)
+                {
+                    directional_light = light;
+                }
                 ++directional_count;
             }
+        }
         ShadowRenderTargets& shadow_targets = scene_render_targets.shadow_targets();
         const LightSceneData* shadow_light = thumbnail_preview_ ? nullptr : directional_light;
-        const std::size_t cascade_count = shadow_light ? static_cast<std::size_t>(shadow_light->shadow_cascade_count) : 1u;
+        const std::size_t cascade_count =
+            shadow_light ? static_cast<std::size_t>(shadow_light->shadow_cascade_count) : 1u;
         const std::uint32_t requested_resolution = shadow_light
-            ? static_cast<std::uint32_t>(shadow_light->shadow_map_resolution) : LightSceneData::k_default_shadow_resolution;
-        RHIStatus status = shadow_targets.ensure_views(device, view_infos().size(), cascade_count, requested_resolution);
-        if (!status) return status;
-        status = compute_shadow_visibility(render_scene, shadow_light, view_infos(), shadow_targets.layout().max_resolution);
-        if (!status) return status;
+                                                       ? static_cast<std::uint32_t>(shadow_light->shadow_map_resolution)
+                                                       : LightSceneData::k_default_shadow_resolution;
+        RHIStatus status =
+            shadow_targets.ensure_views(device, view_infos().size(), cascade_count, requested_resolution);
+        if (!status)
+        {
+            return status;
+        }
+        status =
+            compute_shadow_visibility(render_scene, shadow_light, view_infos(), shadow_targets.layout().max_resolution);
+        if (!status)
+        {
+            return status;
+        }
         if (thumbnail_preview_)
         {
             // A missing draw must not publish a blank image as a valid cache.
             // Retry after the frame transaction rolls back pending uploads.
             if (view_infos().size() != 1)
+            {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Thumbnail requires exactly one view.");
+            }
             std::size_t expected = 0;
             for (const auto* primitive : view_infos().front().visible_primitives())
             {
                 const auto* proxy = dynamic_cast<const StaticMeshSceneProxy*>(primitive->proxy());
-                if (proxy && proxy->render_data()) expected += proxy->render_data()->sections().size();
+                if (proxy && proxy->render_data())
+                {
+                    expected += proxy->render_data()->sections().size();
+                }
             }
             if (expected == 0 || view_infos().front().mesh_batches().size() != expected)
+            {
                 return RHIStatus::failure(RHIErrorCode::NotReady, "Thumbnail mesh is not completely drawable yet.");
+            }
         }
         status = create_view_shader_bindings(device, context, view_infos());
         if (!status)
@@ -122,9 +151,12 @@ namespace toy3d
 
         for (std::size_t view_index = 0; view_index < view_infos().size(); ++view_index)
         {
-            status = render_shadow_pass(device, shader_program_cache, context, view_infos()[view_index],
-                                        shadow_targets, view_index, mesh_pass_programs.shadow_depth_default);
-            if (!status) return status;
+            status = render_shadow_pass(device, shader_program_cache, context, view_infos()[view_index], shadow_targets,
+                                        view_index, mesh_pass_programs.shadow_depth_default);
+            if (!status)
+            {
+                return status;
+            }
         }
 
         std::vector<RHIResourceTransition> scene_attachment_transitions;
@@ -155,7 +187,6 @@ namespace toy3d
             }
         }
 
-
         std::vector<RHIBindingSetRef> lighting_bindings(view_infos().size());
         bool needs_lighting_binding = false;
         for (const ViewInfo& view : view_infos())
@@ -163,9 +194,17 @@ namespace toy3d
             for (const MeshBatch& batch : view.mesh_batches())
             {
                 const auto& program = batch.material_render_proxy().shader_program();
-                if (!program) continue;
+                if (!program)
+                {
+                    continue;
+                }
                 for (const ShaderMapBinding& binding : program->data().bindings)
-                    if (binding.group == RHIBindingGroup::Pass) needs_lighting_binding = true;
+                {
+                    if (binding.group == RHIBindingGroup::Pass)
+                    {
+                        needs_lighting_binding = true;
+                    }
+                }
             }
         }
         // Empty/unlit draws do not require a lighting upload or a Pass binding.
@@ -185,14 +224,18 @@ namespace toy3d
                 if (directional_light)
                 {
                     const Vector3 radiance = directional_light->color * directional_light->intensity;
-                    lighting.scene_light_direction = Vector4(-directional_light->direction.x,
-                        -directional_light->direction.y, -directional_light->direction.z, 0);
+                    lighting.scene_light_direction =
+                        Vector4(-directional_light->direction.x, -directional_light->direction.y,
+                                -directional_light->direction.z, 0);
                     lighting.scene_light_color = Vector4(radiance, 0.0f);
                 }
                 point_count = 0u;
                 for (const LightSceneData* light : enabled_lights)
                 {
-                    if (light->kind != LightKind::Point || light->intensity <= 0.0f) continue;
+                    if (light->kind != LightKind::Point || light->intensity <= 0.0f)
+                    {
+                        continue;
+                    }
                     if (point_count < max_point_lights)
                     {
                         const Vector3 radiance = light->color * light->intensity;
@@ -210,23 +253,25 @@ namespace toy3d
                 lighting.shadow_cascade_0_world_to_clip = view.shadow_cascade(0u).world_to_clip;
                 lighting.shadow_cascade_1_world_to_clip = view.shadow_cascade(1u).world_to_clip;
                 lighting.shadow_cascade_2_world_to_clip = view.shadow_cascade(2u).world_to_clip;
-                lighting.shadow_distance_data = Vector4(view.shadow_effective_end(), view.shadow_fade_start(),
-                                                         view.shadow_active() ? static_cast<float>(view.shadow_cascade_count()) : 0.0f, 0.0f);
+                lighting.shadow_distance_data =
+                    Vector4(view.shadow_effective_end(), view.shadow_fade_start(),
+                            view.shadow_active() ? static_cast<float>(view.shadow_cascade_count()) : 0.0f, 0.0f);
                 lighting.shadow_split_data = Vector4(view.shadow_split(0u).x, view.shadow_split(0u).y,
                                                      view.shadow_split(1u).x, view.shadow_split(1u).y);
-                lighting.shadow_receiver_parameters = Vector4(view.shadow_cascade(0u).transition_scale,
-                    view.shadow_cascade(1u).transition_scale,
-                    view.shadow_cascade(2u).transition_scale,
-                    directional_light ? directional_light->shadow_receiver_bias : 0.0f);
+                lighting.shadow_receiver_parameters =
+                    Vector4(view.shadow_cascade(0u).transition_scale, view.shadow_cascade(1u).transition_scale,
+                            view.shadow_cascade(2u).transition_scale,
+                            directional_light ? directional_light->shadow_receiver_bias : 0.0f);
                 const ShadowAtlasLayout& atlas = shadow_targets.layout();
-                lighting.shadow_texel_size = Vector4(1.0f / static_cast<float>(atlas.width),
-                    1.0f / static_cast<float>(atlas.height), static_cast<float>(atlas.width), static_cast<float>(atlas.height));
+                lighting.shadow_texel_size =
+                    Vector4(1.0f / static_cast<float>(atlas.width), 1.0f / static_cast<float>(atlas.height),
+                            static_cast<float>(atlas.width), static_cast<float>(atlas.height));
                 // Regions are pixel offsets and usable sizes. Inactive regions remain zero and are never sampled.
                 const auto tile_region = [](const ShadowCascadeTile& tile)
                 {
                     return Vector4(static_cast<float>(tile.x + ShadowCascadeTile::k_border),
-                        static_cast<float>(tile.y + ShadowCascadeTile::k_border),
-                        static_cast<float>(tile.resolution()), static_cast<float>(tile.resolution()));
+                                   static_cast<float>(tile.y + ShadowCascadeTile::k_border),
+                                   static_cast<float>(tile.resolution()), static_cast<float>(tile.resolution()));
                 };
                 lighting.shadow_cascade_0_region = tile_region(atlas.tiles[0]);
                 lighting.shadow_cascade_1_region = tile_region(atlas.tiles[1]);
@@ -234,12 +279,19 @@ namespace toy3d
                 lighting.shadow_atlas = shadow_targets.shader_view(view_index);
                 lighting.shadow_sampler = shadow_targets.sampler();
                 auto created = create_transient_shader_binding(device, context, lighting);
-                if (!created) return created.status();
+                if (!created)
+                {
+                    return created.status();
+                }
                 lighting_bindings[view_index] = std::move(created).value();
             }
             const bool overflow = point_count > max_point_lights || directional_count > 1;
             if (overflow && !render_scene.light_limit_reported())
-                TOY_LOG_WARN("Forward lighting uses only the highest-priority enabled directional light and {} point lights.", max_point_lights);
+            {
+                TOY_LOG_WARN(
+                    "Forward lighting uses only the highest-priority enabled directional light and {} point lights.",
+                    max_point_lights);
+            }
             render_scene.set_light_limit_reported(overflow);
         }
         BasePassInputs inputs{view_infos(), scene_render_targets.scene_color_view(),
@@ -289,8 +341,8 @@ namespace toy3d
             if (rect_x >= output_extent.width || rect_y >= output_extent.height ||
                 view_rect.width > output_extent.width - rect_x || view_rect.height > output_extent.height - rect_y)
             {
-                TOY_LOG_ERROR(
-                    "ForwardSceneRenderer init_views rejected View {} with an out-of-bounds view rect.", view_index);
+                TOY_LOG_ERROR("ForwardSceneRenderer init_views rejected View {} with an out-of-bounds view rect.",
+                              view_index);
                 return false;
             }
             if (!is_finite(scene_view.camera_position()) || !is_finite(scene_view.camera_orientation()) ||

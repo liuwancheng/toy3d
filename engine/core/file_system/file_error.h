@@ -46,17 +46,33 @@ namespace toy3d
     template <typename T> class FileResult
     {
       public:
-        explicit FileResult(T value) : value_(std::move(value)) {}
+        explicit FileResult(T value) : value_(std::move(value))
+        {
+        }
 
-        explicit FileResult(FileStatus status) : status_(std::move(status)) {}
+        explicit FileResult(FileStatus status) : status_(std::move(status))
+        {
+        }
 
-        bool succeeded() const { return value_.has_value() && status_.succeeded(); }
+        bool succeeded() const
+        {
+            return value_.has_value() && status_.succeeded();
+        }
 
-        const FileStatus& status() const { return status_; }
+        const FileStatus& status() const
+        {
+            return status_;
+        }
 
-        const T& value() const { return value_.value(); }
+        const T& value() const
+        {
+            return value_.value();
+        }
 
-        T& value() { return value_.value(); }
+        T& value()
+        {
+            return value_.value();
+        }
 
       private:
         // optional keeps a failed result from containing a fabricated T while

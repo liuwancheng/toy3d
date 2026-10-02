@@ -58,9 +58,15 @@ namespace toy3d::shader
     class FileShaderSourceProvider final : public ShaderSourceProvider
     {
       public:
-        explicit FileShaderSourceProvider(const FileSystem& files) : files_(files) {}
-        const std::string& validation_error() const override { return error_; }
+        explicit FileShaderSourceProvider(const FileSystem& files) : files_(files)
+        {
+        }
+        const std::string& validation_error() const override
+        {
+            return error_;
+        }
         ShaderSourceLoadResult load(const std::string& virtual_path) const override;
+
       private:
         const FileSystem& files_;
         std::string error_;

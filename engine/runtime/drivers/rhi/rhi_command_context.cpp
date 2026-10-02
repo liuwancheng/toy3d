@@ -61,8 +61,8 @@ namespace toy3d
         return upload_buffer_impl(desc);
     }
 
-    RHIResult<RHIUniformBufferSlice>
-    RHICommandContext::upload_transient_uniform_data(const RHITransientUniformDataDesc& desc)
+    RHIResult<RHIUniformBufferSlice> RHICommandContext::upload_transient_uniform_data(
+        const RHITransientUniformDataDesc& desc)
     {
         const RHIStatus validation = validate_transient_uniform_data_desc(desc);
         if (!validation)
@@ -79,12 +79,12 @@ namespace toy3d
         return result;
     }
 
-    RHIResult<RHIUniformBufferSlice>
-    RHICommandContext::upload_transient_uniform_data_impl(const RHITransientUniformDataDesc& desc)
+    RHIResult<RHIUniformBufferSlice> RHICommandContext::upload_transient_uniform_data_impl(
+        const RHITransientUniformDataDesc& desc)
     {
         (void)desc;
-        return RHIResult<RHIUniformBufferSlice>::failure(
-            RHIErrorCode::Unsupported, "Transient uniform data is unsupported by this RHI backend.");
+        return RHIResult<RHIUniformBufferSlice>::failure(RHIErrorCode::Unsupported,
+                                                         "Transient uniform data is unsupported by this RHI backend.");
     }
 
     RHIStatus RHICommandContext::copy_texture(const RHITextureCopyDesc& desc)
@@ -120,9 +120,10 @@ namespace toy3d
     {
         const RHIStatus validation = validate_texture_pixel_readback_desc(desc);
         if (!validation)
+        {
             return validation;
-        if (!desc.source.texture->is_owned_by(*owner_device()) ||
-            !desc.destination->is_owned_by(*owner_device()))
+        }
+        if (!desc.source.texture->is_owned_by(*owner_device()) || !desc.destination->is_owned_by(*owner_device()))
         {
             return foreign_object("Pixel readback");
         }
@@ -131,20 +132,29 @@ namespace toy3d
 
     RHIStatus RHICommandContext::readback_texture_pixel_impl(const RHITexturePixelReadbackDesc&)
     {
-        return RHIStatus::failure(RHIErrorCode::Unsupported,
-                                  "This RHI backend does not support pixel readback.");
+        return RHIStatus::failure(RHIErrorCode::Unsupported, "This RHI backend does not support pixel readback.");
     }
 
     RHIStatus RHICommandContext::readback_texture(const RHITextureReadbackDesc& desc)
     {
         const RHIStatus validation = validate_texture_readback_desc(desc);
-        if (!validation) return validation;
+        if (!validation)
+        {
+            return validation;
+        }
         if (!desc.source.texture->is_owned_by(*owner_device()) || !desc.destination->is_owned_by(*owner_device()))
+        {
             return foreign_object("Texture readback");
+        }
         if (desc.destination->copy_recorded_ || desc.destination->last_use_completion_value() != 0)
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback is single-use.");
+        }
         const auto status = readback_texture_impl(desc);
-        if (status) desc.destination->copy_recorded_ = true;
+        if (status)
+        {
+            desc.destination->copy_recorded_ = true;
+        }
         return status;
     }
 
@@ -180,8 +190,7 @@ namespace toy3d
                 return foreign_object("Render pass");
             }
         }
-        if (desc.has_depth_stencil_attachment &&
-            !desc.depth_stencil_attachment.view->is_owned_by(*owner_device()))
+        if (desc.has_depth_stencil_attachment && !desc.depth_stencil_attachment.view->is_owned_by(*owner_device()))
         {
             return foreign_object("Render pass");
         }

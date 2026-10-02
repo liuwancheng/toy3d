@@ -19,7 +19,7 @@ namespace
             std::exit(1);
         }
     }
-}
+} // namespace
 
 int main()
 {
@@ -29,9 +29,8 @@ int main()
     check(writer.write_float32(1.0f).succeeded(), "float32 write failed");
     check(writer.write_bool(true).succeeded(), "bool write failed");
     check(writer.write_utf8("A").succeeded(), "UTF-8 write failed");
-    const std::vector<std::uint8_t> expected = {0x34u, 0x12u, 0xfeu, 0xffu, 0xffu, 0xffu,
-                                                 0x00u, 0x00u, 0x80u, 0x3fu, 0x01u, 0x01u,
-                                                 0x00u, 0x00u, 0x00u, 0x41u};
+    const std::vector<std::uint8_t> expected = {0x34u, 0x12u, 0xfeu, 0xffu, 0xffu, 0xffu, 0x00u, 0x00u,
+                                                0x80u, 0x3fu, 0x01u, 0x01u, 0x00u, 0x00u, 0x00u, 0x41u};
     check(writer.bytes() == expected, "value bytes are not canonical little endian");
 
     toy3d::ValueReader reader(expected);
@@ -69,8 +68,7 @@ int main()
               int64_value == std::numeric_limits<std::int64_t>::min() &&
               wide_reader.read_uint64(uint64_value).succeeded() &&
               uint64_value == std::numeric_limits<std::uint64_t>::max() &&
-              wide_reader.read_float64(double_value).succeeded() && double_value == -1.5 &&
-              wide_reader.at_end(),
+              wide_reader.read_float64(double_value).succeeded() && double_value == -1.5 && wide_reader.at_end(),
           "fixed width value roundtrip failed");
 
     toy3d::ValueWriter invalid_writer;
@@ -112,14 +110,12 @@ int main()
     toy3d::ValueWriter limited(limits);
     check(limited.write_array_length(3).code == toy3d::ValueErrorCode::TooLarge && limited.bytes().empty(),
           "array limit was ignored");
-    check(limited.enter_depth().succeeded() &&
-              limited.enter_depth().code == toy3d::ValueErrorCode::DepthExceeded,
+    check(limited.enter_depth().succeeded() && limited.enter_depth().code == toy3d::ValueErrorCode::DepthExceeded,
           "writer depth limit was ignored");
     limited.leave_depth();
     check(limited.write_utf8("abc").code == toy3d::ValueErrorCode::TooLarge && limited.bytes().empty(),
           "string limit was ignored");
-    check(limited.write_uint32(1u).succeeded() &&
-              limited.write_uint8(2u).code == toy3d::ValueErrorCode::TooLarge,
+    check(limited.write_uint32(1u).succeeded() && limited.write_uint8(2u).code == toy3d::ValueErrorCode::TooLarge,
           "byte limit was ignored");
     toy3d::ValueReader oversized_reader(expected, limits);
     check(oversized_reader.read_uint16(uint16_value).code == toy3d::ValueErrorCode::TooLarge,
@@ -139,28 +135,49 @@ int main()
     check(old_half_extent.write_float32(2.0f).succeeded(), "old field fixture failed");
     toy3d::ValueWriter old_schema;
     check(old_schema.write_array_length(1).succeeded() && old_schema.write_utf8("half_extent").succeeded() &&
-              old_schema.write_uint8(1u).succeeded() &&
-              old_schema.write_blob(old_half_extent.bytes()).succeeded(), "old schema fixture failed");
+              old_schema.write_uint8(1u).succeeded() && old_schema.write_blob(old_half_extent.bytes()).succeeded(),
+          "old schema fixture failed");
     toy3d::SchemaMigrationRegistry migrations;
-    check(migrations.add_step("toy3d.CollisionBox", 1, [](toy3d::SchemaFields& fields)
-    {
-        toy3d::ValueStatus status = toy3d::rename_schema_field(fields, "half_extent", "half_extents");
-        if (!status.succeeded()) return status;
-        return toy3d::convert_schema_field(fields, "half_extents",
-            [](const std::vector<std::uint8_t>& old_bytes, std::vector<std::uint8_t>& new_bytes)
-        {
-            toy3d::ValueReader old_reader(old_bytes);
-            float scalar = 0.0f;
-            toy3d::ValueStatus status = old_reader.read_float32(scalar);
-            if (!status.succeeded()) return status;
-            if (!old_reader.at_end()) return old_reader.failure(toy3d::ValueErrorCode::InvalidValue, "old field has trailing bytes");
-            toy3d::ValueWriter new_writer;
-            status = toy3d::encode_value(new_writer, toy3d::Vector3{scalar, scalar, scalar});
-            if (status.succeeded()) new_bytes = new_writer.bytes();
-            return status;
-        });
-    }), "migration registration failed");
-    check(!migrations.add_step("toy3d.CollisionBox", 1, [](toy3d::SchemaFields&) { return toy3d::ValueStatus::success(); }),
+    check(migrations.add_step(
+              "toy3d.CollisionBox", 1,
+              [](toy3d::SchemaFields& fields)
+              {
+                  toy3d::ValueStatus status = toy3d::rename_schema_field(fields, "half_extent", "half_extents");
+                  if (!status.succeeded())
+                  {
+                      return status;
+                  }
+                  return toy3d::convert_schema_field(
+                      fields, "half_extents",
+                      [](const std::vector<std::uint8_t>& old_bytes, std::vector<std::uint8_t>& new_bytes)
+                      {
+                          toy3d::ValueReader old_reader(old_bytes);
+                          float scalar = 0.0f;
+                          toy3d::ValueStatus status = old_reader.read_float32(scalar);
+                          if (!status.succeeded())
+                          {
+                              return status;
+                          }
+                          if (!old_reader.at_end())
+                          {
+                              return old_reader.failure(toy3d::ValueErrorCode::InvalidValue,
+                                                        "old field has trailing bytes");
+                          }
+                          toy3d::ValueWriter new_writer;
+                          status = toy3d::encode_value(new_writer, toy3d::Vector3{scalar, scalar, scalar});
+                          if (status.succeeded())
+                          {
+                              new_bytes = new_writer.bytes();
+                          }
+                          return status;
+                      });
+              }),
+          "migration registration failed");
+    check(!migrations.add_step("toy3d.CollisionBox", 1,
+                               [](toy3d::SchemaFields&)
+                               {
+                                   return toy3d::ValueStatus::success();
+                               }),
           "duplicate migration step was accepted");
     std::vector<std::uint8_t> migrated;
     check(migrations.migrate("toy3d.CollisionBox", 1, 2, old_schema.bytes(), migrated).succeeded(),
@@ -178,13 +195,16 @@ int main()
     toy3d::ValueReader extent_reader(migrated_field);
     toy3d::Vector3 half_extents;
     check(toy3d::decode_value(extent_reader, half_extents).succeeded() && extent_reader.at_end() &&
-              half_extents == toy3d::Vector3{2.0f, 2.0f, 2.0f}, "field type conversion failed");
+              half_extents == toy3d::Vector3{2.0f, 2.0f, 2.0f},
+          "field type conversion failed");
     const std::vector<std::uint8_t> published = migrated;
     check(migrations.migrate("toy3d.CollisionBox", 2, 1, old_schema.bytes(), migrated).code ==
-              toy3d::ValueErrorCode::InvalidValue && migrated == published,
+                  toy3d::ValueErrorCode::InvalidValue &&
+              migrated == published,
           "newer schema changed published output");
     check(migrations.migrate("toy3d.Unknown", 1, 2, old_schema.bytes(), migrated).code ==
-              toy3d::ValueErrorCode::InvalidValue && migrated == published,
+                  toy3d::ValueErrorCode::InvalidValue &&
+              migrated == published,
           "missing migration changed published output");
     return 0;
 }

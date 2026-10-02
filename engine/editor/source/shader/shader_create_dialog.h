@@ -13,7 +13,11 @@ namespace toy3d
       public:
         void request();
         void draw(ShaderWorkflow& shaders, EditorNotifications& notifications);
-        bool active() const { return active_; }
+        bool active() const
+        {
+            return active_;
+        }
+
       private:
         std::array<char, 256u> name_{};
         std::array<char, 512u> path_{};
@@ -23,4 +27,4 @@ namespace toy3d
         bool active_ = false;
         bool open_ = false;
     };
-}
+} // namespace toy3d

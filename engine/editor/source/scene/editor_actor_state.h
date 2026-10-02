@@ -27,8 +27,10 @@ namespace toy3d
         std::vector<EditorComponentSnapshot> components;
     };
 
-    EditorActorState capture_actor_state(const Actor& actor, const ComponentEditorRegistry& editors, const ActorTypeRegistry* types = nullptr);
-    bool apply_actor_state(Actor& actor, const EditorActorState& state, const ComponentEditorRegistry& editors, const ActorTypeRegistry* types = nullptr);
+    EditorActorState capture_actor_state(const Actor& actor, const ComponentEditorRegistry& editors,
+                                         const ActorTypeRegistry* types = nullptr);
+    bool apply_actor_state(Actor& actor, const EditorActorState& state, const ComponentEditorRegistry& editors,
+                           const ActorTypeRegistry* types = nullptr);
     bool same_actor_state(const EditorActorState& a, const EditorActorState& b);
     bool restore_actor_attachments(Actor& actor, const EditorActorState& state);
-}
+} // namespace toy3d

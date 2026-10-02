@@ -20,7 +20,7 @@ CPU DTO/验证/格式在 engine/core，导入与构建在 engine/tools，运行�
 
 - reflection_macros.h 的标记不改变 C++ ABI；仅显式标记的 public struct/field/enum 进入 codegen。类型/字段身份稳定 ASCII，标记与声明分行，不把未标记成员自动扫描成 contract。
 - Edit 表示可编辑，Visible 表示只读显示，Transient 不保存；未标记排除，已标记且非 Transient 才持久化。UI hints 不代替值/整体对象验证。
-- CMake 显式登记输入，codegen 不做完整预处理/include 展开；支持受控数值/string/math/嵌套/vector/有限 variant/AssetRef，拒绝指针、private、未知类型。生成文件进入 build，不手改产物。
+- CMake 显式登记输入，codegen 不做完整预处理/include 展开；标记后的字段声明可跨行，到分号结束，换行不改变字段语义；支持受控数值/string/math/嵌套/vector/有限 variant/AssetRef，拒绝指针、private、未知类型及不完整声明。生成文件进入 build，不手改产物。
 - TypeRegistry 显式注册、冻结，各可执行文件只注册需要的 schema。DTO 不包含 runtime/editor/native handles。
 - binary 编码固定宽度 little-endian；string 是有界 UTF-8，数组/嵌套深度/总字节均有界；错误含 offset/path。未知 required 拒绝；UnknownOptionalField 必须保持只读，不能未知数据丢失后保存成功。
 - schema migration 是显式整候选转换并验证，不能靠默认填充静默迁移单位/格式。

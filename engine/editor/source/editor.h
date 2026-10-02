@@ -36,14 +36,26 @@ namespace toy3d
     {
       public:
         explicit EditorApplication(EditorWorkspace& workspace, std::shared_ptr<LogBuffer> log_buffer = {},
-            EditorProject* project = nullptr, std::string saved_root = {}, const ActorTypeRegistry* actors = nullptr, PhysicalPath game_executable = {})
-            : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
-              thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer), notifications_(std::move(log_buffer))
-        { if (actors) actor_factory_.actor_types() = *actors; game_executable_ = std::move(game_executable); }
+                                   EditorProject* project = nullptr, std::string saved_root = {},
+                                   const ActorTypeRegistry* actors = nullptr, PhysicalPath game_executable = {})
+            : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)),
+              scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
+              thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer),
+              notifications_(std::move(log_buffer))
+        {
+            if (actors)
+            {
+                actor_factory_.actor_types() = *actors;
+            }
+            game_executable_ = std::move(game_executable);
+        }
 
       protected:
         bool on_initialize() override;
-        bool starts_world_play() const override { return false; }
+        bool starts_world_play() const override
+        {
+            return false;
+        }
         void on_shutdown() override;
         bool on_close_requested() override;
         void on_build_ui() override;
@@ -51,18 +63,43 @@ namespace toy3d
         bool on_hit_proxy_request(HitProxyRequest& request) override;
         void on_hit_proxy_result(const HitProxyResult& result) override;
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override;
-        bool uses_preview_scene() const override { return true; }
+        bool uses_preview_scene() const override
+        {
+            return true;
+        }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override;
         void on_tick(double) override;
-        void on_collect_material_validation(std::vector<MaterialProgramValidationRef>& requests) override { if (shader_workflow_ready_) shaders_.collect_validation(requests); }
-        void on_collect_builtin_shader_updates(std::vector<BuiltinShaderUpdateRef>& requests) override { if (shader_workflow_ready_) shaders_.collect_builtin_updates(requests); }
+        void on_collect_material_validation(std::vector<MaterialProgramValidationRef>& requests) override
+        {
+            if (shader_workflow_ready_)
+            {
+                shaders_.collect_validation(requests);
+            }
+        }
+        void on_collect_builtin_shader_updates(std::vector<BuiltinShaderUpdateRef>& requests) override
+        {
+            if (shader_workflow_ready_)
+            {
+                shaders_.collect_builtin_updates(requests);
+            }
+        }
         void on_collect_ui_render_work(UiRenderWork& work) override
-        { thumbnails_.collect_render_work(work); texture_preview_.collect_render_work(work); }
+        {
+            thumbnails_.collect_render_work(work);
+            texture_preview_.collect_render_work(work);
+        }
         void on_ui_texture_result(UiTextureResult result) override
-        { texture_preview_.on_texture_result(result); thumbnails_.on_texture_result(std::move(result)); }
+        {
+            texture_preview_.on_texture_result(result);
+            thumbnails_.on_texture_result(std::move(result));
+        }
         std::vector<ImGuiTextureId> ui_texture_ids() const override
-        { auto ids = thumbnails_.texture_ids(); const auto preview = texture_preview_.texture_ids();
-          ids.insert(ids.end(), preview.begin(), preview.end()); return ids; }
+        {
+            auto ids = thumbnails_.texture_ids();
+            const auto preview = texture_preview_.texture_ids();
+            ids.insert(ids.end(), preview.begin(), preview.end());
+            return ids;
+        }
 
       private:
         EditorWorkspace& workspace_;
@@ -133,7 +170,14 @@ namespace toy3d
         void apply_scene_history(bool redo);
         std::string model_error_;
         std::string material_assignment_error_;
-        enum class SceneAction { None, New, Open, Exit, SwitchProject };
+        enum class SceneAction
+        {
+            None,
+            New,
+            Open,
+            Exit,
+            SwitchProject
+        };
         SceneAction pending_scene_action_ = SceneAction::None;
         AssetId pending_scene_id_;
         bool show_scene_save_as_ = false;
@@ -148,6 +192,5 @@ namespace toy3d
         void request_scene_action(SceneAction action, const AssetId& id = {});
         void draw_scene_dialogs();
         bool scene_dirty() const;
-
     };
 } // namespace toy3d

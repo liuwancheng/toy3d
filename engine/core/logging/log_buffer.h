@@ -13,7 +13,13 @@ namespace toy3d
 {
     enum class LogLevel : std::uint8_t
     {
-        TOY_TRACE, TOY_DEBUG, TOY_INFO, TOY_WARN, TOY_ERROR, TOY_CRITICAL, TOY_OFF
+        TOY_TRACE,
+        TOY_DEBUG,
+        TOY_INFO,
+        TOY_WARN,
+        TOY_ERROR,
+        TOY_CRITICAL,
+        TOY_OFF
     };
     constexpr std::size_t log_level_count = static_cast<std::size_t>(LogLevel::TOY_OFF);
 
@@ -76,4 +82,4 @@ namespace toy3d
         std::string file_path_;
         std::string output_error_;
     };
-}
+} // namespace toy3d

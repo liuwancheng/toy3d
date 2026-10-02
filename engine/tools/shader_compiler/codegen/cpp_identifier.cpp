@@ -25,23 +25,31 @@ namespace toy3d::shader
         bool is_ascii_identifier(std::string_view value)
         {
             if (value.empty() || (!is_ascii_letter(value.front()) && value.front() != '_'))
+            {
                 return false;
+            }
             return std::all_of(value.begin() + 1, value.end(),
                                [](char character)
-                               { return is_ascii_letter(character) || is_ascii_digit(character) || character == '_'; });
+                               {
+                                   return is_ascii_letter(character) || is_ascii_digit(character) || character == '_';
+                               });
         }
 
         char ascii_lower(char value)
         {
             if (value >= 'A' && value <= 'Z')
+            {
                 return static_cast<char>(value - 'A' + 'a');
+            }
             return value;
         }
 
         char ascii_upper(char value)
         {
             if (value >= 'a' && value <= 'z')
+            {
                 return static_cast<char>(value - 'a' + 'A');
+            }
             return value;
         }
 
@@ -73,44 +81,36 @@ namespace toy3d::shader
         bool is_cpp17_keyword(std::string_view value)
         {
             static const std::unordered_set<std::string> keywords = {
-                "alignas",      "alignof",       "and",          "and_eq",       "asm",
-                "auto",         "bitand",        "bitor",        "bool",         "break",
-                "case",         "catch",         "char",         "char16_t",      "char32_t",
-                "class",        "compl",         "const",        "constexpr",     "const_cast",
-                "continue",     "decltype",      "default",      "delete",        "do",
-                "double",       "dynamic_cast",  "else",         "enum",          "explicit",
-                "export",       "extern",        "false",        "float",         "for",
-                "friend",       "goto",          "if",           "inline",        "int",
-                "long",         "mutable",       "namespace",    "new",           "noexcept",
-                "not",          "not_eq",        "nullptr",      "operator",      "or",
-                "or_eq",        "private",       "protected",    "public",        "register",
-                "reinterpret_cast", "return",    "short",        "signed",        "sizeof",
-                "static",       "static_assert", "static_cast",  "struct",        "switch",
-                "template",     "this",          "thread_local", "throw",         "true",
-                "try",          "typedef",       "typeid",       "typename",       "union",
-                "unsigned",     "using",         "virtual",      "void",          "volatile",
-                "wchar_t",      "while",         "xor",          "xor_eq"};
+                "alignas",   "alignof",  "and",      "and_eq",    "asm",          "auto",          "bitand",
+                "bitor",     "bool",     "break",    "case",      "catch",        "char",          "char16_t",
+                "char32_t",  "class",    "compl",    "const",     "constexpr",    "const_cast",    "continue",
+                "decltype",  "default",  "delete",   "do",        "double",       "dynamic_cast",  "else",
+                "enum",      "explicit", "export",   "extern",    "false",        "float",         "for",
+                "friend",    "goto",     "if",       "inline",    "int",          "long",          "mutable",
+                "namespace", "new",      "noexcept", "not",       "not_eq",       "nullptr",       "operator",
+                "or",        "or_eq",    "private",  "protected", "public",       "register",      "reinterpret_cast",
+                "return",    "short",    "signed",   "sizeof",    "static",       "static_assert", "static_cast",
+                "struct",    "switch",   "template", "this",      "thread_local", "throw",         "true",
+                "try",       "typedef",  "typeid",   "typename",  "union",        "unsigned",      "using",
+                "virtual",   "void",     "volatile", "wchar_t",   "while",        "xor",           "xor_eq"};
             return keywords.find(std::string(value)) != keywords.end();
         }
 
         void add_invalid(std::vector<Diagnostic>& diagnostics, const SourceLocation& location,
                          std::string_view category, std::string_view name)
         {
-            diagnostics.push_back({DiagnosticSeverity::Error,
-                                   DiagnosticCode::InvalidGeneratedIdentifier,
-                                   location,
-                                   std::string(category) + " name '" + std::string(name) +
-                                       "' cannot map to a valid C++17 identifier."});
+            diagnostics.push_back(
+                {DiagnosticSeverity::Error, DiagnosticCode::InvalidGeneratedIdentifier, location,
+                 std::string(category) + " name '" + std::string(name) + "' cannot map to a valid C++17 identifier."});
         }
 
         void add_collision(std::vector<Diagnostic>& diagnostics, const SourceLocation& location,
                            std::string_view category, std::string_view name, std::string_view generated)
         {
-            diagnostics.push_back({DiagnosticSeverity::Error,
-                                   DiagnosticCode::GeneratedIdentifierConflict,
-                                   location,
-                                   std::string(category) + " name '" + std::string(name) + "' maps to C++ identifier '" +
-                                       std::string(generated) + "', which is already used; numeric suffixes are not added."});
+            diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::GeneratedIdentifierConflict, location,
+                                   std::string(category) + " name '" + std::string(name) +
+                                       "' maps to C++ identifier '" + std::string(generated) +
+                                       "', which is already used; numeric suffixes are not added."});
         }
 
         bool map_shader_name(const ShaderAsset& asset, CppShaderParameterIdentifiers& output,
@@ -128,11 +128,15 @@ namespace toy3d::shader
                     return false;
                 }
                 if (!output.header_stem.empty())
+                {
                     output.header_stem += '_';
+                }
                 output.header_stem += snake_case_identifier(segment);
                 output.shader_type_stem += pascal_case_identifier(segment);
                 if (end == std::string::npos)
+                {
                     break;
+                }
                 begin = end + 1;
             }
             return true;
@@ -174,7 +178,9 @@ namespace toy3d::shader
         CppIdentifierMappingResult result;
         CppShaderParameterIdentifiers identifiers;
         if (!map_shader_name(asset, identifiers, result.diagnostics))
+        {
             return result;
+        }
 
         std::unordered_map<std::string, std::string> generated_types;
         for (const ShaderPass& pass : asset.passes)
@@ -192,8 +198,7 @@ namespace toy3d::shader
             const std::string type_collision_key = snake_case_identifier(pass_identifiers.parameters_type);
             if (generated_types.find(type_collision_key) != generated_types.end())
             {
-                add_collision(result.diagnostics, pass.location, "Pass", pass.name,
-                              pass_identifiers.parameters_type);
+                add_collision(result.diagnostics, pass.location, "Pass", pass.name, pass_identifiers.parameters_type);
             }
             else
             {
@@ -213,15 +218,17 @@ namespace toy3d::shader
             {
                 if (resource.group == BindingGroup::Pass)
                 {
-                    append_field(resource.name, resource.group, resource.location, pass_identifiers,
-                                 generated_fields, result.diagnostics, "Resource");
+                    append_field(resource.name, resource.group, resource.location, pass_identifiers, generated_fields,
+                                 result.diagnostics, "Resource");
                 }
             }
             identifiers.passes.push_back(std::move(pass_identifiers));
         }
 
         if (result.diagnostics.empty())
+        {
             result.identifiers = std::move(identifiers);
+        }
         return result;
     }
 } // namespace toy3d::shader

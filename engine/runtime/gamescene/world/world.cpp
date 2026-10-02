@@ -114,7 +114,10 @@ namespace toy3d
     World::ActorStorage::iterator World::find_actor(Actor& actor)
     {
         return std::find_if(actors_.begin(), actors_.end(),
-                            [&actor](const std::unique_ptr<Actor>& candidate) { return candidate.get() == &actor; });
+                            [&actor](const std::unique_ptr<Actor>& candidate)
+                            {
+                                return candidate.get() == &actor;
+                            });
     }
 
     std::uint32_t World::allocate_actor_id()
@@ -189,17 +192,24 @@ namespace toy3d
     bool World::contains(const Actor& actor) const
     {
         return std::any_of(actors_.begin(), actors_.end(),
-                           [&actor](const std::unique_ptr<Actor>& candidate) { return candidate.get() == &actor; });
+                           [&actor](const std::unique_ptr<Actor>& candidate)
+                           {
+                               return candidate.get() == &actor;
+                           });
     }
 
     Actor* World::find_actor_by_id(std::uint32_t actor_id) const
     {
         if (actor_id == 0u)
+        {
             return nullptr;
+        }
         for (const std::unique_ptr<Actor>& actor : actors_)
         {
             if (actor->actor_id() == actor_id && !actor->is_pending_destroy())
+            {
                 return actor.get();
+            }
         }
         return nullptr;
     }
@@ -211,21 +221,23 @@ namespace toy3d
         for (const std::unique_ptr<Actor>& actor : actors_)
         {
             if (!actor->is_pending_destroy() && actor->actor_id() != 0u)
+            {
                 ids.push_back(actor->actor_id());
+            }
         }
         return ids;
     }
 
     void World::mark_content_changed()
     {
-        content_revision_ = content_revision_ == (std::numeric_limits<std::uint64_t>::max)()
-                                ? 1u : content_revision_ + 1u;
+        content_revision_ =
+            content_revision_ == (std::numeric_limits<std::uint64_t>::max)() ? 1u : content_revision_ + 1u;
     }
 
     void World::mark_scene_changed()
     {
-        scene_generation_ = scene_generation_ == (std::numeric_limits<std::uint64_t>::max)()
-                                ? 1u : scene_generation_ + 1u;
+        scene_generation_ =
+            scene_generation_ == (std::numeric_limits<std::uint64_t>::max)() ? 1u : scene_generation_ + 1u;
     }
 
     bool World::bind_scene(SceneInterface& scene)

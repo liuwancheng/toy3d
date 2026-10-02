@@ -11,6 +11,9 @@ namespace toy3d
 
         virtual bool init();
         virtual void exit();
-        virtual const char* get_platform_name() const { return "AndroidPlatform"; };
+        virtual const char* get_platform_name() const
+        {
+            return "AndroidPlatform";
+        };
     };
 } // namespace toy3d

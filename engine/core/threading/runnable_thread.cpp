@@ -59,7 +59,11 @@ namespace toy3d
 
         {
             std::unique_lock<std::mutex> lock(created->state_mutex_);
-            created->init_condition_.wait(lock, [&created]() { return created->init_complete_; });
+            created->init_condition_.wait(lock,
+                                          [&created]()
+                                          {
+                                              return created->init_complete_;
+                                          });
             if (!created->init_status_.succeeded())
             {
                 const ThreadStatus failure = created->init_status_;

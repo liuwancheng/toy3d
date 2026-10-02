@@ -20,7 +20,10 @@ namespace
 
     bool check(bool condition, const char* message)
     {
-        if (!condition) std::cerr << "FAILED: " << message << '\n';
+        if (!condition)
+        {
+            std::cerr << "FAILED: " << message << '\n';
+        }
         return condition;
     }
 
@@ -30,9 +33,11 @@ namespace
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION info{};
-        if (!CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE,
-                            CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &startup, &info))
+        if (!CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_SUSPENDED,
+                            nullptr, nullptr, &startup, &info))
+        {
             return check(false, "create suspended process");
+        }
 
         toy3d::NativeHandle process(info.hProcess);
         toy3d::NativeHandle thread(info.hThread);
@@ -44,15 +49,15 @@ namespace
         {
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
             limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            passed &= check(SetInformationJobObject(containment.get(), JobObjectExtendedLimitInformation,
-                                                   &limits, sizeof(limits)) != FALSE,
+            passed &= check(SetInformationJobObject(containment.get(), JobObjectExtendedLimitInformation, &limits,
+                                                    sizeof(limits)) != FALSE,
                             "configure fault-test containment");
             passed &= check(AssignProcessToJobObject(containment.get(), process.get()) != FALSE,
                             "contain fault-test process");
         }
         HANDLE restricted_value = nullptr;
-        passed &= check(DuplicateHandle(GetCurrentProcess(), process.get(), GetCurrentProcess(),
-                                        &restricted_value, access, FALSE, 0) != FALSE,
+        passed &= check(DuplicateHandle(GetCurrentProcess(), process.get(), GetCurrentProcess(), &restricted_value,
+                                        access, FALSE, 0) != FALSE,
                         "create restricted process handle");
         toy3d::NativeHandle restricted(restricted_value);
         toy3d::NativeHandle job(CreateJobObjectW(nullptr, nullptr));
@@ -68,12 +73,13 @@ namespace
             passed &= check(elapsed < std::chrono::milliseconds(verification_timeout_ms),
                             "failed cleanup must return within a finite deadline");
             passed &= check(result.error == toy3d::ProcessError::Launch &&
-                            result.message.find("Original assignment failure.") == 0,
+                                result.message.find("Original assignment failure.") == 0,
                             "cleanup preserves original failure");
             passed &= check(result.message.find("Terminate uncontained process failed") != std::string::npos,
                             "termination failure is diagnosed");
             passed &= check(result.message.find(expect_timeout ? "exit was not confirmed" : "Reap process failed") !=
-                            std::string::npos, "timeout or wait failure is diagnosed");
+                                std::string::npos,
+                            "timeout or wait failure is diagnosed");
             passed &= check(result.exit_code == -1, "unconfirmed exit must not publish an exit code");
             passed &= check(job.get() == nullptr, "job is closed before returning from cleanup");
             passed &= check(WaitForSingleObject(process.get(), 0u) == WAIT_TIMEOUT,
@@ -88,11 +94,14 @@ namespace
                         "fault-test process termination confirmed");
         return passed;
     }
-}
+} // namespace
 
 int wmain(int count, wchar_t** values)
 {
-    if (count != 2) return 2;
+    if (count != 2)
+    {
+        return 2;
+    }
     // Missing PROCESS_TERMINATE causes a real failure; SYNCHRONIZE lets the
     // first case time out. The second handle also lacks SYNCHRONIZE.
     bool passed = check_uncontained_cleanup(values[1], PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, true);

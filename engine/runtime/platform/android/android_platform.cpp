@@ -7,5 +7,7 @@ namespace toy3d
         return true;
     }
 
-    void AndroidPlatform::exit() {}
+    void AndroidPlatform::exit()
+    {
+    }
 } // namespace toy3d

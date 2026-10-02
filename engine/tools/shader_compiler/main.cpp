@@ -31,7 +31,10 @@ namespace
     class LoggerLifetime
     {
       public:
-        ~LoggerLifetime() { toy3d::Logger::get_instance().exit(); }
+        ~LoggerLifetime()
+        {
+            toy3d::Logger::get_instance().exit();
+        }
     };
 
     void report_message(toy3d::Logger::Level level, const std::string& message)
@@ -102,17 +105,25 @@ namespace
         {
             std::vector<char> buffer(size, '\0');
             if (_NSGetExecutablePath(buffer.data(), &size) == 0)
+            {
                 path = toy3d::PhysicalPath(buffer.data());
+            }
         }
 #endif
         if (path.empty())
+        {
             path = toy3d::PhysicalPath(fallback_path);
+        }
         toy3d::FileResult<toy3d::PhysicalPath> normalized = platform_file.canonical(path);
         if (normalized.succeeded())
+        {
             return normalized;
+        }
         normalized = platform_file.absolute(path);
         if (!normalized.succeeded())
+        {
             error = normalized.status().message;
+        }
         return normalized;
     }
 } // namespace
@@ -162,8 +173,7 @@ int main(int argument_count, char** arguments)
         for (int index = command_index + 2; index < argument_count; ++index)
         {
             const std::string input_path = arguments[index];
-            const toy3d::FileResult<std::string> input =
-                platform_file.read_text_utf8(toy3d::PhysicalPath(input_path));
+            const toy3d::FileResult<std::string> input = platform_file.read_text_utf8(toy3d::PhysicalPath(input_path));
             if (!input.succeeded())
             {
                 report_message(toy3d::Logger::Level::TOY_ERROR,
@@ -172,31 +182,45 @@ int main(int argument_count, char** arguments)
             }
             const toy3d::shader::ParseResult parsed = toy3d::shader::parse_shader(input.value(), input_path);
             for (const toy3d::shader::Diagnostic& diagnostic : parsed.diagnostics)
+            {
                 report_diagnostic(diagnostic);
+            }
             if (!parsed.succeeded())
+            {
                 return 1;
-            const toy3d::shader::LogicalLayoutResult layout =
-                toy3d::shader::compile_logical_layout(*parsed.asset);
+            }
+            const toy3d::shader::LogicalLayoutResult layout = toy3d::shader::compile_logical_layout(*parsed.asset);
             for (const toy3d::shader::Diagnostic& diagnostic : layout.diagnostics)
+            {
                 report_diagnostic(diagnostic);
+            }
             if (!layout.succeeded())
+            {
                 return 1;
+            }
             toy3d::shader::ShaderParametersGeneratedUnit unit;
             unit.header = toy3d::shader::generate_shader_parameters_header(*parsed.asset, *layout.layout);
             for (const toy3d::shader::Diagnostic& diagnostic : unit.header.diagnostics)
+            {
                 report_diagnostic(diagnostic);
+            }
             if (!unit.header.succeeded())
+            {
                 return 1;
+            }
             unit.dependencies.push_back(input_path);
             units.push_back(std::move(unit));
         }
-        const toy3d::shader::ShaderParametersWriteResult written =
-            toy3d::shader::write_shader_parameter_headers(
-                platform_file, toy3d::PhysicalPath(arguments[command_index + 1]), units);
+        const toy3d::shader::ShaderParametersWriteResult written = toy3d::shader::write_shader_parameter_headers(
+            platform_file, toy3d::PhysicalPath(arguments[command_index + 1]), units);
         for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
+        {
             report_diagnostic(diagnostic);
+        }
         if (!written.succeeded())
+        {
             return 1;
+        }
         std::cout << "Generated " << written.outputs.size() << " Shader parameters header(s); "
                   << written.changed_outputs.size() << " changed and " << written.removed_outputs.size()
                   << " stale output(s) removed.\n";
@@ -243,7 +267,9 @@ int main(int argument_count, char** arguments)
             report_diagnostic(diagnostic);
         }
         if (!discovered.succeeded())
+        {
             return 1;
+        }
         TOY_LOG_INFO("Shader toolchain discovery succeeded for '{}'.", toolchain_root.utf8());
         std::cout << "Shader toolchain root: " << toolchain_root.utf8() << '\n'
                   << "Host platform: " << discovered.toolchain->manifest.host_platform << '\n'
@@ -313,9 +339,13 @@ int main(int argument_count, char** arguments)
         toy3d::shader::ToolchainDiscoveryResult discovered =
             toy3d::shader::discover_shader_toolchain(platform_file, toolchain_root);
         for (const toy3d::shader::Diagnostic& diagnostic : discovered.diagnostics)
+        {
             report_diagnostic(diagnostic);
+        }
         if (!discovered.succeeded())
+        {
             return 1;
+        }
 
         toy3d::shader::ShaderProgramCompileInput compile_input;
         compile_input.source_virtual_path = arguments[command_index + 2];
@@ -328,18 +358,36 @@ int main(int argument_count, char** arguments)
             if (option == "--engine-include-root" || option == "--project-include-root")
             {
                 bool& supplied = option == "--engine-include-root" ? engine_include : project_include;
-                if (supplied) { print_usage(); return 2; }
+                if (supplied)
+                {
+                    print_usage();
+                    return 2;
+                }
                 supplied = true;
                 toy3d::DirectoryFileStoreDesc desc;
                 desc.physical_root = toy3d::PhysicalPath(arguments[index + 1]);
                 const auto store = toy3d::DirectoryFileStore::create(platform_file, desc);
-                if (!store.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, store.status().message); return 2; }
+                if (!store.succeeded())
+                {
+                    report_message(toy3d::Logger::Level::TOY_ERROR, store.status().message);
+                    return 2;
+                }
                 toy3d::FileMountDesc mount;
-                const auto root = toy3d::VirtualPath::parse(option == "--engine-include-root" ? "/Engine/ShaderIncludes" : "/Project/ShaderIncludes");
-                if (!root.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, root.status().message); return 2; }
-                mount.virtual_root = root.value(); mount.store = store.value();
+                const auto root = toy3d::VirtualPath::parse(
+                    option == "--engine-include-root" ? "/Engine/ShaderIncludes" : "/Project/ShaderIncludes");
+                if (!root.succeeded())
+                {
+                    report_message(toy3d::Logger::Level::TOY_ERROR, root.status().message);
+                    return 2;
+                }
+                mount.virtual_root = root.value();
+                mount.store = store.value();
                 const auto added = includes.add_mount(mount);
-                if (!added.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, added.message); return 2; }
+                if (!added.succeeded())
+                {
+                    report_message(toy3d::Logger::Level::TOY_ERROR, added.message);
+                    return 2;
+                }
                 continue;
             }
             if (std::string(arguments[index]) != "--variant")
@@ -358,23 +406,35 @@ int main(int argument_count, char** arguments)
                 {selection.substr(0, separator), selection.substr(separator + 1u)});
         }
         const auto frozen = includes.freeze();
-        if (!frozen.succeeded()) { report_message(toy3d::Logger::Level::TOY_ERROR, frozen.message); return 2; }
+        if (!frozen.succeeded())
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, frozen.message);
+            return 2;
+        }
         const toy3d::shader::FileShaderSourceProvider source_provider(includes);
         compile_input.source_provider = &source_provider;
         toy3d::shader::ShaderMapEntryCompileResult compiled = toy3d::shader::compile_vulkan_shader_map_entry(
             *result.asset, compile_input, *discovered.toolchain, platform_file,
             toy3d::PhysicalPath(arguments[command_index + 5]));
         for (const toy3d::shader::Diagnostic& diagnostic : compiled.diagnostics)
+        {
             report_diagnostic(diagnostic);
+        }
         if (!compiled.succeeded())
+        {
             return 1;
+        }
         toy3d::shader::ShaderMapEntryWriteResult written = toy3d::shader::write_verified_shader_map_entry(
             platform_file, toy3d::PhysicalPath(arguments[command_index + 4]), *compiled.entry,
             compiled.editor_properties);
         for (const toy3d::shader::Diagnostic& diagnostic : written.diagnostics)
+        {
             report_diagnostic(diagnostic);
+        }
         if (!written.succeeded())
+        {
             return 1;
+        }
         std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/" << compiled.entry->pass_name
                   << "' to " << written.entry_directory->utf8() << '\n';
         return 0;

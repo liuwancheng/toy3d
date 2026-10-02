@@ -37,7 +37,9 @@ namespace toy3d
                                    RHIReadbackRef& recorded_readback, HitProxyTable& table)
         {
             if (request.pixel_x >= extent.width || request.pixel_y >= extent.height)
+            {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument, "HitProxy pixel is outside the scene image.");
+            }
             const RHIFormatCapabilities format = device.format_capabilities(PixelFormat::R32UInt);
             if (!EnumHasAnyFlags(format.usage, RHIFormatUsage::RenderTarget) ||
                 !EnumHasAnyFlags(format.usage, RHIFormatUsage::CopySource))
@@ -65,7 +67,9 @@ namespace toy3d
             id_desc.debug_name = "HitProxyId";
             RHIResult<RHITextureRef> id_texture = device.create_texture(id_desc);
             if (!id_texture)
+            {
                 return id_texture.status();
+            }
             RHITextureViewDesc id_view_desc;
             id_view_desc.type = RHIResourceViewType::RenderTarget;
             id_view_desc.format = PixelFormat::R32UInt;
@@ -74,7 +78,9 @@ namespace toy3d
             id_view_desc.debug_name = "HitProxyIdRTV";
             RHIResult<RHITextureViewRef> id_view = device.create_texture_view(id_texture.value(), id_view_desc);
             if (!id_view)
+            {
                 return id_view.status();
+            }
 
             RHITextureDesc depth_desc;
             depth_desc.width = extent.width;
@@ -86,7 +92,9 @@ namespace toy3d
             depth_desc.debug_name = "HitProxyDepth";
             RHIResult<RHITextureRef> depth_texture = device.create_texture(depth_desc);
             if (!depth_texture)
+            {
                 return depth_texture.status();
+            }
             RHITextureViewDesc depth_view_desc;
             depth_view_desc.type = RHIResourceViewType::DepthStencil;
             depth_view_desc.format = PixelFormat::D32Float;
@@ -94,9 +102,12 @@ namespace toy3d
             depth_view_desc.subresources.mip_count = 1u;
             depth_view_desc.subresources.layer_count = 1u;
             depth_view_desc.debug_name = "HitProxyDepthDSV";
-            RHIResult<RHITextureViewRef> depth_view = device.create_texture_view(depth_texture.value(), depth_view_desc);
+            RHIResult<RHITextureViewRef> depth_view =
+                device.create_texture_view(depth_texture.value(), depth_view_desc);
             if (!depth_view)
+            {
                 return depth_view.status();
+            }
 
             RHIResourceTransition id_to_target;
             id_to_target.resource = id_texture.value();
@@ -110,11 +121,15 @@ namespace toy3d
             depth_to_target.after = RHIAccess::DepthStencilWrite;
             RHIStatus status = context.transition_resources({id_to_target, depth_to_target});
             if (!status)
+            {
                 return status;
+            }
             status = scene_renderer.render_hit_proxy(device, shader_program_cache, global_shader_map, context,
                                                      id_view.value(), depth_view.value(), table);
             if (!status)
+            {
                 return status;
+            }
             RHIResourceTransition id_to_copy;
             id_to_copy.resource = id_texture.value();
             id_to_copy.subresources = id_view.value()->desc().subresources;
@@ -122,7 +137,9 @@ namespace toy3d
             id_to_copy.after = RHIAccess::CopySource;
             status = context.transition_resources({id_to_copy});
             if (!status)
+            {
                 return status;
+            }
             RHITexturePixelReadbackDesc copy;
             copy.source.texture = id_texture.value();
             copy.source.offset.x = request.pixel_x;
@@ -130,7 +147,9 @@ namespace toy3d
             copy.destination = readback.value();
             status = context.readback_texture_pixel(copy);
             if (status)
+            {
                 recorded_readback = std::move(readback).value();
+            }
             return status;
         }
     } // namespace
@@ -463,14 +482,12 @@ namespace toy3d
 
     RHIResult<RHIFrameEndResult> render_viewport_frame(
         SceneRenderer* scene_renderer, const ImGuiDrawData* ui_draw_data, const ViewportFrameOutput& output,
-        RenderScene& render_scene, RHIDevice& device,
-        RHIShaderProgramCache& shader_program_cache, RenderResourceManager& resource_manager,
-        RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
+        RenderScene& render_scene, RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+        RenderResourceManager& resource_manager, RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
         ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map,
-        const BuiltinMeshPassPrograms& mesh_pass_programs,
-        RHIReadbackRef* recorded_readback, HitProxyTable* hit_proxy_table,
-        UiTextureRegistry* ui_textures,
+        const BuiltinMeshPassPrograms& mesh_pass_programs, RHIReadbackRef* recorded_readback,
+        HitProxyTable* hit_proxy_table, UiTextureRegistry* ui_textures,
         const std::function<RHIStatus(RHIGraphicsCommandContext&)>& record_ui_work)
     {
         RHIResult<std::unique_ptr<RHIFrameContext>> frame_result = viewport.begin_frame();
@@ -525,9 +542,8 @@ namespace toy3d
             (has_scene && scene_renderer->output_extent() != scene_extent) ||
             (output.sample_in_ui && !output.texture_id.valid()))
         {
-            return abort_recording(
-                RHIStatus::failure(RHIErrorCode::OutOfDate,
-                                   "Renderer frame scene output does not match its viewport request."));
+            return abort_recording(RHIStatus::failure(
+                RHIErrorCode::OutOfDate, "Renderer frame scene output does not match its viewport request."));
         }
 
         RHIStatus status = RHIStatus::success();
@@ -535,12 +551,16 @@ namespace toy3d
         {
             status = scene_render_targets.ensure_extent(device, scene_extent);
             if (!status)
+            {
                 return abort_recording(status);
+            }
             if (output.sample_in_ui)
             {
                 status = viewport_output_target.ensure_extent(device, scene_extent);
                 if (!status)
+                {
                     return abort_recording(status);
+                }
             }
         }
 
@@ -566,19 +586,24 @@ namespace toy3d
         if (has_scene)
         {
             status = scene_renderer->render_scene_passes(render_scene, device, shader_program_cache, *context,
-                                                          scene_render_targets, mesh_pass_programs);
+                                                         scene_render_targets, mesh_pass_programs);
             if (!status)
+            {
                 return abort_recording(status);
+            }
             if (output.hit_proxy_request.request_id != 0u)
             {
                 if (global_shader_map == nullptr || recorded_readback == nullptr || hit_proxy_table == nullptr)
-                    return abort_recording(RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                                               "HitProxy frame requires its ShaderMap and readback owner."));
-                status = record_hit_proxy(*scene_renderer, device, shader_program_cache, *global_shader_map,
-                                          *context, scene_extent, output.hit_proxy_request, *recorded_readback,
-                                          *hit_proxy_table);
+                {
+                    return abort_recording(RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument, "HitProxy frame requires its ShaderMap and readback owner."));
+                }
+                status = record_hit_proxy(*scene_renderer, device, shader_program_cache, *global_shader_map, *context,
+                                          scene_extent, output.hit_proxy_request, *recorded_readback, *hit_proxy_table);
                 if (!status)
+                {
                     return abort_recording(status);
+                }
             }
         }
 
@@ -617,14 +642,16 @@ namespace toy3d
         if (has_scene)
         {
             TonemapPassTarget tonemap_target;
-            tonemap_target.color_view = output.sample_in_ui ? viewport_output_target.render_target_view()
-                                                            : frame->present_view();
+            tonemap_target.color_view =
+                output.sample_in_ui ? viewport_output_target.render_target_view() : frame->present_view();
             tonemap_target.extent = scene_extent;
-            status = tonemap_pass_resources.render(device, *context,
-                                                   scene_render_targets.scene_color_shader_resource_view(),
-                                                   tonemap_target, TonemapParameters{});
+            status =
+                tonemap_pass_resources.render(device, *context, scene_render_targets.scene_color_shader_resource_view(),
+                                              tonemap_target, TonemapParameters{});
             if (!status)
+            {
                 return abort_recording(status);
+            }
             if (output.sample_in_ui)
             {
                 RHIResourceTransition viewport_to_shader_resource;
@@ -635,14 +662,19 @@ namespace toy3d
                 viewport_to_shader_resource.after = RHIAccess::ShaderResourceGraphics;
                 status = context->transition_resources({viewport_to_shader_resource});
                 if (!status)
+                {
                     return abort_recording(status);
+                }
             }
         }
 
         if (record_ui_work)
         {
             status = record_ui_work(*context);
-            if (!status) return abort_recording(status);
+            if (!status)
+            {
+                return abort_recording(status);
+            }
         }
         const bool has_ui = ui_draw_data != nullptr && !ui_draw_data->empty();
         if (has_ui)
@@ -657,11 +689,10 @@ namespace toy3d
             imgui_target.extent = frame_extent;
             imgui_target.load = output.sample_in_ui ? RHILoadOperation::Clear : RHILoadOperation::Load;
             imgui_target.clear_value = RHIClearValue::color_value(vec4(0.08F, 0.08F, 0.08F, 1.0F));
-            status = imgui_renderer->render(device, *context, *ui_draw_data, imgui_target,
-                                            has_scene && output.sample_in_ui
-                                                ? viewport_output_target.shader_resource_view()
-                                                : RHITextureViewRef{},
-                                            output.texture_id, ui_textures ? ui_textures->bindings() : std::vector<ImGuiTextureBinding>{});
+            status = imgui_renderer->render(
+                device, *context, *ui_draw_data, imgui_target,
+                has_scene && output.sample_in_ui ? viewport_output_target.shader_resource_view() : RHITextureViewRef{},
+                output.texture_id, ui_textures ? ui_textures->bindings() : std::vector<ImGuiTextureBinding>{});
             if (!status)
             {
                 return abort_recording(status);
@@ -679,10 +710,14 @@ namespace toy3d
             clear_pass.debug_name = "EditorWindowClear";
             status = context->begin_render_pass(clear_pass);
             if (!status)
+            {
                 return abort_recording(status);
+            }
             status = context->end_render_pass();
             if (!status)
+            {
                 return abort_recording(status);
+            }
         }
 
         RHIResourceTransition render_target_to_present;
@@ -758,7 +793,9 @@ namespace toy3d
             scene_render_targets.publish_submitted_access(RHIAccess::ShaderResourceGraphics,
                                                           RHIAccess::DepthStencilWrite);
             if (output.sample_in_ui)
+            {
                 viewport_output_target.publish_submitted_access(RHIAccess::ShaderResourceGraphics);
+            }
         }
         return RHIResult<RHIFrameEndResult>::success(std::move(submitted_result));
     }
@@ -768,19 +805,36 @@ namespace toy3d
         for (const UiTextureUpload& upload : pending_ui_work_.uploads)
         {
             const auto status = ui_textures_->record_upload(*device_, context, upload);
-            if (!status) return status;
+            if (!status)
+            {
+                return status;
+            }
         }
         const PreviewFrameRequest& request = pending_ui_work_.preview;
-        if (!request.request_id) return RHIStatus::success();
+        if (!request.request_id)
+        {
+            return RHIStatus::success();
+        }
         if (!preview_scene_ || !preview_targets_ || !pending_preview_renderer_)
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Preview scene is unavailable.");
+        }
         auto status = preview_targets_->ensure_extent(*device_, request.extent);
-        if (!status) return status;
+        if (!status)
+        {
+            return status;
+        }
         status = ui_textures_->create_target(*device_, request.texture_id, request.extent);
-        if (!status) return status;
+        if (!status)
+        {
+            return status;
+        }
         status = pending_preview_renderer_->render_scene_passes(*preview_scene_, *device_, *shader_program_cache_,
-                                                                 context, *preview_targets_, mesh_pass_programs_input_);
-        if (!status) return status;
+                                                                context, *preview_targets_, mesh_pass_programs_input_);
+        if (!status)
+        {
+            return status;
+        }
         RHIResourceTransition color;
         color.resource = preview_targets_->scene_color_texture();
         color.before = RHIAccess::RenderTarget;
@@ -790,29 +844,48 @@ namespace toy3d
         output.before = RHIAccess::Common;
         output.after = RHIAccess::RenderTarget;
         status = context.transition_resources({color, output});
-        if (!status) return status;
+        if (!status)
+        {
+            return status;
+        }
         TonemapPassTarget target;
         target.color_view = ui_textures_->target_view(request.texture_id);
         target.extent = request.extent;
-        status = tonemap_pass_resources_->render(*device_, context, preview_targets_->scene_color_shader_resource_view(),
-                                                  target, TonemapParameters{});
-        if (!status) return status;
-        auto readback = device_->create_texture_readback(PixelFormat::B8G8R8A8UNorm, request.extent, "ThumbnailReadback");
-        if (!readback) return readback.status();
+        status = tonemap_pass_resources_->render(
+            *device_, context, preview_targets_->scene_color_shader_resource_view(), target, TonemapParameters{});
+        if (!status)
+        {
+            return status;
+        }
+        auto readback =
+            device_->create_texture_readback(PixelFormat::B8G8R8A8UNorm, request.extent, "ThumbnailReadback");
+        if (!readback)
+        {
+            return readback.status();
+        }
         output.before = RHIAccess::RenderTarget;
         output.after = RHIAccess::CopySource;
         status = context.transition_resources({output});
-        if (!status) return status;
+        if (!status)
+        {
+            return status;
+        }
         RHITextureReadbackDesc copy;
         copy.source.texture = ui_textures_->texture(request.texture_id);
         copy.extent = request.extent;
         copy.destination = readback.value();
         status = context.readback_texture(copy);
-        if (!status) return status;
+        if (!status)
+        {
+            return status;
+        }
         output.before = RHIAccess::CopySource;
         output.after = RHIAccess::ShaderResourceGraphics;
         status = context.transition_resources({output});
-        if (status) capture = readback.value();
+        if (status)
+        {
+            capture = readback.value();
+        }
         return status;
     }
 
@@ -824,46 +897,73 @@ namespace toy3d
         RHIReadbackRef ui_readback;
         RHIStatus ui_status = RHIStatus::success();
         HitProxyTable hit_proxy_table;
-        auto result = render_viewport_frame(scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_,
-            *resource_manager_, *primary_viewport_, *scene_render_targets_, *tonemap_pass_resources_,
-            imgui_renderer_.get(), *viewport_output_target_, global_shader_map_input_.get(),
-            mesh_pass_programs_input_, &recorded_readback,
-            &hit_proxy_table, ui_textures_.get(), [this, &ui_readback, &ui_status](RHIGraphicsCommandContext& context)
-            { ui_status = record_ui_work(context, ui_readback); return ui_status; });
+        auto result = render_viewport_frame(
+            scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_, *resource_manager_,
+            *primary_viewport_, *scene_render_targets_, *tonemap_pass_resources_, imgui_renderer_.get(),
+            *viewport_output_target_, global_shader_map_input_.get(), mesh_pass_programs_input_, &recorded_readback,
+            &hit_proxy_table, ui_textures_.get(),
+            [this, &ui_readback, &ui_status](RHIGraphicsCommandContext& context)
+            {
+                ui_status = record_ui_work(context, ui_readback);
+                return ui_status;
+            });
         if (result)
         {
             if (recorded_readback)
-                pending_hit_readbacks_.push_back({output.hit_proxy_request, std::move(recorded_readback), std::move(hit_proxy_table)});
+            {
+                pending_hit_readbacks_.push_back(
+                    {output.hit_proxy_request, std::move(recorded_readback), std::move(hit_proxy_table)});
+            }
             if (ui_readback)
             {
                 const auto& preview = pending_ui_work_.preview;
-                pending_ui_readbacks_.push_back({preview.request_id, preview.texture_id, preview.extent, std::move(ui_readback)});
-                preview_targets_->publish_submitted_access(RHIAccess::ShaderResourceGraphics, RHIAccess::DepthStencilWrite);
+                pending_ui_readbacks_.push_back(
+                    {preview.request_id, preview.texture_id, preview.extent, std::move(ui_readback)});
+                preview_targets_->publish_submitted_access(RHIAccess::ShaderResourceGraphics,
+                                                           RHIAccess::DepthStencilWrite);
             }
             {
                 std::lock_guard<std::mutex> lock(ui_results_mutex_);
                 for (const auto& upload : pending_ui_work_.uploads)
+                {
                     ui_results_.push_back({upload.request_id, upload.texture_id, upload.extent, {}, {}});
+                }
             }
             pending_ui_work_ = {};
             pending_preview_renderer_.reset();
         }
         else
         {
-            for (const auto& upload : pending_ui_work_.uploads) ui_textures_->retire(upload.texture_id);
-            if (pending_ui_work_.preview.request_id) ui_textures_->retire(pending_ui_work_.preview.texture_id);
+            for (const auto& upload : pending_ui_work_.uploads)
+            {
+                ui_textures_->retire(upload.texture_id);
+            }
+            if (pending_ui_work_.preview.request_id)
+            {
+                ui_textures_->retire(pending_ui_work_.preview.texture_id);
+            }
             constexpr std::uint32_t max_preview_preparation_attempts = 3;
             if (ui_status.code() == RHIErrorCode::NotReady && pending_ui_work_.preview.request_id &&
                 ++pending_preview_attempts_ >= max_preview_preparation_attempts)
-                ui_status = RHIStatus::failure(RHIErrorCode::InvalidArgument, "Preview mesh did not become completely drawable; retry generation.");
+            {
+                ui_status = RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                               "Preview mesh did not become completely drawable; retry generation.");
+            }
             // Expected preview/input failures abort this frame, but do not poison the main scene domain.
             if (ui_status.code() == RHIErrorCode::Unsupported || ui_status.code() == RHIErrorCode::InvalidArgument)
             {
                 std::lock_guard<std::mutex> lock(ui_results_mutex_);
                 const auto& preview = pending_ui_work_.preview;
-                if (preview.request_id) ui_results_.push_back({preview.request_id, preview.texture_id, preview.extent, {}, ui_status.message()});
+                if (preview.request_id)
+                {
+                    ui_results_.push_back(
+                        {preview.request_id, preview.texture_id, preview.extent, {}, ui_status.message()});
+                }
                 for (const auto& upload : pending_ui_work_.uploads)
-                    ui_results_.push_back({upload.request_id, upload.texture_id, upload.extent, {}, ui_status.message()});
+                {
+                    ui_results_.push_back(
+                        {upload.request_id, upload.texture_id, upload.extent, {}, ui_status.message()});
+                }
                 pending_ui_work_ = {};
                 pending_preview_renderer_.reset();
                 return RHIResult<RHIFrameEndResult>::failure(RHIErrorCode::NotReady, "UI image job failed.");
@@ -874,19 +974,35 @@ namespace toy3d
 
     void Renderer::collect_ui_readbacks()
     {
-        if (!device_) return;
+        if (!device_)
+        {
+            return;
+        }
         const auto completed = device_->graphics_queue().completed_value();
         for (auto pending = pending_ui_readbacks_.begin(); pending != pending_ui_readbacks_.end();)
         {
             auto data = pending->readback->read_texture(completed);
-            if (!data && data.status().code() == RHIErrorCode::NotReady) { ++pending; continue; }
+            if (!data && data.status().code() == RHIErrorCode::NotReady)
+            {
+                ++pending;
+                continue;
+            }
             UiTextureResult result;
             result.request_id = pending->request_id;
             result.texture_id = pending->texture_id;
             result.extent = pending->extent;
-            if (data) result.bgra_pixels = std::move(data).value().bytes;
-            else result.error = data.status().message();
-            { std::lock_guard<std::mutex> lock(ui_results_mutex_); ui_results_.push_back(std::move(result)); }
+            if (data)
+            {
+                result.bgra_pixels = std::move(data).value().bytes;
+            }
+            else
+            {
+                result.error = data.status().message();
+            }
+            {
+                std::lock_guard<std::mutex> lock(ui_results_mutex_);
+                ui_results_.push_back(std::move(result));
+            }
             pending = pending_ui_readbacks_.erase(pending);
         }
     }
@@ -894,71 +1010,119 @@ namespace toy3d
     bool Renderer::poll_ui_texture(UiTextureResult& result)
     {
         std::lock_guard<std::mutex> lock(ui_results_mutex_);
-        if (ui_results_.empty()) return false;
+        if (ui_results_.empty())
+        {
+            return false;
+        }
         result = std::move(ui_results_.front());
         ui_results_.pop_front();
         return true;
     }
 
-    SceneInterface* Renderer::preview_scene_interface() const { return published_preview_interface_.load(); }
+    SceneInterface* Renderer::preview_scene_interface() const
+    {
+        return published_preview_interface_.load();
+    }
 
     void Renderer::validate_material_program(MaterialProgramValidationRef request)
     {
-        enqueue_render_command("ValidateMaterialProgram", [this, request = std::move(request)]() noexcept
-        {
-            if (!request) return;
-            try
+        enqueue_render_command(
+            "ValidateMaterialProgram",
+            [this, request = std::move(request)]() noexcept
             {
-                request->status = [&]() -> RHIStatus
+                if (!request)
                 {
-                    if (!device_ || !shader_program_cache_ || !request->program ||
-                        lifecycle_state_.load() != RendererLifecycleState::Running)
-                        return RHIStatus::failure(RHIErrorCode::NotReady, "Material validation requires a running Renderer.");
-                    auto shader = shader_program_cache_->find_or_create(request->program);
-                    if (!shader) return shader.status();
-                    // Representative fixed StaticMesh streams need no uploads or
-                    // submit: the ordinary LocalVertexFactory validates reflection.
-                    RHIBufferDesc position_desc; position_desc.size = 16u; position_desc.usage = RHIResourceUsage::VertexBuffer;
-                    RHIBufferDesc surface_desc; surface_desc.size = 24u; surface_desc.usage = RHIResourceUsage::VertexBuffer;
-                    auto position = device_->create_buffer(position_desc);
-                    if (!position) return position.status();
-                    auto surface = device_->create_buffer(surface_desc);
-                    if (!surface) return surface.status();
-                    LocalVertexFactory factory({
-                        {ShaderVertexAttributeId::Position0, 0u, 0u, 16u, PixelFormat::R32G32B32A32Float, position.value()},
-                        {ShaderVertexAttributeId::Normal0, 1u, 0u, 24u, PixelFormat::R32G32B32A32Float, surface.value()},
-                        {ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u, PixelFormat::R32G32Float, surface.value()}});
-                    RHIGraphicsPipelineDesc pipeline;
-                    std::vector<RHIVertexBufferBinding> bindings;
-                    auto status = factory.build_vertex_input(request->program->data().vertex_inputs,
-                        pipeline.vertex_buffers, pipeline.vertex_attributes, bindings);
-                    if (!status) return status;
-                    pipeline.vertex_shader = shader.value()->vertex_shader;
-                    pipeline.pixel_shader = shader.value()->pixel_shader;
-                    pipeline.binding_layout = shader.value()->binding_layout;
-                    // Use the same Forward attachments as actual scene drawing.
-                    if (!scene_render_targets_ || !scene_render_targets_->scene_color_view() || !scene_render_targets_->scene_depth_view())
-                        return RHIStatus::failure(RHIErrorCode::NotReady, "Scene attachments are not ready for material validation.");
-                    pipeline.color_attachment_count = 1u;
-                    pipeline.color_formats[0] = scene_render_targets_->scene_color_view()->desc().format;
-                    pipeline.depth_stencil_format = scene_render_targets_->scene_depth_view()->desc().format;
-                    pipeline.sample_count = scene_render_targets_->scene_color_texture()->desc().sample_count;
-                    auto state = request->program->data().graphics_pass_state;
-                    auto normal = build_shader_graphics_pipeline_desc(pipeline, state);
-                    if (!normal) return normal.status();
-                    auto created = device_->create_graphics_pipeline(normal.value());
-                    if (!created) return created.status();
-                    state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
-                    auto two_sided = build_shader_graphics_pipeline_desc(pipeline, state);
-                    if (!two_sided) return two_sided.status();
-                    auto double_sided = device_->create_graphics_pipeline(two_sided.value());
-                    return double_sided ? RHIStatus::success() : double_sided.status();
-                }();
-            }
-            catch (const std::exception& error)
-            { request->status = RHIStatus::failure(RHIErrorCode::BackendFailure, error.what()); }
-            request->complete.store(true, std::memory_order_release);
-        });
+                    return;
+                }
+                try
+                {
+                    request->status = [&]() -> RHIStatus
+                    {
+                        if (!device_ || !shader_program_cache_ || !request->program ||
+                            lifecycle_state_.load() != RendererLifecycleState::Running)
+                        {
+                            return RHIStatus::failure(RHIErrorCode::NotReady,
+                                                      "Material validation requires a running Renderer.");
+                        }
+                        auto shader = shader_program_cache_->find_or_create(request->program);
+                        if (!shader)
+                        {
+                            return shader.status();
+                        }
+                        // Representative fixed StaticMesh streams need no uploads or
+                        // submit: the ordinary LocalVertexFactory validates reflection.
+                        RHIBufferDesc position_desc;
+                        position_desc.size = 16u;
+                        position_desc.usage = RHIResourceUsage::VertexBuffer;
+                        RHIBufferDesc surface_desc;
+                        surface_desc.size = 24u;
+                        surface_desc.usage = RHIResourceUsage::VertexBuffer;
+                        auto position = device_->create_buffer(position_desc);
+                        if (!position)
+                        {
+                            return position.status();
+                        }
+                        auto surface = device_->create_buffer(surface_desc);
+                        if (!surface)
+                        {
+                            return surface.status();
+                        }
+                        LocalVertexFactory factory({{ShaderVertexAttributeId::Position0, 0u, 0u, 16u,
+                                                     PixelFormat::R32G32B32A32Float, position.value()},
+                                                    {ShaderVertexAttributeId::Normal0, 1u, 0u, 24u,
+                                                     PixelFormat::R32G32B32A32Float, surface.value()},
+                                                    {ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u,
+                                                     PixelFormat::R32G32Float, surface.value()}});
+                        RHIGraphicsPipelineDesc pipeline;
+                        std::vector<RHIVertexBufferBinding> bindings;
+                        auto status =
+                            factory.build_vertex_input(request->program->data().vertex_inputs, pipeline.vertex_buffers,
+                                                       pipeline.vertex_attributes, bindings);
+                        if (!status)
+                        {
+                            return status;
+                        }
+                        pipeline.vertex_shader = shader.value()->vertex_shader;
+                        pipeline.pixel_shader = shader.value()->pixel_shader;
+                        pipeline.binding_layout = shader.value()->binding_layout;
+                        // Use the same Forward attachments as actual scene drawing.
+                        if (!scene_render_targets_ || !scene_render_targets_->scene_color_view() ||
+                            !scene_render_targets_->scene_depth_view())
+                        {
+                            return RHIStatus::failure(RHIErrorCode::NotReady,
+                                                      "Scene attachments are not ready for material validation.");
+                        }
+                        pipeline.color_attachment_count = 1u;
+                        pipeline.color_formats[0] = scene_render_targets_->scene_color_view()->desc().format;
+                        pipeline.depth_stencil_format = scene_render_targets_->scene_depth_view()->desc().format;
+                        pipeline.sample_count = scene_render_targets_->scene_color_texture()->desc().sample_count;
+                        auto state = request->program->data().graphics_pass_state;
+                        auto normal = build_shader_graphics_pipeline_desc(pipeline, state);
+                        if (!normal)
+                        {
+                            return normal.status();
+                        }
+                        auto created = device_->create_graphics_pipeline(normal.value());
+                        if (!created)
+                        {
+                            return created.status();
+                        }
+                        state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
+                        auto two_sided = build_shader_graphics_pipeline_desc(pipeline, state);
+                        if (!two_sided)
+                        {
+                            return two_sided.status();
+                        }
+                        auto double_sided = device_->create_graphics_pipeline(two_sided.value());
+                        return double_sided ? RHIStatus::success() : double_sided.status();
+                    }();
+                }
+                catch (const std::exception& error)
+                {
+                    request->status = RHIStatus::failure(RHIErrorCode::BackendFailure, error.what());
+                }
+                request->complete.store(true, std::memory_order_release);
+            });
     }
 
     void Renderer::draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
@@ -967,9 +1131,8 @@ namespace toy3d
     {
         enqueue_render_command(
             "DrawFrame",
-            [this, scene_renderer = std::move(scene_renderer),
-             ui_draw_data = std::move(ui_draw_data), output, work = std::move(work),
-             preview_renderer = std::move(preview_renderer)]() mutable noexcept
+            [this, scene_renderer = std::move(scene_renderer), ui_draw_data = std::move(ui_draw_data), output,
+             work = std::move(work), preview_renderer = std::move(preview_renderer)]() mutable noexcept
             {
                 if (lifecycle_state_.load() != RendererLifecycleState::Running || !render_scene_ ||
                     !resource_manager_ || !device_ || !primary_viewport_ || !scene_render_targets_ ||
@@ -982,8 +1145,14 @@ namespace toy3d
                 collect_hit_proxy_readbacks();
                 collect_ui_readbacks();
 
-                for (auto& upload : work.uploads) pending_ui_work_.uploads.push_back(std::move(upload));
-                for (auto id : work.retire_textures) ui_textures_->retire(id);
+                for (auto& upload : work.uploads)
+                {
+                    pending_ui_work_.uploads.push_back(std::move(upload));
+                }
+                for (auto id : work.retire_textures)
+                {
+                    ui_textures_->retire(id);
+                }
                 if (work.preview.request_id)
                 {
                     pending_preview_attempts_ = 0;
@@ -991,8 +1160,8 @@ namespace toy3d
                     pending_preview_renderer_ = std::move(preview_renderer);
                 }
 
-                const Extent output_extent = output.sample_in_ui ? output.window_extent
-                                                                   : scene_renderer->output_extent();
+                const Extent output_extent =
+                    output.sample_in_ui ? output.window_extent : scene_renderer->output_extent();
                 const RHIStatus extent_status = ensure_primary_frame_extent(output_extent);
                 if (!extent_status)
                 {
@@ -1001,7 +1170,8 @@ namespace toy3d
                     return;
                 }
 
-                RHIResult<RHIFrameEndResult> frame_result = render_frame(scene_renderer.get(), ui_draw_data.get(), output);
+                RHIResult<RHIFrameEndResult> frame_result =
+                    render_frame(scene_renderer.get(), ui_draw_data.get(), output);
                 if (!frame_result)
                 {
                     if (!rhi_is_recoverable_viewport_status(frame_result.status()))
@@ -1026,7 +1196,9 @@ namespace toy3d
     void Renderer::collect_hit_proxy_readbacks()
     {
         if (!device_)
+        {
             return;
+        }
         const RHIQueueCompletionValue completed = device_->graphics_queue().completed_value();
         for (auto pending = pending_hit_readbacks_.begin(); pending != pending_hit_readbacks_.end();)
         {
@@ -1062,7 +1234,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(hit_results_mutex_);
         if (completed_hit_results_.empty())
+        {
             return false;
+        }
         result = completed_hit_results_.front();
         completed_hit_results_.pop_front();
         return true;
@@ -1190,10 +1364,21 @@ namespace toy3d
         pending_preview_renderer_.reset();
         pending_ui_work_ = {};
         pending_ui_readbacks_.clear();
-        { std::lock_guard<std::mutex> lock(ui_results_mutex_); ui_results_.clear(); }
+        {
+            std::lock_guard<std::mutex> lock(ui_results_mutex_);
+            ui_results_.clear();
+        }
         preview_scene_.reset();
-        if (preview_targets_) { preview_targets_->release(); preview_targets_.reset(); }
-        if (ui_textures_) { ui_textures_->clear(); ui_textures_.reset(); }
+        if (preview_targets_)
+        {
+            preview_targets_->release();
+            preview_targets_.reset();
+        }
+        if (ui_textures_)
+        {
+            ui_textures_->clear();
+            ui_textures_.reset();
+        }
         render_scene_.reset();
         if (scene_render_targets_)
         {

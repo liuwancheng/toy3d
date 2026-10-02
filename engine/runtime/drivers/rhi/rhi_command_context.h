@@ -16,7 +16,10 @@ namespace toy3d
         using RHIObject::RHIObject;
         ~RHICommandList() override = default;
 
-        RHICommandListState state() const { return command_list_state; }
+        RHICommandListState state() const
+        {
+            return command_list_state;
+        }
 
       protected:
         RHIStatus mark_recording()
@@ -55,7 +58,10 @@ namespace toy3d
       private:
         friend class RHIQueue;
 
-        void publish_submitted() { command_list_state = RHICommandListState::Submitted; }
+        void publish_submitted()
+        {
+            command_list_state = RHICommandListState::Submitted;
+        }
 
         RHICommandListState command_list_state = RHICommandListState::Initial;
     };
@@ -65,7 +71,9 @@ namespace toy3d
     class RHICommandContext : public RHIObject
     {
       public:
-        explicit RHICommandContext(const RHIDevice& owner) : RHIObject(owner) {}
+        explicit RHICommandContext(const RHIDevice& owner) : RHIObject(owner)
+        {
+        }
         virtual ~RHICommandContext() = default;
 
         RHICommandContext(const RHICommandContext&) = delete;
@@ -99,7 +107,9 @@ namespace toy3d
     class RHIGraphicsCommandContext : public RHICommandContext
     {
       public:
-        explicit RHIGraphicsCommandContext(const RHIDevice& owner) : RHICommandContext(owner) {}
+        explicit RHIGraphicsCommandContext(const RHIDevice& owner) : RHICommandContext(owner)
+        {
+        }
 
         ~RHIGraphicsCommandContext() override = default;
 

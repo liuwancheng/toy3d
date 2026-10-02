@@ -16,15 +16,25 @@ namespace toy3d
         float w = 0.0f;
 
         constexpr Vector4() = default;
-        explicit constexpr Vector4(float value) : x(value), y(value), z(value), w(value) {}
+        explicit constexpr Vector4(float value) : x(value), y(value), z(value), w(value)
+        {
+        }
         constexpr Vector4(float x_value, float y_value, float z_value, float w_value)
             : x(x_value), y(y_value), z(z_value), w(w_value)
         {
         }
-        constexpr Vector4(const Vector3& xyz, float w_value) : x(xyz.x), y(xyz.y), z(xyz.z), w(w_value) {}
+        constexpr Vector4(const Vector3& xyz, float w_value) : x(xyz.x), y(xyz.y), z(xyz.z), w(w_value)
+        {
+        }
 
-        constexpr float* data() { return &x; }
-        constexpr const float* data() const { return &x; }
+        constexpr float* data()
+        {
+            return &x;
+        }
+        constexpr const float* data() const
+        {
+            return &x;
+        }
 
         constexpr Vector4& operator+=(const Vector4& other)
         {

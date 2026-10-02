@@ -53,7 +53,9 @@ namespace toy3d
         std::function<void()> ready_callback_;
     };
 
-    BaseGraphTask::BaseGraphTask(TaskGraphInterface& task_graph) : task_graph_(task_graph) {}
+    BaseGraphTask::BaseGraphTask(TaskGraphInterface& task_graph) : task_graph_(task_graph)
+    {
+    }
 
     BaseGraphTask::~BaseGraphTask()
     {
@@ -108,12 +110,20 @@ namespace toy3d
         }
 
         prerequisites_ = prerequisites;
-        dependency_gate_ = std::make_shared<GraphTaskDependencyGate>(
-            static_cast<std::uint32_t>(prerequisites_.size()) + 1, [this]() { task_graph_.queue_task(*this); });
+        dependency_gate_ =
+            std::make_shared<GraphTaskDependencyGate>(static_cast<std::uint32_t>(prerequisites_.size()) + 1,
+                                                      [this]()
+                                                      {
+                                                          task_graph_.queue_task(*this);
+                                                      });
         const std::shared_ptr<GraphTaskDependencyGate> dependency_gate = dependency_gate_;
         for (const GraphEventRef& prerequisite : prerequisites_)
         {
-            const bool registered = prerequisite->add_subsequent([dependency_gate]() { dependency_gate->release(); });
+            const bool registered = prerequisite->add_subsequent(
+                [dependency_gate]()
+                {
+                    dependency_gate->release();
+                });
             if (!registered)
             {
                 dependency_gate->release();

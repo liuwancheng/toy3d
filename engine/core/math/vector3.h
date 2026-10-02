@@ -14,12 +14,22 @@ namespace toy3d
         float z = 0.0f;
 
         constexpr Vector3() = default;
-        explicit constexpr Vector3(float value) : x(value), y(value), z(value) {}
-        constexpr Vector3(float x_value, float y_value, float z_value) : x(x_value), y(y_value), z(z_value) {}
+        explicit constexpr Vector3(float value) : x(value), y(value), z(value)
+        {
+        }
+        constexpr Vector3(float x_value, float y_value, float z_value) : x(x_value), y(y_value), z(z_value)
+        {
+        }
 
-        constexpr float* data() { return &x; }
+        constexpr float* data()
+        {
+            return &x;
+        }
 
-        constexpr const float* data() const { return &x; }
+        constexpr const float* data() const
+        {
+            return &x;
+        }
 
         constexpr Vector3& operator+=(const Vector3& other)
         {

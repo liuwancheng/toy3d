@@ -21,7 +21,9 @@ namespace toy3d
 
     } // namespace
 
-    VirtualPath::VirtualPath(std::string utf8_path) : utf8_path_(std::move(utf8_path)) {}
+    VirtualPath::VirtualPath(std::string utf8_path) : utf8_path_(std::move(utf8_path))
+    {
+    }
 
     FileResult<VirtualPath> VirtualPath::parse(std::string utf8_path)
     {

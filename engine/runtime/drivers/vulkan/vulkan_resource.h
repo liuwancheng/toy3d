@@ -65,7 +65,10 @@ namespace toy3d
                        PixelFormat format = PixelFormat::R32UInt, Extent extent = {1, 1});
         ~VulkanReadback() override;
 
-        VkBuffer buffer() const { return allocated_buffer.buffer; }
+        VkBuffer buffer() const
+        {
+            return allocated_buffer.buffer;
+        }
 
       protected:
         RHIResult<std::uint32_t> read_uint32_impl() const override;

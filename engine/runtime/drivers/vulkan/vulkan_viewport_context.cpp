@@ -78,17 +78,32 @@ namespace toy3d
             {
             }
 
-            const RHITextureRef& present_texture() const override { return output_texture; }
-            const RHITextureViewRef& present_view() const override { return output_view; }
-            Extent extent() const override { return frame_extent; }
+            const RHITextureRef& present_texture() const override
+            {
+                return output_texture;
+            }
+            const RHITextureViewRef& present_view() const override
+            {
+                return output_view;
+            }
+            Extent extent() const override
+            {
+                return frame_extent;
+            }
 
             RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> create_graphics_command_context_impl() override
             {
                 return viewport.create_graphics_command_context(acquired_frame_id);
             }
 
-            VulkanViewportContext& owner() const { return viewport; }
-            std::uint64_t frame_id() const { return acquired_frame_id; }
+            VulkanViewportContext& owner() const
+            {
+                return viewport;
+            }
+            std::uint64_t frame_id() const
+            {
+                return acquired_frame_id;
+            }
 
           private:
             VulkanViewportContext& viewport;
@@ -108,8 +123,8 @@ namespace toy3d
         : RHIViewportContext(owner, desc.debug_name), owner_device(owner), vk_physical_device(physical_device),
           vk_device(device), vk_surface(surface), graphics_queue_family(queue_family), graphics_queue(queue),
           upload_manager(uploads), descriptor_pool_manager(descriptors), deletion_queue(deletions),
-          viewport_surface(std::move(rhi_surface)),
-          viewport_desc(std::move(desc)), resize_pending(true), pending_extent(viewport_desc.extent)
+          viewport_surface(std::move(rhi_surface)), viewport_desc(std::move(desc)), resize_pending(true),
+          pending_extent(viewport_desc.extent)
     {
     }
 
@@ -205,9 +220,9 @@ namespace toy3d
         frame_active = true;
         resize_pending = acquire_result.value().presentation_status.code() == RHIErrorCode::Suboptimal;
         const VkExtent2D extent = swapchain->extent();
-        return RHIResult<std::unique_ptr<RHIFrameContext>>::success(std::make_unique<VulkanFrameContext>(
-            owner_device, *this, acquired_image.texture, acquired_image.view, Extent{extent.width, extent.height},
-            active_frame_id));
+        return RHIResult<std::unique_ptr<RHIFrameContext>>::success(
+            std::make_unique<VulkanFrameContext>(owner_device, *this, acquired_image.texture, acquired_image.view,
+                                                 Extent{extent.width, extent.height}, active_frame_id));
     }
 
     RHIResult<RHIFrameEndResult> VulkanViewportContext::end_frame(std::unique_ptr<RHIFrameContext> frame,
@@ -224,12 +239,10 @@ namespace toy3d
             const RHIStatus reported = recovery || rhi_is_recoverable_viewport_status(recovery) ? failure : recovery;
             return RHIResult<RHIFrameEndResult>::failure(reported.code(), reported.message());
         };
-        if (vulkan_frame == nullptr || &vulkan_frame->owner() != this ||
-            !is_active_frame(vulkan_frame->frame_id()))
+        if (vulkan_frame == nullptr || &vulkan_frame->owner() != this || !is_active_frame(vulkan_frame->frame_id()))
         {
             const RHIStatus invalid = RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Frame context does not belong to the active Vulkan viewport frame.");
+                RHIErrorCode::InvalidArgument, "Frame context does not belong to the active Vulkan viewport frame.");
             if (vulkan_frame != nullptr && &vulkan_frame->owner() != this)
             {
                 VulkanViewportContext& owner = vulkan_frame->owner();
@@ -339,8 +352,7 @@ namespace toy3d
     RHIStatus VulkanViewportContext::abort_frame(std::unique_ptr<RHIFrameContext> frame)
     {
         auto* vulkan_frame = dynamic_cast<VulkanFrameContext*>(frame.get());
-        if (vulkan_frame == nullptr || &vulkan_frame->owner() != this ||
-            !is_active_frame(vulkan_frame->frame_id()))
+        if (vulkan_frame == nullptr || &vulkan_frame->owner() != this || !is_active_frame(vulkan_frame->frame_id()))
         {
             const RHIStatus invalid = RHIStatus::failure(
                 RHIErrorCode::InvalidArgument, "Frame context does not belong to this active Vulkan viewport frame.");
@@ -371,8 +383,8 @@ namespace toy3d
         return frame_active && active_frame_id == frame_id;
     }
 
-    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>
-    VulkanViewportContext::create_graphics_command_context(std::uint64_t frame_id)
+    RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanViewportContext::create_graphics_command_context(
+        std::uint64_t frame_id)
     {
         if (!is_active_frame(frame_id) || !swapchain || frame_slots.empty())
         {
@@ -382,8 +394,7 @@ namespace toy3d
         return RHIResult<std::unique_ptr<RHIGraphicsCommandContext>>::success(
             std::make_unique<VulkanGraphicsCommandContext>(owner_device, vk_device, upload_manager,
                                                            descriptor_pool_manager, *this,
-                                                           frame_slots[current_frame_slot].command_pool,
-                                                           frame_id));
+                                                           frame_slots[current_frame_slot].command_pool, frame_id));
     }
 
     RHIStatus VulkanViewportContext::recreate_swapchain()

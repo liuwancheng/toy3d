@@ -171,8 +171,8 @@ namespace toy3d
             RHIBindingSetRef source_set;
         };
 
-        RHIResult<std::vector<ResolvedBinding>> resolve_graphics_bindings(
-            const RHIGraphicsPipelineRef& pipeline, const RHIGraphicsBindings& bindings);
+        RHIResult<std::vector<ResolvedBinding>> resolve_graphics_bindings(const RHIGraphicsPipelineRef& pipeline,
+                                                                          const RHIGraphicsBindings& bindings);
     } // namespace rhi_detail
 
     struct RHIDrawArgs

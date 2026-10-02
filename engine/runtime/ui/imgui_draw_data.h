@@ -11,10 +11,18 @@ namespace toy3d
     {
       public:
         constexpr ImGuiTextureId() noexcept = default;
-        explicit constexpr ImGuiTextureId(std::uint64_t value) noexcept : value_(value) {}
+        explicit constexpr ImGuiTextureId(std::uint64_t value) noexcept : value_(value)
+        {
+        }
 
-        constexpr std::uint64_t value() const noexcept { return value_; }
-        constexpr bool valid() const noexcept { return value_ != 0u; }
+        constexpr std::uint64_t value() const noexcept
+        {
+            return value_;
+        }
+        constexpr bool valid() const noexcept
+        {
+            return value_ != 0u;
+        }
 
         friend constexpr bool operator==(ImGuiTextureId left, ImGuiTextureId right) noexcept
         {
@@ -67,7 +75,10 @@ namespace toy3d
         ImGuiDrawData(ImGuiDrawData&&) noexcept = default;
         ImGuiDrawData& operator=(ImGuiDrawData&&) noexcept = default;
 
-        bool empty() const noexcept { return commands.empty(); }
+        bool empty() const noexcept
+        {
+            return commands.empty();
+        }
 
         std::vector<ImGuiVertex> vertices;
         std::vector<std::uint8_t> indices;
@@ -96,6 +107,9 @@ namespace toy3d
         std::unique_ptr<ImGuiDrawData> draw_data;
         std::string diagnostic;
 
-        bool succeeded() const noexcept { return diagnostic.empty(); }
+        bool succeeded() const noexcept
+        {
+            return diagnostic.empty();
+        }
     };
 } // namespace toy3d

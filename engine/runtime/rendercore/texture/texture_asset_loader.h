@@ -6,5 +6,5 @@
 namespace toy3d
 {
     AssetResult<TextureRef> load_texture_asset(const FileSystem& files, const AssetIndex& index,
-        const AssetRef& reference);
+                                               const AssetRef& reference);
 } // namespace toy3d

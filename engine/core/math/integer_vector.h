@@ -11,10 +11,20 @@ namespace toy3d
         std::uint32_t y = 0;
 
         constexpr UIntVector2() = default;
-        explicit constexpr UIntVector2(std::uint32_t value) : x(value), y(value) {}
-        constexpr UIntVector2(std::uint32_t x_value, std::uint32_t y_value) : x(x_value), y(y_value) {}
-        constexpr std::uint32_t* data() { return &x; }
-        constexpr const std::uint32_t* data() const { return &x; }
+        explicit constexpr UIntVector2(std::uint32_t value) : x(value), y(value)
+        {
+        }
+        constexpr UIntVector2(std::uint32_t x_value, std::uint32_t y_value) : x(x_value), y(y_value)
+        {
+        }
+        constexpr std::uint32_t* data()
+        {
+            return &x;
+        }
+        constexpr const std::uint32_t* data() const
+        {
+            return &x;
+        }
     };
 
     struct UIntVector3
@@ -24,13 +34,21 @@ namespace toy3d
         std::uint32_t z = 0;
 
         constexpr UIntVector3() = default;
-        explicit constexpr UIntVector3(std::uint32_t value) : x(value), y(value), z(value) {}
+        explicit constexpr UIntVector3(std::uint32_t value) : x(value), y(value), z(value)
+        {
+        }
         constexpr UIntVector3(std::uint32_t x_value, std::uint32_t y_value, std::uint32_t z_value)
             : x(x_value), y(y_value), z(z_value)
         {
         }
-        constexpr std::uint32_t* data() { return &x; }
-        constexpr const std::uint32_t* data() const { return &x; }
+        constexpr std::uint32_t* data()
+        {
+            return &x;
+        }
+        constexpr const std::uint32_t* data() const
+        {
+            return &x;
+        }
     };
 
     struct UIntVector4
@@ -41,14 +59,22 @@ namespace toy3d
         std::uint32_t w = 0;
 
         constexpr UIntVector4() = default;
-        explicit constexpr UIntVector4(std::uint32_t value) : x(value), y(value), z(value), w(value) {}
+        explicit constexpr UIntVector4(std::uint32_t value) : x(value), y(value), z(value), w(value)
+        {
+        }
         constexpr UIntVector4(std::uint32_t x_value, std::uint32_t y_value, std::uint32_t z_value,
                               std::uint32_t w_value)
             : x(x_value), y(y_value), z(z_value), w(w_value)
         {
         }
-        constexpr std::uint32_t* data() { return &x; }
-        constexpr const std::uint32_t* data() const { return &x; }
+        constexpr std::uint32_t* data()
+        {
+            return &x;
+        }
+        constexpr const std::uint32_t* data() const
+        {
+            return &x;
+        }
     };
 
     struct Extent

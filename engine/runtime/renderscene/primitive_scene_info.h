@@ -17,7 +17,10 @@ namespace toy3d
         PrimitiveSceneInfo(const PrimitiveSceneInfo&) = delete;
         PrimitiveSceneInfo& operator=(const PrimitiveSceneInfo&) = delete;
 
-        PrimitiveSceneProxy* proxy() const { return proxy_.get(); }
+        PrimitiveSceneProxy* proxy() const
+        {
+            return proxy_.get();
+        }
 
       private:
         std::unique_ptr<PrimitiveSceneProxy> proxy_;

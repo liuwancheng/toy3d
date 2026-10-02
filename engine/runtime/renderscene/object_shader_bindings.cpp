@@ -22,9 +22,17 @@ namespace toy3d
         std::vector<MeshBatch*> batches;
         for (ViewInfo& view_info : view_infos)
         {
-            for (MeshBatch& batch : view_info.mesh_batches_) batches.push_back(&batch);
+            for (MeshBatch& batch : view_info.mesh_batches_)
+            {
+                batches.push_back(&batch);
+            }
             for (ShadowCascadeInfo& cascade : view_info.shadow_cascades_)
-                for (MeshBatch& batch : cascade.batches) batches.push_back(&batch);
+            {
+                for (MeshBatch& batch : cascade.batches)
+                {
+                    batches.push_back(&batch);
+                }
+            }
         }
         for (const MeshBatch* mesh_batch_ptr : batches)
         {
@@ -59,9 +67,8 @@ namespace toy3d
                 bindings_by_generation.emplace(mesh_batch.object_data_generation(), mesh_batch.object_binding());
             }
 
-            if (mesh_batch.object_binding() &&
-                (!mesh_batch.object_binding()->is_owned_by(device) ||
-                 mesh_batch.object_binding()->group() != RHIBindingGroup::Object))
+            if (mesh_batch.object_binding() && (!mesh_batch.object_binding()->is_owned_by(device) ||
+                                                mesh_batch.object_binding()->group() != RHIBindingGroup::Object))
             {
                 return RHIStatus::failure(
                     RHIErrorCode::InvalidArgument,
@@ -72,12 +79,12 @@ namespace toy3d
         for (MeshBatch* mesh_batch_ptr : batches)
         {
             MeshBatch& mesh_batch = *mesh_batch_ptr;
-            RHIBindingSetRef& cached = bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
-                .at(mesh_batch.object_data_generation());
+            RHIBindingSetRef& cached =
+                bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy()).at(mesh_batch.object_data_generation());
             if (!cached)
             {
-                RHIResult<RHIBindingSetRef> created = create_transient_shader_binding(
-                    device, context, mesh_batch.object_shader_parameters());
+                RHIResult<RHIBindingSetRef> created =
+                    create_transient_shader_binding(device, context, mesh_batch.object_shader_parameters());
                 if (!created)
                 {
                     return created.status();
@@ -89,8 +96,8 @@ namespace toy3d
         for (MeshBatch* mesh_batch_ptr : batches)
         {
             MeshBatch& mesh_batch = *mesh_batch_ptr;
-            mesh_batch.publish_object_binding(bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
-                .at(mesh_batch.object_data_generation()));
+            mesh_batch.publish_object_binding(
+                bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy()).at(mesh_batch.object_data_generation()));
         }
         return RHIStatus::success();
     }

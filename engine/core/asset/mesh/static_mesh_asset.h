@@ -37,9 +37,10 @@ namespace toy3d
     // not grant permission to re-save them through a typed, lossy writer.
     AssetResult<StaticMeshAssetGeometry> decode_static_mesh_asset(const std::vector<std::uint8_t>& bytes);
     AssetResult<std::vector<std::uint8_t>> encode_static_mesh_asset(const AssetId& id,
-        const StaticMeshAssetGeometry& geometry, std::vector<AssetSegmentData> editor_segments = {});
-    AssetResult<AssetPairBytes> encode_static_mesh_asset_pair(const TypeRegistry& types,
-        const AssetId& id, const StaticMeshAssetGeometry& geometry,
-        std::vector<AssetSegmentData> optional_segments = {});
+                                                                    const StaticMeshAssetGeometry& geometry,
+                                                                    std::vector<AssetSegmentData> editor_segments = {});
+    AssetResult<AssetPairBytes> encode_static_mesh_asset_pair(const TypeRegistry& types, const AssetId& id,
+                                                              const StaticMeshAssetGeometry& geometry,
+                                                              std::vector<AssetSegmentData> optional_segments = {});
     AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path);
 } // namespace toy3d

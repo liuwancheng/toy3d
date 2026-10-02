@@ -57,7 +57,10 @@ namespace
             stop_event_.trigger();
         }
 
-        void exit() override { calls_.push_back("exit"); }
+        void exit() override
+        {
+            calls_.push_back("exit");
+        }
 
         std::thread::id thread_id_;
         std::atomic<int> stop_count_{0};
@@ -70,7 +73,9 @@ namespace
     class FailingInitRunnable final : public toy3d::Runnable
     {
       public:
-        explicit FailingInitRunnable(std::atomic<bool>& ran) : ran_(ran) {}
+        explicit FailingInitRunnable(std::atomic<bool>& ran) : ran_(ran)
+        {
+        }
 
         toy3d::ThreadStatus init() override
         {
@@ -90,9 +95,15 @@ namespace
     class ThrowingRunnable final : public toy3d::Runnable
     {
       public:
-        std::uint32_t run() override { throw std::runtime_error("fixture failure"); }
+        std::uint32_t run() override
+        {
+            throw std::runtime_error("fixture failure");
+        }
 
-        void exit() override { exited_.store(true); }
+        void exit() override
+        {
+            exited_.store(true);
+        }
 
         std::atomic<bool> exited_{false};
     };
@@ -100,7 +111,9 @@ namespace
     class SelfJoinRunnable final : public toy3d::Runnable
     {
       public:
-        explicit SelfJoinRunnable(toy3d::Event& start) : start_(start) {}
+        explicit SelfJoinRunnable(toy3d::Event& start) : start_(start)
+        {
+        }
 
         std::uint32_t run() override
         {
@@ -137,7 +150,11 @@ namespace
               "ThreadManager must expose registered thread metadata");
 
         int enumerated = 0;
-        manager.for_each_thread([&enumerated](const toy3d::ThreadInfo&) { ++enumerated; });
+        manager.for_each_thread(
+            [&enumerated](const toy3d::ThreadInfo&)
+            {
+                ++enumerated;
+            });
         check(enumerated == 1, "ThreadManager enumeration must use a stable snapshot");
 
         thread->request_stop();
@@ -275,7 +292,11 @@ namespace
     {
         toy3d::ThreadManager manager;
         std::atomic<bool> called{false};
-        toy3d::Thread thread(manager, "Function", [&called]() { called.store(true); });
+        toy3d::Thread thread(manager, "Function",
+                             [&called]()
+                             {
+                                 called.store(true);
+                             });
         const std::thread::id id = thread.get_thread_id();
         check(id != std::thread::id{}, "Thread wrapper must expose the target id");
         thread.join();
@@ -285,9 +306,16 @@ namespace
     void test_unjoined_thread_is_diagnosed()
     {
         std::atomic<toy3d::ThreadErrorCode> diagnosed{toy3d::ThreadErrorCode::None};
-        toy3d::ThreadManager manager([&diagnosed](const toy3d::ThreadStatus& status) { diagnosed.store(status.code); });
+        toy3d::ThreadManager manager(
+            [&diagnosed](const toy3d::ThreadStatus& status)
+            {
+                diagnosed.store(status.code);
+            });
         {
-            toy3d::Thread thread(manager, "Unjoined", []() {});
+            toy3d::Thread thread(manager, "Unjoined",
+                                 []()
+                                 {
+                                 });
         }
         check(diagnosed.load() == toy3d::ThreadErrorCode::NotJoined,
               "destroying a joinable thread must report NotJoined");

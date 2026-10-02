@@ -64,30 +64,54 @@ int main()
             toy3d::RHIPrimitiveTopology::PointList, toy3d::RHIPrimitiveTopology::LineList,
             toy3d::RHIPrimitiveTopology::LineStrip, toy3d::RHIPrimitiveTopology::TriangleList,
             toy3d::RHIPrimitiveTopology::TriangleStrip},
-        [](State& state, State::PrimitiveTopology value) { state.primitive_topology = value; },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.primitive_topology; },
+        [](State& state, State::PrimitiveTopology value)
+        {
+            state.primitive_topology = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.primitive_topology;
+        },
         "all primitive topologies must map exactly");
 
     check_mapping(
         std::array<State::CullMode, 3>{State::CullMode::None, State::CullMode::Front, State::CullMode::Back},
         std::array<toy3d::RHICullMode, 3>{toy3d::RHICullMode::None, toy3d::RHICullMode::Front,
                                           toy3d::RHICullMode::Back},
-        [](State& state, State::CullMode value) { state.cull_mode = value; },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.rasterization.cull_mode; },
+        [](State& state, State::CullMode value)
+        {
+            state.cull_mode = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.rasterization.cull_mode;
+        },
         "all cull modes must map exactly");
 
     check_mapping(
         std::array<State::FrontFace, 2>{State::FrontFace::Clockwise, State::FrontFace::CounterClockwise},
         std::array<toy3d::RHIFrontFace, 2>{toy3d::RHIFrontFace::Clockwise, toy3d::RHIFrontFace::CounterClockwise},
-        [](State& state, State::FrontFace value) { state.front_face = value; },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.rasterization.front_face; },
+        [](State& state, State::FrontFace value)
+        {
+            state.front_face = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.rasterization.front_face;
+        },
         "all front-face modes must map exactly");
 
     check_mapping(
         std::array<State::FillMode, 2>{State::FillMode::Solid, State::FillMode::Wireframe},
         std::array<toy3d::RHIPolygonMode, 2>{toy3d::RHIPolygonMode::Fill, toy3d::RHIPolygonMode::Line},
-        [](State& state, State::FillMode value) { state.fill_mode = value; },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.rasterization.polygon_mode; },
+        [](State& state, State::FillMode value)
+        {
+            state.fill_mode = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.rasterization.polygon_mode;
+        },
         "all fill modes must map exactly");
 
     const std::array<State::CompareOperation, 8> compare_sources{
@@ -100,9 +124,16 @@ int main()
         toy3d::RHICompareOperation::Greater,      toy3d::RHICompareOperation::NotEqual,
         toy3d::RHICompareOperation::GreaterEqual, toy3d::RHICompareOperation::Always};
     check_mapping(
-        compare_sources, compare_destinations, [](State& state, State::CompareOperation value)
-        { state.depth_compare_operation = value; }, [](const toy3d::RHIGraphicsPipelineDesc& desc)
-        { return desc.depth_stencil.depth_compare_operation; }, "all compare operations must map exactly");
+        compare_sources, compare_destinations,
+        [](State& state, State::CompareOperation value)
+        {
+            state.depth_compare_operation = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.depth_stencil.depth_compare_operation;
+        },
+        "all compare operations must map exactly");
 
     const std::array<State::StencilOperation, 8> stencil_sources{
         State::StencilOperation::Keep,           State::StencilOperation::Zero,
@@ -121,7 +152,10 @@ int main()
             state.stencil.mode = State::StencilMode::SeparateFaces;
             state.stencil.front.pass_operation = value;
         },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.depth_stencil.front_face.pass_operation; },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.depth_stencil.front_face.pass_operation;
+        },
         "all stencil operations must map exactly");
 
     const std::array<State::BlendFactor, 13> blend_factor_sources{State::BlendFactor::Zero,
@@ -152,9 +186,16 @@ int main()
         toy3d::RHIBlendFactor::OneMinusConstantColor,
         toy3d::RHIBlendFactor::SourceAlphaSaturate};
     check_mapping(
-        blend_factor_sources, blend_factor_destinations, [](State& state, State::BlendFactor value)
-        { state.blend.source_color_factor = value; }, [](const toy3d::RHIGraphicsPipelineDesc& desc)
-        { return desc.color_blend_attachments[0].source_color_factor; }, "all blend factors must map exactly");
+        blend_factor_sources, blend_factor_destinations,
+        [](State& state, State::BlendFactor value)
+        {
+            state.blend.source_color_factor = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.color_blend_attachments[0].source_color_factor;
+        },
+        "all blend factors must map exactly");
 
     check_mapping(
         std::array<State::BlendOperation, 5>{State::BlendOperation::Add, State::BlendOperation::Subtract,
@@ -163,8 +204,14 @@ int main()
         std::array<toy3d::RHIBlendOperation, 5>{toy3d::RHIBlendOperation::Add, toy3d::RHIBlendOperation::Subtract,
                                                 toy3d::RHIBlendOperation::ReverseSubtract,
                                                 toy3d::RHIBlendOperation::Min, toy3d::RHIBlendOperation::Max},
-        [](State& state, State::BlendOperation value) { state.blend.color_operation = value; },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.color_blend_attachments[0].color_operation; },
+        [](State& state, State::BlendOperation value)
+        {
+            state.blend.color_operation = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.color_blend_attachments[0].color_operation;
+        },
         "all blend operations must map exactly");
 
     check_mapping(
@@ -178,8 +225,14 @@ int main()
             toy3d::RHIColorWriteMask::Red | toy3d::RHIColorWriteMask::Green,
             toy3d::RHIColorWriteMask::Red | toy3d::RHIColorWriteMask::Green | toy3d::RHIColorWriteMask::Blue,
             toy3d::RHIColorWriteMask::All},
-        [](State& state, State::ColorWriteMask value) { state.color_write_mask = value; },
-        [](const toy3d::RHIGraphicsPipelineDesc& desc) { return desc.color_blend_attachments[0].color_write_mask; },
+        [](State& state, State::ColorWriteMask value)
+        {
+            state.color_write_mask = value;
+        },
+        [](const toy3d::RHIGraphicsPipelineDesc& desc)
+        {
+            return desc.color_blend_attachments[0].color_write_mask;
+        },
         "all color-write masks must map exactly");
 
     State complete_state;

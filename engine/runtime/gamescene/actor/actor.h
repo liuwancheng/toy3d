@@ -18,22 +18,54 @@ namespace toy3d
     class Actor
     {
       public:
-        explicit Actor(World& world) : world_(world) {}
+        explicit Actor(World& world) : world_(world)
+        {
+        }
         virtual ~Actor();
 
         Actor(const Actor&) = delete;
         Actor& operator=(const Actor&) = delete;
 
-        World& world() const { return world_; }
-        std::uint32_t actor_id() const { return actor_id_; }
-        bool is_registered() const { return registered_; }
-        bool is_initialized() const { return initialized_; }
-        bool has_begun_play() const { return begun_play_; }
-        bool is_pending_destroy() const { return pending_destroy_; }
-        bool is_tick_enabled() const { return tick_enabled_; }
-        void set_tick_enabled(bool enabled) { tick_enabled_ = enabled; }
-        SceneComponent* root_component() const { return root_component_; }
-        std::size_t component_count() const { return components_.size(); }
+        World& world() const
+        {
+            return world_;
+        }
+        std::uint32_t actor_id() const
+        {
+            return actor_id_;
+        }
+        bool is_registered() const
+        {
+            return registered_;
+        }
+        bool is_initialized() const
+        {
+            return initialized_;
+        }
+        bool has_begun_play() const
+        {
+            return begun_play_;
+        }
+        bool is_pending_destroy() const
+        {
+            return pending_destroy_;
+        }
+        bool is_tick_enabled() const
+        {
+            return tick_enabled_;
+        }
+        void set_tick_enabled(bool enabled)
+        {
+            tick_enabled_ = enabled;
+        }
+        SceneComponent* root_component() const
+        {
+            return root_component_;
+        }
+        std::size_t component_count() const
+        {
+            return components_.size();
+        }
 
         template <typename Component, typename... Args> Component& create_component(Args&&... args)
         {
@@ -65,10 +97,18 @@ namespace toy3d
         std::vector<std::uint32_t> component_ids() const;
 
       protected:
-        virtual void on_initialize() {}
-        virtual void on_begin_play() {}
-        virtual void tick(const WorldTickContext&) {}
-        virtual void on_end_play(EndPlayReason) {}
+        virtual void on_initialize()
+        {
+        }
+        virtual void on_begin_play()
+        {
+        }
+        virtual void tick(const WorldTickContext&)
+        {
+        }
+        virtual void on_end_play(EndPlayReason)
+        {
+        }
 
       private:
         friend class World;
@@ -84,7 +124,10 @@ namespace toy3d
         void unregister_all_components();
         void create_render_state_for_registered_components();
         void destroy_render_state_for_registered_components();
-        void mark_pending_destroy() { pending_destroy_ = true; }
+        void mark_pending_destroy()
+        {
+            pending_destroy_ = true;
+        }
 
         World& world_;
         std::uint32_t actor_id_ = 0;

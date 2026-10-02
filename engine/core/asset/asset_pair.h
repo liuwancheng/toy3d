@@ -20,11 +20,11 @@ namespace toy3d
         std::vector<std::uint8_t> description_bytes;
     };
 
-    AssetResult<AssetPairBytes> encode_asset_pair(const TypeRegistry& types,
-        AssetFileIndex index, std::vector<std::uint8_t> type_data,
-        std::vector<AssetSegmentData> payloads, AssetFileLimits limits = {},
-        ValueLimits value_limits = {});
+    AssetResult<AssetPairBytes> encode_asset_pair(const TypeRegistry& types, AssetFileIndex index,
+                                                  std::vector<std::uint8_t> type_data,
+                                                  std::vector<AssetSegmentData> payloads, AssetFileLimits limits = {},
+                                                  ValueLimits value_limits = {});
     AssetResult<AssetPair> read_asset_pair(const TypeRegistry& types, const FileSystem& files,
-        const VirtualPath& asset_path, AssetFileLimits limits = {},
-        ValueLimits value_limits = {});
-}
+                                           const VirtualPath& asset_path, AssetFileLimits limits = {},
+                                           ValueLimits value_limits = {});
+} // namespace toy3d

@@ -28,7 +28,10 @@ namespace
       public:
         using toy3d::RHICommandList::RHICommandList;
 
-        bool close_for_submit() { return mark_recording() && mark_closed(); }
+        bool close_for_submit()
+        {
+            return mark_recording() && mark_closed();
+        }
     };
 
     class ConcurrentSubmitQueue final : public toy3d::RHIQueue
@@ -36,15 +39,27 @@ namespace
       public:
         using toy3d::RHIQueue::RHIQueue;
 
-        toy3d::RHIQueueCompletionValue completed_value() const override { return submit_count.load(); }
+        toy3d::RHIQueueCompletionValue completed_value() const override
+        {
+            return submit_count.load();
+        }
 
-        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
-        toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus wait_idle() override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
         std::atomic<toy3d::RHIQueueCompletionValue> submit_count{0};
 
-        void complete() { retained_lists.clear(); }
+        void complete()
+        {
+            retained_lists.clear();
+        }
 
       protected:
         toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(const toy3d::RHISubmitInfo& info) override

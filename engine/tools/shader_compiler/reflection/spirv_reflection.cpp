@@ -16,7 +16,9 @@ namespace toy3d::shader
             ~ReflectionModule()
             {
                 if (created)
+                {
                     spvReflectDestroyShaderModule(&module);
+                }
             }
 
             SpvReflectShaderModule module{};
@@ -47,9 +49,13 @@ namespace toy3d::shader
         ShaderParameterCategory reflected_category(const SpvReflectDescriptorBinding& binding)
         {
             if ((binding.resource_type & SPV_REFLECT_RESOURCE_FLAG_CBV) != 0u)
+            {
                 return ShaderParameterCategory::Constant;
+            }
             if ((binding.resource_type & SPV_REFLECT_RESOURCE_FLAG_SAMPLER) != 0u)
+            {
                 return ShaderParameterCategory::Sampler;
+            }
             if ((binding.resource_type & SPV_REFLECT_RESOURCE_FLAG_UAV) != 0u)
             {
                 return binding.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE
@@ -89,11 +95,17 @@ namespace toy3d::shader
                                                             ShaderParameterCategory category)
         {
             if (category == ShaderParameterCategory::Sampler)
+            {
                 return ResourceKind::Sampler;
+            }
             if (binding.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
+            {
                 return ResourceKind::Buffer;
+            }
             if (binding.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+            {
                 return ResourceKind::RWBuffer;
+            }
             if (binding.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER)
             {
                 const bool writable = category == ShaderParameterCategory::StorageBuffer;
@@ -114,11 +126,17 @@ namespace toy3d::shader
             {
             case SpvDim2D:
                 if (binding.image.ms != 0u && binding.image.arrayed == 0u && !storage)
+                {
                     return ResourceKind::Texture2DMS;
+                }
                 if (binding.image.ms != 0u)
+                {
                     return std::nullopt;
+                }
                 if (binding.image.arrayed != 0u)
+                {
                     return storage ? ResourceKind::RWTexture2DArray : ResourceKind::Texture2DArray;
+                }
                 return storage ? ResourceKind::RWTexture2D : ResourceKind::Texture2D;
             case SpvDim3D:
                 return storage ? ResourceKind::RWTexture3D : ResourceKind::Texture3D;
@@ -133,19 +151,25 @@ namespace toy3d::shader
         std::optional<ShaderValueType> reflected_value_type(const SpvReflectBlockVariable& member)
         {
             if (!member.type_description || member.numeric.scalar.width != 32u)
+            {
                 return std::nullopt;
+            }
             const std::uint32_t columns = std::max(1u, member.numeric.matrix.column_count);
             const std::uint32_t rows = member.numeric.matrix.column_count == 0u
                                            ? std::max(1u, member.numeric.vector.component_count)
                                            : member.numeric.matrix.row_count;
             const bool is_float = (member.type_description->type_flags & SPV_REFLECT_TYPE_FLAG_FLOAT) != 0u;
             if (!is_float && columns != 1u)
+            {
                 return std::nullopt;
+            }
             if (is_float)
             {
                 if (columns == 1u)
+                {
                     return static_cast<ShaderValueType>(static_cast<int>(ShaderValueType::Float32) +
                                                         static_cast<int>(rows - 1u));
+                }
                 if (columns >= 2u && columns <= 4u && rows >= 2u && rows <= 4u)
                 {
                     const int matrix_index = static_cast<int>((rows - 2u) * 3u + (columns - 2u));
@@ -156,7 +180,9 @@ namespace toy3d::shader
             const ShaderValueType base =
                 member.numeric.scalar.signedness != 0u ? ShaderValueType::Int32 : ShaderValueType::UInt32;
             if (rows > 4u)
+            {
                 return std::nullopt;
+            }
             return static_cast<ShaderValueType>(static_cast<int>(base) + static_cast<int>(rows - 1u));
         }
 
@@ -221,8 +247,11 @@ namespace toy3d::shader
                       "SPIRV-Reflect failed to read descriptor bindings.");
             return result;
         }
-        std::sort(descriptors.begin(), descriptors.end(), [](const auto* left, const auto* right)
-                  { return left->set != right->set ? left->set < right->set : left->binding < right->binding; });
+        std::sort(descriptors.begin(), descriptors.end(),
+                  [](const auto* left, const auto* right)
+                  {
+                      return left->set != right->set ? left->set < right->set : left->binding < right->binding;
+                  });
         for (const SpvReflectDescriptorBinding* descriptor : descriptors)
         {
             const auto expected = std::find_if(expected_layout.bindings.begin(), expected_layout.bindings.end(),
@@ -320,7 +349,9 @@ namespace toy3d::shader
             for (const NativeBinding& expected : expected_layout.bindings)
             {
                 if (!has_stage(expected.stages, request.stage))
+                {
                     continue;
+                }
                 const bool found = std::any_of(reflection.bindings.begin(), reflection.bindings.end(),
                                                [&](const ReflectedBinding& binding)
                                                {
@@ -341,7 +372,9 @@ namespace toy3d::shader
             {
                 const SpvReflectInterfaceVariable& variable = *variables[index];
                 if (variable.built_in >= 0)
+                {
                     continue;
+                }
                 if (variable.numeric.scalar.width != 32u ||
                     (variable.decoration_flags & SPV_REFLECT_DECORATION_RELAXED_PRECISION) != 0u)
                 {
@@ -379,9 +412,13 @@ namespace toy3d::shader
         }
         std::sort(reflection.interface_variables.begin(), reflection.interface_variables.end(),
                   [](const ReflectedInterfaceVariable& left, const ReflectedInterfaceVariable& right)
-                  { return left.input != right.input ? left.input > right.input : left.location < right.location; });
+                  {
+                      return left.input != right.input ? left.input > right.input : left.location < right.location;
+                  });
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         reflection.reflection_hash = calculate_shader_stage_reflection_hash(reflection);
         result.reflection = std::move(reflection);
         return result;

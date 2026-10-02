@@ -12,19 +12,32 @@
 namespace toy3d
 {
     class World;
-    enum class EditorTransformSource { Gizmo, Details };
+    enum class EditorTransformSource
+    {
+        Gizmo,
+        Details
+    };
 
     // Scene-owned timeline. Records keep value snapshots and resolvable identities.
     class EditorCommandHistory
     {
       public:
-        explicit EditorCommandHistory(ActorFactory& factory) : factory_(factory) {}
-        EditorCommandHistory(ActorFactory& factory, MaterialAssignments& materials) : factory_(factory), materials_(&materials) {}
+        explicit EditorCommandHistory(ActorFactory& factory) : factory_(factory)
+        {
+        }
+        EditorCommandHistory(ActorFactory& factory, MaterialAssignments& materials)
+            : factory_(factory), materials_(&materials)
+        {
+        }
         void begin(World& world, std::uint32_t actor_id, const Transform& before, EditorTransformSource source);
         void finish(World& world, EditorTransformSource source);
-        bool preview_component(World& world, std::uint32_t actor_id, std::uint32_t component_id, const SceneComponentData& candidate);
+        bool preview_component(World& world, std::uint32_t actor_id, std::uint32_t component_id,
+                               const SceneComponentData& candidate);
         bool preview_actor_properties(World& world, std::uint32_t actor_id, const ReflectedValue& candidate);
-        const ActorTypeRegistry& actor_types() const { return factory_.actor_types(); }
+        const ActorTypeRegistry& actor_types() const
+        {
+            return factory_.actor_types();
+        }
         void cancel();
         void clear();
         std::uint32_t place_actor(World& world, const PlacementRequest& request);
@@ -34,20 +47,41 @@ namespace toy3d
         bool undo(World& world);
         bool redo(World& world);
         // Empty history is a harmless no-op; execution failures carry a reason for the UI.
-        const std::string& error() const { return error_; }
-        bool active() const { return active_; }
-        bool active_for(EditorTransformSource source) const { return active_ && source_ == source; }
-        const ComponentEditorRegistry& component_editors() const { return factory_.component_editors(); }
+        const std::string& error() const
+        {
+            return error_;
+        }
+        bool active() const
+        {
+            return active_;
+        }
+        bool active_for(EditorTransformSource source) const
+        {
+            return active_ && source_ == source;
+        }
+        const ComponentEditorRegistry& component_editors() const
+        {
+            return factory_.component_editors();
+        }
         void synchronize(World& world);
         void mark_saved(World& world);
         // GT candidate construction may change World revisions before a complete rollback.
         void acknowledge_rollback(World& world);
         bool dirty(const World& world) const;
-        void set_identity_remap(std::function<void(std::uint32_t, std::uint32_t,
-            const std::map<std::uint32_t, std::uint32_t>&)> callback) { remap_ = std::move(callback); }
+        void set_identity_remap(
+            std::function<void(std::uint32_t, std::uint32_t, const std::map<std::uint32_t, std::uint32_t>&)> callback)
+        {
+            remap_ = std::move(callback);
+        }
 
       private:
-        enum class Kind { Modify, Create, Delete, Material };
+        enum class Kind
+        {
+            Modify,
+            Create,
+            Delete,
+            Material
+        };
         struct AttachedActor
         {
             std::uint32_t actor_id = 0;
@@ -90,4 +124,4 @@ namespace toy3d
         std::string error_;
         std::function<void(std::uint32_t, std::uint32_t, const std::map<std::uint32_t, std::uint32_t>&)> remap_;
     };
-}
+} // namespace toy3d

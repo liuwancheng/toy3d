@@ -153,9 +153,11 @@ namespace toy3d
         {
             return status;
         }
-        const auto format_it =
-            std::find_if(formats.begin(), formats.end(), [requested_format](const VkSurfaceFormatKHR& surface_format)
-                         { return surface_format.format == requested_format; });
+        const auto format_it = std::find_if(formats.begin(), formats.end(),
+                                            [requested_format](const VkSurfaceFormatKHR& surface_format)
+                                            {
+                                                return surface_format.format == requested_format;
+                                            });
         if (format_it == formats.end())
         {
             return RHIStatus::failure(RHIErrorCode::Unsupported,

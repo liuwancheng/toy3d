@@ -88,7 +88,10 @@ namespace
         const ShaderPermutationResult empty_domain = resolve_shader_permutation(empty, {});
         check(empty_domain.succeeded() && empty_domain.permutation &&
                   std::any_of(empty_domain.permutation->key.begin(), empty_domain.permutation->key.end(),
-                              [](std::uint8_t byte) { return byte != 0u; }),
+                              [](std::uint8_t byte)
+                              {
+                                  return byte != 0u;
+                              }),
               "An empty Variant domain must still have a versioned non-zero permutation key");
     }
 
@@ -113,9 +116,14 @@ namespace
             Rename
         };
 
-        explicit FaultInjectingPlatformFile(Failure failure) : failure_(failure) {}
+        explicit FaultInjectingPlatformFile(Failure failure) : failure_(failure)
+        {
+        }
 
-        toy3d::PlatformFileCapabilities capabilities() const override { return native_.capabilities(); }
+        toy3d::PlatformFileCapabilities capabilities() const override
+        {
+            return native_.capabilities();
+        }
 
         toy3d::FileResult<std::unique_ptr<toy3d::FileHandle>> open(const toy3d::PhysicalPath& path,
                                                                    toy3d::FileOpenMode mode) const override
@@ -128,7 +136,10 @@ namespace
             return native_.stat(path);
         }
 
-        toy3d::FileResult<bool> exists(const toy3d::PhysicalPath& path) const override { return native_.exists(path); }
+        toy3d::FileResult<bool> exists(const toy3d::PhysicalPath& path) const override
+        {
+            return native_.exists(path);
+        }
 
         toy3d::FileResult<std::vector<std::uint8_t>> read_binary(const toy3d::PhysicalPath& path) const override
         {
@@ -183,7 +194,10 @@ namespace
             return native_.replace(source, destination);
         }
 
-        toy3d::FileStatus remove_file(const toy3d::PhysicalPath& path) override { return native_.remove_file(path); }
+        toy3d::FileStatus remove_file(const toy3d::PhysicalPath& path) override
+        {
+            return native_.remove_file(path);
+        }
 
         toy3d::FileStatus remove_empty_directory(const toy3d::PhysicalPath& path) override
         {
@@ -254,7 +268,10 @@ namespace
     bool has_diagnostic(const std::vector<toy3d::shader::Diagnostic>& diagnostics, toy3d::shader::DiagnosticCode code)
     {
         return std::any_of(diagnostics.begin(), diagnostics.end(),
-                           [&](const toy3d::shader::Diagnostic& diagnostic) { return diagnostic.code == code; });
+                           [&](const toy3d::shader::Diagnostic& diagnostic)
+                           {
+                               return diagnostic.code == code;
+                           });
     }
 
     std::filesystem::path make_test_directory(const std::string& name)
@@ -311,7 +328,9 @@ namespace
         const ShaderCompileRequestResult first = build_shader_compile_request(first_input);
         check(first.succeeded(), "valid Vulkan compile request must build");
         if (!first.request)
+        {
             return;
+        }
         check(first.request->dependencies.size() == 2, "transitive virtual includes must be tracked");
         check(first.request->logical_layout_hash == first_input.logical_layout_hash &&
                   first.request->target_binding_hash == first_input.target_binding_hash,
@@ -336,16 +355,18 @@ namespace
         const ShaderCompileRequestResult changed_result = build_shader_compile_request(changed);
         check(changed_result.succeeded() && changed_result.request->compile_key != first.request->compile_key,
               "dependency content must enter the compile key");
-        const RegisteredShaderSourceProvider project_provider({
-            {"/Project/ShaderIncludes/Common.hlsli", "static const float4 included_value = 1.0;\n"}});
+        const RegisteredShaderSourceProvider project_provider(
+            {{"/Project/ShaderIncludes/Common.hlsli", "static const float4 included_value = 1.0;\n"}});
         auto project = make_input(project_provider);
         project.shader_include_source.clear();
         project.pass_source_line = 70u;
-        project.pass_source = "#include \"/Project/ShaderIncludes/Common.hlsli\"\nfloat4 vs_main() : SV_Position { return included_value; }";
+        project.pass_source = "#include \"/Project/ShaderIncludes/Common.hlsli\"\nfloat4 vs_main() : SV_Position { "
+                              "return included_value; }";
         const auto project_result = build_shader_compile_request(project);
         check(project_result.succeeded() && project_result.request->dependencies.size() == 1u &&
-            project_result.request->source.find("#line 71 \"/Engine/Shaders/Tests/Compile.shader\"") != std::string::npos,
-            "project include expansion must restore the author's .shader line after include");
+                  project_result.request->source.find("#line 71 \"/Engine/Shaders/Tests/Compile.shader\"") !=
+                      std::string::npos,
+              "project include expansion must restore the author's .shader line after include");
     }
 
     void test_include_failures()
@@ -536,7 +557,9 @@ namespace
         ShaderCompileRequestResult built = build_shader_compile_request(make_input(provider));
         check(built.succeeded(), "adapter test compile request must build");
         if (!built.request)
+        {
             return;
+        }
         const std::filesystem::path working = make_test_directory("adapter");
         std::vector<Diagnostic> diagnostics;
         const auto invocation = build_vulkan_dxc_invocation(*built.request, physical_path(working / "input.hlsl"),
@@ -569,7 +592,9 @@ namespace
             {
                 const auto output = std::find(args.begin(), args.end(), "-Fo");
                 if (output != args.end() && output + 1 != args.end())
+                {
                     write_bytes(*(output + 1), minimal_spirv_header());
+                }
             }
             return result;
         };
@@ -605,7 +630,9 @@ namespace
             {
                 const auto output = std::find(args.begin(), args.end(), "-Fo");
                 if (output != args.end() && output + 1 != args.end())
+                {
                     write_bytes(*(output + 1), minimal_spirv_header());
+                }
             }
             return result;
         };
@@ -650,10 +677,10 @@ namespace
         member.size = 16u;
         member.default_value.assign(16u, 0u);
         buffer.members.push_back(member);
-        buffer.data_layout_hash = calculate_constant_buffer_data_layout_hash(
-            buffer.group, buffer.binding_id, buffer.size,
-            {{member.parameter_id, member.name, member.type, member.offset, member.size, member.array_stride,
-              member.matrix_stride}});
+        buffer.data_layout_hash =
+            calculate_constant_buffer_data_layout_hash(buffer.group, buffer.binding_id, buffer.size,
+                                                       {{member.parameter_id, member.name, member.type, member.offset,
+                                                         member.size, member.array_stride, member.matrix_stride}});
         schema.constant_buffers.push_back(std::move(buffer));
 
         ShaderParameterResourceSchema texture;
@@ -729,8 +756,16 @@ namespace
         const toy3d::PhysicalPath entry_root = physical_path(root / "entries");
         ShaderMapEntryWriteResult first;
         ShaderMapEntryWriteResult second;
-        std::thread first_thread([&] { first = write_verified_shader_map_entry(platform_file, entry_root, entry); });
-        std::thread second_thread([&] { second = write_verified_shader_map_entry(platform_file, entry_root, entry); });
+        std::thread first_thread(
+            [&]
+            {
+                first = write_verified_shader_map_entry(platform_file, entry_root, entry);
+            });
+        std::thread second_thread(
+            [&]
+            {
+                second = write_verified_shader_map_entry(platform_file, entry_root, entry);
+            });
         first_thread.join();
         second_thread.join();
         check(first.succeeded() && second.succeeded() && first.cache_hit != second.cache_hit,
@@ -782,8 +817,8 @@ namespace
 
         ShaderMapEntry non_subset_entry = entry;
         non_subset_entry.bindings.push_back(unknown_active);
-        const ShaderMapEntryWriteResult non_subset_publication = write_verified_shader_map_entry(
-            platform_file, physical_path(reader_root / "non-subset"), non_subset_entry);
+        const ShaderMapEntryWriteResult non_subset_publication =
+            write_verified_shader_map_entry(platform_file, physical_path(reader_root / "non-subset"), non_subset_entry);
         check(!non_subset_publication.succeeded() && !non_subset_publication.entry_directory,
               "an active binding outside the complete schema must suppress ShaderMapEntry publication");
         const ShaderMapEntryWriteResult duplicate =
@@ -840,7 +875,9 @@ namespace
                     "shader_map_entry_version=" + std::to_string(shader_map_entry_version);
                 const std::size_t version = changed.find(current_version);
                 if (version != std::string::npos)
+                {
                     changed.replace(version, current_version.size(), "shader_map_entry_version=999");
+                }
                 write_text(manifest_path, changed);
             }
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
@@ -862,7 +899,9 @@ namespace
                 const std::string identity = toy3d::sha256_to_hex(entry.parameter_schema.schema_identity);
                 const std::size_t position = changed.find(identity);
                 if (position != std::string::npos)
+                {
                     changed[position] = changed[position] == '0' ? '1' : '0';
+                }
                 write_text(schema_path, changed);
             }
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
@@ -883,7 +922,9 @@ namespace
                 std::string changed = manifest.value();
                 const std::size_t target = changed.find("target=2");
                 if (target != std::string::npos)
+                {
                     changed.replace(target, 8u, "target=0");
+                }
                 write_text(manifest_path, changed);
             }
             const ShaderMapEntryReadResult corrupt = read_verified_shader_map_entry(
@@ -906,7 +947,9 @@ namespace
                 std::string changed = manifest.value();
                 const std::size_t cull = changed.find("pass_cull_mode=1");
                 if (cull != std::string::npos)
+                {
                     changed.replace(cull, std::string("pass_cull_mode=1").size(), "pass_cull_mode=2");
+                }
                 write_text(manifest_path, changed);
             }
             const ShaderMapEntryReadResult corrupt =
@@ -922,8 +965,8 @@ namespace
         {
             const std::filesystem::path dependency_path =
                 std::filesystem::u8path(dependency_fixture.second.entry_directory->utf8()) / "vertex.dependencies.txt";
-            write_text(dependency_path,
-                       "/Engine/ShaderIncludes/Tampered.hlsli\t" + toy3d::sha256_to_hex(toy3d::sha256("tampered")) + "\n");
+            write_text(dependency_path, "/Engine/ShaderIncludes/Tampered.hlsli\t" +
+                                            toy3d::sha256_to_hex(toy3d::sha256("tampered")) + "\n");
             const ShaderMapEntryReadResult corrupt =
                 read_verified_shader_map_entry(platform_file, physical_path(dependency_fixture.first / "entries"),
                                                dependency_fixture.second.shader_map_key);
@@ -958,7 +1001,9 @@ namespace
             discover_shader_toolchain(platform_file, toy3d::PhysicalPath(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT));
         check(discovered.succeeded(), "formal locked toolchain bundle must pass manifest and artifact hash discovery");
         if (!discovered.toolchain)
+        {
             return;
+        }
         toolchain = *discovered.toolchain;
 #else
         toolchain.manifest.identity = "Toy3dShaderToolchain/explicit-integration-test";
@@ -1022,9 +1067,9 @@ namespace
             {12u, "factor", ShaderValueType::Float32, 12u, 4u, 0u, 0u},
             {13u, "transform", ShaderValueType::Float32x4x4, 16u, 64u, 0u, 16u},
             {14u, "weights", ShaderValueType::Float32x4, 80u, 32u, 16u, 0u}};
-        material_constants.data_layout_hash = calculate_constant_buffer_data_layout_hash(
-            material_constants.group, material_constants.binding_id, material_constants.size,
-            reflected_material_members);
+        material_constants.data_layout_hash =
+            calculate_constant_buffer_data_layout_hash(material_constants.group, material_constants.binding_id,
+                                                       material_constants.size, reflected_material_members);
         ActiveBinding active_constants;
         active_constants.binding_id = 10u;
         active_constants.name = "ToyMaterialConstants";
@@ -1063,15 +1108,36 @@ namespace
         resource_layout.target = ShaderTarget::VulkanSpirV;
         resource_layout.mapping_version = vulkan_binding_mapping_version;
         resource_layout.target_binding_hash[0] = 2u;
-        resource_layout.bindings = {
-            {10u, "ToyMaterialConstants", BindingGroup::Material, ShaderParameterCategory::Constant,
-             ShaderStageFlags::Pixel, NativeRegisterClass::ConstantBuffer, 0u, 2u, 0u, material_constants.size,
-             material_constants.data_layout_hash, toy_shader_abi_version, &active_constants},
-            {20u, "material_texture", BindingGroup::Material, ShaderParameterCategory::SampledTexture,
-             ShaderStageFlags::Pixel, NativeRegisterClass::ShaderResource, 0u, 2u, 1u, 0u, {}, 0u,
-             &active_texture},
-            {21u, "material_sampler", BindingGroup::Material, ShaderParameterCategory::Sampler, ShaderStageFlags::Pixel,
-             NativeRegisterClass::Sampler, 0u, 2u, 2u, 0u, {}, 0u, &active_sampler}};
+        resource_layout.bindings = {{10u, "ToyMaterialConstants", BindingGroup::Material,
+                                     ShaderParameterCategory::Constant, ShaderStageFlags::Pixel,
+                                     NativeRegisterClass::ConstantBuffer, 0u, 2u, 0u, material_constants.size,
+                                     material_constants.data_layout_hash, toy_shader_abi_version, &active_constants},
+                                    {20u,
+                                     "material_texture",
+                                     BindingGroup::Material,
+                                     ShaderParameterCategory::SampledTexture,
+                                     ShaderStageFlags::Pixel,
+                                     NativeRegisterClass::ShaderResource,
+                                     0u,
+                                     2u,
+                                     1u,
+                                     0u,
+                                     {},
+                                     0u,
+                                     &active_texture},
+                                    {21u,
+                                     "material_sampler",
+                                     BindingGroup::Material,
+                                     ShaderParameterCategory::Sampler,
+                                     ShaderStageFlags::Pixel,
+                                     NativeRegisterClass::Sampler,
+                                     0u,
+                                     2u,
+                                     2u,
+                                     0u,
+                                     {},
+                                     0u,
+                                     &active_sampler}};
         ShaderCompileRequestInput resource_pixel = pixel;
         resource_pixel.generated_bindings = "[[vk::binding(0, 2)]]\n"
                                             "cbuffer ToyMaterialConstants : register(b0)\n"
@@ -1120,7 +1186,9 @@ namespace
             discover_shader_toolchain(platform_file, toy3d::PhysicalPath(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT));
         check(discovered.succeeded(), "Program compiler requires the locked toolchain bundle");
         if (!discovered.toolchain)
+        {
             return;
+        }
 
         const std::string source = R"(
 Shader "Tests/ProgramCompile"
@@ -1168,7 +1236,9 @@ Shader "Tests/ProgramCompile"
         const ParseResult parsed = parse_shader(source, "/Engine/Shaders/Tests/ProgramCompile.shader");
         check(parsed.succeeded(), "Program compiler test Shader must parse");
         if (!parsed.asset)
+        {
             return;
+        }
 
         ShaderProgramCompileInput input;
         input.pass_name = "Forward";
@@ -1192,13 +1262,18 @@ Shader "Tests/ProgramCompile"
             check(compiled.entry->variant_id_version == shader_variant_id_version &&
                       compiled.entry->permutation_version == shader_permutation_version &&
                       std::any_of(compiled.entry->permutation_key.begin(), compiled.entry->permutation_key.end(),
-                                  [](std::uint8_t byte) { return byte != 0u; }),
+                                  [](std::uint8_t byte)
+                                  {
+                                      return byte != 0u;
+                                  }),
                   "ShaderMapEntry must persist its versioned typed permutation identity");
             check(compiled.entry->bindings.size() == 3u,
                   "Only the active Material cbuffer, texture, and sampler must remain");
             check(std::all_of(compiled.entry->bindings.begin(), compiled.entry->bindings.end(),
                               [](const ShaderMapBinding& binding)
-                              { return binding.stages == ShaderStageFlags::Pixel; }),
+                              {
+                                  return binding.stages == ShaderStageFlags::Pixel;
+                              }),
                   "Discovery must compute final pixel-only stage visibility");
             check(compiled.entry->bindings[0].descriptor_set == 2u &&
                       compiled.entry->bindings[0].descriptor_binding == 0u &&

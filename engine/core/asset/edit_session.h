@@ -46,41 +46,72 @@ namespace toy3d
         using PreviewPrepare = std::function<AssetStatus(const T&, EditChangeKind)>;
         using PreviewNotify = std::function<void(const EditRecord&)>;
 
-        EditSession(const TypeRegistry& types, const TypeDesc& type, AssetId id, VirtualPath path,
-                    T initial, Validator validator, const AssetIndex* index = nullptr,
-                    PreviewPrepare prepare = {}, PreviewNotify notify = {})
+        EditSession(const TypeRegistry& types, const TypeDesc& type, AssetId id, VirtualPath path, T initial,
+                    Validator validator, const AssetIndex* index = nullptr, PreviewPrepare prepare = {},
+                    PreviewNotify notify = {})
             : types_(types), type_(type), id_(id), path_(std::move(path)), current_(std::move(initial)),
-              validator_(std::move(validator)), index_(index), prepare_(std::move(prepare)),
-              notify_(std::move(notify)), owner_thread_(std::this_thread::get_id())
+              validator_(std::move(validator)), index_(index), prepare_(std::move(prepare)), notify_(std::move(notify)),
+              owner_thread_(std::this_thread::get_id())
         {
             ValueWriter writer;
-            if (encode_value(writer, current_).succeeded()) saved_bytes_ = writer.bytes();
+            if (encode_value(writer, current_).succeeded())
+            {
+                saved_bytes_ = writer.bytes();
+            }
         }
 
-        const T& value() const { return current_; }
+        const T& value() const
+        {
+            return current_;
+        }
         bool dirty() const
         {
             ValueWriter writer;
             return !encode_value(writer, current_).succeeded() || writer.bytes() != saved_bytes_;
         }
-        std::size_t undo_count() const { return cursor_; }
-        std::size_t redo_count() const { return history_.size() - cursor_; }
+        std::size_t undo_count() const
+        {
+            return cursor_;
+        }
+        std::size_t redo_count() const
+        {
+            return history_.size() - cursor_;
+        }
 
         AssetStatus bind_published(const FileSystem& files, AssetFileLimits file_limits = {},
                                    ValueLimits value_limits = {})
         {
             AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return thread;
+            if (!thread.succeeded())
+            {
+                return thread;
+            }
             auto inspected = inspect_asset(files, path_, file_limits);
-            if (!inspected.succeeded()) return inspected.status();
+            if (!inspected.succeeded())
+            {
+                return inspected.status();
+            }
             if (!(inspected.value().asset_id == id_) || inspected.value().root_type != type_.name)
+            {
                 return problem(AssetErrorCode::TypeMismatch, {}, "published asset identity or type differs");
+            }
             const AssetSegment* typed = nullptr;
             for (const AssetSegment& segment : inspected.value().segments)
-                if (segment.name == "type_data") typed = &segment;
-            if (typed == nullptr) return problem(AssetErrorCode::InvalidFormat, {}, "type_data is missing");
+            {
+                if (segment.name == "type_data")
+                {
+                    typed = &segment;
+                }
+            }
+            if (typed == nullptr)
+            {
+                return problem(AssetErrorCode::InvalidFormat, {}, "type_data is missing");
+            }
             auto bytes = read_asset_segment(files, path_, id_, *typed, value_limits.max_bytes);
-            if (!bytes.succeeded()) return bytes.status();
+            if (!bytes.succeeded())
+            {
+                return bytes.status();
+            }
             published_type_bytes_ = bytes.value();
             bound_ = true;
             return AssetStatus::success();
@@ -89,12 +120,20 @@ namespace toy3d
         AssetStatus bind_published_pair(const FileSystem& files)
         {
             const AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return thread;
+            if (!thread.succeeded())
+            {
+                return thread;
+            }
             const auto pair = read_asset_pair(types_, files, path_);
-            if (!pair.succeeded()) return pair.status();
+            if (!pair.succeeded())
+            {
+                return pair.status();
+            }
             const auto& document = pair.value().description;
             if (!(document.index.asset_id == id_) || document.index.root_type != type_.name)
+            {
                 return problem(AssetErrorCode::TypeMismatch, {}, "published asset identity or type differs");
+            }
             published_type_bytes_ = document.type_data;
             bound_ = true;
             return AssetStatus::success();
@@ -103,41 +142,56 @@ namespace toy3d
         AssetStatus mark_pair_saved(const std::vector<std::uint8_t>& published)
         {
             const AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return thread;
+            if (!thread.succeeded())
+            {
+                return thread;
+            }
             ValueWriter writer;
             const ValueStatus encoded = encode_value(writer, current_);
-            if (!encoded.succeeded()) return problem(AssetErrorCode::Value,
-                encoded.property_path, encoded.message.c_str());
+            if (!encoded.succeeded())
+            {
+                return problem(AssetErrorCode::Value, encoded.property_path, encoded.message.c_str());
+            }
             if (writer.bytes() != published)
+            {
                 return problem(AssetErrorCode::Conflict, {}, "saved bytes differ from edit session");
+            }
             published_type_bytes_ = published;
             saved_bytes_ = published;
             bound_ = true;
             return AssetStatus::success();
         }
 
-        const std::vector<std::uint8_t>& published_type_bytes() const { return published_type_bytes_; }
+        const std::vector<std::uint8_t>& published_type_bytes() const
+        {
+            return published_type_bytes_;
+        }
 
-        AssetResult<EditRecord> apply_edit(const std::vector<EditPatch>& patches,
-                                           ValueLimits limits = {})
+        AssetResult<EditRecord> apply_edit(const std::vector<EditPatch>& patches, ValueLimits limits = {})
         {
             AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return AssetResult<EditRecord>(thread);
+            if (!thread.succeeded())
+            {
+                return AssetResult<EditRecord>(thread);
+            }
             if (!types_.frozen() || patches.empty())
-                return AssetResult<EditRecord>(problem(AssetErrorCode::InvalidState, {},
-                    "frozen schema and at least one patch required"));
+            {
+                return AssetResult<EditRecord>(
+                    problem(AssetErrorCode::InvalidState, {}, "frozen schema and at least one patch required"));
+            }
             ValueWriter original_writer(limits);
             ValueStatus encoded = encode_value(original_writer, current_);
             if (!encoded.succeeded())
-                return AssetResult<EditRecord>(problem(AssetErrorCode::Value, encoded.property_path,
-                    encoded.message.c_str()));
+            {
+                return AssetResult<EditRecord>(
+                    problem(AssetErrorCode::Value, encoded.property_path, encoded.message.c_str()));
+            }
             std::vector<std::uint8_t> candidate_bytes = original_writer.bytes();
             EditRecord record;
             record.asset_id = id_;
             for (const EditPatch& patch : patches)
             {
-                auto accessed = access_property(types_, type_, candidate_bytes, patch.path,
-                                                &patch.new_value, limits);
+                auto accessed = access_property(types_, type_, candidate_bytes, patch.path, &patch.new_value, limits);
                 if (!accessed.succeeded())
                 {
                     AssetStatus status = accessed.status();
@@ -151,12 +205,16 @@ namespace toy3d
                     AssetRef reference;
                     const ValueStatus decoded = decode_value(reader, reference);
                     if (!decoded.succeeded() || !reader.at_end())
-                        return AssetResult<EditRecord>(problem(AssetErrorCode::Value,
-                            format_property_path(patch.path), "invalid asset reference value"));
+                    {
+                        return AssetResult<EditRecord>(problem(AssetErrorCode::Value, format_property_path(patch.path),
+                                                               "invalid asset reference value"));
+                    }
                     if (index_ == nullptr)
+                    {
                         return AssetResult<EditRecord>(problem(AssetErrorCode::MissingReference,
-                            format_property_path(patch.path),
-                            "asset reference index is unavailable"));
+                                                               format_property_path(patch.path),
+                                                               "asset reference index is unavailable"));
+                    }
                     AssetStatus resolved = index_->resolve(reference, format_property_path(patch.path));
                     if (!resolved.succeeded())
                     {
@@ -167,14 +225,20 @@ namespace toy3d
                 }
                 record.changes.push_back({patch.path, accessed.value().value_bytes, patch.new_value});
                 candidate_bytes = accessed.value().root_bytes;
-                if (static_cast<int>(patch.kind) > static_cast<int>(record.kind)) record.kind = patch.kind;
+                if (static_cast<int>(patch.kind) > static_cast<int>(record.kind))
+                {
+                    record.kind = patch.kind;
+                }
             }
             ValueReader candidate_reader(candidate_bytes, limits);
             T candidate{};
             const ValueStatus decoded = decode_value(candidate_reader, candidate);
             if (!decoded.succeeded() || !candidate_reader.at_end())
-                return AssetResult<EditRecord>(problem(AssetErrorCode::Value, decoded.property_path,
-                    decoded.succeeded() ? "edited value has trailing bytes" : decoded.message.c_str()));
+            {
+                return AssetResult<EditRecord>(
+                    problem(AssetErrorCode::Value, decoded.property_path,
+                            decoded.succeeded() ? "edited value has trailing bytes" : decoded.message.c_str()));
+            }
             AssetStatus valid = validator_(candidate);
             if (!valid.succeeded())
             {
@@ -201,15 +265,24 @@ namespace toy3d
             history_.push_back({current_, candidate, original_writer.bytes(), candidate_bytes, record});
             ++cursor_;
             current_ = std::move(candidate);
-            if (notify_) notify_(record);
+            if (notify_)
+            {
+                notify_(record);
+            }
             return AssetResult<EditRecord>(std::move(record));
         }
 
         AssetStatus undo()
         {
             AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return thread;
-            if (cursor_ == 0) return problem(AssetErrorCode::InvalidState, {}, "undo stack is empty");
+            if (!thread.succeeded())
+            {
+                return thread;
+            }
+            if (cursor_ == 0)
+            {
+                return problem(AssetErrorCode::InvalidState, {}, "undo stack is empty");
+            }
             const UndoState& state = history_[cursor_ - 1];
             if (prepare_)
             {
@@ -223,15 +296,24 @@ namespace toy3d
             }
             current_ = state.before;
             --cursor_;
-            if (notify_) notify_(state.record);
+            if (notify_)
+            {
+                notify_(state.record);
+            }
             return AssetStatus::success();
         }
 
         AssetStatus redo()
         {
             AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return thread;
-            if (cursor_ >= history_.size()) return problem(AssetErrorCode::InvalidState, {}, "redo stack is empty");
+            if (!thread.succeeded())
+            {
+                return thread;
+            }
+            if (cursor_ >= history_.size())
+            {
+                return problem(AssetErrorCode::InvalidState, {}, "redo stack is empty");
+            }
             const UndoState& state = history_[cursor_];
             if (prepare_)
             {
@@ -245,34 +327,64 @@ namespace toy3d
             }
             current_ = state.after;
             ++cursor_;
-            if (notify_) notify_(state.record);
+            if (notify_)
+            {
+                notify_(state.record);
+            }
             return AssetStatus::success();
         }
 
-        AssetStatus save(FileSystem& files, const SchemaMigrationRegistry& migrations,
-                         AssetFileIndex index, std::vector<AssetSegmentData> extra = {},
-                         AssetFileLimits file_limits = {}, ValueLimits value_limits = {})
+        AssetStatus save(FileSystem& files, const SchemaMigrationRegistry& migrations, AssetFileIndex index,
+                         std::vector<AssetSegmentData> extra = {}, AssetFileLimits file_limits = {},
+                         ValueLimits value_limits = {})
         {
             AssetStatus thread = check_thread();
-            if (!thread.succeeded()) return thread;
-            if (!bound_) return problem(AssetErrorCode::InvalidState, {}, "edit session is not bound to a file");
+            if (!thread.succeeded())
+            {
+                return thread;
+            }
+            if (!bound_)
+            {
+                return problem(AssetErrorCode::InvalidState, {}, "edit session is not bound to a file");
+            }
             auto inspected = inspect_asset(files, path_, file_limits);
-            if (!inspected.succeeded()) return inspected.status();
+            if (!inspected.succeeded())
+            {
+                return inspected.status();
+            }
             const AssetSegment* typed = nullptr;
             for (const AssetSegment& segment : inspected.value().segments)
-                if (segment.name == "type_data") typed = &segment;
-            if (typed == nullptr) return problem(AssetErrorCode::InvalidFormat, {}, "type_data is missing");
+            {
+                if (segment.name == "type_data")
+                {
+                    typed = &segment;
+                }
+            }
+            if (typed == nullptr)
+            {
+                return problem(AssetErrorCode::InvalidFormat, {}, "type_data is missing");
+            }
             auto published = read_asset_segment(files, path_, id_, *typed, value_limits.max_bytes);
-            if (!published.succeeded()) return published.status();
+            if (!published.succeeded())
+            {
+                return published.status();
+            }
             if (published.value() != published_type_bytes_)
+            {
                 return problem(AssetErrorCode::Conflict, {}, "published data changed since the edit session opened");
-            AssetStatus status = save_asset(types_, migrations, files, path_, std::move(index), current_,
-                                            validator_, std::move(extra), file_limits, value_limits);
-            if (!status.succeeded()) return status;
+            }
+            AssetStatus status = save_asset(types_, migrations, files, path_, std::move(index), current_, validator_,
+                                            std::move(extra), file_limits, value_limits);
+            if (!status.succeeded())
+            {
+                return status;
+            }
             ValueWriter writer(value_limits);
             const ValueStatus encoded = encode_value(writer, current_);
-            if (!encoded.succeeded()) return problem(AssetErrorCode::Value, encoded.property_path,
-                                                     encoded.message.c_str());
+            if (!encoded.succeeded())
+            {
+                return problem(AssetErrorCode::Value, encoded.property_path, encoded.message.c_str());
+            }
             published_type_bytes_ = writer.bytes();
             saved_bytes_ = writer.bytes();
             return AssetStatus::success();
@@ -295,8 +407,9 @@ namespace toy3d
 
         AssetStatus check_thread() const
         {
-            return std::this_thread::get_id() == owner_thread_ ? AssetStatus::success() :
-                   problem(AssetErrorCode::InvalidState, {}, "edit session accessed from another thread");
+            return std::this_thread::get_id() == owner_thread_
+                       ? AssetStatus::success()
+                       : problem(AssetErrorCode::InvalidState, {}, "edit session accessed from another thread");
         }
 
         const TypeRegistry& types_;

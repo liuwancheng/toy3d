@@ -9,7 +9,12 @@
 
 namespace toy3d
 {
-    enum class BuiltinShaderDecision { Pending, Commit, Discard };
+    enum class BuiltinShaderDecision
+    {
+        Pending,
+        Commit,
+        Discard
+    };
 
     // Owned GT/RT handshake. Input is immutable after dispatch; RT releases
     // prepared before GT reads status, and resolved before GT reads applied.
@@ -24,4 +29,4 @@ namespace toy3d
         std::atomic<bool> resolved{false};
     };
     using BuiltinShaderUpdateRef = std::shared_ptr<BuiltinShaderUpdate>;
-}
+} // namespace toy3d

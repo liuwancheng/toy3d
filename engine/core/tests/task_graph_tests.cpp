@@ -27,24 +27,44 @@ namespace
     class SingleThreadTaskGraph final : public toy3d::TaskGraphInterface
     {
       public:
-        toy3d::NamedThread get_current_thread_if_known() const override { return toy3d::NamedThread::GameThread; }
+        toy3d::NamedThread get_current_thread_if_known() const override
+        {
+            return toy3d::NamedThread::GameThread;
+        }
 
-        toy3d::NamedThread get_render_thread() const override { return toy3d::NamedThread::GameThread; }
+        toy3d::NamedThread get_render_thread() const override
+        {
+            return toy3d::NamedThread::GameThread;
+        }
 
-        std::uint32_t get_num_worker_threads() const override { return 0; }
+        std::uint32_t get_num_worker_threads() const override
+        {
+            return 0;
+        }
 
-        bool is_thread_processing_tasks(toy3d::NamedThread) const override { return false; }
+        bool is_thread_processing_tasks(toy3d::NamedThread) const override
+        {
+            return false;
+        }
 
         toy3d::TaskGraphStatus attach_to_thread(toy3d::NamedThread) override
         {
             return toy3d::TaskGraphStatus::success();
         }
 
-        std::uint64_t process_thread_until_idle(toy3d::NamedThread) override { return process_until_idle(); }
+        std::uint64_t process_thread_until_idle(toy3d::NamedThread) override
+        {
+            return process_until_idle();
+        }
 
-        void process_thread_until_request_return(toy3d::NamedThread) override { process_until_idle(); }
+        void process_thread_until_request_return(toy3d::NamedThread) override
+        {
+            process_until_idle();
+        }
 
-        void request_return(toy3d::NamedThread) override {}
+        void request_return(toy3d::NamedThread) override
+        {
+        }
 
         toy3d::TaskWaitResult wait_until_tasks_complete(const toy3d::GraphEventArray& tasks,
                                                         toy3d::NamedThread) override
@@ -66,7 +86,9 @@ namespace
             event.trigger();
         }
 
-        void wake_named_thread(toy3d::NamedThread) override {}
+        void wake_named_thread(toy3d::NamedThread) override
+        {
+        }
 
         toy3d::TaskGraphShutdownResult shutdown(toy3d::TaskGraphShutdownMode) override
         {
@@ -83,7 +105,10 @@ namespace
             return processed;
         }
 
-        std::size_t owned_task_count() const { return tasks_.size(); }
+        std::size_t owned_task_count() const
+        {
+            return tasks_.size();
+        }
 
       private:
         toy3d::BaseGraphTask* accept_task(std::unique_ptr<toy3d::BaseGraphTask> task) override
@@ -95,21 +120,29 @@ namespace
 
         void abandon_task(toy3d::BaseGraphTask& task) noexcept override
         {
-            const auto iterator =
-                std::find_if(tasks_.begin(), tasks_.end(), [&task](const std::unique_ptr<toy3d::BaseGraphTask>& owned)
-                             { return owned.get() == &task; });
+            const auto iterator = std::find_if(tasks_.begin(), tasks_.end(),
+                                               [&task](const std::unique_ptr<toy3d::BaseGraphTask>& owned)
+                                               {
+                                                   return owned.get() == &task;
+                                               });
             if (iterator != tasks_.end())
             {
                 tasks_.erase(iterator);
             }
         }
 
-        void queue_task(toy3d::BaseGraphTask& task) override { ready_tasks_.push_back(&task); }
+        void queue_task(toy3d::BaseGraphTask& task) override
+        {
+            ready_tasks_.push_back(&task);
+        }
 
         static bool all_complete(const toy3d::GraphEventArray& tasks)
         {
             return std::all_of(tasks.begin(), tasks.end(),
-                               [](const toy3d::GraphEventRef& task) { return task && task->is_complete(); });
+                               [](const toy3d::GraphEventRef& task)
+                               {
+                                   return task && task->is_complete();
+                               });
         }
 
         bool process_one()
@@ -121,9 +154,11 @@ namespace
 
             toy3d::BaseGraphTask* next = ready_tasks_.front();
             ready_tasks_.pop_front();
-            const auto iterator =
-                std::find_if(tasks_.begin(), tasks_.end(),
-                             [next](const std::unique_ptr<toy3d::BaseGraphTask>& task) { return task.get() == next; });
+            const auto iterator = std::find_if(tasks_.begin(), tasks_.end(),
+                                               [next](const std::unique_ptr<toy3d::BaseGraphTask>& task)
+                                               {
+                                                   return task.get() == next;
+                                               });
             if (iterator == tasks_.end())
             {
                 throw std::logic_error("Ready task is not owned by the task graph");
@@ -163,11 +198,20 @@ namespace
             --state_->live_payloads;
         }
 
-        static toy3d::NamedThread get_desired_thread() { return toy3d::NamedThread::GameThread; }
+        static toy3d::NamedThread get_desired_thread()
+        {
+            return toy3d::NamedThread::GameThread;
+        }
 
-        static toy3d::TaskPriority get_priority() { return toy3d::TaskPriority::Normal; }
+        static toy3d::TaskPriority get_priority()
+        {
+            return toy3d::TaskPriority::Normal;
+        }
 
-        static toy3d::SubsequentsMode get_subsequents_mode() { return toy3d::SubsequentsMode::TrackSubsequents; }
+        static toy3d::SubsequentsMode get_subsequents_mode()
+        {
+            return toy3d::SubsequentsMode::TrackSubsequents;
+        }
 
         void do_task(toy3d::NamedThread current_thread, const toy3d::GraphEventRef&)
         {
@@ -225,11 +269,20 @@ namespace
         {
         }
 
-        static toy3d::NamedThread get_desired_thread() { return toy3d::NamedThread::GameThread; }
+        static toy3d::NamedThread get_desired_thread()
+        {
+            return toy3d::NamedThread::GameThread;
+        }
 
-        static toy3d::TaskPriority get_priority() { return toy3d::TaskPriority::Normal; }
+        static toy3d::TaskPriority get_priority()
+        {
+            return toy3d::TaskPriority::Normal;
+        }
 
-        static toy3d::SubsequentsMode get_subsequents_mode() { return toy3d::SubsequentsMode::TrackSubsequents; }
+        static toy3d::SubsequentsMode get_subsequents_mode()
+        {
+            return toy3d::SubsequentsMode::TrackSubsequents;
+        }
 
         void do_task(toy3d::NamedThread, const toy3d::GraphEventRef& completion_event)
         {
@@ -279,13 +332,24 @@ namespace
     class ThrowingTask final
     {
       public:
-        explicit ThrowingTask(std::shared_ptr<RecordingState> state) : state_(std::move(state)) {}
+        explicit ThrowingTask(std::shared_ptr<RecordingState> state) : state_(std::move(state))
+        {
+        }
 
-        static toy3d::NamedThread get_desired_thread() { return toy3d::NamedThread::GameThread; }
+        static toy3d::NamedThread get_desired_thread()
+        {
+            return toy3d::NamedThread::GameThread;
+        }
 
-        static toy3d::TaskPriority get_priority() { return toy3d::TaskPriority::High; }
+        static toy3d::TaskPriority get_priority()
+        {
+            return toy3d::TaskPriority::High;
+        }
 
-        static toy3d::SubsequentsMode get_subsequents_mode() { return toy3d::SubsequentsMode::TrackSubsequents; }
+        static toy3d::SubsequentsMode get_subsequents_mode()
+        {
+            return toy3d::SubsequentsMode::TrackSubsequents;
+        }
 
         void do_task(toy3d::NamedThread, const toy3d::GraphEventRef&)
         {

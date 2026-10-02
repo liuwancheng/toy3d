@@ -7,5 +7,5 @@ namespace toy3d
 {
     // Placeholder slots are explicit caller policy until material assets exist.
     StaticMeshRef create_static_mesh_from_asset(const StaticMeshAssetGeometry& geometry,
-                                               const MaterialInterfaceRef& default_material);
+                                                const MaterialInterfaceRef& default_material);
 } // namespace toy3d

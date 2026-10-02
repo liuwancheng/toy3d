@@ -17,9 +17,15 @@ namespace toy3d
         const std::string& utf8() const;
         bool empty() const;
 
-        friend bool operator==(const StorePath& lhs, const StorePath& rhs) { return lhs.utf8_path_ == rhs.utf8_path_; }
+        friend bool operator==(const StorePath& lhs, const StorePath& rhs)
+        {
+            return lhs.utf8_path_ == rhs.utf8_path_;
+        }
 
-        friend bool operator!=(const StorePath& lhs, const StorePath& rhs) { return !(lhs == rhs); }
+        friend bool operator!=(const StorePath& lhs, const StorePath& rhs)
+        {
+            return !(lhs == rhs);
+        }
 
       private:
         explicit StorePath(std::string utf8_path);

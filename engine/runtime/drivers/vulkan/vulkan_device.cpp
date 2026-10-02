@@ -144,8 +144,11 @@ namespace toy3d
 
         bool has_instance_extension(const std::vector<VkExtensionProperties>& extensions, const char* name)
         {
-            return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties& extension)
-                               { return std::strcmp(extension.extensionName, name) == 0; });
+            return std::any_of(extensions.begin(), extensions.end(),
+                               [name](const VkExtensionProperties& extension)
+                               {
+                                   return std::strcmp(extension.extensionName, name) == 0;
+                               });
         }
 
         bool has_device_extension(VkPhysicalDevice physical_device, const char* name)
@@ -259,7 +262,9 @@ namespace toy3d
         }
         deletion_queue.reset();
         if (descriptor_pool_manager_instance)
+        {
             descriptor_pool_manager_instance->shutdown();
+        }
         descriptor_pool_manager_instance.reset();
         if (upload_manager_instance)
         {
@@ -391,10 +396,10 @@ namespace toy3d
     }
 
     RHIResult<RHIReadbackRef> VulkanDevice::create_texture_readback_impl(PixelFormat format, Extent extent,
-                                                                      const std::string& debug_name)
+                                                                         const std::string& debug_name)
     {
-        return create_vulkan_readback(*this, vk_device, *memory_manager_instance, *deletion_queue,
-                                      debug_name, format, extent);
+        return create_vulkan_readback(*this, vk_device, *memory_manager_instance, *deletion_queue, debug_name, format,
+                                      extent);
     }
 
     RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(const RHIBufferRef& buffer,
@@ -436,8 +441,8 @@ namespace toy3d
 
     RHIResult<std::unique_ptr<RHIGraphicsCommandContext>> VulkanDevice::create_graphics_command_context_impl()
     {
-        return create_vulkan_graphics_command_context(*this, vk_device, graphics_queue_family,
-                                                      *upload_manager_instance, *descriptor_pool_manager_instance);
+        return create_vulkan_graphics_command_context(*this, vk_device, graphics_queue_family, *upload_manager_instance,
+                                                      *descriptor_pool_manager_instance);
     }
 
     VulkanDeviceObservation VulkanDevice::observation_snapshot() const
@@ -511,9 +516,15 @@ namespace toy3d
         }
 #endif
         std::sort(extensions.begin(), extensions.end(),
-                  [](const char* lhs, const char* rhs) { return std::strcmp(lhs, rhs) < 0; });
+                  [](const char* lhs, const char* rhs)
+                  {
+                      return std::strcmp(lhs, rhs) < 0;
+                  });
         extensions.erase(std::unique(extensions.begin(), extensions.end(),
-                                     [](const char* lhs, const char* rhs) { return std::strcmp(lhs, rhs) == 0; }),
+                                     [](const char* lhs, const char* rhs)
+                                     {
+                                         return std::strcmp(lhs, rhs) == 0;
+                                     }),
                          extensions.end());
         for (const char* extension : extensions)
         {
@@ -549,8 +560,11 @@ namespace toy3d
                 return make_vulkan_status(result, "vkEnumerateInstanceLayerProperties");
             }
             const bool layer_found =
-                std::any_of(available_layers.begin(), available_layers.end(), [](const VkLayerProperties& layer)
-                            { return std::strcmp(layer.layerName, "VK_LAYER_KHRONOS_validation") == 0; });
+                std::any_of(available_layers.begin(), available_layers.end(),
+                            [](const VkLayerProperties& layer)
+                            {
+                                return std::strcmp(layer.layerName, "VK_LAYER_KHRONOS_validation") == 0;
+                            });
             if (!layer_found)
             {
                 return RHIStatus::failure(RHIErrorCode::Unsupported, "VK_LAYER_KHRONOS_validation is unavailable.");

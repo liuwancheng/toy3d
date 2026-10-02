@@ -27,23 +27,48 @@ namespace toy3d
     class EditorWorkspace final
     {
       public:
-        bool initialize(const EditorWorkspacePaths& paths, std::function<bool(TypeRegistry&)> register_project_types = {});
+        bool initialize(const EditorWorkspacePaths& paths,
+                        std::function<bool(TypeRegistry&)> register_project_types = {});
         bool refresh();
 
-        const AssetCatalog& catalog() const { return catalog_; }
-        const std::string& error() const { return error_; }
-        const PhysicalPath& source_root() const { return source_root_; }
-        FileSystem& files() { return files_; }
-        const TypeRegistry& types() const { return types_; }
-        bool ready() const { return ready_; }
-        bool has_project() const { return !source_root_.empty(); }
-        AssetPairStore& asset_pairs() { return *asset_pairs_; }
+        const AssetCatalog& catalog() const
+        {
+            return catalog_;
+        }
+        const std::string& error() const
+        {
+            return error_;
+        }
+        const PhysicalPath& source_root() const
+        {
+            return source_root_;
+        }
+        FileSystem& files()
+        {
+            return files_;
+        }
+        const TypeRegistry& types() const
+        {
+            return types_;
+        }
+        bool ready() const
+        {
+            return ready_;
+        }
+        bool has_project() const
+        {
+            return !source_root_.empty();
+        }
+        AssetPairStore& asset_pairs()
+        {
+            return *asset_pairs_;
+        }
         AssetStatus delete_asset(const AssetId& id);
         AssetStatus move_asset(const AssetId& id, const VirtualPath& destination);
         AssetResult<AssetId> copy_asset(const AssetId& id, const VirtualPath& destination);
         bool read_material_properties(const PhysicalPath& registered_root, const std::string& shader_name,
-            const shader::ShaderParameterSchema& schema, std::vector<shader::ShaderEditorProperty>& properties,
-            std::string& error) const;
+                                      const shader::ShaderParameterSchema& schema,
+                                      std::vector<shader::ShaderEditorProperty>& properties, std::string& error) const;
 
       private:
         NativePlatformFile platform_file_;

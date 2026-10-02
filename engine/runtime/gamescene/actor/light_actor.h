@@ -9,7 +9,11 @@ namespace toy3d
     {
       public:
         explicit DirectionalLightActor(World& world);
-        DirectionalLightComponent& light_component() const { return light_; }
+        DirectionalLightComponent& light_component() const
+        {
+            return light_;
+        }
+
       private:
         DirectionalLightComponent& light_;
     };
@@ -18,8 +22,12 @@ namespace toy3d
     {
       public:
         explicit PointLightActor(World& world);
-        PointLightComponent& light_component() const { return light_; }
+        PointLightComponent& light_component() const
+        {
+            return light_;
+        }
+
       private:
         PointLightComponent& light_;
     };
-}
+} // namespace toy3d

@@ -127,7 +127,9 @@ namespace
             this->live_count->fetch_add(1);
         }
 
-        LifetimeValue(LifetimeValue&& other) noexcept : live_count(std::move(other.live_count)) {}
+        LifetimeValue(LifetimeValue&& other) noexcept : live_count(std::move(other.live_count))
+        {
+        }
 
         LifetimeValue& operator=(LifetimeValue&& other) noexcept
         {

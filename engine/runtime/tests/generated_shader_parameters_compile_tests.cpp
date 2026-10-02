@@ -25,17 +25,12 @@ namespace toy3d
                 1u,
                 {},
                 {},
-                {1u,
-                 16u,
-                 {},
-                 1u,
-                 {{2u, shader::ShaderValueType::Float32, 0u, 4u, 1u, 0u, 0u, {}}}},
+                {1u, 16u, {}, 1u, {{2u, shader::ShaderValueType::Float32, 0u, 4u, 1u, 0u, 0u, {}}}},
                 {}};
             return metadata;
         }
 
-        inline void encode_shader_parameters(const ShadowStyleParameters& parameters,
-                                             ShaderParameterEncoder& encoder)
+        inline void encode_shader_parameters(const ShadowStyleParameters& parameters, ShaderParameterEncoder& encoder)
         {
             const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
             encoder.write_constant(metadata.constant_buffer.members[0u], parameters.depth_bias);

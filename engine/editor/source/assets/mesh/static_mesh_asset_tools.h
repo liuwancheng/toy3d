@@ -12,5 +12,6 @@ namespace toy3d
 
     // The Editor owns destination policy; shared importer only returns candidate bytes.
     bool import_static_mesh_to_workspace(EditorWorkspace& workspace, const PhysicalPath& source,
-        const std::string& destination, const StaticMeshImportOptions& options, AssetId& published_id, std::string& error);
+                                         const std::string& destination, const StaticMeshImportOptions& options,
+                                         AssetId& published_id, std::string& error);
 } // namespace toy3d

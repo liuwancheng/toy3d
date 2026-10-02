@@ -19,17 +19,13 @@ namespace toy3d
         const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
         static const GlobalShaderType type(
             "TonemapGlobalShader", "Toy3d/PostProcess/Tonemap", "Tonemap", shader::default_shader_permutation_key,
-            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel,
-            metadata,
-            {GlobalShaderBindingRequirement(
-                 metadata.constant_buffer.binding_id,
-                 RHIBindingGroup::Pass, RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Pixel),
-             GlobalShaderBindingRequirement(
-                 metadata.resources[0u].parameter_id,
-                 RHIBindingGroup::Pass, RHIResourceBindingType::SampledTexture, 1, RHIShaderStageFlags::Pixel),
-             GlobalShaderBindingRequirement(
-                 metadata.resources[1u].parameter_id,
-                 RHIBindingGroup::Pass, RHIResourceBindingType::Sampler, 1, RHIShaderStageFlags::Pixel)});
+            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel, metadata,
+            {GlobalShaderBindingRequirement(metadata.constant_buffer.binding_id, RHIBindingGroup::Pass,
+                                            RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Pixel),
+             GlobalShaderBindingRequirement(metadata.resources[0u].parameter_id, RHIBindingGroup::Pass,
+                                            RHIResourceBindingType::SampledTexture, 1, RHIShaderStageFlags::Pixel),
+             GlobalShaderBindingRequirement(metadata.resources[1u].parameter_id, RHIBindingGroup::Pass,
+                                            RHIResourceBindingType::Sampler, 1, RHIShaderStageFlags::Pixel)});
         return type;
     }
 
@@ -97,14 +93,20 @@ namespace toy3d
         pipeline_desc.color_formats[0] = PixelFormat::B8G8R8A8UNorm;
         pipeline_desc.sample_count = 1u;
         pipeline_desc.debug_name = "TonemapPipeline";
-        const auto translated = build_shader_graphics_pipeline_desc(pipeline_desc, shader_program->data().graphics_pass_state);
-        if (!translated) return translated.status();
+        const auto translated =
+            build_shader_graphics_pipeline_desc(pipeline_desc, shader_program->data().graphics_pass_state);
+        if (!translated)
+        {
+            return translated.status();
+        }
         const auto& depth = translated.value().depth_stencil;
         // Tonemap renders into a color-only output; reject incompatible source
         // state before a new Global Shader group can become active.
         if (depth.depth_test_enable || depth.depth_write_enable || depth.stencil_test_enable)
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Tonemap Shader cannot enable depth or stencil without a depth attachment.");
+        }
         RHIResult<RHIGraphicsPipelineRef> created_pipeline = device.create_graphics_pipeline(translated.value());
         if (!created_pipeline)
         {
@@ -128,8 +130,7 @@ namespace toy3d
                                            const RHITextureViewRef& scene_color, const TonemapPassTarget& target,
                                            const TonemapParameters& parameters) const
     {
-        if (!initialized() || !target.color_view || target.extent.width == 0u ||
-            target.extent.height == 0u ||
+        if (!initialized() || !target.color_view || target.extent.width == 0u || target.extent.height == 0u ||
             target.format != PixelFormat::B8G8R8A8UNorm || target.sample_count != 1u ||
             target.color_view->desc().format != target.format ||
             target.color_view->texture()->desc().sample_count != target.sample_count)
@@ -147,8 +148,7 @@ namespace toy3d
         pass_parameters.exposure_ev = parameters.exposure_ev;
         pass_parameters.scene_color = scene_color;
         pass_parameters.scene_sampler = sampler_;
-        RHIResult<RHIBindingSetRef> binding_set =
-            create_transient_shader_binding(device, context, pass_parameters);
+        RHIResult<RHIBindingSetRef> binding_set = create_transient_shader_binding(device, context, pass_parameters);
         if (!binding_set)
         {
             return binding_set.status();
@@ -163,38 +163,52 @@ namespace toy3d
         pass_desc.debug_name = "TonemapPass";
         RHIStatus status = context.begin_render_pass(pass_desc);
         if (!status)
+        {
             return status;
+        }
         status = context.set_graphics_pipeline(pipeline_);
         if (!status)
+        {
             return status;
+        }
         // The fullscreen triangle is generated from SV_VertexID. Clear any
         // Base Pass vertex streams so the zero-layout pipeline does not inherit
         // incompatible dynamic bindings from the preceding pass.
         status = context.set_vertex_buffers({});
         if (!status)
+        {
             return status;
+        }
         RHIViewport viewport;
         viewport.width = static_cast<float>(target.extent.width);
         viewport.height = static_cast<float>(target.extent.height);
         status = context.set_viewport(viewport);
         if (!status)
+        {
             return status;
+        }
         RHIRect scissor;
         scissor.width = target.extent.width;
         scissor.height = target.extent.height;
         status = context.set_scissor(scissor);
         if (!status)
+        {
             return status;
+        }
         RHIGraphicsBindings bindings;
         bindings.pass = std::move(binding_set).value();
         status = context.bind_graphics_bindings(bindings);
         if (!status)
+        {
             return status;
+        }
         RHIDrawArgs draw;
         draw.vertex_count = 3u;
         status = context.draw(draw);
         if (!status)
+        {
             return status;
+        }
         return context.end_render_pass();
     }
 

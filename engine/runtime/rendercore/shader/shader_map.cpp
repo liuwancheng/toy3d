@@ -60,12 +60,17 @@ namespace toy3d
         return program != nullptr && error.empty();
     }
 
-    ShaderMap::ShaderMap(ShaderMapLoader& loader) : loader_(loader) {}
+    ShaderMap::ShaderMap(ShaderMapLoader& loader) : loader_(loader)
+    {
+    }
 
     ShaderMapProgramResult ShaderMap::create_candidate(ShaderMapProgramData data, const ShaderMapProgramKey& key)
     {
         auto validated = validate_shader_map_program(std::move(data), key);
-        if (!validated.succeeded()) return {nullptr, std::move(validated.error)};
+        if (!validated.succeeded())
+        {
+            return {nullptr, std::move(validated.error)};
+        }
         ShaderMapProgram value(std::move(*validated.program));
         return {std::make_shared<ShaderMapProgram>(std::move(value)), {}};
     }

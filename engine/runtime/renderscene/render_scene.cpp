@@ -33,51 +33,74 @@ namespace toy3d
 
     void RenderScene::add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy)
     {
-        enqueue_render_command("AddPrimitive", [this, proxy = std::move(proxy)]() mutable noexcept
-                               { add_primitive_render_thread(std::move(proxy)); });
+        enqueue_render_command("AddPrimitive",
+                               [this, proxy = std::move(proxy)]() mutable noexcept
+                               {
+                                   add_primitive_render_thread(std::move(proxy));
+                               });
     }
 
     void RenderScene::update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
                                                  AxisAlignedBounds world_bounds, bool visible, bool cast_shadows,
                                                  bool receives_shadows)
     {
-        enqueue_render_command("UpdatePrimitiveTransform",
-                               [this, proxy, world_transform = std::move(world_transform),
-                                world_bounds = std::move(world_bounds), visible, cast_shadows,
-                                receives_shadows]() mutable noexcept
-                               {
-                                   update_primitive_transform_render_thread(proxy, std::move(world_transform),
-                                                                            std::move(world_bounds), visible,
-                                                                            cast_shadows, receives_shadows);
-                               });
+        enqueue_render_command(
+            "UpdatePrimitiveTransform",
+            [this, proxy, world_transform = std::move(world_transform), world_bounds = std::move(world_bounds), visible,
+             cast_shadows, receives_shadows]() mutable noexcept
+            {
+                update_primitive_transform_render_thread(proxy, std::move(world_transform), std::move(world_bounds),
+                                                         visible, cast_shadows, receives_shadows);
+            });
     }
 
     void RenderScene::update_primitive_materials(PrimitiveSceneProxy* proxy,
-        std::vector<MaterialRenderProxy*> materials)
+                                                 std::vector<MaterialRenderProxy*> materials)
     {
-        enqueue_render_command("UpdatePrimitiveMaterials", [this, proxy, materials = std::move(materials)]() mutable noexcept
-        {
-            assert(is_on_logical_rendering_thread());
-            const auto found = std::find_if(primitives_.begin(), primitives_.end(),
-                [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info) { return info->proxy() == proxy; });
-            auto* mesh = found == primitives_.end() ? nullptr : dynamic_cast<StaticMeshSceneProxy*>((*found)->proxy());
-            if (!mesh || materials.size() != mesh->material_render_proxies().size())
-            { TOY_LOG_ERROR("Material update requires a registered StaticMesh proxy with matching slots."); return; }
-            for (auto* material : materials)
+        enqueue_render_command(
+            "UpdatePrimitiveMaterials",
+            [this, proxy, materials = std::move(materials)]() mutable noexcept
             {
-                if (!material) { TOY_LOG_ERROR("Material update contains a null render proxy."); return; }
-                const auto status = material->begin_init_textures(resource_manager_);
-                if (!status) { TOY_LOG_ERROR("Material update could not initialize textures: {}", status.message()); return; }
-            }
-            // Material changes do not end the geometry lifetime. Removing the
-            // last Primitive would terminally release shared mesh resources.
-            mesh->set_material_render_proxies(std::move(materials));
-        });
+                assert(is_on_logical_rendering_thread());
+                const auto found = std::find_if(primitives_.begin(), primitives_.end(),
+                                                [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info)
+                                                {
+                                                    return info->proxy() == proxy;
+                                                });
+                auto* mesh =
+                    found == primitives_.end() ? nullptr : dynamic_cast<StaticMeshSceneProxy*>((*found)->proxy());
+                if (!mesh || materials.size() != mesh->material_render_proxies().size())
+                {
+                    TOY_LOG_ERROR("Material update requires a registered StaticMesh proxy with matching slots.");
+                    return;
+                }
+                for (auto* material : materials)
+                {
+                    if (!material)
+                    {
+                        TOY_LOG_ERROR("Material update contains a null render proxy.");
+                        return;
+                    }
+                    const auto status = material->begin_init_textures(resource_manager_);
+                    if (!status)
+                    {
+                        TOY_LOG_ERROR("Material update could not initialize textures: {}", status.message());
+                        return;
+                    }
+                }
+                // Material changes do not end the geometry lifetime. Removing the
+                // last Primitive would terminally release shared mesh resources.
+                mesh->set_material_render_proxies(std::move(materials));
+            });
     }
 
     void RenderScene::remove_primitive(PrimitiveSceneProxy* proxy)
     {
-        enqueue_render_command("RemovePrimitive", [this, proxy]() noexcept { remove_primitive_render_thread(proxy); });
+        enqueue_render_command("RemovePrimitive",
+                               [this, proxy]() noexcept
+                               {
+                                   remove_primitive_render_thread(proxy);
+                               });
     }
 
     void RenderScene::add_primitive_render_thread(std::unique_ptr<PrimitiveSceneProxy> proxy) noexcept
@@ -92,7 +115,9 @@ namespace toy3d
         PrimitiveSceneProxy* const proxy_identity = proxy.get();
         const auto duplicate = std::find_if(primitives_.begin(), primitives_.end(),
                                             [proxy_identity](const std::unique_ptr<PrimitiveSceneInfo>& info)
-                                            { return info->proxy() == proxy_identity; });
+                                            {
+                                                return info->proxy() == proxy_identity;
+                                            });
         if (duplicate != primitives_.end())
         {
             TOY_LOG_ERROR("RenderScene received a duplicate PrimitiveSceneProxy add.");
@@ -133,25 +158,29 @@ namespace toy3d
                                                                bool cast_shadows, bool receives_shadows) noexcept
     {
         assert(is_on_logical_rendering_thread());
-        const auto found =
-            std::find_if(primitives_.begin(), primitives_.end(),
-                         [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info) { return info->proxy() == proxy; });
+        const auto found = std::find_if(primitives_.begin(), primitives_.end(),
+                                        [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info)
+                                        {
+                                            return info->proxy() == proxy;
+                                        });
         if (found == primitives_.end())
         {
             TOY_LOG_ERROR("RenderScene received an update for an unregistered PrimitiveSceneProxy.");
             return;
         }
 
-        (*found)->proxy()->update_transform(std::move(world_transform), std::move(world_bounds), visible,
-                                            cast_shadows, receives_shadows);
+        (*found)->proxy()->update_transform(std::move(world_transform), std::move(world_bounds), visible, cast_shadows,
+                                            receives_shadows);
     }
 
     void RenderScene::remove_primitive_render_thread(PrimitiveSceneProxy* proxy) noexcept
     {
         assert(is_on_logical_rendering_thread());
-        const auto found =
-            std::find_if(primitives_.begin(), primitives_.end(),
-                         [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info) { return info->proxy() == proxy; });
+        const auto found = std::find_if(primitives_.begin(), primitives_.end(),
+                                        [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info)
+                                        {
+                                            return info->proxy() == proxy;
+                                        });
         if (found == primitives_.end())
         {
             TOY_LOG_ERROR("RenderScene received a remove for an unregistered PrimitiveSceneProxy.");
@@ -193,40 +222,58 @@ namespace toy3d
         removed.reset();
     }
 
-
     void RenderScene::add_light(std::unique_ptr<LightSceneProxy> proxy)
     {
-        enqueue_render_command("AddLight", [this, proxy = std::move(proxy)]() mutable noexcept
-        {
-            assert(is_on_logical_rendering_thread());
-            if (!proxy) { TOY_LOG_ERROR("Null light proxy."); return; }
-            lights_.push_back(std::move(proxy));
-        });
+        enqueue_render_command("AddLight",
+                               [this, proxy = std::move(proxy)]() mutable noexcept
+                               {
+                                   assert(is_on_logical_rendering_thread());
+                                   if (!proxy)
+                                   {
+                                       TOY_LOG_ERROR("Null light proxy.");
+                                       return;
+                                   }
+                                   lights_.push_back(std::move(proxy));
+                               });
     }
 
     void RenderScene::update_light(LightSceneProxy* proxy, LightSceneData data)
     {
-        enqueue_render_command("UpdateLight", [this, proxy, data]() noexcept
-        {
-            assert(is_on_logical_rendering_thread());
-            for (const auto& light : lights_)
-            {
-                if (light.get() == proxy) { light->data = data; return; }
-            }
-            TOY_LOG_ERROR("Update for an unregistered light proxy.");
-        });
+        enqueue_render_command("UpdateLight",
+                               [this, proxy, data]() noexcept
+                               {
+                                   assert(is_on_logical_rendering_thread());
+                                   for (const auto& light : lights_)
+                                   {
+                                       if (light.get() == proxy)
+                                       {
+                                           light->data = data;
+                                           return;
+                                       }
+                                   }
+                                   TOY_LOG_ERROR("Update for an unregistered light proxy.");
+                               });
     }
 
     void RenderScene::remove_light(LightSceneProxy* proxy)
     {
-        enqueue_render_command("RemoveLight", [this, proxy]() noexcept
-        {
-            assert(is_on_logical_rendering_thread());
-            const auto found = std::find_if(lights_.begin(), lights_.end(),
-                [proxy](const std::unique_ptr<LightSceneProxy>& light) { return light.get() == proxy; });
-            if (found == lights_.end()) { TOY_LOG_ERROR("Remove for an unregistered light proxy."); return; }
-            lights_.erase(found);
-        });
+        enqueue_render_command("RemoveLight",
+                               [this, proxy]() noexcept
+                               {
+                                   assert(is_on_logical_rendering_thread());
+                                   const auto found =
+                                       std::find_if(lights_.begin(), lights_.end(),
+                                                    [proxy](const std::unique_ptr<LightSceneProxy>& light)
+                                                    {
+                                                        return light.get() == proxy;
+                                                    });
+                                   if (found == lights_.end())
+                                   {
+                                       TOY_LOG_ERROR("Remove for an unregistered light proxy.");
+                                       return;
+                                   }
+                                   lights_.erase(found);
+                               });
     }
 
     const std::vector<std::unique_ptr<LightSceneProxy>>& RenderScene::lights() const

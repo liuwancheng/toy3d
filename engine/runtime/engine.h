@@ -67,7 +67,10 @@ namespace toy3d
 
         void init(void* hInstance);
 
-        bool initialized() const { return world && renderer && window && !engine_exited; }
+        bool initialized() const
+        {
+            return world && renderer && window && !engine_exited;
+        }
         void main_loop();
 
         void exit();
@@ -75,7 +78,10 @@ namespace toy3d
         void set_shader_load_config(ShaderLoadConfig config);
         void set_application(std::unique_ptr<Application> value);
 
-        IWindow* get_window() { return window.get(); }
+        IWindow* get_window()
+        {
+            return window.get();
+        }
 
       private:
         FileStatus initialize_file_system();

@@ -17,4 +17,4 @@ namespace toy3d
         std::atomic<bool> complete{false};
     };
     using MaterialProgramValidationRef = std::shared_ptr<MaterialProgramValidation>;
-}
+} // namespace toy3d

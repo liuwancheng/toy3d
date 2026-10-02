@@ -263,10 +263,14 @@ namespace toy3d::shader
                 {
                     source << "    ";
                     if (is_matrix(member.type))
+                    {
                         source << "column_major ";
+                    }
                     source << value_type_name(member.type) << ' ' << member.name;
                     if (member.array_count > 1u)
+                    {
                         source << '[' << member.array_count << ']';
+                    }
                     source << " : packoffset(" << packoffset(member.offset) << ");\n";
                 }
                 source << "};\n\n";
@@ -280,7 +284,9 @@ namespace toy3d::shader
         }
         source << "#endif\n";
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         result.source = source.str();
         std::vector<std::uint8_t> key_bytes;
         key_bytes.insert(key_bytes.end(), logical_layout.logical_layout_hash.begin(),

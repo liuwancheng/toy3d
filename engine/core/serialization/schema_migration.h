@@ -17,8 +17,10 @@ namespace toy3d
     using SchemaFields = std::map<std::string, SchemaField>;
     using SchemaMigrationStep = std::function<ValueStatus(SchemaFields&)>;
 
-    ValueStatus decode_schema_fields(const std::vector<std::uint8_t>& bytes, SchemaFields& fields, ValueLimits limits = {});
-    ValueStatus encode_schema_fields(const SchemaFields& fields, std::vector<std::uint8_t>& bytes, ValueLimits limits = {});
+    ValueStatus decode_schema_fields(const std::vector<std::uint8_t>& bytes, SchemaFields& fields,
+                                     ValueLimits limits = {});
+    ValueStatus encode_schema_fields(const SchemaFields& fields, std::vector<std::uint8_t>& bytes,
+                                     ValueLimits limits = {});
 
     // A step upgrades exactly one schema version. The owner registers all steps
     // before loading assets; migration never changes the input byte vector.
@@ -26,17 +28,16 @@ namespace toy3d
     {
       public:
         bool add_step(std::string type_name, std::uint32_t from_version, SchemaMigrationStep step);
-        ValueStatus migrate(const std::string& type_name, std::uint32_t source_version,
-                            std::uint32_t target_version, const std::vector<std::uint8_t>& input,
-                            std::vector<std::uint8_t>& output, ValueLimits limits = {}) const;
+        ValueStatus migrate(const std::string& type_name, std::uint32_t source_version, std::uint32_t target_version,
+                            const std::vector<std::uint8_t>& input, std::vector<std::uint8_t>& output,
+                            ValueLimits limits = {}) const;
 
       private:
         std::map<std::string, std::map<std::uint32_t, SchemaMigrationStep>> steps_;
     };
 
-    ValueStatus rename_schema_field(SchemaFields& fields, const std::string& old_name,
-                                    const std::string& new_name);
-    ValueStatus convert_schema_field(SchemaFields& fields, const std::string& name,
-                                     const std::function<ValueStatus(const std::vector<std::uint8_t>&,
-                                                                     std::vector<std::uint8_t>&)>& converter);
+    ValueStatus rename_schema_field(SchemaFields& fields, const std::string& old_name, const std::string& new_name);
+    ValueStatus convert_schema_field(
+        SchemaFields& fields, const std::string& name,
+        const std::function<ValueStatus(const std::vector<std::uint8_t>&, std::vector<std::uint8_t>&)>& converter);
 } // namespace toy3d

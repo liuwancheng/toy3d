@@ -20,9 +20,19 @@ namespace toy3d
         void update(const ShaderTaskStatus& task);
         void success(const std::string& title, const std::string& message);
         void draw(ConsolePanel& console, ShaderWorkflow& shaders);
-        std::size_t count() const { return cards_.size(); }
+        std::size_t count() const
+        {
+            return cards_.size();
+        }
+
       private:
-        enum class Kind { Shader, Errors, File, Success };
+        enum class Kind
+        {
+            Shader,
+            Errors,
+            File,
+            Success
+        };
         struct Card
         {
             std::uint64_t id = 0u;
@@ -44,4 +54,4 @@ namespace toy3d
         std::uint64_t observed_task_ = 0u;
         bool file_failed_ = false;
     };
-}
+} // namespace toy3d

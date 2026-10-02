@@ -29,13 +29,19 @@ namespace toy3d::shader
             const auto nibble = [](char value) -> int
             {
                 if (value >= '0' && value <= '9')
+                {
                     return value - '0';
+                }
                 if (value >= 'a' && value <= 'f')
+                {
                     return value - 'a' + 10;
+                }
                 return -1;
             };
             if (text.size() % 2u != 0u)
+            {
                 return false;
+            }
             bytes.clear();
             bytes.reserve(text.size() / 2u);
             for (std::size_t index = 0; index < text.size(); index += 2u)
@@ -43,7 +49,9 @@ namespace toy3d::shader
                 const int high = nibble(text[index]);
                 const int low = nibble(text[index + 1u]);
                 if (high < 0 || low < 0)
+                {
                     return false;
+                }
                 bytes.push_back(static_cast<std::uint8_t>((high << 4) | low));
             }
             return true;
@@ -57,7 +65,9 @@ namespace toy3d::shader
                 const std::size_t separator = line.find('\t');
                 fields.push_back(line.substr(0, separator));
                 if (separator == std::string_view::npos)
+                {
                     break;
+                }
                 line.remove_prefix(separator + 1u);
             }
             return fields;
@@ -65,13 +75,21 @@ namespace toy3d::shader
 
         template <typename T> bool parse_unsigned(std::string_view text, T& value)
         {
-            if (text.empty() || !std::all_of(text.begin(), text.end(), [](char c) { return c >= '0' && c <= '9'; }))
+            if (text.empty() || !std::all_of(text.begin(), text.end(),
+                                             [](char c)
+                                             {
+                                                 return c >= '0' && c <= '9';
+                                             }))
+            {
                 return false;
+            }
             try
             {
                 const unsigned long long parsed = std::stoull(std::string(text));
                 if (parsed > std::numeric_limits<T>::max())
+                {
                     return false;
+                }
                 value = static_cast<T>(parsed);
                 return true;
             }
@@ -84,7 +102,11 @@ namespace toy3d::shader
         bool safe_name(std::string_view value)
         {
             return !value.empty() && value.size() <= 1024u &&
-                   std::none_of(value.begin(), value.end(), [](char c) { return c == '\t' || c == '\r' || c == '\n'; });
+                   std::none_of(value.begin(), value.end(),
+                                [](char c)
+                                {
+                                    return c == '\t' || c == '\r' || c == '\n';
+                                });
         }
     } // namespace
 
@@ -93,8 +115,8 @@ namespace toy3d::shader
         std::ostringstream output;
         output << "schema\t" << schema.generated_format_version << '\t' << schema.shader_abi_version << '\t'
                << schema.parameter_id_version << '\t' << sha256_to_hex(schema.schema_identity) << '\t'
-               << sha256_to_hex(schema.logical_layout_hash) << '\t'
-               << sha256_to_hex(schema.editor_properties_hash) << '\n';
+               << sha256_to_hex(schema.logical_layout_hash) << '\t' << sha256_to_hex(schema.editor_properties_hash)
+               << '\n';
         for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
         {
             output << "buffer\t" << buffer.binding_id << '\t' << buffer.name << '\t'
@@ -102,10 +124,10 @@ namespace toy3d::shader
                    << sha256_to_hex(buffer.data_layout_hash) << '\t' << buffer.shader_abi_version << '\n';
             for (const ShaderParameterConstantMemberSchema& member : buffer.members)
             {
-                output << "member\t" << buffer.binding_id << '\t' << member.parameter_id << '\t' << member.name
-                       << '\t' << static_cast<std::uint32_t>(member.type) << '\t' << member.offset << '\t'
-                       << member.size << '\t' << member.array_count << '\t' << member.array_stride << '\t'
-                       << member.matrix_stride << '\t' << bytes_to_hex(member.default_value) << '\n';
+                output << "member\t" << buffer.binding_id << '\t' << member.parameter_id << '\t' << member.name << '\t'
+                       << static_cast<std::uint32_t>(member.type) << '\t' << member.offset << '\t' << member.size
+                       << '\t' << member.array_count << '\t' << member.array_stride << '\t' << member.matrix_stride
+                       << '\t' << bytes_to_hex(member.default_value) << '\n';
             }
         }
         for (const ShaderParameterResourceSchema& resource : schema.resources)
@@ -116,8 +138,8 @@ namespace toy3d::shader
                    << static_cast<std::uint32_t>(resource.category) << '\t'
                    << static_cast<std::uint32_t>(resource.resource_kind) << '\t'
                    << static_cast<std::uint32_t>(resource.element_type) << '\t' << resource.array_count << '\t'
-                   << static_cast<std::uint32_t>(resource.default_value_kind) << '\t'
-                   << bytes_to_hex(default_bytes) << '\n';
+                   << static_cast<std::uint32_t>(resource.default_value_kind) << '\t' << bytes_to_hex(default_bytes)
+                   << '\n';
         }
         return output.str();
     }
@@ -156,7 +178,9 @@ namespace toy3d::shader
         while (std::getline(input, line))
         {
             if (line.empty())
+            {
                 continue;
+            }
             fields = split_tabs(line);
             if (fields[0] == "buffer" && fields.size() == 7u)
             {
@@ -190,15 +214,16 @@ namespace toy3d::shader
                     type > static_cast<std::uint32_t>(ShaderValueType::Float32x4x4) ||
                     !parse_unsigned(fields[5], member.offset) || !parse_unsigned(fields[6], member.size) ||
                     !parse_unsigned(fields[7], member.array_count) || !parse_unsigned(fields[8], member.array_stride) ||
-                    !parse_unsigned(fields[9], member.matrix_stride) ||
-                    !hex_to_bytes(fields[10], member.default_value))
+                    !parse_unsigned(fields[9], member.matrix_stride) || !hex_to_bytes(fields[10], member.default_value))
                 {
                     error = "Shader parameter schema constant member record is invalid.";
                     return false;
                 }
                 const auto buffer = std::find_if(parsed.constant_buffers.begin(), parsed.constant_buffers.end(),
                                                  [&](const ShaderParameterConstantBufferSchema& value)
-                                                 { return value.binding_id == buffer_id; });
+                                                 {
+                                                     return value.binding_id == buffer_id;
+                                                 });
                 if (buffer == parsed.constant_buffers.end())
                 {
                     error = "Shader parameter schema member references an unknown constant buffer.";
@@ -247,7 +272,9 @@ namespace toy3d::shader
             }
         }
         if (!validate_shader_parameter_schema(parsed, error))
+        {
             return false;
+        }
         schema = std::move(parsed);
         return true;
     }

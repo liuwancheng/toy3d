@@ -13,7 +13,11 @@ namespace toy3d
     {
         bool hash_is_zero(const ShaderContentHash& hash)
         {
-            return std::all_of(hash.begin(), hash.end(), [](std::uint8_t byte) { return byte == 0u; });
+            return std::all_of(hash.begin(), hash.end(),
+                               [](std::uint8_t byte)
+                               {
+                                   return byte == 0u;
+                               });
         }
 
         bool key_matches(const ShaderMapProgramData& program, const ShaderMapProgramKey& key)
@@ -121,11 +125,12 @@ namespace toy3d
             {
                 if (binding.type == RHIResourceBindingType::UniformBuffer)
                 {
-                    const auto buffer = std::find_if(
-                        program.parameter_schema.constant_buffers.begin(),
-                        program.parameter_schema.constant_buffers.end(),
-                        [&](const shader::ShaderParameterConstantBufferSchema& candidate)
-                        { return candidate.binding_id == binding.parameter_id; });
+                    const auto buffer = std::find_if(program.parameter_schema.constant_buffers.begin(),
+                                                     program.parameter_schema.constant_buffers.end(),
+                                                     [&](const shader::ShaderParameterConstantBufferSchema& candidate)
+                                                     {
+                                                         return candidate.binding_id == binding.parameter_id;
+                                                     });
                     if (buffer == program.parameter_schema.constant_buffers.end() || buffer->name != binding.name ||
                         buffer->group != to_shader_group(binding.group) ||
                         buffer->size != binding.constant_buffer_size ||
@@ -141,9 +146,8 @@ namespace toy3d
                         const shader::ShaderParameterConstantMemberSchema& expected = buffer->members[index];
                         const ShaderMapBinding::ConstantMember& actual = binding.constant_members[index];
                         if (expected.parameter_id != actual.parameter_id || expected.name != actual.name ||
-                            !same_value_type(expected.type, actual.type) ||
-                            expected.offset != actual.offset || expected.size != actual.size ||
-                            expected.array_stride != actual.array_stride ||
+                            !same_value_type(expected.type, actual.type) || expected.offset != actual.offset ||
+                            expected.size != actual.size || expected.array_stride != actual.array_stride ||
                             expected.matrix_stride != actual.matrix_stride)
                         {
                             error = "ShaderMap Program active constant layout differs from its complete schema.";
@@ -153,10 +157,12 @@ namespace toy3d
                 }
                 else
                 {
-                    const auto resource = std::find_if(
-                        program.parameter_schema.resources.begin(), program.parameter_schema.resources.end(),
-                        [&](const shader::ShaderParameterResourceSchema& candidate)
-                        { return candidate.parameter_id == binding.parameter_id; });
+                    const auto resource = std::find_if(program.parameter_schema.resources.begin(),
+                                                       program.parameter_schema.resources.end(),
+                                                       [&](const shader::ShaderParameterResourceSchema& candidate)
+                                                       {
+                                                           return candidate.parameter_id == binding.parameter_id;
+                                                       });
                     if (resource == program.parameter_schema.resources.end() || resource->name != binding.name ||
                         resource->group != to_shader_group(binding.group) ||
                         resource->category != to_shader_category(binding.type) ||
@@ -248,7 +254,9 @@ namespace toy3d
                 const auto output =
                     std::find_if(vertex_stage.interface_variables.begin(), vertex_stage.interface_variables.end(),
                                  [&](const shader::ReflectedInterfaceVariable& candidate)
-                                 { return !candidate.input && candidate.location == input.location; });
+                                 {
+                                     return !candidate.input && candidate.location == input.location;
+                                 });
                 if (output == vertex_stage.interface_variables.end() || input.scalar_type != output->scalar_type ||
                     input.component_count != output->component_count ||
                     (!input.semantic.empty() && !output->semantic.empty() &&
@@ -297,7 +305,9 @@ namespace toy3d
             {
                 const auto actual = std::find_if(program.vertex_inputs.begin(), program.vertex_inputs.end(),
                                                  [&](const ShaderVertexInput& candidate)
-                                                 { return candidate.attribute_id == expected.attribute_id; });
+                                                 {
+                                                     return candidate.attribute_id == expected.attribute_id;
+                                                 });
                 if (actual == program.vertex_inputs.end() ||
                     !have_same_shader_vertex_input_contract(*actual, expected) ||
                     actual->target_location != expected.target_location)
@@ -432,9 +442,11 @@ namespace toy3d
             }
             for (const ShaderMapBinding& reflected : stage.reflection)
             {
-                const auto expected =
-                    std::find_if(program.bindings.begin(), program.bindings.end(), [&](const ShaderMapBinding& binding)
-                                 { return binding.parameter_id == reflected.parameter_id; });
+                const auto expected = std::find_if(program.bindings.begin(), program.bindings.end(),
+                                                   [&](const ShaderMapBinding& binding)
+                                                   {
+                                                       return binding.parameter_id == reflected.parameter_id;
+                                                   });
                 if (expected == program.bindings.end() || expected->name != reflected.name ||
                     expected->group != reflected.group || expected->type != reflected.type ||
                     expected->target_binding != reflected.target_binding ||
@@ -495,16 +507,26 @@ namespace toy3d
             {
                 RHIShaderStageFlags stage_flag = RHIShaderStageFlags::None;
                 if (stage.stage == RHIShaderStage::Vertex)
+                {
                     stage_flag = RHIShaderStageFlags::Vertex;
+                }
                 else if (stage.stage == RHIShaderStage::Pixel)
+                {
                     stage_flag = RHIShaderStageFlags::Pixel;
+                }
                 else if (stage.stage == RHIShaderStage::Compute)
+                {
                     stage_flag = RHIShaderStageFlags::Compute;
+                }
                 if (!EnumHasAnyFlags(binding.stages, stage_flag))
+                {
                     continue;
-                const bool reflected =
-                    std::any_of(stage.reflection.begin(), stage.reflection.end(), [&](const ShaderMapBinding& value)
-                                { return value.parameter_id == binding.parameter_id; });
+                }
+                const bool reflected = std::any_of(stage.reflection.begin(), stage.reflection.end(),
+                                                   [&](const ShaderMapBinding& value)
+                                                   {
+                                                       return value.parameter_id == binding.parameter_id;
+                                                   });
                 if (!reflected)
                 {
                     result.error = "ShaderMap binding is missing from a required stage reflection.";

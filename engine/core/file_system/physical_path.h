@@ -19,7 +19,10 @@ namespace toy3d
             return lhs.utf8_path_ == rhs.utf8_path_;
         }
 
-        friend bool operator!=(const PhysicalPath& lhs, const PhysicalPath& rhs) { return !(lhs == rhs); }
+        friend bool operator!=(const PhysicalPath& lhs, const PhysicalPath& rhs)
+        {
+            return !(lhs == rhs);
+        }
 
       private:
         std::string utf8_path_;

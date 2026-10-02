@@ -11,6 +11,9 @@ namespace toy3d
 
         virtual bool init();
         virtual void exit();
-        virtual const char* get_platform_name() const { return "MacPlatform"; };
+        virtual const char* get_platform_name() const
+        {
+            return "MacPlatform";
+        };
     };
 } // namespace toy3d

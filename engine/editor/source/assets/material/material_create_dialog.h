@@ -15,8 +15,11 @@ namespace toy3d
       public:
         void request(MaterialAssetCreationKind kind, const std::string& folder, AssetId parent = {});
         void draw(EditorWorkspace& workspace, EditorSelection& selection, std::string& browser_folder,
-            const shader::ShaderParameterSchema& schema, ShaderWorkflow* shaders = nullptr);
-        bool active() const { return active_; }
+                  const shader::ShaderParameterSchema& schema, ShaderWorkflow* shaders = nullptr);
+        bool active() const
+        {
+            return active_;
+        }
         void clear();
 
       private:
@@ -31,4 +34,4 @@ namespace toy3d
         bool active_ = false;
         bool open_ = false;
     };
-}
+} // namespace toy3d

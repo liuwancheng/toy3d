@@ -91,7 +91,9 @@ namespace toy3d
         {
             Node() = default;
 
-            explicit Node(T node_value) : value(std::move(node_value)) {}
+            explicit Node(T node_value) : value(std::move(node_value))
+            {
+            }
 
             std::atomic<Node*> next{nullptr};
             // std::optional lets the dummy node exist without requiring T to be default constructible.

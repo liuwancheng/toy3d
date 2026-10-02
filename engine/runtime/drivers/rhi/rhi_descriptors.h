@@ -42,25 +42,39 @@ namespace toy3d
 
         RHIClearValue() = default;
 
-        explicit RHIClearValue(const vec4& value) : value_type(Type::Color), color(value) {}
+        explicit RHIClearValue(const vec4& value) : value_type(Type::Color), color(value)
+        {
+        }
 
         RHIClearValue(float depth_value, std::uint32_t stencil_value)
             : value_type(Type::DepthStencil), depth(depth_value), stencil(stencil_value)
         {
         }
 
-        static RHIClearValue none() { return {}; }
+        static RHIClearValue none()
+        {
+            return {};
+        }
 
-        static RHIClearValue color_value(const vec4& value) { return RHIClearValue(value); }
+        static RHIClearValue color_value(const vec4& value)
+        {
+            return RHIClearValue(value);
+        }
 
         static RHIClearValue depth_stencil_value(float depth, std::uint32_t stencil)
         {
             return RHIClearValue(depth, stencil);
         }
 
-        Type type() const { return value_type; }
+        Type type() const
+        {
+            return value_type;
+        }
 
-        const vec4& get_clear_color() const { return color; }
+        const vec4& get_clear_color() const
+        {
+            return color;
+        }
 
         void get_clear_depth_stencil(float& out_depth, std::uint32_t& out_stencil) const
         {

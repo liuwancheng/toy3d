@@ -13,7 +13,9 @@ namespace toy3d
         class FunctionRunnable final : public Runnable
         {
           public:
-            explicit FunctionRunnable(ThreadFunction function) : function_(std::move(function)) {}
+            explicit FunctionRunnable(ThreadFunction function) : function_(std::move(function))
+            {
+            }
 
             std::uint32_t run() override
             {

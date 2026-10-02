@@ -16,7 +16,9 @@ namespace toy3d
         static constexpr std::size_t k_row_count = 3;
         static constexpr std::size_t k_element_count = k_column_count * k_row_count;
 
-        constexpr Matrix3() : values_{1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f} {}
+        constexpr Matrix3() : values_{1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f}
+        {
+        }
 
         explicit constexpr Matrix3(float diagonal)
             : values_{diagonal, 0.0f, 0.0f, 0.0f, diagonal, 0.0f, 0.0f, 0.0f, diagonal}
@@ -31,13 +33,25 @@ namespace toy3d
         float& at(std::size_t column, std::size_t row);
         const float& at(std::size_t column, std::size_t row) const;
 
-        constexpr float* data() { return values_; }
+        constexpr float* data()
+        {
+            return values_;
+        }
 
-        constexpr const float* data() const { return values_; }
+        constexpr const float* data() const
+        {
+            return values_;
+        }
 
-        static constexpr Matrix3 identity() { return Matrix3(); }
+        static constexpr Matrix3 identity()
+        {
+            return Matrix3();
+        }
 
-        static constexpr Matrix3 zero() { return Matrix3(0.0f); }
+        static constexpr Matrix3 zero()
+        {
+            return Matrix3(0.0f);
+        }
 
       private:
         float values_[k_element_count];

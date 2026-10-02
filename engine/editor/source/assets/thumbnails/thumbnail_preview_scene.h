@@ -23,4 +23,4 @@ namespace toy3d
         MaterialInstanceRef material_;
         std::uint32_t mesh_actor_id_ = 0;
     };
-}
+} // namespace toy3d

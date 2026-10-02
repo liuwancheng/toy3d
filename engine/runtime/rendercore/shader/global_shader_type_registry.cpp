@@ -30,9 +30,11 @@ namespace toy3d
         }
 
         std::vector<const GlobalShaderType*> result = types_;
-        std::sort(result.begin(), result.end(), [](const GlobalShaderType* left, const GlobalShaderType* right) {
-            return left->type_name() < right->type_name();
-        });
+        std::sort(result.begin(), result.end(),
+                  [](const GlobalShaderType* left, const GlobalShaderType* right)
+                  {
+                      return left->type_name() < right->type_name();
+                  });
         for (std::size_t index = 1; index < result.size(); ++index)
         {
             if (result[index - 1]->type_name() == result[index]->type_name())

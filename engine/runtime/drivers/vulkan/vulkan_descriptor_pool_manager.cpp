@@ -6,8 +6,7 @@
 
 namespace toy3d
 {
-    VulkanDescriptorPoolPage::VulkanDescriptorPoolPage(VkDevice device, VkDescriptorPool pool,
-                                                       std::uint32_t capacity)
+    VulkanDescriptorPoolPage::VulkanDescriptorPoolPage(VkDevice device, VkDescriptorPool pool, std::uint32_t capacity)
         : vk_device(device), vk_pool(pool), set_capacity(capacity)
     {
     }
@@ -15,7 +14,9 @@ namespace toy3d
     VulkanDescriptorPoolPage::~VulkanDescriptorPoolPage()
     {
         if (vk_device != VK_NULL_HANDLE && vk_pool != VK_NULL_HANDLE)
+        {
             vkDestroyDescriptorPool(vk_device, vk_pool, nullptr);
+        }
     }
 
     bool VulkanDescriptorPoolPage::has_capacity() const
@@ -26,31 +27,39 @@ namespace toy3d
     RHIResult<VkDescriptorSet> VulkanDescriptorPoolPage::allocate(VkDescriptorSetLayout layout)
     {
         if (!has_capacity() || layout == VK_NULL_HANDLE)
+        {
             return RHIResult<VkDescriptorSet>::failure(RHIErrorCode::OutOfMemory,
                                                        "Vulkan descriptor pool page is full.");
+        }
         VkDescriptorSetAllocateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         info.descriptorPool = vk_pool;
         info.descriptorSetCount = 1;
         info.pSetLayouts = &layout;
         VkDescriptorSet set = VK_NULL_HANDLE;
-        const RHIStatus status = vulkan_status_from_result(vkAllocateDescriptorSets(vk_device, &info, &set),
-                                                           "vkAllocateDescriptorSets");
+        const RHIStatus status =
+            vulkan_status_from_result(vkAllocateDescriptorSets(vk_device, &info, &set), "vkAllocateDescriptorSets");
         if (!status)
+        {
             return RHIResult<VkDescriptorSet>::failure(status.code(), status.message());
+        }
         ++allocated_set_count;
         return RHIResult<VkDescriptorSet>::success(set);
     }
 
     RHIStatus VulkanDescriptorPoolPage::reset()
     {
-        const RHIStatus status = vulkan_status_from_result(vkResetDescriptorPool(vk_device, vk_pool, 0),
-                                                           "vkResetDescriptorPool");
+        const RHIStatus status =
+            vulkan_status_from_result(vkResetDescriptorPool(vk_device, vk_pool, 0), "vkResetDescriptorPool");
         if (status)
+        {
             allocated_set_count = 0;
+        }
         return status;
     }
 
-    VulkanDescriptorPoolManager::VulkanDescriptorPoolManager(VkDevice device) : vk_device(device) {}
+    VulkanDescriptorPoolManager::VulkanDescriptorPoolManager(VkDevice device) : vk_device(device)
+    {
+    }
 
     RHIResult<VulkanDescriptorAllocation> VulkanDescriptorPoolManager::allocate(VkDescriptorSetLayout layout)
     {
@@ -61,11 +70,15 @@ namespace toy3d
             {
                 const RHIStatus reset_status = page->reset();
                 if (!reset_status)
+                {
                     return RHIResult<VulkanDescriptorAllocation>::failure(reset_status.code(), reset_status.message());
+                }
                 ++manager_stats.page_resets;
             }
             if (!page->has_capacity())
+            {
                 continue;
+            }
             auto set = page->allocate(layout);
             if (set)
             {
@@ -75,11 +88,15 @@ namespace toy3d
         }
         auto page = create_page();
         if (!page)
+        {
             return RHIResult<VulkanDescriptorAllocation>::failure(page.status().code(), page.status().message());
+        }
         pages.push_back(page.value());
         auto set = page.value()->allocate(layout);
         if (!set)
+        {
             return RHIResult<VulkanDescriptorAllocation>::failure(set.status().code(), set.status().message());
+        }
         ++manager_stats.set_allocations;
         return RHIResult<VulkanDescriptorAllocation>::success({page.value(), set.value()});
     }
@@ -100,11 +117,12 @@ namespace toy3d
         info.poolSizeCount = static_cast<std::uint32_t>(sizes.size());
         info.pPoolSizes = sizes.data();
         VkDescriptorPool pool = VK_NULL_HANDLE;
-        const RHIStatus status =
-            vulkan_status_from_result(vkCreateDescriptorPool(vk_device, &info, nullptr, &pool),
-                                      "vkCreateDescriptorPool");
+        const RHIStatus status = vulkan_status_from_result(vkCreateDescriptorPool(vk_device, &info, nullptr, &pool),
+                                                           "vkCreateDescriptorPool");
         if (!status)
+        {
             return RHIResult<std::shared_ptr<VulkanDescriptorPoolPage>>::failure(status.code(), status.message());
+        }
         ++manager_stats.page_creations;
         return RHIResult<std::shared_ptr<VulkanDescriptorPoolPage>>::success(
             std::make_shared<VulkanDescriptorPoolPage>(vk_device, pool, sets_per_page));

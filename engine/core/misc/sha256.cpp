@@ -133,16 +133,24 @@ namespace toy3d
     std::optional<Sha256Hash> sha256_from_hex(const std::string& text)
     {
         if (text.size() != Sha256Hash{}.size() * 2u)
+        {
             return std::nullopt;
+        }
         Sha256Hash result{};
         const auto value = [](char character) -> int
         {
             if (character >= '0' && character <= '9')
+            {
                 return character - '0';
+            }
             if (character >= 'a' && character <= 'f')
+            {
                 return character - 'a' + 10;
+            }
             if (character >= 'A' && character <= 'F')
+            {
                 return character - 'A' + 10;
+            }
             return -1;
         };
         for (std::size_t index = 0; index < result.size(); ++index)
@@ -150,7 +158,9 @@ namespace toy3d
             const int high = value(text[index * 2u]);
             const int low = value(text[index * 2u + 1u]);
             if (high < 0 || low < 0)
+            {
                 return std::nullopt;
+            }
             result[index] = static_cast<std::uint8_t>((high << 4) | low);
         }
         return result;

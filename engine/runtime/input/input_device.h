@@ -20,9 +20,18 @@ namespace toy3d
         virtual void set_key_status(KeyCode key_code, KeyStatus status);
         virtual KeyStatus get_key_status(KeyCode key_code) const;
 
-        virtual bool is_key_pressed(KeyCode key_code) const { return get_key_status(key_code) == KeyStatus::Pressed; }
-        virtual bool is_key_released(KeyCode key_code) const { return get_key_status(key_code) == KeyStatus::Released; }
-        virtual bool is_key_hold(KeyCode key_code) const { return get_key_status(key_code) == KeyStatus::Hold; }
+        virtual bool is_key_pressed(KeyCode key_code) const
+        {
+            return get_key_status(key_code) == KeyStatus::Pressed;
+        }
+        virtual bool is_key_released(KeyCode key_code) const
+        {
+            return get_key_status(key_code) == KeyStatus::Released;
+        }
+        virtual bool is_key_hold(KeyCode key_code) const
+        {
+            return get_key_status(key_code) == KeyStatus::Hold;
+        }
         virtual bool is_key_double_click(KeyCode key_code) const
         {
             return get_key_status(key_code) == KeyStatus::DoubleClick;
@@ -40,7 +49,10 @@ namespace toy3d
     {
       public:
         KeyboardDevice();
-        virtual const char* get_device_name() const override { return "Keyboard"; }
+        virtual const char* get_device_name() const override
+        {
+            return "Keyboard";
+        }
     };
 
     // 鼠标设备类
@@ -53,10 +65,16 @@ namespace toy3d
 
       public:
         MouseDevice();
-        const char* get_device_name() const override { return "Mouse"; }
+        const char* get_device_name() const override
+        {
+            return "Mouse";
+        }
 
         void process_mouse_move(int _x, int _y);
-        void process_mouse_wheel(int delta) { wheel_delta = delta; };
+        void process_mouse_wheel(int delta)
+        {
+            wheel_delta = delta;
+        };
         void clear_pressed_state() noexcept override;
 
         void get_mouse_pos(int& out_x, int& out_y) const
@@ -69,7 +87,10 @@ namespace toy3d
             dx = x - prev_x;
             dy = y - prev_y;
         };
-        int get_wheel_delta() const { return wheel_delta; }
+        int get_wheel_delta() const
+        {
+            return wheel_delta;
+        }
     };
 
 } // namespace toy3d

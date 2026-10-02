@@ -15,4 +15,4 @@ namespace toy3d
     // The entry point supplies the module; no project singleton or dynamic library.
     int run_game_host(const GameHostPaths& paths, const GameModuleRegistration& module, void* native_instance);
     GameModuleRegistration linked_game_module();
-}
+} // namespace toy3d

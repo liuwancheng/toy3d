@@ -22,11 +22,20 @@ namespace toy3d
         {
         }
 
-        constexpr float* data() { return &x; }
+        constexpr float* data()
+        {
+            return &x;
+        }
 
-        constexpr const float* data() const { return &x; }
+        constexpr const float* data() const
+        {
+            return &x;
+        }
 
-        static constexpr Quaternion identity() { return Quaternion(); }
+        static constexpr Quaternion identity()
+        {
+            return Quaternion();
+        }
     };
 
     static_assert(sizeof(Quaternion) == sizeof(float) * 4, "Quaternion must contain exactly four contiguous floats.");

@@ -70,7 +70,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
+        {
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::trace, fmt, args...);
+        }
     }
 
     template <typename... Args>
@@ -78,7 +80,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
+        {
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::debug, fmt, args...);
+        }
     }
 
     template <typename... Args>
@@ -86,7 +90,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
+        {
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::info, fmt, args...);
+        }
     }
 
     template <typename... Args>
@@ -94,7 +100,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
+        {
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::warn, fmt, args...);
+        }
     }
 
     template <typename... Args>
@@ -102,7 +110,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
+        {
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::err, fmt, args...);
+        }
     }
 
     template <typename... Args>
@@ -110,7 +120,9 @@ namespace toy3d
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (spd_logger)
+        {
             spd_logger->log(spdlog::source_loc{file, line, ""}, spdlog::level::critical, fmt, args...);
+        }
     }
 } // namespace toy3d
 

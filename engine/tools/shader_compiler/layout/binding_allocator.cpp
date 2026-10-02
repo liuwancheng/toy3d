@@ -158,9 +158,13 @@ namespace toy3d::shader
         SourceLocation binding_location(const ActiveBinding& binding)
         {
             if (binding.resource)
+            {
                 return binding.resource->location;
+            }
             if (binding.constant_buffer && !binding.constant_buffer->members.empty())
+            {
                 return binding.constant_buffer->members.front().location;
+            }
             return {};
         }
 
@@ -242,7 +246,9 @@ namespace toy3d::shader
                 for (const ActiveBinding& binding : active_layout.bindings)
                 {
                     if (has_stage(binding.stages, stage))
+                    {
                         bindings.push_back(&binding);
+                    }
                 }
                 std::sort(bindings.begin(), bindings.end(),
                           [](const ActiveBinding* left, const ActiveBinding* right)
@@ -250,9 +256,13 @@ namespace toy3d::shader
                               const NativeRegisterClass left_class = register_class(left->category);
                               const NativeRegisterClass right_class = register_class(right->category);
                               if (left_class != right_class)
+                              {
                                   return left_class < right_class;
+                              }
                               if (left->group != right->group)
+                              {
                                   return left->group < right->group;
+                              }
                               return left->binding_id < right->binding_id;
                           });
                 BindingClassLimits counts{};
@@ -293,20 +303,28 @@ namespace toy3d::shader
             }
             std::vector<const ActiveBinding*> bindings;
             for (const ActiveBinding& binding : active_layout.bindings)
+            {
                 bindings.push_back(&binding);
+            }
             std::sort(bindings.begin(), bindings.end(),
                       [](const ActiveBinding* left, const ActiveBinding* right)
                       {
                           const std::uint32_t left_set = physical_set(left->group);
                           const std::uint32_t right_set = physical_set(right->group);
                           if (left_set != right_set)
+                          {
                               return left_set < right_set;
+                          }
                           if (left->group != right->group)
+                          {
                               return left->group < right->group;
+                          }
                           const VulkanDescriptorClass left_class = vulkan_descriptor_class(*left);
                           const VulkanDescriptorClass right_class = vulkan_descriptor_class(*right);
                           if (left_class != right_class)
+                          {
                               return left_class < right_class;
+                          }
                           return left->binding_id < right->binding_id;
                       });
             std::array<std::uint32_t, 4> set_counts{};
@@ -334,7 +352,9 @@ namespace toy3d::shader
                 for (std::size_t stage_index = 0; stage_index < individual_stages.size(); ++stage_index)
                 {
                     if (!has_stage(binding->stages, individual_stages[stage_index]))
+                    {
                         continue;
+                    }
                     const std::uint32_t required = ++descriptor_count(stage_counts[stage_index], descriptor_class);
                     if (required > descriptor_limit(limits.per_stage_descriptors[stage_index], descriptor_class))
                     {
@@ -343,17 +363,18 @@ namespace toy3d::shader
                     }
                 }
                 const ConstantBufferLayout* constant_buffer = binding->constant_buffer;
-                layout.bindings.push_back(
-                    {binding->binding_id, binding->name, binding->group, binding->category, binding->stages,
-                     binding_class, auxiliary_register, set, descriptor_binding,
-                     constant_buffer ? constant_buffer->size : 0u,
-                     constant_buffer ? constant_buffer->data_layout_hash : ShaderDataLayoutHash{},
-                     constant_buffer ? constant_buffer->shader_abi_version : 0u, binding});
+                layout.bindings.push_back({binding->binding_id, binding->name, binding->group, binding->category,
+                                           binding->stages, binding_class, auxiliary_register, set, descriptor_binding,
+                                           constant_buffer ? constant_buffer->size : 0u,
+                                           constant_buffer ? constant_buffer->data_layout_hash : ShaderDataLayoutHash{},
+                                           constant_buffer ? constant_buffer->shader_abi_version : 0u, binding});
             }
         }
 
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         layout.target_binding_hash = calculate_target_binding_hash(layout);
         result.layout = std::move(layout);
         return result;

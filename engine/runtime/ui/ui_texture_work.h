@@ -35,6 +35,9 @@ namespace toy3d
         Extent extent;
         std::vector<std::uint8_t> bgra_pixels;
         std::string error;
-        bool succeeded() const { return error.empty(); }
+        bool succeeded() const
+        {
+            return error.empty();
+        }
     };
 } // namespace toy3d

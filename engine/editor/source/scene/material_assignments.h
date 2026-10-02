@@ -37,7 +37,10 @@ namespace toy3d
     {
       public:
         void initialize(EditorWorkspace& workspace, MaterialLibrary& library);
-        void set_shader_workflow(ShaderWorkflow& shaders) { shaders_ = &shaders; }
+        void set_shader_workflow(ShaderWorkflow& shaders)
+        {
+            shaders_ = &shaders;
+        }
         bool offer_compile_assignment(World& world, std::uint32_t actor_id, const MaterialSlotAssignment& assignment);
         bool can_compile_assignment() const;
         bool compile_assignment(std::string& error);
@@ -76,4 +79,4 @@ namespace toy3d
         PendingAssignment pending_assignment_;
         std::map<std::uint32_t, std::vector<MaterialSlotAssignment>> assignments_;
     };
-}
+} // namespace toy3d

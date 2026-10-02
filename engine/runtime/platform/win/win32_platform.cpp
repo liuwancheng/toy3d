@@ -7,5 +7,7 @@ namespace toy3d
         return true;
     }
 
-    void Win32Platform::exit() {}
+    void Win32Platform::exit()
+    {
+    }
 } // namespace toy3d

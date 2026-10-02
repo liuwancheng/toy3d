@@ -92,7 +92,10 @@ namespace toy3d
                 }
             }
 
-            std::size_t capacity() const { return capacity_; }
+            std::size_t capacity() const
+            {
+                return capacity_;
+            }
 
           private:
             struct Cell

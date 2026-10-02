@@ -28,7 +28,7 @@ namespace
         type.properties[1].value_type.kind = toy3d::ValueKind::Float32;
         return type;
     }
-}
+} // namespace
 
 int main()
 {
@@ -54,17 +54,18 @@ int main()
     std::vector<std::thread> readers;
     for (int index = 0; index < 4; ++index)
     {
-        readers.emplace_back([&registry, &reads_valid]()
-                             {
-                                 for (int iteration = 0; iteration < 1000; ++iteration)
-                                 {
-                                     const toy3d::TypeDesc* found = registry.find("toy3d.ModelAsset");
-                                     if (found == nullptr || found->properties.size() != 2)
-                                     {
-                                         reads_valid.store(false);
-                                     }
-                                 }
-                             });
+        readers.emplace_back(
+            [&registry, &reads_valid]()
+            {
+                for (int iteration = 0; iteration < 1000; ++iteration)
+                {
+                    const toy3d::TypeDesc* found = registry.find("toy3d.ModelAsset");
+                    if (found == nullptr || found->properties.size() != 2)
+                    {
+                        reads_valid.store(false);
+                    }
+                }
+            });
     }
     for (std::thread& reader : readers)
     {

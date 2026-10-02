@@ -8,7 +8,10 @@ namespace toy3d
     {
 #if TOY3D_LINKED_GAME_MODULE
         auto& arguments = CommandLineParser::get_instance();
-        if (!arguments.has_option("Project")) arguments.parser_args({"Toy3d", std::string("--Project=") + TOY3D_PROJECT_DESCRIPTOR});
+        if (!arguments.has_option("Project"))
+        {
+            arguments.parser_args({"Toy3d", std::string("--Project=") + TOY3D_PROJECT_DESCRIPTOR});
+        }
         EditorHostConfig config;
         config.module = linked_game_module();
         config.game_executable = PhysicalPath(TOY3D_PROJECT_GAME_EXECUTABLE);
@@ -17,4 +20,4 @@ namespace toy3d
         return run_editor_host(native_instance);
 #endif
     }
-}
+} // namespace toy3d

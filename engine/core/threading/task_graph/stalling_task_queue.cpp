@@ -79,8 +79,11 @@ namespace toy3d
             {
                 return true;
             }
-            sleep_condition_.wait(lock, [this, observed_generation]()
-                                  { return stopped_.load() || wake_generation_ != observed_generation; });
+            sleep_condition_.wait(lock,
+                                  [this, observed_generation]()
+                                  {
+                                      return stopped_.load() || wake_generation_ != observed_generation;
+                                  });
         }
     }
 

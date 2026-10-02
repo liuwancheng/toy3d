@@ -13,11 +13,15 @@ namespace toy3d
         bool initialize(const PhysicalPath& shader_entries, ShaderMapProgramRef program = {});
         void release();
         StaticMeshRef instantiate(const std::string& kind) const;
-        const MaterialInstanceRef& default_material() const { return material_; }
+        const MaterialInstanceRef& default_material() const
+        {
+            return material_;
+        }
+
       private:
         StaticMeshRef cube_;
         StaticMeshRef plane_;
         MaterialInstanceRef material_;
     };
     StaticMeshRef clone_scene_geometry(const StaticMeshRef& prototype);
-}
+} // namespace toy3d

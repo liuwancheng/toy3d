@@ -8,4 +8,4 @@ namespace toy3d
     class EditorCommandHistory;
     class TypeRegistry;
     void draw_actor_details(Actor& actor, EditorCommandHistory& history, const TypeRegistry& types, std::string& error);
-}
+} // namespace toy3d

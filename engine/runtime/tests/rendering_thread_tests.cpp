@@ -76,7 +76,10 @@ namespace
         try
         {
             toy3d::dispatch_graph_task(
-                *graph, "BeforeRenderingThreadReady", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                *graph, "BeforeRenderingThreadReady",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
                 toy3d::NamedThread::RenderingThread);
         }
         catch (const toy3d::TaskGraphException& exception)
@@ -193,7 +196,9 @@ namespace
             }
             toy3d::RenderingThread rendering_thread(thread_manager, *graph, toy3d::RenderingThreadMode::MultiThread,
                                                     [](std::function<void()>) -> std::unique_ptr<toy3d::Thread>
-                                                    { throw std::runtime_error("injected thread creation failure"); });
+                                                    {
+                                                        throw std::runtime_error("injected thread creation failure");
+                                                    });
             const toy3d::ThreadStatus status = rendering_thread.start();
             check(status.code == toy3d::ThreadErrorCode::CreateFailed && !rendering_thread.is_ready() &&
                       rendering_thread.get_thread_id() == std::thread::id{},
@@ -297,10 +302,17 @@ namespace
         toy3d::Event fifo_complete(toy3d::EventMode::ManualReset);
         for (int index = 0; index < command_count; ++index)
         {
-            toy3d::enqueue_render_command("HighCountFifo", [&fifo, index]() noexcept { fifo.push_back(index); });
+            toy3d::enqueue_render_command("HighCountFifo",
+                                          [&fifo, index]() noexcept
+                                          {
+                                              fifo.push_back(index);
+                                          });
         }
         toy3d::enqueue_render_command("HighCountFifoComplete",
-                                      [&fifo_complete]() noexcept { fifo_complete.trigger(); });
+                                      [&fifo_complete]() noexcept
+                                      {
+                                          fifo_complete.trigger();
+                                      });
         check(fifo_complete.wait_for(5s), "FireAndForget RenderCommands must wake RT and execute without completions");
         bool fifo_preserved = fifo.size() == command_count;
         for (int index = 0; fifo_preserved && index < command_count; ++index)
@@ -317,7 +329,9 @@ namespace
                                           nested_order.push_back(1);
                                           toy3d::enqueue_render_command("NestedInlineCommand",
                                                                         [&nested_order]() noexcept
-                                                                        { nested_order.push_back(2); });
+                                                                        {
+                                                                            nested_order.push_back(2);
+                                                                        });
                                           nested_order.push_back(3);
                                           nested_complete.trigger();
                                       });
@@ -336,10 +350,15 @@ namespace
                                                                       });
         toy3d::enqueue_render_command("MoveOnlyOwnership",
                                       [payload = std::move(owned_payload), &move_only_executed]() noexcept
-                                      { move_only_executed.store(*payload == 7); });
+                                      {
+                                          move_only_executed.store(*payload == 7);
+                                      });
         check(!owned_payload, "GT must relinquish move-only payload ownership exactly once");
         toy3d::enqueue_render_command("ObservePayloadDisposal",
-                                      [&disposal_complete]() noexcept { disposal_complete.trigger(); });
+                                      [&disposal_complete]() noexcept
+                                      {
+                                          disposal_complete.trigger();
+                                      });
         check(disposal_complete.wait_for(2s), "command after move-only payload must execute");
         check(move_only_executed.load() && disposal_thread == rendering_thread.get_thread_id(),
               "move-only command payload must execute and be destroyed on logical RT");
@@ -355,7 +374,10 @@ namespace
                 worker_started.trigger();
                 try
                 {
-                    toy3d::enqueue_render_command("WorkerMustFailFast", []() noexcept {});
+                    toy3d::enqueue_render_command("WorkerMustFailFast",
+                                                  []() noexcept
+                                                  {
+                                                  });
                 }
                 catch (const toy3d::TaskGraphException& exception)
                 {
@@ -392,7 +414,10 @@ namespace
                                       {
                                           order.push_back(1);
                                           toy3d::enqueue_render_command("SingleThreadNestedInline",
-                                                                        [&order]() noexcept { order.push_back(2); });
+                                                                        [&order]() noexcept
+                                                                        {
+                                                                            order.push_back(2);
+                                                                        });
                                           order.push_back(3);
                                       });
         check(order == std::vector<int>({1, 2, 3}), "single-thread mode must run the same callable body inline on GT");

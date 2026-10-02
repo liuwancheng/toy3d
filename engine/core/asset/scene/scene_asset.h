@@ -7,10 +7,11 @@
 
 namespace toy3d
 {
-    AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index = nullptr, const TypeRegistry* types = nullptr);
-    AssetResult<AssetPairBytes> encode_scene_asset_pair(const TypeRegistry& types,
-        const AssetId& id, const SceneAssetData& data, const AssetIndex* index = nullptr);
-    AssetStatus read_scene_asset(const TypeRegistry& types, const FileSystem& files,
-        const VirtualPath& path, SceneAssetData& output, const AssetIndex* index = nullptr,
-        std::vector<std::uint8_t>* source_bytes = nullptr);
-}
+    AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index = nullptr,
+                                     const TypeRegistry* types = nullptr);
+    AssetResult<AssetPairBytes> encode_scene_asset_pair(const TypeRegistry& types, const AssetId& id,
+                                                        const SceneAssetData& data, const AssetIndex* index = nullptr);
+    AssetStatus read_scene_asset(const TypeRegistry& types, const FileSystem& files, const VirtualPath& path,
+                                 SceneAssetData& output, const AssetIndex* index = nullptr,
+                                 std::vector<std::uint8_t>* source_bytes = nullptr);
+} // namespace toy3d

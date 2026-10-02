@@ -9,15 +9,32 @@ namespace toy3d
     class CameraComponent final : public SceneComponent
     {
       public:
-        explicit CameraComponent(Actor& owner) : SceneComponent(owner) {}
+        explicit CameraComponent(Actor& owner) : SceneComponent(owner)
+        {
+        }
         ~CameraComponent() override = default;
 
-        CameraProjectionMode projection_mode() const { return projection_mode_; }
-        float vertical_fov_degrees() const { return settings_.vertical_fov; }
-        float near_clip() const { return settings_.near_clip; }
-        float far_clip() const { return settings_.far_clip; }
+        CameraProjectionMode projection_mode() const
+        {
+            return projection_mode_;
+        }
+        float vertical_fov_degrees() const
+        {
+            return settings_.vertical_fov;
+        }
+        float near_clip() const
+        {
+            return settings_.near_clip;
+        }
+        float far_clip() const
+        {
+            return settings_.far_clip;
+        }
 
-        const CameraSettings& camera_settings() const { return settings_; }
+        const CameraSettings& camera_settings() const
+        {
+            return settings_;
+        }
         bool set_camera_settings(const CameraSettings& settings);
 
         bool set_perspective(float vertical_fov_degrees, float near_clip, float far_clip);

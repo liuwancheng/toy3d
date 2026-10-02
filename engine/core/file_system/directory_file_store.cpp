@@ -19,7 +19,10 @@ namespace toy3d
             }
 #if WITH_WIN
             std::transform(path.begin(), path.end(), path.begin(),
-                           [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+                           [](unsigned char character)
+                           {
+                               return static_cast<char>(std::tolower(character));
+                           });
 #endif
             return path;
         }
@@ -287,7 +290,10 @@ namespace toy3d
             result.push_back({name, entry.type});
         }
         std::sort(result.begin(), result.end(),
-                  [](const StoreDirectoryEntry& lhs, const StoreDirectoryEntry& rhs) { return lhs.name < rhs.name; });
+                  [](const StoreDirectoryEntry& lhs, const StoreDirectoryEntry& rhs)
+                  {
+                      return lhs.name < rhs.name;
+                  });
         return FileResult<std::vector<StoreDirectoryEntry>>(std::move(result));
     }
 
@@ -295,10 +301,14 @@ namespace toy3d
     {
         const FileStatus writable = ensure_writable("create_directories", path);
         if (!writable.succeeded())
+        {
             return writable;
+        }
         const FileResult<PhysicalPath> resolved = resolve_physical(path);
         if (!resolved.succeeded())
+        {
             return resolved.status();
+        }
         return with_store_path(platform_file_.create_directories(resolved.value()), path);
     }
 
@@ -306,10 +316,14 @@ namespace toy3d
     {
         const FileStatus writable = ensure_writable("remove_file", path);
         if (!writable.succeeded())
+        {
             return writable;
+        }
         const FileResult<PhysicalPath> resolved = resolve_physical(path);
         if (!resolved.succeeded())
+        {
             return resolved.status();
+        }
         return with_store_path(platform_file_.remove_file(resolved.value()), path);
     }
 
@@ -317,7 +331,9 @@ namespace toy3d
     {
         const FileStatus writable = ensure_writable("remove_empty_directory", path);
         if (!writable.succeeded())
+        {
             return writable;
+        }
         if (path.empty())
         {
             return store_error(FileErrorCode::AccessDenied, "remove_empty_directory", path,
@@ -325,7 +341,9 @@ namespace toy3d
         }
         const FileResult<PhysicalPath> resolved = resolve_physical(path);
         if (!resolved.succeeded())
+        {
             return resolved.status();
+        }
         return with_store_path(platform_file_.remove_empty_directory(resolved.value()), path);
     }
 
@@ -333,13 +351,19 @@ namespace toy3d
     {
         const FileStatus writable = ensure_writable("rename_no_replace", destination);
         if (!writable.succeeded())
+        {
             return writable;
+        }
         const FileResult<PhysicalPath> resolved_source = resolve_physical(source);
         if (!resolved_source.succeeded())
+        {
             return resolved_source.status();
+        }
         const FileResult<PhysicalPath> resolved_destination = resolve_physical(destination);
         if (!resolved_destination.succeeded())
+        {
             return resolved_destination.status();
+        }
         return with_store_path(platform_file_.rename_no_replace(resolved_source.value(), resolved_destination.value()),
                                destination);
     }
@@ -348,13 +372,19 @@ namespace toy3d
     {
         const FileStatus writable = ensure_writable("replace", destination);
         if (!writable.succeeded())
+        {
             return writable;
+        }
         const FileResult<PhysicalPath> resolved_source = resolve_physical(source);
         if (!resolved_source.succeeded())
+        {
             return resolved_source.status();
+        }
         const FileResult<PhysicalPath> resolved_destination = resolve_physical(destination);
         if (!resolved_destination.succeeded())
+        {
             return resolved_destination.status();
+        }
         return with_store_path(platform_file_.replace(resolved_source.value(), resolved_destination.value()),
                                destination);
     }

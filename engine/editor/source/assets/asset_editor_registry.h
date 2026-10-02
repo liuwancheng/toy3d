@@ -18,11 +18,19 @@ namespace toy3d
     {
       public:
         bool add(AssetEditor editor);
-        void freeze() { frozen_ = true; }
+        void freeze()
+        {
+            frozen_ = true;
+        }
         bool request_open(const std::string& root_type, const AssetId& id, bool focus) const;
-        void clear() { editors_.clear(); frozen_ = false; }
+        void clear()
+        {
+            editors_.clear();
+            frozen_ = false;
+        }
+
       private:
         std::vector<AssetEditor> editors_;
         bool frozen_ = false;
     };
-}
+} // namespace toy3d

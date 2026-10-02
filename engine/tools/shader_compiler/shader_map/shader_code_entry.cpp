@@ -11,8 +11,12 @@ namespace toy3d::shader
         bool hash_is_zero(const Sha256Hash& hash)
         {
             for (std::uint8_t byte : hash)
+            {
                 if (byte != 0u)
+                {
                     return false;
+                }
+            }
             return true;
         }
 
@@ -113,7 +117,9 @@ namespace toy3d::shader
                  << "binary_file=shader.spv\nreflection_file=reflection.txt\ndependencies_file=dependencies.txt\n";
         std::ostringstream dependencies;
         for (const ShaderDependency& dependency : request.dependencies)
+        {
             dependencies << dependency.virtual_path << '\t' << sha256_to_hex(dependency.content_hash) << '\n';
+        }
 
         const auto write_text = [&](const std::string& name, const std::string& text)
         {

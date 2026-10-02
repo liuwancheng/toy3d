@@ -19,7 +19,10 @@ namespace toy3d
 
     void PrimitiveComponent::set_primitive_settings(const PrimitiveSettings& settings)
     {
-        if (settings_ == settings) return;
+        if (settings_ == settings)
+        {
+            return;
+        }
         settings_ = settings;
         world().mark_content_changed();
         send_render_transform();
@@ -89,7 +92,10 @@ namespace toy3d
     void PrimitiveComponent::send_render_materials(std::vector<MaterialRenderProxy*> materials)
     {
         SceneInterface* const scene = world().scene_interface();
-        if (!scene || !scene_proxy_) return;
+        if (!scene || !scene_proxy_)
+        {
+            return;
+        }
         scene->update_primitive_materials(scene_proxy_, std::move(materials));
         world().mark_scene_changed();
     }

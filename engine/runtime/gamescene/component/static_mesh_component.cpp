@@ -15,7 +15,10 @@ namespace toy3d
 {
     void StaticMeshComponent::set_static_mesh(StaticMeshRef static_mesh)
     {
-        if (static_mesh_ == static_mesh) return;
+        if (static_mesh_ == static_mesh)
+        {
+            return;
+        }
         const bool rebuild_render_state = has_render_state();
         if (rebuild_render_state)
         {
@@ -60,7 +63,10 @@ namespace toy3d
             TOY_LOG_ERROR("Clearing a StaticMesh Material override requires an existing slot.");
             return false;
         }
-        if (!material_overrides_[material_slot]) return true;
+        if (!material_overrides_[material_slot])
+        {
+            return true;
+        }
         world().mark_content_changed();
         auto previous = material_overrides_;
         material_overrides_[material_slot].reset();
@@ -70,15 +76,24 @@ namespace toy3d
 
     void StaticMeshComponent::send_material_overrides(std::vector<MaterialInterfaceRef> previous)
     {
-        if (!has_render_state()) { create_render_state(); return; }
+        if (!has_render_state())
+        {
+            create_render_state();
+            return;
+        }
         std::vector<MaterialRenderProxy*> proxies;
         proxies.reserve(material_overrides_.size());
         for (std::uint32_t slot = 0u; slot < material_overrides_.size(); ++slot)
+        {
             proxies.push_back(material_for_slot(slot)->material_render_proxy());
+        }
         send_render_materials(std::move(proxies));
         // The preceding update stops borrowing old material proxies before its
         // owned GT references are dropped. Geometry and HitProxy identity stay.
-        enqueue_render_command("ReleaseUpdatedStaticMeshMaterials", [previous = std::move(previous)]() noexcept {});
+        enqueue_render_command("ReleaseUpdatedStaticMeshMaterials",
+                               [previous = std::move(previous)]() noexcept
+                               {
+                               });
     }
 
     bool StaticMeshComponent::has_material_override(std::uint32_t material_slot) const
@@ -101,7 +116,9 @@ namespace toy3d
         // Remove only borrows render_data. Keep its owner and override owners alive
         // until that earlier FIFO command has released every Render-side reference.
         enqueue_render_command("ReleaseRemovedStaticMeshReferences",
-            [mesh = static_mesh_, materials = material_overrides_]() noexcept {});
+                               [mesh = static_mesh_, materials = material_overrides_]() noexcept
+                               {
+                               });
     }
 
     void StaticMeshComponent::update_bounds()
@@ -148,9 +165,8 @@ namespace toy3d
             const MaterialInterfaceRef material = material_for_slot(slot);
             material_render_proxies.push_back(material != nullptr ? material->material_render_proxy() : nullptr);
         }
-        return std::make_unique<StaticMeshSceneProxy>(world_transform(), world_bounds_, visible(),
-                                                      static_mesh_->render_data(), std::move(material_render_proxies),
-                                                      owner().actor_id(), component_id(), cast_shadows(),
-                                                      receives_shadows());
+        return std::make_unique<StaticMeshSceneProxy>(
+            world_transform(), world_bounds_, visible(), static_mesh_->render_data(),
+            std::move(material_render_proxies), owner().actor_id(), component_id(), cast_shadows(), receives_shadows());
     }
 } // namespace toy3d

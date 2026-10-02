@@ -26,20 +26,50 @@ namespace toy3d
     class SceneView
     {
       public:
-        SceneView(Vector3 camera_position, Quaternion camera_orientation, Vector3 camera_direction,
-                  IntRect view_rect, Extent output_extent,
-                  CameraProjectionMode projection_mode, Radians vertical_fov, float near_clip, float far_clip);
+        SceneView(Vector3 camera_position, Quaternion camera_orientation, Vector3 camera_direction, IntRect view_rect,
+                  Extent output_extent, CameraProjectionMode projection_mode, Radians vertical_fov, float near_clip,
+                  float far_clip);
 
-        const Vector3& camera_position() const { return camera_position_; }
-        const Quaternion& camera_orientation() const { return camera_orientation_; }
-        const Vector3& camera_direction() const { return camera_direction_; }
-        const IntRect& view_rect() const { return view_rect_; }
-        Extent output_extent() const { return output_extent_; }
-        CameraProjectionMode projection_mode() const { return projection_mode_; }
-        Radians vertical_fov() const { return vertical_fov_; }
-        float near_clip() const { return near_clip_; }
-        float far_clip() const { return far_clip_; }
-        bool infinite_far() const { return projection_mode_ == CameraProjectionMode::PerspectiveInfiniteFar; }
+        const Vector3& camera_position() const
+        {
+            return camera_position_;
+        }
+        const Quaternion& camera_orientation() const
+        {
+            return camera_orientation_;
+        }
+        const Vector3& camera_direction() const
+        {
+            return camera_direction_;
+        }
+        const IntRect& view_rect() const
+        {
+            return view_rect_;
+        }
+        Extent output_extent() const
+        {
+            return output_extent_;
+        }
+        CameraProjectionMode projection_mode() const
+        {
+            return projection_mode_;
+        }
+        Radians vertical_fov() const
+        {
+            return vertical_fov_;
+        }
+        float near_clip() const
+        {
+            return near_clip_;
+        }
+        float far_clip() const
+        {
+            return far_clip_;
+        }
+        bool infinite_far() const
+        {
+            return projection_mode_ == CameraProjectionMode::PerspectiveInfiniteFar;
+        }
 
       private:
         Vector3 camera_position_;
@@ -66,9 +96,18 @@ namespace toy3d
         SceneViewFamily& operator=(SceneViewFamily&&) = default;
         ~SceneViewFamily() = default;
 
-        SceneInterface& scene_interface() const { return *scene_interface_; }
-        Extent output_extent() const { return output_extent_; }
-        const std::vector<SceneView>& views() const { return views_; }
+        SceneInterface& scene_interface() const
+        {
+            return *scene_interface_;
+        }
+        Extent output_extent() const
+        {
+            return output_extent_;
+        }
+        const std::vector<SceneView>& views() const
+        {
+            return views_;
+        }
 
       private:
         SceneInterface* scene_interface_ = nullptr;

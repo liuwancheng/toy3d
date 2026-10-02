@@ -19,7 +19,12 @@ namespace toy3d
     const PlacementItem* find_placement_item(PlacementItemId id)
     {
         for (const PlacementItem& item : placement_catalog())
-            if (item.id == id) return &item;
+        {
+            if (item.id == id)
+            {
+                return &item;
+            }
+        }
         return nullptr;
     }
-}
+} // namespace toy3d

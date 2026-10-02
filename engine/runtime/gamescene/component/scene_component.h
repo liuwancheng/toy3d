@@ -25,17 +25,34 @@ namespace toy3d
         SceneComponent(const SceneComponent&) = delete;
         SceneComponent& operator=(const SceneComponent&) = delete;
 
-        SceneComponent* parent() const { return parent_; }
-        const std::vector<SceneComponent*>& children() const { return children_; }
+        SceneComponent* parent() const
+        {
+            return parent_;
+        }
+        const std::vector<SceneComponent*>& children() const
+        {
+            return children_;
+        }
 
-        const Transform& local_transform() const { return local_transform_; }
-        const Matrix4& world_transform() const { return world_transform_; }
-        const Quaternion& world_rotation() const { return world_rotation_; }
+        const Transform& local_transform() const
+        {
+            return local_transform_;
+        }
+        const Matrix4& world_transform() const
+        {
+            return world_transform_;
+        }
+        const Quaternion& world_rotation() const
+        {
+            return world_rotation_;
+        }
         bool set_local_transform(const Transform& transform);
         bool attach_to(SceneComponent* new_parent, AttachmentRule rule);
 
       protected:
-        virtual void on_world_transform_updated() {}
+        virtual void on_world_transform_updated()
+        {
+        }
 
       private:
         static bool validate_transform(const Transform& transform);

@@ -24,7 +24,7 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    ShaderParametersWriteResult write_shader_parameter_headers(
-        PlatformFile& platform_file, const PhysicalPath& output_directory,
-        const std::vector<ShaderParametersGeneratedUnit>& units);
+    ShaderParametersWriteResult write_shader_parameter_headers(PlatformFile& platform_file,
+                                                               const PhysicalPath& output_directory,
+                                                               const std::vector<ShaderParametersGeneratedUnit>& units);
 } // namespace toy3d::shader

@@ -15,6 +15,6 @@ namespace toy3d
     bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history,
                        const ActorFactory& factory, SceneViewport& viewport);
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,
-                      const EditorWorkspace& workspace, SceneViewport& viewport,
-                      MaterialAssignments& materials, std::string& material_error);
+                      const EditorWorkspace& workspace, SceneViewport& viewport, MaterialAssignments& materials,
+                      std::string& material_error);
 } // namespace toy3d

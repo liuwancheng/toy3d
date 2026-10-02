@@ -43,7 +43,10 @@ namespace toy3d
         VulkanCommandPool(const VulkanCommandPool&) = delete;
         VulkanCommandPool& operator=(const VulkanCommandPool&) = delete;
 
-        VkCommandPool handle() const { return vk_command_pool; }
+        VkCommandPool handle() const
+        {
+            return vk_command_pool;
+        }
 
       private:
         VkDevice vk_device = VK_NULL_HANDLE;

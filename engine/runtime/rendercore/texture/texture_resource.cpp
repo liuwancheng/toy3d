@@ -160,7 +160,9 @@ namespace toy3d
         texture.reset();
     }
 
-    TextureResource::TextureResource(const TextureDesc& initial_desc) : initial_desc_(initial_desc) {}
+    TextureResource::TextureResource(const TextureDesc& initial_desc) : initial_desc_(initial_desc)
+    {
+    }
 
     RHIStatus TextureResource::begin_init(RenderResourceManager& manager)
     {

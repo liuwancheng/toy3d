@@ -18,8 +18,10 @@ namespace toy3d::shader
 
         bool has_valid_include_path(std::string_view path)
         {
-            const bool engine = path.size() > engine_include_root.size() && path.compare(0, engine_include_root.size(), engine_include_root) == 0;
-            const bool project = path.size() > project_include_root.size() && path.compare(0, project_include_root.size(), project_include_root) == 0;
+            const bool engine = path.size() > engine_include_root.size() &&
+                                path.compare(0, engine_include_root.size(), engine_include_root) == 0;
+            const bool project = path.size() > project_include_root.size() &&
+                                 path.compare(0, project_include_root.size(), project_include_root) == 0;
             if (!engine && !project)
             {
                 return false;
@@ -39,7 +41,9 @@ namespace toy3d::shader
                     return false;
                 }
                 if (end == std::string_view::npos)
+                {
                     break;
+                }
                 begin = end + 1;
             }
             return true;
@@ -88,7 +92,9 @@ namespace toy3d::shader
             std::optional<std::string> resolve(const std::string& source, const std::string& path)
             {
                 if (!diagnostics_.empty())
+                {
                     return std::nullopt;
+                }
                 stack_.push_back(path);
                 std::optional<std::string> result = resolve_source(source, path, 0);
                 stack_.pop_back();
@@ -103,12 +109,18 @@ namespace toy3d::shader
                 {
                     result.push_back({dependency.first, dependency.second});
                 }
-                std::sort(result.begin(), result.end(), [](const ShaderDependency& left, const ShaderDependency& right)
-                          { return left.virtual_path < right.virtual_path; });
+                std::sort(result.begin(), result.end(),
+                          [](const ShaderDependency& left, const ShaderDependency& right)
+                          {
+                              return left.virtual_path < right.virtual_path;
+                          });
                 return result;
             }
 
-            std::vector<Diagnostic> take_diagnostics() { return std::move(diagnostics_); }
+            std::vector<Diagnostic> take_diagnostics()
+            {
+                return std::move(diagnostics_);
+            }
 
           private:
             std::optional<std::string> resolve_source(const std::string& source, const std::string& path,
@@ -127,23 +139,31 @@ namespace toy3d::shader
                         output << line << '\n';
                         if (static_cast<std::size_t>(output.tellp()) > maximum_expanded_bytes)
                         {
-                            diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath,
-                                {logical_path, 0, line_number, 1}, "Expanded Shader includes exceed 8 MiB."});
+                            diagnostics_.push_back({DiagnosticSeverity::Error,
+                                                    DiagnosticCode::InvalidIncludePath,
+                                                    {logical_path, 0, line_number, 1},
+                                                    "Expanded Shader includes exceed 8 MiB."});
                             return std::nullopt;
                         }
                         // Generated #line markers describe the author file's
                         // position. Include return markers must restore that
                         // position, not the flattened generated line count.
-                        std::istringstream marker(line); std::string directive;
+                        std::istringstream marker(line);
+                        std::string directive;
                         std::uint32_t mapped_line = 0u;
                         if ((marker >> directive >> mapped_line) && directive == "#line" && mapped_line)
                         {
                             marker >> std::ws;
                             if (marker.peek() == '"')
                             {
-                                marker.get(); std::string mapped_path;
+                                marker.get();
+                                std::string mapped_path;
                                 if (std::getline(marker, mapped_path, '"'))
-                                { logical_path = std::move(mapped_path); line_number = mapped_line; continue; }
+                                {
+                                    logical_path = std::move(mapped_path);
+                                    line_number = mapped_line;
+                                    continue;
+                                }
                             }
                         }
                         ++line_number;
@@ -176,7 +196,9 @@ namespace toy3d::shader
                         for (const std::string& item : stack_)
                         {
                             if (!chain.empty())
+                            {
                                 chain += " -> ";
+                            }
                             chain += item;
                         }
                         chain += " -> " + *include_path;
@@ -191,17 +213,22 @@ namespace toy3d::shader
                         resolve_source(file.source, file.virtual_path, depth + 1);
                     stack_.pop_back();
                     if (!expanded)
-                        return std::nullopt;
-                    if (expanded->size() > maximum_expanded_bytes || static_cast<std::size_t>(output.tellp()) > maximum_expanded_bytes - expanded->size())
                     {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, location, "Expanded Shader includes exceed 8 MiB."});
+                        return std::nullopt;
+                    }
+                    if (expanded->size() > maximum_expanded_bytes ||
+                        static_cast<std::size_t>(output.tellp()) > maximum_expanded_bytes - expanded->size())
+                    {
+                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, location,
+                                                "Expanded Shader includes exceed 8 MiB."});
                         return std::nullopt;
                     }
                     output << "#line 1 \"" << file.virtual_path << "\"\n" << *expanded;
                     output << "#line " << (line_number + 1) << " \"" << logical_path << "\"\n";
                     if (static_cast<std::size_t>(output.tellp()) > maximum_expanded_bytes)
                     {
-                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, location, "Expanded Shader includes exceed 8 MiB."});
+                        diagnostics_.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidIncludePath, location,
+                                                "Expanded Shader includes exceed 8 MiB."});
                         return std::nullopt;
                     }
                     ++line_number;

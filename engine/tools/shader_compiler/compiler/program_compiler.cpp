@@ -163,20 +163,30 @@ namespace toy3d::shader
         bool validate_program_interfaces(const std::vector<ShaderCodeEntry>& stages, const SourceLocation& location,
                                          std::vector<Diagnostic>& diagnostics)
         {
-            const auto vertex = std::find_if(stages.begin(), stages.end(), [](const auto& stage)
-                                             { return stage.reflection.stage == ShaderStageFlags::Vertex; });
-            const auto pixel = std::find_if(stages.begin(), stages.end(), [](const auto& stage)
-                                            { return stage.reflection.stage == ShaderStageFlags::Pixel; });
+            const auto vertex = std::find_if(stages.begin(), stages.end(),
+                                             [](const auto& stage)
+                                             {
+                                                 return stage.reflection.stage == ShaderStageFlags::Vertex;
+                                             });
+            const auto pixel = std::find_if(stages.begin(), stages.end(),
+                                            [](const auto& stage)
+                                            {
+                                                return stage.reflection.stage == ShaderStageFlags::Pixel;
+                                            });
             if (vertex != stages.end() && pixel != stages.end())
             {
                 for (const ReflectedInterfaceVariable& input : pixel->reflection.interface_variables)
                 {
                     if (!input.input)
+                    {
                         continue;
+                    }
                     const auto output = std::find_if(
                         vertex->reflection.interface_variables.begin(), vertex->reflection.interface_variables.end(),
                         [&](const ReflectedInterfaceVariable& candidate)
-                        { return !candidate.input && candidate.location == input.location; });
+                        {
+                            return !candidate.input && candidate.location == input.location;
+                        });
                     if (output == vertex->reflection.interface_variables.end() ||
                         (!input.semantic.empty() && !output->semantic.empty() && input.semantic != output->semantic) ||
                         (output != vertex->reflection.interface_variables.end() &&
@@ -189,8 +199,11 @@ namespace toy3d::shader
                     }
                 }
             }
-            const auto compute = std::find_if(stages.begin(), stages.end(), [](const auto& stage)
-                                              { return stage.reflection.stage == ShaderStageFlags::Compute; });
+            const auto compute = std::find_if(stages.begin(), stages.end(),
+                                              [](const auto& stage)
+                                              {
+                                                  return stage.reflection.stage == ShaderStageFlags::Compute;
+                                              });
             if (compute != stages.end() &&
                 (compute->reflection.thread_group_size_x == 0u || compute->reflection.thread_group_size_y == 0u ||
                  compute->reflection.thread_group_size_z == 0u))
@@ -213,7 +226,10 @@ namespace toy3d::shader
     {
         ShaderMapEntryCompileResult result;
         const auto pass = std::find_if(asset.passes.begin(), asset.passes.end(),
-                                       [&](const ShaderPass& candidate) { return candidate.name == input.pass_name; });
+                                       [&](const ShaderPass& candidate)
+                                       {
+                                           return candidate.name == input.pass_name;
+                                       });
         if (pass == asset.passes.end() || input.source_virtual_path.empty() || input.source_provider == nullptr ||
             pass->program.entry_points.empty())
         {
@@ -237,7 +253,9 @@ namespace toy3d::shader
         }
         ShaderStageFlags program_stages = ShaderStageFlags::None;
         for (const EntryPoint& entry : pass->program.entry_points)
+        {
             program_stages |= stage_flag(entry.stage);
+        }
         ActiveLayoutResult discovery_active =
             build_active_layout(*logical.layout, all_parameter_usage(*logical.layout, program_stages));
         if (!discovery_active.succeeded())

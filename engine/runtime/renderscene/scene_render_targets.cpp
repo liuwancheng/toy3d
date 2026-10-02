@@ -15,9 +15,8 @@ namespace toy3d
         }
         if (owning_device_ != nullptr && owning_device_ != &device)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "SceneRenderTargets cannot be reused or retired through a different RHI device.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "SceneRenderTargets cannot be reused or retired through a different RHI device.");
         }
         if (matches(extent))
         {

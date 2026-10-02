@@ -17,7 +17,10 @@ namespace toy3d
         std::shared_ptr<const GlobalShaderMap> shader_map;
         std::string error;
 
-        bool succeeded() const { return shader_map != nullptr && error.empty(); }
+        bool succeeded() const
+        {
+            return shader_map != nullptr && error.empty();
+        }
     };
 
     class GlobalShaderMap final
@@ -35,8 +38,14 @@ namespace toy3d
         // Validate a complete replacement set against this frozen type contract.
         // Does not mutate the active map or accept new GlobalShaderTypes.
         GlobalShaderMapResult replace(const std::vector<ShaderMapProgramRef>& programs) const;
-        ShaderPlatform platform() const { return platform_; }
-        std::size_t size() const { return programs_.size(); }
+        ShaderPlatform platform() const
+        {
+            return platform_;
+        }
+        std::size_t size() const
+        {
+            return programs_.size();
+        }
 
       private:
         struct Entry
@@ -45,7 +54,9 @@ namespace toy3d
             ShaderMapProgramRef program;
         };
 
-        explicit GlobalShaderMap(ShaderPlatform platform) : platform_(platform) {}
+        explicit GlobalShaderMap(ShaderPlatform platform) : platform_(platform)
+        {
+        }
 
         ShaderPlatform platform_;
         std::unordered_map<std::string, Entry> programs_;

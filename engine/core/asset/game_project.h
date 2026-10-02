@@ -8,7 +8,11 @@
 
 namespace toy3d
 {
-    enum class GameModuleType { Runtime, Editor };
+    enum class GameModuleType
+    {
+        Runtime,
+        Editor
+    };
     struct GameModule
     {
         std::string name;
@@ -26,4 +30,4 @@ namespace toy3d
     FileResult<GameProject> parse_game_project(const std::string& yaml);
     FileResult<std::string> encode_game_project(const GameProject& project);
     FileResult<GameProject> read_game_project(const FileSystem& files, const VirtualPath& path);
-}
+} // namespace toy3d

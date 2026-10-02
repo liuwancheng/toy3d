@@ -108,7 +108,10 @@ namespace toy3d
         bool all_tasks_complete(const GraphEventArray& tasks)
         {
             return std::all_of(tasks.begin(), tasks.end(),
-                               [](const GraphEventRef& task) { return task && task->is_complete(); });
+                               [](const GraphEventRef& task)
+                               {
+                                   return task && task->is_complete();
+                               });
         }
     } // namespace
 
@@ -186,7 +189,10 @@ namespace toy3d
             return config_.multithreaded ? NamedThread::RenderingThread : NamedThread::GameThread;
         }
 
-        std::uint32_t get_num_worker_threads() const override { return worker_thread_count_; }
+        std::uint32_t get_num_worker_threads() const override
+        {
+            return worker_thread_count_;
+        }
 
         bool is_thread_processing_tasks(NamedThread thread) const override
         {
@@ -493,7 +499,10 @@ namespace toy3d
             return 0;
         }
 
-        void wake_workers() { worker_queue_.wake_all(); }
+        void wake_workers()
+        {
+            worker_queue_.wake_all();
+        }
 
         void clear_worker_binding()
         {
@@ -855,7 +864,11 @@ namespace toy3d
         void wait_for_running_tasks()
         {
             std::unique_lock<std::mutex> lock(tasks_mutex_);
-            tasks_condition_.wait(lock, [this]() { return running_tasks_ == 0; });
+            tasks_condition_.wait(lock,
+                                  [this]()
+                                  {
+                                      return running_tasks_ == 0;
+                                  });
         }
 
         void stop_and_join_workers()

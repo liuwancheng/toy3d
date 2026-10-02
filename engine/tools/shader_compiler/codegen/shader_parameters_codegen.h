@@ -22,6 +22,6 @@ namespace toy3d::shader
     };
 
     ShaderParametersCodegenResult generate_shader_parameters_header(const ShaderAsset& asset,
-                                                                     const LogicalShaderLayout& layout);
+                                                                    const LogicalShaderLayout& layout);
     ShaderParametersCodegenResult generate_builtin_shader_parameters_header();
 } // namespace toy3d::shader

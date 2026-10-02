@@ -8,14 +8,19 @@ namespace toy3d
     class MacPlatformInput : public IPlatformInput
     {
       public:
-        MacPlatformInput(GLFWwindow* window) : IPlatformInput(), glfw_window(window) {}
+        MacPlatformInput(GLFWwindow* window) : IPlatformInput(), glfw_window(window)
+        {
+        }
         virtual ~MacPlatformInput() {};
 
       public:
         bool init() override;
         void exit() override;
         void update() override;
-        PlatformInputCapabilities capabilities() const noexcept override { return {true, true, true, true, true}; }
+        PlatformInputCapabilities capabilities() const noexcept override
+        {
+            return {true, true, true, true, true};
+        }
 
       private:
         GLFWwindow* glfw_window = nullptr;

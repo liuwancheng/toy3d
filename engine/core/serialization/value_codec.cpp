@@ -19,7 +19,9 @@ namespace toy3d
         return {};
     }
 
-    ValueWriter::ValueWriter(ValueLimits limits) : limits_(limits) {}
+    ValueWriter::ValueWriter(ValueLimits limits) : limits_(limits)
+    {
+    }
 
     const std::vector<std::uint8_t>& ValueWriter::bytes() const
     {
@@ -187,9 +189,8 @@ namespace toy3d
 
     ValueStatus ValueWriter::write_blob(const std::vector<std::uint8_t>& value)
     {
-        if (value.size() > std::numeric_limits<std::uint32_t>::max() ||
-            bytes_.size() > limits_.max_bytes || limits_.max_bytes - bytes_.size() < 4 ||
-            value.size() > limits_.max_bytes - bytes_.size() - 4)
+        if (value.size() > std::numeric_limits<std::uint32_t>::max() || bytes_.size() > limits_.max_bytes ||
+            limits_.max_bytes - bytes_.size() < 4 || value.size() > limits_.max_bytes - bytes_.size() - 4)
         {
             return error(ValueErrorCode::TooLarge, "blob exceeds byte limit");
         }

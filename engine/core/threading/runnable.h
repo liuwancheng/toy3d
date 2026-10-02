@@ -11,12 +11,19 @@ namespace toy3d
       public:
         virtual ~Runnable() = default;
 
-        virtual ThreadStatus init() { return ThreadStatus::success(); }
+        virtual ThreadStatus init()
+        {
+            return ThreadStatus::success();
+        }
 
         virtual std::uint32_t run() = 0;
 
-        virtual void stop() {}
+        virtual void stop()
+        {
+        }
 
-        virtual void exit() {}
+        virtual void exit()
+        {
+        }
     };
 } // namespace toy3d

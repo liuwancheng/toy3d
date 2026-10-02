@@ -20,27 +20,57 @@ namespace toy3d
         PrimitiveSceneProxy(const PrimitiveSceneProxy&) = delete;
         PrimitiveSceneProxy& operator=(const PrimitiveSceneProxy&) = delete;
 
-        const Matrix4& world_transform() const { return world_transform_; }
-        const ObjectShaderParameters& object_shader_parameters() const { return object_shader_parameters_; }
-        std::uint64_t object_data_generation() const { return object_data_generation_; }
-        const AxisAlignedBounds& world_bounds() const { return world_bounds_; }
-        bool visible() const { return visible_; }
-        bool cast_shadows() const { return cast_shadows_; }
-        bool receives_shadows() const { return receives_shadows_; }
-        bool normal_transform_valid() const { return normal_transform_valid_; }
-        std::uint32_t actor_id() const { return actor_id_; }
-        std::uint32_t component_id() const { return component_id_; }
+        const Matrix4& world_transform() const
+        {
+            return world_transform_;
+        }
+        const ObjectShaderParameters& object_shader_parameters() const
+        {
+            return object_shader_parameters_;
+        }
+        std::uint64_t object_data_generation() const
+        {
+            return object_data_generation_;
+        }
+        const AxisAlignedBounds& world_bounds() const
+        {
+            return world_bounds_;
+        }
+        bool visible() const
+        {
+            return visible_;
+        }
+        bool cast_shadows() const
+        {
+            return cast_shadows_;
+        }
+        bool receives_shadows() const
+        {
+            return receives_shadows_;
+        }
+        bool normal_transform_valid() const
+        {
+            return normal_transform_valid_;
+        }
+        std::uint32_t actor_id() const
+        {
+            return actor_id_;
+        }
+        std::uint32_t component_id() const
+        {
+            return component_id_;
+        }
 
       protected:
         PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
-                            std::uint32_t actor_id = 0, std::uint32_t component_id = 0,
-                            bool cast_shadows = true, bool receives_shadows = true);
+                            std::uint32_t actor_id = 0, std::uint32_t component_id = 0, bool cast_shadows = true,
+                            bool receives_shadows = true);
 
       private:
         friend class RenderScene;
 
-        void update_transform(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
-                              bool cast_shadows, bool receives_shadows);
+        void update_transform(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible, bool cast_shadows,
+                              bool receives_shadows);
         void update_normal_transform();
 
         Matrix4 world_transform_;

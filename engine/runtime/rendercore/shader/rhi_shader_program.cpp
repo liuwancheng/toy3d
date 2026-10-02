@@ -81,10 +81,10 @@ namespace toy3d
         result.binding_layout.debug_name = data.shader_name + "/" + data.pass_name + " BindingLayout";
         for (const ShaderMapBinding& binding : data.bindings)
         {
-            result.binding_layout.entries.push_back(
-                {binding.parameter_id, binding.group, binding.target_binding, binding.type, binding.stages,
-                 binding.array_count, binding.constant_buffer_size, binding.data_layout_hash,
-                 binding.shader_abi_version});
+            result.binding_layout.entries.push_back({binding.parameter_id, binding.group, binding.target_binding,
+                                                     binding.type, binding.stages, binding.array_count,
+                                                     binding.constant_buffer_size, binding.data_layout_hash,
+                                                     binding.shader_abi_version});
         }
         for (const ShaderMapStage& stage : data.stages)
         {

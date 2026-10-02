@@ -32,7 +32,9 @@ namespace toy3d
         for (auto& context : active_mapping_contexts)
         {
             if (!context->is_active())
+            {
                 continue;
+            }
 
             for (auto& [action_name, action] : context->get_actions())
             {
@@ -107,7 +109,9 @@ namespace toy3d
         for (auto& context : active_mapping_contexts)
         {
             if (!context->is_active())
+            {
                 continue;
+            }
 
             for (auto& [action_name, action] : context->get_actions())
             {
@@ -187,7 +191,10 @@ namespace toy3d
     void InputSystem::remove_binding_context(const std::string& name)
     {
         auto it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-                               [&name](const InputBindingContext* context) { return context->get_name() == name; });
+                               [&name](const InputBindingContext* context)
+                               {
+                                   return context->get_name() == name;
+                               });
 
         if (it != active_mapping_contexts.end())
         {
@@ -201,16 +208,20 @@ namespace toy3d
     {
         auto it = binding_contexts.find(name);
         if (it == binding_contexts.end())
+        {
             return;
+        }
 
         it->second.set_active(activate);
 
         if (activate)
         {
             // 确保上下文只添加一次
-            auto active_it =
-                std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-                             [&name](const InputBindingContext* context) { return context->get_name() == name; });
+            auto active_it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
+                                          [&name](const InputBindingContext* context)
+                                          {
+                                              return context->get_name() == name;
+                                          });
 
             if (active_it == active_mapping_contexts.end())
             {
@@ -221,9 +232,11 @@ namespace toy3d
         else
         {
             // 移除上下文
-            auto active_it =
-                std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
-                             [&name](const InputBindingContext* context) { return context->get_name() == name; });
+            auto active_it = std::find_if(active_mapping_contexts.begin(), active_mapping_contexts.end(),
+                                          [&name](const InputBindingContext* context)
+                                          {
+                                              return context->get_name() == name;
+                                          });
 
             if (active_it != active_mapping_contexts.end())
             {
@@ -237,7 +250,9 @@ namespace toy3d
         // 按优先级排序，优先级高的在前面
         std::sort(active_mapping_contexts.begin(), active_mapping_contexts.end(),
                   [](const InputBindingContext* a, const InputBindingContext* b)
-                  { return a->get_priority() > b->get_priority(); });
+                  {
+                      return a->get_priority() > b->get_priority();
+                  });
     }
 
 } // namespace toy3d

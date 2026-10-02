@@ -14,21 +14,28 @@ namespace
     void check(bool condition, const char* message)
     {
         if (!condition)
+        {
             throw std::runtime_error(message);
+        }
     }
 
     const toy3d::ShaderMapBinding* find_binding(const toy3d::ShaderMapProgramData& program, const std::string& name)
     {
         const auto found = std::find_if(program.bindings.begin(), program.bindings.end(),
-                                        [&](const toy3d::ShaderMapBinding& binding) { return binding.name == name; });
+                                        [&](const toy3d::ShaderMapBinding& binding)
+                                        {
+                                            return binding.name == name;
+                                        });
         return found == program.bindings.end() ? nullptr : &*found;
     }
 
     const toy3d::ShaderMapStage* find_stage(const toy3d::ShaderMapProgramData& program, toy3d::RHIShaderStage stage)
     {
-        const auto found =
-            std::find_if(program.stages.begin(), program.stages.end(),
-                         [&](const toy3d::ShaderMapStage& candidate) { return candidate.stage == stage; });
+        const auto found = std::find_if(program.stages.begin(), program.stages.end(),
+                                        [&](const toy3d::ShaderMapStage& candidate)
+                                        {
+                                            return candidate.stage == stage;
+                                        });
         return found == program.stages.end() ? nullptr : &*found;
     }
 
@@ -103,12 +110,16 @@ namespace
               "runtime validation must reject graphics state that does not match its template hash");
 
         invalid = *loaded.program;
-        auto invalid_global =
-            std::find_if(invalid.bindings.begin(), invalid.bindings.end(), [](const toy3d::ShaderMapBinding& binding)
-                         { return binding.group == toy3d::RHIBindingGroup::Global; });
-        auto invalid_view =
-            std::find_if(invalid.bindings.begin(), invalid.bindings.end(), [](const toy3d::ShaderMapBinding& binding)
-                         { return binding.group == toy3d::RHIBindingGroup::View; });
+        auto invalid_global = std::find_if(invalid.bindings.begin(), invalid.bindings.end(),
+                                           [](const toy3d::ShaderMapBinding& binding)
+                                           {
+                                               return binding.group == toy3d::RHIBindingGroup::Global;
+                                           });
+        auto invalid_view = std::find_if(invalid.bindings.begin(), invalid.bindings.end(),
+                                         [](const toy3d::ShaderMapBinding& binding)
+                                         {
+                                             return binding.group == toy3d::RHIBindingGroup::View;
+                                         });
         check(invalid_global != invalid.bindings.end() && invalid_view != invalid.bindings.end(),
               "test Program must retain Global and View bindings for corruption tests");
         invalid_view->target_binding = invalid_global->target_binding;

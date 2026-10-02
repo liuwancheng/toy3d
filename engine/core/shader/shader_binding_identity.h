@@ -12,7 +12,7 @@ namespace toy3d
 
     // A full SHA-256 value identifies the canonical constant-buffer byte layout.
     using ShaderDataLayoutHash = Sha256Hash;
-}
+} // namespace toy3d
 
 namespace toy3d::shader
 {
@@ -20,4 +20,4 @@ namespace toy3d::shader
     // without defining a second alias or conversion type.
     using ::toy3d::ShaderDataLayoutHash;
     using ::toy3d::ShaderParameterId;
-}
+} // namespace toy3d::shader

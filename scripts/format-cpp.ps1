@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    # Format only files changed relative to HEAD. This is the normal developer mode.
+    # Format files changed relative to HEAD, including non-ignored new files.
     [switch]$Changed,
 
     # Check formatting without changing files. Suitable for CI and pre-commit use.
@@ -39,7 +39,7 @@ function Get-ClangFormatPath {
 function Test-FirstPartyCppPath {
     param([string]$Path)
 
-    $normalizedPath = $Path.Replace("\\", "/")
+    $normalizedPath = $Path.Replace("\", "/")
     if ($normalizedPath -match "^(engine/thirdparty|engine/runtime/generated|build|bin)/") {
         return $false
     }
@@ -48,21 +48,37 @@ function Test-FirstPartyCppPath {
 }
 
 $repositoryRoot = (git rev-parse --show-toplevel).Trim()
-if (-not $repositoryRoot) {
+if ($LASTEXITCODE -ne 0 -or -not $repositoryRoot) {
     throw "The script must run inside a Git worktree."
 }
 Set-Location -LiteralPath $repositoryRoot
 
 $formatter = Get-ClangFormatPath $ClangFormat
-if ($Changed) {
-    $candidates = git diff --name-only --diff-filter=ACMR HEAD
+$formatterVersion = & $formatter --version
+if ($LASTEXITCODE -ne 0 -or $formatterVersion -notmatch 'version\s+(\d+)\.') {
+    throw "Could not determine the clang-format version."
 }
-else {
-    $candidates = git ls-files
+if ([int]$Matches[1] -lt 15) {
+    throw "The repository formatting policy requires clang-format 15 or newer."
 }
 
-$files = @($candidates | Where-Object {
-    $_ -and (Test-FirstPartyCppPath $_)
+if ($Changed) {
+    $candidates = @(git -c core.quotePath=false -c core.safecrlf=false diff --name-only --diff-filter=ACMR HEAD)
+}
+else {
+    $candidates = @(git -c core.quotePath=false ls-files --cached)
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not enumerate tracked files."
+}
+$newFiles = @(git -c core.quotePath=false ls-files --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not enumerate new files."
+}
+$candidates += $newFiles
+
+$files = @($candidates | Sort-Object -Unique | Where-Object {
+    $_ -and (Test-FirstPartyCppPath $_) -and (Test-Path -LiteralPath $_ -PathType Leaf)
 })
 if ($files.Count -eq 0) {
     Write-Host "No first-party C/C++ files require formatting."

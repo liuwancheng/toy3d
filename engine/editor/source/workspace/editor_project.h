@@ -12,19 +12,48 @@ namespace toy3d
     {
       public:
         explicit EditorProject(PhysicalPath editor_directory, std::string module = {})
-            : editor_directory_(std::move(editor_directory)), module_(std::move(module)) {}
+            : editor_directory_(std::move(editor_directory)), module_(std::move(module))
+        {
+        }
         FileStatus open(const PhysicalPath& descriptor);
         static FileResult<PhysicalPath> create(const PhysicalPath& parent, const std::string& name,
-                                                const PhysicalPath& editor_directory);
-        bool active() const { return !descriptor_.empty(); }
-        const GameProject& description() const { return project_; }
-        const PhysicalPath& descriptor() const { return descriptor_; }
-        const PhysicalPath& root() const { return root_; }
-        PhysicalPath assets() const { return PhysicalPath(root_.utf8() + "/asset"); }
-        PhysicalPath config() const { return PhysicalPath(root_.utf8() + "/config"); }
-        PhysicalPath shader() const { return PhysicalPath(root_.utf8() + "/shader"); }
-        PhysicalPath saved() const { return PhysicalPath(root_.utf8() + "/saved"); }
-        FileSystem& files() { return files_; }
+                                               const PhysicalPath& editor_directory);
+        bool active() const
+        {
+            return !descriptor_.empty();
+        }
+        const GameProject& description() const
+        {
+            return project_;
+        }
+        const PhysicalPath& descriptor() const
+        {
+            return descriptor_;
+        }
+        const PhysicalPath& root() const
+        {
+            return root_;
+        }
+        PhysicalPath assets() const
+        {
+            return PhysicalPath(root_.utf8() + "/asset");
+        }
+        PhysicalPath config() const
+        {
+            return PhysicalPath(root_.utf8() + "/config");
+        }
+        PhysicalPath shader() const
+        {
+            return PhysicalPath(root_.utf8() + "/shader");
+        }
+        PhysicalPath saved() const
+        {
+            return PhysicalPath(root_.utf8() + "/saved");
+        }
+        FileSystem& files()
+        {
+            return files_;
+        }
 
       private:
         NativePlatformFile platform_;
@@ -35,4 +64,4 @@ namespace toy3d
         GameProject project_;
         std::string module_;
     };
-}
+} // namespace toy3d

@@ -17,7 +17,10 @@ namespace toy3d
             TOY_LOG_ERROR("Camera settings require a finite, representable perspective projection.");
             return false;
         }
-        if (settings_ == settings) return true;
+        if (settings_ == settings)
+        {
+            return true;
+        }
         settings_ = settings;
         world().mark_content_changed();
         return true;

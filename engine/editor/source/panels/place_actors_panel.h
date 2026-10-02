@@ -9,9 +9,12 @@ namespace toy3d
     {
       public:
         void draw(const ActorTypeRegistry* types = nullptr);
-        void clear() { filter_.Clear(); }
+        void clear()
+        {
+            filter_.Clear();
+        }
 
       private:
         ImGuiTextFilter filter_;
     };
-}
+} // namespace toy3d

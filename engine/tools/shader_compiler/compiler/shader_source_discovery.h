@@ -19,6 +19,6 @@ namespace toy3d::shader
     // Discovery does not compile, publish Programs or own GPU/Editor state.
     // Invalid sources remain as path/error records; traversal failures abort the
     // snapshot. Pass names retain declaration order, records are sorted by path.
-    FileResult<std::vector<DiscoveredShaderSource>> discover_shader_sources(
-        const FileSystem& files, const VirtualPath& root);
-}
+    FileResult<std::vector<DiscoveredShaderSource>> discover_shader_sources(const FileSystem& files,
+                                                                            const VirtualPath& root);
+} // namespace toy3d::shader

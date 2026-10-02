@@ -380,15 +380,43 @@ namespace
             }
             if (await_field)
             {
-                if (!std::regex_match(line, match, field_declaration))
+                // A reflected field is one declaration, not one physical line.
+                // Join formatter-wrapped declarations without expanding the
+                // supported grammar or treating the next marker as a field.
+                const std::size_t declaration_line = line_number;
+                std::string declaration = stripped;
+                constexpr std::size_t max_declaration_bytes = 65536u;
+                while (declaration.find(';') == std::string::npos)
                 {
-                    return fail(path, line_number, "unsupported field declaration in " + current.cpp_name + '.' +
-                                                       pending_property.name);
+                    if (declaration.size() > max_declaration_bytes || !std::getline(input, line))
+                    {
+                        return fail(path, declaration_line,
+                                    "incomplete or oversized field declaration in " + current.cpp_name + '.' +
+                                        pending_property.name);
+                    }
+                    ++line_number;
+                    const std::string continuation = trim(line);
+                    if (continuation.find("TOY3D_PROPERTY") != std::string::npos ||
+                        continuation.find("TOY3D_REFLECT_") != std::string::npos ||
+                        (!continuation.empty() && continuation.front() == '#'))
+                    {
+                        return fail(path, declaration_line,
+                                    "incomplete field declaration in " + current.cpp_name + '.' +
+                                        pending_property.name);
+                    }
+                    declaration += ' ';
+                    declaration += continuation;
+                }
+                if (declaration.size() > max_declaration_bytes ||
+                    !std::regex_match(declaration, match, field_declaration))
+                {
+                    return fail(path, declaration_line,
+                                "unsupported field declaration in " + current.cpp_name + '.' + pending_property.name);
                 }
                 pending_property.cpp_type = trim(match[1].str());
                 pending_property.cpp_name = match[2].str();
                 pending_property.source_path = path;
-                pending_property.source_line = line_number;
+                pending_property.source_line = declaration_line;
                 current.properties.push_back(std::move(pending_property));
                 await_field = false;
                 continue;
@@ -418,7 +446,8 @@ namespace
                     if (!public_fields)
                     {
                         return fail(path, line_number,
-                                    "inaccessible reflected field in " + current.cpp_name + '.' + pending_property.name);
+                                    "inaccessible reflected field in " + current.cpp_name + '.' +
+                                        pending_property.name);
                     }
                     if (!std::regex_match(pending_property.name, persistent_name))
                     {
@@ -477,7 +506,8 @@ namespace
                 return fail(path, line_number, "unsupported enum marker");
             }
         }
-        if (await_struct || await_brace || await_field || inside_struct || await_enum || await_enum_brace || inside_enum)
+        if (await_struct || await_brace || await_field || inside_struct || await_enum || await_enum_brace ||
+            inside_enum)
         {
             return fail(path, line_number, "incomplete reflected declaration");
         }
@@ -530,17 +560,27 @@ namespace
     {
         const std::string cpp_type = trim(source_type);
         result.cpp_type = cpp_type;
-        static const std::map<std::string, std::string> builtins = {
-            {"bool", "Bool"},           {"std::int8_t", "Int8"},   {"std::uint8_t", "UInt8"},
-            {"std::int16_t", "Int16"},  {"std::uint16_t", "UInt16"},
-            {"std::int32_t", "Int32"},  {"std::uint32_t", "UInt32"},
-            {"std::int64_t", "Int64"},  {"std::uint64_t", "UInt64"},
-            {"float", "Float32"},       {"double", "Float64"},
-            {"std::string", "Utf8"},   {"Vector2", "Vector2"},
-            {"Vector3", "Vector3"},    {"Vector4", "Vector4"},
-            {"Matrix3", "Matrix3"},    {"Matrix4", "Matrix4"},
-            {"Quaternion", "Quaternion"}, {"Transform", "Transform"},
-            {"AssetRef", "AssetRef"}, {"ReflectedValue", "ReflectedStruct"}};
+        static const std::map<std::string, std::string> builtins = {{"bool", "Bool"},
+                                                                    {"std::int8_t", "Int8"},
+                                                                    {"std::uint8_t", "UInt8"},
+                                                                    {"std::int16_t", "Int16"},
+                                                                    {"std::uint16_t", "UInt16"},
+                                                                    {"std::int32_t", "Int32"},
+                                                                    {"std::uint32_t", "UInt32"},
+                                                                    {"std::int64_t", "Int64"},
+                                                                    {"std::uint64_t", "UInt64"},
+                                                                    {"float", "Float32"},
+                                                                    {"double", "Float64"},
+                                                                    {"std::string", "Utf8"},
+                                                                    {"Vector2", "Vector2"},
+                                                                    {"Vector3", "Vector3"},
+                                                                    {"Vector4", "Vector4"},
+                                                                    {"Matrix3", "Matrix3"},
+                                                                    {"Matrix4", "Matrix4"},
+                                                                    {"Quaternion", "Quaternion"},
+                                                                    {"Transform", "Transform"},
+                                                                    {"AssetRef", "AssetRef"},
+                                                                    {"ReflectedValue", "ReflectedStruct"}};
         const auto builtin = builtins.find(cpp_type);
         if (builtin != builtins.end())
         {
@@ -626,10 +666,9 @@ namespace
     std::string scalar_method(const std::string& kind)
     {
         static const std::map<std::string, std::string> methods = {
-            {"Bool", "bool"},       {"Int8", "int8"},     {"UInt8", "uint8"},
-            {"Int16", "int16"},     {"UInt16", "uint16"}, {"Int32", "int32"},
-            {"UInt32", "uint32"},   {"Int64", "int64"},   {"UInt64", "uint64"},
-            {"Float32", "float32"}, {"Float64", "float64"}, {"Utf8", "utf8"}};
+            {"Bool", "bool"},     {"Int8", "int8"},       {"UInt8", "uint8"},     {"Int16", "int16"},
+            {"UInt16", "uint16"}, {"Int32", "int32"},     {"UInt32", "uint32"},   {"Int64", "int64"},
+            {"UInt64", "uint64"}, {"Float32", "float32"}, {"Float64", "float64"}, {"Utf8", "utf8"}};
         const auto found = methods.find(kind);
         return found == methods.end() ? std::string() : found->second;
     }
@@ -660,14 +699,16 @@ namespace
                 }
                 output << "static_cast<std::int64_t>(" << expression << ") != " << definition.values[index].second;
             }
-            output << ")\n" << padding(level) << "{\n" << padding(level + 1)
+            output << ")\n"
+                   << padding(level) << "{\n"
+                   << padding(level + 1)
                    << "return writer.failure(ValueErrorCode::InvalidValue, \"unknown enum value\");\n"
                    << padding(level) << "}\n";
             emit_call(output, level, "writer.write_int64(static_cast<std::int64_t>(" + expression + "))");
             return;
         }
-        if (value.kind == "Struct" || value.kind == "ReflectedStruct" || value.kind == "AssetRef" || value.kind == "Vector2" ||
-            value.kind == "Vector3" || value.kind == "Vector4" || value.kind == "Matrix3" ||
+        if (value.kind == "Struct" || value.kind == "ReflectedStruct" || value.kind == "AssetRef" ||
+            value.kind == "Vector2" || value.kind == "Vector3" || value.kind == "Vector4" || value.kind == "Matrix3" ||
             value.kind == "Matrix4" || value.kind == "Quaternion" || value.kind == "Transform")
         {
             emit_call(output, level, "encode_value(writer, " + expression + ")");
@@ -679,19 +720,20 @@ namespace
             const std::string index = "index_" + std::to_string(number);
             const std::string saved_path = "path_" + std::to_string(number);
             output << padding(level) << "if (" << expression << ".size() > std::numeric_limits<std::uint32_t>::max())\n"
-                   << padding(level) << "{\n" << padding(level + 1)
+                   << padding(level) << "{\n"
+                   << padding(level + 1)
                    << "return writer.failure(ValueErrorCode::TooLarge, \"array length exceeds uint32\");\n"
                    << padding(level) << "}\n";
             emit_call(output, level,
                       "writer.write_array_length(static_cast<std::uint32_t>(" + expression + ".size()))");
             output << padding(level) << "const std::string " << saved_path << " = writer.property_path();\n"
                    << padding(level) << "for (std::size_t " << index << " = 0; " << index << " < " << expression
-                   << ".size(); ++" << index << ")\n" << padding(level) << "{\n"
+                   << ".size(); ++" << index << ")\n"
+                   << padding(level) << "{\n"
                    << padding(level + 1) << "writer.set_property_path(" << saved_path << " + \"[\" + std::to_string("
                    << index << ") + \"]\");\n";
             emit_encode(output, value.arguments[0], expression + "[" + index + "]", level + 1, serial, enums);
-            output << padding(level) << "}\n"
-                   << padding(level) << "writer.set_property_path(" << saved_path << ");\n";
+            output << padding(level) << "}\n" << padding(level) << "writer.set_property_path(" << saved_path << ");\n";
             return;
         }
         if (value.kind == "Variant")
@@ -699,17 +741,20 @@ namespace
             const int number = serial++;
             const std::string matched = "matched_" + std::to_string(number);
             output << padding(level) << "bool " << matched << " = false;\n"
-                   << padding(level) << "// get_if selects each declared C++17 variant branch without a generic visitor.\n";
+                   << padding(level)
+                   << "// get_if selects each declared C++17 variant branch without a generic visitor.\n";
             for (std::size_t index = 0; index < value.arguments.size(); ++index)
             {
                 const std::string branch = "branch_" + std::to_string(number) + "_" + std::to_string(index);
                 output << padding(level) << "if (const auto* " << branch << " = std::get_if<" << index << ">(&"
-                       << expression << "))\n" << padding(level) << "{\n";
+                       << expression << "))\n"
+                       << padding(level) << "{\n";
                 emit_call(output, level + 1, "writer.write_utf8(\"" + branch_tag(value.arguments[index]) + "\")");
                 emit_encode(output, value.arguments[index], "(*" + branch + ")", level + 1, serial, enums);
                 output << padding(level + 1) << matched << " = true;\n" << padding(level) << "}\n";
             }
-            output << padding(level) << "if (!" << matched << ")\n" << padding(level) << "{\n"
+            output << padding(level) << "if (!" << matched << ")\n"
+                   << padding(level) << "{\n"
                    << padding(level + 1)
                    << "return writer.failure(ValueErrorCode::InvalidValue, \"variant has no active branch\");\n"
                    << padding(level) << "}\n";
@@ -741,14 +786,16 @@ namespace
                 }
                 output << raw << " != " << definition.values[index].second;
             }
-            output << ")\n" << padding(level) << "{\n" << padding(level + 1)
+            output << ")\n"
+                   << padding(level) << "{\n"
+                   << padding(level + 1)
                    << "return reader.failure(ValueErrorCode::InvalidValue, \"unknown enum value\");\n"
                    << padding(level) << "}\n"
                    << padding(level) << expression << " = static_cast<" << value.cpp_type << ">(" << raw << ");\n";
             return;
         }
-        if (value.kind == "Struct" || value.kind == "ReflectedStruct" || value.kind == "AssetRef" || value.kind == "Vector2" ||
-            value.kind == "Vector3" || value.kind == "Vector4" || value.kind == "Matrix3" ||
+        if (value.kind == "Struct" || value.kind == "ReflectedStruct" || value.kind == "AssetRef" ||
+            value.kind == "Vector2" || value.kind == "Vector3" || value.kind == "Vector4" || value.kind == "Matrix3" ||
             value.kind == "Matrix4" || value.kind == "Quaternion" || value.kind == "Transform")
         {
             emit_call(output, level, "decode_value(reader, " + expression + ")");
@@ -766,8 +813,9 @@ namespace
             output << padding(level) << "auto " << candidate << " = " << value.cpp_type << "{};\n"
                    << padding(level) << candidate << ".reserve(" << count << ");\n"
                    << padding(level) << "const std::string " << saved_path << " = reader.property_path();\n"
-                   << padding(level) << "for (std::uint32_t " << index << " = 0; " << index << " < " << count
-                   << "; ++" << index << ")\n" << padding(level) << "{\n"
+                   << padding(level) << "for (std::uint32_t " << index << " = 0; " << index << " < " << count << "; ++"
+                   << index << ")\n"
+                   << padding(level) << "{\n"
                    << padding(level + 1) << value.arguments[0].cpp_type << " element_" << number << "{};\n"
                    << padding(level + 1) << "reader.set_property_path(" << saved_path << " + \"[\" + std::to_string("
                    << index << ") + \"]\");\n";
@@ -788,13 +836,16 @@ namespace
             {
                 const std::string branch = "branch_" + std::to_string(number) + "_" + std::to_string(index);
                 output << padding(level) << (index == 0 ? "if" : "else if") << " (" << tag << " == \""
-                       << branch_tag(value.arguments[index]) << "\")\n" << padding(level) << "{\n"
+                       << branch_tag(value.arguments[index]) << "\")\n"
+                       << padding(level) << "{\n"
                        << padding(level + 1) << value.arguments[index].cpp_type << ' ' << branch << "{};\n";
                 emit_decode(output, value.arguments[index], branch, level + 1, serial, enums);
                 output << padding(level + 1) << expression << " = std::move(" << branch << ");\n"
                        << padding(level) << "}\n";
             }
-            output << padding(level) << "else\n" << padding(level) << "{\n" << padding(level + 1)
+            output << padding(level) << "else\n"
+                   << padding(level) << "{\n"
+                   << padding(level + 1)
                    << "return reader.failure(ValueErrorCode::InvalidValue, \"unknown variant branch\");\n"
                    << padding(level) << "}\n";
         }
@@ -833,8 +884,8 @@ namespace
                    << "            ValueWriter writer(output_writer.child_limits());\n"
                    << "            writer.set_property_path(field_path);\n";
             int serial = 0;
-            emit_encode(output, property_types.at(type.name + '.' + property.name), "value." + property.cpp_name,
-                        3, serial, enums);
+            emit_encode(output, property_types.at(type.name + '.' + property.name), "value." + property.cpp_name, 3,
+                        serial, enums);
             output << "            output_writer.set_property_path(field_path);\n";
             emit_call(output, 3, "output_writer.write_utf8(\"" + property.name + "\")");
             emit_call(output, 3, "output_writer.write_uint8(1u)");
@@ -844,8 +895,7 @@ namespace
         output << "        output_writer.set_property_path(parent_path);\n"
                << "        return ValueStatus::success();\n    }\n";
 
-        output << "\n    ValueStatus decode_value(ValueReader& input_reader, " << type.cpp_name
-               << "& value)\n    {\n"
+        output << "\n    ValueStatus decode_value(ValueReader& input_reader, " << type.cpp_name << "& value)\n    {\n"
                << "        ValueDepthScope<ValueReader> depth(input_reader);\n"
                << "        if (!depth.status().succeeded())\n        {\n            return depth.status();\n"
                << "        }\n"
@@ -861,15 +911,18 @@ namespace
                << "            status = input_reader.read_utf8(field_name);\n"
                << "            if (!status.succeeded())\n            {\n                return status;\n"
                << "            }\n"
-               << "            const std::string field_path = parent_path.empty() ? field_name : parent_path + \".\" + field_name;\n"
+               << "            const std::string field_path = parent_path.empty() ? field_name : parent_path + \".\" + "
+                  "field_name;\n"
                << "            input_reader.set_property_path(field_path);\n"
                << "            if (!seen.insert(field_name).second)\n"
-               << "            {\n                return input_reader.failure(ValueErrorCode::InvalidValue, \"duplicate field\");\n"
+               << "            {\n                return input_reader.failure(ValueErrorCode::InvalidValue, "
+                  "\"duplicate field\");\n"
                << "            }\n"
                << "            std::uint8_t field_flags = 0;\n"
                << "            status = input_reader.read_uint8(field_flags);\n"
                << "            if (!status.succeeded())\n            {\n                return status;\n            }\n"
-               << "            if (field_flags > 1)\n            {\n                return input_reader.failure(ValueErrorCode::InvalidValue, \"unknown field flags\");\n            }\n"
+               << "            if (field_flags > 1)\n            {\n                return "
+                  "input_reader.failure(ValueErrorCode::InvalidValue, \"unknown field flags\");\n            }\n"
                << "            std::vector<std::uint8_t> field_bytes;\n"
                << "            status = input_reader.read_blob(field_bytes);\n"
                << "            if (!status.succeeded())\n            {\n                return status;\n"
@@ -883,16 +936,17 @@ namespace
             {
                 continue;
             }
-            output << "            " << (first ? "if" : "else if") << " (field_name == \""
-                   << property.name << "\")\n            {\n";
+            output << "            " << (first ? "if" : "else if") << " (field_name == \"" << property.name
+                   << "\")\n            {\n";
             int serial = 0;
-            emit_decode(output, property_types.at(type.name + '.' + property.name),
-                        "candidate." + property.cpp_name, 4, serial, enums);
+            emit_decode(output, property_types.at(type.name + '.' + property.name), "candidate." + property.cpp_name, 4,
+                        serial, enums);
             output << "            }\n";
             first = false;
         }
         output << (first ? "            {\n" : "            else\n            {\n")
-               << "                return input_reader.failure(field_flags == 0 ? ValueErrorCode::UnknownOptionalField : ValueErrorCode::InvalidValue, \"unknown field cannot be saved by this schema\");\n"
+               << "                return input_reader.failure(field_flags == 0 ? ValueErrorCode::UnknownOptionalField "
+                  ": ValueErrorCode::InvalidValue, \"unknown field cannot be saved by this schema\");\n"
                << "            }\n"
                << "            if (!reader.at_end())\n            {\n"
                << "                return reader.failure(ValueErrorCode::InvalidValue, \"field has trailing bytes\");\n"
@@ -903,7 +957,8 @@ namespace
             if ((property.usage & 4u) == 0)
             {
                 output << "        if (seen.count(\"" << property.name << "\") == 0)\n"
-                       << "        {\n            return input_reader.failure(ValueErrorCode::InvalidValue, \"missing required field: "
+                       << "        {\n            return input_reader.failure(ValueErrorCode::InvalidValue, \"missing "
+                          "required field: "
                        << property.name << "\");\n        }\n";
             }
         }
@@ -950,14 +1005,23 @@ namespace
                 property_types.emplace(type.name + '.' + property.name, std::move(value));
             }
         }
-        std::sort(types.begin(), types.end(), [](const TypeInput& left, const TypeInput& right)
-                  { return left.name < right.name; });
-        std::sort(enums.begin(), enums.end(), [](const EnumInput& left, const EnumInput& right)
-                  { return left.name < right.name; });
+        std::sort(types.begin(), types.end(),
+                  [](const TypeInput& left, const TypeInput& right)
+                  {
+                      return left.name < right.name;
+                  });
+        std::sort(enums.begin(), enums.end(),
+                  [](const EnumInput& left, const EnumInput& right)
+                  {
+                      return left.name < right.name;
+                  });
         for (TypeInput& type : types)
         {
             std::sort(type.properties.begin(), type.properties.end(),
-                      [](const PropertyInput& left, const PropertyInput& right) { return left.name < right.name; });
+                      [](const PropertyInput& left, const PropertyInput& right)
+                      {
+                          return left.name < right.name;
+                      });
         }
         std::ofstream header(options.header, std::ios::binary | std::ios::trunc);
         std::ofstream source(options.source, std::ios::binary | std::ios::trunc);
@@ -995,8 +1059,8 @@ namespace
                    << "            description.schema_version = 1;\n";
             for (const auto& entry : value.values)
             {
-                source << "            description.enum_values.push_back({\"" << entry.first << "\", "
-                       << entry.second << "});\n";
+                source << "            description.enum_values.push_back({\"" << entry.first << "\", " << entry.second
+                       << "});\n";
             }
             source << "            ReflectionStatus status = registry.add(std::move(description));\n"
                    << "            if (!status.succeeded())\n            {\n                return status;\n"

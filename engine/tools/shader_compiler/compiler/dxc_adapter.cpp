@@ -34,7 +34,9 @@ namespace toy3d::shader
         bool is_spirv_1_3_or_older(const std::vector<std::uint8_t>& binary)
         {
             if (binary.size() < 20u || binary.size() % 4u != 0u)
+            {
                 return false;
+            }
             const std::uint32_t magic =
                 static_cast<std::uint32_t>(binary[0]) | (static_cast<std::uint32_t>(binary[1]) << 8u) |
                 (static_cast<std::uint32_t>(binary[2]) << 16u) | (static_cast<std::uint32_t>(binary[3]) << 24u);
@@ -154,12 +156,13 @@ namespace toy3d::shader
             return result;
         }
         const NativeProcessService native_process;
-        const ProcessResult compiled = process_runner ? process_runner(toolchain.dxc_path, invocation->arguments) :
-            native_process.run(toolchain.dxc_path, invocation->arguments);
+        const ProcessResult compiled = process_runner ? process_runner(toolchain.dxc_path, invocation->arguments)
+                                                      : native_process.run(toolchain.dxc_path, invocation->arguments);
         if (!compiled.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderCompilationFailed, request,
-                      "DXC failed (exit " + std::to_string(compiled.exit_code) + "): " + compiled.message + "\n" + compiled.output);
+                      "DXC failed (exit " + std::to_string(compiled.exit_code) + "): " + compiled.message + "\n" +
+                          compiled.output);
             return result;
         }
         FileResult<std::vector<std::uint8_t>> binary = platform_file.read_binary(output_path.value());
@@ -170,12 +173,15 @@ namespace toy3d::shader
             return result;
         }
         const ProcessResult validated =
-            process_runner ? process_runner(toolchain.spirv_val_path, {"--target-env", "vulkan1.1", output_path.value().utf8()}) :
-                native_process.run(toolchain.spirv_val_path, {"--target-env", "vulkan1.1", output_path.value().utf8()});
+            process_runner
+                ? process_runner(toolchain.spirv_val_path, {"--target-env", "vulkan1.1", output_path.value().utf8()})
+                : native_process.run(toolchain.spirv_val_path,
+                                     {"--target-env", "vulkan1.1", output_path.value().utf8()});
         if (!validated.succeeded())
         {
             add_error(result.diagnostics, DiagnosticCode::ShaderValidationFailed, request,
-                      "spirv-val failed (exit " + std::to_string(validated.exit_code) + "): " + validated.message + "\n" + validated.output);
+                      "spirv-val failed (exit " + std::to_string(validated.exit_code) + "): " + validated.message +
+                          "\n" + validated.output);
             return result;
         }
         result.binary = std::move(binary.value());

@@ -19,7 +19,7 @@ namespace toy3d
     // uploaded images and this panel keeps only their logical UI identity.
     class TexturePreviewPanel final
     {
-    public:
+      public:
         explicit TexturePreviewPanel(EditorWorkspace& workspace);
         ~TexturePreviewPanel();
         void request_open(const AssetId& id, bool focus = true);
@@ -29,11 +29,17 @@ namespace toy3d
         void collect_render_work(UiRenderWork& work);
         void on_texture_result(UiTextureResult result);
         std::vector<ImGuiTextureId> texture_ids() const;
-        const AssetId& asset_id() const { return asset_id_; }
-        const std::string& error() const { return error_; }
+        const AssetId& asset_id() const
+        {
+            return asset_id_;
+        }
+        const std::string& error() const
+        {
+            return error_;
+        }
         void shutdown();
 
-    private:
+      private:
         struct CpuResult;
         void set_channel(TexturePreviewChannel channel);
         void set_mip(std::uint32_t mip);
@@ -72,4 +78,4 @@ namespace toy3d
         bool focus_requested_ = false;
         bool needs_prepare_ = false;
     };
-}
+} // namespace toy3d

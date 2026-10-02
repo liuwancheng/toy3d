@@ -16,11 +16,12 @@ namespace toy3d
         std::vector<std::string> meta_segments;
     };
 
-    AssetResult<std::vector<std::uint8_t>> encode_asset_yaml(
-        const TypeRegistry& types, const AssetYamlDocument& document,
-        AssetFileLimits limits = {}, ValueLimits value_limits = {});
-    AssetResult<AssetYamlDocument> decode_asset_yaml(
-        const TypeRegistry& types, const std::vector<std::uint8_t>& bytes,
-        AssetFileLimits limits = {}, ValueLimits value_limits = {});
-    AssetResult<std::vector<AssetRef>> reflected_value_references(const TypeRegistry& types, const ReflectedValue& value);
-}
+    AssetResult<std::vector<std::uint8_t>> encode_asset_yaml(const TypeRegistry& types,
+                                                             const AssetYamlDocument& document,
+                                                             AssetFileLimits limits = {},
+                                                             ValueLimits value_limits = {});
+    AssetResult<AssetYamlDocument> decode_asset_yaml(const TypeRegistry& types, const std::vector<std::uint8_t>& bytes,
+                                                     AssetFileLimits limits = {}, ValueLimits value_limits = {});
+    AssetResult<std::vector<AssetRef>> reflected_value_references(const TypeRegistry& types,
+                                                                  const ReflectedValue& value);
+} // namespace toy3d

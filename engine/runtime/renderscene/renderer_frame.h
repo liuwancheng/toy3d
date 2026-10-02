@@ -28,14 +28,12 @@ namespace toy3d
     // scene payload while the window UI still submits a frame.
     RHIResult<RHIFrameEndResult> render_viewport_frame(
         SceneRenderer* scene_renderer, const ImGuiDrawData* ui_draw_data, const ViewportFrameOutput& output,
-        RenderScene& render_scene, RHIDevice& device,
-        RHIShaderProgramCache& shader_program_cache, RenderResourceManager& resource_manager,
-        RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
+        RenderScene& render_scene, RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
+        RenderResourceManager& resource_manager, RHIViewportContext& viewport, SceneRenderTargets& scene_render_targets,
         TonemapPassResources& tonemap_pass_resources, ImGuiRenderer* imgui_renderer,
         ViewportOutputTarget& viewport_output_target, const GlobalShaderMap* global_shader_map = nullptr,
-        const BuiltinMeshPassPrograms& mesh_pass_programs = {},
-        RHIReadbackRef* recorded_readback = nullptr, HitProxyTable* hit_proxy_table = nullptr,
-        UiTextureRegistry* ui_textures = nullptr,
+        const BuiltinMeshPassPrograms& mesh_pass_programs = {}, RHIReadbackRef* recorded_readback = nullptr,
+        HitProxyTable* hit_proxy_table = nullptr, UiTextureRegistry* ui_textures = nullptr,
         const std::function<RHIStatus(RHIGraphicsCommandContext&)>& record_ui_work = {});
 
 } // namespace toy3d

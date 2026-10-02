@@ -17,12 +17,17 @@ namespace toy3d
     void finish_component_edit(ComponentDetailsContext& context, const SceneComponentData& candidate, bool changed)
     {
         // Asset delivery owns the pointer gesture; it must not start a property edit.
-        if (ImGui::GetDragDropPayload()) return;
+        if (ImGui::GetDragDropPayload())
+        {
+            return;
+        }
         if (ImGui::IsItemActivated())
-            context.history.begin(context.world, context.actor.actor_id(), context.actor.root_component()->local_transform(),
-                                  EditorTransformSource::Details);
+        {
+            context.history.begin(context.world, context.actor.actor_id(),
+                                  context.actor.root_component()->local_transform(), EditorTransformSource::Details);
+        }
         if (changed && !context.history.preview_component(context.world, context.actor.actor_id(),
-                                                         context.component.component_id(), candidate))
+                                                          context.component.component_id(), candidate))
         {
             context.error = "Component rejected invalid properties.";
             TOY_LOG_ERROR("Details rejected {} properties.", candidate.type);
@@ -33,22 +38,35 @@ namespace toy3d
             // End ImGui's drag as well; otherwise the next mouse delta starts previewing a canceled gesture.
             ImGui::ClearActiveID();
         }
-        else if (ImGui::IsItemDeactivated()) context.history.finish(context.world, EditorTransformSource::Details);
+        else if (ImGui::IsItemDeactivated())
+        {
+            context.history.finish(context.world, EditorTransformSource::Details);
+        }
     }
 
     void draw_component_transform(ComponentDetailsContext& context)
     {
         SceneComponentData data;
-        if (!capture_component_edit(context, data)) return;
+        if (!capture_component_edit(context, data))
+        {
+            return;
+        }
         ImGui::BeginDisabled(ImGui::GetDragDropPayload() != nullptr);
-        bool changed = ImGui::DragFloat3("Location (cm)", data.transform.translation.data(), meters_to_centimeters(0.05f));
+        bool changed =
+            ImGui::DragFloat3("Location (cm)", data.transform.translation.data(), meters_to_centimeters(0.05f));
         finish_component_edit(context, data, changed);
-        if (!capture_component_edit(context, data)) { ImGui::EndDisabled(); return; }
+        if (!capture_component_edit(context, data))
+        {
+            ImGui::EndDisabled();
+            return;
+        }
         changed = ImGui::DragFloat3("Scale", data.transform.scale.data(), 0.01f);
         finish_component_edit(context, data, changed);
         ImGui::TextDisabled("Rotation: use the viewport gizmo");
         ImGui::EndDisabled();
     }
 
-    void draw_node_details(ComponentDetailsContext&) {}
-}
+    void draw_node_details(ComponentDetailsContext&)
+    {
+    }
+} // namespace toy3d

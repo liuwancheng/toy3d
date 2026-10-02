@@ -30,7 +30,10 @@ namespace toy3d
         SceneRenderer(SceneRenderer&&) = delete;
         SceneRenderer& operator=(SceneRenderer&&) = delete;
 
-        Extent output_extent() const { return view_family_.output_extent(); }
+        Extent output_extent() const
+        {
+            return view_family_.output_extent();
+        }
 
         // Renderer frame orchestration calls this on the logical Rendering
         // Thread after it has begun the shared graphics recording.
@@ -40,13 +43,19 @@ namespace toy3d
                                               SceneRenderTargets& scene_render_targets,
                                               const BuiltinMeshPassPrograms& mesh_pass_programs) = 0;
         virtual RHIStatus render_hit_proxy(RHIDevice& device, RHIShaderProgramCache& shader_program_cache,
-                                           const GlobalShaderMap& global_shader_map,
-                                           RHIGraphicsCommandContext& context, const RHITextureViewRef& id_view,
-                                           const RHITextureViewRef& depth_view, HitProxyTable& table) = 0;
+                                           const GlobalShaderMap& global_shader_map, RHIGraphicsCommandContext& context,
+                                           const RHITextureViewRef& id_view, const RHITextureViewRef& depth_view,
+                                           HitProxyTable& table) = 0;
 
       protected:
-        const SceneViewFamily& view_family() const { return view_family_; }
-        std::vector<ViewInfo>& view_infos() { return view_infos_; }
+        const SceneViewFamily& view_family() const
+        {
+            return view_family_;
+        }
+        std::vector<ViewInfo>& view_infos()
+        {
+            return view_infos_;
+        }
 
       private:
         SceneViewFamily view_family_;

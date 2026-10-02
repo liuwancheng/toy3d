@@ -19,10 +19,22 @@ namespace toy3d
         EditorSceneSession(EditorWorkspace& workspace, ActorFactory& factory, MaterialAssignments& materials,
                            EditorSelection& selection, SceneViewport& viewport);
         void bind(World& world);
-        EditorCommandHistory& history() { return history_; }
-        const AssetId& asset_id() const { return asset_id_; }
-        const VirtualPath& path() const { return path_; }
-        const std::string& error() const { return error_; }
+        EditorCommandHistory& history()
+        {
+            return history_;
+        }
+        const AssetId& asset_id() const
+        {
+            return asset_id_;
+        }
+        const VirtualPath& path() const
+        {
+            return path_;
+        }
+        const std::string& error() const
+        {
+            return error_;
+        }
         bool dirty() const;
         bool new_scene();
         bool open(const AssetId& id);
@@ -30,6 +42,7 @@ namespace toy3d
         bool save(const VirtualPath& path, bool create_new);
         bool capture(SceneAssetData& data);
         bool replace(const SceneAssetData& data);
+
       private:
         void clear_interaction();
         void remap(std::uint32_t old_id, std::uint32_t new_id,
@@ -48,4 +61,4 @@ namespace toy3d
         std::vector<std::uint8_t> published_bytes_;
         std::string error_;
     };
-}
+} // namespace toy3d

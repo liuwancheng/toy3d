@@ -54,19 +54,43 @@ namespace toy3d
         bool contains(const Actor& actor) const;
         Actor* find_actor_by_id(std::uint32_t actor_id) const;
         std::vector<std::uint32_t> actor_ids() const;
-        std::uint64_t scene_generation() const { return scene_generation_; }
+        std::uint64_t scene_generation() const
+        {
+            return scene_generation_;
+        }
         void mark_scene_changed();
         // Content mutations also exist before a SceneInterface is bound.
-        std::uint64_t content_revision() const { return content_revision_; }
+        std::uint64_t content_revision() const
+        {
+            return content_revision_;
+        }
         void mark_content_changed();
         bool bind_scene(SceneInterface& scene);
         bool unbind_scene();
-        SceneInterface* scene_interface() const { return scene_interface_; }
-        std::size_t actor_count() const { return actors_.size(); }
-        WorldLifecycleState lifecycle_state() const { return lifecycle_state_; }
-        double world_time_seconds() const { return world_time_seconds_; }
-        std::uint64_t frame_number() const { return frame_number_; }
-        bool is_ticking() const { return ticking_; }
+        SceneInterface* scene_interface() const
+        {
+            return scene_interface_;
+        }
+        std::size_t actor_count() const
+        {
+            return actors_.size();
+        }
+        WorldLifecycleState lifecycle_state() const
+        {
+            return lifecycle_state_;
+        }
+        double world_time_seconds() const
+        {
+            return world_time_seconds_;
+        }
+        std::uint64_t frame_number() const
+        {
+            return frame_number_;
+        }
+        bool is_ticking() const
+        {
+            return ticking_;
+        }
 
       private:
         friend class Actor;

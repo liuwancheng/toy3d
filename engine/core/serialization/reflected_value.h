@@ -14,4 +14,4 @@ namespace toy3d
 
     ValueStatus encode_value(ValueWriter& writer, const ReflectedValue& value);
     ValueStatus decode_value(ValueReader& reader, ReflectedValue& value);
-}
+} // namespace toy3d

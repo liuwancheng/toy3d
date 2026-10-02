@@ -49,12 +49,18 @@ namespace toy3d
     {
         target = {};
         if (id.value == 0u)
+        {
             return true;
+        }
         if (static_cast<std::size_t>(id.value) > table.size())
+        {
             return false;
+        }
         target = table[id.value - 1u];
         if (target.kind == HitProxyTargetKind::None || target.actor_id == 0u)
+        {
             return false;
+        }
         return target.kind == HitProxyTargetKind::Actor || target.component_id != 0u;
     }
 

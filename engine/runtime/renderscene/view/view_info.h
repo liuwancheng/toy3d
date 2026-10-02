@@ -40,24 +40,78 @@ namespace toy3d
     class ViewInfo
     {
       public:
-        const SceneView& scene_view() const { return scene_view_; }
-        const Matrix4& view_matrix() const { return view_matrix_; }
-        const Matrix4& projection_matrix() const { return projection_matrix_; }
-        const Matrix4& view_projection_matrix() const { return view_projection_matrix_; }
-        const Matrix4& inverse_view_matrix() const { return inverse_view_matrix_; }
-        const Matrix4& inverse_projection_matrix() const { return inverse_projection_matrix_; }
-        const Matrix4& inverse_view_projection_matrix() const { return inverse_view_projection_matrix_; }
-        const ViewShaderParameters& view_shader_parameters() const { return view_shader_parameters_; }
-        const ConvexVolume& view_frustum() const { return view_frustum_; }
-        const std::vector<PrimitiveSceneInfo*>& visible_primitives() const { return visible_primitives_; }
-        const std::vector<MeshBatch>& mesh_batches() const { return mesh_batches_; }
-        const ShadowCascadeInfo& shadow_cascade(std::size_t index) const { return shadow_cascades_.at(index); }
-        bool shadow_active() const { return shadow_active_; }
-        float shadow_effective_end() const { return shadow_effective_end_; }
-        float shadow_fade_start() const { return shadow_fade_start_; }
-        std::size_t shadow_cascade_count() const { return shadow_cascade_count_; }
-        const Vector2& shadow_split(std::size_t index) const { return shadow_splits_.at(index); }
-        const RHIBindingSetRef& view_binding() const { return view_binding_; }
+        const SceneView& scene_view() const
+        {
+            return scene_view_;
+        }
+        const Matrix4& view_matrix() const
+        {
+            return view_matrix_;
+        }
+        const Matrix4& projection_matrix() const
+        {
+            return projection_matrix_;
+        }
+        const Matrix4& view_projection_matrix() const
+        {
+            return view_projection_matrix_;
+        }
+        const Matrix4& inverse_view_matrix() const
+        {
+            return inverse_view_matrix_;
+        }
+        const Matrix4& inverse_projection_matrix() const
+        {
+            return inverse_projection_matrix_;
+        }
+        const Matrix4& inverse_view_projection_matrix() const
+        {
+            return inverse_view_projection_matrix_;
+        }
+        const ViewShaderParameters& view_shader_parameters() const
+        {
+            return view_shader_parameters_;
+        }
+        const ConvexVolume& view_frustum() const
+        {
+            return view_frustum_;
+        }
+        const std::vector<PrimitiveSceneInfo*>& visible_primitives() const
+        {
+            return visible_primitives_;
+        }
+        const std::vector<MeshBatch>& mesh_batches() const
+        {
+            return mesh_batches_;
+        }
+        const ShadowCascadeInfo& shadow_cascade(std::size_t index) const
+        {
+            return shadow_cascades_.at(index);
+        }
+        bool shadow_active() const
+        {
+            return shadow_active_;
+        }
+        float shadow_effective_end() const
+        {
+            return shadow_effective_end_;
+        }
+        float shadow_fade_start() const
+        {
+            return shadow_fade_start_;
+        }
+        std::size_t shadow_cascade_count() const
+        {
+            return shadow_cascade_count_;
+        }
+        const Vector2& shadow_split(std::size_t index) const
+        {
+            return shadow_splits_.at(index);
+        }
+        const RHIBindingSetRef& view_binding() const
+        {
+            return view_binding_;
+        }
         // create_view_shader_bindings() is the only frame-local creation path;
         // business passes consume the published owner reference directly.
         void publish_view_binding(RHIBindingSetRef binding_set);

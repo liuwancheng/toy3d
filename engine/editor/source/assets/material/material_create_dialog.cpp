@@ -25,7 +25,10 @@ namespace toy3d
 
     void MaterialCreateDialog::request(MaterialAssetCreationKind kind, const std::string& folder, AssetId parent)
     {
-        if (active_) return;
+        if (active_)
+        {
+            return;
+        }
         clear();
         kind_ = kind;
         folder_ = folder == "/Project" || folder.compare(0, 9, "/Project/") == 0 ? folder : "";
@@ -36,13 +39,24 @@ namespace toy3d
         open_ = true;
     }
 
-    void MaterialCreateDialog::draw(EditorWorkspace& workspace, EditorSelection& selection,
-        std::string& browser_folder, const shader::ShaderParameterSchema& schema, ShaderWorkflow* shaders)
+    void MaterialCreateDialog::draw(EditorWorkspace& workspace, EditorSelection& selection, std::string& browser_folder,
+                                    const shader::ShaderParameterSchema& schema, ShaderWorkflow* shaders)
     {
-        if (!active_) return;
-        const char* title = kind_ == MaterialAssetCreationKind::Material ? "Create Material" : "Create Material Instance";
-        if (open_) { ImGui::OpenPopup(title); open_ = false; }
-        if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+        if (!active_)
+        {
+            return;
+        }
+        const char* title =
+            kind_ == MaterialAssetCreationKind::Material ? "Create Material" : "Create Material Instance";
+        if (open_)
+        {
+            ImGui::OpenPopup(title);
+            open_ = false;
+        }
+        if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            return;
+        }
         ImGui::BeginDisabled(published_id_.valid());
         ImGui::SetNextItemWidth(360);
         ImGui::InputText("Asset Name", name_.data(), name_.size());
@@ -51,8 +65,14 @@ namespace toy3d
         {
             for (const auto& path : workspace.catalog().directories)
             {
-                if (path.utf8() != "/Project" && path.utf8().compare(0, 9, "/Project/") != 0) continue;
-                if (ImGui::Selectable(path.utf8().c_str(), folder_ == path.utf8())) folder_ = path.utf8();
+                if (path.utf8() != "/Project" && path.utf8().compare(0, 9, "/Project/") != 0)
+                {
+                    continue;
+                }
+                if (ImGui::Selectable(path.utf8().c_str(), folder_ == path.utf8()))
+                {
+                    folder_ = path.utf8();
+                }
             }
             ImGui::EndCombo();
         }
@@ -61,22 +81,38 @@ namespace toy3d
             if (shaders && ImGui::BeginCombo("Shader", shader_name_.c_str()))
             {
                 for (const auto& source : shaders->sources())
-                    if (source.usage == BuiltinShaderUsage::Material && ImGui::Selectable(source.name.c_str(), source.name == shader_name_)) shader_name_ = source.name;
+                {
+                    if (source.usage == BuiltinShaderUsage::Material &&
+                        ImGui::Selectable(source.name.c_str(), source.name == shader_name_))
+                    {
+                        shader_name_ = source.name;
+                    }
+                }
                 ImGui::EndCombo();
             }
-            if (!shaders) ImGui::TextUnformatted("Shader: Toy3d/Surface/Phong");
+            if (!shaders)
+            {
+                ImGui::TextUnformatted("Shader: Toy3d/Surface/Phong");
+            }
             ImGui::Checkbox("Two Sided", &two_sided_);
         }
         else
         {
             const auto* parent = workspace.catalog().index.find(parent_);
             ImGui::SetNextItemWidth(360);
-            if (ImGui::BeginCombo("Parent Material", parent ? parent->path.utf8().c_str() : "Choose a Material or Instance"))
+            if (ImGui::BeginCombo("Parent Material",
+                                  parent ? parent->path.utf8().c_str() : "Choose a Material or Instance"))
             {
                 for (const auto& entry : workspace.catalog().entries)
                 {
-                    if (!is_material_asset_type(entry.file.root_type)) continue;
-                    if (ImGui::Selectable(entry.path.utf8().c_str(), parent_ == entry.file.asset_id)) parent_ = entry.file.asset_id;
+                    if (!is_material_asset_type(entry.file.root_type))
+                    {
+                        continue;
+                    }
+                    if (ImGui::Selectable(entry.path.utf8().c_str(), parent_ == entry.file.asset_id))
+                    {
+                        parent_ = entry.file.asset_id;
+                    }
                 }
                 ImGui::EndCombo();
             }
@@ -86,31 +122,61 @@ namespace toy3d
                 AssetRef reference;
                 reference.asset_id = parent_;
                 reference.expected_type = parent->index.root_type;
-                const auto hierarchy = read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, reference);
-                if (hierarchy.succeeded()) shader_name_ = hierarchy.value().root.shader_name;
-                else error_ = hierarchy.status().message;
+                const auto hierarchy =
+                    read_material_hierarchy(workspace.types(), workspace.files(), workspace.catalog().index, reference);
+                if (hierarchy.succeeded())
+                {
+                    shader_name_ = hierarchy.value().root.shader_name;
+                }
+                else
+                {
+                    error_ = hierarchy.status().message;
+                }
             }
         }
         const auto program = shaders ? shaders->program(shader_name_) : nullptr;
         if (shaders)
         {
-            if (ImGui::Button("Open Source")) shaders->open_source(shader_name_);
-            ImGui::SameLine(); ImGui::BeginDisabled(shaders->busy());
-            if (ImGui::Button(program ? "Recompile Shader" : "Compile Shader")) shaders->recompile(shader_name_);
-            ImGui::EndDisabled(); ImGui::TextWrapped("%s", shaders->status().c_str());
-            if (!shaders->error().empty()) ImGui::TextWrapped("%s", shaders->error().c_str());
+            if (ImGui::Button("Open Source"))
+            {
+                shaders->open_source(shader_name_);
+            }
+            ImGui::SameLine();
+            ImGui::BeginDisabled(shaders->busy());
+            if (ImGui::Button(program ? "Recompile Shader" : "Compile Shader"))
+            {
+                shaders->recompile(shader_name_);
+            }
+            ImGui::EndDisabled();
+            ImGui::TextWrapped("%s", shaders->status().c_str());
+            if (!shaders->error().empty())
+            {
+                ImGui::TextWrapped("%s", shaders->error().c_str());
+            }
         }
-        const auto selected_schema = program ? material_parameter_schema_from_shader_schema(program->data().parameter_schema) : schema;
+        const auto selected_schema =
+            program ? material_parameter_schema_from_shader_schema(program->data().parameter_schema) : schema;
         std::string destination;
         std::string destination_error;
-        const bool valid_destination = material_asset_destination(folder_, name_.data(), destination, destination_error);
-        if (valid_destination) ImGui::TextWrapped("Save to: %s", destination.c_str());
-        else ImGui::TextDisabled("%s", destination_error.c_str());
+        const bool valid_destination =
+            material_asset_destination(folder_, name_.data(), destination, destination_error);
+        if (valid_destination)
+        {
+            ImGui::TextWrapped("Save to: %s", destination.c_str());
+        }
+        else
+        {
+            ImGui::TextDisabled("%s", destination_error.c_str());
+        }
         ImGui::EndDisabled();
-        if (!error_.empty()) ImGui::TextWrapped("%s", error_.c_str());
+        if (!error_.empty())
+        {
+            ImGui::TextWrapped("%s", error_.c_str());
+        }
         ImGui::Separator();
         const bool can_create = valid_destination && !published_id_.valid() &&
-            (kind_ == MaterialAssetCreationKind::Material || parent_.valid()) && (!shaders || program);
+                                (kind_ == MaterialAssetCreationKind::Material || parent_.valid()) &&
+                                (!shaders || program);
         ImGui::BeginDisabled(!can_create);
         if (ImGui::Button("Create"))
         {
@@ -120,7 +186,8 @@ namespace toy3d
                 MaterialAssetData data;
                 data.shader_name = shader_name_;
                 data.two_sided = two_sided_;
-                result = create_material_asset_in_workspace(workspace, destination, data, selected_schema, published_id_, shader_name_);
+                result = create_material_asset_in_workspace(workspace, destination, data, selected_schema,
+                                                            published_id_, shader_name_);
             }
             else
             {
@@ -128,7 +195,8 @@ namespace toy3d
                 data.parent.asset_id = parent_;
                 const auto* location = workspace.catalog().index.find(parent_);
                 data.parent.expected_type = location ? location->index.root_type : "";
-                result = create_material_instance_asset_in_workspace(workspace, destination, data, selected_schema, published_id_, shader_name_);
+                result = create_material_instance_asset_in_workspace(workspace, destination, data, selected_schema,
+                                                                     published_id_, shader_name_);
             }
             if (result.succeeded())
             {
@@ -138,7 +206,11 @@ namespace toy3d
                 active_ = false;
                 ImGui::CloseCurrentPopup();
             }
-            else { error_ = result.message; TOY_LOG_ERROR("Material creation failed: {}", error_); }
+            else
+            {
+                error_ = result.message;
+                TOY_LOG_ERROR("Material creation failed: {}", error_);
+            }
         }
         ImGui::EndDisabled();
         if (published_id_.valid() && active_)
@@ -153,12 +225,19 @@ namespace toy3d
                     active_ = false;
                     ImGui::CloseCurrentPopup();
                 }
-                else { error_ = workspace.error(); TOY_LOG_ERROR("Material catalog refresh failed: {}", error_); }
+                else
+                {
+                    error_ = workspace.error();
+                    TOY_LOG_ERROR("Material catalog refresh failed: {}", error_);
+                }
             }
         }
         ImGui::SameLine();
         if (ImGui::Button(published_id_.valid() ? "Close" : "Cancel"))
-        { clear(); ImGui::CloseCurrentPopup(); }
+        {
+            clear();
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
-}
+} // namespace toy3d

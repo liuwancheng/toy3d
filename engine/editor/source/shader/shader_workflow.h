@@ -24,7 +24,15 @@ namespace toy3d
     constexpr std::size_t maximum_shader_manifest_bytes = 64u * 1024u;
     constexpr std::size_t maximum_shader_source_bytes = 4u * 1024u * 1024u;
 
-    enum class ShaderTaskPhase { Idle, Compiling, Validating, Publishing, Cancelling, Completed };
+    enum class ShaderTaskPhase
+    {
+        Idle,
+        Compiling,
+        Validating,
+        Publishing,
+        Cancelling,
+        Completed
+    };
 
     struct ShaderTaskDiagnostic
     {
@@ -80,10 +88,15 @@ namespace toy3d
     class ShaderWorkflow final
     {
       public:
-        ShaderWorkflow(ProcessService& processes, ThreadManager& threads) : processes_(processes), threads_(threads) {}
+        ShaderWorkflow(ProcessService& processes, ThreadManager& threads) : processes_(processes), threads_(threads)
+        {
+        }
         ~ShaderWorkflow();
         bool initialize(ShaderWorkflowPaths paths, MaterialRef defaults, std::string& error);
-        const std::vector<EditorShaderSource>& sources() const { return sources_; }
+        const std::vector<EditorShaderSource>& sources() const
+        {
+            return sources_;
+        }
         ShaderMapProgramRef program(const std::string& name) const;
         const EditorShaderSource* find(const std::string& name) const;
         bool open_source(const std::string& name, std::uint32_t line = 1u, std::uint32_t column = 1u);
@@ -92,25 +105,56 @@ namespace toy3d
         bool recompile(const std::string& name, AssetId origin = {}, std::uint64_t session_revision = 0u);
         bool recompile_all();
         bool create_source(const std::string& name, const std::string& relative_path, const std::string& template_name);
-        const ShaderTaskStatus& task_status() const { return task_; }
+        const ShaderTaskStatus& task_status() const
+        {
+            return task_;
+        }
         void cancel();
-        bool batch_active() const { return batch_active_; }
+        bool batch_active() const
+        {
+            return batch_active_;
+        }
         std::string unavailable_reason(const std::string& name) const;
         void tick();
         void collect_validation(std::vector<MaterialProgramValidationRef>& requests);
         void collect_builtin_updates(std::vector<BuiltinShaderUpdateRef>& requests);
-        bool busy() const { return active() || !restore_queue_.empty() || !global_candidates_.empty() || global_failed_ || batch_active_; }
-        const ShaderMapProgramRef& candidate() const { return candidate_; }
+        bool busy() const
+        {
+            return active() || !restore_queue_.empty() || !global_candidates_.empty() || global_failed_ ||
+                   batch_active_;
+        }
+        const ShaderMapProgramRef& candidate() const
+        {
+            return candidate_;
+        }
         bool candidate_ready() const;
-        const AssetId& origin() const { return origin_; }
-        std::uint64_t origin_revision() const { return origin_revision_; }
-        const std::vector<shader::ShaderEditorProperty>& candidate_properties() const { return candidate_properties_; }
+        const AssetId& origin() const
+        {
+            return origin_;
+        }
+        std::uint64_t origin_revision() const
+        {
+            return origin_revision_;
+        }
+        const std::vector<shader::ShaderEditorProperty>& candidate_properties() const
+        {
+            return candidate_properties_;
+        }
         bool publish();
         void reject(const std::string& error);
-        const std::string& status() const { return status_; }
+        const std::string& status() const
+        {
+            return status_;
+        }
         std::string progress() const;
-        const std::string& output() const { return output_; }
-        const std::string& error() const { return error_; }
+        const std::string& output() const
+        {
+            return output_;
+        }
+        const std::string& error() const
+        {
+            return error_;
+        }
         void shutdown();
 
       private:
@@ -132,7 +176,10 @@ namespace toy3d
         void begin_task(std::size_t total, bool restoring = false);
         void record_task_error(const std::string& name, const std::string& message);
         void complete_task();
-        bool active() const { return worker_ || validation_ || candidate_ || builtin_update_; }
+        bool active() const
+        {
+            return worker_ || validation_ || candidate_ || builtin_update_;
+        }
         bool start_compile(const std::string& name, AssetId origin, std::uint64_t revision);
         void restore(const std::string& name);
         Revision take_revision();
@@ -195,4 +242,4 @@ namespace toy3d
         std::map<std::string, std::pair<std::string, Sha256Hash>> global_restore_;
         std::set<std::string> ignore_saved_;
     };
-}
+} // namespace toy3d

@@ -19,8 +19,7 @@ namespace toy3d
             const ViewShaderParameters& parameters = view_info.view_shader_parameters();
             if (!is_finite(parameters.toy_view) || !is_finite(parameters.toy_projection) ||
                 !is_finite(parameters.toy_view_projection) || !is_finite(parameters.toy_inverse_view) ||
-                !is_finite(parameters.toy_inverse_projection) ||
-                !is_finite(parameters.toy_inverse_view_projection) ||
+                !is_finite(parameters.toy_inverse_projection) || !is_finite(parameters.toy_inverse_view_projection) ||
                 !is_finite(parameters.toy_camera_position) || !is_finite(parameters.toy_camera_direction))
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -42,8 +41,8 @@ namespace toy3d
                 continue;
             }
 
-            RHIResult<RHIBindingSetRef> binding = create_transient_shader_binding(
-                device, context, view_info.view_shader_parameters());
+            RHIResult<RHIBindingSetRef> binding =
+                create_transient_shader_binding(device, context, view_info.view_shader_parameters());
             if (!binding)
             {
                 return binding.status();

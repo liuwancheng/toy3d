@@ -21,11 +21,9 @@ namespace
         }
     }
 
-    toy3d::RHIBindingLayoutEntry make_layout_entry(toy3d::ShaderParameterId binding_id,
-                                                    toy3d::RHIBindingGroup group,
-                                                    std::uint32_t target_binding,
-                                                    toy3d::RHIResourceBindingType type,
-                                                    toy3d::RHIShaderStageFlags stages)
+    toy3d::RHIBindingLayoutEntry make_layout_entry(toy3d::ShaderParameterId binding_id, toy3d::RHIBindingGroup group,
+                                                   std::uint32_t target_binding, toy3d::RHIResourceBindingType type,
+                                                   toy3d::RHIShaderStageFlags stages)
     {
         toy3d::RHIBindingLayoutEntry entry;
         entry.binding_id = binding_id;
@@ -54,32 +52,33 @@ namespace
         std::vector<std::uint8_t> copied_bytes;
     };
 
-    UniformUploadModelResult model_vulkan_dynamic_uniform_upload(
-        const toy3d::RHITransientUniformDataDesc& desc, const toy3d::RHIBufferRef& arena,
-        std::uint64_t& next_offset, std::uint64_t alignment)
+    UniformUploadModelResult model_vulkan_dynamic_uniform_upload(const toy3d::RHITransientUniformDataDesc& desc,
+                                                                 const toy3d::RHIBufferRef& arena,
+                                                                 std::uint64_t& next_offset, std::uint64_t alignment)
     {
         const std::uint64_t offset = align_up(next_offset, alignment);
         next_offset = offset + desc.source.size;
         const auto* source = static_cast<const std::uint8_t*>(desc.source.data);
-        return {{arena, offset, desc.source.size}, desc.source.size,
+        return {{arena, offset, desc.source.size},
+                desc.source.size,
                 std::vector<std::uint8_t>(source, source + desc.source.size)};
     }
 
-    UniformUploadModelResult model_d3d12_aligned_suballocation(
-        const toy3d::RHITransientUniformDataDesc& desc, const toy3d::RHIBufferRef& arena,
-        std::uint64_t& next_offset)
+    UniformUploadModelResult model_d3d12_aligned_suballocation(const toy3d::RHITransientUniformDataDesc& desc,
+                                                               const toy3d::RHIBufferRef& arena,
+                                                               std::uint64_t& next_offset)
     {
         constexpr std::uint64_t d3d12_constant_buffer_alignment = 256u;
         const std::uint64_t offset = align_up(next_offset, d3d12_constant_buffer_alignment);
         const std::uint64_t allocation_size = align_up(desc.source.size, d3d12_constant_buffer_alignment);
         next_offset = offset + allocation_size;
         const auto* source = static_cast<const std::uint8_t*>(desc.source.data);
-        return {{arena, offset, desc.source.size}, allocation_size,
+        return {{arena, offset, desc.source.size},
+                allocation_size,
                 std::vector<std::uint8_t>(source, source + desc.source.size)};
     }
 
-    UniformUploadModelResult model_d3d11_standalone_constant_buffer(
-        const toy3d::RHITransientUniformDataDesc& desc)
+    UniformUploadModelResult model_d3d11_standalone_constant_buffer(const toy3d::RHITransientUniformDataDesc& desc)
     {
         constexpr std::uint64_t d3d11_constant_buffer_alignment = 16u;
         const std::uint64_t allocation_size = align_up(desc.source.size, d3d11_constant_buffer_alignment);
@@ -88,7 +87,8 @@ namespace
         buffer_desc.usage = toy3d::RHIResourceUsage::UniformBuffer;
         buffer_desc.debug_name = desc.debug_name;
         const auto* source = static_cast<const std::uint8_t*>(desc.source.data);
-        return {{std::make_shared<toy3d::RHIBuffer>(std::move(buffer_desc)), 0u, desc.source.size}, allocation_size,
+        return {{std::make_shared<toy3d::RHIBuffer>(std::move(buffer_desc)), 0u, desc.source.size},
+                allocation_size,
                 std::vector<std::uint8_t>(source, source + desc.source.size)};
     }
 
@@ -230,10 +230,8 @@ int main()
         model_vulkan_dynamic_uniform_upload(cross_backend_upload, shared_arena, vulkan_next_offset, 64u);
     const UniformUploadModelResult d3d12_upload =
         model_d3d12_aligned_suballocation(cross_backend_upload, shared_arena, d3d12_next_offset);
-    const UniformUploadModelResult d3d11_upload =
-        model_d3d11_standalone_constant_buffer(cross_backend_upload);
-    const UniformUploadModelResult second_d3d11_upload =
-        model_d3d11_standalone_constant_buffer(cross_backend_upload);
+    const UniformUploadModelResult d3d11_upload = model_d3d11_standalone_constant_buffer(cross_backend_upload);
+    const UniformUploadModelResult second_d3d11_upload = model_d3d11_standalone_constant_buffer(cross_backend_upload);
 
     check(vulkan_upload.slice.buffer == shared_arena && vulkan_upload.slice.offset == 64u &&
               vulkan_upload.slice.size == uniform_bytes.size() && vulkan_upload.copied_bytes == uniform_bytes,

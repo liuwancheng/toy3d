@@ -11,7 +11,9 @@ namespace toy3d::shader
         for (const BuiltinShaderParameter& parameter : builtin_shader_parameters)
         {
             if (parameter.group == group)
+            {
                 input.constant_members.push_back({parameter.name, parameter.type});
+            }
         }
         return input;
     }

@@ -77,8 +77,7 @@ namespace toy3d
         Renderer(TaskGraphInterface& task_graph, RHISurfaceRef primary_surface, RHIViewportContextDesc viewport_desc,
                  std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                  std::shared_ptr<const GlobalShaderMap> global_shader_map,
-                 std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr,
-                 bool enable_preview_scene = false,
+                 std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr, bool enable_preview_scene = false,
                  BuiltinMeshPassPrograms mesh_pass_programs = {});
         ~Renderer();
 
@@ -90,9 +89,8 @@ namespace toy3d
         ThreadStatus initialize();
         ThreadStatus teardown();
         void draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
-                        std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr,
-                        ViewportFrameOutput output = {}, UiRenderWork work = {},
-                        std::unique_ptr<SceneRenderer> preview_renderer = nullptr);
+                        std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr, ViewportFrameOutput output = {},
+                        UiRenderWork work = {}, std::unique_ptr<SceneRenderer> preview_renderer = nullptr);
         RendererStatus status() const;
         bool poll_hit_proxy(HitProxyResult& result);
         // Published only between successful logical-RT initialize and teardown.

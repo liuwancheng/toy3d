@@ -30,9 +30,15 @@ namespace toy3d
         RenderResource(RenderResource&&) = delete;
         RenderResource& operator=(RenderResource&&) = delete;
 
-        RenderResourceState state() const { return state_; }
+        RenderResourceState state() const
+        {
+            return state_;
+        }
 
-        const RHIStatus& failure_status() const { return failure_status_; }
+        const RHIStatus& failure_status() const
+        {
+            return failure_status_;
+        }
 
       protected:
         // Derived resources use this only for deterministic resource-local

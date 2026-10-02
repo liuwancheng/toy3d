@@ -32,16 +32,15 @@ namespace toy3d::shader
     Sha256Hash calculate_shader_editor_properties_hash(const std::vector<ShaderEditorProperty>& properties);
     bool validate_shader_editor_properties(const std::vector<ShaderEditorProperty>& properties,
                                            const ShaderParameterSchema& schema, std::string& error);
-    std::string serialize_shader_editor_properties(const std::string& shader_name,
-                                                  const ShaderParameterSchema& schema,
-                                                  const std::vector<ShaderEditorProperty>& properties);
+    std::string serialize_shader_editor_properties(const std::string& shader_name, const ShaderParameterSchema& schema,
+                                                   const std::vector<ShaderEditorProperty>& properties);
     bool parse_shader_editor_properties(const std::string& text, const std::string& shader_name,
-                                       const ShaderParameterSchema& schema,
-                                       std::vector<ShaderEditorProperty>& properties, std::string& error);
+                                        const ShaderParameterSchema& schema,
+                                        std::vector<ShaderEditorProperty>& properties, std::string& error);
 
     // Editor callers explicitly opt in; the normal ShaderMap reader never opens
     // this optional file. Missing data succeeds with an empty fallback view.
     bool read_shader_editor_properties(const PlatformFile& files, const PhysicalPath& entry_directory,
-                                      const std::string& shader_name, const ShaderParameterSchema& schema,
-                                      std::vector<ShaderEditorProperty>& properties, std::string& error);
-}
+                                       const std::string& shader_name, const ShaderParameterSchema& schema,
+                                       std::vector<ShaderEditorProperty>& properties, std::string& error);
+} // namespace toy3d::shader

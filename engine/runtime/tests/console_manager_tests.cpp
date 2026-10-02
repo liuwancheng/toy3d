@@ -34,7 +34,10 @@ namespace
     {
         fs::path path;
 
-        explicit TestDirectory(fs::path value) : path(std::move(value)) { fs::create_directories(path / "config"); }
+        explicit TestDirectory(fs::path value) : path(std::move(value))
+        {
+            fs::create_directories(path / "config");
+        }
 
         ~TestDirectory()
         {
@@ -76,7 +79,9 @@ int main()
     auto store = toy3d::DirectoryFileStore::create(platform_file, store_desc);
     check(store.succeeded(), "config directory store must be created");
     if (!store.succeeded())
+    {
         return 1;
+    }
 
     toy3d::FileMountDesc mount;
     mount.virtual_root = virtual_path("/Engine/Config");
@@ -100,24 +105,28 @@ int main()
     check(console.get_int("Missing", 42) == 42, "missing values must preserve defaults");
 
     const toy3d::PhysicalPath project_config_path((directory.path / "config" / "game_engine.ini").u8string());
-    check(platform_file.write_text_utf8(project_config_path, "[Window]\nWidth=1440\nTitle=Project Test\n",
-                                       toy3d::FileWriteMode::CreateNew).succeeded(),
+    check(platform_file
+              .write_text_utf8(project_config_path, "[Window]\nWidth=1440\nTitle=Project Test\n",
+                               toy3d::FileWriteMode::CreateNew)
+              .succeeded(),
           "project config fixture must be written");
-    check(console.load_config(file_system, virtual_path("/Project/Config/game_engine.ini"),
-                              toy3d::ConfigLoadMode::Overlay).succeeded(), "project config overlay must load");
+    check(console
+              .load_config(file_system, virtual_path("/Project/Config/game_engine.ini"), toy3d::ConfigLoadMode::Overlay)
+              .succeeded(),
+          "project config overlay must load");
     check(console.get_int("Window.Width") == 1440 && console.get_string("Window.Title") == "Project Test",
           "explicit project keys must override engine defaults");
     check(console.get_int("Window.Height") == 720 && console.get_bool("Renderer.VSync", false),
           "omitted project keys must retain engine defaults");
-    check(console.load_config(file_system, virtual_path("/Project/Config/missing.ini"),
-                              toy3d::ConfigLoadMode::Overlay).code == toy3d::FileErrorCode::NotFound &&
+    check(console.load_config(file_system, virtual_path("/Project/Config/missing.ini"), toy3d::ConfigLoadMode::Overlay)
+                      .code == toy3d::FileErrorCode::NotFound &&
               console.get_int("Window.Width") == 1440 && console.get_int("Window.Height") == 720,
           "missing overlay must not discard valid engine or project settings");
     const toy3d::PhysicalPath invalid_config_path((directory.path / "config" / "invalid.ini").u8string());
     check(platform_file.write_binary(invalid_config_path, {0xffu}, toy3d::FileWriteMode::CreateNew).succeeded(),
           "invalid config fixture must be written");
-    check(!console.load_config(file_system, virtual_path("/Project/Config/invalid.ini"),
-                               toy3d::ConfigLoadMode::Overlay).succeeded() &&
+    check(!console.load_config(file_system, virtual_path("/Project/Config/invalid.ini"), toy3d::ConfigLoadMode::Overlay)
+                  .succeeded() &&
               console.get_int("Window.Width") == 1440,
           "invalid UTF-8 overlay must preserve the last valid configuration");
 
@@ -134,23 +143,30 @@ int main()
     check(console.get_int("Window.Width") == 1600, "failed reload must preserve the last valid configuration");
 
     check(console.snapshot().at("Window.Width").source == "command line" &&
-          console.snapshot().at("Renderer.Inherited").source == "/Engine/Config/base_engine.ini" &&
-          console.snapshot().at("Window.Title").source == "/Project/Config/game_engine.ini",
+              console.snapshot().at("Renderer.Inherited").source == "/Engine/Config/base_engine.ini" &&
+              console.snapshot().at("Window.Title").source == "/Project/Config/game_engine.ini",
           "Every effective key preserves the source of its winning layer");
     const auto before_bad = console.snapshot();
-    check(platform_file.write_text_utf8(project_config_path, "[Window]\nWidth=1920\nHeight=bad\n",
-        toy3d::FileWriteMode::Truncate).succeeded(), "Malformed overlay fixture written");
+    check(
+        platform_file
+            .write_text_utf8(project_config_path, "[Window]\nWidth=1920\nHeight=bad\n", toy3d::FileWriteMode::Truncate)
+            .succeeded(),
+        "Malformed overlay fixture written");
     check(!console.load_config(file_system, virtual_path("/Project/Config/game_engine.ini"),
-        toy3d::ConfigLoadMode::Overlay).succeeded() && console.get_int("Window.Width") == 1600,
-        "A failed typed overlay cannot partially replace the previous valid layer");
+                               toy3d::ConfigLoadMode::Overlay)
+                  .succeeded() &&
+              console.get_int("Window.Width") == 1600,
+          "A failed typed overlay cannot partially replace the previous valid layer");
     check(!toy3d::ConsoleManager::parse_config("[Editor]\nStartupScene=a\nStartupScene=b\n", "dup.ini").succeeded(),
           "Duplicate keys cannot silently change project behavior");
     check(!toy3d::ConsoleManager::parse_config("[Window]\nWidth=1920junk\n", "bad.ini").succeeded() &&
-          !toy3d::ConsoleManager::parse_config("[Renderer]\nVSync=perhaps\n", "bad.ini").succeeded(),
+              !toy3d::ConsoleManager::parse_config("[Renderer]\nVSync=perhaps\n", "bad.ini").succeeded(),
           "Known integers and booleans reject malformed data");
-    const auto quoted = toy3d::ConsoleManager::parse_config("[Custom]\nPath=\"a # ; b\" # outside\nName=John's project\n", "quotes.ini");
+    const auto quoted = toy3d::ConsoleManager::parse_config(
+        "[Custom]\nPath=\"a # ; b\" # outside\nName=John's project\n", "quotes.ini");
     check(quoted.succeeded() && quoted.value().at("Custom.Path").value == "a # ; b" &&
-          quoted.value().at("Custom.Name").value == "John's project", "Quotes protect comments and ordinary apostrophes remain literal");
+              quoted.value().at("Custom.Name").value == "John's project",
+          "Quotes protect comments and ordinary apostrophes remain literal");
     const auto encoded = toy3d::ConsoleManager::encode_config(before_bad);
     check(encoded.succeeded() && toy3d::ConsoleManager::parse_config(encoded.value(), "saved.ini").succeeded(),
           "Saving project overrides preserves unknown values through a validated round trip");

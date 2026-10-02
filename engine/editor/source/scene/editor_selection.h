@@ -25,12 +25,21 @@ namespace toy3d
         void select_actor(World& world, std::uint32_t actor_id);
         void clear_actor();
         Actor* resolve_actor(World& world);
-        std::uint32_t actor_id() const { return actor_id_; }
+        std::uint32_t actor_id() const
+        {
+            return actor_id_;
+        }
         void select_asset(const AssetId& asset_id);
         void clear_asset();
         const AssetLocation* resolve_asset(const AssetIndex& index);
-        const AssetId& asset_id() const { return asset_id_; }
-        EditorSelectionFocus focus() const { return focus_; }
+        const AssetId& asset_id() const
+        {
+            return asset_id_;
+        }
+        EditorSelectionFocus focus() const
+        {
+            return focus_;
+        }
 
       private:
         World* world_ = nullptr;

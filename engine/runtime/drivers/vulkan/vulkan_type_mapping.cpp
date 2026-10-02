@@ -234,13 +234,21 @@ namespace toy3d
     {
         VkColorComponentFlags result = 0;
         if (EnumHasAnyFlags(mask, RHIColorWriteMask::Red))
+        {
             result |= VK_COLOR_COMPONENT_R_BIT;
+        }
         if (EnumHasAnyFlags(mask, RHIColorWriteMask::Green))
+        {
             result |= VK_COLOR_COMPONENT_G_BIT;
+        }
         if (EnumHasAnyFlags(mask, RHIColorWriteMask::Blue))
+        {
             result |= VK_COLOR_COMPONENT_B_BIT;
+        }
         if (EnumHasAnyFlags(mask, RHIColorWriteMask::Alpha))
+        {
             result |= VK_COLOR_COMPONENT_A_BIT;
+        }
         return result;
     }
 
@@ -248,17 +256,29 @@ namespace toy3d
     {
         VkShaderStageFlags result = 0;
         if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Vertex))
+        {
             result |= VK_SHADER_STAGE_VERTEX_BIT;
+        }
         if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Pixel))
+        {
             result |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
         if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Geometry))
+        {
             result |= VK_SHADER_STAGE_GEOMETRY_BIT;
+        }
         if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Hull))
+        {
             result |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        }
         if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Domain))
+        {
             result |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        }
         if (EnumHasAnyFlags(stages, RHIShaderStageFlags::Compute))
+        {
             result |= VK_SHADER_STAGE_COMPUTE_BIT;
+        }
         return result;
     }
 
@@ -387,20 +407,34 @@ namespace toy3d
     {
         VkBufferUsageFlags result = 0;
         if (EnumHasAnyFlags(usage, RHIResourceUsage::VertexBuffer))
+        {
             result |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::IndexBuffer))
+        {
             result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::UniformBuffer))
+        {
             result |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource) ||
             EnumHasAnyFlags(usage, RHIResourceUsage::UnorderedAccess))
+        {
             result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::IndirectArguments))
+        {
             result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::CopySource))
+        {
             result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::CopyDestination))
+        {
             result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        }
         return result;
     }
 
@@ -408,17 +442,29 @@ namespace toy3d
     {
         VkImageUsageFlags result = 0;
         if (EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource))
+        {
             result |= VK_IMAGE_USAGE_SAMPLED_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::UnorderedAccess))
+        {
             result |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::RenderTarget))
+        {
             result |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::DepthStencil))
+        {
             result |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::CopySource))
+        {
             result |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        }
         if (EnumHasAnyFlags(usage, RHIResourceUsage::CopyDestination))
+        {
             result |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        }
         return result;
     }
 
@@ -470,19 +516,27 @@ namespace toy3d
         {
         case RHITextureAspect::Color:
             if (!has_depth)
+            {
                 return RHIResult<VkImageAspectFlags>::success(VK_IMAGE_ASPECT_COLOR_BIT);
+            }
             break;
         case RHITextureAspect::Depth:
             if (has_depth)
+            {
                 return RHIResult<VkImageAspectFlags>::success(VK_IMAGE_ASPECT_DEPTH_BIT);
+            }
             break;
         case RHITextureAspect::Stencil:
             if (has_stencil)
+            {
                 return RHIResult<VkImageAspectFlags>::success(VK_IMAGE_ASPECT_STENCIL_BIT);
+            }
             break;
         case RHITextureAspect::DepthStencil:
             if (has_depth && has_stencil)
+            {
                 return RHIResult<VkImageAspectFlags>::success(VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+            }
             break;
         }
         return RHIResult<VkImageAspectFlags>::failure(RHIErrorCode::InvalidArgument,

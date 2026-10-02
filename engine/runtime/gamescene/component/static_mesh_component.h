@@ -12,10 +12,15 @@ namespace toy3d
     class StaticMeshComponent final : public PrimitiveComponent
     {
       public:
-        explicit StaticMeshComponent(Actor& owner) : PrimitiveComponent(owner) {}
+        explicit StaticMeshComponent(Actor& owner) : PrimitiveComponent(owner)
+        {
+        }
         ~StaticMeshComponent() override = default;
 
-        const StaticMeshRef& static_mesh() const { return static_mesh_; }
+        const StaticMeshRef& static_mesh() const
+        {
+            return static_mesh_;
+        }
         void set_static_mesh(StaticMeshRef static_mesh);
 
         bool set_material_override(std::uint32_t material_slot, MaterialInterfaceRef material);

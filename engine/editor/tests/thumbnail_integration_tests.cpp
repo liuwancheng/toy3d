@@ -54,98 +54,178 @@ namespace
     {
       public:
         ThumbnailTestApplication(EditorWorkspace& workspace, AssetId first, AssetId second, TestState& state)
-            : workspace_(workspace), pool_(workspace), history_(factory_), first_(first), second_(second), state_(state) {}
+            : workspace_(workspace), pool_(workspace), history_(factory_), first_(first), second_(second), state_(state)
+        {
+        }
 
       private:
         bool on_initialize() override
         {
             ImGui::GetIO().IniFilename = nullptr;
 #if WITH_WIN
-            if (!verify_native_drop()) return false;
+            if (!verify_native_drop())
+            {
+                return false;
+            }
 #endif
             return factory_.initialize();
         }
-        bool starts_world_play() const override { return false; }
-        bool uses_preview_scene() const override { return true; }
+        bool starts_world_play() const override
+        {
+            return false;
+        }
+        bool uses_preview_scene() const override
+        {
+            return true;
+        }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override
-        { return pool_.initialize(scene, factory_.default_material(), tasks); }
+        {
+            return pool_.initialize(scene, factory_.default_material(), tasks);
+        }
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
         {
             views.emplace_back(Vector3(0, 0, -3), Quaternion::identity(), Vector3(0, 0, 1),
-                IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
-                Radians(0.785398163f), 0.1f, 100.0f);
+                               IntRect{0, 0, extent.width, extent.height}, extent, CameraProjectionMode::Perspective,
+                               Radians(0.785398163f), 0.1f, 100.0f);
         }
-        void on_collect_ui_render_work(UiRenderWork& work) override { pool_.collect_render_work(work); }
-        std::vector<ImGuiTextureId> ui_texture_ids() const override { return pool_.texture_ids(); }
+        void on_collect_ui_render_work(UiRenderWork& work) override
+        {
+            pool_.collect_render_work(work);
+        }
+        std::vector<ImGuiTextureId> ui_texture_ids() const override
+        {
+            return pool_.texture_ids();
+        }
         void on_ui_texture_result(UiTextureResult result) override
         {
             const bool capture = !result.bgra_pixels.empty();
-            if (result.succeeded()) { if (capture) ++state_.captures; else ++state_.uploads; }
+            if (result.succeeded())
+            {
+                if (capture)
+                {
+                    ++state_.captures;
+                }
+                else
+                {
+                    ++state_.uploads;
+                }
+            }
             pool_.on_texture_result(std::move(result));
             if (phase_ == 3 && capture)
             {
                 const auto path = VirtualPath::parse("/Project/first.asset");
                 const auto published = workspace_.asset_pairs().read(path.value());
-                if (!published.succeeded()) { stop(published.status().message); return; }
+                if (!published.succeeded())
+                {
+                    stop(published.status().message);
+                    return;
+                }
                 auto segments = published.value().meta.segments;
                 for (auto& segment : segments)
-                    if (segment.name == "future_editor_data") segment.bytes = {9, 8, 7};
-                const auto changed = encode_asset_pair(workspace_.types(),
-                    published.value().description.index,
-                    published.value().description.type_data, std::move(segments));
-                if (!changed.succeeded()) { stop(changed.status().message); return; }
-                const auto saved = workspace_.asset_pairs().publish(path.value(), changed.value(), FilePublishMode::Replace);
-                if (!saved.succeeded()) { stop(saved.message); return; }
+                {
+                    if (segment.name == "future_editor_data")
+                    {
+                        segment.bytes = {9, 8, 7};
+                    }
+                }
+                const auto changed = encode_asset_pair(workspace_.types(), published.value().description.index,
+                                                       published.value().description.type_data, std::move(segments));
+                if (!changed.succeeded())
+                {
+                    stop(changed.status().message);
+                    return;
+                }
+                const auto saved =
+                    workspace_.asset_pairs().publish(path.value(), changed.value(), FilePublishMode::Replace);
+                if (!saved.succeeded())
+                {
+                    stop(saved.message);
+                    return;
+                }
                 conflict_snapshot_ = sha256(changed.value().asset);
             }
         }
         void on_tick(double delta) override
         {
             elapsed_ += delta;
-            if (elapsed_ > 30.0) { stop("Thumbnail integration timed out."); return; }
+            if (elapsed_ > 30.0)
+            {
+                stop("Thumbnail integration timed out.");
+                return;
+            }
             pool_.tick();
             if (!started_)
             {
                 started_ = true;
-                if (!verify_asset_placement()) return;
+                if (!verify_asset_placement())
+                {
+                    return;
+                }
             }
             const auto a = request(first_);
             const auto b = phase_ > 0 ? request(second_) : AssetThumbnailView{};
-            if (phase_ != 3 && !a.error.empty()) { stop(a.error); return; }
-            if (phase_ > 0 && !b.error.empty()) { stop(b.error); return; }
+            if (phase_ != 3 && !a.error.empty())
+            {
+                stop(a.error);
+                return;
+            }
+            if (phase_ > 0 && !b.error.empty())
+            {
+                stop(b.error);
+                return;
+            }
             if (phase_ == 0 && a.texture_id.valid() && !a.busy)
             {
-                if (!verify_saved("/Project/first.asset", {1, 2, 3})) return;
+                if (!verify_saved("/Project/first.asset", {1, 2, 3}))
+                {
+                    return;
+                }
                 pool_.generate(second_);
                 phase_ = 1;
             }
             else if (phase_ == 1 && b.texture_id.valid() && !b.busy)
             {
-                if (!verify_saved("/Project/second.asset", {1, 2, 3})) return;
+                if (!verify_saved("/Project/second.asset", {1, 2, 3}))
+                {
+                    return;
+                }
                 pool_.invalidate();
                 phase_ = 2;
             }
             else if (phase_ == 2 && a.texture_id.valid() && b.texture_id.valid() && !a.busy && !b.busy)
             {
                 if (state_.captures < 2 || state_.uploads != 2)
-                { stop("Saved PNG reload did not use the image upload path: captures=" +
-                    std::to_string(state_.captures) + ", uploads=" + std::to_string(state_.uploads)); return; }
+                {
+                    stop("Saved PNG reload did not use the image upload path: captures=" +
+                         std::to_string(state_.captures) + ", uploads=" + std::to_string(state_.uploads));
+                    return;
+                }
                 pool_.generate(first_);
                 phase_ = 3;
             }
             else if (phase_ == 3 && !a.busy && !a.error.empty())
             {
-                if (a.error.find("conflict") == std::string::npos) { stop("Expected an asset save conflict."); return; }
+                if (a.error.find("conflict") == std::string::npos)
+                {
+                    stop("Expected an asset save conflict.");
+                    return;
+                }
                 const auto path = VirtualPath::parse("/Project/first.asset");
                 const auto bytes = workspace_.files().read_binary(path.value());
                 if (!bytes.succeeded() || sha256(bytes.value()) != conflict_snapshot_)
-                { stop("A stale thumbnail overwrote the changed asset."); return; }
+                {
+                    stop("A stale thumbnail overwrote the changed asset.");
+                    return;
+                }
                 pool_.generate(first_);
                 phase_ = 4;
             }
             else if (phase_ == 4 && a.texture_id.valid() && !a.busy)
             {
-                if (!verify_saved("/Project/first.asset", {9, 8, 7})) return;
+                if (!verify_saved("/Project/first.asset", {9, 8, 7}))
+                {
+                    return;
+                }
                 state_.complete = true;
                 window().close();
             }
@@ -153,7 +233,12 @@ namespace
         AssetThumbnailView request(const AssetId& id)
         {
             for (const auto& asset : workspace_.catalog().entries)
-                if (asset.file.asset_id == id) return pool_.request(asset);
+            {
+                if (asset.file.asset_id == id)
+                {
+                    return pool_.request(asset);
+                }
+            }
             stop("Test asset vanished from the catalog.");
             return {};
         }
@@ -161,39 +246,67 @@ namespace
         {
             const auto path = VirtualPath::parse(name);
             const auto pair = workspace_.asset_pairs().read(path.value());
-            if (!pair.succeeded()) { stop(pair.status().message); return false; }
+            if (!pair.succeeded())
+            {
+                stop(pair.status().message);
+                return false;
+            }
             const auto& index = pair.value().description.index;
             bool found_opaque = false;
             for (const auto& segment : pair.value().meta.segments)
             {
                 if (segment.name == "thumbnail" || segment.name == "thumbnail_source")
-                { stop("Thumbnail data was written into the asset."); return false; }
-                if (segment.name != "future_editor_data") continue;
+                {
+                    stop("Thumbnail data was written into the asset.");
+                    return false;
+                }
+                if (segment.name != "future_editor_data")
+                {
+                    continue;
+                }
                 found_opaque = segment.kind == 2u && !segment.required && segment.bytes == opaque;
             }
             const auto source = calculate_static_mesh_thumbnail_source(pair.value());
-            if (!source.succeeded()) { stop("Thumbnail fixture source: " + source.status().message); return false; }
-            const auto cache = VirtualPath::parse("/Saved/AssetThumbnails/" + index.asset_id.hex() +
-                "-" + sha256_to_hex(source.value().content_hash) + "-v" +
-                std::to_string(thumbnail_generator_version) + ".png");
+            if (!source.succeeded())
+            {
+                stop("Thumbnail fixture source: " + source.status().message);
+                return false;
+            }
+            const auto cache = VirtualPath::parse("/Saved/AssetThumbnails/" + index.asset_id.hex() + "-" +
+                                                  sha256_to_hex(source.value().content_hash) + "-v" +
+                                                  std::to_string(thumbnail_generator_version) + ".png");
             const auto png = workspace_.files().read_binary(cache.value(), thumbnail_max_bytes);
             Rgba8Image image;
             if (!png.succeeded() || !decode_png(png.value(), image).succeeded())
-            { stop("Saved thumbnail cache is not a valid PNG."); return false; }
+            {
+                stop("Saved thumbnail cache is not a valid PNG.");
+                return false;
+            }
             int brightest = 0;
             int darkest = 255;
             for (std::size_t i = 0; i < image.pixels.size(); i += 4)
             {
                 brightest = std::max(brightest, static_cast<int>(image.pixels[i]));
                 darkest = std::min(darkest, static_cast<int>(image.pixels[i]));
-                if (image.pixels[i + 3] != 255) { stop("Thumbnail alpha must be opaque."); return false; }
+                if (image.pixels[i + 3] != 255)
+                {
+                    stop("Thumbnail alpha must be opaque.");
+                    return false;
+                }
             }
             if (!found_opaque || image.width != thumbnail_default_size || image.height != thumbnail_default_size ||
                 brightest - darkest < 30)
-            { stop("Thumbnail cache or opaque asset data is invalid."); return false; }
+            {
+                stop("Thumbnail cache or opaque asset data is invalid.");
+                return false;
+            }
             return true;
         }
-        void stop(std::string error) { state_.error = std::move(error); window().close(); }
+        void stop(std::string error)
+        {
+            state_.error = std::move(error);
+            window().close();
+        }
         bool verify_asset_placement()
         {
             AssetPlacementRequest request;
@@ -202,14 +315,24 @@ namespace
             std::string error;
             const auto id = place_static_mesh_asset(workspace_, world(), factory_, history_, request, error);
             Actor* actor = world().find_actor_by_id(id);
-            if (!actor || actor->root_component()->local_transform().translation.y != 1 ||
-                !history_.undo(world()) || world().actor_count() != 0 || !history_.redo(world()) || world().actor_count() != 1)
-            { stop("Asset placement, imported ground offset or undo/redo failed: " + error); return false; }
+            if (!actor || actor->root_component()->local_transform().translation.y != 1 || !history_.undo(world()) ||
+                world().actor_count() != 0 || !history_.redo(world()) || world().actor_count() != 1)
+            {
+                stop("Asset placement, imported ground offset or undo/redo failed: " + error);
+                return false;
+            }
             request.asset_id = {};
-            if (place_static_mesh_asset(workspace_, world(), factory_, history_, request, error) || world().actor_count() != 1)
-            { stop("A stale or invalid asset identity mutated the scene."); return false; }
+            if (place_static_mesh_asset(workspace_, world(), factory_, history_, request, error) ||
+                world().actor_count() != 1)
+            {
+                stop("A stale or invalid asset identity mutated the scene.");
+                return false;
+            }
             if (!history_.undo(world()) || world().actor_count() != 0)
-            { stop("Rejected asset placement changed the command history."); return false; }
+            {
+                stop("Rejected asset placement changed the command history.");
+                return false;
+            }
             history_.clear();
             return true;
         }
@@ -217,13 +340,25 @@ namespace
         bool verify_native_drop()
         {
             auto* native = dynamic_cast<Win32Window*>(&window());
-            if (!native || !window().enable_file_drop(true)) { stop("Native file drop could not be enabled."); return false; }
+            if (!native || !window().enable_file_drop(true))
+            {
+                stop("Native file drop could not be enabled.");
+                return false;
+            }
             const wchar_t first[] = L"D:\\mesh.obj";
             const wchar_t second[] = L"D:\\模型.fbx";
             const std::size_t bytes = sizeof(DROPFILES) + sizeof(first) + sizeof(second) + sizeof(wchar_t);
             HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
             void* data = memory ? GlobalLock(memory) : nullptr;
-            if (!data) { if (memory) GlobalFree(memory); stop("Native drop fixture allocation failed."); return false; }
+            if (!data)
+            {
+                if (memory)
+                {
+                    GlobalFree(memory);
+                }
+                stop("Native drop fixture allocation failed.");
+                return false;
+            }
             DROPFILES drop{};
             drop.pFiles = sizeof(DROPFILES);
             drop.pt = POINT{140, 90};
@@ -237,9 +372,17 @@ namespace
             SendMessageW(native->get_native_hwnd(), WM_DROPFILES, reinterpret_cast<WPARAM>(memory), 0);
             FileDropEvent event;
             if (!window().take_file_drop(event) || event.position != Vector2(140, 90) || event.paths.size() != 2 ||
-                event.paths[0] != "D:\\mesh.obj" || event.paths[1] != u8"D:\\模型.fbx" || window().take_file_drop(event))
-            { stop("Native drop did not preserve owned UTF-8 paths and client coordinates."); return false; }
-            if (!window().enable_file_drop(false)) { stop("Native drop disable failed."); return false; }
+                event.paths[0] != "D:\\mesh.obj" || event.paths[1] != u8"D:\\模型.fbx" ||
+                window().take_file_drop(event))
+            {
+                stop("Native drop did not preserve owned UTF-8 paths and client coordinates.");
+                return false;
+            }
+            if (!window().enable_file_drop(false))
+            {
+                stop("Native drop disable failed.");
+                return false;
+            }
             return true;
         }
 #endif
@@ -251,12 +394,15 @@ namespace
             ImGui::Begin("Thumbnail integration");
             for (const auto& asset : workspace_.catalog().entries)
             {
-                if (!(asset.file.asset_id == first_) && !(asset.file.asset_id == second_)) continue;
+                if (!(asset.file.asset_id == first_) && !(asset.file.asset_id == second_))
+                {
+                    continue;
+                }
                 const auto view = pool_.request(asset);
                 if (view.texture_id.valid())
                 {
                     ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(view.texture_id.value())),
-                        ImVec2(thumbnail_default_size, thumbnail_default_size));
+                                 ImVec2(thumbnail_default_size, thumbnail_default_size));
                     ImGui::SameLine();
                 }
             }
@@ -265,7 +411,10 @@ namespace
             {
                 import_dialog_shown_ = true;
                 if (!import_dialog_.request("/Project", {"not-confirmed.obj"}))
-                { stop("Import confirmation dialog did not open."); return; }
+                {
+                    stop("Import confirmation dialog did not open.");
+                    return;
+                }
             }
             // Draw the actual settings modal at a small window size. Requesting
             // or drawing it must never import before an explicit confirmation.
@@ -273,13 +422,18 @@ namespace
             const auto unconfirmed = VirtualPath::parse("/Project/not-confirmed.asset");
             const auto state = workspace_.files().stat(unconfirmed.value());
             if (state.succeeded() || state.status().code != FileErrorCode::NotFound)
+            {
                 stop("Opening the import dialog wrote an unconfirmed asset.");
+            }
         }
         void on_shutdown() override
         {
             import_dialog_.clear();
             pool_.shutdown();
-            if (!flush_rendering_commands().succeeded()) state_.error = "Preview teardown did not drain.";
+            if (!flush_rendering_commands().succeeded())
+            {
+                state_.error = "Preview teardown did not drain.";
+            }
             factory_.release();
         }
 
@@ -301,7 +455,7 @@ namespace
         int phase_ = 0;
         double elapsed_ = 0;
     };
-}
+} // namespace
 
 int main()
 {
@@ -314,65 +468,108 @@ int main()
         static_mesh_import_destination("a.png", "/Project", "mesh", 1, destination, error) ||
         static_mesh_import_destination("a.obj", "/Project", "../mesh", 1, destination, error) ||
         static_mesh_import_destination("a.obj", "/Project", "mesh", 0, destination, error))
-    { std::cerr << "Import settings validation failed: " << error; return EXIT_FAILURE; }
+    {
+        std::cerr << "Import settings validation failed: " << error;
+        return EXIT_FAILURE;
+    }
     StaticMeshImportDialog dialog;
     if (dialog.request("/Engine", {"a.obj"}) || dialog.active() ||
         dialog.request("/Project", std::vector<std::string>(maximum_file_drop_paths + 1, "a.obj")) ||
         !dialog.request("/Project", {"a.obj"}) || !dialog.active() || dialog.request("/Project", {"b.obj"}))
-    { std::cerr << "Import transaction boundary failed."; return EXIT_FAILURE; }
+    {
+        std::cerr << "Import transaction boundary failed.";
+        return EXIT_FAILURE;
+    }
     dialog.clear();
-    if (dialog.active()) return EXIT_FAILURE;
+    if (dialog.active())
+    {
+        return EXIT_FAILURE;
+    }
     NativePlatformFile platform;
     AssetId first, second;
-    if (!AssetId::try_generate(first) || !AssetId::try_generate(second)) return EXIT_FAILURE;
+    if (!AssetId::try_generate(first) || !AssetId::try_generate(second))
+    {
+        return EXIT_FAILURE;
+    }
     const auto root = platform.join_relative(PhysicalPath(TOY3D_THUMBNAIL_TEST_ROOT), first.hex());
-    if (!root.succeeded() || !platform.create_directories(root.value()).succeeded()) return EXIT_FAILURE;
+    if (!root.succeeded() || !platform.create_directories(root.value()).succeeded())
+    {
+        return EXIT_FAILURE;
+    }
     EditorWorkspace workspace;
     EditorWorkspacePaths paths;
     paths.project_assets = root.value();
     paths.engine_assets = PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
     paths.editor_resources = PhysicalPath(TOY3D_EDITOR_RESOURCE_ROOT);
     paths.deployment = PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
-    if (!workspace.initialize(paths)) { std::cerr << workspace.error(); return EXIT_FAILURE; }
+    if (!workspace.initialize(paths))
+    {
+        std::cerr << workspace.error();
+        return EXIT_FAILURE;
+    }
     StaticMeshAssetGeometry geometry;
-    const std::vector<Vector3> positions{{-1,-1,-1}, {1,-1,-1}, {0,1,-1}, {0,0,1}};
+    const std::vector<Vector3> positions{{-1, -1, -1}, {1, -1, -1}, {0, 1, -1}, {0, 0, 1}};
     for (const auto& position : positions)
     {
         Vector3 normal;
-        if (!try_normalize(position, normal)) return EXIT_FAILURE;
+        if (!try_normalize(position, normal))
+        {
+            return EXIT_FAILURE;
+        }
         geometry.vertices.push_back({position, normal, Vector2(0)});
     }
-    geometry.indices = {0,2,1,0,1,3,0,3,2,1,2,3};
+    geometry.indices = {0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3};
     geometry.sections = {{0, 12, 0}};
     geometry.material_slots = {"Preview"};
     const auto a = encode_static_mesh_asset_pair(workspace.types(), first, geometry,
-        {{"future_editor_data", 2u, false, {1,2,3}}});
+                                                 {{"future_editor_data", 2u, false, {1, 2, 3}}});
     const auto b = encode_static_mesh_asset_pair(workspace.types(), second, geometry,
-        {{"future_editor_data", 2u, false, {1,2,3}}});
+                                                 {{"future_editor_data", 2u, false, {1, 2, 3}}});
     const auto path_a = VirtualPath::parse("/Project/first.asset");
     const auto path_b = VirtualPath::parse("/Project/second.asset");
     if (!a.succeeded() || !b.succeeded() ||
         !workspace.asset_pairs().publish(path_a.value(), a.value(), FilePublishMode::CreateNew).succeeded() ||
         !workspace.asset_pairs().publish(path_b.value(), b.value(), FilePublishMode::CreateNew).succeeded() ||
-        !workspace.refresh()) return EXIT_FAILURE;
+        !workspace.refresh())
+    {
+        return EXIT_FAILURE;
+    }
 #if WITH_MODEL_IMPORT
     const auto source = platform.join_relative(root.value(), "import-smoke.obj");
-    if (!source.succeeded() || !platform.write_text_utf8(source.value(),
-        "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", FileWriteMode::CreateNew).succeeded()) return EXIT_FAILURE;
+    if (!source.succeeded() ||
+        !platform.write_text_utf8(source.value(), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n", FileWriteMode::CreateNew)
+             .succeeded())
+    {
+        return EXIT_FAILURE;
+    }
     AssetId imported;
     StaticMeshImportOptions options;
     const std::size_t before = workspace.catalog().entries.size();
-    if (!import_static_mesh_to_workspace(workspace, source.value(), "/Project/import-smoke.asset", options, imported, error) ||
+    if (!import_static_mesh_to_workspace(workspace, source.value(), "/Project/import-smoke.asset", options, imported,
+                                         error) ||
         !imported.valid() || workspace.catalog().entries.size() != before + 1)
-    { std::cerr << "Import fixture failed: " << error << '\n'; return EXIT_FAILURE; }
+    {
+        std::cerr << "Import fixture failed: " << error << '\n';
+        return EXIT_FAILURE;
+    }
     AssetId rejected;
-    if (import_static_mesh_to_workspace(workspace, source.value(), "/Project/import-smoke.asset", options, rejected, error) ||
-        rejected.valid() || import_static_mesh_to_workspace(workspace, source.value(), "/Engine/import-smoke.asset", options, rejected, error))
-    { std::cerr << "Import overwrite or read-only boundary failed."; return EXIT_FAILURE; }
+    if (import_static_mesh_to_workspace(workspace, source.value(), "/Project/import-smoke.asset", options, rejected,
+                                        error) ||
+        rejected.valid() ||
+        import_static_mesh_to_workspace(workspace, source.value(), "/Engine/import-smoke.asset", options, rejected,
+                                        error))
+    {
+        std::cerr << "Import overwrite or read-only boundary failed.";
+        return EXIT_FAILURE;
+    }
     const auto imported_path = VirtualPath::parse("/Project/import-smoke.asset");
-    if (!workspace.asset_pairs().remove(imported_path.value()).succeeded() || !workspace.refresh()) return EXIT_FAILURE;
+    if (!workspace.asset_pairs().remove(imported_path.value()).succeeded() || !workspace.refresh())
+    {
+        return EXIT_FAILURE;
+    }
 #endif
-    CommandLineParser::get_instance().parser_args({"ThumbnailTests", "--Window.Width=720", "--Window.Height=480", "--Window.Title=Thumbnail Tests"});
+    CommandLineParser::get_instance().parser_args(
+        {"ThumbnailTests", "--Window.Width=720", "--Window.Height=480", "--Window.Title=Thumbnail Tests"});
     TestState state;
     {
         Engine engine;
@@ -390,7 +587,11 @@ int main()
         engine.exit();
     }
     std::cout << "Thumbnail artifacts: " << root.value().utf8() << '\n';
-    if (!state.complete || !state.error.empty()) { std::cerr << "Thumbnail integration failed: " << state.error << '\n'; return EXIT_FAILURE; }
+    if (!state.complete || !state.error.empty())
+    {
+        std::cerr << "Thumbnail integration failed: " << state.error << '\n';
+        return EXIT_FAILURE;
+    }
     std::cout << "Preview render, PNG persistence, opaque preservation, multi-image reload and save conflict passed.\n";
     return EXIT_SUCCESS;
 }

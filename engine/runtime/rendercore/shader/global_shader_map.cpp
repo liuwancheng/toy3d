@@ -27,8 +27,7 @@ namespace toy3d
                                        std::vector<GlobalShaderBindingRequirement> binding_requirements)
         : type_name_(std::move(type_name)), shader_name_(std::move(shader_name)), pass_name_(std::move(pass_name)),
           permutation_key_(permutation_key), program_kind_(program_kind), required_stages_(required_stages),
-          parameter_metadata_(parameter_metadata),
-          binding_requirements_(std::move(binding_requirements))
+          parameter_metadata_(parameter_metadata), binding_requirements_(std::move(binding_requirements))
     {
     }
 
@@ -91,8 +90,7 @@ namespace toy3d
             const RHIStatus metadata_status = validate_shader_parameters_metadata(type.parameter_metadata());
             if (!metadata_status)
             {
-                error = type_context(type) + " has invalid generated parameters metadata: " +
-                        metadata_status.message();
+                error = type_context(type) + " has invalid generated parameters metadata: " + metadata_status.message();
                 return false;
             }
             const bool has_compute = EnumHasAnyFlags(type.required_stages(), RHIShaderStageFlags::Compute);
@@ -132,12 +130,12 @@ namespace toy3d
                 error = type_context(type) + " loaded a Program with mismatched exact stages.";
                 return false;
             }
-            const RHIStatus metadata_status = validate_shader_parameters_metadata_against_schema(
-                type.parameter_metadata(), program.parameter_schema);
+            const RHIStatus metadata_status =
+                validate_shader_parameters_metadata_against_schema(type.parameter_metadata(), program.parameter_schema);
             if (!metadata_status)
             {
-                error = type_context(type) + " generated parameters do not match the loaded Shader artifact: " +
-                        metadata_status.message();
+                error = type_context(type) +
+                        " generated parameters do not match the loaded Shader artifact: " + metadata_status.message();
                 return false;
             }
             for (const GlobalShaderBindingRequirement& requirement : type.binding_requirements())
@@ -207,21 +205,38 @@ namespace toy3d
     GlobalShaderMapResult GlobalShaderMap::replace(const std::vector<ShaderMapProgramRef>& programs) const
     {
         if (programs.size() != programs_.size())
+        {
             return {nullptr, "Global Shader replacement requires the complete frozen type set."};
+        }
         GlobalShaderMap candidate(platform_);
         for (const auto& program : programs)
         {
-            if (!program) return {nullptr, "Global Shader replacement contains a null Program."};
+            if (!program)
+            {
+                return {nullptr, "Global Shader replacement contains a null Program."};
+            }
             const Entry* matched = nullptr;
             for (const auto& entry : programs_)
+            {
                 if (entry.second.type.shader_name() == program->data().shader_name &&
-                    entry.second.type.pass_name() == program->data().pass_name) matched = &entry.second;
-            if (!matched) return {nullptr, "Global Shader replacement contains an unregistered Program."};
+                    entry.second.type.pass_name() == program->data().pass_name)
+                {
+                    matched = &entry.second;
+                }
+            }
+            if (!matched)
+            {
+                return {nullptr, "Global Shader replacement contains an unregistered Program."};
+            }
             std::string error;
             if (!validate_program(matched->type, platform_, program->data(), error))
+            {
                 return {nullptr, error + " Rebuild the application if generated parameters changed."};
+            }
             if (!candidate.programs_.emplace(matched->type.type_name(), Entry{matched->type, program}).second)
+            {
                 return {nullptr, "Global Shader replacement contains duplicate Programs."};
+            }
         }
         return {std::make_shared<GlobalShaderMap>(std::move(candidate)), {}};
     }

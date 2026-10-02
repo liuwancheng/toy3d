@@ -143,7 +143,9 @@ namespace toy3d
             }
             const auto component = std::find_if(stream_components.begin(), stream_components.end(),
                                                 [&](const VertexStreamComponent& candidate)
-                                                { return candidate.attribute_id == shader_input.attribute_id; });
+                                                {
+                                                    return candidate.attribute_id == shader_input.attribute_id;
+                                                });
             shader::ReflectedInterfaceVariable::ScalarType expected_scalar_type =
                 shader::ReflectedInterfaceVariable::ScalarType::Float32;
             std::uint32_t expected_component_count = 0u;
@@ -163,7 +165,9 @@ namespace toy3d
 
         std::sort(matched_components.begin(), matched_components.end(),
                   [](const VertexStreamComponent* left, const VertexStreamComponent* right)
-                  { return left->stream_index < right->stream_index; });
+                  {
+                      return left->stream_index < right->stream_index;
+                  });
         std::uint32_t previous_stream = 0u;
         bool have_previous_stream = false;
         for (const VertexStreamComponent* component : matched_components)
@@ -185,7 +189,10 @@ namespace toy3d
         }
         std::sort(built_attributes.begin(), built_attributes.end(),
                   [](const RHIGraphicsPipelineDesc::VertexAttribute& left,
-                     const RHIGraphicsPipelineDesc::VertexAttribute& right) { return left.location < right.location; });
+                     const RHIGraphicsPipelineDesc::VertexAttribute& right)
+                  {
+                      return left.location < right.location;
+                  });
         vertex_layouts = std::move(built_layouts);
         vertex_attributes = std::move(built_attributes);
         vertex_bindings = std::move(built_bindings);

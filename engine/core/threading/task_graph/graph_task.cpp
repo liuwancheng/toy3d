@@ -16,11 +16,20 @@ namespace toy3d
             {
             }
 
-            NamedThread get_desired_thread() const { return desired_thread_; }
+            NamedThread get_desired_thread() const
+            {
+                return desired_thread_;
+            }
 
-            TaskPriority get_priority() const { return TaskPriority::Normal; }
+            TaskPriority get_priority() const
+            {
+                return TaskPriority::Normal;
+            }
 
-            SubsequentsMode get_subsequents_mode() const { return mode_; }
+            SubsequentsMode get_subsequents_mode() const
+            {
+                return mode_;
+            }
 
             void do_task(NamedThread current_thread, const GraphEventRef& completion_event)
             {

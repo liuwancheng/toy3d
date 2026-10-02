@@ -19,10 +19,11 @@ namespace toy3d
             return status;
         }
 
-
     } // namespace
 
-    StorePath::StorePath(std::string utf8_path) : utf8_path_(std::move(utf8_path)) {}
+    StorePath::StorePath(std::string utf8_path) : utf8_path_(std::move(utf8_path))
+    {
+    }
 
     FileResult<StorePath> StorePath::parse(std::string utf8_path)
     {

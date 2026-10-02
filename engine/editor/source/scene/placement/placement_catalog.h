@@ -41,4 +41,4 @@ namespace toy3d
     const PlacementItem* find_placement_item(PlacementItemId id);
     constexpr const char* ACTOR_TYPE_DRAG_PAYLOAD = "TOY3D_ACTOR_TYPE";
     constexpr const char* PLACEMENT_DRAG_PAYLOAD = "TOY3D_PLACE_ACTOR";
-}
+} // namespace toy3d

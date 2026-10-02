@@ -30,9 +30,8 @@ namespace toy3d
 
     VulkanPhysicalBindingSources make_vulkan_physical_binding_sources(
         const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings);
-    std::string make_vulkan_binding_packet_cache_key(
-        const VulkanBindingLayout& layout, std::uint32_t physical_set,
-        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings);
+    std::string make_vulkan_binding_packet_cache_key(const VulkanBindingLayout& layout, std::uint32_t physical_set,
+                                                     const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings);
     RHIResult<std::vector<std::uint32_t>> collect_vulkan_dynamic_uniform_offsets(
         const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings);
 
@@ -40,6 +39,6 @@ namespace toy3d
                                                                 const RHIBindingLayoutDesc& desc);
     RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_vulkan_binding_packet(
         const RHIDevice& owner, VkDevice device, VulkanDescriptorPoolManager& descriptor_pool_manager,
-        const std::shared_ptr<VulkanBindingLayout>& layout,
-        std::uint32_t physical_set, const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings);
+        const std::shared_ptr<VulkanBindingLayout>& layout, std::uint32_t physical_set,
+        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings);
 } // namespace toy3d

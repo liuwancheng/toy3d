@@ -45,8 +45,11 @@ namespace toy3d
 
         auto payload = std::make_shared<VulkanAllocatedBuffer>(std::move(allocated_buffer));
         VulkanMemoryManager* const memory_manager = memory_manager_instance;
-        const RHIStatus status = deletion_queue_instance->enqueue(last_use_value, [memory_manager, payload](VkDevice)
-                                                                  { memory_manager->destroy_buffer(*payload); });
+        const RHIStatus status = deletion_queue_instance->enqueue(last_use_value,
+                                                                  [memory_manager, payload](VkDevice)
+                                                                  {
+                                                                      memory_manager->destroy_buffer(*payload);
+                                                                  });
         if (!status)
         {
             TOY_LOG_ERROR("Failed to defer Vulkan buffer deletion: {}", status.message());
@@ -82,10 +85,9 @@ namespace toy3d
     // --------------------------------------------------------------------------
     // VulkanReadback: CPU-visible pixel data and GPU-completion lifetime
     // --------------------------------------------------------------------------
-    VulkanReadback::VulkanReadback(const RHIDevice& owner, std::string debug_name,
-                                   VulkanMemoryManager& memory_manager,
-                                   VulkanDeferredDeletionQueue& deletion_queue,
-                                   VulkanAllocatedBuffer allocated_buffer, PixelFormat format, Extent extent)
+    VulkanReadback::VulkanReadback(const RHIDevice& owner, std::string debug_name, VulkanMemoryManager& memory_manager,
+                                   VulkanDeferredDeletionQueue& deletion_queue, VulkanAllocatedBuffer allocated_buffer,
+                                   PixelFormat format, Extent extent)
         : RHIReadback(owner, std::move(debug_name), format, extent), memory_manager_instance(&memory_manager),
           deletion_queue_instance(&deletion_queue), allocated_buffer(std::move(allocated_buffer))
     {
@@ -94,7 +96,9 @@ namespace toy3d
     VulkanReadback::~VulkanReadback()
     {
         if (memory_manager_instance == nullptr)
+        {
             return;
+        }
         const RHIQueueCompletionValue last_use = last_use_completion_value();
         if (last_use == 0 || deletion_queue_instance == nullptr)
         {
@@ -103,8 +107,11 @@ namespace toy3d
         }
         auto payload = std::make_shared<VulkanAllocatedBuffer>(std::move(allocated_buffer));
         VulkanMemoryManager* const memory_manager = memory_manager_instance;
-        const RHIStatus status = deletion_queue_instance->enqueue(last_use, [memory_manager, payload](VkDevice)
-                                                                  { memory_manager->destroy_buffer(*payload); });
+        const RHIStatus status = deletion_queue_instance->enqueue(last_use,
+                                                                  [memory_manager, payload](VkDevice)
+                                                                  {
+                                                                      memory_manager->destroy_buffer(*payload);
+                                                                  });
         if (!status)
         {
             TOY_LOG_ERROR("Failed to defer Vulkan readback deletion: {}", status.message());
@@ -119,10 +126,12 @@ namespace toy3d
             return RHIResult<std::uint32_t>::failure(RHIErrorCode::BackendFailure,
                                                      "Vulkan readback allocation is not mapped.");
         }
-        const RHIStatus status = memory_manager_instance->invalidate_allocation(
-            allocated_buffer.allocation, 0, sizeof(std::uint32_t));
+        const RHIStatus status =
+            memory_manager_instance->invalidate_allocation(allocated_buffer.allocation, 0, sizeof(std::uint32_t));
         if (!status)
+        {
             return RHIResult<std::uint32_t>::failure(status.code(), status.message());
+        }
         std::uint32_t result = 0;
         std::memcpy(&result, allocated_buffer.allocation.mapped_data, sizeof(result));
         return RHIResult<std::uint32_t>::success(result);
@@ -130,11 +139,18 @@ namespace toy3d
 
     RHIResult<RHITextureReadbackData> VulkanReadback::read_texture_impl() const
     {
-        if (readback_format() == PixelFormat::R32UInt || !memory_manager_instance || !allocated_buffer.allocation.mapped_data)
-            return RHIResult<RHITextureReadbackData>::failure(RHIErrorCode::InvalidArgument, "Color readback is not mapped.");
+        if (readback_format() == PixelFormat::R32UInt || !memory_manager_instance ||
+            !allocated_buffer.allocation.mapped_data)
+        {
+            return RHIResult<RHITextureReadbackData>::failure(RHIErrorCode::InvalidArgument,
+                                                              "Color readback is not mapped.");
+        }
         const std::size_t size = static_cast<std::size_t>(readback_extent().width) * readback_extent().height * 4;
         const auto status = memory_manager_instance->invalidate_allocation(allocated_buffer.allocation, 0, size);
-        if (!status) return RHIResult<RHITextureReadbackData>::failure(status.code(), status.message());
+        if (!status)
+        {
+            return RHIResult<RHITextureReadbackData>::failure(status.code(), status.message());
+        }
         RHITextureReadbackData data;
         data.format = readback_format();
         data.extent = readback_extent();
@@ -183,8 +199,11 @@ namespace toy3d
 
         auto payload = std::make_shared<VulkanAllocatedImage>(std::move(allocated_image));
         VulkanMemoryManager* const memory_manager = memory_manager_instance;
-        const RHIStatus status = deletion_queue_instance->enqueue(last_use_value, [memory_manager, payload](VkDevice)
-                                                                  { memory_manager->destroy_image(*payload); });
+        const RHIStatus status = deletion_queue_instance->enqueue(last_use_value,
+                                                                  [memory_manager, payload](VkDevice)
+                                                                  {
+                                                                      memory_manager->destroy_image(*payload);
+                                                                  });
         if (!status)
         {
             TOY_LOG_ERROR("Failed to defer Vulkan image deletion: {}", status.message());
@@ -374,8 +393,7 @@ namespace toy3d
     VulkanBindingLayout::VulkanBindingLayout(
         const RHIDevice& owner, RHIBindingLayoutDesc desc, VkDevice device,
         std::array<VkDescriptorSetLayout, physical_set_count> descriptor_set_layouts)
-        : RHIBindingLayout(owner, std::move(desc)), vk_device(device),
-          vk_descriptor_set_layouts(descriptor_set_layouts)
+        : RHIBindingLayout(owner, std::move(desc)), vk_device(device), vk_descriptor_set_layouts(descriptor_set_layouts)
     {
     }
 
@@ -450,10 +468,8 @@ namespace toy3d
     // VulkanBindingPacket: descriptor-set page and binding retention
     // --------------------------------------------------------------------------
     VulkanBindingPacket::VulkanBindingPacket(std::shared_ptr<VulkanDescriptorPoolPage> descriptor_page,
-                                             VkDescriptorSet descriptor_set,
-                                             std::vector<RHIBindingSetRef> logical_sets)
-        : pool_page(std::move(descriptor_page)), vk_descriptor_set(descriptor_set),
-          source_sets(std::move(logical_sets))
+                                             VkDescriptorSet descriptor_set, std::vector<RHIBindingSetRef> logical_sets)
+        : pool_page(std::move(descriptor_page)), vk_descriptor_set(descriptor_set), source_sets(std::move(logical_sets))
     {
     }
 

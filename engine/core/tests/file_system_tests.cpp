@@ -49,12 +49,18 @@ namespace
     {
         fs::path path;
 
-        explicit TestDirectory(fs::path value) : path(std::move(value)) { fs::create_directory(path); }
+        explicit TestDirectory(fs::path value) : path(std::move(value))
+        {
+            fs::create_directory(path);
+        }
 
         TestDirectory(const TestDirectory&) = delete;
         TestDirectory& operator=(const TestDirectory&) = delete;
 
-        TestDirectory(TestDirectory&& other) noexcept : path(std::move(other.path)) { other.path.clear(); }
+        TestDirectory(TestDirectory&& other) noexcept : path(std::move(other.path))
+        {
+            other.path.clear();
+        }
 
         ~TestDirectory()
         {
@@ -165,7 +171,9 @@ namespace
         auto opened = files.open(path, toy3d::FileOpenMode::Read);
         check(opened.succeeded(), "read handle must open an existing file");
         if (!opened.succeeded())
+        {
             return;
+        }
         std::unique_ptr<toy3d::FileHandle> handle = std::move(opened.value());
         check(handle->size().succeeded() && handle->size().value() == expected.size(),
               "handle size must report the file byte count");
@@ -205,7 +213,9 @@ namespace
                 auto written = write_handle->write(expected.data() + offset, expected.size() - offset);
                 check(written.succeeded() && written.value() != 0, "handle writes must make progress");
                 if (!written.succeeded() || written.value() == 0)
+                {
                     break;
+                }
                 offset += written.value();
             }
             check(write_handle->flush().succeeded(), "writable handles must flush explicitly");
@@ -228,7 +238,9 @@ namespace
         auto opened = files.open(path, toy3d::FileOpenMode::Read);
         check(opened.succeeded(), "shared range-read handle must open");
         if (!opened.succeeded())
+        {
             return;
+        }
         std::unique_ptr<toy3d::FileHandle> handle = std::move(opened.value());
 
         std::atomic<bool> succeeded{true};
@@ -253,7 +265,9 @@ namespace
                 });
         }
         for (std::thread& thread : threads)
+        {
             thread.join();
+        }
         check(succeeded.load(), "read_at calls on one read handle must be concurrency-safe");
     }
 
@@ -401,7 +415,9 @@ namespace
         const auto deny = directory_store(files, mount_root, false, toy3d::DirectorySymlinkPolicy::Deny);
         const auto allow = directory_store(files, mount_root, false, toy3d::DirectorySymlinkPolicy::AllowWithinRoot);
         if (deny == nullptr || allow == nullptr)
+        {
             return;
+        }
 
         check(deny->stat(store_path("inside_link")).status().code == toy3d::FileErrorCode::OutsideMount,
               "deny policy must reject symlink traversal");
@@ -428,7 +444,9 @@ namespace
     class FailingFileStore final : public toy3d::FileStore
     {
       public:
-        explicit FailingFileStore(toy3d::FileErrorCode code) : code_(code) {}
+        explicit FailingFileStore(toy3d::FileErrorCode code) : code_(code)
+        {
+        }
 
         toy3d::FileStoreCapabilities capabilities() const override
         {
@@ -453,9 +471,15 @@ namespace
             return toy3d::FileResult<std::vector<toy3d::StoreDirectoryEntry>>(failure("enumerate"));
         }
 
-        toy3d::FileStatus create_directories(const toy3d::StorePath&) override { return failure("create_directories"); }
+        toy3d::FileStatus create_directories(const toy3d::StorePath&) override
+        {
+            return failure("create_directories");
+        }
 
-        toy3d::FileStatus remove_file(const toy3d::StorePath&) override { return failure("remove_file"); }
+        toy3d::FileStatus remove_file(const toy3d::StorePath&) override
+        {
+            return failure("remove_file");
+        }
 
         toy3d::FileStatus remove_empty_directory(const toy3d::StorePath&) override
         {
@@ -512,7 +536,9 @@ namespace
 
         const std::shared_ptr<toy3d::DirectoryFileStore> writable = directory_store(files, root, true);
         if (writable == nullptr)
+        {
             return;
+        }
         check(writable->stat(store_path("folder/entry.bin")).succeeded(),
               "directory store stat must resolve store-relative paths");
         const toy3d::FileResult<std::vector<toy3d::StoreDirectoryEntry>> entries =
@@ -524,7 +550,9 @@ namespace
 
         const std::shared_ptr<toy3d::DirectoryFileStore> read_only = directory_store(files, root, false);
         if (read_only == nullptr)
+        {
             return;
+        }
         check(read_only->open(store_path("new.bin"), toy3d::FileOpenMode::WriteNew).status().code ==
                   toy3d::FileErrorCode::ReadOnly,
               "read-only stores must reject writable handles");
@@ -571,7 +599,9 @@ namespace
         const auto lower = directory_store(files, lower_root, false);
         const auto nested = directory_store(files, nested_root, false);
         if (upper == nullptr || writable == nullptr || lower == nullptr || nested == nullptr)
+        {
             return;
+        }
 
         toy3d::FileSystem file_system;
         check(file_system.add_mount(file_mount("/Content", upper, 20)).succeeded(),
@@ -636,7 +666,9 @@ namespace
         if (entries.succeeded())
         {
             for (const toy3d::VirtualDirectoryEntry& entry : entries.value())
+            {
                 names.push_back(entry.name);
+            }
         }
         check(entries.succeeded() && names == expected_names,
               "overlay enumeration must merge names with stable UTF-8 ordering");
@@ -663,7 +695,9 @@ namespace
               "fallback fixture must be written");
         const auto lower = directory_store(files, lower_root, false);
         if (lower == nullptr)
+        {
             return;
+        }
         const auto failing = std::make_shared<FailingFileStore>(toy3d::FileErrorCode::IoError);
 
         toy3d::FileSystem file_system;
@@ -685,16 +719,21 @@ namespace
         TestDirectory directory = make_test_directory();
         toy3d::NativePlatformFile files;
         fs::path nested = directory.path;
-        for (unsigned int depth = 0u; depth < 6u; ++depth) nested /= std::string(48u, 'a' + depth);
+        for (unsigned int depth = 0u; depth < 6u; ++depth)
+        {
+            nested /= std::string(48u, 'a' + depth);
+        }
         check(files.create_directories(physical(nested)).succeeded(), "long native directory creation");
         const auto first = physical(nested / "source.bin");
         const auto second = physical(nested / "destination.bin");
         check(first.utf8().size() > 260u, "fixture must exceed Windows MAX_PATH");
-        check(files.write_text_utf8(first, "original", toy3d::FileWriteMode::CreateNew).succeeded(), "long native file create");
+        check(files.write_text_utf8(first, "original", toy3d::FileWriteMode::CreateNew).succeeded(),
+              "long native file create");
         const auto read = files.read_text_utf8(first);
         check(read.succeeded() && read.value() == "original", "long native file read");
         check(files.rename_no_replace(first, second).succeeded(), "long native no-replace rename");
-        check(files.write_text_utf8(first, "replacement", toy3d::FileWriteMode::CreateNew).succeeded(), "long native replacement candidate");
+        check(files.write_text_utf8(first, "replacement", toy3d::FileWriteMode::CreateNew).succeeded(),
+              "long native replacement candidate");
         check(files.replace(first, second).succeeded(), "long native replace");
         const auto replaced = files.read_text_utf8(second);
         check(replaced.succeeded() && replaced.value() == "replacement", "long native replacement read");

@@ -26,9 +26,16 @@ namespace
     class TestPlatformInput final : public toy3d::IPlatformInput
     {
       public:
-        bool init() override { return true; }
-        void exit() override {}
-        void update() override {}
+        bool init() override
+        {
+            return true;
+        }
+        void exit() override
+        {
+        }
+        void update() override
+        {
+        }
         toy3d::PlatformInputCapabilities capabilities() const noexcept override
         {
             return {true, true, true, true, true};
@@ -38,13 +45,29 @@ namespace
     class TestWindow final : public toy3d::IWindow
     {
       public:
-        TestWindow() { platform_input = std::make_unique<TestPlatformInput>(); }
+        TestWindow()
+        {
+            platform_input = std::make_unique<TestPlatformInput>();
+        }
 
-        bool should_close() override { return false; }
-        void process_events() override {}
-        void close() override {}
-        toy3d::Extent get_display_size() const override { return display_; }
-        toy3d::Extent get_framebuffer_size() const override { return framebuffer_; }
+        bool should_close() override
+        {
+            return false;
+        }
+        void process_events() override
+        {
+        }
+        void close() override
+        {
+        }
+        toy3d::Extent get_display_size() const override
+        {
+            return display_;
+        }
+        toy3d::Extent get_framebuffer_size() const override
+        {
+            return framebuffer_;
+        }
 
         void set_extents(toy3d::Extent display, toy3d::Extent framebuffer)
         {
@@ -81,7 +104,10 @@ int main()
     InputBindingContext& context = input.create_binding_context("imgui_test");
     context.create_action("keyboard")
         .add_binding(KeyCode::A, KeyStatus::Pressed,
-                     [&keyboard_callbacks](const InputEvent&) { ++keyboard_callbacks; });
+                     [&keyboard_callbacks](const InputEvent&)
+                     {
+                         ++keyboard_callbacks;
+                     });
     input.activate_context("imgui_test", true);
     input.set_capture_policy({true, false, false});
     KeyEvent key_pressed;
@@ -154,25 +180,29 @@ int main()
         reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value())),
         ImVec2(0.0F, 0.0F), ImVec2(20.0F, 20.0F));
     ImGuiSnapshotResult viewport_texture = imgui.end_frame(IMGUI_SCENE_VIEWPORT_TEXTURE_ID);
-    check(viewport_texture.succeeded() && viewport_texture.draw_data &&
-              !viewport_texture.draw_data->commands.empty() &&
+    check(viewport_texture.succeeded() && viewport_texture.draw_data && !viewport_texture.draw_data->commands.empty() &&
               viewport_texture.draw_data->commands.back().texture_id == IMGUI_SCENE_VIEWPORT_TEXTURE_ID,
           "registered viewport texture identity must survive the UI snapshot");
 
     check(imgui.begin_frame(window, 1.0 / 60.0), "multiple logical image frame must start");
     ImGui::GetForegroundDrawList()->AddImage(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(3)),
-        ImVec2(0, 0), ImVec2(20, 20));
+                                             ImVec2(0, 0), ImVec2(20, 20));
     ImGui::GetForegroundDrawList()->AddImage(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(4)),
-        ImVec2(30, 0), ImVec2(50, 20));
+                                             ImVec2(30, 0), ImVec2(50, 20));
     const auto images = imgui.end_frame({}, {ImGuiTextureId(3), ImGuiTextureId(4)});
     check(images.succeeded() && images.draw_data && images.draw_data->commands.size() >= 2 &&
-        images.draw_data->commands[images.draw_data->commands.size() - 2].texture_id == ImGuiTextureId(3) &&
-        images.draw_data->commands.back().texture_id == ImGuiTextureId(4), "multiple IDs must preserve image command identity");
+              images.draw_data->commands[images.draw_data->commands.size() - 2].texture_id == ImGuiTextureId(3) &&
+              images.draw_data->commands.back().texture_id == ImGuiTextureId(4),
+          "multiple IDs must preserve image command identity");
     check(imgui.begin_frame(window, 1.0 / 60.0), "invalid registry frame must start");
     const auto duplicates = imgui.end_frame({}, {ImGuiTextureId(3), ImGuiTextureId(3)});
     check(!duplicates.succeeded(), "duplicate logical IDs must reject registry publication");
     check(imgui.begin_frame(window, 1.0 / 60.0), "callback rejection test frame must start");
-    ImGui::GetForegroundDrawList()->AddCallback([](const ImDrawList*, const ImDrawCmd*) {}, nullptr);
+    ImGui::GetForegroundDrawList()->AddCallback(
+        [](const ImDrawList*, const ImDrawCmd*)
+        {
+        },
+        nullptr);
     ImGuiSnapshotResult callback = imgui.end_frame();
     check(!callback.succeeded() && callback.draw_data == nullptr,
           "ordinary render callbacks must reject the whole UI payload");

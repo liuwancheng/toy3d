@@ -11,6 +11,9 @@ namespace toy3d
 
         virtual bool init() override;
         virtual void exit() override;
-        virtual const char* get_platform_name() const { return "WindowsPlatform"; };
+        virtual const char* get_platform_name() const
+        {
+            return "WindowsPlatform";
+        };
     };
 } // namespace toy3d

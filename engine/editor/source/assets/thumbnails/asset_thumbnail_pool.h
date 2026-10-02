@@ -39,7 +39,16 @@ namespace toy3d
         void shutdown();
 
       private:
-        enum class Stage { Queued, Loading, AwaitGpu, SaveQueued, Saving, Ready, Failed };
+        enum class Stage
+        {
+            Queued,
+            Loading,
+            AwaitGpu,
+            SaveQueued,
+            Saving,
+            Ready,
+            Failed
+        };
         struct Entry
         {
             AssetId id;
@@ -77,4 +86,4 @@ namespace toy3d
         std::uint64_t next_texture_ = 3;
         bool initialized_ = false;
     };
-}
+} // namespace toy3d

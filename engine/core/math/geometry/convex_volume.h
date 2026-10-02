@@ -13,7 +13,10 @@ namespace toy3d
       public:
         constexpr ConvexVolume() = default;
 
-        constexpr std::size_t plane_count() const { return plane_count_; }
+        constexpr std::size_t plane_count() const
+        {
+            return plane_count_;
+        }
 
         bool contains_point(const Vector3& point) const;
         bool intersects_axis_aligned_bounds(const Vector3& minimum, const Vector3& maximum) const;

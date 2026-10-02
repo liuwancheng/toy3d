@@ -14,15 +14,25 @@ namespace toy3d
         bool should_close() final;
         void process_events() final;
         void close() final;
-        bool cancel_close() override { b_close = false; return true; }
+        bool cancel_close() override
+        {
+            b_close = false;
+            return true;
+        }
         bool enable_file_drop(bool enabled) override;
         void receive_file_drop(HDROP drop);
         void resize(uint32_t _width, uint32_t _height) final;
         Extent get_display_size() const final;
         Extent get_framebuffer_size() const final;
 
-        HWND get_native_hwnd() const { return hWnd; }
-        HINSTANCE get_native_hinstance() const { return hInstance; }
+        HWND get_native_hwnd() const
+        {
+            return hWnd;
+        }
+        HINSTANCE get_native_hinstance() const
+        {
+            return hInstance;
+        }
 
       private:
         void create_window();

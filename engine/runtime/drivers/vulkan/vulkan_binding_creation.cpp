@@ -25,7 +25,7 @@ namespace toy3d
         VkDescriptorType binding_descriptor_type(RHIResourceBindingType type)
         {
             return type == RHIResourceBindingType::UniformBuffer ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-                                                                  : to_vk_descriptor_type(type);
+                                                                 : to_vk_descriptor_type(type);
         }
     } // namespace
 
@@ -54,16 +54,17 @@ namespace toy3d
         return physical_sources;
     }
 
-    std::string make_vulkan_binding_packet_cache_key(
-        const VulkanBindingLayout& layout, std::uint32_t physical_set,
-        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
+    std::string make_vulkan_binding_packet_cache_key(const VulkanBindingLayout& layout, std::uint32_t physical_set,
+                                                     const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
     {
         std::string key;
         append_packet_key(key, physical_set);
         for (const RHIBindingLayoutEntry& entry : layout.desc().entries)
         {
             if (VulkanBindingLayout::physical_set(entry.group) != physical_set)
+            {
                 continue;
+            }
             append_packet_key(key, entry.binding_id);
             append_packet_key(key, entry.group);
             append_packet_key(key, entry.target_binding);
@@ -191,8 +192,8 @@ namespace toy3d
 
     RHIResult<std::shared_ptr<VulkanBindingPacket>> materialize_vulkan_binding_packet(
         const RHIDevice& owner, VkDevice device, VulkanDescriptorPoolManager& descriptor_pool_manager,
-        const std::shared_ptr<VulkanBindingLayout>& layout,
-        std::uint32_t physical_set, const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
+        const std::shared_ptr<VulkanBindingLayout>& layout, std::uint32_t physical_set,
+        const std::vector<rhi_detail::ResolvedBinding>& resolved_bindings)
     {
         if (device == VK_NULL_HANDLE)
         {
@@ -232,8 +233,10 @@ namespace toy3d
         const VkDescriptorSetLayout set_layout = layout->descriptor_set_layout(representative_group);
         auto descriptor_allocation = descriptor_pool_manager.allocate(set_layout);
         if (!descriptor_allocation)
-            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                descriptor_allocation.status().code(), descriptor_allocation.status().message());
+        {
+            return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(descriptor_allocation.status().code(),
+                                                                            descriptor_allocation.status().message());
+        }
         const VkDescriptorSet descriptor_set = descriptor_allocation.value().descriptor_set;
 
         std::vector<VkDescriptorBufferInfo> buffer_infos;
@@ -254,7 +257,8 @@ namespace toy3d
                 if (!buffer || value.buffer_offset > std::numeric_limits<std::uint32_t>::max())
                 {
                     return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
-                        RHIErrorCode::InvalidArgument, "Vulkan uniform binding has an invalid backing buffer or offset.");
+                        RHIErrorCode::InvalidArgument,
+                        "Vulkan uniform binding has an invalid backing buffer or offset.");
                 }
                 buffer_infos.push_back({buffer->buffer(), 0, resolved.layout.data_size});
                 buffer_info = &buffer_infos.back();
@@ -298,8 +302,7 @@ namespace toy3d
             writes.push_back(write);
         }
         vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
-        return RHIResult<std::shared_ptr<VulkanBindingPacket>>::success(
-            std::make_shared<VulkanBindingPacket>(descriptor_allocation.value().page, descriptor_set,
-                                                  std::move(source_sets)));
+        return RHIResult<std::shared_ptr<VulkanBindingPacket>>::success(std::make_shared<VulkanBindingPacket>(
+            descriptor_allocation.value().page, descriptor_set, std::move(source_sets)));
     }
 } // namespace toy3d

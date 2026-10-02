@@ -240,10 +240,12 @@ namespace toy3d
             VulkanTextureSubresourceState state = texture->subresource_state(aspect, mip, layer);
             if (found != texture_states.end())
             {
-                const auto entry = std::find_if(
-                    found->second.entries.begin(), found->second.entries.end(),
-                    [aspect, mip, layer](const TextureState::Entry& candidate)
-                    { return candidate.aspect == aspect && candidate.mip == mip && candidate.layer == layer; });
+                const auto entry = std::find_if(found->second.entries.begin(), found->second.entries.end(),
+                                                [aspect, mip, layer](const TextureState::Entry& candidate)
+                                                {
+                                                    return candidate.aspect == aspect && candidate.mip == mip &&
+                                                           candidate.layer == layer;
+                                                });
                 if (entry != found->second.entries.end())
                 {
                     state = entry->final;
@@ -315,10 +317,12 @@ namespace toy3d
             range.layer_count == RHI_ALL_LAYERS ? texture->desc().array_layers - range.first_layer : range.layer_count;
         const auto update = [&](RHITextureAspect aspect, std::uint32_t mip, std::uint32_t layer)
         {
-            const auto entry = std::find_if(
-                tracked.entries.begin(), tracked.entries.end(),
-                [aspect, mip, layer](const TextureState::Entry& candidate)
-                { return candidate.aspect == aspect && candidate.mip == mip && candidate.layer == layer; });
+            const auto entry =
+                std::find_if(tracked.entries.begin(), tracked.entries.end(),
+                             [aspect, mip, layer](const TextureState::Entry& candidate)
+                             {
+                                 return candidate.aspect == aspect && candidate.mip == mip && candidate.layer == layer;
+                             });
             if (entry == tracked.entries.end())
             {
                 const VulkanTextureSubresourceState initial = texture->subresource_state(aspect, mip, layer);
@@ -382,7 +386,10 @@ namespace toy3d
         const auto other_retains = [&other](const RHIResource* resource)
         {
             return std::any_of(other.resources.begin(), other.resources.end(),
-                               [resource](const RHIResourceRef& retained) { return retained.get() == resource; });
+                               [resource](const RHIResourceRef& retained)
+                               {
+                                   return retained.get() == resource;
+                               });
         };
         for (const auto& entry : buffer_states)
         {
@@ -452,8 +459,8 @@ namespace toy3d
                                                                VulkanViewportContext& viewport,
                                                                VkCommandPool command_pool, std::uint64_t frame_id)
         : RHIGraphicsCommandContext(owner), owner_device(owner), vk_device(device), upload_manager(upload_manager),
-          descriptor_pool_manager(descriptor_pool_manager),
-          viewport_context(&viewport), vk_command_pool(command_pool), recording_frame_id(frame_id)
+          descriptor_pool_manager(descriptor_pool_manager), viewport_context(&viewport), vk_command_pool(command_pool),
+          recording_frame_id(frame_id)
     {
     }
 
@@ -462,8 +469,7 @@ namespace toy3d
                                                                VulkanDescriptorPoolManager& descriptor_pool_manager,
                                                                std::shared_ptr<VulkanCommandPool> command_pool)
         : RHIGraphicsCommandContext(owner), owner_device(owner), vk_device(device), upload_manager(upload_manager),
-          descriptor_pool_manager(descriptor_pool_manager),
-          owned_command_pool(std::move(command_pool)),
+          descriptor_pool_manager(descriptor_pool_manager), owned_command_pool(std::move(command_pool)),
           vk_command_pool(owned_command_pool ? owned_command_pool->handle() : VK_NULL_HANDLE)
     {
     }
@@ -805,8 +811,7 @@ namespace toy3d
         auto buffer = std::make_shared<VulkanBuffer>(owner_device, std::move(buffer_desc), upload.value().page,
                                                      RHIAccess::UniformBuffer);
         recording_command_list->retain_upload_page(upload.value().page);
-        return RHIResult<RHIUniformBufferSlice>::success(
-            {std::move(buffer), upload.value().offset, desc.source.size});
+        return RHIResult<RHIUniformBufferSlice>::success({std::move(buffer), upload.value().offset, desc.source.size});
     }
 
     RHIStatus VulkanGraphicsCommandContext::copy_texture_impl(const RHITextureCopyDesc& desc)
@@ -882,7 +887,9 @@ namespace toy3d
     {
         const RHIStatus status = require_recording();
         if (!status)
+        {
             return status;
+        }
         if (active_render_pass)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -895,8 +902,7 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Vulkan pixel readback requires Vulkan resources.");
         }
-        const RHISubresourceRange source_range{RHITextureAspect::Color, desc.source.mip, 1,
-                                               desc.source.layer, 1};
+        const RHISubresourceRange source_range{RHITextureAspect::Color, desc.source.mip, 1, desc.source.layer, 1};
         const auto source_state = recording_command_list->tracked_texture_state(source, source_range);
         if (!source_state || source_state.value().access != RHIAccess::CopySource)
         {
@@ -916,8 +922,8 @@ namespace toy3d
         region.imageOffset = {static_cast<std::int32_t>(desc.source.offset.x),
                               static_cast<std::int32_t>(desc.source.offset.y), 0};
         region.imageExtent = {1, 1, 1};
-        vkCmdCopyImageToBuffer(vk_command_buffer, source->image(), source_state.value().layout,
-                               destination->buffer(), 1, &region);
+        vkCmdCopyImageToBuffer(vk_command_buffer, source->image(), source_state.value().layout, destination->buffer(),
+                               1, &region);
         recording_command_list->retain_resource(desc.source.texture);
         recording_command_list->retain_resource(desc.destination);
         return RHIStatus::success();
@@ -927,7 +933,9 @@ namespace toy3d
     {
         const RHIStatus status = require_recording();
         if (!status)
+        {
             return status;
+        }
         if (active_render_pass)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -940,8 +948,7 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Vulkan color readback requires Vulkan resources.");
         }
-        const RHISubresourceRange source_range{RHITextureAspect::Color, desc.source.mip, 1,
-                                               desc.source.layer, 1};
+        const RHISubresourceRange source_range{RHITextureAspect::Color, desc.source.mip, 1, desc.source.layer, 1};
         const auto source_state = recording_command_list->tracked_texture_state(source, source_range);
         if (!source_state || source_state.value().access != RHIAccess::CopySource)
         {
@@ -961,8 +968,8 @@ namespace toy3d
         region.imageOffset = {static_cast<std::int32_t>(desc.source.offset.x),
                               static_cast<std::int32_t>(desc.source.offset.y), 0};
         region.imageExtent = {desc.extent.width, desc.extent.height, 1};
-        vkCmdCopyImageToBuffer(vk_command_buffer, source->image(), source_state.value().layout,
-                               destination->buffer(), 1, &region);
+        vkCmdCopyImageToBuffer(vk_command_buffer, source->image(), source_state.value().layout, destination->buffer(),
+                               1, &region);
         recording_command_list->retain_resource(desc.source.texture);
         recording_command_list->retain_resource(desc.destination);
         return RHIStatus::success();
@@ -1439,8 +1446,7 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus VulkanGraphicsCommandContext::set_vertex_buffers_impl(
-        const std::vector<RHIVertexBufferBinding>& bindings)
+    RHIStatus VulkanGraphicsCommandContext::set_vertex_buffers_impl(const std::vector<RHIVertexBufferBinding>& bindings)
     {
         const RHIStatus status = require_recording();
         if (!status)

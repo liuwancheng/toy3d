@@ -21,7 +21,9 @@ namespace toy3d
     class RHIQueue : public RHIObject
     {
       public:
-        explicit RHIQueue(const RHIDevice& owner) : RHIObject(owner) {}
+        explicit RHIQueue(const RHIDevice& owner) : RHIObject(owner)
+        {
+        }
         ~RHIQueue() override = default;
 
         RHIQueue(const RHIQueue&) = delete;

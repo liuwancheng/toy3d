@@ -33,7 +33,11 @@ namespace toy3d::shader
         bool valid_text(const std::string& text)
         {
             return !text.empty() && text.size() <= 1024u && is_valid_utf8(text) &&
-                   std::none_of(text.begin(), text.end(), [](unsigned char c) { return c < 32u || c == 127u; });
+                   std::none_of(text.begin(), text.end(),
+                                [](unsigned char c)
+                                {
+                                    return c < 32u || c == 127u;
+                                });
         }
 
         std::string property_records(const std::vector<ShaderEditorProperty>& properties)
@@ -44,14 +48,14 @@ namespace toy3d::shader
             for (const ShaderEditorProperty& property : properties)
             {
                 out << property.parameter_id << ' ' << std::quoted(property.name) << ' '
-                    << std::quoted(property.display_name) << ' ' << static_cast<std::uint32_t>(property.control)
-                    << ' ' << property.display_order << ' ' << (property.range_min ? 1u : 0u) << ' '
-                    << float_bits(property.range_min.value_or(0.0f)) << ' ' << (property.range_max ? 1u : 0u)
-                    << ' ' << float_bits(property.range_max.value_or(0.0f)) << '\n';
+                    << std::quoted(property.display_name) << ' ' << static_cast<std::uint32_t>(property.control) << ' '
+                    << property.display_order << ' ' << (property.range_min ? 1u : 0u) << ' '
+                    << float_bits(property.range_min.value_or(0.0f)) << ' ' << (property.range_max ? 1u : 0u) << ' '
+                    << float_bits(property.range_max.value_or(0.0f)) << '\n';
             }
             return out.str();
         }
-    }
+    } // namespace
 
     Sha256Hash calculate_shader_editor_properties_hash(const std::vector<ShaderEditorProperty>& properties)
     {
@@ -63,7 +67,9 @@ namespace toy3d::shader
                                            const ShaderParameterSchema& schema, std::string& error)
     {
         if (!validate_shader_parameter_schema(schema, error))
+        {
             return false;
+        }
         if (properties.size() > max_shader_editor_properties ||
             calculate_shader_editor_properties_hash(properties) != schema.editor_properties_hash)
         {
@@ -75,15 +81,13 @@ namespace toy3d::shader
         for (std::size_t index = 0; index < properties.size(); ++index)
         {
             const ShaderEditorProperty& property = properties[index];
-            if (!valid_text(property.name) || !valid_text(property.display_name) ||
-                property.display_order != index || !ids.insert(property.parameter_id).second ||
-                !names.insert(property.name).second ||
+            if (!valid_text(property.name) || !valid_text(property.display_name) || property.display_order != index ||
+                !ids.insert(property.parameter_id).second || !names.insert(property.name).second ||
                 property.control > ShaderEditorPropertyControl::Resource ||
                 (property.range_min && !std::isfinite(*property.range_min)) ||
                 (property.range_max && !std::isfinite(*property.range_max)) ||
                 (property.range_min && property.range_max && *property.range_min > *property.range_max) ||
-                (property.control != ShaderEditorPropertyControl::Range &&
-                 (property.range_min || property.range_max)))
+                (property.control != ShaderEditorPropertyControl::Range && (property.range_min || property.range_max)))
             {
                 error = "Shader Editor property has invalid text, identity, order or bounds.";
                 return false;
@@ -92,17 +96,24 @@ namespace toy3d::shader
             for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
             {
                 if (buffer.group != BindingGroup::Material)
+                {
                     continue;
+                }
                 for (const ShaderParameterConstantMemberSchema& member : buffer.members)
                 {
                     if (member.parameter_id != property.parameter_id || member.name != property.name)
+                    {
                         continue;
+                    }
                     matched = member.array_count == 1u &&
-                              property.parameter_id == make_shader_parameter_id(
-                                  BindingGroup::Material, ShaderParameterCategory::Constant, property.name) &&
+                              property.parameter_id == make_shader_parameter_id(BindingGroup::Material,
+                                                                                ShaderParameterCategory::Constant,
+                                                                                property.name) &&
                               (property.control == ShaderEditorPropertyControl::Numeric ||
-                               (property.control == ShaderEditorPropertyControl::Color && member.type == ShaderValueType::Float32x4) ||
-                               (property.control == ShaderEditorPropertyControl::Range && member.type == ShaderValueType::Float32));
+                               (property.control == ShaderEditorPropertyControl::Color &&
+                                member.type == ShaderValueType::Float32x4) ||
+                               (property.control == ShaderEditorPropertyControl::Range &&
+                                member.type == ShaderValueType::Float32));
                 }
             }
             for (const ShaderParameterResourceSchema& resource : schema.resources)
@@ -110,7 +121,9 @@ namespace toy3d::shader
                 if (resource.group == BindingGroup::Material && resource.parameter_id == property.parameter_id &&
                     resource.name == property.name && property.control == ShaderEditorPropertyControl::Resource &&
                     property.parameter_id == make_shader_parameter_id(resource.group, resource.category, property.name))
+                {
                     matched = true;
+                }
             }
             if (!matched)
             {
@@ -122,20 +135,20 @@ namespace toy3d::shader
         return true;
     }
 
-    std::string serialize_shader_editor_properties(const std::string& shader_name,
-                                                  const ShaderParameterSchema& schema,
-                                                  const std::vector<ShaderEditorProperty>& properties)
+    std::string serialize_shader_editor_properties(const std::string& shader_name, const ShaderParameterSchema& schema,
+                                                   const std::vector<ShaderEditorProperty>& properties)
     {
         std::ostringstream out;
         out.imbue(std::locale::classic());
-        out << "editor_properties " << std::quoted(shader_name) << ' ' << sha256_to_hex(schema.schema_identity)
-            << ' ' << sha256_to_hex(schema.editor_properties_hash) << '\n' << property_records(properties);
+        out << "editor_properties " << std::quoted(shader_name) << ' ' << sha256_to_hex(schema.schema_identity) << ' '
+            << sha256_to_hex(schema.editor_properties_hash) << '\n'
+            << property_records(properties);
         return out.str();
     }
 
     bool parse_shader_editor_properties(const std::string& text, const std::string& shader_name,
-                                       const ShaderParameterSchema& schema,
-                                       std::vector<ShaderEditorProperty>& properties, std::string& error)
+                                        const ShaderParameterSchema& schema,
+                                        std::vector<ShaderEditorProperty>& properties, std::string& error)
     {
         if (text.size() > max_shader_editor_properties_bytes || !is_valid_utf8(text))
         {
@@ -159,8 +172,8 @@ namespace toy3d::shader
             ShaderEditorProperty property;
             std::uint32_t control = 0, has_min = 0, min_bits = 0, has_max = 0, max_bits = 0;
             if (candidate.size() >= max_shader_editor_properties ||
-                !(in >> property.parameter_id >> std::quoted(property.name) >> std::quoted(property.display_name)
-                     >> control >> property.display_order >> has_min >> min_bits >> has_max >> max_bits) ||
+                !(in >> property.parameter_id >> std::quoted(property.name) >> std::quoted(property.display_name) >>
+                  control >> property.display_order >> has_min >> min_bits >> has_max >> max_bits) ||
                 control > static_cast<std::uint32_t>(ShaderEditorPropertyControl::Resource) || has_min > 1u ||
                 has_max > 1u || (!has_min && min_bits != 0u) || (!has_max && max_bits != 0u))
             {
@@ -169,31 +182,58 @@ namespace toy3d::shader
             }
             property.control = static_cast<ShaderEditorPropertyControl>(control);
             if (has_min)
+            {
                 property.range_min = float_from_bits(min_bits);
+            }
             if (has_max)
+            {
                 property.range_max = float_from_bits(max_bits);
+            }
             candidate.push_back(std::move(property));
         }
         if (!validate_shader_editor_properties(candidate, schema, error))
+        {
             return false;
+        }
         properties = std::move(candidate);
         return true;
     }
 
     bool read_shader_editor_properties(const PlatformFile& files, const PhysicalPath& entry_directory,
-                                      const std::string& shader_name, const ShaderParameterSchema& schema,
-                                      std::vector<ShaderEditorProperty>& properties, std::string& error)
+                                       const std::string& shader_name, const ShaderParameterSchema& schema,
+                                       std::vector<ShaderEditorProperty>& properties, std::string& error)
     {
 #if WITH_EDITORONLY_DATA
         const auto path = files.join_relative(entry_directory, "editor_properties.txt");
-        if (!path.succeeded()) { error = path.status().message; return false; }
+        if (!path.succeeded())
+        {
+            error = path.status().message;
+            return false;
+        }
         const auto exists = files.exists(path.value());
-        if (!exists.succeeded()) { error = exists.status().message; return false; }
-        if (!exists.value()) { properties.clear(); error.clear(); return true; }
+        if (!exists.succeeded())
+        {
+            error = exists.status().message;
+            return false;
+        }
+        if (!exists.value())
+        {
+            properties.clear();
+            error.clear();
+            return true;
+        }
         auto opened = files.open(path.value(), FileOpenMode::Read);
-        if (!opened.succeeded()) { error = opened.status().message; return false; }
+        if (!opened.succeeded())
+        {
+            error = opened.status().message;
+            return false;
+        }
         const auto size = opened.value()->size();
-        if (!size.succeeded()) { error = size.status().message; return false; }
+        if (!size.succeeded())
+        {
+            error = size.status().message;
+            return false;
+        }
         if (size.value() > max_shader_editor_properties_bytes)
         {
             error = "Shader Editor property file exceeds its byte limit.";
@@ -204,16 +244,29 @@ namespace toy3d::shader
         while (offset < bytes.size())
         {
             const auto read = opened.value()->read(bytes.data() + offset, bytes.size() - offset);
-            if (!read.succeeded()) { error = read.status().message; return false; }
-            if (read.value() == 0u) { error = "Shader Editor property file is truncated."; return false; }
+            if (!read.succeeded())
+            {
+                error = read.status().message;
+                return false;
+            }
+            if (read.value() == 0u)
+            {
+                error = "Shader Editor property file is truncated.";
+                return false;
+            }
             offset += read.value();
         }
         const auto closed = opened.value()->close();
-        if (!closed.succeeded()) { error = closed.message; return false; }
-        return parse_shader_editor_properties(std::string(bytes.begin(), bytes.end()), shader_name, schema, properties, error);
+        if (!closed.succeeded())
+        {
+            error = closed.message;
+            return false;
+        }
+        return parse_shader_editor_properties(std::string(bytes.begin(), bytes.end()), shader_name, schema, properties,
+                                              error);
 #else
         error = "Shader Editor property loading requires WITH_EDITORONLY_DATA.";
         return false;
 #endif
     }
-}
+} // namespace toy3d::shader

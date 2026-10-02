@@ -11,8 +11,14 @@ namespace toy3d
         explicit StaticMeshActor(World& world);
         ~StaticMeshActor() override = default;
 
-        StaticMeshComponent& static_mesh_component() { return *static_mesh_component_; }
-        const StaticMeshComponent& static_mesh_component() const { return *static_mesh_component_; }
+        StaticMeshComponent& static_mesh_component()
+        {
+            return *static_mesh_component_;
+        }
+        const StaticMeshComponent& static_mesh_component() const
+        {
+            return *static_mesh_component_;
+        }
 
       private:
         StaticMeshComponent* static_mesh_component_ = nullptr;

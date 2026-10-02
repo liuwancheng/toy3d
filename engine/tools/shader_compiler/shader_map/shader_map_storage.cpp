@@ -19,7 +19,9 @@ namespace toy3d::shader
         ShaderEntryStagingResult result;
         result.status = platform_file.create_directories(entry_root);
         if (!result.status.succeeded())
+        {
             return result;
+        }
 
         const FileResult<PhysicalPath> final_directory = platform_file.join_relative(entry_root, key);
         if (!final_directory.succeeded())
@@ -60,7 +62,9 @@ namespace toy3d::shader
                 return result;
             }
             if (result.status.code != FileErrorCode::AlreadyExists)
+            {
                 return result;
+            }
         }
 
         result.status.code = FileErrorCode::AlreadyExists;

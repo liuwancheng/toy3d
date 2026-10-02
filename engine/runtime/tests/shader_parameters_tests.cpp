@@ -18,7 +18,9 @@ namespace
     bool check(bool condition, const char* message)
     {
         if (!condition)
+        {
             std::cerr << message << '\n';
+        }
         return condition;
     }
 
@@ -47,12 +49,18 @@ namespace
       public:
         using toy3d::RHIQueue::RHIQueue;
 
-        toy3d::RHIQueueCompletionValue completed_value() const override { return 0u; }
+        toy3d::RHIQueueCompletionValue completed_value() const override
+        {
+            return 0u;
+        }
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus wait_idle() override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
       protected:
         toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(const toy3d::RHISubmitInfo&) override
@@ -76,10 +84,22 @@ namespace
             initialized = true;
             return toy3d::RHIStatus::success();
         }
-        const toy3d::RHICapabilities& capabilities() const override { return test_capabilities; }
-        const toy3d::RHILimits& limits() const override { return test_limits; }
-        toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override { return {}; }
-        toy3d::RHIQueue& graphics_queue() override { return test_queue; }
+        const toy3d::RHICapabilities& capabilities() const override
+        {
+            return test_capabilities;
+        }
+        const toy3d::RHILimits& limits() const override
+        {
+            return test_limits;
+        }
+        toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override
+        {
+            return {};
+        }
+        toy3d::RHIQueue& graphics_queue() override
+        {
+            return test_queue;
+        }
 
         bool initialized = true;
         mutable std::uint32_t binding_set_creation_checks = 0u;
@@ -103,23 +123,22 @@ namespace
             return toy3d::RHIResult<toy3d::RHITextureRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "Shader parameters tests do not create textures through hooks.");
         }
-        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view_impl(
-            const toy3d::RHIBufferRef&, const toy3d::RHIBufferViewDesc&) override
+        toy3d::RHIResult<toy3d::RHIBufferViewRef> create_buffer_view_impl(const toy3d::RHIBufferRef&,
+                                                                          const toy3d::RHIBufferViewDesc&) override
         {
             return toy3d::RHIResult<toy3d::RHIBufferViewRef>::failure(
                 toy3d::RHIErrorCode::Unsupported, "Shader parameters tests do not create buffer views through hooks.");
         }
-        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view_impl(
-            const toy3d::RHITextureRef&, const toy3d::RHITextureViewDesc&) override
+        toy3d::RHIResult<toy3d::RHITextureViewRef> create_texture_view_impl(const toy3d::RHITextureRef&,
+                                                                            const toy3d::RHITextureViewDesc&) override
         {
             return toy3d::RHIResult<toy3d::RHITextureViewRef>::failure(
-                toy3d::RHIErrorCode::Unsupported,
-                "Shader parameters tests do not create texture views through hooks.");
+                toy3d::RHIErrorCode::Unsupported, "Shader parameters tests do not create texture views through hooks.");
         }
         toy3d::RHIResult<toy3d::RHIShaderRef> create_shader_impl(const toy3d::RHIShaderDesc&) override
         {
-            return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(
-                toy3d::RHIErrorCode::Unsupported, "Shader parameters tests do not create shaders.");
+            return toy3d::RHIResult<toy3d::RHIShaderRef>::failure(toy3d::RHIErrorCode::Unsupported,
+                                                                  "Shader parameters tests do not create shaders.");
         }
         toy3d::RHIResult<toy3d::RHIBindingLayoutRef> create_binding_layout_impl(
             const toy3d::RHIBindingLayoutDesc&) override
@@ -140,11 +159,11 @@ namespace
         }
         toy3d::RHIResult<toy3d::RHIGPUFenceRef> create_gpu_fence_impl(const std::string&) override
         {
-            return toy3d::RHIResult<toy3d::RHIGPUFenceRef>::failure(
-                toy3d::RHIErrorCode::Unsupported, "Shader parameters tests do not create fences.");
+            return toy3d::RHIResult<toy3d::RHIGPUFenceRef>::failure(toy3d::RHIErrorCode::Unsupported,
+                                                                    "Shader parameters tests do not create fences.");
         }
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
-        create_graphics_command_context_impl() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>> create_graphics_command_context_impl()
+            override
         {
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::failure(
                 toy3d::RHIErrorCode::Unsupported, "Shader parameters tests inject command contexts.");
@@ -154,8 +173,14 @@ namespace
             ++binding_set_creation_checks;
             return initialized;
         }
-        toy3d::RHIStatus wait_idle_before_shutdown_impl() override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus shutdown_impl() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus wait_idle_before_shutdown_impl() override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus shutdown_impl() override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
       private:
         TestQueue test_queue;
@@ -171,7 +196,10 @@ namespace
         std::uint32_t upload_count = 0u;
         bool fail_upload = false;
 
-        toy3d::RHIStatus begin_recording(const std::string&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus begin_recording(const std::string&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
         toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
         {
             return toy3d::RHIStatus::success();
@@ -238,36 +266,47 @@ namespace
         metadata.constant_buffer.data_layout_hash = toy3d::shader::calculate_constant_buffer_data_layout_hash(
             metadata.group, metadata.constant_buffer.binding_id, metadata.constant_buffer.size,
             {{102u, "exposure", toy3d::shader::ShaderValueType::Float32, 0u, 4u, 0u, 0u}});
-        metadata.resources = {
-            {201u, toy3d::shader::ShaderParameterCategory::SampledTexture,
-             toy3d::shader::ResourceKind::Texture2D, toy3d::shader::ShaderResourceElementType::Float4, 2u,
-             toy3d::shader::ShaderParameterDefaultValueKind::None, {}, "scene_color"},
-            {202u, toy3d::shader::ShaderParameterCategory::Sampler, toy3d::shader::ResourceKind::Sampler,
-             toy3d::shader::ShaderResourceElementType::None, 1u,
-             toy3d::shader::ShaderParameterDefaultValueKind::Identifier, "LinearClamp", "scene_sampler"}};
+        metadata.resources = {{201u,
+                               toy3d::shader::ShaderParameterCategory::SampledTexture,
+                               toy3d::shader::ResourceKind::Texture2D,
+                               toy3d::shader::ShaderResourceElementType::Float4,
+                               2u,
+                               toy3d::shader::ShaderParameterDefaultValueKind::None,
+                               {},
+                               "scene_color"},
+                              {202u, toy3d::shader::ShaderParameterCategory::Sampler,
+                               toy3d::shader::ResourceKind::Sampler, toy3d::shader::ShaderResourceElementType::None, 1u,
+                               toy3d::shader::ShaderParameterDefaultValueKind::Identifier, "LinearClamp",
+                               "scene_sampler"}};
         toy3d::shader::ShaderParameterSchema schema;
         schema.constant_buffers.push_back(
-            {metadata.constant_buffer.binding_id, metadata.constant_buffer.name, metadata.group,
-             metadata.constant_buffer.size, metadata.constant_buffer.data_layout_hash,
+            {metadata.constant_buffer.binding_id,
+             metadata.constant_buffer.name,
+             metadata.group,
+             metadata.constant_buffer.size,
+             metadata.constant_buffer.data_layout_hash,
              metadata.constant_buffer.shader_abi_version,
              {{102u, "exposure", toy3d::shader::ShaderValueType::Float32, 0u, 4u, 1u, 0u, 0u, {}}}});
-        schema.resources = {
-            {201u, "scene_color", metadata.group, toy3d::shader::ShaderParameterCategory::SampledTexture,
-             toy3d::shader::ResourceKind::Texture2D, toy3d::shader::ShaderResourceElementType::Float4, 2u,
-             toy3d::shader::ShaderParameterDefaultValueKind::None, {}},
-            {202u, "scene_sampler", metadata.group, toy3d::shader::ShaderParameterCategory::Sampler,
-             toy3d::shader::ResourceKind::Sampler, toy3d::shader::ShaderResourceElementType::None, 1u,
-             toy3d::shader::ShaderParameterDefaultValueKind::Identifier, "LinearClamp"}};
+        schema.resources = {{201u,
+                             "scene_color",
+                             metadata.group,
+                             toy3d::shader::ShaderParameterCategory::SampledTexture,
+                             toy3d::shader::ResourceKind::Texture2D,
+                             toy3d::shader::ShaderResourceElementType::Float4,
+                             2u,
+                             toy3d::shader::ShaderParameterDefaultValueKind::None,
+                             {}},
+                            {202u, "scene_sampler", metadata.group, toy3d::shader::ShaderParameterCategory::Sampler,
+                             toy3d::shader::ResourceKind::Sampler, toy3d::shader::ShaderResourceElementType::None, 1u,
+                             toy3d::shader::ShaderParameterDefaultValueKind::Identifier, "LinearClamp"}};
         schema.logical_layout_hash = toy3d::shader::calculate_shader_parameter_logical_layout_hash(schema);
         schema.schema_identity = toy3d::shader::calculate_shader_parameter_schema_identity(schema);
         metadata.schema_identity = schema.schema_identity;
-        metadata.group_identity =
-            toy3d::shader::calculate_shader_parameter_group_identity(schema, metadata.group);
+        metadata.group_identity = toy3d::shader::calculate_shader_parameter_group_identity(schema, metadata.group);
         return metadata;
     }
 
-    toy3d::RHITextureViewRef make_texture_view(toy3d::RHIDevice& device,
-                                               toy3d::RHITextureViewDimension dimension)
+    toy3d::RHITextureViewRef make_texture_view(toy3d::RHIDevice& device, toy3d::RHITextureViewDimension dimension)
     {
         toy3d::RHITextureDesc texture_desc;
         texture_desc.format = toy3d::PixelFormat::R8G8B8A8UNorm;
@@ -279,8 +318,8 @@ namespace
         return std::make_shared<toy3d::RHITextureView>(std::move(texture), view_desc);
     }
 
-    toy3d::ShaderParameterEncoder make_materialization_encoder(
-        const toy3d::ShaderParametersMetadata& metadata, toy3d::RHIDevice& device)
+    toy3d::ShaderParameterEncoder make_materialization_encoder(const toy3d::ShaderParametersMetadata& metadata,
+                                                               toy3d::RHIDevice& device)
     {
         toy3d::ShaderParameterEncoder encoder(metadata);
         encoder.write_constant(metadata.constant_buffer.members[0], 1.0f);
@@ -292,7 +331,7 @@ namespace
         encoder.add_resource(metadata.resources[1], std::make_shared<toy3d::RHISampler>(device, sampler_desc));
         return encoder;
     }
-}
+} // namespace
 
 int main()
 {
@@ -301,32 +340,42 @@ int main()
     ShaderParametersMetadata metadata;
     metadata.group = shader::BindingGroup::Pass;
     metadata.constant_buffer.size = 272u;
-    metadata.constant_buffer.members = {
-        {1u, shader::ShaderValueType::Float32, 0u, 4u, 1u, 0u, 0u, {}},
-        {2u, shader::ShaderValueType::Float32x3, 16u, 12u, 1u, 0u, 0u, {}},
-        {3u, shader::ShaderValueType::Float32x3x3, 32u, 48u, 1u, 0u, 16u, {}},
-        {4u, shader::ShaderValueType::Float32, 80u, 32u, 2u, 16u, 0u, {}},
-        {5u, shader::ShaderValueType::Float32x3x3, 112u, 96u, 2u, 48u, 16u, {}},
-        {6u, shader::ShaderValueType::Float32, 208u, 64u, 4u, 16u, 0u, {}}};
-    metadata.resources = {
-        {7u, shader::ShaderParameterCategory::SampledTexture, shader::ResourceKind::Texture2D,
-         shader::ShaderResourceElementType::None, 2u, shader::ShaderParameterDefaultValueKind::None, {}},
-        {8u, shader::ShaderParameterCategory::Sampler, shader::ResourceKind::Sampler,
-         shader::ShaderResourceElementType::None, 1u, shader::ShaderParameterDefaultValueKind::None, {}},
-        {9u, shader::ShaderParameterCategory::ReadOnlyBuffer, shader::ResourceKind::StructuredBuffer,
-         shader::ShaderResourceElementType::Float4, 1u, shader::ShaderParameterDefaultValueKind::None, {}}};
+    metadata.constant_buffer.members = {{1u, shader::ShaderValueType::Float32, 0u, 4u, 1u, 0u, 0u, {}},
+                                        {2u, shader::ShaderValueType::Float32x3, 16u, 12u, 1u, 0u, 0u, {}},
+                                        {3u, shader::ShaderValueType::Float32x3x3, 32u, 48u, 1u, 0u, 16u, {}},
+                                        {4u, shader::ShaderValueType::Float32, 80u, 32u, 2u, 16u, 0u, {}},
+                                        {5u, shader::ShaderValueType::Float32x3x3, 112u, 96u, 2u, 48u, 16u, {}},
+                                        {6u, shader::ShaderValueType::Float32, 208u, 64u, 4u, 16u, 0u, {}}};
+    metadata.resources = {{7u,
+                           shader::ShaderParameterCategory::SampledTexture,
+                           shader::ResourceKind::Texture2D,
+                           shader::ShaderResourceElementType::None,
+                           2u,
+                           shader::ShaderParameterDefaultValueKind::None,
+                           {}},
+                          {8u,
+                           shader::ShaderParameterCategory::Sampler,
+                           shader::ResourceKind::Sampler,
+                           shader::ShaderResourceElementType::None,
+                           1u,
+                           shader::ShaderParameterDefaultValueKind::None,
+                           {}},
+                          {9u,
+                           shader::ShaderParameterCategory::ReadOnlyBuffer,
+                           shader::ResourceKind::StructuredBuffer,
+                           shader::ShaderResourceElementType::Float4,
+                           1u,
+                           shader::ShaderParameterDefaultValueKind::None,
+                           {}}};
 
     HostPaddedParameters parameters;
     parameters.exposure = 1.5f;
     parameters.host_only_padding.fill(0xffu);
     parameters.tint = Vector3(2.0f, 3.0f, 4.0f);
-    parameters.basis = Matrix3(Vector3(1.0f, 2.0f, 3.0f), Vector3(4.0f, 5.0f, 6.0f),
-                               Vector3(7.0f, 8.0f, 9.0f));
+    parameters.basis = Matrix3(Vector3(1.0f, 2.0f, 3.0f), Vector3(4.0f, 5.0f, 6.0f), Vector3(7.0f, 8.0f, 9.0f));
     parameters.weights = {10.0f, 11.0f};
-    parameters.transforms = {
-        parameters.basis,
-        Matrix3(Vector3(12.0f, 13.0f, 14.0f), Vector3(15.0f, 16.0f, 17.0f),
-                Vector3(18.0f, 19.0f, 20.0f))};
+    parameters.transforms = {parameters.basis, Matrix3(Vector3(12.0f, 13.0f, 14.0f), Vector3(15.0f, 16.0f, 17.0f),
+                                                       Vector3(18.0f, 19.0f, 20.0f))};
     parameters.samples = {21.0f, 22.0f, 23.0f, 24.0f};
 
     ShaderParameterEncoder encoder(metadata);
@@ -347,28 +396,27 @@ int main()
     success &= check(read_float(bytes, 0u) == 1.5f && read_float(bytes, 16u) == 2.0f &&
                          read_float(bytes, 20u) == 3.0f && read_float(bytes, 24u) == 4.0f,
                      "Scalar or vector fields were not written at metadata offsets");
-    success &= check(read_float(bytes, 32u) == 1.0f && read_float(bytes, 36u) == 2.0f &&
-                         read_float(bytes, 40u) == 3.0f && read_float(bytes, 48u) == 4.0f &&
-                         read_float(bytes, 64u) == 7.0f,
-                     "Matrix columns did not honor the metadata matrix stride");
+    success &=
+        check(read_float(bytes, 32u) == 1.0f && read_float(bytes, 36u) == 2.0f && read_float(bytes, 40u) == 3.0f &&
+                  read_float(bytes, 48u) == 4.0f && read_float(bytes, 64u) == 7.0f,
+              "Matrix columns did not honor the metadata matrix stride");
     success &= check(read_float(bytes, 80u) == 10.0f && read_float(bytes, 96u) == 11.0f,
                      "Scalar array elements did not honor the metadata array stride");
-    success &= check(read_float(bytes, 112u) == 1.0f && read_float(bytes, 160u) == 12.0f &&
-                         read_float(bytes, 192u) == 18.0f,
-                     "Matrix array elements did not honor both array and matrix strides");
+    success &=
+        check(read_float(bytes, 112u) == 1.0f && read_float(bytes, 160u) == 12.0f && read_float(bytes, 192u) == 18.0f,
+              "Matrix array elements did not honor both array and matrix strides");
     success &= check(read_float(bytes, 208u) == 21.0f && read_float(bytes, 224u) == 22.0f &&
                          read_float(bytes, 240u) == 23.0f && read_float(bytes, 256u) == 24.0f,
                      "Four-element scalar array was confused with a matrix field");
 
-    for (std::size_t offset : {4u, 12u, 28u, 44u, 60u, 76u, 84u, 100u, 124u, 140u, 156u, 172u, 188u,
-                               204u, 212u, 228u, 244u, 260u})
+    for (std::size_t offset :
+         {4u, 12u, 28u, 44u, 60u, 76u, 84u, 100u, 124u, 140u, 156u, 172u, 188u, 204u, 212u, 228u, 244u, 260u})
     {
-        success &= check(read_float(bytes, offset) == 0.0f,
-                         "Canonical padding or an unwritten region did not remain zero");
+        success &=
+            check(read_float(bytes, offset) == 0.0f, "Canonical padding or an unwritten region did not remain zero");
     }
 
-    success &= check(encoder.texture_values().size() == 2u &&
-                         encoder.texture_values()[0].array_index == 0u &&
+    success &= check(encoder.texture_values().size() == 2u && encoder.texture_values()[0].array_index == 0u &&
                          encoder.texture_values()[1].array_index == 1u,
                      "Texture array values were not collected independently");
     success &= check(encoder.sampler_values().size() == 1u && encoder.buffer_values().size() == 1u,
@@ -402,13 +450,11 @@ int main()
                              materialization_metadata.constant_buffer.size &&
                          materialized.value()->desc().bindings[0].data_layout_hash ==
                              materialization_metadata.constant_buffer.data_layout_hash &&
-                         materialized.value()->desc().bindings[0].shader_abi_version ==
-                             shader::toy_shader_abi_version,
+                         materialized.value()->desc().bindings[0].shader_abi_version == shader::toy_shader_abi_version,
                      "Materialization did not attach the generated group and constant ABI metadata");
 
     RHISamplerDesc pass_sampler_desc;
-    const RHISamplerRef pass_sampler =
-        std::make_shared<RHISampler>(materialization_device, pass_sampler_desc);
+    const RHISamplerRef pass_sampler = std::make_shared<RHISampler>(materialization_device, pass_sampler_desc);
     const RHITextureViewRef pass_texture =
         make_texture_view(materialization_device, RHITextureViewDimension::Texture2D);
 
@@ -416,19 +462,19 @@ int main()
     missing_tonemap_texture.scene_sampler = pass_sampler;
     const std::uint32_t uploads_before_missing_tonemap = materialization_context.upload_count;
     const std::uint32_t sets_before_missing_tonemap = materialization_device.binding_set_creation_checks;
-    const RHIResult<RHIBindingSetRef> missing_tonemap_result = create_transient_shader_binding(
-        materialization_device, materialization_context, missing_tonemap_texture);
-    success &= check(!missing_tonemap_result &&
-                         materialization_context.upload_count == uploads_before_missing_tonemap &&
-                         materialization_device.binding_set_creation_checks == sets_before_missing_tonemap,
-                     "Tonemap required texture failure must precede upload and logical set creation");
+    const RHIResult<RHIBindingSetRef> missing_tonemap_result =
+        create_transient_shader_binding(materialization_device, materialization_context, missing_tonemap_texture);
+    success &=
+        check(!missing_tonemap_result && materialization_context.upload_count == uploads_before_missing_tonemap &&
+                  materialization_device.binding_set_creation_checks == sets_before_missing_tonemap,
+              "Tonemap required texture failure must precede upload and logical set creation");
 
     TonemapPassParameters tonemap_parameters;
     tonemap_parameters.exposure_ev = 1.0f;
     tonemap_parameters.scene_color = pass_texture;
     tonemap_parameters.scene_sampler = pass_sampler;
-    const RHIResult<RHIBindingSetRef> tonemap_result = create_transient_shader_binding(
-        materialization_device, materialization_context, tonemap_parameters);
+    const RHIResult<RHIBindingSetRef> tonemap_result =
+        create_transient_shader_binding(materialization_device, materialization_context, tonemap_parameters);
     success &= check(tonemap_result && materialization_context.upload_count == uploads_before_missing_tonemap + 1u &&
                          materialization_device.binding_set_creation_checks == sets_before_missing_tonemap + 1u &&
                          tonemap_result.value()->group() == RHIBindingGroup::Pass &&
@@ -439,8 +485,8 @@ int main()
     missing_imgui_sampler.font_texture = pass_texture;
     const std::uint32_t uploads_before_missing_imgui = materialization_context.upload_count;
     const std::uint32_t sets_before_missing_imgui = materialization_device.binding_set_creation_checks;
-    const RHIResult<RHIBindingSetRef> missing_imgui_result = create_transient_shader_binding(
-        materialization_device, materialization_context, missing_imgui_sampler);
+    const RHIResult<RHIBindingSetRef> missing_imgui_result =
+        create_transient_shader_binding(materialization_device, materialization_context, missing_imgui_sampler);
     success &= check(!missing_imgui_result && materialization_context.upload_count == uploads_before_missing_imgui &&
                          materialization_device.binding_set_creation_checks == sets_before_missing_imgui,
                      "ImGui required sampler failure must precede upload and logical set creation");
@@ -449,8 +495,8 @@ int main()
     imgui_parameters.projection = Matrix4::identity();
     imgui_parameters.font_texture = pass_texture;
     imgui_parameters.font_sampler = pass_sampler;
-    const RHIResult<RHIBindingSetRef> imgui_result = create_transient_shader_binding(
-        materialization_device, materialization_context, imgui_parameters);
+    const RHIResult<RHIBindingSetRef> imgui_result =
+        create_transient_shader_binding(materialization_device, materialization_context, imgui_parameters);
     success &= check(imgui_result && materialization_context.upload_count == uploads_before_missing_imgui + 1u &&
                          materialization_device.binding_set_creation_checks == sets_before_missing_imgui + 1u &&
                          imgui_result.value()->group() == RHIBindingGroup::Pass &&
@@ -463,8 +509,8 @@ int main()
     {
         const std::uint32_t uploads_before = failure_context.upload_count;
         const std::uint32_t set_checks_before = materialization_device.binding_set_creation_checks;
-        const RHIResult<RHIBindingSetRef> result = create_transient_shader_binding(
-            materialization_device, failure_context, failure_metadata, failure_encoder);
+        const RHIResult<RHIBindingSetRef> result =
+            create_transient_shader_binding(materialization_device, failure_context, failure_metadata, failure_encoder);
         success &= check(!result && failure_context.upload_count == uploads_before &&
                              materialization_device.binding_set_creation_checks == set_checks_before,
                          message);
@@ -496,8 +542,7 @@ int main()
 
     ShaderParameterEncoder missing_resource_encoder(materialization_metadata);
     missing_resource_encoder.write_constant(materialization_metadata.constant_buffer.members[0], 1.0f);
-    missing_resource_encoder.add_resource(
-        materialization_metadata.resources[0], std::array<RHITextureViewRef, 2>{});
+    missing_resource_encoder.add_resource(materialization_metadata.resources[0], std::array<RHITextureViewRef, 2>{});
     missing_resource_encoder.add_resource(materialization_metadata.resources[1], RHISamplerRef{});
     expect_pre_upload_failure(materialization_metadata, missing_resource_encoder, materialization_context,
                               "Null required resources must fail before upload or BindingSet creation");
@@ -509,28 +554,24 @@ int main()
     incomplete_array_encoder.add_resource(
         texture_element, make_texture_view(materialization_device, RHITextureViewDimension::Texture2D));
     RHISamplerDesc sampler_desc;
-    incomplete_array_encoder.add_resource(
-        materialization_metadata.resources[1],
-        std::make_shared<RHISampler>(materialization_device, sampler_desc));
+    incomplete_array_encoder.add_resource(materialization_metadata.resources[1],
+                                          std::make_shared<RHISampler>(materialization_device, sampler_desc));
     expect_pre_upload_failure(materialization_metadata, incomplete_array_encoder, materialization_context,
                               "Incomplete resource arrays must fail before upload or BindingSet creation");
 
     ShaderParameterEncoder wrong_type_encoder(materialization_metadata);
     wrong_type_encoder.write_constant(materialization_metadata.constant_buffer.members[0], 1.0f);
-    wrong_type_encoder.add_resource(
-        materialization_metadata.resources[0],
-        std::array<RHITextureViewRef, 2>{
-            make_texture_view(materialization_device, RHITextureViewDimension::TextureCube),
-            make_texture_view(materialization_device, RHITextureViewDimension::Texture2D)});
-    wrong_type_encoder.add_resource(
-        materialization_metadata.resources[1],
-        std::make_shared<RHISampler>(materialization_device, sampler_desc));
+    wrong_type_encoder.add_resource(materialization_metadata.resources[0],
+                                    std::array<RHITextureViewRef, 2>{
+                                        make_texture_view(materialization_device, RHITextureViewDimension::TextureCube),
+                                        make_texture_view(materialization_device, RHITextureViewDimension::Texture2D)});
+    wrong_type_encoder.add_resource(materialization_metadata.resources[1],
+                                    std::make_shared<RHISampler>(materialization_device, sampler_desc));
     expect_pre_upload_failure(materialization_metadata, wrong_type_encoder, materialization_context,
                               "Resource kind mismatches must fail before upload or BindingSet creation");
 
     TestDevice foreign_device;
-    ShaderParameterEncoder wrong_owner_encoder =
-        make_materialization_encoder(materialization_metadata, foreign_device);
+    ShaderParameterEncoder wrong_owner_encoder = make_materialization_encoder(materialization_metadata, foreign_device);
     expect_pre_upload_failure(materialization_metadata, wrong_owner_encoder, materialization_context,
                               "Foreign resources must fail before upload or BindingSet creation");
 
@@ -540,15 +581,13 @@ int main()
 
     TestContext failing_upload_context(materialization_device);
     failing_upload_context.fail_upload = true;
-    const std::uint32_t set_checks_before_upload_failure =
-        materialization_device.binding_set_creation_checks;
+    const std::uint32_t set_checks_before_upload_failure = materialization_device.binding_set_creation_checks;
     RHIResult<RHIBindingSetRef> upload_failure = create_transient_shader_binding(
         materialization_device, failing_upload_context, materialization_metadata, materialization_encoder);
     success &= check(!upload_failure && upload_failure.status().code() == RHIErrorCode::OutOfMemory &&
                          upload_failure.status().message() == "Injected typed uniform upload failure." &&
                          failing_upload_context.upload_count == 1u &&
-                         materialization_device.binding_set_creation_checks ==
-                             set_checks_before_upload_failure,
+                         materialization_device.binding_set_creation_checks == set_checks_before_upload_failure,
                      "Typed binding creation must preserve the original transient upload failure");
 
     TestDevice unavailable_device;
@@ -559,10 +598,8 @@ int main()
     RHIResult<RHIBindingSetRef> set_failure = create_transient_shader_binding(
         unavailable_device, unavailable_context, materialization_metadata, unavailable_encoder);
     success &= check(!set_failure && set_failure.status().code() == RHIErrorCode::NotReady &&
-                         set_failure.status().message() ==
-                             "Binding set creation requires an initialized RHI device." &&
-                         unavailable_context.upload_count == 1u &&
-                         unavailable_device.binding_set_creation_checks == 1u,
+                         set_failure.status().message() == "Binding set creation requires an initialized RHI device." &&
+                         unavailable_context.upload_count == 1u && unavailable_device.binding_set_creation_checks == 1u,
                      "Typed binding creation must preserve BindingSet creation failures without a partial result");
     return success ? 0 : 1;
 }

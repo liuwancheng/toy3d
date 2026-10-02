@@ -57,14 +57,16 @@ namespace
         toy3d::tests::append_shader_parameters_metadata(metadata, program.parameter_schema);
         const toy3d::ViewShaderParameters view_parameters;
         const toy3d::ObjectShaderParameters object_parameters;
-        toy3d::tests::append_shader_parameters_metadata(
-            toy3d::shader_parameters_metadata(view_parameters), program.parameter_schema);
-        toy3d::tests::append_shader_parameters_metadata(
-            toy3d::shader_parameters_metadata(object_parameters), program.parameter_schema);
+        toy3d::tests::append_shader_parameters_metadata(toy3d::shader_parameters_metadata(view_parameters),
+                                                        program.parameter_schema);
+        toy3d::tests::append_shader_parameters_metadata(toy3d::shader_parameters_metadata(object_parameters),
+                                                        program.parameter_schema);
         std::sort(program.parameter_schema.constant_buffers.begin(), program.parameter_schema.constant_buffers.end(),
                   [](const toy3d::shader::ShaderParameterConstantBufferSchema& left,
                      const toy3d::shader::ShaderParameterConstantBufferSchema& right)
-                  { return left.group < right.group; });
+                  {
+                      return left.group < right.group;
+                  });
         program.parameter_schema.logical_layout_hash =
             toy3d::shader::calculate_shader_parameter_logical_layout_hash(program.parameter_schema);
         program.parameter_schema.schema_identity =
@@ -75,7 +77,9 @@ namespace
     class RendererProgramLoader final : public toy3d::ShaderMapLoader
     {
       public:
-        explicit RendererProgramLoader(toy3d::ShaderMapProgramData program) : programs_{std::move(program)} {}
+        explicit RendererProgramLoader(toy3d::ShaderMapProgramData program) : programs_{std::move(program)}
+        {
+        }
 
         explicit RendererProgramLoader(std::vector<toy3d::ShaderMapProgramData> programs)
             : programs_(std::move(programs))
@@ -101,8 +105,7 @@ namespace
 
     toy3d::ShaderMapProgramData make_imgui_program()
     {
-        const toy3d::ShaderParametersMetadata& metadata =
-            toy3d::imgui_global_shader_type().parameter_metadata();
+        const toy3d::ShaderParametersMetadata& metadata = toy3d::imgui_global_shader_type().parameter_metadata();
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/UI/ImGui";
         program.pass_name = "ImGui";
@@ -184,8 +187,7 @@ namespace
 
     std::shared_ptr<const toy3d::GlobalShaderMap> make_global_shader_map(bool include_imgui = false)
     {
-        const toy3d::ShaderParametersMetadata& metadata =
-            toy3d::tonemap_global_shader_type().parameter_metadata();
+        const toy3d::ShaderParametersMetadata& metadata = toy3d::tonemap_global_shader_type().parameter_metadata();
         toy3d::ShaderMapProgramData program;
         program.shader_name = "Toy3d/PostProcess/Tonemap";
         program.pass_name = "Tonemap";
@@ -277,7 +279,10 @@ namespace
 
     template <typename MemberDescription, typename MemberDescription::type Member> struct PrivateMemberAccess
     {
-        friend typename MemberDescription::type get(MemberDescription) { return Member; }
+        friend typename MemberDescription::type get(MemberDescription)
+        {
+            return Member;
+        }
     };
 
     // Test-only access keeps the production ForwardSceneRenderer contract closed
@@ -345,9 +350,15 @@ namespace
         {
         }
 
-        toy3d::RHIStatus begin() { return mark_recording(); }
+        toy3d::RHIStatus begin()
+        {
+            return mark_recording();
+        }
 
-        toy3d::RHIStatus close() { return mark_closed(); }
+        toy3d::RHIStatus close()
+        {
+            return mark_closed();
+        }
     };
 
     class RendererTestCommandContext final : public toy3d::RHIGraphicsCommandContext
@@ -365,13 +376,17 @@ namespace
             return command_list_->begin();
         }
 
-        toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>& transitions) override
+        toy3d::RHIStatus transition_resources_impl(
+            const std::vector<toy3d::RHIResourceTransition>& transitions) override
         {
             recorded_transitions.insert(recorded_transitions.end(), transitions.begin(), transitions.end());
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
         toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc&) override
         {
@@ -394,14 +409,20 @@ namespace
             return toy3d::RHIResult<toy3d::RHIUniformBufferSlice>::success(std::move(slice));
         }
 
-        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
         toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override
         {
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
@@ -418,15 +439,30 @@ namespace
             recorded_passes.push_back(desc);
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus end_render_pass() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus end_render_pass() override
+        {
+            return toy3d::RHIStatus::success();
+        }
         toy3d::RHIStatus set_graphics_pipeline_impl(const toy3d::RHIGraphicsPipelineRef&) override
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus set_viewport(const toy3d::RHIViewport&) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus set_scissor(const toy3d::RHIRect&) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus set_blend_constants(const toy3d::vec4&) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus set_stencil_reference(std::uint8_t) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus set_viewport(const toy3d::RHIViewport&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus set_scissor(const toy3d::RHIRect&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus set_blend_constants(const toy3d::vec4&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus set_stencil_reference(std::uint8_t) override
+        {
+            return toy3d::RHIStatus::success();
+        }
         toy3d::RHIStatus set_vertex_buffers_impl(const std::vector<toy3d::RHIVertexBufferBinding>&) override
         {
             return toy3d::RHIStatus::success();
@@ -435,8 +471,14 @@ namespace
         {
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus draw(const toy3d::RHIDrawArgs&) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus draw_indexed(const toy3d::RHIDrawIndexedArgs&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus draw(const toy3d::RHIDrawArgs&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus draw_indexed(const toy3d::RHIDrawIndexedArgs&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
       protected:
         toy3d::RHIStatus bind_graphics_bindings_impl(const toy3d::RHIGraphicsBindings&) override
@@ -481,7 +523,10 @@ namespace
         {
         }
 
-        toy3d::RHIQueueCompletionValue completed_value() const override { return completion_value_; }
+        toy3d::RHIQueueCompletionValue completed_value() const override
+        {
+            return completion_value_;
+        }
 
         toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue value) override
         {
@@ -495,7 +540,10 @@ namespace
                                                                           "Renderer test completion was not submitted");
         }
 
-        toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus wait_idle() override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
       protected:
         toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(const toy3d::RHISubmitInfo&) override
@@ -539,7 +587,10 @@ namespace
             return toy3d::RHIStatus::success();
         }
 
-        toy3d::RHIStatus request_resize(const toy3d::Extent&) override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIStatus request_resize(const toy3d::Extent&) override
+        {
+            return toy3d::RHIStatus::success();
+        }
     };
 
     class RendererTestDevice final : public toy3d::RHIDevice
@@ -575,9 +626,18 @@ namespace
                                 : toy3d::RHIStatus::failure(toy3d::RHIErrorCode::InvalidArgument,
                                                             "Renderer test device rejected its surface");
         }
-        const toy3d::RHICapabilities& capabilities() const override { return capabilities_; }
-        const toy3d::RHILimits& limits() const override { return limits_; }
-        void set_texture_dimension_limit(std::uint32_t limit) { limits_.max_texture_dimension_2d = limit; }
+        const toy3d::RHICapabilities& capabilities() const override
+        {
+            return capabilities_;
+        }
+        const toy3d::RHILimits& limits() const override
+        {
+            return limits_;
+        }
+        void set_texture_dimension_limit(std::uint32_t limit)
+        {
+            limits_.max_texture_dimension_2d = limit;
+        }
         toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override
         {
             toy3d::RHIFormatCapabilities result;
@@ -587,7 +647,10 @@ namespace
                            toy3d::RHIFormatUsage::CopyDestination;
             return result;
         }
-        toy3d::RHIQueue& graphics_queue() override { return queue_; }
+        toy3d::RHIQueue& graphics_queue() override
+        {
+            return queue_;
+        }
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIViewportContext>> create_viewport_context_impl(
             const toy3d::RHISurfaceRef&, const toy3d::RHIViewportContextDesc&) override
         {
@@ -692,7 +755,10 @@ namespace
             return toy3d::RHIResult<toy3d::RHIGraphicsPipelineRef>::success(
                 std::make_shared<toy3d::RHIGraphicsPipeline>(*this, desc));
         }
-        bool is_initialized_impl() const override { return initialized_; }
+        bool is_initialized_impl() const override
+        {
+            return initialized_;
+        }
         toy3d::RHIStatus wait_idle_before_shutdown_impl() override
         {
             if (probe_)
@@ -859,7 +925,8 @@ namespace
                 surface_desc.window_handle = reinterpret_cast<void*>(1);
                 toy3d::RHIDeviceDesc device_desc;
                 device_desc.primary_surface = std::make_shared<toy3d::RHISurface>(surface_desc);
-                check(shadow_device.initialize(device_desc).succeeded(), "Shadow target fixture must initialize its fake RHI device");
+                check(shadow_device.initialize(device_desc).succeeded(),
+                      "Shadow target fixture must initialize its fake RHI device");
                 toy3d::ShadowRenderTargets shadow_targets;
                 for (std::uint32_t size : {512u, 1024u, 2048u})
                 {
@@ -869,86 +936,96 @@ namespace
                               "Every supported cascade count and maximum size must allocate an atlas");
                         const auto& layout = shadow_targets.layout();
                         check(layout.cascade_count == count && layout.max_resolution == size &&
-                              layout.width == (count == 1u ? size : size + size / 2u) && layout.height == size &&
-                              shadow_targets.texture(0u)->desc().width == layout.width &&
-                              shadow_targets.texture(0u)->desc().height == layout.height &&
-                              shadow_targets.texture(0u) != shadow_targets.texture(1u),
+                                  layout.width == (count == 1u ? size : size + size / 2u) && layout.height == size &&
+                                  shadow_targets.texture(0u)->desc().width == layout.width &&
+                                  shadow_targets.texture(0u)->desc().height == layout.height &&
+                                  shadow_targets.texture(0u) != shadow_targets.texture(1u),
                               "Atlas allocation must match the layout and remain isolated per View");
                         for (std::size_t index = 0u; index < count; ++index)
                         {
                             const auto& tile = layout.tiles[index];
                             check(tile.size == (index == 0u ? size : size / 2u) &&
-                                  tile.resolution() + 2u * toy3d::ShadowCascadeTile::k_border == tile.size &&
-                                  tile.x + tile.size <= layout.width && tile.y + tile.size <= layout.height,
+                                      tile.resolution() + 2u * toy3d::ShadowCascadeTile::k_border == tile.size &&
+                                      tile.x + tile.size <= layout.width && tile.y + tile.size <= layout.height,
                                   "Each active tile must include its PCF guard inside atlas bounds");
                             for (std::size_t other = 0u; other < index; ++other)
                             {
                                 const auto& neighbor = layout.tiles[other];
                                 check(tile.x >= neighbor.x + neighbor.size || neighbor.x >= tile.x + tile.size ||
-                                      tile.y >= neighbor.y + neighbor.size || neighbor.y >= tile.y + tile.size,
+                                          tile.y >= neighbor.y + neighbor.size || neighbor.y >= tile.y + tile.size,
                                       "Cascade tiles must never overlap");
                             }
                         }
                         for (std::size_t index = count; index < toy3d::LightSceneData::k_max_shadow_cascades; ++index)
+                        {
                             check(layout.tiles[index].size == 0u, "Inactive tiles must discard previous configuration");
+                        }
                     }
                 }
                 check(shadow_targets.ensure_views(shadow_device, 2u, 1u, 2048u).succeeded(), "Single atlas setup");
                 const toy3d::RHITextureRef retained_texture = shadow_targets.texture(0u);
                 check(shadow_targets.ensure_views(shadow_device, 2u, 1u, 2048u).succeeded() &&
-                      shadow_targets.texture(0u) == retained_texture,
+                          shadow_targets.texture(0u) == retained_texture,
                       "Unchanged shadow configuration must reuse GPU resources");
                 check(shadow_targets.ensure_views(shadow_device, 2u, 2u, 2048u).succeeded() &&
-                      shadow_targets.texture(0u) != retained_texture && retained_texture->desc().width == 2048u,
+                          shadow_targets.texture(0u) != retained_texture && retained_texture->desc().width == 2048u,
                       "Replacing an atlas must preserve references retained by prior frames");
                 const auto two_cascade_texture = shadow_targets.texture(0u);
                 shadow_targets.publish_submitted_access();
                 check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded() &&
-                      shadow_targets.texture(0u) == two_cascade_texture &&
-                      shadow_targets.access(0u) == toy3d::RHIAccess::ShaderResourceGraphics &&
-                      shadow_targets.layout().tiles[2].size == 1024u,
+                          shadow_targets.texture(0u) == two_cascade_texture &&
+                          shadow_targets.access(0u) == toy3d::RHIAccess::ShaderResourceGraphics &&
+                          shadow_targets.layout().tiles[2].size == 1024u,
                       "Two to three cascades must reuse the atlas and retain submitted access");
                 check(shadow_targets.ensure_views(shadow_device, 2u, 2u, 2048u).succeeded() &&
-                      shadow_targets.texture(0u) == two_cascade_texture && shadow_targets.layout().tiles[2].size == 0u,
+                          shadow_targets.texture(0u) == two_cascade_texture &&
+                          shadow_targets.layout().tiles[2].size == 0u,
                       "Three to two cascades must clear inactive metadata without reallocating");
                 // An inactive View still clears all atlas tiles to deterministic fully lit depth.
                 toy3d::RenderResourceManager atlas_resource_manager(shadow_device);
                 toy3d::RenderScene atlas_scene(*graph, atlas_resource_manager);
                 std::vector<toy3d::SceneView> atlas_views;
-                atlas_views.push_back(make_perspective_view(toy3d::Vector3(),
-                    toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
-                toy3d::ForwardSceneRenderer atlas_renderer(toy3d::SceneViewFamily(atlas_scene,
-                    toy3d::Extent{128u, 128u}, std::move(atlas_views)));
+                atlas_views.push_back(
+                    make_perspective_view(toy3d::Vector3(), toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
+                toy3d::ForwardSceneRenderer atlas_renderer(
+                    toy3d::SceneViewFamily(atlas_scene, toy3d::Extent{128u, 128u}, std::move(atlas_views)));
                 check(init_views(atlas_renderer), "Atlas recording fixture must initialize its View");
-                check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded(), "Three cascade recording setup");
+                check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded(),
+                      "Three cascade recording setup");
                 RendererTestCommandContext atlas_context(shadow_device);
                 check(atlas_context.begin_recording("AtlasClear").succeeded(), "Atlas fixture recording begins");
                 toy3d::RHIShaderProgramCache atlas_program_cache(shadow_device);
                 check(toy3d::render_shadow_pass(shadow_device, atlas_program_cache, atlas_context,
-                    view_infos(atlas_renderer)[0], shadow_targets, 0u, nullptr).succeeded() &&
-                    atlas_context.recorded_passes.size() == 1u && atlas_context.recorded_transitions.size() == 2u &&
-                    atlas_context.recorded_passes[0].depth_stencil_attachment.depth_load == toy3d::RHILoadOperation::Clear &&
-                    atlas_context.recorded_passes[0].depth_stencil_attachment.clear_value.depth == 0.0f &&
-                    atlas_context.recorded_passes[0].depth_stencil_attachment.view == shadow_targets.depth_view(0u) &&
-                    atlas_context.recorded_transitions[0].resource == shadow_targets.texture(0u) &&
-                    atlas_context.recorded_transitions[1].after == toy3d::RHIAccess::ShaderResourceGraphics,
-                    "Atlas must clear reversed-Z once and transition the whole shared texture to shader read");
+                                                view_infos(atlas_renderer)[0], shadow_targets, 0u, nullptr)
+                              .succeeded() &&
+                          atlas_context.recorded_passes.size() == 1u &&
+                          atlas_context.recorded_transitions.size() == 2u &&
+                          atlas_context.recorded_passes[0].depth_stencil_attachment.depth_load ==
+                              toy3d::RHILoadOperation::Clear &&
+                          atlas_context.recorded_passes[0].depth_stencil_attachment.clear_value.depth == 0.0f &&
+                          atlas_context.recorded_passes[0].depth_stencil_attachment.view ==
+                              shadow_targets.depth_view(0u) &&
+                          atlas_context.recorded_transitions[0].resource == shadow_targets.texture(0u) &&
+                          atlas_context.recorded_transitions[1].after == toy3d::RHIAccess::ShaderResourceGraphics,
+                      "Atlas must clear reversed-Z once and transition the whole shared texture to shader read");
                 check(atlas_context.finish_recording().succeeded(), "Atlas fixture recording ends");
                 shadow_device.set_texture_dimension_limit(2048u);
                 check(shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u).succeeded() &&
-                      shadow_targets.layout().max_resolution == 1024u && shadow_targets.layout().width == 1536u &&
-                      shadow_targets.layout().cascade_count == 3u && shadow_targets.access(0u) == toy3d::RHIAccess::Common,
+                          shadow_targets.layout().max_resolution == 1024u && shadow_targets.layout().width == 1536u &&
+                          shadow_targets.layout().cascade_count == 3u &&
+                          shadow_targets.access(0u) == toy3d::RHIAccess::Common,
                       "Device fallback must consider the entire atlas width and preserve cascade count");
                 shadow_device.set_texture_dimension_limit(512u);
                 check(shadow_targets.ensure_views(shadow_device, 2u, 1u, 2048u).succeeded() &&
-                      shadow_targets.layout().max_resolution == 512u, "Single cascade may use a 512 device limit");
+                          shadow_targets.layout().max_resolution == 512u,
+                      "Single cascade may use a 512 device limit");
                 const auto supported_texture = shadow_targets.texture(0u);
                 const auto unsupported_shadow = shadow_targets.ensure_views(shadow_device, 2u, 3u, 2048u);
                 check(!unsupported_shadow && unsupported_shadow.code() == toy3d::RHIErrorCode::Unsupported &&
-                      shadow_targets.texture(0u) == supported_texture,
+                          shadow_targets.texture(0u) == supported_texture,
                       "Unsupported atlas dimensions must fail without destroying previous resources");
                 check(!shadow_targets.ensure_views(shadow_device, 2u, 1u, 256u) &&
-                      !shadow_targets.ensure_views(shadow_device, 2u, 1u, 4096u),
+                          !shadow_targets.ensure_views(shadow_device, 2u, 1u, 4096u),
                       "Only the three configured maximum-size choices are valid");
                 shadow_targets.release();
             }
@@ -988,8 +1065,8 @@ namespace
             shadow_light.shadow_cascade_count = 2;
             shadow_light.shadow_distance = 6.0f;
             shadow_light.direction = toy3d::Vector3(0.0f, -1.0f, 0.0f);
-            const toy3d::RHIStatus shadow_status = toy3d::compute_shadow_visibility(
-                render_scene, &shadow_light, view_infos(finite_renderer));
+            const toy3d::RHIStatus shadow_status =
+                toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer));
             check(shadow_status.succeeded() && view_infos(finite_renderer)[0].shadow_active() &&
                       view_infos(finite_renderer)[1].shadow_active() &&
                       toy3d::is_finite(view_infos(finite_renderer)[0].shadow_cascade(0u).world_to_clip) &&
@@ -1004,19 +1081,17 @@ namespace
                   "near-vertical light direction must produce finite per-view shadow bases and finite distance");
             for (const toy3d::ViewInfo& view : view_infos(finite_renderer))
             {
-                for (std::size_t cascade_index = 0u;
-                     cascade_index < view.shadow_cascade_count(); ++cascade_index)
+                for (std::size_t cascade_index = 0u; cascade_index < view.shadow_cascade_count(); ++cascade_index)
                 {
                     const toy3d::ShadowCascadeInfo& cascade = view.shadow_cascade(cascade_index);
                     check(toy3d::is_finite(cascade.transition_scale) && cascade.transition_scale > 0.0f,
                           "Every cascade must provide a finite receiver depth transition");
                     const float distance = (cascade.near_distance + cascade.far_distance) * 0.5f;
-                    const toy3d::Vector3 receiver = view.scene_view().camera_position() +
-                        toy3d::Vector3(0.0f, 0.0f, distance);
+                    const toy3d::Vector3 receiver =
+                        view.scene_view().camera_position() + toy3d::Vector3(0.0f, 0.0f, distance);
                     const toy3d::Vector4 clip = cascade.world_to_clip * toy3d::Vector4(receiver, 1.0f);
-                    check(clip.w > 0.0f && std::abs(clip.x / clip.w) < 1.0f &&
-                              std::abs(clip.y / clip.w) < 1.0f && clip.z / clip.w >= 0.0f &&
-                              clip.z / clip.w <= 1.0f,
+                    check(clip.w > 0.0f && std::abs(clip.x / clip.w) < 1.0f && std::abs(clip.y / clip.w) < 1.0f &&
+                              clip.z / clip.w >= 0.0f && clip.z / clip.w <= 1.0f,
                           "each cascade must project its receiver segment into the shadow depth map");
                 }
             }
@@ -1024,96 +1099,109 @@ namespace
             for (int count = 1; count <= toy3d::LightSceneData::k_max_shadow_cascades; ++count)
             {
                 shadow_light.shadow_cascade_count = count;
-                check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                    view_infos(finite_renderer)).succeeded(), "All configured cascade counts must be supported");
+                check(toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer))
+                          .succeeded(),
+                      "All configured cascade counts must be supported");
                 for (const toy3d::ViewInfo& view : view_infos(finite_renderer))
                 {
                     check(view.shadow_active() && view.shadow_cascade_count() == static_cast<std::size_t>(count) &&
-                          view.shadow_cascade(0u).near_distance == view.scene_view().near_clip() &&
-                          view.shadow_cascade(count - 1u).far_distance == 6.0f,
+                              view.shadow_cascade(0u).near_distance == view.scene_view().near_clip() &&
+                              view.shadow_cascade(count - 1u).far_distance == 6.0f,
                           "Active cascades must cover the full requested shadow range for each view");
                     for (std::size_t index = 0; index + 1u < view.shadow_cascade_count(); ++index)
                     {
                         check(view.shadow_cascade(index).far_distance == view.shadow_split(index).y &&
-                              view.shadow_cascade(index + 1u).near_distance == view.shadow_split(index).x,
+                                  view.shadow_cascade(index + 1u).near_distance == view.shadow_split(index).x,
                               "Neighboring cascades must exactly cover their shared blend interval");
                     }
                     for (std::size_t index = view.shadow_cascade_count();
                          index < toy3d::ShadowRenderTargets::k_max_cascade_count; ++index)
-                        check(view.shadow_cascade(index).batches.empty() && view.shadow_cascade(index).transition_scale == 0,
+                    {
+                        check(view.shadow_cascade(index).batches.empty() &&
+                                  view.shadow_cascade(index).transition_scale == 0,
                               "Reducing cascade count must clear stale inactive cascade data");
+                    }
                 }
             }
             const toy3d::ViewInfo& three_cascade_view = view_infos(finite_renderer)[0];
             const float span = 6.0f - three_cascade_view.scene_view().near_clip();
             check(std::abs((three_cascade_view.shadow_split(0u).x + three_cascade_view.shadow_split(0u).y) * 0.5f -
-                          (0.1f + span / 13.0f)) < 1e-5f &&
-                  std::abs((three_cascade_view.shadow_split(1u).x + three_cascade_view.shadow_split(1u).y) * 0.5f -
-                          (0.1f + span * 4.0f / 13.0f)) < 1e-5f &&
-                  three_cascade_view.shadow_split(0u).y < three_cascade_view.shadow_split(1u).x &&
-                  three_cascade_view.shadow_cascade(0u).bias_parameters.x < two_cascade_bias,
+                           (0.1f + span / 13.0f)) < 1e-5f &&
+                      std::abs((three_cascade_view.shadow_split(1u).x + three_cascade_view.shadow_split(1u).y) * 0.5f -
+                               (0.1f + span * 4.0f / 13.0f)) < 1e-5f &&
+                      three_cascade_view.shadow_split(0u).y < three_cascade_view.shadow_split(1u).x &&
+                      three_cascade_view.shadow_cascade(0u).bias_parameters.x < two_cascade_bias,
                   "UE geometric distribution 1:3:9 must improve near texel precision with disjoint blend intervals");
             shadow_light.cascade_distribution_exponent = 1.0f;
-            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                view_infos(finite_renderer)).succeeded() &&
-                std::abs((view_infos(finite_renderer)[0].shadow_split(0u).x +
-                          view_infos(finite_renderer)[0].shadow_split(0u).y) * 0.5f - (0.1f + span / 3.0f)) < 1e-5f,
-                "Distribution exponent one must produce uniform segments");
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer))
+                          .succeeded() &&
+                      std::abs((view_infos(finite_renderer)[0].shadow_split(0u).x +
+                                view_infos(finite_renderer)[0].shadow_split(0u).y) *
+                                   0.5f -
+                               (0.1f + span / 3.0f)) < 1e-5f,
+                  "Distribution exponent one must produce uniform segments");
             for (const float exponent : {0.1f, 10.0f})
             {
                 shadow_light.cascade_distribution_exponent = exponent;
-                check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                    view_infos(finite_renderer)).succeeded() &&
-                    view_infos(finite_renderer)[0].shadow_split(0u).x > 0.1f &&
-                    view_infos(finite_renderer)[0].shadow_split(0u).y < view_infos(finite_renderer)[0].shadow_split(1u).x &&
-                    view_infos(finite_renderer)[0].shadow_split(1u).y < 6.0f,
-                    "Extreme valid exponents must keep blend intervals inside the range and separate");
+                check(toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer))
+                              .succeeded() &&
+                          view_infos(finite_renderer)[0].shadow_split(0u).x > 0.1f &&
+                          view_infos(finite_renderer)[0].shadow_split(0u).y <
+                              view_infos(finite_renderer)[0].shadow_split(1u).x &&
+                          view_infos(finite_renderer)[0].shadow_split(1u).y < 6.0f,
+                      "Extreme valid exponents must keep blend intervals inside the range and separate");
             }
             shadow_light.cascade_distribution_exponent = 3.0f;
             shadow_light.shadow_cascade_count = 2;
             shadow_light.shadow_map_resolution = 1024;
-            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                view_infos(finite_renderer)).succeeded(), "Low resolution visibility setup");
+            check(
+                toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer)).succeeded(),
+                "Low resolution visibility setup");
             std::array<float, toy3d::LightSceneData::k_max_shadow_cascades> low_resolution_bias{};
             for (std::size_t index = 0u; index < view_infos(finite_renderer)[0].shadow_cascade_count(); ++index)
+            {
                 low_resolution_bias[index] = view_infos(finite_renderer)[0].shadow_cascade(index).bias_parameters.x;
+            }
             shadow_light.shadow_map_resolution = 2048;
-            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                view_infos(finite_renderer)).succeeded(), "High resolution visibility setup");
+            check(
+                toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer)).succeeded(),
+                "High resolution visibility setup");
             for (std::size_t index = 0u; index < view_infos(finite_renderer)[0].shadow_cascade_count(); ++index)
-                check(view_infos(finite_renderer)[0].shadow_cascade(index).bias_parameters.x < low_resolution_bias[index],
+            {
+                check(view_infos(finite_renderer)[0].shadow_cascade(index).bias_parameters.x <
+                          low_resolution_bias[index],
                       "Increasing maximum size must reduce world-texel bias in every cascade");
+            }
             shadow_light.shadow_cascade_count = 4;
             check(!toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer)),
                   "Render visibility must reject a cascade count beyond supported capacity");
             shadow_light.shadow_cascade_count = 2;
             shadow_light.shadow_bias = 0.0f;
-            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                      view_infos(finite_renderer)).succeeded() &&
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer))
+                          .succeeded() &&
                       toy3d::is_finite(view_infos(finite_renderer)[0].shadow_cascade(0u).transition_scale) &&
                       view_infos(finite_renderer)[0].shadow_cascade(0u).transition_scale > 0.0f,
                   "Zero caster bias must not produce an infinite receiver transition");
             shadow_light.cast_shadows = false;
-            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                      view_infos(finite_renderer)).succeeded() &&
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer))
+                          .succeeded() &&
                       !view_infos(finite_renderer)[0].shadow_active() &&
                       !view_infos(finite_renderer)[1].shadow_active(),
                   "disabling the selected light's shadow must clear per-view shadow state");
             shadow_light.cast_shadows = true;
             shadow_light.shadow_distance = 0.0f;
-            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light,
-                      view_infos(finite_renderer)).succeeded() &&
+            check(toy3d::compute_shadow_visibility(render_scene, &shadow_light, view_infos(finite_renderer))
+                          .succeeded() &&
                       !view_infos(finite_renderer)[0].shadow_active(),
                   "zero dynamic shadow distance must disable cascade generation");
 
             std::vector<toy3d::SceneView> invalid_parameter_views;
-            invalid_parameter_views.push_back(make_perspective_view(
-                toy3d::Vector3(), toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
+            invalid_parameter_views.push_back(
+                make_perspective_view(toy3d::Vector3(), toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
             invalid_parameter_views.push_back(make_perspective_view(
                 toy3d::Vector3(1.0f, 0.0f, 0.0f), toy3d::CameraProjectionMode::Perspective, 0.1f, 10.0f));
             toy3d::ForwardSceneRenderer invalid_parameter_renderer(
-                toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u},
-                                        std::move(invalid_parameter_views)));
+                toy3d::SceneViewFamily(render_scene, toy3d::Extent{128u, 128u}, std::move(invalid_parameter_views)));
             check(init_views(invalid_parameter_renderer),
                   "invalid generated View parameter fixture must first initialize canonical CPU views");
             toy3d::ViewShaderParameters& invalid_parameters =
@@ -1150,8 +1238,8 @@ namespace
             toy3d::Matrix4 updated_object_transform = toy3d::Matrix4::identity();
             updated_object_transform.at(3u, 0u) = 1.0f;
             render_scene.update_primitive_transform(inside, updated_object_transform,
-                                                    make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false,
-                                                    true, true);
+                                                    make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false, true,
+                                                    true);
             compute_visibility(finite_renderer, render_scene);
             check(!visible_contains(view_infos(finite_renderer)[0], inside) &&
                       visible_contains(view_infos(finite_renderer)[0], touching_near) &&
@@ -1160,10 +1248,11 @@ namespace
                   "scene updates must advance Object data generation and clear stale visibility results");
             const std::uint64_t shadow_generation = inside->object_data_generation();
             render_scene.update_primitive_transform(inside, updated_object_transform,
-                make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false, true, false);
+                                                    make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false, true,
+                                                    false);
             check(inside->cast_shadows() && !inside->receives_shadows() &&
-                  inside->object_shader_parameters().toy_receives_shadows == 0.0f &&
-                  inside->object_data_generation() == shadow_generation + 1u,
+                      inside->object_shader_parameters().toy_receives_shadows == 0.0f &&
+                      inside->object_data_generation() == shadow_generation + 1u,
                   "Receiver toggle must update Object parameters and generation independently of casting");
 
             std::vector<toy3d::SceneView> infinite_views;
@@ -1199,9 +1288,8 @@ namespace
                   "init_views must reject a non-positive near plane");
             check(invalid_view_rejected(toy3d::SceneView(
                       toy3d::Vector3(std::numeric_limits<float>::infinity(), 0.0f, 0.0f), toy3d::Quaternion::identity(),
-                      toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, 128u, 128u},
-                      toy3d::Extent{128u, 128u}, toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f),
-                      0.1f, 10.0f)),
+                      toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, 128u, 128u}, toy3d::Extent{128u, 128u},
+                      toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 10.0f)),
                   "init_views must reject non-finite camera values");
             check(invalid_view_rejected(toy3d::SceneView(
                       toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
@@ -1224,14 +1312,10 @@ namespace
         const toy3d::Matrix4 inverse_view_projection_matrix(7.0f);
         const toy3d::Vector3 camera_position(1.0f, 2.0f, 3.0f);
         const toy3d::Vector3 camera_direction(0.0f, 0.0f, 1.0f);
-        const toy3d::ViewShaderParameters view_parameters{view_matrix,
-                                                           projection_matrix,
-                                                           view_projection_matrix,
-                                                           inverse_view_matrix,
-                                                           inverse_projection_matrix,
-                                                           inverse_view_projection_matrix,
-                                                           camera_position,
-                                                           camera_direction};
+        const toy3d::ViewShaderParameters view_parameters{
+            view_matrix,         projection_matrix,         view_projection_matrix,
+            inverse_view_matrix, inverse_projection_matrix, inverse_view_projection_matrix,
+            camera_position,     camera_direction};
         check(view_parameters.toy_view == view_matrix && view_parameters.toy_projection == projection_matrix &&
                   view_parameters.toy_view_projection == view_projection_matrix &&
                   view_parameters.toy_inverse_view == inverse_view_matrix &&
@@ -1303,8 +1387,11 @@ namespace
                                                                                         : global_shader_map);
                 toy3d::RenderingThread rendering_thread(thread_manager, *graph,
                                                         toy3d::RenderingThreadMode::SingleThread);
-                const toy3d::ThreadStatus started =
-                    rendering_thread.start([&renderer]() { return renderer.initialize(); });
+                const toy3d::ThreadStatus started = rendering_thread.start(
+                    [&renderer]()
+                    {
+                        return renderer.initialize();
+                    });
                 const toy3d::RendererStatus renderer_status = renderer.status();
                 const toy3d::RHIErrorCode expected_error_code =
                     failure_point == RendererBootstrapFailurePoint::MissingGlobalShader
@@ -1359,8 +1446,11 @@ namespace
                     make_global_shader_map(include_imgui_shader), std::move(font_atlas));
                 toy3d::RenderingThread rendering_thread(thread_manager, *graph,
                                                         toy3d::RenderingThreadMode::SingleThread);
-                const toy3d::ThreadStatus started =
-                    rendering_thread.start([&renderer]() { return renderer.initialize(); });
+                const toy3d::ThreadStatus started = rendering_thread.start(
+                    [&renderer]()
+                    {
+                        return renderer.initialize();
+                    });
                 if (!include_imgui_shader)
                 {
                     check(!started.succeeded() && renderer.scene_interface() == nullptr &&
@@ -1372,8 +1462,11 @@ namespace
                     check(started.succeeded() && renderer.scene_interface() != nullptr,
                           "enabled ImGui must publish only after Program and font bootstrap both complete; actual: " +
                               renderer.status().error_message());
-                    const toy3d::ThreadStatus stopped =
-                        rendering_thread.stop([&renderer]() { return renderer.teardown(); });
+                    const toy3d::ThreadStatus stopped = rendering_thread.stop(
+                        [&renderer]()
+                        {
+                            return renderer.teardown();
+                        });
                     check(stopped.succeeded(), "enabled ImGui Renderer domain must teardown cleanly");
                 }
             }
@@ -1514,10 +1607,10 @@ namespace
                     toy3d::StaticMeshRef terminal_mesh = make_mesh(&terminal_material);
                     terminal_actor.static_mesh_component().set_static_mesh(terminal_mesh);
                     std::vector<toy3d::SceneView> terminal_views;
-                    terminal_views.emplace_back(
-                        toy3d::Vector3(), toy3d::Quaternion::identity(), toy3d::Vector3(0.0f, 0.0f, 1.0f),
-                        toy3d::IntRect{0, 0, 1u, 1u}, toy3d::Extent{1u, 1u},
-                        toy3d::CameraProjectionMode::Perspective, toy3d::Radians(1.0f), 0.1f, 100.0f);
+                    terminal_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(),
+                                                toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, 1u, 1u},
+                                                toy3d::Extent{1u, 1u}, toy3d::CameraProjectionMode::Perspective,
+                                                toy3d::Radians(1.0f), 0.1f, 100.0f);
                     renderer.draw_frame(std::make_unique<toy3d::ForwardSceneRenderer>(
                         toy3d::SceneViewFamily(*scene_interface, toy3d::Extent{1u, 1u}, std::move(terminal_views))));
                     check(terminal_world.bind_scene(*scene_interface),

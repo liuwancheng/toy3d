@@ -4,7 +4,9 @@
 
 namespace toy3d
 {
-    SceneRenderer::SceneRenderer(SceneViewFamily view_family) : view_family_(std::move(view_family)) {}
+    SceneRenderer::SceneRenderer(SceneViewFamily view_family) : view_family_(std::move(view_family))
+    {
+    }
 
     SceneRenderer::~SceneRenderer() = default;
 } // namespace toy3d

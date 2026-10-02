@@ -133,7 +133,9 @@ namespace toy3d::shader
         {
             const ValueTypeInfo info = value_type_info(type);
             if (info.matrix_columns != 0)
+            {
                 return info.matrix_rows * info.matrix_columns;
+            }
             return info.size / 4u;
         }
 
@@ -141,7 +143,12 @@ namespace toy3d::shader
         {
             // string_view borrows the parsed token while comparing the shared Shader vocabulary.
             for (std::uint32_t i = 0; i < sampler_preset_count; ++i)
-                if (value == sampler_preset_name(i)) return true;
+            {
+                if (value == sampler_preset_name(i))
+                {
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -214,7 +221,9 @@ namespace toy3d::shader
                 std::uint32_t bits = 0;
                 std::memcpy(&bits, &converted, sizeof(bits));
                 for (std::uint32_t byte = 0; byte < sizeof(bits); ++byte)
+                {
                     member.default_value[byte_offset + byte] = static_cast<std::uint8_t>(bits >> (byte * 8u));
+                }
             }
         }
 
@@ -305,9 +314,11 @@ namespace toy3d::shader
                 add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, input.location,
                           "ShaderParameterId 0 is reserved as invalid.");
             }
-            const bool duplicate_id =
-                std::any_of(layout.members.begin(), layout.members.end(), [&](const ShaderConstantMember& existing)
-                            { return existing.parameter_id == member.parameter_id; });
+            const bool duplicate_id = std::any_of(layout.members.begin(), layout.members.end(),
+                                                  [&](const ShaderConstantMember& existing)
+                                                  {
+                                                      return existing.parameter_id == member.parameter_id;
+                                                  });
             if (duplicate_id)
             {
                 add_error(result.diagnostics, DiagnosticCode::ShaderParameterIdCollision, input.location,
@@ -345,7 +356,9 @@ namespace toy3d::shader
             return result;
         }
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         std::vector<ReflectedConstantMember> reflected_members;
         reflected_members.reserve(layout.members.size());
         for (const ShaderConstantMember& member : layout.members)
@@ -385,29 +398,41 @@ namespace toy3d::shader
             editor_property.name = property.name;
             editor_property.display_name = property.display_name;
             editor_property.display_order = static_cast<std::uint32_t>(layout.editor_properties.size());
-            editor_property.control = value_type ? ShaderEditorPropertyControl::Numeric
-                                                 : ShaderEditorPropertyControl::Resource;
+            editor_property.control =
+                value_type ? ShaderEditorPropertyControl::Numeric : ShaderEditorPropertyControl::Resource;
             if (property.type == PropertyType::Color)
+            {
                 editor_property.control = ShaderEditorPropertyControl::Color;
+            }
             if (property.type == PropertyType::Range)
             {
                 editor_property.control = ShaderEditorPropertyControl::Range;
                 if (property.range_min)
+                {
                     editor_property.range_min = static_cast<float>(*property.range_min);
+                }
                 if (property.range_max)
+                {
                     editor_property.range_max = static_cast<float>(*property.range_max);
+                }
             }
-            editor_property.parameter_id = make_shader_parameter_id(
-                BindingGroup::Material, value_type ? ShaderParameterCategory::Constant
-                                                  : *resource_category(property_resource_kind(property.type)),
-                property.name);
+            editor_property.parameter_id =
+                make_shader_parameter_id(BindingGroup::Material,
+                                         value_type ? ShaderParameterCategory::Constant
+                                                    : *resource_category(property_resource_kind(property.type)),
+                                         property.name);
             layout.editor_properties.push_back(std::move(editor_property));
             if (value_type)
             {
                 if (std::any_of(property.default_value.numbers.begin(), property.default_value.numbers.end(),
-                                [](double number) { return !std::isfinite(static_cast<float>(number)); }))
+                                [](double number)
+                                {
+                                    return !std::isfinite(static_cast<float>(number));
+                                }))
+                {
                     add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, property.location,
                               "Property default must be representable as finite binary32.");
+                }
                 const std::uint32_t expected_count = value_component_count(*value_type);
                 if (property.default_value.kind != DefaultValueKind::Numbers ||
                     property.default_value.numbers.size() != expected_count)
@@ -452,15 +477,18 @@ namespace toy3d::shader
         if (!material_input.constant_members.empty())
         {
             canonicalize_declared_inputs(material_input.group, material_input.constant_members);
-            ConstantBufferPackResult packed = pack_constant_buffer(material_input.group, material_input.constant_members);
+            ConstantBufferPackResult packed =
+                pack_constant_buffer(material_input.group, material_input.constant_members);
             result.diagnostics.insert(result.diagnostics.end(), packed.diagnostics.begin(), packed.diagnostics.end());
             if (packed.layout)
             {
                 for (ShaderConstantMember& member : packed.layout->members)
                 {
-                    const auto property =
-                        std::find_if(asset.properties.begin(), asset.properties.end(),
-                                     [&](const Property& candidate) { return candidate.name == member.name; });
+                    const auto property = std::find_if(asset.properties.begin(), asset.properties.end(),
+                                                       [&](const Property& candidate)
+                                                       {
+                                                           return candidate.name == member.name;
+                                                       });
                     if (property != asset.properties.end())
                     {
                         write_numeric_default(member, property->default_value);
@@ -484,7 +512,10 @@ namespace toy3d::shader
                               " numeric default component(s).");
             }
             if (std::any_of(parameter.default_value.numbers.begin(), parameter.default_value.numbers.end(),
-                            [](double value) { return !std::isfinite(static_cast<float>(value)); }))
+                            [](double value)
+                            {
+                                return !std::isfinite(static_cast<float>(value));
+                            }))
             {
                 add_error(result.diagnostics, DiagnosticCode::InvalidDefaultValue, parameter.default_value.location,
                           "Parameter '" + parameter.name + "' default must be finite.");
@@ -500,9 +531,11 @@ namespace toy3d::shader
             {
                 for (ShaderConstantMember& member : packed.layout->members)
                 {
-                    const auto parameter =
-                        std::find_if(asset.parameters.begin(), asset.parameters.end(),
-                                     [&](const Parameter& candidate) { return candidate.name == member.name; });
+                    const auto parameter = std::find_if(asset.parameters.begin(), asset.parameters.end(),
+                                                        [&](const Parameter& candidate)
+                                                        {
+                                                            return candidate.name == member.name;
+                                                        });
                     if (parameter != asset.parameters.end())
                     {
                         write_numeric_default(member, parameter->default_value);
@@ -513,7 +546,8 @@ namespace toy3d::shader
         }
 
         const ShaderParameterGroupInput object_input = builtin_shader_parameter_input(BindingGroup::Object);
-        ConstantBufferPackResult object_buffer = pack_constant_buffer(object_input.group, object_input.constant_members);
+        ConstantBufferPackResult object_buffer =
+            pack_constant_buffer(object_input.group, object_input.constant_members);
         result.diagnostics.insert(result.diagnostics.end(), object_buffer.diagnostics.begin(),
                                   object_buffer.diagnostics.end());
         if (object_buffer.layout)
@@ -557,9 +591,13 @@ namespace toy3d::shader
                   [](const ShaderResourceParameter& left, const ShaderResourceParameter& right)
                   {
                       if (left.group != right.group)
+                      {
                           return left.group < right.group;
+                      }
                       if (left.category != right.category)
+                      {
                           return left.category < right.category;
+                      }
                       return left.parameter_id < right.parameter_id;
                   });
 
@@ -592,7 +630,9 @@ namespace toy3d::shader
 
         std::sort(layout.constant_buffers.begin(), layout.constant_buffers.end(),
                   [](const ConstantBufferLayout& left, const ConstantBufferLayout& right)
-                  { return left.group < right.group; });
+                  {
+                      return left.group < right.group;
+                  });
         const ShaderParameterSchema schema = make_shader_parameter_schema(layout);
         std::string editor_error;
         if (!validate_shader_editor_properties(layout.editor_properties, schema, editor_error))
@@ -616,21 +656,19 @@ namespace toy3d::shader
             buffer.binding_id = input.binding_id;
             buffer.name = std::string("toy_") + group_name(input.group) + "_data";
             std::transform(buffer.name.begin(), buffer.name.end(), buffer.name.begin(),
-                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+                           [](unsigned char value)
+                           {
+                               return static_cast<char>(std::tolower(value));
+                           });
             buffer.group = input.group;
             buffer.size = input.size;
             buffer.data_layout_hash = input.data_layout_hash;
             buffer.shader_abi_version = input.shader_abi_version;
             for (const ShaderConstantMember& input_member : input.members)
             {
-                buffer.members.push_back({input_member.parameter_id,
-                                          input_member.name,
-                                          input_member.type,
-                                          input_member.offset,
-                                          input_member.size,
-                                          input_member.array_count,
-                                          input_member.array_stride,
-                                          input_member.matrix_stride,
+                buffer.members.push_back({input_member.parameter_id, input_member.name, input_member.type,
+                                          input_member.offset, input_member.size, input_member.array_count,
+                                          input_member.array_stride, input_member.matrix_stride,
                                           input_member.default_value});
             }
             schema.constant_buffers.push_back(std::move(buffer));
@@ -646,9 +684,13 @@ namespace toy3d::shader
             resource.element_type = input.element_type;
             resource.array_count = input.array_count;
             if (input.default_value.kind == DefaultValueKind::String)
+            {
                 resource.default_value_kind = ShaderParameterDefaultValueKind::String;
+            }
             else if (input.default_value.kind == DefaultValueKind::Identifier)
+            {
                 resource.default_value_kind = ShaderParameterDefaultValueKind::Identifier;
+            }
             resource.default_value = input.default_value.text;
             schema.resources.push_back(std::move(resource));
         }
@@ -677,15 +719,20 @@ namespace toy3d::shader
                 known_names.insert(member.name);
                 const auto found = usage_by_name.find(member.name);
                 if (found != usage_by_name.end())
+                {
                     stages |= found->second;
+                }
             }
             if (stages != ShaderStageFlags::None)
             {
                 ActiveBinding binding;
                 binding.binding_id = buffer.binding_id;
                 binding.name = std::string("toy_") + group_name(buffer.group) + "_data";
-                std::transform(binding.name.begin(), binding.name.end(), binding.name.begin(), [](unsigned char value)
-                               { return static_cast<char>(value >= 'A' && value <= 'Z' ? value - 'A' + 'a' : value); });
+                std::transform(binding.name.begin(), binding.name.end(), binding.name.begin(),
+                               [](unsigned char value)
+                               {
+                                   return static_cast<char>(value >= 'A' && value <= 'Z' ? value - 'A' + 'a' : value);
+                               });
                 binding.group = buffer.group;
                 binding.category = ShaderParameterCategory::Constant;
                 binding.stages = stages;
@@ -698,7 +745,9 @@ namespace toy3d::shader
             known_names.insert(resource.name);
             const auto found = usage_by_name.find(resource.name);
             if (found == usage_by_name.end() || found->second == ShaderStageFlags::None)
+            {
                 continue;
+            }
             active.bindings.push_back({resource.parameter_id, resource.name, resource.group, resource.category,
                                        found->second, nullptr, &resource});
         }
@@ -711,7 +760,9 @@ namespace toy3d::shader
             }
         }
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         result.layout = std::move(active);
         return result;
     }

@@ -71,7 +71,9 @@ namespace toy3d
     class RHIFrameContext : public RHIObject
     {
       public:
-        explicit RHIFrameContext(const RHIDevice& owner) : RHIObject(owner) {}
+        explicit RHIFrameContext(const RHIDevice& owner) : RHIObject(owner)
+        {
+        }
         ~RHIFrameContext() override = default;
 
         RHIFrameContext(const RHIFrameContext&) = delete;

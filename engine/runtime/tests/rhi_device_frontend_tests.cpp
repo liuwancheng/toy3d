@@ -29,9 +29,18 @@ namespace
       public:
         using toy3d::RHIQueue::RHIQueue;
 
-        toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
-        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIQueueCompletionValue completed_value() const override
+        {
+            return 0;
+        }
+        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus wait_idle() override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
       protected:
         toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(const toy3d::RHISubmitInfo&) override
@@ -48,44 +57,97 @@ namespace
         {
         }
 
-        toy3d::RHIResult<bool> is_signaled() const override { return toy3d::RHIResult<bool>::success(false); }
+        toy3d::RHIResult<bool> is_signaled() const override
+        {
+            return toy3d::RHIResult<bool>::success(false);
+        }
     };
 
     class RecordingContext final : public toy3d::RHIGraphicsCommandContext
     {
       public:
-        explicit RecordingContext(const toy3d::RHIDevice& owner) : RHIGraphicsCommandContext(owner) {}
+        explicit RecordingContext(const toy3d::RHIDevice& owner) : RHIGraphicsCommandContext(owner)
+        {
+        }
 
-        toy3d::RHIStatus begin_recording(const std::string&) override { return unsupported(); }
+        toy3d::RHIStatus begin_recording(const std::string&) override
+        {
+            return unsupported();
+        }
         toy3d::RHIStatus transition_resources_impl(const std::vector<toy3d::RHIResourceTransition>&) override
         {
             ++transition_count;
             return toy3d::RHIStatus::success();
         }
-        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override { return unsupported(); }
-        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc&) override { return unsupported(); }
-        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override { return unsupported(); }
-        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override { return unsupported(); }
-        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override { return unsupported(); }
+        toy3d::RHIStatus copy_buffer_impl(const toy3d::RHIBufferCopyDesc&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus copy_texture_impl(const toy3d::RHITextureCopyDesc&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus upload_texture_impl(const toy3d::RHITextureUploadDesc&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus write_gpu_fence_impl(const toy3d::RHIGPUFenceRef&) override
+        {
+            return unsupported();
+        }
         toy3d::RHIResult<toy3d::RHICommandListRef> finish_recording() override
         {
             return toy3d::RHIResult<toy3d::RHICommandListRef>::failure(toy3d::RHIErrorCode::Unsupported,
                                                                        "Recording fake does not execute commands.");
         }
-        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc&) override { return unsupported(); }
-        toy3d::RHIStatus end_render_pass() override { return unsupported(); }
-        toy3d::RHIStatus set_graphics_pipeline_impl(const toy3d::RHIGraphicsPipelineRef&) override { return unsupported(); }
-        toy3d::RHIStatus set_viewport(const toy3d::RHIViewport&) override { return unsupported(); }
-        toy3d::RHIStatus set_scissor(const toy3d::RHIRect&) override { return unsupported(); }
-        toy3d::RHIStatus set_blend_constants(const toy3d::vec4&) override { return unsupported(); }
-        toy3d::RHIStatus set_stencil_reference(std::uint8_t) override { return unsupported(); }
+        toy3d::RHIStatus begin_render_pass_impl(const toy3d::RHIRenderPassDesc&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus end_render_pass() override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus set_graphics_pipeline_impl(const toy3d::RHIGraphicsPipelineRef&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus set_viewport(const toy3d::RHIViewport&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus set_scissor(const toy3d::RHIRect&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus set_blend_constants(const toy3d::vec4&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus set_stencil_reference(std::uint8_t) override
+        {
+            return unsupported();
+        }
         toy3d::RHIStatus set_vertex_buffers_impl(const std::vector<toy3d::RHIVertexBufferBinding>&) override
         {
             return unsupported();
         }
-        toy3d::RHIStatus set_index_buffer_impl(const toy3d::RHIIndexBufferBinding&) override { return unsupported(); }
-        toy3d::RHIStatus draw(const toy3d::RHIDrawArgs&) override { return unsupported(); }
-        toy3d::RHIStatus draw_indexed(const toy3d::RHIDrawIndexedArgs&) override { return unsupported(); }
+        toy3d::RHIStatus set_index_buffer_impl(const toy3d::RHIIndexBufferBinding&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus draw(const toy3d::RHIDrawArgs&) override
+        {
+            return unsupported();
+        }
+        toy3d::RHIStatus draw_indexed(const toy3d::RHIDrawIndexedArgs&) override
+        {
+            return unsupported();
+        }
 
         int transition_count = 0;
         int color_readback_count = 0;
@@ -153,18 +215,26 @@ namespace
       public:
         RecordingFrame(const toy3d::RHIDevice& owner, toy3d::RHITextureRef texture, toy3d::RHITextureViewRef view,
                        std::unique_ptr<toy3d::RHIGraphicsCommandContext> context = nullptr)
-            : RHIFrameContext(owner), texture_(std::move(texture)), view_(std::move(view)),
-              context_(std::move(context))
+            : RHIFrameContext(owner), texture_(std::move(texture)), view_(std::move(view)), context_(std::move(context))
         {
         }
 
-        const toy3d::RHITextureRef& present_texture() const override { return texture_; }
-        const toy3d::RHITextureViewRef& present_view() const override { return view_; }
-        toy3d::Extent extent() const override { return {1u, 1u}; }
+        const toy3d::RHITextureRef& present_texture() const override
+        {
+            return texture_;
+        }
+        const toy3d::RHITextureViewRef& present_view() const override
+        {
+            return view_;
+        }
+        toy3d::Extent extent() const override
+        {
+            return {1u, 1u};
+        }
 
       protected:
-        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>
-        create_graphics_command_context_impl() override
+        toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>> create_graphics_command_context_impl()
+            override
         {
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>::success(std::move(context_));
         }
@@ -215,8 +285,14 @@ namespace
             initialized = true;
             return toy3d::RHIStatus::success();
         }
-        const toy3d::RHICapabilities& capabilities() const override { return device_capabilities; }
-        const toy3d::RHILimits& limits() const override { return device_limits; }
+        const toy3d::RHICapabilities& capabilities() const override
+        {
+            return device_capabilities;
+        }
+        const toy3d::RHILimits& limits() const override
+        {
+            return device_limits;
+        }
         toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat format) const override
         {
             if (format == toy3d::PixelFormat::Unknown)
@@ -231,7 +307,10 @@ namespace
             result.supported_sample_counts = 1;
             return result;
         }
-        toy3d::RHIQueue& graphics_queue() override { return queue; }
+        toy3d::RHIQueue& graphics_queue() override
+        {
+            return queue;
+        }
 
         HookCounts counts;
         bool fail_next_buffer = false;
@@ -255,7 +334,11 @@ namespace
         void wait_until_buffer_hook_entered()
         {
             std::unique_lock<std::mutex> lock(block_mutex);
-            block_changed.wait(lock, [this]() { return buffer_entered; });
+            block_changed.wait(lock,
+                               [this]()
+                               {
+                                   return buffer_entered;
+                               });
         }
 
         void release_blocked_buffer()
@@ -286,7 +369,11 @@ namespace
                 {
                     buffer_entered = true;
                     block_changed.notify_all();
-                    block_changed.wait(lock, [this]() { return release_buffer; });
+                    block_changed.wait(lock,
+                                       [this]()
+                                       {
+                                           return release_buffer;
+                                       });
                     block_buffer = false;
                 }
             }
@@ -389,7 +476,10 @@ namespace
                 std::make_unique<RecordingContext>(*this));
         }
 
-        bool is_initialized_impl() const override { return initialized; }
+        bool is_initialized_impl() const override
+        {
+            return initialized;
+        }
         toy3d::RHIStatus wait_idle_before_shutdown_impl() override
         {
             ++wait_idle_count;
@@ -590,8 +680,8 @@ namespace
 
         check(device.counts.buffer == 1 && device.counts.texture == 1 && device.counts.buffer_view == 1 &&
                   device.counts.texture_view == 1 && device.counts.shader == 2 && device.counts.binding_layout == 3 &&
-                  device.counts.sampler == 1 && device.counts.pipeline == 3 &&
-                  device.counts.fence == 1 && device.counts.context == 1 && device.counts.viewport == 1,
+                  device.counts.sampler == 1 && device.counts.pipeline == 3 && device.counts.fence == 1 &&
+                  device.counts.context == 1 && device.counts.viewport == 1,
               "each legal frontend path must call its backend hook exactly once");
     }
 
@@ -704,8 +794,7 @@ namespace
         transition.before = toy3d::RHIAccess::Common;
         transition.after = toy3d::RHIAccess::CopyDestination;
         const toy3d::RHIStatus rejected = context->transition_resources({transition});
-        check(!rejected && rejected.code() == toy3d::RHIErrorCode::InvalidArgument &&
-                  context->transition_count == 0,
+        check(!rejected && rejected.code() == toy3d::RHIErrorCode::InvalidArgument && context->transition_count == 0,
               "cross-device command resources must fail before the backend hook");
 
         transition.resource = local_buffer.value();
@@ -729,7 +818,9 @@ namespace
         auto context_result = first.create_graphics_command_context();
         check(texture && context_result, "pixel readback frontend setup must succeed");
         if (!texture || !context_result)
+        {
             return;
+        }
 
         auto local_readback = std::make_shared<toy3d::RHIReadback>(first, "local readback");
         auto foreign_readback = std::make_shared<toy3d::RHIReadback>(second, "foreign readback");
@@ -771,8 +862,11 @@ namespace
     {
       public:
         explicit ColorReadback(const toy3d::RHIDevice& device)
-            : RHIReadback(device, "Color fixture", toy3d::PixelFormat::R8G8B8A8UNorm, {2, 2}) {}
+            : RHIReadback(device, "Color fixture", toy3d::PixelFormat::R8G8B8A8UNorm, {2, 2})
+        {
+        }
         bool bad_pitch = false;
+
       protected:
         toy3d::RHIResult<toy3d::RHITextureReadbackData> read_texture_impl() const override
         {
@@ -780,7 +874,7 @@ namespace
             data.format = readback_format();
             data.extent = readback_extent();
             data.row_pitch = bad_pitch ? 12 : 8;
-            data.bytes = {255,0,0,255, 0,255,0,255, 0,0,255,255, 17,83,151,255};
+            data.bytes = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 17, 83, 151, 255};
             return toy3d::RHIResult<toy3d::RHITextureReadbackData>::success(std::move(data));
         }
     };
@@ -799,7 +893,10 @@ namespace
         const auto texture = first.create_texture(texture_desc);
         auto context_result = first.create_graphics_command_context();
         check(texture && context_result, "color readback setup must succeed");
-        if (!texture || !context_result) return;
+        if (!texture || !context_result)
+        {
+            return;
+        }
         auto* context = dynamic_cast<RecordingContext*>(context_result.value().get());
         auto readback = std::make_shared<ColorReadback>(first);
         RHITextureReadbackDesc desc;
@@ -810,25 +907,35 @@ namespace
         check(static_cast<bool>(validate_texture_readback_desc(desc)), "bounded nonzero-offset region validates");
         check(readback->read_texture(0).status().code() == RHIErrorCode::NotReady, "unsubmitted image remains pending");
         desc.source.offset.x = 3;
-        check(!context->readback_texture(desc) && context->color_readback_count == 0, "out-of-bounds region never reaches backend");
+        check(!context->readback_texture(desc) && context->color_readback_count == 0,
+              "out-of-bounds region never reaches backend");
         desc.source.offset.x = 1;
         desc.destination = std::make_shared<ColorReadback>(second);
-        check(!context->readback_texture(desc) && context->color_readback_count == 0, "foreign readback rejects before backend");
+        check(!context->readback_texture(desc) && context->color_readback_count == 0,
+              "foreign readback rejects before backend");
         desc.destination = readback;
-        check(static_cast<bool>(context->readback_texture(desc)) && context->color_readback_count == 1, "valid region records once");
-        check(!context->readback_texture(desc) && context->color_readback_count == 1, "image destination cannot be overwritten before submit");
+        check(static_cast<bool>(context->readback_texture(desc)) && context->color_readback_count == 1,
+              "valid region records once");
+        check(!context->readback_texture(desc) && context->color_readback_count == 1,
+              "image destination cannot be overwritten before submit");
         readback->mark_used(7);
         check(readback->read_texture(6).status().code() == RHIErrorCode::NotReady, "in-flight image remains pending");
         const auto completed = readback->read_texture(7);
         check(completed && completed.value().bytes[0] == 255 && completed.value().bytes[10] == 255 &&
-            completed.value().bytes[12] == 17, "completed asymmetric image preserves row and channel order");
+                  completed.value().bytes[12] == 17,
+              "completed asymmetric image preserves row and channel order");
         readback->bad_pitch = true;
-        check(readback->read_texture(7).status().code() == RHIErrorCode::BackendFailure, "native padding must be repacked by backend");
-        check(readback->read_uint32(7).status().code() == RHIErrorCode::InvalidArgument, "image cannot be read as integer pixel");
-        check(!first.create_texture_readback(PixelFormat::R32UInt, {2, 2}, "invalid format"), "integer format rejects color creation");
-        check(!first.create_texture_readback(PixelFormat::R8G8B8A8UNorm, {513, 2}, "oversize"), "color allocation is bounded");
+        check(readback->read_texture(7).status().code() == RHIErrorCode::BackendFailure,
+              "native padding must be repacked by backend");
+        check(readback->read_uint32(7).status().code() == RHIErrorCode::InvalidArgument,
+              "image cannot be read as integer pixel");
+        check(!first.create_texture_readback(PixelFormat::R32UInt, {2, 2}, "invalid format"),
+              "integer format rejects color creation");
+        check(!first.create_texture_readback(PixelFormat::R8G8B8A8UNorm, {513, 2}, "oversize"),
+              "color allocation is bounded");
         const auto unsupported = first.create_texture_readback(PixelFormat::R8G8B8A8UNorm, {2, 2}, "unsupported");
-        check(!unsupported && unsupported.status().code() == RHIErrorCode::Unsupported, "missing image backend hook is explicit");
+        check(!unsupported && unsupported.status().code() == RHIErrorCode::Unsupported,
+              "missing image backend hook is explicit");
     }
 
     void test_viewport_frontend_validates_frame_outputs()
@@ -868,8 +975,8 @@ namespace
                   viewport.abort_count == 1,
               "viewport frontend must reject and recover a frame with foreign presentation resources");
 
-        viewport.next_frame = std::make_unique<RecordingFrame>(
-            first, local_texture.value(), local_view.value(), std::make_unique<RecordingContext>(second));
+        viewport.next_frame = std::make_unique<RecordingFrame>(first, local_texture.value(), local_view.value(),
+                                                               std::make_unique<RecordingContext>(second));
         auto frame_result = viewport.begin_frame();
         check(static_cast<bool>(frame_result), "viewport frontend must accept a complete same-device frame");
         if (frame_result)
@@ -893,13 +1000,19 @@ namespace
 
         device.block_next_buffer_creation();
         bool create_succeeded = false;
-        std::thread create_thread([&device, &desc, &create_succeeded]()
-                                  { create_succeeded = static_cast<bool>(device.create_buffer(desc)); });
+        std::thread create_thread(
+            [&device, &desc, &create_succeeded]()
+            {
+                create_succeeded = static_cast<bool>(device.create_buffer(desc));
+            });
         device.wait_until_buffer_hook_entered();
 
         bool shutdown_succeeded = false;
-        std::thread shutdown_thread([&device, &shutdown_succeeded]()
-                                    { shutdown_succeeded = static_cast<bool>(device.shutdown()); });
+        std::thread shutdown_thread(
+            [&device, &shutdown_succeeded]()
+            {
+                shutdown_succeeded = static_cast<bool>(device.shutdown());
+            });
 
         auto rejected = device.create_sampler({});
         while (rejected)

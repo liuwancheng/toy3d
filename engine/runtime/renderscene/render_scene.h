@@ -30,18 +30,24 @@ namespace toy3d
 
         void add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy) override;
         void update_primitive_transform(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
-                                        AxisAlignedBounds world_bounds, bool visible,
-                                        bool cast_shadows, bool receives_shadows) override;
+                                        AxisAlignedBounds world_bounds, bool visible, bool cast_shadows,
+                                        bool receives_shadows) override;
         void update_primitive_materials(PrimitiveSceneProxy* proxy,
-            std::vector<MaterialRenderProxy*> materials) override;
+                                        std::vector<MaterialRenderProxy*> materials) override;
         void remove_primitive(PrimitiveSceneProxy* proxy) override;
         void add_light(std::unique_ptr<LightSceneProxy> proxy) override;
         void update_light(LightSceneProxy* proxy, LightSceneData data) override;
         void remove_light(LightSceneProxy* proxy) override;
         // Read only on the logical Rendering Thread while constructing forward pass parameters.
         const std::vector<std::unique_ptr<LightSceneProxy>>& lights() const;
-        bool light_limit_reported() const { return light_limit_reported_; }
-        void set_light_limit_reported(bool reported) { light_limit_reported_ = reported; }
+        bool light_limit_reported() const
+        {
+            return light_limit_reported_;
+        }
+        void set_light_limit_reported(bool reported)
+        {
+            light_limit_reported_ = reported;
+        }
 
       private:
         friend void compute_scene_visibility(const RenderScene& render_scene, std::vector<ViewInfo>& view_infos);
@@ -49,12 +55,15 @@ namespace toy3d
                                                    const LightSceneData* directional_light,
                                                    std::vector<ViewInfo>& view_infos, std::uint32_t shadow_resolution);
 
-        const std::vector<std::unique_ptr<PrimitiveSceneInfo>>& primitive_scene_infos() const { return primitives_; }
+        const std::vector<std::unique_ptr<PrimitiveSceneInfo>>& primitive_scene_infos() const
+        {
+            return primitives_;
+        }
         bool is_on_logical_rendering_thread() const;
         void add_primitive_render_thread(std::unique_ptr<PrimitiveSceneProxy> proxy) noexcept;
         void update_primitive_transform_render_thread(PrimitiveSceneProxy* proxy, Matrix4 world_transform,
-                                                      AxisAlignedBounds world_bounds, bool visible,
-                                                      bool cast_shadows, bool receives_shadows) noexcept;
+                                                      AxisAlignedBounds world_bounds, bool visible, bool cast_shadows,
+                                                      bool receives_shadows) noexcept;
         void remove_primitive_render_thread(PrimitiveSceneProxy* proxy) noexcept;
 
         TaskGraphInterface& task_graph_;

@@ -56,8 +56,8 @@ namespace toy3d
 
     // C++17 variant owns the closed runtime value set; monostate removes the
     // local override and restores Parent/default without a nullable resource.
-    using MaterialParameterValue = std::variant<std::monostate, float, Vector2, Vector3, Vector4,
-        TextureRef, MaterialSamplerPreset>;
+    using MaterialParameterValue =
+        std::variant<std::monostate, float, Vector2, Vector3, Vector4, TextureRef, MaterialSamplerPreset>;
     struct MaterialParameterChange
     {
         std::string name;
@@ -83,10 +83,19 @@ namespace toy3d
         MaterialInterface& operator=(const MaterialInterface&) = delete;
         MaterialInterface(MaterialInterface&& other) noexcept;
         MaterialInterface& operator=(MaterialInterface&&) = delete;
-        const MaterialDesc& desc() const { return desc_; }
-        const shader::ShaderParameterSchema& parameter_schema() const { return desc_.parameter_schema; }
+        const MaterialDesc& desc() const
+        {
+            return desc_;
+        }
+        const shader::ShaderParameterSchema& parameter_schema() const
+        {
+            return desc_.parameter_schema;
+        }
         virtual const Material& root_material() const = 0;
-        virtual MaterialInterfaceRef parent() const { return {}; }
+        virtual MaterialInterfaceRef parent() const
+        {
+            return {};
+        }
         // C++17 string_view borrows an authoring name only for this GT query.
         bool parameter_value(std::string_view name, MaterialParameterValue& output) const;
         bool overrides_parameter(std::string_view name) const;
@@ -135,7 +144,11 @@ namespace toy3d
       public:
         static std::shared_ptr<Material> create(MaterialDesc desc);
         Material(Material&&) noexcept = default;
-        const Material& root_material() const override { return *this; }
+        const Material& root_material() const override
+        {
+            return *this;
+        }
+
       private:
         explicit Material(MaterialDesc desc);
     };
@@ -146,9 +159,18 @@ namespace toy3d
         static MaterialInstanceRef create(MaterialInterfaceRef parent);
         static void release(MaterialInstanceRef& instance);
         MaterialInstance(MaterialInstance&& other) noexcept;
-        const MaterialRef& material() const { return material_; }
-        const Material& root_material() const override { return *material_; }
-        MaterialInterfaceRef parent() const override { return parent_; }
+        const MaterialRef& material() const
+        {
+            return material_;
+        }
+        const Material& root_material() const override
+        {
+            return *material_;
+        }
+        MaterialInterfaceRef parent() const override
+        {
+            return parent_;
+        }
         // string_view resolves low-frequency authoring names before RT admission.
         bool set_scalar(std::string_view parameter_name, float value);
         bool set_vector(std::string_view parameter_name, const vec2& value);
@@ -162,6 +184,7 @@ namespace toy3d
         using MaterialInterface::stage_material_replacement;
         using MaterialInterface::publish_material_replacement;
         using MaterialInterface::discard_material_replacement;
+
       private:
         friend class MaterialLibrary;
         // The common publisher commits direct Parent and resolved root together.

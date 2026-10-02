@@ -95,7 +95,12 @@ namespace toy3d
     {
         std::vector<std::string> args;
         for (const auto& option : options)
-            if (option.first != "Project") args.push_back("--" + option.first + "=" + option.second);
+        {
+            if (option.first != "Project")
+            {
+                args.push_back("--" + option.first + "=" + option.second);
+            }
+        }
         return args;
     }
 
@@ -107,7 +112,10 @@ namespace toy3d
             const std::string& key = option.first;
             const std::string& value = option.second;
             // Project chooses the composition root; it is not an INI/CVar value.
-            if (key == "Project") continue;
+            if (key == "Project")
+            {
+                continue;
+            }
             if (key == "resX" || key == "Width")
             {
                 console.set_value("Window.Width", value, "command line");

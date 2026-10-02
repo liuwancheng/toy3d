@@ -12,8 +12,7 @@ namespace toy3d
       public:
         AssetPairStore(const TypeRegistry& types, FileSystem& files);
 
-        AssetStatus publish(const VirtualPath& path, const AssetPairBytes& pair,
-            FilePublishMode mode);
+        AssetStatus publish(const VirtualPath& path, const AssetPairBytes& pair, FilePublishMode mode);
         AssetStatus remove(const VirtualPath& path);
         AssetResult<AssetId> copy(const VirtualPath& source, const VirtualPath& destination);
         AssetStatus move(const VirtualPath& source, const VirtualPath& destination);
@@ -31,4 +30,4 @@ namespace toy3d
         FileSystem& files_;
         std::mutex mutex_;
     };
-}
+} // namespace toy3d

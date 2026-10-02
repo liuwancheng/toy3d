@@ -10,13 +10,24 @@ namespace toy3d
     {
       public:
         constexpr Radians() = default;
-        explicit constexpr Radians(float value) : value_(value) {}
+        explicit constexpr Radians(float value) : value_(value)
+        {
+        }
 
-        constexpr float value() const { return value_; }
+        constexpr float value() const
+        {
+            return value_;
+        }
 
-        constexpr Radians operator+() const { return *this; }
+        constexpr Radians operator+() const
+        {
+            return *this;
+        }
 
-        constexpr Radians operator-() const { return Radians(-value_); }
+        constexpr Radians operator-() const
+        {
+            return Radians(-value_);
+        }
 
         constexpr Radians& operator+=(Radians other)
         {
@@ -50,13 +61,24 @@ namespace toy3d
     {
       public:
         constexpr Degrees() = default;
-        explicit constexpr Degrees(float value) : value_(value) {}
+        explicit constexpr Degrees(float value) : value_(value)
+        {
+        }
 
-        constexpr float value() const { return value_; }
+        constexpr float value() const
+        {
+            return value_;
+        }
 
-        constexpr Degrees operator+() const { return *this; }
+        constexpr Degrees operator+() const
+        {
+            return *this;
+        }
 
-        constexpr Degrees operator-() const { return Degrees(-value_); }
+        constexpr Degrees operator-() const
+        {
+            return Degrees(-value_);
+        }
 
         constexpr Degrees& operator+=(Degrees other)
         {

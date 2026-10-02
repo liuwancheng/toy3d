@@ -17,7 +17,9 @@ namespace toy3d
         world_ = nullptr;
         actor_id_ = 0u;
         if (focus_ == EditorSelectionFocus::Actor)
+        {
             focus_ = asset_id_.valid() ? EditorSelectionFocus::Asset : EditorSelectionFocus::None;
+        }
     }
 
     Actor* EditorSelection::resolve_actor(World& world)
@@ -29,7 +31,9 @@ namespace toy3d
         }
         Actor* const actor = world.find_actor_by_id(actor_id_);
         if (actor == nullptr)
+        {
             clear_actor();
+        }
         return actor;
     }
 
@@ -43,14 +47,22 @@ namespace toy3d
     {
         asset_id_ = {};
         if (focus_ == EditorSelectionFocus::Asset)
+        {
             focus_ = actor_id_ != 0u ? EditorSelectionFocus::Actor : EditorSelectionFocus::None;
+        }
     }
 
     const AssetLocation* EditorSelection::resolve_asset(const AssetIndex& index)
     {
-        if (!asset_id_.valid()) return nullptr;
+        if (!asset_id_.valid())
+        {
+            return nullptr;
+        }
         const AssetLocation* const location = index.find(asset_id_);
-        if (location == nullptr) clear_asset();
+        if (location == nullptr)
+        {
+            clear_asset();
+        }
         return location;
     }
 } // namespace toy3d

@@ -2,7 +2,9 @@
 
 namespace toy3d
 {
-    Event::Event(EventMode mode) : mode_(mode) {}
+    Event::Event(EventMode mode) : mode_(mode)
+    {
+    }
 
     void Event::trigger()
     {
@@ -30,14 +32,22 @@ namespace toy3d
     void Event::wait()
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        condition_.wait(lock, [this]() { return signaled_; });
+        condition_.wait(lock,
+                        [this]()
+                        {
+                            return signaled_;
+                        });
         consume_signal_locked();
     }
 
     bool Event::wait_for(std::chrono::milliseconds timeout)
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        if (!condition_.wait_for(lock, timeout, [this]() { return signaled_; }))
+        if (!condition_.wait_for(lock, timeout,
+                                 [this]()
+                                 {
+                                     return signaled_;
+                                 }))
         {
             return false;
         }

@@ -128,8 +128,7 @@ namespace toy3d
     {
         return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
                permutation_key == other.permutation_key && mapping_version == other.mapping_version &&
-               logical_layout_hash == other.logical_layout_hash &&
-               target_binding_hash == other.target_binding_hash &&
+               logical_layout_hash == other.logical_layout_hash && target_binding_hash == other.target_binding_hash &&
                bindings == other.bindings && stages == other.stages && vertex_inputs == other.vertex_inputs;
     }
 
@@ -183,7 +182,9 @@ namespace toy3d
         return result;
     }
 
-    RHIShaderProgramCache::RHIShaderProgramCache(RHIDevice& device) : device_(device) {}
+    RHIShaderProgramCache::RHIShaderProgramCache(RHIDevice& device) : device_(device)
+    {
+    }
 
     RHIResult<RHIShaderProgramRef> RHIShaderProgramCache::find_or_create(const ShaderMapProgramRef& program)
     {

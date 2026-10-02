@@ -20,12 +20,17 @@ namespace toy3d
     {
       public:
         explicit RotatingActor(World& world);
-        const RotationSettings& rotation_settings() const { return settings_; }
+        const RotationSettings& rotation_settings() const
+        {
+            return settings_;
+        }
         bool set_rotation_settings(const RotationSettings& settings);
         static bool valid_settings(const RotationSettings& settings);
+
       protected:
         void tick(const WorldTickContext& context) override;
+
       private:
         RotationSettings settings_;
     };
-}
+} // namespace toy3d

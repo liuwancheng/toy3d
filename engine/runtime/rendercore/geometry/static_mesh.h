@@ -54,14 +54,38 @@ namespace toy3d
         StaticMesh(StaticMesh&& other) noexcept;
         StaticMesh& operator=(StaticMesh&&) noexcept = delete;
 
-        const std::vector<StaticMeshVertex>& vertices() const { return vertices_; }
-        const std::vector<std::array<std::uint8_t, 4>>& vertex_colors() const { return vertex_colors_; }
-        const StaticMeshIndexData& indices() const { return indices_; }
-        const std::vector<StaticMeshSection>& sections() const { return sections_; }
-        const std::vector<MaterialInterfaceRef>& material_slots() const { return material_slots_; }
-        const std::vector<std::string>& material_slot_names() const { return material_slot_names_; }
-        const AxisAlignedBounds& local_bounds() const { return local_bounds_; }
-        StaticMeshRenderData* render_data() const noexcept { return render_data_.get(); }
+        const std::vector<StaticMeshVertex>& vertices() const
+        {
+            return vertices_;
+        }
+        const std::vector<std::array<std::uint8_t, 4>>& vertex_colors() const
+        {
+            return vertex_colors_;
+        }
+        const StaticMeshIndexData& indices() const
+        {
+            return indices_;
+        }
+        const std::vector<StaticMeshSection>& sections() const
+        {
+            return sections_;
+        }
+        const std::vector<MaterialInterfaceRef>& material_slots() const
+        {
+            return material_slots_;
+        }
+        const std::vector<std::string>& material_slot_names() const
+        {
+            return material_slot_names_;
+        }
+        const AxisAlignedBounds& local_bounds() const
+        {
+            return local_bounds_;
+        }
+        StaticMeshRenderData* render_data() const noexcept
+        {
+            return render_data_.get();
+        }
 
       private:
         StaticMesh(StaticMeshDesc desc, AxisAlignedBounds local_bounds);

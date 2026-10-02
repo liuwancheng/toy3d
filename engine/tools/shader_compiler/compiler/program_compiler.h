@@ -30,8 +30,10 @@ namespace toy3d::shader
         bool succeeded() const;
     };
 
-    ShaderMapEntryCompileResult compile_vulkan_shader_map_entry(
-        const ShaderAsset& asset, const ShaderProgramCompileInput& input, const DiscoveredShaderToolchain& toolchain,
-        PlatformFile& platform_file, const PhysicalPath& working_directory,
-        const ShaderProcessRunner& process_runner = {});
+    ShaderMapEntryCompileResult compile_vulkan_shader_map_entry(const ShaderAsset& asset,
+                                                                const ShaderProgramCompileInput& input,
+                                                                const DiscoveredShaderToolchain& toolchain,
+                                                                PlatformFile& platform_file,
+                                                                const PhysicalPath& working_directory,
+                                                                const ShaderProcessRunner& process_runner = {});
 } // namespace toy3d::shader

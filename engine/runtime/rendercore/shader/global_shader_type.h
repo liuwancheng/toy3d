@@ -16,11 +16,26 @@ namespace toy3d
                                        RHIResourceBindingType type, std::uint32_t array_count,
                                        RHIShaderStageFlags stages);
 
-        ShaderParameterId parameter_id() const { return parameter_id_; }
-        RHIBindingGroup group() const { return group_; }
-        RHIResourceBindingType type() const { return type_; }
-        std::uint32_t array_count() const { return array_count_; }
-        RHIShaderStageFlags stages() const { return stages_; }
+        ShaderParameterId parameter_id() const
+        {
+            return parameter_id_;
+        }
+        RHIBindingGroup group() const
+        {
+            return group_;
+        }
+        RHIResourceBindingType type() const
+        {
+            return type_;
+        }
+        std::uint32_t array_count() const
+        {
+            return array_count_;
+        }
+        RHIShaderStageFlags stages() const
+        {
+            return stages_;
+        }
 
         bool operator==(const GlobalShaderBindingRequirement& other) const;
 
@@ -43,17 +58,37 @@ namespace toy3d
 
         GlobalShaderType(std::string type_name, std::string shader_name, std::string pass_name,
                          ShaderContentHash permutation_key, ProgramKind program_kind,
-                         RHIShaderStageFlags required_stages,
-                         const ShaderParametersMetadata& parameter_metadata,
+                         RHIShaderStageFlags required_stages, const ShaderParametersMetadata& parameter_metadata,
                          std::vector<GlobalShaderBindingRequirement> binding_requirements);
 
-        const std::string& type_name() const { return type_name_; }
-        const std::string& shader_name() const { return shader_name_; }
-        const std::string& pass_name() const { return pass_name_; }
-        const ShaderContentHash& permutation_key() const { return permutation_key_; }
-        ProgramKind program_kind() const { return program_kind_; }
-        RHIShaderStageFlags required_stages() const { return required_stages_; }
-        const ShaderParametersMetadata& parameter_metadata() const { return parameter_metadata_; }
+        const std::string& type_name() const
+        {
+            return type_name_;
+        }
+        const std::string& shader_name() const
+        {
+            return shader_name_;
+        }
+        const std::string& pass_name() const
+        {
+            return pass_name_;
+        }
+        const ShaderContentHash& permutation_key() const
+        {
+            return permutation_key_;
+        }
+        ProgramKind program_kind() const
+        {
+            return program_kind_;
+        }
+        RHIShaderStageFlags required_stages() const
+        {
+            return required_stages_;
+        }
+        const ShaderParametersMetadata& parameter_metadata() const
+        {
+            return parameter_metadata_;
+        }
         const std::vector<GlobalShaderBindingRequirement>& binding_requirements() const
         {
             return binding_requirements_;

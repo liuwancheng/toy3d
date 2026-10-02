@@ -28,24 +28,45 @@ namespace toy3d
     {
       public:
         void initialize(EditorWorkspace& workspace, MaterialRef defaults, const PhysicalPath& shader_root);
-        MaterialEditSession& edit_session() { return *session_; }
-        void set_shader_workflow(ShaderWorkflow& workflow) { shaders_ = &workflow; }
-        bool prepare_shader(const ShaderMapProgramRef& program, const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
+        MaterialEditSession& edit_session()
+        {
+            return *session_;
+        }
+        void set_shader_workflow(ShaderWorkflow& workflow)
+        {
+            shaders_ = &workflow;
+        }
+        bool prepare_shader(const ShaderMapProgramRef& program,
+                            const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
         void publish_shader();
         void discard_shader();
-        std::uint64_t session_revision() const { return session_revision_; }
+        std::uint64_t session_revision() const
+        {
+            return session_revision_;
+        }
         void request_open(const AssetId& id);
         void request_close();
         bool request_exit();
         bool take_exit();
         bool resolve_unsaved(MaterialCloseDecision decision);
-        bool focused() const { return focused_; }
-        bool modal_pending() const { return requested_.valid() || close_requested_ || exit_requested_; }
+        bool focused() const
+        {
+            return focused_;
+        }
+        bool modal_pending() const
+        {
+            return requested_.valid() || close_requested_ || exit_requested_;
+        }
         void draw();
         void undo();
         void redo();
         void save();
-        AssetId take_locate_parent() { const auto id = locate_parent_; locate_parent_ = {}; return id; }
+        AssetId take_locate_parent()
+        {
+            const auto id = locate_parent_;
+            locate_parent_ = {};
+            return id;
+        }
         void shutdown();
 
       private:
@@ -79,4 +100,4 @@ namespace toy3d
         bool focused_ = false;
         bool focus_requested_ = false;
     };
-}
+} // namespace toy3d

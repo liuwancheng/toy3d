@@ -44,9 +44,15 @@ namespace toy3d
             return distribution<uniform_distribution<NumericType>>(lower, upper);
         }
 
-        float uniform_unit() { return uniform_distribution(0.f, std::nextafter(1.f, FLT_MAX)); }
+        float uniform_unit()
+        {
+            return uniform_distribution(0.f, std::nextafter(1.f, FLT_MAX));
+        }
 
-        float uniform_symmetry() { return uniform_distribution(-1.f, std::nextafter(1.f, FLT_MAX)); }
+        float uniform_symmetry()
+        {
+            return uniform_distribution(-1.f, std::nextafter(1.f, FLT_MAX));
+        }
 
         bool bernoulli_distribution(float probability)
         {
@@ -64,7 +70,11 @@ namespace toy3d
             // using ResultType = typename DistributionFunc::result_type;
 
             DistributionFunc dist(std::forward<Params>(params)...);
-            return std::generate(std::begin(range), std::end(range), [&] { return dist(m_engine); });
+            return std::generate(std::begin(range), std::end(range),
+                                 [&]
+                                 {
+                                     return dist(m_engine);
+                                 });
         }
     };
 
@@ -85,11 +95,20 @@ namespace toy3d
             // m_dist = CHAOS_NEW_T(DistributionFunc)(std::forward<Params>(params)...);
         }
 
-        ~DistRandomNumberGenerator() { CHAOS_DELETE_T(m_dist); }
+        ~DistRandomNumberGenerator()
+        {
+            CHAOS_DELETE_T(m_dist);
+        }
 
-        template <typename... Params> void seed(Params&&... params) { m_engine.seed(std::forward<Params>(params)...); }
+        template <typename... Params> void seed(Params&&... params)
+        {
+            m_engine.seed(std::forward<Params>(params)...);
+        }
 
-        ResultType next() { return (*m_dist)(m_engine); }
+        ResultType next()
+        {
+            return (*m_dist)(m_engine);
+        }
     };
 
     using DefaultRNG = RandomNumberGenerator<std::mt19937>;

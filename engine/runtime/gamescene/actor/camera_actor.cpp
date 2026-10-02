@@ -4,10 +4,11 @@
 
 namespace toy3d
 {
-    CameraActor::CameraActor(World& world)
-        : Actor(world), camera_(create_component<CameraComponent>())
+    CameraActor::CameraActor(World& world) : Actor(world), camera_(create_component<CameraComponent>())
     {
         if (!set_root_component(&camera_))
+        {
             TOY_LOG_ERROR("Camera root assignment failed.");
+        }
     }
-}
+} // namespace toy3d

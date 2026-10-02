@@ -35,8 +35,14 @@ namespace toy3d
         RHIStatus commit_material_candidate();
         void discard_material_candidate() noexcept;
 
-        const ShaderMapProgramRef& shader_program() const noexcept { return shader_program_; }
-        const shader::ShaderParameterSchema& parameter_schema() const noexcept { return parameter_schema_; }
+        const ShaderMapProgramRef& shader_program() const noexcept
+        {
+            return shader_program_;
+        }
+        const shader::ShaderParameterSchema& parameter_schema() const noexcept
+        {
+            return parameter_schema_;
+        }
         const shader::ShaderGraphicsPassState* effective_graphics_pass_state() const noexcept;
 
       private:

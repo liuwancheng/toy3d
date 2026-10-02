@@ -10,10 +10,16 @@ namespace toy3d
     {
       public:
         explicit CameraActor(World& world);
-        CameraComponent& camera_component() { return camera_; }
-        const CameraComponent& camera_component() const { return camera_; }
+        CameraComponent& camera_component()
+        {
+            return camera_;
+        }
+        const CameraComponent& camera_component() const
+        {
+            return camera_;
+        }
 
       private:
         CameraComponent& camera_;
     };
-}
+} // namespace toy3d

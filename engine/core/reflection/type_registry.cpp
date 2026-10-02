@@ -61,7 +61,7 @@ namespace toy3d
             }
             return true;
         }
-    }
+    } // namespace
 
     bool ReflectionStatus::succeeded() const
     {
@@ -85,8 +85,8 @@ namespace toy3d
 
     bool property_is_visible(const PropertyDesc& property)
     {
-        const std::uint32_t visible_mask = static_cast<std::uint32_t>(PropertyUsage::Edit) |
-                                           static_cast<std::uint32_t>(PropertyUsage::Visible);
+        const std::uint32_t visible_mask =
+            static_cast<std::uint32_t>(PropertyUsage::Edit) | static_cast<std::uint32_t>(PropertyUsage::Visible);
         return (property.usage & visible_mask) != 0;
     }
 
@@ -102,20 +102,24 @@ namespace toy3d
         }
         if (description.name.empty() || description.schema_version == 0)
         {
-            registration_error_ = {ReflectionErrorCode::InvalidDescription, description.name, {},
+            registration_error_ = {ReflectionErrorCode::InvalidDescription,
+                                   description.name,
+                                   {},
                                    "type name and schema version must be set"};
             return registration_error_;
         }
         if (types_.find(description.name) != types_.end())
         {
-            registration_error_ = {ReflectionErrorCode::DuplicateName, description.name, {},
-                                   "duplicate persistent type name"};
+            registration_error_ = {
+                ReflectionErrorCode::DuplicateName, description.name, {}, "duplicate persistent type name"};
             return registration_error_;
         }
 
         if (!description.enum_values.empty() && !description.properties.empty())
         {
-            registration_error_ = {ReflectionErrorCode::InvalidDescription, description.name, {},
+            registration_error_ = {ReflectionErrorCode::InvalidDescription,
+                                   description.name,
+                                   {},
                                    "enum values and object properties cannot coexist"};
             return registration_error_;
         }
@@ -123,8 +127,7 @@ namespace toy3d
         std::set<std::int64_t> enum_numbers;
         for (const TypeDesc::EnumValue& value : description.enum_values)
         {
-            if (value.name.empty() || !enum_names.insert(value.name).second ||
-                !enum_numbers.insert(value.value).second)
+            if (value.name.empty() || !enum_names.insert(value.name).second || !enum_numbers.insert(value.value).second)
             {
                 registration_error_ = {ReflectionErrorCode::InvalidDescription, description.name, value.name,
                                        "enum values require unique names and numbers"};
@@ -157,9 +160,9 @@ namespace toy3d
                                        "invalid property usage combination"};
                 return registration_error_;
             }
-            if (property.hint.has_range && (!std::isfinite(property.hint.range_min) ||
-                                            !std::isfinite(property.hint.range_max) ||
-                                            property.hint.range_min > property.hint.range_max))
+            if (property.hint.has_range &&
+                (!std::isfinite(property.hint.range_min) || !std::isfinite(property.hint.range_max) ||
+                 property.hint.range_min > property.hint.range_max))
             {
                 registration_error_ = {ReflectionErrorCode::InvalidDescription, description.name, property.name,
                                        "invalid property range hint"};
@@ -168,7 +171,10 @@ namespace toy3d
         }
 
         std::sort(description.properties.begin(), description.properties.end(),
-                  [](const PropertyDesc& left, const PropertyDesc& right) { return left.name < right.name; });
+                  [](const PropertyDesc& left, const PropertyDesc& right)
+                  {
+                      return left.name < right.name;
+                  });
         const std::string name = description.name;
         types_.emplace(name, std::move(description));
         return ReflectionStatus::success();

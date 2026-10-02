@@ -21,8 +21,14 @@ namespace toy3d
       public:
         bool request(const std::string& folder, const std::vector<std::string>& sources = {});
         void draw(IWindow& window, EditorWorkspace& workspace, EditorSelection& selection);
-        bool active() const { return active_; }
-        const std::string& error() const { return error_; }
+        bool active() const
+        {
+            return active_;
+        }
+        const std::string& error() const
+        {
+            return error_;
+        }
 
       private:
         struct Candidate

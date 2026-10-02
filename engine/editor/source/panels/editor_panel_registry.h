@@ -24,7 +24,10 @@ namespace toy3d
     {
       public:
         bool add(EditorPanel panel);
-        void freeze() { frozen_ = true; }
+        void freeze()
+        {
+            frozen_ = true;
+        }
         void draw();
         void draw_window_menu() const;
         void undo();
@@ -32,10 +35,11 @@ namespace toy3d
         void save();
         void process_shortcuts(bool blocked);
         void clear();
+
       private:
         const EditorPanel* history_target() const;
         std::vector<EditorPanel> panels_;
         std::string history_target_;
         bool frozen_ = false;
     };
-}
+} // namespace toy3d

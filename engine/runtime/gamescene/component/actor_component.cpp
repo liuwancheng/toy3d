@@ -4,7 +4,9 @@
 
 namespace toy3d
 {
-    ActorComponent::ActorComponent(Actor& owner) : owner_(owner) {}
+    ActorComponent::ActorComponent(Actor& owner) : owner_(owner)
+    {
+    }
 
     World& ActorComponent::world() const
     {

@@ -24,37 +24,57 @@ namespace toy3d
     void EditorViewportGizmo::draw_toolbar()
     {
         if (ImGui::RadioButton("Move", operation_ == Operation::Translate))
+        {
             operation_ = Operation::Translate;
+        }
         ImGui::SameLine();
         if (ImGui::RadioButton("Rotate", operation_ == Operation::Rotate))
+        {
             operation_ = Operation::Rotate;
+        }
         ImGui::SameLine();
         if (ImGui::RadioButton("Scale", operation_ == Operation::Scale))
+        {
             operation_ = Operation::Scale;
+        }
         ImGui::SameLine();
         if (operation_ == Operation::Scale)
+        {
             ImGui::TextDisabled("Local scale");
+        }
         else
+        {
             ImGui::Checkbox("Local", &local_mode_);
+        }
     }
 
     void EditorViewportGizmo::handle_shortcuts(bool viewport_hovered)
     {
         if (!viewport_hovered || ImGui::IsAnyItemActive() || ImGui::GetIO().WantTextInput)
+        {
             return;
+        }
         if (ImGui::IsKeyPressed(ImGuiKey_W))
+        {
             operation_ = Operation::Translate;
+        }
         else if (ImGui::IsKeyPressed(ImGuiKey_E))
+        {
             operation_ = Operation::Rotate;
+        }
         else if (ImGui::IsKeyPressed(ImGuiKey_R))
+        {
             operation_ = Operation::Scale;
+        }
     }
 
-    bool EditorViewportGizmo::manipulate(SceneComponent& root, const Matrix4& view, const Matrix4& projection,
-                                         float x, float y, float width, float height)
+    bool EditorViewportGizmo::manipulate(SceneComponent& root, const Matrix4& view, const Matrix4& projection, float x,
+                                         float y, float width, float height)
     {
         if (width <= 0.0f || height <= 0.0f)
+        {
             return false;
+        }
 
         ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
         switch (operation_)
@@ -79,15 +99,14 @@ namespace toy3d
         // floats are the transposed row-vector form consumed by ImGuizmo.
         Matrix4 edited_world = root.world_transform();
         const ImGuizmo::MODE mode = local_mode_ ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
-        const bool changed = ImGuizmo::Manipulate(view.data(), projection.data(), operation, mode,
-                                                  edited_world.data());
+        const bool changed = ImGuizmo::Manipulate(view.data(), projection.data(), operation, mode, edited_world.data());
         const ImVec2 mouse = ImGui::GetMousePos();
-        const bool inside_viewport = mouse.x >= x && mouse.y >= y &&
-                                     mouse.x < x + width && mouse.y < y + height;
-        const bool consumes_pointer = ImGuizmo::IsUsingAny() ||
-                                      (inside_viewport && ImGuizmo::IsOver());
+        const bool inside_viewport = mouse.x >= x && mouse.y >= y && mouse.x < x + width && mouse.y < y + height;
+        const bool consumes_pointer = ImGuizmo::IsUsingAny() || (inside_viewport && ImGuizmo::IsOver());
         if (!changed)
+        {
             return consumes_pointer;
+        }
 
         Matrix4 local_matrix = edited_world;
         if (root.parent() != nullptr)
@@ -108,7 +127,9 @@ namespace toy3d
             return consumes_pointer;
         }
         if (!root.set_local_transform(local_transform))
+        {
             TOY_LOG_ERROR("Gizmo produced an invalid local Transform.");
+        }
         return consumes_pointer;
     }
 } // namespace toy3d

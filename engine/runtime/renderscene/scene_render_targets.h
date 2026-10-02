@@ -34,7 +34,10 @@ namespace toy3d
         RHIAccess scene_color_access() const noexcept;
         RHIAccess scene_depth_access() const noexcept;
         void publish_submitted_access(RHIAccess scene_color_access, RHIAccess scene_depth_access) noexcept;
-        ShadowRenderTargets& shadow_targets() noexcept { return shadow_targets_; }
+        ShadowRenderTargets& shadow_targets() noexcept
+        {
+            return shadow_targets_;
+        }
 
       private:
         bool matches(const Extent& extent) const noexcept;

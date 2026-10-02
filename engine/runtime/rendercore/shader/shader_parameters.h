@@ -51,8 +51,7 @@ namespace toy3d
         shader::ResourceKind resource_kind = shader::ResourceKind::Texture2D;
         shader::ShaderResourceElementType element_type = shader::ShaderResourceElementType::None;
         std::uint32_t array_count = 1;
-        shader::ShaderParameterDefaultValueKind default_value_kind =
-            shader::ShaderParameterDefaultValueKind::None;
+        shader::ShaderParameterDefaultValueKind default_value_kind = shader::ShaderParameterDefaultValueKind::None;
         std::string default_value;
         std::string name;
     };
@@ -125,14 +124,10 @@ namespace toy3d
         void write_constant(const ShaderParameterConstantMemberMetadata& member, const UIntVector4& value);
         void write_constant(const ShaderParameterConstantMemberMetadata& member, const Matrix3& value);
         void write_constant(const ShaderParameterConstantMemberMetadata& member, const Matrix4& value);
-        void write_constant(const ShaderParameterConstantMemberMetadata& member,
-                            const std::array<float, 4>& value);
-        void write_constant(const ShaderParameterConstantMemberMetadata& member,
-                            const std::array<float, 6>& value);
-        void write_constant(const ShaderParameterConstantMemberMetadata& member,
-                            const std::array<float, 8>& value);
-        void write_constant(const ShaderParameterConstantMemberMetadata& member,
-                            const std::array<float, 12>& value);
+        void write_constant(const ShaderParameterConstantMemberMetadata& member, const std::array<float, 4>& value);
+        void write_constant(const ShaderParameterConstantMemberMetadata& member, const std::array<float, 6>& value);
+        void write_constant(const ShaderParameterConstantMemberMetadata& member, const std::array<float, 8>& value);
+        void write_constant(const ShaderParameterConstantMemberMetadata& member, const std::array<float, 12>& value);
 
         void add_resource(const ShaderParameterResourceMetadata& resource, const RHITextureViewRef& value);
         void add_resource(const ShaderParameterResourceMetadata& resource, const RHISamplerRef& value);
@@ -154,8 +149,7 @@ namespace toy3d
                             const std::array<Value, Count>& values);
 
         template <typename Value, std::size_t Count>
-        void add_resource(const ShaderParameterResourceMetadata& resource,
-                          const std::array<Value, Count>& values);
+        void add_resource(const ShaderParameterResourceMetadata& resource, const std::array<Value, Count>& values);
 
       private:
         template <typename Value, std::size_t Count>
@@ -163,11 +157,11 @@ namespace toy3d
                                   const std::array<Value, Count>& values);
 
         void write_scalar_values(const ShaderParameterConstantMemberMetadata& member,
-                                 shader::ShaderValueType expected_type, const void* values,
-                                 std::uint32_t value_count, std::uint32_t value_size);
+                                 shader::ShaderValueType expected_type, const void* values, std::uint32_t value_count,
+                                 std::uint32_t value_size);
         void write_matrix_values(const ShaderParameterConstantMemberMetadata& member,
-                                 shader::ShaderValueType expected_type, const float* values,
-                                 std::uint32_t row_count, std::uint32_t column_count);
+                                 shader::ShaderValueType expected_type, const float* values, std::uint32_t row_count,
+                                 std::uint32_t column_count);
         void fail(std::string message);
 
         const ShaderParametersMetadata& metadata;
@@ -184,8 +178,8 @@ namespace toy3d
     };
 
     RHIStatus validate_shader_parameters_metadata(const ShaderParametersMetadata& metadata);
-    RHIStatus validate_shader_parameters_metadata_against_schema(
-        const ShaderParametersMetadata& metadata, const shader::ShaderParameterSchema& schema);
+    RHIStatus validate_shader_parameters_metadata_against_schema(const ShaderParametersMetadata& metadata,
+                                                                 const shader::ShaderParameterSchema& schema);
 
     template <typename Value, std::size_t Count>
     void ShaderParameterEncoder::write_constant(const ShaderParameterConstantMemberMetadata& member,
@@ -201,8 +195,7 @@ namespace toy3d
         constexpr std::size_t k_max_metadata_count = std::numeric_limits<std::uint32_t>::max();
         if (Count > k_max_metadata_count || member.array_count != Count || member.array_stride == 0u ||
             member.array_count > std::numeric_limits<std::uint32_t>::max() / member.array_stride ||
-            member.size != member.array_count * member.array_stride ||
-            member.offset > encoded_constant_bytes.size() ||
+            member.size != member.array_count * member.array_stride || member.offset > encoded_constant_bytes.size() ||
             member.size > encoded_constant_bytes.size() - member.offset)
         {
             fail("Shader constant array metadata does not describe a bounded canonical range");
@@ -240,21 +233,28 @@ namespace toy3d
             const std::size_t buffer_count = encoded_buffer_values.size();
             add_resource(element, values[index]);
             if (encoded_texture_values.size() != texture_count)
+            {
                 encoded_texture_values.back().array_index = static_cast<std::uint32_t>(index);
+            }
             if (encoded_sampler_values.size() != sampler_count)
+            {
                 encoded_sampler_values.back().array_index = static_cast<std::uint32_t>(index);
+            }
             if (encoded_buffer_values.size() != buffer_count)
+            {
                 encoded_buffer_values.back().array_index = static_cast<std::uint32_t>(index);
+            }
         }
     }
 
-    RHIResult<RHIBindingSetRef> create_transient_shader_binding(
-        RHIDevice& device, RHICommandContext& context, const ShaderParametersMetadata& metadata,
-        const ShaderParameterEncoder& encoder);
+    RHIResult<RHIBindingSetRef> create_transient_shader_binding(RHIDevice& device, RHICommandContext& context,
+                                                                const ShaderParametersMetadata& metadata,
+                                                                const ShaderParameterEncoder& encoder);
 
-    RHIResult<RHIBindingSetRef> create_persistent_shader_binding(
-        RHIDevice& device, RHICommandContext& context, const ShaderParametersMetadata& metadata,
-        const ShaderParameterEncoder& encoder, const std::string& debug_name);
+    RHIResult<RHIBindingSetRef> create_persistent_shader_binding(RHIDevice& device, RHICommandContext& context,
+                                                                 const ShaderParametersMetadata& metadata,
+                                                                 const ShaderParameterEncoder& encoder,
+                                                                 const std::string& debug_name);
 
     template <typename Parameters>
     RHIResult<RHIBindingSetRef> create_transient_shader_binding(RHIDevice& device, RHICommandContext& context,

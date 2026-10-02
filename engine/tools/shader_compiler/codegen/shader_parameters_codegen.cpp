@@ -84,27 +84,48 @@ namespace toy3d::shader
         {
             switch (type)
             {
-            case ShaderValueType::Float32: return "Float32";
-            case ShaderValueType::Float32x2: return "Float32x2";
-            case ShaderValueType::Float32x3: return "Float32x3";
-            case ShaderValueType::Float32x4: return "Float32x4";
-            case ShaderValueType::Int32: return "Int32";
-            case ShaderValueType::Int32x2: return "Int32x2";
-            case ShaderValueType::Int32x3: return "Int32x3";
-            case ShaderValueType::Int32x4: return "Int32x4";
-            case ShaderValueType::UInt32: return "UInt32";
-            case ShaderValueType::UInt32x2: return "UInt32x2";
-            case ShaderValueType::UInt32x3: return "UInt32x3";
-            case ShaderValueType::UInt32x4: return "UInt32x4";
-            case ShaderValueType::Float32x2x2: return "Float32x2x2";
-            case ShaderValueType::Float32x2x3: return "Float32x2x3";
-            case ShaderValueType::Float32x2x4: return "Float32x2x4";
-            case ShaderValueType::Float32x3x2: return "Float32x3x2";
-            case ShaderValueType::Float32x3x3: return "Float32x3x3";
-            case ShaderValueType::Float32x3x4: return "Float32x3x4";
-            case ShaderValueType::Float32x4x2: return "Float32x4x2";
-            case ShaderValueType::Float32x4x3: return "Float32x4x3";
-            case ShaderValueType::Float32x4x4: return "Float32x4x4";
+            case ShaderValueType::Float32:
+                return "Float32";
+            case ShaderValueType::Float32x2:
+                return "Float32x2";
+            case ShaderValueType::Float32x3:
+                return "Float32x3";
+            case ShaderValueType::Float32x4:
+                return "Float32x4";
+            case ShaderValueType::Int32:
+                return "Int32";
+            case ShaderValueType::Int32x2:
+                return "Int32x2";
+            case ShaderValueType::Int32x3:
+                return "Int32x3";
+            case ShaderValueType::Int32x4:
+                return "Int32x4";
+            case ShaderValueType::UInt32:
+                return "UInt32";
+            case ShaderValueType::UInt32x2:
+                return "UInt32x2";
+            case ShaderValueType::UInt32x3:
+                return "UInt32x3";
+            case ShaderValueType::UInt32x4:
+                return "UInt32x4";
+            case ShaderValueType::Float32x2x2:
+                return "Float32x2x2";
+            case ShaderValueType::Float32x2x3:
+                return "Float32x2x3";
+            case ShaderValueType::Float32x2x4:
+                return "Float32x2x4";
+            case ShaderValueType::Float32x3x2:
+                return "Float32x3x2";
+            case ShaderValueType::Float32x3x3:
+                return "Float32x3x3";
+            case ShaderValueType::Float32x3x4:
+                return "Float32x3x4";
+            case ShaderValueType::Float32x4x2:
+                return "Float32x4x2";
+            case ShaderValueType::Float32x4x3:
+                return "Float32x4x3";
+            case ShaderValueType::Float32x4x4:
+                return "Float32x4x4";
             }
             return "Float32";
         }
@@ -151,22 +172,38 @@ namespace toy3d::shader
         {
             switch (kind)
             {
-            case ResourceKind::Texture2D: return "Texture2D";
-            case ResourceKind::Texture2DArray: return "Texture2DArray";
-            case ResourceKind::Texture3D: return "Texture3D";
-            case ResourceKind::TextureCube: return "TextureCube";
-            case ResourceKind::Texture2DMS: return "Texture2DMS";
-            case ResourceKind::Sampler: return "Sampler";
-            case ResourceKind::ComparisonSampler: return "ComparisonSampler";
-            case ResourceKind::Buffer: return "Buffer";
-            case ResourceKind::ByteAddressBuffer: return "ByteAddressBuffer";
-            case ResourceKind::StructuredBuffer: return "StructuredBuffer";
-            case ResourceKind::RWBuffer: return "RWBuffer";
-            case ResourceKind::RWByteAddressBuffer: return "RWByteAddressBuffer";
-            case ResourceKind::RWStructuredBuffer: return "RWStructuredBuffer";
-            case ResourceKind::RWTexture2D: return "RWTexture2D";
-            case ResourceKind::RWTexture2DArray: return "RWTexture2DArray";
-            case ResourceKind::RWTexture3D: return "RWTexture3D";
+            case ResourceKind::Texture2D:
+                return "Texture2D";
+            case ResourceKind::Texture2DArray:
+                return "Texture2DArray";
+            case ResourceKind::Texture3D:
+                return "Texture3D";
+            case ResourceKind::TextureCube:
+                return "TextureCube";
+            case ResourceKind::Texture2DMS:
+                return "Texture2DMS";
+            case ResourceKind::Sampler:
+                return "Sampler";
+            case ResourceKind::ComparisonSampler:
+                return "ComparisonSampler";
+            case ResourceKind::Buffer:
+                return "Buffer";
+            case ResourceKind::ByteAddressBuffer:
+                return "ByteAddressBuffer";
+            case ResourceKind::StructuredBuffer:
+                return "StructuredBuffer";
+            case ResourceKind::RWBuffer:
+                return "RWBuffer";
+            case ResourceKind::RWByteAddressBuffer:
+                return "RWByteAddressBuffer";
+            case ResourceKind::RWStructuredBuffer:
+                return "RWStructuredBuffer";
+            case ResourceKind::RWTexture2D:
+                return "RWTexture2D";
+            case ResourceKind::RWTexture2DArray:
+                return "RWTexture2DArray";
+            case ResourceKind::RWTexture3D:
+                return "RWTexture3D";
             }
             return "Texture2D";
         }
@@ -175,28 +212,50 @@ namespace toy3d::shader
         {
             switch (type)
             {
-            case ShaderResourceElementType::None: return "None";
-            case ShaderResourceElementType::Float: return "Float";
-            case ShaderResourceElementType::Float2: return "Float2";
-            case ShaderResourceElementType::Float3: return "Float3";
-            case ShaderResourceElementType::Float4: return "Float4";
-            case ShaderResourceElementType::Int: return "Int";
-            case ShaderResourceElementType::Int2: return "Int2";
-            case ShaderResourceElementType::Int3: return "Int3";
-            case ShaderResourceElementType::Int4: return "Int4";
-            case ShaderResourceElementType::UInt: return "UInt";
-            case ShaderResourceElementType::UInt2: return "UInt2";
-            case ShaderResourceElementType::UInt3: return "UInt3";
-            case ShaderResourceElementType::UInt4: return "UInt4";
-            case ShaderResourceElementType::Float2x2: return "Float2x2";
-            case ShaderResourceElementType::Float2x3: return "Float2x3";
-            case ShaderResourceElementType::Float2x4: return "Float2x4";
-            case ShaderResourceElementType::Float3x2: return "Float3x2";
-            case ShaderResourceElementType::Float3x3: return "Float3x3";
-            case ShaderResourceElementType::Float3x4: return "Float3x4";
-            case ShaderResourceElementType::Float4x2: return "Float4x2";
-            case ShaderResourceElementType::Float4x3: return "Float4x3";
-            case ShaderResourceElementType::Float4x4: return "Float4x4";
+            case ShaderResourceElementType::None:
+                return "None";
+            case ShaderResourceElementType::Float:
+                return "Float";
+            case ShaderResourceElementType::Float2:
+                return "Float2";
+            case ShaderResourceElementType::Float3:
+                return "Float3";
+            case ShaderResourceElementType::Float4:
+                return "Float4";
+            case ShaderResourceElementType::Int:
+                return "Int";
+            case ShaderResourceElementType::Int2:
+                return "Int2";
+            case ShaderResourceElementType::Int3:
+                return "Int3";
+            case ShaderResourceElementType::Int4:
+                return "Int4";
+            case ShaderResourceElementType::UInt:
+                return "UInt";
+            case ShaderResourceElementType::UInt2:
+                return "UInt2";
+            case ShaderResourceElementType::UInt3:
+                return "UInt3";
+            case ShaderResourceElementType::UInt4:
+                return "UInt4";
+            case ShaderResourceElementType::Float2x2:
+                return "Float2x2";
+            case ShaderResourceElementType::Float2x3:
+                return "Float2x3";
+            case ShaderResourceElementType::Float2x4:
+                return "Float2x4";
+            case ShaderResourceElementType::Float3x2:
+                return "Float3x2";
+            case ShaderResourceElementType::Float3x3:
+                return "Float3x3";
+            case ShaderResourceElementType::Float3x4:
+                return "Float3x4";
+            case ShaderResourceElementType::Float4x2:
+                return "Float4x2";
+            case ShaderResourceElementType::Float4x3:
+                return "Float4x3";
+            case ShaderResourceElementType::Float4x4:
+                return "Float4x4";
             }
             return "None";
         }
@@ -221,15 +280,25 @@ namespace toy3d::shader
             for (char character : value)
             {
                 if (character == '\\' || character == '"')
+                {
                     result += '\\';
+                }
                 if (character == '\n')
+                {
                     result += "\\n";
+                }
                 else if (character == '\r')
+                {
                     result += "\\r";
+                }
                 else if (character == '\t')
+                {
                     result += "\\t";
+                }
                 else
+                {
                     result += character;
+                }
             }
             result += '"';
             return result;
@@ -240,7 +309,9 @@ namespace toy3d::shader
             std::string result(name);
             std::transform(result.begin(), result.end(), result.begin(),
                            [](char value)
-                           { return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a') : value; });
+                           {
+                               return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a') : value;
+                           });
             return result;
         }
 
@@ -250,7 +321,9 @@ namespace toy3d::shader
             for (std::size_t index = 0; index < hash.size(); ++index)
             {
                 if (index != 0u)
+                {
                     output << ", ";
+                }
                 output << static_cast<unsigned int>(hash[index]) << 'u';
             }
             output << "}}";
@@ -282,39 +355,53 @@ namespace toy3d::shader
                 {
                     output << "        ";
                     if (member.array_count > 1u)
+                    {
                         output << "std::array<" << value_type_name(member.type) << ", " << member.array_count << ">";
+                    }
                     else
+                    {
                         output << value_type_name(member.type);
+                    }
                     output << ' ' << field_name(member.name);
                     if (member.array_count == 1u && member.type == ShaderValueType::Float32x3x3)
+                    {
                         output << " = Matrix3::zero();\n";
+                    }
                     else if (member.array_count == 1u && member.type == ShaderValueType::Float32x4x4)
+                    {
                         output << " = Matrix4::zero();\n";
+                    }
                     else
+                    {
                         output << "{};\n";
+                    }
                 }
             }
             for (const ShaderParameterResourceSchema& resource : resources)
             {
                 output << "        ";
                 if (resource.array_count > 1u)
+                {
                     output << "std::array<" << resource_cpp_type(resource.category) << ", " << resource.array_count
                            << ">";
+                }
                 else
+                {
                     output << resource_cpp_type(resource.category);
+                }
                 output << ' ' << field_name(resource.name) << "{};\n";
             }
             output << "    };\n\n";
         }
 
         void append_metadata(std::ostringstream& output, std::string_view type_name, BindingGroup group,
-                             const ShaderParameterSchema& schema,
-                             const ShaderParameterConstantBufferSchema* buffer,
+                             const ShaderParameterSchema& schema, const ShaderParameterConstantBufferSchema* buffer,
                              const std::vector<ShaderParameterResourceSchema>& resources)
         {
             output << "    // Full schema identity: " << sha256_to_hex(schema.schema_identity) << "\n"
-                   << "    // " << group_name(group) << " group identity: "
-                   << sha256_to_hex(calculate_shader_parameter_group_identity(schema, group)) << "\n"
+                   << "    // " << group_name(group)
+                   << " group identity: " << sha256_to_hex(calculate_shader_parameter_group_identity(schema, group))
+                   << "\n"
                    << "    inline const ShaderParametersMetadata& shader_parameters_metadata(const " << type_name
                    << "&)\n    {\n        static const ShaderParametersMetadata metadata = {\n"
                    << "            shader::BindingGroup::" << group_name(group) << ",\n            "
@@ -334,15 +421,19 @@ namespace toy3d::shader
                 {
                     const ShaderParameterConstantMemberSchema& member = buffer->members[index];
                     if (index != 0u)
+                    {
                         output << ", ";
-                    output << '{' << member.parameter_id << "ull, shader::ShaderValueType::"
-                           << value_type_enum_name(member.type) << ", " << member.offset << "u, " << member.size
-                           << "u, " << member.array_count << "u, " << member.array_stride << "u, "
-                           << member.matrix_stride << "u, {";
+                    }
+                    output << '{' << member.parameter_id
+                           << "ull, shader::ShaderValueType::" << value_type_enum_name(member.type) << ", "
+                           << member.offset << "u, " << member.size << "u, " << member.array_count << "u, "
+                           << member.array_stride << "u, " << member.matrix_stride << "u, {";
                     for (std::size_t byte_index = 0; byte_index < member.default_value.size(); ++byte_index)
                     {
                         if (byte_index != 0u)
+                        {
                             output << ", ";
+                        }
                         output << static_cast<unsigned int>(member.default_value[byte_index]) << 'u';
                     }
                     output << "}, " << cpp_string_literal(member.name) << '}';
@@ -354,15 +445,17 @@ namespace toy3d::shader
             {
                 const ShaderParameterResourceSchema& resource = resources[index];
                 if (index != 0u)
+                {
                     output << ", ";
-                output << '{' << resource.parameter_id << "ull, shader::ShaderParameterCategory::"
-                       << category_name(resource.category) << ", shader::ResourceKind::"
-                       << resource_kind_name(resource.resource_kind) << ", shader::ShaderResourceElementType::"
-                       << element_type_name(resource.element_type) << ", " << resource.array_count
-                       << "u, shader::ShaderParameterDefaultValueKind::"
+                }
+                output << '{' << resource.parameter_id
+                       << "ull, shader::ShaderParameterCategory::" << category_name(resource.category)
+                       << ", shader::ResourceKind::" << resource_kind_name(resource.resource_kind)
+                       << ", shader::ShaderResourceElementType::" << element_type_name(resource.element_type) << ", "
+                       << resource.array_count << "u, shader::ShaderParameterDefaultValueKind::"
                        << default_value_kind_name(resource.default_value_kind) << ", "
-                       << cpp_string_literal(resource.default_value) << ", "
-                       << cpp_string_literal(resource.name) << '}';
+                       << cpp_string_literal(resource.default_value) << ", " << cpp_string_literal(resource.name)
+                       << '}';
             }
             output << "},\n            ";
             append_hash(output, group == BindingGroup::Material ? schema.editor_properties_hash : Sha256Hash{});
@@ -394,21 +487,25 @@ namespace toy3d::shader
             output << "    }\n\n";
         }
 
-        const ShaderParameterConstantBufferSchema* find_buffer(const ShaderParameterSchema& schema,
-                                                                BindingGroup group)
+        const ShaderParameterConstantBufferSchema* find_buffer(const ShaderParameterSchema& schema, BindingGroup group)
         {
             const auto found = std::find_if(schema.constant_buffers.begin(), schema.constant_buffers.end(),
                                             [group](const ShaderParameterConstantBufferSchema& buffer)
-                                            { return buffer.group == group; });
+                                            {
+                                                return buffer.group == group;
+                                            });
             return found == schema.constant_buffers.end() ? nullptr : &*found;
         }
 
         std::vector<ShaderParameterResourceSchema> group_resources(const ShaderParameterSchema& schema,
-                                                                    BindingGroup group)
+                                                                   BindingGroup group)
         {
             std::vector<ShaderParameterResourceSchema> result;
             std::copy_if(schema.resources.begin(), schema.resources.end(), std::back_inserter(result),
-                         [group](const ShaderParameterResourceSchema& resource) { return resource.group == group; });
+                         [group](const ShaderParameterResourceSchema& resource)
+                         {
+                             return resource.group == group;
+                         });
             return result;
         }
 
@@ -429,10 +526,14 @@ namespace toy3d::shader
             {
                 const ShaderParameterGroupInput input = builtin_shader_parameter_input(group);
                 if (input.constant_members.empty())
+                {
                     continue;
+                }
                 ConstantBufferPackResult packed = pack_constant_buffer(group, input.constant_members);
                 if (packed.layout)
+                {
                     layout.constant_buffers.push_back(std::move(*packed.layout));
+                }
             }
             return make_shader_parameter_schema(layout);
         }
@@ -444,19 +545,23 @@ namespace toy3d::shader
     }
 
     ShaderParametersCodegenResult generate_shader_parameters_header(const ShaderAsset& asset,
-                                                                     const LogicalShaderLayout& layout)
+                                                                    const LogicalShaderLayout& layout)
     {
         ShaderParametersCodegenResult result;
         const CppIdentifierMappingResult identifiers = map_shader_parameter_cpp_identifiers(asset);
         result.diagnostics = identifiers.diagnostics;
         if (!identifiers.succeeded())
+        {
             return result;
+        }
 
         const ShaderParameterSchema schema = make_shader_parameter_schema(layout);
         if (schema.schema_identity != layout.parameter_schema_hash ||
             schema.logical_layout_hash != layout.logical_layout_hash)
         {
-            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, {},
+            result.diagnostics.push_back({DiagnosticSeverity::Error,
+                                          DiagnosticCode::InvalidCompileRequest,
+                                          {},
                                           "Shader parameters codegen requires the canonical logical schema."});
             return result;
         }
@@ -465,7 +570,9 @@ namespace toy3d::shader
         std::ostringstream output;
         append_preamble(output);
         for (const CppShaderPassIdentifiers& pass : identifiers.identifiers->passes)
+        {
             append_group(output, pass.parameters_type, BindingGroup::Pass, schema);
+        }
         output << "} // namespace toy3d\n";
         result.source = output.str();
         return result;

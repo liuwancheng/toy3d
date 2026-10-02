@@ -15,8 +15,10 @@ namespace toy3d::shader
         {
             const auto parsed = VirtualPath::parse(path);
             return parsed.succeeded() && parsed.value().utf8() == path &&
-                (path.compare(0, std::char_traits<char>::length(engine_shader_include_root), engine_shader_include_root) == 0 ||
-                 path.compare(0, std::char_traits<char>::length(project_shader_include_root), project_shader_include_root) == 0);
+                   (path.compare(0, std::char_traits<char>::length(engine_shader_include_root),
+                                 engine_shader_include_root) == 0 ||
+                    path.compare(0, std::char_traits<char>::length(project_shader_include_root),
+                                 project_shader_include_root) == 0);
         }
     } // namespace
 
@@ -86,10 +88,18 @@ namespace toy3d::shader
     ShaderSourceLoadResult FileShaderSourceProvider::load(const std::string& path) const
     {
         ShaderSourceLoadResult result;
-        if (!is_allowed_include_path(path)) { result.error = "Include is outside the registered include roots: " + path; return result; }
+        if (!is_allowed_include_path(path))
+        {
+            result.error = "Include is outside the registered include roots: " + path;
+            return result;
+        }
         const auto parsed = VirtualPath::parse(path);
         const auto text = files_.read_text_utf8(parsed.value(), 4u * 1024u * 1024u);
-        if (!text.succeeded()) { result.error = text.status().message; return result; }
+        if (!text.succeeded())
+        {
+            result.error = text.status().message;
+            return result;
+        }
         result.source = ShaderSourceRecord{path, text.value(), sha256(text.value())};
         return result;
     }

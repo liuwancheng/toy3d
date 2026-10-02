@@ -48,11 +48,19 @@ namespace
     class LifecycleComponent final : public toy3d::ActorComponent
     {
       public:
-        LifecycleComponent(toy3d::Actor& owner, LifecycleCounts& counts) : ActorComponent(owner), counts_(counts) {}
+        LifecycleComponent(toy3d::Actor& owner, LifecycleCounts& counts) : ActorComponent(owner), counts_(counts)
+        {
+        }
 
       protected:
-        void on_initialize() override { ++counts_.initialize; }
-        void on_begin_play() override { ++counts_.begin_play; }
+        void on_initialize() override
+        {
+            ++counts_.initialize;
+        }
+        void on_begin_play() override
+        {
+            ++counts_.begin_play;
+        }
         void on_end_play(toy3d::EndPlayReason reason) override
         {
             ++counts_.end_play;
@@ -66,17 +74,34 @@ namespace
     class LifecycleActor final : public toy3d::Actor
     {
       public:
-        LifecycleActor(toy3d::World& world, LifecycleCounts& counts) : Actor(world), counts_(counts) {}
+        LifecycleActor(toy3d::World& world, LifecycleCounts& counts) : Actor(world), counts_(counts)
+        {
+        }
 
-        void destroy_on_next_tick(toy3d::Actor& actor) { destroy_target_ = &actor; }
+        void destroy_on_next_tick(toy3d::Actor& actor)
+        {
+            destroy_target_ = &actor;
+        }
 
-        void spawn_on_next_tick(LifecycleCounts& counts) { spawn_counts_ = &counts; }
+        void spawn_on_next_tick(LifecycleCounts& counts)
+        {
+            spawn_counts_ = &counts;
+        }
 
-        LifecycleActor* spawned_actor() const { return spawned_actor_; }
+        LifecycleActor* spawned_actor() const
+        {
+            return spawned_actor_;
+        }
 
       protected:
-        void on_initialize() override { ++counts_.initialize; }
-        void on_begin_play() override { ++counts_.begin_play; }
+        void on_initialize() override
+        {
+            ++counts_.initialize;
+        }
+        void on_begin_play() override
+        {
+            ++counts_.begin_play;
+        }
         void tick(const toy3d::WorldTickContext& context) override
         {
             ++counts_.tick;
@@ -115,8 +140,14 @@ namespace
         }
 
       protected:
-        void on_register() override { ++register_count_; }
-        void on_unregister() override { ++unregister_count_; }
+        void on_register() override
+        {
+            ++register_count_;
+        }
+        void on_unregister() override
+        {
+            ++unregister_count_;
+        }
 
       private:
         int& register_count_;
@@ -151,8 +182,7 @@ int main()
     check(world.actor_count() == 2 && world.contains(parent_actor) && parent_actor.is_registered(),
           "World::spawn_actor must own and register every spawned Actor");
     check(parent_actor.actor_id() != 0u && child_actor.actor_id() > parent_actor.actor_id() &&
-              world.find_actor_by_id(parent_actor.actor_id()) == &parent_actor &&
-              world.find_actor_by_id(0u) == nullptr,
+              world.find_actor_by_id(parent_actor.actor_id()) == &parent_actor && world.find_actor_by_id(0u) == nullptr,
           "Actor IDs must be distinct, resolvable, and reserve zero for background hits");
 
     SceneComponent& parent = parent_actor.create_component<SceneComponent>();
@@ -171,8 +201,7 @@ int main()
     HitProxyTable hit_table{{HitProxyTargetKind::MeshSection, parent_actor.actor_id(), parent.component_id(), 0u},
                             {HitProxyTargetKind::MeshSection, parent_actor.actor_id(), sibling.component_id(), 2u}};
     HitProxyTarget hit_target;
-    check(resolve_hit_proxy({2u}, hit_table, hit_target) &&
-              hit_target.actor_id == parent_actor.actor_id() &&
+    check(resolve_hit_proxy({2u}, hit_table, hit_target) && hit_target.actor_id == parent_actor.actor_id() &&
               hit_target.component_id == sibling.component_id() && hit_target.mesh_section_index == 2u &&
               resolve_hit_proxy({0u}, hit_table, hit_target) && hit_target.kind == HitProxyTargetKind::None &&
               !resolve_hit_proxy({3u}, hit_table, hit_target),
@@ -216,8 +245,7 @@ int main()
     check(world.destroy_actor(lifecycle_actor) && unregister_count == 1,
           "World::destroy_actor must unregister components before destruction");
     Actor& replacement_actor = world.spawn_actor();
-    check(world.find_actor_by_id(destroyed_actor_id) == nullptr &&
-              replacement_actor.actor_id() > destroyed_actor_id &&
+    check(world.find_actor_by_id(destroyed_actor_id) == nullptr && replacement_actor.actor_id() > destroyed_actor_id &&
               world.scene_generation() > generation_before_destruction,
           "Destroyed Actors must not reuse an Actor ID or preserve the old scene generation");
 

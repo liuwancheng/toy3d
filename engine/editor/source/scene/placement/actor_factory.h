@@ -17,15 +17,27 @@ namespace toy3d
     class ActorFactory
     {
       public:
-        ComponentEditorRegistry& component_editors() { return component_editors_; }
-        const ComponentEditorRegistry& component_editors() const { return component_editors_; }
+        ComponentEditorRegistry& component_editors()
+        {
+            return component_editors_;
+        }
+        const ComponentEditorRegistry& component_editors() const
+        {
+            return component_editors_;
+        }
         StaticMeshRef instantiate_builtin(const std::string& kind) const;
         void remember(const Actor& actor, const PlacementRequest& request);
         EditorActorState capture(const Actor& actor) const;
         bool mesh_source(const SceneComponent& component, SceneMeshData& data) const;
         void remember_mesh(const SceneComponent& component, const SceneMeshData& data);
-        ActorTypeRegistry& actor_types() { return actor_types_; }
-        const ActorTypeRegistry& actor_types() const { return actor_types_; }
+        ActorTypeRegistry& actor_types()
+        {
+            return actor_types_;
+        }
+        const ActorTypeRegistry& actor_types() const
+        {
+            return actor_types_;
+        }
         bool initialize();
         void release();
         Actor* create(World& world, const PlacementRequest& request);
@@ -34,7 +46,11 @@ namespace toy3d
         bool describe(const Actor& actor, PlacementRequest& request) const;
         const char* label(std::uint32_t actor_id) const;
         void forget(std::uint32_t actor_id);
-        const MaterialInstanceRef& default_material() const { return geometry_.default_material(); }
+        const MaterialInstanceRef& default_material() const
+        {
+            return geometry_.default_material();
+        }
+
       private:
         ComponentEditorRegistry component_editors_;
         SceneGeometry geometry_;
@@ -48,4 +64,4 @@ namespace toy3d
         };
         std::map<std::uint32_t, MeshSource> mesh_sources_;
     };
-}
+} // namespace toy3d

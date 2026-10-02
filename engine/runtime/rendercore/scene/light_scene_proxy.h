@@ -5,7 +5,11 @@
 
 namespace toy3d
 {
-    enum class LightKind { Directional, Point };
+    enum class LightKind
+    {
+        Directional,
+        Point
+    };
 
     struct LightSceneData
     {
@@ -37,4 +41,4 @@ namespace toy3d
     {
         LightSceneData data;
     };
-}
+} // namespace toy3d

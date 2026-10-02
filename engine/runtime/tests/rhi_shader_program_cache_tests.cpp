@@ -69,7 +69,10 @@ namespace
 
     struct ConstantHash
     {
-        std::size_t operator()(const toy3d::RHIShaderProgramKey&) const { return 0; }
+        std::size_t operator()(const toy3d::RHIShaderProgramKey&) const
+        {
+            return 0;
+        }
     };
 
     class TestQueue final : public toy3d::RHIQueue
@@ -77,9 +80,18 @@ namespace
       public:
         using toy3d::RHIQueue::RHIQueue;
 
-        toy3d::RHIQueueCompletionValue completed_value() const override { return 0; }
-        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override { return toy3d::RHIStatus::success(); }
-        toy3d::RHIStatus wait_idle() override { return toy3d::RHIStatus::success(); }
+        toy3d::RHIQueueCompletionValue completed_value() const override
+        {
+            return 0;
+        }
+        toy3d::RHIStatus wait_for_value(toy3d::RHIQueueCompletionValue) override
+        {
+            return toy3d::RHIStatus::success();
+        }
+        toy3d::RHIStatus wait_idle() override
+        {
+            return toy3d::RHIStatus::success();
+        }
 
       protected:
         toy3d::RHIResult<toy3d::RHISubmitResult> submit_impl(const toy3d::RHISubmitInfo&) override
@@ -102,10 +114,22 @@ namespace
             initialized = true;
             return toy3d::RHIStatus::success();
         }
-        const toy3d::RHICapabilities& capabilities() const override { return device_capabilities; }
-        const toy3d::RHILimits& limits() const override { return device_limits; }
-        toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override { return {}; }
-        toy3d::RHIQueue& graphics_queue() override { return queue; }
+        const toy3d::RHICapabilities& capabilities() const override
+        {
+            return device_capabilities;
+        }
+        const toy3d::RHILimits& limits() const override
+        {
+            return device_limits;
+        }
+        toy3d::RHIFormatCapabilities format_capabilities(toy3d::PixelFormat) const override
+        {
+            return {};
+        }
+        toy3d::RHIQueue& graphics_queue() override
+        {
+            return queue;
+        }
 
         int layout_create_count = 0;
         int shader_create_count = 0;
@@ -182,8 +206,14 @@ namespace
         {
             return unsupported<std::unique_ptr<toy3d::RHIGraphicsCommandContext>>();
         }
-        bool is_initialized_impl() const override { return initialized; }
-        toy3d::RHIStatus wait_idle_before_shutdown_impl() override { return toy3d::RHIStatus::success(); }
+        bool is_initialized_impl() const override
+        {
+            return initialized;
+        }
+        toy3d::RHIStatus wait_idle_before_shutdown_impl() override
+        {
+            return toy3d::RHIStatus::success();
+        }
         toy3d::RHIStatus shutdown_impl() override
         {
             initialized = false;
@@ -205,7 +235,9 @@ namespace
     class ProgramLoader final : public toy3d::ShaderMapLoader
     {
       public:
-        explicit ProgramLoader(toy3d::ShaderMapProgramData program) : program_(std::move(program)) {}
+        explicit ProgramLoader(toy3d::ShaderMapProgramData program) : program_(std::move(program))
+        {
+        }
 
         toy3d::ShaderMapProgramLoadResult load_program(const toy3d::ShaderMapProgramKey&) const override
         {

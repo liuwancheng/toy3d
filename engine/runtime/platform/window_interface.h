@@ -64,14 +64,23 @@ namespace toy3d
 
         virtual void close() = 0;
         // Deferred close is optional for platform surfaces that can remain live.
-        virtual bool cancel_close() { return false; }
+        virtual bool cancel_close()
+        {
+            return false;
+        }
 
         // Native callbacks only enqueue owned events. Applications choose the
         // accepted UI region and consume on the window owner thread.
-        virtual bool enable_file_drop(bool enabled) { return !enabled; }
+        virtual bool enable_file_drop(bool enabled)
+        {
+            return !enabled;
+        }
         bool take_file_drop(FileDropEvent& event)
         {
-            if (file_drops_.empty()) return false;
+            if (file_drops_.empty())
+            {
+                return false;
+            }
             event = std::move(file_drops_.front());
             file_drops_.pop_front();
             return true;
@@ -82,31 +91,60 @@ namespace toy3d
             properties.extent.width = _width;
             properties.extent.height = _height;
         };
-        virtual Extent get_display_size() const { return properties.extent; }
-        virtual Extent get_framebuffer_size() const { return properties.extent; }
+        virtual Extent get_display_size() const
+        {
+            return properties.extent;
+        }
+        virtual Extent get_framebuffer_size() const
+        {
+            return properties.extent;
+        }
 
       public:
-        Extent get_win_size() const { return properties.extent; };
+        Extent get_win_size() const
+        {
+            return properties.extent;
+        };
 
-        Vsync get_vsync() { return properties.vsync; };
+        Vsync get_vsync()
+        {
+            return properties.vsync;
+        };
 
-        Mode get_mode() { return properties.mode; };
+        Mode get_mode()
+        {
+            return properties.mode;
+        };
 
-        IPlatformInput* get_platform_input() const { return platform_input.get(); }
+        IPlatformInput* get_platform_input() const
+        {
+            return platform_input.get();
+        }
 
       protected:
         bool enqueue_file_drop(FileDropEvent event)
         {
             if (event.paths.empty() || event.paths.size() > maximum_file_drop_paths ||
-                file_drops_.size() >= maximum_pending_file_drops ||
-                !std::isfinite(event.position.x) || !std::isfinite(event.position.y)) return false;
+                file_drops_.size() >= maximum_pending_file_drops || !std::isfinite(event.position.x) ||
+                !std::isfinite(event.position.y))
+            {
+                return false;
+            }
             for (const std::string& path : event.paths)
+            {
                 if (path.empty() || path.size() > maximum_file_drop_path_bytes ||
-                    path.find('\0') != std::string::npos || !is_valid_utf8(path)) return false;
+                    path.find('\0') != std::string::npos || !is_valid_utf8(path))
+                {
+                    return false;
+                }
+            }
             file_drops_.push_back(std::move(event));
             return true;
         }
-        void clear_file_drops() { file_drops_.clear(); }
+        void clear_file_drops()
+        {
+            file_drops_.clear();
+        }
         Properties properties;
         std::unique_ptr<IPlatformInput> platform_input;
 

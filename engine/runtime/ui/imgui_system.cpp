@@ -269,7 +269,11 @@ namespace toy3d
         font_atlas_.rgba_pixels.assign(pixels, pixels + static_cast<std::size_t>(byte_count));
         io.Fonts->SetTexID(encode_texture_id(IMGUI_FONT_ATLAS_TEXTURE_ID));
 
-        InputSystem::get_instance().set_event_sink([this](const InputEvent& event) { process_input_event(event); });
+        InputSystem::get_instance().set_event_sink(
+            [this](const InputEvent& event)
+            {
+                process_input_event(event);
+            });
         return {};
     }
 
@@ -319,7 +323,8 @@ namespace toy3d
         return true;
     }
 
-    ImGuiSnapshotResult ImGuiSystem::end_frame(ImGuiTextureId viewport_texture_id, const std::vector<ImGuiTextureId>& textures)
+    ImGuiSnapshotResult ImGuiSystem::end_frame(ImGuiTextureId viewport_texture_id,
+                                               const std::vector<ImGuiTextureId>& textures)
     {
         if (context_ == nullptr || !frame_active_)
         {
@@ -332,7 +337,9 @@ namespace toy3d
         {
             if (textures[i].value() <= IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value() ||
                 std::find(textures.begin(), textures.begin() + i, textures[i]) != textures.begin() + i)
+            {
                 return {nullptr, "Additional UI texture IDs must be valid, unique, and outside reserved IDs."};
+            }
         }
         ImGuiIO& io = ImGui::GetIO();
         InputSystem::get_instance().set_capture_policy({io.WantCaptureMouse, io.WantCaptureKeyboard, io.WantTextInput});
@@ -424,7 +431,8 @@ namespace toy3d
         }
     }
 
-    ImGuiSnapshotResult ImGuiSystem::snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id, const std::vector<ImGuiTextureId>& textures) const
+    ImGuiSnapshotResult ImGuiSystem::snapshot(const ImDrawData& source, ImGuiTextureId viewport_texture_id,
+                                              const std::vector<ImGuiTextureId>& textures) const
     {
         ImGuiSnapshotResult result;
         if (!source.Valid || !finite_pair(source.DisplayPos) || !finite_pair(source.DisplaySize) ||

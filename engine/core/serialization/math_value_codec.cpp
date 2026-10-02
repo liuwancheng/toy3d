@@ -40,7 +40,10 @@ namespace toy3d
     {
         Vector2 candidate;
         const ValueStatus status = read_floats(reader, candidate.data(), 2);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 
@@ -53,7 +56,10 @@ namespace toy3d
     {
         Vector3 candidate;
         const ValueStatus status = read_floats(reader, candidate.data(), 3);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 
@@ -66,7 +72,10 @@ namespace toy3d
     {
         Vector4 candidate;
         const ValueStatus status = read_floats(reader, candidate.data(), 4);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 
@@ -79,7 +88,10 @@ namespace toy3d
     {
         Matrix3 candidate;
         const ValueStatus status = read_floats(reader, candidate.data(), Matrix3::k_element_count);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 
@@ -92,7 +104,10 @@ namespace toy3d
     {
         Matrix4 candidate;
         const ValueStatus status = read_floats(reader, candidate.data(), Matrix4::k_element_count);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 
@@ -105,16 +120,25 @@ namespace toy3d
     {
         Quaternion candidate;
         const ValueStatus status = read_floats(reader, candidate.data(), 4);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 
     ValueStatus encode_value(ValueWriter& writer, const Transform& value)
     {
         ValueStatus status = encode_value(writer, value.translation);
-        if (!status.succeeded()) return status;
+        if (!status.succeeded())
+        {
+            return status;
+        }
         status = encode_value(writer, value.rotation);
-        if (!status.succeeded()) return status;
+        if (!status.succeeded())
+        {
+            return status;
+        }
         return encode_value(writer, value.scale);
     }
 
@@ -122,11 +146,20 @@ namespace toy3d
     {
         Transform candidate;
         ValueStatus status = decode_value(reader, candidate.translation);
-        if (!status.succeeded()) return status;
+        if (!status.succeeded())
+        {
+            return status;
+        }
         status = decode_value(reader, candidate.rotation);
-        if (!status.succeeded()) return status;
+        if (!status.succeeded())
+        {
+            return status;
+        }
         status = decode_value(reader, candidate.scale);
-        if (status.succeeded()) value = candidate;
+        if (status.succeeded())
+        {
+            value = candidate;
+        }
         return status;
     }
 } // namespace toy3d

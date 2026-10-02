@@ -13,13 +13,19 @@ namespace toy3d
         RHIResourceBindingType resolved_value_type(const RHIBindingValue& value)
         {
             if (value.buffer)
+            {
                 return RHIResourceBindingType::UniformBuffer;
+            }
             if (value.sampler)
+            {
                 return RHIResourceBindingType::Sampler;
+            }
             if (value.texture_view)
+            {
                 return value.texture_view->desc().type == RHIResourceViewType::UnorderedAccess
                            ? RHIResourceBindingType::StorageTexture
                            : RHIResourceBindingType::SampledTexture;
+            }
             return value.buffer_view && value.buffer_view->desc().type == RHIResourceViewType::UnorderedAccess
                        ? RHIResourceBindingType::StorageBuffer
                        : RHIResourceBindingType::ReadOnlyBuffer;
@@ -186,21 +192,32 @@ namespace toy3d
     RHIStatus validate_texture_readback_desc(const RHITextureReadbackDesc& desc)
     {
         if (!desc.source.texture || !desc.destination)
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback requires source and destination.");
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture readback requires source and destination.");
+        }
         const auto& source = desc.source.texture->desc();
         if (desc.destination->readback_format() != source.format || desc.destination->readback_extent() != desc.extent)
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback destination has incompatible format or extent.");
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture readback destination has incompatible format or extent.");
+        }
         if (source.dimension != RHIResourceDimension::Texture2D || source.sample_count != 1 ||
             (source.format != PixelFormat::R8G8B8A8UNorm && source.format != PixelFormat::B8G8R8A8UNorm) ||
             desc.source.mip >= source.mip_levels || desc.source.layer >= source.array_layers || desc.source.offset.z ||
             !desc.extent.width || !desc.extent.height || desc.extent.width > 512 || desc.extent.height > 512 ||
             !EnumHasAnyFlags(source.usage, RHIResourceUsage::CopySource))
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback requires a bounded single-sample color region.");
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Texture readback requires a bounded single-sample color region.");
+        }
         const auto width = std::max(1u, source.width >> desc.source.mip);
         const auto height = std::max(1u, source.height >> desc.source.mip);
         if (desc.source.offset.x > width || desc.extent.width > width - desc.source.offset.x ||
             desc.source.offset.y > height || desc.extent.height > height - desc.source.offset.y)
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture readback region is outside its mip.");
+        }
         return RHIStatus::success();
     }
 
@@ -434,17 +451,16 @@ namespace toy3d
         if (desc.source.data == nullptr || desc.source.size == 0 || desc.source.row_pitch != 0 ||
             desc.source.slice_pitch != 0)
         {
-            return RHIStatus::failure(
-                RHIErrorCode::InvalidArgument,
-                "Transient uniform data requires non-empty tightly packed source bytes.");
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Transient uniform data requires non-empty tightly packed source bytes.");
         }
         return RHIStatus::success();
     }
 
     namespace rhi_detail
     {
-        RHIResult<std::vector<ResolvedBinding>> resolve_graphics_bindings(
-            const RHIGraphicsPipelineRef& pipeline, const RHIGraphicsBindings& bindings)
+        RHIResult<std::vector<ResolvedBinding>> resolve_graphics_bindings(const RHIGraphicsPipelineRef& pipeline,
+                                                                          const RHIGraphicsBindings& bindings)
         {
             if (!pipeline || !pipeline->desc().binding_layout)
             {
@@ -504,7 +520,8 @@ namespace toy3d
                     if (resolved_value_type(*found) != entry.type)
                     {
                         return RHIResult<std::vector<ResolvedBinding>>::failure(
-                            RHIErrorCode::InvalidArgument, "An active logical binding has an incompatible resource type.");
+                            RHIErrorCode::InvalidArgument,
+                            "An active logical binding has an incompatible resource type.");
                     }
                     if (entry.type == RHIResourceBindingType::UniformBuffer)
                     {

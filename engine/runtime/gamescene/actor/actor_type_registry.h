@@ -32,14 +32,21 @@ namespace toy3d
         ActorTypeRegistry();
         bool add(ActorType type);
         bool freeze(const TypeRegistry& types);
-        bool frozen() const { return frozen_; }
+        bool frozen() const
+        {
+            return frozen_;
+        }
         const ActorType* find(const std::string& name) const;
         const ActorType* find(const Actor& actor) const;
         Actor* create(World& world, const std::string& name) const;
-        const std::vector<ActorType>& types() const { return types_; }
+        const std::vector<ActorType>& types() const
+        {
+            return types_;
+        }
         bool validate(const std::string& type, const ReflectedValue& properties) const;
         bool capture(const Actor& actor, ReflectedValue& properties) const;
         bool apply(Actor& actor, const ReflectedValue& properties) const;
+
       private:
         std::vector<ActorType> types_;
         bool frozen_ = false;
@@ -52,4 +59,4 @@ namespace toy3d
         std::string name;
         bool (*register_types)(TypeRegistry&, ActorTypeRegistry&) = nullptr;
     };
-}
+} // namespace toy3d

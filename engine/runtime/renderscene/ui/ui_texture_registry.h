@@ -9,7 +9,7 @@ namespace toy3d
 {
     class UiTextureRegistry final
     {
-    public:
+      public:
         RHIStatus create_target(RHIDevice& device, ImGuiTextureId id, Extent extent);
         RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context, const UiTextureUpload& upload);
         const RHITextureRef& texture(ImGuiTextureId id) const;
@@ -18,7 +18,7 @@ namespace toy3d
         void retire(ImGuiTextureId id);
         void clear();
 
-    private:
+      private:
         struct Entry
         {
             RHITextureRef texture;

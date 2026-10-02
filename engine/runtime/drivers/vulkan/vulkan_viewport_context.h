@@ -59,8 +59,8 @@ namespace toy3d
         VulkanViewportContext(const RHIDevice& owner, VkPhysicalDevice physical_device, VkDevice device,
                               VkSurfaceKHR surface, std::uint32_t graphics_queue_family, VulkanQueue& graphics_queue,
                               VulkanUploadManager& upload_manager, VulkanDescriptorPoolManager& descriptor_pool_manager,
-                              VulkanDeferredDeletionQueue& deletion_queue,
-                              RHISurfaceRef rhi_surface, RHIViewportContextDesc desc);
+                              VulkanDeferredDeletionQueue& deletion_queue, RHISurfaceRef rhi_surface,
+                              RHIViewportContextDesc desc);
         ~VulkanViewportContext() override;
 
         RHIResult<RHIFrameEndResult> end_frame(std::unique_ptr<RHIFrameContext> frame,

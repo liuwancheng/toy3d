@@ -12,7 +12,10 @@ namespace toy3d
         std::vector<const GlobalShaderType*> types;
         std::string error;
 
-        bool succeeded() const { return error.empty(); }
+        bool succeeded() const
+        {
+            return error.empty();
+        }
     };
 
     // Global Shader types are process-wide immutable metadata. The registry
@@ -52,7 +55,10 @@ namespace toy3d
         }
 
         bool add(const GlobalShaderType& type, std::string& error);
-        const std::vector<const GlobalShaderType*>& types() const { return required_types_; }
+        const std::vector<const GlobalShaderType*>& types() const
+        {
+            return required_types_;
+        }
 
       private:
         std::vector<const GlobalShaderType*> registered_types_;

@@ -18,7 +18,10 @@ namespace toy3d
         void process_events() final;
         void close() final;
 
-        GLFWwindow* get_glfw_window() { return glfw_window; }
+        GLFWwindow* get_glfw_window()
+        {
+            return glfw_window;
+        }
 
       private:
         void create_glfw_window();

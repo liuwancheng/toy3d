@@ -287,7 +287,9 @@ namespace toy3d
       public:
         struct Entry
         {
-            explicit Entry(RHIGraphicsPipelineKey pipeline_key) : key(std::move(pipeline_key)) {}
+            explicit Entry(RHIGraphicsPipelineKey pipeline_key) : key(std::move(pipeline_key))
+            {
+            }
 
             RHIGraphicsPipelineKey key;
             RHIGraphicsPipelineRef pipeline;
@@ -300,7 +302,9 @@ namespace toy3d
         std::unordered_map<std::size_t, std::vector<std::shared_ptr<Entry>>> entries;
     };
 
-    RHIGraphicsPipelineCache::RHIGraphicsPipelineCache() : implementation(std::make_unique<Impl>()) {}
+    RHIGraphicsPipelineCache::RHIGraphicsPipelineCache() : implementation(std::make_unique<Impl>())
+    {
+    }
 
     RHIGraphicsPipelineCache::~RHIGraphicsPipelineCache() = default;
 

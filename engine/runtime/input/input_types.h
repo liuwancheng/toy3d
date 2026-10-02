@@ -164,15 +164,24 @@ namespace toy3d
 
     struct TextInputEvent : InputEvent
     {
-        explicit TextInputEvent(std::uint32_t value = 0u) : code_point(value) { type = InputEventType::TextInput; }
+        explicit TextInputEvent(std::uint32_t value = 0u) : code_point(value)
+        {
+            type = InputEventType::TextInput;
+        }
 
-        bool valid() const noexcept { return is_unicode_scalar(code_point); }
+        bool valid() const noexcept
+        {
+            return is_unicode_scalar(code_point);
+        }
         std::uint32_t code_point = 0u;
     };
 
     struct WindowFocusEvent : InputEvent
     {
-        explicit WindowFocusEvent(bool value = false) : focused(value) { type = InputEventType::WindowFocus; }
+        explicit WindowFocusEvent(bool value = false) : focused(value)
+        {
+            type = InputEventType::WindowFocus;
+        }
 
         bool focused = false;
     };

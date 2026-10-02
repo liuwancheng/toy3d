@@ -18,32 +18,61 @@ namespace toy3d
         using PreviewPrepare = std::function<AssetStatus(const std::vector<MaterialParameterOverride>&)>;
         using PreviewNotify = std::function<void(const std::vector<MaterialParameterOverride>&)>;
 
-        explicit MaterialEditSession(EditorWorkspace& workspace) : workspace_(workspace) {}
+        explicit MaterialEditSession(EditorWorkspace& workspace) : workspace_(workspace)
+        {
+        }
         AssetStatus open(const AssetId& id, shader::ShaderParameterSchema schema,
                          const std::string& registered_shader_name = "Toy3d/Surface/Phong");
         AssetStatus update_schema(shader::ShaderParameterSchema schema);
         void set_preview(PreviewPrepare prepare, PreviewNotify notify);
         using SchemaResolver = std::function<AssetResult<shader::ShaderParameterSchema>(const std::string&)>;
         void set_parent_preview(SchemaResolver schema, std::function<AssetStatus(const MaterialAssetData&)> prepare,
-            std::function<void()> notify);
-        void set_publish(std::function<AssetStatus(const AssetRef&)> publish) { publish_ = std::move(publish); }
+                                std::function<void()> notify);
+        void set_publish(std::function<AssetStatus(const AssetRef&)> publish)
+        {
+            publish_ = std::move(publish);
+        }
         AssetStatus publish_saved();
         AssetStatus set_parent(const AssetRef& parent);
-        const std::vector<MaterialAssetLayer>& parent_layers() const { return parent_layers_; }
+        const std::vector<MaterialAssetLayer>& parent_layers() const
+        {
+            return parent_layers_;
+        }
         AssetRef parameter_source(const std::string& name) const;
         void clear();
-        bool active() const { return root_ || instance_; }
-        bool is_instance() const { return instance_ != nullptr; }
-        bool writable() const { return active() && path_.utf8().compare(0, 9, "/Project/") == 0; }
+        bool active() const
+        {
+            return root_ || instance_;
+        }
+        bool is_instance() const
+        {
+            return instance_ != nullptr;
+        }
+        bool writable() const
+        {
+            return active() && path_.utf8().compare(0, 9, "/Project/") == 0;
+        }
         bool dirty() const;
-        bool gesturing() const { return gesture_active_; }
+        bool gesturing() const
+        {
+            return gesture_active_;
+        }
         std::size_t undo_count() const;
         std::size_t redo_count() const;
-        const AssetId& id() const { return id_; }
-        const VirtualPath& path() const { return path_; }
+        const AssetId& id() const
+        {
+            return id_;
+        }
+        const VirtualPath& path() const
+        {
+            return path_;
+        }
         const MaterialAssetData& root_data() const;
         const MaterialInstanceAssetData* instance_data() const;
-        const shader::ShaderParameterSchema& schema() const { return schema_; }
+        const shader::ShaderParameterSchema& schema() const
+        {
+            return schema_;
+        }
         const std::vector<MaterialParameterOverride>& overrides() const;
         std::vector<MaterialParameterOverride> effective_overrides() const;
         std::vector<MaterialParameterOverride> effective_overrides(const shader::ShaderParameterSchema& schema) const;
@@ -62,7 +91,8 @@ namespace toy3d
         AssetStatus prepare_instance(const MaterialInstanceAssetData& value);
         void notify_instance();
         std::vector<MaterialParameterOverride> effective(const std::vector<MaterialParameterOverride>& values) const;
-        AssetStatus effective_bytes(const std::vector<MaterialParameterOverride>& values, std::vector<std::uint8_t>& bytes) const;
+        AssetStatus effective_bytes(const std::vector<MaterialParameterOverride>& values,
+                                    std::vector<std::uint8_t>& bytes) const;
         AssetStatus prepare(const std::vector<MaterialParameterOverride>& values) const;
         void notify(const std::vector<MaterialParameterOverride>& values) const;
         AssetStatus commit(std::vector<MaterialParameterOverride> values);
@@ -91,4 +121,4 @@ namespace toy3d
         PreviewPrepare preview_prepare_;
         PreviewNotify preview_notify_;
     };
-}
+} // namespace toy3d

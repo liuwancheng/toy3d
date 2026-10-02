@@ -47,8 +47,8 @@ namespace toy3d
                 if (!materialized)
                 {
                     mesh_batch.publish_material_binding(nullptr);
-                    TOY_LOG_ERROR("Material binding creation skipped View {} MeshBatch {}: {}", view_index,
-                                  batch_index, materialized.status().message());
+                    TOY_LOG_ERROR("Material binding creation skipped View {} MeshBatch {}: {}", view_index, batch_index,
+                                  materialized.status().message());
                     continue;
                 }
 

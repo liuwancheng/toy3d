@@ -52,9 +52,11 @@ namespace toy3d
         KeyCode translate_key_code(WPARAM native_key)
         {
             const int key = static_cast<int>(native_key);
-            const auto iterator =
-                std::find_if(std::begin(win32_key_codes), std::end(win32_key_codes),
-                             [key](const std::pair<int, KeyCode>& entry) { return entry.first == key; });
+            const auto iterator = std::find_if(std::begin(win32_key_codes), std::end(win32_key_codes),
+                                               [key](const std::pair<int, KeyCode>& entry)
+                                               {
+                                                   return entry.first == key;
+                                               });
             return iterator == std::end(win32_key_codes) ? KeyCode::MAX : iterator->second;
         }
 

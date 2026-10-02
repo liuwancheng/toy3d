@@ -15,7 +15,11 @@ namespace toy3d::shader
     {
         template <typename Collection> bool contains_name(const Collection& values, const std::string& name)
         {
-            return std::any_of(values.begin(), values.end(), [&](const auto& value) { return value.name == name; });
+            return std::any_of(values.begin(), values.end(),
+                               [&](const auto& value)
+                               {
+                                   return value.name == name;
+                               });
         }
 
         bool is_one_of(std::string_view value, std::initializer_list<std::string_view> choices)
@@ -26,126 +30,232 @@ namespace toy3d::shader
         std::optional<PropertyType> property_type_from_name(std::string_view name)
         {
             if (name == "Float")
+            {
                 return PropertyType::Float;
+            }
             if (name == "Float2")
+            {
                 return PropertyType::Float2;
+            }
             if (name == "Float3")
+            {
                 return PropertyType::Float3;
+            }
             if (name == "Float4")
+            {
                 return PropertyType::Float4;
+            }
             if (name == "Color")
+            {
                 return PropertyType::Color;
+            }
             if (name == "Matrix4x4")
+            {
                 return PropertyType::Matrix4x4;
+            }
             if (name == "Range")
+            {
                 return PropertyType::Range;
+            }
             if (name == "Texture2D")
+            {
                 return PropertyType::Texture2D;
+            }
             if (name == "TextureCube")
+            {
                 return PropertyType::TextureCube;
+            }
             if (name == "Sampler")
+            {
                 return PropertyType::Sampler;
+            }
             if (name == "ComparisonSampler")
+            {
                 return PropertyType::ComparisonSampler;
+            }
             return std::nullopt;
         }
 
         std::optional<ShaderValueType> parameter_type_from_name(std::string_view name)
         {
             if (name == "Float")
+            {
                 return ShaderValueType::Float32;
+            }
             if (name == "Float2")
+            {
                 return ShaderValueType::Float32x2;
+            }
             if (name == "Float3")
+            {
                 return ShaderValueType::Float32x3;
+            }
             if (name == "Float4")
+            {
                 return ShaderValueType::Float32x4;
+            }
             if (name == "Float4x4")
+            {
                 return ShaderValueType::Float32x4x4;
+            }
             return std::nullopt;
         }
 
         std::optional<ResourceKind> resource_kind_from_name(std::string_view name)
         {
             if (name == "Texture2D")
+            {
                 return ResourceKind::Texture2D;
+            }
             if (name == "Texture2DArray")
+            {
                 return ResourceKind::Texture2DArray;
+            }
             if (name == "Texture3D")
+            {
                 return ResourceKind::Texture3D;
+            }
             if (name == "TextureCube")
+            {
                 return ResourceKind::TextureCube;
+            }
             if (name == "Texture2DMS")
+            {
                 return ResourceKind::Texture2DMS;
+            }
             if (name == "Sampler")
+            {
                 return ResourceKind::Sampler;
+            }
             if (name == "ComparisonSampler")
+            {
                 return ResourceKind::ComparisonSampler;
+            }
             if (name == "Buffer")
+            {
                 return ResourceKind::Buffer;
+            }
             if (name == "ByteAddressBuffer")
+            {
                 return ResourceKind::ByteAddressBuffer;
+            }
             if (name == "StructuredBuffer")
+            {
                 return ResourceKind::StructuredBuffer;
+            }
             if (name == "RWBuffer")
+            {
                 return ResourceKind::RWBuffer;
+            }
             if (name == "RWByteAddressBuffer")
+            {
                 return ResourceKind::RWByteAddressBuffer;
+            }
             if (name == "RWStructuredBuffer")
+            {
                 return ResourceKind::RWStructuredBuffer;
+            }
             if (name == "RWTexture2D")
+            {
                 return ResourceKind::RWTexture2D;
+            }
             if (name == "RWTexture2DArray")
+            {
                 return ResourceKind::RWTexture2DArray;
+            }
             if (name == "RWTexture3D")
+            {
                 return ResourceKind::RWTexture3D;
+            }
             return std::nullopt;
         }
 
         std::optional<ResourceElementType> resource_element_type_from_name(std::string_view name)
         {
             if (name == "Float")
+            {
                 return ResourceElementType::Float;
+            }
             if (name == "Float2")
+            {
                 return ResourceElementType::Float2;
+            }
             if (name == "Float3")
+            {
                 return ResourceElementType::Float3;
+            }
             if (name == "Float4")
+            {
                 return ResourceElementType::Float4;
+            }
             if (name == "Int")
+            {
                 return ResourceElementType::Int;
+            }
             if (name == "Int2")
+            {
                 return ResourceElementType::Int2;
+            }
             if (name == "Int3")
+            {
                 return ResourceElementType::Int3;
+            }
             if (name == "Int4")
+            {
                 return ResourceElementType::Int4;
+            }
             if (name == "UInt")
+            {
                 return ResourceElementType::UInt;
+            }
             if (name == "UInt2")
+            {
                 return ResourceElementType::UInt2;
+            }
             if (name == "UInt3")
+            {
                 return ResourceElementType::UInt3;
+            }
             if (name == "UInt4")
+            {
                 return ResourceElementType::UInt4;
+            }
             if (name == "Float2x2")
+            {
                 return ResourceElementType::Float2x2;
+            }
             if (name == "Float2x3")
+            {
                 return ResourceElementType::Float2x3;
+            }
             if (name == "Float2x4")
+            {
                 return ResourceElementType::Float2x4;
+            }
             if (name == "Float3x2")
+            {
                 return ResourceElementType::Float3x2;
+            }
             if (name == "Float3x3")
+            {
                 return ResourceElementType::Float3x3;
+            }
             if (name == "Float3x4")
+            {
                 return ResourceElementType::Float3x4;
+            }
             if (name == "Float4x2")
+            {
                 return ResourceElementType::Float4x2;
+            }
             if (name == "Float4x3")
+            {
                 return ResourceElementType::Float4x3;
+            }
             if (name == "Float4x4")
+            {
                 return ResourceElementType::Float4x4;
+            }
             return std::nullopt;
         }
 
@@ -182,26 +292,36 @@ namespace toy3d::shader
         bool valid_shader_name(std::string_view name)
         {
             if (name.empty() || name.front() == '/' || name.back() == '/')
+            {
                 return false;
+            }
             std::size_t segment_start = 0;
             while (segment_start < name.size())
             {
                 const std::size_t segment_end = name.find('/', segment_start);
                 const std::size_t end = segment_end == std::string_view::npos ? name.size() : segment_end;
                 if (end == segment_start)
+                {
                     return false;
+                }
                 const char first = name[segment_start];
                 if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_'))
+                {
                     return false;
+                }
                 for (std::size_t index = segment_start + 1; index < end; ++index)
                 {
                     const char value = name[index];
                     if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
                           (value >= '0' && value <= '9') || value == '_'))
+                    {
                         return false;
+                    }
                 }
                 if (segment_end == std::string_view::npos)
+                {
                     break;
+                }
                 segment_start = segment_end + 1;
             }
             return true;
@@ -234,46 +354,76 @@ namespace toy3d::shader
         std::optional<BindingGroup> binding_group_from_name(std::string_view name)
         {
             if (name == "Global")
+            {
                 return BindingGroup::Global;
+            }
             if (name == "View")
+            {
                 return BindingGroup::View;
+            }
             if (name == "Pass")
+            {
                 return BindingGroup::Pass;
+            }
             if (name == "Material")
+            {
                 return BindingGroup::Material;
+            }
             if (name == "Object")
+            {
                 return BindingGroup::Object;
+            }
             return std::nullopt;
         }
 
         std::optional<ShaderStage> stage_from_pragma(std::string_view name)
         {
             if (name == "vertex")
+            {
                 return ShaderStage::Vertex;
+            }
             if (name == "pixel")
+            {
                 return ShaderStage::Pixel;
+            }
             if (name == "compute")
+            {
                 return ShaderStage::Compute;
+            }
             return std::nullopt;
         }
 
         bool is_valid_pass_state_value(std::string_view state, std::string_view value)
         {
             if (state == "PrimitiveTopology")
+            {
                 return is_one_of(value, {"PointList", "LineList", "LineStrip", "TriangleList", "TriangleStrip"});
+            }
             if (state == "Cull")
+            {
                 return is_one_of(value, {"Off", "Front", "Back"});
+            }
             if (state == "FrontFace")
+            {
                 return is_one_of(value, {"Clockwise", "CounterClockwise"});
+            }
             if (state == "Fill")
+            {
                 return is_one_of(value, {"Solid", "Wireframe"});
+            }
             if (state == "DepthTest")
+            {
                 return is_one_of(value, {"Off", "Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual",
                                          "GreaterEqual", "Always"});
+            }
             if (state == "DepthWrite")
+            {
                 return is_one_of(value, {"Off", "On"});
+            }
             if (state == "ColorWrite")
+            {
                 return is_one_of(value, {"None", "R", "G", "B", "A", "RG", "RGB", "RGBA"});
+            }
             return false;
         }
 
@@ -282,121 +432,207 @@ namespace toy3d::shader
         ShaderGraphicsPassState::PrimitiveTopology primitive_topology_from_name(std::string_view value)
         {
             if (value == "PointList")
+            {
                 return ShaderGraphicsPassState::PrimitiveTopology::PointList;
+            }
             if (value == "LineList")
+            {
                 return ShaderGraphicsPassState::PrimitiveTopology::LineList;
+            }
             if (value == "LineStrip")
+            {
                 return ShaderGraphicsPassState::PrimitiveTopology::LineStrip;
+            }
             if (value == "TriangleStrip")
+            {
                 return ShaderGraphicsPassState::PrimitiveTopology::TriangleStrip;
+            }
             return ShaderGraphicsPassState::PrimitiveTopology::TriangleList;
         }
 
         ShaderGraphicsPassState::CullMode cull_mode_from_name(std::string_view value)
         {
             if (value == "Off")
+            {
                 return ShaderGraphicsPassState::CullMode::None;
+            }
             if (value == "Front")
+            {
                 return ShaderGraphicsPassState::CullMode::Front;
+            }
             return ShaderGraphicsPassState::CullMode::Back;
         }
 
         ShaderGraphicsPassState::CompareOperation compare_operation_from_name(std::string_view value)
         {
             if (value == "Never")
+            {
                 return ShaderGraphicsPassState::CompareOperation::Never;
+            }
             if (value == "Less")
+            {
                 return ShaderGraphicsPassState::CompareOperation::Less;
+            }
             if (value == "Equal")
+            {
                 return ShaderGraphicsPassState::CompareOperation::Equal;
+            }
             if (value == "LessEqual")
+            {
                 return ShaderGraphicsPassState::CompareOperation::LessEqual;
+            }
             if (value == "Greater")
+            {
                 return ShaderGraphicsPassState::CompareOperation::Greater;
+            }
             if (value == "NotEqual")
+            {
                 return ShaderGraphicsPassState::CompareOperation::NotEqual;
+            }
             if (value == "GreaterEqual")
+            {
                 return ShaderGraphicsPassState::CompareOperation::GreaterEqual;
+            }
             return ShaderGraphicsPassState::CompareOperation::Always;
         }
 
         ShaderGraphicsPassState::StencilOperation stencil_operation_from_name(std::string_view value)
         {
             if (value == "Zero")
+            {
                 return ShaderGraphicsPassState::StencilOperation::Zero;
+            }
             if (value == "Replace")
+            {
                 return ShaderGraphicsPassState::StencilOperation::Replace;
+            }
             if (value == "IncrementClamp")
+            {
                 return ShaderGraphicsPassState::StencilOperation::IncrementClamp;
+            }
             if (value == "DecrementClamp")
+            {
                 return ShaderGraphicsPassState::StencilOperation::DecrementClamp;
+            }
             if (value == "Invert")
+            {
                 return ShaderGraphicsPassState::StencilOperation::Invert;
+            }
             if (value == "IncrementWrap")
+            {
                 return ShaderGraphicsPassState::StencilOperation::IncrementWrap;
+            }
             if (value == "DecrementWrap")
+            {
                 return ShaderGraphicsPassState::StencilOperation::DecrementWrap;
+            }
             return ShaderGraphicsPassState::StencilOperation::Keep;
         }
 
         ShaderGraphicsPassState::BlendFactor blend_factor_from_name(std::string_view value)
         {
             if (value == "Zero")
+            {
                 return ShaderGraphicsPassState::BlendFactor::Zero;
+            }
             if (value == "SrcColor")
+            {
                 return ShaderGraphicsPassState::BlendFactor::SourceColor;
+            }
             if (value == "OneMinusSrcColor")
+            {
                 return ShaderGraphicsPassState::BlendFactor::OneMinusSourceColor;
+            }
             if (value == "DstColor")
+            {
                 return ShaderGraphicsPassState::BlendFactor::DestinationColor;
+            }
             if (value == "OneMinusDstColor")
+            {
                 return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationColor;
+            }
             if (value == "SrcAlpha")
+            {
                 return ShaderGraphicsPassState::BlendFactor::SourceAlpha;
+            }
             if (value == "OneMinusSrcAlpha")
+            {
                 return ShaderGraphicsPassState::BlendFactor::OneMinusSourceAlpha;
+            }
             if (value == "DstAlpha")
+            {
                 return ShaderGraphicsPassState::BlendFactor::DestinationAlpha;
+            }
             if (value == "OneMinusDstAlpha")
+            {
                 return ShaderGraphicsPassState::BlendFactor::OneMinusDestinationAlpha;
+            }
             if (value == "ConstantColor")
+            {
                 return ShaderGraphicsPassState::BlendFactor::ConstantColor;
+            }
             if (value == "OneMinusConstantColor")
+            {
                 return ShaderGraphicsPassState::BlendFactor::OneMinusConstantColor;
+            }
             if (value == "SrcAlphaSaturate")
+            {
                 return ShaderGraphicsPassState::BlendFactor::SourceAlphaSaturate;
+            }
             return ShaderGraphicsPassState::BlendFactor::One;
         }
 
         ShaderGraphicsPassState::BlendOperation blend_operation_from_name(std::string_view value)
         {
             if (value == "Subtract")
+            {
                 return ShaderGraphicsPassState::BlendOperation::Subtract;
+            }
             if (value == "ReverseSubtract")
+            {
                 return ShaderGraphicsPassState::BlendOperation::ReverseSubtract;
+            }
             if (value == "Min")
+            {
                 return ShaderGraphicsPassState::BlendOperation::Minimum;
+            }
             if (value == "Max")
+            {
                 return ShaderGraphicsPassState::BlendOperation::Maximum;
+            }
             return ShaderGraphicsPassState::BlendOperation::Add;
         }
 
         ShaderGraphicsPassState::ColorWriteMask color_write_mask_from_name(std::string_view value)
         {
             if (value == "None")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::None;
+            }
             if (value == "R")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::Red;
+            }
             if (value == "G")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::Green;
+            }
             if (value == "B")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::Blue;
+            }
             if (value == "A")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::Alpha;
+            }
             if (value == "RG")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::RedGreen;
+            }
             if (value == "RGB")
+            {
                 return ShaderGraphicsPassState::ColorWriteMask::RedGreenBlue;
+            }
             return ShaderGraphicsPassState::ColorWriteMask::All;
         }
 
@@ -409,9 +645,11 @@ namespace toy3d::shader
 
     bool ParseResult::succeeded() const
     {
-        return asset.has_value() &&
-               std::none_of(diagnostics.begin(), diagnostics.end(), [](const Diagnostic& diagnostic)
-                            { return diagnostic.severity == DiagnosticSeverity::Error; });
+        return asset.has_value() && std::none_of(diagnostics.begin(), diagnostics.end(),
+                                                 [](const Diagnostic& diagnostic)
+                                                 {
+                                                     return diagnostic.severity == DiagnosticSeverity::Error;
+                                                 });
     }
 
     ParseResult parse_shader(std::string_view source, std::string path)
@@ -419,7 +657,9 @@ namespace toy3d::shader
         return ShaderParser(source, std::move(path)).parse();
     }
 
-    ShaderParser::ShaderParser(std::string_view source, std::string path) : tokenizer(source, std::move(path)) {}
+    ShaderParser::ShaderParser(std::string_view source, std::string path) : tokenizer(source, std::move(path))
+    {
+    }
 
     ParseResult ShaderParser::parse()
     {
@@ -1032,28 +1272,44 @@ namespace toy3d::shader
                                   "Invalid value '" + value->text + "' for Pass state '" + state_name.text + "'.");
                     }
                     if (!valid)
+                    {
                         continue;
+                    }
                     if (state_name.text == "PrimitiveTopology")
+                    {
                         pass.state.primitive_topology = primitive_topology_from_name(value->text);
+                    }
                     else if (state_name.text == "Cull")
+                    {
                         pass.state.cull_mode = cull_mode_from_name(value->text);
+                    }
                     else if (state_name.text == "FrontFace")
+                    {
                         pass.state.front_face = value->text == "Clockwise"
                                                     ? ShaderGraphicsPassState::FrontFace::Clockwise
                                                     : ShaderGraphicsPassState::FrontFace::CounterClockwise;
+                    }
                     else if (state_name.text == "Fill")
+                    {
                         pass.state.fill_mode = value->text == "Wireframe" ? ShaderGraphicsPassState::FillMode::Wireframe
                                                                           : ShaderGraphicsPassState::FillMode::Solid;
+                    }
                     else if (state_name.text == "DepthTest")
                     {
                         pass.state.depth_test_enable = value->text != "Off";
                         if (pass.state.depth_test_enable)
+                        {
                             pass.state.depth_compare_operation = compare_operation_from_name(value->text);
+                        }
                     }
                     else if (state_name.text == "DepthWrite")
+                    {
                         pass.state.depth_write_enable = value->text == "On";
+                    }
                     else if (state_name.text == "ColorWrite")
+                    {
                         pass.state.color_write_mask = color_write_mask_from_name(value->text);
+                    }
                 }
                 continue;
             }
@@ -1117,9 +1373,13 @@ namespace toy3d::shader
                                   "Stencil mask must be an integer from 0 through 255.");
                     }
                     else if (field->text == "ReadMask")
+                    {
                         pass.state.stencil.read_mask = static_cast<std::uint8_t>(parsed);
+                    }
                     else
+                    {
                         pass.state.stencil.write_mask = static_cast<std::uint8_t>(parsed);
+                    }
                 }
                 continue;
             }
@@ -1170,7 +1430,9 @@ namespace toy3d::shader
             }
             const auto value = expect_identifier("Expected a Stencil operation value.");
             if (!value)
+            {
                 return false;
+            }
             const bool valid = index == 0 ? is_stencil_compare(value->text) : is_stencil_operation(value->text);
             if (!valid)
             {
@@ -1178,15 +1440,25 @@ namespace toy3d::shader
                           "Invalid Stencil operation value '" + value->text + "'.");
             }
             if (!valid)
+            {
                 continue;
+            }
             if (index == 0)
+            {
                 face.compare_operation = compare_operation_from_name(value->text);
+            }
             else if (index == 1)
+            {
                 face.fail_operation = stencil_operation_from_name(value->text);
+            }
             else if (index == 2)
+            {
                 face.depth_fail_operation = stencil_operation_from_name(value->text);
+            }
             else
+            {
                 face.pass_operation = stencil_operation_from_name(value->text);
+            }
         }
         return true;
     }
@@ -1199,7 +1471,9 @@ namespace toy3d::shader
             return true;
         }
         if (!expect(TokenKind::LeftBrace, "Expected 'Off' or '{' after Blend."))
+        {
             return false;
+        }
         pass.state.blend.enabled = true;
         struct BlendLine
         {
@@ -1226,26 +1500,38 @@ namespace toy3d::shader
             if (source)
             {
                 if (!is_blend_factor(source->text))
+                {
                     add_error(DiagnosticCode::InvalidPassState, source->location,
                               "Invalid Blend factor '" + source->text + "'.");
+                }
                 else
+                {
                     *line.source = blend_factor_from_name(source->text);
+                }
             }
             if (destination)
             {
                 if (!is_blend_factor(destination->text))
+                {
                     add_error(DiagnosticCode::InvalidPassState, destination->location,
                               "Invalid Blend factor '" + destination->text + "'.");
+                }
                 else
+                {
                     *line.destination = blend_factor_from_name(destination->text);
+                }
             }
             if (operation)
             {
                 if (!is_blend_operation(operation->text))
+                {
                     add_error(DiagnosticCode::InvalidPassState, operation->location,
                               "Invalid Blend operation '" + operation->text + "'.");
+                }
                 else
+                {
                     *line.operation = blend_operation_from_name(operation->text);
+                }
             }
         }
         return expect(TokenKind::RightBrace, "Expected '}' to close Blend state.").has_value();
@@ -1361,7 +1647,10 @@ namespace toy3d::shader
                 else
                 {
                     const bool duplicate = std::any_of(block.entry_points.begin(), block.entry_points.end(),
-                                                       [&](const EntryPoint& entry) { return entry.stage == *stage; });
+                                                       [&](const EntryPoint& entry)
+                                                       {
+                                                           return entry.stage == *stage;
+                                                       });
                     if (duplicate)
                     {
                         add_error(DiagnosticCode::DuplicateEntryPoint, location,
@@ -1380,12 +1669,20 @@ namespace toy3d::shader
     void ShaderParser::validate_program(ShaderPass& pass)
     {
         const bool has_vertex = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
-                                            [](const EntryPoint& entry) { return entry.stage == ShaderStage::Vertex; });
+                                            [](const EntryPoint& entry)
+                                            {
+                                                return entry.stage == ShaderStage::Vertex;
+                                            });
         const bool has_pixel = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
-                                           [](const EntryPoint& entry) { return entry.stage == ShaderStage::Pixel; });
-        const bool has_compute =
-            std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
-                        [](const EntryPoint& entry) { return entry.stage == ShaderStage::Compute; });
+                                           [](const EntryPoint& entry)
+                                           {
+                                               return entry.stage == ShaderStage::Pixel;
+                                           });
+        const bool has_compute = std::any_of(pass.program.entry_points.begin(), pass.program.entry_points.end(),
+                                             [](const EntryPoint& entry)
+                                             {
+                                                 return entry.stage == ShaderStage::Compute;
+                                             });
         if (has_compute && (has_vertex || has_pixel))
         {
             add_error(DiagnosticCode::MixedProgramStages, pass.program.location,

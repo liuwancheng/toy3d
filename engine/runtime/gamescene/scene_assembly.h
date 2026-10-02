@@ -14,7 +14,8 @@ namespace toy3d
     struct SceneAssemblyServices
     {
         std::function<StaticMeshRef(const SceneMeshData&, std::string&)> load_mesh;
-        std::function<bool(Actor&, StaticMeshComponent&, const std::string&, const AssetRef&, std::string&)> assign_material;
+        std::function<bool(Actor&, StaticMeshComponent&, const std::string&, const AssetRef&, std::string&)>
+            assign_material;
         std::function<void(std::uint32_t)> forget_actor;
     };
     struct SceneAssemblyResult
@@ -24,7 +25,7 @@ namespace toy3d
     };
     // GT only. Builds a complete candidate in a non-playing World, then replaces old Actors.
     // Failure destroys only candidate Actors and retains the previous scene.
-    bool assemble_scene(World& world, const SceneAssetData& data, const ActorTypeRegistry& types, const TypeRegistry& schemas,
-                        const SceneAssemblyServices& services, SceneAssemblyResult& result, std::string& error,
-                        const AssetIndex* assets = nullptr);
-}
+    bool assemble_scene(World& world, const SceneAssetData& data, const ActorTypeRegistry& types,
+                        const TypeRegistry& schemas, const SceneAssemblyServices& services, SceneAssemblyResult& result,
+                        std::string& error, const AssetIndex* assets = nullptr);
+} // namespace toy3d

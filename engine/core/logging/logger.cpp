@@ -17,13 +17,20 @@ namespace toy3d
         {
             switch (level)
             {
-            case spdlog::level::trace: return LogLevel::TOY_TRACE;
-            case spdlog::level::debug: return LogLevel::TOY_DEBUG;
-            case spdlog::level::info: return LogLevel::TOY_INFO;
-            case spdlog::level::warn: return LogLevel::TOY_WARN;
-            case spdlog::level::err: return LogLevel::TOY_ERROR;
-            case spdlog::level::critical: return LogLevel::TOY_CRITICAL;
-            default: return LogLevel::TOY_OFF;
+            case spdlog::level::trace:
+                return LogLevel::TOY_TRACE;
+            case spdlog::level::debug:
+                return LogLevel::TOY_DEBUG;
+            case spdlog::level::info:
+                return LogLevel::TOY_INFO;
+            case spdlog::level::warn:
+                return LogLevel::TOY_WARN;
+            case spdlog::level::err:
+                return LogLevel::TOY_ERROR;
+            case spdlog::level::critical:
+                return LogLevel::TOY_CRITICAL;
+            default:
+                return LogLevel::TOY_OFF;
             }
         }
 
@@ -33,8 +40,14 @@ namespace toy3d
             std::fprintf(stderr, "Toy3d logging output failure: %s\n", message.c_str());
             if (buffer)
             {
-                try { buffer->report_output_error(message, file_failure); }
-                catch (...) { std::fputs("Unable to retain logging failure in memory.\n", stderr); }
+                try
+                {
+                    buffer->report_output_error(message, file_failure);
+                }
+                catch (...)
+                {
+                    std::fputs("Unable to retain logging failure in memory.\n", stderr);
+                }
             }
         }
 
@@ -44,7 +57,10 @@ namespace toy3d
         class MemoryLogSink final : public spdlog::sinks::base_sink<std::mutex>
         {
           public:
-            explicit MemoryLogSink(std::shared_ptr<LogBuffer> buffer) : buffer_(std::move(buffer)) {}
+            explicit MemoryLogSink(std::shared_ptr<LogBuffer> buffer) : buffer_(std::move(buffer))
+            {
+            }
+
           private:
             void sink_it_(const spdlog::details::log_msg& message) override
             {
@@ -53,12 +69,17 @@ namespace toy3d
                 record.level = log_level(message.level);
                 record.thread_id = message.thread_id;
                 record.logger_name.assign(message.logger_name.data(), message.logger_name.size());
-                if (message.source.filename) record.source_file = message.source.filename;
+                if (message.source.filename)
+                {
+                    record.source_file = message.source.filename;
+                }
                 record.source_line = message.source.line;
                 record.message.assign(message.payload.data(), message.payload.size());
                 buffer_->append(std::move(record));
             }
-            void flush_() override {}
+            void flush_() override
+            {
+            }
             std::shared_ptr<LogBuffer> buffer_;
         };
 
@@ -77,9 +98,16 @@ namespace toy3d
             void log(const spdlog::details::log_msg& message) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                try { file_.log(message); write_failed_ = false; }
+                try
+                {
+                    file_.log(message);
+                    write_failed_ = false;
+                }
                 catch (const std::exception& error)
-                { write_failed_ = true; report_output_error(buffer_, error.what(), true); }
+                {
+                    write_failed_ = true;
+                    report_output_error(buffer_, error.what(), true);
+                }
             }
             void flush() override
             {
@@ -87,21 +115,33 @@ namespace toy3d
                 try
                 {
                     file_.flush();
-                    if (!write_failed_ && buffer_) buffer_->file_flushed();
+                    if (!write_failed_ && buffer_)
+                    {
+                        buffer_->file_flushed();
+                    }
                 }
                 catch (const std::exception& error)
-                { write_failed_ = true; report_output_error(buffer_, error.what(), true); }
+                {
+                    write_failed_ = true;
+                    report_output_error(buffer_, error.what(), true);
+                }
             }
-            void set_pattern(const std::string& pattern) override { file_.set_pattern(pattern); }
+            void set_pattern(const std::string& pattern) override
+            {
+                file_.set_pattern(pattern);
+            }
             void set_formatter(std::unique_ptr<spdlog::formatter> formatter) override
-            { file_.set_formatter(std::move(formatter)); }
+            {
+                file_.set_formatter(std::move(formatter));
+            }
+
           private:
             spdlog::sinks::rotating_file_sink_mt file_;
             std::shared_ptr<LogBuffer> buffer_;
             std::mutex mutex_;
             bool write_failed_ = false;
         };
-    }
+    } // namespace
 
     // --------------------------------------------------------------------------
     // Logger: serialize the session's fan-out, configuration and final flush
@@ -117,14 +157,23 @@ namespace toy3d
         // Initialization/reconfiguration belongs to the quiescent composition root.
         exit();
         std::lock_guard<std::mutex> lock(mutex_);
-        if (error_message) error_message->clear();
+        if (error_message)
+        {
+            error_message->clear();
+        }
         const auto buffer = config.memory_output;
         // C++17 filesystem keeps UTF-8 boundary inputs lossless through native file I/O.
         const std::filesystem::path file_path = config.log_directory / std::filesystem::u8path(config.file_name);
-        if (buffer) buffer->configure_file(config.file_output, file_path.u8string(), false);
+        if (buffer)
+        {
+            buffer->configure_file(config.file_output, file_path.u8string(), false);
+        }
         std::vector<spdlog::sink_ptr> sinks;
         std::string failure;
-        if (buffer) sinks.push_back(std::make_shared<MemoryLogSink>(buffer));
+        if (buffer)
+        {
+            sinks.push_back(std::make_shared<MemoryLogSink>(buffer));
+        }
         if (config.console_output)
         {
             try
@@ -134,32 +183,49 @@ namespace toy3d
                 sinks.push_back(std::move(console));
             }
             catch (const std::exception& error)
-            { failure = error.what(); report_output_error(buffer, failure, false); }
+            {
+                failure = error.what();
+                report_output_error(buffer, failure, false);
+            }
         }
         if (config.file_output)
         {
             try
             {
-                if (config.log_directory.empty() || config.file_name.empty() ||
-                    config.max_file_size == 0 || config.max_file_count == 0)
+                if (config.log_directory.empty() || config.file_name.empty() || config.max_file_size == 0 ||
+                    config.max_file_count == 0)
+                {
                     throw spdlog::spdlog_ex("Logger file output configuration is incomplete.");
+                }
                 // filesystem creates the native directory; failures retain the other outputs.
                 std::error_code error;
                 std::filesystem::create_directories(config.log_directory, error);
-                if (error) throw spdlog::spdlog_ex("Failed to create log directory: " + error.message());
+                if (error)
+                {
+                    throw spdlog::spdlog_ex("Failed to create log directory: " + error.message());
+                }
                 sinks.push_back(std::make_shared<FileLogSink>(file_path, config));
-                if (buffer) buffer->configure_file(true, file_path.u8string(), true);
+                if (buffer)
+                {
+                    buffer->configure_file(true, file_path.u8string(), true);
+                }
             }
             catch (const std::exception& error)
             {
-                if (!failure.empty()) failure += "\n";
+                if (!failure.empty())
+                {
+                    failure += "\n";
+                }
                 failure += error.what();
                 report_output_error(buffer, error.what(), true);
             }
         }
         if (sinks.empty())
         {
-            if (failure.empty()) failure = "Logger requires at least one output sink.";
+            if (failure.empty())
+            {
+                failure = "Logger requires at least one output sink.";
+            }
             // Keep future diagnostics visible even if a file-only setup failed.
             sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_mt>());
         }
@@ -167,32 +233,62 @@ namespace toy3d
         spd_logger = std::make_shared<spdlog::logger>(logger_name, sinks.begin(), sinks.end());
         spd_logger->set_level(spdlog::level::trace);
         spd_logger->flush_on(spdlog::level::warn);
-        spd_logger->set_error_handler([buffer](const std::string& message)
-        { report_output_error(buffer, message, false); });
-        try { spdlog::register_logger(spd_logger); registered_ = true; }
+        spd_logger->set_error_handler(
+            [buffer](const std::string& message)
+            {
+                report_output_error(buffer, message, false);
+            });
+        try
+        {
+            spdlog::register_logger(spd_logger);
+            registered_ = true;
+        }
         catch (const spdlog::spdlog_ex& error)
         {
-            if (!failure.empty()) failure += "\n";
+            if (!failure.empty())
+            {
+                failure += "\n";
+            }
             failure += error.what();
             report_output_error(buffer, error.what(), false);
         }
-        if (error_message) *error_message = failure;
+        if (error_message)
+        {
+            *error_message = failure;
+        }
         return failure.empty();
     }
 
     void Logger::set_level(Level level)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!spd_logger) return;
+        if (!spd_logger)
+        {
+            return;
+        }
         switch (level)
         {
-        case Level::TOY_TRACE: spd_logger->set_level(spdlog::level::trace); break;
-        case Level::TOY_DEBUG: spd_logger->set_level(spdlog::level::debug); break;
-        case Level::TOY_INFO: spd_logger->set_level(spdlog::level::info); break;
-        case Level::TOY_WARN: spd_logger->set_level(spdlog::level::warn); break;
-        case Level::TOY_ERROR: spd_logger->set_level(spdlog::level::err); break;
-        case Level::TOY_CRITICAL: spd_logger->set_level(spdlog::level::critical); break;
-        case Level::TOY_OFF: spd_logger->set_level(spdlog::level::off); break;
+        case Level::TOY_TRACE:
+            spd_logger->set_level(spdlog::level::trace);
+            break;
+        case Level::TOY_DEBUG:
+            spd_logger->set_level(spdlog::level::debug);
+            break;
+        case Level::TOY_INFO:
+            spd_logger->set_level(spdlog::level::info);
+            break;
+        case Level::TOY_WARN:
+            spd_logger->set_level(spdlog::level::warn);
+            break;
+        case Level::TOY_ERROR:
+            spd_logger->set_level(spdlog::level::err);
+            break;
+        case Level::TOY_CRITICAL:
+            spd_logger->set_level(spdlog::level::critical);
+            break;
+        case Level::TOY_OFF:
+            spd_logger->set_level(spdlog::level::off);
+            break;
         }
     }
 
@@ -203,9 +299,12 @@ namespace toy3d
         {
             spd_logger->flush();
             spd_logger.reset();
-            if (registered_) spdlog::drop(logger_name);
+            if (registered_)
+            {
+                spdlog::drop(logger_name);
+            }
         }
         registered_ = false;
         logger_name.clear();
     }
-}
+} // namespace toy3d

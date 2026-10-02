@@ -25,8 +25,8 @@ namespace toy3d
         Vector2 region_max;
         bool accepts_drop(const Vector2& position) const
         {
-            return visible && position.x >= region_min.x && position.y >= region_min.y &&
-                position.x < region_max.x && position.y < region_max.y;
+            return visible && position.x >= region_min.x && position.y >= region_min.y && position.x < region_max.x &&
+                   position.y < region_max.y;
         }
     };
 
@@ -34,11 +34,12 @@ namespace toy3d
     {
       public:
         ContentBrowserActions draw(EditorWorkspace& workspace, EditorSelection& selection, std::string& folder,
-                                  bool& show_engine_content, AssetThumbnailPool& thumbnails, bool import_enabled = false);
+                                   bool& show_engine_content, AssetThumbnailPool& thumbnails,
+                                   bool import_enabled = false);
         void clear();
 
       private:
         AssetId pending_delete_;
         std::string delete_error_;
     };
-}
+} // namespace toy3d

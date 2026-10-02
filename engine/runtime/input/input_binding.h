@@ -23,7 +23,9 @@ namespace toy3d
 
       public:
         InputAction() = default;
-        InputAction(const std::string& name) : action_name(name) {}
+        InputAction(const std::string& name) : action_name(name)
+        {
+        }
 
         // 用于处理单击事件，比如开火、跳跃等
         void add_binding(KeyCode _key_code, KeyStatus _key_status, InputActionCallback callback)
@@ -46,8 +48,14 @@ namespace toy3d
             bindings.push_back(binding);
         }
 
-        const std::string& get_name() const { return action_name; }
-        const std::vector<InputBinding>& get_bindings() const { return bindings; }
+        const std::string& get_name() const
+        {
+            return action_name;
+        }
+        const std::vector<InputBinding>& get_bindings() const
+        {
+            return bindings;
+        }
     };
 
     class InputBindingContext
@@ -94,12 +102,27 @@ namespace toy3d
             }
         }
 
-        void set_active(bool active) { b_active_context = active; }
-        bool is_active() const { return b_active_context; }
-        int get_priority() const { return priority; }
-        const std::string& get_name() const { return context_name; }
+        void set_active(bool active)
+        {
+            b_active_context = active;
+        }
+        bool is_active() const
+        {
+            return b_active_context;
+        }
+        int get_priority() const
+        {
+            return priority;
+        }
+        const std::string& get_name() const
+        {
+            return context_name;
+        }
 
-        std::unordered_map<std::string, InputAction>& get_actions() { return actions; }
+        std::unordered_map<std::string, InputAction>& get_actions()
+        {
+            return actions;
+        }
     };
 
 } // namespace toy3d

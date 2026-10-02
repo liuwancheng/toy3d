@@ -40,7 +40,11 @@ namespace toy3d::shader
 
         bool hash_is_zero(const Sha256Hash& hash)
         {
-            return std::all_of(hash.begin(), hash.end(), [](std::uint8_t byte) { return byte == 0u; });
+            return std::all_of(hash.begin(), hash.end(),
+                               [](std::uint8_t byte)
+                               {
+                                   return byte == 0u;
+                               });
         }
 
         bool valid_spirv_container(const std::vector<std::uint8_t>& bytes)
@@ -89,7 +93,9 @@ namespace toy3d::shader
         {
             const std::optional<PhysicalPath> path = child_path(platform_file, directory, name, result);
             if (!path || !validate_file_size(platform_file, *path, maximum_size, result))
+            {
                 return std::nullopt;
+            }
             FileResult<std::string> text = platform_file.read_text_utf8(*path);
             if (!text.succeeded())
             {
@@ -111,7 +117,9 @@ namespace toy3d::shader
         {
             const std::optional<PhysicalPath> path = child_path(platform_file, directory, name, result);
             if (!path || !validate_file_size(platform_file, *path, maximum_binary_size, result))
+            {
                 return std::nullopt;
+            }
             FileResult<std::vector<std::uint8_t>> bytes = platform_file.read_binary(*path);
             if (!bytes.succeeded())
             {
@@ -133,7 +141,9 @@ namespace toy3d::shader
             if (text.empty())
             {
                 if (allow_empty)
+                {
                     return std::vector<std::string_view>{};
+                }
                 add_error(result, label + " must not be empty.");
                 return std::nullopt;
             }
@@ -148,7 +158,9 @@ namespace toy3d::shader
             {
                 const std::size_t end = text.find('\n', begin);
                 if (end == std::string::npos)
+                {
                     break;
+                }
                 const std::string_view line(text.data() + begin, end - begin);
                 if (line.empty())
                 {
@@ -166,7 +178,9 @@ namespace toy3d::shader
         {
             const auto parsed_lines = lines(text, false, result, label);
             if (!parsed_lines)
+            {
                 return std::nullopt;
+            }
             Fields fields;
             for (std::string_view line : *parsed_lines)
             {
@@ -202,9 +216,13 @@ namespace toy3d::shader
             T value = 0;
             const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
             if (text.empty() || parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
+            {
                 return std::nullopt;
+            }
             if (std::to_string(value) != text)
+            {
                 return std::nullopt;
+            }
             return value;
         }
 
@@ -314,7 +332,9 @@ namespace toy3d::shader
         bool ascii_identifier(std::string_view text)
         {
             if (text.empty())
+            {
                 return false;
+            }
             const auto first = [](char value)
             {
                 return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') || value == '_';
@@ -329,7 +349,9 @@ namespace toy3d::shader
         bool shader_name(std::string_view text)
         {
             if (text.empty())
+            {
                 return false;
+            }
             std::size_t begin = 0;
             while (begin < text.size())
             {
@@ -337,9 +359,13 @@ namespace toy3d::shader
                 const std::string_view segment =
                     text.substr(begin, end == std::string_view::npos ? text.size() - begin : end - begin);
                 if (!ascii_identifier(segment))
+                {
                     return false;
+                }
                 if (end == std::string_view::npos)
+                {
                     return true;
+                }
                 begin = end + 1u;
             }
             return false;
@@ -364,7 +390,9 @@ namespace toy3d::shader
                 const std::size_t end = line.find('\t', begin);
                 fields.push_back(line.substr(begin, end == std::string_view::npos ? line.size() - begin : end - begin));
                 if (end == std::string_view::npos)
+                {
                     break;
+                }
                 begin = end + 1u;
             }
             return fields;
@@ -386,12 +414,16 @@ namespace toy3d::shader
                 const std::size_t end = text.find(',', begin);
                 if ((index + 1u != values.size() && end == std::string_view::npos) ||
                     (index + 1u == values.size() && end != std::string_view::npos))
+                {
                     return std::nullopt;
+                }
                 const std::string_view field =
                     text.substr(begin, end == std::string_view::npos ? text.size() - begin : end - begin);
                 const std::optional<std::uint32_t> value = parse_unsigned<std::uint32_t>(field);
                 if (!value)
+                {
                     return std::nullopt;
+                }
                 values[index] = *value;
                 begin = end == std::string_view::npos ? text.size() : end + 1u;
             }
@@ -450,10 +482,9 @@ namespace toy3d::shader
                     add_error(result, "mapping.txt contains duplicate binding identities.");
                     return false;
                 }
-                const bool is_constant =
-                    *category == static_cast<std::uint32_t>(ShaderParameterCategory::Constant);
-                if ((is_constant && (*data_size == 0u || hash_is_zero(*data_layout_hash) ||
-                                     *abi_version != toy_shader_abi_version)) ||
+                const bool is_constant = *category == static_cast<std::uint32_t>(ShaderParameterCategory::Constant);
+                if ((is_constant &&
+                     (*data_size == 0u || hash_is_zero(*data_layout_hash) || *abi_version != toy_shader_abi_version)) ||
                     (!is_constant && (*data_size != 0u || !hash_is_zero(*data_layout_hash) || *abi_version != 0u)))
                 {
                     add_error(result, "mapping.txt binding data ABI metadata is invalid.");
@@ -464,12 +495,11 @@ namespace toy3d::shader
                     add_error(result, "mapping.txt contains duplicate Vulkan set/binding slots.");
                     return false;
                 }
-                entry.bindings.push_back({*id, std::string(fields[1]), static_cast<BindingGroup>(*group),
-                                          static_cast<ShaderParameterCategory>(*category),
-                                          static_cast<ShaderStageFlags>(*stages),
-                                          static_cast<NativeRegisterClass>(*register_class), *register_index,
-                                          *descriptor_set, *descriptor_binding, *data_size, *data_layout_hash,
-                                          *abi_version});
+                entry.bindings.push_back(
+                    {*id, std::string(fields[1]), static_cast<BindingGroup>(*group),
+                     static_cast<ShaderParameterCategory>(*category), static_cast<ShaderStageFlags>(*stages),
+                     static_cast<NativeRegisterClass>(*register_class), *register_index, *descriptor_set,
+                     *descriptor_binding, *data_size, *data_layout_hash, *abi_version});
             }
             if (calculate_target_binding_hash(entry.target, entry.mapping_version, entry.bindings) !=
                 entry.target_binding_hash)
@@ -541,7 +571,8 @@ namespace toy3d::shader
                     const auto descriptor_set = parse_unsigned<std::uint32_t>(fields[7]);
                     const auto descriptor_binding = parse_unsigned<std::uint32_t>(fields[8]);
                     const auto buffer_size = parse_unsigned<std::uint32_t>(fields[9]);
-                    const auto data_layout_hash = parse_hash(std::string(fields[10]), result, "reflection data layout hash");
+                    const auto data_layout_hash =
+                        parse_hash(std::string(fields[10]), result, "reflection data layout hash");
                     const auto abi_version = parse_unsigned<std::uint32_t>(fields[11]);
                     if (!parameter_id || *parameter_id == 0u || !group ||
                         *group > static_cast<std::uint32_t>(BindingGroup::Object) || !category ||
@@ -562,7 +593,9 @@ namespace toy3d::shader
                     binding.group = static_cast<BindingGroup>(*group);
                     binding.category = static_cast<ShaderParameterCategory>(*category);
                     if (*resource_kind != 0xffffffffu)
+                    {
                         binding.resource_kind = static_cast<ResourceKind>(*resource_kind);
+                    }
                     binding.stages = static_cast<ShaderStageFlags>(*stages);
                     binding.array_count = *array_count;
                     binding.descriptor_set = *descriptor_set;
@@ -667,11 +700,9 @@ namespace toy3d::shader
                             return std::nullopt;
                         }
                     }
-                    if (calculate_constant_buffer_data_layout_hash(binding.group, binding.parameter_id,
-                                                                  binding.constant_buffer_size,
-                                                                  binding.constant_members,
-                                                                  binding.shader_abi_version) !=
-                        binding.data_layout_hash)
+                    if (calculate_constant_buffer_data_layout_hash(
+                            binding.group, binding.parameter_id, binding.constant_buffer_size, binding.constant_members,
+                            binding.shader_abi_version) != binding.data_layout_hash)
                     {
                         add_error(result, "Reflection constant-buffer data layout hash is inconsistent.");
                         return std::nullopt;
@@ -707,7 +738,9 @@ namespace toy3d::shader
         {
             const auto parsed_lines = lines(text, true, result, "dependencies file");
             if (!parsed_lines)
+            {
                 return std::nullopt;
+            }
             std::vector<ShaderDependency> dependencies;
             std::string previous_path;
             for (const std::string_view line : *parsed_lines)
@@ -743,9 +776,11 @@ namespace toy3d::shader
             {
                 for (const ReflectedBinding& reflected : stage.reflection.bindings)
                 {
-                    const auto mapping =
-                        std::find_if(entry.bindings.begin(), entry.bindings.end(), [&](const ShaderMapBinding& binding)
-                                     { return binding.binding_id == reflected.parameter_id; });
+                    const auto mapping = std::find_if(entry.bindings.begin(), entry.bindings.end(),
+                                                      [&](const ShaderMapBinding& binding)
+                                                      {
+                                                          return binding.binding_id == reflected.parameter_id;
+                                                      });
                     if (mapping == entry.bindings.end() || mapping->name != reflected.name ||
                         mapping->group != reflected.group || mapping->category != reflected.category ||
                         !has_stage(mapping->stages, stage.request.stage) ||
@@ -762,10 +797,14 @@ namespace toy3d::shader
                 for (const ShaderMapBinding& mapping : entry.bindings)
                 {
                     if (!has_stage(mapping.stages, stage.request.stage))
+                    {
                         continue;
+                    }
                     const bool found = std::any_of(stage.reflection.bindings.begin(), stage.reflection.bindings.end(),
                                                    [&](const ReflectedBinding& reflected)
-                                                   { return reflected.parameter_id == mapping.binding_id; });
+                                                   {
+                                                       return reflected.parameter_id == mapping.binding_id;
+                                                   });
                     if (!found)
                     {
                         add_error(result, "mapping.txt requires a binding missing from stage reflection.");
@@ -796,11 +835,15 @@ namespace toy3d::shader
         const std::string key_text = sha256_to_hex(shader_map_key);
         const std::optional<PhysicalPath> directory = child_path(platform_file, shader_map_root, key_text, result);
         if (!directory)
+        {
             return result;
+        }
         result.entry_directory = *directory;
         const auto manifest_text = read_text(platform_file, *directory, "manifest.txt", maximum_manifest_size, result);
         if (!manifest_text)
+        {
             return result;
+        }
         const std::set<std::string> manifest_fields = {"shader_map_entry_version",
                                                        "shader_map_key",
                                                        "entry_content_hash",
@@ -846,14 +889,15 @@ namespace toy3d::shader
                                                        "stage_count"};
         const auto manifest = key_value_fields(*manifest_text, manifest_fields, result, "ShaderMapEntry manifest");
         if (!manifest)
+        {
             return result;
+        }
 
         const auto entry_version = parse_unsigned<std::uint32_t>(manifest->at("shader_map_entry_version"));
         const auto target = parse_unsigned<std::uint32_t>(manifest->at("target"));
         const auto profile = parse_unsigned<std::uint32_t>(manifest->at("profile"));
         const auto mapping_version = parse_unsigned<std::uint32_t>(manifest->at("mapping_version"));
-        const auto generated_format_version =
-            parse_unsigned<std::uint32_t>(manifest->at("generated_format_version"));
+        const auto generated_format_version = parse_unsigned<std::uint32_t>(manifest->at("generated_format_version"));
         const auto variant_id_version = parse_unsigned<std::uint32_t>(manifest->at("variant_id_version"));
         const auto permutation_version = parse_unsigned<std::uint32_t>(manifest->at("permutation_version"));
         const auto stage_count = parse_unsigned<std::uint32_t>(manifest->at("stage_count"));
@@ -875,11 +919,11 @@ namespace toy3d::shader
             *variant_id_version != shader_variant_id_version || !permutation_version ||
             *permutation_version != shader_permutation_version || !stage_count || *stage_count == 0u ||
             *stage_count > 3u || !content_hash || !logical_hash || !schema_identity || !binding_hash || !pass_hash ||
-            !permutation_key ||
-            !graphics_pass_state || hash_is_zero(*content_hash) || hash_is_zero(*logical_hash) ||
+            !permutation_key || !graphics_pass_state || hash_is_zero(*content_hash) || hash_is_zero(*logical_hash) ||
             hash_is_zero(*binding_hash) || hash_is_zero(*pass_hash) || hash_is_zero(*permutation_key))
         {
-            add_error(result, "ShaderMapEntry manifest contains an unsupported or invalid value; regenerate Shader output for the current format.");
+            add_error(result, "ShaderMapEntry manifest contains an unsupported or invalid value; regenerate Shader "
+                              "output for the current format.");
             return result;
         }
 
@@ -916,7 +960,9 @@ namespace toy3d::shader
 
         const auto mapping_text = read_text(platform_file, *directory, "mapping.txt", maximum_metadata_size, result);
         if (!mapping_text || !parse_mapping(*mapping_text, entry, result))
+        {
             return result;
+        }
         if (!validate_active_bindings_are_schema_subset(entry.parameter_schema, entry.bindings, schema_error))
         {
             add_error(result, std::move(schema_error));
@@ -932,7 +978,9 @@ namespace toy3d::shader
             const std::string prefix = stage_info.second;
             const auto manifest_path = child_path(platform_file, *directory, prefix + ".manifest.txt", result);
             if (!manifest_path)
+            {
                 return result;
+            }
             const FileResult<bool> exists = platform_file.exists(*manifest_path);
             if (!exists.succeeded())
             {
@@ -940,18 +988,24 @@ namespace toy3d::shader
                 return result;
             }
             if (!exists.value())
+            {
                 continue;
+            }
             const auto stage_manifest_text =
                 read_text(platform_file, *directory, prefix + ".manifest.txt", maximum_manifest_size, result);
             if (!stage_manifest_text)
+            {
                 return result;
+            }
             const std::set<std::string> stage_fields = {
                 "stage",       "entry_point",          "compile_key",           "reflection_hash",
                 "binary_hash", "reflection_file_hash", "dependencies_file_hash"};
             const auto stage_manifest =
                 key_value_fields(*stage_manifest_text, stage_fields, result, prefix + " stage manifest");
             if (!stage_manifest)
+            {
                 return result;
+            }
             const auto stored_stage = parse_unsigned<std::uint32_t>(stage_manifest->at("stage"));
             const auto compile_key = parse_hash(stage_manifest->at("compile_key"), result, "compile_key");
             const auto reflection_hash = parse_hash(stage_manifest->at("reflection_hash"), result, "reflection_hash");
@@ -974,7 +1028,9 @@ namespace toy3d::shader
             auto dependencies_text =
                 read_text(platform_file, *directory, prefix + ".dependencies.txt", maximum_metadata_size, result);
             if (!binary || !reflection_text || !dependencies_text)
+            {
                 return result;
+            }
             if (!valid_spirv_container(*binary) || sha256(*binary) != *binary_hash ||
                 sha256(*reflection_text) != *reflection_file_hash ||
                 sha256(*dependencies_text) != *dependencies_file_hash)
@@ -1006,15 +1062,20 @@ namespace toy3d::shader
         }
         std::uint32_t stage_mask = 0u;
         for (const ShaderCodeEntry& stage : entry.stages)
+        {
             stage_mask |= static_cast<std::uint32_t>(stage.request.stage);
+        }
         const std::uint32_t graphics_mask =
             static_cast<std::uint32_t>(ShaderStageFlags::Vertex) | static_cast<std::uint32_t>(ShaderStageFlags::Pixel);
         const bool valid_program = stage_mask == static_cast<std::uint32_t>(ShaderStageFlags::Vertex) ||
                                    stage_mask == graphics_mask ||
                                    stage_mask == static_cast<std::uint32_t>(ShaderStageFlags::Compute);
         const bool mapping_stages_exist =
-            std::all_of(entry.bindings.begin(), entry.bindings.end(), [&](const ShaderMapBinding& binding)
-                        { return (static_cast<std::uint32_t>(binding.stages) & ~stage_mask) == 0u; });
+            std::all_of(entry.bindings.begin(), entry.bindings.end(),
+                        [&](const ShaderMapBinding& binding)
+                        {
+                            return (static_cast<std::uint32_t>(binding.stages) & ~stage_mask) == 0u;
+                        });
         if (entry.stages.size() != *stage_count || !valid_program || !mapping_stages_exist ||
             !validate_reflection_mapping(entry, result))
         {

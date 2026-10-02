@@ -21,8 +21,14 @@ namespace toy3d
         bool cancel_close() override;
         bool enable_file_drop(bool enabled) override;
 
-        GLFWwindow* get_glfw_window() const { return glfw_window; }
-        void* get_metal_layer() const { return metal_layer; }
+        GLFWwindow* get_glfw_window() const
+        {
+            return glfw_window;
+        }
+        void* get_metal_layer() const
+        {
+            return metal_layer;
+        }
 
       private:
         static void file_drop_callback(GLFWwindow* window, int count, const char** paths);

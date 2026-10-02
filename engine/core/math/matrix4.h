@@ -38,13 +38,25 @@ namespace toy3d
         float& at(std::size_t column, std::size_t row);
         const float& at(std::size_t column, std::size_t row) const;
 
-        constexpr float* data() { return values_; }
+        constexpr float* data()
+        {
+            return values_;
+        }
 
-        constexpr const float* data() const { return values_; }
+        constexpr const float* data() const
+        {
+            return values_;
+        }
 
-        static constexpr Matrix4 identity() { return Matrix4(); }
+        static constexpr Matrix4 identity()
+        {
+            return Matrix4();
+        }
 
-        static constexpr Matrix4 zero() { return Matrix4(0.0f); }
+        static constexpr Matrix4 zero()
+        {
+            return Matrix4(0.0f);
+        }
 
       private:
         float values_[k_element_count];

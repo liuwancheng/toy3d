@@ -67,7 +67,10 @@ namespace
         std::atomic<bool> business_submitted{false};
         std::atomic<bool> fake_gpu_completed{false};
         toy3d::enqueue_render_command("FakeQueueSubmit",
-                                      [&business_submitted]() noexcept { business_submitted.store(true); });
+                                      [&business_submitted]() noexcept
+                                      {
+                                          business_submitted.store(true);
+                                      });
 
         toy3d::RenderCommandFence fence;
         check(fence.begin_fence().succeeded(), "CPU fence must enqueue tracked work");
@@ -79,7 +82,10 @@ namespace
 
         std::atomic<bool> flushed_command{false};
         toy3d::enqueue_render_command("ExplicitFlushWork",
-                                      [&flushed_command]() noexcept { flushed_command.store(true); });
+                                      [&flushed_command]() noexcept
+                                      {
+                                          flushed_command.store(true);
+                                      });
         const toy3d::RenderFenceWaitResult flushed = toy3d::flush_rendering_commands();
         check(flushed.succeeded() && flushed_command.load(), "explicit flush must wait for all prior RT CPU commands");
 

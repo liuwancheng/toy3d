@@ -125,9 +125,11 @@ namespace toy3d::shader
         return value;
     }
 
-    ShaderDataLayoutHash calculate_constant_buffer_data_layout_hash(
-        BindingGroup group, ShaderParameterId buffer_binding_id, std::uint32_t data_size,
-        const std::vector<ReflectedConstantMember>& members, std::uint32_t abi_version)
+    ShaderDataLayoutHash calculate_constant_buffer_data_layout_hash(BindingGroup group,
+                                                                    ShaderParameterId buffer_binding_id,
+                                                                    std::uint32_t data_size,
+                                                                    const std::vector<ReflectedConstantMember>& members,
+                                                                    std::uint32_t abi_version)
     {
         std::vector<const ReflectedConstantMember*> canonical_members;
         canonical_members.reserve(members.size());
@@ -137,7 +139,9 @@ namespace toy3d::shader
         }
         std::sort(canonical_members.begin(), canonical_members.end(),
                   [](const ReflectedConstantMember* left, const ReflectedConstantMember* right)
-                  { return left->parameter_id < right->parameter_id; });
+                  {
+                      return left->parameter_id < right->parameter_id;
+                  });
 
         std::vector<std::uint8_t> bytes;
         append_integer(bytes, abi_version);
@@ -218,20 +222,24 @@ namespace toy3d::shader
         }
 
         const ShaderParameterConstantBufferSchema* find_schema_buffer(const ShaderParameterSchema& schema,
-                                                                       ShaderParameterId id)
+                                                                      ShaderParameterId id)
         {
             const auto found = std::find_if(schema.constant_buffers.begin(), schema.constant_buffers.end(),
                                             [&](const ShaderParameterConstantBufferSchema& buffer)
-                                            { return buffer.binding_id == id; });
+                                            {
+                                                return buffer.binding_id == id;
+                                            });
             return found == schema.constant_buffers.end() ? nullptr : &*found;
         }
 
         const ShaderParameterResourceSchema* find_schema_resource(const ShaderParameterSchema& schema,
-                                                                   ShaderParameterId id)
+                                                                  ShaderParameterId id)
         {
             const auto found = std::find_if(schema.resources.begin(), schema.resources.end(),
                                             [&](const ShaderParameterResourceSchema& resource)
-                                            { return resource.parameter_id == id; });
+                                            {
+                                                return resource.parameter_id == id;
+                                            });
             return found == schema.resources.end() ? nullptr : &*found;
         }
 
@@ -286,16 +294,22 @@ namespace toy3d::shader
         group_schema.shader_abi_version = schema.shader_abi_version;
         group_schema.parameter_id_version = schema.parameter_id_version;
         if (group == BindingGroup::Material)
+        {
             group_schema.editor_properties_hash = schema.editor_properties_hash;
+        }
         for (const ShaderParameterConstantBufferSchema& buffer : schema.constant_buffers)
         {
             if (buffer.group == group)
+            {
                 group_schema.constant_buffers.push_back(buffer);
+            }
         }
         for (const ShaderParameterResourceSchema& resource : schema.resources)
         {
             if (resource.group == group)
+            {
                 group_schema.resources.push_back(resource);
+            }
         }
         std::vector<std::uint8_t> bytes;
         append_enum(bytes, group);
@@ -340,8 +354,8 @@ namespace toy3d::shader
                                              member.array_stride, member.matrix_stride});
             }
             if (calculate_constant_buffer_data_layout_hash(buffer.group, buffer.binding_id, buffer.size,
-                                                           reflected_members, buffer.shader_abi_version) !=
-                buffer.data_layout_hash)
+                                                           reflected_members,
+                                                           buffer.shader_abi_version) != buffer.data_layout_hash)
             {
                 error = "Shader parameter schema constant ABI identity is inconsistent.";
                 return false;
@@ -390,8 +404,8 @@ namespace toy3d::shader
                     const ShaderParameterConstantMemberSchema& expected = buffer->members[index];
                     const ReflectedConstantMember& actual = binding.constant_members[index];
                     if (expected.parameter_id != actual.parameter_id || expected.name != actual.name ||
-                        expected.type != actual.type || expected.offset != actual.offset || expected.size != actual.size ||
-                        expected.array_stride != actual.array_stride ||
+                        expected.type != actual.type || expected.offset != actual.offset ||
+                        expected.size != actual.size || expected.array_stride != actual.array_stride ||
                         expected.matrix_stride != actual.matrix_stride)
                     {
                         error = "Program reflected constant layout differs from its complete parameter schema.";
@@ -415,8 +429,7 @@ namespace toy3d::shader
     }
 
     bool validate_active_bindings_are_schema_subset(const ShaderParameterSchema& schema,
-                                                    const std::vector<ShaderMapBinding>& bindings,
-                                                    std::string& error)
+                                                    const std::vector<ShaderMapBinding>& bindings, std::string& error)
     {
         for (const ShaderMapBinding& binding : bindings)
         {

@@ -54,6 +54,7 @@ namespace toy3d
         const ComponentEditor* find(const std::string& persistent_type) const;
         bool capture(const SceneComponent& component, SceneComponentData& data) const;
         bool apply(SceneComponent& component, const SceneComponentData& data) const;
+
       private:
         std::vector<ComponentEditor> editors_;
         bool frozen_ = false;
@@ -64,4 +65,4 @@ namespace toy3d
     void draw_directional_light_details(ComponentDetailsContext& context);
     void draw_point_light_details(ComponentDetailsContext& context);
     void draw_camera_details(ComponentDetailsContext& context);
-}
+} // namespace toy3d

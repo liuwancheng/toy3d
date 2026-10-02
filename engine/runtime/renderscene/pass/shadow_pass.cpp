@@ -26,7 +26,9 @@ namespace toy3d
                                  const ShaderMapProgramRef& shader_program)
     {
         if (view_index >= targets.view_count())
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ShadowPass View index is out of range.");
+        }
         const RHITextureRef& texture = targets.texture(view_index);
         const RHITextureViewRef& depth_view = targets.depth_view(view_index);
         const ShadowAtlasLayout& layout = targets.layout();
@@ -34,16 +36,23 @@ namespace toy3d
         if (!context.is_owned_by(device) || !texture || !depth_view || depth_view->texture() != texture ||
             layout.cascade_count < 1u || layout.cascade_count > ShadowRenderTargets::k_max_cascade_count ||
             view.shadow_cascade_count() > layout.cascade_count)
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ShadowPass target or context is invalid.");
+        }
         if (view.shadow_active() && !shader_program)
+        {
             return RHIStatus::failure(RHIErrorCode::NotReady, "ShadowPass ShaderMap program is unavailable.");
+        }
 
         // Prepare uploads and pipelines before beginning the shared atlas render pass.
         std::array<std::vector<MeshDrawCommand>, ShadowRenderTargets::k_max_cascade_count> cascade_commands;
         for (std::size_t index = 0u; index < view.shadow_cascade_count(); ++index)
         {
             const ShadowCascadeInfo& cascade = view.shadow_cascade(index);
-            if (!view.shadow_active() || cascade.batches.empty()) continue;
+            if (!view.shadow_active() || cascade.batches.empty())
+            {
+                continue;
+            }
             RHIBindingSetRef pass_binding;
             RHIShaderProgramRef rhi_program;
             std::vector<MeshDrawCommand>& commands = cascade_commands[index];
@@ -52,22 +61,33 @@ namespace toy3d
             parameters.shadow_light_direction = cascade.light_direction;
             parameters.shadow_bias_parameters = cascade.bias_parameters;
             auto created_binding = create_transient_shader_binding(device, context, parameters);
-            if (!created_binding) return created_binding.status();
+            if (!created_binding)
+            {
+                return created_binding.status();
+            }
             pass_binding = std::move(created_binding).value();
             auto created_program = shader_program_cache.find_or_create(shader_program);
-            if (!created_program) return created_program.status();
+            if (!created_program)
+            {
+                return created_program.status();
+            }
             rhi_program = std::move(created_program).value();
             commands.reserve(cascade.batches.size());
             for (const MeshBatch& batch : cascade.batches)
             {
                 if (!batch.object_binding())
+                {
                     return RHIStatus::failure(RHIErrorCode::NotReady, "Shadow caster lacks its Object binding.");
+                }
                 std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> layouts;
                 std::vector<RHIGraphicsPipelineDesc::VertexAttribute> attributes;
                 std::vector<RHIVertexBufferBinding> buffers;
                 RHIStatus status = batch.vertex_factory().build_vertex_input(shader_program->data().vertex_inputs,
-                                                                               layouts, attributes, buffers);
-                if (!status) return status;
+                                                                             layouts, attributes, buffers);
+                if (!status)
+                {
+                    return status;
+                }
                 RHIGraphicsPipelineDesc pipeline_desc;
                 pipeline_desc.vertex_shader = rhi_program->vertex_shader;
                 pipeline_desc.pixel_shader = rhi_program->pixel_shader;
@@ -81,11 +101,19 @@ namespace toy3d
                 shader::ShaderGraphicsPassState state = shader_program->data().graphics_pass_state;
                 const auto* material_state = batch.material_render_proxy().effective_graphics_pass_state();
                 if (material_state && material_state->cull_mode == shader::ShaderGraphicsPassState::CullMode::None)
+                {
                     state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
+                }
                 auto shader_pipeline = build_shader_graphics_pipeline_desc(pipeline_desc, state);
-                if (!shader_pipeline) return shader_pipeline.status();
+                if (!shader_pipeline)
+                {
+                    return shader_pipeline.status();
+                }
                 auto pipeline = device.create_graphics_pipeline(std::move(shader_pipeline).value());
-                if (!pipeline) return pipeline.status();
+                if (!pipeline)
+                {
+                    return pipeline.status();
+                }
                 MeshDrawCommand command;
                 command.pipeline = std::move(pipeline).value();
                 command.vertex_buffers = std::move(buffers);
@@ -106,7 +134,10 @@ namespace toy3d
             transition.before = before_access;
             transition.after = RHIAccess::DepthStencilWrite;
             const RHIStatus status = context.transition_resources({transition});
-            if (!status) return status;
+            if (!status)
+            {
+                return status;
+            }
         }
         RHIRenderPassDesc pass;
         pass.has_depth_stencil_attachment = true;
@@ -118,7 +149,10 @@ namespace toy3d
         pass.depth_stencil_attachment.clear_value = RHIClearValue::DepthZero;
         pass.debug_name = "DirectionalShadowPass";
         RHIStatus status = context.begin_render_pass(pass);
-        if (!status) return status;
+        if (!status)
+        {
+            return status;
+        }
         for (std::size_t index = 0u; index < view.shadow_cascade_count(); ++index)
         {
             const ShadowCascadeTile& tile = layout.tiles[index];
@@ -135,21 +169,57 @@ namespace toy3d
             for (const MeshDrawCommand& command : cascade_commands[index])
             {
                 status = context.set_graphics_pipeline(command.pipeline);
-                if (status) status = context.set_viewport(viewport);
-                if (status) status = context.set_scissor(scissor);
-                if (status) status = context.set_blend_constants(vec4(1, 1, 1, 1));
-                if (status) status = context.set_stencil_reference(0u);
-                if (status) status = context.set_vertex_buffers(command.vertex_buffers);
-                if (status) status = context.set_index_buffer(command.index_buffer);
-                if (status) status = context.bind_graphics_bindings(command.bindings);
-                if (status) status = context.draw_indexed(command.draw_args);
-                if (!status) break;
+                if (status)
+                {
+                    status = context.set_viewport(viewport);
+                }
+                if (status)
+                {
+                    status = context.set_scissor(scissor);
+                }
+                if (status)
+                {
+                    status = context.set_blend_constants(vec4(1, 1, 1, 1));
+                }
+                if (status)
+                {
+                    status = context.set_stencil_reference(0u);
+                }
+                if (status)
+                {
+                    status = context.set_vertex_buffers(command.vertex_buffers);
+                }
+                if (status)
+                {
+                    status = context.set_index_buffer(command.index_buffer);
+                }
+                if (status)
+                {
+                    status = context.bind_graphics_bindings(command.bindings);
+                }
+                if (status)
+                {
+                    status = context.draw_indexed(command.draw_args);
+                }
+                if (!status)
+                {
+                    break;
+                }
             }
-            if (!status) break;
+            if (!status)
+            {
+                break;
+            }
         }
         const RHIStatus ended = context.end_render_pass();
-        if (!status) return status;
-        if (!ended) return ended;
+        if (!status)
+        {
+            return status;
+        }
+        if (!ended)
+        {
+            return ended;
+        }
         RHIResourceTransition to_read;
         to_read.resource = texture;
         to_read.subresources = depth_view->desc().subresources;

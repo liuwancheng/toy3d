@@ -88,8 +88,12 @@ namespace toy3d
         // Legacy procedural meshes receive deterministic names at creation;
         // imported meshes must supply their author's names through the adapter.
         if (desc.material_slot_names.empty())
+        {
             for (std::size_t slot = 0; slot < desc.material_slots.size(); ++slot)
+            {
                 desc.material_slot_names.push_back("Material_" + std::to_string(slot));
+            }
+        }
         std::set<std::string> names;
         if (desc.material_slot_names.size() != desc.material_slots.size())
         {
@@ -97,13 +101,18 @@ namespace toy3d
             return nullptr;
         }
         for (const auto& name : desc.material_slot_names)
+        {
             if (name.empty() || !names.insert(name).second)
             {
                 TOY_LOG_ERROR("StaticMesh Material slot names must be nonempty and unique.");
                 return nullptr;
             }
+        }
         if (std::any_of(desc.material_slots.begin(), desc.material_slots.end(),
-                        [](const MaterialInterfaceRef& material) { return material == nullptr; }))
+                        [](const MaterialInterfaceRef& material)
+                        {
+                            return material == nullptr;
+                        }))
         {
             TOY_LOG_ERROR("Every StaticMesh Material slot must reference a MaterialInstance.");
             return nullptr;
@@ -149,7 +158,8 @@ namespace toy3d
     StaticMesh::StaticMesh(StaticMeshDesc desc, AxisAlignedBounds local_bounds)
         : vertices_(std::move(desc.vertices)), vertex_colors_(std::move(desc.vertex_colors)),
           indices_(std::move(desc.indices)), sections_(std::move(desc.sections)),
-          material_slots_(std::move(desc.material_slots)), material_slot_names_(std::move(desc.material_slot_names)), local_bounds_(local_bounds)
+          material_slots_(std::move(desc.material_slots)), material_slot_names_(std::move(desc.material_slot_names)),
+          local_bounds_(local_bounds)
     {
         render_data_ = std::make_unique<StaticMeshRenderData>(*this);
     }
@@ -157,7 +167,8 @@ namespace toy3d
     StaticMesh::StaticMesh(StaticMesh&& other) noexcept
         : vertices_(std::move(other.vertices_)), vertex_colors_(std::move(other.vertex_colors_)),
           indices_(std::move(other.indices_)), sections_(std::move(other.sections_)),
-          material_slots_(std::move(other.material_slots_)), material_slot_names_(std::move(other.material_slot_names_)), local_bounds_(other.local_bounds_),
+          material_slots_(std::move(other.material_slots_)),
+          material_slot_names_(std::move(other.material_slot_names_)), local_bounds_(other.local_bounds_),
           render_data_(std::move(other.render_data_))
     {
     }

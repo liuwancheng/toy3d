@@ -138,9 +138,15 @@ namespace toy3d
 
     bool MacWindow::enable_file_drop(bool enabled)
     {
-        if (!glfw_window) return false;
+        if (!glfw_window)
+        {
+            return false;
+        }
         glfwSetDropCallback(glfw_window, enabled ? file_drop_callback : nullptr);
-        if (!enabled) clear_file_drops();
+        if (!enabled)
+        {
+            clear_file_drops();
+        }
         return true;
     }
 
@@ -148,7 +154,10 @@ namespace toy3d
     {
         auto* owner = static_cast<MacWindow*>(glfwGetWindowUserPointer(window));
         if (!owner || !paths || count <= 0 || static_cast<std::size_t>(count) > maximum_file_drop_paths)
-        { TOY_LOG_ERROR("File drop rejected an invalid batch."); return; }
+        {
+            TOY_LOG_ERROR("File drop rejected an invalid batch.");
+            return;
+        }
         double x = 0, y = 0;
         glfwGetCursorPos(window, &x, &y);
         FileDropEvent event;
@@ -156,11 +165,16 @@ namespace toy3d
         for (int i = 0; i < count; ++i)
         {
             if (!paths[i] || std::strlen(paths[i]) > maximum_file_drop_path_bytes)
-            { TOY_LOG_ERROR("Dropped file path is invalid or too long."); return; }
+            {
+                TOY_LOG_ERROR("Dropped file path is invalid or too long.");
+                return;
+            }
             event.paths.emplace_back(paths[i]);
         }
         if (!owner->enqueue_file_drop(std::move(event)))
+        {
             TOY_LOG_ERROR("File drop queue rejected invalid or excessive input.");
+        }
     }
 
     void MacWindow::process_events()
@@ -178,7 +192,10 @@ namespace toy3d
 
     bool MacWindow::cancel_close()
     {
-        if (!glfw_window) return false;
+        if (!glfw_window)
+        {
+            return false;
+        }
         glfwSetWindowShouldClose(glfw_window, false);
         return true;
     }

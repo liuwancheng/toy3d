@@ -20,10 +20,15 @@ AllowAllArgumentsOnNextLine: true
 AllowAllParametersOfDeclarationOnNextLine: true
 
 AllowShortBlocksOnASingleLine: Never
-AllowShortFunctionsOnASingleLine: Inline
+AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
-AllowShortLambdasOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+# Keep control flow explicit as well as function bodies readable. Requires
+# clang-format 15 or newer; preprocessor-sensitive cases still need review.
+InsertBraces: true
 
 # Include ordering is a separate architectural decision. A formatting-only
 # change must not create unrelated include-order diffs.
 SortIncludes: Never
+SortUsingDeclarations: Never

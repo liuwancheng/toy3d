@@ -69,7 +69,8 @@ namespace toy3d
         // C++17 variant retains typed author data for each supported component.
         // A new persisted component explicitly declares its schema branch.
         TOY3D_PROPERTY("properties", Edit)
-        std::variant<SceneNodeData, SceneMeshData, SceneDirectionalLightData, ScenePointLightData, CameraSettings> properties;
+        std::variant<SceneNodeData, SceneMeshData, SceneDirectionalLightData, ScenePointLightData, CameraSettings>
+            properties;
     };
 
     TOY3D_REFLECT_TYPE("toy3d.ActorSettings", 1)
@@ -102,4 +103,4 @@ namespace toy3d
     };
 
     bool validate_component_data(const SceneComponentData& component);
-}
+} // namespace toy3d

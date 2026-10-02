@@ -26,17 +26,13 @@ namespace toy3d
         const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
         static const GlobalShaderType type(
             "ImGuiGlobalShader", "Toy3d/UI/ImGui", "ImGui", shader::default_shader_permutation_key,
-            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel,
-            metadata,
-            {GlobalShaderBindingRequirement(
-                 metadata.constant_buffer.binding_id,
-                 RHIBindingGroup::Pass, RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Vertex),
-             GlobalShaderBindingRequirement(
-                 metadata.resources[0u].parameter_id,
-                 RHIBindingGroup::Pass, RHIResourceBindingType::SampledTexture, 1, RHIShaderStageFlags::Pixel),
-             GlobalShaderBindingRequirement(
-                 metadata.resources[1u].parameter_id,
-                 RHIBindingGroup::Pass, RHIResourceBindingType::Sampler, 1, RHIShaderStageFlags::Pixel)});
+            GlobalShaderType::ProgramKind::Graphics, RHIShaderStageFlags::Vertex | RHIShaderStageFlags::Pixel, metadata,
+            {GlobalShaderBindingRequirement(metadata.constant_buffer.binding_id, RHIBindingGroup::Pass,
+                                            RHIResourceBindingType::UniformBuffer, 1, RHIShaderStageFlags::Vertex),
+             GlobalShaderBindingRequirement(metadata.resources[0u].parameter_id, RHIBindingGroup::Pass,
+                                            RHIResourceBindingType::SampledTexture, 1, RHIShaderStageFlags::Pixel),
+             GlobalShaderBindingRequirement(metadata.resources[1u].parameter_id, RHIBindingGroup::Pass,
+                                            RHIResourceBindingType::Sampler, 1, RHIShaderStageFlags::Pixel)});
         return type;
     }
 
@@ -51,8 +47,7 @@ namespace toy3d
             const float top = draw_data.display_position[1];
             const float bottom = top + draw_data.display_size[1];
             return Matrix4(Vector4(2.0F / (right - left), 0.0F, 0.0F, 0.0F),
-                           Vector4(0.0F, 2.0F / (top - bottom), 0.0F, 0.0F),
-                           Vector4(0.0F, 0.0F, 0.5F, 0.0F),
+                           Vector4(0.0F, 2.0F / (top - bottom), 0.0F, 0.0F), Vector4(0.0F, 0.0F, 0.5F, 0.0F),
                            Vector4((right + left) / (left - right), (top + bottom) / (bottom - top), 0.5F, 1.0F));
         }
 
@@ -72,7 +67,9 @@ namespace toy3d
                 std::min(static_cast<double>(target.extent.height),
                          (static_cast<double>(command.clip_rect.bottom) - data.display_position[1]) * scale_y);
             if (!(right > left && bottom > top))
+            {
                 return false;
+            }
             const double integer_left = std::floor(left);
             const double integer_top = std::floor(top);
             const double integer_right = std::ceil(right);
@@ -113,7 +110,9 @@ namespace toy3d
         font_desc.debug_name = "ImGuiFontAtlas";
         RHIResult<RHITextureRef> created_texture = device.create_texture(font_desc);
         if (!created_texture)
+        {
             return created_texture.status();
+        }
 
         RHITextureViewDesc view_desc;
         view_desc.type = RHIResourceViewType::ShaderResource;
@@ -121,7 +120,9 @@ namespace toy3d
         view_desc.debug_name = "ImGuiFontAtlasView";
         RHIResult<RHITextureViewRef> created_view = device.create_texture_view(created_texture.value(), view_desc);
         if (!created_view)
+        {
             return created_view.status();
+        }
 
         RHISamplerDesc sampler_desc;
         sampler_desc.address_u = RHIAddressMode::ClampToEdge;
@@ -130,10 +131,15 @@ namespace toy3d
         sampler_desc.debug_name = "ImGuiFontSampler";
         RHIResult<RHISamplerRef> created_sampler = device.create_sampler(sampler_desc);
         if (!created_sampler)
+        {
             return created_sampler.status();
+        }
 
         RHIStatus prepared = prepare_shader(device, shader_program_cache, global_shader_map);
-        if (!prepared) return prepared;
+        if (!prepared)
+        {
+            return prepared;
+        }
         font_texture_ = std::move(created_texture).value();
         font_texture_view_ = std::move(created_view).value();
         font_sampler_ = std::move(created_sampler).value();
@@ -141,14 +147,21 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus ImGuiRenderer::prepare_shader(RHIDevice& device, RHIShaderProgramCache& cache, const GlobalShaderMap& shaders)
+    RHIStatus ImGuiRenderer::prepare_shader(RHIDevice& device, RHIShaderProgramCache& cache,
+                                            const GlobalShaderMap& shaders)
     {
         discard_shader();
         const auto found = shaders.find(imgui_global_shader_type());
-        if (!found.succeeded()) return RHIStatus::failure(RHIErrorCode::InvalidArgument, found.error);
+        if (!found.succeeded())
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, found.error);
+        }
         const auto& data = found.program->data();
         auto created_program = cache.find_or_create(found.program);
-        if (!created_program) return created_program.status();
+        if (!created_program)
+        {
+            return created_program.status();
+        }
         RHIGraphicsPipelineDesc pipeline_desc;
         pipeline_desc.vertex_shader = created_program.value()->vertex_shader;
         pipeline_desc.pixel_shader = created_program.value()->pixel_shader;
@@ -193,16 +206,23 @@ namespace toy3d
         }
         pipeline_desc.debug_name = "ImGuiPipeline";
         const auto translated = build_shader_graphics_pipeline_desc(pipeline_desc, data.graphics_pass_state);
-        if (!translated) return translated.status();
+        if (!translated)
+        {
+            return translated.status();
+        }
         const auto& depth = translated.value().depth_stencil;
         // UI has only a color attachment; incompatible state must fail before
         // publication instead of silently retaining the previous pipeline state.
         if (depth.depth_test_enable || depth.depth_write_enable || depth.stencil_test_enable)
+        {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "ImGui Shader cannot enable depth or stencil without a depth attachment.");
+        }
         RHIResult<RHIGraphicsPipelineRef> created_pipeline = device.create_graphics_pipeline(translated.value());
         if (!created_pipeline)
+        {
             return created_pipeline.status();
+        }
 
         pending_program_ = std::move(created_program).value();
         pending_pipeline_ = std::move(created_pipeline).value();
@@ -217,7 +237,8 @@ namespace toy3d
 
     void ImGuiRenderer::discard_shader() noexcept
     {
-        pending_pipeline_.reset(); pending_program_.reset();
+        pending_pipeline_.reset();
+        pending_program_.reset();
     }
 
     RHIStatus ImGuiRenderer::record_font_upload(RHIGraphicsCommandContext& context,
@@ -234,7 +255,9 @@ namespace toy3d
         to_copy.after = RHIAccess::CopyDestination;
         RHIStatus status = context.transition_resources({to_copy});
         if (!status)
+        {
             return status;
+        }
         RHITextureUploadDesc upload;
         upload.destination.texture = font_texture_;
         upload.extent = {font_atlas.width, font_atlas.height, 1u};
@@ -244,7 +267,9 @@ namespace toy3d
         upload.source.slice_pitch = font_atlas.rgba_pixels.size();
         status = context.upload_texture(upload);
         if (!status)
+        {
             return status;
+        }
         RHIResourceTransition to_shader;
         to_shader.resource = font_texture_;
         to_shader.before = RHIAccess::CopyDestination;
@@ -255,7 +280,9 @@ namespace toy3d
     void ImGuiRenderer::publish_bootstrap_complete() noexcept
     {
         if (initialized())
+        {
             bootstrap_complete_ = true;
+        }
     }
 
     void ImGuiRenderer::release() noexcept
@@ -305,7 +332,9 @@ namespace toy3d
         vertex_desc.debug_name = "ImGuiVertexBufferPage";
         RHIResult<RHIBufferRef> vertex_buffer = device.create_buffer(vertex_desc);
         if (!vertex_buffer)
+        {
             return RHIResult<std::size_t>::failure(vertex_buffer.status().code(), vertex_buffer.status().message());
+        }
 
         RHIBufferDesc index_desc;
         index_desc.size = page.index_capacity;
@@ -314,7 +343,9 @@ namespace toy3d
         index_desc.debug_name = "ImGuiIndexBufferPage";
         RHIResult<RHIBufferRef> index_buffer = device.create_buffer(index_desc);
         if (!index_buffer)
+        {
             return RHIResult<std::size_t>::failure(index_buffer.status().code(), index_buffer.status().message());
+        }
 
         page.vertex_buffer = std::move(vertex_buffer).value();
         page.index_buffer = std::move(index_buffer).value();
@@ -326,11 +357,13 @@ namespace toy3d
 
     RHIStatus ImGuiRenderer::render(RHIDevice& device, RHIGraphicsCommandContext& context,
                                     const ImGuiDrawData& draw_data, const ImGuiPassTarget& target,
-                                    const RHITextureViewRef& viewport_texture_view,
-                                    ImGuiTextureId viewport_texture_id, const std::vector<ImGuiTextureBinding>& textures)
+                                    const RHITextureViewRef& viewport_texture_view, ImGuiTextureId viewport_texture_id,
+                                    const std::vector<ImGuiTextureBinding>& textures)
     {
         if (draw_data.empty())
+        {
             return RHIStatus::success();
+        }
         if (!ready())
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
@@ -351,7 +384,9 @@ namespace toy3d
         const std::size_t vertex_bytes = draw_data.vertices.size() * sizeof(ImGuiVertex);
         RHIResult<std::size_t> page_result = acquire_buffer_page(device, vertex_bytes, draw_data.indices.size());
         if (!page_result)
+        {
             return page_result.status();
+        }
         BufferPage& page = buffer_pages_[page_result.value()];
 
         RHIResourceTransition vertex_to_copy;
@@ -364,21 +399,27 @@ namespace toy3d
         index_to_copy.after = RHIAccess::CopyDestination;
         RHIStatus status = context.transition_resources({vertex_to_copy, index_to_copy});
         if (!status)
+        {
             return status;
+        }
         RHIBufferUploadDesc vertex_upload;
         vertex_upload.destination = page.vertex_buffer;
         vertex_upload.source.data = draw_data.vertices.data();
         vertex_upload.source.size = vertex_bytes;
         status = context.upload_buffer(vertex_upload);
         if (!status)
+        {
             return status;
+        }
         RHIBufferUploadDesc index_upload;
         index_upload.destination = page.index_buffer;
         index_upload.source.data = draw_data.indices.data();
         index_upload.source.size = draw_data.indices.size();
         status = context.upload_buffer(index_upload);
         if (!status)
+        {
             return status;
+        }
         RHIResourceTransition vertex_ready;
         vertex_ready.resource = page.vertex_buffer;
         vertex_ready.before = RHIAccess::CopyDestination;
@@ -389,32 +430,50 @@ namespace toy3d
         index_ready.after = RHIAccess::IndexBuffer;
         status = context.transition_resources({vertex_ready, index_ready});
         if (!status)
+        {
             return status;
+        }
 
         ImGuiPassParameters pass_parameters;
         pass_parameters.projection = make_projection(draw_data);
         pass_parameters.font_texture = font_texture_view_;
         pass_parameters.font_sampler = font_sampler_;
-        RHIResult<RHIBindingSetRef> binding_set =
-            create_transient_shader_binding(device, context, pass_parameters);
+        RHIResult<RHIBindingSetRef> binding_set = create_transient_shader_binding(device, context, pass_parameters);
         if (!binding_set)
+        {
             return binding_set.status();
+        }
         RHIBindingSetRef font_binding = binding_set.value();
         std::vector<ImGuiTextureBinding> sources = textures;
-        if (viewport_texture_view) sources.push_back({viewport_texture_id, viewport_texture_view});
+        if (viewport_texture_view)
+        {
+            sources.push_back({viewport_texture_id, viewport_texture_view});
+        }
         std::map<std::uint64_t, RHIBindingSetRef> bindings_by_id;
         std::set<std::uint64_t> declared_ids{IMGUI_FONT_ATLAS_TEXTURE_ID.value()};
         bindings_by_id.emplace(IMGUI_FONT_ATLAS_TEXTURE_ID.value(), font_binding);
         for (const ImGuiTextureBinding& source : sources)
         {
             if (!source.id.valid() || !source.view || !declared_ids.insert(source.id.value()).second)
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "UI texture identity is invalid or duplicated.");
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "UI texture identity is invalid or duplicated.");
+            }
             const bool referenced = std::any_of(draw_data.commands.begin(), draw_data.commands.end(),
-                [&source](const ImGuiDrawCommand& command) { return command.texture_id == source.id; });
-            if (!referenced) continue;
+                                                [&source](const ImGuiDrawCommand& command)
+                                                {
+                                                    return command.texture_id == source.id;
+                                                });
+            if (!referenced)
+            {
+                continue;
+            }
             pass_parameters.font_texture = source.view;
             auto created = create_transient_shader_binding(device, context, pass_parameters);
-            if (!created) return created.status();
+            if (!created)
+            {
+                return created.status();
+            }
             bindings_by_id.emplace(source.id.value(), created.value());
         }
         RHIBindingSetRef active_binding = font_binding;
@@ -423,25 +482,33 @@ namespace toy3d
         {
             RHIStatus bind_status = context.set_graphics_pipeline(pipeline_);
             if (!bind_status)
+            {
                 return bind_status;
+            }
             RHIViewport viewport;
             viewport.width = static_cast<float>(target.extent.width);
             viewport.height = static_cast<float>(target.extent.height);
             bind_status = context.set_viewport(viewport);
             if (!bind_status)
+            {
                 return bind_status;
+            }
             RHIVertexBufferBinding vertex_binding;
             vertex_binding.buffer = page.vertex_buffer;
             vertex_binding.stride = sizeof(ImGuiVertex);
             bind_status = context.set_vertex_buffers({vertex_binding});
             if (!bind_status)
+            {
                 return bind_status;
+            }
             RHIIndexBufferBinding index_binding;
             index_binding.buffer = page.index_buffer;
             index_binding.format = draw_data.index_stride == 2u ? RHIIndexFormat::UInt16 : RHIIndexFormat::UInt32;
             bind_status = context.set_index_buffer(index_binding);
             if (!bind_status)
+            {
                 return bind_status;
+            }
             RHIGraphicsBindings bindings;
             bindings.pass = active_binding;
             return context.bind_graphics_bindings(bindings);
@@ -457,22 +524,31 @@ namespace toy3d
         pass_desc.debug_name = "ImGuiPass";
         status = context.begin_render_pass(pass_desc);
         if (!status)
+        {
             return status;
+        }
         status = bind_state();
         if (!status)
+        {
             return status;
+        }
         for (const ImGuiDrawCommand& command : draw_data.commands)
         {
             if (command.reset_render_state)
             {
                 status = bind_state();
                 if (!status)
+                {
                     return status;
+                }
                 continue;
             }
             const auto found = bindings_by_id.find(command.texture_id.value());
             if (found == bindings_by_id.end())
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument, "ImGui draw references an unknown texture identity.");
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "ImGui draw references an unknown texture identity.");
+            }
             RHIBindingSetRef requested_binding = found->second;
             if (requested_binding != active_binding)
             {
@@ -481,21 +557,29 @@ namespace toy3d
                 bindings.pass = active_binding;
                 status = context.bind_graphics_bindings(bindings);
                 if (!status)
+                {
                     return status;
+                }
             }
             RHIRect scissor;
             if (!make_scissor(command, draw_data, target, scissor))
+            {
                 continue;
+            }
             status = context.set_scissor(scissor);
             if (!status)
+            {
                 return status;
+            }
             RHIDrawIndexedArgs draw;
             draw.index_count = command.element_count;
             draw.first_index = command.first_index;
             draw.vertex_offset = command.vertex_offset;
             status = context.draw_indexed(draw);
             if (!status)
+            {
                 return status;
+            }
         }
         return context.end_render_pass();
     }
@@ -532,8 +616,7 @@ namespace toy3d
     bool ImGuiRenderer::initialized() const noexcept
     {
         return rhi_program_ && rhi_program_->vertex_shader && rhi_program_->pixel_shader &&
-               rhi_program_->binding_layout && font_texture_ && font_texture_view_ &&
-               font_sampler_ && pipeline_;
+               rhi_program_->binding_layout && font_texture_ && font_texture_view_ && font_sampler_ && pipeline_;
     }
 
     bool ImGuiRenderer::ready() const noexcept

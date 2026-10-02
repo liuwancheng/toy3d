@@ -33,7 +33,10 @@ namespace
     bool has_diagnostic(const std::vector<toy3d::shader::Diagnostic>& diagnostics, toy3d::shader::DiagnosticCode code)
     {
         return std::any_of(diagnostics.begin(), diagnostics.end(),
-                           [&](const toy3d::shader::Diagnostic& diagnostic) { return diagnostic.code == code; });
+                           [&](const toy3d::shader::Diagnostic& diagnostic)
+                           {
+                               return diagnostic.code == code;
+                           });
     }
 
     void test_constant_buffer_data_layout_hash()
@@ -43,8 +46,8 @@ namespace
             {11u, "matrix", ShaderValueType::Float32x4x4, 0u, 64u, 0u, 16u},
             {12u, "weights", ShaderValueType::Float32x4, 64u, 32u, 16u, 0u}};
         std::vector<ReflectedConstantMember> reordered = {members[1], members[0]};
-        const ShaderDataLayoutHash baseline = calculate_constant_buffer_data_layout_hash(
-            BindingGroup::View, 10u, 96u, members);
+        const ShaderDataLayoutHash baseline =
+            calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, members);
         check(baseline == calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, reordered),
               "constant-buffer data layout hash must be declaration-order independent");
 
@@ -61,7 +64,7 @@ namespace
         check(baseline != calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, changed),
               "constant-buffer data layout hash must include array stride");
         check(baseline != calculate_constant_buffer_data_layout_hash(BindingGroup::View, 10u, 96u, members,
-                                                                      toy_shader_abi_version + 1u),
+                                                                     toy_shader_abi_version + 1u),
               "constant-buffer data layout hash must include the Shader ABI version");
     }
 
@@ -161,8 +164,8 @@ Shader "Tests/Layout"
     {
         const toy3d::Sha256Hash hash = toy3d::sha256("abc");
         const toy3d::Sha256Hash expected = {0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40,
-                                                    0xde, 0x5d, 0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17,
-                                                    0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad};
+                                            0xde, 0x5d, 0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17,
+                                            0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad};
         check(hash == expected, "SHA-256 must match the standard abc test vector");
         const toy3d::shader::ShaderParameterId id = toy3d::shader::make_shader_parameter_id(
             toy3d::shader::BindingGroup::Material, toy3d::shader::ShaderParameterCategory::Constant, "base_color");
@@ -217,7 +220,9 @@ Shader "Tests/Layout"
         const LogicalLayoutResult reordered = compile_source(shader_source_reordered_resources);
         check(first.succeeded() && reordered.succeeded(), "logical layout inputs must compile");
         if (!first.layout || !reordered.layout)
+        {
             return;
+        }
         check(first.layout->logical_layout_hash == reordered.layout->logical_layout_hash,
               "independent resource source order must not change logical layout hash");
         check(first.layout->resources.size() == 6,
@@ -234,16 +239,28 @@ Shader "Tests/Layout"
             "canonical View/Object, Pass Parameters and numeric Material properties must produce four group cbuffers");
         const auto view_buffer =
             std::find_if(first.layout->constant_buffers.begin(), first.layout->constant_buffers.end(),
-                         [](const ConstantBufferLayout& buffer) { return buffer.group == BindingGroup::View; });
+                         [](const ConstantBufferLayout& buffer)
+                         {
+                             return buffer.group == BindingGroup::View;
+                         });
         const auto material_buffer =
             std::find_if(first.layout->constant_buffers.begin(), first.layout->constant_buffers.end(),
-                         [](const ConstantBufferLayout& buffer) { return buffer.group == BindingGroup::Material; });
+                         [](const ConstantBufferLayout& buffer)
+                         {
+                             return buffer.group == BindingGroup::Material;
+                         });
         const auto object_buffer =
             std::find_if(first.layout->constant_buffers.begin(), first.layout->constant_buffers.end(),
-                         [](const ConstantBufferLayout& buffer) { return buffer.group == BindingGroup::Object; });
+                         [](const ConstantBufferLayout& buffer)
+                         {
+                             return buffer.group == BindingGroup::Object;
+                         });
         const auto pass_buffer =
             std::find_if(first.layout->constant_buffers.begin(), first.layout->constant_buffers.end(),
-                         [](const ConstantBufferLayout& buffer) { return buffer.group == BindingGroup::Pass; });
+                         [](const ConstantBufferLayout& buffer)
+                         {
+                             return buffer.group == BindingGroup::Pass;
+                         });
         check(view_buffer != first.layout->constant_buffers.end() && view_buffer->members.size() == 8 &&
                   view_buffer->members[2].name == "toy_view_projection" && view_buffer->members[2].offset == 128 &&
                   view_buffer->members[2].matrix_stride == 16,
@@ -255,8 +272,7 @@ Shader "Tests/Layout"
                   object_buffer->members[0].matrix_stride == 16 &&
                   object_buffer->members[1].name == "toy_object_normal_to_world" &&
                   object_buffer->members[1].offset == 64 && object_buffer->members[1].matrix_stride == 16 &&
-                  object_buffer->members[2].name == "toy_receives_shadows" &&
-                  object_buffer->members[2].offset == 128,
+                  object_buffer->members[2].name == "toy_receives_shadows" && object_buffer->members[2].offset == 128,
               "canonical Object schema must include the receiver flag after the two matrices");
         check(pass_buffer != first.layout->constant_buffers.end() && pass_buffer->members.size() == 2 &&
                   pass_buffer->members[0].name == "exposure_ev" && pass_buffer->members[0].offset == 0 &&
@@ -269,7 +285,10 @@ Shader "Tests/Layout"
                       pass_buffer->members[1].default_value.size() == 64 &&
                       std::all_of(pass_buffer->members[1].default_value.begin(),
                                   pass_buffer->members[1].default_value.end(),
-                                  [](std::uint8_t value) { return value == 0; }),
+                                  [](std::uint8_t value)
+                                  {
+                                      return value == 0;
+                                  }),
                   "omitted Pass parameter defaults must publish zero-initialized bytes");
         }
 
@@ -299,8 +318,7 @@ Shader "Tests/Layout"
         if (reordered_constant_layout.layout)
         {
             check(first.layout->logical_layout_hash == reordered_constant_layout.layout->logical_layout_hash &&
-                      first.layout->parameter_schema_hash !=
-                          reordered_constant_layout.layout->parameter_schema_hash,
+                      first.layout->parameter_schema_hash != reordered_constant_layout.layout->parameter_schema_hash,
                   "source display order must change complete schema identity without changing canonical offsets");
         }
 
@@ -310,8 +328,8 @@ Shader "Tests/Layout"
               "the same normalized input must reproduce byte-identical schema records");
         ShaderParameterSchema stripped_ui = first_schema;
         stripped_ui.editor_properties_hash = {};
-        for (BindingGroup group : {BindingGroup::Global, BindingGroup::View, BindingGroup::Pass,
-                                   BindingGroup::Material, BindingGroup::Object})
+        for (BindingGroup group : {BindingGroup::Global, BindingGroup::View, BindingGroup::Pass, BindingGroup::Material,
+                                   BindingGroup::Object})
         {
             const bool changed_group = calculate_shader_parameter_group_identity(first_schema, group) !=
                                        calculate_shader_parameter_group_identity(stripped_ui, group);
@@ -333,46 +351,54 @@ Shader "Tests/Layout"
     {
         using namespace toy3d::shader;
         const auto parsed = parse_shader(shader_source_a, "editor_properties.shader");
-        if (!parsed.asset) return;
+        if (!parsed.asset)
+        {
+            return;
+        }
         ShaderAsset asset = *parsed.asset;
         asset.properties[1].type = PropertyType::Range;
         asset.properties[1].range_min = 0.0;
         asset.properties[1].range_max = 1.0;
         const auto compiled = compile_logical_layout(asset);
         check(compiled.succeeded(), "Color and Range properties must compile");
-        if (!compiled.layout) return;
+        if (!compiled.layout)
+        {
+            return;
+        }
         const auto& properties = compiled.layout->editor_properties;
         const auto schema = make_shader_parameter_schema(*compiled.layout);
         check(properties.size() == asset.properties.size() &&
-              properties[0].control == ShaderEditorPropertyControl::Color &&
-              properties[1].control == ShaderEditorPropertyControl::Range &&
-              properties[1].range_min == 0.0f && properties[1].range_max == 1.0f,
+                  properties[0].control == ShaderEditorPropertyControl::Color &&
+                  properties[1].control == ShaderEditorPropertyControl::Range && properties[1].range_min == 0.0f &&
+                  properties[1].range_max == 1.0f,
               "complete Editor view must distinguish Color/Range and retain inactive properties");
         const auto encoded = serialize_shader_editor_properties(asset.name, schema, properties);
         std::vector<ShaderEditorProperty> decoded;
         std::string error;
         check(parse_shader_editor_properties(encoded, asset.name, schema, decoded, error) &&
-              serialize_shader_editor_properties(asset.name, schema, decoded) == encoded,
+                  serialize_shader_editor_properties(asset.name, schema, decoded) == encoded,
               "Editor property format must round-trip deterministically");
         check(!parse_shader_editor_properties(encoded, "Other/Shader", schema, decoded, error),
               "Editor properties must reject mismatched Shader owner");
         std::string damaged = encoded;
         damaged.replace(damaged.find("Base Color"), 10u, "Other Name");
         check(!parse_shader_editor_properties(damaged, asset.name, schema, decoded, error) &&
-              decoded[0].display_name == "Base Color", "damaged metadata must preserve previous output");
+                  decoded[0].display_name == "Base Color",
+              "damaged metadata must preserve previous output");
         check(!parse_shader_editor_properties(encoded + "unknown", asset.name, schema, decoded, error),
               "metadata must reject unknown trailing records");
         auto renamed = asset;
         renamed.properties[0].display_name = "Tint";
         const auto changed = compile_logical_layout(renamed);
         check(changed.layout && changed.layout->logical_layout_hash == compiled.layout->logical_layout_hash &&
-              changed.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
+                  changed.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
               "UI display names must affect schema identity without changing GPU layout");
         auto float4 = asset;
         float4.properties[0].type = PropertyType::Float4;
         const auto float4_layout = compile_logical_layout(float4);
-        check(float4_layout.layout && float4_layout.layout->logical_layout_hash == compiled.layout->logical_layout_hash &&
-              float4_layout.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
+        check(float4_layout.layout &&
+                  float4_layout.layout->logical_layout_hash == compiled.layout->logical_layout_hash &&
+                  float4_layout.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
               "Color semantic must differ from plain Float4 without changing GPU layout");
         auto invalid = properties;
         invalid[1].range_min = 2.0f;
@@ -389,7 +415,7 @@ Shader "Tests/Layout"
               "metadata must refer to an existing schema member");
         ShaderParameterSchema roundtrip;
         check(parse_shader_parameter_schema(serialize_shader_parameter_schema(schema), roundtrip, error) &&
-              roundtrip.editor_properties_hash == schema.editor_properties_hash,
+                  roundtrip.editor_properties_hash == schema.editor_properties_hash,
               "public schema must preserve the Editor digest when display text is stripped");
         auto old = schema;
         old.generated_format_version = 1u;
@@ -401,10 +427,21 @@ Shader "Tests/Layout"
         const toy3d::PhysicalPath root(std::string(TOY3D_SHADER_PARAMETERS_WRITER_TEST_DIR) + "_editor_properties");
         check(files.create_directories(root).succeeded(), "Editor property test directory must be created");
         const auto path = files.join_relative(root, "editor_properties.txt");
-        if (!path.succeeded()) { check(false, "Editor property test path must resolve"); return; }
+        if (!path.succeeded())
+        {
+            check(false, "Editor property test path must resolve");
+            return;
+        }
         const auto exists = files.exists(path.value());
-        if (!exists.succeeded()) { check(false, "Editor property test file query must succeed"); return; }
-        if (exists.value()) check(files.remove_file(path.value()).succeeded(), "stale test property file must be removed");
+        if (!exists.succeeded())
+        {
+            check(false, "Editor property test file query must succeed");
+            return;
+        }
+        if (exists.value())
+        {
+            check(files.remove_file(path.value()).succeeded(), "stale test property file must be removed");
+        }
 #if WITH_EDITORONLY_DATA
         check(read_shader_editor_properties(files, root, asset.name, schema, decoded, error) && decoded.empty(),
               "absent optional metadata must allow a canonical-name fallback");
@@ -415,7 +452,8 @@ Shader "Tests/Layout"
         check(files.write_text_utf8(path.value(), encoded, toy3d::FileWriteMode::CreateNew).succeeded(),
               "valid property test file must be written");
 #if WITH_EDITORONLY_DATA
-        check(read_shader_editor_properties(files, root, asset.name, schema, decoded, error) && decoded.size() == properties.size(),
+        check(read_shader_editor_properties(files, root, asset.name, schema, decoded, error) &&
+                  decoded.size() == properties.size(),
               "bounded optional property file must load");
         check(files.write_text_utf8(path.value(), damaged, toy3d::FileWriteMode::Truncate).succeeded(),
               "damaged property test file must be written");
@@ -430,7 +468,9 @@ Shader "Tests/Layout"
         using namespace toy3d::shader;
         const LogicalLayoutResult logical = compile_source(shader_source_a);
         if (!logical.layout)
+        {
             return;
+        }
         const std::vector<ParameterUsage> usage = {
             {"exposure_ev", ShaderStageFlags::Pixel},        {"base_color", ShaderStageFlags::Pixel},
             {"base_color_texture", ShaderStageFlags::Pixel}, {"material_sampler", ShaderStageFlags::Pixel},
@@ -439,13 +479,17 @@ Shader "Tests/Layout"
         const ActiveLayoutResult active = build_active_layout(*logical.layout, usage);
         check(active.succeeded(), "known Program usage must build an active layout");
         if (!active.layout)
+        {
             return;
+        }
         check(active.layout->bindings.size() == 7, "two used cbuffers plus five used resources must remain active");
         std::size_t constant_buffer_count = 0;
         for (const ActiveBinding& binding : active.layout->bindings)
         {
             if (binding.constant_buffer)
+            {
                 ++constant_buffer_count;
+            }
         }
         check(constant_buffer_count == 2, "using a member must retain each complete logical group cbuffer");
 
@@ -457,29 +501,41 @@ Shader "Tests/Layout"
                                                                     TargetBindingLimits::vulkan_portable_v1());
         check(d3d.succeeded() && d3d12.succeeded() && vulkan.succeeded(), "all three target mappings must allocate");
         if (!d3d.layout || !d3d12.layout || !vulkan.layout)
+        {
             return;
+        }
         check(d3d.layout->target_binding_hash != vulkan.layout->target_binding_hash,
               "target-native mapping must have a target-specific hash");
         check(d3d.layout->target_binding_hash != d3d12.layout->target_binding_hash,
               "D3D11 and D3D12 identities must remain distinct even when slots match");
 
         const auto d3d_scene_texture =
-            std::find_if(d3d.layout->bindings.begin(), d3d.layout->bindings.end(), [](const NativeBinding& binding)
-                         { return binding.name == "scene_texture" && binding.stages == ShaderStageFlags::Pixel; });
+            std::find_if(d3d.layout->bindings.begin(), d3d.layout->bindings.end(),
+                         [](const NativeBinding& binding)
+                         {
+                             return binding.name == "scene_texture" && binding.stages == ShaderStageFlags::Pixel;
+                         });
         const auto d3d_material_texture =
-            std::find_if(d3d.layout->bindings.begin(), d3d.layout->bindings.end(), [](const NativeBinding& binding)
-                         { return binding.name == "base_color_texture" && binding.stages == ShaderStageFlags::Pixel; });
+            std::find_if(d3d.layout->bindings.begin(), d3d.layout->bindings.end(),
+                         [](const NativeBinding& binding)
+                         {
+                             return binding.name == "base_color_texture" && binding.stages == ShaderStageFlags::Pixel;
+                         });
         check(d3d_scene_texture != d3d.layout->bindings.end() && d3d_scene_texture->register_index == 0,
               "D3D t registers must start with the first logical group");
         check(d3d_material_texture != d3d.layout->bindings.end() && d3d_material_texture->register_index == 1,
               "D3D t registers must remain compact across logical groups");
 
-        const auto scene_texture =
-            std::find_if(vulkan.layout->bindings.begin(), vulkan.layout->bindings.end(),
-                         [](const NativeBinding& binding) { return binding.name == "scene_texture"; });
-        const auto material_texture =
-            std::find_if(vulkan.layout->bindings.begin(), vulkan.layout->bindings.end(),
-                         [](const NativeBinding& binding) { return binding.name == "base_color_texture"; });
+        const auto scene_texture = std::find_if(vulkan.layout->bindings.begin(), vulkan.layout->bindings.end(),
+                                                [](const NativeBinding& binding)
+                                                {
+                                                    return binding.name == "scene_texture";
+                                                });
+        const auto material_texture = std::find_if(vulkan.layout->bindings.begin(), vulkan.layout->bindings.end(),
+                                                   [](const NativeBinding& binding)
+                                                   {
+                                                       return binding.name == "base_color_texture";
+                                                   });
         check(scene_texture != vulkan.layout->bindings.end() && scene_texture->descriptor_set == 1,
               "Pass resources must map to Vulkan set 1");
         check(material_texture != vulkan.layout->bindings.end() && material_texture->descriptor_set == 2,
@@ -578,8 +634,7 @@ Shader "Tests/Layout"
         ShaderAsset case_collision = asset;
         case_collision.parameters.front().name = "SceneTexture";
         case_collision.resources.front().name = "scenetexture";
-        const CppIdentifierMappingResult case_collision_result =
-            map_shader_parameter_cpp_identifiers(case_collision);
+        const CppIdentifierMappingResult case_collision_result = map_shader_parameter_cpp_identifiers(case_collision);
         check(!case_collision_result.succeeded() &&
                   has_diagnostic(case_collision_result.diagnostics, DiagnosticCode::GeneratedIdentifierConflict) &&
                   !case_collision_result.identifiers,
@@ -590,19 +645,16 @@ Shader "Tests/Layout"
         const CppIdentifierMappingResult duplicate_resource_result =
             map_shader_parameter_cpp_identifiers(duplicate_resource);
         check(!duplicate_resource_result.succeeded() &&
-                  has_diagnostic(duplicate_resource_result.diagnostics,
-                                 DiagnosticCode::GeneratedIdentifierConflict),
+                  has_diagnostic(duplicate_resource_result.diagnostics, DiagnosticCode::GeneratedIdentifierConflict),
               "duplicate resource names must fail independently at the C++ codegen boundary");
 
         ShaderAsset pass_collision = asset;
         ShaderPass normalized_collision;
         normalized_collision.name = "tonemap";
         pass_collision.passes.push_back(normalized_collision);
-        const CppIdentifierMappingResult pass_collision_result =
-            map_shader_parameter_cpp_identifiers(pass_collision);
+        const CppIdentifierMappingResult pass_collision_result = map_shader_parameter_cpp_identifiers(pass_collision);
         check(!pass_collision_result.succeeded() &&
-                  has_diagnostic(pass_collision_result.diagnostics,
-                                 DiagnosticCode::GeneratedIdentifierConflict),
+                  has_diagnostic(pass_collision_result.diagnostics, DiagnosticCode::GeneratedIdentifierConflict),
               "case-normalized type collisions must fail instead of receiving a numeric suffix");
     }
 
@@ -627,11 +679,15 @@ Shader "Toy3d/PostProcess/Tonemap"
         const ParseResult tonemap_parsed = parse_shader(tonemap_source, "tonemap_codegen.shader");
         check(tonemap_parsed.succeeded(), "Tonemap codegen fixture must parse");
         if (!tonemap_parsed.asset)
+        {
             return;
+        }
         const LogicalLayoutResult tonemap_layout = compile_logical_layout(*tonemap_parsed.asset);
         check(tonemap_layout.succeeded(), "Tonemap codegen fixture must produce a canonical schema");
         if (!tonemap_layout.layout)
+        {
             return;
+        }
         const ShaderParametersCodegenResult tonemap =
             generate_shader_parameters_header(*tonemap_parsed.asset, *tonemap_layout.layout);
         check(tonemap.succeeded() && tonemap.output_name == "toy3d_postprocess_tonemap.generated.h",
@@ -701,7 +757,9 @@ Shader "Toy3d/UI/ImGui"
                 const ShaderParameterGroupInput input = builtin_shader_parameter_input(group);
                 ConstantBufferPackResult packed = pack_constant_buffer(group, input.constant_members);
                 if (packed.layout)
+                {
                     builtin_layout.constant_buffers.push_back(std::move(*packed.layout));
+                }
             }
             const ShaderParameterSchema builtin_schema = make_shader_parameter_schema(builtin_layout);
             check(builtin.source->find("struct ViewShaderParameters") != std::string::npos &&
@@ -709,7 +767,8 @@ Shader "Toy3d/UI/ImGui"
                       builtin.source->find("Vector3 toy_camera_position{};") != std::string::npos &&
                       builtin.source->find("struct ObjectShaderParameters") != std::string::npos &&
                       builtin.source->find("Matrix4 toy_object_to_world = Matrix4::zero();") != std::string::npos &&
-                      builtin.source->find("Matrix4 toy_object_normal_to_world = Matrix4::zero();") != std::string::npos &&
+                      builtin.source->find("Matrix4 toy_object_normal_to_world = Matrix4::zero();") !=
+                          std::string::npos &&
                       builtin.source->find("float toy_receives_shadows{};") != std::string::npos,
                   "builtin header must contain canonical View and Object typed fields");
             check(builtin.source->find(toy3d::sha256_to_hex(builtin_schema.schema_identity)) != std::string::npos &&
@@ -729,7 +788,9 @@ Shader "Toy3d/UI/ImGui"
         const PhysicalPath output_directory(TOY3D_SHADER_PARAMETERS_WRITER_TEST_DIR);
         const FileResult<bool> output_exists = platform_file.exists(output_directory);
         if (output_exists.succeeded() && output_exists.value())
+        {
             platform_file.remove_directory_tree(output_directory);
+        }
 
         ShaderParametersCodegenResult first_header;
         first_header.output_name = "first.generated.h";
@@ -737,24 +798,23 @@ Shader "Toy3d/UI/ImGui"
         ShaderParametersCodegenResult second_header;
         second_header.output_name = "second.generated.h";
         second_header.source = "second-v1\n";
-        std::vector<ShaderParametersGeneratedUnit> units = {
-            {first_header, {"first.shader"}}, {second_header, {"second.shader"}}};
+        std::vector<ShaderParametersGeneratedUnit> units = {{first_header, {"first.shader"}},
+                                                            {second_header, {"second.shader"}}};
 
         const ShaderParametersWriteResult first =
             write_shader_parameter_headers(platform_file, output_directory, units);
         check(first.succeeded() && first.outputs.size() == 2u && first.changed_outputs.size() == 2u,
               "the first generated-header publication must write every output");
-        const FileResult<PhysicalPath> first_path =
-            platform_file.join_relative(output_directory, "first.generated.h");
-        const FileResult<std::string> first_bytes =
-            first_path.succeeded() ? platform_file.read_text_utf8(first_path.value())
-                                   : FileResult<std::string>(FileStatus{});
+        const FileResult<PhysicalPath> first_path = platform_file.join_relative(output_directory, "first.generated.h");
+        const FileResult<std::string> first_bytes = first_path.succeeded()
+                                                        ? platform_file.read_text_utf8(first_path.value())
+                                                        : FileResult<std::string>(FileStatus{});
 
         const ShaderParametersWriteResult repeated =
             write_shader_parameter_headers(platform_file, output_directory, units);
-        const FileResult<std::string> repeated_bytes =
-            first_path.succeeded() ? platform_file.read_text_utf8(first_path.value())
-                                   : FileResult<std::string>(FileStatus{});
+        const FileResult<std::string> repeated_bytes = first_path.succeeded()
+                                                           ? platform_file.read_text_utf8(first_path.value())
+                                                           : FileResult<std::string>(FileStatus{});
         check(repeated.succeeded() && repeated.changed_outputs.empty() && first_bytes.succeeded() &&
                   repeated_bytes.succeeded() && first_bytes.value() == repeated_bytes.value(),
               "identical generation must preserve byte-identical outputs without replacement");
@@ -775,11 +835,11 @@ Shader "Toy3d/UI/ImGui"
             second_path.succeeded() ? platform_file.exists(second_path.value()) : FileResult<bool>(FileStatus{});
         const FileResult<PhysicalPath> dependencies_path =
             platform_file.join_relative(output_directory, "shader_parameters.dependencies");
-        const FileResult<std::string> dependencies =
-            dependencies_path.succeeded() ? platform_file.read_text_utf8(dependencies_path.value())
-                                          : FileResult<std::string>(FileStatus{});
-        check(stale_removed.succeeded() && stale_removed.removed_outputs.size() == 1u &&
-                  second_exists.succeeded() && !second_exists.value() && dependencies.succeeded() &&
+        const FileResult<std::string> dependencies = dependencies_path.succeeded()
+                                                         ? platform_file.read_text_utf8(dependencies_path.value())
+                                                         : FileResult<std::string>(FileStatus{});
+        check(stale_removed.succeeded() && stale_removed.removed_outputs.size() == 1u && second_exists.succeeded() &&
+                  !second_exists.value() && dependencies.succeeded() &&
                   dependencies.value() == "first.generated.h\tfirst.shader\n",
               "owned stale headers must be removed and dependency tracking must match retained units");
 

@@ -14,7 +14,11 @@ namespace toy3d::shader
     {
         bool hash_is_zero(const Sha256Hash& hash)
         {
-            return std::all_of(hash.begin(), hash.end(), [](std::uint8_t byte) { return byte == 0u; });
+            return std::all_of(hash.begin(), hash.end(),
+                               [](std::uint8_t byte)
+                               {
+                                   return byte == 0u;
+                               });
         }
 
         const char* stage_name(ShaderStageFlags stage)
@@ -73,7 +77,9 @@ namespace toy3d::shader
                 const FileResult<VirtualPath> path = VirtualPath::parse(dependency.virtual_path);
                 if (!path.succeeded() || path.value().utf8() != dependency.virtual_path ||
                     hash_is_zero(dependency.content_hash) || (!previous.empty() && previous >= dependency.virtual_path))
+                {
                     return false;
+                }
                 previous = dependency.virtual_path;
             }
             return true;
@@ -85,10 +91,9 @@ namespace toy3d::shader
         return entry_directory.has_value() && diagnostics.empty();
     }
 
-    ShaderMapEntryWriteResult write_verified_shader_map_entry(PlatformFile& platform_file,
-                                                              const PhysicalPath& shader_map_root,
-                                                              const ShaderMapEntry& entry,
-                                                              const std::vector<ShaderEditorProperty>& editor_properties)
+    ShaderMapEntryWriteResult write_verified_shader_map_entry(
+        PlatformFile& platform_file, const PhysicalPath& shader_map_root, const ShaderMapEntry& entry,
+        const std::vector<ShaderEditorProperty>& editor_properties)
     {
         ShaderMapEntryWriteResult result;
         std::string schema_error;
@@ -102,7 +107,8 @@ namespace toy3d::shader
         }
         if (!editor_properties.empty())
         {
-            editor_text = serialize_shader_editor_properties(entry.shader_name, entry.parameter_schema, editor_properties);
+            editor_text =
+                serialize_shader_editor_properties(entry.shader_name, entry.parameter_schema, editor_properties);
             if (editor_text.size() > max_shader_editor_properties_bytes)
             {
                 add_error(result, "Shader Editor property output exceeds its byte limit.");
@@ -188,10 +194,10 @@ namespace toy3d::shader
                 add_error(result, "ShaderMapEntry contains an invalid mapping record.");
                 return result;
             }
-            stored_layout.bindings.push_back(
-                {binding.binding_id, binding.name, binding.group, binding.category, binding.stages,
-                 binding.register_class, binding.register_index, binding.descriptor_set, binding.descriptor_binding,
-                 binding.data_size, binding.data_layout_hash, binding.shader_abi_version, nullptr});
+            stored_layout.bindings.push_back({binding.binding_id, binding.name, binding.group, binding.category,
+                                              binding.stages, binding.register_class, binding.register_index,
+                                              binding.descriptor_set, binding.descriptor_binding, binding.data_size,
+                                              binding.data_layout_hash, binding.shader_abi_version, nullptr});
         }
         if (calculate_target_binding_hash(stored_layout) != entry.target_binding_hash)
         {
@@ -202,9 +208,11 @@ namespace toy3d::shader
         {
             for (const ReflectedBinding& reflected : stage.reflection.bindings)
             {
-                const auto mapping =
-                    std::find_if(entry.bindings.begin(), entry.bindings.end(), [&](const ShaderMapBinding& binding)
-                                 { return binding.binding_id == reflected.parameter_id; });
+                const auto mapping = std::find_if(entry.bindings.begin(), entry.bindings.end(),
+                                                  [&](const ShaderMapBinding& binding)
+                                                  {
+                                                      return binding.binding_id == reflected.parameter_id;
+                                                  });
                 if (mapping == entry.bindings.end() || mapping->name != reflected.name ||
                     mapping->group != reflected.group || mapping->category != reflected.category ||
                     !has_stage(mapping->stages, stage.request.stage) ||
@@ -229,10 +237,14 @@ namespace toy3d::shader
             for (const ShaderMapBinding& mapping : entry.bindings)
             {
                 if (!has_stage(mapping.stages, stage.request.stage))
+                {
                     continue;
+                }
                 const bool found = std::any_of(stage.reflection.bindings.begin(), stage.reflection.bindings.end(),
                                                [&](const ReflectedBinding& reflected)
-                                               { return reflected.parameter_id == mapping.binding_id; });
+                                               {
+                                                   return reflected.parameter_id == mapping.binding_id;
+                                               });
                 if (!found)
                 {
                     add_error(result, "ShaderMapEntry mapping is missing from stage reflection.");
@@ -258,7 +270,9 @@ namespace toy3d::shader
                                                        entry.parameter_schema, existing_properties, schema_error) ||
                         existing_properties.empty())
                     {
-                        add_error(result, "Cached Shader Editor properties are missing or invalid; regenerate output. " + schema_error);
+                        add_error(result,
+                                  "Cached Shader Editor properties are missing or invalid; regenerate output. " +
+                                      schema_error);
                         result.entry_directory.reset();
                     }
                 }
@@ -340,8 +354,8 @@ namespace toy3d::shader
                     << static_cast<std::uint32_t>(binding.group) << '\t' << static_cast<std::uint32_t>(binding.category)
                     << '\t' << static_cast<std::uint32_t>(binding.stages) << '\t'
                     << static_cast<std::uint32_t>(binding.register_class) << '\t' << binding.register_index << '\t'
-                    << binding.descriptor_set << '\t' << binding.descriptor_binding << '\t' << binding.data_size
-                    << '\t' << sha256_to_hex(binding.data_layout_hash) << '\t' << binding.shader_abi_version << '\n';
+                    << binding.descriptor_set << '\t' << binding.descriptor_binding << '\t' << binding.data_size << '\t'
+                    << sha256_to_hex(binding.data_layout_hash) << '\t' << binding.shader_abi_version << '\n';
         }
 
         const auto write_text = [&](const std::string& name, const std::string& text)
@@ -350,9 +364,10 @@ namespace toy3d::shader
             return path.succeeded() ? platform_file.write_text_utf8(path.value(), text, FileWriteMode::CreateNew)
                                     : path.status();
         };
-        bool wrote_all = write_text("manifest.txt", manifest.str()).succeeded() &&
-                         write_text("schema.txt", serialize_shader_parameter_schema(entry.parameter_schema)).succeeded() &&
-                         write_text("mapping.txt", mapping.str()).succeeded();
+        bool wrote_all =
+            write_text("manifest.txt", manifest.str()).succeeded() &&
+            write_text("schema.txt", serialize_shader_parameter_schema(entry.parameter_schema)).succeeded() &&
+            write_text("mapping.txt", mapping.str()).succeeded();
 #if WITH_EDITORONLY_DATA
         if (!editor_properties.empty())
         {
@@ -366,7 +381,9 @@ namespace toy3d::shader
             const std::string reflection_text = serialize_shader_stage_reflection(stage.reflection);
             std::ostringstream dependencies;
             for (const ShaderDependency& dependency : stage.request.dependencies)
+            {
                 dependencies << dependency.virtual_path << '\t' << sha256_to_hex(dependency.content_hash) << '\n';
+            }
             const std::string dependencies_text = dependencies.str();
             std::ostringstream stage_manifest;
             stage_manifest << "stage=" << static_cast<std::uint32_t>(stage.request.stage) << '\n'
@@ -398,7 +415,9 @@ namespace toy3d::shader
             cleanup_shader_entry_staging_directory(platform_file, *staging.staging_directory);
             if (published.code == FileErrorCode::AlreadyExists &&
                 accept_existing_cache_hit(result, platform_file, shader_map_root))
+            {
                 return result;
+            }
             add_error(result, "Failed to publish ShaderMapEntry atomically: " + published.message);
             return result;
         }

@@ -92,12 +92,17 @@ namespace toy3d
 
     bool Engine::initialize_logging(std::shared_ptr<LogBuffer> buffer)
     {
-        if (logging_started_) return logging_outputs_ready_;
+        if (logging_started_)
+        {
+            return logging_outputs_ready_;
+        }
         LogConfig log_config;
         log_config.logger_name = "Toy3dRuntime";
         // filesystem composes the platform-native saved/log path without manual
         // separator handling at the runtime composition root.
-        log_config.log_directory = std::filesystem::u8path(startup_paths.saved.empty() ? ENGINE_SAVED_ROOT : startup_paths.saved.utf8()) / "logs";
+        log_config.log_directory =
+            std::filesystem::u8path(startup_paths.saved.empty() ? ENGINE_SAVED_ROOT : startup_paths.saved.utf8()) /
+            "logs";
         log_config.file_name = startup_paths.log_file_name;
         log_config.memory_output = std::move(buffer);
         std::string log_error;
@@ -108,7 +113,10 @@ namespace toy3d
 
     bool Engine::set_startup_paths(EngineStartupPaths paths)
     {
-        if (logging_started_ || file_system.frozen()) return false;
+        if (logging_started_ || file_system.frozen())
+        {
+            return false;
+        }
         startup_paths = std::move(paths);
         return true;
     }
@@ -118,30 +126,47 @@ namespace toy3d
         initialize_logging();
         const auto status = initialize_file_system();
         if (!status.succeeded())
-        { TOY_LOG_ERROR("Runtime file system initialization: {}", status.message); return false; }
+        {
+            TOY_LOG_ERROR("Runtime file system initialization: {}", status.message);
+            return false;
+        }
         auto& console = ConsoleManager::get_instance();
         const auto base = VirtualPath::parse("/Engine/Config/base_engine.ini");
         const auto loaded = console.load_config(file_system, base.value());
         if (!loaded.succeeded())
-        { TOY_LOG_ERROR("Load base_engine.ini: {}", loaded.message); return false; }
+        {
+            TOY_LOG_ERROR("Load base_engine.ini: {}", loaded.message);
+            return false;
+        }
         if (!startup_paths.project_config.empty())
         {
             const auto project = VirtualPath::parse("/Project/Config/game_engine.ini");
             const auto overlay = console.load_config(file_system, project.value(), ConfigLoadMode::Overlay);
             if (!overlay.succeeded() && overlay.code != FileErrorCode::NotFound)
-            { TOY_LOG_ERROR("Load game_engine.ini: {}", overlay.message); return false; }
+            {
+                TOY_LOG_ERROR("Load game_engine.ini: {}", overlay.message);
+                return false;
+            }
         }
         CommandLineParser::get_instance().apply_config();
         // The same parser validates typed command-line overrides without silently
         // turning malformed input into an unrelated getter default.
         const auto effective = ConsoleManager::encode_config(console.snapshot());
-        if (!effective.succeeded()) { TOY_LOG_ERROR("Effective configuration: {}", effective.status().message); return false; }
+        if (!effective.succeeded())
+        {
+            TOY_LOG_ERROR("Effective configuration: {}", effective.status().message);
+            return false;
+        }
         return true;
     }
 
     void Engine::init(void* hInstance)
     {
-        if (!pre_init()) { exit(); return; }
+        if (!pre_init())
+        {
+            exit();
+            return;
+        }
         // 1.创建平台
 #if WITH_WIN
         platform = std::make_unique<Win32Platform>();
@@ -239,14 +264,22 @@ namespace toy3d
         viewport_desc.extent = window_extent;
         viewport_desc.debug_name = "PrimaryViewport";
         renderer = std::make_unique<Renderer>(
-            *task_graph, rhi_surface, std::move(viewport_desc), []() { return create_default_rhi_device(); },
+            *task_graph, rhi_surface, std::move(viewport_desc),
+            []()
+            {
+                return create_default_rhi_device();
+            },
             global_shader_map,
             imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr,
             application && application->uses_preview_scene(), std::move(mesh_pass_programs));
         rendering_thread = std::make_unique<RenderingThread>(*thread_manager, *task_graph,
                                                              use_rendering_thread ? RenderingThreadMode::MultiThread
                                                                                   : RenderingThreadMode::SingleThread);
-        const ThreadStatus started = rendering_thread->start([this]() { return renderer->initialize(); });
+        const ThreadStatus started = rendering_thread->start(
+            [this]()
+            {
+                return renderer->initialize();
+            });
         if (!started.succeeded())
         {
             TOY_LOG_ERROR("RenderingThread startup failed: {}", started.message);
@@ -283,7 +316,8 @@ namespace toy3d
             }
         }
         if (application && application->uses_preview_scene() &&
-            (!renderer->preview_scene_interface() || !application->on_initialize_preview_scene(*renderer->preview_scene_interface(), *task_graph)))
+            (!renderer->preview_scene_interface() ||
+             !application->on_initialize_preview_scene(*renderer->preview_scene_interface(), *task_graph)))
         {
             TOY_LOG_ERROR("Application could not initialize its preview scene.");
             shutdown_render_framework();
@@ -297,7 +331,9 @@ namespace toy3d
             return false;
         }
         if (!application || application->starts_world_play())
+        {
             world->begin_play();
+        }
         return true;
     }
 
@@ -326,8 +362,8 @@ namespace toy3d
             views.emplace_back(Vector3(0.0f, meters_to_centimeters(1.5f), meters_to_centimeters(-6.0f)),
                                Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
                                IntRect{0, 0, scene_extent.width, scene_extent.height}, scene_extent,
-                               CameraProjectionMode::Perspective,
-                               to_radians(Degrees(60.0f)), meters_to_centimeters(0.1f), meters_to_centimeters(1000.0f));
+                               CameraProjectionMode::Perspective, to_radians(Degrees(60.0f)),
+                               meters_to_centimeters(0.1f), meters_to_centimeters(1000.0f));
         }
         if (views.empty() && scene_extent.width != 0u && scene_extent.height != 0u)
         {
@@ -338,26 +374,39 @@ namespace toy3d
         std::unique_ptr<SceneRenderer> scene_renderer;
         if (!views.empty())
         {
-            scene_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
-                *renderer->scene_interface(), scene_extent, std::move(views)));
+            scene_renderer = std::make_unique<ForwardSceneRenderer>(
+                SceneViewFamily(*renderer->scene_interface(), scene_extent, std::move(views)));
         }
         UiRenderWork work;
         std::unique_ptr<SceneRenderer> preview_renderer;
-        if (application) application->on_collect_ui_render_work(work);
+        if (application)
+        {
+            application->on_collect_ui_render_work(work);
+        }
         if (application)
         {
             std::vector<MaterialProgramValidationRef> validations;
             application->on_collect_material_validation(validations);
-            for (auto& validation : validations) renderer->validate_material_program(std::move(validation));
+            for (auto& validation : validations)
+            {
+                renderer->validate_material_program(std::move(validation));
+            }
             std::vector<BuiltinShaderUpdateRef> builtin_updates;
             application->on_collect_builtin_shader_updates(builtin_updates);
-            for (auto& update : builtin_updates) renderer->prepare_builtin_shaders(std::move(update));
+            for (auto& update : builtin_updates)
+            {
+                renderer->prepare_builtin_shaders(std::move(update));
+            }
         }
         if (work.preview.request_id && renderer->preview_scene_interface())
-            preview_renderer = std::make_unique<ForwardSceneRenderer>(SceneViewFamily(
-                *renderer->preview_scene_interface(), work.preview.extent, std::move(work.preview.views)), true);
-        renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output,
-                             std::move(work), std::move(preview_renderer));
+        {
+            preview_renderer = std::make_unique<ForwardSceneRenderer>(
+                SceneViewFamily(*renderer->preview_scene_interface(), work.preview.extent,
+                                std::move(work.preview.views)),
+                true);
+        }
+        renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output, std::move(work),
+                             std::move(preview_renderer));
     }
 
     void Engine::shutdown_render_framework()
@@ -403,7 +452,10 @@ namespace toy3d
             }
 
             const ThreadStatus stopped = rendering_thread->stop(
-                [this]() { return renderer != nullptr ? renderer->teardown() : ThreadStatus::success(); });
+                [this]()
+                {
+                    return renderer != nullptr ? renderer->teardown() : ThreadStatus::success();
+                });
             if (!stopped.succeeded())
             {
                 TOY_LOG_ERROR("RenderingThread shutdown failed: {}", stopped.message);
@@ -518,14 +570,16 @@ namespace toy3d
             return FileStatus::success();
         }
         const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
-        const PhysicalPath saved_root = startup_paths.saved.empty() ? PhysicalPath(ENGINE_SAVED_ROOT) : startup_paths.saved;
+        const PhysicalPath saved_root =
+            startup_paths.saved.empty() ? PhysicalPath(ENGINE_SAVED_ROOT) : startup_paths.saved;
         auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
         if (!shader_root.succeeded())
         {
             return shader_root.status();
         }
-        auto asset_root = startup_paths.engine_assets.empty() ?
-            native_platform_file.join_relative(deployment_root, "engine/asset") : FileResult<PhysicalPath>(startup_paths.engine_assets);
+        auto asset_root = startup_paths.engine_assets.empty()
+                              ? native_platform_file.join_relative(deployment_root, "engine/asset")
+                              : FileResult<PhysicalPath>(startup_paths.engine_assets);
         if (!asset_root.succeeded())
         {
             return asset_root.status();
@@ -584,43 +638,78 @@ namespace toy3d
 
         status = add_directory_mount(file_system, "/Engine", engine_asset_store, MountAccess::ReadOnly, true, "Engine");
         if (!status.succeeded())
+        {
             return status;
+        }
         status = add_directory_mount(file_system, "/Engine/Shader", engine_shader_store, MountAccess::ReadOnly, true,
                                      "EngineShader");
         if (!status.succeeded())
+        {
             return status;
+        }
         // Deployment directories have separate read-only stores; /Project must
         // never alias the engine assets. FileSystem owns these store lifetimes.
-        const auto config_root = startup_paths.engine_config.empty() ?
-            native_platform_file.join_relative(deployment_root, "engine/config") : FileResult<PhysicalPath>(startup_paths.engine_config);
-        if (!config_root.succeeded()) return config_root.status();
+        const auto config_root = startup_paths.engine_config.empty()
+                                     ? native_platform_file.join_relative(deployment_root, "engine/config")
+                                     : FileResult<PhysicalPath>(startup_paths.engine_config);
+        if (!config_root.succeeded())
+        {
+            return config_root.status();
+        }
         const auto base_config = create_store(config_root.value(), false, "EngineConfig");
-        if (!base_config.succeeded()) return base_config.status();
-        status = add_directory_mount(file_system, "/Engine/Config", base_config.value(), MountAccess::ReadOnly, true, "EngineConfig");
-        if (!status.succeeded()) return status;
+        if (!base_config.succeeded())
+        {
+            return base_config.status();
+        }
+        status = add_directory_mount(file_system, "/Engine/Config", base_config.value(), MountAccess::ReadOnly, true,
+                                     "EngineConfig");
+        if (!status.succeeded())
+        {
+            return status;
+        }
         if (!startup_paths.project_assets.empty())
         {
             const auto assets = create_store(startup_paths.project_assets, false, "ProjectAssets");
-            if (!assets.succeeded()) return assets.status();
-            status = add_directory_mount(file_system, "/Project", assets.value(), MountAccess::ReadOnly, true, "ProjectAssets");
-            if (!status.succeeded()) return status;
+            if (!assets.succeeded())
+            {
+                return assets.status();
+            }
+            status = add_directory_mount(file_system, "/Project", assets.value(), MountAccess::ReadOnly, true,
+                                         "ProjectAssets");
+            if (!status.succeeded())
+            {
+                return status;
+            }
         }
         if (!startup_paths.project_config.empty())
         {
             const auto config = create_store(startup_paths.project_config, false, "ProjectConfig");
-            if (!config.succeeded()) return config.status();
-            status = add_directory_mount(file_system, "/Project/Config", config.value(), MountAccess::ReadOnly, true, "ProjectConfig");
-            if (!status.succeeded()) return status;
+            if (!config.succeeded())
+            {
+                return config.status();
+            }
+            status = add_directory_mount(file_system, "/Project/Config", config.value(), MountAccess::ReadOnly, true,
+                                         "ProjectConfig");
+            if (!status.succeeded())
+            {
+                return status;
+            }
         }
         status = add_directory_mount(file_system, "/Saved", saved_store, MountAccess::ReadWrite, true, "Saved");
         if (!status.succeeded())
+        {
             return status;
+        }
         status = add_directory_mount(file_system, "/Temp", temp_store, MountAccess::ReadWrite, true, "Temp");
         if (!status.succeeded())
+        {
             return status;
+        }
         status = file_system.freeze();
         if (!status.succeeded())
+        {
             return status;
+        }
 
         return FileStatus::success();
     }
@@ -645,14 +734,21 @@ namespace toy3d
             {
                 HitProxyResult hit;
                 while (renderer->poll_hit_proxy(hit))
+                {
                     application->hit_proxy_result(hit);
+                }
                 UiTextureResult ui_result;
-                while (renderer->poll_ui_texture(ui_result)) application->on_ui_texture_result(std::move(ui_result));
+                while (renderer->poll_ui_texture(ui_result))
+                {
+                    application->on_ui_texture_result(std::move(ui_result));
+                }
             }
             if (world)
             {
                 if (world->lifecycle_state() == WorldLifecycleState::Playing)
+                {
                     static_cast<void>(world->tick(delta_time));
+                }
                 if (application_bound && application)
                 {
                     application->tick(delta_time);
@@ -660,7 +756,10 @@ namespace toy3d
             }
             if (window->should_close())
             {
-                if (!application_bound || !application || application->on_close_requested()) break;
+                if (!application_bound || !application || application->on_close_requested())
+                {
+                    break;
+                }
                 if (!window->cancel_close())
                 {
                     TOY_LOG_ERROR("Platform window cannot defer the requested close.");
@@ -676,14 +775,17 @@ namespace toy3d
                     application->build_ui();
                     viewport_output.sample_in_ui = application->scene_viewport_extent(viewport_output.scene_extent);
                     if (viewport_output.sample_in_ui)
+                    {
                         viewport_output.texture_id = IMGUI_SCENE_VIEWPORT_TEXTURE_ID;
+                    }
                 }
-                const ImGuiTextureId allowed_texture =
-                    viewport_output.sample_in_ui && viewport_output.scene_extent.width != 0u &&
-                            viewport_output.scene_extent.height != 0u
-                        ? viewport_output.texture_id
-                        : ImGuiTextureId{};
-                ImGuiSnapshotResult ui_result = imgui_system->end_frame(allowed_texture, application ? application->ui_texture_ids() : std::vector<ImGuiTextureId>{});
+                const ImGuiTextureId allowed_texture = viewport_output.sample_in_ui &&
+                                                               viewport_output.scene_extent.width != 0u &&
+                                                               viewport_output.scene_extent.height != 0u
+                                                           ? viewport_output.texture_id
+                                                           : ImGuiTextureId{};
+                ImGuiSnapshotResult ui_result = imgui_system->end_frame(
+                    allowed_texture, application ? application->ui_texture_ids() : std::vector<ImGuiTextureId>{});
                 if (!ui_result.succeeded())
                 {
                     TOY_LOG_ERROR("Runtime UI frame was rejected: {}", ui_result.diagnostic);
@@ -692,7 +794,9 @@ namespace toy3d
                 {
                     ui_draw_data = std::move(ui_result.draw_data);
                     if (viewport_output.sample_in_ui && application_bound && application)
+                    {
                         static_cast<void>(application->hit_proxy_request(viewport_output.hit_proxy_request));
+                    }
                 }
             }
             submit_frame_draw(std::move(ui_draw_data), viewport_output);

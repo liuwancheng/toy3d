@@ -30,11 +30,20 @@ namespace toy3d
             {
             }
 
-            NamedThread get_desired_thread() const noexcept { return NamedThread::RenderingThread; }
+            NamedThread get_desired_thread() const noexcept
+            {
+                return NamedThread::RenderingThread;
+            }
 
-            TaskPriority get_priority() const noexcept { return TaskPriority::Normal; }
+            TaskPriority get_priority() const noexcept
+            {
+                return TaskPriority::Normal;
+            }
 
-            SubsequentsMode get_subsequents_mode() const noexcept { return SubsequentsMode::FireAndForget; }
+            SubsequentsMode get_subsequents_mode() const noexcept
+            {
+                return SubsequentsMode::FireAndForget;
+            }
 
             void do_task(NamedThread current_thread, const GraphEventRef&) noexcept
             {

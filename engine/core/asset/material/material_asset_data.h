@@ -57,4 +57,4 @@ namespace toy3d
         TOY3D_PROPERTY("overrides", Edit)
         std::vector<MaterialParameterOverride> overrides;
     };
-}
+} // namespace toy3d

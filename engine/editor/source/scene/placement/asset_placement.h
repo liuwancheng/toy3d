@@ -23,6 +23,7 @@ namespace toy3d
 
     // Resolve identity at delivery, then publish through the existing command
     // history. Failure leaves the World and its history unchanged.
-    std::uint32_t place_static_mesh_asset(EditorWorkspace& workspace, World& world,
-        ActorFactory& factory, EditorCommandHistory& history, const AssetPlacementRequest& request, std::string& error);
-}
+    std::uint32_t place_static_mesh_asset(EditorWorkspace& workspace, World& world, ActorFactory& factory,
+                                          EditorCommandHistory& history, const AssetPlacementRequest& request,
+                                          std::string& error);
+} // namespace toy3d

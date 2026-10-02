@@ -20,18 +20,21 @@ namespace toy3d
             const std::size_t removed = std::min(excess, field.size());
             std::size_t kept = field.size() - removed;
             // Preserve UTF-8 boundaries when bounding an oversized message.
-            while (kept > 0 && kept < field.size() &&
-                   (static_cast<unsigned char>(field[kept]) & 0xc0u) == 0x80u)
+            while (kept > 0 && kept < field.size() && (static_cast<unsigned char>(field[kept]) & 0xc0u) == 0x80u)
+            {
                 --kept;
+            }
             excess -= std::min(excess, field.size() - kept);
             std::string(field.data(), kept).swap(field);
         }
-    }
+    } // namespace
 
     LogBuffer::LogBuffer(LogBufferLimits limits) : limits_(limits)
     {
         if (limits_.max_records == 0 || limits_.max_bytes < sizeof(LogRecord))
+        {
             throw std::invalid_argument("LogBuffer requires a nonzero record limit and room for record metadata.");
+        }
     }
 
     void LogBuffer::append_locked(LogRecord record)
@@ -47,8 +50,8 @@ namespace toy3d
         const std::size_t bytes = record_bytes(record);
         record.sequence = sequence_ + 1u;
         auto stored = std::make_shared<const LogRecord>(std::move(record));
-        while (!records_.empty() && (records_.size() >= limits_.max_records ||
-                                     retained_bytes_ > limits_.max_bytes - bytes))
+        while (!records_.empty() &&
+               (records_.size() >= limits_.max_records || retained_bytes_ > limits_.max_bytes - bytes))
         {
             retained_bytes_ -= record_bytes(*records_.front());
             records_.pop_front();
@@ -111,13 +114,23 @@ namespace toy3d
     void LogBuffer::report_output_error(const std::string& message, bool file_failure)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (file_failure && file_ready_) { file_ready_ = false; ++revision_; }
+        if (file_failure && file_ready_)
+        {
+            file_ready_ = false;
+            ++revision_;
+        }
         // Retain a bounded health message independently of record eviction.
         constexpr std::size_t max_diagnostic_bytes = 4096u;
         std::string diagnostic = message;
         std::size_t excess = diagnostic.size() > max_diagnostic_bytes ? diagnostic.size() - max_diagnostic_bytes : 0;
-        if (excess != 0) trim_field(diagnostic, excess);
-        if (output_error_ == diagnostic) return;
+        if (excess != 0)
+        {
+            trim_field(diagnostic, excess);
+        }
+        if (output_error_ == diagnostic)
+        {
+            return;
+        }
         output_error_ = std::move(diagnostic);
         LogRecord record;
         record.time = std::chrono::system_clock::now();
@@ -127,4 +140,4 @@ namespace toy3d
         record.message = message;
         append_locked(std::move(record));
     }
-}
+} // namespace toy3d

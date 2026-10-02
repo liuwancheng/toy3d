@@ -15,8 +15,7 @@ namespace toy3d
 {
     namespace
     {
-        ShaderParametersMetadata make_material_parameter_metadata(
-            const shader::ShaderParameterSchema& schema)
+        ShaderParametersMetadata make_material_parameter_metadata(const shader::ShaderParameterSchema& schema)
         {
             ShaderParametersMetadata metadata;
             metadata.group = shader::BindingGroup::Material;
@@ -49,9 +48,9 @@ namespace toy3d
             metadata.resources.reserve(schema.resources.size());
             for (const shader::ShaderParameterResourceSchema& resource : schema.resources)
             {
-                metadata.resources.push_back(
-                    {resource.parameter_id, resource.category, resource.resource_kind, resource.element_type,
-                     resource.array_count, resource.default_value_kind, resource.default_value, resource.name});
+                metadata.resources.push_back({resource.parameter_id, resource.category, resource.resource_kind,
+                                              resource.element_type, resource.array_count, resource.default_value_kind,
+                                              resource.default_value, resource.name});
             }
             return metadata;
         }
@@ -69,7 +68,9 @@ namespace toy3d
             {
                 const auto found = scalars.find(member.parameter_id);
                 if (found == scalars.end())
+                {
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material scalar value is missing");
+                }
                 encoder.write_constant(member, found->second);
                 break;
             }
@@ -100,17 +101,16 @@ namespace toy3d
                 {
                     return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material float4 value is missing");
                 }
-                encoder.write_constant(
-                    member, Vector4(found->second.x, found->second.y, found->second.z, found->second.w));
+                encoder.write_constant(member,
+                                       Vector4(found->second.x, found->second.y, found->second.z, found->second.w));
                 break;
             }
             default:
                 return RHIStatus::failure(RHIErrorCode::Unsupported,
                                           "Material constant type is not supported by the first-stage proxy");
             }
-            return encoder.succeeded()
-                       ? RHIStatus::success()
-                       : RHIStatus::failure(RHIErrorCode::InvalidArgument, encoder.error());
+            return encoder.succeeded() ? RHIStatus::success()
+                                       : RHIStatus::failure(RHIErrorCode::InvalidArgument, encoder.error());
         }
 
         RHIStatus derive_effective_graphics_pass_state(const ShaderMapProgramRef& shader_program, bool two_sided,
@@ -154,26 +154,30 @@ namespace toy3d
         RHISamplerDesc material_sampler_desc(MaterialSamplerPreset preset)
         {
             RHISamplerDesc desc;
-            const bool point = preset == MaterialSamplerPreset::PointClamp || preset == MaterialSamplerPreset::PointWrap;
-            const bool trilinear = preset == MaterialSamplerPreset::TrilinearClamp ||
-                preset == MaterialSamplerPreset::TrilinearWrap;
-            const bool wrap = preset == MaterialSamplerPreset::PointWrap || preset == MaterialSamplerPreset::LinearWrap ||
-                preset == MaterialSamplerPreset::TrilinearWrap;
+            const bool point =
+                preset == MaterialSamplerPreset::PointClamp || preset == MaterialSamplerPreset::PointWrap;
+            const bool trilinear =
+                preset == MaterialSamplerPreset::TrilinearClamp || preset == MaterialSamplerPreset::TrilinearWrap;
+            const bool wrap = preset == MaterialSamplerPreset::PointWrap ||
+                              preset == MaterialSamplerPreset::LinearWrap ||
+                              preset == MaterialSamplerPreset::TrilinearWrap;
             desc.min_filter = point ? RHIFilter::Nearest : RHIFilter::Linear;
             desc.mag_filter = desc.min_filter;
             desc.mip_filter = trilinear ? RHIFilter::Linear : RHIFilter::Nearest;
-            desc.address_u = desc.address_v = desc.address_w = wrap ? RHIAddressMode::Repeat : RHIAddressMode::ClampToEdge;
+            desc.address_u = desc.address_v = desc.address_w =
+                wrap ? RHIAddressMode::Repeat : RHIAddressMode::ClampToEdge;
             desc.debug_name = "MaterialSampler";
             return desc;
         }
     } // namespace
 
-    MaterialRenderProxy::MaterialRenderProxy(const Material& material) : MaterialRenderProxy(material.desc()) {}
+    MaterialRenderProxy::MaterialRenderProxy(const Material& material) : MaterialRenderProxy(material.desc())
+    {
+    }
 
     MaterialRenderProxy::MaterialRenderProxy(const MaterialDesc& desc)
         : shader_name_(desc.shader_name), parameter_schema_(desc.parameter_schema),
-          parameter_metadata_(make_material_parameter_metadata(parameter_schema_)),
-          shader_program_(desc.shader_program)
+          parameter_metadata_(make_material_parameter_metadata(parameter_schema_)), shader_program_(desc.shader_program)
     {
         if (shader_program_)
         {
@@ -200,9 +204,12 @@ namespace toy3d
         // A code-only publication keeps the logical binding independent from
         // Program/native mappings when schema and all effective values match.
         if (parameter_schema_.schema_identity == candidate.parameter_schema_.schema_identity &&
-            scalar_parameters_ == candidate.scalar_parameters_ && vector2_parameters_ == candidate.vector2_parameters_ &&
-            vector3_parameters_ == candidate.vector3_parameters_ && vector4_parameters_ == candidate.vector4_parameters_ &&
-            texture_parameters_ == candidate.texture_parameters_ && sampler_parameters_ == candidate.sampler_parameters_)
+            scalar_parameters_ == candidate.scalar_parameters_ &&
+            vector2_parameters_ == candidate.vector2_parameters_ &&
+            vector3_parameters_ == candidate.vector3_parameters_ &&
+            vector4_parameters_ == candidate.vector4_parameters_ &&
+            texture_parameters_ == candidate.texture_parameters_ &&
+            sampler_parameters_ == candidate.sampler_parameters_)
         {
             candidate.binding_set_ = std::move(binding_set_);
             candidate.texture_generations_ = std::move(texture_generations_);
@@ -214,7 +221,10 @@ namespace toy3d
         if (resource_manager_ != nullptr)
         {
             const auto status = candidate.begin_init_textures(*resource_manager_);
-            if (!status) TOY_LOG_ERROR("Material candidate texture initialization failed: {}", status.message());
+            if (!status)
+            {
+                TOY_LOG_ERROR("Material candidate texture initialization failed: {}", status.message());
+            }
         }
         *this = std::move(candidate);
     }
@@ -453,8 +463,8 @@ namespace toy3d
     {
         if (!shader_program)
         {
-            return RHIResult<RHIBindingSetRef>::failure(
-                RHIErrorCode::NotReady, "Material binding requires a ShaderMap Program");
+            return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady,
+                                                        "Material binding requires a ShaderMap Program");
         }
 
         RHIBindingSetRef& cached_set = staged ? staged_binding_set_ : binding_set_;
@@ -467,7 +477,9 @@ namespace toy3d
         const RHIStatus metadata_status =
             validate_shader_parameters_metadata_against_schema(parameter_metadata_, parameter_schema_);
         if (!metadata_status)
+        {
             return RHIResult<RHIBindingSetRef>::failure(metadata_status.code(), metadata_status.message());
+        }
 
         ShaderParameterEncoder encoder(parameter_metadata_);
         for (const ShaderParameterConstantMemberMetadata& member : parameter_metadata_.constant_buffer.members)
@@ -475,7 +487,9 @@ namespace toy3d
             const RHIStatus status = write_material_constant(member, scalar_parameters_, vector2_parameters_,
                                                              vector3_parameters_, vector4_parameters_, encoder);
             if (!status)
+            {
                 return RHIResult<RHIBindingSetRef>::failure(status.code(), status.message());
+            }
         }
 
         std::unordered_map<TextureResource*, std::uint64_t> generations;
@@ -486,29 +500,36 @@ namespace toy3d
             {
                 const auto parameter = sampler_parameters_.find(resource_metadata.parameter_id);
                 if (parameter == sampler_parameters_.end())
+                {
                     return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument,
-                        "Material Sampler value is missing");
+                                                                "Material Sampler value is missing");
+                }
                 if (parameter->second < MaterialSamplerPreset::PointClamp ||
                     parameter->second > MaterialSamplerPreset::TrilinearWrap)
-                    return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::Unsupported,
-                        "Material Sampler preset is not supported by this binding");
+                {
+                    return RHIResult<RHIBindingSetRef>::failure(
+                        RHIErrorCode::Unsupported, "Material Sampler preset is not supported by this binding");
+                }
                 auto cached = sampler_cache_.find(parameter->second);
                 if (cached == sampler_cache_.end())
                 {
                     auto created_sampler = device.create_sampler(material_sampler_desc(parameter->second));
                     if (!created_sampler)
+                    {
                         return RHIResult<RHIBindingSetRef>::failure(created_sampler.status().code(),
-                            created_sampler.status().message());
+                                                                    created_sampler.status().message());
+                    }
                     cached = sampler_cache_.emplace(parameter->second, created_sampler.value()).first;
                 }
                 encoder.add_resource(resource_metadata, cached->second);
                 if (!encoder.succeeded())
+                {
                     return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument, encoder.error());
+                }
                 continue;
             }
             const auto parameter = texture_parameters_.find(resource_metadata.parameter_id);
-            TextureResource* const resource =
-                parameter != texture_parameters_.end() ? parameter->second : nullptr;
+            TextureResource* const resource = parameter != texture_parameters_.end() ? parameter->second : nullptr;
             const RHITextureViewRef view = resource != nullptr ? resource->view_for_current_recording() : nullptr;
             if (resource == nullptr || !view)
             {
@@ -517,7 +538,9 @@ namespace toy3d
             }
             encoder.add_resource(resource_metadata, view);
             if (!encoder.succeeded())
+            {
                 return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument, encoder.error());
+            }
             generations[resource] = resource->binding_generation();
             views[resource] = view;
         }

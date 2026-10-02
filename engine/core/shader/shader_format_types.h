@@ -16,14 +16,22 @@ namespace toy3d::shader
     {
         switch (index)
         {
-        case 0: return "PointClamp";
-        case 1: return "PointWrap";
-        case 2: return "LinearClamp";
-        case 3: return "LinearWrap";
-        case 4: return "TrilinearClamp";
-        case 5: return "TrilinearWrap";
-        case 6: return "ShadowCompareClamp";
-        default: return nullptr;
+        case 0:
+            return "PointClamp";
+        case 1:
+            return "PointWrap";
+        case 2:
+            return "LinearClamp";
+        case 3:
+            return "LinearWrap";
+        case 4:
+            return "TrilinearClamp";
+        case 5:
+            return "TrilinearWrap";
+        case 6:
+            return "ShadowCompareClamp";
+        default:
+            return nullptr;
         }
     }
 
@@ -501,9 +509,11 @@ namespace toy3d::shader
     // identity without allocating a second copy of reflected member names.
     ShaderParameterId make_shader_parameter_id(BindingGroup group, ShaderParameterCategory category,
                                                std::string_view name);
-    ShaderDataLayoutHash calculate_constant_buffer_data_layout_hash(
-        BindingGroup group, ShaderParameterId buffer_binding_id, std::uint32_t data_size,
-        const std::vector<ReflectedConstantMember>& members, std::uint32_t abi_version = toy_shader_abi_version);
+    ShaderDataLayoutHash calculate_constant_buffer_data_layout_hash(BindingGroup group,
+                                                                    ShaderParameterId buffer_binding_id,
+                                                                    std::uint32_t data_size,
+                                                                    const std::vector<ReflectedConstantMember>& members,
+                                                                    std::uint32_t abi_version = toy_shader_abi_version);
     Sha256Hash calculate_target_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
                                              const std::vector<ShaderMapBinding>& bindings);
     Sha256Hash calculate_shader_parameter_schema_identity(const ShaderParameterSchema& schema);
@@ -511,8 +521,7 @@ namespace toy3d::shader
     Sha256Hash calculate_shader_parameter_group_identity(const ShaderParameterSchema& schema, BindingGroup group);
     bool validate_shader_parameter_schema(const ShaderParameterSchema& schema, std::string& error);
     bool validate_active_bindings_are_schema_subset(const ShaderParameterSchema& schema,
-                                                    const std::vector<ShaderMapBinding>& bindings,
-                                                    std::string& error);
+                                                    const std::vector<ShaderMapBinding>& bindings, std::string& error);
     bool validate_reflected_bindings_are_schema_subset(const ShaderParameterSchema& schema,
                                                        const std::vector<ReflectedBinding>& bindings,
                                                        std::string& error);

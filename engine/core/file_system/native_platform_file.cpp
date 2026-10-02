@@ -116,7 +116,9 @@ namespace toy3d
             {
                 std::wstring text = native.lexically_normal().make_preferred().native();
                 if (text.compare(0u, 4u, L"\\\\?\\") != 0u && text.compare(0u, 4u, L"\\\\.\\") != 0u)
+                {
                     text = text.compare(0u, 2u, L"\\\\") == 0u ? L"\\\\?\\UNC\\" + text.substr(2u) : L"\\\\?\\" + text;
+                }
                 native = fs::path(std::move(text));
             }
 #endif
@@ -128,9 +130,13 @@ namespace toy3d
 #if WITH_WIN
             const std::wstring& text = path.native();
             if (text.compare(0u, 8u, L"\\\\?\\UNC\\") == 0u)
+            {
                 return PhysicalPath(fs::path(L"\\\\" + text.substr(8u)).u8string());
+            }
             if (text.compare(0u, 4u, L"\\\\?\\") == 0u)
+            {
                 return PhysicalPath(fs::path(text.substr(4u)).u8string());
+            }
 #endif
             return PhysicalPath(path.u8string());
         }
@@ -142,12 +148,19 @@ namespace toy3d
             // extended-length prefix; PhysicalPath itself keeps ordinary UTF-8.
             std::error_code error;
             auto absolute = fs::absolute(to_native(path), error);
-            if (error) return FileResult<std::wstring>(make_error("native_path", path, error));
+            if (error)
+            {
+                return FileResult<std::wstring>(make_error("native_path", path, error));
+            }
             std::wstring native = absolute.lexically_normal().make_preferred().native();
             if (native.compare(0u, 4u, L"\\\\?\\") == 0u || native.compare(0u, 4u, L"\\\\.\\") == 0u)
+            {
                 return FileResult<std::wstring>(std::move(native));
+            }
             if (native.compare(0u, 2u, L"\\\\") == 0u)
+            {
                 return FileResult<std::wstring>(L"\\\\?\\UNC\\" + native.substr(2u));
+            }
             return FileResult<std::wstring>(L"\\\\?\\" + native);
         }
 #endif
@@ -166,7 +179,6 @@ namespace toy3d
                 return FileType::Other;
             }
         }
-
 
         FileStatus handle_error(FileErrorCode code, const char* operation, const PhysicalPath& path,
                                 const char* message)
@@ -194,7 +206,10 @@ namespace toy3d
             }
 #endif
 
-            ~NativeFileHandle() override { close(); }
+            ~NativeFileHandle() override
+            {
+                close();
+            }
 
             FileResult<std::uint64_t> size() const override
             {
@@ -224,7 +239,9 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return FileResult<std::size_t>(invalid_state("read"));
+                }
                 if (!readable_)
                 {
                     return FileResult<std::size_t>(
@@ -241,7 +258,9 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return FileResult<std::size_t>(invalid_state("write"));
+                }
                 if (!writable_)
                 {
                     return FileResult<std::size_t>(
@@ -252,7 +271,9 @@ namespace toy3d
                     return FileResult<std::size_t>(invalid_path("write", path_, "source is null"));
                 }
                 if (byte_count == 0)
+                {
                     return FileResult<std::size_t>(std::size_t{0});
+                }
 #if WITH_WIN
                 const DWORD requested =
                     static_cast<DWORD>(std::min<std::size_t>(byte_count, std::numeric_limits<DWORD>::max()));
@@ -271,7 +292,9 @@ namespace toy3d
                         return FileResult<std::size_t>(static_cast<std::size_t>(written));
                     }
                     if (errno != EINTR)
+                    {
                         return FileResult<std::size_t>(last_error("write"));
+                    }
                 }
 #endif
             }
@@ -280,7 +303,9 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return FileResult<std::uint64_t>(invalid_state("tell"));
+                }
 #if WITH_WIN
                 LARGE_INTEGER distance{};
                 LARGE_INTEGER position{};
@@ -303,7 +328,9 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return invalid_state("seek");
+                }
 #if WITH_WIN
                 if (offset > static_cast<std::uint64_t>(std::numeric_limits<LONGLONG>::max()))
                 {
@@ -312,14 +339,18 @@ namespace toy3d
                 LARGE_INTEGER distance{};
                 distance.QuadPart = static_cast<LONGLONG>(offset);
                 if (!SetFilePointerEx(handle_, distance, nullptr, FILE_BEGIN))
+                {
                     return last_error("seek");
+                }
 #else
                 if (offset > static_cast<std::uint64_t>(std::numeric_limits<off_t>::max()))
                 {
                     return handle_error(FileErrorCode::TooLarge, "seek", path_, "offset is too large");
                 }
                 if (::lseek(handle_, static_cast<off_t>(offset), SEEK_SET) < 0)
+                {
                     return last_error("seek");
+                }
 #endif
                 return FileStatus::success();
             }
@@ -329,7 +360,9 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return FileResult<std::size_t>(invalid_state("read_at"));
+                }
                 if (!readable_)
                 {
                     return FileResult<std::size_t>(
@@ -377,7 +410,9 @@ namespace toy3d
                         return FileResult<std::size_t>(static_cast<std::size_t>(read_count));
                     }
                     if (errno != EINTR)
+                    {
                         return FileResult<std::size_t>(last_error("read_at"));
+                    }
                 }
 #endif
             }
@@ -386,15 +421,23 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return invalid_state("flush");
+                }
                 if (!writable_)
+                {
                     return FileStatus::success();
+                }
 #if WITH_WIN
                 if (!FlushFileBuffers(handle_))
+                {
                     return last_error("flush");
+                }
 #else
                 if (::fsync(handle_) != 0)
+                {
                     return last_error("flush");
+                }
 #endif
                 return FileStatus::success();
             }
@@ -403,17 +446,23 @@ namespace toy3d
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!is_open())
+                {
                     return FileStatus::success();
+                }
 #if WITH_WIN
                 const HANDLE closing = handle_;
                 handle_ = INVALID_HANDLE_VALUE;
                 if (!CloseHandle(closing))
+                {
                     return last_error("close");
+                }
 #else
                 const int closing = handle_;
                 handle_ = -1;
                 if (::close(closing) != 0)
+                {
                     return last_error("close");
+                }
 #endif
                 return FileStatus::success();
             }
@@ -446,7 +495,9 @@ namespace toy3d
             FileResult<std::size_t> read_locked(std::uint8_t* destination, std::size_t byte_count) const
             {
                 if (byte_count == 0)
+                {
                     return FileResult<std::size_t>(std::size_t{0});
+                }
 #if WITH_WIN
                 const DWORD requested =
                     static_cast<DWORD>(std::min<std::size_t>(byte_count, std::numeric_limits<DWORD>::max()));
@@ -465,7 +516,9 @@ namespace toy3d
                         return FileResult<std::size_t>(static_cast<std::size_t>(read_count));
                     }
                     if (errno != EINTR)
+                    {
                         return FileResult<std::size_t>(last_error("read"));
+                    }
                 }
 #endif
             }
@@ -503,7 +556,10 @@ namespace toy3d
         const bool writable = mode != FileOpenMode::Read;
 #if WITH_WIN
         const auto windows_path = windows_api_path(path);
-        if (!windows_path.succeeded()) return FileResult<std::unique_ptr<FileHandle>>(windows_path.status());
+        if (!windows_path.succeeded())
+        {
+            return FileResult<std::unique_ptr<FileHandle>>(windows_path.status());
+        }
         const DWORD access = (readable ? GENERIC_READ : 0u) | (writable ? GENERIC_WRITE : 0u);
         const DWORD creation = mode == FileOpenMode::Read            ? OPEN_EXISTING
                                : mode == FileOpenMode::WriteNew      ? CREATE_NEW
@@ -699,7 +755,9 @@ namespace toy3d
         {
             const FileResult<std::size_t> written = handle->write(bytes.data() + offset, bytes.size() - offset);
             if (!written.succeeded())
+            {
                 return written.status();
+            }
             if (written.value() == 0)
             {
                 return handle_error(FileErrorCode::IoError, "write_binary", path, "write returned zero bytes");
@@ -708,7 +766,9 @@ namespace toy3d
         }
         const FileStatus flush_status = handle->flush();
         if (!flush_status.succeeded())
+        {
             return flush_status;
+        }
         return handle->close();
     }
 
@@ -787,9 +847,16 @@ namespace toy3d
 #if WITH_WIN
             const auto windows_source = windows_api_path(source);
             const auto windows_destination = windows_api_path(destination);
-            if (!windows_source.succeeded()) return windows_source.status();
-            if (!windows_destination.succeeded()) return windows_destination.status();
-            if (!MoveFileExW(windows_source.value().c_str(), windows_destination.value().c_str(), MOVEFILE_WRITE_THROUGH))
+            if (!windows_source.succeeded())
+            {
+                return windows_source.status();
+            }
+            if (!windows_destination.succeeded())
+            {
+                return windows_destination.status();
+            }
+            if (!MoveFileExW(windows_source.value().c_str(), windows_destination.value().c_str(),
+                             MOVEFILE_WRITE_THROUGH))
             {
                 return make_error("rename_no_replace", destination,
                                   std::error_code(static_cast<int>(GetLastError()), std::system_category()));
@@ -839,8 +906,14 @@ namespace toy3d
 #if WITH_WIN
             const auto windows_source = windows_api_path(source);
             const auto windows_destination = windows_api_path(destination);
-            if (!windows_source.succeeded()) return windows_source.status();
-            if (!windows_destination.succeeded()) return windows_destination.status();
+            if (!windows_source.succeeded())
+            {
+                return windows_source.status();
+            }
+            if (!windows_destination.succeeded())
+            {
+                return windows_destination.status();
+            }
             if (!MoveFileExW(windows_source.value().c_str(), windows_destination.value().c_str(),
                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             {
@@ -987,8 +1060,11 @@ namespace toy3d
             {
                 return FileResult<std::vector<DirectoryEntry>>(make_error("enumerate_directory", path, error));
             }
-            std::sort(entries.begin(), entries.end(), [](const DirectoryEntry& lhs, const DirectoryEntry& rhs)
-                      { return lhs.path.utf8() < rhs.path.utf8(); });
+            std::sort(entries.begin(), entries.end(),
+                      [](const DirectoryEntry& lhs, const DirectoryEntry& rhs)
+                      {
+                          return lhs.path.utf8() < rhs.path.utf8();
+                      });
             return FileResult<std::vector<DirectoryEntry>>(std::move(entries));
         }
         catch (const fs::filesystem_error& error)

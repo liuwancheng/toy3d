@@ -121,7 +121,9 @@ namespace toy3d
     template <typename Stream> class ValueDepthScope
     {
       public:
-        explicit ValueDepthScope(Stream& stream) : stream_(stream), status_(stream.enter_depth()) {}
+        explicit ValueDepthScope(Stream& stream) : stream_(stream), status_(stream.enter_depth())
+        {
+        }
         ~ValueDepthScope()
         {
             if (status_.succeeded())
@@ -133,7 +135,10 @@ namespace toy3d
         ValueDepthScope(const ValueDepthScope&) = delete;
         ValueDepthScope& operator=(const ValueDepthScope&) = delete;
 
-        const ValueStatus& status() const { return status_; }
+        const ValueStatus& status() const
+        {
+            return status_;
+        }
 
       private:
         Stream& stream_;

@@ -117,13 +117,9 @@ namespace toy3d::tests
                                               member.array_stride,
                                               member.matrix_stride,
                                               {}});
-                    reflected_members.push_back({member.parameter_id,
-                                                 member.name,
-                                                 static_cast<shader::ShaderValueType>(member.type),
-                                                 member.offset,
-                                                 member.size,
-                                                 member.array_stride,
-                                                 member.matrix_stride});
+                    reflected_members.push_back({member.parameter_id, member.name,
+                                                 static_cast<shader::ShaderValueType>(member.type), member.offset,
+                                                 member.size, member.array_stride, member.matrix_stride});
                 }
                 buffer.data_layout_hash = shader::calculate_constant_buffer_data_layout_hash(
                     buffer.group, buffer.binding_id, buffer.size, reflected_members);
@@ -140,7 +136,9 @@ namespace toy3d::tests
                 resource.category = to_schema_category(binding.type);
                 resource.resource_kind = to_schema_resource_kind(binding.type);
                 if (binding.type != RHIResourceBindingType::Sampler)
+                {
                     resource.element_type = shader::ShaderResourceElementType::Float4;
+                }
                 resource.array_count = binding.array_count;
                 schema.resources.push_back(std::move(resource));
             }
@@ -155,9 +153,13 @@ namespace toy3d::tests
             {
                 const auto binding = std::find_if(program.bindings.begin(), program.bindings.end(),
                                                   [&](const ShaderMapBinding& candidate)
-                                                  { return candidate.parameter_id == reflected.parameter_id; });
+                                                  {
+                                                      return candidate.parameter_id == reflected.parameter_id;
+                                                  });
                 if (binding != program.bindings.end())
+                {
                     reflected = *binding;
+                }
             }
         }
     }

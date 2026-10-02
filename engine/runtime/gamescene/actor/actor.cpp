@@ -13,7 +13,10 @@ namespace toy3d
     {
         std::vector<std::uint32_t> ids;
         ids.reserve(components_.size());
-        for (const auto& component : components_) ids.push_back(component->component_id());
+        for (const auto& component : components_)
+        {
+            ids.push_back(component->component_id());
+        }
         return ids;
     }
 
@@ -29,19 +32,27 @@ namespace toy3d
             TOY_LOG_ERROR("An Actor root component must be owned by that Actor.");
             return false;
         }
-        if (root_component_ == component) return true;
+        if (root_component_ == component)
+        {
+            return true;
+        }
         root_component_ = component;
         mark_content_changed();
         return true;
     }
 
-    void Actor::mark_content_changed() { world_.mark_content_changed(); }
+    void Actor::mark_content_changed()
+    {
+        world_.mark_content_changed();
+    }
 
     bool Actor::owns_component(const ActorComponent& component) const
     {
         return std::any_of(components_.begin(), components_.end(),
                            [&component](const std::unique_ptr<ActorComponent>& candidate)
-                           { return candidate.get() == &component; });
+                           {
+                               return candidate.get() == &component;
+                           });
     }
 
     std::uint32_t Actor::allocate_component_id()
@@ -52,11 +63,15 @@ namespace toy3d
     ActorComponent* Actor::find_component_by_id(std::uint32_t component_id) const
     {
         if (component_id == 0u)
+        {
             return nullptr;
+        }
         for (const std::unique_ptr<ActorComponent>& component : components_)
         {
             if (component->component_id() == component_id)
+            {
                 return component.get();
+            }
         }
         return nullptr;
     }
@@ -157,7 +172,10 @@ namespace toy3d
                 primitive->create_render_state();
             }
             auto* light = dynamic_cast<LightComponent*>(component.get());
-            if (light && light->is_registered()) light->create_render_state();
+            if (light && light->is_registered())
+            {
+                light->create_render_state();
+            }
         }
     }
 
@@ -171,7 +189,10 @@ namespace toy3d
                 primitive->destroy_render_state();
             }
             auto* light = dynamic_cast<LightComponent*>(components_[index - 1].get());
-            if (light) light->destroy_render_state();
+            if (light)
+            {
+                light->destroy_render_state();
+            }
         }
     }
 } // namespace toy3d

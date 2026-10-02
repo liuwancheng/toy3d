@@ -41,11 +41,20 @@ namespace
         {
         }
 
-        toy3d::NamedThread get_desired_thread() const { return desired_thread_; }
+        toy3d::NamedThread get_desired_thread() const
+        {
+            return desired_thread_;
+        }
 
-        toy3d::TaskPriority get_priority() const { return priority_; }
+        toy3d::TaskPriority get_priority() const
+        {
+            return priority_;
+        }
 
-        toy3d::SubsequentsMode get_subsequents_mode() const { return mode_; }
+        toy3d::SubsequentsMode get_subsequents_mode() const
+        {
+            return mode_;
+        }
 
         void do_task(toy3d::NamedThread current_thread, const toy3d::GraphEventRef& completion_event)
         {
@@ -94,9 +103,12 @@ namespace
 
         std::atomic<toy3d::TaskGraphErrorCode> duplicate_diagnostic{toy3d::TaskGraphErrorCode::None};
         toy3d::ThreadManager duplicate_thread_manager;
-        toy3d::TaskGraphCreateResult duplicate = toy3d::create_task_graph(
-            {0, 8, false}, duplicate_thread_manager,
-            [&duplicate_diagnostic](const toy3d::TaskGraphStatus& status) { duplicate_diagnostic.store(status.code); });
+        toy3d::TaskGraphCreateResult duplicate =
+            toy3d::create_task_graph({0, 8, false}, duplicate_thread_manager,
+                                     [&duplicate_diagnostic](const toy3d::TaskGraphStatus& status)
+                                     {
+                                         duplicate_diagnostic.store(status.code);
+                                     });
         check(!duplicate.succeeded() && duplicate.status().code == toy3d::TaskGraphErrorCode::InvalidState &&
                   duplicate_diagnostic.load() == toy3d::TaskGraphErrorCode::InvalidState &&
                   &toy3d::TaskGraphInterface::get() == first.get(),
@@ -201,14 +213,19 @@ namespace
         }
         check(cancel_graph->attach_to_thread(toy3d::NamedThread::GameThread).succeeded(),
               "waiter wake graph must attach GameThread");
-        toy3d::GraphTask<SchedulerTask>* held =
-            toy3d::GraphTask<SchedulerTask>::create_task(*cancel_graph)
-                .construct_and_hold([](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
-                                    toy3d::NamedThread::GameThread);
+        toy3d::GraphTask<SchedulerTask>* held = toy3d::GraphTask<SchedulerTask>::create_task(*cancel_graph)
+                                                    .construct_and_hold(
+                                                        [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                                                        {
+                                                        },
+                                                        toy3d::NamedThread::GameThread);
         toy3d::GraphEventRef held_event = held->get_completion_event();
         std::atomic<toy3d::TaskGraphErrorCode> waiter_result{toy3d::TaskGraphErrorCode::InvalidState};
-        std::thread waiter([&cancel_graph, &held_event, &waiter_result]()
-                           { waiter_result.store(cancel_graph->wait_until_task_completes(held_event).status.code); });
+        std::thread waiter(
+            [&cancel_graph, &held_event, &waiter_result]()
+            {
+                waiter_result.store(cancel_graph->wait_until_task_completes(held_event).status.code);
+            });
         check(cancel_graph->shutdown(toy3d::TaskGraphShutdownMode::CancelPending).succeeded(),
               "CancelPending must close tracked work during explicit shutdown");
         waiter.join();
@@ -255,7 +272,9 @@ namespace
         toy3d::GraphEventRef self_wait = toy3d::dispatch_graph_task(
             *graph, "SelfWait",
             [&graph, &self_wait_result](toy3d::NamedThread, const toy3d::GraphEventRef& completion_event)
-            { self_wait_result.store(graph->wait_until_task_completes(completion_event).status.code); },
+            {
+                self_wait_result.store(graph->wait_until_task_completes(completion_event).status.code);
+            },
             toy3d::NamedThread::GameThread);
         events.push_back(self_wait);
 
@@ -264,8 +283,11 @@ namespace
         check(order == std::vector<int>({1, 2, 3}), "single-thread fallback must preserve one deterministic FIFO");
         check(self_wait_result.load() == toy3d::TaskGraphErrorCode::DeadlockRisk,
               "a running GraphTask must diagnose waiting for its own completion");
-        check(std::all_of(events.begin(), events.end(), [](const toy3d::GraphEventRef& event)
-                          { return event->get_outcome() == toy3d::TaskOutcome::Succeeded; }),
+        check(std::all_of(events.begin(), events.end(),
+                          [](const toy3d::GraphEventRef& event)
+                          {
+                              return event->get_outcome() == toy3d::TaskOutcome::Succeeded;
+                          }),
               "Drain must publish successful completion for every executed task");
         check(graph->get_current_thread_if_known() == toy3d::NamedThread::Unknown,
               "shutdown must clear the caller's Named Thread binding");
@@ -277,7 +299,10 @@ namespace
         toy3d::ThreadManager thread_manager;
         std::unique_ptr<toy3d::TaskGraphInterface> graph =
             create_graph(thread_manager, {0, 2, false},
-                         [&diagnosed](const toy3d::TaskGraphStatus& status) { diagnosed.store(status.code); });
+                         [&diagnosed](const toy3d::TaskGraphStatus& status)
+                         {
+                             diagnosed.store(status.code);
+                         });
         if (!graph)
         {
             return;
@@ -287,7 +312,10 @@ namespace
         try
         {
             toy3d::dispatch_graph_task(
-                *graph, "Unavailable", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                *graph, "Unavailable",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
                 toy3d::NamedThread::GameThread);
         }
         catch (const toy3d::TaskGraphException& exception)
@@ -305,18 +333,27 @@ namespace
 
         toy3d::GraphTask<SchedulerTask>* first =
             toy3d::GraphTask<SchedulerTask>::create_task(*graph).construct_and_hold(
-                [](toy3d::NamedThread, const toy3d::GraphEventRef&) {}, toy3d::NamedThread::GameThread);
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
+                toy3d::NamedThread::GameThread);
         toy3d::GraphEventRef first_event = first->get_completion_event();
         toy3d::GraphTask<SchedulerTask>* second =
             toy3d::GraphTask<SchedulerTask>::create_task(*graph).construct_and_hold(
-                [](toy3d::NamedThread, const toy3d::GraphEventRef&) {}, toy3d::NamedThread::GameThread);
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
+                toy3d::NamedThread::GameThread);
         toy3d::GraphEventRef second_event = second->get_completion_event();
 
         bool overloaded_rejected = false;
         try
         {
             toy3d::dispatch_graph_task(
-                *graph, "Overloaded", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                *graph, "Overloaded",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
                 toy3d::NamedThread::GameThread);
         }
         catch (const toy3d::TaskGraphException& exception)
@@ -335,7 +372,10 @@ namespace
         try
         {
             toy3d::dispatch_graph_task(
-                *graph, "Stopped", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                *graph, "Stopped",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
                 toy3d::NamedThread::GameThread);
         }
         catch (const toy3d::TaskGraphException& exception)
@@ -360,11 +400,17 @@ namespace
         toy3d::GraphTask<SchedulerTask>* first =
             toy3d::GraphTask<SchedulerTask>::create_task(*graph).construct_and_hold(
                 [&delayed_until](toy3d::NamedThread, const toy3d::GraphEventRef& completion_event)
-                { completion_event->dont_complete_until(delayed_until); }, toy3d::NamedThread::GameThread);
+                {
+                    completion_event->dont_complete_until(delayed_until);
+                },
+                toy3d::NamedThread::GameThread);
         toy3d::GraphEventRef first_event = first->get_completion_event();
         toy3d::GraphEventArray first_dependency{first_event};
         toy3d::GraphEventRef second_event = toy3d::dispatch_graph_task(
-            *graph, "CycleDependent", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+            *graph, "CycleDependent",
+            [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+            {
+            },
             toy3d::NamedThread::GameThread, &first_dependency);
         delayed_until = second_event;
         first->unlock();
@@ -392,7 +438,10 @@ namespace
               "GameThread must attach before worker scheduling tests");
 
         toy3d::GraphTask<SchedulerTask>* gate = toy3d::GraphTask<SchedulerTask>::create_task(*graph).construct_and_hold(
-            [](toy3d::NamedThread, const toy3d::GraphEventRef&) {}, toy3d::NamedThread::AnyWorker);
+            [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+            {
+            },
+            toy3d::NamedThread::AnyWorker);
         toy3d::GraphEventRef gate_event = gate->get_completion_event();
         toy3d::GraphEventArray gate_dependency{gate_event};
 
@@ -441,7 +490,10 @@ namespace
              &nested_wait_done](toy3d::NamedThread, const toy3d::GraphEventRef& parent_completion)
             {
                 toy3d::GraphEventRef child = toy3d::dispatch_graph_task(
-                    *graph, "WorkerNestedChild", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                    *graph, "WorkerNestedChild",
+                    [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                    {
+                    },
                     toy3d::NamedThread::AnyWorker);
                 worker_child_wait.store(graph->wait_until_task_completes(child).status.code);
                 worker_self_wait.store(graph->wait_until_task_completes(parent_completion).status.code);
@@ -457,12 +509,18 @@ namespace
               "the nested worker parent must publish completion after helping its child");
 
         toy3d::GraphEventRef failed = toy3d::dispatch_graph_task(
-            *graph, "ExternalFailureWait", [](toy3d::NamedThread, const toy3d::GraphEventRef&)
-            { throw std::runtime_error("expected scheduler test failure"); }, toy3d::NamedThread::AnyWorker);
+            *graph, "ExternalFailureWait",
+            [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+            {
+                throw std::runtime_error("expected scheduler test failure");
+            },
+            toy3d::NamedThread::AnyWorker);
         std::atomic<toy3d::TaskGraphErrorCode> external_wait_result{toy3d::TaskGraphErrorCode::None};
         std::thread external_waiter(
             [&graph, &failed, &external_wait_result]()
-            { external_wait_result.store(graph->wait_until_task_completes(failed).status.code); });
+            {
+                external_wait_result.store(graph->wait_until_task_completes(failed).status.code);
+            });
         external_waiter.join();
         check(external_wait_result.load() == toy3d::TaskGraphErrorCode::TaskFailed,
               "an Unknown external thread must block and observe TaskFailed completion");
@@ -476,7 +534,10 @@ namespace
         toy3d::ThreadManager thread_manager;
         std::unique_ptr<toy3d::TaskGraphInterface> graph =
             create_graph(thread_manager, {1, 32, true},
-                         [&diagnosed](const toy3d::TaskGraphStatus& status) { diagnosed.store(status.code); });
+                         [&diagnosed](const toy3d::TaskGraphStatus& status)
+                         {
+                             diagnosed.store(status.code);
+                         });
         if (!graph)
         {
             return;
@@ -488,7 +549,10 @@ namespace
         try
         {
             toy3d::dispatch_graph_task(
-                *graph, "UnattachedRenderingThread", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                *graph, "UnattachedRenderingThread",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
                 toy3d::NamedThread::RenderingThread);
         }
         catch (const toy3d::TaskGraphException& exception)
@@ -497,7 +561,11 @@ namespace
         }
         check(unattached_render_rejected, "render work must be rejected until RenderingThread attaches");
 
-        std::thread wrong_caller([&graph]() { graph->process_thread_until_idle(toy3d::NamedThread::GameThread); });
+        std::thread wrong_caller(
+            [&graph]()
+            {
+                graph->process_thread_until_idle(toy3d::NamedThread::GameThread);
+            });
         wrong_caller.join();
         check(diagnosed.load() == toy3d::TaskGraphErrorCode::InvalidCaller,
               "a non-owner thread must not pump the GameThread queue");
@@ -522,8 +590,12 @@ namespace
         for (int index = 0; index < 32; ++index)
         {
             render_fifo_events.push_back(toy3d::dispatch_graph_task(
-                *graph, "RenderFifo", [&render_fifo_order, index](toy3d::NamedThread, const toy3d::GraphEventRef&)
-                { render_fifo_order.push_back(index); }, toy3d::NamedThread::RenderingThread));
+                *graph, "RenderFifo",
+                [&render_fifo_order, index](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                    render_fifo_order.push_back(index);
+                },
+                toy3d::NamedThread::RenderingThread));
         }
         check(graph->wait_until_tasks_complete(render_fifo_events).succeeded(),
               "RenderingThread FIFO tasks must all publish completion");
@@ -604,22 +676,31 @@ namespace
 
         toy3d::GraphTask<SchedulerTask>* prerequisite =
             toy3d::GraphTask<SchedulerTask>::create_task(*graph).construct_and_hold(
-                [](toy3d::NamedThread, const toy3d::GraphEventRef&) {}, toy3d::NamedThread::GameThread);
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
+                toy3d::NamedThread::GameThread);
         toy3d::GraphEventRef prerequisite_event = prerequisite->get_completion_event();
         toy3d::GraphEventArray prerequisite_array{prerequisite_event};
         toy3d::GraphEventArray dependents;
         for (int index = 0; index < 8; ++index)
         {
             dependents.push_back(toy3d::dispatch_graph_task(
-                *graph, "CancelledDependent", [](toy3d::NamedThread, const toy3d::GraphEventRef&) {},
+                *graph, "CancelledDependent",
+                [](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                {
+                },
                 toy3d::NamedThread::GameThread, &prerequisite_array));
         }
 
         check(graph->shutdown(toy3d::TaskGraphShutdownMode::CancelPending).succeeded(),
               "CancelPending must tolerate prerequisite callbacks racing task destruction");
         check(prerequisite_event->get_outcome() == toy3d::TaskOutcome::Cancelled &&
-                  std::all_of(dependents.begin(), dependents.end(), [](const toy3d::GraphEventRef& event)
-                              { return event->get_outcome() == toy3d::TaskOutcome::Cancelled; }),
+                  std::all_of(dependents.begin(), dependents.end(),
+                              [](const toy3d::GraphEventRef& event)
+                              {
+                                  return event->get_outcome() == toy3d::TaskOutcome::Cancelled;
+                              }),
               "cancelling a prerequisite DAG must close every accepted completion once");
     }
 
@@ -641,8 +722,12 @@ namespace
             for (int task = 0; task < tasks_per_lifecycle; ++task)
             {
                 toy3d::dispatch_graph_task(
-                    *graph, "RepeatedLifecycle", [&executed](toy3d::NamedThread, const toy3d::GraphEventRef&)
-                    { executed.fetch_add(1); }, toy3d::NamedThread::AnyWorker);
+                    *graph, "RepeatedLifecycle",
+                    [&executed](toy3d::NamedThread, const toy3d::GraphEventRef&)
+                    {
+                        executed.fetch_add(1);
+                    },
+                    toy3d::NamedThread::AnyWorker);
             }
             check(graph->shutdown(toy3d::TaskGraphShutdownMode::Drain).succeeded(),
                   "recreated Task Graph workers must drain and join cleanly");

@@ -40,9 +40,13 @@ namespace toy3d::shader
             {
                 ++line_number;
                 if (!line.empty() && line.back() == '\r')
+                {
                     line.pop_back();
+                }
                 if (line.empty() || line.front() == '#')
+                {
                     continue;
+                }
                 const std::size_t separator = line.find('=');
                 if (separator == std::string::npos || separator == 0 || separator + 1 >= line.size())
                 {
@@ -59,7 +63,9 @@ namespace toy3d::shader
                 }
             }
             if (!diagnostics.empty())
+            {
                 return std::nullopt;
+            }
             return fields;
         }
 
@@ -86,7 +92,9 @@ namespace toy3d::shader
             const auto license = required_field(fields, prefix + ".license", diagnostics);
             const auto url = required_field(fields, prefix + ".source_url", diagnostics);
             if (!path || !hash || !revision || !parameters || !license || !url)
+            {
                 return false;
+            }
             const std::optional<Sha256Hash> parsed_hash = sha256_from_hex(*hash);
             if (!parsed_hash)
             {
@@ -114,7 +122,9 @@ namespace toy3d::shader
                     return false;
                 }
                 if (end == std::string::npos)
+                {
                     break;
+                }
                 begin = end + 1;
             }
             artifact.relative_path = *path;
@@ -134,7 +144,9 @@ namespace toy3d::shader
             const auto parsed_url = required_field(fields, prefix + ".source_url", diagnostics);
             const auto parsed_license = required_field(fields, prefix + ".license", diagnostics);
             if (!parsed_version || !parsed_url || !parsed_license)
+            {
                 return false;
+            }
             version = *parsed_version;
             url = *parsed_url;
             license = *parsed_license;
@@ -201,10 +213,14 @@ namespace toy3d::shader
     {
         const FileResult<PhysicalPath> parent = platform_file.parent_path(executable_path);
         if (!parent.succeeded())
+        {
             return FileResult<PhysicalPath>(parent.status());
+        }
         const FileResult<PhysicalPath> toolchain = platform_file.join_relative(parent.value(), "ShaderToolchain");
         if (!toolchain.succeeded())
+        {
             return FileResult<PhysicalPath>(toolchain.status());
+        }
         return platform_file.join_relative(toolchain.value(), shader_toolchain_host_platform());
     }
 
@@ -228,7 +244,9 @@ namespace toy3d::shader
         }
         const auto fields = parse_manifest(platform_file, manifest_path.value(), result.diagnostics);
         if (!fields)
+        {
             return result;
+        }
 
         ShaderToolchainManifest manifest;
         const auto version = required_field(*fields, "manifest_version", result.diagnostics);
@@ -240,9 +258,13 @@ namespace toy3d::shader
                       "Unsupported Toy3dShaderToolchain manifest version.");
         }
         if (identity)
+        {
             manifest.identity = *identity;
+        }
         if (platform)
+        {
             manifest.host_platform = *platform;
+        }
         load_artifact(*fields, "dxc", manifest.dxc, result.diagnostics);
         load_artifact(*fields, "dxc_library", manifest.dxc_library, result.diagnostics);
         load_artifact(*fields, "spirv_val", manifest.spirv_val, result.diagnostics);
@@ -257,7 +279,9 @@ namespace toy3d::shader
         load_metadata(*fields, "dxil_validator", manifest.dxil_validator_version, manifest.dxil_validator_source_url,
                       manifest.dxil_validator_license, result.diagnostics);
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         if (manifest.host_platform != shader_toolchain_host_platform())
         {
             add_error(result.diagnostics, DiagnosticCode::CompilerUnavailable,
@@ -285,7 +309,9 @@ namespace toy3d::shader
         verify_artifact(platform_file, explicit_bundle_root, discovered.manifest.spirv_header, "SPIR-V header",
                         discovered.spirv_header_path, result.diagnostics);
         if (!result.diagnostics.empty())
+        {
             return result;
+        }
         result.toolchain = std::move(discovered);
         return result;
     }

@@ -22,7 +22,10 @@ namespace toy3d
             return lhs.utf8_path_ == rhs.utf8_path_;
         }
 
-        friend bool operator!=(const VirtualPath& lhs, const VirtualPath& rhs) { return !(lhs == rhs); }
+        friend bool operator!=(const VirtualPath& lhs, const VirtualPath& rhs)
+        {
+            return !(lhs == rhs);
+        }
 
       private:
         explicit VirtualPath(std::string utf8_path);

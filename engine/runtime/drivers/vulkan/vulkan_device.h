@@ -58,7 +58,7 @@ namespace toy3d
                                                      const RHIInitialData* initial_data) override;
         RHIResult<RHIReadbackRef> create_readback_impl(const std::string& debug_name) override;
         RHIResult<RHIReadbackRef> create_texture_readback_impl(PixelFormat format, Extent extent,
-                                                              const std::string& debug_name) override;
+                                                               const std::string& debug_name) override;
         RHIResult<RHIBufferViewRef> create_buffer_view_impl(const RHIBufferRef& buffer,
                                                             const RHIBufferViewDesc& desc) override;
         RHIResult<RHITextureViewRef> create_texture_view_impl(const RHITextureRef& texture,

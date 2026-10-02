@@ -18,7 +18,16 @@ namespace toy3d
     // Failure returns a diagnostic for the caller; this function does not log.
     bool open_directory_on_desktop(const PhysicalPath& path, std::string& error);
 
-    enum class ProcessError { None, InvalidArgument, Launch, Io, Wait, Timeout, Cancelled };
+    enum class ProcessError
+    {
+        None,
+        InvalidArgument,
+        Launch,
+        Io,
+        Wait,
+        Timeout,
+        Cancelled
+    };
 
     struct ProcessRunOptions
     {
@@ -35,7 +44,10 @@ namespace toy3d
         ProcessError error = ProcessError::None;
         std::string message;
         bool output_truncated = false;
-        bool succeeded() const { return launched && error == ProcessError::None && exit_code == 0; }
+        bool succeeded() const
+        {
+            return launched && error == ProcessError::None && exit_code == 0;
+        }
     };
 
     // run owns and reaps its process tree; detached GUI processes belong to
@@ -58,4 +70,4 @@ namespace toy3d
         ProcessResult launch_detached(const PhysicalPath& executable,
                                       const std::vector<std::string>& arguments) const override;
     };
-}
+} // namespace toy3d
