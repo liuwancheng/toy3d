@@ -1,6 +1,10 @@
 #include "editor.h"
 
 #include <cstdio>
+#include "platform/platform_defines.h"
+#include "asset/game_project.h"
+#include "file_system/native_platform_file.h"
+#include "file_system/directory_file_store.h"
 #include "config/command_line_parser.h"
 #include "imgui.h"
 #include "logging/logger.h"
@@ -43,10 +47,31 @@ namespace toy3d
 
     void EditorApplication::request_project_open(const PhysicalPath& descriptor)
     {
-        EditorProject candidate{PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT)};
+        NativePlatformFile platform;
+        const auto canonical = platform.canonical(descriptor);
+        const auto parent = canonical.succeeded() ? platform.parent_path(canonical.value()) : FileResult<PhysicalPath>(canonical.status());
+        if (!parent.succeeded()) { project_error_ = parent.status().message; TOY_LOG_ERROR("Open Project: {}", project_error_); return; }
+        DirectoryFileStoreDesc store_desc; store_desc.physical_root = parent.value(); store_desc.writable = false;
+        const auto store = DirectoryFileStore::create(platform, store_desc);
+        if (!store.succeeded()) { project_error_ = store.status().message; TOY_LOG_ERROR("Open Project: {}", project_error_); return; }
+        FileSystem files; FileMountDesc mount; mount.virtual_root = VirtualPath::parse("/Game").value(); mount.store = store.value(); mount.access = MountAccess::ReadOnly;
+        auto mounted = files.add_mount(mount); if (mounted.succeeded()) mounted = files.freeze();
+        if (!mounted.succeeded()) { project_error_ = mounted.message; TOY_LOG_ERROR("Open Project: {}", project_error_); return; }
+        const auto filename = canonical.value().utf8().substr(canonical.value().utf8().find_last_of("/\\") + 1u);
+        const auto description = read_game_project(files, VirtualPath::parse("/Game/" + filename).value());
+        if (!description.succeeded()) { project_error_ = description.status().message; TOY_LOG_ERROR("Open Project: {}", project_error_); return; }
+        const auto module = description.value().modules.empty() ? std::string{} : description.value().modules.front().name;
+        EditorProject candidate{PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT), module};
         const auto opened = candidate.open(descriptor);
         if (!opened.succeeded()) { project_error_ = opened.message; TOY_LOG_ERROR("Open Project: {}", project_error_); return; }
         pending_project_ = candidate.descriptor();
+        pending_editor_executable_ = PhysicalPath(std::string(TOY3D_EDITOR_DEPLOY_ROOT) + "/" + (module.empty() ? "Toy3dEditor" : module + "Editor")
+#if WITH_WIN
+            + ".exe"
+#elif WITH_MAC
+            + ".app/Contents/MacOS/" + (module.empty() ? "Toy3dEditor" : module + "Editor")
+#endif
+            );
         if (shaders_.busy() || model_import_.active() || texture_import_.active())
         { pending_project_ = {}; project_scene_saved_ = false; project_error_ = "Finish or cancel the background operation before opening another project."; return; }
         if (!material_editor_.request_exit()) { waiting_material_project_ = true; return; }
@@ -58,12 +83,35 @@ namespace toy3d
         if (pending_project_.empty()) return;
         auto arguments = CommandLineParser::get_instance().launch_arguments();
         arguments.push_back("--Project=" + pending_project_.utf8());
-        const auto launched = processes_.launch_detached(PhysicalPath(TOY3D_EDITOR_EXECUTABLE), arguments);
+        const auto launched = processes_.launch_detached(pending_editor_executable_, arguments);
         project_scene_saved_ = false;
         if (!launched.succeeded())
         { project_error_ = launched.message; TOY_LOG_ERROR("Launch Project Editor: {}", project_error_); return; }
         discard_scene_on_exit_ = true;
         window().close();
+    }
+
+    void EditorApplication::play_scene()
+    {
+        if (!project_ || !project_->active() || game_executable_.empty() || startup_pending_ ||
+            shaders_.busy() || model_import_.active() || texture_import_.active() || scene_session_.history().active()) return;
+        SceneAssetData data; AssetId id;
+        if (!scene_session_.capture(data) || !AssetId::try_generate(id))
+        { TOY_LOG_ERROR("Play Scene capture failed: {}", scene_session_.error()); return; }
+        const auto directory = VirtualPath::parse("/Saved/play").value();
+        const auto created = workspace_.files().create_directories(directory);
+        const auto path = VirtualPath::parse("/Saved/play/" + id.hex() + ".scene").value();
+        const auto bytes = encode_scene_asset_pair(workspace_.types(), id, data, &workspace_.catalog().index);
+        const auto saved = !created.succeeded() ? AssetStatus{AssetErrorCode::Io, {}, path.utf8(), {}, {}, created.message, created} :
+            bytes.succeeded() ? workspace_.asset_pairs().publish(path, bytes.value(), FilePublishMode::CreateNew) : bytes.status();
+        if (!saved.succeeded()) { TOY_LOG_ERROR("Play Scene snapshot: {}", saved.message); return; }
+        auto arguments = CommandLineParser::get_instance().launch_arguments();
+        arguments.push_back("--Project=" + project_->descriptor().utf8());
+        arguments.push_back("--PlayScene=" + path.utf8());
+        const auto launched = processes_.launch_detached(game_executable_, arguments);
+        if (!launched.succeeded())
+        { TOY_LOG_ERROR("Play Scene launch: {}. Build the project Game host first.", launched.message); return; }
+        notifications_.success("Play Scene", "Game window launched. Runtime diagnostics are in the project Saved logs.");
     }
 
     void EditorApplication::open_project_settings()

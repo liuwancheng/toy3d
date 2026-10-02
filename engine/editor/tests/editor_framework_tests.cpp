@@ -327,6 +327,7 @@ int main()
         check(AssetId::try_generate(extra_actor), "Additional actor identity allocated");
         incompatible.id = extra_actor.hex();
         incompatible.kind = "DirectionalLight";
+        incompatible.type = "toy3d.DirectionalLightActor";
         for (auto& component : incompatible.components)
         {
             AssetId extra_component;

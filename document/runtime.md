@@ -2,7 +2,7 @@
 
 ## 定位
 
-Toy3dRuntime 包含 engine/runtime 的 Engine/Application、config/platform/input、gamescene/rendercore/renderscene/drivers；这些目录当前不等于独立 CMake target。Editor 入口在 engine/editor；仓库 project 已是资源工程，C++ 游戏模块尚未接入。共享能力复用 [Core](core.md)，不从 runtime 输出通用工具库。
+Toy3dRuntime 包含 engine/runtime 的 Engine/Application、config/platform/input、gamescene/rendercore/renderscene/drivers；这些目录当前不等于独立 CMake target。Editor 入口在 engine/editor；仓库 project 是带 ShadowDemo Runtime 静态模块的游戏工程。共享能力复用 [Core](core.md)，不从 runtime 输出通用工具库。
 
 ## 启动与退出
 
@@ -47,10 +47,26 @@ format_version: 1
 project_id: b5811ef47b354463b795c548d8e80f25
 name: ShadowDemo
 engine_association: toy3d_dev
-modules: []
+modules:
+  - name: ShadowDemo
+    type: Runtime
 ```
 
-当前 Editor 只接入关联 `toy3d_dev` 的资源工程；没有本机引擎安装注册表。modules 可描述至多一个 Runtime 与一个依赖它的 Editor 模块，但当前 Editor 明确拒绝非空 modules；不能据此声称已能加载 C++。创建入口 EditorProject::create(parent, name, editor_directory) 生成独立 ID，并创建 asset/config/shader/include/src/saved；src 预留为空，不生成伪可用游戏代码/CMake。打开入口构造 EditorProject(editor_directory)，由调用方明确提供 Editor 部署目录。
+当前支持关联 `toy3d_dev` 的资源工程（modules=[]）或一个已链接的 Runtime 模块。描述格式仍可表达 Editor 模块，但宿主拒绝额外/不匹配模块；没有引擎安装注册表、动态加载或热重载。`EditorProject(editor_directory, module_name)` 校验宿主身份，普通 Toy3dEditor 不承载项目 C++。Scene > Open Project 按目标描述选择 Toy3dEditor 或 <Module>Editor，新进程切换，不把旧工程模块带到新工程。
+
+创建入口 EditorProject::create(parent, name, editor_directory) 仍生成资源工程、独立 ID 与 asset/config/shader/include/src/saved，不生成 C++ 模板。C++ 工程由明确的 `TOY3D_GAME_PROJECT` CMake 路径加入，默认为仓库 project，空值仅构建引擎。模块链接 Toy3dRuntime，在自身 CMake 调用 `toy3d_add_game_hosts(module, descriptor)`；生成 <Module>Editor（复用 Toy3dEditorCore）和 <Module>Game（不链接 Editor）。项目 Editor 构建也部署对应 Game。工程不靠目录扫描自动编译。
+
+仓库示例的构建/启动：
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON -DTOY3D_ENABLE_VULKAN_RHI=ON
+cmake --build build --config Debug --target ShadowDemoEditor --parallel
+./project/launch_editor.bat
+# 直接运行游戏，使用 Game.StartupScene：
+./bin/ShadowDemoGame.exe --Project=D:/GitProject/toy3d/project/ShadowDemo.toy
+```
+
+新项目换 TOY3D_GAME_PROJECT 和自身 target/descriptor；修改 C++ 后重新构建并重启对应宿主。反射由项目显式 codegen，Actor 工厂与场景装配见 [GameScene](gamescene.md#游戏工程接入边界)。
 
 启动入口持有一个不可变 EditorProject，向 EngineStartupPaths、EditorWorkspacePaths、ShaderWorkflowPaths 注入各自所需根。Asset 工作区 `/Engine`→engine/asset、`/Project`→工程 asset；Shader 根 `/Engine/Shaders`、`/Engine/ShaderIncludes`、`/Project/Shaders`、`/Project/ShaderIncludes` 各自独立。AssetId 索引连接资产依赖，Material.shader_name 连接 Program 索引；同名配置覆盖不代表资产/Shader 覆盖。项目可以依赖引擎公共资源，引擎公共源不依赖具体项目。挂载 startup 冻结，worker 只用请求持有的路径，不在后台切换根。
 
@@ -61,16 +77,16 @@ modules: []
 StartupScene=/Project/ShadowDemo.scene
 
 [Game]
-StartupScene=/Project/ShadowDemo.scene
+StartupScene=/Project/RotatingActor.scene
 ```
 
-Editor 未指定工程时打开 `/Engine/Scenes/Default.scene`；有效工程按 Editor.StartupScene 打开，空值使用同一默认场景。场景非法/缺失/装配失败记录诊断并回退，保持工程关联，不修改工程配置。描述/配置校验失败则无工程启动并记录错误；默认场景本身损坏明确报错，不以硬编码 Cube/Light 替代。场景加载等待 Shader 启动验证完成，Editor 不 begin_play。Game.StartupScene 当前仅保存预留，尚无独立 Game host 消费它。
+Editor 未指定工程时打开 `/Engine/Scenes/Default.scene`；有效工程按 Editor.StartupScene 打开，空值使用同一默认场景。场景非法/缺失/装配失败记录诊断并回退，保持工程关联，不修改工程配置。描述/配置校验失败则无工程启动并记录错误；默认场景本身损坏明确报错，不以硬编码 Cube/Light 替代。场景加载等待 Shader 启动验证完成，Editor 不 begin_play。Game 优先使用 --PlayScene，再取 Game.StartupScene，空值使用引擎默认 Scene；有效项目的场景缺失/非法明确退出，避免掩盖游戏配置错误。
 
-工程 Saved 放 `<工程>/saved`；无工程放 OS 用户数据根/Toy3d/Editor。日志每 Editor 实例用 editor-<session-id>.log；布局和 Shader 缓存在同一 Saved 下。资源工程不加入引擎 CMake、不拷贝到 bin；引擎部署只复制自身 asset/config 和 Editor UI 资源。`--Project=D:/path/Game.toy` 可显式打开工程。
+工程 Saved 放 `<工程>/saved`；无工程放 OS 用户数据根/Toy3d/Editor。日志每 Editor/Game 实例分别用 editor-<session-id>.log / game-<session-id>.log；布局和 Shader 缓存在同一 Saved 下。资源工程不加入引擎 CMake、不拷贝到 bin；引擎部署只复制自身 asset/config 和 Editor UI 资源。`--Project=D:/path/Game.toy` 可显式打开工程。
 
-创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有同名普通文件保留，不覆盖自定义脚本。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本只启动资源工程 Editor，不提供 Game/Build/Run；Saved 记录为本机缓存，不纳入版本管理。
+创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有自定义脚本保留；仅完全匹配已知生成模板的旧脚本升级为当前宿主。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本按模块启动 Toy3dEditor 或 <Module>Editor，不自动构建；Game 可直接启动或由 Scene > Play 启动；Saved 记录为本机缓存，不纳入版本管理。
 
-验证入口：editor/tests/project_tests.cpp（描述、创建/移动、隔离、默认资产/无工程挂载）、runtime/tests/console_manager_tests.cpp（覆盖来源、失败整层保留）、editor/tests/editor_framework_tests.cpp（场景路径读取和 clean 状态）。C++ host/类型扩展、进程内切换、PIE、Build/Run/Cook 尚未实现，后续需先确认共享场景装配及类型/schema 边界；不能把这些规划当已有 API。界面规则见 [Editor](editor.md#工程与-scene-菜单)，源码发现见 [Shader](shader.md#项目源码自动发现)。
+验证入口：editor/tests/project_tests.cpp（描述、创建/移动、隔离、默认资产/无工程挂载）、runtime/tests/console_manager_tests.cpp（覆盖来源、失败整层保留）、editor/tests/editor_framework_tests.cpp（场景路径读取和 clean 状态）。项目扩展验证见 project/tests/rotating_actor_tests.cpp。进程内切换、PIE、DLL 热重载、C++ 模板生成和 Cook 尚未实现。Game 读取编译器已发布的单一 permutation / VulkanES31 Forward Program（从已验证条目读取 key，支持带 Variant 的默认编译；同一发布位置有多个 permutation 时明确拒绝，不猜选择）：优先 Saved/shader 的 publication，缺记录才查部署 ShaderMapEntry；条目完整校验，损坏/缺失报错，不在 Game 编译源码。Saved 目录不是独立发行包，资源迁移/Cook 另行设计。界面规则见 [Editor](editor.md#工程与-scene-菜单)，源码发现见 [Shader](shader.md#项目源码自动发现)。
 
 工程缺少 Git 规则时同时补齐 .gitignore（忽略 /saved/）和 .gitattributes（launch_editor.sh 保持 LF），已有规则文件保留；自定义规则须自行保留上述约束，避免提交本机启动缓存或把 shell 脚本检出为 CRLF。
 

@@ -312,6 +312,23 @@ namespace toy3d
                             }
                         }
                     }
+                    const ImGuiPayload* type_payload = ImGui::AcceptDragDropPayload(ACTOR_TYPE_DRAG_PAYLOAD, ImGuiDragDropFlags_AcceptBeforeDelivery);
+                    if (type_payload && type_payload->DataSize > 1 && type_payload->DataSize <= 256 &&
+                        static_cast<const char*>(type_payload->Data)[type_payload->DataSize - 1] == '\0')
+                    {
+                        const std::string name(static_cast<const char*>(type_payload->Data), static_cast<std::size_t>(type_payload->DataSize - 1));
+                        const auto* type = history.actor_types().find(name);
+                        const ImVec2 mouse = ImGui::GetMousePos();
+                        const Vector2 position((mouse.x - origin.x) / available.x, (mouse.y - origin.y) / available.y);
+                        PlacementRequest request; request.actor_type = name;
+                        const PlacementItem item{PlacementItemId::EmptyActor, type ? type->display_name.c_str() : "Actor", "Project", type && type->default_mesh == "Cube" ? 75.0f : 0.0f};
+                        if (type && type->placeable && calculate_placement_transform(view, projection, scene_view.camera_position(), position, item, request.transform))
+                        {
+                            ImGui::GetWindowDrawList()->AddCircle(mouse, 12, IM_COL32(255, 200, 70, 255), 16, 2);
+                            if (type_payload->IsDelivery())
+                            { const auto id = history.place_actor(world, request); if (id) { selection.select_actor(world, id); cancel_pending_hit(); } }
+                        }
+                    }
                     const ImGuiPayload* asset_payload = ImGui::AcceptDragDropPayload(
                         ASSET_DRAG_PAYLOAD, ImGuiDragDropFlags_AcceptBeforeDelivery);
                     if (asset_payload && asset_payload->DataSize == sizeof(AssetId))

@@ -3,6 +3,9 @@ asset_id: d1adaf1f86e9442bbc9047a761f10c4e
 root_type: toy3d.SceneAssetData
 schema_version: 5
 dependencies:
+  - asset_id: 096dc165e01c4cfdbf5c93e4b831f41f
+    expected_type: toy3d.MaterialAssetData
+    strength: strong
   - asset_id: be8961056cb1612c669e22eeabeedeee
     expected_type: toy3d.StaticMeshAssetData
     strength: strong
@@ -10,13 +13,19 @@ subresources:
   []
 data:
   actors:
-    - id: 69273acf197942738df008fe5a638ec9
-      kind: Cube
-      root_component_id: 1edf41ba57ad4e6297492bc18af3c036
-      components:
+    - components:
         - id: 1edf41ba57ad4e6297492bc18af3c036
-          type: toy3d.StaticMeshComponent
           parent_component_id: ""
+          properties:
+            type: toy3d.SceneMeshData
+            value:
+              builtin_mesh: Cube
+              resources:
+                []
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
           transform:
             translation:
               - 0
@@ -31,23 +40,23 @@ data:
               - 1
               - 1
               - 1
+          type: toy3d.StaticMeshComponent
+      id: 69273acf197942738df008fe5a638ec9
+      kind: Cube
+      root_component_id: 1edf41ba57ad4e6297492bc18af3c036
+    - components:
+        - id: b3a43838f3d94b2fad5a105e6e53e38e
+          parent_component_id: ""
           properties:
             type: toy3d.SceneMeshData
             value:
-              settings:
-                visible: true
-                cast_shadows: true
-                receives_shadows: true
-              builtin_mesh: "Cube"
+              builtin_mesh: Plane
               resources:
                 []
-    - id: c43f6e957e574a33bfb2d57f1fbf75e6
-      kind: Plane
-      root_component_id: b3a43838f3d94b2fad5a105e6e53e38e
-      components:
-        - id: b3a43838f3d94b2fad5a105e6e53e38e
-          type: toy3d.StaticMeshComponent
-          parent_component_id: ""
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
           transform:
             translation:
               - 0
@@ -62,23 +71,34 @@ data:
               - 1.5
               - 1
               - 1.5
-          properties:
-            type: toy3d.SceneMeshData
-            value:
-              settings:
-                visible: true
-                cast_shadows: true
-                receives_shadows: true
-              builtin_mesh: "Plane"
-              resources:
-                []
-    - id: e710ff7e29ea4f82b00d3f52c36bdb72
-      kind: DirectionalLight
-      root_component_id: 7d96c182c32c41f1b27dac242531c757
-      components:
+          type: toy3d.StaticMeshComponent
+      id: c43f6e957e574a33bfb2d57f1fbf75e6
+      kind: Plane
+      root_component_id: b3a43838f3d94b2fad5a105e6e53e38e
+    - components:
         - id: 7d96c182c32c41f1b27dac242531c757
-          type: toy3d.DirectionalLightComponent
           parent_component_id: ""
+          properties:
+            type: toy3d.SceneDirectionalLightData
+            value:
+              light:
+                color:
+                  - 1
+                  - 1
+                  - 1
+                enabled: true
+                intensity: 1
+                priority: 10
+              shadow:
+                bias: 0.5
+                cascade_count: 2
+                cast_shadows: true
+                distance: 5000
+                distribution_exponent: 3
+                fade_fraction: 0.1
+                map_resolution: 2048
+                receiver_bias: 0.9
+                slope_bias: 0.5
           transform:
             translation:
               - -300
@@ -93,34 +113,32 @@ data:
               - 1
               - 1
               - 1
-          properties:
-            type: toy3d.SceneDirectionalLightData
-            value:
-              light:
-                enabled: true
-                intensity: 1
-                priority: 10
-                color:
-                  - 1
-                  - 1
-                  - 1
-              shadow:
-                cast_shadows: true
-                cascade_count: 2
-                map_resolution: 2048
-                distance: 5000
-                bias: 0.5
-                slope_bias: 0.5
-                receiver_bias: 0.9
-                fade_fraction: 0.1
-                distribution_exponent: 3
-    - id: da0021fc99256b64f1d2d0f24aa9cd40
-      kind: StaticMesh
-      root_component_id: fcbb5892879c2e6e40e81a1988f854f5
-      components:
+          type: toy3d.DirectionalLightComponent
+      id: e710ff7e29ea4f82b00d3f52c36bdb72
+      kind: DirectionalLight
+      root_component_id: 7d96c182c32c41f1b27dac242531c757
+    - components:
         - id: fcbb5892879c2e6e40e81a1988f854f5
-          type: toy3d.StaticMeshComponent
           parent_component_id: ""
+          properties:
+            type: toy3d.SceneMeshData
+            value:
+              builtin_mesh: ""
+              resources:
+                - reference:
+                    asset_id: be8961056cb1612c669e22eeabeedeee
+                    expected_type: toy3d.StaticMeshAssetData
+                    strength: strong
+                  role: mesh
+                - reference:
+                    asset_id: 096dc165e01c4cfdbf5c93e4b831f41f
+                    expected_type: toy3d.MaterialAssetData
+                    strength: strong
+                  role: material:Mat_Green_0
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
           transform:
             translation:
               - -34.335537
@@ -135,17 +153,7 @@ data:
               - 1
               - 1
               - 1
-          properties:
-            type: toy3d.SceneMeshData
-            value:
-              settings:
-                visible: true
-                cast_shadows: true
-                receives_shadows: true
-              builtin_mesh: ""
-              resources:
-                - reference:
-                    asset_id: be8961056cb1612c669e22eeabeedeee
-                    expected_type: toy3d.StaticMeshAssetData
-                    strength: strong
-                  role: mesh
+          type: toy3d.StaticMeshComponent
+      id: da0021fc99256b64f1d2d0f24aa9cd40
+      kind: StaticMesh
+      root_component_id: fcbb5892879c2e6e40e81a1988f854f5

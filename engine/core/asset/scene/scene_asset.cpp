@@ -27,20 +27,33 @@ namespace toy3d
                 kind == "PointLight" || kind == "Camera";
         }
 
-        std::vector<AssetRef> dependencies(const SceneAssetData& data)
+        std::vector<AssetRef> dependencies(const SceneAssetData& data, const TypeRegistry* types = nullptr)
         {
             std::vector<AssetRef> refs;
+            const auto append = [&](const AssetRef& reference)
+            {
+                const auto found = std::find_if(refs.begin(), refs.end(), [&](const AssetRef& existing) { return existing.asset_id == reference.asset_id; });
+                if (found == refs.end()) refs.push_back(reference);
+                else if (reference.strength == AssetRefStrength::Strong) *found = reference;
+            };
             for (const auto& actor : data.actors)
+            {
+                if (types)
+                {
+                    const auto owned = reflected_value_references(*types, actor.properties);
+                    if (owned.succeeded())
+                        for (const auto& reference : owned.value())
+                            append(reference);
+                }
                 for (const auto& component : actor.components)
                 {
                     // C++17 get_if reads resource references only from mesh author data.
                     const auto* mesh = std::get_if<SceneMeshData>(&component.properties);
                     if (!mesh) continue;
                     for (const auto& binding : mesh->resources)
-                        if (std::none_of(refs.begin(), refs.end(), [&](const AssetRef& ref)
-                            { return ref.asset_id == binding.reference.asset_id; }))
-                            refs.push_back(binding.reference);
+                        append(binding.reference);
                 }
+            }
             std::sort(refs.begin(), refs.end(), [](const AssetRef& a, const AssetRef& b)
                 { return a.asset_id < b.asset_id; });
             return refs;
@@ -88,18 +101,38 @@ namespace toy3d
         return false;
     }
 
-    AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index)
+    AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index, const TypeRegistry* types)
     {
         if (data.actors.size() > k_max_scene_actors) return invalid("scene actor count exceeds limit");
         constexpr std::size_t k_max_components = 1000000u;
         std::set<std::string> ids;
         std::map<std::string, std::string> parents;
         std::map<AssetId, std::string> reference_types;
+        const std::map<std::string, std::string> builtin_types = {
+            {"EmptyActor", "toy3d.Actor"}, {"Cube", "toy3d.StaticMeshActor"}, {"Plane", "toy3d.StaticMeshActor"},
+            {"StaticMesh", "toy3d.StaticMeshActor"}, {"DirectionalLight", "toy3d.DirectionalLightActor"},
+            {"PointLight", "toy3d.PointLightActor"}, {"Camera", "toy3d.CameraActor"}};
         for (const auto& actor : data.actors)
         {
+            const auto expected = builtin_types.find(actor.kind);
+            if (expected != builtin_types.end() && expected->second != actor.type)
+                return invalid("builtin placement kind and Actor type disagree");
+
             AssetId id;
-            if (!AssetId::parse(actor.id, id) || id.hex() != actor.id || !ids.insert(actor.id).second || !valid_kind(actor.kind) ||
+            if (!AssetId::parse(actor.id, id) || id.hex() != actor.id || !ids.insert(actor.id).second || (!valid_kind(actor.kind) && actor.kind != "Custom") || actor.type.empty() || actor.properties.type.empty() || actor.properties.schema_version == 0 ||
                 actor.components.empty()) return invalid("invalid scene actor identity or type");
+            if (types)
+            {
+                const auto owned = reflected_value_references(*types, actor.properties);
+                if (!owned.succeeded()) return owned.status();
+                for (const auto& reference : owned.value())
+                {
+                    const auto existing = reference_types.find(reference.asset_id);
+                    if (existing != reference_types.end() && existing->second != reference.expected_type) return invalid("conflicting actor resource types");
+                    reference_types.emplace(reference.asset_id, reference.expected_type);
+                    if (index) { const auto resolved = index->resolve(reference, actor.type); if (!resolved.succeeded()) return resolved; }
+                }
+            }
             bool has_root = false;
             for (const auto& component : actor.components)
             {
@@ -154,7 +187,7 @@ namespace toy3d
     AssetResult<AssetPairBytes> encode_scene_asset_pair(const TypeRegistry& types,
         const AssetId& id, const SceneAssetData& data, const AssetIndex* index)
     {
-        const AssetStatus valid = validate_scene_asset(data, index);
+        const AssetStatus valid = validate_scene_asset(data, index, &types);
         if (!valid.succeeded()) return AssetResult<AssetPairBytes>(valid);
         const TypeDesc* type = types.find(k_scene_type);
         if (!types.frozen() || !type || !id.valid())
@@ -166,7 +199,7 @@ namespace toy3d
         file.asset_id = id;
         file.root_type = k_scene_type;
         file.schema_version = type->schema_version;
-        file.dependencies = dependencies(data);
+        file.dependencies = dependencies(data, &types);
         return encode_asset_pair(types, std::move(file), writer.bytes(), {});
     }
 
@@ -188,9 +221,9 @@ namespace toy3d
         if (!decoded.succeeded() || !reader.at_end())
             return {AssetErrorCode::Value, description.index.asset_id, path.utf8(), "data",
                 decoded.property_path, decoded.succeeded() ? "trailing scene data" : decoded.message, {}};
-        const AssetStatus valid = validate_scene_asset(candidate, index);
+        const AssetStatus valid = validate_scene_asset(candidate, index, &types);
         if (!valid.succeeded()) return valid;
-        const auto expected = dependencies(candidate);
+        const auto expected = dependencies(candidate, &types);
         if (expected.size() != description.index.dependencies.size())
             return invalid("Scene dependency index differs from resource bindings");
         for (std::size_t i = 0; i < expected.size(); ++i)

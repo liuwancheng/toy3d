@@ -1,6 +1,7 @@
 #include "scene/editor_actor_state.h"
 
 #include "asset/scene/scene_asset.h"
+#include "gamescene/actor/actor_type_registry.h"
 
 #include "gamescene/actor/actor.h"
 #include "gamescene/world/world.h"
@@ -8,10 +9,16 @@
 
 namespace toy3d
 {
-    EditorActorState capture_actor_state(const Actor& actor, const ComponentEditorRegistry& editors)
+    EditorActorState capture_actor_state(const Actor& actor, const ComponentEditorRegistry& editors, const ActorTypeRegistry* types)
     {
         EditorActorState result;
         if (!actor.root_component()) return result;
+        if (types)
+        {
+            const auto* type = types->find(actor);
+            if (!type || !types->capture(actor, result.properties)) return result;
+            result.actor_type = type->name;
+        }
         result.root_component_id = actor.root_component()->component_id();
         for (const auto id : actor.component_ids())
         {
@@ -32,10 +39,12 @@ namespace toy3d
         return result;
     }
 
-    bool apply_actor_state(Actor& actor, const EditorActorState& state, const ComponentEditorRegistry& editors)
+    bool apply_actor_state(Actor& actor, const EditorActorState& state, const ComponentEditorRegistry& editors, const ActorTypeRegistry* types)
     {
         if (!state.valid || actor.component_count() != state.components.size() ||
             !actor.root_component() || actor.root_component()->component_id() != state.root_component_id) return false;
+        if (types && !state.actor_type.empty())
+        { const auto* type = types->find(actor); if (!type || type->name != state.actor_type || !types->validate(state.actor_type, state.properties)) return false; }
         // Validate every component before any setter, so a bad camera/light candidate
         // cannot partially change an earlier component's Transform.
         for (const auto& snapshot : state.components)
@@ -44,6 +53,7 @@ namespace toy3d
             const auto* editor = component ? editors.find(*component) : nullptr;
             if (!editor || editor->persistent_type != snapshot.data.type || !validate_component_data(snapshot.data)) return false;
         }
+        if (types && !state.actor_type.empty() && !types->apply(actor, state.properties)) return false;
         for (const auto& snapshot : state.components)
         {
             auto* component = static_cast<SceneComponent*>(actor.find_component_by_id(snapshot.component_id));
@@ -72,7 +82,8 @@ namespace toy3d
 
     bool same_actor_state(const EditorActorState& a, const EditorActorState& b)
     {
-        if (!a.valid || !b.valid || a.root_component_id != b.root_component_id ||
+        if (!a.valid || !b.valid || a.actor_type != b.actor_type || a.properties.type != b.properties.type ||
+            a.properties.schema_version != b.properties.schema_version || a.properties.bytes != b.properties.bytes || a.root_component_id != b.root_component_id ||
             a.components.size() != b.components.size()) return false;
         // Generated codecs compare complete typed properties, so a new settings
         // field participates without expanding a central field-by-field comparison.

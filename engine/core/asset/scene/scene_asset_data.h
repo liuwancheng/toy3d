@@ -4,6 +4,7 @@
 #include "math/transform.h"
 #include "asset/scene/component_settings.h"
 #include "reflection/reflection_macros.h"
+#include "serialization/reflected_value.h"
 
 #include <string>
 #include <variant>
@@ -71,20 +72,29 @@ namespace toy3d
         std::variant<SceneNodeData, SceneMeshData, SceneDirectionalLightData, ScenePointLightData, CameraSettings> properties;
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.SceneActorData", 5)
+    TOY3D_REFLECT_TYPE("toy3d.ActorSettings", 1)
+    struct ActorSettings
+    {
+    };
+
+    TOY3D_REFLECT_TYPE("toy3d.SceneActorData", 6)
     struct SceneActorData
     {
         TOY3D_PROPERTY("id")
         std::string id;
         TOY3D_PROPERTY("kind")
         std::string kind;
+        TOY3D_PROPERTY("type")
+        std::string type = "toy3d.Actor";
+        TOY3D_PROPERTY("properties", Edit)
+        ReflectedValue properties = ReflectedValue{"toy3d.ActorSettings", 1, {0, 0, 0, 0}};
         TOY3D_PROPERTY("root_component_id")
         std::string root_component_id;
         TOY3D_PROPERTY("components", Edit)
         std::vector<SceneComponentData> components;
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.SceneAssetData", 5)
+    TOY3D_REFLECT_TYPE("toy3d.SceneAssetData", 6)
     struct SceneAssetData
     {
         TOY3D_PROPERTY("actors", Edit)

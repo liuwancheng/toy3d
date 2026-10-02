@@ -33,6 +33,7 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/scene/material_assignments.cpp"
     "source/scene/placement/asset_placement.cpp"
     "source/scene/editor_actor_state.cpp"
+    "source/scene/actor_details.cpp"
     "source/scene/editor_scene_session.cpp"
     "source/scene/components/component_editor_registry.cpp"
     "source/scene/components/component_details.cpp"
@@ -54,7 +55,8 @@ target_compile_definitions(Toy3dEditorCore PRIVATE WITH_EDITOR=1 WITH_EDITORONLY
     "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
 target_compile_definitions(Toy3dEditorCore PUBLIC "TOY3D_BUILTIN_SHADER_ROOT=\"${BINARY_ROOT_DIR}shader\"")
 target_compile_options(Toy3dEditorCore PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
-list(REMOVE_ITEM EDITOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/viewport/editor_viewport_gizmo.cpp")
+list(REMOVE_ITEM EDITOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp")
+target_sources(Toy3dEditorCore PRIVATE ${EDITOR_SOURCES})
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${EDITOR_HEADERS} ${EDITOR_SOURCES})
 
@@ -65,7 +67,7 @@ set(TOY3D_PLATFORM_RESOURCE_DIR "${ENGINE_ROOT_DIR}/build/windows/resources")
 
 if(WIN32)
     set(EDITOR_ICON_FILE "${TOY3D_PLATFORM_RESOURCE_DIR}/Toy3dEditor.rc")
-    add_executable(${TARGET_NAME} ${EDITOR_HEADERS} ${EDITOR_SOURCES} ${EDITOR_ICON_FILE})
+    add_executable(${TARGET_NAME} "source/main.cpp" "${ENGINE_ROOT_DIR}/runtime/application/host_entry.cpp" ${EDITOR_ICON_FILE})
 
     set(RESOURCE_H "${TOY3D_PLATFORM_RESOURCE_DIR}/resource.h")
     target_include_directories(${TARGET_NAME} PRIVATE "${TOY3D_PLATFORM_RESOURCE_DIR}")
@@ -79,7 +81,7 @@ elseif(APPLE)
     set(EDITOR_PLIST_TEMPLATE "${ENGINE_ROOT_DIR}/build/mac/resources/Info.plist.in")
 
     # 创建 macOS 应用程序包，并指定 Info.plist 模板
-    add_executable(${TARGET_NAME} MACOSX_BUNDLE ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+    add_executable(${TARGET_NAME} MACOSX_BUNDLE "source/main.cpp" "${ENGINE_ROOT_DIR}/runtime/application/host_entry.cpp")
     set_target_properties(${TARGET_NAME} PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST ${EDITOR_PLIST_TEMPLATE}
         MACOSX_BUNDLE_BUNDLE_NAME "Toy3d Editor"
@@ -100,11 +102,11 @@ elseif(APPLE)
     # 添加资源文件到目标
     target_sources(${TARGET_NAME} PRIVATE ${EDITOR_ICON_FILE})
 else()
-    add_executable(${TARGET_NAME} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+    add_executable(${TARGET_NAME} "source/main.cpp" "${ENGINE_ROOT_DIR}/runtime/application/host_entry.cpp")
 endif()
 
 target_include_directories(
-  ${TARGET_NAME}
+  Toy3dEditorCore
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source" $<BUILD_INTERFACE:${THIRD_PARTY_DIR}/stb>
 )
 
@@ -115,7 +117,7 @@ set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Engine")
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
 target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 
-target_compile_definitions(${TARGET_NAME}
+target_compile_definitions(Toy3dEditorCore
   PRIVATE
     "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
     "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
@@ -124,7 +126,7 @@ target_compile_definitions(${TARGET_NAME}
     "TOY3D_EDITOR_ENGINE_CONFIG_ROOT=\"${ENGINE_ROOT_DIR}/config\""
     "TOY3D_EDITOR_EXECUTABLE=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dEditor>\"")
 
-target_compile_definitions(${TARGET_NAME} PRIVATE
+target_compile_definitions(Toy3dEditorCore PRIVATE
     "TOY3D_EDITOR_ENGINE_SHADER_ROOT=\"${ENGINE_ROOT_DIR}/shader/builtin\""
     "TOY3D_EDITOR_ENGINE_INCLUDE_ROOT=\"${ENGINE_ROOT_DIR}/shader/include\""
     "TOY3D_EDITOR_SHADER_COMPILER=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dShaderCompiler>\""
@@ -135,9 +137,9 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/shader/shader_workflow_queue.cpp"
     "source/shader/shader_source_creation.cpp"
     "source/shader/shader_create_dialog.h" "source/shader/shader_create_dialog.cpp")
-target_link_libraries(${TARGET_NAME} PRIVATE Toy3dEditorCore)
+target_link_libraries(Toy3dEditorCore PRIVATE Toy3dRuntime)
 
-target_sources(${TARGET_NAME} PRIVATE
+target_sources(Toy3dEditorCore PRIVATE
     "source/scene/material_assignments.h"
     "source/assets/material/material_edit_session.h" "source/assets/material/material_edit_session.cpp"
     "source/assets/material/material_editor_panel.h" "source/assets/material/material_editor_panel.cpp"
@@ -160,23 +162,25 @@ elseif(APPLE)
     set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/mac/model_file_picker.mm")
     find_library(TOY3D_EDITOR_COCOA_FRAMEWORK Cocoa REQUIRED)
     set(TOY3D_MODEL_PICKER_LIBRARIES "${TOY3D_EDITOR_COCOA_FRAMEWORK}")
-    set_target_properties(${TARGET_NAME} PROPERTIES OBJCXX_STANDARD 17 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
+    set_target_properties(Toy3dEditorCore PROPERTIES OBJCXX_STANDARD 17 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
 else()
     set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/model_file_picker_unsupported.cpp")
     set(TOY3D_MODEL_PICKER_LIBRARIES "")
 endif()
-target_sources(${TARGET_NAME} PRIVATE "source/platform/model_file_picker.h" "${TOY3D_MODEL_PICKER_SOURCE}")
-target_link_libraries(${TARGET_NAME} PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
-target_link_libraries(${TARGET_NAME} PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets Toy3dCore Toy3dAssetPipeline imguizmo)
+target_sources(Toy3dEditorCore PRIVATE "source/platform/model_file_picker.h" "${TOY3D_MODEL_PICKER_SOURCE}")
+target_link_libraries(Toy3dEditorCore PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
+target_link_libraries(Toy3dEditorCore PRIVATE Toy3dRuntime Toy3dAssets Toy3dCore Toy3dAssetPipeline imguizmo)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
-    target_sources(${TARGET_NAME} PRIVATE
+    target_sources(Toy3dEditorCore PRIVATE
         "source/assets/mesh/static_mesh_asset_tools.h" "source/assets/mesh/static_mesh_asset_tools.cpp")
-    target_link_libraries(${TARGET_NAME} PRIVATE Toy3dAssetPipeline)
-    target_compile_definitions(${TARGET_NAME} PRIVATE WITH_MODEL_IMPORT=1)
+    target_link_libraries(Toy3dEditorCore PRIVATE Toy3dAssetPipeline)
+    target_compile_definitions(Toy3dEditorCore PRIVATE WITH_MODEL_IMPORT=1)
 else()
-    target_compile_definitions(${TARGET_NAME} PRIVATE WITH_MODEL_IMPORT=0)
+    target_compile_definitions(Toy3dEditorCore PRIVATE WITH_MODEL_IMPORT=0)
 endif()
-target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
+target_compile_definitions(Toy3dEditorCore PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
+
+target_link_libraries(${TARGET_NAME} PRIVATE Toy3dEditorCore)
 
 if(BUILD_TESTING)
     add_executable(Toy3dEditorProjectTests "tests/project_tests.cpp" "source/workspace/editor_workspace.cpp")
@@ -416,3 +420,5 @@ toy3d_deploy_common_resources(${TARGET_NAME})
 #precompile
 #set global vari used by precompile
 set(TOY3D_EDITOR_HEADS "${EDITOR_HEADERS}" PARENT_SCOPE)
+
+target_link_libraries(Toy3dEditor PRIVATE Toy3dEditorCore)

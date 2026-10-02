@@ -22,7 +22,7 @@ MaterialInterface 是当前根/实例共同抽象，不应因旧 RHI 文档曾�
 
 MaterialAssignments 保存场景 AssetRef/命令记录，Library 准备/发布/完成/丢弃配置图。纯材质切换通过 SceneInterface::update_primitive_materials 保留现有 StaticMeshSceneProxy、geometry、HitProxy，不 Remove/Add；旧材质由 FIFO 保活命令/版本 owner 持至安全点。
 
-场景 schema 5 已保存材质赋值，不能宣称场景持久化尚未实现。Material 专用 preview/thumbnail 的后续扩展不能写成已完成。
+场景 schema 6 保留材质赋值（schema 5 显式迁移），不能宣称场景持久化尚未实现。Material 专用 preview/thumbnail 的后续扩展不能写成已完成。
 
 ## 源码发现与外部编辑
 

@@ -66,6 +66,8 @@ target_sources(Toy3dCore PRIVATE
     "serialization/math_value_codec.h"
     "serialization/schema_migration.cpp"
     "serialization/schema_migration.h"
+    "serialization/reflected_value.cpp"
+    "serialization/reflected_value.h"
     "serialization/value_codec.cpp"
     "serialization/value_codec.h"
     "threading/containers/bounded_mpmc_queue.h"

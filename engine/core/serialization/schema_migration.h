@@ -17,6 +17,9 @@ namespace toy3d
     using SchemaFields = std::map<std::string, SchemaField>;
     using SchemaMigrationStep = std::function<ValueStatus(SchemaFields&)>;
 
+    ValueStatus decode_schema_fields(const std::vector<std::uint8_t>& bytes, SchemaFields& fields, ValueLimits limits = {});
+    ValueStatus encode_schema_fields(const SchemaFields& fields, std::vector<std::uint8_t>& bytes, ValueLimits limits = {});
+
     // A step upgrades exactly one schema version. The owner registers all steps
     // before loading assets; migration never changes the input byte vector.
     class SchemaMigrationRegistry

@@ -1,0 +1,27 @@
+add_library(ShadowDemo STATIC "src/rotating_actor.cpp" "src/shadow_demo_module.cpp")
+target_compile_features(ShadowDemo PUBLIC cxx_std_17)
+set_target_properties(ShadowDemo PROPERTIES CXX_EXTENSIONS OFF FOLDER "Game/ShadowDemo")
+target_link_libraries(ShadowDemo PUBLIC Toy3dRuntime)
+target_include_directories(ShadowDemo PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_compile_options(ShadowDemo PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+set(TOY3D_ROTATION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/rotation_reflection.h")
+set(TOY3D_ROTATION_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/rotation_reflection.cpp")
+add_custom_command(OUTPUT "${TOY3D_ROTATION_HEADER}" "${TOY3D_ROTATION_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    COMMAND $<TARGET_FILE:Toy3dReflectionCodegen> --input "${CMAKE_CURRENT_SOURCE_DIR}/src/rotating_actor.h"
+        --header "${TOY3D_ROTATION_HEADER}" --source "${TOY3D_ROTATION_SOURCE}" --function register_rotation_types
+    DEPENDS Toy3dReflectionCodegen "${CMAKE_CURRENT_SOURCE_DIR}/src/rotating_actor.h" VERBATIM)
+target_sources(ShadowDemo PRIVATE "${TOY3D_ROTATION_HEADER}" "${TOY3D_ROTATION_SOURCE}")
+toy3d_add_game_hosts(ShadowDemo "${CMAKE_CURRENT_SOURCE_DIR}/ShadowDemo.toy")
+
+if(BUILD_TESTING)
+    add_executable(ShadowDemoTests "tests/rotating_actor_tests.cpp")
+    target_link_libraries(ShadowDemoTests PRIVATE ShadowDemo Toy3dEditorCore)
+    target_compile_features(ShadowDemoTests PRIVATE cxx_std_17)
+    set_target_properties(ShadowDemoTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Game/ShadowDemo/Tests")
+    target_compile_options(ShadowDemoTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    target_compile_definitions(ShadowDemoTests PRIVATE "TOY3D_TEST_ENGINE_ASSETS=\"${TOY3D_ROOT_DIR}/engine/asset\"")
+    target_compile_definitions(ShadowDemoTests PRIVATE "TOY3D_TEST_EDITOR_RESOURCES=\"${TOY3D_ROOT_DIR}/engine/editor/resources\"")
+    add_test(NAME ShadowDemo.RotatingActor COMMAND ShadowDemoTests)
+    set_tests_properties(ShadowDemo.RotatingActor PROPERTIES TIMEOUT 30)
+endif()

@@ -10,6 +10,8 @@ file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/tests/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/tests/.*\\.cpp$")
 
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/application/(host_entry|game_main)\\.cpp$")
+
 # Vulkan sources are registered explicitly below so backend code is only built
 # when TOY3D_ENABLE_VULKAN_RHI is enabled.
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/drivers/vulkan/.*\\.h$")

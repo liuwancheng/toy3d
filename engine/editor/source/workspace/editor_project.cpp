@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include "file_system/directory_file_store.h"
+#include "misc/sha256.h"
 #include "config/console_manager.h"
 
 namespace toy3d
@@ -15,6 +16,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 set "TOY3D_DESCRIPTOR="
 set "TOY3D_DEFAULT_BIN="
+set "TOY3D_EDITOR_NAME=@EDITOR_HOST@"
 if exist "%~dp0saved\editor_launch.txt" (
     rem FOR /F handles the UTF-8 LF record; SET /P requires CRLF.
     for /f "usebackq eol=| delims=" %%L in ("%~dp0saved\editor_launch.txt") do (
@@ -40,8 +42,8 @@ if defined TOY3D_EDITOR_BIN (
 ) else (
     set "TOY3D_BIN=%~dp0..\bin"
 )
-if not exist "%TOY3D_BIN%\Toy3dEditor.exe" goto missing_editor
-"%TOY3D_BIN%\Toy3dEditor.exe" %* "--Project=%~dp0%TOY3D_DESCRIPTOR%"
+if not exist "%TOY3D_BIN%\%TOY3D_EDITOR_NAME%.exe" goto missing_editor
+"%TOY3D_BIN%\%TOY3D_EDITOR_NAME%.exe" %* "--Project=%~dp0%TOY3D_DESCRIPTOR%"
 set "TOY3D_LAUNCH_RESULT=%errorlevel%"
 if "%TOY3D_LAUNCH_RESULT%"=="0" exit /b 0
 if "%~1"=="" pause
@@ -66,6 +68,7 @@ case "$0" in /*) script="$0" ;; *) script="./$0" ;; esac
 project_dir=$(CDPATH= cd -P "$(dirname "$script")" && pwd -P)
 descriptor=
 default_bin=
+editor_name='@EDITOR_HOST@'
 if [ -f "$project_dir/saved/editor_launch.txt" ]; then
     { IFS= read -r descriptor || :; IFS= read -r default_bin || :; } < "$project_dir/saved/editor_launch.txt"
 fi
@@ -82,9 +85,9 @@ if [ -z "$descriptor" ]; then
 fi
 if [ -z "$descriptor" ]; then echo "ERROR: No .toy project beside this launcher." >&2; exit 1; fi
 editor_bin=${TOY3D_EDITOR_BIN:-${default_bin:-"$project_dir/../bin"}}
-editor="$editor_bin/Toy3dEditor"
-if [ -x "$editor_bin/Toy3dEditor.app/Contents/MacOS/Toy3dEditor" ]; then
-    editor="$editor_bin/Toy3dEditor.app/Contents/MacOS/Toy3dEditor"
+editor="$editor_bin/$editor_name"
+if [ -x "$editor_bin/$editor_name.app/Contents/MacOS/$editor_name" ]; then
+    editor="$editor_bin/$editor_name.app/Contents/MacOS/$editor_name"
 fi
 if [ ! -x "$editor" ]; then
     echo "ERROR: Editor was not found. Build the engine or set TOY3D_EDITOR_BIN to its bin directory." >&2
@@ -132,10 +135,35 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
             return existing.value().type == FileType::File ? FileStatus::success() :
                 project_error("Generated project file must be a regular file: " + path.utf8());
         }
-        FileStatus write_launchers(FileSystem& files, const std::string& filename, const PhysicalPath& editor_directory)
+        std::string launcher_text(const char* source, const std::string& host)
         {
-            auto status = ensure_project_file(files, "launch_editor.bat", launch_batch);
-            if (status.succeeded()) status = ensure_project_file(files, "launch_editor.sh", launch_shell);
+            std::string text(source);
+            const auto marker = text.find("@EDITOR_HOST@");
+            text.replace(marker, std::string("@EDITOR_HOST@").size(), host);
+            return text;
+        }
+        FileStatus ensure_launcher(FileSystem& files, const char* name, const char* source,
+                                   const std::string& host, const char* legacy_hash)
+        {
+            const auto path = VirtualPath::parse(std::string("/Game/") + name).value();
+            const auto existing = files.read_text_utf8(path);
+            if (existing.succeeded())
+            {
+                std::string normalized = existing.value();
+                for (std::size_t position = 0; (position = normalized.find("\r\n", position)) != std::string::npos; ) normalized.erase(position, 1u);
+                const auto replacement = launcher_text(source, host);
+                // Only exact previously generated scripts are upgraded. Custom contents remain owned by the user.
+                // sha256 borrows the UTF-8 text through its existing string_view API.
+                if (normalized != replacement && (normalized == launcher_text(source, "Toy3dEditor") || sha256_to_hex(sha256(normalized)) == legacy_hash))
+                    return files.write_binary_atomic(path, std::vector<std::uint8_t>(replacement.begin(), replacement.end()), FilePublishMode::Replace);
+            }
+            else if (existing.status().code != FileErrorCode::NotFound) return existing.status();
+            return ensure_project_file(files, name, launcher_text(source, host));
+        }
+        FileStatus write_launchers(FileSystem& files, const std::string& filename, const PhysicalPath& editor_directory, const std::string& host = "Toy3dEditor")
+        {
+            auto status = ensure_launcher(files, "launch_editor.bat", launch_batch, host, "a0712e785769650787ca77c22348efaeccdfce6c60ec54ca6c23958b74314fee");
+            if (status.succeeded()) status = ensure_launcher(files, "launch_editor.sh", launch_shell, host, "4c54228d1063066d220005869b48d855350c87aa08906f3dc5b2ff698b022f89");
             if (status.succeeded()) status = ensure_project_file(files, ".gitignore", "/saved/\n");
             if (status.succeeded()) status = ensure_project_file(files, ".gitattributes", "launch_editor.sh text eol=lf\n");
             if (!status.succeeded()) return status;
@@ -164,8 +192,9 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
         if (!loaded.succeeded()) return loaded.status();
         if (loaded.value().engine_association != "toy3d_dev")
             return project_error("This Editor belongs to engine association toy3d_dev.");
-        if (!loaded.value().modules.empty())
-            return project_error("C++ game modules require a project Editor host; this version supports resource projects.");
+        if (!loaded.value().modules.empty() && (loaded.value().modules.size() != 1u ||
+            loaded.value().modules.front().type != GameModuleType::Runtime || loaded.value().modules.front().name != module_))
+            return project_error("This host does not contain the requested Runtime module. Build and launch the project Editor.");
         // Optional content directories are created through the rooted store;
         // reparse points cannot redirect authoring outside the project.
         for (const char* name : {"asset", "config", "shader/include", "saved"})
@@ -181,7 +210,7 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
             const auto checked = ConsoleManager::parse_config(config.value(), config_path.utf8());
             if (!checked.succeeded()) return checked.status();
         }
-        const auto launchers = write_launchers(files_, filename, editor_directory_);
+        const auto launchers = write_launchers(files_, filename, editor_directory_, loaded.value().modules.empty() ? "Toy3dEditor" : loaded.value().modules.front().name + "Editor");
         if (!launchers.succeeded()) return launchers;
         project_ = loaded.value(); root_ = parent.value(); descriptor_ = canonical.value();
         return FileStatus::success();

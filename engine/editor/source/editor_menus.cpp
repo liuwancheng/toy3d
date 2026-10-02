@@ -29,6 +29,8 @@ namespace toy3d
                 if (ImGui::MenuItem("Project Settings...", nullptr, false, workspace_.has_project()))
                 { open_project_settings(); if (!project_error_.empty()) TOY_LOG_ERROR("Project Settings: {}", project_error_); }
                 ImGui::Separator();
+                if (ImGui::MenuItem("Play", nullptr, false, workspace_.has_project() && !game_executable_.empty() && !startup_pending_ && !shaders_.busy() && !model_import_.active() && !texture_import_.active() && !scene_session_.history().active())) play_scene();
+                ImGui::Separator();
                 if (ImGui::MenuItem("New Scene")) request_scene_action(SceneAction::New);
                 if (ImGui::BeginMenu("Open Scene"))
                 {

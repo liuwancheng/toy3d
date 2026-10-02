@@ -322,7 +322,7 @@ namespace toy3d
             };
             return panels_.add(std::move(panel));
         };
-        if (!panels_.add({"place_actors", "Place Actors", "Place Actors", [this]() { place_actors_.draw(); }, {}, {}, {}}) ||
+        if (!panels_.add({"place_actors", "Place Actors", "Place Actors", [this]() { place_actors_.draw(&actor_factory_.actor_types()); }, {}, {}, {}}) ||
             !add_scene_panel("outliner", "Outliner", "Outliner", [this]()
             {
                 if (draw_outliner(world(), selection_, scene_session_.history(), actor_factory_, scene_viewport_))

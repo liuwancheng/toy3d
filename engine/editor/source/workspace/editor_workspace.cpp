@@ -75,7 +75,7 @@ namespace toy3d
         }
     } // namespace
 
-    bool EditorWorkspace::initialize(const EditorWorkspacePaths& paths)
+    bool EditorWorkspace::initialize(const EditorWorkspacePaths& paths, std::function<bool(TypeRegistry&)> register_project_types)
     {
         if (ready_)
         {
@@ -137,6 +137,8 @@ namespace toy3d
         if (registered.succeeded()) registered = register_material_asset_types(types_);
         if (registered.succeeded()) registered = register_texture_asset_types(types_);
         if (registered.succeeded()) registered = register_scene_asset_types(types_);
+        if (registered.succeeded() && register_project_types && !register_project_types(types_))
+        { error_ = "Project type registration failed."; return false; }
         if (registered.succeeded()) registered = types_.freeze();
         if (!registered.succeeded()) { error_ = registered.message; return false; }
         asset_pairs_ = std::make_unique<AssetPairStore>(types_, files_);

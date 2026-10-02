@@ -93,7 +93,7 @@ Tools → Create → Shader 创建项目 Material Shader，模板来自现有 Un
 
 项目名称限定 Project/Surface/，当前支持一个 Forward Material Pass，不猜第一个 Pass。最多 250 项、2048 目录、16 层、单源 4 MiB、总源 64 MiB；确定顺序，拒绝链接。重名的所有项、损坏/不支持的声明带路径诊断并计入批次失败，合法项继续编译。损坏的外部编辑保留已发布的旧 Program，并可定位 parser 行号；重名/删除移除查询身份。刷新按逻辑身份保留旧 Program，后续编译/恢复仍验证 source/include/hash；索引身份不代表当前源码已验证。删除/冲突项不从 Saved 复活，已有 GPU refs 保持既有提交生命周期；改声明名使旧名称引用失效，移文件不改变逻辑名。
 
-Create Shader 是验证后单文件 CreateNew，再刷新发现索引；外部冲突明确报错并保留文件，不增加清单/两文件回滚。shader_sources.txt 已移除；Saved/编译产物的 manifest/hash 校验仍保留，builtin_shader_sources.h.in 仍表达内置用途/ABI/部署记录。测试夹具位于 editor/tests/fixtures/shader，不要求项目保留示例 Shader。发现失败路径见 editor/tests/project_tests.cpp；真实创建/编译/重启发现见 material_shader_tests.cpp。项目 Build Game/Cook/编译库部署尚未接入，不能声称 runtime 会现场编译项目源码。
+Create Shader 是验证后单文件 CreateNew，再刷新发现索引；外部冲突明确报错并保留文件，不增加清单/两文件回滚。shader_sources.txt 已移除；Saved/编译产物的 manifest/hash 校验仍保留，builtin_shader_sources.h.in 仍表达内置用途/ABI/部署记录。测试夹具位于 editor/tests/fixtures/shader，不要求项目保留示例 Shader。发现失败路径见 editor/tests/project_tests.cpp；真实创建/编译/重启发现见 material_shader_tests.cpp。项目 C++ Game 宿主见 [Runtime](runtime.md#工程与分层配置)，它读取已发布 ShaderMapEntry，不现场编译项目源码；独立发行 Cook/Shader 打包尚未接入。
 
 ## 修改与验证
 

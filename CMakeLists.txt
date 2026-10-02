@@ -35,3 +35,12 @@ if(NOT (WIN32 OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Darwin"
 endif()
 
 add_subdirectory(engine)
+
+set(TOY3D_GAME_PROJECT "${TOY3D_ROOT_DIR}/project" CACHE PATH "Explicit C++ game project directory; empty builds the engine only")
+if(TOY3D_GAME_PROJECT AND TARGET Toy3dEditorCore)
+    if(NOT EXISTS "${TOY3D_GAME_PROJECT}/CMakeLists.txt")
+        message(FATAL_ERROR "The selected game project has no CMakeLists.txt")
+    endif()
+    include("${TOY3D_ROOT_DIR}/engine/build/cmake/game_project.cmake")
+    add_subdirectory("${TOY3D_GAME_PROJECT}" "${CMAKE_BINARY_DIR}/game_project")
+endif()

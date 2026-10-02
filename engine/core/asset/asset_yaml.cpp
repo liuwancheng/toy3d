@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "misc/utf8.h"
+#include "serialization/reflected_value.h"
 
 namespace toy3d
 {
@@ -199,6 +200,21 @@ namespace toy3d
                     if (item.value == value) { output = item.name; return true; }
                 return false;
             }
+            case ValueKind::ReflectedStruct:
+            {
+                ReflectedValue value;
+                if (!decode_value(reader, value).succeeded()) return false;
+                const auto* description = types.find(value.type);
+                if (!description || description->schema_version != value.schema_version || !description->enum_values.empty()) return false;
+                ValueReader fields(value.bytes, reader.child_limits());
+                YAML::Node properties;
+                if (!read_struct(fields, *description, types, properties, depth + 1u, limits) || !fields.at_end()) return false;
+                output = YAML::Node(YAML::NodeType::Map);
+                output["type"] = value.type;
+                output["schema_version"] = value.schema_version;
+                output["value"] = properties;
+                return true;
+            }
             case ValueKind::Struct:
             {
                 const TypeDesc* description = nested_type(types, type);
@@ -313,6 +329,19 @@ namespace toy3d
                     if (item.name == name) return writer.write_int64(item.value).succeeded();
                 return false;
             }
+            case ValueKind::ReflectedStruct:
+            {
+                if (!node.IsMap() || node.size() != 3u || !node["type"] || !node["schema_version"] || !node["value"]) return false;
+                ReflectedValue value;
+                value.type = node["type"].as<std::string>();
+                value.schema_version = node["schema_version"].as<std::uint32_t>();
+                const auto* description = types.find(value.type);
+                if (!description || description->schema_version != value.schema_version || !description->enum_values.empty()) return false;
+                ValueWriter fields(writer.child_limits());
+                if (!write_struct(node["value"], *description, types, fields, depth + 1u, limits)) return false;
+                value.bytes = fields.bytes();
+                return encode_value(writer, value).succeeded();
+            }
             case ValueKind::Struct:
             {
                 const TypeDesc* description = nested_type(types, type);
@@ -357,6 +386,57 @@ namespace toy3d
             }
         }
     } // namespace
+
+    namespace
+    {
+        bool collect_references(const YAML::Node& node, const ValueTypeDesc& shape, const TypeRegistry& types,
+                                std::vector<AssetRef>& references, std::uint32_t depth)
+        {
+            if (depth > 64u || references.size() > 1000000u) return false;
+            if (shape.kind == ValueKind::AssetRef)
+            {
+                AssetRef reference;
+                if (!read_reference(node, reference)) return false;
+                references.push_back(std::move(reference));
+            }
+            else if (shape.kind == ValueKind::Struct)
+            {
+                const auto* type = types.find(shape.stable_name);
+                if (!type) return false;
+                for (const auto& property : type->properties)
+                    if (property_is_persisted(property) && !collect_references(node[property.name], property.value_type, types, references, depth + 1u)) return false;
+            }
+            else if (shape.kind == ValueKind::ReflectedStruct)
+                return collect_references(node["value"], {ValueKind::Struct, node["type"].as<std::string>(), {}}, types, references, depth + 1u);
+            else if (shape.kind == ValueKind::Array)
+            {
+                for (const auto& element : node)
+                    if (!collect_references(element, shape.arguments.front(), types, references, depth + 1u)) return false;
+            }
+            else if (shape.kind == ValueKind::Variant)
+            {
+                for (const auto& branch : shape.arguments)
+                    if (branch_tag(branch) == node["type"].as<std::string>())
+                        return collect_references(node["value"], branch, types, references, depth + 1u);
+                return false;
+            }
+            return true;
+        }
+    }
+
+    AssetResult<std::vector<AssetRef>> reflected_value_references(const TypeRegistry& types, const ReflectedValue& value)
+    {
+        ValueWriter writer;
+        YAML::Node node;
+        std::vector<AssetRef> references;
+        if (!types.frozen() || !encode_value(writer, value).succeeded())
+            return AssetResult<std::vector<AssetRef>>(fail({}, {}, "Invalid reflected property value."));
+        ValueReader reader(writer.bytes());
+        if (!binary_to_yaml(reader, {ValueKind::ReflectedStruct, {}, {}}, types, node, 0, {}) || !reader.at_end() ||
+            !collect_references(node, {ValueKind::ReflectedStruct, {}, {}}, types, references, 0))
+            return AssetResult<std::vector<AssetRef>>(fail({}, {}, "Reflected properties do not match their registered schema."));
+        return AssetResult<std::vector<AssetRef>>(std::move(references));
+    }
 
     AssetResult<std::vector<std::uint8_t>> encode_asset_yaml(const TypeRegistry& types,
         const AssetYamlDocument& document, AssetFileLimits limits, ValueLimits value_limits)
@@ -433,7 +513,7 @@ namespace toy3d
                 std::string(bytes.begin(), bytes.end()));
             if (documents.size() != 1u)
                 return AssetResult<AssetYamlDocument>(fail({}, {}, "asset must contain one YAML document"));
-            const YAML::Node& node = documents.front();
+            YAML::Node node = documents.front();
             std::size_t count = 0;
             std::set<std::pair<int, int>> seen_marks;
             std::string error;
@@ -450,6 +530,28 @@ namespace toy3d
             result.index.root_type = node["root_type"].as<std::string>();
             result.index.schema_version = node["schema_version"].as<std::uint32_t>();
             const TypeDesc* type = types.find(result.index.root_type);
+            // Explicit Scene 5 -> 6 migration: this changes only the decoded candidate.
+            // The original bytes remain available for Editor save conflict checks.
+            if (type && result.index.root_type == "toy3d.SceneAssetData" && result.index.schema_version == 5u && type->schema_version == 6u)
+            {
+                if (!node["data"].IsMap() || !node["data"]["actors"].IsSequence())
+                    return AssetResult<AssetYamlDocument>(fail(result.index.asset_id, "data", "Invalid legacy Scene."));
+                const std::map<std::string, std::string> classes = {
+                    {"EmptyActor", "toy3d.Actor"}, {"Cube", "toy3d.StaticMeshActor"}, {"Plane", "toy3d.StaticMeshActor"},
+                    {"StaticMesh", "toy3d.StaticMeshActor"}, {"DirectionalLight", "toy3d.DirectionalLightActor"},
+                    {"PointLight", "toy3d.PointLightActor"}, {"Camera", "toy3d.CameraActor"}};
+                for (auto actor : node["data"]["actors"])
+                {
+                    if (!actor.IsMap() || actor.size() != 4u || !actor["kind"]) return AssetResult<AssetYamlDocument>(fail(result.index.asset_id, "actors", "Invalid legacy Actor."));
+                    const auto found = classes.find(actor["kind"].as<std::string>());
+                    if (found == classes.end()) return AssetResult<AssetYamlDocument>(fail(result.index.asset_id, "kind", "Unknown legacy Actor kind."));
+                    actor["type"] = found->second;
+                    actor["properties"]["type"] = "toy3d.ActorSettings";
+                    actor["properties"]["schema_version"] = 1;
+                    actor["properties"]["value"] = YAML::Node(YAML::NodeType::Map);
+                }
+                result.index.schema_version = 6u;
+            }
             if (!types.frozen() || !type || result.index.schema_version != type->schema_version)
                 return AssetResult<AssetYamlDocument>(fail(result.index.asset_id, "schema_version", "unsupported type schema"));
             if (!node["dependencies"].IsSequence() || !node["subresources"].IsSequence() ||

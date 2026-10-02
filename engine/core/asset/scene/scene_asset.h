@@ -7,7 +7,7 @@
 
 namespace toy3d
 {
-    AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index = nullptr);
+    AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index = nullptr, const TypeRegistry* types = nullptr);
     AssetResult<AssetPairBytes> encode_scene_asset_pair(const TypeRegistry& types,
         const AssetId& id, const SceneAssetData& data, const AssetIndex* index = nullptr);
     AssetStatus read_scene_asset(const TypeRegistry& types, const FileSystem& files,

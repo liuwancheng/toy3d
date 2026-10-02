@@ -112,6 +112,7 @@ int main()
         scene_actor.id = "44444444444444444444444444444444";
         scene_actor.root_component_id = "55555555555555555555555555555555";
         scene_actor.kind = "DirectionalLight";
+        scene_actor.type = "toy3d.DirectionalLightActor";
         SceneComponentData root;
         root.id = scene_actor.root_component_id;
         root.type = "toy3d.DirectionalLightComponent";
@@ -147,7 +148,7 @@ int main()
         if (legacy_pair.succeeded())
         {
             std::string legacy_text(legacy_pair.value().asset.begin(), legacy_pair.value().asset.end());
-            const std::string current_version = "schema_version: 5";
+            const std::string current_version = "schema_version: 6";
             const std::size_t version_position = legacy_text.find(current_version);
             check(version_position != std::string::npos, "Scene schema version fixture must be present");
             if (version_position != std::string::npos)

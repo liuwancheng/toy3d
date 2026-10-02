@@ -30,11 +30,15 @@ Console 作为 PanelRegistry 中的普通面板，由 EditorApplication 持有�
 
 无工程可浏览引擎资产和编辑临时场景，创作 Material/Shader/Import 要求项目写入根。引擎默认 Scene 加载后 clean；修改后 Save 走项目 Save As，禁止写引擎资产。无工程 Save 引导创建资源工程，并将当前 Scene 保存为该工程的 Startup.scene，再关联新工程。
 
-EditorProject::create 先在父目录的独占 staging 建目录/配置，最后写 .toy，再以 no-replace 重命名发布；已存在目标不覆盖。普通失败只清理本次独占 staging，不承诺断电时的目录发布持久性。新工程默认继承引擎场景，资源目录为空。非空 modules 明确不支持，不生成 C++ 模板/Build/Run 按钮。
+EditorProject::create 先在父目录的独占 staging 建目录/配置，最后写 .toy，再以 no-replace 重命名发布；已存在目标不覆盖。普通失败只清理本次独占 staging，不承诺断电时的目录发布持久性。新工程默认继承引擎场景，资源目录为空。项目 Editor 仅承载自身已链接的一个 Runtime 模块，资源工程使用 Toy3dEditor；不生成 C++ 模板或自动构建。
 
 首版一个进程关联一个工程，切换启动目标 Editor 实例；继承显式命令行配置覆盖。后台编译/Import 完成或取消后才切换，材质/场景 dirty 依次确认；launch 接受后关闭当前窗口，launch 失败保持会话。启动进程成功不等于完成 GPU/资源初始化，不作跨进程 ready 保证。Project Settings 保存 Editor/Game 默认场景覆盖并显示当前有效值来源，下次启动生效。
 
 验证入口 project_tests.cpp、editor_framework_tests.cpp、material_shader_tests.cpp；UI 模态期间屏蔽修改快捷键。界面、默认场景装配、未保存切换仍需真实交互验证，CPU DTO 测试不能替代画面验证。
+
+Scene > Play 仅在关联已构建 Game 的项目 Editor 中可用，等待启动验证/编译/Import/属性手势完成。捕获当前场景到工程 Saved/play/<新 ID>.scene，再独立启动 Game；无需保存编辑中的场景，不改变作者文件、场景身份、dirty 或撤销历史，运行状态不回写。启动通知仅说明进程接受启动，失败详情看工程 Saved/logs 的 game 日志；无跨进程 ready/停止按钮，关闭 Game 窗口结束运行。快照是可删除缓存，关闭 Game 后可清理 Saved/play。
+
+项目 Actor 出现在 Place Actors 的 Project 分类；Details 由注册属性元数据驱动当前 bool、float32、Vector3 控件，其余字段只读显示。所有参数更新走 Actor validate/apply 与同一连续手势历史；删除恢复也保存 concrete type 和 owned 属性。不能把声明 Edit 自动解释为支持任意反射控件。扩展示例见 project/src，完整边界见 [GameScene](gamescene.md#游戏工程接入边界)。
 
 ## 选择、交互与 Undo
 
@@ -46,7 +50,7 @@ dirty 以已保存内容身份/分支与外部 content revision 判断，不看 
 
 ## Scene Save/Open
 
-当前 Scene/Actor schema 5，保存 Component 稳定 ID/type/settings、非 root component、跨 Actor attachment、primitive/light 阴影字段与材质 AssetRef。
+当前 Scene/Actor schema 6，保存 Component 稳定 ID/type/settings、非 root component、跨 Actor attachment、primitive/light 阴影字段与材质 AssetRef。
 
 - Open 在候选 DTO、资产依赖和完整 parent graph/Transform 验证后装配并接管；未知类型/非法环/资源失败保留旧 World/session，registry 注册不等于自动可持久化。
 - Save 从 runtime authoritative World 获取完整快照；只在手势结束后，通过 AssetPairStore、同一已验证读取原始 bytes 检查冲突。

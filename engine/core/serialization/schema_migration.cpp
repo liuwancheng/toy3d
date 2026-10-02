@@ -59,6 +59,16 @@ namespace toy3d
         }
     } // namespace
 
+    ValueStatus decode_schema_fields(const std::vector<std::uint8_t>& bytes, SchemaFields& fields, ValueLimits limits)
+    {
+        SchemaFields candidate;
+        const auto status = read_fields(bytes, limits, candidate);
+        if (status.succeeded()) fields = std::move(candidate);
+        return status;
+    }
+    ValueStatus encode_schema_fields(const SchemaFields& fields, std::vector<std::uint8_t>& bytes, ValueLimits limits)
+    { return write_fields(fields, limits, bytes); }
+
     bool SchemaMigrationRegistry::add_step(std::string type_name, std::uint32_t from_version,
                                             SchemaMigrationStep step)
     {

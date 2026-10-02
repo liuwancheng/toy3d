@@ -26,6 +26,8 @@ CPU DTO/验证/格式在 engine/core，导入与构建在 engine/tools，运行�
 - schema migration 是显式整候选转换并验证，不能靠默认填充静默迁移单位/格式。
 - PropertyPath 用稳定 field/index/element ID/variant 身份；可重排集合不能把下标当永久身份。EditSession owner-thread 验证整个 patch，preview 成功才 publish，撤销/重做保持一致；Save 冲突检查和成功后清 dirty，失败不丢草稿。
 
+ReflectedValue 是已注册 struct 的类型/版本/owned binary frame；YAML 表达为 `{type, schema_version, value}`，读取校验冻结 schema、字段、深度、数量、字节和尾随数据。`reflected_value_references` 按反射 schema 递归枚举 AssetRef（含嵌套/数组/variant），加入 Scene 依赖与索引验证，不靠任意 YAML 字段猜引用。Scene schema 5 只做显式 5→6 YAML 候选迁移，原始 description_bytes 仍用于保存冲突检测，其他未知 schema 拒绝；迁移映射见 [GameScene](gamescene.md#游戏工程接入边界)。
+
 修改反射字段要补 codegen 输入、值/整体验证、序列化 round-trip、未知字段处理；运行时组件还需 [GameScene](gamescene.md) 与 Editor 接入。
 
 真实声明片段，摘自 core/asset/mesh/static_mesh_asset_data.h；省略同一 struct 的其它字段，不是新类型或独立可编译文件：
@@ -50,7 +52,7 @@ type string/schema version 是持久化身份，Visible 字段仍序列化，只
 - parser 有输入/深度/数量边界，拒绝重复键、aliases/tags、非法 UTF-8、非有限数、未知结构；root_type 决定类型，不能只看扩展名。
 - 配对文件是同目录同 stem 的 .meta。TOY3DMTA1 包含 AssetId、段目录、长度与 SHA-256；必需段缺失或损坏不能加载正常资产。StaticMesh 使用 render_geometry，Texture 使用 texture_mips，Material 是纯 YAML；Scene 当前拒绝 .scene.meta。
 - meta 不收原始 source_mesh/import_data/thumbnail。缩略图是可重建外部缓存，资产描述不能依赖它。
-- 当前 Scene/SceneActor schema 为 5；StaticMesh schema/render_geometry 为 2，单位厘米。旧二进制生产读取明确拒绝，测试中隔离的旧格式 fixture 不是兼容入口。
+- 当前 Scene/SceneActor schema 为 6；StaticMesh schema/render_geometry 为 2，单位厘米。旧二进制生产读取明确拒绝，测试中隔离的旧格式 fixture 不是兼容入口。
 
 源代码入口：asset/asset_identity.h、asset_pair.h、asset_yaml.h、asset_meta.h、asset_index.h，DTO 在各资源模块。格式/单位改变必须提升正确版本并明确迁移或拒绝，不能修改 parser 后继续声称旧字节等价。
 

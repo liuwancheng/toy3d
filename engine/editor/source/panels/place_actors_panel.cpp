@@ -1,4 +1,5 @@
 #include "panels/place_actors_panel.h"
+#include "gamescene/actor/actor_type_registry.h"
 
 #include "imgui.h"
 #include "scene/placement/placement_catalog.h"
@@ -8,7 +9,7 @@
 
 namespace toy3d
 {
-    void PlaceActorsPanel::draw()
+    void PlaceActorsPanel::draw(const ActorTypeRegistry* types)
     {
         if (ImGui::Begin("Place Actors"))
         {
@@ -51,6 +52,20 @@ namespace toy3d
                     ImGui::SetDragDropPayload(PLACEMENT_DRAG_PAYLOAD, &item.id, sizeof(item.id));
                     ImGui::Text("Place %s", item.name);
                     ImGui::EndDragDropSource();
+                }
+            }
+            if (types)
+            {
+                ImGui::Separator(); ImGui::TextUnformatted("Project");
+                for (const auto& type : types->types())
+                {
+                    if (!type.placeable || !filter_.PassFilter(type.display_name.c_str())) continue;
+                    ImGui::Selectable(type.display_name.c_str());
+                    if (ImGui::BeginDragDropSource())
+                    {
+                        ImGui::SetDragDropPayload(ACTOR_TYPE_DRAG_PAYLOAD, type.name.c_str(), type.name.size() + 1u);
+                        ImGui::Text("Place %s", type.display_name.c_str()); ImGui::EndDragDropSource();
+                    }
                 }
             }
         }

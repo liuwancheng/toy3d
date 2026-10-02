@@ -20,16 +20,24 @@ World/Actor/Component 的创建、注册、begin/end play、卸载有显式生�
 
 World 的 content revision 用于 Editor 脏状态/外部修改检测，不是帧号或 undo 栈深度。变更内容才增加，读取/纯渲染不增加；Undo 回到已保存内容需要正确身份判断，不能仅靠“同栈深”判干净。
 
-Scene DTO/反射在 core/asset/scene、core/asset/scene，不能持 runtime 指针。当前 SceneActor/Scene schema 5 持久化 Component 身份、类型、settings、附着及阴影属性。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
+Scene DTO/反射在 core/asset/scene，不能持 runtime 指针。当前 SceneActor/Scene schema 6 持久化 Component 身份、类型、settings、附着及阴影属性。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
 
 ## 游戏工程接入边界
 
-工程框架见 [Runtime](runtime.md#工程与分层配置)。当前仅资源工程；Scene kind 白名单和固定 properties variant 不支持任意工程自定义类型。TypeRegistry 元数据不自动提供 runtime factory/编解码/UI。C++ host 与共享场景装配尚未实现，不能只注册类型就声称工程可加载。
+项目 `src` 编译为 Runtime 静态模块，例如 ShadowDemo；同一模块分别链接项目 Editor/Game 宿主。Runtime 不依赖项目或 Editor。`GameModuleRegistration` 由宿主显式注入；模块在资产扫描前注册反射 schema，在 World 创建前冻结 ActorTypeRegistry。没有 DLL 加载、热重载或自动 C++ 工程生成。构建/工程关联见 [Runtime](runtime.md#工程与分层配置)。
 
-后续接入须先确认稳定类型/schema、owned 属性编码、依赖枚举、构造/验证/capture/apply 与显式格式迁移。现有 EditorSceneSession 装配仍在 Editor；Undo/dirty/选择/保存冲突属于 Editor，运行时创建/资源解析/属性应用/附着验证拟归 GameScene。类型注册需早于扫描/freeze，未知必需类型拒绝候选；Game 在完整场景就绪后 begin_play，失败不发布半场景。
+ActorTypeRegistry 分开保存稳定类型名、精确 runtime type、属性 schema、create/validate/capture/apply 和放置模板。create 回调只创建一个属于传入 World 的新 Actor；公共 create 入口检查数量/类型/所有权，错误返回不能接管或删除旧 Actor。回调不得修改旧对象或开始 gameplay。属性是 ReflectedValue 持有的类型/版本/owned bytes；未知类型/版本、无效属性或多余字节拒绝。模块不向引擎 kind switch 添加项目类型。
+
+Scene schema 6 持久化 Actor type/properties；kind 仅保留内置放置类别，自定义类使用 Custom。内置 kind 必须与 Actor type 一致。schema 5 YAML 只走显式候选迁移，按旧 kind 映射类型并填空 ActorSettings，保留 Asset/Actor/Component ID、组件、材质和附着；读取不改源文件，下次正常保存写 schema 6。组件 properties 仍为有限内置 variant，注册新 Actor 不代表支持任意自定义 Component。
+
+`assemble_scene` 复用 Runtime 的组件创建/capture/apply 与 SceneGeometry：先验证类型/属性和解析几何，再构建新 Actor/组件并恢复完整附着图；失败只撤回候选，成功才移除旧场景。资源解析和 Material 赋值通过 SceneAssemblyServices 注入，服务持有者负责对应失败回滚。Editor 保留选择/历史/dirty/保存冲突；Game 完整装配、绑定渲染后 begin_play，关闭先 unregister，再 drain 渲染资源。
+
+实际项目示例见 `project/src/rotating_actor.h/.cpp` 与 `shadow_demo_module.cpp`。RotatingActor 有 enabled、axis 和 speed_degrees_per_second；axis 必须可归一化，speed 必须有限且绝对值不超过 36000。tick 将 delta_seconds 转成角度，绕 root 本地轴组合并归一化 Quaternion，只改 rotation，保留 translation/scale。设置改变递增内容 revision；没有 root 或旋转发布失败时记录日志并停止 tick。Editor World 不 begin_play，因此只在独立 Game 中自转。
 
 ## 开发入口与验证
 
 新增/修改 Component 依次检查：稳定类型/字段身份 → settings 整体验证 → setter/revision → owned SceneInterface 更新 → Proxy 行为 → DTO/schema/装配 → Editor capture/apply/Details → Undo/Save/Open。领域策略留模块，通用文件/任务/序列化复用 core。
 
 完整用例以 gamescene_tests.cpp 及 Editor placement/workspace 测试为准，不构造不存在的通用 component 动态反射 API。验证未注册/已注册/playing/退出、父子与跨 Actor 环、失败原子性、更新 FIFO、非 root 恢复、资源删除及 World 切换；renderer ownership 的测试还见 renderer_scene_ownership_tests.cpp。
+
+项目扩展验证见 `project/tests/rotating_actor_tests.cpp`：帧率独立旋转、非法设置、类型/schema、候选失败保留旧场景、参数 Undo/Redo、删除恢复、保存重开及 Saved 快照隔离。

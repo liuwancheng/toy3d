@@ -4,6 +4,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 set "TOY3D_DESCRIPTOR="
 set "TOY3D_DEFAULT_BIN="
+set "TOY3D_EDITOR_NAME=ShadowDemoEditor"
 if exist "%~dp0saved\editor_launch.txt" (
     rem FOR /F handles the UTF-8 LF record; SET /P requires CRLF.
     for /f "usebackq eol=| delims=" %%L in ("%~dp0saved\editor_launch.txt") do (
@@ -29,8 +30,8 @@ if defined TOY3D_EDITOR_BIN (
 ) else (
     set "TOY3D_BIN=%~dp0..\bin"
 )
-if not exist "%TOY3D_BIN%\Toy3dEditor.exe" goto missing_editor
-"%TOY3D_BIN%\Toy3dEditor.exe" %* "--Project=%~dp0%TOY3D_DESCRIPTOR%"
+if not exist "%TOY3D_BIN%\%TOY3D_EDITOR_NAME%.exe" goto missing_editor
+"%TOY3D_BIN%\%TOY3D_EDITOR_NAME%.exe" %* "--Project=%~dp0%TOY3D_DESCRIPTOR%"
 set "TOY3D_LAUNCH_RESULT=%errorlevel%"
 if "%TOY3D_LAUNCH_RESULT%"=="0" exit /b 0
 if "%~1"=="" pause

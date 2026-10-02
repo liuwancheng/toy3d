@@ -8,6 +8,8 @@
 #include "reflection/type_registry.h"
 #include "shader/shader_editor_properties.h"
 
+#include <functional>
+
 #include <string>
 #include <memory>
 
@@ -25,7 +27,7 @@ namespace toy3d
     class EditorWorkspace final
     {
       public:
-        bool initialize(const EditorWorkspacePaths& paths);
+        bool initialize(const EditorWorkspacePaths& paths, std::function<bool(TypeRegistry&)> register_project_types = {});
         bool refresh();
 
         const AssetCatalog& catalog() const { return catalog_; }

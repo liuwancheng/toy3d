@@ -59,7 +59,8 @@ namespace toy3d
         Enum,
         Struct,
         Array,
-        Variant
+        Variant,
+        ReflectedStruct
     };
 
     struct ValueTypeDesc

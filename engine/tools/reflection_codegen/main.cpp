@@ -540,7 +540,7 @@ namespace
             {"Vector3", "Vector3"},    {"Vector4", "Vector4"},
             {"Matrix3", "Matrix3"},    {"Matrix4", "Matrix4"},
             {"Quaternion", "Quaternion"}, {"Transform", "Transform"},
-            {"AssetRef", "AssetRef"}};
+            {"AssetRef", "AssetRef"}, {"ReflectedValue", "ReflectedStruct"}};
         const auto builtin = builtins.find(cpp_type);
         if (builtin != builtins.end())
         {
@@ -666,7 +666,7 @@ namespace
             emit_call(output, level, "writer.write_int64(static_cast<std::int64_t>(" + expression + "))");
             return;
         }
-        if (value.kind == "Struct" || value.kind == "AssetRef" || value.kind == "Vector2" ||
+        if (value.kind == "Struct" || value.kind == "ReflectedStruct" || value.kind == "AssetRef" || value.kind == "Vector2" ||
             value.kind == "Vector3" || value.kind == "Vector4" || value.kind == "Matrix3" ||
             value.kind == "Matrix4" || value.kind == "Quaternion" || value.kind == "Transform")
         {
@@ -747,7 +747,7 @@ namespace
                    << padding(level) << expression << " = static_cast<" << value.cpp_type << ">(" << raw << ");\n";
             return;
         }
-        if (value.kind == "Struct" || value.kind == "AssetRef" || value.kind == "Vector2" ||
+        if (value.kind == "Struct" || value.kind == "ReflectedStruct" || value.kind == "AssetRef" || value.kind == "Vector2" ||
             value.kind == "Vector3" || value.kind == "Vector4" || value.kind == "Matrix3" ||
             value.kind == "Matrix4" || value.kind == "Quaternion" || value.kind == "Transform")
         {

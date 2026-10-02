@@ -2,6 +2,7 @@
 
 #include "asset_file.h"
 #include "misc/sha256.h"
+#include "serialization/reflected_value.h"
 
 namespace toy3d
 {
@@ -21,4 +22,5 @@ namespace toy3d
     AssetResult<AssetYamlDocument> decode_asset_yaml(
         const TypeRegistry& types, const std::vector<std::uint8_t>& bytes,
         AssetFileLimits limits = {}, ValueLimits value_limits = {});
+    AssetResult<std::vector<AssetRef>> reflected_value_references(const TypeRegistry& types, const ReflectedValue& value);
 }

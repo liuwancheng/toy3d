@@ -36,9 +36,10 @@ namespace toy3d
     {
       public:
         explicit EditorApplication(EditorWorkspace& workspace, std::shared_ptr<LogBuffer> log_buffer = {},
-            EditorProject* project = nullptr, std::string saved_root = {})
+            EditorProject* project = nullptr, std::string saved_root = {}, const ActorTypeRegistry* actors = nullptr, PhysicalPath game_executable = {})
             : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
-              thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer), notifications_(std::move(log_buffer)) {}
+              thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer), notifications_(std::move(log_buffer))
+        { if (actors) actor_factory_.actor_types() = *actors; game_executable_ = std::move(game_executable); }
 
       protected:
         bool on_initialize() override;
@@ -70,6 +71,8 @@ namespace toy3d
         void draw_project_dialogs();
         void request_project_open(const PhysicalPath& descriptor);
         void launch_project();
+        void play_scene();
+        PhysicalPath game_executable_;
         bool scene_writable() const;
         void request_scene_save();
         EditorProject* project_ = nullptr;
@@ -84,6 +87,7 @@ namespace toy3d
         bool project_scene_saved_ = false;
         std::uint64_t project_scene_revision_ = 0u;
         PhysicalPath pending_project_;
+        PhysicalPath pending_editor_executable_;
         char project_name_[65] = "NewGame";
         char project_parent_[2048]{};
         char editor_startup_[1024]{};

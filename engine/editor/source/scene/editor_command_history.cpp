@@ -112,12 +112,19 @@ namespace toy3d
         observed_generation_ = world.content_revision();
     }
 
+    bool EditorCommandHistory::preview_actor_properties(World& world, std::uint32_t actor_id, const ReflectedValue& candidate)
+    {
+        if (!active_for(EditorTransformSource::Details) || world_ != &world || pending_.actor_id != actor_id) return false;
+        Actor* actor = world.find_actor_by_id(actor_id);
+        return actor && factory_.actor_types().apply(*actor, candidate);
+    }
+
     void EditorCommandHistory::cancel()
     {
         if (active_ && world_)
         {
             Actor* actor = world_->find_actor_by_id(pending_.actor_id);
-            if (actor && !apply_actor_state(*actor, pending_.before, factory_.component_editors()))
+            if (actor && !apply_actor_state(*actor, pending_.before, factory_.component_editors(), &factory_.actor_types()))
                 TOY_LOG_ERROR("Could not restore cancelled editor gesture.");
             observed_generation_ = world_->content_revision();
         }
@@ -270,7 +277,7 @@ namespace toy3d
         if (record.kind == Kind::Modify)
         {
             Actor* actor = world.find_actor_by_id(record.actor_id);
-            return actor && apply_actor_state(*actor, forward ? record.after : record.before, factory_.component_editors());
+            return actor && apply_actor_state(*actor, forward ? record.after : record.before, factory_.component_editors(), &factory_.actor_types());
         }
         const bool create = (record.kind == Kind::Create) == forward;
         if (create)
@@ -311,7 +318,7 @@ namespace toy3d
                 for (const auto& saved : previous_children)
                 {
                     Actor* child = world.find_actor_by_id(saved.actor_id);
-                    if (!child || !apply_actor_state(*child, saved.state, factory_.component_editors()) ||
+                    if (!child || !apply_actor_state(*child, saved.state, factory_.component_editors(), &factory_.actor_types()) ||
                         !restore_actor_attachments(*child, saved.state)) TOY_LOG_ERROR("History child rollback failed.");
                 }
                 acknowledge_rollback(world);
@@ -332,7 +339,7 @@ namespace toy3d
                         if (parent == ids.end()) { rollback(); return false; }
                         component.parent_component_id = parent->second;
                     }
-                if (!apply_actor_state(*child, target, factory_.component_editors()) ||
+                if (!apply_actor_state(*child, target, factory_.component_editors(), &factory_.actor_types()) ||
                     !restore_actor_attachments(*child, target)) { rollback(); return false; }
             }
             // Publish ID remapping only after all candidate objects and attachments succeed.

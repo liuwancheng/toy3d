@@ -1,4 +1,5 @@
 #include "scene/editor_scene_session.h"
+#include "gamescene/scene_assembly.h"
 
 #include <algorithm>
 #include "asset/asset_descriptor_path.h"
@@ -121,7 +122,9 @@ namespace toy3d
             if (!state.valid) { error_ = "Actor contains an unsupported Component."; return false; }
             SceneActorData saved;
             saved.id = actor_ids_.at(id);
-            saved.kind = actor_kind(placement.item);
+            saved.kind = placement.actor_type.empty() ? actor_kind(placement.item) : "Custom";
+            saved.type = state.actor_type;
+            saved.properties = state.properties;
             saved.root_component_id = component_ids_.at(state.root_component_id);
             const auto assignments = materials_.capture(*world_, id);
             for (const auto& snapshot : state.components)
@@ -162,7 +165,7 @@ namespace toy3d
             }
             candidate.actors.push_back(std::move(saved));
         }
-        const auto valid = validate_scene_asset(candidate, &workspace_.catalog().index);
+        const auto valid = validate_scene_asset(candidate, &workspace_.catalog().index, &workspace_.types());
         if (!valid.succeeded()) { error_ = valid.message; return false; }
         data = std::move(candidate);
         error_.clear();
@@ -173,122 +176,60 @@ namespace toy3d
     {
         if (!world_) { error_ = "Scene session has no World."; return false; }
         if (history_.active()) { error_ = "Finish the active gesture before replacing the Scene."; return false; }
+        if (!factory_.actor_types().frozen() && !factory_.actor_types().freeze(workspace_.types()))
+        { error_ = "Scene Actor types could not freeze."; return false; }
         history_.synchronize(*world_);
-        const auto valid = validate_scene_asset(data, &workspace_.catalog().index);
+        const auto valid = validate_scene_asset(data, &workspace_.catalog().index, &workspace_.types());
         if (!valid.succeeded()) { error_ = valid.message; return false; }
-        std::map<std::string, StaticMeshRef> meshes;
-        // Resolve and build all geometry before publishing a candidate Actor.
-        for (const auto& actor : data.actors)
-            for (const auto& component : actor.components)
-            {
-                if (!factory_.component_editors().find(component.type))
-                { error_ = "Component editor is not registered: " + component.type; return false; }
-                // C++17 get_if selects geometry-owning author data.
-                const auto* mesh = std::get_if<SceneMeshData>(&component.properties);
-                if (!mesh) continue;
-                StaticMeshRef geometry;
-                if (!mesh->builtin_mesh.empty()) geometry = factory_.instantiate_builtin(mesh->builtin_mesh);
-                else
-                {
-                    const auto source = std::find_if(mesh->resources.begin(), mesh->resources.end(),
-                        [](const SceneResourceBinding& value) { return value.role == "mesh"; });
-                    const auto* location = source == mesh->resources.end() ? nullptr :
-                        workspace_.catalog().index.find(source->reference.asset_id);
-                    if (!location) { error_ = "Scene mesh asset is missing."; return false; }
-                    const auto loaded = read_static_mesh_asset(workspace_.files(), location->path);
-                    if (!loaded.succeeded()) { error_ = loaded.status().message; return false; }
-                    geometry = create_static_mesh_from_asset(loaded.value(), factory_.default_material());
-                }
-                if (!geometry) { error_ = "Could not prepare Scene geometry."; return false; }
-                meshes.emplace(component.id, std::move(geometry));
-            }
-        const auto old_ids = world_->actor_ids();
-        std::vector<std::uint32_t> candidates;
-        std::map<std::string, SceneComponent*> components;
-        std::map<std::uint32_t, std::string> next_actors;
-        std::map<std::uint32_t, std::string> next_components;
-        auto rollback = [&]()
+        SceneAssemblyServices services;
+        services.load_mesh = [&](const SceneMeshData& mesh, std::string& problem) -> StaticMeshRef
         {
-            for (const auto id : candidates)
-            {
-                Actor* actor = world_->find_actor_by_id(id);
-                if (actor && !world_->destroy_actor(*actor)) TOY_LOG_ERROR("Scene candidate rollback failed.");
-                factory_.forget(id);
-                materials_.forget(id);
-            }
-            history_.acknowledge_rollback(*world_);
+            if (!mesh.builtin_mesh.empty()) return factory_.instantiate_builtin(mesh.builtin_mesh);
+            const auto source = std::find_if(mesh.resources.begin(), mesh.resources.end(),
+                [](const SceneResourceBinding& value) { return value.role == "mesh"; });
+            const auto* location = source == mesh.resources.end() ? nullptr : workspace_.catalog().index.find(source->reference.asset_id);
+            if (!location) { problem = "Scene mesh asset is missing."; return {}; }
+            const auto loaded = read_static_mesh_asset(workspace_.files(), location->path);
+            if (!loaded.succeeded()) { problem = loaded.status().message; return {}; }
+            return create_static_mesh_from_asset(loaded.value(), factory_.default_material());
         };
-        for (const auto& saved : data.actors)
+        services.assign_material = [&](Actor& actor, StaticMeshComponent& component, const std::string& slot, const AssetRef& material, std::string& problem)
+        { return materials_.assign(*world_, actor.actor_id(), {component.component_id(), slot, material}, problem); };
+        services.forget_actor = [&](std::uint32_t id) { factory_.forget(id); materials_.forget(id); };
+        const auto old = world_->actor_ids();
+        SceneAssemblyResult assembled;
+        if (!assemble_scene(*world_, data, factory_.actor_types(), workspace_.types(), services, assembled, error_, &workspace_.catalog().index))
+        { history_.acknowledge_rollback(*world_); return false; }
+        clear_interaction();
+        for (const auto id : old) { factory_.forget(id); materials_.forget(id); }
+        actor_ids_ = std::move(assembled.actors);
+        component_ids_ = std::move(assembled.components);
+        for (const auto& entry : actor_ids_)
         {
+            Actor& actor = *world_->find_actor_by_id(entry.first);
+            const auto saved = std::find_if(data.actors.begin(), data.actors.end(), [&](const SceneActorData& value) { return value.id == entry.second; });
             PlacementRequest request;
-            if (!placement_kind(saved.kind, request.item)) { error_ = "Unsupported Actor kind."; rollback(); return false; }
-            const auto root = std::find_if(saved.components.begin(), saved.components.end(),
-                [&](const SceneComponentData& value) { return value.id == saved.root_component_id; });
-            request.transform = root->transform;
-            if (request.item == PlacementItemId::StaticMesh)
+            if (saved->kind == "Custom") request.actor_type = saved->type;
+            else if (!placement_kind(saved->kind, request.item)) { error_ = "Unsupported placement archetype."; return false; }
+            request.transform = actor.root_component()->local_transform();
+            factory_.remember(actor, request);
+            for (const auto& component : saved->components)
             {
-                // C++17 get_if requires a mesh root for the StaticMesh placement archetype.
-                const auto* mesh = std::get_if<SceneMeshData>(&root->properties);
-                if (!mesh) { error_ = "StaticMesh Actor requires a mesh root."; rollback(); return false; }
-                for (const auto& binding : mesh->resources)
-                    if (binding.role == "mesh") request.asset_id = binding.reference.asset_id;
-                request.static_mesh = meshes.at(root->id);
-            }
-            EditorActorState state;
-            state.valid = true;
-            std::uint32_t local_id = 1;
-            for (const auto& component : saved.components)
-            {
-                EditorComponentSnapshot snapshot;
-                snapshot.component_id = local_id++;
-                snapshot.data = component;
-                snapshot.data.parent_component_id.clear();
-                const auto mesh = meshes.find(component.id);
-                if (mesh != meshes.end()) snapshot.mesh = mesh->second;
-                if (component.id == saved.root_component_id) state.root_component_id = snapshot.component_id;
-                state.components.push_back(std::move(snapshot));
-            }
-            std::map<std::uint32_t, std::uint32_t> remapped;
-            Actor* actor = factory_.restore(*world_, request, state, remapped);
-            if (!actor) { error_ = "Scene Actor construction failed."; rollback(); return false; }
-            candidates.push_back(actor->actor_id());
-            next_actors.emplace(actor->actor_id(), saved.id);
-            for (std::size_t i = 0; i < saved.components.size(); ++i)
-            {
-                const auto& component = saved.components[i];
-                auto* runtime = static_cast<SceneComponent*>(actor->find_component_by_id(remapped.at(state.components[i].component_id)));
-                components.emplace(component.id, runtime);
-                next_components.emplace(runtime->component_id(), component.id);
-                // C++17 get_if binds restored mesh sources and Material identities.
                 if (const auto* mesh = std::get_if<SceneMeshData>(&component.properties))
                 {
-                    SceneMeshData source = *mesh;
-                    source.resources.erase(std::remove_if(source.resources.begin(), source.resources.end(),
-                        [](const SceneResourceBinding& value) { return value.role != "mesh"; }), source.resources.end());
-                    factory_.remember_mesh(*runtime, source);
-                    for (const auto& binding : mesh->resources)
-                        if (binding.role.compare(0, 9, "material:") == 0 &&
-                            !materials_.assign(*world_, actor->actor_id(),
-                                {runtime->component_id(), binding.role.substr(9), binding.reference}, error_))
-                        { rollback(); return false; }
+                    const auto found = std::find_if(component_ids_.begin(), component_ids_.end(), [&](const std::pair<const std::uint32_t, std::string>& value) { return value.second == component.id; });
+                    auto* runtime = static_cast<SceneComponent*>(actor.find_component_by_id(found->first));
+                    factory_.remember_mesh(*runtime, *mesh);
+                    if (runtime == actor.root_component())
+                    {
+                        const auto source = std::find_if(mesh->resources.begin(), mesh->resources.end(), [](const SceneResourceBinding& value) { return value.role == "mesh"; });
+                        if (source != mesh->resources.end()) request.asset_id = source->reference.asset_id;
+                        request.static_mesh = static_cast<StaticMeshComponent*>(runtime)->static_mesh();
+                    }
                 }
             }
+            factory_.remember(actor, request);
         }
-        for (const auto& actor : data.actors)
-            for (const auto& component : actor.components)
-                if (!component.parent_component_id.empty() &&
-                    !components.at(component.id)->attach_to(components.at(component.parent_component_id), AttachmentRule::KeepRelative))
-                { error_ = "Scene attachment failed."; rollback(); return false; }
-        clear_interaction();
-        for (const auto id : old_ids)
-        {
-            Actor* actor = world_->find_actor_by_id(id);
-            if (actor && !world_->destroy_actor(*actor)) TOY_LOG_ERROR("Old Scene Actor removal failed.");
-            factory_.forget(id);
-            materials_.forget(id);
-        }
-        actor_ids_ = std::move(next_actors);
-        component_ids_ = std::move(next_components);
         history_.mark_saved(*world_);
         error_.clear();
         return true;

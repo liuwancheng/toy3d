@@ -23,6 +23,8 @@ namespace toy3d
         void begin(World& world, std::uint32_t actor_id, const Transform& before, EditorTransformSource source);
         void finish(World& world, EditorTransformSource source);
         bool preview_component(World& world, std::uint32_t actor_id, std::uint32_t component_id, const SceneComponentData& candidate);
+        bool preview_actor_properties(World& world, std::uint32_t actor_id, const ReflectedValue& candidate);
+        const ActorTypeRegistry& actor_types() const { return factory_.actor_types(); }
         void cancel();
         void clear();
         std::uint32_t place_actor(World& world, const PlacementRequest& request);

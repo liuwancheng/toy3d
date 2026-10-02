@@ -4,10 +4,11 @@
 
 namespace toy3d
 {
+    class ActorTypeRegistry;
     class PlaceActorsPanel final
     {
       public:
-        void draw();
+        void draw(const ActorTypeRegistry* types = nullptr);
         void clear() { filter_.Clear(); }
 
       private:

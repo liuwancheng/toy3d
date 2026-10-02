@@ -1,4 +1,5 @@
 #include "panels/scene_panels.h"
+#include "scene/actor_details.h"
 
 #include <string>
 #include "imgui.h"
@@ -63,6 +64,7 @@ namespace toy3d
             else if (Actor* actor = selection.resolve_actor(world))
             {
                 ImGui::Text("Actor ID: %u", actor->actor_id());
+                draw_actor_details(*actor, history, workspace.types(), error);
                 for (const auto id : actor->component_ids())
                 {
                     auto* component = dynamic_cast<SceneComponent*>(actor->find_component_by_id(id));
