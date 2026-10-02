@@ -347,7 +347,9 @@ namespace toy3d
             focus_requested_ = false;
         }
         bool visible = true;
-        if (ImGui::Begin("Texture Preview", &visible))
+        // Begin may report drawable content even after the close button clears visible.
+        // Skip image commands before close() removes their registered identity.
+        if (ImGui::Begin("Texture Preview", &visible) && visible)
         {
             ImGui::TextWrapped("%s", path_.empty() ? "Loading Texture2D..." : path_.c_str());
             if (asset_)

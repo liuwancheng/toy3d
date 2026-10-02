@@ -538,9 +538,34 @@ namespace toy3d
                     (texture_id != IMGUI_FONT_ATLAS_TEXTURE_ID && texture_id != viewport_texture_id &&
                      std::find(textures.begin(), textures.end(), texture_id) == textures.end()))
                 {
-                    return snapshot_failure(static_cast<std::size_t>(list_index),
-                                            static_cast<std::size_t>(command_index),
-                                            "texture identity is not registered");
+                    auto failure =
+                        snapshot_failure(static_cast<std::size_t>(list_index), static_cast<std::size_t>(command_index),
+                                         "texture identity is not registered");
+                    const char* kind = texture_id == IMGUI_SCENE_VIEWPORT_TEXTURE_ID
+                                           ? "scene_viewport"
+                                           : (texture_id.valid() ? "user_image" : "invalid");
+                    failure.diagnostic += "; window='" + std::string(list._OwnerName ? list._OwnerName : "unknown") +
+                                          "'; texture_id=" + std::to_string(texture_id.value()) + "; kind=" + kind +
+                                          "; elements=" + std::to_string(source_command.ElemCount) +
+                                          "; font_allowed=" + std::to_string(IMGUI_FONT_ATLAS_TEXTURE_ID.value()) +
+                                          "; viewport_allowed=" + std::to_string(viewport_texture_id.value()) +
+                                          "; additional_count=" + std::to_string(textures.size()) + "; additional=[";
+                    // Bound the diagnostic even if a host registers many images.
+                    constexpr std::size_t diagnostic_id_limit = 16u;
+                    for (std::size_t index = 0; index < std::min(textures.size(), diagnostic_id_limit); ++index)
+                    {
+                        if (index != 0u)
+                        {
+                            failure.diagnostic += ",";
+                        }
+                        failure.diagnostic += std::to_string(textures[index].value());
+                    }
+                    if (textures.size() > diagnostic_id_limit)
+                    {
+                        failure.diagnostic += ",...";
+                    }
+                    failure.diagnostic += "]";
+                    return failure;
                 }
                 const std::uint64_t first_index = global_index_base + source_command.IdxOffset;
                 const std::uint64_t vertex_offset = global_vertex_base + source_command.VtxOffset;

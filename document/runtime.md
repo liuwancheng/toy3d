@@ -82,7 +82,7 @@ StartupScene=/Project/RotatingActor.scene
 
 Editor 未指定工程时打开 `/Engine/Scenes/Default.scene`；有效工程按 Editor.StartupScene 打开，空值使用同一默认场景。场景非法/缺失/装配失败记录诊断并回退，保持工程关联，不修改工程配置。描述/配置校验失败则无工程启动并记录错误；默认场景本身损坏明确报错，不以硬编码 Cube/Light 替代。场景加载等待 Shader 启动验证完成，Editor 不 begin_play。Game 优先使用 --PlayScene，再取 Game.StartupScene，空值使用引擎默认 Scene；有效项目的场景缺失/非法明确退出，避免掩盖游戏配置错误。
 
-工程 Saved 放 `<工程>/saved`；无工程放 OS 用户数据根/Toy3d/Editor。日志每 Editor/Game 实例分别用 editor-<session-id>.log / game-<session-id>.log；布局和 Shader 缓存在同一 Saved 下。资源工程不加入引擎 CMake、不拷贝到 bin；引擎部署只复制自身 asset/config 和 Editor UI 资源。`--Project=D:/path/Game.toy` 可显式打开工程。
+工程 Saved 放 `<工程>/saved`；无工程放 OS 用户数据根/Toy3d/Editor。日志每 Editor/Game 实例按角色、本地启动日期时间和进程号命名，格式见 [Core 日志分发](core.md#日志分发)；布局和 Shader 缓存在同一 Saved 下。资源工程不加入引擎 CMake、不拷贝到 bin；引擎部署只复制自身 asset/config 和 Editor UI 资源。`--Project=D:/path/Game.toy` 可显式打开工程。
 
 创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有自定义脚本保留；仅完全匹配已知生成模板的旧脚本升级为当前宿主。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本按模块启动 Toy3dEditor 或 <Module>Editor，不自动构建；Game 可直接启动或由 Scene > Standalone Play 启动；Saved 记录为本机缓存，不纳入版本管理。
 

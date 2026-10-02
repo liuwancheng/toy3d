@@ -470,11 +470,6 @@ namespace toy3d
             std::cerr << "Game Saved: " << made.message << '\n';
             return 1;
         }
-        AssetId session;
-        if (!AssetId::try_generate(session))
-        {
-            return 1;
-        }
         Engine engine;
         EngineStartupPaths startup;
         startup.engine_assets = paths.engine_assets;
@@ -482,7 +477,7 @@ namespace toy3d
         startup.project_assets = PhysicalPath(parent.value().utf8() + "/asset");
         startup.project_config = PhysicalPath(parent.value().utf8() + "/config");
         startup.saved = saved;
-        startup.log_file_name = "game-" + session.hex() + ".log";
+        startup.log_file_name = make_dated_log_file_name("game");
         if (!engine.set_startup_paths(std::move(startup)) || !engine.initialize_logging())
         {
             return 1;

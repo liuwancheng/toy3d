@@ -131,6 +131,84 @@ namespace
         ImGui::DestroyContext();
     }
 
+    void check_texture_close(toy3d::TexturePreviewPanel& panel)
+    {
+        using namespace toy3d;
+        const auto displayed = panel.texture_ids();
+        check(displayed.size() == 1, "Close fixture has a displayed texture");
+        if (displayed.size() != 1)
+        {
+            return;
+        }
+        ImGui::CreateContext();
+        auto& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = ImVec2(1200, 700);
+        io.DeltaTime = 1.0f / 60.0f;
+        io.ConfigInputTrickleEventQueue = false;
+        unsigned char* pixels = nullptr;
+        int width = 0;
+        int height = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        const auto frame = [&]()
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            panel.draw();
+            const auto hovered = ImGui::GetCurrentContext()->HoveredId;
+            ImGui::Render();
+            return hovered;
+        };
+        const auto draws_image = [&]()
+        {
+            const auto image = reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(displayed.front().value()));
+            const auto* data = ImGui::GetDrawData();
+            for (int list = 0; list < data->CmdListsCount; ++list)
+            {
+                for (const auto& command : data->CmdLists[list]->CmdBuffer)
+                {
+                    if (command.ElemCount && command.GetTexID() == image)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        frame();
+        frame();
+        check(draws_image(), "Open preview emits an actual texture draw command");
+        const auto close_id = ImGui::FindWindowByName("Texture Preview")->GetID("#CLOSE");
+        bool found_close = false;
+        for (float y = 5; y < 25 && !found_close; y += 5)
+        {
+            for (float x = 10; x < 760 && !found_close; x += 5)
+            {
+                io.AddMousePosEvent(x, y);
+                found_close = frame() == close_id;
+            }
+        }
+        check(found_close, "Actual preview close button is discoverable by identity");
+        if (found_close)
+        {
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            frame();
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            frame();
+            check(panel.texture_ids().empty() && !panel.asset_id().valid() && !draws_image(),
+                  "Close click clears the preview without drawing its retired image in the same frame");
+            UiRenderWork retired;
+            panel.collect_render_work(retired);
+            check(retired.retire_textures == displayed, "Close retires the displayed texture exactly once");
+            frame();
+            UiRenderWork after_close;
+            panel.collect_render_work(after_close);
+            check(!draws_image() && after_close.retire_textures.empty(),
+                  "Closed preview stays hidden and does not repeat retirement");
+        }
+        ImGui::DestroyContext();
+    }
+
     void check_texture_candidates(toy3d::EditorWorkspace& workspace)
     {
         using namespace toy3d;
@@ -239,6 +317,7 @@ namespace
             check(panel.asset_id() == second && panel.texture_ids() == current && stale.retire_textures.size() == 1,
                   "A late upload result cannot publish an abandoned asset request");
         }
+        check_texture_close(panel);
         panel.shutdown();
         panel.shutdown();
         check(graph->shutdown(TaskGraphShutdownMode::Drain).succeeded(), "Texture task graph drains on shutdown");

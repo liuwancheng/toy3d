@@ -64,16 +64,11 @@ int toy3d::run_editor_host(void* hInstance, const EditorHostConfig& host)
         std::cerr << made.message << '\n';
         return 1;
     }
-    AssetId session;
-    if (!AssetId::try_generate(session))
-    {
-        return 1;
-    }
     EngineStartupPaths startup;
     startup.engine_assets = PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
     startup.engine_config = PhysicalPath(TOY3D_EDITOR_ENGINE_CONFIG_ROOT);
     startup.saved = saved;
-    startup.log_file_name = "editor-" + session.hex() + ".log";
+    startup.log_file_name = make_dated_log_file_name("editor");
     if (project->active())
     {
         startup.project_assets = project->assets();

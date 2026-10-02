@@ -1,11 +1,13 @@
 #include "logging/logger.h"
 
 #include <cstdio>
+#include <chrono>
 #include <filesystem>
 #include <utility>
 #include <vector>
 
 #include <spdlog/sinks/base_sink.h>
+#include <spdlog/details/os.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
@@ -142,6 +144,19 @@ namespace toy3d
             bool write_failed_ = false;
         };
     } // namespace
+
+    std::string make_dated_log_file_name(const std::string& role)
+    {
+        const auto now = std::chrono::system_clock::now();
+        const auto time = std::chrono::system_clock::to_time_t(now);
+        // Reuse spdlog's thread-safe native time/PID adapters across platforms.
+        const auto local = spdlog::details::os::localtime(time);
+        const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+        return spdlog::fmt_lib::format("{}-{:04}-{:02}-{:02}_{:02}-{:02}-{:02}-{:03}-p{}.log", role,
+                                       local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, local.tm_hour,
+                                       local.tm_min, local.tm_sec, milliseconds.count() % 1000,
+                                       spdlog::details::os::pid());
+    }
 
     // --------------------------------------------------------------------------
     // Logger: serialize the session's fan-out, configuration and final flush

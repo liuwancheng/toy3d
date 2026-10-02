@@ -189,6 +189,28 @@ namespace
               "Unicode primary and rotated logs are accessible by their original native paths");
     }
 
+    void dated_file_output(const std::filesystem::path& root)
+    {
+        using namespace toy3d;
+        auto buffer = std::make_shared<LogBuffer>();
+        auto config = config_for(root, "dated", buffer);
+        config.file_name = make_dated_log_file_name("editor");
+        const auto game_name = make_dated_log_file_name("game");
+        check(config.file_name.find("editor-") == 0u && config.file_name.find("-p") != std::string::npos &&
+                  config.file_name.size() > 35u && game_name.find("game-") == 0u && config.file_name != game_name,
+              "Dated host logs keep readable roles and a concurrent-process suffix");
+        auto& logger = Logger::get_instance();
+        check(logger.init(config), "Dated log file initializes through the existing file sink");
+        TOY_LOG_ERROR("Dated log final record");
+        logger.exit();
+        const auto snapshot = buffer->snapshot();
+        // filesystem checks the file exposed to Console using the same native path.
+        const auto path = std::filesystem::u8path(snapshot.file_path);
+        check(snapshot.file_ready && snapshot.output_error.empty() && path.filename().u8string() == config.file_name &&
+                  read_file(path).find("Dated log final record") != std::string::npos,
+              "Console reports the dated filename and the error reaches that file");
+    }
+
     void file_failure_and_rotation(const std::filesystem::path& root)
     {
         using namespace toy3d;
@@ -245,6 +267,7 @@ int main()
     buffer_contract();
     fanout_and_concurrency(root);
     unicode_file_output(root);
+    dated_file_output(root);
     file_failure_and_rotation(root);
     std::cout << "Logging checks: " << (failures == 0 ? "passed" : "failed") << '\n';
     return failures == 0 ? 0 : 1;

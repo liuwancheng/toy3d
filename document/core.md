@@ -92,7 +92,7 @@ Logger 将同一事件分发到终端、滚动文件和可选 LogBuffer。LogBuf
 
 默认保留最近10000条、16 MiB（记录元数据及文本字节，不含消费者持有的快照和容器开销）。快照共享不可变记录，消费者应替换旧快照，避免无限持有历史。文件输出沿用10 MiB/5份滚动备份，Warning及以上立即 flush，退出最终 flush；文件失败的那条正文可能未写入文件，Console 中仍保留并显示文件健康状态。
 
-启动入口在业务初始化前创建 `std::make_shared<LogBuffer>()`，赋给 `LogConfig::memory_output` 后调用 `Logger::init(config, &error)`；Editor 将工程或用户 Saved 根注入 Engine，日志放 `saved/logs/editor-<会话ID>.log`，不同实例不共写同一文件。业务继续使用 `TOY_LOG_ERROR("Material [{}]: {}", asset_id.hex(), error)`；UI 从 `buffer->snapshot()` 读取，不访问 spdlog sink 或设置 Logger 等级。接口见 logging/log_buffer.h、logger.h，完整失败和并发示例见 tests/logging_tests.cpp。
+启动入口在业务初始化前创建 `std::make_shared<LogBuffer>()`，赋给 `LogConfig::memory_output` 后调用 `Logger::init(config, &error)`；Editor 将工程或用户 Saved 根注入 Engine。Editor/Game 日志用 `make_dated_log_file_name(role)` 生成，例如 `saved/logs/editor-2026-10-02_12-05-30-123-p37228.log`：本地启动日期时间、毫秒和进程号，不同并发实例不共写。业务继续使用 `TOY_LOG_ERROR("Material [{}]: {}", asset_id.hex(), error)`；UI 从 `buffer->snapshot()` 读取，不访问 spdlog sink 或设置 Logger 等级。接口见 logging/log_buffer.h、logger.h，完整失败和并发示例见 tests/logging_tests.cpp。
 
 日志路径边界使用 UTF-8，文件名经 u8path 转为原生路径；Windows 构建统一启用 spdlog 的 SPDLOG_WCHAR_FILENAMES，sink 使用 path.native()，避免中文或非 BMP 字符在窄字符转换中丢失。该定义由 spdlog target 传播，调用方不能局部改变文件名 ABI。
 

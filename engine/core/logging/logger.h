@@ -13,6 +13,10 @@
 
 namespace toy3d
 {
+    // Local startup date/time with milliseconds; PID separates concurrent hosts.
+    // Role is a filename stem supplied by the composition root (editor/game).
+    std::string make_dated_log_file_name(const std::string& role);
+
     struct LogConfig
     {
         std::string logger_name = "toy3d";

@@ -202,6 +202,21 @@ int main()
     ImGuiSnapshotResult unknown_texture = imgui.end_frame();
     check(!unknown_texture.succeeded() && unknown_texture.draw_data == nullptr,
           "unknown texture identity must reject the whole UI payload");
+    check(unknown_texture.diagnostic.find("texture_id=2; kind=scene_viewport; elements=6") != std::string::npos &&
+              unknown_texture.diagnostic.find("viewport_allowed=0") != std::string::npos,
+          "Missing viewport registration reports actual identity, category and draw size");
+
+    check(imgui.begin_frame(window, 1.0 / 60.0), "named texture diagnostic frame must start");
+    ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiCond_Always);
+    ImGui::Begin("Texture diagnostic fixture");
+    ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(3u)), ImVec2(20, 20));
+    ImGui::End();
+    const auto named_texture = imgui.end_frame({}, {ImGuiTextureId(4)});
+    check(!named_texture.succeeded() &&
+              named_texture.diagnostic.find("window='Texture diagnostic fixture'") != std::string::npos &&
+              named_texture.diagnostic.find("texture_id=3; kind=user_image") != std::string::npos &&
+              named_texture.diagnostic.find("additional_count=1; additional=[4]") != std::string::npos,
+          "Unregistered image diagnostic identifies its window and allowed image IDs");
 
     check(imgui.begin_frame(window, 1.0 / 60.0), "registered viewport texture test frame must start");
     ImGui::GetForegroundDrawList()->AddImage(
