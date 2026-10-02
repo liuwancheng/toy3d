@@ -43,19 +43,31 @@ namespace toy3d
         PhysicalPath path;
     };
 
+    struct EngineStartupPaths
+    {
+        PhysicalPath engine_assets;
+        PhysicalPath engine_config;
+        PhysicalPath project_assets;
+        PhysicalPath project_config;
+        PhysicalPath saved;
+        std::string log_file_name = "toy3d.log";
+    };
+
     class Engine
     {
       public:
         Engine();
         ~Engine();
 
-        void pre_init();
+        bool pre_init();
+        bool set_startup_paths(EngineStartupPaths paths);
         // Call before pre_init() to capture startup diagnostics. Subsequent calls
         // reuse the session outputs; they do not attach a new buffer or reconfigure.
         bool initialize_logging(std::shared_ptr<LogBuffer> buffer = {});
 
         void init(void* hInstance);
 
+        bool initialized() const { return world && renderer && window && !engine_exited; }
         void main_loop();
 
         void exit();
@@ -85,6 +97,7 @@ namespace toy3d
         std::shared_ptr<DirectoryFileStore> temp_store;
         FileSystem file_system;
         ShaderLoadConfig shader_load_config;
+        EngineStartupPaths startup_paths;
         std::unique_ptr<ShaderMapLoader> builtin_shader_loader;
         std::unique_ptr<ShaderMap> builtin_shader_map;
         std::shared_ptr<const GlobalShaderMap> global_shader_map;

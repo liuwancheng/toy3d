@@ -38,4 +38,30 @@ namespace toy3d
 
     bool pick_texture_files(IWindow&, std::vector<std::string>& paths, std::string& error)
     { return pick_files(paths, error, true); }
+    namespace
+    {
+        bool pick_project_path(std::string& path, std::string& error, bool folder)
+        {
+            path.clear(); error.clear();
+            @autoreleasepool
+            {
+                NSOpenPanel* panel = [NSOpenPanel openPanel];
+                panel.title = folder ? @"New project parent folder" : @"Open Toy3d Project";
+                panel.canChooseDirectories = folder;
+                panel.canChooseFiles = !folder;
+                panel.allowsMultipleSelection = NO;
+                if (!folder) panel.allowedFileTypes = @[@"toy"];
+                if ([panel runModal] != NSModalResponseOK) return true;
+                const char* selected = panel.URL.path.UTF8String;
+                if (!selected) { error = "Project path conversion failed."; return false; }
+                path = selected;
+            }
+            return true;
+        }
+    }
+    bool pick_project_file(IWindow&, std::string& path, std::string& error)
+    { return pick_project_path(path, error, false); }
+    bool pick_project_folder(IWindow&, std::string& path, std::string& error)
+    { return pick_project_path(path, error, true); }
+
 }

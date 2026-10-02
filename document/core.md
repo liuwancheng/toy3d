@@ -53,9 +53,11 @@ target_link_libraries(MyAssetTool PRIVATE Toy3dAssets) # 同时获得 Core/Shade
 
 真实 FileHandle 接口使用指针/长度：read(uint8_t*, size_t)、write(const uint8_t*, size_t)、read_at(offset, uint8_t*, size_t) const；不要虚构 Span 重载。完整 mount/权限/短读/发布用例见 tests/file_system_tests.cpp。
 
-## 外部进程
+## 平台服务与外部进程
 
-平台外部操作统一声明于 `platform/platform_services.h`，实现在对应 cpp，归属 Toy3dCore；Windows 的 shell32 为该目标的 PRIVATE 依赖。文件承载进程执行、用户所有的 detached 程序和桌面目录打开，类型仍使用 ProcessService/NativeProcessService；文件读写、线程和 runtime 窗口行为各归原模块。
+平台外部操作统一声明于 `platform/platform_services.h`，实现在对应 cpp，归属 Toy3dCore；Windows 的 shell32/ole32 为该目标的 PRIVATE 依赖。文件承载进程执行、用户所有的 detached 程序和桌面目录打开，类型仍使用 ProcessService/NativeProcessService；文件读写、线程和 runtime 窗口行为各归原模块。
+
+用户数据根查询由 platform/platform_services.h 的 user_data_directory() 提供，返回 FileResult<PhysicalPath>，不创建目录。Windows 使用 Known Folder LocalAppData；macOS 使用 HOME/Library/Application Support；Linux 使用绝对 XDG_DATA_HOME 或 HOME/.local/share。Editor 决定 Toy3d/Editor 子目录，Core 不持工程全局状态。
 
 ProcessService 可注入，NativeProcessService 为本机实现、可并发调用；接收绝对 PhysicalPath 和 argv 数组，无 shell 求值/PATH 搜索，校验 UTF-8、NUL、输入上限。
 
@@ -90,7 +92,9 @@ Logger 将同一事件分发到终端、滚动文件和可选 LogBuffer。LogBuf
 
 默认保留最近10000条、16 MiB（记录元数据及文本字节，不含消费者持有的快照和容器开销）。快照共享不可变记录，消费者应替换旧快照，避免无限持有历史。文件输出沿用10 MiB/5份滚动备份，Warning及以上立即 flush，退出最终 flush；文件失败的那条正文可能未写入文件，Console 中仍保留并显示文件健康状态。
 
-启动入口在业务初始化前创建 `std::make_shared<LogBuffer>()`，赋给 `LogConfig::memory_output` 后调用 `Logger::init(config, &error)`；Editor 通过 `Engine::initialize_logging(buffer)` 使用既定 `saved/logs/toy3d.log` 路径。业务继续使用 `TOY_LOG_ERROR("Material [{}]: {}", asset_id.hex(), error)`；UI 从 `buffer->snapshot()` 读取，不访问 spdlog sink 或设置 Logger 等级。接口见 logging/log_buffer.h、logger.h，完整失败和并发示例见 tests/logging_tests.cpp。
+启动入口在业务初始化前创建 `std::make_shared<LogBuffer>()`，赋给 `LogConfig::memory_output` 后调用 `Logger::init(config, &error)`；Editor 将工程或用户 Saved 根注入 Engine，日志放 `saved/logs/editor-<会话ID>.log`，不同实例不共写同一文件。业务继续使用 `TOY_LOG_ERROR("Material [{}]: {}", asset_id.hex(), error)`；UI 从 `buffer->snapshot()` 读取，不访问 spdlog sink 或设置 Logger 等级。接口见 logging/log_buffer.h、logger.h，完整失败和并发示例见 tests/logging_tests.cpp。
+
+日志路径边界使用 UTF-8，文件名经 u8path 转为原生路径；Windows 构建统一启用 spdlog 的 SPDLOG_WCHAR_FILENAMES，sink 使用 path.native()，避免中文或非 BMP 字符在窄字符转换中丢失。该定义由 spdlog target 传播，调用方不能局部改变文件名 ABI。
 
 文件创建、轮转或 flush 失败时保留其他输出，通过缓冲健康状态和 stderr 报警，不递归调用 Logger。init 返回 false 表示所请求输出没有全部成功，不代表剩余输出失效。生命周期由启动/退出入口持有：先初始化日志再初始化业务；工作线程停止后 flush/exit，Logger 的写入与 exit 互斥。Editor 注入会话缓冲，工具可只使用现有终端/文件。新增实现放 logging，仍属于 Toy3dCore，不增加库。
 

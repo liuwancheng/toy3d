@@ -1,7 +1,5 @@
 #include <string>
 #include <vector>
-#include <codecvt>
-#include <locale>
 #include <memory>
 #include <iostream>
 #include <utility>
@@ -17,14 +15,23 @@
 #include "editor.h"
 #include "workspace/editor_workspace.h"
 #include "logging/logger.h"
+#include "platform/platform_services.h"
+#include "workspace/editor_project.h"
 
 toy3d::Engine g_engine;
 
-std::string wchar2string(const wchar_t* wstr)
+#if WITH_WIN
+std::string wchar2string(const wchar_t* text)
 {
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-    return converter.to_bytes(wstr);
+    if (!text) return {};
+    const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, nullptr, 0, nullptr, nullptr);
+    if (bytes <= 0) return {};
+    std::string result(static_cast<std::size_t>(bytes), '\0');
+    if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, result.data(), bytes, nullptr, nullptr)) return {};
+    result.pop_back();
+    return result;
 }
+#endif
 
 // 引擎主函数声明
 int engine_main(void* hInstance);
@@ -65,10 +72,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // process command line args
     int argc = 0;
     LPWSTR* argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argvw) return 1;
     std::vector<std::string> args;
     for (int i = 0; i < argc; i++)
     {
-        args.push_back(wchar2string(argvw[i]));
+        const std::string argument = wchar2string(argvw[i]);
+        if (argument.empty() && argvw[i][0] != L'\0') { LocalFree(argvw); return 1; }
+        args.push_back(argument);
     }
     LocalFree(argvw);
     toy3d::CommandLineParser::get_instance().parser_args(args);
@@ -94,38 +104,54 @@ int main(int argc, char* argv[])
 
 int engine_main(void* hInstance)
 {
-    const auto log_buffer = std::make_shared<toy3d::LogBuffer>();
+    using namespace toy3d;
+    auto& arguments = CommandLineParser::get_instance();
+    const PhysicalPath editor_directory(TOY3D_EDITOR_DEPLOY_ROOT);
+    auto project = std::make_unique<EditorProject>(editor_directory);
+    std::string project_error;
+    if (arguments.has_option("Project"))
+    {
+        const auto opened = project->open(PhysicalPath(arguments.get_option("Project")));
+        if (!opened.succeeded()) { project_error = opened.message; project = std::make_unique<EditorProject>(editor_directory); }
+    }
+    NativePlatformFile platform;
+    PhysicalPath saved;
+    if (project->active()) saved = project->saved();
+    else
+    {
+        const auto user = user_data_directory();
+        if (!user.succeeded()) { std::cerr << user.status().message << '\n'; return 1; }
+        const auto path = platform.join_relative(user.value(), "Toy3d/Editor");
+        if (!path.succeeded()) { std::cerr << path.status().message << '\n'; return 1; }
+        saved = path.value();
+    }
+    const auto made = platform.create_directories(saved);
+    if (!made.succeeded()) { std::cerr << made.message << '\n'; return 1; }
+    AssetId session;
+    if (!AssetId::try_generate(session)) return 1;
+    EngineStartupPaths startup;
+    startup.engine_assets = PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
+    startup.engine_config = PhysicalPath(TOY3D_EDITOR_ENGINE_CONFIG_ROOT);
+    startup.saved = saved; startup.log_file_name = "editor-" + session.hex() + ".log";
+    if (project->active()) { startup.project_assets = project->assets(); startup.project_config = project->config(); }
+    if (!g_engine.set_startup_paths(std::move(startup))) return 1;
+    const auto log_buffer = std::make_shared<LogBuffer>();
     g_engine.initialize_logging(log_buffer);
-    toy3d::CommandLineParser& arguments = toy3d::CommandLineParser::get_instance();
-    std::vector<std::string> editor_defaults = {"Toy3dEditor"};
-    if (!arguments.has_option("Window.Title"))
-        editor_defaults.push_back("--Window.Title=Toy3d Editor");
-    if (!arguments.has_option("Window.Width") && !arguments.has_option("Width") &&
-        !arguments.has_option("resX"))
-        editor_defaults.push_back("--Window.Width=1600");
-    if (!arguments.has_option("Window.Height") && !arguments.has_option("Height") &&
-        !arguments.has_option("resY"))
-        editor_defaults.push_back("--Window.Height=900");
-    arguments.parser_args(editor_defaults);
-
-    toy3d::EditorWorkspace workspace;
-    const std::string asset_root = arguments.get_option("Editor.AssetRoot", TOY3D_EDITOR_ASSET_ROOT);
-    toy3d::EditorWorkspacePaths workspace_paths;
-    workspace_paths.project_assets = toy3d::PhysicalPath(asset_root);
-    workspace_paths.engine_assets = toy3d::PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
-    workspace_paths.editor_resources = toy3d::PhysicalPath(TOY3D_EDITOR_RESOURCE_ROOT);
-    workspace_paths.deployment = toy3d::PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
-    const bool workspace_ready = workspace.initialize(workspace_paths);
-    if (!workspace_ready)
-        TOY_LOG_ERROR("Editor workspace initialization: {}", workspace.error());
-    toy3d::ShaderLoadConfig shader_config;
-    shader_config.mode = toy3d::ShaderLoadMode::ShaderMapEntry;
-    shader_config.path = toy3d::PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
-    g_engine.set_shader_load_config(std::move(shader_config));
-    g_engine.set_application(std::make_unique<toy3d::EditorApplication>(workspace, log_buffer));
+    if (!project_error.empty()) TOY_LOG_ERROR("Open Project: {}. Opening the engine default scene.", project_error);
+    EditorWorkspace workspace;
+    EditorWorkspacePaths paths;
+    if (project->active()) paths.project_assets = project->assets();
+    paths.engine_assets = PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
+    paths.editor_resources = PhysicalPath(TOY3D_EDITOR_RESOURCE_ROOT);
+    paths.deployment = PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
+    paths.saved = saved;
+    if (!workspace.initialize(paths))
+    { TOY_LOG_ERROR("Editor workspace initialization: {}", workspace.error()); g_engine.exit(); return 1; }
+    g_engine.set_shader_load_config({ShaderLoadMode::ShaderMapEntry, PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT)});
+    g_engine.set_application(std::make_unique<EditorApplication>(workspace, log_buffer, project.get(), saved.utf8()));
     g_engine.init(hInstance);
-    g_engine.main_loop();
-    g_engine.exit();
-    g_engine.set_application(nullptr);
-    return 0;
+    const bool initialized = g_engine.initialized();
+    if (initialized) g_engine.main_loop();
+    g_engine.exit(); g_engine.set_application(nullptr);
+    return initialized ? 0 : 1;
 }

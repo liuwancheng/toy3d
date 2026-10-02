@@ -82,7 +82,8 @@ namespace toy3d
             error_ = "Editor workspace is already initialized.";
             return false;
         }
-        const auto source = platform_file_.canonical(paths.project_assets);
+        const bool has_project = !paths.project_assets.empty();
+        const auto source = has_project ? platform_file_.canonical(paths.project_assets) : FileResult<PhysicalPath>(PhysicalPath{});
         const auto deployed = platform_file_.canonical(paths.deployment);
         const auto engine = platform_file_.canonical(paths.engine_assets);
         const auto resources = platform_file_.canonical(paths.editor_resources);
@@ -91,8 +92,8 @@ namespace toy3d
             error_ = "Editor project, engine, interface resource or deployment root could not be resolved.";
             return false;
         }
-        if (paths_overlap(source.value(), deployed.value()) || paths_overlap(source.value(), engine.value()) ||
-            paths_overlap(source.value(), resources.value()))
+        if (has_project && (paths_overlap(source.value(), deployed.value()) || paths_overlap(source.value(), engine.value()) ||
+            paths_overlap(source.value(), resources.value())))
         {
             error_ = "Project asset source must not overlap deployment, engine assets or Editor interface resources.";
             return false;
@@ -116,10 +117,10 @@ namespace toy3d
             mount.debug_name = virtual_root;
             return files_.add_mount(mount);
         };
-        FileStatus mounted = mount_directory(source.value(), "/Project", true);
+        FileStatus mounted = has_project ? mount_directory(source.value(), "/Project", true) : FileStatus::success();
         if (mounted.succeeded()) mounted = mount_directory(engine.value(), "/Engine", false);
         if (mounted.succeeded()) mounted = mount_directory(resources.value(), "/Editor/Resources", false);
-        const auto saved = platform_file_.join_relative(deployed.value(), "saved");
+        const auto saved = paths.saved.empty() ? platform_file_.join_relative(deployed.value(), "saved") : FileResult<PhysicalPath>(paths.saved);
         if (mounted.succeeded() && saved.succeeded())
             mounted = platform_file_.create_directories(saved.value());
         if (mounted.succeeded() && saved.succeeded())
@@ -158,14 +159,15 @@ namespace toy3d
             error_ = "Editor asset catalog roots could not be parsed.";
             return false;
         }
-        const AssetStatus recovered = asset_pairs_->recover_tree(project_root.value());
+        const AssetStatus recovered = has_project() ? asset_pairs_->recover_tree(project_root.value()) : AssetStatus::success();
         if (!recovered.succeeded())
         {
             error_ = recovered.virtual_path + ": " + recovered.message;
             return false;
         }
-        auto scanned = scan_asset_catalog(types_, files_,
-            std::vector<VirtualPath>{project_root.value(), engine_root.value()});
+        std::vector<VirtualPath> roots{engine_root.value()};
+        if (has_project()) roots.push_back(project_root.value());
+        auto scanned = scan_asset_catalog(types_, files_, roots);
         if (!scanned.succeeded())
         {
             error_ = scanned.status().virtual_path + ": " + scanned.status().message;

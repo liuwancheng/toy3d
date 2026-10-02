@@ -1,3 +1,0 @@
-Toy3dShaderSources 1
-# Logical Shader name, TAB, path relative to project/shader.
-Project/Surface/Painted	painted.shader

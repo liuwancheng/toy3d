@@ -101,7 +101,7 @@ namespace toy3d
             actions.visible = true;
             actions.region_min = Vector2(region.x, region.y);
             actions.region_max = Vector2(region.x + size.x, region.y + size.y);
-            const bool writable = folder == "/Project" || folder.compare(0, 9, "/Project/") == 0;
+            const bool writable = workspace.has_project() && (folder == "/Project" || folder.compare(0, 9, "/Project/") == 0);
             if (ImGui::Button("Rescan Assets"))
             {
                 if (!workspace.refresh()) TOY_LOG_ERROR("Content Browser refresh failed: {}", workspace.error());
@@ -110,8 +110,11 @@ namespace toy3d
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Rescan Project and Engine asset files. This does not reimport source files.");
             ImGui::SameLine();
+            if (!workspace.has_project()) show_engine_content = true;
+            ImGui::BeginDisabled(!workspace.has_project());
             if (ImGui::Checkbox("Show Engine Content", &show_engine_content) && !show_engine_content &&
-                (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)) folder = "/Project";
+                (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)) folder = workspace.has_project() ? "/Project" : "/Engine";
+            ImGui::EndDisabled();
             ImGui::TextUnformatted(folder.c_str());
             if (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)
             { ImGui::SameLine(); ImGui::TextDisabled("(read only)"); }

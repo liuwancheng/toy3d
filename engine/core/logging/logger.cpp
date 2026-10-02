@@ -69,7 +69,7 @@ namespace toy3d
         {
           public:
             FileLogSink(const std::filesystem::path& path, const LogConfig& config)
-                : file_(path.string(), config.max_file_size, config.max_file_count, false),
+                : file_(path.native(), config.max_file_size, config.max_file_count, false),
                   buffer_(config.memory_output)
             {
                 file_.set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] [thread %t] [%s:%#] %v");
@@ -119,7 +119,8 @@ namespace toy3d
         std::lock_guard<std::mutex> lock(mutex_);
         if (error_message) error_message->clear();
         const auto buffer = config.memory_output;
-        const std::filesystem::path file_path = config.log_directory / config.file_name;
+        // C++17 filesystem keeps UTF-8 boundary inputs lossless through native file I/O.
+        const std::filesystem::path file_path = config.log_directory / std::filesystem::u8path(config.file_name);
         if (buffer) buffer->configure_file(config.file_output, file_path.u8string(), false);
         std::vector<spdlog::sink_ptr> sinks;
         std::string failure;

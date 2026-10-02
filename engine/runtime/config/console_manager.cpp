@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include "misc/utf8.h"
 #include <mutex>
 #include <utility>
 
@@ -32,96 +34,151 @@ namespace toy3d
         return instance;
     }
 
-    FileStatus ConsoleManager::load_config(FileSystem& file_system, const VirtualPath& path, ConfigLoadMode mode)
+    FileResult<ConfigValues> ConsoleManager::parse_config(const std::string& text, const std::string& source)
     {
-        auto text = file_system.read_text_utf8(path);
-        if (!text.succeeded())
-        {
-            return text.status();
-        }
-
-        std::unordered_map<std::string, std::string> parsed_values;
-        std::string line;
+        constexpr std::size_t maximum_config_bytes = 256u * 1024u;
+        ConfigValues parsed;
         std::string section;
-        std::size_t offset = 0;
-        const std::string& source = text.value();
-        while (offset <= source.size())
+        std::size_t offset = 0, line_number = 0;
+        const auto fail = [&](const std::string& message)
         {
-            const std::size_t newline = source.find('\n', offset);
-            line = source.substr(offset, newline == std::string::npos ? std::string::npos : newline - offset);
-            if (!line.empty() && line.back() == '\r')
-            {
-                line.pop_back();
-            }
+            FileStatus status;
+            status.code = FileErrorCode::InvalidData; status.operation = "parse_config";
+            status.virtual_path = source;
+            status.message = source + ":" + std::to_string(line_number) + ": " + message;
+            return FileResult<ConfigValues>(std::move(status));
+        };
+        if (text.size() > maximum_config_bytes || !is_valid_utf8(text) || text.find('\0') != std::string::npos)
+            return fail("Config is oversized or invalid UTF-8.");
+        while (offset <= text.size())
+        {
+            ++line_number;
+            const auto end = text.find('\n', offset);
+            std::string line = text.substr(offset, end == std::string::npos ? std::string::npos : end - offset);
+            if (!line.empty() && line.back() == '\r') line.pop_back();
             trim(line);
-
-            if (line.empty() || line[0] == ';' || line[0] == '#')
+            if (!line.empty() && line.front() != ';' && line.front() != '#')
             {
-                if (newline == std::string::npos)
-                    break;
-                offset = newline + 1;
-                continue;
-            }
-
-            if (line[0] == '[' && line.back() == ']')
-            {
-                section = line.substr(1, line.size() - 2);
-                trim(section);
-                if (newline == std::string::npos)
-                    break;
-                offset = newline + 1;
-                continue;
-            }
-
-            const std::size_t separator = line.find('=');
-            if (separator != std::string::npos)
-            {
-                std::string key = line.substr(0, separator);
-                std::string value = line.substr(separator + 1);
-                trim(key);
-                trim(value);
-
-                const std::size_t comment = value.find('#');
-                if (comment != std::string::npos)
+                if (line.front() == '[')
                 {
-                    value = value.substr(0, comment);
-                    trim(value);
+                    if (line.back() != ']') return fail("Malformed section.");
+                    section = line.substr(1u, line.size() - 2u); trim(section);
+                    if (section.empty()) return fail("Empty section.");
                 }
-
-                if (!key.empty() && !section.empty())
+                else
                 {
-                    parsed_values[section + "." + key] = value;
-                }
-                else if (!key.empty())
-                {
-                    parsed_values[key] = value;
+                    const auto separator = line.find('=');
+                    if (separator == std::string::npos) return fail("Expected key=value.");
+                    std::string key = line.substr(0u, separator), value = line.substr(separator + 1u);
+                    trim(key); trim(value);
+                    if (key.empty()) return fail("Empty key.");
+                    if (!value.empty() && (value.front() == '"' || value.front() == '\''))
+                    {
+                        const auto closing = value.find(value.front(), 1u);
+                        if (closing == std::string::npos) return fail("Unclosed quoted value.");
+                        std::string tail = value.substr(closing + 1u); trim(tail);
+                        if (!tail.empty() && tail.front() != '#' && tail.front() != ';')
+                            return fail("Unexpected text after quoted value.");
+                        value = value.substr(1u, closing - 1u);
+                    }
+                    else
+                    {
+                        for (std::size_t i = 0; i < value.size(); ++i)
+                            if ((value[i] == '#' || value[i] == ';') &&
+                                (i == 0u || std::isspace(static_cast<unsigned char>(value[i - 1u]))))
+                            { value.resize(i); break; }
+                        trim(value);
+                    }
+                    const std::string full_key = section.empty() ? key : section + "." + key;
+                    if (!parsed.emplace(full_key, ConfigValue{value, source, line_number}).second)
+                        return fail("Duplicate key: " + full_key);
+                    try
+                    {
+                        if (full_key == "Window.Width" || full_key == "Window.Height" || full_key == "Renderer.MSAA")
+                        {
+                            std::size_t consumed = 0; const int number = std::stoi(value, &consumed);
+                            if (consumed != value.size() || number <= 0 || number > 16384 ||
+                                (full_key == "Renderer.MSAA" && number != 1 && number != 2 && number != 4 && number != 8))
+                                return fail("Invalid value for " + full_key);
+                        }
+                        if (full_key == "Window.Fullscreen" || full_key == "Renderer.VSync" ||
+                            full_key == "Renderer.MultiThreaded" || full_key == "Debug.EnableValidation")
+                        {
+                            std::string lower = value;
+                            std::transform(lower.begin(), lower.end(), lower.begin(),
+                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                            if (lower != "true" && lower != "false" && lower != "1" && lower != "0" &&
+                                lower != "yes" && lower != "no" && lower != "on" && lower != "off")
+                                return fail("Invalid boolean for " + full_key);
+                        }
+                    }
+                    catch (const std::exception&) { return fail("Invalid value for " + full_key); }
                 }
             }
-
-            if (newline == std::string::npos)
-                break;
-            offset = newline + 1;
+            if (end == std::string::npos) break;
+            offset = end + 1u;
         }
+        return FileResult<ConfigValues>(std::move(parsed));
+    }
 
+    FileResult<std::string> ConsoleManager::encode_config(const ConfigValues& values)
+    {
+        std::map<std::string, std::map<std::string, std::string>> sections;
+        for (const auto& item : values)
+        {
+            const auto dot = item.first.find_last_of('.');
+            sections[dot == std::string::npos ? "" : item.first.substr(0u, dot)]
+                [dot == std::string::npos ? item.first : item.first.substr(dot + 1u)] = item.second.value;
+        }
+        std::string text;
+        for (const auto& section : sections)
+        {
+            if (!section.first.empty()) text += "[" + section.first + "]\n";
+            for (const auto& key : section.second)
+            {
+                std::string value = key.second;
+                if (value.find('"') == std::string::npos) value = "\"" + value + "\"";
+                else if (value.find('\'') == std::string::npos) value = "'" + value + "'";
+                text += key.first + "=" + value + "\n";
+            }
+            text += "\n";
+        }
+        const auto parsed = parse_config(text, "encode_config");
+        if (!parsed.succeeded()) return FileResult<std::string>(parsed.status());
+        if (parsed.value().size() != values.size())
+            return FileResult<std::string>(FileStatus{FileErrorCode::InvalidData, "encode_config", {}, {}, "Config field count cannot round-trip."});
+        for (const auto& item : values)
+        {
+            const auto found = parsed.value().find(item.first);
+            if (found == parsed.value().end() || found->second.value != item.second.value)
+                return FileResult<std::string>(FileStatus{FileErrorCode::InvalidData, "encode_config", {}, {}, "Config values cannot round-trip."});
+        }
+        return FileResult<std::string>(std::move(text));
+    }
+
+    FileStatus ConsoleManager::load_config(FileSystem& files, const VirtualPath& path, ConfigLoadMode mode)
+    {
+        const auto text = files.read_text_utf8(path, 256u * 1024u);
+        if (!text.succeeded()) return text.status();
+        const auto parsed = parse_config(text.value(), path.utf8());
+        if (!parsed.succeeded()) return parsed.status();
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        if (mode == ConfigLoadMode::Replace)
-        {
-            values_ = std::move(parsed_values);
-        }
-        else
-        {
-            // Publish the complete layer under one lock; omitted project keys
-            // retain their engine defaults. Failed reads never reach this point.
-            for (const auto& entry : parsed_values)
-                values_[entry.first] = entry.second;
-        }
+        if (mode == ConfigLoadMode::Replace) { values_.clear(); origins_.clear(); }
+        for (const auto& item : parsed.value())
+        { values_[item.first] = item.second.value; origins_[item.first] = item.second; }
         return FileStatus::success();
     }
 
-    void ConsoleManager::set_value(const std::string& key, const std::string& value)
+    void ConsoleManager::set_value(const std::string& key, const std::string& value, const std::string& source)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        values_[key] = value;
+        values_[key] = value; origins_[key] = {value, source, 0u};
+    }
+
+    ConfigValues ConsoleManager::snapshot() const
+    {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        return origins_;
     }
 
     std::string ConsoleManager::get_string(const std::string& key, const std::string& default_value) const
@@ -138,7 +195,8 @@ namespace toy3d
             return default_value;
         try
         {
-            return std::stoi(value);
+            std::size_t end = 0; const int parsed = std::stoi(value, &end);
+            return end == value.size() ? parsed : default_value;
         }
         catch (...)
         {
@@ -153,7 +211,8 @@ namespace toy3d
             return default_value;
         try
         {
-            return std::stof(value);
+            std::size_t end = 0; const float parsed = std::stof(value, &end);
+            return end == value.size() && std::isfinite(parsed) ? parsed : default_value;
         }
         catch (...)
         {
@@ -196,5 +255,6 @@ namespace toy3d
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         values_.clear();
+        origins_.clear();
     }
 } // namespace toy3d

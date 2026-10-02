@@ -1,0 +1,83 @@
+format_version: 2
+asset_id: "cabe9641747b43c390a45de97f06de84"
+root_type: "toy3d.SceneAssetData"
+schema_version: 5
+dependencies: []
+subresources: []
+data:
+  actors:
+    -
+      id: "9bf3a6c28c9d403897b7062c62a7affb"
+      kind: "Cube"
+      root_component_id: "0e607a83b9034e008a8dc1266760c6d7"
+      components:
+        -
+          id: "0e607a83b9034e008a8dc1266760c6d7"
+          parent_component_id: ""
+          type: "toy3d.StaticMeshComponent"
+          transform:
+            translation: [0, 75, 300]
+            rotation: [0, 0, 0, 1]
+            scale: [1, 1, 1]
+          properties:
+            type: "toy3d.SceneMeshData"
+            value:
+              builtin_mesh: "Cube"
+              resources: []
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
+    -
+      id: "98b7493edef24774a14133b98b3c565b"
+      kind: "Plane"
+      root_component_id: "f44589e97ee9433aad4cdd35759f448b"
+      components:
+        -
+          id: "f44589e97ee9433aad4cdd35759f448b"
+          parent_component_id: ""
+          type: "toy3d.StaticMeshComponent"
+          transform:
+            translation: [0, 0, 300]
+            rotation: [0, 0, 0, 1]
+            scale: [1.5, 1, 1.5]
+          properties:
+            type: "toy3d.SceneMeshData"
+            value:
+              builtin_mesh: "Plane"
+              resources: []
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
+    -
+      id: "7911cd4e3f8c441fb2dddf7a62820f8e"
+      kind: "DirectionalLight"
+      root_component_id: "83e1d6917f9d4a4b927a650e1f799a67"
+      components:
+        -
+          id: "83e1d6917f9d4a4b927a650e1f799a67"
+          parent_component_id: ""
+          type: "toy3d.DirectionalLightComponent"
+          transform:
+            translation: [-300, 500, 100]
+            rotation: [0.50058997, 0.3128687, 0, 0.8071697]
+            scale: [1, 1, 1]
+          properties:
+            type: "toy3d.SceneDirectionalLightData"
+            value:
+              light:
+                color: [1, 1, 1]
+                enabled: true
+                intensity: 1
+                priority: 10
+              shadow:
+                bias: 0.5
+                cascade_count: 2
+                cast_shadows: true
+                distance: 5000
+                distribution_exponent: 3
+                fade_fraction: 0.1
+                map_resolution: 2048
+                receiver_bias: 0.9
+                slope_bias: 0.5

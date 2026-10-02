@@ -22,6 +22,20 @@ Console 作为 PanelRegistry 中的普通面板，由 EditorApplication 持有�
 
 失败在最终处理操作的入口上报一次，低层保留 status 返回，消息附 Actor/Component/slot/Asset 等上下文。已上报的材质赋值、RHI、Vulkan validation 不重复记录；外部编译器诊断由 Process 捕获后转入 Logger，不能依靠重定向全进程 stdout/stderr 收集。
 
+## 工程与 Scene 菜单
+
+工程与配置格式见 [Runtime](runtime.md#工程与分层配置)。顶层 Scene 提供 New/Open Project、Project Settings、New/Open/Save/Save As Scene；Tools 保留 Material/Shader 创建、资源 Import、Shaders、日志目录和退出。复用 session/history/未保存确认，无第二套命令系统。未指定工程直接打开正式引擎默认 Scene，有工程按 Editor.StartupScene 加载；Shader 验证期间暂缓场景编辑，Console/消息卡片继续工作。
+
+加载期间仍创建 DockSpace 并绘制禁用交互的 Scene Viewport，供真实场景附件初始化及 Material Shader GPU 验证使用；不能等验证完成才创建视口，也不能用空操作验证替代附件就绪检查。
+
+无工程可浏览引擎资产和编辑临时场景，创作 Material/Shader/Import 要求项目写入根。引擎默认 Scene 加载后 clean；修改后 Save 走项目 Save As，禁止写引擎资产。无工程 Save 引导创建资源工程，并将当前 Scene 保存为该工程的 Startup.scene，再关联新工程。
+
+EditorProject::create 先在父目录的独占 staging 建目录/配置，最后写 .toy，再以 no-replace 重命名发布；已存在目标不覆盖。普通失败只清理本次独占 staging，不承诺断电时的目录发布持久性。新工程默认继承引擎场景，资源目录为空。非空 modules 明确不支持，不生成 C++ 模板/Build/Run 按钮。
+
+首版一个进程关联一个工程，切换启动目标 Editor 实例；继承显式命令行配置覆盖。后台编译/Import 完成或取消后才切换，材质/场景 dirty 依次确认；launch 接受后关闭当前窗口，launch 失败保持会话。启动进程成功不等于完成 GPU/资源初始化，不作跨进程 ready 保证。Project Settings 保存 Editor/Game 默认场景覆盖并显示当前有效值来源，下次启动生效。
+
+验证入口 project_tests.cpp、editor_framework_tests.cpp、material_shader_tests.cpp；UI 模态期间屏蔽修改快捷键。界面、默认场景装配、未保存切换仍需真实交互验证，CPU DTO 测试不能替代画面验证。
+
 ## 选择、交互与 Undo
 
 selection 保存稳定 Actor/Component/Asset ID，使用时解析，删除/切 World 清理失效选择；不长期缓存裸指针。Input 优先级 modal/text → gizmo → viewport → shortcuts → game。
@@ -51,4 +65,4 @@ worker 结果带 AssetId/source content/request/session generation；GT 接管�
 
 测试 engine/editor/tests/editor_framework_tests.cpp、workspace_tests.cpp、placement_tests.cpp、material_edit_tests.cpp、material_assignment_tests.cpp、texture_preview_image_tests.cpp、thumbnail_integration_tests.cpp。验证字段全链、失败原子性、Undo/Redo/dirty 分支、跨 Actor graph、Save 冲突、过期异步、多窗口资源与退出；UI 行为变化补真实交互/截图，不以纯 DTO round-trip 当界面已验证。
 
-Console 与消息提示见 panels/console_panel.h、editor_notifications.h 和 tests/console_tests.cpp：真实 ImGui 帧验证等级/预设/清空/重开、通知不抢焦点、取消等待、失败保留、日志定位与文件故障恢复，同时核对文件包含被隐藏的记录。Core 的 tests/logging_tests.cpp 验证并发快照、缓冲边界、文件创建/轮转失败与恢复。实际界面测试可用 Editor.ProjectShaderRoot、Editor.ShaderConfigRoot、Editor.ShaderSavedRoot 指定隔离源码、登记和缓存目录，不能把测试 Shader 创建到真实 project。
+Console 与消息提示见 panels/console_panel.h、editor_notifications.h 和 tests/console_tests.cpp：真实 ImGui 帧验证等级/预设/清空/重开、通知不抢焦点、取消等待、失败保留、日志定位与文件故障恢复，同时核对文件包含被隐藏的记录。Core 的 tests/logging_tests.cpp 验证并发快照、缓冲边界、文件创建/轮转失败与恢复。实际界面测试使用独立临时 .toy 工程，Shader 和 Saved 随工程隔离，不能把测试 Shader 创建到真实工程。

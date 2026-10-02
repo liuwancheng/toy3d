@@ -24,13 +24,13 @@ MaterialAssignments 保存场景 AssetRef/命令记录，Library 准备/发布/�
 
 场景 schema 5 已保存材质赋值，不能宣称场景持久化尚未实现。Material 专用 preview/thumbnail 的后续扩展不能写成已完成。
 
-## 源码登记与外部编辑
+## 源码发现与外部编辑
 
 EditorApplication 持有 ProcessService、专用 ThreadManager、ShaderWorkflow，并注入窗口/创建框/Assignments；不是全局 Asset cache。
 
-源码 project/shader，清单 project/config/shader_sources.txt 首行 Toy3dShaderSources 1，其余为逻辑名 TAB 相对路径；示例 Project/Surface/Painted 对应 project/shader/painted.shader。
+当前工程 shader 下的 .shader 由 parser 自动发现，读取声明名和 Material/Forward Pass，不保留手工清单；详见 [Shader](shader.md#项目源码自动发现)。内置用途仍由构建登记，统一 Program 查询。
 
-- 含内置源最多256条、清单64 KiB、单源码4 MiB；拒绝重复身份/物理源、越界/symlink escape/非规范路径，Shader 声明名与登记名一致，不能覆盖内置源。
+- 项目源最多 250 条、单源 4 MiB、有界目录与总字节；重名/非法声明/链接带具体路径诊断，不能覆盖内置源。
 - 内置 Phong/Unlit 与项目源统一查询；创建 Material 只列 Material 用途的登记源，Program 完成 artifact/ABI/GPU 验证后才创建；实例沿根找 source。不扫描 Content 猜 Shader。现有根 shader 改身份需保存/取消草稿，不能强行改名。
 - Open Source 使用登记路径；VS Code --reuse-window/--goto，不用 --wait；本机 Editor.CodeExecutable 可配置，找不到明确提示。外部 GUI 属用户，关闭 Toy3d 不杀它。
 - Open Error 仅对可解析的根源码位置；include/generated/任意日志路径不直接启动。引擎源为共享实现，项目效果放项目 source。

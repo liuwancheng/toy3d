@@ -30,10 +30,6 @@ if /I "%TOY3D_TARGET%"=="Toy3dEditor" (
     set "TOY3D_TARGET=Toy3dEditor"
     goto target_valid
 )
-if /I "%TOY3D_TARGET%"=="Toy3dCubeTest" (
-    set "TOY3D_TARGET=Toy3dCubeTest"
-    goto target_valid
-)
 goto invalid_arguments
 
 :target_valid
@@ -74,12 +70,11 @@ set "TOY3D_EXIT_CODE=2"
 echo ERROR: Unsupported arguments. 1>&2
 
 :usage
-echo Usage: build_win.bat [Debug^|Release^|RelWithDebInfo^|MinSizeRel] [Toy3dEditor^|Toy3dCubeTest]
+echo Usage: build_win.bat [Debug^|Release^|RelWithDebInfo^|MinSizeRel] [Toy3dEditor]
 echo Default: Debug Toy3dEditor
 echo Examples:
 echo   build_win.bat Debug
 echo   build_win.bat Release Toy3dEditor
-echo   build_win.bat Debug Toy3dCubeTest
 echo Requires CMake and Visual Studio 2022 with Desktop development with C++.
 echo The target's CMake POST_BUILD rules deploy the executable and resources to bin.
 

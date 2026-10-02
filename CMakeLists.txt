@@ -35,8 +35,3 @@ if(NOT (WIN32 OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Darwin"
 endif()
 
 add_subdirectory(engine)
-if(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING)
-    add_subdirectory(project)
-else()
-    message(STATUS "Toy3dCubeTest is disabled: development ShaderMapEntry loading is required.")
-endif()

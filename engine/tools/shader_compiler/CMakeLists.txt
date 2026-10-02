@@ -25,6 +25,8 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "compiler/shader_compiler.h"
     "compiler/shader_source_provider.cpp"
     "compiler/shader_source_provider.h"
+    "compiler/shader_source_discovery.cpp"
+    "compiler/shader_source_discovery.h"
     "compiler/toolchain_manifest.cpp"
     "compiler/toolchain_manifest.h"
     "compiler/variant_permutation.cpp"

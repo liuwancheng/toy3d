@@ -20,6 +20,7 @@ list(APPEND EDITOR_SOURCES
 # Asset sessions/workspace remain independently usable without the runtime UI.
 add_library(Toy3dEditorCore STATIC)
 target_sources(Toy3dEditorCore PRIVATE
+    "source/workspace/editor_project.cpp"
     "source/scene/placement/placement_catalog.cpp"
     "source/scene/placement/actor_placement.cpp"
     "source/scene/placement/actor_factory.cpp"
@@ -117,18 +118,15 @@ target_compile_options(${TARGET_NAME} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>
 target_compile_definitions(${TARGET_NAME}
   PRIVATE
     "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
-    "TOY3D_EDITOR_ASSET_ROOT=\"${TOY3D_PROJECT_ASSET_DIR}\""
     "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
     "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
     "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\""
-    "TOY3D_EDITOR_LAYOUT_PATH=\"${BINARY_ROOT_DIR}saved/editor_layout.ini\"")
+    "TOY3D_EDITOR_ENGINE_CONFIG_ROOT=\"${ENGINE_ROOT_DIR}/config\""
+    "TOY3D_EDITOR_EXECUTABLE=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dEditor>\"")
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
-    "TOY3D_EDITOR_PROJECT_SHADER_ROOT=\"${TOY3D_ROOT_DIR}/project/shader\""
-    "TOY3D_EDITOR_PROJECT_CONFIG_ROOT=\"${TOY3D_ROOT_DIR}/project/config\""
     "TOY3D_EDITOR_ENGINE_SHADER_ROOT=\"${ENGINE_ROOT_DIR}/shader/builtin\""
     "TOY3D_EDITOR_ENGINE_INCLUDE_ROOT=\"${ENGINE_ROOT_DIR}/shader/include\""
-    "TOY3D_EDITOR_SHADER_SAVED_ROOT=\"${BINARY_ROOT_DIR}saved/material_shaders\""
     "TOY3D_EDITOR_SHADER_COMPILER=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dShaderCompiler>\""
     "TOY3D_EDITOR_SHADER_TOOLCHAIN=\"${TOY3D_SHADER_TOOLCHAIN_ROOT}\"")
 
@@ -157,7 +155,7 @@ target_sources(${TARGET_NAME} PRIVATE
 
 if(WIN32)
     set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/win/model_file_picker.cpp")
-    set(TOY3D_MODEL_PICKER_LIBRARIES comdlg32)
+    set(TOY3D_MODEL_PICKER_LIBRARIES comdlg32 shell32 ole32)
 elseif(APPLE)
     set(TOY3D_MODEL_PICKER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source/platform/mac/model_file_picker.mm")
     find_library(TOY3D_EDITOR_COCOA_FRAMEWORK Cocoa REQUIRED)
@@ -179,6 +177,22 @@ else()
     target_compile_definitions(${TARGET_NAME} PRIVATE WITH_MODEL_IMPORT=0)
 endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1)
+
+if(BUILD_TESTING)
+    add_executable(Toy3dEditorProjectTests "tests/project_tests.cpp" "source/workspace/editor_workspace.cpp")
+    target_compile_features(Toy3dEditorProjectTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorProjectTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_link_libraries(Toy3dEditorProjectTests PRIVATE Toy3dEditorCore Toy3dShaderCompilerCore)
+    target_compile_definitions(Toy3dEditorProjectTests PRIVATE
+        "TOY3D_PROJECT_TEST_ROOT=\"${CMAKE_CURRENT_BINARY_DIR}/project-test-output\""
+        "TOY3D_PROJECT_TEST_ENGINE_ASSETS=\"${TOY3D_ENGINE_ASSET_DIR}\""
+        "TOY3D_PROJECT_TEST_EDITOR_RESOURCES=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
+        "TOY3D_PROJECT_TEST_DEPLOYMENT=\"${BINARY_ROOT_DIR}\""
+        "TOY3D_PROJECT_TEST_SHADER=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader/painted.shader\"")
+    target_compile_options(Toy3dEditorProjectTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.Project COMMAND Toy3dEditorProjectTests)
+    set_tests_properties(Toy3dEditor.Project PROPERTIES TIMEOUT 30)
+endif()
 
 if(BUILD_TESTING)
     add_executable(Toy3dEditorConsoleTests "tests/console_tests.cpp")
@@ -337,8 +351,8 @@ if(BUILD_TESTING)
         target_link_libraries(Toy3dEditorMaterialShaderTests PRIVATE Toy3dEditorCore Toy3dAssets imgui)
         target_compile_definitions(Toy3dEditorMaterialShaderTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
             "TOY3D_SHADER_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-shader-test-output\""
-            "TOY3D_SHADER_TEST_SOURCE=\"${TOY3D_ROOT_DIR}/project/shader/painted.shader\""
-            "TOY3D_SHADER_TEST_INCLUDE=\"${TOY3D_ROOT_DIR}/project/shader/include/project_common.hlsli\""
+            "TOY3D_SHADER_TEST_SOURCE=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader/painted.shader\""
+            "TOY3D_SHADER_TEST_INCLUDE=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader/include/project_common.hlsli\""
             "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""
             "TOY3D_EDITOR_ENGINE_SHADER_ROOT=\"${ENGINE_ROOT_DIR}/shader/builtin\""
             "TOY3D_EDITOR_ENGINE_INCLUDE_ROOT=\"${ENGINE_ROOT_DIR}/shader/include\""

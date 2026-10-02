@@ -19,6 +19,7 @@
 
 #include "platform/platform_defines.h"
 #include "frontend/shader_parser.h"
+#include "compiler/shader_source_discovery.h"
 #include "compiler/variant_permutation.h"
 
 namespace toy3d
@@ -61,6 +62,7 @@ namespace toy3d
         if (!path.succeeded()) { error = path.status().message; return false; }
         FileMountDesc mounted; mounted.virtual_root = path.value(); mounted.store = store.value();
         mounted.access = writable ? MountAccess::ReadWrite : MountAccess::ReadOnly;
+        mounted.allow_enumeration = name == "/Project/Shaders";
         const auto added = files_.add_mount(mounted);
         if (!added.succeeded()) { error = added.message; return false; }
         return true;
@@ -74,14 +76,16 @@ namespace toy3d
         if (!made.succeeded()) { error = made.message; return false; }
         if (!mount(paths_.engine_shader, "/Engine/Shaders", false, error) ||
             !mount(paths_.engine_include, "/Engine/ShaderIncludes", false, error) ||
-            !mount(paths_.project_shader, "/Project/Shaders", true, error) ||
-            !mount(paths_.project_config, "/Project/Config", true, error) ||
             !mount(paths_.saved, "/Saved", true, error)) return false;
-        const auto include = platform_.join_relative(paths_.project_shader, "include");
-        if (!include.succeeded()) { error = include.status().message; return false; }
-        const auto exists = platform_.exists(include.value());
-        if (!exists.succeeded()) { error = exists.status().message; return false; }
-        if (exists.value() && !mount(include.value(), "/Project/ShaderIncludes", false, error)) return false;
+        if (!paths_.project_shader.empty())
+        {
+            if (!mount(paths_.project_shader, "/Project/Shaders", true, error)) return false;
+            const auto include = platform_.join_relative(paths_.project_shader, "include");
+            if (!include.succeeded()) { error = include.status().message; return false; }
+            const auto exists = platform_.exists(include.value());
+            if (!exists.succeeded()) { error = exists.status().message; return false; }
+            if (exists.value() && !mount(include.value(), "/Project/ShaderIncludes", false, error)) return false;
+        }
         const auto frozen = files_.freeze();
         if (!frozen.succeeded()) { error = frozen.message; return false; }
         if (!read_sources(error)) return false;
@@ -135,47 +139,44 @@ namespace toy3d
             source.pass = builtin.pass; source.usage = builtin.usage; source.artifacts = artifacts.value();
             values.push_back(std::move(source));
         }
-        const auto manifest = VirtualPath::parse("/Project/Config/shader_sources.txt");
-        if (!manifest.succeeded()) { error = manifest.status().message; return false; }
-        const auto text = files_.read_text_utf8(manifest.value(), maximum_shader_manifest_bytes);
-        if (!text.succeeded()) { error = "Cannot read project Shader source manifest: " + text.status().message; return false; }
-        std::istringstream input(text.value()); std::string line;
-        if (!std::getline(input, line)) { error = "Empty Shader source manifest."; return false; }
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line != "Toy3dShaderSources 1") { error = "Unsupported Shader source manifest header."; return false; }
-        std::set<std::string> names, paths;
-        for (const auto& source : values)
+        if (!paths_.project_shader.empty())
         {
-            names.insert(source.name);
-            PhysicalPath physical;
-            if (!physical_source(source, physical, error)) return false;
-            paths.insert(comparable(physical.utf8()));
+            const auto discovered = shader::discover_shader_sources(files_, VirtualPath::parse("/Project/Shaders").value());
+            if (!discovered.succeeded()) { error = discovered.status().message; return false; }
+            std::set<std::string> names;
+            for (const auto& source : values) names.insert(source.name);
+            for (const auto& item : discovered.value())
+            {
+                EditorShaderSource source; source.path = item.path; source.name = item.name;
+                source.discovery_error = item.error; source.name_conflict = item.name_conflict;
+                // Project Material support is an Editor policy, independent of
+                // the compiler's general declaration discovery and parsing.
+                if (source.discovery_error.empty() && (source.name.compare(0u, 16u, "Project/Surface/") != 0 ||
+                    item.pass_names.size() != 1u || item.pass_names.front() != "Forward"))
+                    source.discovery_error = "Project sources require a Project/Surface/ name and one Forward Material pass.";
+                if (source.name.empty())
+                {
+                    const auto old = std::find_if(sources_.begin(), sources_.end(), [&](const EditorShaderSource& previous)
+                        { return previous.path == item.path; });
+                    source.name = old == sources_.end() ? item.path.utf8() : old->name;
+                }
+                if (!names.insert(source.name).second)
+                { source.name_conflict = true; source.discovery_error = "Duplicate or reserved Shader name: " + source.name + " at " + item.path.utf8(); source.name = item.path.utf8(); }
+                if (!source.discovery_error.empty()) source.diagnostic = source.discovery_error;
+                values.push_back(std::move(source));
+            }
         }
-        while (std::getline(input, line))
+        for (auto& source : values)
         {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.empty() || line.front() == '#') continue;
-            const auto separator = line.find('\t');
-            if (separator == std::string::npos || line.find('\t', separator + 1u) != std::string::npos)
-            { error = "Shader source entries require logical name, TAB, relative path."; return false; }
-            EditorShaderSource source; source.name = line.substr(0, separator);
-            const std::string relative = line.substr(separator + 1u);
-            MaterialAssetData descriptor; descriptor.shader_name = source.name;
-            if (values.size() >= maximum_registered_shader_sources || source.name.compare(0, 16u, "Project/Surface/") != 0 ||
-                !validate_material_asset(descriptor).succeeded() || !safe_relative(relative) ||
-                relative.size() < 7u || relative.compare(relative.size() - 7u, 7u, ".shader") != 0 ||
-                !names.insert(source.name).second)
-            { error = "Invalid, duplicate or oversized project Shader source entry."; return false; }
-            const auto parsed = VirtualPath::parse("/Project/Shaders/" + relative);
-            if (!parsed.succeeded()) { error = parsed.status().message; return false; }
-            source.path = parsed.value();
-            PhysicalPath physical;
-            if (!physical_source(source, physical, error)) return false;
-            if (!paths.insert(comparable(physical.utf8())).second)
-            { error = "Multiple Shader names refer to the same physical source."; return false; }
-            values.push_back(std::move(source));
+            const auto old = find(source.name);
+            if (old && !source.name_conflict)
+            {
+                // A malformed edit does not invalidate a previously published
+                // Program. Conflicting/deleted identities cannot revive it.
+                source.program = old->program; source.properties = old->properties;
+                if (source.discovery_error.empty()) source.diagnostic = old->diagnostic;
+            }
         }
-        registered_manifest_ = text.value();
         sources_ = std::move(values);
         return true;
     }
@@ -249,7 +250,10 @@ namespace toy3d
     {
         restoring_ = false; request_name_ = name; error_.clear(); output_.clear();
         task_.current_source = name; task_.phase = ShaderTaskPhase::Compiling;
-        const auto* source = find(name); PhysicalPath physical;
+        const auto* source = find(name);
+        if (source && !source->discovery_error.empty())
+        { error_ = source->discovery_error; output_ = error_; return request_failed("Recompile", name); }
+        PhysicalPath physical;
         if (!source || !physical_source(*source, physical, error_)) { if (!source) error_ = "Shader is not registered."; return request_failed("Recompile", name); }
         const auto text = files_.read_text_utf8(source->path, maximum_shader_source_bytes);
         if (!text.succeeded()) { error_ = text.status().message; return request_failed("Recompile", name); }

@@ -85,6 +85,7 @@ namespace toy3d
     bool ShaderWorkflow::recompile(const std::string& name, AssetId origin, std::uint64_t revision)
     {
         if (busy()) { error_ = "Shader compilation or startup validation is in progress."; return request_failed("Request compile", name); }
+        if (!read_sources(error_)) return request_failed("Recompile", name);
         const auto* source = find(name);
         if (!source) { error_ = "Shader is not registered."; return request_failed("Recompile", name); }
         batch_cancelled_ = false;
@@ -105,6 +106,7 @@ namespace toy3d
     bool ShaderWorkflow::recompile_all()
     {
         if (busy()) { error_ = "Shader compilation or startup validation is in progress."; return false; }
+        if (!read_sources(error_)) return request_failed("Recompile", "all sources");
         compile_queue_.clear();
         for (const auto& source : sources_) compile_queue_.push_back(source.name);
         compile_index_ = batch_success_ = batch_failed_ = batch_cancel_count_ = 0u;
@@ -153,6 +155,7 @@ namespace toy3d
         restoring_ = true; batch_cancelled_ = false; request_name_ = name; origin_ = {}; origin_revision_ = 0u;
         error_.clear(); output_.clear(); candidate_relative_.clear(); saved_candidate_ = false;
         const auto* source = find(name);
+        if (source && !source->discovery_error.empty()) { error_ = source->discovery_error; reject(error_); return; }
         const auto text = files_.read_text_utf8(source->path, maximum_shader_source_bytes);
         if (!text.succeeded()) { reject("Cannot read source " + source->path.utf8() + ": " + text.status().message); return; }
         source_hash_ = sha256(text.value());

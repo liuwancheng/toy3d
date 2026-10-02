@@ -97,8 +97,8 @@ namespace toy3d
         log_config.logger_name = "Toy3dRuntime";
         // filesystem composes the platform-native saved/log path without manual
         // separator handling at the runtime composition root.
-        log_config.log_directory = std::filesystem::path(ENGINE_SAVED_ROOT) / "logs";
-        log_config.file_name = "toy3d.log";
+        log_config.log_directory = std::filesystem::u8path(startup_paths.saved.empty() ? ENGINE_SAVED_ROOT : startup_paths.saved.utf8()) / "logs";
+        log_config.file_name = startup_paths.log_file_name;
         log_config.memory_output = std::move(buffer);
         std::string log_error;
         logging_outputs_ready_ = Logger::get_instance().init(log_config, &log_error);
@@ -106,48 +106,42 @@ namespace toy3d
         return logging_outputs_ready_;
     }
 
-    void Engine::pre_init()
+    bool Engine::set_startup_paths(EngineStartupPaths paths)
+    {
+        if (logging_started_ || file_system.frozen()) return false;
+        startup_paths = std::move(paths);
+        return true;
+    }
+
+    bool Engine::pre_init()
     {
         initialize_logging();
-
-        // 1. Initialize the shared file system.
-        const FileStatus file_system_status = initialize_file_system();
-        if (!file_system_status.succeeded())
+        const auto status = initialize_file_system();
+        if (!status.succeeded())
+        { TOY_LOG_ERROR("Runtime file system initialization: {}", status.message); return false; }
+        auto& console = ConsoleManager::get_instance();
+        const auto base = VirtualPath::parse("/Engine/Config/base_engine.ini");
+        const auto loaded = console.load_config(file_system, base.value());
+        if (!loaded.succeeded())
+        { TOY_LOG_ERROR("Load base_engine.ini: {}", loaded.message); return false; }
+        if (!startup_paths.project_config.empty())
         {
-            TOY_LOG_ERROR("Runtime file system initialization failed during {}: {}", file_system_status.operation,
-                          file_system_status.message);
-            return;
+            const auto project = VirtualPath::parse("/Project/Config/game_engine.ini");
+            const auto overlay = console.load_config(file_system, project.value(), ConfigLoadMode::Overlay);
+            if (!overlay.succeeded() && overlay.code != FileErrorCode::NotFound)
+            { TOY_LOG_ERROR("Load game_engine.ini: {}", overlay.message); return false; }
         }
-        // 2. Load engine configuration.
-        auto config_path = VirtualPath::parse("/Engine/Config/engine_config.ini");
-        if (!config_path.succeeded())
-        {
-            TOY_LOG_ERROR("The built-in engine config path is invalid.");
-            return;
-        }
-        const FileStatus config_status = ConsoleManager::get_instance().load_config(file_system, config_path.value());
-        if (!config_status.succeeded())
-        {
-            TOY_LOG_ERROR("Failed to load {}: {}", config_path.value().utf8(), config_status.message);
-        }
-        // 3. Project settings inherit engine keys and override only explicit keys.
-        const auto project_config_path = VirtualPath::parse("/Project/Config/engine_config.ini");
-        if (!project_config_path.succeeded())
-        {
-            TOY_LOG_ERROR("The built-in project config path is invalid.");
-            return;
-        }
-        const FileStatus project_config_status = ConsoleManager::get_instance().load_config(
-            file_system, project_config_path.value(), ConfigLoadMode::Overlay);
-        if (!project_config_status.succeeded() && project_config_status.code != FileErrorCode::NotFound)
-            TOY_LOG_ERROR("Failed to load {}: {}", project_config_path.value().utf8(), project_config_status.message);
-        // 4. Apply command-line configuration overrides.
         CommandLineParser::get_instance().apply_config();
+        // The same parser validates typed command-line overrides without silently
+        // turning malformed input into an unrelated getter default.
+        const auto effective = ConsoleManager::encode_config(console.snapshot());
+        if (!effective.succeeded()) { TOY_LOG_ERROR("Effective configuration: {}", effective.status().message); return false; }
+        return true;
     }
 
     void Engine::init(void* hInstance)
     {
-        pre_init();
+        if (!pre_init()) { exit(); return; }
         // 1.创建平台
 #if WITH_WIN
         platform = std::make_unique<Win32Platform>();
@@ -524,13 +518,14 @@ namespace toy3d
             return FileStatus::success();
         }
         const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
-        const PhysicalPath saved_root(ENGINE_SAVED_ROOT);
+        const PhysicalPath saved_root = startup_paths.saved.empty() ? PhysicalPath(ENGINE_SAVED_ROOT) : startup_paths.saved;
         auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
         if (!shader_root.succeeded())
         {
             return shader_root.status();
         }
-        auto asset_root = native_platform_file.join_relative(deployment_root, "engine/asset");
+        auto asset_root = startup_paths.engine_assets.empty() ?
+            native_platform_file.join_relative(deployment_root, "engine/asset") : FileResult<PhysicalPath>(startup_paths.engine_assets);
         if (!asset_root.succeeded())
         {
             return asset_root.status();
@@ -596,22 +591,27 @@ namespace toy3d
             return status;
         // Deployment directories have separate read-only stores; /Project must
         // never alias the engine assets. FileSystem owns these store lifetimes.
-        auto mount_deployed_directory = [&](const char* relative_root, const char* virtual_root,
-                                            const char* debug_name)
+        const auto config_root = startup_paths.engine_config.empty() ?
+            native_platform_file.join_relative(deployment_root, "engine/config") : FileResult<PhysicalPath>(startup_paths.engine_config);
+        if (!config_root.succeeded()) return config_root.status();
+        const auto base_config = create_store(config_root.value(), false, "EngineConfig");
+        if (!base_config.succeeded()) return base_config.status();
+        status = add_directory_mount(file_system, "/Engine/Config", base_config.value(), MountAccess::ReadOnly, true, "EngineConfig");
+        if (!status.succeeded()) return status;
+        if (!startup_paths.project_assets.empty())
         {
-            const auto physical_root = native_platform_file.join_relative(deployment_root, relative_root);
-            if (!physical_root.succeeded()) return physical_root.status();
-            const auto store = create_store(physical_root.value(), false, debug_name);
-            if (!store.succeeded()) return store.status();
-            return add_directory_mount(file_system, virtual_root, store.value(), MountAccess::ReadOnly, true,
-                                       debug_name);
-        };
-        status = mount_deployed_directory("project/asset", "/Project", "ProjectAssets");
-        if (!status.succeeded()) return status;
-        status = mount_deployed_directory("engine/config", "/Engine/Config", "EngineConfig");
-        if (!status.succeeded()) return status;
-        status = mount_deployed_directory("project/config", "/Project/Config", "ProjectConfig");
-        if (!status.succeeded()) return status;
+            const auto assets = create_store(startup_paths.project_assets, false, "ProjectAssets");
+            if (!assets.succeeded()) return assets.status();
+            status = add_directory_mount(file_system, "/Project", assets.value(), MountAccess::ReadOnly, true, "ProjectAssets");
+            if (!status.succeeded()) return status;
+        }
+        if (!startup_paths.project_config.empty())
+        {
+            const auto config = create_store(startup_paths.project_config, false, "ProjectConfig");
+            if (!config.succeeded()) return config.status();
+            status = add_directory_mount(file_system, "/Project/Config", config.value(), MountAccess::ReadOnly, true, "ProjectConfig");
+            if (!status.succeeded()) return status;
+        }
         status = add_directory_mount(file_system, "/Saved", saved_store, MountAccess::ReadWrite, true, "Saved");
         if (!status.succeeded())
             return status;

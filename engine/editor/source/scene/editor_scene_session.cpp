@@ -303,6 +303,19 @@ namespace toy3d
         return true;
     }
 
+    bool EditorSceneSession::open_path(const std::string& path)
+    {
+        const auto parsed = VirtualPath::parse(path);
+        if (!parsed.succeeded() || parsed.value().utf8() != path ||
+            asset_descriptor_kind(parsed.value()) != AssetDescriptorKind::Scene ||
+            (path.compare(0u, 9u, "/Project/") != 0 && path.compare(0u, 8u, "/Engine/") != 0))
+        { error_ = "Choose a canonical .scene virtual path under /Project or /Engine."; return false; }
+        for (const auto& entry : workspace_.catalog().entries)
+            if (entry.path == parsed.value()) return open(entry.file.asset_id);
+        error_ = "Scene is not in the asset catalog: " + path;
+        return false;
+    }
+
     bool EditorSceneSession::open(const AssetId& id)
     {
         const auto* location = workspace_.catalog().index.find(id);

@@ -405,6 +405,10 @@ int main()
               "Failed scene read leaves the previous baseline untouched");
         check(workspace.files().write_binary(destination, disk.value(), FileWriteMode::Truncate).succeeded(),
               "Scene baseline fixture restored");
+        check(session.open_path("/Project/multi.scene") && !session.dirty(), "Startup-style path open resolves through the asset catalog and marks the scene clean");
+        const auto prior_scene = session.asset_id();
+        check(!session.open_path("/Project/missing.scene") && session.asset_id() == prior_scene,
+              "Failed startup path lookup keeps the previously active Scene identity");
         check_details_drag(workspace);
         check_texture_candidates(workspace);
     }

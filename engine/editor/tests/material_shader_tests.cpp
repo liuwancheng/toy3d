@@ -208,7 +208,10 @@ namespace
                 mesh_gate_ = std::make_shared<std::atomic<int>>(0);
                 enqueue_render_command("VerifyCompiledMeshDrawable", [mesh = component()->static_mesh(), gate = mesh_gate_]() noexcept
                 { gate->store(mesh && mesh->render_data()->is_drawable() ? 1 : -1, std::memory_order_release); });
-                if (!write_source("invalid Shader source") || !shaders_.recompile("Project/Surface/Painted")) { stop(shaders_.error()); return; }
+                if (!write_source("invalid Shader source")) return;
+                if (shaders_.recompile("Project/Surface/Painted") || shaders_.busy() || shaders_.error().empty() ||
+                    shaders_.task_status().failed != 1u)
+                { stop("Discovery must synchronously diagnose malformed saved source and finish its failed task."); return; }
                 phase_ = 2; return;
             }
             if (phase_ == 2 && !shaders_.busy() && !shaders_.error().empty())
@@ -220,7 +223,28 @@ namespace
                 { stop("Compiler source error location was not forwarded to VS Code."); return; }
                 if (shaders_.program("Project/Surface/Painted") != before_ || component()->material_for_slot(0)->desc().shader_program != before_)
                 { stop("Compiler failure replaced the old effect."); return; }
+                std::string unsupported = revised_;
+                const auto pass = unsupported.find("Pass \"Forward\"");
+                if (pass == std::string::npos) { stop("Policy fixture has no Forward Pass."); return; }
+                unsupported.replace(pass, std::string("Pass \"Forward\"").size(), "Pass \"Preview\"");
+                if (!write_source(unsupported)) return;
+                if (shaders_.recompile("Project/Surface/Painted") || shaders_.busy() ||
+                    shaders_.error().find("one Forward Material pass") == std::string::npos ||
+                    shaders_.program("Project/Surface/Painted") != before_ ||
+                    component()->material_for_slot(0)->desc().shader_program != before_)
+                { stop("Editor Pass policy must reject before compiling and preserve the published effect."); return; }
                 if (!write_source(revised_)) return;
+                unsupported = revised_;
+                unsupported.replace(unsupported.find("Project/Surface/Painted"), std::string("Project/Surface/Painted").size(), "Shared/Effects/Painted");
+                const auto policy_source = platform_.join_relative(paths_.project_shader, "unsupported.shader");
+                if (!policy_source.succeeded() || !platform_.write_text_utf8(policy_source.value(), unsupported, FileWriteMode::CreateNew).succeeded())
+                { stop("Cannot write the namespace policy fixture."); return; }
+                if (shaders_.recompile("Shared/Effects/Painted") || shaders_.busy() ||
+                    shaders_.error().find("Project/Surface/") == std::string::npos ||
+                    shaders_.program("Project/Surface/Painted") != before_)
+                { stop("Editor name policy must reject discovered declarations outside the project namespace."); return; }
+                if (!platform_.remove_file(policy_source.value()).succeeded())
+                { stop("Cannot remove the namespace policy fixture."); return; }
                 restored_ = std::make_unique<ShaderWorkflow>(processes_, threads_);
                 std::string error;
                 if (!restored_->initialize(paths_, factory_.default_material()->material(), error)) { stop(error); return; }
@@ -345,33 +369,11 @@ namespace
                 if (!restored_->error().empty() || !restored_->program("Toy3d/UI/ImGui") || !restored_->program("Toy3d/Surface/Unlit"))
                 { stop("Published Global/material versions did not restore: " + restored_->error()); return; }
                 const auto published = shaders_.program("Toy3d/Surface/Phong");
-                const PhysicalPath manifest(paths_.project_config.utf8() + "/shader_sources.txt");
-                const auto original = platform_.read_text_utf8(manifest);
-                if (!original.succeeded()) { stop(original.status().message); return; }
                 if (shaders_.create_source("Toy3d/Surface/Overwrite", "overwrite.shader", "Toy3d/Surface/Unlit") ||
                     shaders_.create_source("Project/Surface/Escape", "../escape.shader", "Toy3d/Surface/Unlit") ||
                     shaders_.create_source("Project/Surface/Overwrite", "painted.shader", "Toy3d/Surface/Unlit") ||
                     shaders_.create_source("Project/Surface/Global", "global.shader", "Toy3d/UI/ImGui"))
                 { stop("Shader creation accepted an invalid name/path/template or overwrote a source."); return; }
-                const auto unchanged = platform_.read_text_utf8(manifest);
-                if (!unchanged.succeeded() || unchanged.value() != original.value())
-                { stop("Rejected Shader creation changed the source manifest."); return; }
-                if (!platform_.write_text_utf8(manifest, original.value() + "# external edit\n", FileWriteMode::Truncate).succeeded() ||
-                    shaders_.create_source("Project/Surface/Conflict", "conflict.shader", "Toy3d/Surface/Unlit") ||
-                    !platform_.write_text_utf8(manifest, original.value(), FileWriteMode::Truncate).succeeded())
-                { stop("Shader creation did not reject a changed manifest."); return; }
-#if WITH_WIN
-                // Native read handles deny delete sharing on Windows. Keep the
-                // manifest readable while forcing its atomic replace to fail;
-                // the newly owned source must be rolled back, not registered.
-                auto locked = platform_.open(manifest, FileOpenMode::Read);
-                if (!locked.succeeded()) { stop(locked.status().message); return; }
-                const bool incorrectly_created = shaders_.create_source("Project/Surface/Rollback", "rollback.shader", "Toy3d/Surface/Unlit");
-                const auto closed = locked.value()->close();
-                const auto leftover = platform_.exists(PhysicalPath(paths_.project_shader.utf8() + "/rollback.shader"));
-                if (incorrectly_created || !closed.succeeded() || !leftover.succeeded() || leftover.value() || shaders_.find("Project/Surface/Rollback"))
-                { stop("Failed manifest publication did not roll back the owned Shader source."); return; }
-#endif
                 if (!shaders_.create_source("Project/Surface/CreatedUnlit", "created/unlit.shader", "Toy3d/Surface/Unlit") ||
                     !shaders_.create_source("Project/Surface/CreatedPhong", "created/phong.shader", "Toy3d/Surface/Phong") ||
                     shaders_.program("Toy3d/Surface/Phong") != published || !shaders_.find("Project/Surface/CreatedUnlit") ||
@@ -450,7 +452,6 @@ int main()
     if (!root.succeeded()) return 1;
     ShaderWorkflowPaths paths;
     paths.project_shader = PhysicalPath(root.value().utf8() + "/shader");
-    paths.project_config = PhysicalPath(root.value().utf8() + "/config");
     paths.saved = PhysicalPath(root.value().utf8() + "/saved");
     paths.engine_shader = PhysicalPath(root.value().utf8() + "/builtin");
     // Copies preserve virtual identities/hashes while failed reloads remain
@@ -469,16 +470,14 @@ int main()
     paths.compiler = PhysicalPath(TOY3D_EDITOR_SHADER_COMPILER);
     paths.toolchain = PhysicalPath(TOY3D_EDITOR_SHADER_TOOLCHAIN);
     paths.code_executable = PhysicalPath(root.value().utf8() + "/VS Code/Code.exe");
-    if (!platform.create_directories(paths.project_shader).succeeded() || !platform.create_directories(paths.project_config).succeeded()) return 1;
+    if (!platform.create_directories(paths.project_shader).succeeded()) return 1;
     const PhysicalPath include_root(paths.project_shader.utf8() + "/include");
     const auto include_text = platform.read_text_utf8(PhysicalPath(TOY3D_SHADER_TEST_INCLUDE));
     if (!platform.create_directories(include_root).succeeded() || !include_text.succeeded() ||
         !platform.write_text_utf8(PhysicalPath(include_root.utf8() + "/project_common.hlsli"), include_text.value(), FileWriteMode::CreateNew).succeeded()) return 1;
     const auto text = platform.read_text_utf8(PhysicalPath(TOY3D_SHADER_TEST_SOURCE));
     const PhysicalPath source(paths.project_shader.utf8() + "/painted.shader");
-    if (!text.succeeded() || !platform.write_text_utf8(source, text.value(), FileWriteMode::CreateNew).succeeded() ||
-        !platform.write_text_utf8(PhysicalPath(paths.project_config.utf8() + "/shader_sources.txt"),
-            "Toy3dShaderSources 1\nProject/Surface/Painted\tpainted.shader\n", FileWriteMode::CreateNew).succeeded()) return 1;
+    if (!text.succeeded() || !platform.write_text_utf8(source, text.value(), FileWriteMode::CreateNew).succeeded()) return 1;
     EditorWorkspace workspace;
     EditorWorkspacePaths workspace_paths;
     workspace_paths.project_assets = PhysicalPath(root.value().utf8() + "/asset");

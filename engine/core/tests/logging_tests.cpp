@@ -113,6 +113,28 @@ namespace
         check(buffer->snapshot().last_sequence >= snapshot.last_sequence, "Shutdown is synchronized with active producers");
     }
 
+    void unicode_file_output(const std::filesystem::path& root)
+    {
+        using namespace toy3d;
+        // C++17 filesystem preserves the project's Unicode directory at the I/O boundary.
+        const auto directory = root / std::filesystem::u8path(u8"日志-🧪");
+        auto buffer = std::make_shared<LogBuffer>();
+        auto config = config_for(directory, "unicode", buffer);
+        config.file_name = u8"编辑器-🧪.log";
+        config.max_file_size = 256u;
+        config.max_file_count = 1u;
+        auto& logger = Logger::get_instance();
+        check(logger.init(config), "Unicode project directory and filename initialize losslessly");
+        TOY_LOG_WARN("{}", std::string(180u, 'a'));
+        TOY_LOG_ERROR("Unicode project final record");
+        logger.exit();
+        const auto snapshot = buffer->snapshot();
+        check(snapshot.file_ready && snapshot.output_error.empty(), "Unicode file writes and rotation stay healthy");
+        check(read_file(directory / std::filesystem::u8path(config.file_name)).find("Unicode project final record") != std::string::npos &&
+              std::filesystem::is_regular_file(directory / std::filesystem::u8path(u8"编辑器-🧪.1.log")),
+              "Unicode primary and rotated logs are accessible by their original native paths");
+    }
+
     void file_failure_and_rotation(const std::filesystem::path& root)
     {
         using namespace toy3d;
@@ -158,6 +180,7 @@ int main()
     std::filesystem::create_directories(root);
     buffer_contract();
     fanout_and_concurrency(root);
+    unicode_file_output(root);
     file_failure_and_rotation(root);
     std::cout << "Logging checks: " << (failures == 0 ? "passed" : "failed") << '\n';
     return failures == 0 ? 0 : 1;

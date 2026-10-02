@@ -3,6 +3,9 @@
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
+#include <map>
+#include <vector>
+#include "file_system/file_error.h"
 
 namespace toy3d
 {
@@ -16,6 +19,14 @@ namespace toy3d
         Overlay
     };
 
+    struct ConfigValue
+    {
+        std::string value;
+        std::string source;
+        std::size_t line = 0;
+    };
+    using ConfigValues = std::map<std::string, ConfigValue>;
+
     class ConsoleManager
     {
       public:
@@ -28,7 +39,10 @@ namespace toy3d
 
         FileStatus load_config(FileSystem& file_system, const VirtualPath& path,
                                ConfigLoadMode mode = ConfigLoadMode::Replace);
-        void set_value(const std::string& key, const std::string& value);
+        static FileResult<ConfigValues> parse_config(const std::string& text, const std::string& source);
+        static FileResult<std::string> encode_config(const ConfigValues& values);
+        void set_value(const std::string& key, const std::string& value, const std::string& source = "runtime");
+        ConfigValues snapshot() const;
         std::string get_string(const std::string& key, const std::string& default_value = "") const;
         int get_int(const std::string& key, int default_value = 0) const;
         float get_float(const std::string& key, float default_value = 0.0f) const;
@@ -44,5 +58,6 @@ namespace toy3d
         // registration and mutation exclusive under the same lock.
         mutable std::shared_mutex mutex_;
         std::unordered_map<std::string, std::string> values_;
+        ConfigValues origins_;
     };
 } // namespace toy3d

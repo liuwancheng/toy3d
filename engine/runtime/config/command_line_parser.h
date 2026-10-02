@@ -24,6 +24,8 @@ namespace toy3d
         std::string get_option(const std::string& option, const std::string& default_val = "") const;
 
         void apply_config() const;
+        // Preserve explicit configuration overrides when switching Editor projects.
+        std::vector<std::string> launch_arguments() const;
 
       private:
         std::unordered_map<std::string, std::string> options;

@@ -5,6 +5,7 @@
 #include "logging/logger.h"
 #include "platform/platform_defines.h"
 #include "workspace/editor_workspace.h"
+#include "platform/model_file_picker.h"
 
 namespace toy3d
 {
@@ -12,36 +13,48 @@ namespace toy3d
     {
         if (ImGui::BeginMainMenuBar())
         {
-            if (ImGui::BeginMenu("Tools"))
+            const bool project_commands = !shaders_.busy() && !model_import_.active() && !texture_import_.active() &&
+                !material_create_.active() && !shader_create_.active() && !waiting_material_project_;
+            if (ImGui::BeginMenu("Scene"))
             {
-                if (ImGui::BeginMenu("Scene"))
+                if (ImGui::MenuItem("New Project...", nullptr, false, project_commands))
+                { project_error_.clear(); save_scene_to_project_ = false; show_new_project_ = true; }
+                if (ImGui::MenuItem("Open Project...", nullptr, false, project_commands))
                 {
-                    if (ImGui::MenuItem("New Scene")) request_scene_action(SceneAction::New);
-                    if (ImGui::BeginMenu("Open Scene"))
-                    {
-                        for (const AssetCatalogEntry& entry : workspace_.catalog().entries)
-                            if (asset_descriptor_kind(entry.path) == AssetDescriptorKind::Scene &&
-                                ImGui::MenuItem(entry.path.utf8().c_str()))
-                                request_scene_action(SceneAction::Open, entry.file.asset_id);
-                        ImGui::EndMenu();
-                    }
-                    if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
-                    {
-                        if (scene_session_.path().empty()) show_scene_save_as_ = true;
-                        else save_scene(scene_session_.path(), false);
-                    }
-                    if (ImGui::MenuItem("Save Scene As...")) show_scene_save_as_ = true;
+                    std::string path, error;
+                    if (!pick_project_file(window(), path, error))
+                    { project_error_ = error; TOY_LOG_ERROR("Open Project: {}", error); }
+                    else if (!path.empty()) { project_scene_saved_ = false; request_project_open(PhysicalPath(path)); }
+                }
+                if (ImGui::MenuItem("Project Settings...", nullptr, false, workspace_.has_project()))
+                { open_project_settings(); if (!project_error_.empty()) TOY_LOG_ERROR("Project Settings: {}", project_error_); }
+                ImGui::Separator();
+                if (ImGui::MenuItem("New Scene")) request_scene_action(SceneAction::New);
+                if (ImGui::BeginMenu("Open Scene"))
+                {
+                    for (const AssetCatalogEntry& entry : workspace_.catalog().entries)
+                        if (asset_descriptor_kind(entry.path) == AssetDescriptorKind::Scene &&
+                            ImGui::MenuItem(entry.path.utf8().c_str())) request_scene_action(SceneAction::Open, entry.file.asset_id);
                     ImGui::EndMenu();
                 }
-                ImGui::Separator();
-                if (ImGui::BeginMenu("Create", !model_import_.active() && !texture_import_.active() && !material_create_.active() && !shader_create_.active()))
+                if (ImGui::MenuItem("Save Scene", "Ctrl+S")) request_scene_save();
+                if (ImGui::MenuItem("Save Scene As..."))
+                {
+                    if (!workspace_.has_project()) request_scene_save();
+                    else { asset_folder_ = "/Project"; show_scene_save_as_ = true; }
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Tools"))
+            {
+                if (ImGui::BeginMenu("Create", workspace_.has_project() && !model_import_.active() && !texture_import_.active() && !material_create_.active() && !shader_create_.active()))
                 {
                     if (ImGui::MenuItem("Create Material...")) material_create_.request(MaterialAssetCreationKind::Material, asset_folder_);
                     if (ImGui::MenuItem("Create Material Instance...")) material_create_.request(MaterialAssetCreationKind::MaterialInstance, asset_folder_);
                     if (ImGui::MenuItem("Shader...", nullptr, false, shader_workflow_ready_ && !shaders_.busy())) shader_create_.request();
                     ImGui::EndMenu();
                 }
-                if (ImGui::BeginMenu("Import", !shader_create_.active()))
+                if (ImGui::BeginMenu("Import", workspace_.has_project() && !shader_create_.active()))
                 {
 #if WITH_MODEL_IMPORT
                     if (ImGui::MenuItem("Import Static Mesh...", nullptr, false,
@@ -69,7 +82,7 @@ namespace toy3d
                 {
                     if (ImGui::MenuItem("Recompile Shaders", nullptr, false, shader_workflow_ready_ && !shaders_.busy())) shaders_.recompile_all();
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                        ImGui::SetTooltip("Compile all registered saved sources (Vulkan ES3.1/default permutation).");
+                        ImGui::SetTooltip("Compile all discovered saved sources (Vulkan ES3.1/default permutation).");
                     if (ImGui::MenuItem("Cancel Compilation", nullptr, false,
                         shaders_.busy() && !shaders_.task_status().restoring && shaders_.task_status().phase != ShaderTaskPhase::Cancelling)) shaders_.cancel();
                     ImGui::EndMenu();

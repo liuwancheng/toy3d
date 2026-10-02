@@ -8,7 +8,7 @@
 | 坐标、矩阵、Transform、几何、厘米与角度 | [Math](math.md) | `engine/core/math/`、`engine/core/tests/math_tests.cpp` |
 | 线程、Queue、TaskGraph、等待/退出 | [Threading](threading.md) | `engine/core/threading/`、`engine/core/threading/task_graph/` |
 | 反射、序列化、Asset 身份、YAML/meta、导入/缓存 | [Assets](assets.md) | `engine/core/asset/`、reflection、serialization、`engine/tools/` |
-| Engine/Application、配置、输入、平台、资源部署 | [Runtime](runtime.md) | `engine/runtime/engine.*`、application、config、platform、input |
+| Engine/Application、.toy 工程、分层配置、输入、平台、资源部署 | [Runtime](runtime.md) | `engine/runtime/engine.*`、application、config、platform、input |
 | World/Actor/Component、注册、挂接、settings 更新 | [GameScene](gamescene.md) | `engine/runtime/gamescene/` |
 | GT/RT、RenderCommand、CPU fence、资源上传/退出 | [Render Framework](render-framework.md) | `engine/runtime/rendercore/`、`renderscene/renderer.*` |
 | View、可见性、MeshBatch、Shadow/Base/Tonemap/UI、预览 | [Renderer](renderer.md) | `engine/runtime/renderscene/` |

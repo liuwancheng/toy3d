@@ -26,6 +26,7 @@ namespace toy3d
         bool dirty() const;
         bool new_scene();
         bool open(const AssetId& id);
+        bool open_path(const std::string& path);
         bool save(const VirtualPath& path, bool create_new);
         bool capture(SceneAssetData& data);
         bool replace(const SceneAssetData& data);

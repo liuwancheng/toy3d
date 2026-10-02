@@ -52,7 +52,6 @@ namespace toy3d
     struct ShaderWorkflowPaths
     {
         PhysicalPath project_shader;
-        PhysicalPath project_config;
         PhysicalPath engine_shader;
         PhysicalPath engine_include;
         PhysicalPath builtin_root;
@@ -72,6 +71,8 @@ namespace toy3d
         BuiltinShaderUsage usage = BuiltinShaderUsage::Material;
         PhysicalPath artifacts;
         std::string diagnostic;
+        std::string discovery_error;
+        bool name_conflict = false;
     };
 
     // Application owns this Shader-specific source/compile/publication workflow
@@ -153,7 +154,6 @@ namespace toy3d
         NativePlatformFile platform_;
         FileSystem files_;
         ShaderWorkflowPaths paths_;
-        std::string registered_manifest_;
         ShaderTaskStatus task_;
         MaterialRef defaults_;
         std::vector<EditorShaderSource> sources_;

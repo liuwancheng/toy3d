@@ -20,7 +20,7 @@
 | `engine/tools/` | 离线 compiler、codegen、import/build 工具 |
 | `engine/shader/`、`engine/asset/`、`engine/config/` | 引擎 shader、内置资产、默认配置 |
 | `engine/build/` | 受版本管理的平台部署输入和 plist 模板 |
-| `project/` | 验证项目代码、源码侧 asset/config/shader |
+| `project/` | 资源工程 .toy、源码侧 asset/config/shader；C++ 模块尚未接入 |
 | `document/` | 按功能维护的知识与规范 |
 | `.codex/skills/` | 仓库级任务方法，不复制模块知识 |
 | 根 `build/`、`bin/` | 构建与部署产物，不提交 |
@@ -67,7 +67,7 @@ cmake --build build --config Debug --target Toy3dEditor
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Windows 第二参数可选 Toy3dCubeTest；默认 Debug Editor，无参数暂停/显式参数不暂停，失败非零。macOS 用 `./build_macos.sh Debug`（默认 Xcode，sandbox/CI Unix Makefiles）。配置支持 Debug/Release/RelWithDebInfo/MinSizeRel；细分测试 target 从功能文档和 CMake 查。
+Windows 第二参数可选 Toy3dEditor；默认 Debug Editor，无参数暂停/显式参数不暂停，失败非零。macOS 用 `./build_macos.sh Debug`（默认 Xcode，sandbox/CI Unix Makefiles）。配置支持 Debug/Release/RelWithDebInfo/MinSizeRel；细分测试 target 从功能文档和 CMake 查。
 
 ## 交付
 

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <limits>
 #include <utility>
+#include <cstdlib>
 
 #include "misc/utf8.h"
 
@@ -17,6 +18,7 @@
 #endif
 #include <Windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #else
 #include <cerrno>
 #include <cstring>
@@ -31,6 +33,42 @@ extern char** environ;
 
 namespace toy3d
 {
+    FileResult<PhysicalPath> user_data_directory()
+    {
+        FileStatus status; status.code = FileErrorCode::IoError; status.operation = "user_data_directory";
+#if WITH_WIN
+        PWSTR native = nullptr;
+        const HRESULT result = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &native);
+        if (FAILED(result) || !native)
+        { if (native) CoTaskMemFree(native); status.message = "Cannot resolve LocalAppData."; return FileResult<PhysicalPath>(status); }
+        try
+        {
+            // filesystem converts the OS UTF-16 path without an ANSI codepage.
+            const PhysicalPath path(std::filesystem::path(native).u8string());
+            CoTaskMemFree(native); return FileResult<PhysicalPath>(path);
+        }
+        catch (const std::exception& exception)
+        { CoTaskMemFree(native); status.message = exception.what(); return FileResult<PhysicalPath>(status); }
+#elif WITH_MAC || WITH_LINUX
+#if WITH_LINUX
+        const char* configured = std::getenv("XDG_DATA_HOME");
+        if (configured && configured[0] == '/') return FileResult<PhysicalPath>(PhysicalPath(configured));
+#endif
+        const char* home = std::getenv("HOME");
+        if (!home || home[0] != '/')
+        { status.message = "Cannot resolve the absolute user home directory."; return FileResult<PhysicalPath>(status); }
+#if WITH_MAC
+        return FileResult<PhysicalPath>(PhysicalPath(std::string(home) + "/Library/Application Support"));
+#else
+        return FileResult<PhysicalPath>(PhysicalPath(std::string(home) + "/.local/share"));
+#endif
+#else
+        status.code = FileErrorCode::Unsupported;
+        status.message = "User application-data paths are unsupported on this platform.";
+        return FileResult<PhysicalPath>(status);
+#endif
+    }
+
     namespace
     {
         constexpr std::size_t maximum_arguments = 256u;

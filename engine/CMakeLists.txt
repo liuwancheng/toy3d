@@ -30,6 +30,10 @@ else()
 endif()
 
 # 构建子文件夹cmake工程
+# Keep spdlog and all consumers on the same native Windows filename ABI.
+if(WIN32)
+    set(SPDLOG_WCHAR_FILENAMES ON CACHE BOOL "Use native Unicode log paths on Windows" FORCE)
+endif()
 add_subdirectory(thirdparty)
 add_subdirectory(core)
 

@@ -22,6 +22,12 @@ World 的 content revision 用于 Editor 脏状态/外部修改检测，不是�
 
 Scene DTO/反射在 core/asset/scene、core/asset/scene，不能持 runtime 指针。当前 SceneActor/Scene schema 5 持久化 Component 身份、类型、settings、附着及阴影属性。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
 
+## 游戏工程接入边界
+
+工程框架见 [Runtime](runtime.md#工程与分层配置)。当前仅资源工程；Scene kind 白名单和固定 properties variant 不支持任意工程自定义类型。TypeRegistry 元数据不自动提供 runtime factory/编解码/UI。C++ host 与共享场景装配尚未实现，不能只注册类型就声称工程可加载。
+
+后续接入须先确认稳定类型/schema、owned 属性编码、依赖枚举、构造/验证/capture/apply 与显式格式迁移。现有 EditorSceneSession 装配仍在 Editor；Undo/dirty/选择/保存冲突属于 Editor，运行时创建/资源解析/属性应用/附着验证拟归 GameScene。类型注册需早于扫描/freeze，未知必需类型拒绝候选；Game 在完整场景就绪后 begin_play，失败不发布半场景。
+
 ## 开发入口与验证
 
 新增/修改 Component 依次检查：稳定类型/字段身份 → settings 整体验证 → setter/revision → owned SceneInterface 更新 → Proxy 行为 → DTO/schema/装配 → Editor capture/apply/Details → Undo/Save/Open。领域策略留模块，通用文件/任务/序列化复用 core。

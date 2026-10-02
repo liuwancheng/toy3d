@@ -21,6 +21,8 @@
 #include "assets/texture/texture_preview_panel.h"
 #include "shader/shader_workflow.h"
 #include "asset/scene/scene_asset.h"
+#include "workspace/editor_project.h"
+#include "config/console_manager.h"
 
 #include <string>
 #include <utility>
@@ -33,8 +35,9 @@ namespace toy3d
     class EditorApplication final : public Application
     {
       public:
-        explicit EditorApplication(EditorWorkspace& workspace, std::shared_ptr<LogBuffer> log_buffer = {})
-            : workspace_(workspace), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
+        explicit EditorApplication(EditorWorkspace& workspace, std::shared_ptr<LogBuffer> log_buffer = {},
+            EditorProject* project = nullptr, std::string saved_root = {})
+            : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)), scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
               thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer), notifications_(std::move(log_buffer)) {}
 
       protected:
@@ -62,6 +65,35 @@ namespace toy3d
 
       private:
         EditorWorkspace& workspace_;
+        void tick_shaders();
+        void load_startup_scene();
+        void draw_project_dialogs();
+        void request_project_open(const PhysicalPath& descriptor);
+        void launch_project();
+        bool scene_writable() const;
+        void request_scene_save();
+        EditorProject* project_ = nullptr;
+        std::string saved_root_;
+        std::string layout_path_;
+        std::string startup_scene_;
+        bool startup_pending_ = true;
+        bool show_new_project_ = false;
+        bool show_project_settings_ = false;
+        bool waiting_material_project_ = false;
+        bool save_scene_to_project_ = false;
+        bool project_scene_saved_ = false;
+        std::uint64_t project_scene_revision_ = 0u;
+        PhysicalPath pending_project_;
+        char project_name_[65] = "NewGame";
+        char project_parent_[2048]{};
+        char editor_startup_[1024]{};
+        char game_startup_[1024]{};
+        ConfigValues project_overrides_;
+        std::string project_config_bytes_;
+        bool project_config_existed_ = false;
+        std::string project_error_;
+        void open_project_settings();
+        bool save_project_settings();
         EditorSelection selection_;
         ActorFactory actor_factory_;
         std::unique_ptr<MaterialLibrary> materials_;
@@ -97,7 +129,7 @@ namespace toy3d
         void apply_scene_history(bool redo);
         std::string model_error_;
         std::string material_assignment_error_;
-        enum class SceneAction { None, New, Open, Exit };
+        enum class SceneAction { None, New, Open, Exit, SwitchProject };
         SceneAction pending_scene_action_ = SceneAction::None;
         AssetId pending_scene_id_;
         bool show_scene_save_as_ = false;

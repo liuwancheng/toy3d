@@ -91,30 +91,42 @@ namespace toy3d
         return (it != options.end()) ? it->second : default_val;
     }
 
+    std::vector<std::string> CommandLineParser::launch_arguments() const
+    {
+        std::vector<std::string> args;
+        for (const auto& option : options)
+            if (option.first != "Project") args.push_back("--" + option.first + "=" + option.second);
+        return args;
+    }
+
     void CommandLineParser::apply_config() const
     {
         ConsoleManager& console = ConsoleManager::get_instance();
-        for (const auto& [key, value] : options)
+        for (const auto& option : options)
         {
+            const std::string& key = option.first;
+            const std::string& value = option.second;
+            // Project chooses the composition root; it is not an INI/CVar value.
+            if (key == "Project") continue;
             if (key == "resX" || key == "Width")
             {
-                console.set_value("Window.Width", value);
+                console.set_value("Window.Width", value, "command line");
             }
             else if (key == "resY" || key == "Height")
             {
-                console.set_value("Window.Height", value);
+                console.set_value("Window.Height", value, "command line");
             }
             else if (key == "fullscreen")
             {
-                console.set_value("Window.Fullscreen", value);
+                console.set_value("Window.Fullscreen", value, "command line");
             }
             else if (key == "vsync")
             {
-                console.set_value("Renderer.VSync", value);
+                console.set_value("Renderer.VSync", value, "command line");
             }
             else
             {
-                console.set_value(key, value);
+                console.set_value(key, value, "command line");
             }
         }
     }

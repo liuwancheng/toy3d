@@ -1,6 +1,6 @@
 #pragma once
 
-#include "file_system/physical_path.h"
+#include "file_system/file_error.h"
 
 #include <atomic>
 #include <cstddef>
@@ -10,6 +10,9 @@
 
 namespace toy3d
 {
+    // OS-provided per-user application-data root; no cwd/environment fallback
+    // on Windows. This queries a path and does not create directories.
+    FileResult<PhysicalPath> user_data_directory();
     // Open an existing absolute directory in the user's desktop file manager.
     // Success confirms the request was accepted, not that the UI finished opening.
     // Failure returns a diagnostic for the caller; this function does not log.

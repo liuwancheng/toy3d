@@ -1,4 +1,5 @@
 #include "asset_yaml.h"
+#include "asset/yaml_validation.h"
 
 #include <yaml-cpp/yaml.h>
 
@@ -22,47 +23,6 @@ namespace toy3d
         AssetStatus fail(const AssetId& id, const std::string& path, const std::string& message)
         {
             return {AssetErrorCode::InvalidFormat, id, {}, {}, path, message, {}};
-        }
-
-        bool check_tree(const YAML::Node& node, std::size_t depth, std::size_t& count,
-            std::set<std::pair<int, int>>& seen_marks, const ValueLimits& limits, std::string& error)
-        {
-            if (++count > limits.max_array_elements || depth > limits.max_depth)
-            { error = "YAML node count or depth exceeds limit"; return false; }
-            const int position = node.Mark().pos;
-            if (position >= 0 && !seen_marks.insert({position, static_cast<int>(node.Type())}).second)
-            { error = "YAML aliases are unsupported"; return false; }
-            if (!node.Tag().empty() && node.Tag() != "?" && node.Tag() != "!")
-            { error = "YAML tags are unsupported"; return false; }
-            if (node.IsScalar() && (node.Scalar().size() > limits.max_string_bytes ||
-                !is_valid_utf8(node.Scalar())))
-            { error = "YAML scalar is oversized or invalid UTF-8"; return false; }
-            if (node.IsMap())
-            {
-                std::set<std::string> keys;
-                if (node.size() > limits.max_array_elements)
-                { error = "YAML map exceeds limit"; return false; }
-                for (const auto& entry : node)
-                {
-                    if (!entry.first.IsScalar() || !keys.insert(entry.first.Scalar()).second)
-                    { error = "YAML map contains a non-scalar or duplicate key"; return false; }
-                    const int key_position = entry.first.Mark().pos;
-                    if (key_position >= 0 &&
-                        !seen_marks.insert({key_position, static_cast<int>(entry.first.Type())}).second)
-                    { error = "YAML aliases are unsupported"; return false; }
-                    if (!entry.first.Tag().empty() && entry.first.Tag() != "?" && entry.first.Tag() != "!")
-                    { error = "YAML tags are unsupported"; return false; }
-                    if (!check_tree(entry.second, depth + 1u, count, seen_marks, limits, error)) return false;
-                }
-            }
-            else if (node.IsSequence())
-            {
-                if (node.size() > limits.max_array_elements)
-                { error = "YAML array exceeds limit"; return false; }
-                for (const auto& item : node)
-                    if (!check_tree(item, depth + 1u, count, seen_marks, limits, error)) return false;
-            }
-            return true;
         }
 
         bool read_reference(const YAML::Node& node, AssetRef& output)
@@ -477,7 +437,7 @@ namespace toy3d
             std::size_t count = 0;
             std::set<std::pair<int, int>> seen_marks;
             std::string error;
-            if (!node.IsMap() || !check_tree(node, 0u, count, seen_marks, value_limits, error) ||
+            if (!node.IsMap() || !check_yaml_tree(node, 0u, count, seen_marks, value_limits, error) ||
                 (node.size() != 7u && node.size() != 8u) ||
                 (node.size() == 8u && !node["meta"]) ||
                 !node["format_version"] || node["format_version"].as<std::uint32_t>() != k_yaml_version ||

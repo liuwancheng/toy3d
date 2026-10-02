@@ -113,7 +113,7 @@ endif()
 target_compile_options(Toy3dCore PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
 if(WIN32)
     target_compile_definitions(Toy3dCore PUBLIC NOMINMAX)
-    target_link_libraries(Toy3dCore PRIVATE shell32)
+    target_link_libraries(Toy3dCore PRIVATE shell32 ole32)
 endif()
 
 add_library(Toy3dShaderFormat STATIC)
@@ -153,6 +153,8 @@ target_sources(Toy3dAssets PRIVATE
     "asset/asset_pair_store.cpp"
     "asset/asset_pair_store.h"
     "asset/asset_value_codec.cpp"
+    "asset/game_project.cpp"
+    "asset/game_project.h"
     "asset/asset_yaml.cpp"
     "asset/asset_yaml.h"
     "asset/edit_session.h"

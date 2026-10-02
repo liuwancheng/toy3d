@@ -19,6 +19,7 @@ namespace toy3d
         PhysicalPath engine_assets;
         PhysicalPath editor_resources;
         PhysicalPath deployment;
+        PhysicalPath saved;
     };
 
     class EditorWorkspace final
@@ -33,6 +34,7 @@ namespace toy3d
         FileSystem& files() { return files_; }
         const TypeRegistry& types() const { return types_; }
         bool ready() const { return ready_; }
+        bool has_project() const { return !source_root_.empty(); }
         AssetPairStore& asset_pairs() { return *asset_pairs_; }
         AssetStatus delete_asset(const AssetId& id);
         AssetStatus move_asset(const AssetId& id, const VirtualPath& destination);
