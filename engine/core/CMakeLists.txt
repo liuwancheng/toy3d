@@ -125,6 +125,8 @@ target_sources(Toy3dShaderFormat PRIVATE
     "shader/shader_editor_properties.cpp"
     "shader/shader_editor_properties.h"
     "shader/shader_format_hash.cpp"
+    "shader/mesh_shader_permutation.cpp"
+    "shader/mesh_shader_permutation.h"
     "shader/shader_format_types.h"
     "shader/shader_map_entry.h"
     "shader/shader_map_entry_reader.cpp"

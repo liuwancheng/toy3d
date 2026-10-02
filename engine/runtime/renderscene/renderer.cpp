@@ -1150,7 +1150,8 @@ namespace toy3d
                             return two_sided.status();
                         }
                         auto double_sided = device_->create_graphics_pipeline(two_sided.value());
-                        return double_sided ? RHIStatus::success() : double_sided.status();
+                        return double_sided ? validate_gpu_skin_shader(request->program, pipeline)
+                                            : double_sided.status();
                     }();
                 }
                 catch (const std::exception& error)

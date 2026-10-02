@@ -1,4 +1,5 @@
 #include "rendercore/shader/shader_map_loader.h"
+#include "shader/mesh_shader_permutation.h"
 
 #include <algorithm>
 #include <limits>
@@ -551,6 +552,67 @@ namespace toy3d
                 if (!reflected)
                 {
                     result.error = "ShaderMap binding is missing from a required stage reflection.";
+                    return result;
+                }
+            }
+        }
+        if (program.gpu_skin_program)
+        {
+            const auto& skin = *program.gpu_skin_program;
+            if (skin.gpu_skin_program)
+            {
+                result.error = "Mesh program companion cannot contain another companion.";
+                return result;
+            }
+            ShaderMapProgramKey skin_key{
+                key.shader_name, key.pass_name, key.platform,
+                shader::mesh_shader_permutation_key(key.permutation_key, shader::MeshVertexFactoryType::GPUSkin)};
+            auto checked = validate_shader_map_program(skin, skin_key);
+            if (!checked.succeeded())
+            {
+                result.error = "GPUSkin companion: " + checked.error;
+                return result;
+            }
+            for (const auto group : {shader::BindingGroup::Material, shader::BindingGroup::Pass})
+            {
+                if (shader::calculate_shader_parameter_group_identity(program.parameter_schema, group) !=
+                    shader::calculate_shader_parameter_group_identity(skin.parameter_schema, group))
+                {
+                    result.error = "Mesh factory programs require identical Material and Pass schemas.";
+                    return result;
+                }
+            }
+            if (program.pass_template_hash != skin.pass_template_hash)
+            {
+                result.error = "Mesh factory programs require identical graphics pass state.";
+                return result;
+            }
+            const auto bone_id = shader::make_shader_parameter_id(
+                shader::BindingGroup::Object, shader::ShaderParameterCategory::ReadOnlyBuffer, "toy_bone_matrices");
+            const auto bone = std::find_if(skin.bindings.begin(), skin.bindings.end(),
+                                           [bone_id](const ShaderMapBinding& binding)
+                                           {
+                                               return binding.parameter_id == bone_id &&
+                                                      binding.type == RHIResourceBindingType::ReadOnlyTypedBuffer &&
+                                                      binding.group == RHIBindingGroup::Object &&
+                                                      binding.stages == RHIShaderStageFlags::Vertex;
+                                           });
+            if (bone == skin.bindings.end())
+            {
+                result.error = "GPUSkin companion must read the engine bone typed buffer in its vertex stage.";
+                return result;
+            }
+            for (const auto attribute :
+                 {ShaderVertexAttributeId::BlendIndices0, ShaderVertexAttributeId::BlendWeights0,
+                  ShaderVertexAttributeId::BlendIndices1, ShaderVertexAttributeId::BlendWeights1})
+            {
+                if (std::none_of(skin.vertex_inputs.begin(), skin.vertex_inputs.end(),
+                                 [attribute](const ShaderVertexInput& input)
+                                 {
+                                     return input.attribute_id == attribute;
+                                 }))
+                {
+                    result.error = "GPUSkin companion must consume both skin influence groups.";
                     return result;
                 }
             }

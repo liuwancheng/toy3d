@@ -7,6 +7,7 @@
 #include "logging/logger.h"
 #include "rendercore/render_command.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
+#include "rendercore/scene/skeletal_mesh_scene_proxy.h"
 #include "rendercore/material/material_render_proxy.h"
 #include "renderscene/primitive_scene_info.h"
 #include "rendercore/render_resource_manager.h"
@@ -88,6 +89,40 @@ namespace toy3d
                 // Material changes do not end the geometry lifetime. Removing the
                 // last Primitive would terminally release shared mesh resources.
                 mesh->set_material_render_proxies(std::move(materials));
+            });
+    }
+
+    void RenderScene::update_skeletal_mesh_pose(PrimitiveSceneProxy* proxy,
+                                                std::shared_ptr<const SkeletalMeshDeformationData> deformation,
+                                                Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
+                                                bool cast_shadows, bool receives_shadows)
+    {
+        enqueue_render_command(
+            "UpdateSkeletalMeshPose",
+            [this, proxy, deformation = std::move(deformation), world_transform, world_bounds, visible, cast_shadows,
+             receives_shadows]() noexcept
+            {
+                assert(is_on_logical_rendering_thread());
+                const auto found = std::find_if(primitives_.begin(), primitives_.end(),
+                                                [proxy](const std::unique_ptr<PrimitiveSceneInfo>& info)
+                                                {
+                                                    return info->proxy() == proxy;
+                                                });
+                auto* mesh =
+                    found == primitives_.end() ? nullptr : dynamic_cast<SkeletalMeshSceneProxy*>((*found)->proxy());
+                if (!mesh)
+                {
+                    TOY_LOG_ERROR("Pose update requires a registered SkeletalMesh proxy.");
+                    return;
+                }
+                const auto status = mesh->set_deformation(deformation, resource_manager_);
+                if (!status)
+                {
+                    TOY_LOG_ERROR("Skeletal pose update failed: {}", status.message());
+                    return;
+                }
+                // Pose and its matching world bounds become visible together in this FIFO command.
+                mesh->update_transform(world_transform, world_bounds, visible, cast_shadows, receives_shadows);
             });
     }
 

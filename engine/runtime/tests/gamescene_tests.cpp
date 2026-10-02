@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <utility>
 
@@ -41,6 +42,7 @@ namespace
         int begin_play = 0;
         int tick = 0;
         int end_play = 0;
+        int unregister = 0;
         toy3d::EndPlayReason last_end_reason = toy3d::EndPlayReason::WorldEndPlay;
         toy3d::WorldTickContext last_tick;
     };
@@ -154,6 +156,304 @@ namespace
         int& unregister_count_;
     };
 
+    // --------------------------------------------------------------------------
+    // ComponentTickProbe: observes generic dispatch and mutates registration during callbacks.
+    // --------------------------------------------------------------------------
+    class ComponentTickProbe final : public toy3d::ActorComponent
+    {
+      public:
+        ComponentTickProbe(toy3d::Actor& owner, LifecycleCounts& counts, std::vector<int>& events, int label,
+                           bool enabled = false, std::function<void()> lifecycle_action = {})
+            : ActorComponent(owner), counts_(counts), events_(events), label_(label),
+              lifecycle_action_(std::move(lifecycle_action))
+        {
+            set_tick_enabled(enabled);
+        }
+        std::function<void()> action;
+        std::function<void()> end_action;
+        std::function<void()> unregister_action;
+        bool succeeds = true;
+        bool enable_during_unregister = false;
+
+      protected:
+        void on_register() override
+        {
+            if (lifecycle_action_)
+            {
+                lifecycle_action_();
+            }
+        }
+        void on_initialize() override
+        {
+            ++counts_.initialize;
+            if (lifecycle_action_)
+            {
+                lifecycle_action_();
+            }
+        }
+        void on_begin_play() override
+        {
+            ++counts_.begin_play;
+            if (lifecycle_action_)
+            {
+                lifecycle_action_();
+            }
+        }
+        bool tick_component(const toy3d::WorldTickContext& context) override
+        {
+            ++counts_.tick;
+            counts_.last_tick = context;
+            events_.push_back(label_);
+            if (action)
+            {
+                action();
+            }
+            return succeeds;
+        }
+        void on_end_play(toy3d::EndPlayReason reason) override
+        {
+            ++counts_.end_play;
+            counts_.last_end_reason = reason;
+            if (end_action)
+            {
+                end_action();
+            }
+        }
+        void on_unregister() override
+        {
+            ++counts_.unregister;
+            if (enable_during_unregister)
+            {
+                set_tick_enabled(false);
+                set_tick_enabled(true);
+            }
+            if (unregister_action)
+            {
+                unregister_action();
+            }
+        }
+
+      private:
+        LifecycleCounts& counts_;
+        std::vector<int>& events_;
+        int label_ = 0;
+        std::function<void()> lifecycle_action_;
+    };
+
+    // --------------------------------------------------------------------------
+    // ActorTickProbe: verifies that every gameplay callback precedes component dispatch.
+    // --------------------------------------------------------------------------
+    class ActorTickProbe final : public toy3d::Actor
+    {
+      public:
+        ActorTickProbe(toy3d::World& world, std::vector<int>& events, int label,
+                       std::function<void()> lifecycle_action = {})
+            : Actor(world), events_(events), label_(label), lifecycle_action_(std::move(lifecycle_action))
+        {
+        }
+        std::function<void()> action;
+
+      protected:
+        void on_initialize() override
+        {
+            if (lifecycle_action_)
+            {
+                lifecycle_action_();
+            }
+        }
+        void on_begin_play() override
+        {
+            if (lifecycle_action_)
+            {
+                lifecycle_action_();
+            }
+        }
+        void tick(const toy3d::WorldTickContext&) override
+        {
+            events_.push_back(label_);
+            if (action)
+            {
+                action();
+            }
+        }
+
+      private:
+        std::vector<int>& events_;
+        int label_ = 0;
+        std::function<void()> lifecycle_action_;
+    };
+
+    void test_component_ticks()
+    {
+        using namespace toy3d;
+        std::vector<int> events;
+        LifecycleCounts a_counts, b_counts, disabled_counts, late_counts, spawned_counts;
+        World world;
+        auto& actor_a = world.spawn_actor<ActorTickProbe>(events, 1);
+        auto& actor_b = world.spawn_actor<ActorTickProbe>(events, 2);
+        auto& a = actor_a.create_component<ComponentTickProbe>(a_counts, events, 10, true);
+        auto& disabled = actor_a.create_component<ComponentTickProbe>(disabled_counts, events, 11);
+        auto& b = actor_b.create_component<ComponentTickProbe>(b_counts, events, 20, true);
+        actor_a.set_tick_enabled(true);
+        actor_b.set_tick_enabled(true);
+        check(!disabled.is_tick_enabled() && !world.tick(0.1) && events.empty(),
+              "Generic component Tick defaults off and cannot run before play");
+        world.begin_play();
+        const auto content = world.content_revision();
+        actor_a.action = [&]()
+        {
+            disabled.set_tick_enabled(true);
+        };
+        check(world.tick(0.1) && events == std::vector<int>({1, 2, 10, 20}) && disabled_counts.tick == 0,
+              "All Actor ticks precede components; enabling outside the snapshot waits one frame");
+        check(world.content_revision() == content, "Component tick enable and dispatch do not dirty content");
+        actor_a.action = {};
+        events.clear();
+        a.succeeds = false;
+        check(!world.tick(0.1) && events == std::vector<int>({1, 2, 10, 20, 11}) &&
+                  nearly_equal(world.world_time_seconds(), 0.2) && world.frame_number() == 2 &&
+                  b_counts.last_tick.frame_number == 2,
+              "Component failure is aggregated while other components and World time continue");
+        a.succeeds = true;
+        actor_a.set_tick_enabled(false);
+        actor_b.set_tick_enabled(false);
+        events.clear();
+        check(world.tick(0.1) && events == std::vector<int>({10, 20, 11}),
+              "Disabling Actor tick does not disable registered component ticks");
+
+        bool spawned = false;
+        bool recursive_rejected = false;
+        a.action = [&]()
+        {
+            b.set_tick_enabled(false);
+            recursive_rejected = !world.tick(1);
+            if (!spawned)
+            {
+                actor_a.create_component<ComponentTickProbe>(late_counts, events, 30, true);
+                auto& late_actor = world.spawn_actor<ActorTickProbe>(events, 99);
+                late_actor.set_tick_enabled(true);
+                late_actor.create_component<ComponentTickProbe>(spawned_counts, events, 40, true);
+                spawned = true;
+            }
+        };
+        events.clear();
+        check(world.tick(0.1) && events == std::vector<int>({10, 11}) && recursive_rejected && late_counts.tick == 0 &&
+                  spawned_counts.tick == 0 && world.frame_number() == 4,
+              "Snapshot survives registration changes; disable is immediate and recursive Tick cannot advance time");
+        a.action = {};
+        events.clear();
+        check(world.tick(0.1) && events == std::vector<int>({99, 10, 11, 30, 40}) && late_counts.tick == 1 &&
+                  spawned_counts.tick == 1,
+              "Components and Actors created during dispatch first tick next frame");
+
+        b.set_tick_enabled(true);
+        b.enable_during_unregister = true;
+        const auto victim_id = actor_b.actor_id();
+        const auto previous_b_ticks = b_counts.tick;
+        a.action = [&]()
+        {
+            world.destroy_actor(actor_b);
+        };
+        check(world.tick(0.1) && !world.find_actor_by_id(victim_id) && b_counts.tick == previous_b_ticks,
+              "Destroying an owner skips its later component ticks and withdraws registration even if hooks re-enable");
+        a.action = {};
+        const auto a_ticks = a_counts.tick;
+        world.end_play();
+        check(!world.tick(0.1) && a_counts.tick == a_ticks, "End play withdraws automatic component execution");
+        world.begin_play();
+        check(world.tick(0.1) && a_counts.tick == a_ticks + 1 && b_counts.tick == previous_b_ticks,
+              "Restart does not duplicate surviving registration or retain destroyed component pointers");
+
+        LifecycleCounts doomed_counts;
+        auto& doomed = world.spawn_actor();
+        doomed.create_component<ComponentTickProbe>(doomed_counts, events, 50, true);
+        const auto doomed_id = doomed.actor_id();
+        a.action = [&]()
+        {
+            world.destroy_actor(doomed);
+            world.end_play();
+            check(world.actor_count() == 3, "End play during tick must not free the active snapshot");
+        };
+        check(world.tick(0.1) && !world.find_actor_by_id(doomed_id) && doomed_counts.tick == 0 && !world.is_ticking(),
+              "End play inside a component callback safely skips and defers destruction until both phases finish");
+        a.action = {};
+    }
+
+    void test_lifecycle_tick_guards()
+    {
+        using namespace toy3d;
+        std::vector<int> events;
+        LifecycleCounts survivor_counts, victim_counts, replacement_counts;
+        World world;
+        auto& survivor = world.spawn_actor();
+        survivor.create_component<ComponentTickProbe>(survivor_counts, events, 1, true);
+        world.begin_play();
+        int actor_hooks = 0;
+        auto& victim = world.spawn_actor<ActorTickProbe>(events, 2,
+                                                         [&]()
+                                                         {
+                                                             ++actor_hooks;
+                                                             check(!world.tick(1),
+                                                                   "Direct Actor spawn hooks cannot enter World tick");
+                                                         });
+        int component_hooks = 0;
+        auto& component = victim.create_component<ComponentTickProbe>(
+            victim_counts, events, 20, true,
+            [&]()
+            {
+                ++component_hooks;
+                check(!world.tick(1), "Direct component creation hooks cannot enter World tick");
+            });
+        check(actor_hooks == 2 && component_hooks == 3 && world.frame_number() == 0 &&
+                  world.world_time_seconds() == 0 && events.empty(),
+              "Spawn and component registration/initialization/begin hooks cannot advance any gameplay");
+        bool end_called = false;
+        bool unregister_called = false;
+        component.end_action = [&]()
+        {
+            end_called = true;
+            check(!world.tick(1), "Destroy end_play hook cannot enter World tick");
+            check(world.destroy_actor(survivor) && world.actor_count() == 2,
+                  "Destroy inside an end hook defers earlier Actor removal until the outer lifecycle completes");
+        };
+        component.unregister_action = [&]()
+        {
+            unregister_called = true;
+            check(!world.tick(1), "Unregister hook cannot enter World tick");
+            // Appending reallocates the original two-Actor vector. Destruction must
+            // recover its iterator, and finish every pending removal after callbacks.
+            auto& replacement = world.spawn_actor();
+            replacement.create_component<ComponentTickProbe>(replacement_counts, events, 30, true);
+            check(world.actor_count() == 3, "Unregister hook may create a new owned Actor safely");
+        };
+        check(world.destroy_actor(victim) && end_called && unregister_called && world.actor_count() == 1 &&
+                  survivor_counts.end_play == 1 && victim_counts.end_play == 1 && world.frame_number() == 0,
+              "Destroy hooks retain nested guards, handle reallocation and drain all pending owners safely");
+        check(world.tick(0.1) && replacement_counts.tick == 1 && survivor_counts.tick == 0 && victim_counts.tick == 0,
+              "Lifecycle guards restore dispatch and leave only the replacement component registered");
+
+        LifecycleCounts teardown_counts, appended_counts;
+        bool appended = false;
+        {
+            World exiting;
+            auto& actor = exiting.spawn_actor();
+            auto& departing = actor.create_component<ComponentTickProbe>(teardown_counts, events, 60, true);
+            exiting.begin_play();
+            departing.unregister_action = [&]()
+            {
+                check(!exiting.tick(1), "World teardown unregister hook cannot enter Tick");
+                if (!appended)
+                {
+                    appended = true;
+                    exiting.spawn_actor().create_component<ComponentTickProbe>(appended_counts, events, 70, true);
+                }
+            };
+        }
+        check(appended && teardown_counts.unregister == 1 && appended_counts.initialize == 1 &&
+                  appended_counts.unregister == 1 && appended_counts.tick == 0,
+              "World teardown safely drains finite Actor additions without losing the component registry lifetime");
+    }
+
     toy3d::StaticMeshRef make_mesh()
     {
         toy3d::MaterialDesc material_desc;
@@ -175,6 +475,8 @@ namespace
 int main()
 {
     using namespace toy3d;
+    test_component_ticks();
+    test_lifecycle_tick_guards();
 
     World world;
     Actor& parent_actor = world.spawn_actor();
@@ -296,7 +598,7 @@ int main()
     check(ticking_world.lifecycle_state() == WorldLifecycleState::Initialized && ticking_actor_counts.end_play == 1 &&
               component_counts.end_play == 1 && late_component_counts.end_play == 1 &&
               component_counts.last_end_reason == EndPlayReason::WorldEndPlay,
-          "World end_play must end Actors and Components without adding Component Tick");
+          "World end_play must end Actors and Components without automatically enabling Component Tick");
 
     StaticMeshActor& mesh_actor = world.spawn_actor<StaticMeshActor>();
     check(mesh_actor.root_component() == &mesh_actor.static_mesh_component() &&

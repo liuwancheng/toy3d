@@ -1,6 +1,6 @@
 # Animation：Skeleton、SkeletalMesh 与 GPU Skin
 
-> 本页是已确认设计及现有 contract 的唯一入口。资产格式、导入构建、CPU 播放、公共网格输入和 GPU Skin 资源基础已实现；World 组件、材质的 Local/GPUSkin permutation、三类 mesh pass 的 SkeletalMesh 接入、Editor 交互预览和 Scene 持久化仍按下文设计接入。基础资源可用不表示编辑器已能打开骨骼资产预览。
+> 本页是已确认设计及现有 contract 的唯一入口。资产格式、导入构建、CPU 播放、World 组件、Local/GPUSkin shader 编译与 Base/Shadow/HitProxy 渲染接入已实现。Editor 交互预览和 Scene 持久化仍按下文设计接入；当前通过 C++ 创建组件，不表示编辑器已能打开骨骼资产预览。
 
 ## 用例与范围
 
@@ -22,13 +22,13 @@
 | --- | --- |
 | `engine/core/asset/animation/`、`asset/mesh/skeletal_mesh_asset.*` | 三类骨骼资产保持独立身份，复用基础顶点属性、严格兼容验证和配对事务。 |
 | `engine/tools/asset_pipeline/static_mesh_import.cpp` | 已有 FBX/OBJ/glTF/GLB、单位/轴转换及受控文件访问；skin/morph 当前明确拒绝，动画仅诊断忽略。新 importer 复用基础设施，不复用静态网格的层级 bake 语义。 |
-| `engine/runtime/rendercore/geometry/vertex_factory.h` | 现有接口只解释顶点流，不选择 shader、材质或 permutation；新增 GPU Skin factory 不能隐式承担这些职责。 |
+| `engine/runtime/rendercore/geometry/vertex_factory.h` | 接口解释顶点流并报告 Local/GPUSkin 类型；program 选择留 MeshBatch/pass，不由 factory 加载 shader 或材质。 |
 | `engine/runtime/renderscene/mesh_batch.h`、`view/scene_visibility.cpp` | MeshBatch 使用 PrimitiveSceneProxy、VertexFactory 和 RHI index binding；camera/shadow 统一调用 proxy 的 collect_mesh_batches。 |
 | `engine/runtime/renderscene/render_scene.cpp` | 注册、材质更新、最后引用释放通过 PrimitiveSceneProxy 行为调用，具体 geometry 生命周期留各 mesh 实现。 |
 | `engine/runtime/rendercore/shader/shader_vertex_input.cpp` | 支持 position/normal/uv/color 和 BlendIndices0/1、BlendWeights0/1；骨骼索引要求 UInt32×4，权重为 Float32×4。 |
 | `engine/core/image/pixel_format.h` | RGBA8 UInt/UNorm 分别用于 section-local 索引/权重，与 Core/RHI/Vulkan 映射一致。 |
 | compiler `layout/binding_allocator.cpp`、Vulkan buffer view/binding/type mapping | Buffer<Float4> reflection 选择 ReadOnlyTypedBuffer；公共 typed view/limits 验证和 Vulkan uniform texel buffer usage/view/descriptor/保活已接入。 |
-| `engine/runtime/gamescene/world/world.cpp` | World 仅在 begin_play 后 tick，当前循环调用 Actor，未提供组件 tick。动画求值时机必须显式接入，不能假定 SkeletalMeshComponent 自动 tick。 |
+| `engine/runtime/gamescene/world/world.cpp` | World 在 begin_play 后按 Actor → Component 两阶段调度，SkeletalMeshComponent 通过自己的组件 tick 求值动画。 |
 | `engine/runtime/renderscene/renderer.h`、Editor `assets/thumbnails/thumbnail_preview_scene.*` | Renderer 只有一个现有 thumbnail preview scene/targets；缩略图预览还会修改静态顶点进行归一化。交互骨骼预览需要独立场景，取景应调整相机而非改 skin 数据。 |
 
 沿用 [Assets](assets.md) 的身份/配对事务、[Math](math.md) 的厘米/LH/column-vector、[Render Framework](render-framework.md) 的 FIFO 与 GPU 保活、[RHI](rhi.md) 的 binding/state/profile、[Editor](editor.md) 的候选接管和保存规则。
@@ -75,7 +75,8 @@ bone index 只对当前 Skeleton 内容有效，重导入按唯一 bone name 重
 - `asset/animation/animation_asset.*`：Skeleton/AnimationSequence 验证、reference hash 与配对编解码；`asset/mesh/skeletal_mesh_asset.*`：skin geometry、bind/bounds 与 Skeleton 兼容验证。三类 description schema 均为 1，动画 payload version 为 1，骨骼几何写 version 2 并兼容读取 version 1；未知版本拒绝。
 - `asset_pipeline/skeletal_mesh_builder.*`、`skeletal_mesh_import.*`：构建候选和 FBX/glTF/GLB 源解析，返回 owned CPU 数据，不直接发布资产。Assimp 保持 PRIVATE/可关闭。
 - `runtime/animation/animation_pose.*`、`animation_sequence.*`、`sequence_playback_state.*`、`animation_instance.*`：骨骼布局、不可变 sequence、局部采样/混合、独立时钟、Update/Evaluate 与 owned 快照；`animation_player.*` 是单 sequence 的便捷入口。布局和 sequence 构造时复制并完整验证资产候选，多个节点/实例共享 `AnimationSequence`，逐帧仅访问相邻样本。`rendercore/geometry/skeletal_mesh_deformation.*` 单独绑定兼容 Mesh，生成最终 skin/normal 矩阵和 bounds。
-- `rendercore/geometry/skeletal_mesh_render_data.*`、`skin_weight_vertex_buffer.*`、`bone_matrix_buffer.*`、`gpu_skin_vertex_factory.*`：geometry 和 section/pose 的资源候选，沿用 RenderResourceManager；ToyGPUSkin.hlsli 是共用 VS LBS 算法。这些资源尚需与组件及生产 shader permutation 连接。
+- `gamescene/component/skeletal_mesh_component.*`、`actor/skeletal_mesh_actor.*`：资产/动画候选替换、播放控制与 World 求值；`rendercore/geometry/skeletal_mesh.*`、`scene/skeletal_mesh_scene_proxy.*`：共享 CPU 资产及每实例 RT owner。
+- `rendercore/geometry/skeletal_mesh_render_data.*`、`skin_weight_vertex_buffer.*`、`bone_matrix_buffer.*`、`gpu_skin_vertex_factory.*`：geometry 和 section/pose 的资源候选，沿用 RenderResourceManager；ToyGPUSkin.hlsli 是共用 VS LBS 算法。SkeletalMeshSceneProxy 按实例持有并向公共 MeshBatch 提供这些资源。
 
 CLI 在 ModelImport 增加 `--skeletal`、`--allow-reduce-influences`、`--sample-rate 30|60`，后两个选项要求同时指定 `--skeletal`。输出目录须已存在，不覆盖已有输出。以 character.asset 为输出时，关联文件为 character_Skeleton.asset、character_Animation_0.asset 等；完整候选编码成功后按依赖顺序逐资产发布，失败报告已提交项。
 
@@ -83,7 +84,7 @@ CLI 在 ModelImport 增加 `--skeletal`、`--allow-reduce-influences`、`--sampl
 Toy3dModelImport.exe character.glb project/asset/character.asset --skeletal --sample-rate 30
 ```
 
-真实骨骼 FBX、手机设备、World/Editor 预览尚未完成验收；现有解析入口不能作为这些链路已经可用的依据。
+真实骨骼 FBX、手机设备与 Editor 交互预览尚未完成验收；现有解析入口不能作为这些链路已经可用的依据。
 
 ## 导入与 CPU 动画求值
 
@@ -133,17 +134,21 @@ GPU 法线采用各 bone skin linear part 的 inverse-transpose 加权后归一�
 
 root motion 首版不提取、不驱动 Actor：保留 root track，所以 mesh 可能相对 Actor 移动。预览额外提供临时 root lock（只替换 root 的平移/旋转为参考值），不改 AnimationSequence。默认相机固定、不自动追 root；Frame All 显式重取景。
 
-### World 与实例状态（尚未接入）
+### World、组件与实例状态
 
-SkeletalMeshComponent 接入时持有 Mesh、AnimationInstance 和 SkeletalMeshDeformer，通过实例读取 local/component pose 和 pose revision。先完整验证 mesh/skeleton/sequence/settings 候选，再替换；缺资源/不兼容失败保留原实例。单帧播放推进和 pose revision 不改变 World content revision，用户修改资源/播放设置才属于场景内容变更。
+SkeletalMeshComponent 持有 Mesh、AnimationInstance 和 SkeletalMeshDeformer，通过实例读取 local/component pose 和 pose revision。先完整验证 mesh/skeleton/sequence/settings 候选，再替换；缺资源/不兼容失败保留原实例。单帧播放推进和 pose revision 不改变 World content revision，用户修改资源/播放设置才属于场景内容变更。
 
 播放速率首版为有限正值，不含倒放；Pause 是独立状态。非循环播放到 duration 停止并保持末帧，循环推进到 duration 时 wrap 到起点；显式 seek 可定位闭区间 [0, duration]，seek 到末帧先显示末帧，下一次循环推进再 wrap。随机 seek 不依赖上次采样，零时长 clip 固定显示唯一样本。
 
-拟议接口按领域操作分开：资产 loader 返回不可变 CPU 数据；sampler 接受显式时间并输出 local pose；组件提供 validated mesh/sequence/settings 替换和播放控制；SceneInterface 增加 owned pose/bounds/revision 更新；Renderer 提供独立 animation preview 场景发布/撤回及正常帧输出。具体 C++ 签名在实施前随真实调用链细化，不在本页提供可误认为现有 API 的示例。
+组件入口是 `set_assets`、`set_animation`、`set_playback_settings`、`seek`、`set_playing` 和 `evaluate_animation`；可读取 owned 求值/派生快照与独立播放状态。`SkeletalMeshActor` 提供根组件便捷入口，尚未加入 ActorTypeRegistry、Scene component variant 或 Editor 放置/装配。Renderer 的独立 animation preview 场景仍待接入。
 
-建议 World 在 Actor tick 结束后、生成渲染更新前，加一个明确的 skeletal animation evaluation 阶段。注册/注销维护 GT 的 skeletal component 集合，只有 begun_play 的 owner 参与；求值迭代使用稳定快照，删除/退出先撤回注册。首版在 GT 同步求值，复用 sampler，不新增通用 component tick scheduler，也不启动每组件 worker。
+SkeletalMeshComponent 默认启用自己的通用组件 tick，在 Actor 阶段后于 GT 同步求值；Actor 关闭 gameplay tick 不暂停动画，关闭组件 tick 则停止自动推进。单次动画求值失败保留原时钟、姿态与 bounds。登记、帧中增删、失败汇总与调度边界统一见 [GameScene](gamescene.md#组件-tick)；Actor/World 不识别骨骼组件，不启动每组件 worker。
 
 编辑 World 不 begin_play、不自动播放。asset preview session 显式推进它自己的播放器；Game/PIE 经 World 阶段播放。暂停/不可见窗口只影响对应 session，不能停主 World。以后并行求值时，将 immutable input/owned output 经 TaskGraph 处理，在 GT 接管后发布 RT，worker 不直接 enqueue_render_command。
+
+`SkeletalMesh` 共享不可变 CPU 资产与材质；每个 `SkeletalMeshSceneProxy` 在所属 RenderScene 内独占 geometry 和 section 骨骼上传资源，避免跨场景释放或实例互相覆盖。组件保存独立 AnimationInstance、Deformer 和 owned 求值输出。资产绑定先完整验证/求值候选，再替换渲染状态；单 sequence 更换、seek 与动画更新保持 Proxy 身份。
+
+`SceneInterface::update_skeletal_mesh_pose` 通过同一 FIFO 命令发布 owned deformation、world transform、bounds 与 primitive flags。RT 先复核注册身份、布局和递增 pose revision，再接管 section 上传与相同版本的 bounds。每个 section 的骨骼 view 是 frame-local MeshBatch 的强引用；Object binding 按 Proxy/transform generation/section 缓存，camera、shadow 与 HitProxy 复用同一版本，GPU completion 保活仍由 RHI command list 负责。播放时间与求值不增加 World content revision。
 
 ## GPU Skin、Shader 与 Mesh Pass
 
@@ -153,7 +158,7 @@ GPUSkinVertexFactory 沿用现有 vertex stream validation 的职责，提供 po
 
 4/8 共用一个 GPUSkin shader，不增加影响数 permutation 或 ShaderMap key 维度。engine-owned Object UInt32 `toy_num_bone_influences` 由 geometry 提供 4 或 8；shader 先累加四项，值为 8 时再累加后四项，法线只在全部累加后归一化。条件对整个 draw 一致；Base/Shadow/HitProxy 必须复用同一几何档位与 Object 快照。影响数是不可变 geometry 数据，求值时钟、矩阵数组和资源保活沿用原有路径。顶点布局不同仍可产生不同 pipeline 缓存项；共用 shader 不承诺 GPU 对分支读取的具体优化，手机性能须真机验证。
 
-Object 数值成员沿用现有 canonical schema/codegen，新增成员改变 layout hash，已有 shader 产物须重新编译并与生成 C++ 参数共同部署；静态 shader 无需骨骼资源。生产 mesh pass/组件的 Object 快照尚未接入，资源专项使用同一参数编码与 shader 验证 4/8 分支。
+Object 数值成员沿用现有 canonical schema/codegen，新增成员改变 layout hash，已有 shader 产物须重新编译并与生成 C++ 参数共同部署；静态 shader 无需骨骼资源。生产 mesh pass 从同一 MeshBatch/Object 快照读取 section 骨骼 view 和影响数。
 
 骨骼矩阵数组使用 Object group 的只读 **格式化 buffer**，ToyShader 声明为 `Buffer<Float4>`，生成 HLSL 为 `Buffer<float4>`；bones 不使用 StructuredBuffer/SSBO。公共语义是按整数索引读取固定格式元素，不需要 sampler、过滤或 mip。TBO 是 GL/GLES 的命名，不作为公共 RHI 类型名；Vulkan 后端用 uniform texel buffer，D3D 后端用 typed buffer SRV，不能把这些资源直接统称为 GLES TBO。
 
@@ -169,15 +174,17 @@ typed buffer 接入需要贯穿公共 buffer binding 的 typed/structured/raw �
 
 ### 公共网格边界与 permutation
 
+Shader 编译输入的 `MeshVertexFactoryType` 是 engine-owned Local/GPUSkin 维度，Local 保留原 typed variant key；GPUSkin 用版本化、分域的组合 key。shader 通过 `/Engine/ShaderIncludes/ToyMeshVertex.hlsli` 显式适配，CLI 为这些源编译两种完整候选；缺少该入口的项目 shader 不能用于 GPU Skin。矩阵资源只注入 GPUSkin logical schema，C++ codegen 生成单独的 `GPUSkinObjectShaderParameters`；4/8 influence 不参与编译身份。程序候选携带验证过的 GPUSkin 程序，材质参数与 Pass schema 必须跨 factory 一致，重编译时一起接管。
+
 MeshBatch 使用 PrimitiveSceneProxy、VertexFactory、frame-local geometry draw range/index binding、MaterialRenderProxy 与 Object snapshot；不要求所有网格伪装为 StaticMeshRenderData。不新增只有转发成员的通用 MeshRenderData 基类，持久资源生命周期留各 mesh 实现。
 
 场景收集让各 proxy 输出自己的公共 mesh inputs，准备资源和构造 batch 在 begin_render_pass 前；camera 与 shadow 使用同一入口。RenderScene 注册/材质更新/释放采用真正的 primitive/resource 行为，移除依赖 StaticMesh dynamic_cast 的假通用分支。MeshDrawCommand 保持仅 RHI refs/value/draw args，execute 不识别 skeleton/asset/动画。
 
-尚未接入渲染内部的 Local/GPUSkin vertex factory permutation 维度，由 renderer 自动选择；不是用户材质的播放或 skin 属性。身份必须进入 typed permutation、ShaderMap key、reflection 和加载验证。factory 仍不选择 shader。
+渲染内部的 Local/GPUSkin vertex factory permutation 维度由 MeshBatch/pass 自动选择；不是用户材质的播放或 skin 属性。身份必须进入 typed permutation、ShaderMap key、reflection 和加载验证。factory 仍不选择 shader。
 
 compiler 根据该维度注入 engine-owned Object 骨骼矩阵数组 schema 与受控 include；静态 default permutation 不增加骨骼资源要求。shader 作者通过公共 vertex input/deformation helper 获取 mesh-local position/normal，之后沿用 surface 材质逻辑。内置 Unlit/Phong、ShadowDepth 和 HitProxy 共用该 helper，禁止复制三份 skin 公式。项目自定义 shader 必须显式适配公共顶点入口，缺 GPUSkin permutation 时给出不支持诊断，不能自动把任意 HLSL 改写成 skinned shader。
 
-当前 Editor/CMake 主要编译 default permutation；必须增加“当前支持的 mesh shader 所需 Local/GPUSkin 组合”的明确枚举、部署、加载和重编译发布。Material 参数 schema/override 保持跨这两种 factory 一致，允许 vertex input/Object active layout 不同；不能只编译一个 skinned Phong 绕开现有材质系统。重编译完整候选后接管，旧 refs 保持 GPU 生命周期。
+Editor/CMake 经 compiler CLI 为显式适配公共顶点入口的 shader 编译、部署 default 材质选择下的 Local/GPUSkin 两种程序。加载和重编译候选必须包含完整配对，缺失 GPUSkin 或 schema/state 不兼容拒绝接管；Renderer 预检两种 factory 的实际 pipeline。Material 参数 schema/override 保持跨这两种 factory 一致，允许 vertex input/Object active layout 不同；不能只编译一个 skinned Phong 绕开现有材质系统。重编译完整候选后接管，旧 refs 保持 GPU 生命周期。
 
 ### Bounds 与裁剪
 
@@ -195,7 +202,7 @@ GT 的 World/component/session 是可变状态 owner；RT 的 proxy/render data/
 
 | 平台 | 实现评估与必检项 |
 | --- | --- |
-| Vulkan（当前后端） | 骨骼索引 RGBA8 UInt vertex format；vertex-stage readonly typed buffer 对应 uniform texel buffer。补齐 `UNIFORM_TEXEL_BUFFER` usage、RGBA32F `VkBufferView`、texel-buffer descriptor 与 copy/upload → graphics read 状态/lifetime；view/绑定已可用，mesh pass 接入仍待完成。 |
+| Vulkan（当前后端） | 骨骼索引 RGBA8 UInt vertex format；vertex-stage readonly typed buffer 对应 uniform texel buffer。补齐 `UNIFORM_TEXEL_BUFFER` usage、RGBA32F `VkBufferView`、texel-buffer descriptor 与 copy/upload → graphics read 状态/lifetime；view/绑定及 mesh pass 接入已实现。 |
 | 移动 Vulkan profile | 保持 Vulkan 1.1/SPIR-V 1.3，Object 骨骼矩阵数组仍进 physical set 3，总共不超过四 sets；验证 RGBA32F uniform-texel-buffer format feature、max texel elements、view offset alignment 和 vertex-stage sampled-image descriptor 预算。uniform texel buffer 计入 sampled-image 限制，不要求 bone SSBO/storage-buffer descriptor。 |
 | D3D11（未实现） | FL11_0/SM5 的 integer vertex fetch 与 VS `Buffer<float4>` typed SRV 路径；Object 逻辑资源映射 stage/register，不借用 UAV、compute 或 D3D11.1-only 常量偏移能力。 |
 | D3D12（未实现） | integer vertex fetch、带 RGBA32F format 的 buffer SRV、PSO input layout、upload/resource-state/completion 保活；与 Vulkan 使用同逻辑 schema，无 native 类型上浮。 |
@@ -231,7 +238,7 @@ runtime 组件 settings 保存 Mesh/Sequence AssetRef、loop/rate/autoplay、pri
 
 ## 验证入口
 
-现有专项入口是 Toy3dAnimationTests、Toy3dSkeletalMeshImportTests、Toy3dTypedBufferTests 和 Toy3dTypedBufferVulkanTests，加上 ShaderMap/资源管理/Renderer 所有权回归。真实 Vulkan 专项读取 typed buffer，验证 UInt/UNorm 顶点 fetch、GPUSkin 位移与非均匀 scale 法线、upload discard/retry，以及实际 completion 前后的资源保活；mock 结果不能替代它。
+现有专项入口是 Toy3dAnimationTests、Toy3dSkeletalMeshImportTests、Toy3dTypedBufferTests 和 Toy3dTypedBufferVulkanTests，加上 ShaderMap/资源管理/Renderer 所有权回归。真实 Vulkan 专项读取 typed buffer，验证 UInt/UNorm 顶点 fetch、GPUSkin 位移与非均匀 scale 法线、upload discard/retry，以及实际 completion 前后的资源保活。生产路径用组件、SceneProxy 与内置 Phong/ShadowDepth/HitProxy 验证 4/8 influence、多 section 骨骼绑定隔离、Base/HitProxy 像素位移及 Base/Shadow 同版本绑定；Shadow 深度图的独立像素验收与手机验收另行补齐。mock 结果不能替代真实 GPU 验证。
 
 整体功能仍须覆盖下列验收要求：
 

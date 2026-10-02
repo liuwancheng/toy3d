@@ -2,6 +2,7 @@
 
 #include "misc/sha256.h"
 #include "shader/shader_map_entry.h"
+#include "shader/mesh_shader_permutation.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -329,6 +330,11 @@ namespace toy3d
             return result;
         }
 
+        std::shared_ptr<const ShaderMapProgramData> skin_candidate;
+        bool requires_skin = false;
+        ShaderMapProgramKey skin_key = key;
+        skin_key.permutation_key =
+            shader::mesh_shader_permutation_key(key.permutation_key, shader::MeshVertexFactoryType::GPUSkin);
         for (const DirectoryEntry& directory : entries.value())
         {
             if (directory.type != FileType::Directory)
@@ -351,7 +357,8 @@ namespace toy3d
                 return result;
             }
             if (read.entry->shader_name != key.shader_name || read.entry->pass_name != key.pass_name ||
-                read.entry->permutation_key != key.permutation_key)
+                (read.entry->permutation_key != key.permutation_key &&
+                 read.entry->permutation_key != skin_key.permutation_key))
             {
                 continue;
             }
@@ -362,11 +369,41 @@ namespace toy3d
                 result.error = std::move(conversion_error);
                 return result;
             }
-            ShaderMapProgramLoadResult validated = validate_shader_map_program(std::move(*converted), key);
+            const bool companion = read.entry->permutation_key == skin_key.permutation_key;
+            ShaderMapProgramLoadResult validated =
+                validate_shader_map_program(std::move(*converted), companion ? skin_key : key);
             if (!validated.succeeded())
             {
                 result.error = std::move(validated.error);
                 return result;
+            }
+            if (companion)
+            {
+                if (skin_candidate)
+                {
+                    result.error = "ShaderMapEntry lookup returned duplicate GPUSkin identities.";
+                    return result;
+                }
+                skin_candidate = std::make_shared<const ShaderMapProgramData>(std::move(*validated.program));
+                continue;
+            }
+            const bool reads_bones = std::any_of(read.entry->bindings.begin(), read.entry->bindings.end(),
+                                                 [](const shader::ShaderMapBinding& binding)
+                                                 {
+                                                     return binding.name == "toy_bone_matrices";
+                                                 });
+            if (!reads_bones)
+            {
+                for (const auto& stage : read.entry->stages)
+                {
+                    for (const auto& dependency : stage.request.dependencies)
+                    {
+                        if (dependency.virtual_path == "/Engine/ShaderIncludes/ToyMeshVertex.hlsli")
+                        {
+                            requires_skin = true;
+                        }
+                    }
+                }
             }
             if (result.program)
             {
@@ -379,6 +416,17 @@ namespace toy3d
         if (!result.program)
         {
             result.error = "ShaderMapEntry storage does not contain the requested Program.";
+        }
+        if (result.program && requires_skin)
+        {
+            if (!skin_candidate)
+            {
+                result.program.reset();
+                result.error = "Mesh ShaderMapEntry is missing its GPUSkin companion. Recompile both factories.";
+                return result;
+            }
+            result.program->gpu_skin_program = std::move(skin_candidate);
+            return validate_shader_map_program(std::move(*result.program), key);
         }
         return result;
     }

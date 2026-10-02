@@ -519,7 +519,7 @@ namespace toy3d::shader
             append_encoder(output, type_name, buffer, resources);
         }
 
-        ShaderParameterSchema make_builtin_schema()
+        ShaderParameterSchema make_builtin_schema(MeshVertexFactoryType factory = MeshVertexFactoryType::Local)
         {
             LogicalShaderLayout layout;
             for (BindingGroup group : {BindingGroup::Global, BindingGroup::View, BindingGroup::Object})
@@ -534,6 +534,10 @@ namespace toy3d::shader
                 {
                     layout.constant_buffers.push_back(std::move(*packed.layout));
                 }
+            }
+            if (factory == MeshVertexFactoryType::GPUSkin)
+            {
+                layout.resources.push_back(builtin_gpu_skin_resource());
             }
             return make_shader_parameter_schema(layout);
         }
@@ -588,6 +592,8 @@ namespace toy3d::shader
         append_group(output, "GlobalShaderParameters", BindingGroup::Global, schema);
         append_group(output, "ViewShaderParameters", BindingGroup::View, schema);
         append_group(output, "ObjectShaderParameters", BindingGroup::Object, schema);
+        append_group(output, "GPUSkinObjectShaderParameters", BindingGroup::Object,
+                     make_builtin_schema(MeshVertexFactoryType::GPUSkin));
         output << "} // namespace toy3d\n";
         result.source = output.str();
         return result;

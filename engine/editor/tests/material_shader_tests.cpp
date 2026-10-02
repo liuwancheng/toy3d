@@ -536,10 +536,15 @@ namespace
             }
             if (phase_ == 4 && !shaders_.busy() && !shaders_.error().empty())
             {
-                if (shaders_.error().find("LocalVertexFactory") == std::string::npos ||
-                    shaders_.program("Project/Surface/Painted") != before_)
+                if (shaders_.error().find("VertexFactory") == std::string::npos)
                 {
-                    stop("GPU/VF candidate rejection did not retain the previous effect: " + shaders_.error());
+                    stop("GPU/VF candidate was not rejected for incompatible vertex inputs: " + shaders_.error());
+                    return;
+                }
+                if (shaders_.program("Project/Surface/Painted") != before_ ||
+                    component()->material_for_slot(0)->desc().shader_program != before_)
+                {
+                    stop("GPU/VF candidate rejection did not retain the previous program and scene effect.");
                     return;
                 }
                 if (!write_source(revised_))

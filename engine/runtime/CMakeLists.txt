@@ -582,10 +582,12 @@ if(BUILD_TESTING)
             add_executable(Toy3dTypedBufferVulkanTests "tests/typed_buffer_vulkan_tests.cpp")
             target_compile_features(Toy3dTypedBufferVulkanTests PRIVATE cxx_std_17)
             set_target_properties(Toy3dTypedBufferVulkanTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
-            target_link_libraries(Toy3dTypedBufferVulkanTests PRIVATE Toy3dRuntime "${vulkan_lib}" vma)
+            target_link_libraries(Toy3dTypedBufferVulkanTests PRIVATE Toy3dRuntime Toy3dAssetPipeline "${vulkan_lib}" vma)
             target_include_directories(Toy3dTypedBufferVulkanTests PRIVATE "${vulkan_include}")
             target_compile_definitions(Toy3dTypedBufferVulkanTests PRIVATE
-                "TOY3D_TYPED_BUFFER_SHADER_ROOT=\"${TOY3D_TYPED_BUFFER_SHADER_ROOT}\"")
+                "TOY3D_TYPED_BUFFER_SHADER_ROOT=\"${TOY3D_TYPED_BUFFER_SHADER_ROOT}\""
+                "TOY3D_BUILTIN_SHADER_ROOT=\"${TOY3D_SHADER_MAP_OUTPUT_DIR}\""
+                "TOY3D_OUTPUT_SHADER_ROOT=\"${BINARY_ROOT_DIR}/shader/output\"")
             add_dependencies(Toy3dTypedBufferVulkanTests Toy3dTypedBufferShaderFixture)
             add_test(NAME Toy3dRuntime.TypedBufferVulkan COMMAND Toy3dTypedBufferVulkanTests)
             set_tests_properties(Toy3dRuntime.TypedBufferVulkan PROPERTIES TIMEOUT 30)

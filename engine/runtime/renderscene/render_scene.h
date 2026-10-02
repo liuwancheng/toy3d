@@ -35,6 +35,10 @@ namespace toy3d
                                         bool receives_shadows) override;
         void update_primitive_materials(PrimitiveSceneProxy* proxy,
                                         std::vector<MaterialRenderProxy*> materials) override;
+        void update_skeletal_mesh_pose(PrimitiveSceneProxy* proxy,
+                                       std::shared_ptr<const SkeletalMeshDeformationData> deformation,
+                                       Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
+                                       bool cast_shadows, bool receives_shadows) override;
         void remove_primitive(PrimitiveSceneProxy* proxy) override;
         void add_light(std::unique_ptr<LightSceneProxy> proxy) override;
         void update_light(LightSceneProxy* proxy, LightSceneData data) override;

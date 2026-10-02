@@ -76,18 +76,7 @@ namespace toy3d
             Component& result = *component;
             result.component_id_ = allocate_component_id();
             components_.push_back(std::move(component));
-            if (registered_)
-            {
-                result.register_component();
-            }
-            if (initialized_)
-            {
-                result.initialize_component();
-            }
-            if (begun_play_)
-            {
-                result.begin_play();
-            }
+            register_created_component(result);
             mark_content_changed();
             return result;
         }
@@ -116,6 +105,7 @@ namespace toy3d
         bool owns_component(const ActorComponent& component) const;
         std::uint32_t allocate_component_id();
         void mark_content_changed();
+        void register_created_component(ActorComponent& component);
         void register_all_components();
         void initialize_actor();
         void begin_play();

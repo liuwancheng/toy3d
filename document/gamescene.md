@@ -8,6 +8,18 @@ World/Actor/Component 的创建、注册、begin/end play、卸载有显式生�
 
 现有 ActorComponent 顺序是 register_component/on_register → initialize_component/on_initialize → begin_play/on_begin_play，退出 end_play/on_end_play 后 unregister/on_unregister；重复阶段受状态保护。World tick 只允许 begin_play 后，World end_play 按逆 Actor 顺序收尾。派生 hook 不能绕过基类状态机，注册渲染状态和 gameplay play 状态也不能混为同一开关。
 
+## 组件 tick
+
+World 在 GT 同步执行 Actor → Component 两阶段；Actor 只负责自己的 tick，组件业务由 `ActorComponent::tick_component` 派生实现。World 的通用调度不识别 SkeletalMesh 等具体类型。代码仍属于 gamescene / Toy3dRuntime，不新增 target 或独立动画调度系统。
+
+组件默认关闭 tick，通过独立的 `set_tick_enabled` / `is_tick_enabled` 按需启用；启用且注册的组件进入 World 的非 owning 列表，注销先撤回调度。列表生命周期覆盖 Actor/Component 销毁。World 在帧开始复制参与列表，调用前复核组件/owner 的 begin_play、开关和待销毁状态；帧中新增或原先未参与的组件启用后从下一帧执行，关闭或待销毁立即跳过。删除在整个两阶段结束后统一处理，World tick 不允许递归调用。
+
+注册、初始化、begin/end play 和注销 hook 的实际入口使用可嵌套生命周期守卫，hook 内不能进入 World tick；嵌套调用恢复外层守卫。回调请求销毁只标记待销毁，遍历完成后重新定位 Actor 并移除，允许回调追加 Actor 导致容器重分配。直接 spawn/create_component 不在返回引用前销毁新对象，回调中标记的待销毁项由后续 World 收尾处理。
+
+`tick_component` 返回 bool，默认成功；失败由领域组件报告具体原因，World 汇总失败并继续其他组件，不回滚 World 时间或任意业务状态。tick 开关与 Actor 的开关独立，运行状态不自动增加 content revision，也不进入 Scene 持久化格式。当前没有 tick group、prerequisite、间隔调度、物理阶段或并行 tick；以后出现实际需求再扩展调度入口。
+
+SkeletalMeshComponent 默认启用自己的 tick，内部推进动画和发布 pose/bounds；动画失败仍保留原时钟与快照。Editor 编辑 World 不 begin_play、不参与自动 tick，预览继续显式求值。动画领域 contract 见 [Animation](animation.md#world组件与实例状态)。验证见 GameScene/Animation、项目 Actor/PIE 与 Renderer 回归。骨骼组件的 Scene schema/assembly 和 Editor 放置仍待接入。
+
 ## 组件、附着与更新
 
 - SceneComponent 保存 local TRS 和计算后的 world matrix，父子关系不允许环；跨 Actor 挂接需要同 World、完整生命周期约束。KeepWorld 等需要将矩阵分解为 local Transform 的路径检查 positive-scale TRS 可表示性，失败保留原图与 Transform；不能据此禁止 KeepRelative 产生的合法 world affine matrix。

@@ -192,7 +192,8 @@ namespace toy3d
         {
             for (const MeshBatch& batch : view.mesh_batches())
             {
-                const auto& program = batch.material_render_proxy().shader_program();
+                const auto selected = batch.material_program();
+                const auto& program = selected.program;
                 if (!program)
                 {
                     continue;

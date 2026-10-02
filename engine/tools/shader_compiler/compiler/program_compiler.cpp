@@ -215,6 +215,26 @@ namespace toy3d::shader
         }
     } // namespace
 
+    bool supports_gpu_skin(const ShaderAsset& asset, const std::string& pass_name)
+    {
+        const std::string include = "#include \"/Engine/ShaderIncludes/ToyMeshVertex.hlsli\"";
+        for (const auto& block : asset.includes)
+        {
+            if (block.source.find(include) != std::string::npos)
+            {
+                return true;
+            }
+        }
+        for (const auto& pass : asset.passes)
+        {
+            if (pass.name == pass_name && pass.program.source.find(include) != std::string::npos)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool ShaderMapEntryCompileResult::succeeded() const
     {
         return entry.has_value() && diagnostics.empty();
@@ -245,7 +265,24 @@ namespace toy3d::shader
             return result;
         }
 
-        LogicalLayoutResult logical = compile_logical_layout(asset);
+        if (input.vertex_factory != MeshVertexFactoryType::Local &&
+            input.vertex_factory != MeshVertexFactoryType::GPUSkin)
+        {
+            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
+                                          asset.location, "Unknown mesh vertex factory."});
+            return result;
+        }
+        if (input.vertex_factory == MeshVertexFactoryType::GPUSkin && !supports_gpu_skin(asset, input.pass_name))
+        {
+            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
+                                          asset.location, "GPUSkin requires the public ToyMeshVertex include."});
+            return result;
+        }
+        permutation.permutation->key = mesh_shader_permutation_key(permutation.permutation->key, input.vertex_factory);
+        permutation.permutation->generated_prelude += input.vertex_factory == MeshVertexFactoryType::GPUSkin
+                                                          ? "#define TOY3D_GPU_SKIN 1\n"
+                                                          : "#define TOY3D_GPU_SKIN 0\n";
+        LogicalLayoutResult logical = compile_logical_layout(asset, input.vertex_factory);
         if (!logical.succeeded())
         {
             result.diagnostics = std::move(logical.diagnostics);

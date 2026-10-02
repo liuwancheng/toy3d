@@ -66,6 +66,11 @@ namespace toy3d
         }
         virtual std::unique_ptr<PrimitiveSceneProxy> create_scene_proxy() const = 0;
 
+        // Opaque GT identity only; derived components must never dereference it.
+        PrimitiveSceneProxy* scene_proxy_identity() const
+        {
+            return scene_proxy_;
+        }
         AxisAlignedBounds world_bounds_;
 
       private:

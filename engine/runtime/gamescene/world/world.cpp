@@ -9,12 +9,36 @@
 
 namespace toy3d
 {
+    // --------------------------------------------------------------------------
+    // World::LifecycleDispatchScope: protects nested lifecycle callback dispatch.
+    // --------------------------------------------------------------------------
+    World::LifecycleDispatchScope::LifecycleDispatchScope(World& world)
+        : world_(world), previous_dispatching_(world.dispatching_lifecycle_)
+    {
+        world_.dispatching_lifecycle_ = true;
+    }
+
+    World::LifecycleDispatchScope::~LifecycleDispatchScope()
+    {
+        world_.dispatching_lifecycle_ = previous_dispatching_;
+    }
+
+    // --------------------------------------------------------------------------
+    // World: owns Actors and dispatches lifecycle and gameplay phases on GT.
+    // --------------------------------------------------------------------------
     World::~World()
     {
         end_play();
         if (scene_interface_ != nullptr)
         {
             unbind_scene();
+        }
+        // Destroy components while every World service observed by their hooks is still alive.
+        LifecycleDispatchScope dispatch(*this);
+        while (!actors_.empty())
+        {
+            actors_.back()->mark_pending_destroy();
+            destroy_actor_immediate(actors_.end() - 1);
         }
     }
 
@@ -26,12 +50,13 @@ namespace toy3d
         }
 
         lifecycle_state_ = WorldLifecycleState::Initialized;
-        dispatching_lifecycle_ = true;
-        for (std::size_t index = 0; index < actors_.size(); ++index)
         {
-            actors_[index]->initialize_actor();
+            LifecycleDispatchScope dispatch(*this);
+            for (std::size_t index = 0; index < actors_.size(); ++index)
+            {
+                actors_[index]->initialize_actor();
+            }
         }
-        dispatching_lifecycle_ = false;
         flush_pending_destruction();
     }
 
@@ -44,17 +69,23 @@ namespace toy3d
         initialize();
 
         lifecycle_state_ = WorldLifecycleState::Playing;
-        dispatching_lifecycle_ = true;
-        for (std::size_t index = 0; index < actors_.size(); ++index)
         {
-            actors_[index]->begin_play();
+            LifecycleDispatchScope dispatch(*this);
+            for (std::size_t index = 0; index < actors_.size(); ++index)
+            {
+                actors_[index]->begin_play();
+            }
         }
-        dispatching_lifecycle_ = false;
         flush_pending_destruction();
     }
 
     bool World::tick(double delta_seconds)
     {
+        if (ticking_ || dispatching_lifecycle_)
+        {
+            TOY_LOG_ERROR("World tick cannot run recursively or during lifecycle callbacks.");
+            return false;
+        }
         if (lifecycle_state_ != WorldLifecycleState::Playing)
         {
             TOY_LOG_ERROR("A World can tick only after begin_play().");
@@ -76,6 +107,9 @@ namespace toy3d
         ++frame_number_;
         const WorldTickContext context{delta_seconds, world_time_seconds_, frame_number_};
 
+        // Snapshot before gameplay callbacks. New registrations wait until the next frame;
+        // pending Actor destruction keeps all observed component owners alive until dispatch ends.
+        const auto component_ticks = component_ticks_;
         ticking_ = true;
         const std::size_t actor_count_at_tick_start = actors_.size();
         for (std::size_t index = 0; index < actor_count_at_tick_start; ++index)
@@ -86,9 +120,33 @@ namespace toy3d
                 actor->tick_actor(context);
             }
         }
+        bool component_success = true;
+        for (auto* component : component_ticks)
+        {
+            if (!component->tick_registered_component(context))
+            {
+                TOY_LOG_ERROR("Component tick failed: Actor {}, Component {}.", component->owner().actor_id(),
+                              component->component_id());
+                component_success = false;
+            }
+        }
         ticking_ = false;
         flush_pending_destruction();
-        return true;
+        return component_success;
+    }
+
+    void World::register_component_tick(ActorComponent& component)
+    {
+        if (std::find(component_ticks_.begin(), component_ticks_.end(), &component) == component_ticks_.end())
+        {
+            component_ticks_.push_back(&component);
+        }
+    }
+
+    void World::unregister_component_tick(ActorComponent& component)
+    {
+        component_ticks_.erase(std::remove(component_ticks_.begin(), component_ticks_.end(), &component),
+                               component_ticks_.end());
     }
 
     void World::end_play()
@@ -101,13 +159,14 @@ namespace toy3d
         // Leave Playing before callbacks so Actors spawned by shutdown logic
         // cannot begin play in a World that is stopping.
         lifecycle_state_ = WorldLifecycleState::Initialized;
-        dispatching_lifecycle_ = true;
-        const std::size_t actor_count_at_end_play_start = actors_.size();
-        for (std::size_t index = actor_count_at_end_play_start; index > 0; --index)
         {
-            actors_[index - 1]->end_play(EndPlayReason::WorldEndPlay);
+            LifecycleDispatchScope dispatch(*this);
+            const std::size_t actor_count_at_end_play_start = actors_.size();
+            for (std::size_t index = actor_count_at_end_play_start; index > 0; --index)
+            {
+                actors_[index - 1]->end_play(EndPlayReason::WorldEndPlay);
+            }
         }
-        dispatching_lifecycle_ = false;
         flush_pending_destruction();
     }
 
@@ -162,30 +221,40 @@ namespace toy3d
         }
 
         destroy_actor_immediate(found);
+        flush_pending_destruction();
         return true;
     }
 
     void World::destroy_actor_immediate(ActorStorage::iterator actor)
     {
-        (*actor)->end_play(EndPlayReason::Destroyed);
-        (*actor)->unregister_all_components();
-        actors_.erase(actor);
+        LifecycleDispatchScope dispatch(*this);
+        Actor* const identity = actor->get();
+        identity->end_play(EndPlayReason::Destroyed);
+        identity->unregister_all_components();
+        // Hooks can append Actors and reallocate actors_; resolve the iterator again.
+        actors_.erase(find_actor(*identity));
     }
 
     void World::flush_pending_destruction()
     {
-        for (auto actor = actors_.begin(); actor != actors_.end();)
+        if (ticking_ || dispatching_lifecycle_)
         {
-            if ((*actor)->is_pending_destroy())
+            return;
+        }
+        // A callback may mark an earlier Actor pending or append a new one.
+        // Resolve each removal from the current container after the previous hooks finish.
+        for (;;)
+        {
+            const auto actor = std::find_if(actors_.begin(), actors_.end(),
+                                            [](const std::unique_ptr<Actor>& candidate)
+                                            {
+                                                return candidate->is_pending_destroy();
+                                            });
+            if (actor == actors_.end())
             {
-                (*actor)->end_play(EndPlayReason::Destroyed);
-                (*actor)->unregister_all_components();
-                actor = actors_.erase(actor);
+                break;
             }
-            else
-            {
-                ++actor;
-            }
+            destroy_actor_immediate(actor);
         }
     }
 

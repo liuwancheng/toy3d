@@ -84,6 +84,7 @@ namespace toy3d
         }
 
         registered_ = true;
+        World::LifecycleDispatchScope dispatch(world_);
         for (std::size_t index = 0; index < components_.size(); ++index)
         {
             components_[index]->register_component();
@@ -100,6 +101,7 @@ namespace toy3d
         // Mark the Actor initialized before callbacks so components created by
         // initialization callbacks enter the same lifecycle state immediately.
         initialized_ = true;
+        World::LifecycleDispatchScope dispatch(world_);
         for (std::size_t index = 0; index < components_.size(); ++index)
         {
             components_[index]->initialize_component();
@@ -117,6 +119,7 @@ namespace toy3d
         // The state changes before callbacks so newly created components can
         // be registered, initialized and begun in one deterministic path.
         begun_play_ = true;
+        World::LifecycleDispatchScope dispatch(world_);
         for (std::size_t index = 0; index < components_.size(); ++index)
         {
             components_[index]->begin_play();
@@ -141,6 +144,7 @@ namespace toy3d
         }
 
         begun_play_ = false;
+        World::LifecycleDispatchScope dispatch(world_);
         on_end_play(reason);
         for (std::size_t index = components_.size(); index > 0; --index)
         {
@@ -156,9 +160,27 @@ namespace toy3d
         }
 
         registered_ = false;
+        World::LifecycleDispatchScope dispatch(world_);
         for (std::size_t index = components_.size(); index > 0; --index)
         {
             components_[index - 1]->unregister_component();
+        }
+    }
+
+    void Actor::register_created_component(ActorComponent& component)
+    {
+        World::LifecycleDispatchScope dispatch(world_);
+        if (registered_)
+        {
+            component.register_component();
+        }
+        if (initialized_)
+        {
+            component.initialize_component();
+        }
+        if (begun_play_)
+        {
+            component.begin_play();
         }
     }
 

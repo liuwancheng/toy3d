@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shader/shader_format_types.h"
+#include "shader/mesh_shader_permutation.h"
 #include "shader/shader_editor_properties.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
@@ -125,7 +126,9 @@ namespace toy3d::shader
     std::uint32_t structured_element_stride(ResourceElementType type);
     ShaderParameterGroupInput builtin_shader_parameter_input(BindingGroup group);
     ConstantBufferPackResult pack_constant_buffer(BindingGroup group, const std::vector<ConstantMemberInput>& members);
-    LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset);
+    ShaderResourceParameter builtin_gpu_skin_resource();
+    LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset,
+                                               MeshVertexFactoryType factory = MeshVertexFactoryType::Local);
     ShaderParameterSchema make_shader_parameter_schema(const LogicalShaderLayout& layout);
     ActiveLayoutResult build_active_layout(const LogicalShaderLayout& logical_layout,
                                            const std::vector<ParameterUsage>& usage);

@@ -20,6 +20,8 @@ namespace toy3d
         ShaderMapProgram& operator=(ShaderMapProgram&&) noexcept = default;
 
         const ShaderMapProgramData& data() const;
+        const std::shared_ptr<const ShaderMapProgram>& gpu_skin_program() const;
+
         const ShaderParameterBinding* find_parameter_binding(ShaderParameterId parameter_id) const;
 
       private:
@@ -28,6 +30,8 @@ namespace toy3d
         explicit ShaderMapProgram(ShaderMapProgramData data);
 
         ShaderMapProgramData data_;
+        std::shared_ptr<const ShaderMapProgram> gpu_skin_program_;
+
         std::unordered_map<ShaderParameterId, ShaderParameterBinding> parameter_bindings_;
     };
 

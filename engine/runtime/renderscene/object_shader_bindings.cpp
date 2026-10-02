@@ -10,6 +10,8 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <map>
+#include <utility>
 #include <vector>
 
 namespace toy3d
@@ -17,7 +19,8 @@ namespace toy3d
     RHIStatus create_object_shader_bindings(RHIDevice& device, RHICommandContext& context,
                                             std::vector<ViewInfo>& view_infos)
     {
-        std::unordered_map<const PrimitiveSceneProxy*, std::unordered_map<std::uint64_t, RHIBindingSetRef>>
+        std::unordered_map<const PrimitiveSceneProxy*,
+                           std::map<std::pair<std::uint64_t, std::uint32_t>, RHIBindingSetRef>>
             bindings_by_proxy_and_generation;
         std::vector<MeshBatch*> batches;
         for (ViewInfo& view_info : view_infos)
@@ -48,7 +51,8 @@ namespace toy3d
             }
 
             auto& bindings_by_generation = bindings_by_proxy_and_generation[proxy];
-            const auto found = bindings_by_generation.find(mesh_batch.object_data_generation());
+            const auto found = bindings_by_generation.find(std::make_pair(
+                mesh_batch.object_data_generation(), mesh_batch.bone_matrices() ? mesh_batch.section_index() : 0u));
             if (found != bindings_by_generation.end())
             {
                 if (found->second && mesh_batch.object_binding() && found->second != mesh_batch.object_binding())
@@ -64,7 +68,10 @@ namespace toy3d
             }
             else
             {
-                bindings_by_generation.emplace(mesh_batch.object_data_generation(), mesh_batch.object_binding());
+                bindings_by_generation.emplace(
+                    std::make_pair(mesh_batch.object_data_generation(),
+                                   mesh_batch.bone_matrices() ? mesh_batch.section_index() : 0u),
+                    mesh_batch.object_binding());
             }
 
             if (mesh_batch.object_binding() && (!mesh_batch.object_binding()->is_owned_by(device) ||
@@ -80,11 +87,32 @@ namespace toy3d
         {
             MeshBatch& mesh_batch = *mesh_batch_ptr;
             RHIBindingSetRef& cached =
-                bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy()).at(mesh_batch.object_data_generation());
+                bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
+                    .at(std::make_pair(mesh_batch.object_data_generation(),
+                                       mesh_batch.bone_matrices() ? mesh_batch.section_index() : 0u));
             if (!cached)
             {
+                const auto& object = mesh_batch.object_shader_parameters();
                 RHIResult<RHIBindingSetRef> created =
-                    create_transient_shader_binding(device, context, mesh_batch.object_shader_parameters());
+                    RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady, "Object binding is not created.");
+                if (mesh_batch.bone_matrices())
+                {
+                    if (object.toy_num_bone_influences != 4 && object.toy_num_bone_influences != 8)
+                    {
+                        return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Invalid skin influence width.");
+                    }
+                    GPUSkinObjectShaderParameters skin;
+                    skin.toy_object_to_world = object.toy_object_to_world;
+                    skin.toy_object_normal_to_world = object.toy_object_normal_to_world;
+                    skin.toy_receives_shadows = object.toy_receives_shadows;
+                    skin.toy_num_bone_influences = object.toy_num_bone_influences;
+                    skin.toy_bone_matrices = mesh_batch.bone_matrices();
+                    created = create_transient_shader_binding(device, context, skin);
+                }
+                else
+                {
+                    created = create_transient_shader_binding(device, context, object);
+                }
                 if (!created)
                 {
                     return created.status();
@@ -97,7 +125,9 @@ namespace toy3d
         {
             MeshBatch& mesh_batch = *mesh_batch_ptr;
             mesh_batch.publish_object_binding(
-                bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy()).at(mesh_batch.object_data_generation()));
+                bindings_by_proxy_and_generation.at(&mesh_batch.scene_proxy())
+                    .at(std::make_pair(mesh_batch.object_data_generation(),
+                                       mesh_batch.bone_matrices() ? mesh_batch.section_index() : 0u)));
         }
         return RHIStatus::success();
     }

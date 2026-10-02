@@ -16,6 +16,7 @@ namespace toy3d::shader
         std::string source_virtual_path;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
         std::vector<ShaderVariantSelection> variant_selections;
+        MeshVertexFactoryType vertex_factory = MeshVertexFactoryType::Local;
         const ShaderSourceProvider* source_provider = nullptr;
     };
 
@@ -29,6 +30,8 @@ namespace toy3d::shader
 
         bool succeeded() const;
     };
+
+    bool supports_gpu_skin(const ShaderAsset& asset, const std::string& pass_name);
 
     ShaderMapEntryCompileResult compile_vulkan_shader_map_entry(const ShaderAsset& asset,
                                                                 const ShaderProgramCompileInput& input,

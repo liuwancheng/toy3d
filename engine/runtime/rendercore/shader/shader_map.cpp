@@ -15,6 +15,11 @@ namespace toy3d
 
     ShaderMapProgram::ShaderMapProgram(ShaderMapProgramData data) : data_(std::move(data))
     {
+        if (data_.gpu_skin_program)
+        {
+            ShaderMapProgram companion(*data_.gpu_skin_program);
+            gpu_skin_program_ = std::make_shared<ShaderMapProgram>(std::move(companion));
+        }
         for (const ShaderMapBinding& binding : data_.bindings)
         {
             if (binding.type == RHIResourceBindingType::UniformBuffer)
@@ -47,6 +52,11 @@ namespace toy3d
     const ShaderMapProgramData& ShaderMapProgram::data() const
     {
         return data_;
+    }
+
+    const std::shared_ptr<const ShaderMapProgram>& ShaderMapProgram::gpu_skin_program() const
+    {
+        return gpu_skin_program_;
     }
 
     const ShaderParameterBinding* ShaderMapProgram::find_parameter_binding(ShaderParameterId parameter_id) const

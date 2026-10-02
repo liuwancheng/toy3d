@@ -94,6 +94,21 @@ namespace toy3d
 
       private:
         friend class Actor;
+        friend class ActorComponent;
+        // Nestable callback boundary: prevents recursive ticks and defers destruction
+        // until the outer owner has finished iterating its lifecycle participants.
+        class LifecycleDispatchScope final
+        {
+          public:
+            explicit LifecycleDispatchScope(World& world);
+            ~LifecycleDispatchScope();
+            LifecycleDispatchScope(const LifecycleDispatchScope&) = delete;
+            LifecycleDispatchScope& operator=(const LifecycleDispatchScope&) = delete;
+
+          private:
+            World& world_;
+            bool previous_dispatching_ = false;
+        };
         using ActorStorage = std::vector<std::unique_ptr<Actor>>;
 
         ActorStorage::iterator find_actor(Actor& actor);
@@ -101,7 +116,11 @@ namespace toy3d
         std::uint32_t allocate_component_id();
         void destroy_actor_immediate(ActorStorage::iterator actor);
         void flush_pending_destruction();
+        void register_component_tick(ActorComponent& component);
+        void unregister_component_tick(ActorComponent& component);
 
+        // Non-owning registration must outlive actors_, whose destructors unregister components.
+        std::vector<ActorComponent*> component_ticks_;
         ActorStorage actors_;
         std::uint64_t next_actor_id_ = 1;
         std::uint64_t next_component_id_ = 1;

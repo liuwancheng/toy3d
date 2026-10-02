@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drivers/rhi/rhi_command_descriptors.h"
+#include "rendercore/shader/shader_map.h"
 #include "shader_parameters/builtin_shader_parameters.generated.h"
 
 #include <cstdint>
@@ -19,7 +20,8 @@ namespace toy3d
       public:
         MeshBatch(const PrimitiveSceneProxy& scene_proxy, const VertexFactory& vertex_factory,
                   RHIIndexBufferBinding index_buffer, MaterialRenderProxy& material_render_proxy,
-                  std::uint32_t first_index, std::uint32_t index_count, std::uint32_t section_index = 0);
+                  std::uint32_t first_index, std::uint32_t index_count, std::uint32_t section_index = 0,
+                  RHIBufferViewRef bone_matrices = {}, std::uint32_t num_bone_influences = 0);
 
         const PrimitiveSceneProxy& scene_proxy() const
         {
@@ -41,6 +43,12 @@ namespace toy3d
         {
             return object_shader_parameters_;
         }
+        const RHIBufferViewRef& bone_matrices() const
+        {
+            return bone_matrices_;
+        }
+        ShaderMapProgramResult resolve_program(const ShaderMapProgramRef& local) const;
+        ShaderMapProgramResult material_program() const;
         std::uint64_t object_data_generation() const
         {
             return object_data_generation_;
@@ -79,6 +87,7 @@ namespace toy3d
         MaterialRenderProxy* material_render_proxy_ = nullptr;
         ObjectShaderParameters object_shader_parameters_;
         std::uint64_t object_data_generation_ = 0u;
+        RHIBufferViewRef bone_matrices_;
         RHIBindingSetRef material_binding_;
         RHIBindingSetRef object_binding_;
         std::uint32_t first_index_ = 0;

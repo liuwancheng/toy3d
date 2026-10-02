@@ -1,3 +1,5 @@
+#include <cstdlib>
+
 #include "scene/material_assignments.h"
 
 #include <algorithm>
@@ -54,6 +56,12 @@ namespace
                                               proxies_.emplace(id, std::move(proxy));
                                               ++count;
                                           });
+        }
+        void update_skeletal_mesh_pose(toy3d::PrimitiveSceneProxy*,
+                                       std::shared_ptr<const toy3d::SkeletalMeshDeformationData>, toy3d::Matrix4,
+                                       toy3d::AxisAlignedBounds, bool, bool, bool) override
+        {
+            std::abort();
         }
         void remove_primitive(toy3d::PrimitiveSceneProxy* proxy) override
         {

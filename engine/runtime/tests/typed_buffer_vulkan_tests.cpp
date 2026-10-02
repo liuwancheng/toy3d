@@ -1,4 +1,18 @@
 #include "drivers/rhi/rhi.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
+#include "gamescene/world/world.h"
+#include "rendercore/material/material_asset_builder.h"
+#include "rendercore/rendering_thread.h"
+#include "rendercore/shader/global_shader_map.h"
+#include "renderscene/builtin_mesh_pass_programs.h"
+#include "renderscene/pass/hit_proxy_pass.h"
+#include "renderscene/postprocess/tonemap_pass.h"
+#include "renderscene/render_scene.h"
+#include "renderscene/scene_render_targets.h"
+#include "renderscene/view/forward_scene_renderer.h"
+#include "skeletal_mesh_test_utils.h"
+#include "threading/task_graph/task_graph.h"
+#include "threading/thread_manager.h"
 
 #include <algorithm>
 #include <array>
@@ -120,6 +134,221 @@ namespace
         std::cout << "Skeletal resources influence count " << num_bone_influences
                   << " discard/retry/completion passed\n";
     }
+    void test_production_skeletal_passes(toy3d::RHIDevice& device, std::uint32_t influences)
+    {
+        using namespace toy3d;
+        ThreadManager threads;
+        auto graph_created = create_task_graph({0, 64, false}, threads);
+        check(graph_created.succeeded(), "Native skeletal test TaskGraph");
+        auto graph = graph_created.take_task_graph();
+        check(graph->attach_to_thread(NamedThread::GameThread).succeeded(), "Attach skeletal fixture GT");
+        RenderingThread rendering(threads, *graph, RenderingThreadMode::SingleThread);
+        check(rendering.start().succeeded(), "Start skeletal fixture render facade");
+        {
+            const auto fixture = tests::make_skeletal_fixture(influences, true);
+            ShaderMapEntryLoader phong_loader(PhysicalPath(std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/phong"));
+            ShaderMap phong_map(phong_loader);
+            const auto phong = phong_map.find_or_load({"Toy3d/Surface/Phong", "Forward"});
+            check(phong.succeeded() && phong.program->gpu_skin_program(), phong.error.c_str());
+            ShaderMapEntryLoader shadow_loader(PhysicalPath(std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/shadow"));
+            ShaderMap shadow_map(shadow_loader);
+            const auto shadow = shadow_map.find_or_load({"Toy3d/ShadowDepth/Default", "ShadowDepth"});
+            check(shadow.succeeded() && shadow.program->gpu_skin_program(), shadow.error.c_str());
+            ShaderMapEntryLoader global_loader(PhysicalPath(TOY3D_OUTPUT_SHADER_ROOT));
+            ShaderMap global_map(global_loader);
+            const auto globals =
+                GlobalShaderMap::load(global_map, ShaderPlatform::VulkanES31,
+                                      {&hit_proxy_global_shader_type(), &tonemap_global_shader_type()});
+            check(globals.succeeded(), globals.error.c_str());
+            TextureDesc texture_desc;
+            texture_desc.width = texture_desc.height = 1;
+            texture_desc.format = PixelFormat::R8G8B8A8UNorm;
+            texture_desc.row_pitches = {4};
+            texture_desc.slice_pitches = {4};
+            texture_desc.mip_pixels = {{255, 255, 255, 255}};
+            auto white = Texture::create(std::move(texture_desc));
+            check(static_cast<bool>(white), "Native fixture white texture");
+            MaterialInstanceRef material;
+            {
+                MaterialTextureValues defaults;
+                defaults.named_defaults["white"] = white;
+                MaterialAssetData descriptor;
+                descriptor.shader_name = "Toy3d/Surface/Phong";
+                descriptor.two_sided = true;
+                const auto made = create_material_from_asset(descriptor, phong.program, defaults);
+                check(made.succeeded(), made.status().message.c_str());
+                material = made.value();
+            }
+            SkeletalMeshRef mesh;
+            {
+                const auto made = SkeletalMesh::create(fixture.layout, fixture.mesh, {material});
+                check(made.succeeded(), made.status().message.c_str());
+                mesh = made.value();
+            }
+            RenderResourceManager manager(device);
+            RenderScene scene(*graph, manager);
+            RHIShaderProgramCache programs(device);
+            SceneRenderTargets targets;
+            check_status(targets.ensure_extent(device, {32, 32}));
+            TonemapPassResources tonemap;
+            check_status(tonemap.initialize(device, programs, *globals.shader_map));
+            auto light = std::make_unique<LightSceneProxy>();
+            light->data.cast_shadows = true;
+            light->data.shadow_distance = 8;
+            light->data.shadow_map_resolution = 512;
+            light->data.shadow_bias = 0;
+            light->data.shadow_slope_bias = 0;
+            auto* light_identity = light.get();
+            scene.add_light(std::move(light));
+            {
+                World world;
+                auto& actor = world.spawn_actor<SkeletalMeshActor>();
+                auto& component = actor.skeletal_mesh_component();
+                check(component.set_assets(mesh, fixture.sequence).succeeded(), "Native component assets");
+                check(world.bind_scene(scene), "Native component registration");
+                world.begin_play();
+                check(component.set_playing(false).succeeded(), "Native paused seek fixture");
+                for (int frame = 0; frame < 2; ++frame)
+                {
+                    check(component.seek(static_cast<double>(frame)).succeeded(), "Native pose bridge seek");
+                    const auto ctx = device.create_graphics_command_context();
+                    check(static_cast<bool>(ctx), ctx.status().message().c_str());
+                    check_status(ctx.value()->begin_recording("Production skeletal passes"));
+                    check_status(manager.record_pending_uploads(*ctx.value()));
+                    SceneView view(Vector3(), Quaternion::identity(), Vector3(0, 0, 1), {0, 0, 32, 32}, {32, 32},
+                                   CameraProjectionMode::Perspective, Radians(1.57079632679f), 0.1f, 10);
+                    ForwardSceneRenderer forward(SceneViewFamily(scene, {32, 32}, {view}));
+                    SceneRenderer& scene_renderer = forward;
+                    BuiltinMeshPassPrograms passes;
+                    passes.shadow_depth_default = shadow.program;
+                    check_status(
+                        scene_renderer.render_scene_passes(scene, device, programs, *ctx.value(), targets, passes));
+                    const SceneRenderer& prepared = scene_renderer;
+                    check(prepared.view_infos().size() == 1, "Native skeletal prepared view");
+                    const auto& prepared_view = prepared.view_infos().front();
+                    check(prepared_view.shadow_active() && prepared_view.shadow_cascade_count() > 0 &&
+                              prepared_view.shadow_cascade(0).batches.size() == 2,
+                          "Production Shadow pass must include both skeletal sections");
+                    for (const auto& shadow_batch : prepared_view.shadow_cascade(0).batches)
+                    {
+                        const auto& base_batch = prepared_view.mesh_batches().at(shadow_batch.section_index());
+                        check(base_batch.bone_matrices() == shadow_batch.bone_matrices() &&
+                                  base_batch.object_binding() == shadow_batch.object_binding(),
+                              "Base and Shadow must share each section's pose and Object binding");
+                    }
+                    RHITextureDesc output_desc;
+                    output_desc.width = output_desc.height = 32;
+                    output_desc.format = PixelFormat::B8G8R8A8UNorm;
+                    output_desc.usage = RHIResourceUsage::RenderTarget | RHIResourceUsage::CopySource;
+                    auto output = device.create_texture(output_desc);
+                    check(static_cast<bool>(output), output.status().message().c_str());
+                    RHITextureViewDesc output_view_desc;
+                    output_view_desc.type = RHIResourceViewType::RenderTarget;
+                    output_view_desc.format = output_desc.format;
+                    auto output_view = device.create_texture_view(output.value(), output_view_desc);
+                    check(static_cast<bool>(output_view), output_view.status().message().c_str());
+                    check_status(ctx.value()->transition_resources(
+                        {{targets.scene_color_texture(),
+                          {},
+                          RHIAccess::RenderTarget,
+                          RHIAccess::ShaderResourceGraphics},
+                         {output.value(), {}, RHIAccess::Common, RHIAccess::RenderTarget}}));
+                    check_status(tonemap.render(device, *ctx.value(), targets.scene_color_shader_resource_view(),
+                                                {output_view.value(), {32, 32}, PixelFormat::B8G8R8A8UNorm, 1}, {}));
+                    RHITextureDesc id_desc = output_desc;
+                    id_desc.format = PixelFormat::R32UInt;
+                    auto ids = device.create_texture(id_desc);
+                    check(static_cast<bool>(ids), ids.status().message().c_str());
+                    RHITextureViewDesc id_view_desc = output_view_desc;
+                    id_view_desc.format = id_desc.format;
+                    auto id_view = device.create_texture_view(ids.value(), id_view_desc);
+                    check(static_cast<bool>(id_view), id_view.status().message().c_str());
+                    RHITextureDesc depth_desc = output_desc;
+                    depth_desc.format = PixelFormat::D32Float;
+                    depth_desc.usage = RHIResourceUsage::DepthStencil;
+                    auto depth = device.create_texture(depth_desc);
+                    check(static_cast<bool>(depth), depth.status().message().c_str());
+                    RHITextureViewDesc depth_view_desc;
+                    depth_view_desc.type = RHIResourceViewType::DepthStencil;
+                    depth_view_desc.format = depth_desc.format;
+                    depth_view_desc.subresources.aspect = RHITextureAspect::Depth;
+                    auto depth_view = device.create_texture_view(depth.value(), depth_view_desc);
+                    check(static_cast<bool>(depth_view), depth_view.status().message().c_str());
+                    check_status(ctx.value()->transition_resources(
+                        {{ids.value(), {}, RHIAccess::Common, RHIAccess::RenderTarget},
+                         {depth.value(), depth_view_desc.subresources, RHIAccess::Common,
+                          RHIAccess::DepthStencilWrite}}));
+                    HitProxyTable table;
+                    check_status(scene_renderer.render_hit_proxy(device, programs, *globals.shader_map, *ctx.value(),
+                                                                 id_view.value(), depth_view.value(), table));
+                    check(table.size() == 2 && table.front().actor_id == actor.actor_id() &&
+                              table.front().component_id == component.component_id(),
+                          "Skeletal HitProxy identity");
+                    check_status(ctx.value()->transition_resources(
+                        {{ids.value(), {}, RHIAccess::RenderTarget, RHIAccess::CopySource},
+                         {output.value(), {}, RHIAccess::RenderTarget, RHIAccess::CopySource}}));
+                    auto colors_read =
+                        device.create_texture_readback(output_desc.format, {32, 32}, "Skeletal color readback");
+                    auto ids_read = device.create_readback("Skeletal center HitProxy readback");
+                    auto stationary_read = device.create_readback("Skeletal section HitProxy readback");
+                    check(static_cast<bool>(colors_read), colors_read.status().message().c_str());
+                    check(static_cast<bool>(ids_read), ids_read.status().message().c_str());
+                    check(static_cast<bool>(stationary_read), stationary_read.status().message().c_str());
+                    RHITextureReadbackDesc read;
+                    read.extent = {32, 32};
+                    read.source.texture = output.value();
+                    read.destination = colors_read.value();
+                    check_status(ctx.value()->readback_texture(read));
+                    RHITexturePixelReadbackDesc id_read;
+                    id_read.source.texture = ids.value();
+                    id_read.source.offset.x = 16;
+                    id_read.source.offset.y = 16;
+                    id_read.destination = ids_read.value();
+                    check_status(ctx.value()->readback_texture_pixel(id_read));
+                    id_read.source.offset.x = 24;
+                    id_read.destination = stationary_read.value();
+                    check_status(ctx.value()->readback_texture_pixel(id_read));
+                    const auto list = ctx.value()->finish_recording();
+                    check(static_cast<bool>(list), list.status().message().c_str());
+                    RHISubmitInfo submission;
+                    submission.command_lists.push_back(list.value());
+                    auto submitted = device.graphics_queue().submit(submission);
+                    check(static_cast<bool>(submitted), submitted.status().message().c_str());
+                    check_status(manager.commit_recording());
+                    targets.publish_submitted_access(RHIAccess::ShaderResourceGraphics, RHIAccess::DepthStencilWrite);
+                    check_status(device.graphics_queue().wait_for_value(submitted.value().completion_value));
+                    const auto colors = colors_read.value()->read_texture(device.graphics_queue().completed_value());
+                    const auto hit_id = ids_read.value()->read_uint32(device.graphics_queue().completed_value());
+                    const auto stationary_id =
+                        stationary_read.value()->read_uint32(device.graphics_queue().completed_value());
+                    check(static_cast<bool>(colors), colors.status().message().c_str());
+                    check(static_cast<bool>(hit_id), hit_id.status().message().c_str());
+                    check(static_cast<bool>(stationary_id), stationary_id.status().message().c_str());
+                    const auto center = 16 * colors.value().row_pitch + 16 * 4;
+                    const auto hit = hit_id.value();
+                    check(stationary_id.value() == 2 &&
+                              colors.value().bytes[16 * colors.value().row_pitch + 24 * 4 + 2] > 0,
+                          "Each section must use its own bone map and Object binding");
+                    check((frame == 0 && hit == 0 && colors.value().bytes[center + 2] == 0) ||
+                              (frame == 1 && hit == 1 && colors.value().bytes[center + 2] > 0),
+                          "Base and HitProxy must move together from bind position to animated center");
+                    std::cout << "Production GPUSkin " << influences << " frame " << frame << " center hit=" << hit
+                              << " red=" << static_cast<unsigned>(colors.value().bytes[center + 2]) << '\n';
+                }
+                check(world.unbind_scene(), "Skeletal component unregistration");
+            }
+            scene.remove_light(light_identity);
+            mesh.reset();
+            MaterialInstance::release(material);
+            Texture::release(white);
+            tonemap.release();
+            targets.release();
+            programs.clear();
+        }
+        check(rendering.stop().succeeded(), "Stop skeletal fixture render facade");
+        check(graph->shutdown(TaskGraphShutdownMode::CancelPending).succeeded(), "Stop skeletal fixture TaskGraph");
+    }
+
 } // namespace
 
 int main()
@@ -410,6 +639,8 @@ int main()
     }
     test_skeletal_resources(device, 4);
     test_skeletal_resources(device, 8);
+    test_production_skeletal_passes(device, 4);
+    test_production_skeletal_passes(device, 8);
     check_status(device.shutdown());
     check(DestroyWindow(window) != FALSE, "hidden surface destruction");
     std::cout << "Vulkan typed buffer VS read and completion lifetime passed\n";

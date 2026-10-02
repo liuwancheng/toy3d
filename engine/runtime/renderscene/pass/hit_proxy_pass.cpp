@@ -55,11 +55,6 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "HitProxy Shader lookup failed: " + found.error);
         }
         const ShaderMapProgramRef& shader_program = found.program;
-        RHIResult<RHIShaderProgramRef> cached = shader_program_cache.find_or_create(shader_program);
-        if (!cached)
-        {
-            return cached.status();
-        }
 
         RHIRenderPassDesc pass_desc;
         RHIColorAttachmentDesc color;
@@ -123,10 +118,20 @@ namespace toy3d
                     hit_id.value = static_cast<std::uint32_t>(table.size());
                 }
 
+                const auto selected = batch.resolve_program(shader_program);
+                if (!selected.succeeded())
+                {
+                    return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
+                }
+                auto cached = shader_program_cache.find_or_create(selected.program);
+                if (!cached)
+                {
+                    return cached.status();
+                }
                 HitDraw draw;
                 std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> layouts;
                 std::vector<RHIGraphicsPipelineDesc::VertexAttribute> attributes;
-                RHIStatus status = batch.vertex_factory().build_vertex_input(shader_program->data().vertex_inputs,
+                RHIStatus status = batch.vertex_factory().build_vertex_input(selected.program->data().vertex_inputs,
                                                                              layouts, attributes, draw.vertices);
                 if (!status)
                 {
@@ -144,7 +149,7 @@ namespace toy3d
                 desc.sample_count = 1u;
                 desc.debug_name = "HitProxyPipeline";
                 RHIResult<RHIGraphicsPipelineDesc> configured =
-                    build_shader_graphics_pipeline_desc(desc, shader_program->data().graphics_pass_state);
+                    build_shader_graphics_pipeline_desc(desc, selected.program->data().graphics_pass_state);
                 if (!configured)
                 {
                     return configured.status();

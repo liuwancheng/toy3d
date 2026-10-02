@@ -11,6 +11,7 @@
 
 #include "file_system/directory_file_store.h"
 #include "shader/shader_map_entry.h"
+#include "shader/mesh_shader_permutation.h"
 #include "logging/logger.h"
 #include "asset/material/material_asset.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
@@ -784,7 +785,9 @@ namespace toy3d
                 return false;
             }
             if (verified.entry->shader_name != name || verified.entry->pass_name != source->pass ||
-                verified.entry->permutation_key != key.permutation_key)
+                (verified.entry->permutation_key != key.permutation_key &&
+                 verified.entry->permutation_key !=
+                     shader::mesh_shader_permutation_key(key.permutation_key, shader::MeshVertexFactoryType::GPUSkin)))
             {
                 continue;
             }
@@ -819,6 +822,7 @@ namespace toy3d
                 }
             }
             if (source->usage == BuiltinShaderUsage::Material &&
+                verified.entry->permutation_key == key.permutation_key &&
                 !shader::read_shader_editor_properties(platform_, entry.path, name,
                                                        candidate.program->data().parameter_schema, properties, error))
             {

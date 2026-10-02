@@ -10,6 +10,8 @@ engine/runtime/renderscene，属于 Toy3dRuntime。GT 准备 owned ViewFamily �
 
 MeshBatch 保存 PrimitiveSceneProxy、VertexFactory、RHI index binding、draw range、MaterialRenderProxy 与 Object snapshot；各 proxy 通过 collect_mesh_batches 输出 frame-local 输入，具体 geometry owner 负责资源生命周期。MeshBatch 表达 geometry/material/primitive 语义；pass prepare 解析 Program/VertexFactory/材质/资源、验证 layout/附件并创建 pipeline/binding，发生在 begin_render_pass 前。execute 仅消费已准备 MeshDrawCommand 的 RHI refs/value 与 draw 参数，不读 Asset/Material schema、不创建 device resource、不调任务系统。
 
+GPUSkin batch 另持 section 骨骼 typed view 强引用，按 vertex factory 类型为 Base/Shadow/HitProxy 选择经过配对验证的 program；4/8 influence 共用 shader。Object binding 按 Proxy/transform generation/section 共享于同帧 camera/shadow/picking，动画 bounds 随 pose 更新；具体 contract 见 [Animation](animation.md#公共网格边界与-permutation)。`SceneRenderer::view_infos() const` 仅在逻辑 RT 只读检查已准备的当前帧数据，不作为 GT 查询 RenderScene 的入口。
+
 入口 pass/base_pass.h、shadow_pass.h、hit_proxy_pass.h；真实 render_base_pass 接受 device、shader cache、graphics context、BasePassInputs 和 draw list，不存在通用 TestPass::execute(RenderPassContext&) 协议。新 pass 复用既有边界，不为减少参数引入 Prepared/Token wrapper。
 
 Viewport/scissor、顶点/索引/pipeline/bindings/draw args/sort key 明确；附件不藏在跨 pass 长期 MeshDrawCommand 内。recording 失败完整 discard，不能部分 draw 后成功。
@@ -24,7 +26,7 @@ settings：cascade count 1..3，distribution exponent 0.1..10，tile size 512/10
 
 - 光 basis：f=归一传播方向，u0=world+Y，abs(dot(f,u0))>0.99 固定改+X；r=normalize(cross(u0,f))，u=cross(f,r)，+Z=f，LH。不能随 caster AABB 主轴旋转。
 - 接收角点包围球固定半径避免随 camera 旋转缩放。有效 tile 边长 R，texel_world=2*radius/R，extent=radius+2*texel_world，texel_step=2*extent/R；球心 r/u 坐标按 step 最近格点 snap。
-- caster 从全部 visible&&cast_shadows 的 StaticMesh AABB 按光空间 XY/上游区间筛选，不能仅取 camera visible batch。Z 包住接收段和候选，加有限 padding；保持 0<near<far。退化/非有限错误不发布半个阴影状态。
+- caster 从全部 visible&&cast_shadows 的 Primitive world AABB 按光空间 XY/上游区间筛选，不能仅取 camera visible batch。Z 包住接收段和候选，加有限 padding；保持 0<near<far。退化/非有限错误不发布半个阴影状态。
 - cascade 权重 1,E,E²（取 N 项），边界按累计权重分 near..end；E=1 等距，E=3 的两层 25%、三层约7.69%/30.77%。混合半宽为相邻较短段 10%，覆盖范围含 overlap，各层独立 sphere/snap/caster/Z；减少层数清旧状态。
 
 ## Shadow：Atlas 与采样

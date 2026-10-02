@@ -437,6 +437,38 @@ int main(int argument_count, char** arguments)
         }
         std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/" << compiled.entry->pass_name
                   << "' to " << written.entry_directory->utf8() << '\n';
+        if (toy3d::shader::supports_gpu_skin(*result.asset, compile_input.pass_name))
+        {
+            compile_input.vertex_factory = toy3d::shader::MeshVertexFactoryType::GPUSkin;
+            const auto skin_work =
+                platform_file.join_relative(toy3d::PhysicalPath(arguments[command_index + 5]), "gpu_skin");
+            if (!skin_work.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR, skin_work.status().message);
+                return 1;
+            }
+            auto skin = toy3d::shader::compile_vulkan_shader_map_entry(
+                *result.asset, compile_input, *discovered.toolchain, platform_file, skin_work.value());
+            for (const auto& diagnostic : skin.diagnostics)
+            {
+                report_diagnostic(diagnostic);
+            }
+            if (!skin.succeeded())
+            {
+                return 1;
+            }
+            auto skin_written = toy3d::shader::write_verified_shader_map_entry(
+                platform_file, toy3d::PhysicalPath(arguments[command_index + 4]), *skin.entry, skin.editor_properties);
+            for (const auto& diagnostic : skin_written.diagnostics)
+            {
+                report_diagnostic(diagnostic);
+            }
+            if (!skin_written.succeeded())
+            {
+                return 1;
+            }
+            std::cout << "Compiled GPUSkin ShaderMapEntry to " << skin_written.entry_directory->utf8() << '\n';
+        }
         return 0;
     }
 

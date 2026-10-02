@@ -5,6 +5,7 @@
 
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/geometry/local_vertex_factory.h"
+#include "rendercore/geometry/gpu_skin_vertex_factory.h"
 #include "rendercore/render_command.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
@@ -17,6 +18,69 @@
 
 namespace toy3d
 {
+    RHIStatus Renderer::validate_gpu_skin_shader(const ShaderMapProgramRef& local, RHIGraphicsPipelineDesc pipeline)
+    {
+        const auto& skin = local->gpu_skin_program();
+        if (!skin)
+        {
+            return RHIStatus::success();
+        }
+        auto shader = shader_program_cache_->find_or_create(skin);
+        if (!shader)
+        {
+            return shader.status();
+        }
+        RHIBufferDesc desc;
+        desc.usage = RHIResourceUsage::VertexBuffer;
+        desc.size = 16;
+        auto position = device_->create_buffer(desc);
+        auto weights = device_->create_buffer(desc);
+        desc.size = 24;
+        auto surface = device_->create_buffer(desc);
+        if (!position || !weights || !surface)
+        {
+            return !position ? position.status() : (!weights ? weights.status() : surface.status());
+        }
+        GPUSkinVertexFactory factory(
+            {{ShaderVertexAttributeId::Position0, 0, 0, 16, PixelFormat::R32G32B32A32Float, position.value()},
+             {ShaderVertexAttributeId::Normal0, 1, 0, 24, PixelFormat::R32G32B32A32Float, surface.value()},
+             {ShaderVertexAttributeId::TexCoord0, 1, 16, 24, PixelFormat::R32G32Float, surface.value()},
+             {ShaderVertexAttributeId::BlendIndices0, 2, 0, 16, PixelFormat::R8G8B8A8UInt, weights.value()},
+             {ShaderVertexAttributeId::BlendWeights0, 2, 8, 16, PixelFormat::R8G8B8A8UNorm, weights.value()},
+             {ShaderVertexAttributeId::BlendIndices1, 2, 4, 16, PixelFormat::R8G8B8A8UInt, weights.value()},
+             {ShaderVertexAttributeId::BlendWeights1, 2, 12, 16, PixelFormat::R8G8B8A8UNorm, weights.value()}},
+            8);
+        std::vector<RHIVertexBufferBinding> bindings;
+        auto status = factory.build_vertex_input(skin->data().vertex_inputs, pipeline.vertex_buffers,
+                                                 pipeline.vertex_attributes, bindings);
+        if (!status)
+        {
+            return status;
+        }
+        pipeline.vertex_shader = shader.value()->vertex_shader;
+        pipeline.pixel_shader = shader.value()->pixel_shader;
+        pipeline.binding_layout = shader.value()->binding_layout;
+        auto state = skin->data().graphics_pass_state;
+        for (int sided = 0; sided < 2; ++sided)
+        {
+            if (sided == 1)
+            {
+                state.cull_mode = shader::ShaderGraphicsPassState::CullMode::None;
+            }
+            const auto configured = build_shader_graphics_pipeline_desc(pipeline, state);
+            if (!configured)
+            {
+                return configured.status();
+            }
+            const auto created = device_->create_graphics_pipeline(configured.value());
+            if (!created)
+            {
+                return created.status();
+            }
+        }
+        return RHIStatus::success();
+    }
+
     RHIStatus Renderer::validate_mesh_shader(const ShaderMapProgramRef& program, bool shadow)
     {
         if (shadow)
@@ -98,7 +162,7 @@ namespace toy3d
                 return pipeline.status();
             }
         }
-        return RHIStatus::success();
+        return validate_gpu_skin_shader(program, desc);
     }
 
     void Renderer::prepare_builtin_shaders(BuiltinShaderUpdateRef request)

@@ -36,7 +36,17 @@ namespace toy3d
             for (std::size_t batch_index = 0; batch_index < view_info.mesh_batches_.size(); ++batch_index)
             {
                 MeshBatch& mesh_batch = view_info.mesh_batches_[batch_index];
-                const ShaderMapProgramRef& program = mesh_batch.material_render_proxy().shader_program();
+                const auto selected = mesh_batch.material_program();
+                if (!selected.succeeded())
+                {
+                    if (mesh_batch.bone_matrices())
+                    {
+                        return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
+                    }
+                    mesh_batch.publish_material_binding(nullptr);
+                    continue;
+                }
+                const ShaderMapProgramRef& program = selected.program;
                 if (!program || !program_declares_material_group(*program))
                 {
                     mesh_batch.publish_material_binding(nullptr);

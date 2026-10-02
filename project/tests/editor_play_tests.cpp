@@ -1,3 +1,5 @@
+#include <cstdlib>
+
 #include "scene/editor_play_session.h"
 
 #include <algorithm>
@@ -41,6 +43,12 @@ namespace
                                               proxies_.emplace(identity, std::move(proxy));
                                               ++primitives;
                                           });
+        }
+        void update_skeletal_mesh_pose(toy3d::PrimitiveSceneProxy*,
+                                       std::shared_ptr<const toy3d::SkeletalMeshDeformationData>, toy3d::Matrix4,
+                                       toy3d::AxisAlignedBounds, bool, bool, bool) override
+        {
+            std::abort();
         }
         void remove_primitive(toy3d::PrimitiveSceneProxy* proxy) override
         {

@@ -372,7 +372,7 @@ namespace toy3d::shader
         return result;
     }
 
-    LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset)
+    LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset, MeshVertexFactoryType factory)
     {
         LogicalLayoutResult result;
         LogicalShaderLayout layout;
@@ -586,6 +586,10 @@ namespace toy3d::shader
             resource.location = input.location;
             resource.parameter_id = make_shader_parameter_id(resource.group, resource.category, resource.name);
             layout.resources.push_back(std::move(resource));
+        }
+        if (factory == MeshVertexFactoryType::GPUSkin)
+        {
+            layout.resources.push_back(builtin_gpu_skin_resource());
         }
         std::sort(layout.resources.begin(), layout.resources.end(),
                   [](const ShaderResourceParameter& left, const ShaderResourceParameter& right)

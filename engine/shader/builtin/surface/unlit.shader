@@ -32,9 +32,13 @@ Shader "Toy3d/Surface/Unlit"
         #pragma vertex vs_main
         #pragma pixel ps_main
 
+        #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
+
         struct VSInput
         {
             float4 position : POSITION0;
+            TOY3D_SKIN_VERTEX_INPUT
+            float4 normal : NORMAL0;
             float2 uv : TEXCOORD0;
         };
 
@@ -46,9 +50,11 @@ Shader "Toy3d/Surface/Unlit"
 
         VSOutput vs_main(VSInput input)
         {
+            float3 mesh_position, mesh_normal;
+            TOY3D_DEFORM_VERTEX(input, mesh_position, mesh_normal);
             VSOutput output;
             const float4 world_position =
-                mul(toy_object_to_world, float4(input.position.xyz, 1.0));
+                mul(toy_object_to_world, float4(mesh_position, 1.0));
             output.clip_position = mul(toy_view_projection, world_position);
             output.uv = input.uv;
             return output;

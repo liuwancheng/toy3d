@@ -1,4 +1,7 @@
 #include "animation/animation_player.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
+#include "gamescene/world/world.h"
+#include "skeletal_mesh_test_utils.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -50,6 +53,112 @@ namespace
         }
         return pair;
     }
+    class SeekingActor final : public toy3d::Actor
+    {
+      public:
+        explicit SeekingActor(toy3d::World& world) : Actor(world)
+        {
+            mesh = &create_component<toy3d::SkeletalMeshComponent>();
+            set_root_component(mesh);
+            set_tick_enabled(true);
+        }
+        toy3d::SkeletalMeshComponent* mesh = nullptr;
+        bool seek_on_tick = false;
+        toy3d::Actor* destroy_on_tick = nullptr;
+
+      private:
+        void tick(const toy3d::WorldTickContext&) override
+        {
+            if (seek_on_tick)
+            {
+                check(mesh->seek(0.5).succeeded(), "Actor tick seek");
+            }
+            if (destroy_on_tick)
+            {
+                check(world().destroy_actor(*destroy_on_tick), "Actor tick destruction");
+            }
+        }
+    };
+
+    void test_skeletal_components()
+    {
+        using namespace toy3d;
+        const auto fixture = tests::make_skeletal_fixture(8);
+        MaterialDesc desc;
+        desc.shader_name = "ComponentCPUFixture";
+        const auto material = MaterialInstance::create(Material::create(std::move(desc)));
+        auto created = SkeletalMesh::create(fixture.layout, fixture.mesh, {material});
+        check(created.succeeded(), "Runtime skeletal mesh candidate");
+        check(!SkeletalMesh::create(fixture.layout, fixture.mesh, {}).succeeded(), "Missing material rejected");
+        World world;
+        auto& first = world.spawn_actor<SeekingActor>();
+        auto& second = world.spawn_actor<SkeletalMeshActor>();
+        auto& a = *first.mesh;
+        auto& b = second.skeletal_mesh_component();
+        check(a.set_assets(created.value(), fixture.sequence).succeeded() &&
+                  b.set_assets(created.value(), fixture.sequence).succeeded(),
+              "Two components share immutable assets");
+        check(!a.has_render_state() && a.animation_evaluation()->revision == a.deformation()->pose_revision,
+              "Unbound component has CPU pose and matching bounds only");
+        AnimationPlaybackSettings settings;
+        settings.rate = 2;
+        check(b.set_playback_settings(settings).succeeded(), "Independent playback rate");
+        check(!world.tick(0.1), "World cannot advance animation before play");
+        world.begin_play();
+        const auto revision = world.content_revision();
+        check(world.tick(0.1), "World animation stage");
+        check(std::abs(a.playback_state()->time() - 0.1) < 1e-9 && std::abs(b.playback_state()->time() - 0.2) < 1e-9,
+              "World advances each instance, including Actor with disabled gameplay tick");
+        check(world.content_revision() == revision, "Playback must not dirty scene content");
+        first.seek_on_tick = true;
+        check(world.tick(0.1) && std::abs(a.playback_state()->time() - 0.6) < 1e-9,
+              "Animation evaluates after Actor tick seek");
+        first.seek_on_tick = false;
+        check(a.set_playing(false).succeeded(), "Pause component");
+        check(world.tick(0.1) && std::abs(a.playback_state()->time() - 0.6) < 1e-9,
+              "Pause freezes time while other components play");
+        check(a.is_tick_enabled() && a.set_playing(true).succeeded(), "Skeletal component opts into generic tick");
+        a.set_tick_enabled(false);
+        check(world.tick(0.1) && std::abs(a.playback_state()->time() - 0.6) < 1e-9,
+              "Component tick opt-out stops automatic animation while playback remains enabled");
+        a.set_tick_enabled(true);
+        check(world.tick(0.1) && std::abs(a.playback_state()->time() - 0.7) < 1e-9,
+              "Component tick opt-in resumes animation without catching up disabled time");
+        const auto old_output = a.animation_evaluation();
+        check(!a.seek(std::numeric_limits<double>::quiet_NaN()).succeeded() && a.animation_evaluation() == old_output,
+              "Failed seek preserves pose and clock");
+        settings.rate = std::numeric_limits<double>::infinity();
+        check(!a.set_playback_settings(settings).succeeded() && a.animation_evaluation() == old_output,
+              "Invalid settings preserve output");
+        AssetId other_id;
+        check(AssetId::parse("ffffffffffffffffffffffffffffffff", other_id), "Foreign skeleton ID");
+        const auto foreign = std::make_shared<const AnimationBoneLayout>(other_id, fixture.layout->skeleton());
+        AnimationSequenceAsset empty;
+        empty.data.skeleton.asset_id = other_id;
+        empty.data.skeleton_reference_hash = foreign->reference_hash();
+        const auto wrong_sequence = std::make_shared<const AnimationSequence>(foreign, empty);
+        check(!a.set_animation(wrong_sequence).succeeded() && a.animation_evaluation() == old_output,
+              "Incompatible sequence cannot replace component animation");
+        check(a.set_animation({}).succeeded() && !a.playback_state() &&
+                  a.animation_evaluation()->local_pose.local_transforms[4].translation == Vector3(),
+              "Reference-only component uses reference transforms");
+        check(a.set_animation(fixture.sequence).succeeded() && a.seek(1).succeeded(),
+              "Sequence replacement and end seek");
+        check(a.deformation()->bounds_maximum.x > 1 && a.world_bounds().maximum.x > 1,
+              "Final pose publishes conservative dynamic component bounds");
+        const auto retained = a.animation_evaluation();
+        check(a.seek(0).succeeded() && retained->local_pose.local_transforms[4].translation.x == 4,
+              "Published evaluation survives subsequent mutation");
+        check(a.set_assets({}, fixture.sequence).succeeded() == false && a.skeletal_mesh(),
+              "Missing mesh cannot admit a sequence");
+        first.destroy_on_tick = &second;
+        const auto second_id = second.actor_id();
+        check(world.tick(0.1) && !world.find_actor_by_id(second_id), "Pending destroy skips animation and unregisters");
+        world.end_play();
+        check(!world.tick(0.1), "End play stops World animation stage");
+        check(a.set_assets({}).succeeded() && !a.skeletal_mesh() && !a.deformation(), "Explicit mesh clear");
+    }
+
 } // namespace
 
 int main()
@@ -492,6 +601,7 @@ int main()
     check(reduced.succeeded() && reduced.value().reduced_vertex_count == 1 &&
               std::abs(reduced.value().maximum_discarded_weight - 1.0f / 9.0f) < 0.001f,
           "explicit reduction diagnostic");
+    test_skeletal_components();
     std::cout << "Animation asset, skin build, pose and clock tests passed\n";
     return 0;
 }

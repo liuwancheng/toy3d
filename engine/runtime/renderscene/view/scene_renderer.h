@@ -35,6 +35,12 @@ namespace toy3d
             return view_family_.output_extent();
         }
 
+        // Read-only inspection of prepared views on the logical Rendering Thread.
+        const std::vector<ViewInfo>& view_infos() const
+        {
+            return view_infos_;
+        }
+
         // Renderer frame orchestration calls this on the logical Rendering
         // Thread after it has begun the shared graphics recording.
         virtual RHIStatus render_scene_passes(RenderScene& render_scene, RHIDevice& device,

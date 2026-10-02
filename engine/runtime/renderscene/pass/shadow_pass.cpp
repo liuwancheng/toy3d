@@ -65,15 +65,20 @@ namespace toy3d
                 return created_binding.status();
             }
             pass_binding = std::move(created_binding).value();
-            auto created_program = shader_program_cache.find_or_create(shader_program);
-            if (!created_program)
-            {
-                return created_program.status();
-            }
-            rhi_program = std::move(created_program).value();
             commands.reserve(cascade.batches.size());
             for (const MeshBatch& batch : cascade.batches)
             {
+                const auto selected = batch.resolve_program(shader_program);
+                if (!selected.succeeded())
+                {
+                    return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
+                }
+                const auto created_program = shader_program_cache.find_or_create(selected.program);
+                if (!created_program)
+                {
+                    return created_program.status();
+                }
+                rhi_program = created_program.value();
                 if (!batch.object_binding())
                 {
                     return RHIStatus::failure(RHIErrorCode::NotReady, "Shadow caster lacks its Object binding.");
@@ -81,7 +86,7 @@ namespace toy3d
                 std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout> layouts;
                 std::vector<RHIGraphicsPipelineDesc::VertexAttribute> attributes;
                 std::vector<RHIVertexBufferBinding> buffers;
-                RHIStatus status = batch.vertex_factory().build_vertex_input(shader_program->data().vertex_inputs,
+                RHIStatus status = batch.vertex_factory().build_vertex_input(selected.program->data().vertex_inputs,
                                                                              layouts, attributes, buffers);
                 if (!status)
                 {
@@ -97,7 +102,7 @@ namespace toy3d
                 pipeline_desc.depth_stencil_format = PixelFormat::D32Float;
                 pipeline_desc.sample_count = 1u;
                 pipeline_desc.debug_name = "ShadowPass.Default";
-                shader::ShaderGraphicsPassState state = shader_program->data().graphics_pass_state;
+                shader::ShaderGraphicsPassState state = selected.program->data().graphics_pass_state;
                 const auto* material_state = batch.material_render_proxy().effective_graphics_pass_state();
                 if (material_state && material_state->cull_mode == shader::ShaderGraphicsPassState::CullMode::None)
                 {

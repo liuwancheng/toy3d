@@ -118,6 +118,7 @@ namespace toy3d
         void collect_ui_readbacks();
         void resolve_builtin_shaders();
         RHIStatus validate_mesh_shader(const ShaderMapProgramRef& program, bool shadow);
+        RHIStatus validate_gpu_skin_shader(const ShaderMapProgramRef& local, RHIGraphicsPipelineDesc pipeline);
         RHIStatus record_ui_work(RHIGraphicsCommandContext& context, RHIReadbackRef& capture);
 
         struct PendingHitReadback

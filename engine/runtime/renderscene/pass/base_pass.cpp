@@ -166,7 +166,17 @@ namespace toy3d
             {
                 const MeshBatch& mesh_batch = view_info.mesh_batches()[batch_index];
                 MaterialRenderProxy& material_proxy = mesh_batch.material_render_proxy();
-                const ShaderMapProgramRef& shader_program = material_proxy.shader_program();
+                const auto selected = mesh_batch.material_program();
+                if (!selected.succeeded())
+                {
+                    if (mesh_batch.bone_matrices() || inputs.require_complete_meshes)
+                    {
+                        return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
+                    }
+                    TOY_LOG_ERROR("Base Pass mesh shader is unavailable: {}", selected.error);
+                    continue;
+                }
+                const ShaderMapProgramRef& shader_program = selected.program;
                 const shader::ShaderGraphicsPassState* effective_state = material_proxy.effective_graphics_pass_state();
                 if (!shader_program || effective_state == nullptr ||
                     !shader::is_valid_shader_graphics_pass_state(*effective_state))

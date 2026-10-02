@@ -1,3 +1,5 @@
+#include <cstdlib>
+
 #include "scene/editor_command_history.h"
 #include "scene/placement/actor_placement.h"
 #include "viewport/actor_icons.h"
@@ -43,6 +45,12 @@ namespace
         void update_primitive_transform(toy3d::PrimitiveSceneProxy*, toy3d::Matrix4, toy3d::AxisAlignedBounds, bool,
                                         bool, bool) override
         {
+        }
+        void update_skeletal_mesh_pose(toy3d::PrimitiveSceneProxy*,
+                                       std::shared_ptr<const toy3d::SkeletalMeshDeformationData>, toy3d::Matrix4,
+                                       toy3d::AxisAlignedBounds, bool, bool, bool) override
+        {
+            std::abort();
         }
         void remove_primitive(toy3d::PrimitiveSceneProxy*) override
         {

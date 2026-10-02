@@ -6,6 +6,7 @@
 #include "rendercore/shader/shader_vertex_input.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -105,5 +106,7 @@ namespace toy3d
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderMapStage> stages;
         std::vector<ShaderVertexInput> vertex_inputs;
+        // Complete immutable companion for mesh sources, validated with the Local candidate.
+        std::shared_ptr<const ShaderMapProgramData> gpu_skin_program;
     };
 } // namespace toy3d

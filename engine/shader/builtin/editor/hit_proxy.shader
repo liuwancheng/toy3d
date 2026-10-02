@@ -27,10 +27,19 @@ Shader "Toy3d/Editor/HitProxy"
         #pragma vertex vs_main
         #pragma pixel ps_main
 
-        float4 vs_main(float4 position : POSITION0) : SV_Position
+        #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
+        struct VSInput
         {
+            float4 position : POSITION0;
+            float4 normal : NORMAL0;
+            TOY3D_SKIN_VERTEX_INPUT
+        };
+        float4 vs_main(VSInput input) : SV_Position
+        {
+            float3 mesh_position, mesh_normal;
+            TOY3D_DEFORM_VERTEX(input, mesh_position, mesh_normal);
             return mul(toy_view_projection,
-                       mul(toy_object_to_world, float4(position.xyz, 1.0)));
+                       mul(toy_object_to_world, float4(mesh_position, 1.0)));
         }
 
         uint ps_main() : SV_Target0

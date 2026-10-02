@@ -27,6 +27,7 @@ namespace toy3d
         std::string error;
     };
 
+    struct SkeletalMeshDeformationData;
     class PrimitiveSceneProxy;
     class MaterialRenderProxy;
 
@@ -48,6 +49,10 @@ namespace toy3d
                                                 bool receives_shadows) = 0;
         virtual void update_primitive_materials(PrimitiveSceneProxy* proxy,
                                                 std::vector<MaterialRenderProxy*> materials) = 0;
+        virtual void update_skeletal_mesh_pose(PrimitiveSceneProxy* proxy,
+                                               std::shared_ptr<const SkeletalMeshDeformationData> deformation,
+                                               Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
+                                               bool cast_shadows, bool receives_shadows) = 0;
         virtual void remove_primitive(PrimitiveSceneProxy* proxy) = 0;
         virtual void add_light(std::unique_ptr<LightSceneProxy> proxy) = 0;
         virtual void update_light(LightSceneProxy* proxy, LightSceneData data) = 0;
