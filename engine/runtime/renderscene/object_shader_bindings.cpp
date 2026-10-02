@@ -3,7 +3,7 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
 #include "math/matrix4.h"
-#include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/shader/shader_parameters.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/view/view_info.h"

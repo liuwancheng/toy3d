@@ -164,6 +164,12 @@ namespace toy3d
             result.name = binding.name;
             result.group = to_rhi_group(binding.group);
             result.type = *to_rhi_type(binding.category);
+            // C++17 optional preserves whether reflection identified a resource kind.
+            if (binding.category == shader::ShaderParameterCategory::ReadOnlyBuffer &&
+                reflected.resource_kind == shader::ResourceKind::Buffer)
+            {
+                result.type = RHIResourceBindingType::ReadOnlyTypedBuffer;
+            }
             result.stages = to_rhi_stage_flags(binding.stages);
             result.target_binding = binding.descriptor_binding;
             result.array_count = reflected.array_count;

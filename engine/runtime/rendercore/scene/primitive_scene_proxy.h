@@ -1,14 +1,20 @@
 #pragma once
 
 #include "math/matrix4.h"
+#include "drivers/rhi/rhi_result.h"
 #include "rendercore/geometry/axis_aligned_bounds.h"
 #include "shader_parameters/builtin_shader_parameters.generated.h"
 
 #include <cstdint>
+#include <cstddef>
+#include <vector>
 
 namespace toy3d
 {
     class RenderScene;
+    class MeshBatch;
+    class MaterialRenderProxy;
+    class RenderResourceManager;
 
     // Render-side representation with a stable address. Game-side code may retain
     // its pointer only as an opaque identity protected by RenderCommand FIFO order.
@@ -19,6 +25,22 @@ namespace toy3d
 
         PrimitiveSceneProxy(const PrimitiveSceneProxy&) = delete;
         PrimitiveSceneProxy& operator=(const PrimitiveSceneProxy&) = delete;
+
+        // Resource lifecycle and frame-local geometry are supplied by each primitive.
+        // Non-mesh primitives have no mesh resources or draw sections.
+        virtual RHIStatus begin_init_resources(RenderResourceManager& manager);
+        // Always retire instance resources; shared geometry ends only with the scene's last reference.
+        virtual RHIStatus release_resources(RenderResourceManager& manager, bool release_shared_geometry);
+        virtual bool shares_geometry_resources(const PrimitiveSceneProxy& other) const;
+        virtual bool resources_drawable() const;
+        virtual std::size_t mesh_section_count() const;
+        virtual RHIStatus collect_mesh_batches(std::vector<MeshBatch>& batches) const;
+
+        const std::vector<MaterialRenderProxy*>& material_render_proxies() const
+        {
+            return material_render_proxies_;
+        }
+        void set_material_render_proxies(std::vector<MaterialRenderProxy*> materials);
 
         const Matrix4& world_transform() const
         {
@@ -64,7 +86,7 @@ namespace toy3d
       protected:
         PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
                             std::uint32_t actor_id = 0, std::uint32_t component_id = 0, bool cast_shadows = true,
-                            bool receives_shadows = true);
+                            bool receives_shadows = true, std::vector<MaterialRenderProxy*> materials = {});
 
       private:
         friend class RenderScene;
@@ -83,5 +105,6 @@ namespace toy3d
         bool normal_transform_valid_ = true;
         std::uint32_t actor_id_ = 0;
         std::uint32_t component_id_ = 0;
+        std::vector<MaterialRenderProxy*> material_render_proxies_;
     };
 } // namespace toy3d

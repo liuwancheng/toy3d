@@ -30,7 +30,8 @@ namespace toy3d
                                                    VkDevice device, VulkanMemoryManager& memory_manager,
                                                    VulkanDeferredDeletionQueue& deletion_queue,
                                                    const RHITextureDesc& desc, const RHIInitialData* initial_data);
-    RHIResult<RHIBufferViewRef> create_vulkan_buffer_view(const RHIBufferRef& buffer, const RHIBufferViewDesc& desc);
+    RHIResult<RHIBufferViewRef> create_vulkan_buffer_view(VkDevice device, const RHIBufferRef& buffer,
+                                                          const RHIBufferViewDesc& desc);
     RHIResult<RHITextureViewRef> create_vulkan_texture_view(VkDevice device, const RHITextureRef& texture,
                                                             const RHITextureViewDesc& desc);
     RHIResult<RHIShaderRef> create_vulkan_shader(const RHIDevice& owner, VkDevice device, const RHIShaderDesc& desc);

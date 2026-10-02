@@ -61,6 +61,34 @@ namespace toy3d
                 component_count = 4u;
                 return true;
             }
+            if (semantic == "BLENDINDICES" || semantic == "BLENDINDICES0")
+            {
+                attribute_id = ShaderVertexAttributeId::BlendIndices0;
+                semantic_name = "BLENDINDICES";
+                component_count = 4u;
+                return true;
+            }
+            if (semantic == "BLENDWEIGHT" || semantic == "BLENDWEIGHT0")
+            {
+                attribute_id = ShaderVertexAttributeId::BlendWeights0;
+                semantic_name = "BLENDWEIGHT";
+                component_count = 4u;
+                return true;
+            }
+            if (semantic == "BLENDINDICES1")
+            {
+                attribute_id = ShaderVertexAttributeId::BlendIndices1;
+                semantic_name = "BLENDINDICES";
+                component_count = 4u;
+                return true;
+            }
+            if (semantic == "BLENDWEIGHT1")
+            {
+                attribute_id = ShaderVertexAttributeId::BlendWeights1;
+                semantic_name = "BLENDWEIGHT";
+                component_count = 4u;
+                return true;
+            }
             return false;
         }
     } // namespace
@@ -86,7 +114,11 @@ namespace toy3d
         const bool supported_position_shape =
             attribute_id == ShaderVertexAttributeId::Position0 &&
             (reflected.component_count == 2u || reflected.component_count == expected_component_count);
-        if (reflected.scalar_type != shader::ReflectedInterfaceVariable::ScalarType::Float32 ||
+        const auto expected_scalar = (attribute_id == ShaderVertexAttributeId::BlendIndices0 ||
+                                      attribute_id == ShaderVertexAttributeId::BlendIndices1)
+                                         ? shader::ReflectedInterfaceVariable::ScalarType::UInt32
+                                         : shader::ReflectedInterfaceVariable::ScalarType::Float32;
+        if (reflected.scalar_type != expected_scalar ||
             (!supported_position_shape && reflected.component_count != expected_component_count))
         {
             error = "Shader vertex input uses an unsupported scalar/component shape.";
@@ -96,7 +128,10 @@ namespace toy3d
         ShaderVertexInput converted;
         converted.attribute_id = attribute_id;
         converted.semantic_name = std::move(semantic_name);
-        converted.semantic_index = 0;
+        converted.semantic_index = (attribute_id == ShaderVertexAttributeId::BlendIndices1 ||
+                                    attribute_id == ShaderVertexAttributeId::BlendWeights1)
+                                       ? 1u
+                                       : 0u;
         converted.scalar_type = reflected.scalar_type;
         converted.component_count = reflected.component_count;
         converted.target_location = reflected.location;

@@ -7,8 +7,6 @@
 #include "logging/logger.h"
 #include "rendercore/render_command.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
-#include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/geometry/static_mesh_render_data.h"
 #include "rendercore/material/material_render_proxy.h"
 #include "renderscene/primitive_scene_info.h"
 #include "rendercore/render_resource_manager.h"
@@ -67,11 +65,10 @@ namespace toy3d
                                                 {
                                                     return info->proxy() == proxy;
                                                 });
-                auto* mesh =
-                    found == primitives_.end() ? nullptr : dynamic_cast<StaticMeshSceneProxy*>((*found)->proxy());
+                auto* mesh = found == primitives_.end() ? nullptr : (*found)->proxy();
                 if (!mesh || materials.size() != mesh->material_render_proxies().size())
                 {
-                    TOY_LOG_ERROR("Material update requires a registered StaticMesh proxy with matching slots.");
+                    TOY_LOG_ERROR("Material update requires a registered primitive with matching slots.");
                     return;
                 }
                 for (auto* material : materials)
@@ -124,31 +121,23 @@ namespace toy3d
             return;
         }
 
-        if (auto* const static_mesh_proxy = dynamic_cast<StaticMeshSceneProxy*>(proxy_identity))
+        const auto init_status = proxy_identity->begin_init_resources(resource_manager_);
+        if (!init_status)
         {
-            StaticMeshRenderData* const render_data = static_mesh_proxy->render_data();
-            if (render_data != nullptr)
+            preparation_error_ = init_status;
+            TOY_LOG_ERROR("RenderScene could not initialize primitive resources: {}", init_status.message());
+        }
+        for (MaterialRenderProxy* const material : proxy_identity->material_render_proxies())
+        {
+            if (!material)
             {
-                const RHIStatus init_status = render_data->begin_init(resource_manager_);
-                if (!init_status)
-                {
-                    preparation_error_ = init_status;
-                    TOY_LOG_ERROR("RenderScene could not initialize StaticMeshRenderData: {}", init_status.message());
-                }
+                continue;
             }
-            for (MaterialRenderProxy* const material_proxy : static_mesh_proxy->material_render_proxies())
+            const auto status = material->begin_init_textures(resource_manager_);
+            if (!status)
             {
-                if (material_proxy == nullptr)
-                {
-                    continue;
-                }
-                const RHIStatus material_init_status = material_proxy->begin_init_textures(resource_manager_);
-                if (!material_init_status)
-                {
-                    preparation_error_ = material_init_status;
-                    TOY_LOG_ERROR("RenderScene could not initialize Material TextureResources: {}",
-                                  material_init_status.message());
-                }
+                preparation_error_ = status;
+                TOY_LOG_ERROR("RenderScene could not initialize Material textures: {}", status.message());
             }
         }
 
@@ -189,36 +178,19 @@ namespace toy3d
             return;
         }
 
-        StaticMeshRenderData* removed_render_data = nullptr;
-        if (auto* const static_mesh_proxy = dynamic_cast<StaticMeshSceneProxy*>((*found)->proxy()))
-        {
-            removed_render_data = static_mesh_proxy->render_data();
-        }
-
         std::unique_ptr<PrimitiveSceneInfo> removed = std::move(*found);
         primitives_.erase(found);
-
-        if (removed_render_data != nullptr)
-        {
-            const auto still_referenced = std::find_if(
-                primitives_.begin(), primitives_.end(),
-                [removed_render_data](const std::unique_ptr<PrimitiveSceneInfo>& info)
-                {
-                    if (!info)
-                    {
-                        return false;
-                    }
-                    const auto* const static_mesh_proxy = dynamic_cast<const StaticMeshSceneProxy*>(info->proxy());
-                    return static_mesh_proxy != nullptr && static_mesh_proxy->render_data() == removed_render_data;
-                });
-            if (still_referenced == primitives_.end())
+        const auto still_referenced = std::find_if(
+            primitives_.begin(), primitives_.end(),
+            [&removed](const std::unique_ptr<PrimitiveSceneInfo>& info)
             {
-                const RHIStatus release_status = removed_render_data->release(resource_manager_);
-                if (!release_status)
-                {
-                    TOY_LOG_ERROR("RenderScene could not release StaticMeshRenderData: {}", release_status.message());
-                }
-            }
+                return info && info->proxy() && removed->proxy()->shares_geometry_resources(*info->proxy());
+            });
+        const auto status =
+            removed->proxy()->release_resources(resource_manager_, still_referenced == primitives_.end());
+        if (!status)
+        {
+            TOY_LOG_ERROR("RenderScene could not release primitive resources: {}", status.message());
         }
 
         removed.reset();
@@ -237,8 +209,7 @@ namespace toy3d
         }
         for (const auto& primitive : primitives_)
         {
-            const auto* mesh = dynamic_cast<const StaticMeshSceneProxy*>(primitive->proxy());
-            if (mesh && (!mesh->render_data() || !mesh->render_data()->is_drawable()))
+            if (primitive->proxy() && !primitive->proxy()->resources_drawable())
             {
                 return RHIStatus::failure(RHIErrorCode::NotReady, "Scene geometry is preparing.");
             }

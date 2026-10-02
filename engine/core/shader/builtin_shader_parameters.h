@@ -23,5 +23,6 @@ namespace toy3d::shader
         {BindingGroup::View, "toy_camera_direction", ShaderValueType::Float32x3},
         {BindingGroup::Object, "toy_object_to_world", ShaderValueType::Float32x4x4},
         {BindingGroup::Object, "toy_object_normal_to_world", ShaderValueType::Float32x4x4},
-        {BindingGroup::Object, "toy_receives_shadows", ShaderValueType::Float32}};
+        {BindingGroup::Object, "toy_receives_shadows", ShaderValueType::Float32},
+        {BindingGroup::Object, "toy_num_bone_influences", ShaderValueType::UInt32}};
 } // namespace toy3d::shader

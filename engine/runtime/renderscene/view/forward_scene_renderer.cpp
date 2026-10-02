@@ -18,8 +18,7 @@
 #include "renderscene/pass/shadow_pass.h"
 #include "renderscene/render_scene.h"
 #include "renderscene/primitive_scene_info.h"
-#include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/geometry/static_mesh_render_data.h"
+#include "rendercore/scene/primitive_scene_proxy.h"
 #include "renderscene/scene_render_targets.h"
 #include "renderscene/view/scene_visibility.h"
 #include "renderscene/view/view_shader_bindings.h"
@@ -122,10 +121,10 @@ namespace toy3d
             std::size_t expected = 0;
             for (const auto* primitive : view_infos().front().visible_primitives())
             {
-                const auto* proxy = dynamic_cast<const StaticMeshSceneProxy*>(primitive->proxy());
-                if (proxy && proxy->render_data())
+                const auto* proxy = primitive->proxy();
+                if (proxy)
                 {
-                    expected += proxy->render_data()->sections().size();
+                    expected += proxy->mesh_section_count();
                 }
             }
             if (expected == 0 || view_infos().front().mesh_batches().size() != expected)

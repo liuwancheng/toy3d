@@ -10,15 +10,50 @@ namespace toy3d
 {
     PrimitiveSceneProxy::PrimitiveSceneProxy(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
                                              std::uint32_t actor_id, std::uint32_t component_id, bool cast_shadows,
-                                             bool receives_shadows)
+                                             bool receives_shadows, std::vector<MaterialRenderProxy*> materials)
         : world_transform_(std::move(world_transform)), world_bounds_(std::move(world_bounds)), visible_(visible),
-          actor_id_(actor_id), component_id_(component_id)
+          actor_id_(actor_id), component_id_(component_id), material_render_proxies_(std::move(materials))
     {
         cast_shadows_ = cast_shadows;
         receives_shadows_ = receives_shadows;
         object_shader_parameters_.toy_object_to_world = world_transform_;
         object_shader_parameters_.toy_receives_shadows = receives_shadows_ ? 1.0f : 0.0f;
         update_normal_transform();
+    }
+
+    RHIStatus PrimitiveSceneProxy::begin_init_resources(RenderResourceManager&)
+    {
+        return RHIStatus::success();
+    }
+
+    RHIStatus PrimitiveSceneProxy::release_resources(RenderResourceManager&, bool)
+    {
+        return RHIStatus::success();
+    }
+
+    bool PrimitiveSceneProxy::shares_geometry_resources(const PrimitiveSceneProxy&) const
+    {
+        return false;
+    }
+
+    bool PrimitiveSceneProxy::resources_drawable() const
+    {
+        return true;
+    }
+
+    std::size_t PrimitiveSceneProxy::mesh_section_count() const
+    {
+        return 0;
+    }
+
+    RHIStatus PrimitiveSceneProxy::collect_mesh_batches(std::vector<MeshBatch>&) const
+    {
+        return RHIStatus::success();
+    }
+
+    void PrimitiveSceneProxy::set_material_render_proxies(std::vector<MaterialRenderProxy*> materials)
+    {
+        material_render_proxies_ = std::move(materials);
     }
 
     void PrimitiveSceneProxy::update_transform(Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,

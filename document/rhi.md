@@ -19,6 +19,7 @@ RHIDevice 是公共创建前端，rhi_device.h 的非虚入口做共同 validati
 - 明确 creator/CPU owner/GPU in-flight reference/destroyer/device/thread；跨 device 资源/列表非法，销毁前结束 GPU 使用。
 - RHICPUAccess 为 None/Read/Write，不存在 ReadWrite 万能配置；CPU map/读回能力由资源用途、格式和支持路径验证。
 - buffer structured stride 只属于 structured 用途；vertex stride/index format 由对应 binding 语义处理，不能混成一个创建字段。
+- 只读格式化 buffer 使用 ShaderResource | TypedBuffer、structure_stride=0 和具名格式 view，绑定类型为 ReadOnlyTypedBuffer。Vulkan 对应 uniform texel buffer；验证 bufferFeatures、元素上限、texel/device offset 对齐及 sampled-resource/总资源预算；view 与 backing buffer 均保活至 completion。
 - Texture 与 View 分开；usage/aspect/view format/mips/layers/sample count/附件组合一起验证。HDR color RT|SRV 和 depth DS|SRV 均需完整 format support；depth SRV 明确 Depth aspect，不把 stencil 混入。
 - 创建时 initial data 的未支持路径返回 Unsupported；上传使用显式 context/list/submit，不能资源创建偷偷提交/等待。
 - device cache 对 sampler/PSO 等不可变 descriptor 去重；key 无裸地址、canonical equality 处理 hash collision，single-flight 不缓存失败。shutdown gate 停新创建、等待已进入调用，再拆 native root。

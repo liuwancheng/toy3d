@@ -88,6 +88,11 @@ namespace toy3d
                 const auto view = std::dynamic_pointer_cast<VulkanTextureView>(resolved.value.texture_view);
                 append_packet_key(key, view->image_view());
             }
+            else if (resolved.value.buffer_view)
+            {
+                const auto view = std::dynamic_pointer_cast<VulkanBufferView>(resolved.value.buffer_view);
+                append_packet_key(key, view->buffer_view());
+            }
             else if (resolved.value.sampler)
             {
                 const auto sampler = std::dynamic_pointer_cast<VulkanSampler>(resolved.value.sampler);
@@ -241,9 +246,11 @@ namespace toy3d
 
         std::vector<VkDescriptorBufferInfo> buffer_infos;
         std::vector<VkDescriptorImageInfo> image_infos;
+        std::vector<VkBufferView> buffer_views;
         std::vector<VkWriteDescriptorSet> writes;
         buffer_infos.reserve(binding_value_count);
         image_infos.reserve(binding_value_count);
+        buffer_views.reserve(binding_value_count);
         writes.reserve(binding_value_count);
         for (const rhi_detail::ResolvedBinding& resolved : resolved_bindings)
         {
@@ -251,6 +258,7 @@ namespace toy3d
             const RHIResourceBindingType type = resolved.layout.type;
             VkDescriptorBufferInfo* buffer_info = nullptr;
             VkDescriptorImageInfo* image_info = nullptr;
+            const VkBufferView* buffer_view = nullptr;
             if (value.buffer)
             {
                 const auto buffer = std::dynamic_pointer_cast<VulkanBuffer>(value.buffer);
@@ -262,6 +270,17 @@ namespace toy3d
                 }
                 buffer_infos.push_back({buffer->buffer(), 0, resolved.layout.data_size});
                 buffer_info = &buffer_infos.back();
+            }
+            else if (value.buffer_view)
+            {
+                const auto view = std::dynamic_pointer_cast<VulkanBufferView>(value.buffer_view);
+                if (!view || type != RHIResourceBindingType::ReadOnlyTypedBuffer)
+                {
+                    return RHIResult<std::shared_ptr<VulkanBindingPacket>>::failure(
+                        RHIErrorCode::InvalidArgument, "Typed binding requires a matching Vulkan formatted view.");
+                }
+                buffer_views.push_back(view->buffer_view());
+                buffer_view = &buffer_views.back();
             }
             else if (value.texture_view)
             {
@@ -299,6 +318,7 @@ namespace toy3d
             write.descriptorType = binding_descriptor_type(type);
             write.pBufferInfo = buffer_info;
             write.pImageInfo = image_info;
+            write.pTexelBufferView = buffer_view;
             writes.push_back(write);
         }
         vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);

@@ -32,5 +32,14 @@ namespace toy3d
                                              std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,
                                              std::vector<RHIGraphicsPipelineDesc::VertexAttribute>& vertex_attributes,
                                              std::vector<RHIVertexBufferBinding>& vertex_bindings) const = 0;
+
+      protected:
+        // Shared mesh stream validation; concrete factories require their domain attributes.
+        static RHIStatus validate_stream_components(const std::vector<VertexStreamComponent>& components);
+        static RHIStatus build_vertex_input_from_components(
+            const std::vector<VertexStreamComponent>& components, const std::vector<ShaderVertexInput>& shader_inputs,
+            std::vector<RHIGraphicsPipelineDesc::VertexBufferLayout>& vertex_layouts,
+            std::vector<RHIGraphicsPipelineDesc::VertexAttribute>& vertex_attributes,
+            std::vector<RHIVertexBufferBinding>& vertex_bindings);
     };
 } // namespace toy3d

@@ -11,11 +11,8 @@
 #include "math/length_units.h"
 #include "math/matrix_construction.h"
 #include "math/vector3.h"
-#include "rendercore/geometry/local_vertex_factory.h"
 #include "rendercore/scene/light_scene_proxy.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
-#include "rendercore/scene/static_mesh_scene_proxy.h"
-#include "rendercore/geometry/static_mesh_render_data.h"
 #include "rendercore/material/material_render_proxy.h"
 #include "renderscene/primitive_scene_info.h"
 #include "renderscene/render_scene.h"
@@ -117,81 +114,11 @@ namespace toy3d
                     continue;
                 }
 
-                const auto* const static_mesh_proxy =
-                    dynamic_cast<const StaticMeshSceneProxy*>(primitive_info->proxy());
-                if (static_mesh_proxy == nullptr)
+                const auto* proxy = primitive_info->proxy();
+                const auto status = proxy->collect_mesh_batches(mesh_batches);
+                if (!status)
                 {
-                    continue;
-                }
-
-                StaticMeshRenderData* const render_data = static_mesh_proxy->render_data();
-                if (render_data == nullptr)
-                {
-                    TOY_LOG_ERROR("Scene visibility skipped a visible StaticMesh with no StaticMeshRenderData.");
-                    continue;
-                }
-                const RHIStatus prepared_render_data = render_data->prepare_current_recording();
-                if (!prepared_render_data)
-                {
-                    TOY_LOG_ERROR("Scene visibility skipped a visible StaticMesh whose render data is not ready in the "
-                                  "current recording: {}",
-                                  prepared_render_data.message());
-                    continue;
-                }
-                if (!render_data->is_drawable())
-                {
-                    TOY_LOG_ERROR("Scene visibility skipped a visible StaticMesh whose complete render-data gate "
-                                  "is not drawable.");
-                    continue;
-                }
-
-                const LocalVertexFactory* const vertex_factory = render_data->vertex_factory();
-                if (vertex_factory == nullptr)
-                {
-                    TOY_LOG_ERROR("Scene visibility skipped a visible StaticMesh with no LocalVertexFactory.");
-                    continue;
-                }
-
-                const std::vector<MaterialRenderProxy*>& material_proxies =
-                    static_mesh_proxy->material_render_proxies();
-                const std::vector<StaticMeshSection>& sections = render_data->sections();
-                for (std::size_t section_index = 0; section_index < sections.size(); ++section_index)
-                {
-                    if (section_index > std::numeric_limits<std::uint32_t>::max())
-                    {
-                        TOY_LOG_ERROR("Scene visibility skipped a StaticMesh section whose index exceeds uint32.");
-                        continue;
-                    }
-                    const StaticMeshSection& section = sections[section_index];
-                    const std::size_t first_index = section.first_index;
-                    const std::size_t index_count = section.index_count;
-                    if (index_count == 0u || index_count % 3u != 0u || first_index > render_data->index_count() ||
-                        index_count > render_data->index_count() - first_index)
-                    {
-                        TOY_LOG_ERROR("Scene visibility skipped StaticMesh section {} with an invalid index range.",
-                                      section_index);
-                        continue;
-                    }
-                    if (section.material_slot >= material_proxies.size())
-                    {
-                        TOY_LOG_ERROR(
-                            "Scene visibility skipped StaticMesh section {} whose Material slot is out of range.",
-                            section_index);
-                        continue;
-                    }
-
-                    MaterialRenderProxy* const material_proxy = material_proxies[section.material_slot];
-                    if (material_proxy == nullptr || !material_proxy->shader_program())
-                    {
-                        TOY_LOG_ERROR(
-                            "Scene visibility skipped StaticMesh section {} with no usable Material representation.",
-                            section_index);
-                        continue;
-                    }
-
-                    mesh_batches.emplace_back(*static_mesh_proxy, *render_data, *vertex_factory, *material_proxy,
-                                              section.first_index, section.index_count,
-                                              static_cast<std::uint32_t>(section_index));
+                    TOY_LOG_ERROR("Scene visibility skipped primitive geometry: {}", status.message());
                 }
             }
         }
@@ -367,7 +294,7 @@ namespace toy3d
                     {
                         continue;
                     }
-                    const auto* proxy = dynamic_cast<const StaticMeshSceneProxy*>(primitive->proxy());
+                    const auto* proxy = primitive->proxy();
                     if (!proxy || !proxy->visible() || !proxy->cast_shadows() || !proxy->normal_transform_valid())
                     {
                         continue;
@@ -391,39 +318,21 @@ namespace toy3d
                     {
                         continue;
                     }
-                    StaticMeshRenderData* render_data = proxy->render_data();
-                    if (!render_data || !render_data->vertex_factory())
+                    std::vector<MeshBatch> candidates;
+                    const auto status = proxy->collect_mesh_batches(candidates);
+                    if (!status)
                     {
                         continue;
                     }
-                    const RHIStatus prepared = render_data->prepare_current_recording();
-                    if (!prepared || !render_data->is_drawable())
-                    {
-                        continue;
-                    }
-                    const auto& materials = proxy->material_render_proxies();
-                    const auto& sections = render_data->sections();
                     bool added = false;
-                    for (std::size_t section_index = 0; section_index < sections.size(); ++section_index)
+                    for (const auto& batch : candidates)
                     {
-                        const StaticMeshSection& section = sections[section_index];
-                        if (!section.index_count || section.index_count % 3u != 0u ||
-                            section.first_index > render_data->index_count() ||
-                            section.index_count > render_data->index_count() - section.first_index ||
-                            section.material_slot >= materials.size() ||
-                            section_index > std::numeric_limits<std::uint32_t>::max())
+                        const auto* state = batch.material_render_proxy().effective_graphics_pass_state();
+                        if (!state || state->blend.enabled)
                         {
                             continue;
                         }
-                        MaterialRenderProxy* material = materials[section.material_slot];
-                        const auto* state = material ? material->effective_graphics_pass_state() : nullptr;
-                        if (!material || !material->shader_program() || !state || state->blend.enabled)
-                        {
-                            continue;
-                        }
-                        cascade.batches.emplace_back(*proxy, *render_data, *render_data->vertex_factory(), *material,
-                                                     section.first_index, section.index_count,
-                                                     static_cast<std::uint32_t>(section_index));
+                        cascade.batches.push_back(batch);
                         added = true;
                     }
                     if (added)

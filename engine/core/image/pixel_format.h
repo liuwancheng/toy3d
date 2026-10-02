@@ -43,6 +43,7 @@ namespace toy3d
         D24UNormS8UInt,
         D32Float,
         D32FloatS8UInt,
+        R8G8B8A8UInt,
         Max
     };
 

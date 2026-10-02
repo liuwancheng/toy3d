@@ -165,7 +165,7 @@ namespace toy3d
         std::uint32_t version = 0;
         std::uint32_t count = 0;
         if (!reader.read_uint32(version).succeeded() || version != k_geometry_version ||
-            !reader.read_array_length(count).succeeded())
+            !reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 36u)
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid geometry version or vertex count"));
         }
@@ -185,7 +185,7 @@ namespace toy3d
                 }
             }
         }
-        if (!reader.read_array_length(count).succeeded())
+        if (!reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 4u)
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid index count"));
         }
@@ -197,7 +197,7 @@ namespace toy3d
                 return AssetResult<StaticMeshAssetGeometry>(invalid("invalid indices"));
             }
         }
-        if (!reader.read_array_length(count).succeeded())
+        if (!reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 12u)
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid section count"));
         }
@@ -211,7 +211,7 @@ namespace toy3d
                 return AssetResult<StaticMeshAssetGeometry>(invalid("invalid sections"));
             }
         }
-        if (!reader.read_array_length(count).succeeded())
+        if (!reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 4u)
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid material count"));
         }

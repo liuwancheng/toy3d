@@ -1,6 +1,7 @@
 #include "rendercore/shader/shader_map.h"
 
 #include "rendercore/geometry/local_vertex_factory.h"
+#include "rendercore/geometry/gpu_skin_vertex_factory.h"
 #include "rendercore/shader/rhi_shader_program.h"
 #include "shader_map_test_utils.h"
 
@@ -219,6 +220,68 @@ namespace
         check(!vertex_factory.build_vertex_input(shader_inputs, layouts, attributes, bindings) && layouts.empty() &&
                   attributes.empty() && bindings.empty(),
               "a Shader requiring absent optional COLOR0 must fail without partial output");
+
+        toy3d::RHIBufferDesc skin_desc;
+        skin_desc.size = 24u;
+        skin_desc.usage = toy3d::RHIResourceUsage::VertexBuffer;
+        const auto skin_buffer = std::make_shared<toy3d::RHIBuffer>(skin_desc);
+        components = {
+            {toy3d::ShaderVertexAttributeId::Position0, 0u, 0u, 16u, toy3d::PixelFormat::R32G32B32A32Float,
+             position_buffer},
+            {toy3d::ShaderVertexAttributeId::Normal0, 1u, 0u, 24u, toy3d::PixelFormat::R32G32B32A32Float,
+             static_buffer},
+            {toy3d::ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u, toy3d::PixelFormat::R32G32Float, static_buffer},
+            {toy3d::ShaderVertexAttributeId::BlendIndices0, 2u, 0u, 8u, toy3d::PixelFormat::R8G8B8A8UInt, skin_buffer},
+            {toy3d::ShaderVertexAttributeId::BlendWeights0, 2u, 4u, 8u, toy3d::PixelFormat::R8G8B8A8UNorm,
+             skin_buffer}};
+        toy3d::GPUSkinVertexFactory gpu_factory(components, 4u);
+        check(static_cast<bool>(gpu_factory.validate_streams()), "valid GPU skin streams");
+        check(!gpu_factory.build_vertex_input(shader_inputs, layouts, attributes, bindings),
+              "unadapted shader must reject GPU skin instead of rendering bind pose");
+        shader_inputs.pop_back();
+        shader_inputs.push_back({toy3d::ShaderVertexAttributeId::BlendIndices0, "BLENDINDICES", 0u,
+                                 toy3d::shader::ReflectedInterfaceVariable::ScalarType::UInt32, 4u, 3u});
+        shader_inputs.push_back({toy3d::ShaderVertexAttributeId::BlendWeights0, "BLENDWEIGHT", 0u, float_type, 4u, 4u});
+        check(!gpu_factory.build_vertex_input(shader_inputs, layouts, attributes, bindings),
+              "shared skin shader must declare the second attribute group even for four slots");
+        shader_inputs.push_back({toy3d::ShaderVertexAttributeId::BlendIndices1, "BLENDINDICES", 1u,
+                                 toy3d::shader::ReflectedInterfaceVariable::ScalarType::UInt32, 4u, 5u});
+        shader_inputs.push_back({toy3d::ShaderVertexAttributeId::BlendWeights1, "BLENDWEIGHT", 1u, float_type, 4u, 6u});
+        check(static_cast<bool>(gpu_factory.build_vertex_input(shader_inputs, layouts, attributes, bindings)) &&
+                  layouts.size() == 3 && attributes[3].format == toy3d::PixelFormat::R8G8B8A8UInt &&
+                  attributes[4].format == toy3d::PixelFormat::R8G8B8A8UNorm,
+              "GPU skin emits integer indices and normalized weights in the same stream");
+        check(attributes[5].offset == attributes[3].offset && attributes[6].offset == attributes[4].offset &&
+                  attributes[5].binding == attributes[3].binding && attributes[6].binding == attributes[4].binding,
+              "four-slot storage aliases the first group without a second buffer");
+        toy3d::GPUSkinVertexFactory bad_count(components, 5u);
+        check(!bad_count.validate_streams(), "skin factory rejects invalid draw influence counts");
+        toy3d::GPUSkinVertexFactory missing_extra(components, 8u);
+        check(!missing_extra.validate_streams(), "eight-slot storage cannot alias missing extra data");
+        auto eight_components = components;
+        eight_components[3].stride = 16u;
+        eight_components[4].stride = 16u;
+        eight_components[4].byte_offset = 8u;
+        eight_components.push_back({toy3d::ShaderVertexAttributeId::BlendIndices1, 2u, 4u, 16u,
+                                    toy3d::PixelFormat::R8G8B8A8UInt, skin_buffer});
+        eight_components.push_back({toy3d::ShaderVertexAttributeId::BlendWeights1, 2u, 12u, 16u,
+                                    toy3d::PixelFormat::R8G8B8A8UNorm, skin_buffer});
+        toy3d::GPUSkinVertexFactory eight_factory(eight_components, 8u);
+        check(static_cast<bool>(eight_factory.build_vertex_input(shader_inputs, layouts, attributes, bindings)) &&
+                  layouts.size() == 3 && layouts.back().stride == 16 && attributes[3].offset == 0 &&
+                  attributes[4].offset == 8 && attributes[5].offset == 4 && attributes[6].offset == 12,
+              "eight-slot storage matches the identical shared shader input contract");
+        eight_components[6].byte_offset = 8;
+        toy3d::GPUSkinVertexFactory wrong_extra(eight_components, 8u);
+        check(!wrong_extra.validate_streams(), "extra weights must refer to the second storage group");
+        toy3d::LocalVertexFactory local_with_skin(eight_components);
+        check(!local_with_skin.validate_streams(), "local vertex factory rejects both skin input groups");
+        shader_inputs[3].scalar_type = float_type;
+        check(!gpu_factory.build_vertex_input(shader_inputs, layouts, attributes, bindings),
+              "bone indices must be an integer shader input");
+        components[3].format = toy3d::PixelFormat::R8G8B8A8UNorm;
+        toy3d::GPUSkinVertexFactory invalid_factory(std::move(components), 4u);
+        check(!invalid_factory.validate_streams(), "normalized fetch cannot replace integer bone indices");
     }
 
 } // namespace

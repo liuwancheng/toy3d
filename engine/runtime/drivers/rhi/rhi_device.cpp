@@ -355,6 +355,19 @@ namespace toy3d
             return RHIResult<RHIBufferViewRef>::failure(
                 RHIErrorCode::Unsupported, "Unordered-access buffer views are not supported by this device.");
         }
+        if (desc.format != PixelFormat::Unknown)
+        {
+            const auto texel_size = pixel_format_bytes_per_block(desc.format);
+            const auto& device_limits = limits();
+            if (!EnumHasAnyFlags(format_capabilities(desc.format).usage, RHIFormatUsage::ReadOnlyTypedBuffer) ||
+                device_limits.typed_buffer_offset_alignment == 0 ||
+                desc.offset % device_limits.typed_buffer_offset_alignment != 0 ||
+                desc.size / texel_size > device_limits.max_typed_buffer_elements)
+            {
+                return RHIResult<RHIBufferViewRef>::failure(
+                    RHIErrorCode::Unsupported, "Typed view format, offset or element count exceeds device support.");
+            }
+        }
         return finalize_creation_result(create_buffer_view_impl(buffer, desc), "buffer view");
     }
 
@@ -466,6 +479,11 @@ namespace toy3d
         {
             return RHIResult<RHIBindingLayoutRef>::failure(RHIErrorCode::Unsupported,
                                                            "Storage bindings are not supported by this device.");
+        }
+        const auto typed_limits = validate_typed_binding_layout_limits(desc, limits());
+        if (!typed_limits)
+        {
+            return failure_from_status<RHIBindingLayoutRef>(typed_limits);
         }
         return finalize_creation_result(create_binding_layout_impl(desc), "binding layout");
     }

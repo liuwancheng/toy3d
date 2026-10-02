@@ -83,6 +83,29 @@ namespace toy3d
     }
 
     // --------------------------------------------------------------------------
+    // VulkanBufferView: formatted view retained by recorded binding packets
+    // --------------------------------------------------------------------------
+    VulkanBufferView::VulkanBufferView(RHIBufferRef buffer, RHIBufferViewDesc desc, VkDevice device, VkBufferView view)
+        : RHIBufferView(std::move(buffer), std::move(desc)), vk_device(device), vk_buffer_view(view)
+    {
+    }
+
+    VulkanBufferView::~VulkanBufferView()
+    {
+        // Command lists retain the source binding sets (and this view) until actual
+        // completion. The backing buffer remains owned by RHIBufferView during destruction.
+        if (vk_device != VK_NULL_HANDLE && vk_buffer_view != VK_NULL_HANDLE)
+        {
+            vkDestroyBufferView(vk_device, vk_buffer_view, nullptr);
+        }
+    }
+
+    VkBufferView VulkanBufferView::buffer_view() const
+    {
+        return vk_buffer_view;
+    }
+
+    // --------------------------------------------------------------------------
     // VulkanReadback: CPU-visible pixel data and GPU-completion lifetime
     // --------------------------------------------------------------------------
     VulkanReadback::VulkanReadback(const RHIDevice& owner, std::string debug_name, VulkanMemoryManager& memory_manager,

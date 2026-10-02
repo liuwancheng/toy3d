@@ -1,4 +1,5 @@
 #include "asset_pipeline/static_mesh_import.h"
+#include "asset_pipeline/skeletal_mesh_import.h"
 
 #include <iostream>
 #include <string>
@@ -13,6 +14,97 @@
 
 namespace
 {
+    int import_skeletal_assets(toy3d::FileSystem& files, const toy3d::VirtualPath& source,
+                               const toy3d::VirtualPath& destination, const toy3d::SkeletalMeshImportOptions& options)
+    {
+        using namespace toy3d;
+        AssetId skeleton_id;
+        AssetId mesh_id;
+        if (!AssetId::try_generate(skeleton_id) || !AssetId::try_generate(mesh_id))
+        {
+            std::cerr << "Asset ID generation failed.\n";
+            return 1;
+        }
+        const auto imported = import_skeletal_mesh(files, source, skeleton_id, options);
+        if (!imported.succeeded())
+        {
+            std::cerr << imported.status().message << '\n';
+            return 1;
+        }
+        TypeRegistry types;
+        if (!register_animation_asset_types(types).succeeded() || !types.freeze().succeeded())
+        {
+            std::cerr << "Animation asset schema registration failed.\n";
+            return 1;
+        }
+        struct Candidate
+        {
+            VirtualPath path;
+            AssetPairBytes bytes;
+            AssetId id;
+        };
+        std::vector<Candidate> candidates;
+        const std::string stem = destination.utf8().substr(0, destination.utf8().size() - 6);
+        const auto skeleton_path = VirtualPath::parse(stem + "_Skeleton.asset");
+        const auto skeleton = encode_skeleton_asset_pair(types, skeleton_id, imported.value().skeleton);
+        const auto mesh = encode_skeletal_mesh_asset_pair(types, mesh_id, imported.value().mesh);
+        if (!skeleton_path.succeeded() || !skeleton.succeeded() || !mesh.succeeded())
+        {
+            std::cerr << "Skeletal import candidate encoding failed.\n";
+            return 1;
+        }
+        candidates.push_back({skeleton_path.value(), skeleton.value(), skeleton_id});
+        candidates.push_back({destination, mesh.value(), mesh_id});
+        for (std::size_t i = 0; i < imported.value().animations.size(); ++i)
+        {
+            AssetId clip_id;
+            const auto path = VirtualPath::parse(stem + "_Animation_" + std::to_string(i) + ".asset");
+            if (!AssetId::try_generate(clip_id) || !path.succeeded())
+            {
+                std::cerr << "Animation identity or path generation failed.\n";
+                return 1;
+            }
+            const auto clip =
+                encode_animation_sequence_asset_pair(types, clip_id, imported.value().animations[i].sequence);
+            if (!clip.succeeded())
+            {
+                std::cerr << clip.status().message << '\n';
+                return 1;
+            }
+            candidates.push_back({path.value(), clip.value(), clip_id});
+        }
+        // Detect all existing descriptors before committing the first dependency.
+        // Individual pair transactions remain authoritative if a later publish races/fails.
+        for (const auto& candidate : candidates)
+        {
+            const auto found = files.stat(candidate.path);
+            if (found.succeeded() || found.status().code != FileErrorCode::NotFound)
+            {
+                std::cerr << "Output already exists or cannot be inspected: " << candidate.path.utf8() << '\n';
+                return 1;
+            }
+        }
+        AssetPairStore assets(types, files);
+        std::size_t committed = 0;
+        for (const auto& candidate : candidates)
+        {
+            const auto status = assets.publish(candidate.path, candidate.bytes, FilePublishMode::CreateNew);
+            if (!status.succeeded())
+            {
+                std::cerr << "Partial import: " << committed << " of " << candidates.size()
+                          << " assets committed; failed " << candidate.path.utf8() << ": " << status.message << '\n';
+                return 1;
+            }
+            ++committed;
+            std::cout << "Created " << candidate.path.utf8() << " id=" << candidate.id.hex() << '\n';
+        }
+        for (const auto& warning : imported.value().warnings)
+        {
+            std::cerr << "Warning: " << warning << '\n';
+        }
+        return 0;
+    }
+
     bool mount_directory(toy3d::NativePlatformFile& platform, toy3d::FileSystem& files,
                          const toy3d::PhysicalPath& physical, const char* root, bool writable)
     {
@@ -49,11 +141,15 @@ int main(int argc, char** argv)
     if (argc < 3)
     {
         std::cerr << "Usage: Toy3dModelImport <source.fbx|obj|gltf|glb> <new-file.asset> "
-                     "[--scale N] [--source-unit-cm N] [--no-convert-scene-unit] [--ignore-file-unit]\n"
+                     "[--scale N] [--source-unit-cm N] [--no-convert-scene-unit] [--ignore-file-unit] "
+                     "[--skeletal] [--allow-reduce-influences] [--sample-rate 30|60]\n"
                      "Defaults: FBX file units; OBJ/glTF/GLB 100 cm per source unit.\n";
         return 2;
     }
     toy3d::StaticMeshImportOptions options;
+    bool skeletal = false;
+    bool skeletal_options_requested = false;
+    toy3d::SkeletalMeshImportOptions skeletal_options;
     std::string source_extension(argv[1]);
     const auto dot = source_extension.find_last_of('.');
     source_extension = dot == std::string::npos ? "" : source_extension.substr(dot);
@@ -70,7 +166,27 @@ int main(int argc, char** argv)
     for (int i = 3; i < argc; ++i)
     {
         const std::string argument(argv[i]);
-        if (argument == "--no-convert-scene-unit")
+        if (argument == "--skeletal")
+        {
+            skeletal = true;
+        }
+        else if (argument == "--allow-reduce-influences")
+        {
+            skeletal_options_requested = true;
+            skeletal_options.skin.allow_reduce_influences = true;
+        }
+        else if (argument == "--sample-rate" && i + 1 < argc)
+        {
+            skeletal_options_requested = true;
+            const std::string rate(argv[++i]);
+            if (rate != "30" && rate != "60")
+            {
+                std::cerr << "Sample rate must be 30 or 60.\n";
+                return 2;
+            }
+            skeletal_options.sample_rate = rate == "30" ? 30 : 60;
+        }
+        else if (argument == "--no-convert-scene-unit")
         {
             options.convert_scene_unit = false;
         }
@@ -102,6 +218,11 @@ int main(int argc, char** argv)
             std::cerr << "Unknown option or missing value: " << argument << '\n';
             return 2;
         }
+    }
+    if (skeletal_options_requested && !skeletal)
+    {
+        std::cerr << "Skin and animation options require --skeletal.\n";
+        return 2;
     }
     toy3d::NativePlatformFile platform;
     const auto input = platform.canonical(toy3d::PhysicalPath(argv[1]));
@@ -143,6 +264,11 @@ int main(int argc, char** argv)
     {
         std::cerr << frozen.message << '\n';
         return 1;
+    }
+    if (skeletal)
+    {
+        skeletal_options.coordinates = options;
+        return import_skeletal_assets(files, source.value(), destination.value(), skeletal_options);
     }
     toy3d::AssetId id;
     if (!toy3d::AssetId::try_generate(id))

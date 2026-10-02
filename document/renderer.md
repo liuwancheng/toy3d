@@ -8,7 +8,7 @@ engine/runtime/renderscene，属于 Toy3dRuntime。GT 准备 owned ViewFamily �
 
 ## Prepare 与 Execute
 
-MeshBatch 表达 geometry/material/primitive 语义；pass prepare 解析 Program/VertexFactory/材质/资源、验证 layout/附件并创建 pipeline/binding，发生在 begin_render_pass 前。execute 仅消费已准备 MeshDrawCommand 的 RHI refs/value 与 draw 参数，不读 Asset/Material schema、不创建 device resource、不调任务系统。
+MeshBatch 保存 PrimitiveSceneProxy、VertexFactory、RHI index binding、draw range、MaterialRenderProxy 与 Object snapshot；各 proxy 通过 collect_mesh_batches 输出 frame-local 输入，具体 geometry owner 负责资源生命周期。MeshBatch 表达 geometry/material/primitive 语义；pass prepare 解析 Program/VertexFactory/材质/资源、验证 layout/附件并创建 pipeline/binding，发生在 begin_render_pass 前。execute 仅消费已准备 MeshDrawCommand 的 RHI refs/value 与 draw 参数，不读 Asset/Material schema、不创建 device resource、不调任务系统。
 
 入口 pass/base_pass.h、shadow_pass.h、hit_proxy_pass.h；真实 render_base_pass 接受 device、shader cache、graphics context、BasePassInputs 和 draw list，不存在通用 TestPass::execute(RenderPassContext&) 协议。新 pass 复用既有边界，不为减少参数引入 Prepared/Token wrapper。
 

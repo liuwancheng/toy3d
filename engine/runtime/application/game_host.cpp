@@ -11,6 +11,7 @@
 #include "asset/game_project.h"
 #include "asset/material/material_asset.h"
 #include "asset/mesh/static_mesh_asset.h"
+#include "asset/animation/animation_asset.h"
 #include "asset/texture/texture_asset.h"
 #include "config/command_line_parser.h"
 #include "config/console_manager.h"
@@ -71,6 +72,10 @@ namespace toy3d
             bool on_initialize() override
             {
                 auto registered = register_static_mesh_asset_types(types_);
+                if (registered.succeeded())
+                {
+                    registered = register_animation_asset_types(types_);
+                }
                 if (registered.succeeded())
                 {
                     registered = register_material_asset_types(types_);

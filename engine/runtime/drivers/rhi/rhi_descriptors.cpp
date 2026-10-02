@@ -27,6 +27,7 @@ namespace toy3d
                 return BindingRegisterClass::ConstantBuffer;
             case RHIResourceBindingType::SampledTexture:
             case RHIResourceBindingType::ReadOnlyBuffer:
+            case RHIResourceBindingType::ReadOnlyTypedBuffer:
                 return BindingRegisterClass::ShaderResource;
             case RHIResourceBindingType::Sampler:
                 return BindingRegisterClass::Sampler;
@@ -106,9 +107,10 @@ namespace toy3d
                 byte_size = 16u;
                 return true;
             case PixelFormat::R16UInt:
+            case PixelFormat::R8G8B8A8UInt:
                 scalar_type = RHIShaderVertexInputReflection::ScalarType::UInt32;
-                component_count = 1u;
-                byte_size = 2u;
+                component_count = format == PixelFormat::R8G8B8A8UInt ? 4u : 1u;
+                byte_size = format == PixelFormat::R8G8B8A8UInt ? 4u : 2u;
                 return true;
             case PixelFormat::R32UInt:
                 scalar_type = RHIShaderVertexInputReflection::ScalarType::UInt32;
@@ -187,10 +189,12 @@ namespace toy3d
                                                                       ? RHIResourceBindingType::StorageTexture
                                                                       : RHIResourceBindingType::SampledTexture);
             }
-            return RHIResult<RHIResourceBindingType>::success(value.buffer_view->desc().type ==
-                                                                      RHIResourceViewType::UnorderedAccess
-                                                                  ? RHIResourceBindingType::StorageBuffer
-                                                                  : RHIResourceBindingType::ReadOnlyBuffer);
+            return RHIResult<RHIResourceBindingType>::success(
+                value.buffer_view->desc().type == RHIResourceViewType::UnorderedAccess
+                    ? RHIResourceBindingType::StorageBuffer
+                    : (value.buffer_view->desc().format != PixelFormat::Unknown
+                           ? RHIResourceBindingType::ReadOnlyTypedBuffer
+                           : RHIResourceBindingType::ReadOnlyBuffer));
         }
     } // namespace
 
@@ -239,6 +243,68 @@ namespace toy3d
             {
                 return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                           "Structured buffers require shader-resource or unordered-access usage.");
+            }
+        }
+        if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::TypedBuffer) &&
+            (desc.structure_stride != 0 || !EnumHasAnyFlags(desc.usage, RHIResourceUsage::ShaderResource) ||
+             EnumHasAnyFlags(desc.usage, RHIResourceUsage::UnorderedAccess)))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Read-only typed buffers require ShaderResource usage and zero structure stride.");
+        }
+        return RHIStatus::success();
+    }
+
+    RHIStatus validate_typed_binding_layout_limits(const RHIBindingLayoutDesc& desc, const RHILimits& limits)
+    {
+        const bool has_typed_buffer = std::any_of(desc.entries.begin(), desc.entries.end(),
+                                                  [](const RHIBindingLayoutEntry& entry)
+                                                  {
+                                                      return entry.type == RHIResourceBindingType::ReadOnlyTypedBuffer;
+                                                  });
+        if (!has_typed_buffer)
+        {
+            return RHIStatus::success();
+        }
+        std::uint64_t sampled_total = 0;
+        std::array<std::uint64_t, 6> sampled_per_stage{};
+        std::array<std::uint64_t, 6> resources_per_stage{};
+        const std::array<RHIShaderStageFlags, 6> stages{RHIShaderStageFlags::Vertex,   RHIShaderStageFlags::Pixel,
+                                                        RHIShaderStageFlags::Geometry, RHIShaderStageFlags::Hull,
+                                                        RHIShaderStageFlags::Domain,   RHIShaderStageFlags::Compute};
+        for (const auto& entry : desc.entries)
+        {
+            const bool sampled = entry.type == RHIResourceBindingType::ReadOnlyTypedBuffer ||
+                                 entry.type == RHIResourceBindingType::SampledTexture;
+            if (sampled)
+            {
+                sampled_total += entry.array_count;
+            }
+            for (std::size_t stage = 0; stage < stages.size(); ++stage)
+            {
+                if (EnumHasAnyFlags(entry.stages, stages[stage]))
+                {
+                    resources_per_stage[stage] += entry.array_count;
+                    if (sampled)
+                    {
+                        sampled_per_stage[stage] += entry.array_count;
+                    }
+                }
+            }
+        }
+        if (limits.max_typed_buffer_elements == 0 || sampled_total > limits.max_sampled_resources_per_layout)
+        {
+            return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                      "Typed binding layout exceeds the sampled-resource layout budget.");
+        }
+        for (std::size_t stage = 0; stage < stages.size(); ++stage)
+        {
+            if (sampled_per_stage[stage] > limits.max_sampled_resources_per_stage ||
+                resources_per_stage[stage] > limits.max_resources_per_stage)
+            {
+                return RHIStatus::failure(RHIErrorCode::Unsupported,
+                                          "Typed binding layout exceeds a shader-stage resource budget.");
             }
         }
         return RHIStatus::success();
@@ -290,7 +356,8 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Texture usage must not be None.");
         }
         if (EnumHasAnyFlags(desc.usage, RHIResourceUsage::VertexBuffer | RHIResourceUsage::IndexBuffer |
-                                            RHIResourceUsage::UniformBuffer | RHIResourceUsage::IndirectArguments))
+                                            RHIResourceUsage::UniformBuffer | RHIResourceUsage::IndirectArguments |
+                                            RHIResourceUsage::TypedBuffer))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Textures cannot use vertex, index, uniform-buffer, or indirect-argument usage.");
@@ -500,6 +567,26 @@ namespace toy3d
                     RHIErrorCode::InvalidArgument,
                     "Structured-buffer views require an unknown format and structure-aligned range.");
             }
+        }
+        const bool typed = EnumHasAnyFlags(buffer_desc.usage, RHIResourceUsage::TypedBuffer);
+        if (view_desc.format != PixelFormat::Unknown)
+        {
+            const auto texel_size = pixel_format_bytes_per_block(view_desc.format);
+            // Reuse the numeric vertex-fetch formats as the formatted-buffer shape contract.
+            RHIShaderVertexInputReflection::ScalarType scalar_type;
+            std::uint32_t components = 0;
+            std::uint32_t bytes = 0;
+            if (!typed || view_desc.type != RHIResourceViewType::ShaderResource ||
+                !vertex_format_shape(view_desc.format, scalar_type, components, bytes) || texel_size == 0 ||
+                view_desc.offset % texel_size != 0 || view_desc.size % texel_size != 0)
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Typed views require numeric texels, typed usage and a texel-aligned range.");
+            }
+        }
+        else if (typed)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Typed buffers require an explicit view format.");
         }
         return RHIStatus::success();
     }

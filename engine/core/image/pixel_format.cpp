@@ -72,6 +72,7 @@ namespace toy3d
         case PixelFormat::B8G8R8A8UNorm:
         case PixelFormat::B8G8R8A8UNormSRGB:
         case PixelFormat::R8G8B8A8SNorm:
+        case PixelFormat::R8G8B8A8UInt:
         case PixelFormat::R10G10B10A2UNorm:
         case PixelFormat::R11G11B10Float:
         case PixelFormat::R32Float:

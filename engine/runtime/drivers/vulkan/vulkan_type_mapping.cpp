@@ -57,6 +57,8 @@ namespace toy3d
             return VK_FORMAT_R32G32B32A32_SFLOAT;
         case PixelFormat::R16UInt:
             return VK_FORMAT_R16_UINT;
+        case PixelFormat::R8G8B8A8UInt:
+            return VK_FORMAT_R8G8B8A8_UINT;
         case PixelFormat::R32UInt:
             return VK_FORMAT_R32_UINT;
         case PixelFormat::R8SNorm:
@@ -297,6 +299,8 @@ namespace toy3d
         case RHIResourceBindingType::ReadOnlyBuffer:
         case RHIResourceBindingType::StorageBuffer:
             return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case RHIResourceBindingType::ReadOnlyTypedBuffer:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
         }
         return VK_DESCRIPTOR_TYPE_MAX_ENUM;
     }
@@ -418,7 +422,12 @@ namespace toy3d
         {
             result |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         }
-        if (EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource) ||
+        if (EnumHasAnyFlags(usage, RHIResourceUsage::TypedBuffer))
+        {
+            result |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+        }
+        if ((EnumHasAnyFlags(usage, RHIResourceUsage::ShaderResource) &&
+             !EnumHasAnyFlags(usage, RHIResourceUsage::TypedBuffer)) ||
             EnumHasAnyFlags(usage, RHIResourceUsage::UnorderedAccess))
         {
             result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;

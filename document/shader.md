@@ -39,6 +39,8 @@ ShaderParameterId 为稳定 64-bit FNV-1a，输入带长度编码的 group/categ
 
 full schema 保留默认值；Program active layout 仅含实际使用独立资源，cbuffer 任一成员 active 即保留完整 offset/size，整个 group unused 才移除。native mapping 独立，映射见 [RHI](rhi.md)。跨 target parity 比身份/类型/count/offset/stride/stage，不比 slot。
 
+engine-owned Object canonical 数值包含两组 Matrix4、Float `toy_receives_shadows`（offset 128）与 UInt32 `toy_num_bone_influences`（offset 132），总大小 144 bytes；影响数由骨骼几何提供 4/8，仅 GPUSkin 使用，行为见 [Animation](animation.md)。4/8 不构成 shader permutation；数值成员进入 layout hash，旧产物须重新编译并与生成参数共同部署。
+
 schema hash（含 default/UI/sampler preset）、logical layout hash、target binding hash、bytecode hash 分离；compile/package/dependency 内容寻址 SHA-256，parameter identity 保持 FNV。
 
 ## Variant/permutation

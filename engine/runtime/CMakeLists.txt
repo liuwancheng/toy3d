@@ -1,5 +1,18 @@
 set(TARGET_NAME Toy3dRuntime)
 
+if(BUILD_TESTING)
+    add_executable(Toy3dTypedBufferTests "tests/typed_buffer_tests.cpp")
+    target_compile_features(Toy3dTypedBufferTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dTypedBufferTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dTypedBufferTests PRIVATE Toy3dRuntime)
+    add_test(NAME Toy3dRuntime.TypedBuffer COMMAND Toy3dTypedBufferTests)
+    add_executable(Toy3dAnimationTests "tests/animation_tests.cpp")
+    target_compile_features(Toy3dAnimationTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dAnimationTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dAnimationTests PRIVATE Toy3dRuntime Toy3dAssetPipeline)
+    add_test(NAME Toy3dRuntime.Animation COMMAND Toy3dAnimationTests)
+endif()
+
 option(TOY3D_ENABLE_VULKAN_RHI "Build the Vulkan RHI backend" OFF)
 option(TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
     "Build the development ShaderMapEntry loading path" ON)
@@ -545,5 +558,37 @@ if(BUILD_TESTING)
         add_dependencies(Toy3dShaderMapEntryLoaderTests
             Toy3dShaderMapEntryLoaderFixture)
         add_test(NAME Toy3dRuntime.ShaderMapEntryLoader COMMAND Toy3dShaderMapEntryLoaderTests)
+        if(TOY3D_ENABLE_VULKAN_RHI AND WIN32)
+            set(TOY3D_TYPED_BUFFER_SHADER_ROOT "${CMAKE_BINARY_DIR}/generated/test_fixtures/typed_buffer")
+            set(TOY3D_TYPED_BUFFER_SHADER_STAMP "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/generation.stamp")
+            add_custom_command(OUTPUT "${TOY3D_TYPED_BUFFER_SHADER_STAMP}"
+                COMMAND "${CMAKE_COMMAND}" -E remove_directory "${TOY3D_TYPED_BUFFER_SHADER_ROOT}"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_TYPED_BUFFER_SHADER_ROOT}"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/typed_buffer.shader"
+                    "/Engine/Tests/Shaders/typed_buffer.shader" "TypedBuffer"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/work"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/gpu_skin"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/gpu_skin.shader"
+                    "/Engine/Tests/Shaders/gpu_skin.shader" "GPUSkin"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/gpu_skin" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/gpu_skin/work"
+                    --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
+                COMMAND "${CMAKE_COMMAND}" -E touch "${TOY3D_TYPED_BUFFER_SHADER_STAMP}"
+                DEPENDS Toy3dShaderCompiler "tests/fixtures/shaders/typed_buffer.shader"
+                    "tests/fixtures/shaders/gpu_skin.shader"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyGPUSkin.hlsli" VERBATIM)
+            add_custom_target(Toy3dTypedBufferShaderFixture DEPENDS "${TOY3D_TYPED_BUFFER_SHADER_STAMP}")
+            add_executable(Toy3dTypedBufferVulkanTests "tests/typed_buffer_vulkan_tests.cpp")
+            target_compile_features(Toy3dTypedBufferVulkanTests PRIVATE cxx_std_17)
+            set_target_properties(Toy3dTypedBufferVulkanTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+            target_link_libraries(Toy3dTypedBufferVulkanTests PRIVATE Toy3dRuntime "${vulkan_lib}" vma)
+            target_include_directories(Toy3dTypedBufferVulkanTests PRIVATE "${vulkan_include}")
+            target_compile_definitions(Toy3dTypedBufferVulkanTests PRIVATE
+                "TOY3D_TYPED_BUFFER_SHADER_ROOT=\"${TOY3D_TYPED_BUFFER_SHADER_ROOT}\"")
+            add_dependencies(Toy3dTypedBufferVulkanTests Toy3dTypedBufferShaderFixture)
+            add_test(NAME Toy3dRuntime.TypedBufferVulkan COMMAND Toy3dTypedBufferVulkanTests)
+            set_tests_properties(Toy3dRuntime.TypedBufferVulkan PROPERTIES TIMEOUT 30)
+        endif()
     endif()
 endif()

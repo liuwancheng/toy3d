@@ -57,11 +57,27 @@ namespace toy3d
             case RHIResourceBindingType::Sampler:
                 return shader::ShaderParameterCategory::Sampler;
             case RHIResourceBindingType::ReadOnlyBuffer:
+            case RHIResourceBindingType::ReadOnlyTypedBuffer:
                 return shader::ShaderParameterCategory::ReadOnlyBuffer;
             case RHIResourceBindingType::StorageBuffer:
                 return shader::ShaderParameterCategory::StorageBuffer;
             }
             return shader::ShaderParameterCategory::Constant;
+        }
+
+        bool valid_binding_type(RHIResourceBindingType type)
+        {
+            switch (type)
+            {
+            case RHIResourceBindingType::UniformBuffer:
+            case RHIResourceBindingType::SampledTexture:
+            case RHIResourceBindingType::Sampler:
+            case RHIResourceBindingType::ReadOnlyBuffer:
+            case RHIResourceBindingType::ReadOnlyTypedBuffer:
+            case RHIResourceBindingType::StorageBuffer:
+                return true;
+            }
+            return false;
         }
 
         bool same_value_type(shader::ShaderValueType expected, ShaderValueType actual)
@@ -169,6 +185,13 @@ namespace toy3d
                         resource->array_count != binding.array_count)
                     {
                         error = "ShaderMap Program active resource binding is not part of its complete schema.";
+                        return false;
+                    }
+                    if (resource->category == shader::ShaderParameterCategory::ReadOnlyBuffer &&
+                        (resource->resource_kind == shader::ResourceKind::Buffer) !=
+                            (binding.type == RHIResourceBindingType::ReadOnlyTypedBuffer))
+                    {
+                        error = "ShaderMap Program buffer binding kind differs from its complete schema.";
                         return false;
                     }
                 }
@@ -359,10 +382,8 @@ namespace toy3d
         for (const ShaderMapBinding& binding : program.bindings)
         {
             if (binding.parameter_id == 0 || binding.name.empty() || binding.group >= RHIBindingGroup::Max ||
-                static_cast<std::uint32_t>(binding.type) >
-                    static_cast<std::uint32_t>(RHIResourceBindingType::StorageBuffer) ||
-                binding.stages == RHIShaderStageFlags::None || binding.array_count == 0 ||
-                !parameter_ids.insert(binding.parameter_id).second ||
+                !valid_binding_type(binding.type) || binding.stages == RHIShaderStageFlags::None ||
+                binding.array_count == 0 || !parameter_ids.insert(binding.parameter_id).second ||
                 !binding_keys.emplace(binding.group, binding.type, binding.target_binding).second)
             {
                 result.error = "ShaderMap program contains an invalid or duplicate binding.";

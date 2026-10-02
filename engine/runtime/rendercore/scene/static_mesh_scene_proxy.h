@@ -20,18 +20,19 @@ namespace toy3d
                              std::uint32_t component_id = 0, bool cast_shadows = true, bool receives_shadows = true);
         ~StaticMeshSceneProxy() override = default;
 
+        RHIStatus begin_init_resources(RenderResourceManager& manager) override;
+        RHIStatus release_resources(RenderResourceManager& manager, bool release_shared_geometry) override;
+        bool shares_geometry_resources(const PrimitiveSceneProxy& other) const override;
+        bool resources_drawable() const override;
+        std::size_t mesh_section_count() const override;
+        RHIStatus collect_mesh_batches(std::vector<MeshBatch>& batches) const override;
+
         StaticMeshRenderData* render_data() const
         {
             return render_data_;
         }
-        const std::vector<MaterialRenderProxy*>& material_render_proxies() const
-        {
-            return material_render_proxies_;
-        }
-        void set_material_render_proxies(std::vector<MaterialRenderProxy*> materials);
 
       private:
         StaticMeshRenderData* render_data_ = nullptr;
-        std::vector<MaterialRenderProxy*> material_render_proxies_;
     };
 } // namespace toy3d

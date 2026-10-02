@@ -6,6 +6,7 @@
 #include "asset/material/material_asset.h"
 #include "asset/scene/scene_asset.h"
 #include "asset/mesh/static_mesh_asset.h"
+#include "asset/animation/animation_asset.h"
 #include "asset/texture/texture_asset.h"
 
 #include <algorithm>
@@ -183,6 +184,10 @@ namespace toy3d
             return false;
         }
         ReflectionStatus registered = register_static_mesh_asset_types(types_);
+        if (registered.succeeded())
+        {
+            registered = register_animation_asset_types(types_);
+        }
         if (registered.succeeded())
         {
             registered = register_material_asset_types(types_);

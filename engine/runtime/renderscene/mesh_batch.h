@@ -1,16 +1,15 @@
 #pragma once
 
-#include "drivers/rhi/rhi_resource.h"
+#include "drivers/rhi/rhi_command_descriptors.h"
 #include "shader_parameters/builtin_shader_parameters.generated.h"
 
 #include <cstdint>
 
 namespace toy3d
 {
-    class LocalVertexFactory;
+    class VertexFactory;
     class MaterialRenderProxy;
-    class StaticMeshRenderData;
-    class StaticMeshSceneProxy;
+    class PrimitiveSceneProxy;
 
     // Frame-local Render-side draw input. ViewInfo owns this value for one Draw;
     // Proxy, RenderData, VertexFactory, and Material remain owned by their
@@ -18,19 +17,19 @@ namespace toy3d
     class MeshBatch final
     {
       public:
-        MeshBatch(const StaticMeshSceneProxy& scene_proxy, const StaticMeshRenderData& render_data,
-                  const LocalVertexFactory& vertex_factory, MaterialRenderProxy& material_render_proxy,
+        MeshBatch(const PrimitiveSceneProxy& scene_proxy, const VertexFactory& vertex_factory,
+                  RHIIndexBufferBinding index_buffer, MaterialRenderProxy& material_render_proxy,
                   std::uint32_t first_index, std::uint32_t index_count, std::uint32_t section_index = 0);
 
-        const StaticMeshSceneProxy& scene_proxy() const
+        const PrimitiveSceneProxy& scene_proxy() const
         {
             return *scene_proxy_;
         }
-        const StaticMeshRenderData& render_data() const
+        const RHIIndexBufferBinding& index_buffer_binding() const
         {
-            return *render_data_;
+            return index_buffer_;
         }
-        const LocalVertexFactory& vertex_factory() const
+        const VertexFactory& vertex_factory() const
         {
             return *vertex_factory_;
         }
@@ -74,9 +73,9 @@ namespace toy3d
         }
 
       private:
-        const StaticMeshSceneProxy* scene_proxy_ = nullptr;
-        const StaticMeshRenderData* render_data_ = nullptr;
-        const LocalVertexFactory* vertex_factory_ = nullptr;
+        const PrimitiveSceneProxy* scene_proxy_ = nullptr;
+        const VertexFactory* vertex_factory_ = nullptr;
+        RHIIndexBufferBinding index_buffer_;
         MaterialRenderProxy* material_render_proxy_ = nullptr;
         ObjectShaderParameters object_shader_parameters_;
         std::uint64_t object_data_generation_ = 0u;

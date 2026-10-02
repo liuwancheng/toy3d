@@ -1,5 +1,6 @@
 add_library(Toy3dAssetPipeline STATIC)
 target_sources(Toy3dAssetPipeline PRIVATE
+    "skeletal_mesh_builder.h" "skeletal_mesh_builder.cpp"
     "static_mesh_builder.h" "static_mesh_builder.cpp"
     "texture_import.h" "texture_import.cpp")
 target_compile_features(Toy3dAssetPipeline PUBLIC cxx_std_17)
@@ -7,7 +8,8 @@ set_target_properties(Toy3dAssetPipeline PROPERTIES CXX_EXTENSIONS OFF FOLDER "E
 target_include_directories(Toy3dAssetPipeline PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")
 target_link_libraries(Toy3dAssetPipeline PUBLIC Toy3dAssets)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
-    target_sources(Toy3dAssetPipeline PRIVATE "static_mesh_import.h" "static_mesh_import.cpp")
+    target_sources(Toy3dAssetPipeline PRIVATE "static_mesh_import.h" "static_mesh_import.cpp"
+        "assimp_import_support.h" "skeletal_mesh_import.h" "skeletal_mesh_import.cpp")
     target_link_libraries(Toy3dAssetPipeline PRIVATE assimp::assimp)
     target_compile_definitions(Toy3dAssetPipeline PUBLIC WITH_EDITORONLY_DATA=1)
 endif()
@@ -42,6 +44,14 @@ target_compile_options(Toy3dAssimpProbe PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSV
 
 if(BUILD_TESTING)
     add_executable(Toy3dStaticMeshImportTests "tests/static_mesh_import_tests.cpp")
+    add_executable(Toy3dSkeletalMeshImportTests "tests/skeletal_mesh_import_tests.cpp")
+    target_compile_features(Toy3dSkeletalMeshImportTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dSkeletalMeshImportTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+    target_link_libraries(Toy3dSkeletalMeshImportTests PRIVATE Toy3dAssetPipeline)
+    target_compile_definitions(Toy3dSkeletalMeshImportTests PRIVATE
+        "TOY3D_SKELETAL_IMPORT_SAMPLES=\"${CMAKE_CURRENT_SOURCE_DIR}/tests\""
+        "TOY3D_SKELETAL_IMPORT_OUTPUT=\"${CMAKE_CURRENT_BINARY_DIR}/skeletal-test-output\"")
+    add_test(NAME Toy3dAsset.SkeletalMeshImport COMMAND Toy3dSkeletalMeshImportTests)
     target_compile_features(Toy3dStaticMeshImportTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dStaticMeshImportTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
     target_link_libraries(Toy3dStaticMeshImportTests PRIVATE Toy3dAssetPipeline)

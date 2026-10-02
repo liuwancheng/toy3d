@@ -176,13 +176,39 @@ namespace toy3d
             desc.initial_access));
     }
 
-    RHIResult<RHIBufferViewRef> create_vulkan_buffer_view(const RHIBufferRef& buffer, const RHIBufferViewDesc& desc)
+    RHIResult<RHIBufferViewRef> create_vulkan_buffer_view(VkDevice device, const RHIBufferRef& buffer,
+                                                          const RHIBufferViewDesc& desc)
     {
-        (void)buffer;
-        (void)desc;
-        return RHIResult<RHIBufferViewRef>::failure(
-            RHIErrorCode::Unsupported,
-            "Vulkan buffer views require descriptor binding support, which is not implemented yet.");
+        const auto source = std::dynamic_pointer_cast<VulkanBuffer>(buffer);
+        if (!source || device == VK_NULL_HANDLE)
+        {
+            return RHIResult<RHIBufferViewRef>::failure(RHIErrorCode::InvalidArgument,
+                                                        "Typed view requires a Vulkan buffer and device.");
+        }
+        if (desc.type != RHIResourceViewType::ShaderResource || desc.format == PixelFormat::Unknown)
+        {
+            return RHIResult<RHIBufferViewRef>::failure(RHIErrorCode::Unsupported,
+                                                        "Only read-only typed Vulkan buffer views are implemented.");
+        }
+        const auto format = vulkan_format_from_pixel_format(desc.format);
+        if (format == VK_FORMAT_UNDEFINED)
+        {
+            return RHIResult<RHIBufferViewRef>::failure(RHIErrorCode::Unsupported,
+                                                        "Typed buffer format has no Vulkan mapping.");
+        }
+        VkBufferViewCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};
+        info.buffer = source->buffer();
+        info.format = format;
+        info.offset = desc.offset;
+        info.range = desc.size;
+        VkBufferView view = VK_NULL_HANDLE;
+        const auto status =
+            vulkan_status_from_result(vkCreateBufferView(device, &info, nullptr, &view), "vkCreateBufferView");
+        if (!status)
+        {
+            return RHIResult<RHIBufferViewRef>::failure(status.code(), status.message());
+        }
+        return RHIResult<RHIBufferViewRef>::success(std::make_shared<VulkanBufferView>(buffer, desc, device, view));
     }
 
     RHIResult<RHITextureViewRef> create_vulkan_texture_view(VkDevice device, const RHITextureRef& texture,

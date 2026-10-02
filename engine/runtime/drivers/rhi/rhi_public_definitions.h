@@ -40,7 +40,9 @@ namespace toy3d
         DepthStencil = 1U << 6,
         IndirectArguments = 1U << 7,
         CopySource = 1U << 8,
-        CopyDestination = 1U << 9
+        CopyDestination = 1U << 9,
+        // A read-only buffer with an explicit element format on its view.
+        TypedBuffer = 1U << 10
     };
     ENUM_CLASS_FLAGS(RHIResourceUsage)
 
@@ -121,7 +123,8 @@ namespace toy3d
         StorageTexture,
         Sampler,
         ReadOnlyBuffer,
-        StorageBuffer
+        StorageBuffer,
+        ReadOnlyTypedBuffer
     };
 
     enum class RHIFilter : std::uint8_t

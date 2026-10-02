@@ -246,6 +246,33 @@ namespace
                   other_target_input.attribute_id == toy3d::ShaderVertexAttributeId::Color0,
               "optional COLOR0 must convert to the fixed logical attribute set");
 
+        reflected.semantic = "BLENDINDICES0";
+        reflected.scalar_type = toy3d::shader::ReflectedInterfaceVariable::ScalarType::UInt32;
+        check(toy3d::try_make_shader_vertex_input(reflected, other_target_input, error) &&
+                  other_target_input.attribute_id == toy3d::ShaderVertexAttributeId::BlendIndices0,
+              "bone indices preserve integer reflection shape");
+        reflected.scalar_type = toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
+        check(!toy3d::try_make_shader_vertex_input(reflected, other_target_input, error),
+              "floating point bone index reflection is rejected");
+        reflected.semantic = "BLENDWEIGHT0";
+        check(toy3d::try_make_shader_vertex_input(reflected, other_target_input, error) &&
+                  other_target_input.attribute_id == toy3d::ShaderVertexAttributeId::BlendWeights0,
+              "UNorm weight fetch uses Float4 reflection shape");
+
+        reflected.semantic = "BLENDINDICES1";
+        reflected.scalar_type = toy3d::shader::ReflectedInterfaceVariable::ScalarType::UInt32;
+        check(toy3d::try_make_shader_vertex_input(reflected, other_target_input, error) &&
+                  other_target_input.attribute_id == toy3d::ShaderVertexAttributeId::BlendIndices1 &&
+                  other_target_input.semantic_index == 1,
+              "second bone index group preserves integer shape and semantic index");
+        reflected.semantic = "BLENDWEIGHT1";
+        check(!toy3d::try_make_shader_vertex_input(reflected, other_target_input, error),
+              "second weight group rejects integer shader inputs");
+        reflected.scalar_type = toy3d::shader::ReflectedInterfaceVariable::ScalarType::Float32;
+        check(toy3d::try_make_shader_vertex_input(reflected, other_target_input, error) &&
+                  other_target_input.attribute_id == toy3d::ShaderVertexAttributeId::BlendWeights1 &&
+                  other_target_input.semantic_index == 1,
+              "second weight group preserves normalized Float4 shape");
         other_target_input = vulkan_input;
         other_target_input.target_location = 0u;
         check(toy3d::have_same_shader_vertex_input_contract(vulkan_input, other_target_input),

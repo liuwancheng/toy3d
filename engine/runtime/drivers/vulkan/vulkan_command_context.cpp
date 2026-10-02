@@ -1642,6 +1642,19 @@ namespace toy3d
                                                                  texture_state.value().layout,
                                                                  texture_state.value().access);
             }
+            if (value.buffer_view)
+            {
+                const auto view = std::dynamic_pointer_cast<VulkanBufferView>(value.buffer_view);
+                const auto buffer = view ? std::dynamic_pointer_cast<VulkanBuffer>(view->buffer()) : nullptr;
+                if (!buffer ||
+                    recording_command_list->tracked_buffer_access(buffer) != RHIAccess::ShaderResourceGraphics)
+                {
+                    return RHIStatus::failure(
+                        RHIErrorCode::InvalidArgument,
+                        "Typed buffer must be transitioned to ShaderResourceGraphics before draw.");
+                }
+                recording_command_list->track_buffer_transition(buffer, RHIAccess::ShaderResourceGraphics);
+            }
         }
         const VulkanPhysicalBindingSources physical_sources =
             make_vulkan_physical_binding_sources(resolved_result.value());
@@ -1713,6 +1726,10 @@ namespace toy3d
                     if (resolved.value.texture_view)
                     {
                         recording_command_list->retain_texture_view(resolved.value.texture_view);
+                    }
+                    if (resolved.value.buffer_view)
+                    {
+                        recording_command_list->retain_resource(resolved.value.buffer_view->buffer());
                     }
                 }
             }

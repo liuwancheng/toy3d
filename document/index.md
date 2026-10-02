@@ -10,6 +10,7 @@
 | 反射、序列化、Asset 身份、YAML/meta、导入/缓存 | [Assets](assets.md) | `engine/core/asset/`、reflection、serialization、`engine/tools/` |
 | Engine/Application、.toy 工程、分层配置、输入、平台、资源部署 | [Runtime](runtime.md) | `engine/runtime/engine.*`、application、config、platform、input |
 | World/Actor/Component、注册、挂接、settings 更新 | [GameScene](gamescene.md) | `engine/runtime/gamescene/` |
+| Skeleton、SkeletalMesh、CPU 动画与 GPU Skin、骨骼预览 | [Animation](animation.md) | asset/animation、runtime/animation、skin geometry/resources；预览与组件接入范围见文内 |
 | GT/RT、RenderCommand、CPU fence、资源上传/退出 | [Render Framework](render-framework.md) | `engine/runtime/rendercore/`、`renderscene/renderer.*` |
 | View、可见性、MeshBatch、Shadow/Base/Tonemap/UI、预览 | [Renderer](renderer.md) | `engine/runtime/renderscene/` |
 | 公共 RHI、后端、GPU 状态/同步、binding、Vulkan/VMA/WSI | [RHI](rhi.md) | `engine/runtime/drivers/rhi/`、`drivers/vulkan/` |

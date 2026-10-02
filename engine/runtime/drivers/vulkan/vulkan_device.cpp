@@ -347,6 +347,10 @@ namespace toy3d
         {
             result.usage |= RHIFormatUsage::VertexBuffer;
         }
+        if ((buffer_features & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0)
+        {
+            result.usage |= RHIFormatUsage::ReadOnlyTypedBuffer;
+        }
         if ((features & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT) != 0)
         {
             result.usage |= RHIFormatUsage::CopySource;
@@ -405,7 +409,7 @@ namespace toy3d
     RHIResult<RHIBufferViewRef> VulkanDevice::create_buffer_view_impl(const RHIBufferRef& buffer,
                                                                       const RHIBufferViewDesc& desc)
     {
-        return create_vulkan_buffer_view(buffer, desc);
+        return create_vulkan_buffer_view(vk_device, buffer, desc);
     }
 
     RHIResult<RHITextureViewRef> VulkanDevice::create_texture_view_impl(const RHITextureRef& texture,
@@ -811,6 +815,11 @@ namespace toy3d
         device_limits.uniform_buffer_offset_alignment = properties.limits.minUniformBufferOffsetAlignment;
         device_limits.storage_buffer_offset_alignment = properties.limits.minStorageBufferOffsetAlignment;
         device_limits.texture_upload_alignment = properties.limits.optimalBufferCopyOffsetAlignment;
+        device_limits.max_typed_buffer_elements = properties.limits.maxTexelBufferElements;
+        device_limits.typed_buffer_offset_alignment = properties.limits.minTexelBufferOffsetAlignment;
+        device_limits.max_sampled_resources_per_stage = properties.limits.maxPerStageDescriptorSampledImages;
+        device_limits.max_sampled_resources_per_layout = properties.limits.maxDescriptorSetSampledImages;
+        device_limits.max_resources_per_stage = properties.limits.maxPerStageResources;
     }
 
     RHIResult<std::unique_ptr<RHIDevice>> create_vulkan_device()

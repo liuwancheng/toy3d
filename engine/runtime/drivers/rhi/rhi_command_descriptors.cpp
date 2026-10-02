@@ -28,7 +28,9 @@ namespace toy3d
             }
             return value.buffer_view && value.buffer_view->desc().type == RHIResourceViewType::UnorderedAccess
                        ? RHIResourceBindingType::StorageBuffer
-                       : RHIResourceBindingType::ReadOnlyBuffer;
+                       : (value.buffer_view && value.buffer_view->desc().format != PixelFormat::Unknown
+                              ? RHIResourceBindingType::ReadOnlyTypedBuffer
+                              : RHIResourceBindingType::ReadOnlyBuffer);
         }
     } // namespace
 

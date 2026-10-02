@@ -57,6 +57,18 @@ namespace toy3d
         RHIQueueCompletionValue last_use_value = 0;
     };
 
+    class VulkanBufferView final : public RHIBufferView
+    {
+      public:
+        VulkanBufferView(RHIBufferRef buffer, RHIBufferViewDesc desc, VkDevice device, VkBufferView view);
+        ~VulkanBufferView() override;
+        VkBufferView buffer_view() const;
+
+      private:
+        VkDevice vk_device = VK_NULL_HANDLE;
+        VkBufferView vk_buffer_view = VK_NULL_HANDLE;
+    };
+
     class VulkanReadback final : public RHIReadback
     {
       public:

@@ -6,11 +6,10 @@
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
-#include "rendercore/geometry/local_vertex_factory.h"
+#include "rendercore/geometry/vertex_factory.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_graphics_state.h"
 #include "rendercore/shader/shader_parameters.h"
-#include "rendercore/geometry/static_mesh_render_data.h"
 #include "rendercore/material/material_render_proxy.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/pass/mesh_draw_command.h"
@@ -117,7 +116,7 @@ namespace toy3d
                 MeshDrawCommand command;
                 command.pipeline = std::move(pipeline).value();
                 command.vertex_buffers = std::move(buffers);
-                command.index_buffer = batch.render_data().index_buffer_binding();
+                command.index_buffer = batch.index_buffer_binding();
                 command.bindings.pass = pass_binding;
                 command.bindings.object = batch.object_binding();
                 command.draw_args.index_count = batch.index_count();

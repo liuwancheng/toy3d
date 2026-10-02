@@ -31,6 +31,12 @@ namespace toy3d
         std::uint64_t uniform_buffer_offset_alignment = 1;
         std::uint64_t storage_buffer_offset_alignment = 1;
         std::uint64_t texture_upload_alignment = 1;
+        std::uint32_t max_typed_buffer_elements = 0;
+        std::uint64_t typed_buffer_offset_alignment = 1;
+        // Formatted buffer reads consume this budget together with sampled textures.
+        std::uint32_t max_sampled_resources_per_stage = 0;
+        std::uint32_t max_sampled_resources_per_layout = 0;
+        std::uint32_t max_resources_per_stage = 0;
     };
 
     enum class RHIFormatUsage : std::uint32_t
@@ -42,7 +48,8 @@ namespace toy3d
         DepthStencil = 1U << 3,
         VertexBuffer = 1U << 4,
         CopySource = 1U << 5,
-        CopyDestination = 1U << 6
+        CopyDestination = 1U << 6,
+        ReadOnlyTypedBuffer = 1U << 7
     };
     ENUM_CLASS_FLAGS(RHIFormatUsage)
 

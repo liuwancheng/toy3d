@@ -363,6 +363,7 @@ namespace toy3d
     RHIStatus validate_buffer_view_desc(const RHIBufferDesc& buffer_desc, const RHIBufferViewDesc& view_desc);
     RHIStatus validate_shader_desc(const RHIShaderDesc& desc);
     RHIStatus validate_binding_layout_desc(const RHIBindingLayoutDesc& desc);
+    RHIStatus validate_typed_binding_layout_limits(const RHIBindingLayoutDesc& desc, const RHILimits& limits);
     RHIStatus validate_sampler_desc(const RHISamplerDesc& desc);
     RHIStatus validate_binding_set_desc(const RHIBindingSetDesc& desc);
     RHIStatus validate_graphics_pipeline_desc(const RHIGraphicsPipelineDesc& desc);

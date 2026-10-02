@@ -1,0 +1,221 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Toy3d analytic two-bone fixture"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "SceneRoot",
+      "children": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Root",
+      "children": [
+        2
+      ]
+    },
+    {
+      "name": "Tip",
+      "translation": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "Mesh",
+      "mesh": 0,
+      "skin": 0
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "JOINTS_0": 2,
+            "WEIGHTS_0": 3,
+            "COLOR_0": 8
+          },
+          "indices": 4,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Test"
+    }
+  ],
+  "skins": [
+    {
+      "inverseBindMatrices": 5,
+      "joints": [
+        1,
+        2
+      ],
+      "skeleton": 1
+    }
+  ],
+  "animations": [
+    {
+      "name": "MoveTip",
+      "samplers": [
+        {
+          "input": 6,
+          "output": 7,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 2,
+            "path": "translation"
+          }
+        }
+      ]
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 36
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 36,
+      "byteLength": 36
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 72,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 84,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 132,
+      "byteLength": 6
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 140,
+      "byteLength": 128
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 268,
+      "byteLength": 8
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 276,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 300,
+      "byteLength": 12
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "type": "VEC3",
+      "count": 3,
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        1,
+        2,
+        0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "type": "VEC3",
+      "count": 3
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5121,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5123,
+      "type": "SCALAR",
+      "count": 3
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "type": "MAT4",
+      "count": 2
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "type": "SCALAR",
+      "count": 2,
+      "min": [
+        0
+      ],
+      "max": [
+        1
+      ]
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "type": "VEC3",
+      "count": 2
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5121,
+      "type": "VEC4",
+      "count": 3,
+      "normalized": true
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 312,
+      "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAEAAAABAAAAAQAAAACAPwAAAAAAAAAAAAAAAAAAAD8AAAA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAABAAIAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAgD8AAAAA/4AA/wD/QP8gAP+A"
+    }
+  ]
+}

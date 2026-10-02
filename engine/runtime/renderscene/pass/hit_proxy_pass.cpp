@@ -7,14 +7,13 @@
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
-#include "rendercore/geometry/local_vertex_factory.h"
-#include "rendercore/scene/static_mesh_scene_proxy.h"
+#include "rendercore/geometry/vertex_factory.h"
+#include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/shader/global_shader_map.h"
 #include "rendercore/shader/global_shader_type_registry.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_graphics_state.h"
 #include "rendercore/shader/shader_parameters.h"
-#include "rendercore/geometry/static_mesh_render_data.h"
 #include "renderscene/mesh_batch.h"
 #include "renderscene/view/view_info.h"
 #include "shader_parameters/toy3d_editor_hitproxy.generated.h"
@@ -170,7 +169,7 @@ namespace toy3d
                 draw.bindings.view = view.view_binding();
                 draw.bindings.pass = std::move(pass_binding).value();
                 draw.bindings.object = batch.object_binding();
-                draw.indices = batch.render_data().index_buffer_binding();
+                draw.indices = batch.index_buffer_binding();
                 draw.args.index_count = batch.index_count();
                 draw.args.first_index = batch.first_index();
                 draw.viewport.x = static_cast<float>(rect.x);

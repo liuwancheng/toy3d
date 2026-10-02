@@ -1252,9 +1252,10 @@ int main()
     toy3d::StaticMeshSceneProxy batch_scene_proxy(toy3d::Matrix4::identity(), static_mesh->local_bounds(), true,
                                                   &render_data, {&batch_material_proxy});
     const toy3d::StaticMeshSection& batch_section = render_data.sections().front();
-    toy3d::MeshBatch mesh_batch(batch_scene_proxy, render_data, *render_data.vertex_factory(), batch_material_proxy,
-                                batch_section.first_index, batch_section.index_count);
-    check(&mesh_batch.scene_proxy() == &batch_scene_proxy && &mesh_batch.render_data() == &render_data &&
+    toy3d::MeshBatch mesh_batch(batch_scene_proxy, *render_data.vertex_factory(), render_data.index_buffer_binding(),
+                                batch_material_proxy, batch_section.first_index, batch_section.index_count);
+    check(&mesh_batch.scene_proxy() == &batch_scene_proxy &&
+              mesh_batch.index_buffer_binding().buffer == render_data.index_buffer_binding().buffer &&
               &mesh_batch.vertex_factory() == render_data.vertex_factory() &&
               &mesh_batch.material_render_proxy() == &batch_material_proxy && mesh_batch.first_index() == 0u &&
               mesh_batch.index_count() == 3u,
