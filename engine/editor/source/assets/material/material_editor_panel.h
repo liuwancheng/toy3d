@@ -32,6 +32,10 @@ namespace toy3d
         {
             return *session_;
         }
+        const MaterialEditSession& edit_session() const
+        {
+            return *session_;
+        }
         void set_shader_workflow(ShaderWorkflow& workflow)
         {
             shaders_ = &workflow;

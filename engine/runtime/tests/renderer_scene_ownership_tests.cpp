@@ -510,6 +510,7 @@ namespace
 
     struct RendererDeviceProbe
     {
+        std::atomic<toy3d::RHIErrorCode> frame_error{toy3d::RHIErrorCode::DeviceLost};
         bool validation_enabled = false;
         std::uint32_t wait_idle_before_shutdown_count = 0u;
         std::uint32_t shutdown_count = 0u;
@@ -567,12 +568,16 @@ namespace
     class RendererTestViewport final : public toy3d::RHIViewportContext
     {
       public:
-        using toy3d::RHIViewportContext::RHIViewportContext;
+        RendererTestViewport(const toy3d::RHIDevice& device, std::shared_ptr<RendererDeviceProbe> probe)
+            : RHIViewportContext(device), probe_(std::move(probe))
+        {
+        }
 
         toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>> begin_frame_impl() override
         {
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIFrameContext>>::failure(
-                toy3d::RHIErrorCode::DeviceLost, "injected Renderer lifecycle terminal");
+                probe_ ? probe_->frame_error.load() : toy3d::RHIErrorCode::DeviceLost,
+                "injected Renderer frame failure");
         }
 
         toy3d::RHIResult<toy3d::RHIFrameEndResult> end_frame(std::unique_ptr<toy3d::RHIFrameContext>,
@@ -591,6 +596,9 @@ namespace
         {
             return toy3d::RHIStatus::success();
         }
+
+      private:
+        std::shared_ptr<RendererDeviceProbe> probe_;
     };
 
     class RendererTestDevice final : public toy3d::RHIDevice
@@ -660,7 +668,7 @@ namespace
                     toy3d::RHIErrorCode::BackendFailure, "injected Renderer bootstrap viewport failure");
             }
             return toy3d::RHIResult<std::unique_ptr<toy3d::RHIViewportContext>>::success(
-                std::make_unique<RendererTestViewport>(*this));
+                std::make_unique<RendererTestViewport>(*this, probe_));
         }
         toy3d::RHIResult<toy3d::RHIBufferRef> create_buffer_impl(const toy3d::RHIBufferDesc&,
                                                                  const toy3d::RHIInitialData*) override
@@ -1501,7 +1509,7 @@ namespace
                         std::make_unique<RendererTestDevice>(RendererBootstrapFailurePoint::None, device_probe,
                                                              inject_terminal));
                 },
-                global_shader_map);
+                global_shader_map, nullptr, false, {}, true);
             toy3d::Renderer* const stable_address = &renderer;
             {
                 toy3d::RenderingThread rendering_thread(thread_manager, *graph,
@@ -1534,6 +1542,9 @@ namespace
                 toy3d::SceneInterface* const scene_interface = renderer.scene_interface();
                 check(scene_interface != nullptr,
                       "Renderer must publish its stable SceneInterface after initialization");
+                toy3d::SceneInterface* const play_interface = renderer.play_scene_interface();
+                check(play_interface && play_interface != scene_interface,
+                      "Play must publish an independent Renderer-owned scene");
 
                 toy3d::Vector3 camera_position(1.0f, 2.0f, 3.0f);
                 toy3d::Quaternion camera_orientation = toy3d::Quaternion::identity();
@@ -1578,6 +1589,25 @@ namespace
                 moved_transform.translation = {2.0f, 3.0f, 4.0f};
                 check(actor.static_mesh_component().set_local_transform(moved_transform),
                       "Primitive transform changes must produce an owned-value scene update");
+                for (int iteration = 0; iteration != 2; ++iteration)
+                {
+                    toy3d::World play_world;
+                    auto& play_actor = play_world.spawn_actor<toy3d::StaticMeshActor>();
+                    toy3d::MaterialInstanceRef play_material;
+                    auto play_mesh = make_mesh(&play_material);
+                    play_actor.static_mesh_component().set_static_mesh(play_mesh);
+                    check(play_world.bind_scene(*play_interface), "Fresh Play World binds independently");
+                    check(play_world.unbind_scene() && toy3d::flush_rendering_commands().succeeded(),
+                          "Play removal drains without withdrawing the author scene");
+                    check(world.scene_interface() == scene_interface &&
+                              actor.static_mesh_component().has_render_state() &&
+                              actor.static_mesh_component().static_mesh() == mesh,
+                          "Repeated Play keeps author registration and resource identity intact");
+                    play_actor.static_mesh_component().set_static_mesh(nullptr);
+                    play_mesh.reset();
+                    toy3d::MaterialInstance::release(play_material);
+                    check(toy3d::flush_rendering_commands().succeeded(), "Play material release drains");
+                }
                 check(world.unbind_scene() && world.scene_interface() == nullptr,
                       "World must clear its non-owning scene binding before Renderer teardown");
                 check(!actor.static_mesh_component().has_render_state(),
@@ -1599,6 +1629,30 @@ namespace
                 const toy3d::RenderFenceWaitResult material_released = toy3d::flush_rendering_commands();
                 check(material_released.succeeded(), "MaterialRenderProxy release must drain before Renderer teardown");
 
+                if (!inject_terminal)
+                {
+                    for (const auto code : {toy3d::RHIErrorCode::InvalidArgument, toy3d::RHIErrorCode::Unsupported})
+                    {
+                        device_probe->frame_error.store(code);
+                        toy3d::ViewportFrameOutput rejected_output;
+                        rejected_output.play_scene = true;
+                        rejected_output.scene_feedback = std::make_shared<toy3d::SceneRenderFeedback>();
+                        std::vector<toy3d::SceneView> rejected_views;
+                        rejected_views.emplace_back(toy3d::Vector3(), toy3d::Quaternion::identity(),
+                                                    toy3d::Vector3(0, 0, 1), toy3d::IntRect{0, 0, 1u, 1u},
+                                                    toy3d::Extent{1u, 1u}, toy3d::CameraProjectionMode::Perspective,
+                                                    toy3d::Radians(1.0f), 0.1f, 100.0f);
+                        renderer.draw_frame(std::make_unique<toy3d::ForwardSceneRenderer>(toy3d::SceneViewFamily(
+                                                *play_interface, toy3d::Extent{1u, 1u}, std::move(rejected_views))),
+                                            nullptr, rejected_output);
+                        check(toy3d::flush_rendering_commands().succeeded() &&
+                                  rejected_output.scene_feedback->state.load(std::memory_order_acquire) ==
+                                      toy3d::SceneRenderState::Failed &&
+                                  renderer.status().lifecycle_state() == toy3d::RendererLifecycleState::Running,
+                              "Rejected Play input publishes failure without terminating author domain");
+                    }
+                }
+
                 if (inject_terminal)
                 {
                     toy3d::World terminal_world;
@@ -1611,8 +1665,12 @@ namespace
                                                 toy3d::Vector3(0.0f, 0.0f, 1.0f), toy3d::IntRect{0, 0, 1u, 1u},
                                                 toy3d::Extent{1u, 1u}, toy3d::CameraProjectionMode::Perspective,
                                                 toy3d::Radians(1.0f), 0.1f, 100.0f);
-                    renderer.draw_frame(std::make_unique<toy3d::ForwardSceneRenderer>(
-                        toy3d::SceneViewFamily(*scene_interface, toy3d::Extent{1u, 1u}, std::move(terminal_views))));
+                    toy3d::ViewportFrameOutput terminal_output;
+                    terminal_output.play_scene = true;
+                    terminal_output.scene_feedback = std::make_shared<toy3d::SceneRenderFeedback>();
+                    renderer.draw_frame(std::make_unique<toy3d::ForwardSceneRenderer>(toy3d::SceneViewFamily(
+                                            *play_interface, toy3d::Extent{1u, 1u}, std::move(terminal_views))),
+                                        nullptr, terminal_output);
                     check(terminal_world.bind_scene(*scene_interface),
                           "Terminal admission window must still accept Add ownership");
                     check(terminal_actor.static_mesh_component().has_render_state(),
@@ -1653,7 +1711,7 @@ namespace
                 check(stopped.succeeded(), "RenderingThread stop must teardown Renderer before returning");
                 check(global_shader_map.use_count() == 1, "Renderer must release its GlobalShaderMap reference during "
                                                           "logical RT teardown before Engine-owner release");
-                check(renderer.scene_interface() == nullptr,
+                check(renderer.scene_interface() == nullptr && renderer.play_scene_interface() == nullptr,
                       "Renderer must withdraw SceneInterface publication after teardown");
                 check(renderer.status().lifecycle_state() == (inject_terminal ? toy3d::RendererLifecycleState::Terminal
                                                                               : toy3d::RendererLifecycleState::Stopped),
@@ -1689,7 +1747,9 @@ int main()
     test_renderer_bootstrap_failures();
     test_renderer_imgui_bootstrap();
     test_renderer_lifecycle(true, false);
+    test_renderer_lifecycle(false, false);
     test_renderer_lifecycle(false, true);
+    test_renderer_lifecycle(true, true);
 
     if (failure_count != 0)
     {

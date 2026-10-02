@@ -23,6 +23,7 @@ namespace toy3d
     class SceneRenderTargets;
     class SceneRenderer;
     class SceneInterface;
+    struct SceneRenderFeedback;
     class GlobalShaderMap;
     class RHIShaderProgramCache;
     class TaskGraphInterface;
@@ -38,6 +39,8 @@ namespace toy3d
         Extent scene_extent;
         ImGuiTextureId texture_id;
         HitProxyRequest hit_proxy_request;
+        bool play_scene = false;
+        std::shared_ptr<SceneRenderFeedback> scene_feedback;
     };
 
     enum class RendererLifecycleState
@@ -78,7 +81,7 @@ namespace toy3d
                  std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                  std::shared_ptr<const GlobalShaderMap> global_shader_map,
                  std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr, bool enable_preview_scene = false,
-                 BuiltinMeshPassPrograms mesh_pass_programs = {});
+                 BuiltinMeshPassPrograms mesh_pass_programs = {}, bool enable_play_scene = false);
         ~Renderer();
 
         Renderer(const Renderer&) = delete;
@@ -97,6 +100,7 @@ namespace toy3d
         // The pointer is non-owning and exposes no concrete RenderScene state to GT.
         SceneInterface* scene_interface() const;
         SceneInterface* preview_scene_interface() const;
+        SceneInterface* play_scene_interface() const;
         bool poll_ui_texture(UiTextureResult& result);
         void validate_material_program(MaterialProgramValidationRef request);
         void prepare_builtin_shaders(BuiltinShaderUpdateRef request);
@@ -135,6 +139,9 @@ namespace toy3d
         std::unique_ptr<RHIShaderProgramCache> shader_program_cache_;
         std::unique_ptr<RenderResourceManager> resource_manager_;
         std::unique_ptr<RenderScene> render_scene_;
+        bool enable_play_scene_ = false;
+        std::unique_ptr<RenderScene> play_scene_;
+        std::atomic<SceneInterface*> published_play_interface_{nullptr};
         bool enable_preview_scene_ = false;
         std::unique_ptr<RenderScene> preview_scene_;
         std::unique_ptr<SceneRenderTargets> preview_targets_;

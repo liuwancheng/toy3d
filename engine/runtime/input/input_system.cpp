@@ -13,6 +13,7 @@ namespace toy3d
 
     void InputSystem::exit()
     {
+        end_play_session();
         // 清理输入设备
         keyboard_device.reset();
         mouse_device.reset();
@@ -27,6 +28,12 @@ namespace toy3d
         // 更新设备状态
         keyboard_device->update();
         mouse_device->update();
+        // Hold/DoubleClick dispatch must obey the same UI/viewport policy as
+        // physical events; a focused text field must not drive gameplay.
+        if (capture_policy_.keyboard)
+        {
+            return;
+        }
 
         // 处理持续按住的按键(Hold)事件
         for (auto& context : active_mapping_contexts)
@@ -183,9 +190,36 @@ namespace toy3d
     InputBindingContext& InputSystem::create_binding_context(const std::string& name, int priority)
     {
         // Structured binding exposes the iterator returned by emplace together with
-        // its insertion flag; only the iterator is needed for the stored context.
+        // its insertion flag; only new contexts belong to the active play session.
         auto [iter, inserted] = binding_contexts.emplace(name, InputBindingContext(name, priority));
+        if (inserted && play_session_active_)
+        {
+            play_contexts_.push_back(name);
+        }
         return iter->second;
+    }
+
+    bool InputSystem::begin_play_session()
+    {
+        if (play_session_active_)
+        {
+            return false;
+        }
+        play_contexts_.clear();
+        play_session_active_ = true;
+        clear_pressed_state();
+        return true;
+    }
+
+    void InputSystem::end_play_session()
+    {
+        play_session_active_ = false;
+        for (const auto& name : play_contexts_)
+        {
+            remove_binding_context(name);
+        }
+        play_contexts_.clear();
+        clear_pressed_state();
     }
 
     void InputSystem::remove_binding_context(const std::string& name)

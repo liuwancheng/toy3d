@@ -43,6 +43,8 @@ caster bias 在 ShadowDepth vertex shader，符号遵守 reversed-Z；采样以 
 
 UI texture 通过公共 RHI View/受控 ImGui 表示，多个窗口各自持资源/代次，不全局换一张图。Preview 使用独立 World/SceneRenderTargets、同正常 frame 管理；不能操纵主 World、给每个窗口私建 Vulkan ownership。
 
+Editor 的 Play RenderScene 与编辑/Preview Scene 独立，Renderer 持有、Running 后发布 SceneInterface，退出先撤回。ViewportFrameOutput 的 play_scene 在提交时选择对应场景，复用主视口附件；编辑注册不随显示切换释放。各场景 MeshRenderData 生命周期独立。SceneRenderFeedback 是单次准备反馈，RT 在 geometry 可绘制且场景帧提交成功后发布 Ready，不能作为 GPU completion；启动失败发布诊断，UI/GT 不读取可变 RenderScene。运行会话与输入边界见 [Editor](editor.md#视口内-play)。
+
 异步颜色读回必须等待实际 GPU completion，结果包含请求身份、尺寸/row pitch/格式；worker PNG 编码/缓存后 GT 检验 AssetId/content/generation 才接管，过期/失败丢弃。缩略图失败不回滚资产保存。
 
 ## 修改与验证

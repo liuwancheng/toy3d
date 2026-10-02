@@ -132,6 +132,7 @@ namespace toy3d
                 const RHIStatus init_status = render_data->begin_init(resource_manager_);
                 if (!init_status)
                 {
+                    preparation_error_ = init_status;
                     TOY_LOG_ERROR("RenderScene could not initialize StaticMeshRenderData: {}", init_status.message());
                 }
             }
@@ -144,6 +145,7 @@ namespace toy3d
                 const RHIStatus material_init_status = material_proxy->begin_init_textures(resource_manager_);
                 if (!material_init_status)
                 {
+                    preparation_error_ = material_init_status;
                     TOY_LOG_ERROR("RenderScene could not initialize Material TextureResources: {}",
                                   material_init_status.message());
                 }
@@ -220,6 +222,28 @@ namespace toy3d
         }
 
         removed.reset();
+        if (primitives_.empty())
+        {
+            preparation_error_ = RHIStatus::success();
+        }
+    }
+
+    RHIStatus RenderScene::preparation_status() const
+    {
+        assert(is_on_logical_rendering_thread());
+        if (!preparation_error_)
+        {
+            return preparation_error_;
+        }
+        for (const auto& primitive : primitives_)
+        {
+            const auto* mesh = dynamic_cast<const StaticMeshSceneProxy*>(primitive->proxy());
+            if (mesh && (!mesh->render_data() || !mesh->render_data()->is_drawable()))
+            {
+                return RHIStatus::failure(RHIErrorCode::NotReady, "Scene geometry is preparing.");
+            }
+        }
+        return RHIStatus::success();
     }
 
     void RenderScene::add_light(std::unique_ptr<LightSceneProxy> proxy)

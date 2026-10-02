@@ -19,6 +19,8 @@
 #include "math/matrix_construction.h"
 #include "scene/placement/actor_placement.h"
 #include "scene/editor_selection.h"
+#include "scene/editor_play_session.h"
+#include "input/input_system.h"
 #include "ui/imgui_draw_data.h"
 #include "viewport/actor_icons.h"
 
@@ -33,6 +35,47 @@ namespace toy3d
         constexpr float k_editor_far_clip_cm = meters_to_centimeters(1000.0f);
         constexpr float k_min_orbit_distance_cm = meters_to_centimeters(0.2f);
         constexpr float k_max_orbit_distance_cm = meters_to_centimeters(10000.0f);
+
+        bool play_control_button(EditorPlayAction action)
+        {
+            const char* name = action == EditorPlayAction::Stop     ? "Stop"
+                               : action == EditorPlayAction::Pause  ? "Pause"
+                               : action == EditorPlayAction::Resume ? "Resume"
+                                                                    : "Play";
+            const float size = ImGui::GetFrameHeight();
+            ImGui::PushID(name);
+            const bool clicked = ImGui::Button("##control", ImVec2(size, size));
+            const ImVec2 origin = ImGui::GetItemRectMin();
+            const ImVec2 center(origin.x + size * 0.5f, origin.y + size * 0.5f);
+            const float radius = size * 0.22f;
+            const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
+            auto* draw = ImGui::GetWindowDrawList();
+            // Draw the glyph directly so controls do not depend on an icon font.
+            if (action == EditorPlayAction::Pause)
+            {
+                draw->AddRectFilled(ImVec2(center.x - radius, center.y - radius),
+                                    ImVec2(center.x - radius * 0.3f, center.y + radius), color);
+                draw->AddRectFilled(ImVec2(center.x + radius * 0.3f, center.y - radius),
+                                    ImVec2(center.x + radius, center.y + radius), color);
+            }
+            else if (action == EditorPlayAction::Stop)
+            {
+                draw->AddRectFilled(ImVec2(center.x - radius, center.y - radius),
+                                    ImVec2(center.x + radius, center.y + radius), color);
+            }
+            else
+            {
+                draw->AddTriangleFilled(ImVec2(center.x - radius * 0.7f, center.y - radius),
+                                        ImVec2(center.x + radius, center.y),
+                                        ImVec2(center.x - radius * 0.7f, center.y + radius), color);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                ImGui::SetTooltip("%s", name);
+            }
+            ImGui::PopID();
+            return clicked;
+        }
 
         bool make_view_matrices(const SceneView& scene_view, Matrix4& view, Matrix4& projection)
         {
@@ -182,13 +225,16 @@ namespace toy3d
 
     void SceneViewport::begin_frame()
     {
+        game_view_visible_ = false;
+        game_view_hovered_ = false;
         gizmo_.begin_frame();
         pending_hit_request_ = {};
         scene_extent_ = {};
         asset_placement_pending_ = false;
     }
 
-    void SceneViewport::draw(World& world, EditorSelection& selection, EditorCommandHistory& history)
+    void SceneViewport::draw(World& world, EditorSelection& selection, EditorCommandHistory& history,
+                             EditorPlaySession* play, bool can_play)
     {
         if (camera_actor_id_ != 0 && viewed_camera_id(world) == 0)
         {
@@ -199,7 +245,24 @@ namespace toy3d
             ImGui::Begin("Scene Viewport###Game Viewport", nullptr, ImGuiWindowFlags_NoScrollWithMouse);
         if (visible)
         {
-            if (viewed_camera_id(world) != 0)
+            const bool show_pause = play && play->active() && play->state() != EditorPlayState::Starting;
+            const float controls_width = ImGui::GetFrameHeight() * (show_pause ? 2.0f : 1.0f) +
+                                         (show_pause ? ImGui::GetStyle().ItemSpacing.x : 0.0f);
+            const bool toolbar = play && ImGui::BeginTable("##viewport_toolbar", 2);
+            if (toolbar)
+            {
+                ImGui::TableSetupColumn("##view", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("##play", ImGuiTableColumnFlags_WidthFixed, controls_width);
+                ImGui::TableNextColumn();
+            }
+            if (play && play->active())
+            {
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(play->state() == EditorPlayState::Starting
+                                           ? "Preparing Play..."
+                                           : (play->state() == EditorPlayState::Playing ? "Playing" : "Paused"));
+            }
+            else if (viewed_camera_id(world) != 0)
             {
                 ImGui::Text("Viewing Camera %u", viewed_camera_id(world));
                 ImGui::SameLine();
@@ -212,6 +275,76 @@ namespace toy3d
             {
                 gizmo_.draw_toolbar();
             }
+            if (toolbar)
+            {
+                ImGui::TableNextColumn();
+                ImGui::BeginDisabled(!can_play && !play->active());
+                if (!play->active())
+                {
+                    if (play_control_button(EditorPlayAction::Play))
+                    {
+                        play->request(EditorPlayAction::Play);
+                    }
+                }
+                else
+                {
+                    if (show_pause)
+                    {
+                        const bool paused = play->state() == EditorPlayState::Paused;
+                        if (play_control_button(paused ? EditorPlayAction::Resume : EditorPlayAction::Pause))
+                        {
+                            play->request(paused ? EditorPlayAction::Resume : EditorPlayAction::Pause);
+                        }
+                        ImGui::SameLine();
+                    }
+                    if (play_control_button(EditorPlayAction::Stop))
+                    {
+                        play->request(EditorPlayAction::Stop);
+                    }
+                }
+                ImGui::EndDisabled();
+                ImGui::EndTable();
+            }
+            if (play && play->active())
+            {
+                cancel_pending_hit();
+                orbit_drag_active_ = false;
+                pan_drag_active_ = false;
+                const bool playing = play->state() == EditorPlayState::Playing;
+                ImGui::TextDisabled("Click to control  |  Shift+F1: release input  |  Esc: stop");
+                const ImVec2 available = ImGui::GetContentRegionAvail();
+                const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
+                scene_extent_ = {physical_extent(available.x, scale.x), physical_extent(available.y, scale.y)};
+                if (scene_extent_.width && scene_extent_.height)
+                {
+                    const auto id = static_cast<std::uintptr_t>(IMGUI_SCENE_VIEWPORT_TEXTURE_ID.value());
+                    ImGui::Image(reinterpret_cast<ImTextureID>(id), available);
+                    game_view_visible_ = true;
+                    game_view_hovered_ = ImGui::IsItemHovered();
+                    if (playing && game_view_hovered_ && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    {
+                        game_input_captured_ = true;
+                        ImGui::SetWindowFocus();
+                        InputSystem::get_instance().clear_pressed_state();
+                    }
+                }
+                if (!playing || !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) ||
+                    ImGui::GetIO().AppFocusLost || ImGui::GetIO().WantTextInput ||
+                    ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) ||
+                    (ImGui::GetIO().KeyShift && ImGui::IsKeyPressed(ImGuiKey_F1)))
+                {
+                    release_game_input();
+                }
+                if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !ImGui::GetIO().WantTextInput &&
+                    !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
+                {
+                    play->request(EditorPlayAction::Stop);
+                    release_game_input();
+                }
+                ImGui::End();
+                return;
+            }
+            release_game_input();
             ImGui::TextDisabled("Wheel: zoom  |  Right drag: orbit  |  Middle drag: pan");
             const ImVec2 available = ImGui::GetContentRegionAvail();
             const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
@@ -499,6 +632,28 @@ namespace toy3d
                 pending_hit_request_.viewport_generation = viewport_generation_;
                 current_hit_request_id_ = pending_hit_request_.request_id;
             }
+        }
+        if (!visible)
+        {
+            release_game_input();
+        }
+    }
+
+    bool SceneViewport::game_input_captured() const
+    {
+        return game_input_captured_ && game_view_visible_;
+    }
+
+    bool SceneViewport::game_mouse_input() const
+    {
+        return game_input_captured() && game_view_hovered_;
+    }
+    void SceneViewport::release_game_input()
+    {
+        if (game_input_captured_)
+        {
+            game_input_captured_ = false;
+            InputSystem::get_instance().clear_pressed_state();
         }
     }
 

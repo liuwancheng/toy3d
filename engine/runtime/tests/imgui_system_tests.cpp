@@ -116,6 +116,34 @@ int main()
     input.get_keyboard_device()->set_key_status(KeyCode::A, KeyStatus::Pressed);
     input.process_event(key_pressed);
     check(keyboard_callbacks == 1, "mouse capture must not suppress keyboard gameplay mapping");
+    int hold_callbacks = 0;
+    input.bind_axis("imgui_test", "hold", KeyCode::A, 1.0f,
+                    [&hold_callbacks](const InputEvent&)
+                    {
+                        ++hold_callbacks;
+                    });
+    input.set_capture_policy({false, true, true});
+    input.get_keyboard_device()->set_key_status(KeyCode::A, KeyStatus::Hold);
+    input.update();
+    check(hold_callbacks == 0, "UI capture suppresses Hold callbacks as well as physical events");
+    input.set_capture_policy({false, false, true});
+    input.update();
+    check(hold_callbacks == 1, "Focused PIE can receive Hold while text events remain captured");
+    check(input.begin_play_session() && !input.begin_play_session(), "Gameplay input rejects overlapping sessions");
+    int play_callbacks = 0;
+    input.create_binding_context("play_fixture");
+    input.bind_action("play_fixture", "press", KeyCode::A, KeyStatus::Pressed,
+                      [&play_callbacks](const InputEvent&)
+                      {
+                          ++play_callbacks;
+                      });
+    input.activate_context("play_fixture", true);
+    input.process_event(key_pressed);
+    check(play_callbacks == 1, "Session context receives running events");
+    input.end_play_session();
+    input.process_event(key_pressed);
+    check(play_callbacks == 1 && keyboard_callbacks == 3,
+          "Stop removes gameplay callbacks while retaining host context");
 
     input.get_keyboard_device()->set_key_status(KeyCode::A, KeyStatus::Hold);
     input.get_mouse_device()->set_key_status(KeyCode::MOUSE_LEFT, KeyStatus::Hold);

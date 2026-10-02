@@ -21,6 +21,10 @@ namespace toy3d
 
     void EditorApplication::request_scene_save()
     {
+        if (play_session_.active())
+        {
+            return;
+        }
         if (!workspace_.has_project())
         {
             save_scene_to_project_ = true;
@@ -167,10 +171,9 @@ namespace toy3d
         window().close();
     }
 
-    void EditorApplication::play_scene()
+    void EditorApplication::standalone_play()
     {
-        if (!project_ || !project_->active() || game_executable_.empty() || startup_pending_ || shaders_.busy() ||
-            model_import_.active() || texture_import_.active() || scene_session_.history().active())
+        if (!project_ || !project_->active() || game_executable_.empty() || !can_start_play())
         {
             return;
         }
@@ -203,7 +206,7 @@ namespace toy3d
             TOY_LOG_ERROR("Play Scene launch: {}. Build the project Game host first.", launched.message);
             return;
         }
-        notifications_.success("Play Scene",
+        notifications_.success("Standalone Play",
                                "Game window launched. Runtime diagnostics are in the project Saved logs.");
     }
 

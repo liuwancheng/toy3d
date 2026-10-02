@@ -57,6 +57,10 @@ namespace toy3d
         void set_event_sink(EventSink sink);
         void set_capture_policy(CapturePolicy policy) noexcept;
         void clear_pressed_state() noexcept;
+        // Single GT gameplay session. Newly created binding contexts are removed
+        // at stop, after Actor end_play; pre-existing host contexts stay owned by host.
+        bool begin_play_session();
+        void end_play_session();
 
         // 用于绑定持续行为的函数 (类似UE的Axis映射)
         template <typename callback>
@@ -80,6 +84,8 @@ namespace toy3d
         std::vector<InputBindingContext*> active_mapping_contexts;
         EventSink event_sink_;
         CapturePolicy capture_policy_;
+        bool play_session_active_ = false;
+        std::vector<std::string> play_contexts_;
 
         void sort_active_mapping_contexts();
     };

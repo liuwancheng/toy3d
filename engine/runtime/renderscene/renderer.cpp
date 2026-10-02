@@ -190,12 +190,13 @@ namespace toy3d
                        std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                        std::shared_ptr<const GlobalShaderMap> global_shader_map,
                        std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas, bool enable_preview_scene,
-                       BuiltinMeshPassPrograms mesh_pass_programs)
+                       BuiltinMeshPassPrograms mesh_pass_programs, bool enable_play_scene)
         : task_graph_(task_graph), primary_surface_input_(std::move(primary_surface)),
           viewport_desc_(std::move(viewport_desc)), device_factory_(std::move(device_factory)),
           global_shader_map_input_(std::move(global_shader_map)),
           mesh_pass_programs_input_(std::move(mesh_pass_programs)),
-          imgui_font_atlas_input_(std::move(imgui_font_atlas)), enable_preview_scene_(enable_preview_scene)
+          imgui_font_atlas_input_(std::move(imgui_font_atlas)), enable_play_scene_(enable_play_scene),
+          enable_preview_scene_(enable_preview_scene)
     {
     }
 
@@ -206,6 +207,7 @@ namespace toy3d
         assert(!shader_program_cache_);
         assert(!resource_manager_);
         assert(!render_scene_);
+        assert(!play_scene_);
         assert(!scene_render_targets_);
         assert(!tonemap_pass_resources_);
         assert(!imgui_renderer_);
@@ -262,6 +264,10 @@ namespace toy3d
 
         resource_manager_ = std::make_unique<RenderResourceManager>(*device_);
         render_scene_ = std::make_unique<RenderScene>(task_graph_, *resource_manager_);
+        if (enable_play_scene_)
+        {
+            play_scene_ = std::make_unique<RenderScene>(task_graph_, *resource_manager_);
+        }
         scene_render_targets_ = std::make_unique<SceneRenderTargets>();
         ui_textures_ = std::make_unique<UiTextureRegistry>();
         if (enable_preview_scene_)
@@ -443,6 +449,7 @@ namespace toy3d
         }
 
         published_scene_interface_.store(render_scene_.get());
+        published_play_interface_.store(play_scene_.get());
         published_preview_interface_.store(preview_scene_.get());
         lifecycle_state_.store(RendererLifecycleState::Running);
         return ThreadStatus::success();
@@ -897,8 +904,13 @@ namespace toy3d
         RHIReadbackRef ui_readback;
         RHIStatus ui_status = RHIStatus::success();
         HitProxyTable hit_proxy_table;
+        RenderScene* active_scene = output.play_scene ? play_scene_.get() : render_scene_.get();
+        if (!active_scene)
+        {
+            return RHIResult<RHIFrameEndResult>::failure(RHIErrorCode::InvalidArgument, "Play Scene is unavailable.");
+        }
         auto result = render_viewport_frame(
-            scene_renderer, ui_draw_data, output, *render_scene_, *device_, *shader_program_cache_, *resource_manager_,
+            scene_renderer, ui_draw_data, output, *active_scene, *device_, *shader_program_cache_, *resource_manager_,
             *primary_viewport_, *scene_render_targets_, *tonemap_pass_resources_, imgui_renderer_.get(),
             *viewport_output_target_, global_shader_map_input_.get(), mesh_pass_programs_input_, &recorded_readback,
             &hit_proxy_table, ui_textures_.get(),
@@ -907,6 +919,21 @@ namespace toy3d
                 ui_status = record_ui_work(context, ui_readback);
                 return ui_status;
             });
+        if (output.scene_feedback && scene_renderer &&
+            output.scene_feedback->state.load(std::memory_order_acquire) == SceneRenderState::Pending)
+        {
+            const RHIStatus prepared = active_scene->preparation_status();
+            if ((!result && !rhi_is_recoverable_viewport_status(result.status())) ||
+                (!prepared && prepared.code() != RHIErrorCode::NotReady))
+            {
+                output.scene_feedback->error = !result ? result.status().message() : prepared.message();
+                output.scene_feedback->state.store(SceneRenderState::Failed, std::memory_order_release);
+            }
+            else if (prepared && result && result.value().completion_value != 0u)
+            {
+                output.scene_feedback->state.store(SceneRenderState::Ready, std::memory_order_release);
+            }
+        }
         if (result)
         {
             if (recorded_readback)
@@ -968,6 +995,15 @@ namespace toy3d
                 pending_preview_renderer_.reset();
                 return RHIResult<RHIFrameEndResult>::failure(RHIErrorCode::NotReady, "UI image job failed.");
             }
+        }
+        // A bad Play candidate can be withdrawn on GT without killing the
+        // author domain. Device/allocator/backend failures still remain terminal.
+        if (!result && output.play_scene && output.scene_feedback &&
+            output.scene_feedback->state.load(std::memory_order_acquire) == SceneRenderState::Failed &&
+            (result.status().code() == RHIErrorCode::InvalidArgument ||
+             result.status().code() == RHIErrorCode::Unsupported))
+        {
+            return RHIResult<RHIFrameEndResult>::failure(RHIErrorCode::NotReady, "Play candidate was rejected.");
         }
         return result;
     }
@@ -1258,6 +1294,11 @@ namespace toy3d
         return published_scene_interface_.load();
     }
 
+    SceneInterface* Renderer::play_scene_interface() const
+    {
+        return published_play_interface_.load();
+    }
+
     bool Renderer::is_on_logical_rendering_thread() const
     {
         const NamedThread current_thread = task_graph_.get_current_thread_if_known();
@@ -1348,6 +1389,8 @@ namespace toy3d
 
     void Renderer::release_domain(bool terminal) noexcept
     {
+        published_play_interface_.store(nullptr);
+        play_scene_.reset();
         if (builtin_update_)
         {
             builtin_update_->decision.store(BuiltinShaderDecision::Discard, std::memory_order_release);

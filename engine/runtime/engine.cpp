@@ -1,6 +1,8 @@
 #include "engine.h"
 
 #include "application/application.h"
+#include "input/input_system.h"
+#include "imgui.h"
 #include "config/command_line_parser.h"
 #include "config/console_manager.h"
 #include "config/render_backend_shader_platform.h"
@@ -271,7 +273,8 @@ namespace toy3d
             },
             global_shader_map,
             imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr,
-            application && application->uses_preview_scene(), std::move(mesh_pass_programs));
+            application && application->uses_preview_scene(), std::move(mesh_pass_programs),
+            application && application->uses_play_scene());
         rendering_thread = std::make_unique<RenderingThread>(*thread_manager, *task_graph,
                                                              use_rendering_thread ? RenderingThreadMode::MultiThread
                                                                                   : RenderingThreadMode::SingleThread);
@@ -324,6 +327,16 @@ namespace toy3d
             return false;
         }
         world->initialize();
+        if (application && application->uses_play_scene())
+        {
+            if (!renderer->play_scene_interface())
+            {
+                TOY_LOG_ERROR("Application Play Scene is unavailable.");
+                shutdown_render_framework();
+                return false;
+            }
+            application->on_initialize_play_scene(*renderer->play_scene_interface());
+        }
         if (!renderer->scene_interface() || !world->bind_scene(*renderer->scene_interface()))
         {
             TOY_LOG_ERROR("Runtime World could not bind the Renderer scene.");
@@ -350,6 +363,14 @@ namespace toy3d
             return;
         }
         output.window_extent = extent;
+        output.play_scene = application && application->renders_play_scene();
+        output.scene_feedback = application ? application->scene_render_feedback() : nullptr;
+        SceneInterface* active_scene =
+            output.play_scene ? renderer->play_scene_interface() : renderer->scene_interface();
+        if (!active_scene)
+        {
+            return;
+        }
         const Extent scene_extent = output.sample_in_ui ? output.scene_extent : extent;
 
         std::vector<SceneView> views;
@@ -374,8 +395,8 @@ namespace toy3d
         std::unique_ptr<SceneRenderer> scene_renderer;
         if (!views.empty())
         {
-            scene_renderer = std::make_unique<ForwardSceneRenderer>(
-                SceneViewFamily(*renderer->scene_interface(), scene_extent, std::move(views)));
+            scene_renderer =
+                std::make_unique<ForwardSceneRenderer>(SceneViewFamily(*active_scene, scene_extent, std::move(views)));
         }
         UiRenderWork work;
         std::unique_ptr<SceneRenderer> preview_renderer;
@@ -786,6 +807,13 @@ namespace toy3d
                                                            : ImGuiTextureId{};
                 ImGuiSnapshotResult ui_result = imgui_system->end_frame(
                     allowed_texture, application ? application->ui_texture_ids() : std::vector<ImGuiTextureId>{});
+                bool game_mouse = false;
+                bool game_keyboard = false;
+                if (application && application->game_viewport_input(game_mouse, game_keyboard))
+                {
+                    const bool text = ImGui::GetIO().WantTextInput;
+                    InputSystem::get_instance().set_capture_policy({!game_mouse || text, !game_keyboard || text, true});
+                }
                 if (!ui_result.succeeded())
                 {
                     TOY_LOG_ERROR("Runtime UI frame was rejected: {}", ui_result.diagnostic);

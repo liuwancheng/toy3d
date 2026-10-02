@@ -2,6 +2,7 @@
 
 #include "application/application.h"
 #include "scene/editor_scene_session.h"
+#include "scene/editor_play_session.h"
 #include "scene/placement/actor_factory.h"
 #include "rendercore/material/material.h"
 #include "scene/editor_selection.h"
@@ -56,6 +57,23 @@ namespace toy3d
         {
             return false;
         }
+        bool uses_play_scene() const override
+        {
+            return true;
+        }
+        void on_initialize_play_scene(SceneInterface& scene) override
+        {
+            play_scene_ = &scene;
+        }
+        bool renders_play_scene() const override
+        {
+            return play_session_.active();
+        }
+        std::shared_ptr<SceneRenderFeedback> scene_render_feedback() const override
+        {
+            return play_session_.active() ? play_session_.feedback() : nullptr;
+        }
+        bool game_viewport_input(bool& mouse, bool& keyboard) const override;
         void on_shutdown() override;
         bool on_close_requested() override;
         void on_build_ui() override;
@@ -108,7 +126,12 @@ namespace toy3d
         void draw_project_dialogs();
         void request_project_open(const PhysicalPath& descriptor);
         void launch_project();
-        void play_scene();
+        void standalone_play();
+        bool can_start_play() const;
+        void tick_play(double delta_seconds);
+        void stop_play();
+        EditorPlaySession play_session_;
+        SceneInterface* play_scene_ = nullptr;
         PhysicalPath game_executable_;
         bool scene_writable() const;
         void request_scene_save();

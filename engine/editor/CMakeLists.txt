@@ -20,6 +20,7 @@ list(APPEND EDITOR_SOURCES
 # Asset sessions/workspace remain independently usable without the runtime UI.
 add_library(Toy3dEditorCore STATIC)
 target_sources(Toy3dEditorCore PRIVATE
+    "source/scene/editor_play_session.h" "source/scene/editor_play_session.cpp"
     "source/workspace/editor_project.cpp"
     "source/scene/placement/placement_catalog.cpp"
     "source/scene/placement/actor_placement.cpp"
@@ -233,6 +234,7 @@ if(BUILD_TESTING)
     if(TOY3D_ENABLE_VULKAN_RHI AND (WIN32 OR APPLE))
         add_executable(Toy3dEditorThumbnailTests
             "tests/thumbnail_integration_tests.cpp"
+            "tests/editor_play_integration_tests.cpp"
             "source/workspace/editor_workspace.cpp"
             "source/assets/material/material_edit_session.cpp"
             "source/assets/thumbnails/asset_thumbnail_pool.cpp" "source/assets/thumbnails/thumbnail_preview_scene.cpp"
@@ -266,6 +268,8 @@ if(BUILD_TESTING)
         target_compile_options(Toy3dEditorThumbnailTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
         add_test(NAME Toy3dEditor.Thumbnail COMMAND Toy3dEditorThumbnailTests)
         set_tests_properties(Toy3dEditor.Thumbnail PROPERTIES TIMEOUT 45 RESOURCE_LOCK Toy3dGpuWindow)
+        add_test(NAME Toy3dEditor.Play COMMAND Toy3dEditorThumbnailTests --pie-integration)
+        set_tests_properties(Toy3dEditor.Play PROPERTIES TIMEOUT 45 RESOURCE_LOCK Toy3dGpuWindow)
     endif()
     add_executable(Toy3dEditorWorkspaceTests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/workspace_tests.cpp"

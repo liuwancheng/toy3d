@@ -19,6 +19,11 @@
 #include "viewport/scene_viewport.h"
 #include "workspace/editor_workspace.h"
 
+#if defined(TOY3D_TEST_SHADER_ROOT)
+bool check_editor_play(toy3d::EditorWorkspace& workspace, const toy3d::ActorTypeRegistry& actors,
+                       const toy3d::SceneAssetData& authored);
+#endif
+
 namespace
 {
     int failures = 0;
@@ -433,6 +438,9 @@ namespace
                     const auto identity = session.asset_id();
                     SceneAssetData snapshot;
                     check(session.capture(snapshot), "Capture Play snapshot");
+#if defined(TOY3D_TEST_SHADER_ROOT)
+                    check(check_editor_play(workspace, actors, snapshot), "Isolated PIE lifecycle and native Actor");
+#endif
                     AssetId play_id;
                     AssetId::try_generate(play_id);
                     const auto encoded =

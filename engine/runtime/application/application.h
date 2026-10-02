@@ -8,6 +8,7 @@
 #include "rendercore/shader/builtin_shader_update.h"
 
 #include <vector>
+#include <memory>
 
 namespace toy3d
 {
@@ -15,6 +16,7 @@ namespace toy3d
     class World;
     class SceneInterface;
     class TaskGraphInterface;
+    struct SceneRenderFeedback;
 
     // Application owns project-level policy and state. Engine owns the World
     // and Window and binds them once before World initialization; gameplay
@@ -65,6 +67,27 @@ namespace toy3d
             return true;
         }
         virtual bool uses_preview_scene() const
+        {
+            return false;
+        }
+        virtual bool uses_play_scene() const
+        {
+            return false;
+        }
+        virtual void on_initialize_play_scene(SceneInterface&)
+        {
+        }
+        virtual bool renders_play_scene() const
+        {
+            return false;
+        }
+        virtual std::shared_ptr<SceneRenderFeedback> scene_render_feedback() const
+        {
+            return {};
+        }
+        // A game viewport may accept input despite ImGui owning its Image widget.
+        // Return false to retain normal UI capture. Text/modal always wins.
+        virtual bool game_viewport_input(bool& mouse, bool& keyboard) const
         {
             return false;
         }

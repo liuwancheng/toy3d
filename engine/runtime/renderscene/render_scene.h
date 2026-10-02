@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rendercore/scene_interface.h"
+#include "drivers/rhi/rhi_result.h"
 
 #include <memory>
 #include <vector>
@@ -40,6 +41,7 @@ namespace toy3d
         void remove_light(LightSceneProxy* proxy) override;
         // Read only on the logical Rendering Thread while constructing forward pass parameters.
         const std::vector<std::unique_ptr<LightSceneProxy>>& lights() const;
+        RHIStatus preparation_status() const;
         bool light_limit_reported() const
         {
             return light_limit_reported_;
@@ -71,5 +73,6 @@ namespace toy3d
         std::vector<std::unique_ptr<PrimitiveSceneInfo>> primitives_;
         std::vector<std::unique_ptr<LightSceneProxy>> lights_;
         bool light_limit_reported_ = false;
+        RHIStatus preparation_error_;
     };
 } // namespace toy3d

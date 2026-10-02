@@ -21,6 +21,7 @@
 #include "gamescene/component/static_mesh_component.h"
 #include "gamescene/scene_assembly.h"
 #include "gamescene/scene_geometry.h"
+#include "gamescene/scene_view.h"
 #include "logging/logger.h"
 #include "misc/sha256.h"
 #include "shader/shader_map_entry.h"
@@ -224,37 +225,7 @@ namespace toy3d
             }
             void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
             {
-                for (const auto id : world().actor_ids())
-                {
-                    const Actor* actor = world().find_actor_by_id(id);
-                    for (const auto component_id : actor->component_ids())
-                    {
-                        if (const auto* camera =
-                                dynamic_cast<const CameraComponent*>(actor->find_component_by_id(component_id)))
-                        {
-                            const auto& settings = camera->camera_settings();
-                            const Vector3 position(camera->world_transform().at(3, 0),
-                                                   camera->world_transform().at(3, 1),
-                                                   camera->world_transform().at(3, 2));
-                            const auto rotation = camera->world_rotation();
-                            views.emplace_back(position, rotation, rotate_vector(rotation, Vector3(0, 0, 1)),
-                                               IntRect{0, 0, extent.width, extent.height}, extent,
-                                               camera->projection_mode(), to_radians(Degrees(settings.vertical_fov)),
-                                               settings.near_clip, settings.far_clip);
-                            return;
-                        }
-                    }
-                }
-                // A scene without a Camera still has a useful Game preview viewpoint.
-                const Vector3 position(650, 450, -900);
-                const Vector3 direction = normalized_or_zero(Vector3(0, 100, 0) - position);
-                Quaternion rotation;
-                if (!try_make_rotation_from_forward_up(direction, Vector3(0, 1, 0), rotation))
-                {
-                    return;
-                }
-                views.emplace_back(position, rotation, direction, IntRect{0, 0, extent.width, extent.height}, extent,
-                                   CameraProjectionMode::Perspective, to_radians(Degrees(60)), 10.0f, 100000.0f);
+                build_game_scene_views(world(), views, extent);
             }
             void on_shutdown() override
             {

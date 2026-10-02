@@ -10,7 +10,7 @@ Application 表达项目侧策略，Engine 管运行设施/World/渲染生命周
 
 root 持有文件系统、任务调度、Engine/Renderer 等服务；World 在 GT，Renderer 在逻辑 RT。SceneInterface 只在 Renderer Running 后发布，关闭前撤回。退出先停业务/异步请求，cancel/join 工具工作，再 drain/释放渲染，最后 shutdown TaskGraph/平台；完整次序见 [Render Framework](render-framework.md)。
 
-Editor 启动策略不进入 main World play，不能顺带运行 gameplay tick；缩略图/预览使用独立 World，不污染主场景。
+Editor 启动策略不进入 main World play；PIE 由 Editor 拥有独立 World，只在 Playing 推进 gameplay，不能顺带 tick 编辑 World。缩略图/预览也使用独立 World。Game 与 PIE 共用 gamescene/scene_view.h：按 Actor/Component 顺序选择首个 Camera，无 Camera 使用统一备用视角。
 
 Editor 入口在 Workspace 初始化前创建 LogBuffer 并调用 Engine::initialize_logging(buffer)，随后 pre_init 复用同一 Logger，避免丢失启动记录；业务/渲染线程退出后才关闭日志并最终 flush。Core 日志 contract 见 [Core](core.md#日志分发)，查看面板见 [Editor](editor.md)。
 
@@ -84,9 +84,9 @@ Editor 未指定工程时打开 `/Engine/Scenes/Default.scene`；有效工程按
 
 工程 Saved 放 `<工程>/saved`；无工程放 OS 用户数据根/Toy3d/Editor。日志每 Editor/Game 实例分别用 editor-<session-id>.log / game-<session-id>.log；布局和 Shader 缓存在同一 Saved 下。资源工程不加入引擎 CMake、不拷贝到 bin；引擎部署只复制自身 asset/config 和 Editor UI 资源。`--Project=D:/path/Game.toy` 可显式打开工程。
 
-创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有自定义脚本保留；仅完全匹配已知生成模板的旧脚本升级为当前宿主。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本按模块启动 Toy3dEditor 或 <Module>Editor，不自动构建；Game 可直接启动或由 Scene > Play 启动；Saved 记录为本机缓存，不纳入版本管理。
+创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有自定义脚本保留；仅完全匹配已知生成模板的旧脚本升级为当前宿主。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本按模块启动 Toy3dEditor 或 <Module>Editor，不自动构建；Game 可直接启动或由 Scene > Standalone Play 启动；Saved 记录为本机缓存，不纳入版本管理。
 
-验证入口：editor/tests/project_tests.cpp（描述、创建/移动、隔离、默认资产/无工程挂载）、runtime/tests/console_manager_tests.cpp（覆盖来源、失败整层保留）、editor/tests/editor_framework_tests.cpp（场景路径读取和 clean 状态）。项目扩展验证见 project/tests/rotating_actor_tests.cpp。进程内切换、PIE、DLL 热重载、C++ 模板生成和 Cook 尚未实现。Game 读取编译器已发布的单一 permutation / VulkanES31 Forward Program（从已验证条目读取 key，支持带 Variant 的默认编译；同一发布位置有多个 permutation 时明确拒绝，不猜选择）：优先 Saved/shader 的 publication，缺记录才查部署 ShaderMapEntry；条目完整校验，损坏/缺失报错，不在 Game 编译源码。Saved 目录不是独立发行包，资源迁移/Cook 另行设计。界面规则见 [Editor](editor.md#工程与-scene-菜单)，源码发现见 [Shader](shader.md#项目源码自动发现)。
+验证入口：editor/tests/project_tests.cpp（描述、创建/移动、隔离、默认资产/无工程挂载）、runtime/tests/console_manager_tests.cpp（覆盖来源、失败整层保留）、editor/tests/editor_framework_tests.cpp（场景路径读取和 clean 状态）。项目扩展验证见 project/tests/rotating_actor_tests.cpp。工程进程内切换、DLL 热重载、C++ 模板生成和 Cook 尚未实现。Game 读取编译器已发布的单一 permutation / VulkanES31 Forward Program（从已验证条目读取 key，支持带 Variant 的默认编译；同一发布位置有多个 permutation 时明确拒绝，不猜选择）：优先 Saved/shader 的 publication，缺记录才查部署 ShaderMapEntry；条目完整校验，损坏/缺失报错，不在 Game 编译源码。Saved 目录不是独立发行包，资源迁移/Cook 另行设计。界面规则见 [Editor](editor.md#工程与-scene-菜单)，源码发现见 [Shader](shader.md#项目源码自动发现)。
 
 工程缺少 Git 规则时同时补齐 .gitignore（忽略 /saved/）和 .gitattributes（launch_editor.sh 保持 LF），已有规则文件保留；自定义规则须自行保留上述约束，避免提交本机启动缓存或把 shell 脚本检出为 CRLF。
 

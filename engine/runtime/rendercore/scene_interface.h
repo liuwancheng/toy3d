@@ -5,10 +5,28 @@
 #include "rendercore/scene/light_scene_proxy.h"
 
 #include <memory>
+#include <atomic>
+#include <string>
 #include <vector>
 
 namespace toy3d
 {
+    enum class SceneRenderState
+    {
+        Pending,
+        Ready,
+        Failed
+    };
+
+    // One preparation attempt. RT writes error before release-publishing Failed;
+    // GT reads it only after acquiring a completed state. Ready means a submitted
+    // scene frame, not GPU completion. Shared ownership retains in-flight feedback.
+    struct SceneRenderFeedback
+    {
+        std::atomic<SceneRenderState> state{SceneRenderState::Pending};
+        std::string error;
+    };
+
     class PrimitiveSceneProxy;
     class MaterialRenderProxy;
 

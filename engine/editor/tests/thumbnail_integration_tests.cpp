@@ -33,6 +33,7 @@
 #include "rendercore/frame_synchronization.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
+bool check_editor_play_integration(toy3d::EditorWorkspace& workspace, void* platform_context);
 #if WITH_MODEL_IMPORT
 #include "assets/mesh/static_mesh_asset_tools.h"
 #include "asset_pipeline/static_mesh_import.h"
@@ -457,7 +458,7 @@ namespace
     };
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     using namespace toy3d;
     std::string destination = "unchanged", error;
@@ -570,6 +571,16 @@ int main()
 #endif
     CommandLineParser::get_instance().parser_args(
         {"ThumbnailTests", "--Window.Width=720", "--Window.Height=480", "--Window.Title=Thumbnail Tests"});
+    if (argc == 2 && std::string(argv[1]) == "--pie-integration")
+    {
+#if WITH_WIN
+        return check_editor_play_integration(workspace, static_cast<void*>(GetModuleHandleW(nullptr)))
+#else
+        return check_editor_play_integration(workspace, nullptr)
+#endif
+                   ? EXIT_SUCCESS
+                   : EXIT_FAILURE;
+    }
     TestState state;
     {
         Engine engine;

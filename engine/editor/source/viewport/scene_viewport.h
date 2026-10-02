@@ -12,13 +12,18 @@ namespace toy3d
     class EditorSelection;
     class EditorCommandHistory;
     class World;
+    class EditorPlaySession;
 
     class SceneViewport
     {
       public:
         SceneViewport();
         void begin_frame();
-        void draw(World& world, EditorSelection& selection, EditorCommandHistory& history);
+        void draw(World& world, EditorSelection& selection, EditorCommandHistory& history,
+                  EditorPlaySession* play = nullptr, bool can_play = false);
+        bool game_input_captured() const;
+        bool game_mouse_input() const;
+        void release_game_input();
         bool extent(Extent& extent) const;
         bool take_hit_request(HitProxyRequest& request);
         bool take_asset_placement(AssetPlacementRequest& request);
@@ -53,5 +58,8 @@ namespace toy3d
         EditorViewportGizmo gizmo_;
         AssetPlacementRequest asset_placement_;
         bool asset_placement_pending_ = false;
+        bool game_input_captured_ = false;
+        bool game_view_visible_ = false;
+        bool game_view_hovered_ = false;
     };
 } // namespace toy3d

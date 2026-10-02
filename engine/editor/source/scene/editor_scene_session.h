@@ -23,6 +23,10 @@ namespace toy3d
         {
             return history_;
         }
+        const EditorCommandHistory& history() const
+        {
+            return history_;
+        }
         const AssetId& asset_id() const
         {
             return asset_id_;

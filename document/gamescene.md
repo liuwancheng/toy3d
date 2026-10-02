@@ -32,7 +32,7 @@ Scene schema 6 持久化 Actor type/properties；kind 仅保留内置放置类�
 
 `assemble_scene` 复用 Runtime 的组件创建/capture/apply 与 SceneGeometry：先验证类型/属性和解析几何，再构建新 Actor/组件并恢复完整附着图；失败只撤回候选，成功才移除旧场景。资源解析和 Material 赋值通过 SceneAssemblyServices 注入，服务持有者负责对应失败回滚。Editor 保留选择/历史/dirty/保存冲突；Game 完整装配、绑定渲染后 begin_play，关闭先 unregister，再 drain 渲染资源。
 
-实际项目示例见 `project/src/rotating_actor.h/.cpp` 与 `shadow_demo_module.cpp`。RotatingActor 有 enabled、axis 和 speed_degrees_per_second；axis 必须可归一化，speed 必须有限且绝对值不超过 36000。tick 将 delta_seconds 转成角度，绕 root 本地轴组合并归一化 Quaternion，只改 rotation，保留 translation/scale。设置改变递增内容 revision；没有 root 或旋转发布失败时记录日志并停止 tick。Editor World 不 begin_play，因此只在独立 Game 中自转。
+实际项目示例见 `project/src/rotating_actor.h/.cpp` 与 `shadow_demo_module.cpp`。RotatingActor 有 enabled、axis 和 speed_degrees_per_second；axis 必须可归一化，speed 必须有限且绝对值不超过 36000。tick 将 delta_seconds 转成角度，绕 root 本地轴组合并归一化 Quaternion，只改 rotation，保留 translation/scale。设置改变递增内容 revision；没有 root 或旋转发布失败时记录日志并停止 tick。编辑 World 不 begin_play，自转发生在独立 Game 或 PIE 的运行 World，运行姿态不写回编辑场景。PIE 生命周期见 [Editor](editor.md#视口内-play)。
 
 ## 开发入口与验证
 

@@ -10,6 +10,7 @@
 #include "gamescene/actor/actor.h"
 #include "asset/asset_descriptor_path.h"
 #include "gamescene/world/world.h"
+#include "gamescene/scene_view.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
 #include "math/quaternion.h"
@@ -30,6 +31,10 @@ namespace toy3d
 
     bool EditorApplication::save_scene(const VirtualPath& path, bool create_new)
     {
+        if (play_session_.active())
+        {
+            return false;
+        }
         const bool saved = scene_session_.save(path, create_new);
         scene_error_ = scene_session_.error();
         if (!saved)
@@ -41,6 +46,10 @@ namespace toy3d
 
     bool EditorApplication::open_scene(const AssetId& id)
     {
+        if (play_session_.active())
+        {
+            return false;
+        }
         const bool opened = scene_session_.open(id);
         scene_error_ = scene_session_.error();
         if (!opened)
@@ -52,6 +61,10 @@ namespace toy3d
 
     void EditorApplication::new_scene()
     {
+        if (play_session_.active())
+        {
+            return;
+        }
         if (!scene_session_.new_scene())
         {
             TOY_LOG_ERROR("New Scene failed: {}", scene_session_.error());
@@ -61,6 +74,14 @@ namespace toy3d
 
     void EditorApplication::request_scene_action(SceneAction action, const AssetId& id)
     {
+        if (play_session_.active())
+        {
+            if (action == SceneAction::Exit)
+            {
+                window().close();
+            }
+            return;
+        }
         pending_scene_action_ = action;
         pending_scene_id_ = id;
         if (scene_dirty() && !(action == SceneAction::SwitchProject && project_scene_saved_ &&
@@ -92,6 +113,10 @@ namespace toy3d
 
     bool EditorApplication::on_close_requested()
     {
+        if (play_session_.active())
+        {
+            stop_play();
+        }
         if (!material_editor_.request_exit())
         {
             return false;
@@ -342,12 +367,16 @@ namespace toy3d
         return register_panels();
     }
 
-    void EditorApplication::on_tick(double)
+    void EditorApplication::on_tick(double delta_seconds)
     {
+        tick_play(delta_seconds);
         scene_session_.history().synchronize(world());
         thumbnails_.tick();
         texture_preview_.tick();
-        tick_shaders();
+        if (!play_session_.active())
+        {
+            tick_shaders();
+        }
         if (startup_pending_ && (!shader_workflow_ready_ || !shaders_.busy()))
         {
             load_startup_scene();
@@ -419,6 +448,8 @@ namespace toy3d
 
     void EditorApplication::on_shutdown()
     {
+        stop_play();
+        play_scene_ = nullptr;
         panels_.clear();
         asset_editors_.clear();
         place_actors_.clear();
@@ -469,7 +500,13 @@ namespace toy3d
             panel.id = id;
             panel.title = title;
             panel.window_name = window;
-            panel.draw = std::move(draw);
+            panel.draw = [this, id, draw = std::move(draw)]()
+            {
+                const bool read_only = play_session_.active() && std::string(id) != "scene_viewport";
+                ImGui::BeginDisabled(read_only);
+                draw();
+                ImGui::EndDisabled();
+            };
             panel.undo = [this]()
             {
                 apply_scene_history(false);
@@ -494,7 +531,9 @@ namespace toy3d
                           "Place Actors",
                           [this]()
                           {
+                              ImGui::BeginDisabled(play_session_.active());
                               place_actors_.draw(&actor_factory_.actor_types());
+                              ImGui::EndDisabled();
                           },
                           {},
                           {},
@@ -517,7 +556,8 @@ namespace toy3d
             !add_scene_panel("scene_viewport", "Scene Viewport", "Scene Viewport###Game Viewport",
                              [this]()
                              {
-                                 scene_viewport_.draw(world(), selection_, scene_session_.history());
+                                 scene_viewport_.draw(world(), selection_, scene_session_.history(), &play_session_,
+                                                      can_start_play());
                              }) ||
             !panels_.add({"content_browser",
                           "Content Browser",
@@ -542,7 +582,9 @@ namespace toy3d
             !panels_.add({"material_editor", "Material Editor", "Material Editor",
                           [this]()
                           {
+                              ImGui::BeginDisabled(play_session_.active());
                               material_editor_.draw();
+                              ImGui::EndDisabled();
                           },
                           [this]()
                           {
@@ -604,9 +646,19 @@ namespace toy3d
 
     void EditorApplication::draw_asset_browser()
     {
+        ImGui::BeginDisabled(play_session_.active());
         const ContentBrowserActions browser =
             content_browser_.draw(workspace_, selection_, asset_folder_, show_engine_content_, thumbnails_,
                                   WITH_MODEL_IMPORT != 0 && workspace_.has_project());
+        ImGui::EndDisabled();
+        if (play_session_.active())
+        {
+            FileDropEvent discarded;
+            while (window().take_file_drop(discarded))
+            {
+            }
+            return;
+        }
         if (browser.assets_refreshed)
         {
             texture_preview_.invalidate();
@@ -898,8 +950,15 @@ namespace toy3d
                                   show_project_settings_ || show_scene_save_as_ || material_create_.active() ||
                                   shader_create_.active() || material_editor_.modal_pending() ||
                                   ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
-        if (!modal_active && actor_panel_focused && selection_.focus() == EditorSelectionFocus::Actor &&
-            !io.WantTextInput && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Delete))
+        // Keep Stop available even when the viewport tab is hidden/collapsed.
+        if (play_session_.active() && !modal_active && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            play_session_.request(EditorPlayAction::Stop);
+            scene_viewport_.release_game_input();
+        }
+        if (!play_session_.active() && !modal_active && actor_panel_focused &&
+            selection_.focus() == EditorSelectionFocus::Actor && !io.WantTextInput && !ImGui::IsAnyItemActive() &&
+            ImGui::IsKeyPressed(ImGuiKey_Delete))
         {
             if (scene_session_.history().delete_actor(world(), selection_.actor_id()))
             {
@@ -907,15 +966,20 @@ namespace toy3d
                 scene_viewport_.cancel_pending_hit();
             }
         }
-        panels_.process_shortcuts(model_import_.active() || texture_import_.active() || show_new_project_ ||
-                                  show_project_settings_ || show_scene_save_as_ || material_create_.active() ||
-                                  shader_create_.active() || material_editor_.modal_pending());
+        panels_.process_shortcuts(play_session_.active() || model_import_.active() || texture_import_.active() ||
+                                  show_new_project_ || show_project_settings_ || show_scene_save_as_ ||
+                                  material_create_.active() || shader_create_.active() ||
+                                  material_editor_.modal_pending());
         notifications_.update(shaders_.task_status());
         notifications_.draw(console_, shaders_);
     }
 
     void EditorApplication::apply_scene_history(bool redo)
     {
+        if (play_session_.active())
+        {
+            return;
+        }
         auto& history = scene_session_.history();
         const bool applied = redo ? history.redo(world()) : history.undo(world());
         if (!applied && !history.error().empty())
@@ -931,6 +995,10 @@ namespace toy3d
 
     void EditorApplication::undo_edit()
     {
+        if (play_session_.active())
+        {
+            return;
+        }
         if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() || show_new_project_ ||
             show_project_settings_ || show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
             material_editor_.modal_pending())
@@ -942,6 +1010,10 @@ namespace toy3d
 
     void EditorApplication::redo_edit()
     {
+        if (play_session_.active())
+        {
+            return;
+        }
         if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() || show_new_project_ ||
             show_project_settings_ || show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
             material_editor_.modal_pending())
@@ -958,11 +1030,19 @@ namespace toy3d
 
     bool EditorApplication::on_hit_proxy_request(HitProxyRequest& request)
     {
+        if (play_session_.active())
+        {
+            return false;
+        }
         return scene_viewport_.take_hit_request(request);
     }
 
     void EditorApplication::on_hit_proxy_result(const HitProxyResult& result)
     {
+        if (play_session_.active())
+        {
+            return;
+        }
         scene_viewport_.receive_hit_result(world(), selection_, result);
     }
 
@@ -973,6 +1053,13 @@ namespace toy3d
 
     void EditorApplication::on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const
     {
-        scene_viewport_.build_scene_views(world(), views, extent);
+        if (play_session_.active() && play_session_.world())
+        {
+            build_game_scene_views(*play_session_.world(), views, extent);
+        }
+        else
+        {
+            scene_viewport_.build_scene_views(world(), views, extent);
+        }
     }
 } // namespace toy3d

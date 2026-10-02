@@ -16,7 +16,7 @@ namespace toy3d
             const bool project_commands = !shaders_.busy() && !model_import_.active() && !texture_import_.active() &&
                                           !material_create_.active() && !shader_create_.active() &&
                                           !waiting_material_project_;
-            if (ImGui::BeginMenu("Scene"))
+            if (ImGui::BeginMenu("Scene", !play_session_.active()))
             {
                 if (ImGui::MenuItem("New Project...", nullptr, false, project_commands))
                 {
@@ -47,12 +47,10 @@ namespace toy3d
                     }
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("Play", nullptr, false,
-                                    workspace_.has_project() && !game_executable_.empty() && !startup_pending_ &&
-                                        !shaders_.busy() && !model_import_.active() && !texture_import_.active() &&
-                                        !scene_session_.history().active()))
+                if (ImGui::MenuItem("Standalone Play", nullptr, false,
+                                    workspace_.has_project() && !game_executable_.empty() && can_start_play()))
                 {
-                    play_scene();
+                    standalone_play();
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("New Scene"))
@@ -91,9 +89,9 @@ namespace toy3d
             }
             if (ImGui::BeginMenu("Tools"))
             {
-                if (ImGui::BeginMenu("Create", workspace_.has_project() && !model_import_.active() &&
-                                                   !texture_import_.active() && !material_create_.active() &&
-                                                   !shader_create_.active()))
+                if (ImGui::BeginMenu("Create", !play_session_.active() && workspace_.has_project() &&
+                                                   !model_import_.active() && !texture_import_.active() &&
+                                                   !material_create_.active() && !shader_create_.active()))
                 {
                     if (ImGui::MenuItem("Create Material..."))
                     {
@@ -109,7 +107,8 @@ namespace toy3d
                     }
                     ImGui::EndMenu();
                 }
-                if (ImGui::BeginMenu("Import", workspace_.has_project() && !shader_create_.active()))
+                if (ImGui::BeginMenu("Import",
+                                     !play_session_.active() && workspace_.has_project() && !shader_create_.active()))
                 {
 #if WITH_MODEL_IMPORT
                     if (ImGui::MenuItem("Import Static Mesh...", nullptr, false,
@@ -135,7 +134,7 @@ namespace toy3d
                     }
                     ImGui::EndMenu();
                 }
-                if (ImGui::BeginMenu("Shaders"))
+                if (ImGui::BeginMenu("Shaders", !play_session_.active()))
                 {
                     if (ImGui::MenuItem("Recompile Shaders", nullptr, false,
                                         shader_workflow_ready_ && !shaders_.busy()))
@@ -165,7 +164,7 @@ namespace toy3d
                 }
                 ImGui::EndMenu();
             }
-            if (ImGui::BeginMenu("Edit"))
+            if (ImGui::BeginMenu("Edit", !play_session_.active()))
             {
                 if (ImGui::MenuItem("Undo", "Ctrl+Z"))
                 {
