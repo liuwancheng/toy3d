@@ -13,9 +13,9 @@ namespace toy3d
     {
         if (ImGui::BeginMainMenuBar())
         {
-            const bool project_commands = !shaders_.busy() && !model_import_.active() && !texture_import_.active() &&
-                                          !material_create_.active() && !shader_create_.active() &&
-                                          !waiting_material_project_;
+            const bool project_commands = !shaders_.busy() && !model_import_.active() && !skeletal_import_.active() &&
+                                          !texture_import_.active() && !material_create_.active() &&
+                                          !shader_create_.active() && !waiting_material_project_;
             if (ImGui::BeginMenu("Scene", !play_session_.active()))
             {
                 if (ImGui::MenuItem("New Project...", nullptr, false, project_commands))
@@ -90,8 +90,9 @@ namespace toy3d
             if (ImGui::BeginMenu("Tools"))
             {
                 if (ImGui::BeginMenu("Create", !play_session_.active() && workspace_.has_project() &&
-                                                   !model_import_.active() && !texture_import_.active() &&
-                                                   !material_create_.active() && !shader_create_.active()))
+                                                   !model_import_.active() && !skeletal_import_.active() &&
+                                                   !texture_import_.active() && !material_create_.active() &&
+                                                   !shader_create_.active()))
                 {
                     if (ImGui::MenuItem("Create Material..."))
                     {
@@ -111,9 +112,27 @@ namespace toy3d
                                      !play_session_.active() && workspace_.has_project() && !shader_create_.active()))
                 {
 #if WITH_MODEL_IMPORT
+                    if (ImGui::MenuItem("Import Skeletal Mesh...", nullptr, false,
+                                        !material_create_.active() && !texture_import_.active() &&
+                                            !model_import_.active() && !skeletal_import_.active()))
+                    {
+                        if (!skeletal_import_.request(asset_folder_))
+                        {
+                            model_error_ = skeletal_import_.error();
+                        }
+                    }
+                    if (ImGui::MenuItem("Import Animation...", nullptr, false,
+                                        !material_create_.active() && !texture_import_.active() &&
+                                            !model_import_.active() && !skeletal_import_.active()))
+                    {
+                        if (!skeletal_import_.request(asset_folder_, true))
+                        {
+                            model_error_ = skeletal_import_.error();
+                        }
+                    }
                     if (ImGui::MenuItem("Import Static Mesh...", nullptr, false,
                                         !material_create_.active() && !shader_create_.active() &&
-                                            !texture_import_.active()))
+                                            !texture_import_.active() && !skeletal_import_.active()))
                     {
                         if (!model_import_.request(asset_folder_))
                         {
@@ -123,8 +142,8 @@ namespace toy3d
                     }
 #endif
                     if (ImGui::MenuItem("Import Texture2D...", nullptr, false,
-                                        !model_import_.active() && !material_create_.active() &&
-                                            !shader_create_.active()))
+                                        !model_import_.active() && !skeletal_import_.active() &&
+                                            !material_create_.active() && !shader_create_.active()))
                     {
                         if (!texture_import_.request(asset_folder_))
                         {
@@ -133,8 +152,8 @@ namespace toy3d
                         }
                     }
                     if (ImGui::MenuItem("Import Environment...", nullptr, false,
-                                        !model_import_.active() && !material_create_.active() &&
-                                            !shader_create_.active()))
+                                        !model_import_.active() && !skeletal_import_.active() &&
+                                            !material_create_.active() && !shader_create_.active()))
                     {
                         if (!texture_import_.request_environment(asset_folder_))
                         {

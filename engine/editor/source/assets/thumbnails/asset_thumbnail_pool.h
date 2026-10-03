@@ -1,5 +1,7 @@
 #pragma once
 
+#include "assets/animation/animation_preview_asset.h"
+
 #include "asset/thumbnail/asset_thumbnail.h"
 #include "assets/thumbnails/thumbnail_preview_scene.h"
 #include "threading/task_graph/task_graph_interface.h"
@@ -73,6 +75,7 @@ namespace toy3d
             AssetThumbnailSource source;
             std::vector<std::uint8_t> original;
             std::vector<std::uint8_t> pixels;
+            std::shared_ptr<const AnimationPreviewAsset> skeletal;
         };
         struct CpuResult;
         void start_load(Entry& entry);

@@ -28,17 +28,30 @@ namespace toy3d
             return {AssetErrorCode::Value, {}, {}, {}, {}, message, {}};
         }
 
-        struct SourceNode
+        bool canonicalize_affine(Matrix4& matrix)
         {
-            const aiNode* node = nullptr;
-            Matrix4 world;
-        };
+            // General matrix inversion can round the affine row. Preserve strict asset encoding,
+            // accepting only arithmetic noise at the source conversion boundary.
+            constexpr float affine_rounding_tolerance = 0.000001f;
+            if (!is_finite(matrix) || std::abs(matrix.at(0, 3)) > affine_rounding_tolerance ||
+                std::abs(matrix.at(1, 3)) > affine_rounding_tolerance ||
+                std::abs(matrix.at(2, 3)) > affine_rounding_tolerance ||
+                std::abs(matrix.at(3, 3) - 1) > affine_rounding_tolerance)
+            {
+                return false;
+            }
+            matrix.at(0, 3) = 0;
+            matrix.at(1, 3) = 0;
+            matrix.at(2, 3) = 0;
+            matrix.at(3, 3) = 1;
+            return true;
+        }
 
-        bool collect_nodes(const aiNode& node, const Matrix4& parent, std::map<std::string, SourceNode>& nodes,
+        bool collect_nodes(const aiNode& node, const Matrix4& parent, std::map<const aiNode*, Matrix4>& nodes,
+                           std::map<std::string, std::vector<const aiNode*>>& names,
                            std::vector<const aiNode*>& ordered, std::size_t depth)
         {
-            const std::string name = node.mName.C_Str();
-            if (depth > max_import_depth || nodes.size() >= max_import_nodes || name.empty() || nodes.count(name))
+            if (depth > max_import_depth || nodes.size() >= max_import_nodes || nodes.count(&node))
             {
                 return false;
             }
@@ -47,11 +60,13 @@ namespace toy3d
             {
                 return false;
             }
-            nodes.emplace(name, SourceNode{&node, world});
+            // Scene nodes have identity independently of names; only skeletal name lookup must be unique.
+            nodes.emplace(&node, world);
+            names[node.mName.C_Str()].push_back(&node);
             ordered.push_back(&node);
             for (unsigned i = 0; i < node.mNumChildren; ++i)
             {
-                if (!node.mChildren[i] || !collect_nodes(*node.mChildren[i], world, nodes, ordered, depth + 1))
+                if (!node.mChildren[i] || !collect_nodes(*node.mChildren[i], world, nodes, names, ordered, depth + 1))
                 {
                     return false;
                 }
@@ -59,15 +74,15 @@ namespace toy3d
             return true;
         }
 
-        bool add_ancestors(const std::string& name, const std::map<std::string, SourceNode>& nodes,
+        bool add_ancestors(const std::string& name, const std::map<std::string, std::vector<const aiNode*>>& nodes,
                            std::set<const aiNode*>& required)
         {
             const auto found = nodes.find(name);
-            if (found == nodes.end())
+            if (found == nodes.end() || found->second.size() != 1)
             {
                 return false;
             }
-            const aiNode* node = found->second.node;
+            const aiNode* node = found->second.front();
             while (node)
             {
                 required.insert(node);
@@ -186,7 +201,9 @@ namespace toy3d
         {
             return Result(invalid("skeletal import requires FBX/glTF/GLB, an asset identity and a 30/60 Hz rate"));
         }
-        auto io = std::make_unique<assimp_import::ImportIO>(files, path.substr(0, path.find_last_of('/')));
+        std::vector<ImportedModelSource> source_files;
+        auto io =
+            std::make_unique<assimp_import::ImportIO>(files, path.substr(0, path.find_last_of('/')), &source_files);
         auto* io_observer = io.get();
         Assimp::Importer importer;
         importer.SetIOHandler(io.release());
@@ -208,13 +225,27 @@ namespace toy3d
         {
             return Result(invalid("invalid source coordinate conversion"));
         }
-        std::map<std::string, SourceNode> nodes;
+        std::map<const aiNode*, Matrix4> nodes;
+        std::map<std::string, std::vector<const aiNode*>> names;
         std::vector<const aiNode*> ordered;
-        if (!collect_nodes(*scene->mRootNode, Matrix4::identity(), nodes, ordered, 0))
+        if (!collect_nodes(*scene->mRootNode, Matrix4::identity(), nodes, names, ordered, 0))
         {
-            return Result(invalid("source node hierarchy has duplicate names or exceeds limits"));
+            return Result(invalid("source node hierarchy is invalid or exceeds limits"));
         }
         std::set<const aiNode*> required;
+        std::set<const aiNode*> deform_nodes;
+        std::set<const aiNode*> mesh_ancestors;
+        for (const auto* node : ordered)
+        {
+            if (node->mNumMeshes == 0)
+            {
+                continue;
+            }
+            for (const aiNode* ancestor = node; ancestor; ancestor = ancestor->mParent)
+            {
+                mesh_ancestors.insert(ancestor);
+            }
+        }
         std::size_t deform_count = 0;
         for (unsigned i = 0; i < scene->mNumMeshes; ++i)
         {
@@ -225,16 +256,45 @@ namespace toy3d
             }
             for (unsigned j = 0; j < mesh->mNumBones; ++j)
             {
-                if (!mesh->mBones[j] || !add_ancestors(mesh->mBones[j]->mName.C_Str(), nodes, required))
+                if (!mesh->mBones[j] || !add_ancestors(mesh->mBones[j]->mName.C_Str(), names, required))
                 {
-                    return Result(invalid("deform bone is absent from the source hierarchy"));
+                    return Result(invalid("deform bone name is absent or ambiguous in the source hierarchy"));
                 }
+                deform_nodes.insert(names.at(mesh->mBones[j]->mName.C_Str()).front());
                 ++deform_count;
             }
         }
-        if (deform_count == 0 || required.size() > max_skeleton_bones)
+        if (deform_count == 0)
         {
             return Result(invalid("source has no skin or exceeds the skeleton budget"));
+        }
+        // Remove scene/export containers shared by geometry and skeleton, never a deform bone.
+        // Non-deform helpers inside the skeleton remain. Multiple independent roots are unsupported.
+        const aiNode* skeleton_root = scene->mRootNode;
+        while (mesh_ancestors.count(skeleton_root) && deform_nodes.count(skeleton_root) == 0)
+        {
+            const aiNode* child = nullptr;
+            for (unsigned i = 0; i < skeleton_root->mNumChildren; ++i)
+            {
+                if (required.count(skeleton_root->mChildren[i]))
+                {
+                    if (child)
+                    {
+                        return Result(invalid("source contains multiple skeleton roots"));
+                    }
+                    child = skeleton_root->mChildren[i];
+                }
+            }
+            if (!child)
+            {
+                return Result(invalid("source skeleton root cannot be resolved"));
+            }
+            required.erase(skeleton_root);
+            skeleton_root = child;
+        }
+        if (required.size() > max_skeleton_bones)
+        {
+            return Result(invalid("source exceeds the skeleton budget"));
         }
         ImportedSkeletalMesh result;
         std::map<std::string, std::uint32_t> bone_indices;
@@ -247,16 +307,23 @@ namespace toy3d
             }
             SkeletonBone bone;
             bone.name = node->mName.C_Str();
+            if (bone.name.empty() || bone_indices.count(bone.name))
+            {
+                return Result(invalid("source skeleton has empty or duplicate bone names"));
+            }
             bone.parent_index =
-                node->mParent ? static_cast<std::int32_t>(bone_indices.at(node->mParent->mName.C_Str())) : -1;
+                node == skeleton_root ? -1 : static_cast<std::int32_t>(bone_indices.at(node->mParent->mName.C_Str()));
             const auto converted_local =
-                conversion * assimp_import::matrix_from_assimp(node->mTransformation) * inverse_conversion;
+                conversion *
+                (node == skeleton_root ? nodes.at(node) : assimp_import::matrix_from_assimp(node->mTransformation)) *
+                inverse_conversion;
             if (!try_decompose_transform(converted_local, bone.reference_local_transform))
             {
                 return Result(invalid("source bone reference transform is not positive TRS"));
             }
             Matrix4 inverse_bind;
-            if (!try_inverse(conversion * nodes.at(bone.name).world * inverse_conversion, inverse_bind))
+            if (!try_inverse(conversion * nodes.at(node) * inverse_conversion, inverse_bind) ||
+                !canonicalize_affine(inverse_bind))
             {
                 return Result(invalid("source bone bind is singular"));
             }
@@ -268,7 +335,7 @@ namespace toy3d
         std::map<unsigned, std::uint32_t> material_slots;
         for (const auto* node : ordered)
         {
-            const Matrix4 mesh_world = nodes.at(node->mName.C_Str()).world;
+            const Matrix4 mesh_world = nodes.at(node);
             Matrix4 inverse_mesh_world;
             if (!try_inverse(mesh_world, inverse_mesh_world))
             {
@@ -337,8 +404,12 @@ namespace toy3d
                 {
                     const auto& source_bone = *mesh.mBones[bone];
                     const auto index = bone_indices.at(source_bone.mName.C_Str());
-                    const Matrix4 bind = conversion * assimp_import::matrix_from_assimp(source_bone.mOffsetMatrix) *
-                                         inverse_mesh_world * inverse_conversion;
+                    Matrix4 bind = conversion * assimp_import::matrix_from_assimp(source_bone.mOffsetMatrix) *
+                                   inverse_mesh_world * inverse_conversion;
+                    if (!canonicalize_affine(bind))
+                    {
+                        return Result(invalid("source inverse bind matrix is not affine"));
+                    }
                     if (bind_seen[index] &&
                         !is_nearly_equal(input.inverse_bind_matrices[index], bind, skin_bind_tolerance))
                     {
@@ -426,8 +497,9 @@ namespace toy3d
             {
                 const auto& channel = *animation.mChannels[channel_index];
                 const auto mapped = bone_indices.find(channel.mNodeName.C_Str());
-                if (mapped == bone_indices.end() || !tracked.insert(mapped->second).second ||
-                    !supported_behaviour(channel.mPreState) || !supported_behaviour(channel.mPostState) ||
+                if (mapped == bone_indices.end() || names.at(channel.mNodeName.C_Str()).size() != 1 ||
+                    !tracked.insert(mapped->second).second || !supported_behaviour(channel.mPreState) ||
+                    !supported_behaviour(channel.mPostState) ||
                     !vector_keys_valid(channel.mPositionKeys, channel.mNumPositionKeys, animation.mDuration) ||
                     !vector_keys_valid(channel.mScalingKeys, channel.mNumScalingKeys, animation.mDuration) ||
                     !rotation_keys_valid(channel.mRotationKeys, channel.mNumRotationKeys, animation.mDuration))
@@ -436,7 +508,7 @@ namespace toy3d
                 }
                 Transform reference;
                 if (!try_decompose_transform(
-                        assimp_import::matrix_from_assimp(nodes.at(channel.mNodeName.C_Str()).node->mTransformation),
+                        assimp_import::matrix_from_assimp(names.at(channel.mNodeName.C_Str()).front()->mTransformation),
                         reference))
                 {
                     return Result(invalid("source animation reference transform is not TRS"));
@@ -456,8 +528,12 @@ namespace toy3d
                     local.rotation = sample_rotation(channel.mRotationKeys, channel.mNumRotationKeys, time,
                                                      reference.rotation, channel.mPreState, channel.mPostState);
                     Transform converted;
+                    const Matrix4 parent_transform = mapped->second == 0 && skeleton_root->mParent
+                                                         ? nodes.at(skeleton_root->mParent)
+                                                         : Matrix4::identity();
                     if (!validate_animation_transform(local).succeeded() ||
-                        !try_decompose_transform(conversion * to_matrix(local) * inverse_conversion, converted))
+                        !try_decompose_transform(conversion * parent_transform * to_matrix(local) * inverse_conversion,
+                                                 converted))
                     {
                         return Result(invalid("source animation sample is not positive TRS"));
                     }
@@ -474,6 +550,80 @@ namespace toy3d
             result.animations.push_back(std::move(imported));
         }
         result.warnings.push_back("Source materials, textures, cameras and lights are not imported.");
+        result.sources = std::move(source_files);
+        return Result(std::move(result));
+    }
+
+    AssetResult<ImportedSkeletalMesh> import_skeletal_mesh(const FileSystem& files, const VirtualPath& source,
+                                                           const AssetId& skeleton_id,
+                                                           const SkeletonAssetData& existing_skeleton,
+                                                           const SkeletalMeshImportOptions& options)
+    {
+        using Result = AssetResult<ImportedSkeletalMesh>;
+        const auto valid = validate_skeleton(existing_skeleton);
+        if (!valid.succeeded())
+        {
+            return Result(valid);
+        }
+        auto imported = import_skeletal_mesh(files, source, skeleton_id, options);
+        if (!imported.succeeded())
+        {
+            return imported;
+        }
+        auto result = imported.value();
+        const auto compatible = validate_skeleton_compatibility(existing_skeleton, result.skeleton);
+        if (!compatible.succeeded())
+        {
+            return Result(compatible);
+        }
+        std::map<std::string, std::uint32_t> indices;
+        for (std::size_t i = 0; i < existing_skeleton.bones.size(); ++i)
+        {
+            indices.emplace(existing_skeleton.bones[i].name, static_cast<std::uint32_t>(i));
+        }
+        std::vector<std::uint32_t> remap(result.skeleton.bones.size());
+        auto& geometry = result.mesh.geometry;
+        auto inverse_bind = geometry.inverse_bind_matrices;
+        auto bounds = geometry.bone_local_bounds;
+        for (std::size_t i = 0; i < result.skeleton.bones.size(); ++i)
+        {
+            remap[i] = indices.at(result.skeleton.bones[i].name);
+            geometry.inverse_bind_matrices[remap[i]] = inverse_bind[i];
+            geometry.bone_local_bounds[remap[i]] = bounds[i];
+        }
+        for (auto& map : geometry.section_bone_maps)
+        {
+            for (auto& bone : map)
+            {
+                bone = remap[bone];
+            }
+        }
+        result.skeleton = existing_skeleton;
+        const auto hash = skeleton_reference_hash(existing_skeleton);
+        if (!hash.succeeded())
+        {
+            return Result(hash.status());
+        }
+        result.mesh.data.skeleton_reference_hash = hash.value();
+        const auto mesh_valid = validate_skeletal_mesh_compatibility(result.mesh, skeleton_id, existing_skeleton);
+        if (!mesh_valid.succeeded())
+        {
+            return Result(mesh_valid);
+        }
+        for (auto& animation : result.animations)
+        {
+            auto& sequence = animation.sequence;
+            for (auto& track : sequence.tracks)
+            {
+                track.bone_index = remap[track.bone_index];
+            }
+            sequence.data.skeleton_reference_hash = hash.value();
+            const auto clip_valid = validate_animation_compatibility(sequence, skeleton_id, existing_skeleton);
+            if (!clip_valid.succeeded())
+            {
+                return Result(clip_valid);
+            }
+        }
         return Result(std::move(result));
     }
 } // namespace toy3d

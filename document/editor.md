@@ -43,7 +43,7 @@ Scene > Standalone Play 仅在关联已构建 Game 的项目 Editor 中可用，
 Scene Viewport 右上角提供 Play/Pause/Resume/Stop 图标按钮，悬停显示动作名，保留原 docking 窗口身份。无工程/资源工程可运行内置 Actor；项目 Actor 使用当前 Editor 已链接、已注册的模块，不依赖 Game 可执行文件。首版单个会话，不含 Simulate/Eject、多客户端、运行状态回写或热重载。
 
 - source/scene/EditorPlaySession 属 Toy3dEditorCore，由 EditorApplication 持有。启动捕获当前未保存内容到内存 SceneAssetData，复用 assemble_scene 和冻结注册表，不落盘。运行 Actor/Component、Mesh 渲染数据、MaterialLibrary 与可变材质实例独立；编辑对象、选择、history、dirty 和观察相机保持原样。不能仅以两个 World 中相同的 Actor ID 认定对象相同。
-- Renderer 提供独立 Play RenderScene，Engine/Application 帧提交选择对应 SceneInterface，复用主视口附件和 RHI。编辑渲染注册始终保留；移除最后一个 Mesh Proxy 会终结 Mesh 资源生命周期，不能反复解绑/重绑编辑 World，也不能跨 RenderScene 共用这种 MeshRenderData。Preview Scene 留给缩略图。Game/PIE 共用 gamescene/scene_view.h 的相机规则，停止恢复编辑观察相机。
+- Renderer 提供独立 Play RenderScene，Engine/Application 帧提交选择对应 SceneInterface，复用主视口附件和 RHI。编辑渲染注册始终保留；移除最后一个 Mesh Proxy 会终结 Mesh 资源生命周期，不能反复解绑/重绑编辑 World，也不能跨 RenderScene 共用这种 MeshRenderData。缩略图/材质预览与动画交互预览使用各自独立的 Preview Scene。Game/PIE 共用 gamescene/scene_view.h 的相机规则，停止恢复编辑观察相机。
 - GT 帧边界执行状态转换。Starting 等待逻辑 RT 检查资源并成功提交场景帧后才 begin_play，等待时间不计入游戏时间；30 秒没有就绪帧则撤回候选并诊断。SceneRenderFeedback 为每次启动独立的共享反馈，release/acquire 发布结果，Ready 不代表 GPU 已完成。Playing 只 tick 运行 World，Paused 不推进 tick/时间但继续绘制。
 - 停止先释放输入、end_play/解绑/销毁运行 World，再 drain RT 撤回命令、关闭 MaterialLibrary、释放 geometry；GPU 生命周期仍遵守既有资源引用保留规则。启动与停止清理拾取请求，旧反馈不能接管新会话。点击运行图像获取输入，Shift+F1、焦点丢失、文本/modal 或暂停释放，Esc 停止；ImGui 帧尾后设置有效捕获策略，事件和键盘 Hold 不绕过捕获。运行期间新建的 InputBindingContext 在停止后移除，项目代码不得覆盖宿主已有 context。
 - 运行期间 Scene/资产编辑、Undo/Redo、导入、Shader 发布和工程切换禁用，文件拖入丢弃；Outliner/Details 保留编辑数据只读，Console/提示继续工作，错误进入当前 Editor 日志。关闭窗口先结束 Play，再执行原有未保存确认；停止不依赖运行图像可见性。PIE 与 Editor 同进程，原生崩溃会结束 Editor，进程隔离使用 Standalone Play。
@@ -74,6 +74,10 @@ dirty 以已保存内容身份/分支与外部 content revision 判断，不看 
 World Settings 选择 Environment 资产或 Off，修改非负 intensity、绕世界 X/Y/Z 的相对旋转，或重置完整 Quaternion。资源先加载验证，再走 World/history 完整候选；连续拖动合并一条命令，Escape 取消，Undo/Redo 和 Scene dirty/保存沿同一历史边界。环境属于 World，PIE 独立装配；运行期间只读。Scene 保存引用、旋转、强度，不保存 GPU 状态。
 
 Tools/Content Browser 的 HDR 导入使用既有 TextureImportDialog worker 生命周期；Texture2D 导入选 Color/LinearData/Normal 与 normal flip-green，Reimport 保留 AssetId 并核对磁盘 baseline。所有作者输入写 project/asset。
+
+骨骼网格、动作导入与 Project 资源的 `Reimport...` 使用独立 CPU worker、GT 冲突复核和逐资产配对发布；Skeleton 选择、源要求、取消/退出与使用入口见 [Animation](animation.md#editor-导入与重导入)。
+
+Content Browser 双击 Skeleton/SkeletalMesh/AnimationSequence 打开只读 `Animation Editor`，共享骨骼树、网格和动作标签，提供播放、时间轴、逐样本、root lock 与相机操作。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态；Skeleton/动作使用 UE 风格类型图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
 
 材质窗口显示独立 HDR 庭院背景、球体与灰色地面，可调整预览环境、灯光、曝光和相机；普通参数即时更新图像，静态选项等待完整候选。Content Browser 的 Material/Instance 缩略图保留固定 studio 配置。设置、排队、关闭、资源退役与失败保留旧图见 [Material](material.md#可视预览与缩略图)，不把预览效果写进主场景。
 

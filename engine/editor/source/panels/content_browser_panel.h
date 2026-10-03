@@ -13,6 +13,9 @@ namespace toy3d
     struct ContentBrowserActions
     {
         bool import_requested = false;
+        bool skeletal_import_requested = false;
+        bool animation_import_requested = false;
+        AssetId skeletal_reimport;
         bool texture_import_requested = false;
         bool environment_import_requested = false;
         bool material_creation_requested = false;

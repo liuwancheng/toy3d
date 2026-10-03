@@ -1,5 +1,4 @@
 #include "panels/content_browser_panel.h"
-#include "scene/material_assignments.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -9,6 +8,7 @@
 #include "logging/logger.h"
 #include "scene/placement/asset_placement.h"
 #include "scene/editor_selection.h"
+#include "scene/material_assignments.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
 
@@ -40,6 +40,52 @@ namespace toy3d
                 if (type == "toy3d.MaterialInstanceAssetData")
                 {
                     draw.AddText(ImVec2(position.x + size * 0.7f, position.y + size * 0.7f), IM_COL32_WHITE, "MI");
+                }
+            }
+            else if (type == "toy3d.SkeletonAssetData" || type == "toy3d.SkeletalMeshAssetData" ||
+                     type == "toy3d.AnimationSequenceAssetData")
+            {
+                // Original vector silhouettes use UE-style type colors and remain crisp at any DPI.
+                const bool animation = type == "toy3d.AnimationSequenceAssetData";
+                const bool skeleton = type == "toy3d.SkeletonAssetData";
+                const ImU32 tint = animation  ? IM_COL32(119, 213, 117, 255)
+                                   : skeleton ? IM_COL32(101, 203, 224, 255)
+                                              : IM_COL32(204, 148, 233, 255);
+                const auto point = [position, size](float x, float y)
+                {
+                    return ImVec2(position.x + size * x, position.y + size * y);
+                };
+                const ImVec2 head = point(animation ? 0.58f : 0.5f, 0.2f);
+                const ImVec2 neck = point(0.5f, 0.32f);
+                const ImVec2 hip = point(animation ? 0.45f : 0.5f, 0.56f);
+                const ImVec2 joints[] = {head,
+                                         neck,
+                                         hip,
+                                         point(0.27f, animation ? 0.43f : 0.35f),
+                                         point(0.73f, animation ? 0.3f : 0.35f),
+                                         point(0.23f, animation ? 0.67f : 0.48f),
+                                         point(0.77f, animation ? 0.43f : 0.48f),
+                                         point(0.32f, 0.7f),
+                                         point(0.65f, animation ? 0.62f : 0.7f),
+                                         point(animation ? 0.16f : 0.28f, 0.86f),
+                                         point(0.74f, 0.85f)};
+                const int segments[][2] = {{0, 1}, {1, 2}, {1, 3}, {1, 4}, {3, 5},
+                                           {4, 6}, {2, 7}, {2, 8}, {7, 9}, {8, 10}};
+                for (const auto& segment : segments)
+                {
+                    draw.AddLine(joints[segment[0]], joints[segment[1]], tint, size * (skeleton ? 0.026f : 0.06f));
+                }
+                draw.AddCircleFilled(head, size * 0.07f, tint, 16);
+                if (skeleton)
+                {
+                    for (const auto& joint : joints)
+                    {
+                        draw.AddCircleFilled(joint, size * 0.025f, IM_COL32_WHITE, 10);
+                    }
+                }
+                if (animation)
+                {
+                    draw.AddTriangleFilled(point(0.73f, 0.61f), point(0.73f, 0.78f), point(0.9f, 0.695f), tint);
                 }
             }
             else if (type == "toy3d.Texture2DAssetData")
@@ -329,8 +375,16 @@ namespace toy3d
                                     actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;
                                     actions.material_parent = item.asset->file.asset_id;
                                 }
-                                const bool is_mesh = item.asset->file.root_type == "toy3d.StaticMeshAssetData";
+                                const bool is_mesh = item.asset->file.root_type == "toy3d.StaticMeshAssetData" ||
+                                                     item.asset->file.root_type == "toy3d.SkeletalMeshAssetData";
                                 const bool writable = item.path.compare(0, 9, "/Project/") == 0;
+                                const bool skeletal = item.asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
+                                                      item.asset->file.root_type == "toy3d.AnimationSequenceAssetData";
+                                if (skeletal &&
+                                    ImGui::MenuItem("Reimport...", nullptr, false, writable && import_enabled))
+                                {
+                                    actions.skeletal_reimport = item.asset->file.asset_id;
+                                }
                                 if (ImGui::MenuItem("Generate / Regenerate Thumbnail", nullptr, false, is_mesh))
                                 {
                                     thumbnails.generate(item.asset->file.asset_id);
@@ -359,6 +413,14 @@ namespace toy3d
                     if (ImGui::MenuItem("Import Static Mesh...", nullptr, false, import_enabled && writable))
                     {
                         actions.import_requested = true;
+                    }
+                    if (ImGui::MenuItem("Import Skeletal Mesh...", nullptr, false, import_enabled && writable))
+                    {
+                        actions.skeletal_import_requested = true;
+                    }
+                    if (ImGui::MenuItem("Import Animation...", nullptr, false, import_enabled && writable))
+                    {
+                        actions.animation_import_requested = true;
                     }
                     if (ImGui::MenuItem("Import Texture2D...", nullptr, false, writable))
                     {

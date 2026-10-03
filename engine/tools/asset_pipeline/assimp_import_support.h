@@ -11,6 +11,7 @@
 #include <assimp/scene.h>
 
 #include "math/matrix4.h"
+#include "misc/sha256.h"
 
 namespace toy3d
 {
@@ -100,7 +101,8 @@ namespace toy3d
         class ImportIO final : public Assimp::IOSystem
         {
           public:
-            ImportIO(const FileSystem& files, std::string root) : files_(files), root_(std::move(root))
+            ImportIO(const FileSystem& files, std::string root, std::vector<ImportedModelSource>* sources = nullptr)
+                : files_(files), root_(std::move(root)), sources_(sources)
             {
             }
             bool Exists(const char* file) const override
@@ -146,6 +148,24 @@ namespace toy3d
                     return nullptr;
                 }
                 source_bytes_ += bytes.value().size();
+                if (sources_)
+                {
+                    const auto hash = sha256_to_hex(sha256(bytes.value()));
+                    const auto found = std::find_if(sources_->begin(), sources_->end(),
+                                                    [&path](const ImportedModelSource& source)
+                                                    {
+                                                        return source.path.utf8() == path.value().utf8();
+                                                    });
+                    if (found == sources_->end())
+                    {
+                        sources_->push_back({path.value(), hash});
+                    }
+                    else if (found->content_hash != hash)
+                    {
+                        failures.push_back("Source changed while the parser was reading it: " + path.value().utf8());
+                        return nullptr;
+                    }
+                }
                 // Assimp owns returned streams and closes them through Close().
                 return std::make_unique<ImportStream>(bytes.value()).release();
             }
@@ -178,6 +198,7 @@ namespace toy3d
             }
             const FileSystem& files_;
             std::string root_;
+            std::vector<ImportedModelSource>* sources_ = nullptr;
             std::size_t source_bytes_ = 0;
             std::size_t source_reads_ = 0;
         };

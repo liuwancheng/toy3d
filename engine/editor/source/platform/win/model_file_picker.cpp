@@ -33,7 +33,7 @@ namespace toy3d
             dialog.hwndOwner = window->get_native_hwnd();
             dialog.lpstrTitle = kind == FileSelection::Environment ? L"Import Environment"
                                 : kind == FileSelection::Texture   ? L"Import Texture2D"
-                                                                   : L"Import Static Mesh";
+                                                                   : L"Import Model";
             dialog.lpstrFilter =
                 kind == FileSelection::Environment ? L"Radiance HDR\0*.hdr\0All files\0*.*\0\0"
                 : kind == FileSelection::Texture

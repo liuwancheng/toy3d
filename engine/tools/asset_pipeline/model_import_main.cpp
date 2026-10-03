@@ -15,7 +15,8 @@
 namespace
 {
     int import_skeletal_assets(toy3d::FileSystem& files, const toy3d::VirtualPath& source,
-                               const toy3d::VirtualPath& destination, const toy3d::SkeletalMeshImportOptions& options)
+                               const toy3d::VirtualPath& destination, const toy3d::SkeletalMeshImportOptions& options,
+                               const toy3d::VirtualPath& existing_path, bool animation_only)
     {
         using namespace toy3d;
         AssetId skeleton_id;
@@ -25,16 +26,42 @@ namespace
             std::cerr << "Asset ID generation failed.\n";
             return 1;
         }
-        const auto imported = import_skeletal_mesh(files, source, skeleton_id, options);
+        TypeRegistry types;
+        if (!register_animation_asset_types(types).succeeded() || !types.freeze().succeeded())
+        {
+            std::cerr << "Animation asset schema registration failed.\n";
+            return 1;
+        }
+        SkeletonAssetData existing_skeleton;
+        const bool reuse_skeleton = !existing_path.utf8().empty();
+        if (reuse_skeleton)
+        {
+            const auto pair = read_asset_pair(types, files, existing_path);
+            if (!pair.succeeded())
+            {
+                std::cerr << pair.status().message << '\n';
+                return 1;
+            }
+            const auto decoded = decode_skeleton_asset_pair(pair.value());
+            if (!decoded.succeeded())
+            {
+                std::cerr << decoded.status().message << '\n';
+                return 1;
+            }
+            skeleton_id = pair.value().description.index.asset_id;
+            existing_skeleton = decoded.value();
+        }
+        const auto imported = reuse_skeleton
+                                  ? import_skeletal_mesh(files, source, skeleton_id, existing_skeleton, options)
+                                  : import_skeletal_mesh(files, source, skeleton_id, options);
         if (!imported.succeeded())
         {
             std::cerr << imported.status().message << '\n';
             return 1;
         }
-        TypeRegistry types;
-        if (!register_animation_asset_types(types).succeeded() || !types.freeze().succeeded())
+        if (animation_only && imported.value().animations.size() != 1)
         {
-            std::cerr << "Animation asset schema registration failed.\n";
+            std::cerr << "Animation-only import requires exactly one clip in the source.\n";
             return 1;
         }
         struct Candidate
@@ -45,20 +72,32 @@ namespace
         };
         std::vector<Candidate> candidates;
         const std::string stem = destination.utf8().substr(0, destination.utf8().size() - 6);
-        const auto skeleton_path = VirtualPath::parse(stem + "_Skeleton.asset");
-        const auto skeleton = encode_skeleton_asset_pair(types, skeleton_id, imported.value().skeleton);
-        const auto mesh = encode_skeletal_mesh_asset_pair(types, mesh_id, imported.value().mesh);
-        if (!skeleton_path.succeeded() || !skeleton.succeeded() || !mesh.succeeded())
+        if (!reuse_skeleton)
         {
-            std::cerr << "Skeletal import candidate encoding failed.\n";
-            return 1;
+            const auto skeleton_path = VirtualPath::parse(stem + "_Skeleton.asset");
+            const auto skeleton = encode_skeleton_asset_pair(types, skeleton_id, imported.value().skeleton);
+            if (!skeleton_path.succeeded() || !skeleton.succeeded())
+            {
+                std::cerr << "Skeleton candidate encoding failed.\n";
+                return 1;
+            }
+            candidates.push_back({skeleton_path.value(), skeleton.value(), skeleton_id});
         }
-        candidates.push_back({skeleton_path.value(), skeleton.value(), skeleton_id});
-        candidates.push_back({destination, mesh.value(), mesh_id});
+        if (!animation_only)
+        {
+            const auto mesh = encode_skeletal_mesh_asset_pair(types, mesh_id, imported.value().mesh);
+            if (!mesh.succeeded())
+            {
+                std::cerr << mesh.status().message << '\n';
+                return 1;
+            }
+            candidates.push_back({destination, mesh.value(), mesh_id});
+        }
         for (std::size_t i = 0; i < imported.value().animations.size(); ++i)
         {
             AssetId clip_id;
-            const auto path = VirtualPath::parse(stem + "_Animation_" + std::to_string(i) + ".asset");
+            const auto path = animation_only ? VirtualPath::parse(destination.utf8())
+                                             : VirtualPath::parse(stem + "_Animation_" + std::to_string(i) + ".asset");
             if (!AssetId::try_generate(clip_id) || !path.succeeded())
             {
                 std::cerr << "Animation identity or path generation failed.\n";
@@ -142,13 +181,16 @@ int main(int argc, char** argv)
     {
         std::cerr << "Usage: Toy3dModelImport <source.fbx|obj|gltf|glb> <new-file.asset> "
                      "[--scale N] [--source-unit-cm N] [--no-convert-scene-unit] [--ignore-file-unit] "
-                     "[--skeletal] [--allow-reduce-influences] [--sample-rate 30|60]\n"
+                     "[--skeletal] [--skeleton existing.asset] [--animation-only] "
+                     "[--allow-reduce-influences] [--sample-rate 30|60]\n"
                      "Defaults: FBX file units; OBJ/glTF/GLB 100 cm per source unit.\n";
         return 2;
     }
     toy3d::StaticMeshImportOptions options;
     bool skeletal = false;
     bool skeletal_options_requested = false;
+    bool animation_only = false;
+    std::string skeleton_file;
     toy3d::SkeletalMeshImportOptions skeletal_options;
     std::string source_extension(argv[1]);
     const auto dot = source_extension.find_last_of('.');
@@ -169,6 +211,16 @@ int main(int argc, char** argv)
         if (argument == "--skeletal")
         {
             skeletal = true;
+        }
+        else if (argument == "--skeleton" && i + 1 < argc)
+        {
+            skeletal_options_requested = true;
+            skeleton_file = argv[++i];
+        }
+        else if (argument == "--animation-only")
+        {
+            skeletal_options_requested = true;
+            animation_only = true;
         }
         else if (argument == "--allow-reduce-influences")
         {
@@ -224,6 +276,11 @@ int main(int argc, char** argv)
         std::cerr << "Skin and animation options require --skeletal.\n";
         return 2;
     }
+    if (animation_only && skeleton_file.empty())
+    {
+        std::cerr << "Animation-only import requires --skeleton existing.asset.\n";
+        return 2;
+    }
     toy3d::NativePlatformFile platform;
     const auto input = platform.canonical(toy3d::PhysicalPath(argv[1]));
     const auto output = platform.absolute(toy3d::PhysicalPath(argv[2]));
@@ -259,6 +316,26 @@ int main(int argc, char** argv)
     {
         return 1;
     }
+    toy3d::VirtualPath existing_path;
+    if (!skeleton_file.empty())
+    {
+        const auto existing = platform.canonical(toy3d::PhysicalPath(skeleton_file));
+        if (!existing.succeeded())
+        {
+            std::cerr << "Existing Skeleton cannot be resolved.\n";
+            return 1;
+        }
+        const auto parent = platform.parent_path(existing.value());
+        const auto name = existing.value().utf8().substr(existing.value().utf8().find_last_of("/\\") + 1);
+        const auto path = toy3d::VirtualPath::parse("/ExistingSkeleton/" + name);
+        if (!parent.succeeded() || !path.succeeded() ||
+            !mount_directory(platform, files, parent.value(), "/ExistingSkeleton", false))
+        {
+            std::cerr << "Existing Skeleton mount failed.\n";
+            return 1;
+        }
+        existing_path = path.value();
+    }
     const auto frozen = files.freeze();
     if (!frozen.succeeded())
     {
@@ -268,7 +345,8 @@ int main(int argc, char** argv)
     if (skeletal)
     {
         skeletal_options.coordinates = options;
-        return import_skeletal_assets(files, source.value(), destination.value(), skeletal_options);
+        return import_skeletal_assets(files, source.value(), destination.value(), skeletal_options, existing_path,
+                                      animation_only);
     }
     toy3d::AssetId id;
     if (!toy3d::AssetId::try_generate(id))

@@ -1,0 +1,117 @@
+{
+  "ue_version": "5.5.3-0+UE5",
+  "source_template": "Templates/TemplateResources/High/Characters/Content/Mannequins",
+  "copyright": "Epic Games; exported for this repository owner's personal local tests",
+  "fbx": {
+    "version": "2013",
+    "binary": true,
+    "lod": 0,
+    "force_front_x_axis": false,
+    "morph_targets": false,
+    "cloth": false,
+    "animation_preview_mesh": "SKM_Manny",
+    "material_baking": "Disabled"
+  },
+  "reference_bone_count": 161,
+  "meshes": [
+    {
+      "file": "SKM_Manny.fbx",
+      "bytes": 3233280,
+      "sha256": "8785e0cd391f194f45aa2c5b6d68f43b45d9fc395e4f5467c0ff32087ac921b9",
+      "ue_asset": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "SKM_Manny_Simple.fbx",
+      "bytes": 2887920,
+      "sha256": "3c5911313c2d33efa305070b2b942e5f03a807d1ff6caef08ac7c5e5c9be3f1d",
+      "ue_asset": "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"
+    }
+  ],
+  "animations": [
+    {
+      "file": "MM_Idle.fbx",
+      "bytes": 5823184,
+      "sha256": "75d59414fc6033966ab307753e36bd7b45349acf50aeb71edea64a3b2037676d",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Idle.MM_Idle",
+      "duration_seconds": 7.566666603088379,
+      "ue_frame_count": 227,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_Walk_Fwd.fbx",
+      "bytes": 4764560,
+      "sha256": "85f4e2cef54197d2cecff3b56cc7c3cf08ef0f69d71b185a1462007bec0ce8ed",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Walk_Fwd.MM_Walk_Fwd",
+      "duration_seconds": 2.7333333492279053,
+      "ue_frame_count": 82,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_Walk_InPlace.fbx",
+      "bytes": 5628928,
+      "sha256": "cc26ad49b031953b5255f35e74dd9027b6b6365334506aa09b1f99f4e4b8fb8a",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Walk_InPlace.MM_Walk_InPlace",
+      "duration_seconds": 2.7333333492279053,
+      "ue_frame_count": 82,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_Run_Fwd.fbx",
+      "bytes": 4486464,
+      "sha256": "8ff01b516662a69340ab465cee9a7e446ecc51d3d91f19fbe76696b044fe2580",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Run_Fwd.MM_Run_Fwd",
+      "duration_seconds": 1.899999976158142,
+      "ue_frame_count": 57,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_Jump.fbx",
+      "bytes": 4582608,
+      "sha256": "f8a39849d9b37e94b2d5ee5d5fa5bb203ead56db048dbdefb36f0c077287a3a9",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Jump.MM_Jump",
+      "duration_seconds": 0.8666666746139526,
+      "ue_frame_count": 26,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_Fall_Loop.fbx",
+      "bytes": 5778400,
+      "sha256": "993613ebf98cd267317ec1bb0f0740bf684ebb0b167c4de01e9578dcd44930a9",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Fall_Loop.MM_Fall_Loop",
+      "duration_seconds": 3.0,
+      "ue_frame_count": 90,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_Land.fbx",
+      "bytes": 4582608,
+      "sha256": "cb06801be389b037d1cf2f1b57441c84a704fec181fe49759c436528fd1ef43b",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_Land.MM_Land",
+      "duration_seconds": 0.8666666746139526,
+      "ue_frame_count": 26,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    },
+    {
+      "file": "MM_T_Pose.fbx",
+      "bytes": 3888784,
+      "sha256": "9441394af42cbfd72e7f4f9c7b1fd7f07ba97d5cad105c6a9939796aa96d2e73",
+      "ue_asset": "/Game/Characters/Mannequins/Animations/Manny/MM_T_Pose.MM_T_Pose",
+      "duration_seconds": 0.03333333507180214,
+      "ue_frame_count": 1,
+      "preview_mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"
+    }
+  ],
+  "source_uasset_sha256": {
+    "Animations/Manny/MM_Fall_Loop.uasset": "bd4a9a8f6f4b229ff2674add7310fdc4f96068031ef1caa29abd8a787cba3e29",
+    "Animations/Manny/MM_Idle.uasset": "309d438cb704de00071ba81152749efbf91423e746e73c66be467d4d38026df3",
+    "Animations/Manny/MM_Jump.uasset": "a3fc97710ad016ef3215f511d1a100100aed75a125cfbd583f7e1e50cc20ed7f",
+    "Animations/Manny/MM_Land.uasset": "464ba88ea832164ea2bf2c3474121b918b23182c81dc29036a4db38aa316fa74",
+    "Animations/Manny/MM_Run_Fwd.uasset": "0461e5631fedca7f2de97fc1e3d74ce796ce65cb99058e6f822df2ca398b8ddb",
+    "Animations/Manny/MM_T_Pose.uasset": "4b7e4d1ff30352e296f446e77eed841ad7d5344430c5f7141fd09aad7e0af2c3",
+    "Animations/Manny/MM_Walk_Fwd.uasset": "4c972b0416703f5e24b75ec256314133a9d3f7f9d5ed72937cc0930937209d01",
+    "Animations/Manny/MM_Walk_InPlace.uasset": "55a005cf4d673d8fcef1b93e2be270b8c47a8a82b7cbf895a915d27710d4a40b",
+    "Meshes/SK_Mannequin.uasset": "777b2aa0a679b5d326814440204787ff0ba56b4ad9477a407b24d689155b050c",
+    "Meshes/SKM_Manny.uasset": "f1df1a6b3db170cd80f14c40653fbc9a692af00f7abd575872d9cd8a707e05c6",
+    "Meshes/SKM_Manny_Simple.uasset": "bc39b456f2700d3f7aa0dfa99432424c78464b723a143bdf337dcc96867aaab9"
+  }
+}

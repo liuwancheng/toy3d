@@ -20,6 +20,8 @@ list(APPEND EDITOR_SOURCES
 # Asset sessions/workspace remain independently usable without the runtime UI.
 add_library(Toy3dEditorCore STATIC)
 target_sources(Toy3dEditorCore PRIVATE
+    "source/assets/animation/animation_preview_asset.h" "source/assets/animation/animation_preview_asset.cpp"
+    "source/assets/animation/animation_editor_panel.h" "source/assets/animation/animation_editor_panel.cpp"
     "source/scene/editor_play_session.h" "source/scene/editor_play_session.cpp"
     "source/workspace/editor_project.cpp"
     "source/scene/placement/placement_catalog.cpp"
@@ -148,6 +150,8 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/assets/thumbnails/asset_thumbnail_pool.h" "source/assets/thumbnails/asset_thumbnail_pool.cpp"
     "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp"
     "source/assets/mesh/static_mesh_import_dialog.h" "source/assets/mesh/static_mesh_import_dialog.cpp"
+    "source/assets/animation/skeletal_mesh_import_dialog.h" "source/assets/animation/skeletal_mesh_import_dialog.cpp"
+    "source/assets/animation/skeletal_mesh_asset_tools.h" "source/assets/animation/skeletal_mesh_asset_tools.cpp"
     "source/assets/texture/texture_import_dialog.h" "source/assets/texture/texture_import_dialog.cpp"
     "source/assets/texture/texture_preview_panel.h" "source/assets/texture/texture_preview_panel.cpp"
     "source/assets/texture/texture_preview_image.h" "source/assets/texture/texture_preview_image.cpp"
@@ -184,6 +188,21 @@ target_compile_definitions(Toy3dEditorCore PRIVATE WITH_EDITOR=1 WITH_EDITORONLY
 target_link_libraries(${TARGET_NAME} PRIVATE Toy3dEditorCore)
 
 if(BUILD_TESTING)
+    if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
+        add_executable(Toy3dEditorSkeletalImportTests
+            "tests/skeletal_import_tests.cpp"
+            "source/assets/animation/skeletal_mesh_asset_tools.cpp"
+            "source/workspace/editor_workspace.cpp")
+        target_compile_features(Toy3dEditorSkeletalImportTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dEditorSkeletalImportTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+        target_include_directories(Toy3dEditorSkeletalImportTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
+        target_link_libraries(Toy3dEditorSkeletalImportTests PRIVATE Toy3dCore Toy3dAssets Toy3dAssetPipeline)
+        target_compile_definitions(Toy3dEditorSkeletalImportTests PRIVATE WITH_MODEL_IMPORT=1
+            "TOY3D_EDITOR_SKELETAL_FIXTURE=\"${ENGINE_ROOT_DIR}/tools/asset_pipeline/tests/eight_bones_animation.gltf\"")
+        target_compile_options(Toy3dEditorSkeletalImportTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        add_test(NAME Toy3dEditor.SkeletalImport COMMAND Toy3dEditorSkeletalImportTests)
+        set_tests_properties(Toy3dEditor.SkeletalImport PROPERTIES TIMEOUT 30)
+    endif()
     add_executable(Toy3dEditorProjectTests "tests/project_tests.cpp" "source/workspace/editor_workspace.cpp")
     target_compile_features(Toy3dEditorProjectTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorProjectTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
@@ -232,6 +251,28 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dEditor.TexturePreview COMMAND Toy3dEditorTexturePreviewTests)
 
     if(TOY3D_ENABLE_VULKAN_RHI AND (WIN32 OR APPLE))
+        add_executable(Toy3dEditorAnimationPreviewTests
+            "tests/animation_preview_tests.cpp" "source/workspace/editor_workspace.cpp"
+            "source/assets/thumbnails/asset_thumbnail_pool.cpp" "source/assets/thumbnails/thumbnail_preview_scene.cpp"
+            "source/panels/content_browser_panel.cpp")
+        target_compile_features(Toy3dEditorAnimationPreviewTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dEditorAnimationPreviewTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+        target_link_libraries(Toy3dEditorAnimationPreviewTests PRIVATE Toy3dEditorCore Toy3dAssets imgui)
+        target_compile_options(Toy3dEditorAnimationPreviewTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_compile_definitions(Toy3dEditorAnimationPreviewTests PRIVATE
+            "TOY3D_ANIMATION_PREVIEW_TEST_ROOT=\"${CMAKE_BINARY_DIR}/animation-preview-test-output\""
+            "TOY3D_MANNY_PREVIEW_SOURCE=\"${TOY3D_PROJECT_ASSET_DIR}/animation/ue_manny\""
+            "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
+            "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
+            "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
+        add_dependencies(Toy3dEditorAnimationPreviewTests Toy3dShaders)
+        if(WIN32)
+            target_sources(Toy3dEditorAnimationPreviewTests PRIVATE "${EDITOR_ICON_FILE}")
+        endif()
+        add_test(NAME Toy3dEditor.AnimationPreview COMMAND Toy3dEditorAnimationPreviewTests)
+        add_test(NAME Toy3dEditor.AnimationPreviewMultiThread COMMAND Toy3dEditorAnimationPreviewTests --multithread)
+        set_tests_properties(Toy3dEditor.AnimationPreview Toy3dEditor.AnimationPreviewMultiThread
+            PROPERTIES TIMEOUT 300 RESOURCE_LOCK Toy3dGpuWindow)
         add_executable(Toy3dEditorThumbnailTests
             "tests/thumbnail_integration_tests.cpp"
             "tests/editor_play_integration_tests.cpp"

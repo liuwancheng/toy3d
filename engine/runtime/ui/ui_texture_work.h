@@ -22,6 +22,8 @@ namespace toy3d
         bool show_environment = false;
         bool render_shadows = false;
         float exposure_ev = 0.0f;
+        std::vector<DebugLineVertex> debug_lines;
+        bool debug_lines_depth_test = false;
     };
 
     struct UiRenderWork
@@ -29,6 +31,8 @@ namespace toy3d
         std::vector<UiTextureUpload> uploads;
         std::vector<ImGuiTextureId> retire_textures;
         PreviewFrameRequest preview;
+        PreviewFrameRequest animation_preview;
+        bool release_animation_preview = false;
     };
 
     struct UiTextureResult

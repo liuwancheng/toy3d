@@ -1,0 +1,27 @@
+format_version: 2
+asset_id: 11de01a07e3399df33b55130f98d46b5
+root_type: toy3d.AnimationSequenceAssetData
+schema_version: 1
+dependencies:
+  - asset_id: e588a47b4964a0ee297e7c61b7f77f6f
+    expected_type: toy3d.SkeletonAssetData
+    strength: strong
+subresources:
+  []
+data:
+  duration: 2.7333333333333334
+  sample_count: 83
+  sample_rate: 30
+  skeleton:
+    asset_id: e588a47b4964a0ee297e7c61b7f77f6f
+    expected_type: toy3d.SkeletonAssetData
+    strength: strong
+  skeleton_reference_hash: 36906fcc76bda3193e6e495d1915223b86f6616e784536e28064617c627a5e1e
+  track_count: 159
+  tracks_segment: animation_tracks
+meta:
+  format_version: 1
+  size: 529233
+  sha256: 61436152922476526b0bfba73d0c07c5b9f9472325084b3bdfdbd54cd78da2c0
+  required_segments:
+    - animation_tracks

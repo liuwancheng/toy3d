@@ -101,6 +101,14 @@ int main()
     check(truncated_status.code == toy3d::ValueErrorCode::Truncated && unchanged_number == 99u &&
               truncated_status.property_path == "tracks[12].keys[8].time",
           "truncated value was accepted or changed caller value");
+    check(truncated_reader.offset() == 0 &&
+              truncated_reader.read_float32(unchanged).code == toy3d::ValueErrorCode::Truncated && unchanged == 42.0f &&
+              truncated_reader.offset() == 0,
+          "truncated float changed value or consumed input");
+    check(truncated_reader.read_uint8(uint8_value).succeeded() && uint8_value == 1 &&
+              truncated_reader.read_uint8(uint8_value).code == toy3d::ValueErrorCode::Truncated && uint8_value == 1 &&
+              truncated_reader.offset() == 1,
+          "byte reader did not preserve its value and cursor at end of input");
 
     toy3d::ValueLimits limits;
     limits.max_bytes = 4;
@@ -120,6 +128,12 @@ int main()
     toy3d::ValueReader oversized_reader(expected, limits);
     check(oversized_reader.read_uint16(uint16_value).code == toy3d::ValueErrorCode::TooLarge,
           "reader total byte limit was ignored");
+    check(oversized_reader.read_uint8(uint8_value).code == toy3d::ValueErrorCode::TooLarge && uint8_value == 1 &&
+              oversized_reader.read_uint32(unchanged_number).code == toy3d::ValueErrorCode::TooLarge &&
+              unchanged_number == 99u &&
+              oversized_reader.read_float32(unchanged).code == toy3d::ValueErrorCode::TooLarge && unchanged == 42.0f &&
+              oversized_reader.offset() == 0,
+          "dense scalar readers bypassed byte limits or changed caller state");
     const std::vector<std::uint8_t> too_many = {0x03u, 0x00u, 0x00u, 0x00u};
     toy3d::ValueReader array_reader(too_many, limits);
     std::uint32_t unchanged_count = 7;

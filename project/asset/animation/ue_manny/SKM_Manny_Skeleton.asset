@@ -1,0 +1,2586 @@
+format_version: 2
+asset_id: e588a47b4964a0ee297e7c61b7f77f6f
+root_type: toy3d.SkeletonAssetData
+schema_version: 1
+dependencies:
+  []
+subresources:
+  []
+data:
+  bones:
+    - name: root
+      parent_index: -1
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pelvis
+      parent_index: 0
+      reference_local_transform:
+        translation:
+          - -3.4315e-17
+          - 95.89678
+          - 2.2808661
+        rotation:
+          - -0.022414982
+          - 0.022414982
+          - 0.7067514
+          - 0.70675147
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: spine_01
+      parent_index: 1
+      reference_local_transform:
+        translation:
+          - 3.6770535
+          - -4.5206953e-16
+          - -7.1054274e-15
+        rotation:
+          - 0
+          - -0.12582949
+          - 0
+          - 0.9920519
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: spine_02
+      parent_index: 2
+      reference_local_transform:
+        translation:
+          - 6.7950573
+          - 2.1133375e-16
+          - -2.1316282e-14
+        rotation:
+          - 0
+          - 0.030228592
+          - 0
+          - 0.999543
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: spine_03
+      parent_index: 3
+      reference_local_transform:
+        translation:
+          - 7.238228
+          - 1.5066326e-16
+          - 2.1316282e-14
+        rotation:
+          - 0
+          - 0.09537736
+          - 0
+          - 0.9954412
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: spine_04
+      parent_index: 4
+      reference_local_transform:
+        translation:
+          - 8.523893
+          - 2.8456974e-16
+          - 5.3290705e-15
+        rotation:
+          - 3.917737e-06
+          - 0.051176727
+          - -2.0076007e-07
+          - 0.99868965
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: spine_05
+      parent_index: 5
+      reference_local_transform:
+        translation:
+          - 19.4398
+          - -3.2154726e-16
+          - 1.781731e-07
+        rotation:
+          - -3.9225397e-06
+          - 0.0059462097
+          - 2.332465e-08
+          - 0.9999824
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: neck_01
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - 11.887766
+          - 1.5994319e-15
+          - -1.0658141e-14
+        rotation:
+          - 0
+          - -0.2073005
+          - 0
+          - 0.9782773
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: neck_02
+      parent_index: 7
+      reference_local_transform:
+        translation:
+          - 5.1102595
+          - -4.083213e-14
+          - 4.973799e-14
+        rotation:
+          - -8.5478484e-07
+          - 0.016697915
+          - 1.42751135e-08
+          - 0.9998606
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: head
+      parent_index: 8
+      reference_local_transform:
+        translation:
+          - 4.912971
+          - 2.1716041e-14
+          - 5.684342e-14
+        rotation:
+          - 8.503216e-07
+          - 0.103488415
+          - 8.847035e-08
+          - 0.99463063
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: clavicle_l
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - 5.5162687
+          - -1.4279042
+          - -1.314766
+        rotation:
+          - 0.0832783
+          - -0.04128998
+          - -0.7545604
+          - 0.6496141
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_l
+      parent_index: 10
+      reference_local_transform:
+        translation:
+          - 17.809523
+          - 5.684342e-14
+          - -2.3092639e-14
+        rotation:
+          - -0.019947851
+          - -0.020190159
+          - -0.3917308
+          - 0.91964203
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: lowerarm_l
+      parent_index: 11
+      reference_local_transform:
+        translation:
+          - 27.77114
+          - -5.684342e-14
+          - -1.0658141e-14
+        rotation:
+          - 0
+          - -0.33363262
+          - 0
+          - 0.9427032
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_twist_02_l
+      parent_index: 12
+      reference_local_transform:
+        translation:
+          - 9.083692
+          - 5.684342e-14
+          - 6.3948846e-14
+        rotation:
+          - 0.011477666
+          - 0.017494798
+          - 0.014877389
+          - 0.9996704
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_twist_01_l
+      parent_index: 12
+      reference_local_transform:
+        translation:
+          - 18.167383
+          - 4.2632564e-14
+          - 2.842171e-14
+        rotation:
+          - 0.011477665
+          - 0.017494798
+          - 0.014877326
+          - 0.9996704
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_correctiveRoot_l
+      parent_index: 12
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0.011752091
+          - 0.00017877878
+          - 0.015209697
+          - 0.9998152
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_in_l
+      parent_index: 15
+      reference_local_transform:
+        translation:
+          - 0.717186
+          - -3.988929
+          - -0.71880794
+        rotation:
+          - 1
+          - 0
+          - 0
+          - 4.371139e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_out_l
+      parent_index: 15
+      reference_local_transform:
+        translation:
+          - 0.5839591
+          - 2.7212453
+          - -0.5751867
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_fwd_l
+      parent_index: 15
+      reference_local_transform:
+        translation:
+          - 1.6934813
+          - -0.43889615
+          - 3.659093
+        rotation:
+          - 0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_bck_l
+      parent_index: 15
+      reference_local_transform:
+        translation:
+          - 0.662339
+          - -1.1642642
+          - -4.9182863
+        rotation:
+          - -0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: hand_l
+      parent_index: 12
+      reference_local_transform:
+        translation:
+          - 27.251074
+          - 7.1054274e-14
+          - 2.842171e-14
+        rotation:
+          - -0.55758685
+          - 0.020560611
+          - -0.0016782497
+          - 0.82986224
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.99999994
+    - name: wrist_inner_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - -0.7035889
+          - 0.037991043
+          - -1.6588309
+        rotation:
+          - -0.7163195
+          - 0.11610334
+          - -0.08078025
+          - 0.68328685
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: wrist_outer_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 0.019651234
+          - -0.12413483
+          - 2.2384965
+        rotation:
+          - 0.6832868
+          - -0.080780245
+          - -0.11610336
+          - 0.71631956
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: index_metacarpal_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 3.4445062
+          - -2.3793244
+          - 0.3846808
+        rotation:
+          - 0.028965851
+          - -0.0071093678
+          - -0.06370491
+          - 0.997523
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: index_01_l
+      parent_index: 23
+      reference_local_transform:
+        translation:
+          - 5.877098
+          - 0.24087569
+          - -0.043181736
+        rotation:
+          - 0
+          - 0.20255655
+          - 0
+          - 0.9792706
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: index_02_l
+      parent_index: 24
+      reference_local_transform:
+        translation:
+          - 4.08
+          - -9.2370556e-14
+          - -1.4210855e-14
+        rotation:
+          - 0
+          - 0.12959665
+          - 0
+          - 0.9915669
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: index_03_l
+      parent_index: 25
+      reference_local_transform:
+        translation:
+          - 2.595
+          - -2.1316282e-14
+          - -5.684342e-14
+        rotation:
+          - 0
+          - 0.109009154
+          - 0
+          - 0.9940407
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: middle_metacarpal_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 3.3758335
+          - -0.18286437
+          - 0.75357074
+        rotation:
+          - -0.037291385
+          - -0.020258857
+          - 0.0003858852
+          - 0.9990991
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 1
+    - name: middle_01_l
+      parent_index: 27
+      reference_local_transform:
+        translation:
+          - 6.098209
+          - 2.1316282e-14
+          - -7.1054274e-14
+        rotation:
+          - 0
+          - 0.2720509
+          - 0
+          - 0.9622829
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: middle_02_l
+      parent_index: 28
+      reference_local_transform:
+        translation:
+          - 5.169
+          - 4.2632564e-14
+          - 0
+        rotation:
+          - 0
+          - 0.18025488
+          - 0
+          - 0.98362005
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: middle_03_l
+      parent_index: 29
+      reference_local_transform:
+        translation:
+          - 2.474
+          - 3.5527137e-15
+          - -4.2632564e-14
+        rotation:
+          - 0
+          - 0.08715575
+          - 0
+          - 0.9961947
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: thumb_01_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 1.9924465
+          - -2.581536
+          - -1.3566048
+        rotation:
+          - 0.50519323
+          - -0.067039065
+          - -0.36912993
+          - 0.77719283
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: thumb_02_l
+      parent_index: 31
+      reference_local_transform:
+        translation:
+          - 4.378
+          - -9.947598e-14
+          - -9.947598e-14
+        rotation:
+          - 0.033565205
+          - 0.20185573
+          - 0.0103024505
+          - 0.97878575
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: thumb_03_l
+      parent_index: 32
+      reference_local_transform:
+        translation:
+          - 3.086
+          - 8.526513e-14
+          - -5.684342e-14
+        rotation:
+          - 0
+          - 0.08715575
+          - 0
+          - 0.9961947
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: pinky_metacarpal_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 3.3143785
+          - 2.391111
+          - 0.30591726
+        rotation:
+          - -0.21823111
+          - 0.058286227
+          - 0.18816638
+          - 0.95580924
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_01_l
+      parent_index: 34
+      reference_local_transform:
+        translation:
+          - 4.9575677
+          - -0.19884028
+          - 0.1431204
+        rotation:
+          - 0.08998402
+          - 0.1280659
+          - -0.017015997
+          - 0.98752844
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_02_l
+      parent_index: 35
+      reference_local_transform:
+        translation:
+          - 3.816
+          - 5.684342e-14
+          - -1.7053026e-13
+        rotation:
+          - 0
+          - 0.18469754
+          - 0
+          - 0.9827954
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_03_l
+      parent_index: 36
+      reference_local_transform:
+        translation:
+          - 2.04
+          - 2.1316282e-14
+          - 0
+        rotation:
+          - 0
+          - 0.042895753
+          - 0
+          - 0.9990796
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: ring_metacarpal_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 3.3743038
+          - 1.0917566
+          - 0.5425169
+        rotation:
+          - -0.11659884
+          - -0.02565965
+          - 0.10056861
+          - 0.987741
+        scale:
+          - 1
+          - 0.99999994
+          - 0.99999994
+    - name: ring_01_l
+      parent_index: 38
+      reference_local_transform:
+        translation:
+          - 5.645517
+          - -0.020689175
+          - 0.041624535
+        rotation:
+          - 0.054216173
+          - 0.25353977
+          - -0.01317727
+          - 0.9657145
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ring_02_l
+      parent_index: 39
+      reference_local_transform:
+        translation:
+          - 4.977
+          - -9.592327e-14
+          - 8.526513e-14
+        rotation:
+          - 0
+          - 0.16473773
+          - 0
+          - 0.9863374
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ring_03_l
+      parent_index: 40
+      reference_local_transform:
+        translation:
+          - 2.265
+          - 1.563194e-13
+          - -3.5527137e-14
+        rotation:
+          - 0
+          - 0.07992057
+          - 0
+          - 0.99680126
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: weapon_l
+      parent_index: 20
+      reference_local_transform:
+        translation:
+          - 1.1633779
+          - 0.519516
+          - -1.3170588
+        rotation:
+          - -0.08981172
+          - 0.059294473
+          - 0.14387718
+          - 0.98372626
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_twist_01_l
+      parent_index: 11
+      reference_local_transform:
+        translation:
+          - 9.257046
+          - -7.1054274e-14
+          - -8.881784e-15
+        rotation:
+          - -5.355592e-05
+          - -0.0028496934
+          - 0.018790178
+          - 0.9998194
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: upperarm_twistCor_01_l
+      parent_index: 43
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - -5.355592e-05
+          - -0.0028496934
+          - 0.018790178
+          - 0.9998194
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: upperarm_twist_02_l
+      parent_index: 11
+      reference_local_transform:
+        translation:
+          - 18.514091
+          - -5.684342e-14
+          - -5.3290705e-15
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_tricep_l
+      parent_index: 45
+      reference_local_transform:
+        translation:
+          - 0.63981694
+          - -0.20165041
+          - -4.8805857
+        rotation:
+          - -0.7369754
+          - 0.002391336
+          - 0.00808835
+          - 0.675867
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: upperarm_bicep_l
+      parent_index: 45
+      reference_local_transform:
+        translation:
+          - 0.6797468
+          - -1.7917963
+          - 4.439379
+        rotation:
+          - 0.675867
+          - 0.008088349
+          - -0.0023913356
+          - 0.7369754
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: upperarm_twistCor_02_l
+      parent_index: 45
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - -0.00016059038
+          - -0.008544962
+          - 0.056343384
+          - 0.9983749
+        scale:
+          - 1
+          - 0.99999994
+          - 0.99999994
+    - name: upperarm_correctiveRoot_l
+      parent_index: 11
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_bck_l
+      parent_index: 49
+      reference_local_transform:
+        translation:
+          - 1.4677365
+          - 0.38593787
+          - -7.6444373
+        rotation:
+          - -0.58310604
+          - 0
+          - 0
+          - 0.81239605
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_fwd_l
+      parent_index: 49
+      reference_local_transform:
+        translation:
+          - 3.255006
+          - -1.0630379
+          - 8.509158
+        rotation:
+          - 0.7570513
+          - 0.080101304
+          - -0.067623265
+          - 0.6448909
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.9999999
+    - name: upperarm_in_l
+      parent_index: 49
+      reference_local_transform:
+        translation:
+          - 6.4101486
+          - -4.7617517
+          - 0.54440606
+        rotation:
+          - 0.912855
+          - 0.40828383
+          - -1.7846654e-08
+          - -3.990216e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_out_l
+      parent_index: 49
+      reference_local_transform:
+        translation:
+          - 0.22034949
+          - 5.804066
+          - -0.05173654
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: clavicle_out_l
+      parent_index: 10
+      reference_local_transform:
+        translation:
+          - 11.813392
+          - 6.28184
+          - 0.44387755
+        rotation:
+          - -0.0025898814
+          - -0.037471157
+          - 0.027061032
+          - 0.9989279
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: clavicle_scap_l
+      parent_index: 10
+      reference_local_transform:
+        translation:
+          - 9.985832
+          - -1.9931055
+          - -7.578162
+        rotation:
+          - -0.027061032
+          - 0.9989279
+          - -0.0025898805
+          - 0.037471123
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: clavicle_r
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - 5.51622
+          - 1.4278727
+          - -1.3148112
+        rotation:
+          - 0.7545604
+          - -0.6496141
+          - 0.0832783
+          - -0.041289978
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_r
+      parent_index: 56
+      reference_local_transform:
+        translation:
+          - -17.809626
+          - 0.00043809693
+          - -2.8716145e-06
+        rotation:
+          - -0.019947851
+          - -0.020190159
+          - -0.3917308
+          - 0.91964203
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: lowerarm_r
+      parent_index: 57
+      reference_local_transform:
+        translation:
+          - -27.770695
+          - 5.684342e-14
+          - 3.5527137e-14
+        rotation:
+          - 0
+          - -0.33363262
+          - 0
+          - 0.9427032
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_twist_02_r
+      parent_index: 58
+      reference_local_transform:
+        translation:
+          - -9.083662
+          - -2.842171e-14
+          - 7.1054274e-15
+        rotation:
+          - 0.011477666
+          - 0.017494798
+          - 0.014877389
+          - 0.9996704
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_twist_01_r
+      parent_index: 58
+      reference_local_transform:
+        translation:
+          - -18.167305
+          - -1.4210855e-14
+          - 7.1054274e-15
+        rotation:
+          - 0.011477665
+          - 0.017494798
+          - 0.014877326
+          - 0.9996704
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_correctiveRoot_r
+      parent_index: 58
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0.011752091
+          - 0.00017877878
+          - 0.015209697
+          - 0.9998152
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_out_r
+      parent_index: 61
+      reference_local_transform:
+        translation:
+          - -0.70708567
+          - -2.924478
+          - 0.6178444
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_in_r
+      parent_index: 61
+      reference_local_transform:
+        translation:
+          - -0.8577862
+          - 3.8254638
+          - 0.8168741
+        rotation:
+          - 1
+          - 0
+          - 0
+          - -4.371139e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_fwd_r
+      parent_index: 61
+      reference_local_transform:
+        translation:
+          - -1.8127351
+          - 0.22602805
+          - -3.5876975
+        rotation:
+          - 0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: lowerarm_bck_r
+      parent_index: 61
+      reference_local_transform:
+        translation:
+          - -0.7723354
+          - 0.9858057
+          - 5.001581
+        rotation:
+          - -0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: hand_r
+      parent_index: 58
+      reference_local_transform:
+        translation:
+          - -27.25101
+          - -1.4210855e-14
+          - 7.1054274e-15
+        rotation:
+          - -0.55758685
+          - 0.020560611
+          - -0.0016782497
+          - 0.82986224
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.99999994
+    - name: wrist_inner_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - 0.70334107
+          - -0.038177095
+          - 1.6586792
+        rotation:
+          - -0.7163195
+          - 0.11610334
+          - -0.08078025
+          - 0.68328685
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: wrist_outer_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -0.01987907
+          - 0.124028
+          - -2.2387116
+        rotation:
+          - 0.6832868
+          - -0.080780245
+          - -0.11610336
+          - 0.71631956
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_metacarpal_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -3.3146772
+          - -2.3912868
+          - -0.30593535
+        rotation:
+          - -0.21823111
+          - 0.058286227
+          - 0.18816638
+          - 0.95580924
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_01_r
+      parent_index: 69
+      reference_local_transform:
+        translation:
+          - -4.9573007
+          - 0.19892025
+          - -0.14326146
+        rotation:
+          - 0.08998402
+          - 0.1280659
+          - -0.017015997
+          - 0.98752844
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_02_r
+      parent_index: 70
+      reference_local_transform:
+        translation:
+          - -3.8160362
+          - 3.2629207e-05
+          - -3.0366025e-05
+        rotation:
+          - 0
+          - 0.18469754
+          - 0
+          - 0.9827954
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: pinky_03_r
+      parent_index: 71
+      reference_local_transform:
+        translation:
+          - -2.0399997
+          - -3.1002965e-05
+          - 1.7523877e-05
+        rotation:
+          - 0
+          - 0.042895753
+          - 0
+          - 0.9990796
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: ring_metacarpal_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -3.374208
+          - -1.0917816
+          - -0.54299176
+        rotation:
+          - -0.11659884
+          - -0.02565965
+          - 0.10056861
+          - 0.987741
+        scale:
+          - 1
+          - 0.99999994
+          - 0.99999994
+    - name: ring_01_r
+      parent_index: 73
+      reference_local_transform:
+        translation:
+          - -5.645712
+          - 0.020674974
+          - -0.041443493
+        rotation:
+          - 0.054216173
+          - 0.25353977
+          - -0.01317727
+          - 0.9657145
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ring_02_r
+      parent_index: 74
+      reference_local_transform:
+        translation:
+          - -4.9770675
+          - -2.3612021e-05
+          - 2.0846834e-05
+        rotation:
+          - 0
+          - 0.16473773
+          - 0
+          - 0.9863374
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ring_03_r
+      parent_index: 75
+      reference_local_transform:
+        translation:
+          - -2.2649746
+          - -1.1221488e-05
+          - -5.001757e-05
+        rotation:
+          - 0
+          - 0.07992057
+          - 0
+          - 0.99680126
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: middle_metacarpal_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -3.3758001
+          - 0.18280552
+          - -0.75400394
+        rotation:
+          - -0.037291385
+          - -0.020258857
+          - 0.0003858852
+          - 0.9990991
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 1
+    - name: middle_01_r
+      parent_index: 77
+      reference_local_transform:
+        translation:
+          - -6.098366
+          - 1.4303819e-06
+          - 0.00012385072
+        rotation:
+          - 0
+          - 0.2720509
+          - 0
+          - 0.9622829
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: middle_02_r
+      parent_index: 78
+      reference_local_transform:
+        translation:
+          - -5.1689916
+          - -3.704567e-05
+          - 7.743859e-05
+        rotation:
+          - 0
+          - 0.18025488
+          - 0
+          - 0.98362005
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: middle_03_r
+      parent_index: 79
+      reference_local_transform:
+        translation:
+          - -2.474047
+          - 3.4385015e-05
+          - -4.5777306e-05
+        rotation:
+          - 0
+          - 0.08715575
+          - 0
+          - 0.9961947
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: index_metacarpal_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -3.444514
+          - 2.3793087
+          - -0.38516682
+        rotation:
+          - 0.028965851
+          - -0.0071093678
+          - -0.06370491
+          - 0.997523
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: index_01_r
+      parent_index: 81
+      reference_local_transform:
+        translation:
+          - -5.8772054
+          - -0.24095164
+          - 0.04341236
+        rotation:
+          - 0
+          - 0.20255655
+          - 0
+          - 0.9792706
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: index_02_r
+      parent_index: 82
+      reference_local_transform:
+        translation:
+          - -4.0799327
+          - 3.2106662e-05
+          - -5.040206e-06
+        rotation:
+          - 0
+          - 0.12959665
+          - 0
+          - 0.9915669
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: index_03_r
+      parent_index: 83
+      reference_local_transform:
+        translation:
+          - -2.5950763
+          - -3.560682e-06
+          - -3.9602186e-05
+        rotation:
+          - 0
+          - 0.109009154
+          - 0
+          - 0.9940407
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thumb_01_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -1.9928325
+          - 2.5813255
+          - 1.3566571
+        rotation:
+          - 0.50519323
+          - -0.067039065
+          - -0.36912993
+          - 0.77719283
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: thumb_02_r
+      parent_index: 85
+      reference_local_transform:
+        translation:
+          - -4.377825
+          - -0.00013574546
+          - -0.00042712956
+        rotation:
+          - 0.033565205
+          - 0.20185573
+          - 0.0103024505
+          - 0.97878575
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: thumb_03_r
+      parent_index: 86
+      reference_local_transform:
+        translation:
+          - -3.0859523
+          - 4.582558e-05
+          - 1.4851161e-05
+        rotation:
+          - 0
+          - 0.08715575
+          - 0
+          - 0.9961947
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: weapon_r
+      parent_index: 66
+      reference_local_transform:
+        translation:
+          - -1.1633834
+          - -0.51951736
+          - 1.3170545
+        rotation:
+          - -0.089811705
+          - 0.059294496
+          - 0.14387718
+          - 0.98372626
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_twist_01_r
+      parent_index: 57
+      reference_local_transform:
+        translation:
+          - -9.256898
+          - -0.00010078256
+          - -1.0202638e-05
+        rotation:
+          - -5.355592e-05
+          - -0.0028496934
+          - 0.018790178
+          - 0.9998194
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: upperarm_twistCor_01_r
+      parent_index: 89
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - -5.355592e-05
+          - -0.0028496934
+          - 0.018790178
+          - 0.9998194
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: upperarm_twist_02_r
+      parent_index: 57
+      reference_local_transform:
+        translation:
+          - -18.513796
+          - -0.00020156513
+          - -2.0405276e-05
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_tricep_r
+      parent_index: 91
+      reference_local_transform:
+        translation:
+          - -0.75752014
+          - 0.0035142137
+          - 4.8716655
+        rotation:
+          - -0.7369754
+          - 0.002391336
+          - 0.00808835
+          - 0.675867
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: upperarm_bicep_r
+      parent_index: 91
+      reference_local_transform:
+        translation:
+          - -0.7984782
+          - 1.5932773
+          - -4.4483104
+        rotation:
+          - 0.675867
+          - 0.008088349
+          - -0.0023913356
+          - 0.7369754
+        scale:
+          - 1
+          - 0.99999994
+          - 1
+    - name: upperarm_twistCor_02_r
+      parent_index: 91
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - -0.00016059038
+          - -0.008544962
+          - 0.056343384
+          - 0.9983749
+        scale:
+          - 1
+          - 0.99999994
+          - 0.99999994
+    - name: upperarm_correctiveRoot_r
+      parent_index: 57
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_bck_r
+      parent_index: 95
+      reference_local_transform:
+        translation:
+          - -1.5995809
+          - -0.5763677
+          - 7.6376987
+        rotation:
+          - -0.58310604
+          - 0
+          - 0
+          - 0.81239605
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_in_r
+      parent_index: 95
+      reference_local_transform:
+        translation:
+          - -6.551142
+          - 4.556988
+          - -0.5461317
+        rotation:
+          - 0.912855
+          - 0.40828383
+          - -1.7846654e-08
+          - -3.990216e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: upperarm_fwd_r
+      parent_index: 95
+      reference_local_transform:
+        translation:
+          - -3.3879807
+          - 0.87369573
+          - -8.516726
+        rotation:
+          - 0.7570513
+          - 0.080101304
+          - -0.067623265
+          - 0.6448909
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.9999999
+    - name: upperarm_out_r
+      parent_index: 95
+      reference_local_transform:
+        translation:
+          - -0.35331422
+          - -5.993515
+          - 0.04416718
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: clavicle_out_r
+      parent_index: 56
+      reference_local_transform:
+        translation:
+          - -12.0417185
+          - -6.3165755
+          - -0.44230145
+        rotation:
+          - -0.0025898814
+          - -0.037471157
+          - 0.027061032
+          - 0.9989279
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: clavicle_scap_r
+      parent_index: 56
+      reference_local_transform:
+        translation:
+          - -10.214471
+          - 1.9570829
+          - 7.567725
+        rotation:
+          - -0.027061032
+          - 0.9989279
+          - -0.0025898805
+          - 0.037471123
+        scale:
+          - 0.99999994
+          - 1
+          - 0.99999994
+    - name: clavicle_pec_r
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - -9.237822
+          - 9.635503
+          - 7.915499
+        rotation:
+          - 0.72548264
+          - -0.67929626
+          - 0.10850443
+          - -0.021410076
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: spine_04_latissimus_l
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - -9.961815
+          - -15.443479
+          - -4.626293
+        rotation:
+          - 0.16731109
+          - 0.01925956
+          - -0.7577242
+          - 0.63046813
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: spine_04_latissimus_r
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - -9.967104
+          - 15.454673
+          - -4.6270123
+        rotation:
+          - 0.73204166
+          - -0.6750825
+          - 0.047045484
+          - -0.07851973
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: clavicle_pec_l
+      parent_index: 6
+      reference_local_transform:
+        translation:
+          - -9.242896
+          - -9.310202
+          - 7.684768
+        rotation:
+          - 0.108505905
+          - -0.021406181
+          - -0.72546524
+          - 0.6793147
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.99999994
+    - name: thigh_r
+      parent_index: 1
+      reference_local_transform:
+        translation:
+          - -2.3657262
+          - 9.969091
+          - 0.11948779
+        rotation:
+          - 0.02946205
+          - 0.9965191
+          - -0.07240501
+          - 0.028969511
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.99999994
+    - name: calf_r
+      parent_index: 106
+      reference_local_transform:
+        translation:
+          - 43.341263
+          - 7.1054274e-15
+          - -3.5527137e-15
+        rotation:
+          - 0
+          - -0.043661624
+          - 0
+          - 0.9990464
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: foot_r
+      parent_index: 107
+      reference_local_transform:
+        translation:
+          - 42.21795
+          - 5.3290705e-15
+          - 1.110223e-15
+        rotation:
+          - -0.00066565565
+          - 0.023239296
+          - -0.026877109
+          - 0.99936837
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ball_r
+      parent_index: 108
+      reference_local_transform:
+        translation:
+          - 7.0094366
+          - -0.5389456
+          - -15.237595
+        rotation:
+          - 0
+          - -0.7071068
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ankle_fwd_r
+      parent_index: 108
+      reference_local_transform:
+        translation:
+          - -2.1680758
+          - -0.39477405
+          - -5.097368
+        rotation:
+          - 0.7102624
+          - -0.0055067996
+          - 0.05004926
+          - 0.7021339
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: ankle_bck_r
+      parent_index: 108
+      reference_local_transform:
+        translation:
+          - -0.5265811
+          - 0.92914695
+          - 4.041838
+        rotation:
+          - -0.70213395
+          - -0.050049268
+          - -0.005506796
+          - 0.7102625
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: calf_twist_02_r
+      parent_index: 107
+      reference_local_transform:
+        translation:
+          - 14.07265
+          - 0.03772895
+          - -5.7731597e-15
+        rotation:
+          - -9.2996044e-05
+          - 0.02324864
+          - -0.0022513394
+          - 0.9997272
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_twistCor_02_r
+      parent_index: 112
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_twist_01_r
+      parent_index: 107
+      reference_local_transform:
+        translation:
+          - 28.1453
+          - 0.0754579
+          - -7.1054274e-15
+        rotation:
+          - -9.2996044e-05
+          - 0.02324864
+          - -0.0022513394
+          - 0.9997272
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_correctiveRoot_r
+      parent_index: 107
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 2.1706726e-05
+          - 2.9097949e-08
+          - 0.0013405025
+          - 0.9999991
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_kneeBack_r
+      parent_index: 115
+      reference_local_transform:
+        translation:
+          - 0.15535767
+          - -0.42761913
+          - 5.7634234
+        rotation:
+          - -0.69333965
+          - -0.02152898
+          - -0.012997675
+          - 0.720172
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: calf_knee_r
+      parent_index: 115
+      reference_local_transform:
+        translation:
+          - 0.18996571
+          - -0.0016205285
+          - -5.2457843
+        rotation:
+          - 0.7201719
+          - -0.012997678
+          - 0.021528982
+          - 0.6933397
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: thigh_twist_01_r
+      parent_index: 106
+      reference_local_transform:
+        translation:
+          - 14.447087
+          - -3.5527137e-15
+          - -6.217249e-15
+        rotation:
+          - 2.5705414e-05
+          - -0.011408075
+          - -0.0022531128
+          - 0.99993247
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_twistCor_01_r
+      parent_index: 118
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_twist_02_r
+      parent_index: 106
+      reference_local_transform:
+        translation:
+          - 28.894175
+          - -3.5527137e-14
+          - -7.993606e-15
+        rotation:
+          - 2.5705414e-05
+          - -0.011408075
+          - -0.0022531128
+          - 0.99993247
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_twistCor_02_r
+      parent_index: 120
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_correctiveRoot_r
+      parent_index: 106
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_fwd_r
+      parent_index: 122
+      reference_local_transform:
+        translation:
+          - -4.2409244
+          - -0.7550978
+          - -6.7747397
+        rotation:
+          - 0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_bck_r
+      parent_index: 122
+      reference_local_transform:
+        translation:
+          - -5.0374994
+          - -1.519173
+          - 10.062274
+        rotation:
+          - -0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_out_r
+      parent_index: 122
+      reference_local_transform:
+        translation:
+          - -5.816617
+          - 5.110184
+          - 0.6006221
+        rotation:
+          - 1
+          - 0
+          - 0
+          - -4.371139e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_in_r
+      parent_index: 122
+      reference_local_transform:
+        translation:
+          - 10.9283285
+          - -8.577867
+          - -0.76586586
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_bck_lwr_r
+      parent_index: 122
+      reference_local_transform:
+        translation:
+          - 5.276165
+          - -1.4992259
+          - 10.648497
+        rotation:
+          - -0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_fwd_lwr_r
+      parent_index: 122
+      reference_local_transform:
+        translation:
+          - 1.0280262
+          - -0.7243042
+          - -6.899659
+        rotation:
+          - 0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_l
+      parent_index: 1
+      reference_local_transform:
+        translation:
+          - -2.3657112
+          - -9.969203
+          - 0.110043764
+        rotation:
+          - 0.07240501
+          - -0.028969493
+          - 0.02946205
+          - 0.9965191
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 0.99999994
+    - name: calf_l
+      parent_index: 129
+      reference_local_transform:
+        translation:
+          - -43.34131
+          - 5.3290705e-15
+          - -4.440892e-15
+        rotation:
+          - 0
+          - -0.043661624
+          - 0
+          - 0.9990464
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: foot_l
+      parent_index: 130
+      reference_local_transform:
+        translation:
+          - -42.217915
+          - 7.1054274e-15
+          - 2.1094237e-15
+        rotation:
+          - -0.00066565565
+          - 0.023239296
+          - -0.026877109
+          - 0.99936837
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ball_l
+      parent_index: 131
+      reference_local_transform:
+        translation:
+          - -7.0094366
+          - 0.53888744
+          - 15.237589
+        rotation:
+          - 0
+          - -0.7071068
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ankle_bck_l
+      parent_index: 131
+      reference_local_transform:
+        translation:
+          - 0.61270773
+          - -0.4924951
+          - -3.4437337
+        rotation:
+          - -0.75016344
+          - -0.0503116
+          - -0.0019755599
+          - 0.65933293
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 1
+    - name: ankle_fwd_l
+      parent_index: 131
+      reference_local_transform:
+        translation:
+          - 1.7797977
+          - -0.2645975
+          - 4.594759
+        rotation:
+          - 0.6593328
+          - -0.0019755606
+          - 0.05031159
+          - 0.7501634
+        scale:
+          - 0.99999994
+          - 0.99999994
+          - 1
+    - name: calf_twist_02_l
+      parent_index: 130
+      reference_local_transform:
+        translation:
+          - -14.0726385
+          - 1.9539925e-14
+          - -2.220446e-15
+        rotation:
+          - -9.2996044e-05
+          - 0.02324864
+          - -0.0022513394
+          - 0.9997272
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_twistCor_02_l
+      parent_index: 135
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_twist_01_l
+      parent_index: 130
+      reference_local_transform:
+        translation:
+          - -28.145277
+          - -0.07544811
+          - -5.067011e-06
+        rotation:
+          - -9.2996044e-05
+          - 0.02324864
+          - -0.0022513394
+          - 0.9997272
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_correctiveRoot_l
+      parent_index: 130
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 2.1706726e-05
+          - 2.9097949e-08
+          - 0.0013405025
+          - 0.9999991
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: calf_kneeBack_l
+      parent_index: 138
+      reference_local_transform:
+        translation:
+          - -0.15856355
+          - 0.40399325
+          - -5.758532
+        rotation:
+          - -0.69333965
+          - -0.021529492
+          - -0.012985944
+          - 0.72017217
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: calf_knee_l
+      parent_index: 138
+      reference_local_transform:
+        translation:
+          - -0.19280764
+          - -0.0011415838
+          - 5.2492456
+        rotation:
+          - 0.72017217
+          - -0.012985946
+          - 0.021529492
+          - 0.69333965
+        scale:
+          - 0.99999994
+          - 1
+          - 1
+    - name: thigh_twist_01_l
+      parent_index: 129
+      reference_local_transform:
+        translation:
+          - -14.447103
+          - 3.5527137e-15
+          - 1.7763568e-15
+        rotation:
+          - 2.5705414e-05
+          - -0.011408075
+          - -0.0022531128
+          - 0.99993247
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_twistCor_01_l
+      parent_index: 141
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_twist_02_l
+      parent_index: 129
+      reference_local_transform:
+        translation:
+          - -28.894205
+          - -8.074864e-06
+          - 2.268898e-06
+        rotation:
+          - 2.5705414e-05
+          - -0.011408075
+          - -0.0022531128
+          - 0.99993247
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_twistCor_02_l
+      parent_index: 143
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_correctiveRoot_l
+      parent_index: 129
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_bck_l
+      parent_index: 145
+      reference_local_transform:
+        translation:
+          - 5.035457
+          - 1.4929672
+          - -10.055752
+        rotation:
+          - -0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_fwd_l
+      parent_index: 145
+      reference_local_transform:
+        translation:
+          - 4.2295513
+          - 0.74736285
+          - 6.773116
+        rotation:
+          - 0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_out_l
+      parent_index: 145
+      reference_local_transform:
+        translation:
+          - 5.8140984
+          - -5.122735
+          - -0.586435
+        rotation:
+          - 1
+          - 0
+          - 0
+          - -4.371139e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_bck_lwr_l
+      parent_index: 145
+      reference_local_transform:
+        translation:
+          - -5.298473
+          - 1.2301521
+          - -10.491521
+        rotation:
+          - -0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_in_l
+      parent_index: 145
+      reference_local_transform:
+        translation:
+          - -10.86884
+          - 8.555188
+          - 0.8266865
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: thigh_fwd_lwr_l
+      parent_index: 145
+      reference_local_transform:
+        translation:
+          - -1.1209093
+          - 0.6483957
+          - 7.387849
+        rotation:
+          - 0.7071068
+          - 0
+          - 0
+          - 0.7071068
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ik_foot_root
+      parent_index: 0
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ik_foot_l
+      parent_index: 152
+      reference_local_transform:
+        translation:
+          - 14.087671
+          - 8.2376375
+          - -0.9942575
+        rotation:
+          - 0.063631535
+          - 0.041375484
+          - 0.70424664
+          - 0.70588654
+        scale:
+          - 1
+          - 0.99999994
+          - 0.99999994
+    - name: ik_foot_r
+      parent_index: 152
+      reference_local_transform:
+        translation:
+          - -14.087559
+          - 8.238232
+          - -0.98483455
+        rotation:
+          - 0.70588654
+          - -0.7042466
+          - 0.041375488
+          - -0.06363154
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ik_hand_root
+      parent_index: 0
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ik_hand_gun
+      parent_index: 155
+      reference_local_transform:
+        translation:
+          - -47.76832
+          - 104.46643
+          - 15.698805
+        rotation:
+          - 0.5984603
+          - 0.52059954
+          - 0.009649303
+          - 0.60887456
+        scale:
+          - 1
+          - 0.99999994
+          - 0.99999994
+    - name: ik_hand_l
+      parent_index: 156
+      reference_local_transform:
+        translation:
+          - 43.73357
+          - 58.40811
+          - 61.66985
+        rotation:
+          - 0.45776612
+          - 0.6113659
+          - 0.64550906
+          - -6.925307e-08
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: ik_hand_r
+      parent_index: 156
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: interaction
+      parent_index: 0
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+    - name: center_of_mass
+      parent_index: 0
+      reference_local_transform:
+        translation:
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1

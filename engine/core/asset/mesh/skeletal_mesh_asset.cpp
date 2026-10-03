@@ -60,12 +60,22 @@ namespace toy3d
             Matrix4 inverse;
             const auto& matrix = geometry.inverse_bind_matrices[i];
             const auto& bounds = geometry.bone_local_bounds[i];
-            if (!is_finite(matrix) || !try_inverse(matrix, inverse) || matrix.at(0, 3) != 0 || matrix.at(1, 3) != 0 ||
-                matrix.at(2, 3) != 0 || matrix.at(3, 3) != 1 || !is_finite(bounds.minimum) ||
-                !is_finite(bounds.maximum) || bounds.minimum.x > bounds.maximum.x ||
+            if (!is_finite(matrix) || !try_inverse(matrix, inverse))
+            {
+                return invalid("inverse bind matrix is nonfinite or singular");
+            }
+            if (matrix.at(0, 3) != 0 || matrix.at(1, 3) != 0 || matrix.at(2, 3) != 0 || matrix.at(3, 3) != 1)
+            {
+                auto status = invalid("inverse bind matrix must be affine");
+                status.message += " at bone " + std::to_string(i) + " row=" + std::to_string(matrix.at(0, 3)) + "," +
+                                  std::to_string(matrix.at(1, 3)) + "," + std::to_string(matrix.at(2, 3)) + "," +
+                                  std::to_string(matrix.at(3, 3));
+                return status;
+            }
+            if (!is_finite(bounds.minimum) || !is_finite(bounds.maximum) || bounds.minimum.x > bounds.maximum.x ||
                 bounds.minimum.y > bounds.maximum.y || bounds.minimum.z > bounds.maximum.z)
             {
-                return invalid("invalid inverse bind matrix or bone bounds");
+                return invalid("invalid bone bounds");
             }
         }
         for (std::size_t section_index = 0; section_index < geometry.mesh.sections.size(); ++section_index)
@@ -142,9 +152,17 @@ namespace toy3d
     AssetStatus validate_skeletal_mesh_compatibility(const SkeletalMeshAsset& mesh, const AssetId& skeleton_id,
                                                      const SkeletonAssetData& skeleton)
     {
+        const auto valid = validate_skeletal_mesh(mesh);
+        if (!valid.succeeded())
+        {
+            return valid;
+        }
         const auto hash = skeleton_reference_hash(skeleton);
-        if (!validate_skeletal_mesh(mesh).succeeded() || !hash.succeeded() ||
-            !(mesh.data.skeleton.asset_id == skeleton_id) || mesh.data.skeleton_reference_hash != hash.value() ||
+        if (!hash.succeeded())
+        {
+            return hash.status();
+        }
+        if (!(mesh.data.skeleton.asset_id == skeleton_id) || mesh.data.skeleton_reference_hash != hash.value() ||
             mesh.geometry.inverse_bind_matrices.size() != skeleton.bones.size())
         {
             return invalid("skeletal mesh skeleton identity or reference contract mismatch");

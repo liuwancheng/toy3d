@@ -9,6 +9,18 @@
 
 namespace toy3d
 {
+    namespace
+    {
+        std::uint32_t decode_uint32(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+        {
+            // The wire format is little endian; do not rely on host endianness
+            // or native object layout when decoding dense numeric streams.
+            return static_cast<std::uint32_t>(bytes[offset]) | (static_cast<std::uint32_t>(bytes[offset + 1u]) << 8u) |
+                   (static_cast<std::uint32_t>(bytes[offset + 2u]) << 16u) |
+                   (static_cast<std::uint32_t>(bytes[offset + 3u]) << 24u);
+        }
+    } // namespace
+
     bool ValueStatus::succeeded() const
     {
         return code == ValueErrorCode::None;
@@ -330,13 +342,18 @@ namespace toy3d
 
     ValueStatus ValueReader::read_uint8(std::uint8_t& value)
     {
-        std::uint64_t decoded = 0;
-        const ValueStatus status = read_unsigned(1, decoded);
-        if (status.succeeded())
+        // Dense mesh streams contain millions of scalars. Check the same limits
+        // directly to avoid constructing intermediate status strings per byte.
+        if (bytes_.size() > limits_.max_bytes)
         {
-            value = static_cast<std::uint8_t>(decoded);
+            return error(ValueErrorCode::TooLarge, "input exceeds byte limit");
         }
-        return status;
+        if (offset_ >= bytes_.size())
+        {
+            return error(ValueErrorCode::Truncated, "input ends inside value");
+        }
+        value = bytes_[offset_++];
+        return ValueStatus::success();
     }
 
     ValueStatus ValueReader::read_int16(std::int16_t& value)
@@ -374,13 +391,17 @@ namespace toy3d
 
     ValueStatus ValueReader::read_uint32(std::uint32_t& value)
     {
-        std::uint64_t decoded = 0;
-        const ValueStatus status = read_unsigned(4, decoded);
-        if (status.succeeded())
+        if (bytes_.size() > limits_.max_bytes)
         {
-            value = static_cast<std::uint32_t>(decoded);
+            return error(ValueErrorCode::TooLarge, "input exceeds byte limit");
         }
-        return status;
+        if (offset_ > bytes_.size() || 4u > bytes_.size() - offset_)
+        {
+            return error(ValueErrorCode::Truncated, "input ends inside value");
+        }
+        value = decode_uint32(bytes_, offset_);
+        offset_ += 4u;
+        return ValueStatus::success();
     }
 
     ValueStatus ValueReader::read_int64(std::int64_t& value)
@@ -395,12 +416,16 @@ namespace toy3d
 
     ValueStatus ValueReader::read_float32(float& value)
     {
-        std::uint32_t bits = 0;
-        const ValueStatus status = read_uint32(bits);
-        if (!status.succeeded())
+        if (bytes_.size() > limits_.max_bytes)
         {
-            return status;
+            return error(ValueErrorCode::TooLarge, "input exceeds byte limit");
         }
+        if (offset_ > bytes_.size() || 4u > bytes_.size() - offset_)
+        {
+            return error(ValueErrorCode::Truncated, "input ends inside value");
+        }
+        const std::uint32_t bits = decode_uint32(bytes_, offset_);
+        offset_ += 4u;
         float decoded = 0.0f;
         std::memcpy(&decoded, &bits, sizeof(decoded));
         if (!std::isfinite(decoded))

@@ -30,6 +30,7 @@ namespace toy3d
     class TaskGraphInterface;
     class TonemapPassResources;
     class EnvironmentBackgroundPassResources;
+    class DebugLinePassResources;
     class ImGuiRenderer;
     class ViewportOutputTarget;
     class UiTextureRegistry;
@@ -83,7 +84,8 @@ namespace toy3d
                  std::function<RHIResult<std::unique_ptr<RHIDevice>>()> device_factory,
                  std::shared_ptr<const GlobalShaderMap> global_shader_map,
                  std::unique_ptr<ImGuiFontAtlasData> imgui_font_atlas = nullptr, bool enable_preview_scene = false,
-                 BuiltinMeshPassPrograms mesh_pass_programs = {}, bool enable_play_scene = false);
+                 BuiltinMeshPassPrograms mesh_pass_programs = {}, bool enable_play_scene = false,
+                 bool enable_animation_preview_scene = false);
         ~Renderer();
 
         Renderer(const Renderer&) = delete;
@@ -95,13 +97,15 @@ namespace toy3d
         ThreadStatus teardown();
         void draw_frame(std::unique_ptr<SceneRenderer> scene_renderer,
                         std::unique_ptr<ImGuiDrawData> ui_draw_data = nullptr, ViewportFrameOutput output = {},
-                        UiRenderWork work = {}, std::unique_ptr<SceneRenderer> preview_renderer = nullptr);
+                        UiRenderWork work = {}, std::unique_ptr<SceneRenderer> preview_renderer = nullptr,
+                        std::unique_ptr<SceneRenderer> animation_preview_renderer = nullptr);
         RendererStatus status() const;
         bool poll_hit_proxy(HitProxyResult& result);
         // Published only between successful logical-RT initialize and teardown.
         // The pointer is non-owning and exposes no concrete RenderScene state to GT.
         SceneInterface* scene_interface() const;
         SceneInterface* preview_scene_interface() const;
+        SceneInterface* animation_preview_scene_interface() const;
         SceneInterface* play_scene_interface() const;
         bool poll_ui_texture(UiTextureResult& result);
         void validate_material_shader_map(MaterialShaderMapValidationRef request);
@@ -120,7 +124,11 @@ namespace toy3d
         void collect_ui_readbacks();
         void resolve_builtin_shaders();
         RHIStatus validate_mesh_shader(const ShaderMapProgramRef& program, const VertexFactory* geometry = nullptr);
-        RHIStatus record_ui_work(RHIGraphicsCommandContext& context, RHIReadbackRef& capture);
+        RHIStatus record_ui_work(RHIGraphicsCommandContext& context, RHIReadbackRef& capture,
+                                 RHIReadbackRef& animation_capture);
+        RHIStatus record_preview_work(RHIGraphicsCommandContext& context, const PreviewFrameRequest& request,
+                                      RenderScene* scene, SceneRenderTargets* targets, SceneRenderer* renderer,
+                                      RHIReadbackRef& capture);
 
         struct PendingHitReadback
         {
@@ -150,6 +158,12 @@ namespace toy3d
         std::unique_ptr<UiTextureRegistry> ui_textures_;
         UiRenderWork pending_ui_work_;
         std::unique_ptr<SceneRenderer> pending_preview_renderer_;
+        bool enable_animation_preview_scene_ = false;
+        std::unique_ptr<RenderScene> animation_preview_scene_;
+        std::unique_ptr<SceneRenderTargets> animation_preview_targets_;
+        std::unique_ptr<SceneRenderer> pending_animation_preview_renderer_;
+        std::atomic<SceneInterface*> published_animation_preview_interface_{nullptr};
+        std::unique_ptr<DebugLinePassResources> debug_line_resources_;
         struct PendingUiReadback
         {
             std::uint64_t request_id = 0;
@@ -171,6 +185,7 @@ namespace toy3d
         std::shared_ptr<const GlobalShaderMap> pending_global_shaders_;
         std::unique_ptr<TonemapPassResources> pending_tonemap_resources_;
         std::unique_ptr<EnvironmentBackgroundPassResources> pending_environment_background_resources_;
+        std::unique_ptr<DebugLinePassResources> pending_debug_line_resources_;
         BuiltinMeshPassPrograms pending_mesh_pass_programs_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;
         RHITextureRef placeholder_texture_;

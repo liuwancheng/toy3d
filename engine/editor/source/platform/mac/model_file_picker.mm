@@ -20,7 +20,7 @@ namespace toy3d
         @autoreleasepool
         {
             NSOpenPanel* panel = [NSOpenPanel openPanel];
-            panel.title = kind == FileSelection::Environment ? @"Import Environment" : kind == FileSelection::Texture ? @"Import Texture2D" : @"Import Static Mesh";
+            panel.title = kind == FileSelection::Environment ? @"Import Environment" : kind == FileSelection::Texture ? @"Import Texture2D" : @"Import Model";
             panel.canChooseDirectories = NO;
             panel.canChooseFiles = YES;
             panel.allowsMultipleSelection = YES;

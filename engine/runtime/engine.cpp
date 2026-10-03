@@ -36,6 +36,7 @@
 #include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/postprocess/tonemap_pass.h"
 #include "renderscene/pass/environment_background_pass.h"
+#include "renderscene/pass/debug_line_pass.h"
 #include "renderscene/renderer.h"
 #include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/view/forward_scene_renderer.h"
@@ -276,7 +277,7 @@ namespace toy3d
             global_shader_map,
             imgui_system ? std::make_unique<ImGuiFontAtlasData>(imgui_system->font_atlas()) : nullptr,
             application && application->uses_preview_scene(), std::move(mesh_pass_programs),
-            application && application->uses_play_scene());
+            application && application->uses_play_scene(), application && application->uses_animation_preview_scene());
         rendering_thread = std::make_unique<RenderingThread>(*thread_manager, *task_graph,
                                                              use_rendering_thread ? RenderingThreadMode::MultiThread
                                                                                   : RenderingThreadMode::SingleThread);
@@ -325,6 +326,15 @@ namespace toy3d
              !application->on_initialize_preview_scene(*renderer->preview_scene_interface(), *task_graph)))
         {
             TOY_LOG_ERROR("Application could not initialize its preview scene.");
+            shutdown_render_framework();
+            return false;
+        }
+        if (application && application->uses_animation_preview_scene() &&
+            (!renderer->animation_preview_scene_interface() ||
+             !application->on_initialize_animation_preview_scene(*renderer->animation_preview_scene_interface(),
+                                                                 *task_graph)))
+        {
+            TOY_LOG_ERROR("Application could not initialize its animation preview scene.");
             shutdown_render_framework();
             return false;
         }
@@ -428,8 +438,16 @@ namespace toy3d
                                 std::move(work.preview.views)),
                 true, work.preview.render_shadows);
         }
+        std::unique_ptr<SceneRenderer> animation_preview_renderer;
+        if (work.animation_preview.request_id && renderer->animation_preview_scene_interface())
+        {
+            animation_preview_renderer = std::make_unique<ForwardSceneRenderer>(
+                SceneViewFamily(*renderer->animation_preview_scene_interface(), work.animation_preview.extent,
+                                std::move(work.animation_preview.views)),
+                true, work.animation_preview.render_shadows, true);
+        }
         renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output, std::move(work),
-                             std::move(preview_renderer));
+                             std::move(preview_renderer), std::move(animation_preview_renderer));
     }
 
     void Engine::shutdown_render_framework()
@@ -547,10 +565,16 @@ namespace toy3d
             TOY_LOG_ERROR("Tonemap Global Shader requirement failed: {}", requirement_error);
             return false;
         }
-        if (application && application->uses_preview_scene() &&
+        if (application && (application->uses_preview_scene() || application->uses_animation_preview_scene()) &&
             !requirements.add(environment_background_global_shader_type(), requirement_error))
         {
             TOY_LOG_ERROR("Environment background Shader requirement failed: {}", requirement_error);
+            return false;
+        }
+        if (application && application->uses_animation_preview_scene() &&
+            !requirements.add(debug_lines_global_shader_type(), requirement_error))
+        {
+            TOY_LOG_ERROR("Debug lines Shader requirement failed: {}", requirement_error);
             return false;
         }
         if (imgui_system != nullptr)

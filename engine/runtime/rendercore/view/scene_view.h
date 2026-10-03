@@ -4,12 +4,20 @@
 #include "math/integer_vector.h"
 #include "math/quaternion.h"
 #include "math/vector3.h"
+#include "math/vector4.h"
 
 #include <vector>
 
 namespace toy3d
 {
     class SceneInterface;
+
+    // Owned world-space debug geometry travels with the view request, never a component pointer.
+    struct DebugLineVertex
+    {
+        Vector4 position{0, 0, 0, 1};
+        Vector4 color;
+    };
 
     // CameraProjectionMode is a copied value shared with CameraComponent; it
     // does not grant Render-side access to the Game-side Camera object.

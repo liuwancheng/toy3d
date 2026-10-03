@@ -136,7 +136,7 @@ namespace toy3d
                                                   (module.empty() ? "Toy3dEditor" : module + "Editor")
 #endif
         );
-        if (shaders_.busy() || model_import_.active() || texture_import_.active())
+        if (shaders_.busy() || model_import_.active() || skeletal_import_.active() || texture_import_.active())
         {
             pending_project_ = {};
             project_scene_saved_ = false;

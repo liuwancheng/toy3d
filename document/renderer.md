@@ -55,6 +55,8 @@ Forward View 参数提供环境逆旋转、强度和最高 mip；材质 feature/
 
 UI texture 通过公共 RHI View/受控 ImGui 表示，多个窗口各自持资源/代次，不全局换一张图。Preview 使用独立 World/SceneRenderTargets、同正常 frame 管理；不能操纵主 World、给每个窗口私建 Vulkan ownership。
 
+动画交互预览使用独立于缩略图/材质预览的 Renderer-owned Scene/targets，两者复用同一个 preview recording 入口和 graphics 提交。世界坐标 debug lines 作为 owned 帧请求，在 Base/可选背景后、Tonemap 前以公共 RHI LineList 绘制；深度测试开关只改变 pipeline 状态，颜色/深度附件保持既有 access 与 subresource contract。骨架-only 预览允许没有网格 batch，缩略图仍要求完整网格绘制。资产会话与兼容校验见 [Animation](animation.md#editor-资产预览)。
+
 UI 快照遇到未登记纹理仍拒绝整帧，并诊断 draw-list/command、所属窗口、实际 ID、类别、元素数及允许的 font/viewport/additional ID。additional 列表最多显示16项并保留总数；窗口名仅用于排查，不作为资源身份。诊断不改变纹理登记或退役时序。
 
 Editor 的 Play RenderScene 与编辑/Preview Scene 独立，Renderer 持有、Running 后发布 SceneInterface，退出先撤回。ViewportFrameOutput 的 play_scene 在提交时选择对应场景，复用主视口附件；编辑注册不随显示切换释放。各场景 MeshRenderData 生命周期独立。SceneRenderFeedback 是单次准备反馈，RT 在 geometry 可绘制且场景帧提交成功后发布 Ready，不能作为 GPU completion；启动失败发布诊断，UI/GT 不读取可变 RenderScene。运行会话与输入边界见 [Editor](editor.md#视口内-play)。

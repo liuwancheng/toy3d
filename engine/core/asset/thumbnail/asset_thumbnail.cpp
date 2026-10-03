@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "asset/mesh/skeletal_mesh_asset.h"
+
 namespace toy3d
 {
     namespace
@@ -128,6 +130,44 @@ namespace toy3d
             }
         }
         return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source geometry is missing."));
+    }
+
+    AssetResult<AssetThumbnailSource> calculate_skeletal_mesh_thumbnail_source(const AssetPair& pair,
+                                                                               const AssetPair& skeleton_pair)
+    {
+        const auto mesh = decode_skeletal_mesh_asset_pair(pair);
+        const auto skeleton = decode_skeleton_asset_pair(skeleton_pair);
+        if (!mesh.succeeded() || !skeleton.succeeded())
+        {
+            return AssetResult<AssetThumbnailSource>(
+                invalid("Thumbnail requires valid SkeletalMesh and Skeleton pairs."));
+        }
+        const auto compatible = validate_skeletal_mesh_compatibility(
+            mesh.value(), skeleton_pair.description.index.asset_id, skeleton.value());
+        if (!compatible.succeeded())
+        {
+            return AssetResult<AssetThumbnailSource>(compatible);
+        }
+        for (const auto& segment : pair.meta.segments)
+        {
+            if (segment.name == mesh.value().data.geometry_segment && segment.required)
+            {
+                ValueLimits limits;
+                limits.max_bytes = pair.description.type_data.size() + skeleton_pair.description.type_data.size() +
+                                   segment.bytes.size() + 1024;
+                ValueWriter writer(limits);
+                if (!writer.write_utf8("SkeletalMeshReferencePose").succeeded() ||
+                    !writer.write_blob(pair.description.type_data).succeeded() ||
+                    !writer.write_blob(skeleton_pair.description.type_data).succeeded() ||
+                    !writer.write_blob(segment.bytes).succeeded())
+                {
+                    return AssetResult<AssetThumbnailSource>(
+                        invalid("Skeletal thumbnail source exceeds its encoding limit."));
+                }
+                return AssetResult<AssetThumbnailSource>(AssetThumbnailSource{1, sha256(writer.bytes())});
+            }
+        }
+        return AssetResult<AssetThumbnailSource>(invalid("Skeletal thumbnail geometry is missing."));
     }
 
     AssetResult<AssetSegmentData> encode_thumbnail_source(const AssetThumbnailSource& source)

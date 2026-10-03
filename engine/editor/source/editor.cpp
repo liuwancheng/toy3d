@@ -399,6 +399,7 @@ namespace toy3d
         scene_session_.history().synchronize(world());
         thumbnails_.tick();
         texture_preview_.tick();
+        animation_editor_.tick(delta_seconds);
         if (!play_session_.active())
         {
             tick_shaders();
@@ -488,9 +489,11 @@ namespace toy3d
             TOY_LOG_WARN("Could not disable external asset file drop.");
         }
         model_import_.clear();
+        skeletal_import_.shutdown();
         material_create_.clear();
         material_editor_.shutdown();
         texture_preview_.shutdown();
+        animation_editor_.shutdown();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         scene_session_.history().clear();
@@ -525,8 +528,8 @@ namespace toy3d
         texture_preview_.set_reimport_callback(
             [this](const AssetId& id, TextureImportSettings settings)
             {
-                if (!play_session_.active() && !model_import_.active() && !texture_import_.active() &&
-                    !texture_import_.request_reimport(workspace_, id, settings))
+                if (!play_session_.active() && !model_import_.active() && !skeletal_import_.active() &&
+                    !texture_import_.active() && !texture_import_.request_reimport(workspace_, id, settings))
                 {
                     model_error_ = texture_import_.error();
                 }
@@ -622,6 +625,16 @@ namespace toy3d
                           {},
                           {},
                           {}}) ||
+            !panels_.add({"animation_editor",
+                          "Animation Editor",
+                          "Animation Editor",
+                          [this]()
+                          {
+                              animation_editor_.draw();
+                          },
+                          {},
+                          {},
+                          {}}) ||
             !panels_.add({"material_editor", "Material Editor", "Material Editor",
                           [this]()
                           {
@@ -683,6 +696,17 @@ namespace toy3d
         {
             return false;
         }
+        for (const char* type :
+             {"toy3d.SkeletonAssetData", "toy3d.SkeletalMeshAssetData", "toy3d.AnimationSequenceAssetData"})
+        {
+            if (!asset_editors_.add({type, [this](const AssetId& id, bool focus)
+                                     {
+                                         animation_editor_.request_open(id, focus);
+                                     }}))
+            {
+                return false;
+            }
+        }
         asset_editors_.freeze();
         return true;
     }
@@ -705,9 +729,10 @@ namespace toy3d
         if (browser.assets_refreshed)
         {
             texture_preview_.invalidate();
+            animation_editor_.invalidate();
         }
-        if (browser.asset_open.valid() && !model_import_.active() && !texture_import_.active() &&
-            (!material_create_.active() && !shader_create_.active()))
+        if (browser.asset_open.valid() && !model_import_.active() && !skeletal_import_.active() &&
+            !texture_import_.active() && (!material_create_.active() && !shader_create_.active()))
         {
             const auto* asset = workspace_.catalog().index.find(browser.asset_open);
             if (!asset || !asset_editors_.request_open(asset->index.root_type, browser.asset_open, browser.asset_focus))
@@ -717,36 +742,51 @@ namespace toy3d
             }
         }
         if (workspace_.has_project() && browser.material_creation_requested && !model_import_.active() &&
-            !texture_import_.active() && !shader_create_.active())
+            !skeletal_import_.active() && !texture_import_.active() && !shader_create_.active())
         {
             material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
         }
         if (workspace_.has_project() && browser.texture_import_requested &&
             (!material_create_.active() && !shader_create_.active()) && !model_import_.active() &&
-            !texture_import_.request(asset_folder_))
+            !skeletal_import_.active() && !texture_import_.request(asset_folder_))
         {
             model_error_ = texture_import_.error();
             TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
         }
 #if WITH_MODEL_IMPORT
+        if (workspace_.has_project() && !material_create_.active() && !shader_create_.active() &&
+            !texture_import_.active() && !model_import_.active() && !skeletal_import_.active())
+        {
+            if ((browser.skeletal_import_requested || browser.animation_import_requested) &&
+                !skeletal_import_.request(asset_folder_, browser.animation_import_requested))
+            {
+                model_error_ = skeletal_import_.error();
+            }
+            if (browser.skeletal_reimport.valid() &&
+                !skeletal_import_.request_reimport(workspace_, browser.skeletal_reimport))
+            {
+                model_error_ = skeletal_import_.error();
+            }
+        }
         if (workspace_.has_project() && browser.import_requested &&
             (!material_create_.active() && !shader_create_.active()) && !texture_import_.active() &&
-            !model_import_.request(asset_folder_))
+            !skeletal_import_.active() && !model_import_.request(asset_folder_))
         {
             model_error_ = model_import_.error();
             TOY_LOG_ERROR("Request model import: {}", model_error_);
         }
 #endif
         if (workspace_.has_project() && browser.environment_import_requested && !material_create_.active() &&
-            !shader_create_.active() && !model_import_.active() && !texture_import_.request_environment(asset_folder_))
+            !shader_create_.active() && !model_import_.active() && !skeletal_import_.active() &&
+            !texture_import_.request_environment(asset_folder_))
         {
             model_error_ = texture_import_.error();
         }
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
-            if (!workspace_.has_project() || model_import_.active() || texture_import_.active() ||
-                material_create_.active() || shader_create_.active() ||
+            if (!workspace_.has_project() || model_import_.active() || skeletal_import_.active() ||
+                texture_import_.active() || material_create_.active() || shader_create_.active() ||
                 ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || !browser.accepts_drop(dropped.position))
             {
                 continue;
@@ -924,6 +964,12 @@ namespace toy3d
         panels_.draw();
 #if WITH_MODEL_IMPORT
         model_import_.draw(window(), workspace_, selection_, thumbnails_);
+        const bool skeletal_import_active = skeletal_import_.active();
+        skeletal_import_.draw(window(), workspace_, selection_, thumbnails_);
+        if (skeletal_import_active && !skeletal_import_.active())
+        {
+            animation_editor_.invalidate();
+        }
 #endif
         texture_import_.draw(window(), workspace_, selection_);
         material_create_.draw(workspace_, selection_, asset_folder_,
@@ -1004,10 +1050,10 @@ namespace toy3d
             focused &&
             (focused == ImGui::FindWindowByName("Scene Viewport###Game Viewport") ||
              focused == ImGui::FindWindowByName("Outliner") || focused == ImGui::FindWindowByName("Details"));
-        const bool modal_active = model_import_.active() || texture_import_.active() || show_new_project_ ||
-                                  show_project_settings_ || show_scene_save_as_ || material_create_.active() ||
-                                  shader_create_.active() || material_editor_.modal_pending() ||
-                                  ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        const bool modal_active =
+            model_import_.active() || skeletal_import_.active() || texture_import_.active() || show_new_project_ ||
+            show_project_settings_ || show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
+            material_editor_.modal_pending() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
         // Keep Stop available even when the viewport tab is hidden/collapsed.
         if (play_session_.active() && !modal_active && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
@@ -1024,9 +1070,9 @@ namespace toy3d
                 scene_viewport_.cancel_pending_hit();
             }
         }
-        panels_.process_shortcuts(play_session_.active() || model_import_.active() || texture_import_.active() ||
-                                  show_new_project_ || show_project_settings_ || show_scene_save_as_ ||
-                                  material_create_.active() || shader_create_.active() ||
+        panels_.process_shortcuts(play_session_.active() || model_import_.active() || skeletal_import_.active() ||
+                                  texture_import_.active() || show_new_project_ || show_project_settings_ ||
+                                  show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
                                   material_editor_.modal_pending());
         notifications_.update(shaders_.task_status());
         notifications_.draw(console_, shaders_);
@@ -1057,9 +1103,9 @@ namespace toy3d
         {
             return;
         }
-        if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() || show_new_project_ ||
-            show_project_settings_ || show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
-            material_editor_.modal_pending())
+        if (ImGui::IsAnyItemActive() || model_import_.active() || skeletal_import_.active() ||
+            texture_import_.active() || show_new_project_ || show_project_settings_ || show_scene_save_as_ ||
+            material_create_.active() || shader_create_.active() || material_editor_.modal_pending())
         {
             return;
         }
@@ -1072,9 +1118,9 @@ namespace toy3d
         {
             return;
         }
-        if (ImGui::IsAnyItemActive() || model_import_.active() || texture_import_.active() || show_new_project_ ||
-            show_project_settings_ || show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
-            material_editor_.modal_pending())
+        if (ImGui::IsAnyItemActive() || model_import_.active() || skeletal_import_.active() ||
+            texture_import_.active() || show_new_project_ || show_project_settings_ || show_scene_save_as_ ||
+            material_create_.active() || shader_create_.active() || material_editor_.modal_pending())
         {
             return;
         }
@@ -1084,6 +1130,11 @@ namespace toy3d
     bool EditorApplication::on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)
     {
         return thumbnails_.initialize(scene, actor_factory_.default_material(), tasks);
+    }
+
+    bool EditorApplication::on_initialize_animation_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)
+    {
+        return animation_editor_.initialize(scene, actor_factory_.default_material(), tasks);
     }
 
     bool EditorApplication::on_hit_proxy_request(HitProxyRequest& request)

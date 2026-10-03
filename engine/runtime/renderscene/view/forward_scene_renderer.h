@@ -14,7 +14,7 @@ namespace toy3d
     {
       public:
         explicit ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview = false,
-                                      bool preview_shadows = false);
+                                      bool preview_shadows = false, bool allow_empty_preview = false);
         ~ForwardSceneRenderer() override = default;
 
       private:
@@ -29,5 +29,6 @@ namespace toy3d
         bool init_views();
         bool thumbnail_preview_ = false;
         bool preview_shadows_ = false;
+        bool allow_empty_preview_ = false;
     };
 } // namespace toy3d

@@ -1,0 +1,28 @@
+format_version: 2
+asset_id: f24bdea358ae7eeac489414786cc5e5e
+root_type: toy3d.SkeletalMeshAssetData
+schema_version: 2
+dependencies:
+  - asset_id: e588a47b4964a0ee297e7c61b7f77f6f
+    expected_type: toy3d.SkeletonAssetData
+    strength: strong
+subresources:
+  []
+data:
+  geometry_segment: skeletal_geometry
+  index_count: 276534
+  material_slots:
+    - MI_Manny_02_0
+    - MI_Manny_01_1
+  skeleton:
+    asset_id: e588a47b4964a0ee297e7c61b7f77f6f
+    expected_type: toy3d.SkeletonAssetData
+    strength: strong
+  skeleton_reference_hash: 36906fcc76bda3193e6e495d1915223b86f6616e784536e28064617c627a5e1e
+  vertex_count: 276534
+meta:
+  format_version: 1
+  size: 19925578
+  sha256: 177c03f3e0c99aa672425d1adf256e5804566312d2c1cac43c97b30b220cc028
+  required_segments:
+    - skeletal_geometry

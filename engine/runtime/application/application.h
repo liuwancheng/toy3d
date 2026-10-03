@@ -74,6 +74,14 @@ namespace toy3d
         {
             return false;
         }
+        virtual bool uses_animation_preview_scene() const
+        {
+            return false;
+        }
+        virtual bool on_initialize_animation_preview_scene(SceneInterface&, TaskGraphInterface&)
+        {
+            return true;
+        }
         virtual void on_initialize_play_scene(SceneInterface&)
         {
         }

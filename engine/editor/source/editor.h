@@ -9,6 +9,7 @@
 #include "viewport/scene_viewport.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "assets/mesh/static_mesh_import_dialog.h"
+#include "assets/animation/skeletal_mesh_import_dialog.h"
 #include "assets/texture/texture_import_dialog.h"
 #include "assets/material/material_create_dialog.h"
 #include "assets/material/material_editor_panel.h"
@@ -20,6 +21,7 @@
 #include "panels/place_actors_panel.h"
 #include "assets/asset_editor_registry.h"
 #include "assets/texture/texture_preview_panel.h"
+#include "assets/animation/animation_editor_panel.h"
 #include "shader/shader_workflow.h"
 #include "asset/scene/scene_asset.h"
 #include "workspace/editor_project.h"
@@ -41,7 +43,7 @@ namespace toy3d
                                    const ActorTypeRegistry* actors = nullptr, PhysicalPath game_executable = {})
             : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)),
               scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
-              thumbnails_(workspace), texture_preview_(workspace), console_(log_buffer),
+              thumbnails_(workspace), texture_preview_(workspace), animation_editor_(workspace), console_(log_buffer),
               notifications_(std::move(log_buffer))
         {
             if (actors)
@@ -86,6 +88,11 @@ namespace toy3d
             return true;
         }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override;
+        bool uses_animation_preview_scene() const override
+        {
+            return true;
+        }
+        bool on_initialize_animation_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override;
         void on_tick(double) override;
         void on_collect_material_validation(std::vector<MaterialShaderMapValidationRef>& requests) override
         {
@@ -105,10 +112,12 @@ namespace toy3d
         {
             thumbnails_.collect_render_work(work);
             texture_preview_.collect_render_work(work);
+            animation_editor_.collect_render_work(work);
         }
         void on_ui_texture_result(UiTextureResult result) override
         {
             texture_preview_.on_texture_result(result);
+            animation_editor_.on_texture_result(result);
             thumbnails_.on_texture_result(std::move(result));
         }
         std::vector<ImGuiTextureId> ui_texture_ids() const override
@@ -116,6 +125,8 @@ namespace toy3d
             auto ids = thumbnails_.texture_ids();
             const auto preview = texture_preview_.texture_ids();
             ids.insert(ids.end(), preview.begin(), preview.end());
+            const auto animation = animation_editor_.texture_ids();
+            ids.insert(ids.end(), animation.begin(), animation.end());
             return ids;
         }
 
@@ -166,11 +177,13 @@ namespace toy3d
         EditorSceneSession scene_session_;
         AssetThumbnailPool thumbnails_;
         TexturePreviewPanel texture_preview_;
+        AnimationEditorPanel animation_editor_;
         bool initial_dock_layout_checked_ = false;
         bool reset_dock_layout_ = false;
         std::string asset_folder_ = "/Project";
         bool show_engine_content_ = false;
         StaticMeshImportDialog model_import_;
+        SkeletalMeshImportDialog skeletal_import_;
         TextureImportDialog texture_import_;
         MaterialCreateDialog material_create_;
         MaterialEditorPanel material_editor_;

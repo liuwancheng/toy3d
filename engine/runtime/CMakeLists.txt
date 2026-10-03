@@ -11,6 +11,16 @@ if(BUILD_TESTING)
     set_target_properties(Toy3dAnimationTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
     target_link_libraries(Toy3dAnimationTests PRIVATE Toy3dRuntime Toy3dAssetPipeline)
     add_test(NAME Toy3dRuntime.Animation COMMAND Toy3dAnimationTests)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/project/asset/animation/ue_manny/SKM_Manny.asset")
+        add_executable(Toy3dMannyAnimationTests "tests/manny_animation_tests.cpp")
+        target_compile_features(Toy3dMannyAnimationTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dMannyAnimationTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+        target_link_libraries(Toy3dMannyAnimationTests PRIVATE Toy3dRuntime yaml-cpp)
+        target_compile_definitions(Toy3dMannyAnimationTests PRIVATE
+            "TOY3D_MANNY_ASSETS=\"${CMAKE_SOURCE_DIR}/project/asset/animation/ue_manny\""
+            "TOY3D_MANNY_SOURCE=\"${CMAKE_SOURCE_DIR}/project/source/animation/ue_manny\"")
+        add_test(NAME Toy3dRuntime.MannyAnimation COMMAND Toy3dMannyAnimationTests)
+    endif()
 endif()
 
 option(TOY3D_ENABLE_VULKAN_RHI "Build the Vulkan RHI backend" OFF)

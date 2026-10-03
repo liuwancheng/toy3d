@@ -1,6 +1,6 @@
 # Animation：Skeleton、SkeletalMesh 与 GPU Skin
 
-> 本页是已确认设计及现有 contract 的唯一入口。资产格式、导入构建、CPU 播放、World 组件、Local/GPUSkin shader 编译与 Base/Shadow/HitProxy 渲染接入已实现。Editor 交互预览和 Scene 持久化仍按下文设计接入；当前通过 C++ 创建组件，不表示编辑器已能打开骨骼资产预览。
+> 本页是已确认设计及现有 contract 的唯一入口。资产格式、导入构建、Editor 导入/重导入及三类资产预览、CPU 播放、World 组件、Local/GPUSkin shader 编译与 Base/Shadow/HitProxy 渲染接入已实现。SkeletalMeshActor 的 Editor 放置、组件编辑和 Scene 持久化仍待接入。
 
 ## 用例与范围
 
@@ -29,7 +29,7 @@
 | `engine/core/image/pixel_format.h` | RGBA8 UInt/UNorm 分别用于 section-local 索引/权重，与 Core/RHI/Vulkan 映射一致。 |
 | compiler `layout/binding_allocator.cpp`、Vulkan buffer view/binding/type mapping | Buffer<Float4> reflection 选择 ReadOnlyTypedBuffer；公共 typed view/limits 验证和 Vulkan uniform texel buffer usage/view/descriptor/保活已接入。 |
 | `engine/runtime/gamescene/world/world.cpp` | World 在 begin_play 后按 Actor → Component 两阶段调度，SkeletalMeshComponent 通过自己的组件 tick 求值动画。 |
-| `engine/runtime/renderscene/renderer.h`、Editor `assets/thumbnails/thumbnail_preview_scene.*` | Renderer 只有一个现有 thumbnail preview scene/targets；缩略图预览还会修改静态顶点进行归一化。交互骨骼预览需要独立场景，取景应调整相机而非改 skin 数据。 |
+| `engine/runtime/renderscene/renderer.h`、Editor `assets/animation/animation_editor_panel.*` 与 `assets/thumbnails/thumbnail_preview_scene.*` | Renderer 独立持有 thumbnail 与 animation preview scene/targets，共用设备与提交。仅静态缩略图归一化预览副本；骨骼网格始终保留厘米数据并调整相机取景。 |
 
 沿用 [Assets](assets.md) 的身份/配对事务、[Math](math.md) 的厘米/LH/column-vector、[Render Framework](render-framework.md) 的 FIFO 与 GPU 保活、[RHI](rhi.md) 的 binding/state/profile、[Editor](editor.md) 的候选接管和保存规则。
 
@@ -78,13 +78,14 @@ bone index 只对当前 Skeleton 内容有效，重导入按唯一 bone name 重
 - `gamescene/component/skeletal_mesh_component.*`、`actor/skeletal_mesh_actor.*`：资产/动画候选替换、播放控制与 World 求值；`rendercore/geometry/skeletal_mesh.*`、`scene/skeletal_mesh_scene_proxy.*`：共享 CPU 资产及每实例 RT owner。
 - `rendercore/geometry/skeletal_mesh_render_data.*`、`skin_weight_vertex_buffer.*`、`bone_matrix_buffer.*`、`gpu_skin_vertex_factory.*`：geometry 和 section/pose 的资源候选，沿用 RenderResourceManager；ToyGPUSkin.hlsli 是共用 VS LBS 算法。SkeletalMeshSceneProxy 按实例持有并向公共 MeshBatch 提供这些资源。
 
-CLI 在 ModelImport 增加 `--skeletal`、`--allow-reduce-influences`、`--sample-rate 30|60`，后两个选项要求同时指定 `--skeletal`。输出目录须已存在，不覆盖已有输出。以 character.asset 为输出时，关联文件为 character_Skeleton.asset、character_Animation_0.asset 等；完整候选编码成功后按依赖顺序逐资产发布，失败报告已提交项。
+CLI 使用 `--skeletal`、`--allow-reduce-influences`、`--sample-rate 30|60`；skin/animation 选项要求同时指定 `--skeletal`。`--skeleton existing.asset` 只读加载已有 Skeleton，严格验证源骨骼名称、父子和 reference pose 后，将 section bone map、inverse bind、bounds 和动画 track 映射到已有顺序，并使用该 Skeleton 的 AssetId/内容摘要；不覆盖或另建 Skeleton。`--animation-only` 要求已有 Skeleton 且源恰有一个 clip，仅向指定输出发布 AnimationSequence；当前源仍须带兼容 preview mesh 用于验证 skin/bind。输出目录须已存在，不覆盖已有输出。常规以 character.asset 为输出时，关联文件为 character_Skeleton.asset、character_Animation_0.asset 等；完整候选编码成功后按依赖顺序逐资产发布，失败报告已提交项。
 
 ```powershell
 Toy3dModelImport.exe character.glb project/asset/character.asset --skeletal --sample-rate 30
+Toy3dModelImport.exe idle.fbx project/asset/idle.asset --skeletal --skeleton project/asset/character_Skeleton.asset --animation-only
 ```
 
-真实骨骼 FBX、手机设备与 Editor 交互预览尚未完成验收；现有解析入口不能作为这些链路已经可用的依据。
+真实 Manny FBX 的绑定和 CPU source pose 核对入口见下文；手机设备与 Editor 交互预览仍须独立验收。
 
 ## 导入与 CPU 动画求值
 
@@ -92,10 +93,23 @@ Toy3dModelImport.exe character.glb project/asset/character.asset --skeletal --sa
 
 源解析入口包括 FBX/glTF/GLB；OBJ 仍只走 StaticMesh。沿用 Assimp 作为首版 parser，但格式支持必须由真实 skin/bind/动画 fixture 证明，不从“能读 mesh”推导“能正确读动画”。动画单独导入需明确选择已有 Skeleton，source bone 映射/参考关系不能验证时拒绝。
 
-importer 解析与构建 owned 候选，源文件/外部引用受已有 FileSystem 边界约束。单次文件读取最多 64 MiB，累计读取最多 256 MiB / 256 次；node 最多 100000、深度最多 64、mesh 最多 10000、Skeleton 最多 1024 bones、clip 最多 64、单 clip 最长 600 秒，输出动画总样本最多 1000000，网格 vertex/index 各最多 1000000。二进制解码先核对剩余字节对应的数量再分配。第三方 parser 内部临时分配尚无独立总量预算，不能把输入限制描述成完整堆预算。Editor worker/GT 的 generation 复核仍须在接入时实现。
+importer 解析与构建 owned 候选，源文件/外部引用受已有 FileSystem 边界约束。单次文件读取最多 64 MiB，累计读取最多 256 MiB / 256 次；node 最多 100000、深度最多 64、mesh 最多 10000、Skeleton 最多 1024 bones、clip 最多 64、单 clip 最长 600 秒，输出动画总样本最多 1000000，网格 vertex/index 各最多 1000000。二进制解码先核对剩余字节对应的数量再分配。第三方 parser 内部临时分配尚无独立总量预算，不能把输入限制描述成完整堆预算。`ImportedSkeletalMesh.sources` 保存实际读取的源文件及外部 buffer 的 SHA-256；同一路径两次读取内容不同则拒绝。
+
+### Editor 导入与重导入
+
+Tools → Import 和 Content Browser 空白处菜单提供 `Import Skeletal Mesh...`、`Import Animation...`。每次选择一个 FBX/glTF/GLB；OBJ 只支持静态导入。现有文件拖入仍进入静态网格对话框，骨骼输入应使用上述明确入口。
+
+- Skeletal Mesh 导入默认创建独立 Skeleton，也可选择 Project/Engine 的兼容 Skeleton；发布网格及源内全部 clip。关联文件名为 `<name>_Skeleton.asset`、`<name>_Animation_<index>.asset`，只读源材料/纹理不转换为 Toy3d 资产。Animation 导入必须选择已有 Skeleton，源须恰有一个 clip 并包含兼容 preview mesh，用于验证 reference/bind。
+- 单位、统一缩放、30/60 Hz 及显式削减超出 8 个 influence 的选项随每次请求保存；不从旧产物反推原始导入选项。`Reimport...` 位于 Project SkeletalMesh/AnimationSequence 的资源菜单，重新选择源和选项；保持目标 AssetId 与原 Skeleton，网格重导入只替换网格，动作重导入只替换该动作，不覆盖关联 Skeleton 或其他 clip。Skeleton 没有独立覆盖入口。
+- `capture_skeletal_import` 在 GT 读取已验证的 Skeleton/目标配对与内容 baseline；`prepare_skeletal_import` 在 TaskGraph worker 使用独立只读 Source mount，解析、验证并完整编码 owned 输出，不捕获 workspace/UI。`publish_skeletal_import` 在 GT 核对工程根、源内容（含外部 buffer）、Skeleton/目标身份、路径和 baseline，预检全部输出，再按依赖顺序逐个发布。源内容复核是有界文件读取和哈希，不解析源模型。
+- 每个对话框一次只拥有一个 `SkeletalImportJob`；取消撤销该请求的发布资格，后台 CPU 工作完成后释放。取消后仍有 worker 时禁止新请求、PIE 与工程切换；退出 cancel/join，worker 不持有窗口。无并行接管时不额外建立数值 generation 系统。
+- 重导入失败保留旧配对。部分发布或发布后 catalog 刷新失败独立报告已提交项，不回滚合法资产，也不将其显示为可重复提交；成功刷新后更新资源列表、选择与缩略图缓存。SkeletalMesh 生成 reference pose 缩略图，Skeleton 与 AnimationSequence 使用类型图标。
+
+入口位于 `engine/editor/source/assets/animation/skeletal_mesh_{asset_tools,import_dialog}.*`，复用 Toy3dEditorCore/Toy3dAssetPipeline。验证入口是 `Toy3dEditor.SkeletalImport`（需开启 Assimp）；覆盖共享 Skeleton、两种导入、单资产重导入、过期内容、取消/退出、部分提交与刷新失败。交互预览见后文「Editor 资产预览」，Scene 作者闭环尚未接入。
 
 - 源单位和轴只在导入边界统一到厘米、LH、公共 CCW。网格坐标、骨骼 local TRS、inverse bind、root 动画必须使用同一转换，不只转换顶点或平移。
 - 将 mesh node 的 bind 变换一致地归一到资产 mesh space；保留骨架层级，不使用静态 mesh 的递归 bake 后丢掉骨骼。
+- 源场景节点按节点身份记录，普通节点可以重名；deform bone/动画通道的名称映射必须唯一。骨架顶端同时包含 geometry 的非 deform 场景/导出容器不进入 Skeleton；只允许逐层去掉具有唯一骨架子分支的容器，多个骨架根拒绝。被去掉容器的累计变换保留在根 reference/动画变换中，骨架内部 helper 祖先保持。inverse bind 转换后的仿射末行仅允许 0.000001 以内的算术误差并归整为精确 0/0/0/1，资产校验仍拒绝非仿射矩阵。
 - deform bone 的 helper 祖先进入骨架；无 track 的骨骼/通道补该 Skeleton 的 reference 值。未登记或无法安全映射的动画通道明确诊断，不能错挂到另一骨骼。
 - 重复 influence 合并、去零、降序稳定排序并归一化；零有效权重顶点默认拒绝。5～8 个正常接收；超过 8 个时默认拒绝，可由用户显式选择保留最大 8 个，报告受影响顶点数与最大丢弃权重。
 - 量化后的有效项紧凑排列；整个 LOD0 最多 4 个有效 influence 时 `num_bone_influences=4`，否则为 8，不按影响数增加 section。权重为 UInt8 UNorm，误差分配后全部槽的整数和精确为 255；索引是 UInt8 section-local bone index，不足补零。CPU 表示容量为 8；payload 与 GPU 顶点流只保存所选 4/8 槽，每顶点 8/16 bytes。CPU bounds 使用最终量化权重，不用量化前数据验证 GPU 行为。
@@ -140,7 +154,7 @@ SkeletalMeshComponent 持有 Mesh、AnimationInstance 和 SkeletalMeshDeformer�
 
 播放速率首版为有限正值，不含倒放；Pause 是独立状态。非循环播放到 duration 停止并保持末帧，循环推进到 duration 时 wrap 到起点；显式 seek 可定位闭区间 [0, duration]，seek 到末帧先显示末帧，下一次循环推进再 wrap。随机 seek 不依赖上次采样，零时长 clip 固定显示唯一样本。
 
-组件入口是 `set_assets`、`set_animation`、`set_playback_settings`、`seek`、`set_playing` 和 `evaluate_animation`；可读取 owned 求值/派生快照与独立播放状态。`SkeletalMeshActor` 提供根组件便捷入口，尚未加入 ActorTypeRegistry、Scene component variant 或 Editor 放置/装配。Renderer 的独立 animation preview 场景仍待接入。
+组件入口是 `set_assets`、`set_animation`、`set_playback_settings`、`seek`、`set_playing` 和 `evaluate_animation`；可读取 owned 求值/派生快照与独立播放状态。`SkeletalMeshActor` 提供根组件便捷入口，并用于独立 animation preview World，尚未加入 ActorTypeRegistry、Scene component variant 或 Editor 放置/装配。
 
 SkeletalMeshComponent 默认启用自己的通用组件 tick，在 Actor 阶段后于 GT 同步求值；Actor 关闭 gameplay tick 不暂停动画，关闭组件 tick 则停止自动推进。单次动画求值失败保留原时钟、姿态与 bounds。登记、帧中增删、失败汇总与调度边界统一见 [GameScene](gamescene.md#组件-tick)；Actor/World 不识别骨骼组件，不启动每组件 worker。
 
@@ -220,29 +234,43 @@ RHILimits 与 RHIFormatUsage/Vulkan format_capabilities 已表达实际需要的
 
 Toy3d 当前移动目标是 Vulkan profile，不是 OpenGL ES 后端；移动支持须按 API/profile/format/limits 表达，不能把“手机”当成一种固定资源能力。UE 还保留 bone uniform buffer 兼容路径，但不表示 Texture Buffer 是所有 OpenGL ES3.1 设备的必选能力。首版不新增 GLES 或 bone UBO fallback；若后续需要该路径，应按实际 uniform 预算重新约束 bones/section，并增加相应编译身份与 schema，不能直接将 24 KiB 骨骼矩阵数组放进现有 16 KiB Object uniform。
 
-## Editor 预览与场景闭环（尚未接入）
+## Editor 资产预览
 
-建议首版一个 Skeletal/Animation 资产编辑窗口，关联的 Skeleton、Mesh、Sequence 标签共享一个 preview session。窗口能分别打开三类 root_type，不要求打开 Skeleton 时必须有 Mesh。
+Content Browser 双击 Skeleton、SkeletalMesh 或 AnimationSequence，在 `Animation Editor` 打开只读预览。Skeleton、Skeletal Mesh、Animation 标签共享一个 session；Skeleton 无需 Mesh。动作默认选择同一 Skeleton 身份下的首个网格，也可选择 Skeleton only；候选按 identity/reference hash 严格校验，不按名称匹配。当前网格使用引擎默认预览材质，材质槽名称只读，不加载源 FBX 材质。
 
-- Skeleton：骨骼树、父子线/关节点、名称、reference/current transform 只读；选中骨骼高亮，可选兼容 mesh；不编辑骨骼层级或权重。
+- Skeleton：骨骼树、父子线/关节点、名称、reference/current local TRS 与 component-space 位移只读；选中骨骼高亮，可选兼容 mesh；不编辑骨骼层级或权重。
 - SkeletalMesh：reference pose 默认；可选择兼容动画，显示 mesh/mesh+bone/bone-only，材质槽、section bone 数与 influence 信息只读，复用 orbit/pan/zoom/Frame All。
 - AnimationSequence：选择兼容 preview mesh 或只看骨架；播放/暂停、循环、倍速、时间轴 seek、逐样本步进、root lock，显示 duration/sample rate。纯预览操作不污染资产/Scene dirty 或 Undo。
 
-预览 renderer 使用正常 Forward/Shadow/Tonemap/UI 路径，骨骼线走一个最小公共 RHI debug line pass；已有 LineList 能力需沿真实 pipeline 验证，不能绕 Vulkan 或临时建第二设备。骨骼 overlay 提供深度遮挡开关，默认 mesh+骨骼可辨识。树选择首版即可定位骨骼，3D bone picking 后续再做；场景组件拾取仍用现有 HitProxy。
+预览复用 Forward/Tonemap/UI 和正常 GPUSkin 路径，使用固定 studio 环境光与方向光，不开启预览阴影。骨骼线通过 `Toy3d/Debug/Lines` Global Shader 和公共 RHI LineList 绘制，深度遮挡仅选择 pipeline 状态，共用一个 program。默认 overlay 可辨识。骨架-only 和将网格平移出画面的空视图允许完成；缩略图仍要求存在完整网格绘制。3D bone picking 尚未接入；场景组件拾取仍用现有 HitProxy。
 
-建议保留现有 thumbnail scene，增加 Renderer-owned 的一个 animation preview scene/targets；两者同帧调度、共用 device/context/submit，Editor 只持非 owning SceneInterface 和受控 UI texture 身份。一个交互窗口对应一个明确场景，关闭时释放；不顺带设计无限多 preview windows 或另一套 frame scheduler。相机调整以真实厘米 bounds 为依据，不缩放/重写 mesh 顶点、reference pose 或 inverse bind。
+Renderer 拥有一个 animation preview scene/targets，与现有 thumbnail scene 同帧调度，共用 device/context/submit；Editor 只持非 owning SceneInterface 和受控 UI texture 身份。CPU worker 使用 catalog 副本和 owned 候选，GT 接管前复核 Mesh、Skeleton、Sequence 描述和 meta 摘要。失败保留旧显示；关闭撤回 generation、注销组件并退役图像/targets，退出 join worker 后清理场景。新帧完成前不修改渲染场景中的姿态，防止 retry 将旧骨骼线和新蒙皮混合。
+
+加载动作会同时读取默认预览网格；窗口显示正在加载的资源及等待时间，完成或失败写入耗时日志。大型网格在 Debug 下的解码仍可能耗时，加载期间可关闭窗口撤回候选，不能以无限等待掩盖失败。
+
+左键拖动 orbit，中键 pan，滚轮 zoom，`F`/Frame All 按当前骨骼点与动态 mesh bounds 重新取景；不缩放/重写顶点、reference pose 或 inverse bind。大窗口按画布比例采样受公共 RHI 512 像素读回上限约束的预览图像。隐藏窗口暂停时钟，不推进主 World、Scene dirty 或 Undo。
 
 SkeletalMesh 缩略图使用 reference pose；Skeleton/AnimationSequence 首版使用类型图标，避免截图依赖可变 preview mesh 或播放时钟。缩略图缓存复用 AssetId/content/generator version 与真实 GPU completion 读回。
+
+类型图标使用原创的 UE 风格矢量轮廓：Skeleton 青色关节/骨架，SkeletalMesh 紫色人物，AnimationSequence 绿色动作人物和播放标记。网格缩略图生成后替换人物占位图，hash 包含网格数据和 Skeleton reference 数据；仍写入 Saved 缓存，不修改源码资产。
+
+## Scene 作者闭环（尚未接入）
 
 runtime 组件 settings 保存 Mesh/Sequence AssetRef、loop/rate/autoplay、primitive flags 和材质 overrides；播放时间/当前 pose/骨骼矩阵数组不保存。闭环包括组件 registry、Place Actor、scene capture/apply/assembly services、DTO/schema/codegen、Undo/Redo、Save/Open，以及独立 PIE render data。引擎资产只读、Editor 写 project/asset、Saved 只放缓存/窗口偏好，所有引用由 Catalog 验证。
 
 ## 验证入口
 
+`Toy3dEditorAnimationPreviewTests` 对应 `Toy3dEditor.AnimationPreview` / `Toy3dEditor.AnimationPreviewMultiThread`，使用隔离 Manny 资产与真实 Vulkan/ImGui 窗口，检查三类打开、Skeleton-only、参考姿态、seek 后 GPUSkin 画面变化、深度线、缩略图并存、候选失败保留、关闭/重开和 resize。截图保存在 build 的测试输出目录。手机、3D bone picking 与 SkeletalMesh Scene/PIE 作者闭环另行验收。
+
+`Toy3dMannyAnimationTests` 在存在 project Manny 资产时登记为 `Toy3dRuntime.MannyAnimation`，读取正式 `.asset`/`.meta`，核对完整 161 骨骼层级/reference、8 个动作的 24 个 UE source pose、共用 Skeleton 身份、bind identity 与量化权重下的动态 bounds；89 骨骼 Simple 布局必须独立。UE JSON 时长为 float，FBX tick 时长是帧间隔，末帧核对使用已校验时长误差后的 clip end；姿态比较分开限制厘米位移与无量纲矩阵误差。此 CPU oracle 不替代最终 GPU/Editor 验收。
+
+真实资源入口是 [project/source/animation/ue_manny](../project/source/animation/ue_manny/README.md)：包含本机 UE 模板导出的完整/简化 Manny、8 个动作 FBX、Skeleton reference local TRS 和动作起点/中点/终点的 UE source pose。导出方式、坐标、来源与用途见资源说明；JSON 是源数据核对输入，不是 Toy3d runtime 资产。完整与简化网格分别有 161/89 根导出骨骼，不能未经兼容性验证共用导入布局。源 FBX 读取成功不等于 bind、采样和最终渲染已验收。
+
 现有专项入口是 Toy3dAnimationTests、Toy3dSkeletalMeshImportTests、Toy3dTypedBufferTests 和 Toy3dTypedBufferVulkanTests，加上 ShaderMap/资源管理/Renderer 所有权回归。真实 Vulkan 专项读取 typed buffer，验证 UInt/UNorm 顶点 fetch、GPUSkin 位移与非均匀 scale 法线、upload discard/retry，以及实际 completion 前后的资源保活。生产路径用组件、SceneProxy 与内置 Phong/ShadowDepth/HitProxy 验证 4/8 influence、多 section 骨骼绑定隔离、Base/HitProxy 像素位移及 Base/Shadow 同版本绑定；Shadow 深度图的独立像素验收与手机验收另行补齐。mock 结果不能替代真实 GPU 验证。
 
 整体功能仍须覆盖下列验收要求：
 
-1. CPU 资产与导入：三类格式与严格兼容验证；验证 bind identity、轴/单位/mesh node、helper 祖先、重复/环/缺骨、4/5/8 influence 量化与档位选择、9 项拒绝/显式削减、旧 4 槽读取、256→257 section 切分、损坏/数量上限、重导入失败保旧、逐资产提交的部分成功。入口使用人工可算的双骨与八项 glTF fixture，真实 FBX 动画仍须验收。
+1. CPU 资产与导入：三类格式与严格兼容验证；验证 bind identity、轴/单位/mesh node、helper 祖先、重复/环/缺骨、4/5/8 influence 量化与档位选择、9 项拒绝/显式削减、当前格式的 4/8 槽读取、256→257 section 切分、损坏/数量上限、重导入失败保旧、逐资产提交的部分成功。入口使用人工可算的双骨与八项 glTF fixture，以及真实 Manny FBX 构建的 CPU pose oracle；其他源文件中的 FBX pivot/额外骨架语义需要各自 fixture，不能从 Manny 外推。
 2. CPU 动画与组件：sampler、reference/缺 track、q/-q、clip end/loop/seek/零 duration、正非均匀 scale、root 保留、两个组件独立时间、Actor tick 后求值、暂停/注销。补 schema migration、Scene assembly、Undo/Save/Open。
 3. GPU 渲染：先独立完成只读 typed buffer 的公共 validation、Vulkan upload/view/binding/reflection 和真实 VS 读取测试，再迁移 StaticMesh 到公共 MeshBatch 并接 GPUSkin；覆盖错误 buffer kind/format、texel 数量/对齐/descriptor limits、typed permutation/active layout、UInt 输入/format、三类 mesh pass 同姿态、动态 bounds/离屏阴影、ST/MT、discard/submit 失败、旧资源 GPU 保活。CPU 仅作为测试 oracle 计算少量 skinned 顶点，不成为运行时 skin fallback。
 4. Editor：三类资产打开、骨架-only、时间轴与 mesh+骨骼、候选加载失败、关闭/重开、thumbnail 与交互预览并存、Engine 资产只读、过期异步、PIE/工程退出；补真实 Vulkan 截图/拾取/阴影与资源反复替换验证。

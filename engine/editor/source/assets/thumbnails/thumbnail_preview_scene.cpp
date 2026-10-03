@@ -6,9 +6,11 @@
 #include <utility>
 
 #include "asset/thumbnail/asset_thumbnail.h"
+#include "assets/animation/animation_preview_asset.h"
 #include "asset/texture/builtin_texture_assets.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
@@ -172,6 +174,79 @@ namespace toy3d
         return true;
     }
 
+    bool ThumbnailPreviewScene::prepare_skeletal(SkeletalMeshRef mesh,
+                                                 std::shared_ptr<const AnimationSequence> sequence)
+    {
+        if (!mesh || mesh->asset().geometry.mesh.vertices.empty())
+        {
+            return false;
+        }
+        clear_mesh();
+        auto& actor = world_.spawn_actor<SkeletalMeshActor>();
+        mesh_actor_id_ = actor.actor_id();
+        skeletal_ = true;
+        const auto status = actor.skeletal_mesh_component().set_assets(mesh, std::move(sequence));
+        if (!status.succeeded())
+        {
+            TOY_LOG_ERROR("Skeletal preview asset setup failed: {}", status.message);
+            clear_mesh();
+            return false;
+        }
+        if (actor.skeletal_mesh_component().playback_state())
+        {
+            const auto paused = actor.skeletal_mesh_component().set_playing(false);
+            if (!paused.succeeded())
+            {
+                TOY_LOG_ERROR("Could not pause skeletal preview: {}", paused.message);
+                clear_mesh();
+                return false;
+            }
+        }
+        Vector3 minimum = mesh->asset().geometry.mesh.vertices.front().position;
+        Vector3 maximum = minimum;
+        for (const auto& vertex : mesh->asset().geometry.mesh.vertices)
+        {
+            minimum.x = std::min(minimum.x, vertex.position.x);
+            minimum.y = std::min(minimum.y, vertex.position.y);
+            minimum.z = std::min(minimum.z, vertex.position.z);
+            maximum.x = std::max(maximum.x, vertex.position.x);
+            maximum.y = std::max(maximum.y, vertex.position.y);
+            maximum.z = std::max(maximum.z, vertex.position.z);
+        }
+        frame_center_ = (minimum + maximum) * 0.5f;
+        frame_radius_ = std::max(1.0f, length(maximum - minimum) * 0.5f);
+        floor_height_ = minimum.y - 0.25f;
+        return true;
+    }
+
+    bool ThumbnailPreviewScene::prepare_skeletal(const AnimationPreviewAsset& asset)
+    {
+        if (!asset.mesh)
+        {
+            return false;
+        }
+        const auto mesh =
+            SkeletalMesh::create(asset.layout, *asset.mesh,
+                                 std::vector<MaterialInterfaceRef>(asset.mesh->data.material_slots.size(), material_));
+        return mesh.succeeded() && prepare_skeletal(mesh.value());
+    }
+
+    SkeletalMeshComponent* ThumbnailPreviewScene::skeletal_component()
+    {
+        auto* actor = skeletal_ ? world_.find_actor_by_id(mesh_actor_id_) : nullptr;
+        return actor ? &static_cast<SkeletalMeshActor*>(actor)->skeletal_mesh_component() : nullptr;
+    }
+
+    const Vector3& ThumbnailPreviewScene::frame_center() const
+    {
+        return frame_center_;
+    }
+
+    float ThumbnailPreviewScene::frame_radius() const
+    {
+        return frame_radius_;
+    }
+
     bool ThumbnailPreviewScene::configure(const MaterialPreviewSettings& settings, TextureRef cube)
     {
         if (!validate_material_preview_settings(settings) || (settings.environment.valid() && !cube))
@@ -271,10 +346,11 @@ namespace toy3d
 
     SceneView ThumbnailPreviewScene::view() const
     {
-        const Vector3 position(meters_to_centimeters(2.5f), meters_to_centimeters(1.7f), meters_to_centimeters(-3.0f));
+        const Vector3 center = skeletal_ ? frame_center_ : Vector3();
+        const Vector3 position = center + Vector3(2.5f, 1.7f, -3.0f) * (skeletal_ ? frame_radius_ : 100.0f);
         Vector3 direction;
         Quaternion rotation;
-        if (!try_normalize(-position, direction) ||
+        if (!try_normalize(center - position, direction) ||
             !try_make_rotation_from_forward_up(direction, Vector3(0, 1, 0), rotation))
         {
             TOY_LOG_ERROR("Thumbnail camera orientation is invalid.");
@@ -282,7 +358,7 @@ namespace toy3d
         const Extent extent{thumbnail_default_size, thumbnail_default_size};
         return SceneView(position, rotation, direction, IntRect{0, 0, extent.width, extent.height}, extent,
                          CameraProjectionMode::Perspective, Radians(0.785398163f), k_preview_near_clip_cm,
-                         k_preview_far_clip_cm);
+                         skeletal_ ? std::max(k_preview_far_clip_cm, frame_radius_ * 20.0f) : k_preview_far_clip_cm);
     }
 
     void ThumbnailPreviewScene::clear_mesh()
@@ -295,6 +371,9 @@ namespace toy3d
             }
         }
         mesh_actor_id_ = 0;
+        skeletal_ = false;
+        frame_center_ = {};
+        frame_radius_ = 100.0f;
     }
 
     void ThumbnailPreviewScene::shutdown()

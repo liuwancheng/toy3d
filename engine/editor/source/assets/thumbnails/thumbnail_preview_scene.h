@@ -4,9 +4,13 @@
 #include "rendercore/geometry/static_mesh.h"
 #include "rendercore/view/scene_view.h"
 #include "asset/mesh/static_mesh_asset.h"
+#include "rendercore/geometry/skeletal_mesh.h"
 
 namespace toy3d
 {
+    class SkeletalMeshComponent;
+    class AnimationSequence;
+    struct AnimationPreviewAsset;
     // Editor session state, copied into each request; never persisted in the Material or level.
     struct MaterialPreviewSettings
     {
@@ -38,6 +42,11 @@ namespace toy3d
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, SceneEnvironmentSettings environment = {},
                         TextureRef cube = {});
         bool prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material = {});
+        bool prepare_skeletal(SkeletalMeshRef mesh, std::shared_ptr<const AnimationSequence> sequence = {});
+        bool prepare_skeletal(const AnimationPreviewAsset& asset);
+        SkeletalMeshComponent* skeletal_component();
+        const Vector3& frame_center() const;
+        float frame_radius() const;
         bool configure(const MaterialPreviewSettings& settings, TextureRef cube);
         bool configure_thumbnail();
         SceneView view() const;
@@ -56,5 +65,8 @@ namespace toy3d
         std::uint32_t light_actor_id_ = 0;
         std::uint32_t floor_actor_id_ = 0;
         std::uint32_t mesh_actor_id_ = 0;
+        bool skeletal_ = false;
+        Vector3 frame_center_;
+        float frame_radius_ = 100.0f;
     };
 } // namespace toy3d

@@ -5,6 +5,12 @@
 
 namespace toy3d
 {
+    // Content read by the parser, including external glTF buffers; callers can reject stale imports.
+    struct ImportedModelSource
+    {
+        VirtualPath path;
+        std::string content_hash;
+    };
     struct StaticMeshImportOptions
     {
         float import_uniform_scale = 1.0f;

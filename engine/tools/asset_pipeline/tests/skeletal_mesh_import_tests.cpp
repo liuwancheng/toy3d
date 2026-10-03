@@ -115,8 +115,73 @@ int main()
           "centimeter animation conversion");
     check(validate_skeleton_compatibility(imported.skeleton, glb.value().skeleton).succeeded(),
           "glTF and GLB hierarchy");
+    check(imported.skeleton.bones.size() == 2 && imported.skeleton.bones.front().name == "Root",
+          "scene container must not become an extra skeleton bone");
+    auto reordered = eight.value().skeleton;
+    std::swap(reordered.bones[1], reordered.bones[7]);
+    const auto shared = import_skeletal_mesh(files, VirtualPath::parse("/Source/eight_influences.gltf").value(),
+                                             skeleton_id, reordered, options);
+    check(shared.succeeded() && shared.value().skeleton.bones[1].name == "Bone7" &&
+              shared.value().mesh.geometry.section_bone_maps[0][1] == 7 &&
+              validate_skeletal_mesh_compatibility(shared.value().mesh, skeleton_id, reordered).succeeded(),
+          "existing skeleton order remaps section bone maps and bind data");
+    const auto shared_animation = import_skeletal_mesh(
+        files, VirtualPath::parse("/Source/eight_bones_animation.gltf").value(), skeleton_id, reordered, options);
+    check(shared_animation.succeeded() && shared_animation.value().animations.size() == 1 &&
+              shared_animation.value().animations[0].sequence.tracks.size() == 1 &&
+              shared_animation.value().animations[0].sequence.tracks[0].bone_index == 1 &&
+              std::abs(shared_animation.value().animations[0].sequence.tracks[0].samples.back().translation.x - 100) <
+                  0.001f &&
+              validate_animation_compatibility(shared_animation.value().animations[0].sequence, skeleton_id, reordered)
+                  .succeeded(),
+          "non-identical existing bone order remaps animation tracks by name and preserves samples");
+    auto incompatible = imported.skeleton;
+    incompatible.bones[1].reference_local_transform.translation.x += 1;
+    check(!import_skeletal_mesh(files, VirtualPath::parse("/Source/two_bones.gltf").value(), skeleton_id, incompatible,
+                                options)
+               .succeeded(),
+          "existing skeleton must reject a different reference pose");
+    auto corrupt_mesh = imported.mesh;
+    corrupt_mesh.geometry.inverse_bind_matrices[0].at(3, 3) = 1.01f;
+    const auto corrupt = validate_skeletal_mesh_compatibility(corrupt_mesh, skeleton_id, imported.skeleton);
+    check(!corrupt.succeeded() && corrupt.message.find("must be affine") != std::string::npos,
+          "geometry errors retain their actual cause; projective bind matrices remain invalid");
     const auto source_text = files.read_text_utf8(VirtualPath::parse("/Source/two_bones.gltf").value());
     check(source_text.succeeded(), "negative fixture source");
+    auto write_fixture = [&](const char* name, const std::string& text)
+    {
+        const auto path = VirtualPath::parse(name).value();
+        const auto mode = files.stat(path).succeeded() ? FilePublishMode::Replace : FilePublishMode::CreateNew;
+        check(files.write_binary_atomic(path, {text.begin(), text.end()}, mode).succeeded(), "write hierarchy fixture");
+        return path;
+    };
+    auto duplicate_scene = source_text.value();
+    const auto mesh_name = duplicate_scene.find("\"name\": \"Mesh\"");
+    check(mesh_name != std::string::npos, "fixture mesh node");
+    duplicate_scene.replace(mesh_name, 14, "\"name\": \"SceneRoot\"");
+    const auto duplicate = import_skeletal_mesh(files, write_fixture("/Output/duplicate_scene.gltf", duplicate_scene),
+                                                skeleton_id, options);
+    check(duplicate.succeeded() &&
+              validate_skeleton_compatibility(imported.skeleton, duplicate.value().skeleton).succeeded(),
+          "legal non-bone node names can repeat without changing skeleton identity");
+    auto ambiguous_bone = source_text.value();
+    ambiguous_bone.replace(mesh_name, 14, "\"name\": \"Tip\"");
+    check(
+        !import_skeletal_mesh(files, write_fixture("/Output/ambiguous_bone.gltf", ambiguous_bone), skeleton_id, options)
+             .succeeded(),
+        "ambiguous bone name must still be rejected");
+    auto translated_container = source_text.value();
+    const auto container_name = translated_container.find("\"name\": \"SceneRoot\"");
+    check(container_name != std::string::npos, "fixture scene container");
+    translated_container.insert(container_name, "\"translation\": [5, 0, 0], ");
+    const auto translated = import_skeletal_mesh(
+        files, write_fixture("/Output/translated_container.gltf", translated_container), skeleton_id, options);
+    check(translated.succeeded() && translated.value().skeleton.bones.size() == 2 &&
+              std::abs(translated.value().skeleton.bones[0].reference_local_transform.translation.x - 500) < 0.001f &&
+              std::abs(translated.value().mesh.geometry.mesh.vertices.front().position.x - 500) < 0.001f &&
+              validate_skeletal_mesh_compatibility(translated.value().mesh, skeleton_id, translated.value().skeleton)
+                  .succeeded(),
+          "container removal preserves cumulative root, geometry and inverse bind transforms");
     auto step_source = source_text.value();
     const auto interpolation = step_source.find("\"LINEAR\"");
     check(interpolation != std::string::npos, "fixture has explicit source interpolation");

@@ -28,9 +28,9 @@
 namespace toy3d
 {
     ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview,
-                                               bool preview_shadows)
+                                               bool preview_shadows, bool allow_empty_preview)
         : SceneRenderer(std::move(view_family)), thumbnail_preview_(thumbnail_preview),
-          preview_shadows_(preview_shadows)
+          preview_shadows_(preview_shadows), allow_empty_preview_(allow_empty_preview)
     {
     }
 
@@ -160,7 +160,7 @@ namespace toy3d
                     expected += proxy->mesh_section_count();
                 }
             }
-            if (expected == 0 || view_infos().front().mesh_batches().size() != expected)
+            if ((!allow_empty_preview_ && expected == 0) || view_infos().front().mesh_batches().size() != expected)
             {
                 return RHIStatus::failure(RHIErrorCode::NotReady, "Thumbnail mesh is not completely drawable yet.");
             }
