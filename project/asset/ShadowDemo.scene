@@ -6,16 +6,18 @@ dependencies:
   - asset_id: 096dc165e01c4cfdbf5c93e4b831f41f
     expected_type: toy3d.MaterialAssetData
     strength: strong
+  - asset_id: 0ef8ef9b73c25d85b8a844ab077d0bf9
+    expected_type: toy3d.AnimationSequenceAssetData
+    strength: strong
   - asset_id: be8961056cb1612c669e22eeabeedeee
     expected_type: toy3d.StaticMeshAssetData
+    strength: strong
+  - asset_id: f24bdea358ae7eeac489414786cc5e5e
+    expected_type: toy3d.SkeletalMeshAssetData
     strength: strong
 subresources:
   []
 data:
-  environment:
-    environment: null
-    rotation: [0, 0, 0, 1]
-    intensity: 1
   actors:
     - components:
         - id: 1edf41ba57ad4e6297492bc18af3c036
@@ -47,12 +49,13 @@ data:
           type: toy3d.StaticMeshComponent
       id: 69273acf197942738df008fe5a638ec9
       kind: Cube
-      type: toy3d.StaticMeshActor
       properties:
         type: toy3d.ActorSettings
         schema_version: 1
-        value: {}
+        value:
+          {}
       root_component_id: 1edf41ba57ad4e6297492bc18af3c036
+      type: toy3d.StaticMeshActor
     - components:
         - id: b3a43838f3d94b2fad5a105e6e53e38e
           parent_component_id: ""
@@ -83,12 +86,13 @@ data:
           type: toy3d.StaticMeshComponent
       id: c43f6e957e574a33bfb2d57f1fbf75e6
       kind: Plane
-      type: toy3d.StaticMeshActor
       properties:
         type: toy3d.ActorSettings
         schema_version: 1
-        value: {}
+        value:
+          {}
       root_component_id: b3a43838f3d94b2fad5a105e6e53e38e
+      type: toy3d.StaticMeshActor
     - components:
         - id: 7d96c182c32c41f1b27dac242531c757
           parent_component_id: ""
@@ -130,12 +134,13 @@ data:
           type: toy3d.DirectionalLightComponent
       id: e710ff7e29ea4f82b00d3f52c36bdb72
       kind: DirectionalLight
-      type: toy3d.DirectionalLightActor
       properties:
         type: toy3d.ActorSettings
         schema_version: 1
-        value: {}
+        value:
+          {}
       root_component_id: 7d96c182c32c41f1b27dac242531c757
+      type: toy3d.DirectionalLightActor
     - components:
         - id: fcbb5892879c2e6e40e81a1988f854f5
           parent_component_id: ""
@@ -175,9 +180,68 @@ data:
           type: toy3d.StaticMeshComponent
       id: da0021fc99256b64f1d2d0f24aa9cd40
       kind: StaticMesh
-      type: toy3d.StaticMeshActor
       properties:
         type: toy3d.ActorSettings
         schema_version: 1
-        value: {}
+        value:
+          {}
       root_component_id: fcbb5892879c2e6e40e81a1988f854f5
+      type: toy3d.StaticMeshActor
+    - components:
+        - id: 25d98be53bfcbfe364687aa2fce78fd0
+          parent_component_id: ""
+          properties:
+            type: toy3d.SceneSkeletalMeshData
+            value:
+              lock_root: true
+              playback:
+                autoplay: true
+                loop: true
+                rate: 1
+              resources:
+                - reference:
+                    asset_id: f24bdea358ae7eeac489414786cc5e5e
+                    expected_type: toy3d.SkeletalMeshAssetData
+                    strength: strong
+                  role: mesh
+                - reference:
+                    asset_id: 0ef8ef9b73c25d85b8a844ab077d0bf9
+                    expected_type: toy3d.AnimationSequenceAssetData
+                    strength: strong
+                  role: animation
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
+          transform:
+            translation:
+              - 141.36963
+              - 8.972633
+              - 91.6437
+            rotation:
+              - 0
+              - 0.97925
+              - 0
+              - -0.20265582
+            scale:
+              - 1.0000011
+              - 1
+              - 1.0000011
+          type: toy3d.SkeletalMeshComponent
+      id: 7ac31c7806622ae0e1aa6f9ec760d711
+      kind: SkeletalMesh
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value:
+          {}
+      root_component_id: 25d98be53bfcbfe364687aa2fce78fd0
+      type: toy3d.SkeletalMeshActor
+  environment:
+    environment: ~
+    intensity: 1
+    rotation:
+      - 0
+      - 0
+      - 0
+      - 1
