@@ -1,5 +1,5 @@
 format_version: 2
-asset_id: 82423f6c8c61d50e26138b338fb121cc
+asset_id: 3f32ab68c8740b43bae1a521a2e20ea6
 root_type: toy3d.StaticMeshAssetData
 schema_version: 3
 dependencies:
@@ -19,6 +19,6 @@ data:
 meta:
   format_version: 1
   size: 220608
-  sha256: df2348575c8ca995b9518a9b19311fc52a53b676476242270770f7188139c49e
+  sha256: 54e9f6c4ad5dbf1eed934aa25e90f3cfd0ce31ae6a7d6df80be3575dcbb63c66
   required_segments:
     - render_geometry

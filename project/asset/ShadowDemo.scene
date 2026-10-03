@@ -12,6 +12,9 @@ dependencies:
   - asset_id: 28df673d4ac92e2b93f5096788efd0ed
     expected_type: toy3d.MaterialInstanceAssetData
     strength: strong
+  - asset_id: 3f32ab68c8740b43bae1a521a2e20ea6
+    expected_type: toy3d.StaticMeshAssetData
+    strength: strong
   - asset_id: be8961056cb1612c669e22eeabeedeee
     expected_type: toy3d.StaticMeshAssetData
     strength: strong
@@ -250,6 +253,47 @@ data:
           {}
       root_component_id: 25d98be53bfcbfe364687aa2fce78fd0
       type: toy3d.SkeletalMeshActor
+    - components:
+        - id: 320b5a80bff0d4d999e86118ca2ae838
+          parent_component_id: ""
+          properties:
+            type: toy3d.SceneMeshData
+            value:
+              builtin_mesh: ""
+              resources:
+                - reference:
+                    asset_id: 3f32ab68c8740b43bae1a521a2e20ea6
+                    expected_type: toy3d.StaticMeshAssetData
+                    strength: strong
+                  role: mesh
+              settings:
+                cast_shadows: true
+                receives_shadows: true
+                visible: true
+          transform:
+            translation:
+              - -105.88646
+              - 42.233826
+              - 85.96121
+            rotation:
+              - 0
+              - 0
+              - 0
+              - 1
+            scale:
+              - 1
+              - 1
+              - 1
+          type: toy3d.StaticMeshComponent
+      id: 37094749102b3e059472accd1da12db7
+      kind: StaticMesh
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value:
+          {}
+      root_component_id: 320b5a80bff0d4d999e86118ca2ae838
+      type: toy3d.StaticMeshActor
   environment:
     environment: ~
     intensity: 1
