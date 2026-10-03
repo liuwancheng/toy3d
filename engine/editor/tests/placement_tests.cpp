@@ -407,6 +407,24 @@ int main()
             const Vector3 size(bounds.maximum.x - bounds.minimum.x, bounds.maximum.y - bounds.minimum.y,
                                bounds.maximum.z - bounds.minimum.z);
             check(is_nearly_equal(size, Vector3(150)), "Builtin cube must measure 150 cm with unit Transform scale");
+            const auto mesh = cube->static_mesh_component().static_mesh();
+            // C++17 get_if checks the builtin's fixed UInt16 representation without a throwing access.
+            const auto* indices = std::get_if<std::vector<std::uint16_t>>(&mesh->indices());
+            check(indices && indices->size() == 36u, "Builtin cube must contain twelve triangles");
+            if (indices && indices->size() == 36u)
+            {
+                const auto& vertices = mesh->vertices();
+                for (std::size_t triangle = 0u; triangle < indices->size(); triangle += 3u)
+                {
+                    const auto& a = vertices[(*indices)[triangle]];
+                    const auto& b = vertices[(*indices)[triangle + 1u]];
+                    const auto& c = vertices[(*indices)[triangle + 2u]];
+                    const auto face_normal = glm::cross(b.position - a.position, c.position - a.position);
+                    check(glm::dot(face_normal, a.normal) > 0.0f && glm::dot(face_normal, b.normal) > 0.0f &&
+                              glm::dot(face_normal, c.normal) > 0.0f && glm::dot(face_normal, a.position) > 0.0f,
+                          "Every builtin cube triangle must face outward and agree with its vertex normals");
+                }
+            }
         }
         request.item = PlacementItemId::Plane;
         check(factory.create(world, request) != nullptr, "Plane geometry should be reusable");
@@ -431,6 +449,8 @@ int main()
             const auto mesh = mesh_actor->static_mesh_component().static_mesh();
             check(mesh && mesh != request.static_mesh && mesh->vertex_colors()[0] == imported.vertices[0].color,
                   "Placement must retain colors and use fresh render-resource ownership");
+            check(mesh && mesh->indices() == request.static_mesh->indices(),
+                  "Imported mesh placement must preserve its already converted triangle winding");
             history.begin(world, mesh_id, mesh_actor->root_component()->local_transform(),
                           EditorTransformSource::Details);
             mesh_actor->static_mesh_component().set_receives_shadows(false);
