@@ -1,6 +1,7 @@
 #include "asset/mesh/static_mesh_asset.h"
 
 #include "asset/asset_pair.h"
+#include "asset/mesh/mesh_materials.h"
 
 #include <set>
 #include <cmath>
@@ -13,7 +14,7 @@ namespace toy3d
 {
     namespace
     {
-        constexpr std::uint32_t k_static_mesh_schema_version = 3;
+        constexpr std::uint32_t k_static_mesh_schema_version = 4;
         constexpr std::uint32_t k_geometry_version = 3;
 
         AssetStatus invalid(const char* message)
@@ -27,9 +28,16 @@ namespace toy3d
             {
                 return invalid("invalid static mesh metadata");
             }
-            return AssetStatus::success();
+            return validate_mesh_materials(data.material_slots, data.default_materials);
         }
     } // namespace
+
+    ReflectionStatus register_static_mesh_asset_types(TypeRegistry& types)
+    {
+        const auto registered = register_static_mesh_asset_schema(types);
+        return registered.succeeded() ? register_mesh_material_migration(types, "toy3d.StaticMeshAssetData", 3)
+                                      : registered;
+    }
 
     AssetStatus validate_static_mesh_geometry(const StaticMeshAssetGeometry& geometry)
     {
@@ -99,7 +107,7 @@ namespace toy3d
                 return invalid("degenerate static mesh triangle");
             }
         }
-        return AssetStatus::success();
+        return validate_mesh_materials(geometry.material_slots, geometry.default_materials);
     }
 
     AssetResult<std::vector<std::uint8_t>> encode_static_mesh_geometry(const StaticMeshAssetGeometry& geometry)
@@ -260,6 +268,7 @@ namespace toy3d
         StaticMeshAssetData metadata;
         metadata.valid_tangent_frame = geometry.valid_tangent_frame;
         metadata.material_slots = geometry.material_slots;
+        metadata.default_materials = geometry.default_materials;
         metadata.vertex_count = static_cast<std::uint32_t>(geometry.vertices.size());
         metadata.index_count = static_cast<std::uint32_t>(geometry.indices.size());
         ValueWriter writer;
@@ -272,6 +281,7 @@ namespace toy3d
         index.asset_id = id;
         index.root_type = "toy3d.StaticMeshAssetData";
         index.schema_version = k_static_mesh_schema_version;
+        index.dependencies = mesh_material_dependencies(geometry.default_materials);
         // Rebuilding render data invalidates all previous preview metadata.
         // The importer computes a new source signature after the new package is encoded.
         editor_segments.erase(std::remove_if(editor_segments.begin(), editor_segments.end(),
@@ -335,7 +345,7 @@ namespace toy3d
         const std::vector<std::uint8_t> geometry_bytes(
             bytes.begin() + static_cast<std::ptrdiff_t>(render_geometry->offset),
             bytes.begin() + static_cast<std::ptrdiff_t>(render_geometry->offset + render_geometry->length));
-        const auto geometry = decode_static_mesh_geometry(geometry_bytes);
+        auto geometry = decode_static_mesh_geometry(geometry_bytes);
         if (!geometry.succeeded())
         {
             return geometry;
@@ -347,7 +357,9 @@ namespace toy3d
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("metadata and geometry disagree"));
         }
-        return geometry;
+        auto result = std::move(geometry).value();
+        result.default_materials = metadata.default_materials;
+        return AssetResult<StaticMeshAssetGeometry>(std::move(result));
     }
 
     AssetResult<AssetPairBytes> encode_static_mesh_asset_pair(const TypeRegistry& types, const AssetId& id,
@@ -362,6 +374,7 @@ namespace toy3d
         StaticMeshAssetData metadata;
         metadata.valid_tangent_frame = geometry.valid_tangent_frame;
         metadata.material_slots = geometry.material_slots;
+        metadata.default_materials = geometry.default_materials;
         metadata.vertex_count = static_cast<std::uint32_t>(geometry.vertices.size());
         metadata.index_count = static_cast<std::uint32_t>(geometry.indices.size());
         ValueWriter writer;
@@ -374,6 +387,7 @@ namespace toy3d
         index.asset_id = id;
         index.root_type = "toy3d.StaticMeshAssetData";
         index.schema_version = k_static_mesh_schema_version;
+        index.dependencies = mesh_material_dependencies(geometry.default_materials);
         optional_segments.push_back({"render_geometry", 2u, true, blob.value()});
         return encode_asset_pair(types, std::move(index), writer.bytes(), std::move(optional_segments));
     }
@@ -391,7 +405,12 @@ namespace toy3d
         {
             return AssetResult<StaticMeshAssetGeometry>(pair.status());
         }
-        const auto& description = pair.value().description;
+        return decode_static_mesh_asset_pair(pair.value());
+    }
+
+    AssetResult<StaticMeshAssetGeometry> decode_static_mesh_asset_pair(const AssetPair& pair)
+    {
+        const auto& description = pair.description;
         if (description.index.root_type != "toy3d.StaticMeshAssetData" ||
             description.index.schema_version != k_static_mesh_schema_version || !description.has_meta)
         {
@@ -404,7 +423,7 @@ namespace toy3d
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid static mesh metadata"));
         }
         const AssetSegmentData* render_geometry = nullptr;
-        for (const AssetSegmentData& segment : pair.value().meta.segments)
+        for (const AssetSegmentData& segment : pair.meta.segments)
         {
             if (segment.name == "render_geometry" && segment.kind == 2u && segment.required)
             {
@@ -419,7 +438,7 @@ namespace toy3d
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("missing or oversized render geometry"));
         }
-        const auto geometry = decode_static_mesh_geometry(render_geometry->bytes);
+        auto geometry = decode_static_mesh_geometry(render_geometry->bytes);
         if (!geometry.succeeded())
         {
             return geometry;
@@ -431,6 +450,14 @@ namespace toy3d
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("metadata and geometry disagree"));
         }
-        return geometry;
+        const auto dependencies =
+            validate_mesh_material_dependencies(metadata.default_materials, description.index.dependencies);
+        if (!dependencies.succeeded())
+        {
+            return AssetResult<StaticMeshAssetGeometry>(dependencies);
+        }
+        auto result = std::move(geometry).value();
+        result.default_materials = metadata.default_materials;
+        return AssetResult<StaticMeshAssetGeometry>(std::move(result));
     }
 } // namespace toy3d

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "asset/thumbnail/asset_thumbnail.h"
-#include "assets/animation/animation_preview_asset.h"
+#include "assets/preview/mesh_preview_asset.h"
 #include "asset/mesh/static_mesh_asset.h"
 
 namespace toy3d
@@ -14,7 +14,7 @@ namespace toy3d
         StaticMeshAssetGeometry geometry;
         std::vector<std::uint8_t> original;
         std::vector<std::uint8_t> pixels;
-        std::shared_ptr<const AnimationPreviewAsset> skeletal;
+        std::shared_ptr<const MeshPreviewAsset> skeletal;
         std::string warning;
     };
 
@@ -24,12 +24,11 @@ namespace toy3d
                                                        bool force);
     // Catalog checks are GT-only and do not read the filesystem.
     bool thumbnail_catalog_current(const AssetCatalog& catalog, const AssetId& id, const std::string& path,
-                                   const AnimationPreviewAsset* skeletal);
+                                   const MeshPreviewAsset* skeletal);
     // Disk validation and cache publication run only in the owned CPU job.
     AssetStatus validate_thumbnail_source(AssetPairStore& pairs, const FileSystem& files, const AssetCatalog& catalog,
                                           const AssetId& id, const VirtualPath& path,
-                                          const std::vector<std::uint8_t>& original,
-                                          const AnimationPreviewAsset* skeletal);
+                                          const std::vector<std::uint8_t>& original, const MeshPreviewAsset* skeletal);
     AssetStatus save_thumbnail_cache(FileSystem& files, AssetPairStore& pairs, const AssetCatalog& catalog,
                                      const AssetId& id, const VirtualPath& path, const ThumbnailSource& source,
                                      std::vector<std::uint8_t> pixels);

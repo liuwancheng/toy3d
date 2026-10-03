@@ -1,6 +1,7 @@
 #pragma once
 
 #include "reflection/reflection_macros.h"
+#include "asset/asset_identity.h"
 
 #include <cstdint>
 #include <string>
@@ -8,7 +9,7 @@
 
 namespace toy3d
 {
-    TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 3)
+    TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 4)
     struct StaticMeshAssetData
     {
         TOY3D_PROPERTY("valid_tangent_frame", Visible)
@@ -16,6 +17,9 @@ namespace toy3d
 
         TOY3D_PROPERTY("material_slots", Visible)
         std::vector<std::string> material_slots;
+
+        TOY3D_PROPERTY("default_materials", Edit)
+        std::vector<AssetRef> default_materials;
 
         TOY3D_PROPERTY("vertex_count", Visible)
         std::uint32_t vertex_count = 0;

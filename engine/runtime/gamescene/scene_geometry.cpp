@@ -129,6 +129,7 @@ namespace toy3d
         desc.sections = prototype->sections();
         desc.material_slots = prototype->material_slots();
         desc.material_slot_names = prototype->material_slot_names();
+        desc.default_material_references = prototype->default_material_references();
         desc.valid_tangent_frame = prototype->has_valid_tangent_frame();
         // Each placement has a fresh render-resource lifecycle. Released vertex
         // buffers discard their upload payload and cannot be reused on a redo.

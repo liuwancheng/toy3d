@@ -89,17 +89,37 @@ Tools/Content Browser 的 HDR 导入使用既有 TextureImportDialog worker 生�
 
 骨骼网格、动作导入与 Project 资源的 `Reimport...` 使用独立 CPU worker、GT 冲突复核和逐资产配对发布；Skeleton 选择、源要求、取消/退出与使用入口见 [Animation](animation.md#editor-导入与重导入)。
 
-Content Browser 双击 Skeleton/SkeletalMesh/AnimationSequence 打开同一只读 `Animation Editor` 会话，提供骨骼树、预览网格/动作选择、播放、时间轴、逐样本、root lock 与相机操作。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态，动作缩略图拍摄兼容模型的第 0 秒，Skeleton 保留固定骨架图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
+Content Browser 双击 StaticMesh/Skeleton/SkeletalMesh/AnimationSequence 打开同一 MeshEditorPanel 会话；StaticMesh 显示 `Static Mesh Editor`，其他类型显示 `Animation Editor` 并提供骨骼树、预览网格/动作选择、播放、时间轴、逐样本、root lock 与相机操作。两种网格资产支持默认材质编辑，Skeleton/AnimationSequence 保持只读。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态，动作缩略图拍摄兼容模型的第 0 秒，Skeleton 保留固定骨架图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
 
 材质窗口的视口布局、Sphere/Plane/Cube 模型、贴图缩略图参数与交互见 [Material](material.md#可视预览与缩略图)。普通参数即时更新图像，静态选项等待完整候选；Content Browser 的 Material/Instance 缩略图保留固定 studio 配置，不把窗口效果写进主场景。
 
+### 静态网格预览
+
+StaticMesh 与骨骼/动画会话共用 assets/preview/mesh_editor_panel、mesh_preview_asset 和 Toy3dEditorCore；切换类型替换同一会话内容，Renderer 继续使用已有 animation preview 域，不增加目标、线程或图形接口。静态网格保持厘米单位及原始几何，左侧显示网格统计和材质槽，中间提供取景/旋转/平移/缩放，右侧显示公共场景设置；不显示骨骼树和播放控件，不实现碰撞/LOD 编辑。
+
+CPU 在既有 TaskGraph 解码完整配对快照；GT 复核描述及 meta 摘要后接管。StaticMesh 配对解码复用 Core，UI/World/GPU 生命周期沿已有会话，关闭释放场景实例，重开只复用不可变 CPU 输入；加载或拍摄失败保留旧图并诊断。验证覆盖 spider 的真实 GPU 拍摄、类型切换、背景/地面设置、关闭重开和来源失效。既有动画入口迁入通用目录并同步调用方，不保留旧路径。
+
+### 网格材质槽编辑
+
+StaticMesh 与 SkeletalMesh 的 Asset Details / Materials 和场景组件共用 assets/mesh/mesh_material_slots，复用 AssetResourcePicker、property_widgets 与 AssetThumbnailPool。每槽显示 Element 索引、槽名、材质缩略图和资源名，支持选择 Material/MaterialInstance、拖放、定位和清空；清空网格默认赋值恢复引擎材质，清空组件覆盖恢复网格默认材质。当前不增加或重排槽，不导入 FBX 材质/贴图。
+
+assets/mesh/mesh_material_edit_session 由 GT 持有，复用 Core EditSession 的整候选验证和历史；赋值预检通过后更新私有预览，工具栏 Save / Undo / Redo 管理默认材质草稿。切换资产、关闭窗口、退出及切换工程时提示 Save / Discard / Cancel；有草稿时改变预览网格/动作须先保存或丢弃。Engine 网格只读，保存仅写源码侧 project/asset。AnimationSequence 使用所选网格的已保存材质，Edit Mesh Materials 进入对应网格资产，不把材质引用写入动作。
+
+默认材质的 DTO、格式及旧描述迁移见 [Assets](assets.md#网格默认材质)。MeshMaterialEditSession 保留已验证的原始 descriptor baseline 和完整 meta segments；保存检查外部修改，通过 AssetPairStore 发布，几何和未知可选 meta 数据不被重建或丢弃。未知 typed 字段无法完整解码时拒绝编辑；失败保留草稿，磁盘提交成功与 catalog 刷新失败分别报告。
+
+运行材质经 composition root 注入的 MaterialLibrary 解析，load_mesh_materials 统一验证 shader/factory、顶点输入、切线及所需 pass；GT 预检完整候选，失败保留原效果。worker 只解码 owned CPU 输入和材质依赖快照，不访问 Library/UI/World；已有渲染请求完成后才更新预览 World，旧 GPU 使用沿正常 FIFO/drain 释放。草稿不修改共享 Material 对象或主 Scene dirty，不新增 target、线程、单例或 RHI 接口。
+
+保存后的默认材质用于交互预览、缩略图、新放置网格、场景打开及 Game/PIE 资产装配。已装配组件保留其运行网格快照，重新绑定或重新打开场景时读取新默认；显式组件覆盖优先。缩略图和 mesh_preview_asset 记录材质、父材质及纹理依赖的 descriptor（包含 meta 摘要），候选接管/缓存保存复核来源；有默认材质时来源签名包含完整依赖快照。
+
+验证入口为 AnimationPreview ST/MT（两类网格材质草稿、旧描述无写入、冲突、依赖来源失效、真实 GPU 切换/撤销/保存重开和动作继承）、MaterialAssignment（场景覆盖）及 Thumbnail / ThumbnailSource（拍摄、缓存、来源复核）。构建和实际运行证据记录在交付中，不从 CPU fixture 推断所有平台验收。
+
 ### 通用资产预览场景
 
-assets/preview/asset_preview_scene 的 AssetPreviewScene 统一实现材质、角色和缩略图的私有 World、灯光及地面，继续归 Toy3dEditorCore。PreviewSceneSettings 只表达环境、主光、背景、地面、阴影和曝光；MaterialPreviewSettings 组合该配置及材质模型/相机，角色相机与播放状态仍归 AnimationEditorPanel。preview_scene_widgets 复用 property_widgets 绘制两类窗口相同的 Environment / Lighting / Floor 设置；Reset Scene 仅恢复公共设置，各窗口自己的 Reset Preview / Reset View 管理模型或相机。环境读取沿既有 load_environment_asset，不另建资产管理服务。
+assets/preview/asset_preview_scene 的 AssetPreviewScene 统一实现材质、角色和缩略图的私有 World、灯光及地面，继续归 Toy3dEditorCore。PreviewSceneSettings 只表达环境、主光、背景、地面、阴影和曝光；MaterialPreviewSettings 组合该配置及材质模型/相机，角色相机与播放状态仍归 MeshEditorPanel。preview_scene_widgets 复用 property_widgets 绘制两类窗口相同的 Environment / Lighting / Floor 设置；Reset Scene 仅恢复公共设置，各窗口自己的 Reset Preview / Reset View 管理模型或相机。环境读取沿既有 load_environment_asset，不另建资产管理服务。
 
-共用实现与默认 E_PreviewCourtyard、方向光、灰色地面，各窗口保留独立配置、World、Renderer-owned scene/targets、图像身份及 revision。材质与缩略图仍在 Pool 域串行，角色仍在独立 animation 域；只在在途请求结束后更新 World，背景/阴影/曝光复制进 PreviewFrameRequest，变更公共设置后过期图像退役。CPU 候选沿既有 TaskGraph，UI/场景配置与接管在 GT，GPU 沿正常 FIFO/submit。环境加载失败、非法设置和 GPU 失败诊断并保留旧图；关闭撤回请求、退出 join/drain，不修改主 World、资产 dirty、Undo 或持久化格式。
+共用实现与默认 E_PreviewCourtyard、方向光、灰色地面，各窗口保留独立配置、World、Renderer-owned scene/targets、图像身份及 revision。材质与缩略图仍在 Pool 域串行，静态网格与角色仍在独立 animation 域；只在在途请求结束后更新 World，背景/阴影/曝光复制进 PreviewFrameRequest，变更公共设置后过期图像退役。CPU 候选沿既有 TaskGraph，UI/场景配置与接管在 GT，GPU 沿正常 FIFO/submit。环境加载失败、非法设置和 GPU 失败诊断并保留旧图；场景设置自身关闭时撤回请求、退出时 join/drain，不修改主 World、资产 dirty、Undo 或持久化格式。
 
-角色保留厘米单位、真实尺寸与独立取景；地面按网格参考姿态下沿及中心定位，播放时不追随脚部。缩略图继续显式采用固定 studio、无背景/地面/阴影的配置，不读取窗口设置。公共 RHI 和每边最多 512 像素读回边界不变，不加入后端专用 API。角色窗口布局及资产兼容行为见 [Animation](animation.md#editor-资产预览)，材质模型与参数行为见 [Material](material.md#可视预览与缩略图)。
+静态网格与角色保留厘米单位、真实尺寸与独立取景；地面按网格参考姿态下沿及中心定位，地面大小与阴影范围随网格尺寸扩大，播放时不追随脚部。缩略图继续显式采用固定 studio、无背景/地面/阴影的配置，不读取窗口设置。公共 RHI 和每边最多 512 像素读回边界不变，不加入后端专用 API。角色窗口布局及资产兼容行为见 [Animation](animation.md#editor-资产预览)，材质模型与参数行为见 [Material](material.md#可视预览与缩略图)。
 
 验证入口为 AnimationPreview ST/MT 的默认一致性、真实 GPU 背景/曝光/地面变化、失败保旧及切换/关闭；MaterialUi 的共享控件 Reset 与窗口配置隔离；Thumbnail 的固定配置及材质窗口隔离。真实 Editor 另检查高 DPI、侧栏宽度、背景/地面/阴影及退出，未运行的平台不作支持验收。
 

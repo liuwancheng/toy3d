@@ -7,7 +7,8 @@ namespace toy3d
     AssetResult<SkeletalMeshAssets> load_skeletal_mesh_assets(const TypeRegistry& types, const FileSystem& files,
                                                               const AssetIndex& index,
                                                               const SceneSkeletalMeshData& data,
-                                                              const MaterialInterfaceRef& default_material)
+                                                              const MaterialInterfaceRef& default_material,
+                                                              const MeshMaterialResolver& resolver)
     {
         SceneComponentData component;
         component.type = "toy3d.SkeletalMeshComponent";
@@ -79,8 +80,14 @@ namespace toy3d
         }
         auto layout =
             std::make_shared<const AnimationBoneLayout>(mesh.value().data.skeleton.asset_id, skeleton.value());
-        std::vector<MaterialInterfaceRef> materials(mesh.value().data.material_slots.size(), default_material);
-        auto created = SkeletalMesh::create(layout, std::move(mesh).value(), std::move(materials));
+        auto materials = load_mesh_materials(mesh.value().data.material_slots, mesh.value().data.default_materials,
+                                             default_material, resolver, shader::VertexFactoryType::GPUSkin,
+                                             mesh.value().geometry.mesh.valid_tangent_frame);
+        if (!materials.succeeded())
+        {
+            return AssetResult<SkeletalMeshAssets>(materials.status());
+        }
+        auto created = SkeletalMesh::create(layout, std::move(mesh).value(), std::move(materials).value());
         if (!created.succeeded())
         {
             return AssetResult<SkeletalMeshAssets>(created.status());

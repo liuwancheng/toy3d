@@ -22,7 +22,7 @@ namespace toy3d
         return play_scene_ && !package_task_ && !play_session_.active() && !startup_pending_ && !shaders_.busy() &&
                !mesh_bindings_.busy() && !model_import_.active() && !skeletal_import_.active() &&
                !texture_import_.active() && pending_model_sources_.empty() && !material_create_.active() &&
-               !shader_create_.active() && !material_editor_.modal_pending() &&
+               !shader_create_.active() && !material_editor_.modal_pending() && !mesh_editor_.modal_pending() &&
                !material_editor_.edit_session().gesturing() && !scene_session_.history().active() &&
                !show_new_project_ && !show_project_settings_ && !show_scene_save_as_ && !waiting_material_project_ &&
                pending_scene_action_ == SceneAction::None && !scene_confirm_requested_ &&

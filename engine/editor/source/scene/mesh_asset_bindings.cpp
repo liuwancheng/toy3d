@@ -14,12 +14,14 @@ namespace toy3d
     struct MeshAssetBindings::Result
     {
         EditorComponentSnapshot candidate;
-        std::shared_ptr<const AnimationPreviewAsset> animation;
+        std::shared_ptr<const MeshPreviewAsset> animation;
+        std::shared_ptr<const StaticMeshAssetGeometry> geometry;
         std::vector<std::uint8_t> description;
         AssetId id;
         VirtualPath path;
         std::string error;
         bool placement = false;
+        bool reuse_mesh = false;
         AssetPlacementRequest placement_request;
     };
 
@@ -103,20 +105,16 @@ namespace toy3d
                             result->error = geometry.status().message;
                             return;
                         }
-                        result->candidate.mesh = create_static_mesh_from_asset(geometry.value(), material);
-                        if (!result->candidate.mesh)
-                        {
-                            result->error = "Could not create placed Static Mesh geometry.";
-                        }
+                        result->geometry = std::make_shared<const StaticMeshAssetGeometry>(geometry.value());
                         return;
                     }
-                    auto preview = load_animation_preview_asset(*pairs, catalog, result->id, false, {}, {}, {}, files);
+                    auto preview = load_mesh_preview_asset(*pairs, catalog, result->id, false, {}, {}, {}, files);
                     if (!preview.succeeded())
                     {
                         result->error = preview.status().message;
                         return;
                     }
-                    result->animation = std::make_shared<const AnimationPreviewAsset>(std::move(preview).value());
+                    result->animation = std::make_shared<const MeshPreviewAsset>(std::move(preview).value());
                     if (!result->animation->mesh)
                     {
                         result->error = "Animation placement requires a compatible preview mesh.";
@@ -289,11 +287,7 @@ namespace toy3d
                             result->error = geometry.status().message;
                             return;
                         }
-                        result->candidate.mesh = create_static_mesh_from_asset(geometry.value(), material);
-                        if (!result->candidate.mesh)
-                        {
-                            result->error = "Static Mesh geometry could not be created.";
-                        }
+                        result->geometry = std::make_shared<const StaticMeshAssetGeometry>(geometry.value());
                         return;
                     }
                     const auto& data = std::get<SceneSkeletalMeshData>(result->candidate.data.properties);
@@ -310,13 +304,13 @@ namespace toy3d
                             animation_id = resource.reference.asset_id;
                         }
                     }
-                    auto preview = load_animation_preview_asset(*pairs, catalog, mesh_id, true, mesh_id, animation_id);
+                    auto preview = load_mesh_preview_asset(*pairs, catalog, mesh_id, true, mesh_id, animation_id);
                     if (!preview.succeeded())
                     {
                         result->error = preview.status().message;
                         return;
                     }
-                    result->animation = std::make_shared<const AnimationPreviewAsset>(std::move(preview).value());
+                    result->animation = std::make_shared<const MeshPreviewAsset>(std::move(preview).value());
                     if (result->candidate.skeletal_mesh &&
                         result->candidate.skeletal_mesh->bone_layout()->skeleton_id() ==
                             result->animation->layout->skeleton_id() &&
@@ -324,6 +318,7 @@ namespace toy3d
                     {
                         // Animation-only edits retain immutable mesh geometry and its existing proxy.
                         result->candidate.sequence = result->animation->sequence;
+                        result->reuse_mesh = true;
                         return;
                     }
                     const auto mesh =
@@ -372,8 +367,8 @@ namespace toy3d
         bool current = false;
         if (result->animation)
         {
-            current = animation_preview_asset_current(workspace_.asset_pairs(), workspace_.catalog(),
-                                                      *result->animation, &workspace_.files());
+            current = mesh_preview_asset_current(workspace_.asset_pairs(), workspace_.catalog(), *result->animation,
+                                                 &workspace_.files());
         }
         else
         {
@@ -389,6 +384,38 @@ namespace toy3d
             error_ = "Resource load cancelled because its source asset changed.";
             TOY_LOG_ERROR("Mesh resource load failed: {}", error_);
             return;
+        }
+        // MaterialLibrary is owner-thread state. Workers only decode immutable geometry.
+        if (result->geometry)
+        {
+            result->candidate.mesh =
+                create_static_mesh_from_asset(*result->geometry, history_.actor_factory().default_material(),
+                                              history_.actor_factory().material_resolver());
+            if (!result->candidate.mesh)
+            {
+                error_ = "Static Mesh default materials could not be prepared.";
+                return;
+            }
+        }
+        else if (result->animation && result->animation->mesh && !result->reuse_mesh)
+        {
+            const auto& mesh = *result->animation->mesh;
+            auto materials = load_mesh_materials(
+                mesh.data.material_slots, mesh.data.default_materials, history_.actor_factory().default_material(),
+                history_.actor_factory().material_resolver(), shader::VertexFactoryType::GPUSkin,
+                mesh.geometry.mesh.valid_tangent_frame);
+            if (!materials.succeeded())
+            {
+                error_ = materials.status().message;
+                return;
+            }
+            const auto created = SkeletalMesh::create(result->animation->layout, mesh, std::move(materials).value());
+            if (!created.succeeded())
+            {
+                error_ = created.status().message;
+                return;
+            }
+            result->candidate.skeletal_mesh = created.value();
         }
         if (result->placement)
         {

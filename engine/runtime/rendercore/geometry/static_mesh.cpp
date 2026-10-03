@@ -182,6 +182,7 @@ namespace toy3d
         : vertices_(std::move(desc.vertices)), vertex_colors_(std::move(desc.vertex_colors)),
           indices_(std::move(desc.indices)), sections_(std::move(desc.sections)),
           material_slots_(std::move(desc.material_slots)), material_slot_names_(std::move(desc.material_slot_names)),
+          default_material_references_(std::move(desc.default_material_references)),
           valid_tangent_frame_(desc.valid_tangent_frame), local_bounds_(local_bounds)
     {
         render_data_ = std::make_unique<StaticMeshRenderData>(*this);
@@ -191,8 +192,10 @@ namespace toy3d
         : vertices_(std::move(other.vertices_)), vertex_colors_(std::move(other.vertex_colors_)),
           indices_(std::move(other.indices_)), sections_(std::move(other.sections_)),
           material_slots_(std::move(other.material_slots_)),
-          material_slot_names_(std::move(other.material_slot_names_)), valid_tangent_frame_(other.valid_tangent_frame_),
-          local_bounds_(other.local_bounds_), render_data_(std::move(other.render_data_))
+          material_slot_names_(std::move(other.material_slot_names_)),
+          default_material_references_(std::move(other.default_material_references_)),
+          valid_tangent_frame_(other.valid_tangent_frame_), local_bounds_(other.local_bounds_),
+          render_data_(std::move(other.render_data_))
     {
     }
 } // namespace toy3d

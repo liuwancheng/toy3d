@@ -2,16 +2,27 @@
 
 #include <utility>
 
+#include "logging/logger.h"
+
 namespace toy3d
 {
     StaticMeshRef create_static_mesh_from_asset(const StaticMeshAssetGeometry& geometry,
-                                                const MaterialInterfaceRef& default_material)
+                                                const MaterialInterfaceRef& default_material,
+                                                const MeshMaterialResolver& resolver)
     {
         if (!default_material || !validate_static_mesh_geometry(geometry).succeeded())
         {
             return nullptr;
         }
         StaticMeshDesc desc;
+        const auto materials =
+            load_mesh_materials(geometry.material_slots, geometry.default_materials, default_material, resolver,
+                                shader::VertexFactoryType::Local, geometry.valid_tangent_frame);
+        if (!materials.succeeded())
+        {
+            TOY_LOG_ERROR("StaticMesh default materials rejected: {}", materials.status().message);
+            return nullptr;
+        }
         desc.valid_tangent_frame = geometry.valid_tangent_frame;
         desc.vertices.reserve(geometry.vertices.size());
         desc.vertex_colors.reserve(geometry.vertices.size());
@@ -30,7 +41,8 @@ namespace toy3d
         {
             desc.sections.push_back({section.first_index, section.index_count, section.material_slot});
         }
-        desc.material_slots.assign(geometry.material_slots.size(), default_material);
+        desc.material_slots = materials.value();
+        desc.default_material_references = geometry.default_materials;
         desc.material_slot_names = geometry.material_slots;
         return StaticMesh::create(std::move(desc));
     }

@@ -6,6 +6,7 @@
 
 namespace toy3d
 {
+    ReflectionStatus register_animation_asset_types(TypeRegistry& types);
     // C++17 inline constants give tools and runtime the same bounded format contract.
     inline constexpr std::size_t max_skeleton_bones = 1024;
     inline constexpr double max_animation_duration = 600.0;

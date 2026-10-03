@@ -1,5 +1,7 @@
 #pragma once
 
+#include "serialization/schema_migration.h"
+
 #include <cstdint>
 #include <map>
 #include <string>
@@ -110,12 +112,22 @@ namespace toy3d
     {
       public:
         ReflectionStatus add(TypeDesc description);
+        // Explicit historical root schemas are read-only inputs; writers always use find(name).
+        ReflectionStatus add_previous_schema(TypeDesc description, SchemaMigrationStep migration);
+        ReflectionStatus add_previous_schema(const std::string& name, std::uint32_t version,
+                                             const std::vector<std::string>& absent_fields,
+                                             SchemaMigrationStep migration);
         ReflectionStatus freeze();
         const TypeDesc* find(const std::string& persistent_name) const;
+        const TypeDesc* find(const std::string& persistent_name, std::uint32_t version) const;
+        ValueStatus migrate(const std::string& name, std::uint32_t version, const std::vector<std::uint8_t>& input,
+                            std::vector<std::uint8_t>& output, ValueLimits limits = {}) const;
         bool frozen() const;
 
       private:
         std::map<std::string, TypeDesc> types_;
+        std::map<std::string, std::map<std::uint32_t, TypeDesc>> previous_schemas_;
+        SchemaMigrationRegistry migrations_;
         ReflectionStatus registration_error_;
         bool frozen_ = false;
     };

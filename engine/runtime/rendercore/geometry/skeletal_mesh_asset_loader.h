@@ -4,6 +4,7 @@
 #include "asset/scene/scene_asset_data.h"
 #include "animation/animation_sequence.h"
 #include "rendercore/geometry/skeletal_mesh.h"
+#include "rendercore/geometry/mesh_material_loader.h"
 
 namespace toy3d
 {
@@ -17,5 +18,6 @@ namespace toy3d
     AssetResult<SkeletalMeshAssets> load_skeletal_mesh_assets(const TypeRegistry& types, const FileSystem& files,
                                                               const AssetIndex& index,
                                                               const SceneSkeletalMeshData& data,
-                                                              const MaterialInterfaceRef& default_material);
+                                                              const MaterialInterfaceRef& default_material,
+                                                              const MeshMaterialResolver& resolver = {});
 } // namespace toy3d

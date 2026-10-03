@@ -26,12 +26,12 @@ namespace toy3d
         {
             return AssetResult<ThumbnailSource>(conflict("Asset identity/type changed during thumbnail load."));
         }
-        auto loaded = load_animation_preview_asset(pairs, catalog, asset.file.asset_id, false, {}, {}, {}, &files);
+        auto loaded = load_mesh_preview_asset(pairs, catalog, asset.file.asset_id, false, {}, {}, {}, &files);
         if (!loaded.succeeded())
         {
             return AssetResult<ThumbnailSource>(loaded.status());
         }
-        auto skeletal = std::make_shared<const AnimationPreviewAsset>(std::move(loaded).value());
+        auto skeletal = std::make_shared<const MeshPreviewAsset>(std::move(loaded).value());
         if (!skeletal->mesh)
         {
             return AssetResult<ThumbnailSource>(conflict(

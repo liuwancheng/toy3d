@@ -23,7 +23,7 @@
 #include "panels/place_actors_panel.h"
 #include "assets/asset_editor_registry.h"
 #include "assets/texture/texture_preview_panel.h"
-#include "assets/animation/animation_editor_panel.h"
+#include "assets/preview/mesh_editor_panel.h"
 #include "shader/shader_workflow.h"
 #include "asset/scene/scene_asset.h"
 #include "workspace/editor_project.h"
@@ -48,8 +48,8 @@ namespace toy3d
             : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)),
               scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
               thumbnails_(workspace), resource_picker_(thumbnails_),
-              mesh_bindings_(workspace, scene_session_.history()), texture_preview_(workspace),
-              animation_editor_(workspace), console_(log_buffer), notifications_(std::move(log_buffer))
+              mesh_bindings_(workspace, scene_session_.history()), texture_preview_(workspace), mesh_editor_(workspace),
+              console_(log_buffer), notifications_(std::move(log_buffer))
         {
             if (actors)
             {
@@ -117,12 +117,12 @@ namespace toy3d
         {
             thumbnails_.collect_render_work(work);
             texture_preview_.collect_render_work(work);
-            animation_editor_.collect_render_work(work);
+            mesh_editor_.collect_render_work(work);
         }
         void on_ui_texture_result(UiTextureResult result) override
         {
             texture_preview_.on_texture_result(result);
-            animation_editor_.on_texture_result(result);
+            mesh_editor_.on_texture_result(result);
             thumbnails_.on_texture_result(std::move(result));
         }
         std::vector<ImGuiTextureId> ui_texture_ids() const override
@@ -130,7 +130,7 @@ namespace toy3d
             auto ids = thumbnails_.texture_ids();
             const auto preview = texture_preview_.texture_ids();
             ids.insert(ids.end(), preview.begin(), preview.end());
-            const auto animation = animation_editor_.texture_ids();
+            const auto animation = mesh_editor_.texture_ids();
             ids.insert(ids.end(), animation.begin(), animation.end());
             return ids;
         }
@@ -196,7 +196,7 @@ namespace toy3d
         AssetResourcePicker resource_picker_;
         MeshAssetBindings mesh_bindings_;
         TexturePreviewPanel texture_preview_;
-        AnimationEditorPanel animation_editor_;
+        MeshEditorPanel mesh_editor_;
         bool initial_dock_layout_checked_ = false;
         bool reset_dock_layout_ = false;
         std::string asset_folder_ = "/Project";

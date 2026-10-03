@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "panels/property_widgets.h"
 #include "assets/asset_resource_picker.h"
+#include "assets/mesh/mesh_material_slots.h"
 #include "gamescene/component/skeletal_mesh_component.h"
 #include "gamescene/component/static_mesh_component.h"
 #include "scene/editor_command_history.h"
@@ -103,23 +104,31 @@ namespace toy3d
                 return;
             }
             ImGui::BeginDisabled(context.history.active() || (context.mesh_bindings && context.mesh_bindings->busy()));
+            std::size_t slot_index = 0;
             for (const auto& name : component->material_slot_names())
             {
                 ImGui::PushID(name.c_str());
                 const auto current = context.materials.reference(context.world, context.actor.actor_id(),
                                                                  component->component_id(), name);
-                AssetResourceSelection selected;
-                if (context.resource_picker->draw(name.c_str(), context.workspace, {current.asset_id, {}},
-                                                  {"toy3d.MaterialAssetData", "toy3d.MaterialInstanceAssetData"},
-                                                  selected, context.error))
+                AssetRef displayed = current;
+                if (!current.asset_id.valid())
                 {
-                    AssetRef reference;
-                    const auto* location =
-                        selected.asset.valid() ? context.workspace.catalog().index.find(selected.asset) : nullptr;
-                    if (location)
+                    const auto* static_component = dynamic_cast<StaticMeshComponent*>(component);
+                    const auto* skeletal_component = dynamic_cast<SkeletalMeshComponent*>(component);
+                    const auto defaults = static_component && static_component->static_mesh()
+                                              ? static_component->static_mesh()->default_material_references()
+                                          : skeletal_component && skeletal_component->skeletal_mesh()
+                                              ? skeletal_component->skeletal_mesh()->asset().data.default_materials
+                                              : std::vector<AssetRef>{};
+                    if (slot_index < defaults.size())
                     {
-                        reference = {selected.asset, {}, location->index.root_type, AssetRefStrength::Strong};
+                        displayed = defaults[slot_index];
                     }
+                }
+                AssetRef reference;
+                if (draw_mesh_material_slot(*context.resource_picker, context.workspace, slot_index, name, displayed,
+                                            reference, context.error))
+                {
                     if (!context.history.assign_material(context.world, context.actor.actor_id(),
                                                          component->component_id(), name, reference, context.error))
                     {
@@ -133,6 +142,7 @@ namespace toy3d
                 }
                 ImGui::TextDisabled("%s", current.asset_id.valid() ? "Actor override" : "Mesh default material");
                 ImGui::PopID();
+                ++slot_index;
             }
             ImGui::EndDisabled();
             if (!context.error.empty())

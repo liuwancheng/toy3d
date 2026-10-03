@@ -26,6 +26,8 @@ namespace toy3d
         std::vector<std::uint8_t> skeleton_baseline;
         AssetId reimport_id;
         std::vector<std::uint8_t> target_baseline;
+        std::vector<std::string> material_slots;
+        std::vector<AssetRef> default_materials;
         std::string workspace_root;
     };
 

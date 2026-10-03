@@ -23,6 +23,8 @@ MaterialInterface 是根/实例共同抽象。Properties default/schema 来自 S
 
 MaterialAssignments 保存场景 AssetRef/命令记录，Library 准备/发布/完成/丢弃配置图。纯材质切换通过 SceneInterface::update_primitive_materials 保留现有 StaticMeshSceneProxy、geometry、HitProxy，不 Remove/Add；旧材质由 FIFO 保活命令/版本 owner 持至安全点。
 
+StaticMesh/SkeletalMesh 资产可以保存默认材质引用；两类网格资产窗口与组件共用缩略图槽行，编辑/保存入口见 [Editor](editor.md#网格材质槽编辑)，格式见 [Assets](assets.md#网格默认材质)。runtime 的 load_mesh_materials 接受调用方注入的 MaterialLibrary resolver，在 owner thread 解析完整槽数组并验证 Local/GPUSkin 几何及 Pass 要求；组件显式覆盖优先，清除覆盖恢复运行网格持有的默认材质。资产草稿只改变私有预览的槽引用，不修改 Library 共享 Material 的参数。
+
 Scene schema 7、Actor schema 6 保存材质赋值及场景环境；旧格式拒绝。材质窗口和 Content Browser 的 Material/MaterialInstance 缩略图使用独立预览 World 和同一生产材质路径，不修改主 World；窗口设置与固定 studio 缩略图的边界见下方可视预览章节。
 
 ## 源码发现与外部编辑

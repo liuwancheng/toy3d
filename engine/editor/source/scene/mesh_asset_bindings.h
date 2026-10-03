@@ -1,6 +1,6 @@
 #pragma once
 
-#include "assets/animation/animation_preview_asset.h"
+#include "assets/preview/mesh_preview_asset.h"
 #include "scene/editor_actor_state.h"
 #include "scene/placement/asset_placement.h"
 #include "threading/task_graph/task_graph_interface.h"

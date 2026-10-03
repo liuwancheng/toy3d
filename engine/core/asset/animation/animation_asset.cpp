@@ -6,6 +6,7 @@
 
 #include "misc/sha256.h"
 #include "misc/utf8.h"
+#include "asset/mesh/mesh_materials.h"
 #include "serialization/math_value_codec.h"
 
 namespace toy3d
@@ -23,6 +24,13 @@ namespace toy3d
                    pair.description.has_meta == meta;
         }
     } // namespace
+
+    ReflectionStatus register_animation_asset_types(TypeRegistry& types)
+    {
+        const auto registered = register_animation_asset_schema(types);
+        return registered.succeeded() ? register_mesh_material_migration(types, "toy3d.SkeletalMeshAssetData", 2)
+                                      : registered;
+    }
 
     AssetStatus validate_animation_transform(const Transform& transform)
     {

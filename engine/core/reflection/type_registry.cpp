@@ -180,6 +180,62 @@ namespace toy3d
         return ReflectionStatus::success();
     }
 
+    ReflectionStatus TypeRegistry::add_previous_schema(TypeDesc description, SchemaMigrationStep migration)
+    {
+        if (frozen_)
+        {
+            return {ReflectionErrorCode::Frozen, description.name, {}, "type registry is frozen"};
+        }
+        TypeRegistry validator;
+        const auto valid = validator.add(description);
+        if (!valid.succeeded())
+        {
+            registration_error_ = valid;
+            return valid;
+        }
+        description = validator.types_.at(description.name);
+        const auto current = types_.find(description.name);
+        if (current == types_.end() || description.schema_version == 0 ||
+            description.schema_version >= current->second.schema_version ||
+            !migrations_.add_step(description.name, description.schema_version, std::move(migration)))
+        {
+            registration_error_ = {ReflectionErrorCode::InvalidDescription,
+                                   description.name,
+                                   {},
+                                   "invalid or duplicate historical schema migration"};
+            return registration_error_;
+        }
+        previous_schemas_[description.name].emplace(description.schema_version, std::move(description));
+        return ReflectionStatus::success();
+    }
+
+    ReflectionStatus TypeRegistry::add_previous_schema(const std::string& name, std::uint32_t version,
+                                                       const std::vector<std::string>& absent_fields,
+                                                       SchemaMigrationStep migration)
+    {
+        const auto found = types_.find(name);
+        if (found == types_.end())
+        {
+            return {ReflectionErrorCode::InvalidDescription, name, {}, "current schema must be registered first"};
+        }
+        auto previous = found->second;
+        previous.schema_version = version;
+        for (const auto& field : absent_fields)
+        {
+            const auto property = std::find_if(previous.properties.begin(), previous.properties.end(),
+                                               [&field](const PropertyDesc& value)
+                                               {
+                                                   return value.name == field;
+                                               });
+            if (property == previous.properties.end())
+            {
+                return {ReflectionErrorCode::InvalidDescription, name, field, "historical field removal is invalid"};
+            }
+            previous.properties.erase(property);
+        }
+        return add_previous_schema(std::move(previous), std::move(migration));
+    }
+
     ReflectionStatus TypeRegistry::freeze()
     {
         if (!registration_error_.succeeded())
@@ -195,6 +251,22 @@ namespace toy3d
                 {
                     registration_error_ = {ReflectionErrorCode::InvalidDescription, entry.first, property.name, reason};
                     return registration_error_;
+                }
+            }
+        }
+        for (const auto& entry : previous_schemas_)
+        {
+            for (const auto& version : entry.second)
+            {
+                for (const auto& property : version.second.properties)
+                {
+                    std::string reason;
+                    if (!validate_value_type(property.value_type, types_, reason))
+                    {
+                        registration_error_ = {ReflectionErrorCode::InvalidDescription, entry.first, property.name,
+                                               reason};
+                        return registration_error_;
+                    }
                 }
             }
         }
@@ -215,5 +287,33 @@ namespace toy3d
     bool TypeRegistry::frozen() const
     {
         return frozen_;
+    }
+
+    const TypeDesc* TypeRegistry::find(const std::string& name, std::uint32_t version) const
+    {
+        const auto* current = find(name);
+        if (!current || current->schema_version == version)
+        {
+            return current;
+        }
+        const auto found = previous_schemas_.find(name);
+        if (found == previous_schemas_.end())
+        {
+            return nullptr;
+        }
+        const auto previous = found->second.find(version);
+        return previous == found->second.end() ? nullptr : &previous->second;
+    }
+
+    ValueStatus TypeRegistry::migrate(const std::string& name, std::uint32_t version,
+                                      const std::vector<std::uint8_t>& input, std::vector<std::uint8_t>& output,
+                                      ValueLimits limits) const
+    {
+        const auto* current = find(name);
+        if (!current || !find(name, version))
+        {
+            return {ValueErrorCode::InvalidValue, 0, {}, "unregistered historical schema"};
+        }
+        return migrations_.migrate(name, version, current->schema_version, input, output, limits);
     }
 } // namespace toy3d

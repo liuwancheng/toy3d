@@ -1,6 +1,7 @@
 #include "assets/thumbnails/thumbnail_source.h"
 
 #include <utility>
+#include <algorithm>
 
 #include "assets/animation/animation_thumbnail.h"
 #include "assets/mesh/mesh_thumbnail.h"
@@ -25,7 +26,7 @@ namespace toy3d
     }
 
     bool thumbnail_catalog_current(const AssetCatalog& catalog, const AssetId& id, const std::string& path,
-                                   const AnimationPreviewAsset* skeletal)
+                                   const MeshPreviewAsset* skeletal)
     {
         const auto* location = catalog.index.find(id);
         if (!location || location->path.utf8() != path)
@@ -48,8 +49,7 @@ namespace toy3d
 
     AssetStatus validate_thumbnail_source(AssetPairStore& pairs, const FileSystem& files, const AssetCatalog& catalog,
                                           const AssetId& id, const VirtualPath& path,
-                                          const std::vector<std::uint8_t>& original,
-                                          const AnimationPreviewAsset* skeletal)
+                                          const std::vector<std::uint8_t>& original, const MeshPreviewAsset* skeletal)
     {
         if (!thumbnail_catalog_current(catalog, id, path.utf8(), skeletal))
         {
@@ -65,7 +65,7 @@ namespace toy3d
         {
             return failure("Thumbnail conflict: asset changed; refresh and regenerate.");
         }
-        if (skeletal && !animation_preview_asset_current(pairs, catalog, *skeletal, &files))
+        if (skeletal && !mesh_preview_asset_current(pairs, catalog, *skeletal, &files))
         {
             return failure("Thumbnail conflict: skeletal inputs changed; refresh and regenerate.");
         }
@@ -143,6 +143,31 @@ namespace toy3d
         {
             return AssetResult<ThumbnailSource>(
                 failure("Unsupported thumbnail asset type.", AssetErrorCode::TypeMismatch));
+        }
+        if (!skeletal)
+        {
+            auto preview = load_mesh_preview_asset(pairs, catalog, asset.file.asset_id);
+            if (!preview.succeeded())
+            {
+                return AssetResult<ThumbnailSource>(preview.status());
+            }
+            result.skeletal = std::make_shared<const MeshPreviewAsset>(std::move(preview).value());
+        }
+        const auto& defaults = result.skeletal->static_mesh ? result.skeletal->static_mesh->default_materials
+                                                            : result.skeletal->mesh->data.default_materials;
+        if (std::any_of(defaults.begin(), defaults.end(),
+                        [](const AssetRef& reference)
+                        {
+                            return reference.asset_id.valid();
+                        }))
+        {
+            std::vector<std::uint8_t> signature(result.source.content_hash.begin(), result.source.content_hash.end());
+            for (const auto& source : result.skeletal->sources)
+            {
+                const auto digest = sha256(source.description);
+                signature.insert(signature.end(), digest.begin(), digest.end());
+            }
+            result.source.content_hash = sha256(signature);
         }
         if (!force)
         {

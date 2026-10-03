@@ -102,12 +102,20 @@ namespace toy3d
                 error = loaded.status().message;
                 return {};
             }
-            return create_static_mesh_from_asset(loaded.value(), geometry_.default_material());
+            return create_static_mesh_from_asset(loaded.value(), geometry_.default_material(),
+                                                 [this](const AssetRef& reference)
+                                                 {
+                                                     return materials_->load(reference);
+                                                 });
         };
         services.load_skeletal_mesh = [this, &workspace](const SceneSkeletalMeshData& mesh)
         {
             return load_skeletal_mesh_assets(workspace.types(), workspace.files(), workspace.catalog().index, mesh,
-                                             geometry_.default_material());
+                                             geometry_.default_material(),
+                                             [this](const AssetRef& reference)
+                                             {
+                                                 return materials_->load(reference);
+                                             });
         };
         services.assign_material = [this](Actor&, MeshComponent& component, const std::string& slot,
                                           const AssetRef& reference, std::string& error)

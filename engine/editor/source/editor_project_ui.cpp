@@ -142,7 +142,7 @@ namespace toy3d
             project_error_ = "Finish or cancel the background operation before opening another project.";
             return;
         }
-        if (!material_editor_.request_exit())
+        if (!mesh_editor_.request_exit() || !material_editor_.request_exit())
         {
             waiting_material_project_ = true;
             return;

@@ -191,6 +191,8 @@ target_sources(Toy3dAssets PRIVATE
     "asset/material/material_asset_data.h"
     "asset/mesh/mesh_description.cpp"
     "asset/mesh/mesh_description.h"
+    "asset/mesh/mesh_materials.h"
+    "asset/mesh/mesh_materials.cpp"
     "asset/mesh/static_mesh_asset.cpp"
     "asset/mesh/static_mesh_asset.h"
     "asset/mesh/static_mesh_asset_data.h"
@@ -229,7 +231,7 @@ add_custom_command(
     COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
         --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/animation/animation_asset_data.h"
         --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
-        --function register_animation_asset_types
+        --function register_animation_asset_schema
     DEPENDS Toy3dReflectionCodegen "${CMAKE_CURRENT_SOURCE_DIR}/asset/animation/animation_asset_data.h"
     VERBATIM)
 target_sources(Toy3dAssets PRIVATE "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}")
@@ -256,7 +258,7 @@ add_custom_command(
     COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
         --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/mesh/static_mesh_asset_data.h"
         --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
-        --function register_static_mesh_asset_types
+        --function register_static_mesh_asset_schema
     DEPENDS Toy3dReflectionCodegen
         "${CMAKE_CURRENT_SOURCE_DIR}/asset/mesh/static_mesh_asset_data.h"
     VERBATIM)

@@ -47,7 +47,7 @@ namespace toy3d
         std::string tracks_segment = "animation_tracks";
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.SkeletalMeshAssetData", 2)
+    TOY3D_REFLECT_TYPE("toy3d.SkeletalMeshAssetData", 3)
     struct SkeletalMeshAssetData
     {
         TOY3D_PROPERTY("skeleton", Visible)
@@ -56,6 +56,8 @@ namespace toy3d
         std::string skeleton_reference_hash;
         TOY3D_PROPERTY("material_slots", Visible)
         std::vector<std::string> material_slots;
+        TOY3D_PROPERTY("default_materials", Edit)
+        std::vector<AssetRef> default_materials;
         TOY3D_PROPERTY("vertex_count", Visible)
         std::uint32_t vertex_count = 0;
         TOY3D_PROPERTY("index_count", Visible)

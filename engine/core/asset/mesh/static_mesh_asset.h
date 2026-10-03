@@ -8,6 +8,7 @@
 
 namespace toy3d
 {
+    ReflectionStatus register_static_mesh_asset_types(TypeRegistry& types);
     struct StaticMeshAssetVertex
     {
         Vector3 position;
@@ -30,6 +31,8 @@ namespace toy3d
         std::vector<std::uint32_t> indices;
         std::vector<StaticMeshAssetSection> sections;
         std::vector<std::string> material_slots;
+        // Descriptor-only defaults. Geometry payloads keep their existing wire format.
+        std::vector<AssetRef> default_materials;
         bool valid_tangent_frame = false;
     };
 
@@ -46,4 +49,5 @@ namespace toy3d
                                                               const StaticMeshAssetGeometry& geometry,
                                                               std::vector<AssetSegmentData> optional_segments = {});
     AssetResult<StaticMeshAssetGeometry> read_static_mesh_asset(const FileSystem& files, const VirtualPath& path);
+    AssetResult<StaticMeshAssetGeometry> decode_static_mesh_asset_pair(const AssetPair& pair);
 } // namespace toy3d

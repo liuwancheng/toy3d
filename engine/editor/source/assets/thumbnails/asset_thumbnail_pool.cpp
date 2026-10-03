@@ -559,8 +559,9 @@ namespace toy3d
                                                          std::move(result->input.pixels)});
                     }
                     else if (!preview_.configure_thumbnail() ||
-                             !(result->input.skeletal ? preview_.prepare_skeletal(*result->input.skeletal)
-                                                      : preview_.prepare(std::move(result->input.geometry))))
+                             !(result->input.skeletal && result->input.skeletal->mesh
+                                   ? preview_.prepare_skeletal(*result->input.skeletal)
+                                   : preview_.prepare(std::move(result->input.geometry))))
                     {
                         fail(entry, "Could not prepare the thumbnail preview mesh.");
                     }

@@ -5,12 +5,13 @@
 #include "rendercore/view/scene_view.h"
 #include "asset/mesh/static_mesh_asset.h"
 #include "rendercore/geometry/skeletal_mesh.h"
+#include "rendercore/geometry/mesh_material_loader.h"
 
 namespace toy3d
 {
     class SkeletalMeshComponent;
     class AnimationSequence;
-    struct AnimationPreviewAsset;
+    struct MeshPreviewAsset;
     enum class MaterialPreviewMesh
     {
         Sphere,
@@ -53,12 +54,19 @@ namespace toy3d
     class AssetPreviewScene final
     {
       public:
+        void set_material_resolver(MeshMaterialResolver resolver)
+        {
+            material_resolver_ = std::move(resolver);
+        }
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, SceneEnvironmentSettings environment = {},
                         TextureRef cube = {});
         bool prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material = {});
         bool prepare(StaticMeshRef mesh);
+        // Interactive mesh previews preserve authored centimeters; thumbnails normalize copies.
+        bool prepare_static(const StaticMeshAssetGeometry& geometry);
+        bool set_mesh_visible(bool visible);
         bool prepare_skeletal(SkeletalMeshRef mesh, std::shared_ptr<const AnimationSequence> sequence = {});
-        bool prepare_skeletal(const AnimationPreviewAsset& asset);
+        bool prepare_skeletal(const MeshPreviewAsset& asset);
         SkeletalMeshComponent* skeletal_component();
         const Vector3& frame_center() const;
         float frame_radius() const;
@@ -73,6 +81,7 @@ namespace toy3d
       private:
         World world_;
         MaterialInstanceRef material_;
+        MeshMaterialResolver material_resolver_;
         MaterialInstanceRef floor_material_;
         StaticMeshRef floor_mesh_;
         StaticMeshDesc floor_geometry_;

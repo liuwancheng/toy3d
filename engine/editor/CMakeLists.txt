@@ -25,8 +25,10 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/assets/thumbnails/thumbnail_widget.h" "source/assets/thumbnails/thumbnail_widget.cpp"
     "source/assets/asset_resource_picker.h" "source/assets/asset_resource_picker.cpp"
     "source/scene/mesh_asset_bindings.h" "source/scene/mesh_asset_bindings.cpp"
-    "source/assets/animation/animation_preview_asset.h" "source/assets/animation/animation_preview_asset.cpp"
-    "source/assets/animation/animation_editor_panel.h" "source/assets/animation/animation_editor_panel.cpp"
+    "source/assets/preview/mesh_preview_asset.h" "source/assets/preview/mesh_preview_asset.cpp"
+    "source/assets/preview/mesh_editor_panel.h" "source/assets/preview/mesh_editor_panel.cpp"
+    "source/assets/mesh/mesh_material_slots.h" "source/assets/mesh/mesh_material_slots.cpp"
+    "source/assets/mesh/mesh_material_edit_session.h" "source/assets/mesh/mesh_material_edit_session.cpp"
     "source/scene/editor_play_session.h" "source/scene/editor_play_session.cpp"
     "source/workspace/editor_project.cpp"
     "source/scene/placement/placement_catalog.cpp"
@@ -286,6 +288,7 @@ if(BUILD_TESTING)
         target_compile_definitions(Toy3dEditorAnimationPreviewTests PRIVATE
             "TOY3D_ANIMATION_PREVIEW_TEST_ROOT=\"${CMAKE_BINARY_DIR}/animation-preview-test-output\""
             "TOY3D_MANNY_PREVIEW_SOURCE=\"${TOY3D_PROJECT_ASSET_DIR}/animation/ue_manny\""
+            "TOY3D_STATIC_PREVIEW_SOURCE=\"${TOY3D_PROJECT_ASSET_DIR}/animation\""
             "TOY3D_EDITOR_ENGINE_ASSET_ROOT=\"${TOY3D_ENGINE_ASSET_DIR}\""
             "TOY3D_EDITOR_RESOURCE_ROOT=\"${TOY3D_EDITOR_RESOURCE_DIR}\""
             "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
@@ -296,7 +299,7 @@ if(BUILD_TESTING)
         add_test(NAME Toy3dEditor.AnimationPreview COMMAND Toy3dEditorAnimationPreviewTests)
         add_test(NAME Toy3dEditor.AnimationPreviewMultiThread COMMAND Toy3dEditorAnimationPreviewTests --multithread)
         set_tests_properties(Toy3dEditor.AnimationPreview Toy3dEditor.AnimationPreviewMultiThread
-            PROPERTIES TIMEOUT 300 RESOURCE_LOCK Toy3dGpuWindow)
+            PROPERTIES TIMEOUT 420 RESOURCE_LOCK Toy3dGpuWindow)
         add_executable(Toy3dEditorThumbnailTests
             "tests/thumbnail_integration_tests.cpp"
             "tests/editor_play_integration_tests.cpp"

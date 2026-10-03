@@ -320,12 +320,13 @@ namespace toy3d
                 problem = loaded.status().message;
                 return {};
             }
-            return create_static_mesh_from_asset(loaded.value(), factory_.default_material());
+            return create_static_mesh_from_asset(loaded.value(), factory_.default_material(),
+                                                 factory_.material_resolver());
         };
         services.load_skeletal_mesh = [this](const SceneSkeletalMeshData& mesh)
         {
             return load_skeletal_mesh_assets(workspace_.types(), workspace_.files(), workspace_.catalog().index, mesh,
-                                             factory_.default_material());
+                                             factory_.default_material(), factory_.material_resolver());
         };
         services.assign_material = [&](Actor& actor, MeshComponent& component, const std::string& slot,
                                        const AssetRef& material, std::string& problem)

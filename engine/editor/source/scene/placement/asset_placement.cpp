@@ -27,7 +27,8 @@ namespace toy3d
         PlacementRequest placed;
         placed.item = PlacementItemId::StaticMesh;
         placed.asset_id = request.asset_id;
-        placed.static_mesh = create_static_mesh_from_asset(geometry.value(), factory.default_material());
+        placed.static_mesh =
+            create_static_mesh_from_asset(geometry.value(), factory.default_material(), factory.material_resolver());
         if (!placed.static_mesh)
         {
             error = "Could not create runtime StaticMesh geometry.";

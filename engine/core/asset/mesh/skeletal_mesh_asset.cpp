@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "serialization/math_value_codec.h"
+#include "asset/mesh/mesh_materials.h"
 
 namespace toy3d
 {
@@ -148,7 +149,8 @@ namespace toy3d
         {
             return invalid("skeletal mesh metadata disagrees with geometry");
         }
-        return validate_skeletal_mesh_geometry(mesh.geometry);
+        const auto materials = validate_mesh_materials(mesh.data.material_slots, mesh.data.default_materials);
+        return materials.succeeded() ? validate_skeletal_mesh_geometry(mesh.geometry) : materials;
     }
 
     AssetStatus validate_skeletal_mesh_compatibility(const SkeletalMeshAsset& mesh, const AssetId& skeleton_id,
@@ -348,8 +350,8 @@ namespace toy3d
         AssetFileIndex index;
         index.asset_id = id;
         index.root_type = "toy3d.SkeletalMeshAssetData";
-        index.schema_version = 2;
-        index.dependencies.push_back(mesh.data.skeleton);
+        index.schema_version = 3;
+        index.dependencies = mesh_material_dependencies(mesh.data.default_materials, {mesh.data.skeleton});
         return encode_asset_pair(types, std::move(index), writer.bytes(),
                                  {{"skeletal_geometry", 2, true, geometry.value()}});
     }
@@ -357,7 +359,7 @@ namespace toy3d
     AssetResult<SkeletalMeshAsset> decode_skeletal_mesh_asset_pair(const AssetPair& pair)
     {
         if (pair.description.index.root_type != "toy3d.SkeletalMeshAssetData" ||
-            pair.description.index.schema_version != 2 || !pair.description.has_meta)
+            pair.description.index.schema_version != 3 || !pair.description.has_meta)
         {
             return AssetResult<SkeletalMeshAsset>(invalid("invalid skeletal mesh type or schema"));
         }
@@ -366,6 +368,12 @@ namespace toy3d
         if (!decode_value(reader, mesh.data).succeeded() || !reader.at_end())
         {
             return AssetResult<SkeletalMeshAsset>(invalid("invalid skeletal mesh metadata"));
+        }
+        const auto dependencies =
+            validate_mesh_material_dependencies(mesh.data.default_materials, pair.description.index.dependencies);
+        if (!dependencies.succeeded())
+        {
+            return AssetResult<SkeletalMeshAsset>(dependencies);
         }
         const AssetSegmentData* geometry = nullptr;
         for (const auto& segment : pair.meta.segments)

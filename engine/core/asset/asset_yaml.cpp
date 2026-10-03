@@ -925,8 +925,8 @@ namespace toy3d
             }
             result.index.root_type = node["root_type"].as<std::string>();
             result.index.schema_version = node["schema_version"].as<std::uint32_t>();
-            const TypeDesc* type = types.find(result.index.root_type);
-            if (!types.frozen() || !type || result.index.schema_version != type->schema_version)
+            const TypeDesc* type = types.find(result.index.root_type, result.index.schema_version);
+            if (!types.frozen() || !type)
             {
                 return AssetResult<AssetYamlDocument>(
                     fail(result.index.asset_id, "schema_version", "unsupported type schema"));
@@ -977,13 +977,30 @@ namespace toy3d
                 }
             }
             ValueWriter writer(value_limits);
-            ValueTypeDesc root{ValueKind::Struct, result.index.root_type, {}};
-            if (!yaml_to_binary(node["data"], root, types, writer, 0u, value_limits))
+            if (!write_struct(node["data"], *type, types, writer, 0u, value_limits))
             {
                 return AssetResult<AssetYamlDocument>(
                     fail(result.index.asset_id, "data", "data does not match schema"));
             }
-            result.type_data = writer.bytes();
+            const auto migrated = types.migrate(result.index.root_type, result.index.schema_version, writer.bytes(),
+                                                result.type_data, value_limits);
+            if (!migrated.succeeded())
+            {
+                return AssetResult<AssetYamlDocument>(fail(result.index.asset_id, "data", migrated.message));
+            }
+            result.index.schema_version = types.find(result.index.root_type)->schema_version;
+            if (type->schema_version != result.index.schema_version)
+            {
+                ValueReader migrated_reader(result.type_data, value_limits);
+                YAML::Node validated;
+                const ValueTypeDesc shape{ValueKind::Struct, result.index.root_type, {}};
+                if (!binary_to_yaml(migrated_reader, shape, types, validated, 0u, value_limits) ||
+                    !migrated_reader.at_end())
+                {
+                    return AssetResult<AssetYamlDocument>(
+                        fail(result.index.asset_id, "data", "migrated data does not match current schema"));
+                }
+            }
             if (node["meta"])
             {
                 const YAML::Node meta = node["meta"];

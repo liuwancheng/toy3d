@@ -2,6 +2,7 @@
 
 #include "rendercore/geometry/axis_aligned_bounds.h"
 #include "rendercore/material/material.h"
+#include "asset/asset_identity.h"
 
 #include <array>
 #include <cstdint>
@@ -42,6 +43,7 @@ namespace toy3d
         std::vector<MaterialInterfaceRef> material_slots;
         // Stable imported slot names survive geometry reconstruction and reordering.
         std::vector<std::string> material_slot_names;
+        std::vector<AssetRef> default_material_references;
         bool valid_tangent_frame = false;
     };
 
@@ -84,6 +86,10 @@ namespace toy3d
         {
             return valid_tangent_frame_;
         }
+        const std::vector<AssetRef>& default_material_references() const
+        {
+            return default_material_references_;
+        }
         const AxisAlignedBounds& local_bounds() const
         {
             return local_bounds_;
@@ -102,6 +108,7 @@ namespace toy3d
         std::vector<StaticMeshSection> sections_;
         std::vector<MaterialInterfaceRef> material_slots_;
         std::vector<std::string> material_slot_names_;
+        std::vector<AssetRef> default_material_references_;
         bool valid_tangent_frame_ = false;
         AxisAlignedBounds local_bounds_;
         std::unique_ptr<StaticMeshRenderData> render_data_;

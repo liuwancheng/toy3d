@@ -5,6 +5,7 @@
 #include <set>
 
 #include "asset/asset_descriptor_path.h"
+#include "asset/mesh/mesh_materials.h"
 #include "file_system/directory_file_store.h"
 #include "file_system/native_platform_file.h"
 #include "misc/sha256.h"
@@ -144,6 +145,8 @@ namespace toy3d
                     return false;
                 }
                 reference = decoded.value().data.skeleton;
+                candidate.material_slots = decoded.value().data.material_slots;
+                candidate.default_materials = decoded.value().data.default_materials;
             }
             candidate.skeleton_id = reference.asset_id;
             candidate.target_baseline = pair.value().description_bytes;
@@ -255,10 +258,21 @@ namespace toy3d
         }
         if (request.mode == SkeletalImportMode::MeshAndAnimations)
         {
+            auto mesh = imported.value().mesh;
+            if (request.reimport_id.valid())
+            {
+                const auto remapped =
+                    remap_mesh_materials(request.material_slots, request.default_materials, mesh.data.material_slots);
+                if (!remapped.succeeded())
+                {
+                    result.error = remapped.status().message;
+                    return false;
+                }
+                mesh.data.default_materials = remapped.value();
+            }
             AssetId mesh_id = request.reimport_id;
             if ((!mesh_id.valid() && !AssetId::try_generate(mesh_id)) ||
-                !append(request.destination, mesh_id,
-                        encode_skeletal_mesh_asset_pair(types, mesh_id, imported.value().mesh)))
+                !append(request.destination, mesh_id, encode_skeletal_mesh_asset_pair(types, mesh_id, mesh)))
             {
                 if (result.error.empty())
                 {

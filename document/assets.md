@@ -35,7 +35,7 @@ ReflectedValue 是已注册 struct 的类型/版本/owned binary frame；YAML �
 真实声明片段，摘自 core/asset/mesh/static_mesh_asset_data.h；省略同一 struct 的其它字段，不是新类型或独立可编译文件：
 
 ```cpp
-TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 3)
+TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 4)
 struct StaticMeshAssetData
 {
     TOY3D_PROPERTY("material_slots", Visible)
@@ -54,7 +54,7 @@ type string/schema version 是持久化身份，Visible 字段仍序列化，只
 - parser 有输入/深度/数量边界，拒绝重复键、aliases/tags、非法 UTF-8、非有限数、未知结构；root_type 决定类型，不能只看扩展名。
 - 配对文件是同目录同 stem 的 .meta。TOY3DMTA1 包含 AssetId、段目录、长度与 SHA-256；必需段缺失或损坏不能加载正常资产。StaticMesh 使用 render_geometry，Texture 使用 texture_mips，Material 是纯 YAML；Scene 当前拒绝 .scene.meta。
 - meta 不收原始 source_mesh/import_data/thumbnail。缩略图是可重建外部缓存，资产描述不能依赖它。
-- 当前 Scene schema 为 7、SceneActor schema 为 6；StaticMesh schema/render_geometry 为 3，单位厘米。旧二进制生产读取明确拒绝，测试中隔离的旧格式 fixture 不是兼容入口。
+- 当前 Scene schema 为 7、SceneActor schema 为 6；StaticMesh 描述 schema 为 4，render_geometry 为 3，单位厘米。SkeletalMesh 描述 schema 为 3，skeletal_geometry 为 3。仅上一版网格 YAML 描述的显式材质字段迁移可读，见下节；旧几何及旧二进制生产读取仍拒绝，测试中隔离的旧格式 fixture 不是兼容入口。
 
 源代码入口：asset/asset_identity.h、asset_pair.h、asset_yaml.h、asset_meta.h、asset_index.h，DTO 在各资源模块。格式/单位改变必须提升正确版本并明确迁移或拒绝，不能修改 parser 后继续声称旧字节等价。
 
@@ -70,6 +70,16 @@ AssetPairStore 是配对一致性入口；调用方不能自己分别写 YAML/me
 
 完整失败/恢复用例：tests/asset_file_tests.cpp；编辑入口 asset/edit_session.h。`scan_asset_catalog(..., include_scenes=false)` 为 Shader Cook 收集 .asset 身份/依赖；Scene 原生设置由注册该类型的宿主验证，不由 Shader 工具解析。默认仍包含 Scene 并完成原有检查。当前 Catalog 扫描可能验证完整 meta/payload，内容规模扩大后的按需读取优化需独立评估，不能在文档宣称已有 lazy metadata。
 
+## 网格默认材质
+
+StaticMeshAssetData / SkeletalMeshAssetData 保存 `default_materials: vector<AssetRef>`，按已有 material_slots 顺序对应。空数组表示所有槽使用调用方引擎默认材质；非空必须与槽数一致，单个规范空引用表示该槽未赋值。非空引用仅接受 Strong、无 subresource 的 Material/MaterialInstance，引用必须出现在去重后的 dependencies；SkeletalMesh 还保留 Skeleton 强依赖。core/asset/mesh/mesh_materials 提供格式验证、依赖收集和按唯一槽名的重导入映射，不持有运行材质或 UI。
+
+StaticMeshAssetGeometry 携带从描述读出的默认引用，作为加载适配器的 owned 输入；其 render_geometry 编码不存引用，嵌套的骨骼几何也不改变 payload。修改默认材质只改变 YAML 描述和依赖；Editor 保存完整保留已验证 meta，包括未知可选段，不重新构建顶点、权重或 bind 数据。
+
+注册网格 schema 时显式登记 StaticMesh 3→4、SkeletalMesh 2→3 的历史根描述和 SchemaMigrationRegistry step，添加空默认材质数组。TypeRegistry::add_previous_schema 在 freeze 前登记历史描述和迁移；find(name) 仍只返回当前 schema，find(name, version) 仅供读取登记过的版本。YAML reader 先按源描述严格解码，再迁移并验证当前完整候选，返回当前 schema/type_data，原始 description_bytes 保持不变。打开和扫描不改磁盘；用户保存才写当前 schema。未登记旧版、未来版或含未知 typed 数据均不能静默保存成功，不自动迁移旧几何或其他资产类型。
+
+现有骨骼重导入按唯一槽名保留默认材质，已有赋值失去或出现歧义时拒绝该候选并诊断；不按新槽下标猜映射。StaticMesh 导入仍只创建新资产。运行加载、场景覆盖和草稿边界见 [Editor](editor.md#网格材质槽编辑)，MaterialLibrary ownership 见 [Material](material.md)。
+
 ## StaticMesh 与 Texture 生产链
 
 StaticMesh：FBX/OBJ/glTF/GLB → Assimp → MeshDescription → CPU MeshBuilder → YAML/meta → runtime StaticMesh。
@@ -77,7 +87,7 @@ StaticMesh：FBX/OBJ/glTF/GLB → Assimp → MeshDescription → CPU MeshBuilder
 - bake 源层级变换、保持 origin、合并实例；源单位显式转厘米，不能无条件乘 100。材质仅保留 slot 名，不自动导入/猜测纹理。
 - 静态导入在 bake 后按现有法线归一化容差跳过有限的退化三角形，并按源网格报告跳过数量；所有网格均无有效三角形时明确失败。非法索引、非有限值、溢出和不可逆变换仍拒绝。MeshDescription/产物验证保持严格，不把退化面写入资产。
 - 当前一个 LOD、UV0/color/Tangent0；构建使用 Tools 私有的固定 MikkTSpace revision `3e895b49d05ea07e4c2133156cfa94369e19e409`，两份 upstream 原文件保存在 `engine/tools/asset_pipeline/thirdparty/mikktspace/`，保留版权声明与原始字节，CMake 核对 SHA256，直接使用本地源码，不联网下载。Runtime 不依赖 MikkTSpace。corner 结果按原顶点与完整 tangent/sign 拆分，返回 source_vertices 供骨骼 builder 同步复制全部 influences；不平均跨接缝切线。缺有效 UV 的资产标记 valid_tangent_frame=false、保留初始化的安全切线，可用于 NormalMap=Off；旧 payload 2 拒绝，需要离线重建。skeletal payload 3/metadata 2 复用同一几何能力。不承诺 morph，animation/camera/light 可按已有诊断忽略。
-- MeshDescription 是 CPU 建模数据，StaticMesh render_geometry 是可加载渲染数据，runtime 不依赖 Assimp 或重新建模。
+- MeshDescription 是 CPU 建模数据，StaticMesh render_geometry 是可加载渲染数据，runtime 不依赖 Assimp 或重新建模。`decode_static_mesh_asset_pair` 解码已由 AssetPairStore/read_asset_pair 验证的完整快照；`read_static_mesh_asset` 复用该解码入口，后台预览不另读一遍几何或分开读取 YAML/meta。
 - 重导入先完整候选验证再替换，bounds/index/数量/有限值/材质槽都检查，失败保留旧资产。
 
 Texture schema 2 显式保存 usage 与 flip_green：PNG/JPEG 导入为 GPU-ready 完整 mip 链。Color 使用 RGBA8 sRGB，RGB 在线性空间滤波再编码；LinearData 使用 RGBA8 UNorm；Normal 使用 RGBA8 UNorm，解码 XYZ、可在首层翻转绿色通道、归一化，并以向量滤波/归一化各 mip，正 Y 为运行时约定。alpha 始终在线性空间滤波。旧 schema 1 拒绝读取，重新导入受影响资产；内置已知 Color 输入已改为新描述，payload 不变。

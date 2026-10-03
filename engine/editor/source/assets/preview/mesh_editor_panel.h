@@ -1,8 +1,9 @@
 #pragma once
 
 #include "animation/animation_instance.h"
-#include "assets/animation/animation_preview_asset.h"
+#include "assets/preview/mesh_preview_asset.h"
 #include "assets/preview/asset_preview_scene.h"
+#include "assets/mesh/mesh_material_edit_session.h"
 #include "threading/task_graph/task_graph_interface.h"
 #include "ui/ui_texture_work.h"
 
@@ -11,17 +12,36 @@ namespace toy3d
     class EditorWorkspace;
     class AssetResourcePicker;
 
-    // GT-owned read-only asset session. CPU candidates and UI image identities
+    // GT-owned mesh asset session. CPU candidates and UI image identities
     // are owned here; the Renderer owns the independent scene and GPU targets.
-    class AnimationEditorPanel final
+    class MeshEditorPanel final
     {
       public:
-        explicit AnimationEditorPanel(EditorWorkspace& workspace);
-        ~AnimationEditorPanel();
+        explicit MeshEditorPanel(EditorWorkspace& workspace);
+        ~MeshEditorPanel();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
         void set_resource_picker(AssetResourcePicker& picker)
         {
             resource_picker_ = &picker;
+        }
+        void set_material_resolver(MeshMaterialResolver resolver)
+        {
+            material_resolver_ = std::move(resolver);
+            scene_.set_material_resolver(material_resolver_);
+        }
+        MeshMaterialEditSession& material_edit_session()
+        {
+            return material_session_;
+        }
+        AssetStatus assign_material(std::size_t slot, const AssetRef& material);
+        AssetStatus undo_material();
+        AssetStatus redo_material();
+        AssetStatus save_materials();
+        bool request_exit();
+        bool take_exit();
+        bool modal_pending() const
+        {
+            return pending_close_ || pending_open_id_.valid();
         }
         void request_open(const AssetId& id, bool focus = true);
         void invalidate();
@@ -30,7 +50,7 @@ namespace toy3d
         void collect_render_work(UiRenderWork& work);
         void on_texture_result(const UiTextureResult& result);
         std::vector<ImGuiTextureId> texture_ids() const;
-        const AnimationPreviewAsset* asset() const;
+        const MeshPreviewAsset* asset() const;
         const std::string& error() const;
         void close();
         void shutdown();
@@ -46,7 +66,7 @@ namespace toy3d
 
       private:
         struct CpuResult;
-        bool adopt(std::shared_ptr<const AnimationPreviewAsset> candidate);
+        bool adopt(std::shared_ptr<const MeshPreviewAsset> candidate);
         bool prepare_mesh();
         void frame_all();
         void select(const AssetId& mesh, const AssetId& sequence);
@@ -54,6 +74,9 @@ namespace toy3d
         std::vector<DebugLineVertex> bone_lines(const AnimationEvaluation& evaluation) const;
         void draw_bone(std::uint32_t index);
         void draw_asset_details();
+        AssetStatus prepare_materials(const std::vector<AssetRef>& materials);
+        void draw_materials();
+        void draw_unsaved_prompt();
         void draw_bone_details();
         void draw_preview_selectors();
         void draw_animation_browser();
@@ -61,6 +84,14 @@ namespace toy3d
         void draw_viewport();
 
         EditorWorkspace& workspace_;
+        MeshMaterialEditSession material_session_;
+        MeshMaterialResolver material_resolver_;
+        std::vector<MaterialInterfaceRef> preview_materials_;
+        AssetId pending_open_id_;
+        bool pending_close_ = false;
+        bool pending_exit_ = false;
+        bool exit_ready_ = false;
+        bool close_next_frame_ = false;
         AssetResourcePicker* resource_picker_ = nullptr;
         AssetPreviewScene scene_;
         PreviewSceneSettings preview_settings_;
@@ -71,11 +102,11 @@ namespace toy3d
         TaskGraphInterface* tasks_ = nullptr;
         GraphEventRef cpu_task_;
         std::shared_ptr<CpuResult> cpu_result_;
-        std::shared_ptr<const AnimationPreviewAsset> asset_;
-        std::shared_ptr<const AnimationPreviewAsset> previous_asset_;
+        std::shared_ptr<const MeshPreviewAsset> asset_;
+        std::shared_ptr<const MeshPreviewAsset> previous_asset_;
         SkeletalMeshRef mesh_;
         // One successful CPU snapshot survives closing the preview; no scene/GPU state is cached.
-        std::shared_ptr<const AnimationPreviewAsset> cached_asset_;
+        std::shared_ptr<const MeshPreviewAsset> cached_asset_;
         SkeletalMeshRef cached_mesh_;
         AnimationInstance animation_;
         AnimationPlaybackSettings playback_;

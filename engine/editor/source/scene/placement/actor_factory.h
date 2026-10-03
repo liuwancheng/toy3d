@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rendercore/geometry/mesh_material_loader.h"
+
 #include "scene/editor_actor_state.h"
 #include "scene/placement/placement_catalog.h"
 #include "rendercore/geometry/static_mesh.h"
@@ -53,10 +55,19 @@ namespace toy3d
         {
             return geometry_.default_material();
         }
+        void set_material_resolver(MeshMaterialResolver resolver)
+        {
+            material_resolver_ = std::move(resolver);
+        }
+        const MeshMaterialResolver& material_resolver() const
+        {
+            return material_resolver_;
+        }
 
       private:
         ComponentEditorRegistry component_editors_;
         SceneGeometry geometry_;
+        MeshMaterialResolver material_resolver_;
         ActorTypeRegistry actor_types_;
         std::map<std::uint32_t, PlacementRequest> placed_items_;
         struct MeshSource

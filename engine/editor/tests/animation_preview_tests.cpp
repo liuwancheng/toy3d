@@ -13,7 +13,10 @@
 #include "platform/win/win32_window.h"
 #endif
 
-#include "assets/animation/animation_editor_panel.h"
+#include "assets/preview/mesh_editor_panel.h"
+#include "assets/mesh/mesh_material_edit_session.h"
+#include "assets/thumbnails/thumbnail_source.h"
+#include "asset/mesh/mesh_materials.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "config/command_line_parser.h"
 #include "engine.h"
@@ -59,7 +62,7 @@ namespace
         throw std::runtime_error("Missing Manny test asset: " + name);
     }
 
-    void check_scene_mesh_bindings(EditorWorkspace& workspace, const AnimationPreviewAsset& asset)
+    void check_scene_mesh_bindings(EditorWorkspace& workspace, const MeshPreviewAsset& asset)
     {
         ActorFactory factory;
         check(factory.initialize(), "Scene binding factory initialization failed.");
@@ -174,6 +177,151 @@ namespace
         factory.release();
     }
 
+    AssetRef test_material_reference(const EditorWorkspace& workspace)
+    {
+        for (const auto& entry : workspace.catalog().entries)
+        {
+            if (entry.path.utf8() == "/Project/MeshMaterialsFixture.asset")
+            {
+                return {entry.file.asset_id, {}, entry.file.root_type, AssetRefStrength::Strong};
+            }
+        }
+        throw std::runtime_error("Mesh material fixture is missing.");
+    }
+
+    void test_mesh_material_edits(EditorWorkspace& workspace)
+    {
+        VirtualPath source;
+        for (const auto& entry : workspace.catalog().entries)
+        {
+            if (entry.path.utf8() == "/Engine/M_Default.asset" && entry.file.root_type == "toy3d.MaterialAssetData")
+            {
+                source = entry.path;
+                break;
+            }
+        }
+        const auto material_path = VirtualPath::parse("/Project/MeshMaterialsFixture.asset").value();
+        const auto copied = workspace.asset_pairs().copy(source, material_path);
+        check(copied.succeeded() && workspace.refresh(), "Create isolated material fixture.");
+        const auto reference = test_material_reference(workspace);
+        const auto extra_path = VirtualPath::parse("/Project/MeshMaterialsDependency.asset").value();
+        const auto extra = workspace.asset_pairs().copy(source, extra_path);
+        check(extra.succeeded() && workspace.refresh(), "Create unrelated material dependency fixture.");
+        const auto extra_pair = workspace.asset_pairs().read(extra_path);
+        check(extra_pair.succeeded(), "Read unrelated material dependency fixture.");
+        const AssetRef unrelated{
+            extra_pair.value().description.index.asset_id, {}, "toy3d.MaterialAssetData", AssetRefStrength::Strong};
+        for (const char* name : {"spider", "SKM_Manny"})
+        {
+            const auto id = id_for(workspace, name);
+            const auto path = workspace.catalog().index.find(id)->path;
+            const auto original = workspace.asset_pairs().read(path);
+            check(original.succeeded(), "Read mesh material edit baseline.");
+            const auto original_meta = encode_asset_meta(original.value().meta);
+            auto extended_index = original.value().description.index;
+            extended_index.dependencies.push_back(unrelated);
+            auto extended_segments = original.value().meta.segments;
+            extended_segments.push_back({"editor_test_extension", 2, false, {1, 2, 3, 4}});
+            const auto extended = encode_asset_pair(workspace.types(), extended_index,
+                                                    original.value().description.type_data, extended_segments);
+            check(extended.succeeded(), "Encode opaque metadata fixture: " + extended.status().message);
+            const auto attached = workspace.asset_pairs().publish(path, extended.value(), FilePublishMode::Replace);
+            check(attached.succeeded(), "Attach opaque metadata fixture: " + attached.message);
+            check(workspace.refresh(), "Refresh opaque metadata fixture: " + workspace.error());
+            MeshMaterialEditSession edit(workspace);
+            bool reject = false;
+            const auto prepare = [&reject](const std::vector<AssetRef>&)
+            {
+                return reject ? AssetStatus{AssetErrorCode::Value, {}, {}, {}, {}, "Injected material rejection.", {}}
+                              : AssetStatus::success();
+            };
+            check(edit.open(id, prepare).succeeded() && edit.writable() && !edit.dirty(),
+                  "Legacy mesh opens as a clean material draft.");
+            check(workspace.asset_pairs().read(path).value().description_bytes == extended.value().asset,
+                  "Opening a legacy mesh does not rewrite source bytes.");
+            reject = true;
+            check(!edit.set_material(0, reference).succeeded() && !edit.dirty(),
+                  "Failed preview preparation leaves mesh materials unchanged.");
+            reject = false;
+            AssetRef wrong = reference;
+            wrong.expected_type = "toy3d.Texture2DAssetData";
+            check(!edit.set_material(0, wrong).succeeded() && !edit.dirty(), "Wrong material type is rejected.");
+            check(edit.set_material(0, reference).succeeded() && edit.dirty(),
+                  "Mesh material assignment creates a draft.");
+            check(edit.undo().succeeded() && !edit.dirty() && edit.redo().succeeded() && edit.dirty(),
+                  "Mesh material undo and redo preserve the saved point.");
+            check(edit.save().succeeded() && !edit.dirty(), "Save mesh default material.");
+            const auto saved = workspace.asset_pairs().read(path);
+            check(saved.succeeded() && encode_asset_meta(saved.value().meta).value() == extended.value().meta &&
+                      std::any_of(saved.value().description.index.dependencies.begin(),
+                                  saved.value().description.index.dependencies.end(),
+                                  [&unrelated](const AssetRef& value)
+                                  {
+                                      return value.asset_id == unrelated.asset_id;
+                                  }),
+                  "Changing mesh materials preserves geometry and opaque meta bytes.");
+            MeshMaterialEditSession reopened(workspace);
+            check(reopened.open(id, prepare).succeeded() && reopened.materials()[0].asset_id == reference.asset_id,
+                  "Reopening restores the saved default material.");
+            check(workspace.catalog().index.resolve(reference, "saved mesh material").succeeded() &&
+                      std::any_of(saved.value().description.index.dependencies.begin(),
+                                  saved.value().description.index.dependencies.end(),
+                                  [&reference](const AssetRef& value)
+                                  {
+                                      return value.asset_id == reference.asset_id;
+                                  }),
+                  "Mesh default material is a declared strong dependency.");
+            if (std::string(name) == "spider")
+            {
+                const auto entry = std::find_if(workspace.catalog().entries.begin(), workspace.catalog().entries.end(),
+                                                [&id](const AssetCatalogEntry& value)
+                                                {
+                                                    return value.file.asset_id == id;
+                                                });
+                check(entry != workspace.catalog().entries.end(), "Static mesh remains in the isolated catalog.");
+                const auto first = load_thumbnail_source(workspace.files(), workspace.asset_pairs(),
+                                                         workspace.catalog(), *entry, true);
+                check(first.succeeded() && first.value().skeletal->sources.size() > 1,
+                      "Static thumbnail captures its material dependencies.");
+                const auto material_original = workspace.files().read_binary(material_path);
+                auto changed = material_original.value();
+                changed.push_back('\n');
+                check(
+                    workspace.files().write_binary_atomic(material_path, changed, FilePublishMode::Replace).succeeded(),
+                    "Change isolated material source baseline.");
+                const auto second = load_thumbnail_source(workspace.files(), workspace.asset_pairs(),
+                                                          workspace.catalog(), *entry, true);
+                check(second.succeeded() && first.value().source.content_hash != second.value().source.content_hash &&
+                          !mesh_preview_asset_current(workspace.asset_pairs(), workspace.catalog(),
+                                                      *first.value().skeletal),
+                      "A material dependency change invalidates the mesh thumbnail source and prior snapshot.");
+                check(workspace.files()
+                          .write_binary_atomic(material_path, material_original.value(), FilePublishMode::Replace)
+                          .succeeded(),
+                      "Restore isolated material source.");
+            }
+            check(reopened.set_material(0, {}).succeeded(), "Clear mesh material to the engine fallback.");
+            auto changed = saved.value().description_bytes;
+            changed.push_back('\n');
+            check(workspace.files().write_binary_atomic(path, changed, FilePublishMode::Replace).succeeded() &&
+                      reopened.save().code == AssetErrorCode::Conflict && reopened.dirty(),
+                  "External mesh edits reject save and retain the draft.");
+            reopened.clear();
+            edit.clear();
+            check(workspace.asset_pairs()
+                          .publish(path, {original.value().description_bytes, original_meta.value(), true},
+                                   FilePublishMode::Replace)
+                          .succeeded() &&
+                      workspace.refresh(),
+                  "Restore isolated mesh fixture after material edits.");
+        }
+        const auto remapped = remap_mesh_materials({"A", "B"}, {reference, {}}, {"B", "A"});
+        check(remapped.succeeded() && remapped.value()[1].asset_id == reference.asset_id &&
+                  !remap_mesh_materials({"A"}, {reference}, {"B"}).succeeded() &&
+                  !remap_mesh_materials({"A"}, {reference}, {"A", "A"}).succeeded(),
+              "Reimport remaps materials by unique slot names and rejects lost/ambiguous assignments.");
+    }
+
     struct TestState
     {
         bool complete = false;
@@ -190,7 +338,7 @@ namespace
             : workspace_(workspace), panel_(workspace), pool_(workspace), state_(state),
               skeleton_(id_for(workspace, "SKM_Manny_Skeleton")), simple_(id_for(workspace, "SKM_Manny_Simple")),
               full_(id_for(workspace, "SKM_Manny")), run_(id_for(workspace, "MM_Run_Fwd")),
-              idle_(id_for(workspace, "MM_Idle"))
+              idle_(id_for(workspace, "MM_Idle")), static_(id_for(workspace, "spider"))
         {
         }
 
@@ -199,7 +347,21 @@ namespace
         {
             ImGui::GetIO().IniFilename = nullptr;
             author_revision_ = world().content_revision();
-            return factory_.initialize();
+            if (!factory_.initialize())
+            {
+                return false;
+            }
+            assigned_material_ = MaterialInstance::create(factory_.default_material());
+            check(assigned_material_ && assigned_material_->set_vector("base_color", vec4(0.05f, 0.85f, 0.12f, 1)),
+                  "Create an owned green material for GPU slot assignment.");
+            const MeshMaterialResolver resolver = [this](const AssetRef&)
+            {
+                return AssetResult<MaterialInterfaceRef>(assigned_material_);
+            };
+            panel_.set_material_resolver(resolver);
+            pool_.set_material_resolver(resolver);
+            factory_.set_material_resolver(resolver);
+            return true;
         }
         bool starts_world_play() const override
         {
@@ -279,6 +441,20 @@ namespace
             // to the final reopen. CTest also bounds the complete integration run.
             if (elapsed_ > 90)
             {
+                if (phase_ == 8)
+                {
+                    for (const auto& entry : workspace_.catalog().entries)
+                    {
+                        if (entry.file.asset_id == simple_ || entry.file.asset_id == full_ ||
+                            entry.file.asset_id == run_ || entry.file.asset_id == idle_)
+                        {
+                            const auto thumbnail = pool_.request(entry);
+                            std::cout << "Pending thumbnail " << entry.path.utf8()
+                                      << " texture=" << thumbnail.texture_id.value() << " busy=" << thumbnail.busy
+                                      << " error=" << thumbnail.error << std::endl;
+                        }
+                    }
+                }
                 fail("Animation preview timed out at phase " + std::to_string(phase_) + ": " + panel_.error());
                 return;
             }
@@ -291,7 +467,7 @@ namespace
                 auto& io = ImGui::GetIO();
                 if (orbit_frame_ == 0)
                 {
-                    const auto* root = ImGui::FindWindowByName("Animation Editor");
+                    const auto* root = ImGui::FindWindowByName("Animation Editor###MeshEditor");
                     check(root != nullptr, "Animation window exists for orbit input");
                     orbit_window_position_ = root->Pos;
                     bool found = false;
@@ -382,6 +558,7 @@ namespace
             if (phase_ == 8)
             {
                 bool ready = true;
+                std::size_t ready_count = 0;
                 for (const auto& entry : workspace_.catalog().entries)
                 {
                     if (entry.file.asset_id == simple_ || entry.file.asset_id == full_ || entry.file.asset_id == run_ ||
@@ -393,8 +570,18 @@ namespace
                             fail(thumbnail.error);
                             return;
                         }
-                        ready = ready && thumbnail.texture_id.valid() && !thumbnail.busy;
+                        const bool complete = thumbnail.texture_id.valid() && !thumbnail.busy;
+                        ready = ready && complete;
+                        ready_count += complete ? 1u : 0u;
                     }
+                }
+                if (ready_count > thumbnail_ready_count_)
+                {
+                    // Four thumbnails are serialized by the production pool. Bound the wait for the next
+                    // completed thumbnail; CTest separately bounds the complete integration run.
+                    thumbnail_ready_count_ = ready_count;
+                    elapsed_ = 0;
+                    std::cout << "Animation thumbnail progress " << ready_count << "/4" << std::endl;
                 }
                 if (ready)
                 {
@@ -479,7 +666,7 @@ namespace
 #endif
             // The production panel supplies a FirstUseEver default size; resize its
             // existing window explicitly so the native resize also changes its canvas.
-            ImGui::SetWindowSize("Animation Editor", preview_size, ImGuiCond_Always);
+            ImGui::SetWindowSize("Animation Editor###MeshEditor", preview_size, ImGuiCond_Always);
             ImGui::SetNextWindowSize(preview_size, ImGuiCond_Always);
             panel_.draw();
             ImGui::SetNextWindowPos(ImVec2(0, size.y - 185), ImGuiCond_Always);
@@ -709,13 +896,143 @@ namespace
             case 26:
             {
                 check(hash != pose_hash_, "Dragging the production viewport rotates the GPU preview");
-                const auto* root = ImGui::FindWindowByName("Animation Editor");
+                const auto* root = ImGui::FindWindowByName("Animation Editor###MeshEditor");
                 check(root && root->Pos.x == orbit_window_position_.x && root->Pos.y == orbit_window_position_.y,
                       "Orbit input does not move the animation editor window");
                 ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
-                phase_ = 8;
+                panel_.request_open(static_);
+                phase_ = 27;
                 break;
             }
+            case 27:
+                check(panel_.asset()->id == static_ && panel_.asset()->static_mesh && !panel_.asset()->layout &&
+                          !panel_.asset()->mesh && !panel_.asset()->sequence,
+                      "Static mesh preview must not require a Skeleton or Animation.");
+                check(panel_.asset()->static_mesh->indices.size() == 3936 &&
+                          panel_.asset()->static_mesh->material_slots.size() == 4,
+                      "Spider preview preserves imported triangles and material slots.");
+                retained_static_ = panel_.asset()->static_mesh;
+                pose_hash_ = hash;
+                panel_.set_preview_display(false, false, false);
+                phase_ = 31;
+                break;
+            case 31:
+                check(hash != pose_hash_, "Static geometry contributes visible pixels to the GPU image.");
+                panel_.set_preview_display(true, false, false);
+                phase_ = 32;
+                break;
+            case 32:
+                pose_hash_ = hash;
+                {
+                    auto settings = panel_.preview_scene_settings();
+                    settings.show_environment = false;
+                    panel_.set_preview_scene_settings(settings);
+                }
+                phase_ = 28;
+                break;
+            case 28:
+                check(hash != pose_hash_, "Static preview uses the common environment controls.");
+                pose_hash_ = hash;
+                {
+                    auto settings = panel_.preview_scene_settings();
+                    settings.show_floor = false;
+                    panel_.set_preview_scene_settings(settings);
+                }
+                phase_ = 33;
+                break;
+            case 33:
+                check(hash != pose_hash_, "Static preview floor follows the real mesh bounds.");
+                panel_.close();
+                panel_.request_open(static_);
+                phase_ = 29;
+                break;
+            case 29:
+                check(panel_.asset()->static_mesh == retained_static_,
+                      "Static close/reopen reuses CPU geometry and recreates live render data.");
+                pose_hash_ = hash;
+                for (std::size_t i = 0; i < panel_.material_edit_session().slots().size(); ++i)
+                {
+                    check(panel_.assign_material(i, test_material_reference(workspace_)).succeeded(),
+                          "Assign StaticMesh default material through the production edit session.");
+                }
+                phase_ = 34;
+                break;
+            case 34:
+                check(hash != pose_hash_, "StaticMesh material assignment changes real GPU pixels.");
+                pose_hash_ = hash;
+                for (std::size_t i = 0; i < panel_.material_edit_session().slots().size(); ++i)
+                {
+                    check(panel_.undo_material().succeeded(), "Undo StaticMesh material assignment.");
+                }
+                phase_ = 35;
+                break;
+            case 35:
+                check(hash != pose_hash_, "StaticMesh material undo changes rendered slot pixels.");
+                for (std::size_t i = 0; i < panel_.material_edit_session().slots().size(); ++i)
+                {
+                    check(panel_.redo_material().succeeded(), "Redo StaticMesh material assignment.");
+                }
+                check(panel_.save_materials().succeeded(), "Save StaticMesh materials.");
+                phase_ = 36;
+                break;
+            case 36:
+                check(!panel_.material_edit_session().dirty() &&
+                          panel_.asset()->static_mesh->default_materials[0].asset_id ==
+                              test_material_reference(workspace_).asset_id,
+                      "Saved StaticMesh materials reload through the normal paired snapshot path.");
+                panel_.close();
+                panel_.request_open(static_);
+                phase_ = 37;
+                break;
+            case 37:
+                check(panel_.material_edit_session().materials()[0].asset_id ==
+                          test_material_reference(workspace_).asset_id,
+                      "StaticMesh close/reopen retains the assigned material.");
+                panel_.request_open(full_);
+                phase_ = 30;
+                break;
+            case 30:
+                check(panel_.asset()->id == full_ && panel_.asset()->mesh && !panel_.asset()->static_mesh,
+                      "Switching back from static to skeletal mesh recreates the correct scene.");
+                pose_hash_ = hash;
+                for (std::size_t i = 0; i < panel_.material_edit_session().slots().size(); ++i)
+                {
+                    check(panel_.assign_material(i, test_material_reference(workspace_)).succeeded(),
+                          "Assign SkeletalMesh default material through the same edit session.");
+                }
+                phase_ = 38;
+                break;
+            case 38:
+                check(hash != pose_hash_, "GPUSkin default material assignment changes real GPU pixels.");
+                pose_hash_ = hash;
+                for (std::size_t i = 0; i < panel_.material_edit_session().slots().size(); ++i)
+                {
+                    check(panel_.undo_material().succeeded(), "Undo SkeletalMesh default material.");
+                }
+                phase_ = 39;
+                break;
+            case 39:
+                check(hash != pose_hash_, "GPUSkin material undo changes rendered slot pixels.");
+                for (std::size_t i = 0; i < panel_.material_edit_session().slots().size(); ++i)
+                {
+                    check(panel_.redo_material().succeeded(), "Redo SkeletalMesh default material.");
+                }
+                check(panel_.save_materials().succeeded(), "Save SkeletalMesh default materials.");
+                phase_ = 40;
+                break;
+            case 40:
+                check(!panel_.material_edit_session().dirty() && !panel_.asset()->mesh->data.default_materials.empty(),
+                      "SkeletalMesh material defaults survive paired snapshot reload.");
+                panel_.request_open(idle_);
+                phase_ = 41;
+                break;
+            case 41:
+                check(panel_.asset()->sequence && !panel_.material_edit_session().active() &&
+                          !panel_.asset()->mesh->data.default_materials.empty(),
+                      "Animation preview uses saved mesh materials without creating an animation material draft.");
+                pool_.invalidate();
+                phase_ = 8;
+                break;
             default:
                 break;
             }
@@ -725,6 +1042,7 @@ namespace
             play_.stop();
             panel_.shutdown();
             pool_.shutdown();
+            MaterialInstance::release(assigned_material_);
             if (!flush_rendering_commands().succeeded())
             {
                 state_.error = "Animation preview teardown did not drain.";
@@ -733,16 +1051,18 @@ namespace
         }
 
         EditorWorkspace& workspace_;
-        AnimationEditorPanel panel_;
+        MeshEditorPanel panel_;
         AssetThumbnailPool pool_;
         ActorFactory factory_;
+        MaterialInstanceRef assigned_material_;
         EditorPlaySession play_;
         SceneInterface* play_scene_ = nullptr;
         int play_frames_ = 0;
         ContentBrowserPanel browser_;
         EditorSelection selection_;
         TestState& state_;
-        AssetId skeleton_, simple_, full_, run_, idle_;
+        AssetId skeleton_, simple_, full_, run_, idle_, static_;
+        std::shared_ptr<const StaticMeshAssetGeometry> retained_static_;
         std::shared_ptr<const SkeletalMeshAsset> retained_mesh_;
         std::string folder_ = "/Project";
         bool show_engine_ = false;
@@ -750,6 +1070,7 @@ namespace
         ImGuiTextureId retained_preview_texture_;
         int timed_phase_ = -1;
         double elapsed_ = 0;
+        std::size_t thumbnail_ready_count_ = 0;
         std::uint64_t author_revision_ = 0;
         Sha256Hash pose_hash_{};
         std::map<std::uint64_t, Sha256Hash> thumbnail_hashes_;
@@ -773,9 +1094,18 @@ int main(int argc, char** argv)
         // Only this test's generated Scene pair is reset; imported fixtures and caches remain reusable.
         std::filesystem::remove(assets / "AnimationBinding.scene");
         std::filesystem::remove(assets / "AnimationBinding.scene.meta");
+        std::filesystem::remove(assets / "MeshMaterialsFixture.asset");
+        std::filesystem::remove(assets / "MeshMaterialsFixture.meta");
+        std::filesystem::remove(assets / "MeshMaterialsDependency.asset");
+        std::filesystem::remove(assets / "MeshMaterialsDependency.meta");
         for (const auto& source : std::filesystem::directory_iterator(TOY3D_MANNY_PREVIEW_SOURCE))
         {
             std::filesystem::copy_file(source.path(), assets / source.path().filename(),
+                                       std::filesystem::copy_options::overwrite_existing);
+        }
+        for (const char* name : {"spider.asset", "spider.meta"})
+        {
+            std::filesystem::copy_file(std::filesystem::path(TOY3D_STATIC_PREVIEW_SOURCE) / name, assets / name,
                                        std::filesystem::copy_options::overwrite_existing);
         }
         EditorWorkspacePaths paths;
@@ -786,22 +1116,46 @@ int main(int argc, char** argv)
         paths.deployment = PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
         EditorWorkspace workspace;
         check(workspace.initialize(paths), workspace.error());
+        test_mesh_material_edits(workspace);
+        const auto static_id = id_for(workspace, "spider");
+        const auto static_preview = load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), static_id);
+        check(static_preview.succeeded() && static_preview.value().static_mesh && !static_preview.value().layout,
+              "Load a static mesh without skeleton dependencies.");
+        const auto static_cached = std::make_shared<const MeshPreviewAsset>(static_preview.value());
+        const auto static_reused = load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), static_id,
+                                                           false, {}, {}, static_cached);
+        check(static_reused.succeeded() && static_reused.value().static_mesh == static_cached->static_mesh &&
+                  mesh_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *static_cached),
+              "Reuse unchanged static geometry from a validated paired snapshot.");
+        const auto* static_location = workspace.catalog().index.find(static_id);
+        const auto static_original = workspace.files().read_binary(static_location->path);
+        auto static_changed = static_original.value();
+        static_changed.push_back('\n');
+        check(workspace.files()
+                      .write_binary_atomic(static_location->path, static_changed, FilePublishMode::Replace)
+                      .succeeded() &&
+                  !mesh_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *static_cached),
+              "A changed static descriptor revokes its preview baseline.");
+        check(workspace.files()
+                  .write_binary_atomic(static_location->path, static_original.value(), FilePublishMode::Replace)
+                  .succeeded(),
+              "Restore isolated static mesh fixture.");
         const auto simple = id_for(workspace, "SKM_Manny_Simple");
         const auto run = id_for(workspace, "MM_Run_Fwd");
         const auto skeleton = id_for(workspace, "SKM_Manny_Skeleton");
-        auto loaded = load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run);
+        auto loaded = load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), run);
         check(loaded.succeeded(), loaded.status().message);
-        const auto cached = std::make_shared<const AnimationPreviewAsset>(std::move(loaded).value());
+        const auto cached = std::make_shared<const MeshPreviewAsset>(std::move(loaded).value());
         const auto idle = id_for(workspace, "MM_Idle");
         const auto switched =
-            load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), idle, false, {}, {}, cached);
+            load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), idle, false, {}, {}, cached);
         check(switched.succeeded() && switched.value().mesh == cached->mesh &&
                   switched.value().layout == cached->layout,
               "Unchanged compatible inputs did not reuse CPU mesh/layout.");
-        check(!load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, true, simple, run)
-                   .succeeded(),
-              "Mixed full/Simple skeleton selection was accepted.");
-        check(animation_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *cached),
+        check(
+            !load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, true, simple, run).succeeded(),
+            "Mixed full/Simple skeleton selection was accepted.");
+        check(mesh_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *cached),
               "Valid preview baseline rejected.");
         const auto* location = workspace.catalog().index.find(skeleton);
         const auto original = workspace.files().read_binary(location->path);
@@ -809,10 +1163,10 @@ int main(int argc, char** argv)
         changed.push_back('\n');
         check(workspace.files().write_binary_atomic(location->path, changed, FilePublishMode::Replace).succeeded(),
               "Baseline mutation failed.");
-        check(!animation_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *cached),
+        check(!mesh_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *cached),
               "Changed Skeleton baseline accepted.");
         const auto refreshed =
-            load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, false, {}, {}, cached);
+            load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, false, {}, {}, cached);
         check(refreshed.succeeded() && refreshed.value().layout != cached->layout &&
                   refreshed.value().mesh != cached->mesh,
               "Changed Skeleton reused a stale mesh/layout.");
@@ -823,8 +1177,8 @@ int main(int argc, char** argv)
         check_scene_mesh_bindings(workspace, *cached);
         check(set_animation_preview_mesh_preference(workspace.files(), run, simple).succeeded(),
               "Preview settings save failed.");
-        check(!load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, false, {}, {}, {},
-                                            &workspace.files())
+        check(!load_mesh_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, false, {}, {}, {},
+                                       &workspace.files())
                    .succeeded(),
               "Explicit incompatible preview preference silently fell back.");
         check(set_animation_preview_mesh_preference(workspace.files(), run, {}).succeeded(),

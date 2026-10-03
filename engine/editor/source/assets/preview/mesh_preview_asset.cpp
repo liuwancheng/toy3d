@@ -1,4 +1,4 @@
-#include "assets/animation/animation_preview_asset.h"
+#include "assets/preview/mesh_preview_asset.h"
 
 #include <utility>
 #include <optional>
@@ -16,7 +16,7 @@ namespace toy3d
             return status;
         }
 
-        bool matches_source(const AnimationPreviewAsset* cached, const AssetId& id, const VirtualPath& path,
+        bool matches_source(const MeshPreviewAsset* cached, const AssetId& id, const VirtualPath& path,
                             const AssetPair& pair)
         {
             if (cached)
@@ -132,31 +132,55 @@ namespace toy3d
         return false;
     }
 
-    AssetResult<AnimationPreviewAsset> load_animation_preview_asset(
-        AssetPairStore& pairs, const AssetCatalog& catalog, const AssetId& id, bool override_selection,
-        const AssetId& selected_mesh, const AssetId& selected_sequence,
-        std::shared_ptr<const AnimationPreviewAsset> reusable, const FileSystem* editor_settings)
+    AssetResult<MeshPreviewAsset> load_mesh_preview_asset(AssetPairStore& pairs, const AssetCatalog& catalog,
+                                                          const AssetId& id, bool override_selection,
+                                                          const AssetId& selected_mesh,
+                                                          const AssetId& selected_sequence,
+                                                          std::shared_ptr<const MeshPreviewAsset> reusable,
+                                                          const FileSystem* editor_settings)
     {
-        AnimationPreviewAsset result;
+        MeshPreviewAsset result;
         const auto* location = catalog.index.find(id);
         if (!location)
         {
-            return AssetResult<AnimationPreviewAsset>(invalid("Preview asset is missing from the catalog."));
+            return AssetResult<MeshPreviewAsset>(invalid("Preview asset is missing from the catalog."));
         }
         const auto primary = pairs.read(location->path);
         if (!primary.succeeded())
         {
-            return AssetResult<AnimationPreviewAsset>(primary.status());
+            return AssetResult<MeshPreviewAsset>(primary.status());
         }
         if (!(primary.value().description.index.asset_id == id) ||
             primary.value().description.index.root_type != location->index.root_type)
         {
-            return AssetResult<AnimationPreviewAsset>(invalid("Preview identity/type changed during load."));
+            return AssetResult<MeshPreviewAsset>(invalid("Preview identity/type changed during load."));
         }
         result.id = id;
         result.path = location->path.utf8();
         result.root_type = location->index.root_type;
         result.sources.push_back({id, location->path, primary.value().description_bytes});
+        if (result.root_type == "toy3d.StaticMeshAssetData")
+        {
+            result.mesh_id = id;
+            if (reusable && reusable->id == id && reusable->static_mesh &&
+                matches_source(reusable.get(), id, location->path, primary.value()))
+            {
+                result.static_mesh = reusable->static_mesh;
+            }
+            else
+            {
+                auto geometry = decode_static_mesh_asset_pair(primary.value());
+                if (!geometry.succeeded())
+                {
+                    return AssetResult<MeshPreviewAsset>(geometry.status());
+                }
+                result.static_mesh = std::make_shared<const StaticMeshAssetGeometry>(std::move(geometry).value());
+            }
+            const auto materials =
+                capture_mesh_material_sources(pairs, catalog, result.static_mesh->default_materials, result.sources);
+            return materials.succeeded() ? AssetResult<MeshPreviewAsset>(std::move(result))
+                                         : AssetResult<MeshPreviewAsset>(materials);
+        }
         AssetId skeleton_id;
         std::shared_ptr<const SkeletalMeshAsset> primary_mesh;
         std::shared_ptr<const AnimationSequenceAsset> primary_sequence;
@@ -176,7 +200,7 @@ namespace toy3d
                 auto mesh = decode_skeletal_mesh_asset_pair(primary.value());
                 if (!mesh.succeeded())
                 {
-                    return AssetResult<AnimationPreviewAsset>(mesh.status());
+                    return AssetResult<MeshPreviewAsset>(mesh.status());
                 }
                 primary_mesh = std::make_shared<const SkeletalMeshAsset>(std::move(mesh).value());
             }
@@ -191,7 +215,7 @@ namespace toy3d
             auto sequence = decode_animation_sequence_asset_pair(primary.value());
             if (!sequence.succeeded())
             {
-                return AssetResult<AnimationPreviewAsset>(sequence.status());
+                return AssetResult<MeshPreviewAsset>(sequence.status());
             }
             skeleton_id = sequence.value().data.skeleton.asset_id;
             primary_sequence = std::make_shared<const AnimationSequenceAsset>(std::move(sequence).value());
@@ -203,7 +227,7 @@ namespace toy3d
                     const auto preferred = animation_preview_mesh_preference(*editor_settings, id);
                     if (!preferred.succeeded())
                     {
-                        return AssetResult<AnimationPreviewAsset>(preferred.status());
+                        return AssetResult<MeshPreviewAsset>(preferred.status());
                     }
                     result.mesh_id = preferred.value();
                     result.uses_preview_preference = true;
@@ -245,7 +269,7 @@ namespace toy3d
         }
         else
         {
-            return AssetResult<AnimationPreviewAsset>(invalid("Unsupported animation preview asset type."));
+            return AssetResult<MeshPreviewAsset>(invalid("Unsupported mesh preview asset type."));
         }
         if (override_selection)
         {
@@ -255,7 +279,7 @@ namespace toy3d
         const auto* skeleton_location = catalog.index.find(skeleton_id);
         if (!skeleton_location || skeleton_location->index.root_type != "toy3d.SkeletonAssetData")
         {
-            return AssetResult<AnimationPreviewAsset>(invalid("Preview Skeleton is missing."));
+            return AssetResult<MeshPreviewAsset>(invalid("Preview Skeleton is missing."));
         }
         // Keep the primary pair by reference: its meta payload can contain the whole mesh.
         // C++17 optional holds only the additional read; the primary pair is never copied.
@@ -267,12 +291,12 @@ namespace toy3d
         const auto& skeleton_pair = skeleton_id == id ? primary : *skeleton_read;
         if (!skeleton_pair.succeeded())
         {
-            return AssetResult<AnimationPreviewAsset>(skeleton_pair.status());
+            return AssetResult<MeshPreviewAsset>(skeleton_pair.status());
         }
         const auto skeleton = decode_skeleton_asset_pair(skeleton_pair.value());
         if (!skeleton.succeeded() || !(skeleton_pair.value().description.index.asset_id == skeleton_id))
         {
-            return AssetResult<AnimationPreviewAsset>(invalid("Preview Skeleton identity/data is invalid."));
+            return AssetResult<MeshPreviewAsset>(invalid("Preview Skeleton identity/data is invalid."));
         }
         if (!(skeleton_id == id))
         {
@@ -285,7 +309,7 @@ namespace toy3d
                                      : std::make_shared<const AnimationBoneLayout>(skeleton_id, skeleton.value());
         if (!result.layout->status().succeeded())
         {
-            return AssetResult<AnimationPreviewAsset>(result.layout->status());
+            return AssetResult<MeshPreviewAsset>(result.layout->status());
         }
         // The opened asset itself must remain valid even when the user selects
         // reference pose or a different compatible preview mesh.
@@ -300,7 +324,7 @@ namespace toy3d
         }
         if (!primary_status.succeeded())
         {
-            return AssetResult<AnimationPreviewAsset>(primary_status);
+            return AssetResult<MeshPreviewAsset>(primary_status);
         }
         // Selections require exact identity and reference hash; sharing a name is insufficient.
         for (const auto& selected : {result.mesh_id, result.sequence_id})
@@ -312,7 +336,7 @@ namespace toy3d
             const auto* selected_location = catalog.index.find(selected);
             if (!selected_location)
             {
-                return AssetResult<AnimationPreviewAsset>(invalid("Preview selection was removed."));
+                return AssetResult<MeshPreviewAsset>(invalid("Preview selection was removed."));
             }
             // C++17 optional owns a separate selection read without duplicating the primary payload.
             std::optional<AssetResult<AssetPair>> selected_read;
@@ -323,11 +347,11 @@ namespace toy3d
             const auto& pair = selected == id ? primary : *selected_read;
             if (!pair.succeeded())
             {
-                return AssetResult<AnimationPreviewAsset>(pair.status());
+                return AssetResult<MeshPreviewAsset>(pair.status());
             }
             if (!(pair.value().description.index.asset_id == selected))
             {
-                return AssetResult<AnimationPreviewAsset>(invalid("Preview selection identity changed."));
+                return AssetResult<MeshPreviewAsset>(invalid("Preview selection identity changed."));
             }
             AssetStatus status;
             const bool reuse_selected =
@@ -344,7 +368,7 @@ namespace toy3d
                     auto decoded = decode_skeletal_mesh_asset_pair(pair.value());
                     if (!decoded.succeeded())
                     {
-                        return AssetResult<AnimationPreviewAsset>(decoded.status());
+                        return AssetResult<MeshPreviewAsset>(decoded.status());
                     }
                     mesh = std::make_shared<const SkeletalMeshAsset>(std::move(decoded).value());
                 }
@@ -372,7 +396,7 @@ namespace toy3d
                     auto decoded = decode_animation_sequence_asset_pair(pair.value());
                     if (!decoded.succeeded())
                     {
-                        return AssetResult<AnimationPreviewAsset>(decoded.status());
+                        return AssetResult<MeshPreviewAsset>(decoded.status());
                     }
                     sequence = std::make_shared<const AnimationSequenceAsset>(std::move(decoded).value());
                     status = validate_animation_compatibility(*sequence, skeleton_id, skeleton.value());
@@ -386,18 +410,70 @@ namespace toy3d
             }
             if (!status.succeeded())
             {
-                return AssetResult<AnimationPreviewAsset>(status);
+                return AssetResult<MeshPreviewAsset>(status);
             }
             if (!(selected == id))
             {
                 result.sources.push_back({selected, selected_location->path, pair.value().description_bytes});
             }
         }
-        return AssetResult<AnimationPreviewAsset>(std::move(result));
+        if (result.mesh)
+        {
+            const auto materials =
+                capture_mesh_material_sources(pairs, catalog, result.mesh->data.default_materials, result.sources);
+            if (!materials.succeeded())
+            {
+                return AssetResult<MeshPreviewAsset>(materials);
+            }
+        }
+        return AssetResult<MeshPreviewAsset>(std::move(result));
     }
 
-    bool animation_preview_asset_current(AssetPairStore& pairs, const AssetCatalog& catalog,
-                                         const AnimationPreviewAsset& asset, const FileSystem* editor_settings)
+    AssetStatus capture_mesh_material_sources(AssetPairStore& pairs, const AssetCatalog& catalog,
+                                              const std::vector<AssetRef>& materials,
+                                              std::vector<MeshPreviewAsset::Source>& sources)
+    {
+        auto pending = materials;
+        for (std::size_t i = 0; i < pending.size(); ++i)
+        {
+            const auto reference = pending[i];
+            if (!reference.asset_id.valid() || std::any_of(sources.begin(), sources.end(),
+                                                           [&reference](const MeshPreviewAsset::Source& source)
+                                                           {
+                                                               return source.id == reference.asset_id;
+                                                           }))
+            {
+                continue;
+            }
+            if (pending.size() > 4096 || sources.size() > 4096)
+            {
+                return invalid("Mesh material dependency graph exceeds the preview limit.");
+            }
+            const auto valid = catalog.index.resolve(reference, "mesh default material");
+            if (!valid.succeeded())
+            {
+                return valid;
+            }
+            const auto* location = catalog.index.find(reference.asset_id);
+            const auto pair = pairs.read(location->path);
+            if (!pair.succeeded())
+            {
+                return pair.status();
+            }
+            if (!(pair.value().description.index.asset_id == reference.asset_id) ||
+                pair.value().description.index.root_type != reference.expected_type)
+            {
+                return invalid("Mesh material dependency changed identity/type.");
+            }
+            sources.push_back({reference.asset_id, location->path, pair.value().description_bytes});
+            const auto& dependencies = pair.value().description.index.dependencies;
+            pending.insert(pending.end(), dependencies.begin(), dependencies.end());
+        }
+        return AssetStatus::success();
+    }
+
+    bool mesh_preview_asset_current(AssetPairStore& pairs, const AssetCatalog& catalog, const MeshPreviewAsset& asset,
+                                    const FileSystem* editor_settings)
     {
         if (asset.uses_preview_preference && editor_settings)
         {

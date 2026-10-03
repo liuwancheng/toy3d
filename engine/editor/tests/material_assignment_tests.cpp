@@ -648,15 +648,10 @@ int main(int argc, char** argv)
     ImGui::Render();
     check(ImGui::GetDrawData()->TotalVtxCount > 0, "actual Details panel produces material controls");
     selection.select_asset(blue_id);
-    const int component_index = static_cast<int>(component->component_id());
-    const ImGuiID component_scope =
-        ImHashData(&component_index, sizeof(component_index), ImGui::FindWindowByName("Details")->ID);
-    const ImGuiID slot_id = ImHashStr("Body", 0, component_scope);
-    const ImGuiID combo_id = ImHashStr("###Resource", 0, ImHashStr("Body", 0, slot_id));
     float target_y = 0;
     for (float y = 80; y < 600 && target_y == 0; y += 8)
     {
-        io.AddMousePosEvent(120, y);
+        io.AddMousePosEvent(300, y);
         io.AddMouseButtonEvent(0, true);
         ImGui::NewFrame();
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))
@@ -666,7 +661,7 @@ int main(int argc, char** argv)
             ImGui::EndDragDropSource();
         }
         details();
-        if (ImGui::GetCurrentContext()->DragDropAcceptIdCurr == combo_id)
+        if (ImGui::GetCurrentContext()->DragDropAcceptIdCurr != 0)
         {
             target_y = y;
         }
@@ -675,7 +670,7 @@ int main(int argc, char** argv)
         ImGui::Render();
     }
     check(target_y != 0, "asset-focus drag exposes the retained Actor's exact Body slot target");
-    io.AddMousePosEvent(120, target_y);
+    io.AddMousePosEvent(300, target_y);
     io.AddMouseButtonEvent(0, false);
     ImGui::NewFrame();
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))

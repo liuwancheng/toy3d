@@ -1,6 +1,6 @@
 #pragma once
 
-#include "assets/animation/animation_preview_asset.h"
+#include "assets/preview/mesh_preview_asset.h"
 
 #include "asset/thumbnail/asset_thumbnail.h"
 #include "assets/preview/asset_preview_scene.h"
@@ -42,6 +42,7 @@ namespace toy3d
         void set_material_resolver(std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> resolver)
         {
             material_resolver_ = std::move(resolver);
+            preview_.set_material_resolver(material_resolver_);
         }
         void generate(const AssetId& id);
         void invalidate();
@@ -79,7 +80,7 @@ namespace toy3d
             AssetThumbnailSource source;
             std::vector<std::uint8_t> original;
             std::vector<std::uint8_t> pixels;
-            std::shared_ptr<const AnimationPreviewAsset> skeletal;
+            std::shared_ptr<const MeshPreviewAsset> skeletal;
             StaticMeshRef builtin_geometry;
         };
         struct CpuResult;

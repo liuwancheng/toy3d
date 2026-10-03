@@ -6,12 +6,13 @@
 #include <utility>
 
 #include "asset/thumbnail/asset_thumbnail.h"
-#include "assets/animation/animation_preview_asset.h"
+#include "assets/preview/mesh_preview_asset.h"
 #include "asset/texture/builtin_texture_assets.h"
 #include "drivers/rhi/rhi_resource.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/actor/skeletal_mesh_actor.h"
+#include "gamescene/component/mesh_component.h"
 #include "gamescene/scene_geometry.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
@@ -172,7 +173,8 @@ namespace toy3d
                         static_cast<float>((vertex.position.y - center_y) * k_preview_radius_cm / radius),
                         static_cast<float>((vertex.position.z - center_z) * k_preview_radius_cm / radius));
         }
-        auto mesh = create_static_mesh_from_asset(geometry, material ? std::move(material) : material_);
+        auto mesh =
+            create_static_mesh_from_asset(geometry, material ? std::move(material) : material_, material_resolver_);
         if (!mesh)
         {
             return false;
@@ -208,6 +210,43 @@ namespace toy3d
         floor_height_ =
             (bounds.minimum.y - (bounds.minimum.y + bounds.maximum.y) * 0.5f) * (k_preview_radius_cm / radius) - 0.25f;
         return actor.root_component()->set_local_transform(transform);
+    }
+
+    bool AssetPreviewScene::prepare_static(const StaticMeshAssetGeometry& geometry)
+    {
+        auto mesh = create_static_mesh_from_asset(geometry, material_, material_resolver_);
+        if (!mesh)
+        {
+            return false;
+        }
+        const auto& bounds = mesh->local_bounds();
+        const Vector3 minimum(bounds.minimum.x, bounds.minimum.y, bounds.minimum.z);
+        const Vector3 maximum(bounds.maximum.x, bounds.maximum.y, bounds.maximum.z);
+        const float radius = length(maximum - minimum) * 0.5f;
+        if (!std::isfinite(radius) || radius <= 0.0f)
+        {
+            return false;
+        }
+        clear_mesh();
+        auto& actor = world_.spawn_actor<StaticMeshActor>();
+        actor.static_mesh_component().set_static_mesh(std::move(mesh));
+        mesh_actor_id_ = actor.actor_id();
+        frame_center_ = (minimum + maximum) * 0.5f;
+        frame_radius_ = std::max(1.0f, radius);
+        floor_height_ = minimum.y - 0.25f;
+        return true;
+    }
+
+    bool AssetPreviewScene::set_mesh_visible(bool visible)
+    {
+        auto* actor = world_.find_actor_by_id(mesh_actor_id_);
+        auto* component = actor ? dynamic_cast<MeshComponent*>(actor->root_component()) : nullptr;
+        if (!component)
+        {
+            return false;
+        }
+        component->set_visible(visible);
+        return true;
     }
 
     bool AssetPreviewScene::prepare_skeletal(SkeletalMeshRef mesh, std::shared_ptr<const AnimationSequence> sequence)
@@ -267,15 +306,20 @@ namespace toy3d
         return true;
     }
 
-    bool AssetPreviewScene::prepare_skeletal(const AnimationPreviewAsset& asset)
+    bool AssetPreviewScene::prepare_skeletal(const MeshPreviewAsset& asset)
     {
         if (!asset.mesh)
         {
             return false;
         }
-        const auto mesh =
-            SkeletalMesh::create(asset.layout, *asset.mesh,
-                                 std::vector<MaterialInterfaceRef>(asset.mesh->data.material_slots.size(), material_));
+        auto materials = load_mesh_materials(asset.mesh->data.material_slots, asset.mesh->data.default_materials,
+                                             material_, material_resolver_, shader::VertexFactoryType::GPUSkin,
+                                             asset.mesh->geometry.mesh.valid_tangent_frame);
+        if (!materials.succeeded())
+        {
+            return false;
+        }
+        const auto mesh = SkeletalMesh::create(asset.layout, *asset.mesh, std::move(materials).value());
         if (!mesh.succeeded() || !prepare_skeletal(mesh.value(), asset.sequence))
         {
             return false;
@@ -343,7 +387,8 @@ namespace toy3d
         if (!try_make_rotation_from_forward_up(forward, Vector3(0, 1, 0), transform.rotation) ||
             !light->root_component()->set_local_transform(transform) ||
             !light->light_component().set_intensity(settings.light_intensity) ||
-            !light->light_component().set_color(settings.light_color))
+            !light->light_component().set_color(settings.light_color) ||
+            !light->light_component().set_shadow_distance(std::max(1500.0f, frame_radius_ * 15.0f)))
         {
             return false;
         }
@@ -368,6 +413,9 @@ namespace toy3d
             floor_transform.translation.y = floor_height_;
             floor_transform.translation.x = frame_center_.x;
             floor_transform.translation.z = frame_center_.z;
+            // Mesh previews retain authored units. The studio floor and shadow
+            // range must also fit large meshes rather than clipping their feet.
+            floor_transform.scale = Vector3(std::max(1.0f, frame_radius_ / static_cast<float>(k_preview_radius_cm)));
             if (!floor->root_component()->set_local_transform(floor_transform))
             {
                 return false;
