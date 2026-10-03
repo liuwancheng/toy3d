@@ -18,6 +18,7 @@
 #include "rendercore/render_resource_manager.h"
 #include "renderscene/renderer_frame.h"
 #include "renderscene/postprocess/tonemap_pass.h"
+#include "renderscene/pass/environment_background_pass.h"
 #include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/ui/ui_texture_registry.h"
 #include "renderscene/render_scene.h"
@@ -853,6 +854,29 @@ namespace toy3d
         {
             return status;
         }
+        if (request.show_environment)
+        {
+            if (!environment_background_resources_)
+            {
+                auto candidate = std::make_unique<EnvironmentBackgroundPassResources>();
+                status = candidate->initialize(*device_, *shader_program_cache_, *global_shader_map_input_);
+                if (!status)
+                {
+                    return status;
+                }
+                environment_background_resources_ = std::move(candidate);
+            }
+            const SceneRenderer& preview_renderer = *pending_preview_renderer_;
+            for (const auto& view : preview_renderer.view_infos())
+            {
+                status = environment_background_resources_->render(*device_, context, *preview_scene_,
+                                                                   *preview_targets_, view);
+                if (!status)
+                {
+                    return status;
+                }
+            }
+        }
         RHIResourceTransition color;
         color.resource = preview_targets_->scene_color_texture();
         color.before = RHIAccess::RenderTarget;
@@ -869,8 +893,9 @@ namespace toy3d
         TonemapPassTarget target;
         target.color_view = ui_textures_->target_view(request.texture_id);
         target.extent = request.extent;
-        status = tonemap_pass_resources_->render(
-            *device_, context, preview_targets_->scene_color_shader_resource_view(), target, TonemapParameters{});
+        status =
+            tonemap_pass_resources_->render(*device_, context, preview_targets_->scene_color_shader_resource_view(),
+                                            target, TonemapParameters{request.exposure_ev});
         if (!status)
         {
             return status;
@@ -1511,6 +1536,8 @@ namespace toy3d
             tonemap_pass_resources_->release();
             tonemap_pass_resources_.reset();
         }
+        environment_background_resources_.reset();
+        pending_environment_background_resources_.reset();
         if (imgui_renderer_)
         {
             imgui_renderer_->release();

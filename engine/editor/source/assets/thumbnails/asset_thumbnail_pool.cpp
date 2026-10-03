@@ -21,6 +21,7 @@ namespace toy3d
     {
         constexpr std::size_t cache_capacity = 128;
         constexpr std::size_t asset_byte_limit = 64u * 1024u * 1024u;
+        constexpr std::size_t preview_environment_capacity = 4u;
 
         VirtualPath thumbnail_cache_path(const AssetId& id, const AssetThumbnailSource& source)
         {
@@ -146,6 +147,7 @@ namespace toy3d
             return false;
         }
         material_preview_geometry_ = geometry.value();
+        preview_environments_.emplace(environment.environment.asset_id, loaded.value());
         initialized_ = preview_.initialize(scene, std::move(material), environment, loaded.value());
         if (!initialized_)
         {
@@ -211,15 +213,27 @@ namespace toy3d
     }
 
     AssetThumbnailView AssetThumbnailPool::request_material_preview(const MaterialInstanceRef& material,
-                                                                    std::uint64_t revision)
+                                                                    std::uint64_t revision,
+                                                                    const MaterialPreviewSettings& settings)
     {
         if (!initialized_ || !material)
         {
             return {};
         }
-        if (preview_material_.lock() != material || material_preview_revision_ != revision)
+        if (!validate_material_preview_settings(settings))
         {
-            material_preview_revision_ = revision;
+            return {material_preview_texture_, false, "Invalid material preview settings."};
+        }
+        if (preview_material_.lock() != material || material_source_revision_ != revision ||
+            !(material_preview_settings_ == settings))
+        {
+            if (material_preview_revision_ == std::numeric_limits<std::uint64_t>::max())
+            {
+                return {material_preview_texture_, false, "Material preview revision space exhausted."};
+            }
+            ++material_preview_revision_;
+            material_source_revision_ = revision;
+            material_preview_settings_ = settings;
             material_preview_error_.clear();
         }
         preview_material_ = material;
@@ -288,6 +302,7 @@ namespace toy3d
 
     void AssetThumbnailPool::invalidate()
     {
+        preview_environments_.clear();
         ++material_preview_revision_;
         for (auto& pair : entries_)
         {
@@ -343,7 +358,7 @@ namespace toy3d
                 fail(entry, material.status().message);
                 return;
             }
-            if (!preview_.prepare(material_preview_geometry_, material.value()))
+            if (!preview_.configure_thumbnail() || !preview_.prepare(material_preview_geometry_, material.value()))
             {
                 fail(entry, "Could not prepare the material thumbnail sphere.");
                 return;
@@ -587,7 +602,7 @@ namespace toy3d
                         pending_work_.uploads.push_back(
                             {entry.request_id, entry.candidate_texture, result->extent, std::move(result->pixels)});
                     }
-                    else if (!preview_.prepare(std::move(result->geometry)))
+                    else if (!preview_.configure_thumbnail() || !preview_.prepare(std::move(result->geometry)))
                     {
                         fail(entry, "Could not prepare the thumbnail preview mesh.");
                     }
@@ -646,7 +661,35 @@ namespace toy3d
                 }
                 rendered_preview_material_ = material;
                 pending_preview_revision_ = material_preview_revision_;
-                if (!preview_.prepare(material_preview_geometry_, material))
+                TextureRef environment_cube;
+                const auto environment_id = material_preview_settings_.environment;
+                if (environment_id.valid())
+                {
+                    auto cached = preview_environments_.find(environment_id);
+                    if (cached == preview_environments_.end())
+                    {
+                        AssetRef reference;
+                        reference.asset_id = environment_id;
+                        reference.expected_type = "toy3d.EnvironmentAssetData";
+                        const auto loaded =
+                            load_environment_asset(workspace_.files(), workspace_.catalog().index, reference);
+                        if (!loaded.succeeded())
+                        {
+                            material_preview_error_ = "Preview environment: " + loaded.status().message;
+                            rendered_preview_revision_ = pending_preview_revision_;
+                            return;
+                        }
+                        if (preview_environments_.size() >= preview_environment_capacity)
+                        {
+                            // The current World and submitted snapshots retain any environment still in use.
+                            preview_environments_.erase(preview_environments_.begin());
+                        }
+                        cached = preview_environments_.emplace(environment_id, loaded.value()).first;
+                    }
+                    environment_cube = cached->second;
+                }
+                if (!preview_.prepare(material_preview_geometry_, material) ||
+                    !preview_.configure(material_preview_settings_, environment_cube))
                 {
                     material_preview_error_ = "Could not prepare the material preview scene.";
                     preview_.clear_mesh();
@@ -659,8 +702,11 @@ namespace toy3d
                 material_preview_cancelled_ = false;
                 pending_work_.preview = {material_preview_request_,
                                          material_preview_candidate_,
-                                         {thumbnail_default_size, thumbnail_default_size},
-                                         {preview_.view()}};
+                                         material_preview_settings_.extent,
+                                         {preview_.view(material_preview_settings_)},
+                                         material_preview_settings_.show_environment,
+                                         material_preview_settings_.show_shadows,
+                                         material_preview_settings_.exposure_ev};
             }
         }
         if (next)
@@ -825,6 +871,7 @@ namespace toy3d
         clear_material_preview();
         material_preview_active_ = false;
         material_preview_geometry_ = {};
+        preview_environments_.clear();
         if (initialized_)
         {
             preview_.shutdown();

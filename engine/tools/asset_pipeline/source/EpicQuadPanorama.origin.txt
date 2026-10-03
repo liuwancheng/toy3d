@@ -1,0 +1,5 @@
+EpicQuadPanorama_CC+EV1.hdr
+Source: UE 5.5.3 /Engine/EditorMaterials/AssetViewer/EpicQuadPanorama_CC+EV1
+Exported with Unreal Engine's TextureCubeExporterHDR from the locally installed asset.
+Copyright: Epic Games. This is not CC0 or an original Toy3d asset.
+Intended for this repository owner's local personal preview use.

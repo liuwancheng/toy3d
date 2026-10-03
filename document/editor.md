@@ -75,7 +75,7 @@ World Settings 选择 Environment 资产或 Off，修改非负 intensity、绕�
 
 Tools/Content Browser 的 HDR 导入使用既有 TextureImportDialog worker 生命周期；Texture2D 导入选 Color/LinearData/Normal 与 normal flip-green，Reimport 保留 AssetId 并核对磁盘 baseline。所有作者输入写 project/asset。
 
-材质窗口使用独立 studio 球体预览，普通参数即时更新，静态选项等待完整候选；排队与关闭行为见 [Material](material.md#可视预览与缩略图)。
+材质窗口显示独立 HDR 庭院背景、球体与灰色地面，可调整预览环境、灯光、曝光和相机；普通参数即时更新图像，静态选项等待完整候选。Content Browser 的 Material/Instance 缩略图保留固定 studio 配置。设置、排队、关闭、资源退役与失败保留旧图见 [Material](material.md#可视预览与缩略图)，不把预览效果写进主场景。
 
 ## 异步与退出
 

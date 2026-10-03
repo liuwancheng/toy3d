@@ -13,6 +13,7 @@
 #include "rendercore/shader/shader_parameters.h"
 #include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/postprocess/tonemap_pass.h"
+#include "renderscene/pass/environment_background_pass.h"
 #include "renderscene/ui/imgui_renderer.h"
 #include "shader_parameters/toy3d_shadowdepth_default.generated.h"
 #include "shader_parameters/toy3d_editor_hitproxy.generated.h"
@@ -257,6 +258,16 @@ namespace toy3d
                                     return status;
                                 }
                             }
+                            if (environment_background_resources_)
+                            {
+                                auto background = std::make_unique<EnvironmentBackgroundPassResources>();
+                                status = background->initialize(*device_, *shader_program_cache_, *shaders.shader_map);
+                                if (!status)
+                                {
+                                    return status;
+                                }
+                                pending_environment_background_resources_ = std::move(background);
+                            }
                             pending_tonemap_resources_ = std::move(tonemap);
                             pending_global_shaders_ = std::move(shaders.shader_map);
                         }
@@ -275,6 +286,7 @@ namespace toy3d
                         pending_mesh_pass_programs_ = {};
                         pending_global_shaders_.reset();
                         pending_tonemap_resources_.reset();
+                        pending_environment_background_resources_.reset();
                         if (imgui_renderer_)
                         {
                             imgui_renderer_->discard_shader();
@@ -305,6 +317,7 @@ namespace toy3d
                 // keep all resources of previous submissions alive until completion.
                 global_shader_map_input_ = std::move(pending_global_shaders_);
                 tonemap_pass_resources_ = std::move(pending_tonemap_resources_);
+                environment_background_resources_ = std::move(pending_environment_background_resources_);
                 if (imgui_renderer_)
                 {
                     imgui_renderer_->publish_shader();
@@ -327,6 +340,7 @@ namespace toy3d
         }
         pending_global_shaders_.reset();
         pending_tonemap_resources_.reset();
+        pending_environment_background_resources_.reset();
         pending_mesh_pass_programs_ = {};
         builtin_update_->resolved.store(true, std::memory_order_release);
         builtin_update_.reset();

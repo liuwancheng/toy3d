@@ -33,6 +33,9 @@
 #include "rendercore/frame_synchronization.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "workspace/editor_workspace.h"
+#include "rendercore/shader/loaders/shader_map_entry_loader.h"
+#include "rendercore/shader/shader_map_collection.h"
+#include "rendercore/material/material_asset_builder.h"
 bool check_editor_play_integration(toy3d::EditorWorkspace& workspace, void* platform_context);
 #if WITH_MODEL_IMPORT
 #include "assets/mesh/static_mesh_asset_tools.h"
@@ -92,6 +95,14 @@ namespace
         void on_collect_ui_render_work(UiRenderWork& work) override
         {
             pool_.collect_render_work(work);
+            if (phase_ == 14 && work.preview.request_id)
+            {
+                stale_texture_ = work.preview.texture_id;
+                preview_settings_.environment_rotation = -90.0f;
+                // Advance the desired settings while the old frame is already dispatched.
+                pool_.request_material_preview(preview_material_, 2u, preview_settings_);
+                phase_ = 15;
+            }
         }
         std::vector<ImGuiTextureId> ui_texture_ids() const override
         {
@@ -111,7 +122,62 @@ namespace
                     ++state_.uploads;
                 }
             }
+            const bool stale_capture = result.texture_id == stale_texture_;
+            if (capture && phase_ == 1)
+            {
+                second_thumbnail_hash_ = sha256(result.bgra_pixels);
+            }
+            if (capture && phase_ == 12 && result.extent.width == thumbnail_default_size)
+            {
+                if (sha256(result.bgra_pixels) != second_thumbnail_hash_)
+                {
+                    stop("Material preview floor, lighting, or environment leaked into a subsequent thumbnail.");
+                    return;
+                }
+                thumbnail_after_preview_ = true;
+            }
+            if (capture && phase_ >= 5 && !stale_capture && result.extent.width != thumbnail_default_size)
+            {
+                if (const char* capture_root = std::getenv("TOY3D_TEST_CAPTURE_DIR"))
+                {
+                    Rgba8Image image;
+                    image.width = static_cast<std::uint32_t>(result.extent.width);
+                    image.height = static_cast<std::uint32_t>(result.extent.height);
+                    image.pixels = result.bgra_pixels;
+                    for (std::size_t pixel = 0u; pixel < image.pixels.size(); pixel += 4u)
+                    {
+                        std::swap(image.pixels[pixel], image.pixels[pixel + 2u]);
+                    }
+                    std::vector<std::uint8_t> png;
+                    const PhysicalPath root(capture_root);
+                    NativePlatformFile files;
+                    const std::string name = "/pbr-preview-phase-" + std::to_string(phase_) + ".png";
+                    if (!encode_png(image, png).succeeded() || !files.create_directories(root).succeeded() ||
+                        !files.write_binary(PhysicalPath(root.utf8() + name), png, FileWriteMode::Truncate).succeeded())
+                    {
+                        stop("Could not save the optional production PBR preview capture.");
+                        return;
+                    }
+                }
+                material_image_hash_ = sha256(result.bgra_pixels);
+                material_pixels_ = result.bgra_pixels;
+                material_extent_ = result.extent;
+                material_has_color_ = std::any_of(result.bgra_pixels.begin(), result.bgra_pixels.end(),
+                                                  [](std::uint8_t byte)
+                                                  {
+                                                      return byte > 0u && byte < 255u;
+                                                  });
+            }
             pool_.on_texture_result(std::move(result));
+            if (stale_capture)
+            {
+                stale_rejected_ = pool_.request_material_preview(preview_material_, 2u, preview_settings_).texture_id ==
+                                  prior_texture_;
+                if (!stale_rejected_)
+                {
+                    stop("A stale preview settings revision replaced the current image.");
+                }
+            }
             if (phase_ == 3 && capture)
             {
                 const auto path = VirtualPath::parse("/Project/first.asset");
@@ -149,7 +215,7 @@ namespace
         void on_tick(double delta) override
         {
             elapsed_ += delta;
-            if (elapsed_ > 30.0)
+            if (elapsed_ > 60.0)
             {
                 stop("Thumbnail integration timed out.");
                 return;
@@ -227,9 +293,213 @@ namespace
                 {
                     return;
                 }
-                state_.complete = true;
-                window().close();
+                ShaderMapEntryLoader loader(PhysicalPath(std::string(TOY3D_EDITOR_DEPLOY_ROOT) + "/shader/pbr"));
+                const auto program = ShaderMapCollection::create_candidate(
+                    loader.load_default_collection("Toy3d/Surface/PBR", ShaderPlatform::VulkanES31));
+                if (!program.succeeded())
+                {
+                    stop(program.error);
+                    return;
+                }
+                MaterialTextureValues textures;
+                const auto defaults = resolve_builtin_material_texture_defaults(
+                    workspace_.files(), workspace_.catalog().index,
+                    program.collection->programs().front()->data().parameter_schema, textures);
+                MaterialAssetData data;
+                data.shader_name = "Toy3d/Surface/PBR";
+                const auto made = create_material_from_asset(data, program.collection, textures);
+                if (!defaults.succeeded() || !made.succeeded())
+                {
+                    stop(defaults.succeeded() ? made.status().message : defaults.message);
+                    return;
+                }
+                preview_material_ = made.value();
+                level_actor_count_ = world().actor_count();
+                phase_ = 5;
             }
+            if (phase_ >= 5 && preview_material_)
+            {
+                const auto preview =
+                    pool_.request_material_preview(preview_material_, phase_ == 5 ? 1u : 2u, preview_settings_);
+                if (phase_ == 16 && !preview.error.empty())
+                {
+                    if (preview.texture_id != prior_texture_ || world().actor_count() != level_actor_count_)
+                    {
+                        stop("A failed preview environment replaced the old image or mutated the level.");
+                        return;
+                    }
+                    preview_settings_ = MaterialPreviewSettings{};
+                    pool_.request_material_preview(preview_material_, 3u, preview_settings_);
+                    phase_ = 17;
+                }
+                else if (!preview.error.empty())
+                {
+                    stop(preview.error);
+                    return;
+                }
+                if (phase_ == 5 && preview.texture_id.valid() && !preview.busy)
+                {
+                    if (!material_has_color_)
+                    {
+                        stop("Production PBR preview sphere has no visible shaded pixels.");
+                        return;
+                    }
+                    original_material_image_hash_ = material_image_hash_;
+                    if (!preview_material_->set_scalar("metallic", 1.0f) ||
+                        !preview_material_->set_scalar("roughness", 0.05f) ||
+                        !preview_material_->set_vector("base_color", vec4(0.9f, 0.6f, 0.1f, 1.0f)))
+                    {
+                        stop("PBR preview parameter update failed.");
+                        return;
+                    }
+                    phase_ = 6;
+                }
+                else if (phase_ == 6 && preview.texture_id.valid() && !preview.busy)
+                {
+                    if (material_image_hash_ == original_material_image_hash_ ||
+                        world().actor_count() != level_actor_count_)
+                    {
+                        stop("PBR preview did not update or mutated the level World.");
+                        return;
+                    }
+                    preview_settings_.show_floor = false;
+                    preview_settings_.show_shadows = false;
+                    phase_ = 7;
+                }
+                else if (phase_ >= 7 && phase_ <= 13 && preview.texture_id.valid() && !preview.busy)
+                {
+                    if (!verify_preview_pixels())
+                    {
+                        return;
+                    }
+                    if (phase_ == 7)
+                    {
+                        background_pixels_ = material_pixels_;
+                        preview_settings_.show_environment = false;
+                    }
+                    else if (phase_ == 8)
+                    {
+                        preview_settings_.show_environment = true;
+                        preview_settings_.environment_rotation = 90.0f;
+                    }
+                    else if (phase_ == 9)
+                    {
+                        prior_preview_pixels_ = material_pixels_;
+                        preview_settings_.exposure_ev = 1.0f;
+                    }
+                    else if (phase_ == 10)
+                    {
+                        prior_preview_pixels_ = material_pixels_;
+                        preview_settings_.show_floor = true;
+                    }
+                    else if (phase_ == 11)
+                    {
+                        prior_preview_pixels_ = material_pixels_;
+                        preview_settings_.show_shadows = true;
+                        pool_.generate(second_);
+                    }
+                    else if (phase_ == 12)
+                    {
+                        preview_settings_.extent = {320u, 256u};
+                        preview_settings_.camera_yaw = 20.0f;
+                        preview_settings_.camera_pitch = 15.0f;
+                    }
+                    else
+                    {
+                        prior_texture_ = preview.texture_id;
+                        preview_settings_.environment_rotation = 120.0f;
+                    }
+                    ++phase_;
+                }
+                else if (phase_ == 15 && preview.texture_id.valid() && !preview.busy)
+                {
+                    if (!stale_rejected_ || !thumbnail_after_preview_)
+                    {
+                        stop("Stale preview rejection or subsequent thumbnail isolation was not verified.");
+                        return;
+                    }
+                    prior_texture_ = preview.texture_id;
+                    AssetId::parse("26e14823067241ee84676de813b2e8c3", preview_settings_.environment);
+                    phase_ = 16;
+                }
+                else if (phase_ == 17 && preview.busy)
+                {
+                    // Close with a replacement still queued or in flight, then let shutdown drain it.
+                    pool_.clear_material_preview();
+                    MaterialInstance::release(preview_material_);
+                    state_.complete = true;
+                    window().close();
+                }
+            }
+        }
+        bool verify_preview_pixels()
+        {
+            if (material_extent_ != preview_settings_.extent ||
+                material_pixels_.size() !=
+                    static_cast<std::size_t>(material_extent_.width) * material_extent_.height * 4u)
+            {
+                stop("Material preview did not render at the requested extent.");
+                return false;
+            }
+            if (phase_ == 8)
+            {
+                const auto width = material_extent_.width;
+                const auto height = material_extent_.height;
+                bool corner_changed = false;
+                for (std::uint32_t y = 0; y < height; ++y)
+                {
+                    for (std::uint32_t x = 0; x < width; ++x)
+                    {
+                        const auto pixel = (static_cast<std::size_t>(y) * width + x) * 4u;
+                        const bool center =
+                            x > width * 2u / 5u && x < width * 3u / 5u && y > height * 2u / 5u && y < height * 3u / 5u;
+                        for (std::size_t channel = 0; channel < 3u; ++channel)
+                        {
+                            if (center && material_pixels_[pixel + channel] != background_pixels_[pixel + channel])
+                            {
+                                stop("Background visibility changed foreground pixels: depth masking or reflection "
+                                     "isolation failed.");
+                                return false;
+                            }
+                            if (x < width / 8u && y < height / 8u)
+                            {
+                                corner_changed = corner_changed || material_pixels_[pixel + channel] !=
+                                                                       background_pixels_[pixel + channel];
+                            }
+                        }
+                    }
+                }
+                if (!corner_changed)
+                {
+                    stop("HDR background was not visible outside the sphere.");
+                    return false;
+                }
+            }
+            if (phase_ == 9 && material_pixels_ == background_pixels_)
+            {
+                stop("Environment rotation did not change the preview.");
+                return false;
+            }
+            if (phase_ >= 10 && phase_ <= 12 && material_pixels_ == prior_preview_pixels_)
+            {
+                stop("Exposure, floor, or shadow setting did not change the rendered preview.");
+                return false;
+            }
+            if (phase_ == 10)
+            {
+                std::uint64_t before = 0, after = 0;
+                for (std::size_t i = 0; i < material_pixels_.size(); i += 4)
+                {
+                    before += prior_preview_pixels_[i] + prior_preview_pixels_[i + 1] + prior_preview_pixels_[i + 2];
+                    after += material_pixels_[i] + material_pixels_[i + 1] + material_pixels_[i + 2];
+                }
+                if (after <= before)
+                {
+                    stop("Positive exposure did not increase image brightness.");
+                    return false;
+                }
+            }
+            return true;
         }
         AssetThumbnailView request(const AssetId& id)
         {
@@ -431,6 +701,10 @@ namespace
         {
             import_dialog_.clear();
             pool_.shutdown();
+            if (preview_material_)
+            {
+                MaterialInstance::release(preview_material_);
+            }
             if (!flush_rendering_commands().succeeded())
             {
                 state_.error = "Preview teardown did not drain.";
@@ -451,6 +725,21 @@ namespace
         AssetId first_;
         AssetId second_;
         TestState& state_;
+        MaterialInstanceRef preview_material_;
+        MaterialPreviewSettings preview_settings_;
+        Extent material_extent_;
+        std::vector<std::uint8_t> material_pixels_;
+        std::vector<std::uint8_t> background_pixels_;
+        std::vector<std::uint8_t> prior_preview_pixels_;
+        ImGuiTextureId stale_texture_;
+        ImGuiTextureId prior_texture_;
+        bool stale_rejected_ = false;
+        bool thumbnail_after_preview_ = false;
+        Sha256Hash second_thumbnail_hash_{};
+        Sha256Hash material_image_hash_{};
+        Sha256Hash original_material_image_hash_{};
+        std::size_t level_actor_count_ = 0u;
+        bool material_has_color_ = false;
         Sha256Hash conflict_snapshot_{};
         bool started_ = false;
         int phase_ = 0;
@@ -584,10 +873,6 @@ int main(int argc, char** argv)
     TestState state;
     {
         Engine engine;
-        ShaderLoadConfig config;
-        config.mode = ShaderLoadMode::ShaderMapEntry;
-        config.path = PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
-        engine.set_shader_load_config(std::move(config));
         engine.set_application(std::make_unique<ThumbnailTestApplication>(workspace, first, second, state));
 #if WITH_WIN
         engine.init(static_cast<void*>(GetModuleHandleW(nullptr)));

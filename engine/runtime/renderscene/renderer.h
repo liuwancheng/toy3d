@@ -29,6 +29,7 @@ namespace toy3d
     class RHIShaderProgramCache;
     class TaskGraphInterface;
     class TonemapPassResources;
+    class EnvironmentBackgroundPassResources;
     class ImGuiRenderer;
     class ViewportOutputTarget;
     class UiTextureRegistry;
@@ -164,10 +165,12 @@ namespace toy3d
         std::unique_ptr<SceneRenderTargets> scene_render_targets_;
         std::unique_ptr<ViewportOutputTarget> viewport_output_target_;
         std::unique_ptr<TonemapPassResources> tonemap_pass_resources_;
+        std::unique_ptr<EnvironmentBackgroundPassResources> environment_background_resources_;
         std::unique_ptr<ImGuiRenderer> imgui_renderer_;
         BuiltinShaderUpdateRef builtin_update_;
         std::shared_ptr<const GlobalShaderMap> pending_global_shaders_;
         std::unique_ptr<TonemapPassResources> pending_tonemap_resources_;
+        std::unique_ptr<EnvironmentBackgroundPassResources> pending_environment_background_resources_;
         BuiltinMeshPassPrograms pending_mesh_pass_programs_;
         std::unique_ptr<RHIViewportContext> primary_viewport_;
         RHITextureRef placeholder_texture_;

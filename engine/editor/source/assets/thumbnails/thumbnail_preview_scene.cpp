@@ -16,6 +16,43 @@
 
 namespace toy3d
 {
+    // --------------------------------------------------------------------------
+    // MaterialPreviewSettings: window-owned lighting and camera configuration
+    // --------------------------------------------------------------------------
+    MaterialPreviewSettings::MaterialPreviewSettings()
+    {
+        if (!AssetId::parse(builtin_courtyard_environment_id, environment))
+        {
+            TOY_LOG_ERROR("Invalid built-in preview courtyard identity.");
+        }
+    }
+
+    bool operator==(const MaterialPreviewSettings& a, const MaterialPreviewSettings& b)
+    {
+        return a.environment == b.environment && a.environment_intensity == b.environment_intensity &&
+               a.environment_rotation == b.environment_rotation && a.light_intensity == b.light_intensity &&
+               a.light_color == b.light_color && a.light_yaw == b.light_yaw && a.light_pitch == b.light_pitch &&
+               a.exposure_ev == b.exposure_ev && a.camera_yaw == b.camera_yaw && a.camera_pitch == b.camera_pitch &&
+               a.camera_distance == b.camera_distance && a.extent == b.extent &&
+               a.show_environment == b.show_environment && a.show_floor == b.show_floor &&
+               a.show_shadows == b.show_shadows;
+    }
+
+    bool validate_material_preview_settings(const MaterialPreviewSettings& s)
+    {
+        return std::isfinite(s.environment_intensity) && s.environment_intensity >= 0 && s.environment_intensity <= 8 &&
+               std::isfinite(s.environment_rotation) && std::abs(s.environment_rotation) <= 360 &&
+               std::isfinite(s.light_intensity) && s.light_intensity >= 0 && s.light_intensity <= 16 &&
+               is_finite(s.light_color) && s.light_color.x >= 0 && s.light_color.y >= 0 && s.light_color.z >= 0 &&
+               s.light_color.x <= 1 && s.light_color.y <= 1 && s.light_color.z <= 1 && std::isfinite(s.light_yaw) &&
+               std::abs(s.light_yaw) <= 360 && std::isfinite(s.light_pitch) && s.light_pitch >= -89 &&
+               s.light_pitch <= -5 && std::isfinite(s.exposure_ev) && std::abs(s.exposure_ev) <= 8 &&
+               std::isfinite(s.camera_yaw) && std::abs(s.camera_yaw) <= 360 && std::isfinite(s.camera_pitch) &&
+               s.camera_pitch >= -80 && s.camera_pitch <= 80 && std::isfinite(s.camera_distance) &&
+               s.camera_distance >= 220 && s.camera_distance <= 1000 && s.extent.width >= 96 &&
+               s.extent.width <= 1024 && s.extent.height >= 96 && s.extent.height <= 1024;
+    }
+
     namespace
     {
         // Normalize only the preview copy; these lengths do not alter asset units.
@@ -30,18 +67,53 @@ namespace toy3d
     bool ThumbnailPreviewScene::initialize(SceneInterface& scene, MaterialInstanceRef material,
                                            SceneEnvironmentSettings environment, TextureRef cube)
     {
+        thumbnail_environment_ = environment;
+        thumbnail_cube_ = cube;
         if (!material || !world_.set_environment(std::move(environment), std::move(cube)) || !world_.bind_scene(scene))
         {
             return false;
         }
         material_ = std::move(material);
+        floor_material_ = MaterialInstance::create(material_);
+        if (!floor_material_ || !floor_material_->set_vector("base_color", vec4(0.35f, 0.35f, 0.35f, 1.0f)))
+        {
+            return false;
+        }
         auto& light = world_.spawn_actor<DirectionalLightActor>();
+        light_actor_id_ = light.actor_id();
         Transform transform;
         if (!try_make_rotation_from_forward_up(Vector3(-0.4f, -0.6f, 0.7f), Vector3(0, 1, 0), transform.rotation) ||
             !light.root_component()->set_local_transform(transform) || !light.light_component().set_intensity(2.0f))
         {
             return false;
         }
+        if (!light.light_component().set_shadow_cascade_count(1) ||
+            !light.light_component().set_shadow_map_resolution(1024) ||
+            !light.light_component().set_shadow_distance(1500.0f))
+        {
+            return false;
+        }
+        StaticMeshDesc floor;
+        floor.vertices = {{{-600, 0, -600}, {0, 1, 0}, {0, 0}},
+                          {{600, 0, -600}, {0, 1, 0}, {1, 0}},
+                          {{600, 0, 600}, {0, 1, 0}, {1, 1}},
+                          {{-600, 0, 600}, {0, 1, 0}, {0, 1}}};
+        for (auto& vertex : floor.vertices)
+        {
+            vertex.tangent = vec4(1, 0, 0, -1);
+        }
+        floor.valid_tangent_frame = true;
+        // C++17 variant chooses the bounded UInt16 index format for this analytic plane.
+        floor.indices = std::vector<std::uint16_t>{0, 2, 1, 0, 3, 2};
+        floor.sections.push_back({0u, 6u, 0u});
+        floor.material_slots.push_back(floor_material_);
+        floor_mesh_ = StaticMesh::create(std::move(floor));
+        if (!floor_mesh_)
+        {
+            return false;
+        }
+        // Register the floor only when a live preview needs it. A hidden, never-drawn
+        // component would block startup Shader validation on an upload that has no frame.
         world_.initialize();
         return true;
     }
@@ -96,7 +168,105 @@ namespace toy3d
         auto& actor = world_.spawn_actor<StaticMeshActor>();
         actor.static_mesh_component().set_static_mesh(std::move(mesh));
         mesh_actor_id_ = actor.actor_id();
+        floor_height_ = static_cast<float>((minimum.y - center_y) * k_preview_radius_cm / radius) - 0.25f;
         return true;
+    }
+
+    bool ThumbnailPreviewScene::configure(const MaterialPreviewSettings& settings, TextureRef cube)
+    {
+        if (!validate_material_preview_settings(settings) || (settings.environment.valid() && !cube))
+        {
+            return false;
+        }
+        SceneEnvironmentSettings environment;
+        if (settings.environment.valid())
+        {
+            environment.environment.asset_id = settings.environment;
+            environment.environment.expected_type = "toy3d.EnvironmentAssetData";
+        }
+        environment.intensity = settings.environment_intensity;
+        if (!try_make_quaternion_from_axis_angle(Vector3(0, 1, 0), Radians(settings.environment_rotation * k_pi / 180),
+                                                 environment.rotation) ||
+            !world_.set_environment(environment, std::move(cube)))
+        {
+            return false;
+        }
+        auto* light = static_cast<DirectionalLightActor*>(world_.find_actor_by_id(light_actor_id_));
+        auto* floor = static_cast<StaticMeshActor*>(world_.find_actor_by_id(floor_actor_id_));
+        if (!light)
+        {
+            return false;
+        }
+        const float yaw = settings.light_yaw * k_pi / 180;
+        const float pitch = settings.light_pitch * k_pi / 180;
+        const Vector3 forward(std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch));
+        Transform transform;
+        if (!try_make_rotation_from_forward_up(forward, Vector3(0, 1, 0), transform.rotation) ||
+            !light->root_component()->set_local_transform(transform) ||
+            !light->light_component().set_intensity(settings.light_intensity) ||
+            !light->light_component().set_color(settings.light_color))
+        {
+            return false;
+        }
+        light->light_component().set_cast_shadows(settings.show_shadows);
+        if (!floor && settings.show_floor)
+        {
+            if (!floor_mesh_)
+            {
+                return false;
+            }
+            floor = &world_.spawn_actor<StaticMeshActor>();
+            floor_actor_id_ = floor->actor_id();
+            floor->static_mesh_component().set_static_mesh(floor_mesh_);
+            floor->static_mesh_component().set_cast_shadows(false);
+        }
+        if (floor)
+        {
+            Transform floor_transform;
+            floor_transform.translation.y = floor_height_;
+            if (!floor->root_component()->set_local_transform(floor_transform))
+            {
+                return false;
+            }
+            floor->static_mesh_component().set_visible(settings.show_floor);
+        }
+        return true;
+    }
+
+    bool ThumbnailPreviewScene::configure_thumbnail()
+    {
+        MaterialPreviewSettings settings;
+        settings.environment = thumbnail_environment_.environment.asset_id;
+        settings.environment_intensity = thumbnail_environment_.intensity;
+        settings.show_floor = false;
+        settings.show_shadows = false;
+        if (!configure(settings, thumbnail_cube_))
+        {
+            return false;
+        }
+        auto* light = world_.find_actor_by_id(light_actor_id_);
+        Transform transform;
+        return try_make_rotation_from_forward_up(Vector3(-0.4f, -0.6f, 0.7f), Vector3(0, 1, 0), transform.rotation) &&
+               light && light->root_component()->set_local_transform(transform);
+    }
+
+    SceneView ThumbnailPreviewScene::view(const MaterialPreviewSettings& settings) const
+    {
+        const float yaw = settings.camera_yaw * k_pi / 180;
+        const float pitch = settings.camera_pitch * k_pi / 180;
+        const Vector3 position =
+            Vector3(std::sin(yaw) * std::cos(pitch), std::sin(pitch), -std::cos(yaw) * std::cos(pitch)) *
+            settings.camera_distance;
+        Vector3 direction;
+        Quaternion rotation;
+        if (!try_normalize(-position, direction) ||
+            !try_make_rotation_from_forward_up(direction, Vector3(0, 1, 0), rotation))
+        {
+            TOY_LOG_ERROR("Material preview camera orientation is invalid.");
+        }
+        return SceneView(position, rotation, direction, {0, 0, settings.extent.width, settings.extent.height},
+                         settings.extent, CameraProjectionMode::Perspective, Radians(0.785398163f),
+                         k_preview_near_clip_cm, k_preview_far_clip_cm);
     }
 
     SceneView ThumbnailPreviewScene::view() const
@@ -144,6 +314,16 @@ namespace toy3d
         {
             TOY_LOG_ERROR("Thumbnail scene unbind failed.");
         }
+        if (floor_material_ && !flush_rendering_commands().succeeded())
+        {
+            TOY_LOG_ERROR("Could not drain preview floor references during shutdown.");
+        }
         material_.reset();
+        // Unregister all components before dropping their independent material owners.
+        floor_mesh_.reset();
+        MaterialInstance::release(floor_material_);
+        thumbnail_cube_.reset();
+        light_actor_id_ = 0;
+        floor_actor_id_ = 0;
     }
 } // namespace toy3d

@@ -19,6 +19,9 @@ namespace toy3d
         ImGuiTextureId texture_id;
         Extent extent;
         std::vector<SceneView> views;
+        bool show_environment = false;
+        bool render_shadows = false;
+        float exposure_ev = 0.0f;
     };
 
     struct UiRenderWork

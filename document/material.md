@@ -79,9 +79,11 @@ MaterialRenderProxy 按 active Material group identity 缓存绑定；拥有相�
 
 ## 可视预览与缩略图
 
-MaterialEditorPanel 的私有 runtime 随参数 revision 请求最新预览；静态候选成功才切换 runtime，编译期间保留旧图。AssetThumbnailPool 把 Material/Instance 缩略图与 live preview 排入一个 Renderer preview scene，串行使用同一设备、上下文及提交路径。已有缩略图任务先处理，live request 合并到最新值；窗口暂停请求后不持续刷新。
+MaterialEditorPanel 的私有 runtime 随参数 revision 请求最新预览；静态候选成功才切换 runtime，编译期间保留旧图。AssetThumbnailPool 把 Material/Instance 缩略图与 live preview 排入一个 Renderer preview scene，串行使用同一设备、上下文及提交路径。已有缩略图任务先处理，live request 合并到最新值；窗口暂停请求后不持续刷新。地面组件在首次需要显示时注册，启动阶段的 Shader 验证不依赖尚未请求的预览帧来上传几何。
 
-窗口预览与缩略图使用独立 studio 环境、固定相机与小尺寸输出，不污染主场景。私有材质随参数 revision 更新图像；关闭前撤回 mesh、取消未发送请求并 drain FIFO 后释放最终 Material owner。
+窗口默认使用 E_PreviewCourtyard HDR、方向光与独立灰色地面。Preview Scene 可选择引擎/项目 Environment 或 Off，调整环境强度/绕 Y 旋转、主光颜色/方向/强度及固定曝光，分别切换背景、地面和阴影；背景显隐不关闭镜面 IBL，Off 才撤回环境。拖动图像环绕相机，滚轮缩放，Reset Preview 恢复默认设置。设置属于窗口会话，不参与材质 dirty/history 或主 World；图像按窗口宽度在 192..512 范围量化渲染，服务接受每边 96..1024 的有界尺寸。
+
+缩略图仍使用固定 studio、固定小尺寸和无地面/阴影的轻量配置。GT 仅在串行队列空闲后切换私有 World 配置，Draw 携带不可变设置；背景采样同一环境的 mip 0，反射采样 GGX mip，同步强度/旋转，没有球谐或环境漫反射。图片仅在实际 GPU readback 成功且材质/设置 revision 仍匹配时接管；过期结果退役，失败保留旧图并诊断。关闭/替换私有 runtime 前撤回 mesh、取消未发送请求、退役 UI texture，并 drain FIFO 后释放最终 Material owner；普通帧不 flush。缩略图 generation 3，asset reload 使缓存与窗口环境候选失效，不将窗口草稿写成已保存资产。
 
 ## 修改与验证
 

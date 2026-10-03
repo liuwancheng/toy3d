@@ -27,8 +27,10 @@
 
 namespace toy3d
 {
-    ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview)
-        : SceneRenderer(std::move(view_family)), thumbnail_preview_(thumbnail_preview)
+    ForwardSceneRenderer::ForwardSceneRenderer(SceneViewFamily view_family, bool thumbnail_preview,
+                                               bool preview_shadows)
+        : SceneRenderer(std::move(view_family)), thumbnail_preview_(thumbnail_preview),
+          preview_shadows_(preview_shadows)
     {
     }
 
@@ -113,8 +115,8 @@ namespace toy3d
             }
         }
         ShadowRenderTargets& shadow_targets = scene_render_targets.shadow_targets();
-        const LightSceneData* shadow_light = !thumbnail_preview_ && needs_pcf && directional_light &&
-                                                     directional_light->cast_shadows &&
+        const LightSceneData* shadow_light = (!thumbnail_preview_ || preview_shadows_) && needs_pcf &&
+                                                     directional_light && directional_light->cast_shadows &&
                                                      directional_light->intensity > 0.0f
                                                  ? directional_light
                                                  : nullptr;

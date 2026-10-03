@@ -31,7 +31,8 @@ namespace toy3d
         ~AssetThumbnailPool();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
         AssetThumbnailView request(const AssetCatalogEntry& asset);
-        AssetThumbnailView request_material_preview(const MaterialInstanceRef& material, std::uint64_t revision);
+        AssetThumbnailView request_material_preview(const MaterialInstanceRef& material, std::uint64_t revision,
+                                                    const MaterialPreviewSettings& settings = {});
         void clear_material_preview();
         void set_material_resolver(std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> resolver)
         {
@@ -82,6 +83,9 @@ namespace toy3d
 
         EditorWorkspace& workspace_;
         ThumbnailPreviewScene preview_;
+        std::map<AssetId, TextureRef> preview_environments_;
+        MaterialPreviewSettings material_preview_settings_;
+        std::uint64_t material_source_revision_ = 0u;
         StaticMeshAssetGeometry material_preview_geometry_;
         std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> material_resolver_;
         // Observing the asset-editor owner avoids extending its final-release lifetime.

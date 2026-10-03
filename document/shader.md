@@ -203,7 +203,7 @@ Forward 的 `SHADOW_MODE={Off,PCF}`、`ENVIRONMENT_MODE={Off,Sky}` 只加入声�
 
 `Range` 的 finite binary32 bounds 保存在公共 schema（generated format 4），Player 不依赖 EditorProperties。编译器检查范围/default；资产、Material 创建和整批 setter 拒绝越界，不静默截断，两端包含。范围/default/UI 改变 schema identity，不改变 GPU packing、logical layout 或 stage 代码身份；Editor Range 元数据必须与公共 bounds 一致。
 
-内置 Texture default 的名称/身份/Usage 由 Core `builtin_texture_assets.h` 统一声明。`resolve_builtin_material_texture_defaults` 从 Engine 资产加载缺失的 white/black/brick/normal_flat/white_linear，保存在调用方 MaterialTextureValues；失败不发布部分结果，不建立全局缓存。项目自定义 default 由 composition root 提供。默认值可用于缺省资源；显式损坏引用始终报错。Toy3dDefaultAssets 离线生成线性默认纹理、E_Studio GGX 环境和有效切线的 S_MaterialPreview 球体，使用既有 AssetPairStore 发布。
+内置 Texture default 的名称/身份/Usage 由 Core `builtin_texture_assets.h` 统一声明。`resolve_builtin_material_texture_defaults` 从 Engine 资产加载缺失的 white/black/brick/normal_flat/white_linear，保存在调用方 MaterialTextureValues；失败不发布部分结果，不建立全局缓存。项目自定义 default 由 composition root 提供。默认值可用于缺省资源；显式损坏引用始终报错。Toy3dDefaultAssets 离线生成线性默认纹理、E_Studio GGX 环境、E_PreviewCourtyard（源 HDR 位于 asset_pipeline/source，面大小 256）和有效切线的 S_MaterialPreview 球体，使用既有 AssetPairStore 发布。
 
 ## PBR 的具体算法
 

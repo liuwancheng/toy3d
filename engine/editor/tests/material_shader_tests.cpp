@@ -18,6 +18,7 @@
 #include "scene/editor_command_history.h"
 #include "shader/shader_workflow.h"
 #include "assets/material/material_editor_panel.h"
+#include "assets/thumbnails/thumbnail_preview_scene.h"
 #include "scene/placement/actor_factory.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/render_command.h"
@@ -160,6 +161,16 @@ namespace
         bool starts_world_play() const override
         {
             return false;
+        }
+        bool uses_preview_scene() const override
+        {
+            return true;
+        }
+        bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface&) override
+        {
+            // Startup Shader validation must finish before any live preview is requested.
+            // An eagerly registered hidden floor cannot upload without a preview frame.
+            return preview_scene_.initialize(scene, factory_.default_material());
         }
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
         {
@@ -1069,6 +1080,7 @@ namespace
                 restored_->shutdown();
             }
             panel_.shutdown();
+            preview_scene_.shutdown();
             for (const auto id : world().actor_ids())
             {
                 auto* actor = world().find_actor_by_id(id);
@@ -1100,6 +1112,7 @@ namespace
         std::unique_ptr<ShaderWorkflow> restored_;
         NativePlatformFile platform_;
         ActorFactory factory_;
+        ThumbnailPreviewScene preview_scene_;
         std::unique_ptr<MaterialLibrary> library_;
         MaterialAssignments materials_;
         MaterialEditorPanel panel_;

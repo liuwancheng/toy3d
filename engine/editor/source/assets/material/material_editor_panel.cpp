@@ -1143,11 +1143,40 @@ namespace toy3d
 
     void MaterialEditorPanel::draw_preview()
     {
-        const auto preview = previews_->request_material_preview(runtime_, preview_revision_);
+        if (!ImGui::BeginTable("MaterialPreview", 2, ImGuiTableFlags_Resizable))
+        {
+            return;
+        }
+        ImGui::TableSetupColumn("Viewport", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+        ImGui::TableSetupColumn("Preview Settings", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableNextColumn();
+        const float side = std::max(192.0f, std::min(ImGui::GetContentRegionAvail().x, 512.0f));
+        // Quantize small layout fluctuations so an unchanged window does not keep reallocating targets.
+        const auto pixels = static_cast<std::uint32_t>(side / 16.0f) * 16u;
+        preview_settings_.extent = {pixels, pixels};
+        const auto preview = previews_->request_material_preview(runtime_, preview_revision_, preview_settings_);
         if (preview.texture_id.valid())
         {
             ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(preview.texture_id.value())),
-                         ImVec2(192, 192));
+                         ImVec2(side, side));
+            if (ImGui::IsItemHovered())
+            {
+                const auto& io = ImGui::GetIO();
+                if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                {
+                    preview_settings_.camera_yaw =
+                        std::fmod(preview_settings_.camera_yaw - io.MouseDelta.x * 0.5f, 360.0f);
+                    preview_settings_.camera_pitch =
+                        std::max(-80.0f, std::min(80.0f, preview_settings_.camera_pitch + io.MouseDelta.y * 0.5f));
+                }
+                preview_settings_.camera_distance =
+                    std::max(220.0f, std::min(1000.0f, preview_settings_.camera_distance - io.MouseWheel * 30.0f));
+                ImGui::SetTooltip("Drag to orbit; mouse wheel to zoom");
+            }
+        }
+        else
+        {
+            ImGui::Dummy(ImVec2(side, side));
         }
         if (preview.busy)
         {
@@ -1157,6 +1186,52 @@ namespace toy3d
         {
             ImGui::TextWrapped("%s", preview.error.c_str());
         }
+        ImGui::TableNextColumn();
+        const float label_width = ImGui::CalcTextSize("Environment Intensity").x + ImGui::GetStyle().ItemInnerSpacing.x;
+        ImGui::PushItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - label_width));
+        ImGui::TextUnformatted("Preview Scene");
+        std::string environment_name = preview_settings_.environment.valid() ? "Missing Environment" : "Off";
+        for (const auto& entry : workspace_->catalog().entries)
+        {
+            if (entry.file.asset_id == preview_settings_.environment)
+            {
+                environment_name = entry.path.utf8();
+                break;
+            }
+        }
+        if (ImGui::BeginCombo("Environment", environment_name.c_str()))
+        {
+            if (ImGui::Selectable("Off", !preview_settings_.environment.valid()))
+            {
+                preview_settings_.environment = {};
+            }
+            for (const auto& entry : workspace_->catalog().entries)
+            {
+                if (entry.file.root_type == "toy3d.EnvironmentAssetData" &&
+                    ImGui::Selectable(entry.path.utf8().c_str(), entry.file.asset_id == preview_settings_.environment))
+                {
+                    preview_settings_.environment = entry.file.asset_id;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::Checkbox("Show Background", &preview_settings_.show_environment);
+        ImGui::Checkbox("Show Floor", &preview_settings_.show_floor);
+        ImGui::Checkbox("Shadows", &preview_settings_.show_shadows);
+        ImGui::SliderFloat("Environment Intensity", &preview_settings_.environment_intensity, 0.0f, 8.0f);
+        ImGui::SliderFloat("Environment Rotation", &preview_settings_.environment_rotation, -180.0f, 180.0f,
+                           "%.0f deg");
+        ImGui::SliderFloat("Exposure", &preview_settings_.exposure_ev, -8.0f, 8.0f, "%.2f EV");
+        ImGui::SliderFloat("Light Intensity", &preview_settings_.light_intensity, 0.0f, 16.0f);
+        ImGui::ColorEdit3("Light Color", preview_settings_.light_color.data());
+        ImGui::SliderFloat("Light Yaw", &preview_settings_.light_yaw, -180.0f, 180.0f, "%.0f deg");
+        ImGui::SliderFloat("Light Pitch", &preview_settings_.light_pitch, -89.0f, -5.0f, "%.0f deg");
+        if (ImGui::Button("Reset Preview"))
+        {
+            preview_settings_ = MaterialPreviewSettings{};
+        }
+        ImGui::PopItemWidth();
+        ImGui::EndTable();
         ImGui::Separator();
     }
 
@@ -1233,7 +1308,7 @@ namespace toy3d
             }
             return;
         }
-        ImGui::SetNextWindowSize(ImVec2(640, 600), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(840, 850), ImGuiCond_FirstUseEver);
         if (focus_requested_)
         {
             ImGui::SetNextWindowFocus();

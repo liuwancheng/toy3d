@@ -24,4 +24,5 @@ namespace toy3d
         {"white_linear", "T_WhiteLinear", "5b60e13d1b4a4398a2103b1d9512390d", TextureUsage::LinearData},
     }};
     inline constexpr const char* builtin_studio_environment_id = "407ebd6e5a4f4d17b8f36e1f088c3afd";
+    inline constexpr const char* builtin_courtyard_environment_id = "813b99d8e0ce444dad0c9fc38ce2b01b";
 } // namespace toy3d

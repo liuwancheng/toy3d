@@ -6,6 +6,7 @@ set(TOY3D_BUILTIN_SHADER_SOURCES
     "phong|Toy3d/Surface/Phong|surface/phong.shader|Forward|Material"
     "pbr|Toy3d/Surface/PBR|surface/pbr.shader|Forward|Material"
     "tonemap|Toy3d/PostProcess/Tonemap|postprocess/tonemap.shader|Tonemap|Global"
+    "environment_background|Toy3d/Environment/Background|environment/background.shader|EnvironmentBackground|Global"
     "imgui|Toy3d/UI/ImGui|ui/imgui.shader|ImGui|Global"
     "hit_proxy|Toy3d/Editor/HitProxy|editor/hit_proxy.shader|HitProxy|MeshPass"
     "shadow|Toy3d/ShadowDepth/Default|shadow_depth/default.shader|ShadowDepth|MeshPass")

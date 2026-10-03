@@ -156,6 +156,42 @@ namespace toy3d
             return true;
         }
 
+        bool publish_courtyard_environment(NativePlatformFile& platform, AssetPairStore& store,
+                                           const TypeRegistry& types, const PhysicalPath& source_root)
+        {
+            const auto source = platform.join_relative(source_root, "EpicQuadPanorama_CC+EV1.hdr");
+            if (!source.succeeded())
+            {
+                std::cerr << source.status().message << '\n';
+                return false;
+            }
+            const auto bytes = platform.read_binary(source.value());
+            if (!bytes.succeeded())
+            {
+                std::cerr << bytes.status().message << '\n';
+                return false;
+            }
+            EnvironmentImportSettings settings;
+            settings.face_size = 256u;
+            const auto environment = import_environment_hdr(bytes.value(), settings);
+            AssetId id;
+            if (!environment.succeeded() || !AssetId::parse(builtin_courtyard_environment_id, id))
+            {
+                std::cerr << (environment.succeeded() ? "Invalid courtyard identity" : environment.status().message)
+                          << '\n';
+                return false;
+            }
+            const auto pair = encode_environment_asset_pair(types, id, environment.value());
+            const auto path = VirtualPath::parse("/Engine/E_PreviewCourtyard.asset");
+            if (!pair.succeeded() || !path.succeeded() ||
+                !store.publish(path.value(), pair.value(), FilePublishMode::CreateNew).succeeded())
+            {
+                std::cerr << "Could not publish preview courtyard Environment\n";
+                return false;
+            }
+            return true;
+        }
+
         bool publish_material_preview_mesh(AssetPairStore& store, const TypeRegistry& types)
         {
             StaticMeshAssetGeometry geometry;
@@ -351,7 +387,8 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if (!publish_procedural_assets(store, types) || !publish_material_preview_mesh(store, types))
+    if (!publish_procedural_assets(store, types) || !publish_material_preview_mesh(store, types) ||
+        !publish_courtyard_environment(platform, store, types, source_root))
     {
         return 1;
     }
@@ -369,7 +406,7 @@ int main(int argc, char** argv)
         return 1;
     }
     const auto catalog = scan_asset_catalog(types, files, {root.value()});
-    if (!catalog.succeeded() || catalog.value().entries.size() != builtin_texture_assets.size() + 6u)
+    if (!catalog.succeeded() || catalog.value().entries.size() != builtin_texture_assets.size() + 7u)
     {
         std::cerr << (catalog.succeeded() ? "Incomplete default asset catalog" : catalog.status().message) << '\n';
         return 1;

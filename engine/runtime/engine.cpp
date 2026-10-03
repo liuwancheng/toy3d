@@ -35,6 +35,7 @@
 #include "rendercore/view/scene_view.h"
 #include "renderscene/pass/hit_proxy_pass.h"
 #include "renderscene/postprocess/tonemap_pass.h"
+#include "renderscene/pass/environment_background_pass.h"
 #include "renderscene/renderer.h"
 #include "renderscene/ui/imgui_renderer.h"
 #include "renderscene/view/forward_scene_renderer.h"
@@ -318,6 +319,239 @@ namespace toy3d
                 shutdown_render_framework();
                 return false;
             }
+        }
+        if (application && application->uses_preview_scene() &&
+            (!renderer->preview_scene_interface() ||
+             !application->on_initialize_preview_scene(*renderer->preview_scene_interface(), *task_graph)))
+        {
+            TOY_LOG_ERROR("Application could not initialize its preview scene.");
+            shutdown_render_framework();
+            return false;
+        }
+        world->initialize();
+        if (application && application->uses_play_scene())
+        {
+            if (!renderer->play_scene_interface())
+            {
+                TOY_LOG_ERROR("Application Play Scene is unavailable.");
+                shutdown_render_framework();
+                return false;
+            }
+            application->on_initialize_play_scene(*renderer->play_scene_interface());
+        }
+        if (!renderer->scene_interface() || !world->bind_scene(*renderer->scene_interface()))
+        {
+            TOY_LOG_ERROR("Runtime World could not bind the Renderer scene.");
+            shutdown_render_framework();
+            return false;
+        }
+        if (!application || application->starts_world_play())
+        {
+            world->begin_play();
+        }
+        return true;
+    }
+
+    void Engine::submit_frame_draw(std::unique_ptr<ImGuiDrawData> ui_draw_data, ViewportFrameOutput output)
+    {
+        if (!window || !renderer || !renderer->scene_interface())
+        {
+            return;
+        }
+
+        const Extent extent = window->get_win_size();
+        if (extent.width == 0 || extent.height == 0)
+        {
+            return;
+        }
+        output.window_extent = extent;
+        output.play_scene = application && application->renders_play_scene();
+        output.scene_feedback = application ? application->scene_render_feedback() : nullptr;
+        SceneInterface* active_scene =
+            output.play_scene ? renderer->play_scene_interface() : renderer->scene_interface();
+        if (!active_scene)
+        {
+            return;
+        }
+        const Extent scene_extent = output.sample_in_ui ? output.scene_extent : extent;
+
+        std::vector<SceneView> views;
+        if (scene_extent.width != 0u && scene_extent.height != 0u && application)
+        {
+            application->build_scene_views(views, scene_extent);
+        }
+        else if (scene_extent.width != 0u && scene_extent.height != 0u)
+        {
+            views.emplace_back(Vector3(0.0f, meters_to_centimeters(1.5f), meters_to_centimeters(-6.0f)),
+                               Quaternion::identity(), Vector3(0.0f, 0.0f, 1.0f),
+                               IntRect{0, 0, scene_extent.width, scene_extent.height}, scene_extent,
+                               CameraProjectionMode::Perspective, to_radians(Degrees(60.0f)),
+                               meters_to_centimeters(0.1f), meters_to_centimeters(1000.0f));
+        }
+        if (views.empty() && scene_extent.width != 0u && scene_extent.height != 0u)
+        {
+            TOY_LOG_ERROR("Runtime frame draw requires at least one SceneView.");
+            return;
+        }
+
+        std::unique_ptr<SceneRenderer> scene_renderer;
+        if (!views.empty())
+        {
+            scene_renderer =
+                std::make_unique<ForwardSceneRenderer>(SceneViewFamily(*active_scene, scene_extent, std::move(views)));
+        }
+        UiRenderWork work;
+        std::unique_ptr<SceneRenderer> preview_renderer;
+        if (application)
+        {
+            application->on_collect_ui_render_work(work);
+        }
+        if (application)
+        {
+            std::vector<MaterialShaderMapValidationRef> validations;
+            application->on_collect_material_validation(validations);
+            for (auto& validation : validations)
+            {
+                renderer->validate_material_shader_map(std::move(validation));
+            }
+            std::vector<BuiltinShaderUpdateRef> builtin_updates;
+            application->on_collect_builtin_shader_updates(builtin_updates);
+            for (auto& update : builtin_updates)
+            {
+                renderer->prepare_builtin_shaders(std::move(update));
+            }
+        }
+        if (work.preview.request_id && renderer->preview_scene_interface())
+        {
+            preview_renderer = std::make_unique<ForwardSceneRenderer>(
+                SceneViewFamily(*renderer->preview_scene_interface(), work.preview.extent,
+                                std::move(work.preview.views)),
+                true, work.preview.render_shadows);
+        }
+        renderer->draw_frame(std::move(scene_renderer), std::move(ui_draw_data), output, std::move(work),
+                             std::move(preview_renderer));
+    }
+
+    void Engine::shutdown_render_framework()
+    {
+        frame_end_sync.reset();
+
+        if (world)
+        {
+            if (application_bound && application)
+            {
+                application->shutdown();
+                application_bound = false;
+            }
+            world->end_play();
+            if (world->scene_interface() != nullptr)
+            {
+                static_cast<void>(world->unbind_scene());
+            }
+            world.reset();
+        }
+
+        if (rendering_thread)
+        {
+            if (rendering_thread->is_ready())
+            {
+                const RenderFenceWaitResult drained = flush_rendering_commands(
+                    [this]()
+                    {
+                        if (!renderer)
+                        {
+                            return RenderFenceWaitResult::reached();
+                        }
+                        const RendererStatus renderer_status = renderer->status();
+                        return renderer_status.lifecycle_state() == RendererLifecycleState::Terminal
+                                   ? RenderFenceWaitResult::renderer_terminal(renderer_status.error_message())
+                                   : RenderFenceWaitResult::reached();
+                    });
+                if (!drained.rendering_thread_reached())
+                {
+                    TOY_LOG_ERROR("Rendering command drain failed during shutdown: {}",
+                                  drained.framework_status().message);
+                }
+            }
+
+            const ThreadStatus stopped = rendering_thread->stop(
+                [this]()
+                {
+                    return renderer != nullptr ? renderer->teardown() : ThreadStatus::success();
+                });
+            if (!stopped.succeeded())
+            {
+                TOY_LOG_ERROR("RenderingThread shutdown failed: {}", stopped.message);
+            }
+            rendering_thread.reset();
+        }
+
+        renderer.reset();
+        global_shader_map.reset();
+        builtin_shader_map.reset();
+        builtin_shader_loader.reset();
+
+        if (task_graph)
+        {
+            const TaskGraphShutdownResult stopped = task_graph->shutdown(TaskGraphShutdownMode::Drain);
+            if (!stopped.succeeded())
+            {
+                TOY_LOG_ERROR("Task Graph shutdown failed: {}", stopped.status.message);
+            }
+            task_graph.reset();
+        }
+        thread_manager.reset();
+        imgui_system.reset();
+    }
+
+    bool Engine::initialize_builtin_shader_programs(BuiltinMeshPassPrograms& mesh_pass_programs)
+    {
+#if TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING
+        const PhysicalPath deployment_root(ENGINE_ASSET_ROOT);
+        auto shader_root = native_platform_file.join_relative(deployment_root, "shader");
+        if (!shader_root.succeeded())
+        {
+            TOY_LOG_ERROR("Built-in ShaderMap root could not be resolved: {}", shader_root.status().message);
+            return false;
+        }
+        auto output_root = native_platform_file.join_relative(shader_root.value(), "output");
+        if (!output_root.succeeded())
+        {
+            TOY_LOG_ERROR("Built-in output ShaderMap root could not be resolved: {}", output_root.status().message);
+            return false;
+        }
+
+        builtin_shader_loader = std::make_unique<ShaderMapEntryLoader>(
+            shader_load_config.builtin_root.empty() ? output_root.value() : shader_load_config.builtin_root);
+        builtin_shader_map = std::make_unique<ShaderMap>(*builtin_shader_loader);
+
+        ShaderPlatform shader_platform = ShaderPlatform::D3D11SM5;
+        std::string platform_error;
+        if (!try_get_shader_platform_for_backend(configured_rhi_backend_name(), shader_platform, platform_error))
+        {
+            TOY_LOG_ERROR("Built-in Shader platform selection failed: {}", platform_error);
+            return false;
+        }
+
+        GlobalShaderTypeRegistryResult registered_types = GlobalShaderTypeRegistry::get().freeze();
+        if (!registered_types.succeeded())
+        {
+            TOY_LOG_ERROR("Global Shader type registration failed: {}", registered_types.error);
+            return false;
+        }
+
+        GlobalShaderRequirements requirements(registered_types.types);
+        std::string requirement_error;
+        if (!requirements.add(tonemap_global_shader_type(), requirement_error))
+        {
+            TOY_LOG_ERROR("Tonemap Global Shader requirement failed: {}", requirement_error);
+            return false;
+        }
+        if (application && application->uses_preview_scene() &&
+            !requirements.add(environment_background_global_shader_type(), requirement_error))
+        {
+            TOY_LOG_ERROR("Environment background Shader requirement failed: {}", requirement_error);
+            return false;
         }
         if (imgui_system != nullptr)
         {
