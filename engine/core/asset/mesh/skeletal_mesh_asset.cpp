@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <set>
+#include <cstring>
+#include <utility>
 
 #include "serialization/math_value_codec.h"
 
@@ -261,13 +263,13 @@ namespace toy3d
         {
             return AssetResult<SkeletalMeshAssetGeometry>(invalid("invalid skeletal geometry header"));
         }
-        const auto mesh = decode_static_mesh_geometry(mesh_bytes);
+        auto mesh = decode_static_mesh_geometry(mesh_bytes);
         if (!mesh.succeeded())
         {
             return AssetResult<SkeletalMeshAssetGeometry>(mesh.status());
         }
         SkeletalMeshAssetGeometry geometry;
-        geometry.mesh = mesh.value();
+        geometry.mesh = std::move(mesh).value();
         geometry.num_bone_influences = num_bone_influences;
         if (geometry.mesh.vertices.size() > (bytes.size() - reader.offset()) / (num_bone_influences * 2u))
         {
@@ -276,20 +278,13 @@ namespace toy3d
         geometry.skin_weights.resize(geometry.mesh.vertices.size());
         for (auto& skin : geometry.skin_weights)
         {
-            for (std::size_t i = 0; i < num_bone_influences; ++i)
+            std::uint8_t packed[max_skin_influences * 2]{};
+            if (!reader.read_uint8_array(packed, num_bone_influences * 2u).succeeded())
             {
-                if (!reader.read_uint8(skin.bone_indices[i]).succeeded())
-                {
-                    return AssetResult<SkeletalMeshAssetGeometry>(invalid("truncated skin indices"));
-                }
+                return AssetResult<SkeletalMeshAssetGeometry>(invalid("truncated skin storage"));
             }
-            for (std::size_t i = 0; i < num_bone_influences; ++i)
-            {
-                if (!reader.read_uint8(skin.weights[i]).succeeded())
-                {
-                    return AssetResult<SkeletalMeshAssetGeometry>(invalid("truncated skin weights"));
-                }
-            }
+            std::memcpy(skin.bone_indices.data(), packed, num_bone_influences);
+            std::memcpy(skin.weights.data(), packed + num_bone_influences, num_bone_influences);
         }
         geometry.section_bone_maps.resize(geometry.mesh.sections.size());
         std::uint32_t count = 0;
@@ -301,12 +296,9 @@ namespace toy3d
                 return AssetResult<SkeletalMeshAssetGeometry>(invalid("invalid bone map count"));
             }
             bone_map.resize(count);
-            for (auto& bone : bone_map)
+            if (!reader.read_uint32_array(bone_map.data(), bone_map.size()).succeeded())
             {
-                if (!reader.read_uint32(bone).succeeded())
-                {
-                    return AssetResult<SkeletalMeshAssetGeometry>(invalid("truncated bone map"));
-                }
+                return AssetResult<SkeletalMeshAssetGeometry>(invalid("truncated bone map"));
             }
         }
         if (!reader.read_array_length(count).succeeded() || count == 0 || count > max_skeleton_bones ||
@@ -391,12 +383,12 @@ namespace toy3d
         {
             return AssetResult<SkeletalMeshAsset>(invalid("missing skeletal geometry"));
         }
-        const auto decoded = decode_skeletal_mesh_geometry(geometry->bytes);
+        auto decoded = decode_skeletal_mesh_geometry(geometry->bytes);
         if (!decoded.succeeded())
         {
             return AssetResult<SkeletalMeshAsset>(decoded.status());
         }
-        mesh.geometry = decoded.value();
+        mesh.geometry = std::move(decoded).value();
         const auto valid = validate_skeletal_mesh(mesh);
         return valid.succeeded() ? AssetResult<SkeletalMeshAsset>(std::move(mesh))
                                  : AssetResult<SkeletalMeshAsset>(valid);

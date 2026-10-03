@@ -64,7 +64,8 @@ namespace
         AnimationPreviewApplication(EditorWorkspace& workspace, TestState& state)
             : workspace_(workspace), panel_(workspace), pool_(workspace), state_(state),
               skeleton_(id_for(workspace, "SKM_Manny_Skeleton")), simple_(id_for(workspace, "SKM_Manny_Simple")),
-              full_(id_for(workspace, "SKM_Manny")), run_(id_for(workspace, "MM_Run_Fwd"))
+              full_(id_for(workspace, "SKM_Manny")), run_(id_for(workspace, "MM_Run_Fwd")),
+              idle_(id_for(workspace, "MM_Idle"))
         {
         }
 
@@ -142,7 +143,7 @@ namespace
             panel_.tick(delta);
             if (phase_ == 5 && !panel_.error().empty())
             {
-                if (!panel_.asset() || !(panel_.asset()->id == run_))
+                if (!panel_.asset() || !(panel_.asset()->id == idle_))
                 {
                     fail("Failed candidate replaced the active animation.");
                     return;
@@ -292,6 +293,7 @@ namespace
                     return;
                 }
                 pose_hash_ = hash;
+                retained_mesh_ = panel_.asset()->mesh;
                 panel_.seek(0.6);
                 phase_ = 3;
                 break;
@@ -312,6 +314,34 @@ namespace
             case 9:
             {
                 panel_.set_playing(false);
+                panel_.set_preview_display(true, true, false);
+                panel_.request_open(idle_);
+                phase_ = 10;
+                break;
+            }
+            case 10:
+                check(panel_.asset()->id == idle_ && panel_.asset()->mesh == retained_mesh_,
+                      "Switching animation did not reuse the immutable mesh.");
+                panel_.request_open(run_);
+                phase_ = 13;
+                break;
+            case 13:
+                check(panel_.asset()->id == run_ && panel_.asset()->mesh == retained_mesh_,
+                      "Visible mesh replacement did not preserve the immutable mesh.");
+                panel_.close();
+                panel_.request_open(idle_);
+                phase_ = 11;
+                break;
+            case 11:
+                check(panel_.asset()->id == idle_ && panel_.asset()->mesh == retained_mesh_,
+                      "Closing/reopening lost the last successful CPU mesh.");
+                panel_.invalidate();
+                phase_ = 12;
+                break;
+            case 12:
+            {
+                check(panel_.asset()->id == idle_ && panel_.asset()->mesh != retained_mesh_,
+                      "Invalidation reused the revoked CPU mesh.");
                 AssetId missing;
                 AssetId::try_generate(missing);
                 panel_.request_open(missing);
@@ -364,7 +394,8 @@ namespace
         ContentBrowserPanel browser_;
         EditorSelection selection_;
         TestState& state_;
-        AssetId skeleton_, simple_, full_, run_;
+        AssetId skeleton_, simple_, full_, run_, idle_;
+        std::shared_ptr<const SkeletalMeshAsset> retained_mesh_;
         std::string folder_ = "/Project";
         bool show_engine_ = false;
         int phase_ = 0;
@@ -402,12 +433,19 @@ int main(int argc, char** argv)
         const auto simple = id_for(workspace, "SKM_Manny_Simple");
         const auto run = id_for(workspace, "MM_Run_Fwd");
         const auto skeleton = id_for(workspace, "SKM_Manny_Skeleton");
-        const auto loaded = load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run);
+        auto loaded = load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run);
         check(loaded.succeeded(), loaded.status().message);
+        const auto cached = std::make_shared<const AnimationPreviewAsset>(std::move(loaded).value());
+        const auto idle = id_for(workspace, "MM_Idle");
+        const auto switched =
+            load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), idle, false, {}, {}, cached);
+        check(switched.succeeded() && switched.value().mesh == cached->mesh &&
+                  switched.value().layout == cached->layout,
+              "Unchanged compatible inputs did not reuse CPU mesh/layout.");
         check(!load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, true, simple, run)
                    .succeeded(),
               "Mixed full/Simple skeleton selection was accepted.");
-        check(animation_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), loaded.value()),
+        check(animation_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *cached),
               "Valid preview baseline rejected.");
         const auto* location = workspace.catalog().index.find(skeleton);
         const auto original = workspace.files().read_binary(location->path);
@@ -415,8 +453,13 @@ int main(int argc, char** argv)
         changed.push_back('\n');
         check(workspace.files().write_binary_atomic(location->path, changed, FilePublishMode::Replace).succeeded(),
               "Baseline mutation failed.");
-        check(!animation_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), loaded.value()),
+        check(!animation_preview_asset_current(workspace.asset_pairs(), workspace.catalog(), *cached),
               "Changed Skeleton baseline accepted.");
+        const auto refreshed =
+            load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, false, {}, {}, cached);
+        check(refreshed.succeeded() && refreshed.value().layout != cached->layout &&
+                  refreshed.value().mesh != cached->mesh,
+              "Changed Skeleton reused a stale mesh/layout.");
         check(workspace.files()
                   .write_binary_atomic(location->path, original.value(), FilePublishMode::Replace)
                   .succeeded(),

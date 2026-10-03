@@ -29,10 +29,10 @@ namespace toy3d
 
     // The worker sees a catalog copy and immutable file services only. Adoption
     // checks every descriptor (including its meta digest) against the GT catalog.
-    AssetResult<AnimationPreviewAsset> load_animation_preview_asset(AssetPairStore& pairs, const AssetCatalog& catalog,
-                                                                    const AssetId& id, bool override_selection = false,
-                                                                    const AssetId& mesh = {},
-                                                                    const AssetId& sequence = {});
+    AssetResult<AnimationPreviewAsset> load_animation_preview_asset(
+        AssetPairStore& pairs, const AssetCatalog& catalog, const AssetId& id, bool override_selection = false,
+        const AssetId& mesh = {}, const AssetId& sequence = {},
+        std::shared_ptr<const AnimationPreviewAsset> reusable = {});
     bool animation_preview_asset_current(AssetPairStore& pairs, const AssetCatalog& catalog,
                                          const AnimationPreviewAsset& asset);
     bool animation_asset_uses_skeleton(const AssetFileIndex& asset, const AssetId& skeleton);

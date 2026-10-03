@@ -5,6 +5,7 @@
 
 namespace toy3d
 {
+    class SkeletalMesh;
     // C++17 inline constants share the conservative bounds contract with callers.
     inline constexpr float animated_bounds_padding = 0.01f;
     inline constexpr float animated_bounds_relative_padding = 0.00001f;
@@ -25,6 +26,8 @@ namespace toy3d
     {
       public:
         AssetStatus set_mesh(std::shared_ptr<const AnimationBoneLayout> bone_layout, const SkeletalMeshAsset& mesh);
+        // A constructed SkeletalMesh already owns a validated immutable snapshot.
+        AssetStatus set_mesh(std::shared_ptr<const SkeletalMesh> mesh);
         AssetResult<SkeletalMeshDeformationData> evaluate(const AnimationEvaluation& evaluation) const;
 
       private:

@@ -248,6 +248,10 @@ Renderer 拥有一个 animation preview scene/targets，与现有 thumbnail scen
 
 加载动作会同时读取默认预览网格；窗口显示正在加载的资源及等待时间，完成或失败写入耗时日志。大型网格在 Debug 下的解码仍可能耗时，加载期间可关闭窗口撤回候选，不能以无限等待掩盖失败。
 
+大网格数组使用 Core 批量数值读取，解码候选移动交接。`SkeletalMesh` 创建入口完整校验并独占不可变几何；deformer 绑定已创建的 Mesh 时共享其几何生命周期，仅 raw DTO 入口重新完整校验并制作快照。此路径不改变四/八影响格式或 GPU Skin ABI。
+
+Animation Editor 仅保留最近一次成功的 CPU 资产及 Mesh，关闭窗口仍注销组件并退役 GPU 图像/渲染数据；同网格切换动作保留已注册 Mesh，仅更换动画。worker 捕获只读缓存快照，复用要求 Source identity/path/完整 description（含 meta 摘要）一致，读取仍验证 meta；重导入/Rescan 撤回缓存及旧 generation，GT 发布前仍复核文件。缓存有界为一个候选，失败保留旧显示，退出先 join worker 再释放缓存。不新增全局 AssetManager 或跨 Scene 共享 render data；验证包含动作切换、关闭重开、内容变化、失败及退出。
+
 左键拖动 orbit，中键 pan，滚轮 zoom，`F`/Frame All 按当前骨骼点与动态 mesh bounds 重新取景；不缩放/重写顶点、reference pose 或 inverse bind。大窗口按画布比例采样受公共 RHI 512 像素读回上限约束的预览图像。隐藏窗口暂停时钟，不推进主 World、Scene dirty 或 Undo。
 
 SkeletalMesh 缩略图使用 reference pose；Skeleton/AnimationSequence 首版使用类型图标，避免截图依赖可变 preview mesh 或播放时钟。缩略图缓存复用 AssetId/content/generator version 与真实 GPU completion 读回。

@@ -102,6 +102,8 @@ namespace toy3d
 
     void AnimationEditorPanel::invalidate()
     {
+        cached_asset_.reset();
+        cached_mesh_.reset();
         if (open_ && requested_id_.valid())
         {
             ++revision_;
@@ -134,7 +136,12 @@ namespace toy3d
             return false;
         }
         SkeletalMeshRef mesh;
-        if (candidate->mesh)
+        if (candidate->mesh && cached_asset_ && candidate->mesh == cached_asset_->mesh &&
+            candidate->layout == cached_asset_->layout)
+        {
+            mesh = cached_mesh_;
+        }
+        if (candidate->mesh && !mesh)
         {
             const auto created = SkeletalMesh::create(
                 candidate->layout, *candidate->mesh,
@@ -232,20 +239,23 @@ namespace toy3d
             const auto mesh = selected_mesh_;
             const auto sequence = selected_sequence_;
             const bool override_selection = override_selection_;
+            const auto reusable = cached_asset_;
             try
             {
                 cpu_task_ = dispatch_graph_task(
                     *tasks_, "Load animation preview",
-                    [result, pairs, catalog, id, mesh, sequence, override_selection](NamedThread, const GraphEventRef&)
+                    [result, pairs, catalog, id, mesh, sequence, override_selection, reusable](NamedThread,
+                                                                                               const GraphEventRef&)
                     {
                         const auto started = std::chrono::steady_clock::now();
                         try
                         {
-                            const auto loaded =
-                                load_animation_preview_asset(*pairs, catalog, id, override_selection, mesh, sequence);
+                            auto loaded = load_animation_preview_asset(*pairs, catalog, id, override_selection, mesh,
+                                                                       sequence, reusable);
                             if (loaded.succeeded())
                             {
-                                result->asset = std::make_shared<const AnimationPreviewAsset>(loaded.value());
+                                result->asset =
+                                    std::make_shared<const AnimationPreviewAsset>(std::move(loaded).value());
                             }
                             else
                             {
@@ -328,7 +338,7 @@ namespace toy3d
         if (mesh_)
         {
             SkeletalMeshDeformer deformer;
-            const auto bound = deformer.set_mesh(asset_->layout, mesh_->asset());
+            const auto bound = deformer.set_mesh(mesh_);
             if (!bound.succeeded())
             {
                 error_ = bound.message;
@@ -491,6 +501,8 @@ namespace toy3d
             pending_work_.retire_textures.push_back(texture_id_);
         }
         texture_id_ = completed;
+        cached_asset_ = asset_;
+        cached_mesh_ = mesh_;
         previous_asset_.reset();
     }
 
@@ -871,6 +883,8 @@ namespace toy3d
             scene_.shutdown();
         }
         material_.reset();
+        cached_asset_.reset();
+        cached_mesh_.reset();
         initialized_ = false;
         tasks_ = nullptr;
     }

@@ -89,6 +89,14 @@ namespace
         const auto material = MaterialInstance::create(Material::create(std::move(desc)));
         auto created = SkeletalMesh::create(fixture.layout, fixture.mesh, {material});
         check(created.succeeded(), "Runtime skeletal mesh candidate");
+        SkeletalMeshDeformer shared_deformer;
+        auto owned = SkeletalMesh::create(fixture.layout, fixture.mesh, {material});
+        auto owner = std::move(owned).value();
+        std::weak_ptr<const SkeletalMesh> lifetime = owner;
+        check(shared_deformer.set_mesh(owner).succeeded(), "Validated immutable mesh binding");
+        owner.reset();
+        check(!lifetime.expired() && !shared_deformer.set_mesh(SkeletalMeshRef{}).succeeded(),
+              "Deformer lost immutable mesh lifetime or accepted null binding");
         check(!SkeletalMesh::create(fixture.layout, fixture.mesh, {}).succeeded(), "Missing material rejected");
         World world;
         auto& first = world.spawn_actor<SeekingActor>();
@@ -100,6 +108,8 @@ namespace
               "Two components share immutable assets");
         check(!a.has_render_state() && a.animation_evaluation()->revision == a.deformation()->pose_revision,
               "Unbound component has CPU pose and matching bounds only");
+        check(shared_deformer.evaluate(*a.animation_evaluation()).succeeded(),
+              "Rejected replacement must preserve shared mesh binding");
         AnimationPlaybackSettings settings;
         settings.rate = 2;
         check(b.set_playback_settings(settings).succeeded(), "Independent playback rate");

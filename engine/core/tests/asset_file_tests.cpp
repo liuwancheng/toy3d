@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <memory>
+#include <utility>
 
 namespace
 {
@@ -27,6 +29,11 @@ namespace
 int main()
 {
     using namespace toy3d;
+    // A move-only payload verifies successful ownership transfer rather than a hidden copy.
+    AssetResult<std::unique_ptr<int>> ownership(std::make_unique<int>(42));
+    const auto* address = ownership.value().get();
+    auto transferred = std::move(ownership).value();
+    check(transferred.get() == address && *transferred == 42, "Asset result could not transfer owned payload");
     AssetId id;
     check(AssetId::parse("00112233445566778899aabbccddeeff", id) && id.valid() &&
               id.hex() == "00112233445566778899aabbccddeeff",

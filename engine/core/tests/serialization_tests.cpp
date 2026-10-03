@@ -23,6 +23,60 @@ namespace
 
 int main()
 {
+    // Fixed wire bytes exercise endian conversion, empty blocks and transactional failures.
+    const std::vector<std::uint8_t> block = {0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90};
+    toy3d::ValueReader block_reader(block);
+    std::uint32_t words[2]{0, 0};
+    check(block_reader.read_uint32_array(words, 2).succeeded() && words[0] == 0x12345678u && words[1] == 0x90abcdefu &&
+              block_reader.at_end(),
+          "bulk uint32 endian conversion failed");
+    check(block_reader.read_float32_array(nullptr, 0).succeeded() &&
+              block_reader.read_uint32_array(nullptr, 0).succeeded() &&
+              block_reader.read_uint8_array(nullptr, 0).succeeded(),
+          "empty bulk read requires destination");
+    check(block_reader.read_uint32_array(words, 1).code == toy3d::ValueErrorCode::Truncated &&
+              words[0] == 0x12345678u && block_reader.offset() == block.size(),
+          "truncated bulk read changed state");
+    toy3d::ValueReader byte_reader(block);
+    std::uint8_t raw[8]{};
+    check(byte_reader.read_uint8_array(nullptr, 1).code == toy3d::ValueErrorCode::InvalidValue &&
+              byte_reader.offset() == 0 && byte_reader.read_uint8_array(raw, 8).succeeded() &&
+              std::vector<std::uint8_t>(raw, raw + 8) == block,
+          "bulk byte destination validation failed");
+    const std::vector<std::uint8_t> floats = {0, 0, 0x80, 0x3f, 0, 0, 0x80, 0xbf};
+    toy3d::ValueReader float_reader(floats);
+    float values[2]{42, 43};
+    check(float_reader.read_float32_array(values, 2).succeeded() && values[0] == 1 && values[1] == -1 &&
+              float_reader.at_end(),
+          "bulk float conversion failed");
+    for (const std::uint8_t exponent : {std::uint8_t{0x80}, std::uint8_t{0xc0}})
+    {
+        const std::vector<std::uint8_t> nonfinite_block = {7, 0, 0, 0x80, 0x3f, 0, 0, exponent, 0x7f};
+        toy3d::ValueReader failure_reader(nonfinite_block);
+        failure_reader.set_property_path("vertices[7].position");
+        std::uint8_t prefix = 0;
+        check(failure_reader.read_uint8(prefix).succeeded(), "bulk error prefix fixture failed");
+        values[0] = 42;
+        values[1] = 43;
+        const auto failure = failure_reader.read_float32_array(values, 2);
+        check(failure.code == toy3d::ValueErrorCode::InvalidValue && failure.offset == 5 &&
+                  failure.property_path == "vertices[7].position" && failure_reader.offset() == 1 && values[0] == 42 &&
+                  values[1] == 43,
+              "non-finite bulk read partially published data");
+    }
+    toy3d::ValueLimits block_limits;
+    block_limits.max_array_elements = 1;
+    toy3d::ValueReader element_limited(block, block_limits);
+    check(element_limited.read_uint32_array(words, 2).code == toy3d::ValueErrorCode::TooLarge &&
+              element_limited.read_uint8_array(raw, std::numeric_limits<std::size_t>::max()).code ==
+                  toy3d::ValueErrorCode::TooLarge &&
+              element_limited.offset() == 0,
+          "bulk element bounds or count overflow ignored");
+    block_limits.max_bytes = 1;
+    toy3d::ValueReader byte_limited(block, block_limits);
+    check(byte_limited.read_uint8_array(raw, 1).code == toy3d::ValueErrorCode::TooLarge && byte_limited.offset() == 0,
+          "bulk total byte limit ignored");
+
     toy3d::ValueWriter writer;
     check(writer.write_uint16(0x1234u).succeeded(), "uint16 write failed");
     check(writer.write_int32(-2).succeeded(), "int32 write failed");

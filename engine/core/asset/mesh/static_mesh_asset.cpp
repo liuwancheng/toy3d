@@ -185,18 +185,20 @@ namespace toy3d
         geometry.vertices.resize(count);
         for (StaticMeshAssetVertex& vertex : geometry.vertices)
         {
-            if (!decode_value(reader, vertex.position).succeeded() ||
-                !decode_value(reader, vertex.normal).succeeded() || !decode_value(reader, vertex.uv0).succeeded() ||
-                !decode_value(reader, vertex.tangent).succeeded())
+            // Decode wire fields together, then assign named attributes; the
+            // C++ vertex layout is not the 52-byte on-disk record layout.
+            float values[12]{};
+            if (!reader.read_float32_array(values, 12).succeeded())
             {
                 return AssetResult<StaticMeshAssetGeometry>(invalid("invalid vertex data"));
             }
-            for (std::uint8_t& color : vertex.color)
+            vertex.position = Vector3(values[0], values[1], values[2]);
+            vertex.normal = Vector3(values[3], values[4], values[5]);
+            vertex.uv0 = Vector2(values[6], values[7]);
+            vertex.tangent = Vector4(values[8], values[9], values[10], values[11]);
+            if (!reader.read_uint8_array(vertex.color.data(), vertex.color.size()).succeeded())
             {
-                if (!reader.read_uint8(color).succeeded())
-                {
-                    return AssetResult<StaticMeshAssetGeometry>(invalid("invalid vertex color"));
-                }
+                return AssetResult<StaticMeshAssetGeometry>(invalid("invalid vertex color"));
             }
         }
         if (!reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 4u)
@@ -204,12 +206,9 @@ namespace toy3d
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid index count"));
         }
         geometry.indices.resize(count);
-        for (std::uint32_t& index : geometry.indices)
+        if (!reader.read_uint32_array(geometry.indices.data(), geometry.indices.size()).succeeded())
         {
-            if (!reader.read_uint32(index).succeeded())
-            {
-                return AssetResult<StaticMeshAssetGeometry>(invalid("invalid indices"));
-            }
+            return AssetResult<StaticMeshAssetGeometry>(invalid("invalid indices"));
         }
         if (!reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 12u)
         {

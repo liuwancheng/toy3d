@@ -23,6 +23,8 @@ CPU DTO/验证/格式在 engine/core，导入与构建在 engine/tools，运行�
 - CMake 显式登记输入，codegen 不做完整预处理/include 展开；标记后的字段声明可跨行，到分号结束，换行不改变字段语义；支持受控数值/string/math/嵌套/vector/有限 variant/AssetRef，拒绝指针、private、未知类型及不完整声明。生成文件进入 build，不手改产物。
 - TypeRegistry 显式注册、冻结，各可执行文件只注册需要的 schema。DTO 不包含 runtime/editor/native handles。
 - binary 编码固定宽度 little-endian；string 是有界 UTF-8，数组/嵌套深度/总字节均有界；错误含 offset/path。未知 required 拒绝；UnknownOptionalField 必须保持只读，不能未知数据丢失后保存成功。
+- `ValueReader` 的 uint8/uint32/float32 批量读取不附加长度前缀，由调用方先读取数量；检查总字节、元素上限、目标指针和剩余长度，float32 逐值拒绝非有限数。失败保持目标数组及 reader 位置不变，非有限数错误 offset 指向该值；空数组允许空指针，输出存储不得与输入字节重叠。不依赖 struct padding、主机字节序或原生对象布局。Reader 及输出仍由调用线程独占，输入保持原有非 owning 生命周期。
+- `AssetResult::value()` 的右值重载用于把已检查成功的 owned 候选移动给下一层；左值仍只读。消费后不得再次把该结果当成完整资产使用；错误与持久化格式不变。实现归 Toy3dCore/Toy3dAssets，边界验证入口为 `Toy3dCore.Serialization` 和资产几何/动画测试。
 - schema migration 是显式整候选转换并验证，不能靠默认填充静默迁移单位/格式。
 - PropertyPath 用稳定 field/index/element ID/variant 身份；可重排集合不能把下标当永久身份。EditSession owner-thread 验证整个 patch，preview 成功才 publish，撤销/重做保持一致；Save 冲突检查和成功后清 dirty，失败不丢草稿。
 

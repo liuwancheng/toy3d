@@ -515,4 +515,89 @@ namespace toy3d
         value = std::move(decoded);
         return ValueStatus::success();
     }
+
+    ValueErrorCode ValueReader::validate_array_read(const void* values, std::size_t count, std::size_t width) const
+    {
+        if (bytes_.size() > limits_.max_bytes || count > limits_.max_array_elements)
+        {
+            return ValueErrorCode::TooLarge;
+        }
+        if (count != 0 && values == nullptr)
+        {
+            return ValueErrorCode::InvalidValue;
+        }
+        if (offset_ > bytes_.size() || count > (bytes_.size() - offset_) / width)
+        {
+            return ValueErrorCode::Truncated;
+        }
+        return ValueErrorCode::None;
+    }
+
+    ValueStatus ValueReader::array_error(ValueErrorCode code) const
+    {
+        const char* message = code == ValueErrorCode::TooLarge    ? "array exceeds byte or element limit"
+                              : code == ValueErrorCode::Truncated ? "input ends inside array"
+                                                                  : "array requires a destination";
+        return error(code, message);
+    }
+
+    ValueStatus ValueReader::read_uint8_array(std::uint8_t* values, std::size_t count)
+    {
+        const auto valid = validate_array_read(values, count, 1);
+        if (valid != ValueErrorCode::None)
+        {
+            return array_error(valid);
+        }
+        if (count != 0)
+        {
+            std::memcpy(values, bytes_.data() + offset_, count);
+        }
+        offset_ += count;
+        return ValueStatus::success();
+    }
+
+    ValueStatus ValueReader::read_uint32_array(std::uint32_t* values, std::size_t count)
+    {
+        const auto valid = validate_array_read(values, count, 4);
+        if (valid != ValueErrorCode::None)
+        {
+            return array_error(valid);
+        }
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            values[i] = decode_uint32(bytes_, offset_ + i * 4u);
+        }
+        offset_ += count * 4u;
+        return ValueStatus::success();
+    }
+
+    ValueStatus ValueReader::read_float32_array(float* values, std::size_t count)
+    {
+        const auto valid = validate_array_read(values, count, 4);
+        if (valid != ValueErrorCode::None)
+        {
+            return array_error(valid);
+        }
+        // Validate the whole block before publishing values, without allocating
+        // a status/string for every component or a second array for rollback.
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const auto bits = decode_uint32(bytes_, offset_ + i * 4u);
+            float value = 0;
+            std::memcpy(&value, &bits, sizeof(value));
+            if (!std::isfinite(value))
+            {
+                auto status = error(ValueErrorCode::InvalidValue, "float32 must be finite");
+                status.offset = offset_ + i * 4u;
+                return status;
+            }
+        }
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const auto bits = decode_uint32(bytes_, offset_ + i * 4u);
+            std::memcpy(values + i, &bits, sizeof(float));
+        }
+        offset_ += count * 4u;
+        return ValueStatus::success();
+    }
 } // namespace toy3d

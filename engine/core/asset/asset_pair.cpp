@@ -122,7 +122,7 @@ namespace toy3d
             return AssetResult<AssetPair>(fail(AssetErrorCode::InvalidFormat, candidate.description.index.asset_id,
                                                paired_path.value(), "meta size or SHA-256 does not match description"));
         }
-        const auto meta = decode_asset_meta(meta_bytes.value(), limits);
+        auto meta = decode_asset_meta(meta_bytes.value(), limits);
         if (!meta.succeeded())
         {
             AssetStatus status = meta.status();
@@ -161,7 +161,7 @@ namespace toy3d
                                                    "meta contains an undeclared required segment"));
             }
         }
-        candidate.meta = meta.value();
+        candidate.meta = std::move(meta).value();
         return AssetResult<AssetPair>(std::move(candidate));
     }
 } // namespace toy3d

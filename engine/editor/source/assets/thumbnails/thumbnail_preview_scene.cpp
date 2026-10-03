@@ -181,6 +181,19 @@ namespace toy3d
         {
             return false;
         }
+        if (auto* component = skeletal_component())
+        {
+            if (component->skeletal_mesh() == mesh)
+            {
+                const auto status = component->set_animation(std::move(sequence));
+                if (!status.succeeded())
+                {
+                    TOY_LOG_ERROR("Skeletal preview animation replacement failed: {}", status.message);
+                    return false;
+                }
+                return !component->playback_state() || component->set_playing(false).succeeded();
+            }
+        }
         clear_mesh();
         auto& actor = world_.spawn_actor<SkeletalMeshActor>();
         mesh_actor_id_ = actor.actor_id();

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "rendercore/geometry/skeletal_mesh.h"
+
 namespace toy3d
 {
     namespace
@@ -51,6 +53,20 @@ namespace toy3d
         auto candidate = std::make_shared<const SkeletalMeshAsset>(mesh);
         bone_layout_ = std::move(bone_layout);
         mesh_ = std::move(candidate);
+        return AssetStatus::success();
+    }
+
+    AssetStatus SkeletalMeshDeformer::set_mesh(std::shared_ptr<const SkeletalMesh> mesh)
+    {
+        if (!mesh)
+        {
+            return invalid("mesh deformation requires a skeletal mesh");
+        }
+        // Aliasing ownership keeps the immutable mesh alive without copying its
+        // geometry or exposing a bypass for unvalidated DTOs.
+        std::shared_ptr<const SkeletalMeshAsset> snapshot(mesh, &mesh->asset());
+        bone_layout_ = mesh->bone_layout();
+        mesh_ = std::move(snapshot);
         return AssetStatus::success();
     }
 

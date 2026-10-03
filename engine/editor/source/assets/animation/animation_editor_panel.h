@@ -52,6 +52,9 @@ namespace toy3d
         std::shared_ptr<const AnimationPreviewAsset> asset_;
         std::shared_ptr<const AnimationPreviewAsset> previous_asset_;
         SkeletalMeshRef mesh_;
+        // One successful CPU snapshot survives closing the preview; no scene/GPU state is cached.
+        std::shared_ptr<const AnimationPreviewAsset> cached_asset_;
+        SkeletalMeshRef cached_mesh_;
         AnimationInstance animation_;
         AnimationPlaybackSettings playback_;
         AssetId requested_id_;

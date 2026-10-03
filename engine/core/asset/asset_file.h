@@ -75,9 +75,13 @@ namespace toy3d
         {
             return status_;
         }
-        const T& value() const
+        const T& value() const&
         {
             return value_.value();
+        }
+        T&& value() &&
+        {
+            return std::move(value_.value());
         }
 
       private:

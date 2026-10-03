@@ -105,9 +105,18 @@ namespace toy3d
         ValueStatus read_blob(std::vector<std::uint8_t>& value);
         ValueStatus read_array_length(std::uint32_t& count);
 
+        // No length prefix: the caller supplies a previously decoded count.
+        // Failure preserves the destination and cursor. Empty arrays permit nullptr.
+        // Destination storage must not overlap the input bytes.
+        ValueStatus read_uint8_array(std::uint8_t* values, std::size_t count);
+        ValueStatus read_uint32_array(std::uint32_t* values, std::size_t count);
+        ValueStatus read_float32_array(float* values, std::size_t count);
+
       private:
         ValueStatus read_unsigned(std::size_t width, std::uint64_t& value);
         ValueStatus read_signed(std::size_t width, std::int64_t& value);
+        ValueErrorCode validate_array_read(const void* values, std::size_t count, std::size_t width) const;
+        ValueStatus array_error(ValueErrorCode code) const;
         ValueStatus error(ValueErrorCode code, const char* message) const;
 
         const std::vector<std::uint8_t>& bytes_;

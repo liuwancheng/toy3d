@@ -96,7 +96,7 @@ namespace toy3d
             return status;
         }
         SkeletalMeshDeformer deformer;
-        status = deformer.set_mesh(mesh->bone_layout(), mesh->asset());
+        status = deformer.set_mesh(mesh);
         if (!status.succeeded())
         {
             return status;
