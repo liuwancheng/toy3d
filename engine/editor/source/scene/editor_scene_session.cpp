@@ -5,6 +5,8 @@
 #include <algorithm>
 #include "asset/asset_descriptor_path.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
+#include "rendercore/geometry/skeletal_mesh_asset_loader.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
@@ -28,6 +30,8 @@ namespace toy3d
                 return "Plane";
             case PlacementItemId::StaticMesh:
                 return "StaticMesh";
+            case PlacementItemId::SkeletalMesh:
+                return "SkeletalMesh";
             case PlacementItemId::DirectionalLight:
                 return "DirectionalLight";
             case PlacementItemId::PointLight:
@@ -198,24 +202,21 @@ namespace toy3d
                     }
                     component.parent_component_id = parent->second;
                 }
-                // C++17 get_if exposes resource identity only for StaticMesh components.
-                if (auto* mesh = std::get_if<SceneMeshData>(&component.properties))
+                // C++17 get_if selects the independent mesh author schemas.
+                auto* static_data = std::get_if<SceneMeshData>(&component.properties);
+                auto* skeletal_data = std::get_if<SceneSkeletalMeshData>(&component.properties);
+                if (static_data || skeletal_data)
                 {
                     const auto* runtime =
-                        static_cast<const StaticMeshComponent*>(actor.find_component_by_id(snapshot.component_id));
-                    SceneMeshData source;
-                    if (!factory_.mesh_source(*runtime, source))
+                        dynamic_cast<const MeshComponent*>(actor.find_component_by_id(snapshot.component_id));
+                    if (!runtime || !(static_data ? factory_.mesh_source(*runtime, *static_data)
+                                                  : factory_.mesh_source(*runtime, *skeletal_data)))
                     {
-                        error_ = "StaticMesh geometry has no registered author source.";
+                        error_ = "Mesh geometry/animation has no registered author source.";
                         return false;
                     }
-                    *mesh = std::move(source);
-                    if (!runtime->static_mesh())
-                    {
-                        error_ = "StaticMesh geometry is unavailable.";
-                        return false;
-                    }
-                    const auto& slots = runtime->static_mesh()->material_slot_names();
+                    auto& resources = static_data ? static_data->resources : skeletal_data->resources;
+                    const auto& slots = runtime->material_slot_names();
                     for (std::size_t slot = 0; slot < slots.size(); ++slot)
                     {
                         const auto found = std::find_if(assignments.begin(), assignments.end(),
@@ -232,7 +233,7 @@ namespace toy3d
                         }
                         if (found != assignments.end())
                         {
-                            mesh->resources.push_back({"material:" + slots[slot], found->material});
+                            resources.push_back({"material:" + slots[slot], found->material});
                         }
                     }
                     for (const auto& assignment : assignments)
@@ -321,7 +322,12 @@ namespace toy3d
             }
             return create_static_mesh_from_asset(loaded.value(), factory_.default_material());
         };
-        services.assign_material = [&](Actor& actor, StaticMeshComponent& component, const std::string& slot,
+        services.load_skeletal_mesh = [this](const SceneSkeletalMeshData& mesh)
+        {
+            return load_skeletal_mesh_assets(workspace_.types(), workspace_.files(), workspace_.catalog().index, mesh,
+                                             factory_.default_material());
+        };
+        services.assign_material = [&](Actor& actor, MeshComponent& component, const std::string& slot,
                                        const AssetRef& material, std::string& problem)
         {
             return materials_.assign(*world_, actor.actor_id(), {component.component_id(), slot, material}, problem);
@@ -369,6 +375,16 @@ namespace toy3d
             factory_.remember(actor, request);
             for (const auto& component : saved->components)
             {
+                if (const auto* skeletal = std::get_if<SceneSkeletalMeshData>(&component.properties))
+                {
+                    const auto found = std::find_if(component_ids_.begin(), component_ids_.end(),
+                                                    [&](const std::pair<const std::uint32_t, std::string>& value)
+                                                    {
+                                                        return value.second == component.id;
+                                                    });
+                    auto* runtime = static_cast<SceneComponent*>(actor.find_component_by_id(found->first));
+                    factory_.remember_mesh(*runtime, *skeletal);
+                }
                 if (const auto* mesh = std::get_if<SceneMeshData>(&component.properties))
                 {
                     const auto found = std::find_if(component_ids_.begin(), component_ids_.end(),

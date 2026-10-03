@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
 #include "gamescene/scene_component_data.h"
 #include "logging/logger.h"
 
@@ -38,6 +39,7 @@ namespace toy3d
             }
         }
         std::map<std::string, StaticMeshRef> meshes;
+        std::map<std::string, SkeletalMeshAssets> skeletal_meshes;
         for (const auto& actor : data.actors)
         {
             if (!types.validate(actor.type, actor.properties))
@@ -50,6 +52,11 @@ namespace toy3d
                 // C++17 get_if resolves mesh resources before constructing candidate Actors.
                 if (const auto* mesh = std::get_if<SceneMeshData>(&component.properties))
                 {
+                    if (mesh->builtin_mesh.empty() && mesh->resources.empty())
+                    {
+                        meshes.emplace(component.id, nullptr);
+                        continue;
+                    }
                     auto geometry = services.load_mesh ? services.load_mesh(*mesh, error) : nullptr;
                     if (!geometry)
                     {
@@ -60,6 +67,26 @@ namespace toy3d
                         return false;
                     }
                     meshes.emplace(component.id, std::move(geometry));
+                }
+                else if (const auto* mesh = std::get_if<SceneSkeletalMeshData>(&component.properties))
+                {
+                    if (mesh->resources.empty())
+                    {
+                        skeletal_meshes.emplace(component.id, SkeletalMeshAssets{});
+                        continue;
+                    }
+                    if (!services.load_skeletal_mesh)
+                    {
+                        error = "Scene skeletal mesh loader is unavailable.";
+                        return false;
+                    }
+                    auto loaded = services.load_skeletal_mesh(*mesh);
+                    if (!loaded.succeeded() || !loaded.value().mesh)
+                    {
+                        error = loaded.succeeded() ? "Scene skeletal mesh could not load." : loaded.status().message;
+                        return false;
+                    }
+                    skeletal_meshes.emplace(component.id, std::move(loaded).value());
                 }
             }
         }
@@ -145,7 +172,25 @@ namespace toy3d
                 {
                     auto& target = static_cast<StaticMeshComponent&>(*component);
                     target.set_static_mesh(meshes.at(snapshot.id));
-                    for (const auto& resource : mesh->resources)
+                }
+                else if (std::get_if<SceneSkeletalMeshData>(&snapshot.properties))
+                {
+                    const auto& assets = skeletal_meshes.at(snapshot.id);
+                    const auto status =
+                        static_cast<SkeletalMeshComponent&>(*component).set_assets(assets.mesh, assets.sequence);
+                    if (!status.succeeded())
+                    {
+                        error = status.message;
+                        rollback();
+                        return false;
+                    }
+                }
+                const auto* mesh_data = std::get_if<SceneMeshData>(&snapshot.properties);
+                const auto* skeletal_data = std::get_if<SceneSkeletalMeshData>(&snapshot.properties);
+                if (mesh_data || skeletal_data)
+                {
+                    auto& target = static_cast<MeshComponent&>(*component);
+                    for (const auto& resource : mesh_data ? mesh_data->resources : skeletal_data->resources)
                     {
                         if (resource.role.compare(0, 9, "material:") == 0 &&
                             (!services.assign_material ||

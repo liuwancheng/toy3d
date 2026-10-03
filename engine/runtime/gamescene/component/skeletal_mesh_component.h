@@ -1,13 +1,13 @@
 #pragma once
 
 #include "animation/animation_instance.h"
-#include "gamescene/component/primitive_component.h"
+#include "gamescene/component/mesh_component.h"
 #include "rendercore/geometry/skeletal_mesh.h"
 #include "rendercore/geometry/skeletal_mesh_deformation.h"
 
 namespace toy3d
 {
-    class SkeletalMeshComponent final : public PrimitiveComponent
+    class SkeletalMeshComponent final : public MeshComponent
     {
       public:
         explicit SkeletalMeshComponent(Actor& owner);
@@ -20,12 +20,19 @@ namespace toy3d
         // Shared by this component's tick and explicit editor preview evaluation.
         AssetStatus evaluate_animation(double delta_seconds);
         const SkeletalMeshRef& skeletal_mesh() const;
+        const std::shared_ptr<const AnimationSequence>& animation_sequence() const;
+        const AnimationPlaybackSettings& playback_settings() const;
+        bool lock_root() const;
         const SequencePlaybackState* playback_state() const;
         const std::shared_ptr<const AnimationEvaluation>& animation_evaluation() const;
         const std::shared_ptr<const SkeletalMeshDeformationData>& deformation() const;
-        bool set_material_override(std::uint32_t slot, MaterialInterfaceRef material);
-        bool clear_material_override(std::uint32_t slot);
-        MaterialInterfaceRef material_for_slot(std::uint32_t slot) const;
+        const std::vector<std::string>& material_slot_names() const override;
+        MaterialInterfaceRef default_material_for_slot(std::uint32_t slot) const override;
+        shader::VertexFactoryType vertex_factory_type() const override;
+        bool has_material_override(std::uint32_t slot) const override;
+        bool set_material_override(std::uint32_t slot, MaterialInterfaceRef material) override;
+        bool clear_material_override(std::uint32_t slot) override;
+        MaterialInterfaceRef material_for_slot(std::uint32_t slot) const override;
 
       private:
         bool supports_shadow_casting() const override;

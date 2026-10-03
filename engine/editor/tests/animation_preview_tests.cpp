@@ -22,8 +22,16 @@
 #include "panels/content_browser_panel.h"
 #include "rendercore/frame_synchronization.h"
 #include "scene/placement/actor_factory.h"
+#include "scene/editor_scene_session.h"
+#include "scene/editor_play_session.h"
+#include "scene/mesh_asset_bindings.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
+#include "gamescene/actor/static_mesh_actor.h"
+#include "threading/task_graph/task_graph.h"
+#include "threading/thread_manager.h"
 #include "scene/editor_selection.h"
 #include "workspace/editor_workspace.h"
+#include "viewport/scene_viewport.h"
 
 namespace
 {
@@ -47,6 +55,121 @@ namespace
             }
         }
         throw std::runtime_error("Missing Manny test asset: " + name);
+    }
+
+    void check_scene_mesh_bindings(EditorWorkspace& workspace, const AnimationPreviewAsset& asset)
+    {
+        ActorFactory factory;
+        check(factory.initialize(), "Scene binding factory initialization failed.");
+        {
+            MaterialAssignments materials;
+            EditorSelection selection;
+            SceneViewport viewport;
+            World world;
+            world.initialize();
+            EditorSceneSession scene(workspace, factory, materials, selection, viewport);
+            scene.bind(world);
+            PlacementRequest request;
+            request.item = PlacementItemId::StaticMesh;
+            const auto static_id = scene.history().place_actor(world, request);
+            check(dynamic_cast<StaticMeshActor*>(world.find_actor_by_id(static_id)) != nullptr,
+                  "Empty StaticMeshActor placement failed.");
+            request.item = PlacementItemId::SkeletalMesh;
+            const auto skeletal_id = scene.history().place_actor(world, request);
+            auto* actor = dynamic_cast<SkeletalMeshActor*>(world.find_actor_by_id(skeletal_id));
+            check(actor && !actor->skeletal_mesh_component().skeletal_mesh(),
+                  "Empty SkeletalMeshActor placement failed.");
+            auto& child = world.find_actor_by_id(static_id)->create_component<SkeletalMeshComponent>();
+            check(child.attach_to(world.find_actor_by_id(static_id)->root_component(), AttachmentRule::KeepRelative),
+                  "Non-root mesh attachment failed.");
+            scene.history().mark_saved(world);
+            ThreadManager threads;
+            auto created = create_task_graph({0, 16, false}, threads);
+            check(created.succeeded(), "Binding task graph creation failed.");
+            auto tasks = created.take_task_graph();
+            check(tasks->attach_to_thread(NamedThread::GameThread).succeeded(),
+                  "Binding owner could not attach to GT.");
+            MeshAssetBindings bindings(workspace, scene.history());
+            bindings.initialize(*tasks);
+            const auto complete = [&]()
+            {
+                tasks->process_thread_until_idle(NamedThread::GameThread);
+                bindings.tick(world);
+                check(!bindings.busy(), "Binding task did not complete.");
+            };
+            const auto component_id = actor->skeletal_mesh_component().component_id();
+            const auto queued_revision = world.content_revision();
+            check(bindings.request(world, skeletal_id, component_id, "mesh", asset.mesh_id) &&
+                      !scene.history().dirty(world) && world.content_revision() == queued_revision,
+                  "Queued load dirtied the Scene.");
+            complete();
+            check(bindings.error().empty() && actor->skeletal_mesh_component().skeletal_mesh(), bindings.error());
+            check(bindings.request(world, skeletal_id, component_id, "animation", asset.sequence_id),
+                  "Animation binding did not queue.");
+            complete();
+            auto& component = actor->skeletal_mesh_component();
+            check(bindings.error().empty() && component.animation_sequence(), bindings.error());
+            const auto previous_mesh = component.skeletal_mesh();
+            const auto previous_sequence = component.animation_sequence();
+            const auto before_failure = factory.capture(*actor);
+            check(bindings.request(world, skeletal_id, component_id, "mesh", id_for(workspace, "SKM_Manny_Simple")),
+                  "Incompatible mesh load did not queue.");
+            complete();
+            check(!bindings.error().empty() && same_actor_state(before_failure, factory.capture(*actor)),
+                  "Incompatible mesh replaced the existing mesh/animation.");
+            check(bindings.request(world, static_id, child.component_id(), "mesh", asset.mesh_id),
+                  "Non-root mesh did not queue.");
+            complete();
+            check(bindings.error().empty() && child.skeletal_mesh(), bindings.error());
+            check(component.seek(0.5).succeeded(), "Scene fixture seek failed.");
+            auto state = factory.capture(*actor);
+            auto& properties = std::get<SceneSkeletalMeshData>(state.components.front().data.properties);
+            properties.playback = {false, false, 0.5};
+            properties.lock_root = true;
+            std::string error;
+            check(scene.history().replace_mesh(world, skeletal_id, state.components.front(), error), error);
+            SceneAssetData saved;
+            check(scene.capture(saved), scene.error());
+            const auto destination = VirtualPath::parse("/Project/AnimationBinding.scene").value();
+            check(scene.save(destination, true) && !scene.dirty(), scene.error());
+            check(component.seek(0.9).succeeded() && !scene.dirty(), "Playback seek dirtied author state.");
+            const auto scene_id = scene.asset_id();
+            check(bindings.request(world, skeletal_id, component_id, "mesh", {}), "Clear mesh failed.");
+            check(!component.skeletal_mesh() && !component.animation_sequence(),
+                  "Clearing mesh retained an animation.");
+            check(scene.history().undo(world) && component.skeletal_mesh() == previous_mesh &&
+                      component.animation_sequence() == previous_sequence && !scene.dirty(),
+                  "Undo did not restore the immutable resource snapshot or saved point.");
+            check(scene.history().redo(world) && !component.skeletal_mesh(), "Redo did not clear mesh resources.");
+            check(scene.open(scene_id) && world.actor_count() == 2 && !scene.dirty(), scene.error());
+            bool found = false;
+            for (const auto id : world.actor_ids())
+            {
+                if (const auto* restored = dynamic_cast<const SkeletalMeshActor*>(world.find_actor_by_id(id)))
+                {
+                    const auto& mesh = restored->skeletal_mesh_component();
+                    found = mesh.skeletal_mesh() && mesh.animation_sequence() && mesh.lock_root() &&
+                            !mesh.playback_settings().loop && !mesh.playback_settings().autoplay &&
+                            mesh.playback_settings().rate == 0.5 && mesh.playback_state()->time() == 0.0;
+                }
+            }
+            check(found, "Scene reopen lost skeletal resources/settings or restored a transient animation time.");
+            const auto unchanged_revision = world.content_revision();
+            check(bindings.request(world, world.actor_ids().front(),
+                                   world.find_actor_by_id(world.actor_ids().front())->root_component()->component_id(),
+                                   "mesh", AssetId{}),
+                  "Empty mesh clear failed.");
+            check(!scene.dirty() && world.content_revision() == unchanged_revision,
+                  "Clearing an already empty mesh changed author state.");
+            bindings.shutdown();
+            check(tasks->shutdown(TaskGraphShutdownMode::Drain).succeeded(), "Binding workers did not drain.");
+            scene.history().clear();
+            for (const auto id : world.actor_ids())
+            {
+                world.destroy_actor(*world.find_actor_by_id(id));
+            }
+        }
+        factory.release();
     }
 
     struct TestState
@@ -84,6 +207,22 @@ namespace
         {
             return true;
         }
+        bool uses_play_scene() const override
+        {
+            return true;
+        }
+        void on_initialize_play_scene(SceneInterface& scene) override
+        {
+            play_scene_ = &scene;
+        }
+        bool renders_play_scene() const override
+        {
+            return play_.active();
+        }
+        std::shared_ptr<SceneRenderFeedback> scene_render_feedback() const override
+        {
+            return play_.feedback();
+        }
         bool uses_animation_preview_scene() const override
         {
             return true;
@@ -97,6 +236,8 @@ namespace
             // Exercise reference-pose GPU generation even when a prior run left valid PNGs.
             pool_.generate(simple_);
             pool_.generate(full_);
+            pool_.generate(run_);
+            pool_.generate(idle_);
             return true;
         }
         bool on_initialize_animation_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override
@@ -155,12 +296,45 @@ namespace
                 panel_.request_open(full_);
                 phase_ = 6;
             }
+            if (phase_ == 20)
+            {
+                play_.tick(delta);
+                if (!play_.active())
+                {
+                    fail("Skeletal PIE: " + play_.error());
+                    return;
+                }
+                if (play_.state() == EditorPlayState::Playing && ++play_frames_ >= 3)
+                {
+                    bool animated = false;
+                    for (const auto id : play_.world()->actor_ids())
+                    {
+                        const auto* actor = dynamic_cast<const SkeletalMeshActor*>(play_.world()->find_actor_by_id(id));
+                        if (actor)
+                        {
+                            const auto& mesh = actor->skeletal_mesh_component();
+                            animated =
+                                mesh.has_render_state() && mesh.playback_state() && mesh.playback_state()->time() > 0.0;
+                        }
+                    }
+                    if (!animated || !world().actor_ids().empty() || world().content_revision() != author_revision_)
+                    {
+                        fail("Skeletal PIE did not animate independently from the author World.");
+                        return;
+                    }
+                    play_.stop();
+                    state_.complete = true;
+                    window().close();
+                }
+                return;
+            }
             if (phase_ == 8)
             {
                 bool ready = true;
                 for (const auto& entry : workspace_.catalog().entries)
                 {
-                    if (entry.file.asset_id == simple_ || entry.file.asset_id == full_)
+                    if (entry.file.asset_id == simple_ || entry.file.asset_id == full_ || entry.file.asset_id == run_ ||
+                        entry.file.asset_id == idle_)
                     {
                         const auto thumbnail = pool_.request(entry);
                         if (!thumbnail.error.empty())
@@ -173,13 +347,67 @@ namespace
                 }
                 if (ready)
                 {
+                    std::vector<Sha256Hash> hashes;
+                    for (const auto& entry : workspace_.catalog().entries)
+                    {
+                        if (entry.file.asset_id == full_ || entry.file.asset_id == run_ || entry.file.asset_id == idle_)
+                        {
+                            const auto image = pool_.request(entry);
+                            const auto found = thumbnail_hashes_.find(image.texture_id.value());
+                            if (found == thumbnail_hashes_.end())
+                            {
+                                fail("Animation thumbnail did not come from a GPU render.");
+                                return;
+                            }
+                            hashes.push_back(found->second);
+                        }
+                    }
+                    if (hashes.size() != 3 || hashes[0] == hashes[1] || hashes[0] == hashes[2] ||
+                        hashes[1] == hashes[2])
+                    {
+                        fail("Reference pose, Run first frame and Idle first frame have identical thumbnail pixels.");
+                        return;
+                    }
                     if (!world().actor_ids().empty() || world().content_revision() != author_revision_)
                     {
                         fail("Preview changed the author World.");
                         return;
                     }
-                    state_.complete = true;
-                    window().close();
+                    SceneAssetData snapshot;
+                    const auto path = VirtualPath::parse("/Project/AnimationBinding.scene");
+                    const auto read = read_scene_asset(workspace_.types(), workspace_.files(), path.value(), snapshot,
+                                                       &workspace_.catalog().index);
+                    if (!read.succeeded())
+                    {
+                        fail("Skeletal PIE source: " + read.message);
+                        return;
+                    }
+                    for (auto& actor : snapshot.actors)
+                    {
+                        for (auto& component : actor.components)
+                        {
+                            if (auto* mesh = std::get_if<SceneSkeletalMeshData>(&component.properties))
+                            {
+                                mesh->playback.autoplay = true;
+                                mesh->playback.rate = 1.0;
+                            }
+                        }
+                    }
+                    const auto resolver = [this](const std::string& name,
+                                                 const std::vector<shader::ShaderPermutationSelection>& selections)
+                    {
+                        const auto& map = factory_.default_material()->material()->desc().shader_map;
+                        return name == factory_.default_material()->material()->desc().shader_name && selections.empty()
+                                   ? map
+                                   : nullptr;
+                    };
+                    if (!play_scene_ ||
+                        !play_.start(snapshot, workspace_, factory_.actor_types(), resolver, *play_scene_))
+                    {
+                        fail("Skeletal PIE initialization: " + play_.error());
+                        return;
+                    }
+                    phase_ = 20;
                 }
             }
         }
@@ -240,6 +468,10 @@ namespace
         {
             if (result.texture_id.value() < (1ull << 44))
             {
+                if (result.succeeded() && !result.bgra_pixels.empty())
+                {
+                    thumbnail_hashes_[result.texture_id.value()] = sha256(result.bgra_pixels);
+                }
                 pool_.on_texture_result(std::move(result));
                 return;
             }
@@ -378,6 +610,7 @@ namespace
         }
         void on_shutdown() override
         {
+            play_.stop();
             panel_.shutdown();
             pool_.shutdown();
             if (!flush_rendering_commands().succeeded())
@@ -391,6 +624,9 @@ namespace
         AnimationEditorPanel panel_;
         AssetThumbnailPool pool_;
         ActorFactory factory_;
+        EditorPlaySession play_;
+        SceneInterface* play_scene_ = nullptr;
+        int play_frames_ = 0;
         ContentBrowserPanel browser_;
         EditorSelection selection_;
         TestState& state_;
@@ -403,6 +639,7 @@ namespace
         double elapsed_ = 0;
         std::uint64_t author_revision_ = 0;
         Sha256Hash pose_hash_{};
+        std::map<std::uint64_t, Sha256Hash> thumbnail_hashes_;
         Extent old_extent_;
     };
 } // namespace
@@ -417,6 +654,9 @@ int main(int argc, char** argv)
         const std::filesystem::path root(TOY3D_ANIMATION_PREVIEW_TEST_ROOT);
         const auto assets = root / "asset";
         std::filesystem::create_directories(assets);
+        // Only this test's generated Scene pair is reset; imported fixtures and caches remain reusable.
+        std::filesystem::remove(assets / "AnimationBinding.scene");
+        std::filesystem::remove(assets / "AnimationBinding.scene.meta");
         for (const auto& source : std::filesystem::directory_iterator(TOY3D_MANNY_PREVIEW_SOURCE))
         {
             std::filesystem::copy_file(source.path(), assets / source.path().filename(),
@@ -464,6 +704,15 @@ int main(int argc, char** argv)
                   .write_binary_atomic(location->path, original.value(), FilePublishMode::Replace)
                   .succeeded(),
               "Baseline restore failed.");
+        check_scene_mesh_bindings(workspace, *cached);
+        check(set_animation_preview_mesh_preference(workspace.files(), run, simple).succeeded(),
+              "Preview settings save failed.");
+        check(!load_animation_preview_asset(workspace.asset_pairs(), workspace.catalog(), run, false, {}, {}, {},
+                                            &workspace.files())
+                   .succeeded(),
+              "Explicit incompatible preview preference silently fell back.");
+        check(set_animation_preview_mesh_preference(workspace.files(), run, {}).succeeded(),
+              "Preview preference clear failed.");
         const bool multi = argc > 1 && std::string(argv[1]) == "--multithread";
         CommandLineParser::get_instance().parser_args(
             {"AnimationPreviewTests", "--Window.Width=1200", "--Window.Height=900",

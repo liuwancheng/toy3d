@@ -8,6 +8,8 @@
 #include "scene/editor_selection.h"
 #include "viewport/scene_viewport.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
+#include "assets/asset_resource_picker.h"
+#include "scene/mesh_asset_bindings.h"
 #include "assets/mesh/static_mesh_import_dialog.h"
 #include "assets/animation/skeletal_mesh_import_dialog.h"
 #include "assets/texture/texture_import_dialog.h"
@@ -43,8 +45,9 @@ namespace toy3d
                                    const ActorTypeRegistry* actors = nullptr, PhysicalPath game_executable = {})
             : workspace_(workspace), project_(project), saved_root_(std::move(saved_root)),
               scene_session_(workspace_, actor_factory_, material_assignments_, selection_, scene_viewport_),
-              thumbnails_(workspace), texture_preview_(workspace), animation_editor_(workspace), console_(log_buffer),
-              notifications_(std::move(log_buffer))
+              thumbnails_(workspace), resource_picker_(thumbnails_),
+              mesh_bindings_(workspace, scene_session_.history()), texture_preview_(workspace),
+              animation_editor_(workspace), console_(log_buffer), notifications_(std::move(log_buffer))
         {
             if (actors)
             {
@@ -176,6 +179,8 @@ namespace toy3d
         SceneViewport scene_viewport_;
         EditorSceneSession scene_session_;
         AssetThumbnailPool thumbnails_;
+        AssetResourcePicker resource_picker_;
+        MeshAssetBindings mesh_bindings_;
         TexturePreviewPanel texture_preview_;
         AnimationEditorPanel animation_editor_;
         bool initial_dock_layout_checked_ = false;

@@ -6,6 +6,7 @@
 #include "gamescene/actor/camera_actor.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
 #include "gamescene/world/world.h"
 
 namespace toy3d
@@ -48,6 +49,15 @@ namespace toy3d
                                 typeid(StaticMeshActor),
                                 "toy3d.ActorSettings",
                                 create_actor<StaticMeshActor>,
+                                validate_empty,
+                                capture_empty,
+                                apply_empty,
+                                {}}) &&
+                           add({"toy3d.SkeletalMeshActor",
+                                "Skeletal Mesh",
+                                typeid(SkeletalMeshActor),
+                                "toy3d.ActorSettings",
+                                create_actor<SkeletalMeshActor>,
                                 validate_empty,
                                 capture_empty,
                                 apply_empty,

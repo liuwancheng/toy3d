@@ -27,6 +27,7 @@
 #include "scene/editor_command_history.h"
 #include "gamescene/world/world.h"
 #include "gamescene/actor/actor.h"
+#include "gamescene/component/static_mesh_component.h"
 #include "panels/content_browser_panel.h"
 #include "assets/mesh/static_mesh_import_dialog.h"
 #include "scene/editor_selection.h"
@@ -597,6 +598,28 @@ namespace
                 world().actor_count() != 1)
             {
                 stop("A stale or invalid asset identity mutated the scene.");
+                return false;
+            }
+            actor = world().find_actor_by_id(world().actor_ids().front());
+            auto state = factory_.capture(*actor);
+            auto candidate = state.components.front();
+            const auto original_mesh = candidate.mesh;
+            auto& mesh_data = std::get<SceneMeshData>(candidate.data.properties);
+            mesh_data.builtin_mesh.clear();
+            mesh_data.resources.clear();
+            candidate.mesh.reset();
+            if (!history_.replace_mesh(world(), actor->actor_id(), std::move(candidate), error) ||
+                !flush_rendering_commands().succeeded() || !history_.undo(world()))
+            {
+                stop("Static Mesh clear/undo after render retirement failed: " + error);
+                return false;
+            }
+            const auto* component = dynamic_cast<StaticMeshComponent*>(actor->root_component());
+            if (!component || !component->static_mesh() || component->static_mesh() == original_mesh ||
+                component->static_mesh()->material_slot_names() != original_mesh->material_slot_names() ||
+                !history_.redo(world()) || component->static_mesh() || !history_.undo(world()))
+            {
+                stop("Static Mesh history must restore CPU data with fresh render resources.");
                 return false;
             }
             if (!history_.undo(world()) || world().actor_count() != 0)

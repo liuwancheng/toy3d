@@ -24,6 +24,8 @@ namespace toy3d
         std::shared_ptr<const SkeletalMeshAsset> mesh;
         std::shared_ptr<const AnimationSequence> sequence;
         std::uint32_t sample_rate = 30;
+        bool uses_preview_preference = false;
+        AssetId preferred_mesh;
         std::vector<Source> sources;
     };
 
@@ -32,8 +34,14 @@ namespace toy3d
     AssetResult<AnimationPreviewAsset> load_animation_preview_asset(
         AssetPairStore& pairs, const AssetCatalog& catalog, const AssetId& id, bool override_selection = false,
         const AssetId& mesh = {}, const AssetId& sequence = {},
-        std::shared_ptr<const AnimationPreviewAsset> reusable = {});
+        std::shared_ptr<const AnimationPreviewAsset> reusable = {}, const FileSystem* editor_settings = nullptr);
     bool animation_preview_asset_current(AssetPairStore& pairs, const AssetCatalog& catalog,
-                                         const AnimationPreviewAsset& asset);
+                                         const AnimationPreviewAsset& asset,
+                                         const FileSystem* editor_settings = nullptr);
     bool animation_asset_uses_skeleton(const AssetFileIndex& asset, const AssetId& skeleton);
+    // Descriptor-only list filtering; the worker still validates paired payloads before adoption.
+    bool animation_asset_matches_layout(const TypeRegistry& types, const FileSystem& files,
+                                        const AssetCatalogEntry& asset, const AnimationBoneLayout& layout);
+    AssetResult<AssetId> animation_preview_mesh_preference(const FileSystem& files, const AssetId& animation);
+    AssetStatus set_animation_preview_mesh_preference(FileSystem& files, const AssetId& animation, const AssetId& mesh);
 } // namespace toy3d

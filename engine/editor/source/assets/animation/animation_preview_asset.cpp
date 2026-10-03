@@ -2,6 +2,7 @@
 
 #include <utility>
 #include <optional>
+#include <algorithm>
 
 namespace toy3d
 {
@@ -33,6 +34,56 @@ namespace toy3d
         }
     } // namespace
 
+    AssetResult<AssetId> animation_preview_mesh_preference(const FileSystem& files, const AssetId& animation)
+    {
+        const auto path = VirtualPath::parse("/Saved/Editor/AnimationPreviewMeshes/" + animation.hex() + ".settings");
+        const auto bytes = files.read_binary(path.value(), 1024);
+        if (!bytes.succeeded())
+        {
+            if (bytes.status().code == FileErrorCode::NotFound)
+            {
+                return AssetResult<AssetId>(AssetId{});
+            }
+            return AssetResult<AssetId>(invalid(bytes.status().message));
+        }
+        ValueReader reader(bytes.value());
+        std::uint32_t version = 0;
+        std::string identity;
+        AssetId mesh;
+        if (!reader.read_uint32(version).succeeded() || version != 1 || !reader.read_utf8(identity).succeeded() ||
+            !reader.at_end() || !AssetId::parse(identity, mesh) || !mesh.valid())
+        {
+            return AssetResult<AssetId>(invalid("Animation preview mesh settings are invalid."));
+        }
+        return AssetResult<AssetId>(mesh);
+    }
+
+    AssetStatus set_animation_preview_mesh_preference(FileSystem& files, const AssetId& animation, const AssetId& mesh)
+    {
+        if (!animation.valid())
+        {
+            return invalid("A preview mesh preference requires a valid animation identity.");
+        }
+        const auto path = VirtualPath::parse("/Saved/Editor/AnimationPreviewMeshes/" + animation.hex() + ".settings");
+        if (!mesh.valid())
+        {
+            const auto removed = files.remove_file(path.value());
+            return removed.succeeded() || removed.code == FileErrorCode::NotFound ? AssetStatus::success()
+                                                                                  : invalid(removed.message);
+        }
+        const auto directory = VirtualPath::parse("/Saved/Editor/AnimationPreviewMeshes");
+        const auto made = files.create_directories(directory.value());
+        if (!made.succeeded())
+        {
+            return invalid(made.message);
+        }
+        ValueWriter writer;
+        writer.write_uint32(1);
+        writer.write_utf8(mesh.hex());
+        const auto saved = files.write_binary_atomic(path.value(), writer.bytes(), FilePublishMode::Replace);
+        return saved.succeeded() ? AssetStatus::success() : invalid(saved.message);
+    }
+
     bool animation_asset_uses_skeleton(const AssetFileIndex& asset, const AssetId& skeleton)
     {
         for (const auto& dependency : asset.dependencies)
@@ -45,10 +96,46 @@ namespace toy3d
         return false;
     }
 
+    bool animation_asset_matches_layout(const TypeRegistry& types, const FileSystem& files,
+                                        const AssetCatalogEntry& asset, const AnimationBoneLayout& layout)
+    {
+        if (!animation_asset_uses_skeleton(asset.file, layout.skeleton_id()))
+        {
+            return false;
+        }
+        const auto bytes = files.read_binary(asset.path, 1024u * 1024u);
+        if (!bytes.succeeded())
+        {
+            return false;
+        }
+        const auto description = decode_asset_yaml(types, bytes.value());
+        if (!description.succeeded() || !(description.value().index.asset_id == asset.file.asset_id) ||
+            description.value().index.root_type != asset.file.root_type)
+        {
+            return false;
+        }
+        ValueReader reader(description.value().type_data);
+        if (asset.file.root_type == "toy3d.AnimationSequenceAssetData")
+        {
+            AnimationSequenceAssetData data;
+            return decode_value(reader, data).succeeded() && reader.at_end() &&
+                   data.skeleton.asset_id == layout.skeleton_id() &&
+                   data.skeleton_reference_hash == layout.reference_hash();
+        }
+        if (asset.file.root_type == "toy3d.SkeletalMeshAssetData")
+        {
+            SkeletalMeshAssetData data;
+            return decode_value(reader, data).succeeded() && reader.at_end() &&
+                   data.skeleton.asset_id == layout.skeleton_id() &&
+                   data.skeleton_reference_hash == layout.reference_hash();
+        }
+        return false;
+    }
+
     AssetResult<AnimationPreviewAsset> load_animation_preview_asset(
         AssetPairStore& pairs, const AssetCatalog& catalog, const AssetId& id, bool override_selection,
         const AssetId& selected_mesh, const AssetId& selected_sequence,
-        std::shared_ptr<const AnimationPreviewAsset> reusable)
+        std::shared_ptr<const AnimationPreviewAsset> reusable, const FileSystem* editor_settings)
     {
         AnimationPreviewAsset result;
         const auto* location = catalog.index.find(id);
@@ -111,13 +198,47 @@ namespace toy3d
             if (!override_selection)
             {
                 result.sequence_id = id;
+                if (editor_settings)
+                {
+                    const auto preferred = animation_preview_mesh_preference(*editor_settings, id);
+                    if (!preferred.succeeded())
+                    {
+                        return AssetResult<AnimationPreviewAsset>(preferred.status());
+                    }
+                    result.mesh_id = preferred.value();
+                    result.uses_preview_preference = true;
+                    result.preferred_mesh = preferred.value();
+                }
+                std::vector<const AssetCatalogEntry*> candidates;
                 for (const auto& entry : catalog.entries)
                 {
                     if (entry.file.root_type == "toy3d.SkeletalMeshAssetData" &&
                         animation_asset_uses_skeleton(entry.file, skeleton_id))
                     {
-                        result.mesh_id = entry.file.asset_id;
-                        break;
+                        candidates.push_back(&entry);
+                    }
+                }
+                std::sort(candidates.begin(), candidates.end(),
+                          [](const AssetCatalogEntry* a, const AssetCatalogEntry* b)
+                          {
+                              return a->file.asset_id < b->file.asset_id;
+                          });
+                if (!result.mesh_id.valid())
+                {
+                    for (const auto* candidate : candidates)
+                    {
+                        const auto pair = pairs.read(candidate->path);
+                        if (!pair.succeeded())
+                        {
+                            continue;
+                        }
+                        auto decoded = decode_skeletal_mesh_asset_pair(pair.value());
+                        if (decoded.succeeded() && decoded.value().data.skeleton_reference_hash ==
+                                                       primary_sequence->data.skeleton_reference_hash)
+                        {
+                            result.mesh_id = candidate->file.asset_id;
+                            break;
+                        }
                     }
                 }
             }
@@ -276,8 +397,16 @@ namespace toy3d
     }
 
     bool animation_preview_asset_current(AssetPairStore& pairs, const AssetCatalog& catalog,
-                                         const AnimationPreviewAsset& asset)
+                                         const AnimationPreviewAsset& asset, const FileSystem* editor_settings)
     {
+        if (asset.uses_preview_preference && editor_settings)
+        {
+            const auto preference = animation_preview_mesh_preference(*editor_settings, asset.id);
+            if (!preference.succeeded() || !(preference.value() == asset.preferred_mesh))
+            {
+                return false;
+            }
+        }
         for (const auto& source : asset.sources)
         {
             const auto* location = catalog.index.find(source.id);

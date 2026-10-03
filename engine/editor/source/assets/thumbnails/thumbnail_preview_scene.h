@@ -42,6 +42,7 @@ namespace toy3d
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, SceneEnvironmentSettings environment = {},
                         TextureRef cube = {});
         bool prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material = {});
+        bool prepare(StaticMeshRef mesh);
         bool prepare_skeletal(SkeletalMeshRef mesh, std::shared_ptr<const AnimationSequence> sequence = {});
         bool prepare_skeletal(const AnimationPreviewAsset& asset);
         SkeletalMeshComponent* skeletal_component();

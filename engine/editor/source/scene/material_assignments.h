@@ -56,6 +56,8 @@ namespace toy3d
                            const std::string& slot_name) const;
         std::vector<MaterialSlotAssignment> capture(const World& world, std::uint32_t actor_id) const;
         void forget(std::uint32_t actor_id);
+        // History already retains validated runtime materials; restore only author identities.
+        void remember(World& world, std::uint32_t actor_id, std::vector<MaterialSlotAssignment> assignments);
         // Call after removing scene users and draining their FIFO commands.
         void shutdown();
 
@@ -71,7 +73,7 @@ namespace toy3d
             std::uint64_t generation = 0u;
             std::uint32_t actor_id = 0u;
             MaterialSlotAssignment assignment;
-            StaticMeshRef mesh;
+            std::shared_ptr<const void> mesh;
             MaterialInterfaceRef previous;
             std::string shader;
             std::map<AssetId, Sha256Hash> descriptions;

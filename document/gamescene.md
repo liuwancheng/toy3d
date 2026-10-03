@@ -18,7 +18,7 @@ World 在 GT 同步执行 Actor → Component 两阶段；Actor 只负责自己�
 
 `tick_component` 返回 bool，默认成功；失败由领域组件报告具体原因，World 汇总失败并继续其他组件，不回滚 World 时间或任意业务状态。tick 开关与 Actor 的开关独立，运行状态不自动增加 content revision，也不进入 Scene 持久化格式。当前没有 tick group、prerequisite、间隔调度、物理阶段或并行 tick；以后出现实际需求再扩展调度入口。
 
-SkeletalMeshComponent 默认启用自己的 tick，内部推进动画和发布 pose/bounds；动画失败仍保留原时钟与快照。Editor 编辑 World 不 begin_play、不参与自动 tick，预览继续显式求值。动画领域 contract 见 [Animation](animation.md#world组件与实例状态)。验证见 GameScene/Animation、项目 Actor/PIE 与 Renderer 回归。骨骼组件的 Scene schema/assembly 和 Editor 放置仍待接入。
+SkeletalMeshComponent 默认启用自己的 tick，内部推进动画和发布 pose/bounds；动画失败仍保留原时钟与快照。Editor 编辑 World 不 begin_play、不参与自动 tick，预览继续显式求值。动画领域 contract 见 [Animation](animation.md#world组件与实例状态)。验证见 GameScene/Animation、项目 Actor/PIE 与 Renderer 回归。StaticMeshActor/SkeletalMeshActor 自带各自的 MeshComponent 根组件，支持空资源；骨骼组件的独立 Scene 分支、注入式装配和 Editor 作者行为见 [组件资源绑定](animation.md#scene-组件资源绑定)。
 
 ## 组件、附着与更新
 
@@ -26,6 +26,7 @@ SkeletalMeshComponent 默认启用自己的 tick，内部推进动画和发布 p
 - 非 root component、独立 Actor 与跨 Actor 父关系须保持正确注册/恢复；不能假定所有 component 都是根、每个 Actor 只有一个场景组件。
 - Primitive、Light、Camera 等派生组件保存 validated settings；setter 先验证整个候选，再改 GT、更新 revision、发布 owned RT 数据，不能边改边发现非法字段。
 - 可见性、cast_shadows、receives_shadows、enabled、render priority 是不同语义；阴影选择与渲染行为见 [Renderer](renderer.md)。
+- MeshComponent 统一具名材质槽、default/override 和 vertex factory 查询，不持有几何或动画；两种具体网格组件承担资源生命周期。
 - 每次影响渲染的更新经过 SceneInterface FIFO；Transform/灯光/材质更新保持稳定 Proxy 身份，不能将纯属性修改伪装为 Remove/Add。
 
 ## 内容 revision 与持久化

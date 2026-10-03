@@ -94,6 +94,7 @@ namespace toy3d
             return;
         }
         requested_id_ = id;
+        mesh_preference_pending_ = false;
         override_selection_ = false;
         ++revision_;
         needs_load_ = true;
@@ -113,6 +114,10 @@ namespace toy3d
 
     void AnimationEditorPanel::select(const AssetId& mesh, const AssetId& sequence)
     {
+        if (asset_ && asset_->root_type == "toy3d.AnimationSequenceAssetData" && !(selected_mesh_ == mesh))
+        {
+            mesh_preference_pending_ = true;
+        }
         selected_mesh_ = mesh;
         selected_sequence_ = sequence;
         override_selection_ = true;
@@ -206,12 +211,14 @@ namespace toy3d
             if (open_ && result->revision == revision_)
             {
                 if (result->error.empty() &&
-                    !animation_preview_asset_current(workspace_.asset_pairs(), workspace_.catalog(), *result->asset))
+                    !animation_preview_asset_current(workspace_.asset_pairs(), workspace_.catalog(), *result->asset,
+                                                     &workspace_.files()))
                 {
                     result->error = "Preview inputs changed during load; rescan and reopen.";
                 }
                 if (!result->error.empty())
                 {
+                    mesh_preference_pending_ = false;
                     error_ = std::move(result->error);
                     requested_id_ = asset_ ? asset_->id : AssetId();
                     selected_mesh_ = asset_ ? asset_->mesh_id : AssetId();
@@ -234,6 +241,7 @@ namespace toy3d
             result->revision = revision_;
             cpu_result_ = result;
             AssetPairStore* pairs = &workspace_.asset_pairs();
+            const FileSystem* files = &workspace_.files();
             const auto catalog = workspace_.catalog();
             const auto id = requested_id_;
             const auto mesh = selected_mesh_;
@@ -244,14 +252,14 @@ namespace toy3d
             {
                 cpu_task_ = dispatch_graph_task(
                     *tasks_, "Load animation preview",
-                    [result, pairs, catalog, id, mesh, sequence, override_selection, reusable](NamedThread,
-                                                                                               const GraphEventRef&)
+                    [result, pairs, files, catalog, id, mesh, sequence, override_selection,
+                     reusable](NamedThread, const GraphEventRef&)
                     {
                         const auto started = std::chrono::steady_clock::now();
                         try
                         {
                             auto loaded = load_animation_preview_asset(*pairs, catalog, id, override_selection, mesh,
-                                                                       sequence, reusable);
+                                                                       sequence, reusable, files);
                             if (loaded.succeeded())
                             {
                                 result->asset =
@@ -483,6 +491,7 @@ namespace toy3d
             pending_work_.retire_textures.push_back(completed);
             if (!result.succeeded() && candidate_revision_ == revision_)
             {
+                mesh_preference_pending_ = false;
                 error_ = result.error;
                 scene_.clear_mesh();
                 if (previous_asset_)
@@ -503,6 +512,19 @@ namespace toy3d
         texture_id_ = completed;
         cached_asset_ = asset_;
         cached_mesh_ = mesh_;
+        if (mesh_preference_pending_ && asset_ && asset_->root_type == "toy3d.AnimationSequenceAssetData")
+        {
+            const auto saved = set_animation_preview_mesh_preference(workspace_.files(), asset_->id, asset_->mesh_id);
+            if (!saved.succeeded())
+            {
+                error_ = saved.message;
+            }
+            else if (preview_mesh_changed_)
+            {
+                preview_mesh_changed_();
+            }
+            mesh_preference_pending_ = false;
+        }
         previous_asset_.reset();
     }
 
@@ -639,7 +661,8 @@ namespace toy3d
                         for (const auto& entry : catalog.entries)
                         {
                             if (entry.file.root_type == type &&
-                                animation_asset_uses_skeleton(entry.file, asset_->layout->skeleton_id()))
+                                animation_asset_matches_layout(workspace_.types(), workspace_.files(), entry,
+                                                               *asset_->layout))
                             {
                                 ImGui::PushID(entry.file.asset_id.hex().c_str());
                                 if (ImGui::Selectable(entry.path.utf8().c_str(), selected == entry.file.asset_id))

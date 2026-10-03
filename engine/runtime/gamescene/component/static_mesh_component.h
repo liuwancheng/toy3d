@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gamescene/component/primitive_component.h"
+#include "gamescene/component/mesh_component.h"
 #include "rendercore/geometry/static_mesh.h"
 
 #include <cstdint>
@@ -9,10 +9,10 @@
 
 namespace toy3d
 {
-    class StaticMeshComponent final : public PrimitiveComponent
+    class StaticMeshComponent final : public MeshComponent
     {
       public:
-        explicit StaticMeshComponent(Actor& owner) : PrimitiveComponent(owner)
+        explicit StaticMeshComponent(Actor& owner) : MeshComponent(owner)
         {
         }
         ~StaticMeshComponent() override = default;
@@ -23,10 +23,13 @@ namespace toy3d
         }
         void set_static_mesh(StaticMeshRef static_mesh);
 
-        bool set_material_override(std::uint32_t material_slot, MaterialInterfaceRef material);
-        bool clear_material_override(std::uint32_t material_slot);
-        bool has_material_override(std::uint32_t material_slot) const;
-        MaterialInterfaceRef material_for_slot(std::uint32_t material_slot) const;
+        const std::vector<std::string>& material_slot_names() const override;
+        MaterialInterfaceRef default_material_for_slot(std::uint32_t slot) const override;
+        shader::VertexFactoryType vertex_factory_type() const override;
+        bool set_material_override(std::uint32_t material_slot, MaterialInterfaceRef material) override;
+        bool clear_material_override(std::uint32_t material_slot) override;
+        bool has_material_override(std::uint32_t material_slot) const override;
+        MaterialInterfaceRef material_for_slot(std::uint32_t material_slot) const override;
 
       private:
         bool supports_shadow_casting() const override;

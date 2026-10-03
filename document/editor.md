@@ -56,13 +56,15 @@ Scene Viewport 右上角提供 Play/Pause/Resume/Stop 图标按钮，悬停显�
 
 selection 保存稳定 Actor/Component/Asset ID，使用时解析，删除/切 World 清理失效选择；不长期缓存裸指针。Input 优先级 modal/text → gizmo → viewport → shortcuts → game。
 
+网格、动画和组件材质使用共享 AssetResourcePicker，显示真实缩略图与资源名，支持搜索/过滤、拖放、清空与 Find。大网格/动作由 Editor 持有的 MeshAssetBindings 在后台加载，候选完成并复核后提交一次事务；加载失败保留原资源，PIE 等待该加载结束。详情控件不直接输入资源路径。
+
 一次连续手势合并一条命令，先完整验证候选再 apply；capture/same_state/apply 三者字段一致，不许半条 Transform 已改而后续 light 字段失败。取消恢复起点，撤销/重做恢复完整 component/附着/材质状态。
 
 dirty 以已保存内容身份/分支与外部 content revision 判断，不看 undo 栈深或每帧重新 encode Scene。纯读/viewport render 不污染内容 revision；保存/打开/候选接管等操作在手势结束后执行。
 
 ## Scene Save/Open
 
-当前 Scene schema 7、Actor schema 6，保存 Component 稳定 ID/type/settings、非 root component、跨 Actor attachment、primitive/light 阴影字段与材质 AssetRef。
+当前 Scene schema 7、Actor schema 6、Component schema 1，保存 Component 稳定 ID/type/settings、非 root component、跨 Actor attachment、primitive/light 阴影字段与材质 AssetRef。骨骼网格使用独立的类型名分支，保存 mesh/animation 引用和播放设置，不保存瞬时时间或 pose；资源绑定及兼容规则见 [Animation](animation.md#scene-组件资源绑定)。
 
 - Open 在候选 DTO、资产依赖和完整 parent graph/Transform 验证后装配并接管；未知类型/非法环/资源失败保留旧 World/session，registry 注册不等于自动可持久化。
 - Save 从 runtime authoritative World 获取完整快照；只在手势结束后，通过 AssetPairStore、同一已验证读取原始 bytes 检查冲突。
@@ -77,7 +79,7 @@ Tools/Content Browser 的 HDR 导入使用既有 TextureImportDialog worker 生�
 
 骨骼网格、动作导入与 Project 资源的 `Reimport...` 使用独立 CPU worker、GT 冲突复核和逐资产配对发布；Skeleton 选择、源要求、取消/退出与使用入口见 [Animation](animation.md#editor-导入与重导入)。
 
-Content Browser 双击 Skeleton/SkeletalMesh/AnimationSequence 打开只读 `Animation Editor`，共享骨骼树、网格和动作标签，提供播放、时间轴、逐样本、root lock 与相机操作。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态；Skeleton/动作使用 UE 风格类型图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
+Content Browser 双击 Skeleton/SkeletalMesh/AnimationSequence 打开只读 `Animation Editor`，共享骨骼树、网格和动作标签，提供播放、时间轴、逐样本、root lock 与相机操作。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态，动作缩略图拍摄兼容模型的第 0 秒，Skeleton 保留固定骨架图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
 
 材质窗口显示独立 HDR 庭院背景、球体与灰色地面，可调整预览环境、灯光、曝光和相机；普通参数即时更新图像，静态选项等待完整候选。Content Browser 的 Material/Instance 缩略图保留固定 studio 配置。设置、排队、关闭、资源退役与失败保留旧图见 [Material](material.md#可视预览与缩略图)，不把预览效果写进主场景。
 

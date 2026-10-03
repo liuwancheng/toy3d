@@ -20,6 +20,8 @@ list(APPEND EDITOR_SOURCES
 # Asset sessions/workspace remain independently usable without the runtime UI.
 add_library(Toy3dEditorCore STATIC)
 target_sources(Toy3dEditorCore PRIVATE
+    "source/assets/asset_resource_picker.h" "source/assets/asset_resource_picker.cpp"
+    "source/scene/mesh_asset_bindings.h" "source/scene/mesh_asset_bindings.cpp"
     "source/assets/animation/animation_preview_asset.h" "source/assets/animation/animation_preview_asset.cpp"
     "source/assets/animation/animation_editor_panel.h" "source/assets/animation/animation_editor_panel.cpp"
     "source/scene/editor_play_session.h" "source/scene/editor_play_session.cpp"
@@ -379,7 +381,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorMaterialAssignmentTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorMaterialAssignmentTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorMaterialAssignmentTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets imguizmo)
+    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets Toy3dAssetPipeline imguizmo)
     target_compile_definitions(Toy3dEditorMaterialAssignmentTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-assignment-test-output\""
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""

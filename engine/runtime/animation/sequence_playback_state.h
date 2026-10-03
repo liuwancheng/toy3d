@@ -1,16 +1,10 @@
 #pragma once
 
 #include "asset/animation/animation_asset.h"
+#include "asset/scene/component_settings.h"
 
 namespace toy3d
 {
-    struct AnimationPlaybackSettings
-    {
-        bool loop = true;
-        bool autoplay = true;
-        double rate = 1.0;
-    };
-
     // Continuous update interval, distinct from a discontinuous seek. Loops count includes
     // wrapping a previously sought end frame when positive playback resumes.
     struct SequencePlaybackInterval

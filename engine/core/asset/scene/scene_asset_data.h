@@ -37,6 +37,19 @@ namespace toy3d
         std::vector<SceneResourceBinding> resources;
     };
 
+    TOY3D_REFLECT_TYPE("toy3d.SceneSkeletalMeshData", 1)
+    struct SceneSkeletalMeshData
+    {
+        TOY3D_PROPERTY("settings", Edit)
+        PrimitiveSettings settings;
+        TOY3D_PROPERTY("resources", Edit)
+        std::vector<SceneResourceBinding> resources;
+        TOY3D_PROPERTY("playback", Edit)
+        AnimationPlaybackSettings playback;
+        TOY3D_PROPERTY("lock_root", Edit)
+        bool lock_root = false;
+    };
+
     TOY3D_REFLECT_TYPE("toy3d.SceneDirectionalLightData", 1)
     struct SceneDirectionalLightData
     {
@@ -69,7 +82,8 @@ namespace toy3d
         // C++17 variant retains typed author data for each supported component.
         // A new persisted component explicitly declares its schema branch.
         TOY3D_PROPERTY("properties", Edit)
-        std::variant<SceneNodeData, SceneMeshData, SceneDirectionalLightData, ScenePointLightData, CameraSettings>
+        std::variant<SceneNodeData, SceneMeshData, SceneDirectionalLightData, ScenePointLightData, CameraSettings,
+                     SceneSkeletalMeshData>
             properties;
     };
 

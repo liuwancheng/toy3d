@@ -6,7 +6,7 @@
 
 namespace toy3d
 {
-    constexpr std::uint32_t thumbnail_generator_version = 3;
+    constexpr std::uint32_t thumbnail_generator_version = 4;
     constexpr std::uint32_t thumbnail_default_size = 128;
     constexpr std::uint32_t thumbnail_max_dimension = 512;
     constexpr std::size_t thumbnail_max_bytes = 4u * 1024u * 1024u;
@@ -31,6 +31,9 @@ namespace toy3d
     AssetResult<AssetThumbnailSource> calculate_static_mesh_thumbnail_source(const AssetPair& pair);
     AssetResult<AssetThumbnailSource> calculate_skeletal_mesh_thumbnail_source(const AssetPair& mesh,
                                                                                const AssetPair& skeleton);
+    AssetResult<AssetThumbnailSource> calculate_animation_thumbnail_source(const AssetPair& animation,
+                                                                           const AssetPair& mesh,
+                                                                           const AssetPair& skeleton);
     AssetResult<AssetSegmentData> encode_thumbnail_source(const AssetThumbnailSource& source);
     AssetResult<AssetThumbnailSource> decode_thumbnail_source(const std::vector<std::uint8_t>& bytes);
     AssetResult<AssetSegmentData> encode_asset_thumbnail(const AssetThumbnailData& thumbnail);

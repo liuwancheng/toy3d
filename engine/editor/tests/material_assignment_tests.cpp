@@ -1,6 +1,9 @@
 #include <cstdlib>
 
 #include "scene/material_assignments.h"
+#include "assets/asset_resource_picker.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
+#include "../../runtime/tests/skeletal_mesh_test_utils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -632,11 +635,13 @@ int main(int argc, char** argv)
     EditorSelection selection;
     selection.select_actor(world, id);
     SceneViewport viewport;
+    AssetThumbnailPool thumbnail_pool(workspace);
+    AssetResourcePicker picker(thumbnail_pool);
     auto details = [&]()
     {
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImVec2(600, 650));
-        draw_details(world, selection, history, workspace, viewport, materials, error);
+        draw_details(world, selection, history, workspace, viewport, materials, error, &picker);
     };
     ImGui::NewFrame();
     details();
@@ -647,9 +652,9 @@ int main(int argc, char** argv)
     const ImGuiID component_scope =
         ImHashData(&component_index, sizeof(component_index), ImGui::FindWindowByName("Details")->ID);
     const ImGuiID slot_id = ImHashStr("Body", 0, component_scope);
-    const ImGuiID combo_id = ImHashStr("##Material", 0, slot_id);
+    const ImGuiID combo_id = ImHashStr("###Resource", 0, ImHashStr("Body", 0, slot_id));
     float target_y = 0;
-    for (float y = 80; y < 350 && target_y == 0; y += 8)
+    for (float y = 80; y < 600 && target_y == 0; y += 8)
     {
         io.AddMousePosEvent(120, y);
         io.AddMouseButtonEvent(0, true);
@@ -744,6 +749,59 @@ int main(int argc, char** argv)
     check(flush_rendering_commands().succeeded() && scene.count == 0 && scene.invalid_removes == 0,
           "FIFO removes drain before final Material release");
     check(world.unbind_scene(), "unbind scene");
+    {
+        // The same author identity and slot-name contract also applies to GPUSkin components.
+        World skeletal_world;
+        skeletal_world.initialize();
+        const auto fixture = tests::make_skeletal_fixture(4);
+        auto mesh_asset = fixture.mesh;
+        mesh_asset.data.material_slots = {"Body"};
+        mesh_asset.geometry.mesh.material_slots = {"Body"};
+        auto mesh = SkeletalMesh::create(fixture.layout, mesh_asset, {factory.default_material()});
+        check(mesh.succeeded(), "skeletal slot fixture creates immutable mesh");
+        PlacementRequest placed;
+        placed.item = PlacementItemId::SkeletalMesh;
+        placed.asset_id = mesh_id;
+        placed.skeletal_assets.mesh = mesh.value();
+        EditorCommandHistory skeletal_history(factory, materials);
+        const auto skeletal_id = skeletal_history.place_actor(skeletal_world, placed);
+        auto* skeletal_actor = dynamic_cast<SkeletalMeshActor*>(skeletal_world.find_actor_by_id(skeletal_id));
+        check(skeletal_actor != nullptr, "skeletal actor creates its own component");
+        if (skeletal_actor)
+        {
+            auto& skeletal = skeletal_actor->skeletal_mesh_component();
+            check(skeletal_history.assign_material(skeletal_world, skeletal_id, skeletal.component_id(), "Body",
+                                                   red_ref, error),
+                  "GPUSkin material assignment uses common slot interface");
+            check(skeletal.has_material_override(0), "GPUSkin material override is published");
+            auto state = factory.capture(*skeletal_actor);
+            auto replacement = mesh_asset;
+            replacement.data.material_slots = {"Trim"};
+            replacement.geometry.mesh.material_slots = {"Trim"};
+            const auto other = SkeletalMesh::create(fixture.layout, replacement, {factory.default_material()});
+            check(other.succeeded(), "replacement slot fixture creates immutable mesh");
+            state.components.front().skeletal_mesh = other.value();
+            check(skeletal_history.replace_mesh(skeletal_world, skeletal_id, state.components.front(), error) &&
+                      !skeletal.has_material_override(0) && materials.capture(skeletal_world, skeletal_id).empty(),
+                  "missing named slot drops runtime override and author identity atomically");
+            check(skeletal_history.undo(skeletal_world) && skeletal.material_slot_names()[0] == "Body" &&
+                      skeletal.has_material_override(0) &&
+                      materials.reference(skeletal_world, skeletal_id, skeletal.component_id(), "Body").asset_id ==
+                          red_id,
+                  "Undo restores geometry, override and material identity together");
+            check(skeletal_history.redo(skeletal_world) && skeletal.material_slot_names()[0] == "Trim" &&
+                      !skeletal.has_material_override(0),
+                  "Redo restores replacement slots without index guessing");
+        }
+        skeletal_history.clear();
+        for (const auto actor_id : skeletal_world.actor_ids())
+        {
+            check(skeletal_world.destroy_actor(*skeletal_world.find_actor_by_id(actor_id)),
+                  "destroy skeletal material users");
+            factory.forget(actor_id);
+            materials.forget(actor_id);
+        }
+    }
     materials.shutdown();
     library.shutdown();
     factory.release();

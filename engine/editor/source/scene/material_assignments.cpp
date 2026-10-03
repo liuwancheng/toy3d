@@ -5,6 +5,7 @@
 
 #include "gamescene/actor/actor.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
 #include "gamescene/world/world.h"
 #include "workspace/editor_workspace.h"
 #include "scene/editor_command_history.h"
@@ -46,13 +47,13 @@ namespace toy3d
         error.clear();
         Actor* actor = world.find_actor_by_id(actor_id);
         auto* component =
-            actor ? dynamic_cast<StaticMeshComponent*>(actor->find_component_by_id(assignment.component_id)) : nullptr;
-        if (!component || !component->static_mesh())
+            actor ? dynamic_cast<MeshComponent*>(actor->find_component_by_id(assignment.component_id)) : nullptr;
+        if (!component || component->material_slot_names().empty())
         {
-            error = "The target StaticMesh Component no longer exists.";
+            error = "The target Mesh Component no longer exists.";
             return false;
         }
-        const auto& names = component->static_mesh()->material_slot_names();
+        const auto& names = component->material_slot_names();
         const auto found = std::find(names.begin(), names.end(), assignment.slot_name);
         if (found == names.end())
         {
@@ -75,9 +76,9 @@ namespace toy3d
             error = "A default material assignment must have an empty reference.";
             return false;
         }
-        const auto target = material ? material : component->static_mesh()->material_slots()[slot];
+        const auto target = material ? material : component->default_material_for_slot(slot);
         if (!validate_material_mesh_pass(target->desc(), shader::ShaderPassRole::HitProxy,
-                                         shader::VertexFactoryType::Local, error))
+                                         component->vertex_factory_type(), error))
         {
             error += " Actor " + std::to_string(actor_id) + ", Slot " + assignment.slot_name;
             return false;
@@ -144,6 +145,24 @@ namespace toy3d
         }
         const auto found = assignments_.find(actor_id);
         return found == assignments_.end() ? std::vector<MaterialSlotAssignment>{} : found->second;
+    }
+
+    void MaterialAssignments::remember(World& world, std::uint32_t actor_id,
+                                       std::vector<MaterialSlotAssignment> assignments)
+    {
+        if (world_ != &world)
+        {
+            assignments_.clear();
+            world_ = &world;
+        }
+        if (assignments.empty())
+        {
+            assignments_.erase(actor_id);
+        }
+        else
+        {
+            assignments_[actor_id] = std::move(assignments);
+        }
     }
 
     void MaterialAssignments::forget(std::uint32_t actor_id)
@@ -224,12 +243,12 @@ namespace toy3d
         }
         auto* actor = world.find_actor_by_id(actor_id);
         auto* mesh =
-            actor ? dynamic_cast<StaticMeshComponent*>(actor->find_component_by_id(assignment.component_id)) : nullptr;
-        if (!mesh || !mesh->static_mesh())
+            actor ? dynamic_cast<MeshComponent*>(actor->find_component_by_id(assignment.component_id)) : nullptr;
+        if (!mesh || mesh->material_slot_names().empty())
         {
             return false;
         }
-        const auto& names = mesh->static_mesh()->material_slot_names();
+        const auto& names = mesh->material_slot_names();
         const auto slot = std::find(names.begin(), names.end(), assignment.slot_name);
         if (slot == names.end())
         {
@@ -240,7 +259,14 @@ namespace toy3d
         pending.generation = world.scene_generation();
         pending.actor_id = actor_id;
         pending.assignment = assignment;
-        pending.mesh = mesh->static_mesh();
+        if (const auto* static_mesh = dynamic_cast<const StaticMeshComponent*>(mesh))
+        {
+            pending.mesh = static_mesh->static_mesh();
+        }
+        else if (const auto* skeletal_mesh = dynamic_cast<const SkeletalMeshComponent*>(mesh))
+        {
+            pending.mesh = skeletal_mesh->skeletal_mesh();
+        }
         pending.previous = mesh->material_for_slot(static_cast<std::uint32_t>(slot - names.begin()));
         pending.shader = shader->name;
         for (const auto& layer : hierarchy.value().layers)
@@ -291,14 +317,22 @@ namespace toy3d
             return;
         }
         auto* actor = world.find_actor_by_id(pending.actor_id);
-        auto* mesh =
-            actor ? dynamic_cast<StaticMeshComponent*>(actor->find_component_by_id(pending.assignment.component_id))
-                  : nullptr;
+        auto* mesh = actor ? dynamic_cast<MeshComponent*>(actor->find_component_by_id(pending.assignment.component_id))
+                           : nullptr;
+        std::shared_ptr<const void> geometry;
+        if (const auto* target = dynamic_cast<const StaticMeshComponent*>(mesh))
+        {
+            geometry = target->static_mesh();
+        }
+        else if (const auto* target = dynamic_cast<const SkeletalMeshComponent*>(mesh))
+        {
+            geometry = target->skeletal_mesh();
+        }
         bool valid = pending.world == &world && pending.generation == world.scene_generation() && mesh &&
-                     mesh->static_mesh() == pending.mesh;
+                     geometry == pending.mesh;
         if (valid)
         {
-            const auto& names = pending.mesh->material_slot_names();
+            const auto& names = mesh->material_slot_names();
             const auto slot = std::find(names.begin(), names.end(), pending.assignment.slot_name);
             valid = slot != names.end() &&
                     mesh->material_for_slot(static_cast<std::uint32_t>(slot - names.begin())) == pending.previous;

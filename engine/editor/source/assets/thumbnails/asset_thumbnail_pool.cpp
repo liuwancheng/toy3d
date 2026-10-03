@@ -192,6 +192,7 @@ namespace toy3d
         if (!initialized_ ||
             (asset.file.root_type != "toy3d.StaticMeshAssetData" &&
              asset.file.root_type != "toy3d.SkeletalMeshAssetData" &&
+             asset.file.root_type != "toy3d.AnimationSequenceAssetData" &&
              asset.file.root_type != "toy3d.Texture2DAssetData" && !is_material_asset_type(asset.file.root_type)))
         {
             return {};
@@ -207,10 +208,42 @@ namespace toy3d
             entry.id = asset.file.asset_id;
             entry.path = asset.path.utf8();
             entry.persist = asset.file.root_type == "toy3d.StaticMeshAssetData" ||
-                            asset.file.root_type == "toy3d.SkeletalMeshAssetData";
+                            asset.file.root_type == "toy3d.SkeletalMeshAssetData" ||
+                            asset.file.root_type == "toy3d.AnimationSequenceAssetData";
             it = entries_.emplace(entry.id, std::move(entry)).first;
         }
         Entry& entry = it->second;
+        entry.last_visible_frame = frame_;
+        return {entry.texture, entry.stage != Stage::Ready && entry.stage != Stage::Failed, entry.error};
+    }
+
+    AssetThumbnailView AssetThumbnailPool::request_builtin_mesh(const std::string& kind, StaticMeshRef geometry)
+    {
+        if (!initialized_ || !geometry || (kind != "Cube" && kind != "Plane"))
+        {
+            return {};
+        }
+        AssetId id;
+        const auto key = sha256_to_hex(
+            sha256("Toy3d builtin thumbnail " + kind + " v" + std::to_string(thumbnail_generator_version)));
+        if (!AssetId::parse(key.substr(0, 32), id))
+        {
+            return {};
+        }
+        auto found = entries_.find(id);
+        if (found == entries_.end())
+        {
+            if (!make_room())
+            {
+                return {{}, true, {}};
+            }
+            Entry entry;
+            entry.id = id;
+            entry.path = kind;
+            entry.builtin_geometry = std::move(geometry);
+            found = entries_.emplace(id, std::move(entry)).first;
+        }
+        auto& entry = found->second;
         entry.last_visible_frame = frame_;
         return {entry.texture, entry.stage != Stage::Ready && entry.stage != Stage::Failed, entry.error};
     }
@@ -281,7 +314,8 @@ namespace toy3d
     {
         const auto* asset = find_asset(workspace_, id);
         if (!asset || (asset->file.root_type != "toy3d.StaticMeshAssetData" &&
-                       asset->file.root_type != "toy3d.SkeletalMeshAssetData"))
+                       asset->file.root_type != "toy3d.SkeletalMeshAssetData" &&
+                       asset->file.root_type != "toy3d.AnimationSequenceAssetData"))
         {
             return;
         }
@@ -311,10 +345,15 @@ namespace toy3d
         for (auto& pair : entries_)
         {
             Entry& entry = pair.second;
+            const auto* asset = find_asset(workspace_, entry.id);
+            // Only mesh/animation captures have source snapshots for the disk cache.
+            // Rescanning must not enable persistence on live material or texture previews.
+            entry.persist = asset && (asset->file.root_type == "toy3d.StaticMeshAssetData" ||
+                                      asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
+                                      asset->file.root_type == "toy3d.AnimationSequenceAssetData");
             if (entry.id == active_id_)
             {
                 entry.rerun = true;
-                entry.persist = true;
                 continue;
             }
             if (entry.texture.valid())
@@ -323,7 +362,6 @@ namespace toy3d
             }
             entry.texture = {};
             entry.stage = Stage::Queued;
-            entry.persist = true;
             entry.error.clear();
         }
     }
@@ -331,12 +369,15 @@ namespace toy3d
     void AssetThumbnailPool::start_load(Entry& entry)
     {
         const auto* asset = find_asset(workspace_, entry.id);
-        if (!asset)
+        if (!asset && !entry.builtin_geometry)
         {
             fail(entry, "Asset was removed from the catalog.");
             return;
         }
-        entry.path = asset->path.utf8();
+        if (asset)
+        {
+            entry.path = asset->path.utf8();
+        }
         if (next_request_ == std::numeric_limits<std::uint64_t>::max() || next_texture_ >= (1ull << 40))
         {
             fail(entry, "Thumbnail identifier space exhausted.");
@@ -346,6 +387,21 @@ namespace toy3d
         entry.candidate_texture = ImGuiTextureId(next_texture_++);
         entry.stage = Stage::Loading;
         active_id_ = entry.id;
+        if (entry.builtin_geometry)
+        {
+            entry.persist = false;
+            if (!preview_.configure_thumbnail() || !preview_.prepare(entry.builtin_geometry))
+            {
+                fail(entry, "Could not prepare the built-in thumbnail mesh.");
+                return;
+            }
+            entry.stage = Stage::AwaitGpu;
+            pending_work_.preview = {entry.request_id,
+                                     entry.candidate_texture,
+                                     {thumbnail_default_size, thumbnail_default_size},
+                                     {preview_.view()}};
+            return;
+        }
         if (is_material_asset_type(asset->file.root_type))
         {
             AssetRef reference;
@@ -381,13 +437,15 @@ namespace toy3d
         const AssetId id = entry.id;
         const bool force = entry.force;
         const bool is_texture = asset->file.root_type == "toy3d.Texture2DAssetData";
-        const bool is_skeletal = asset->file.root_type == "toy3d.SkeletalMeshAssetData";
+        const bool is_animation = asset->file.root_type == "toy3d.AnimationSequenceAssetData";
+        const bool is_skeletal = asset->file.root_type == "toy3d.SkeletalMeshAssetData" || is_animation;
         const auto catalog = is_skeletal ? workspace_.catalog() : AssetCatalog();
         FileSystem* files = &workspace_.files();
         AssetPairStore* pairs = &workspace_.asset_pairs();
         cpu_task_ = dispatch_graph_task(
             *tasks_, "Load asset thumbnail",
-            [result, files, pairs, path, id, force, is_texture, is_skeletal, catalog](NamedThread, const GraphEventRef&)
+            [result, files, pairs, path, id, force, is_texture, is_skeletal, is_animation,
+             catalog](NamedThread, const GraphEventRef&)
             {
                 try
                 {
@@ -419,8 +477,9 @@ namespace toy3d
                         return;
                     }
                     const auto& index = pair.value().description.index;
-                    if (!(index.asset_id == id) ||
-                        index.root_type != (is_skeletal ? "toy3d.SkeletalMeshAssetData" : "toy3d.StaticMeshAssetData"))
+                    if (!(index.asset_id == id) || index.root_type != (is_animation ? "toy3d.AnimationSequenceAssetData"
+                                                                       : is_skeletal ? "toy3d.SkeletalMeshAssetData"
+                                                                                     : "toy3d.StaticMeshAssetData"))
                     {
                         result->error = "Asset identity/type changed during thumbnail load.";
                         return;
@@ -428,14 +487,14 @@ namespace toy3d
                     AssetResult<AssetThumbnailSource> source = calculate_static_mesh_thumbnail_source(pair.value());
                     if (is_skeletal)
                     {
-                        const auto loaded = load_animation_preview_asset(*pairs, catalog, id);
+                        auto loaded = load_animation_preview_asset(*pairs, catalog, id, false, {}, {}, {}, files);
                         if (!loaded.succeeded())
                         {
                             result->error = loaded.status().message;
                             return;
                         }
-                        result->skeletal = std::make_shared<const AnimationPreviewAsset>(loaded.value());
-                        for (const auto& input : loaded.value().sources)
+                        result->skeletal = std::make_shared<const AnimationPreviewAsset>(std::move(loaded).value());
+                        for (const auto& input : (*result->skeletal).sources)
                         {
                             if (input.id == id && input.description != pair.value().description_bytes)
                             {
@@ -443,23 +502,44 @@ namespace toy3d
                                 return;
                             }
                         }
-                        const auto* skeleton_location = catalog.index.find(loaded.value().layout->skeleton_id());
+                        const auto* skeleton_location = catalog.index.find((*result->skeletal).layout->skeleton_id());
                         const auto skeleton_pair = pairs->read(skeleton_location->path);
                         if (!skeleton_pair.succeeded())
                         {
                             result->error = skeleton_pair.status().message;
                             return;
                         }
-                        for (const auto& input : loaded.value().sources)
+                        for (const auto& input : (*result->skeletal).sources)
                         {
-                            if (input.id == loaded.value().layout->skeleton_id() &&
+                            if (input.id == (*result->skeletal).layout->skeleton_id() &&
                                 input.description != skeleton_pair.value().description_bytes)
                             {
                                 result->error = "Skeletal thumbnail Skeleton changed between reads.";
                                 return;
                             }
                         }
-                        source = calculate_skeletal_mesh_thumbnail_source(pair.value(), skeleton_pair.value());
+                        if (!result->skeletal->mesh)
+                        {
+                            result->error = "Animation thumbnail requires a compatible preview mesh. Select one in the "
+                                            "Animation editor.";
+                            return;
+                        }
+                        if (is_animation)
+                        {
+                            const auto* mesh_location = catalog.index.find(result->skeletal->mesh_id);
+                            const auto mesh_pair = pairs->read(mesh_location->path);
+                            if (!mesh_pair.succeeded())
+                            {
+                                result->error = mesh_pair.status().message;
+                                return;
+                            }
+                            source = calculate_animation_thumbnail_source(pair.value(), mesh_pair.value(),
+                                                                          skeleton_pair.value());
+                        }
+                        else
+                        {
+                            source = calculate_skeletal_mesh_thumbnail_source(pair.value(), skeleton_pair.value());
+                        }
                     }
                     if (!source.succeeded())
                     {
@@ -588,8 +668,9 @@ namespace toy3d
                 {
                     fail(entry, std::move(result->error));
                 }
-                else if (result->skeletal && !animation_preview_asset_current(workspace_.asset_pairs(),
-                                                                              workspace_.catalog(), *result->skeletal))
+                else if (result->skeletal &&
+                         !animation_preview_asset_current(workspace_.asset_pairs(), workspace_.catalog(),
+                                                          *result->skeletal, &workspace_.files()))
                 {
                     fail(entry, "Skeletal thumbnail inputs changed; refresh and regenerate.");
                 }
@@ -835,6 +916,12 @@ namespace toy3d
         {
             pending_work_.retire_textures.push_back(entry.candidate_texture);
             finish(entry);
+            return;
+        }
+        if (entry.skeletal && !animation_preview_asset_current(workspace_.asset_pairs(), workspace_.catalog(),
+                                                               *entry.skeletal, &workspace_.files()))
+        {
+            fail(entry, "Thumbnail inputs changed while the GPU rendered; regenerate the image.");
             return;
         }
         if (entry.texture.valid())

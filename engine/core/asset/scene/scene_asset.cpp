@@ -23,7 +23,7 @@ namespace toy3d
         bool valid_kind(const std::string& kind)
         {
             return kind == "EmptyActor" || kind == "Cube" || kind == "Plane" || kind == "StaticMesh" ||
-                   kind == "DirectionalLight" || kind == "PointLight" || kind == "Camera";
+                   kind == "SkeletalMesh" || kind == "DirectionalLight" || kind == "PointLight" || kind == "Camera";
         }
 
         std::vector<AssetRef> dependencies(const SceneAssetData& data, const TypeRegistry* types = nullptr)
@@ -66,11 +66,12 @@ namespace toy3d
                 {
                     // C++17 get_if reads resource references only from mesh author data.
                     const auto* mesh = std::get_if<SceneMeshData>(&component.properties);
-                    if (!mesh)
+                    const auto* skeletal = std::get_if<SceneSkeletalMeshData>(&component.properties);
+                    if (!mesh && !skeletal)
                     {
                         continue;
                     }
-                    for (const auto& binding : mesh->resources)
+                    for (const auto& binding : mesh ? mesh->resources : skeletal->resources)
                     {
                         append(binding.reference);
                     }
@@ -150,7 +151,49 @@ namespace toy3d
                     return false;
                 }
             }
-            return !has_mesh || mesh->builtin_mesh.empty();
+            return (!has_mesh || mesh->builtin_mesh.empty()) &&
+                   (has_mesh || !mesh->builtin_mesh.empty() || mesh->resources.empty());
+        }
+        if (const auto* mesh = std::get_if<SceneSkeletalMeshData>(&component.properties))
+        {
+            if (component.type != "toy3d.SkeletalMeshComponent" || !std::isfinite(mesh->playback.rate) ||
+                mesh->playback.rate < 0.0)
+            {
+                return false;
+            }
+            std::set<std::string> roles;
+            bool has_mesh = false;
+            for (const auto& binding : mesh->resources)
+            {
+                const auto& ref = binding.reference;
+                if (!roles.insert(binding.role).second || !ref.asset_id.valid() || ref.subresource_id.valid() ||
+                    ref.strength != AssetRefStrength::Strong)
+                {
+                    return false;
+                }
+                if (binding.role == "mesh")
+                {
+                    has_mesh = true;
+                    if (ref.expected_type != "toy3d.SkeletalMeshAssetData")
+                    {
+                        return false;
+                    }
+                }
+                else if (binding.role == "animation")
+                {
+                    if (ref.expected_type != "toy3d.AnimationSequenceAssetData")
+                    {
+                        return false;
+                    }
+                }
+                else if (binding.role.compare(0, 9, "material:") != 0 || binding.role.size() <= 9 ||
+                         (ref.expected_type != "toy3d.MaterialAssetData" &&
+                          ref.expected_type != "toy3d.MaterialInstanceAssetData"))
+                {
+                    return false;
+                }
+            }
+            return has_mesh || mesh->resources.empty();
         }
         if (const auto* light = std::get_if<SceneDirectionalLightData>(&component.properties))
         {
@@ -200,6 +243,7 @@ namespace toy3d
                                                                   {"Cube", "toy3d.StaticMeshActor"},
                                                                   {"Plane", "toy3d.StaticMeshActor"},
                                                                   {"StaticMesh", "toy3d.StaticMeshActor"},
+                                                                  {"SkeletalMesh", "toy3d.SkeletalMeshActor"},
                                                                   {"DirectionalLight", "toy3d.DirectionalLightActor"},
                                                                   {"PointLight", "toy3d.PointLightActor"},
                                                                   {"Camera", "toy3d.CameraActor"}};
@@ -254,18 +298,11 @@ namespace toy3d
                 has_root = has_root || component.id == actor.root_component_id;
                 parents.emplace(component.id, component.parent_component_id);
                 // C++17 get_if selects the only branch containing resource bindings.
-                if (const auto* mesh = std::get_if<SceneMeshData>(&component.properties))
+                const auto* mesh = std::get_if<SceneMeshData>(&component.properties);
+                const auto* skeletal = std::get_if<SceneSkeletalMeshData>(&component.properties);
+                if (mesh || skeletal)
                 {
-                    bool has_source = !mesh->builtin_mesh.empty();
-                    for (const auto& binding : mesh->resources)
-                    {
-                        has_source = has_source || binding.role == "mesh";
-                    }
-                    if (!has_source)
-                    {
-                        return invalid("scene mesh has no restorable geometry source");
-                    }
-                    for (const auto& binding : mesh->resources)
+                    for (const auto& binding : mesh ? mesh->resources : skeletal->resources)
                     {
                         const auto existing = reference_types.find(binding.reference.asset_id);
                         if (existing != reference_types.end() && existing->second != binding.reference.expected_type)

@@ -54,9 +54,9 @@ namespace toy3d
             ValueLimits limits;
             limits.max_bytes = typed.size() + geometry.size() + 1024u;
             ValueWriter writer(limits);
-            if (!writer.write_uint32(1u).succeeded() || !writer.write_utf8("type_data").succeeded() ||
-                !writer.write_blob(typed).succeeded() || !writer.write_utf8("render_geometry").succeeded() ||
-                !writer.write_blob(geometry).succeeded())
+            if (!writer.write_uint32(1u).succeeded() || !writer.write_uint32(thumbnail_generator_version).succeeded() ||
+                !writer.write_utf8("type_data").succeeded() || !writer.write_blob(typed).succeeded() ||
+                !writer.write_utf8("render_geometry").succeeded() || !writer.write_blob(geometry).succeeded())
             {
                 return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source encoding failed."));
             }
@@ -80,7 +80,7 @@ namespace toy3d
         ValueWriter writer(limits);
         bool geometry = false;
         bool typed = false;
-        if (!writer.write_uint32(1).succeeded())
+        if (!writer.write_uint32(1).succeeded() || !writer.write_uint32(thumbnail_generator_version).succeeded())
         {
             return AssetResult<AssetThumbnailSource>(invalid("Thumbnail source encoding failed."));
         }
@@ -157,6 +157,7 @@ namespace toy3d
                                    segment.bytes.size() + 1024;
                 ValueWriter writer(limits);
                 if (!writer.write_utf8("SkeletalMeshReferencePose").succeeded() ||
+                    !writer.write_uint32(thumbnail_generator_version).succeeded() ||
                     !writer.write_blob(pair.description.type_data).succeeded() ||
                     !writer.write_blob(skeleton_pair.description.type_data).succeeded() ||
                     !writer.write_blob(segment.bytes).succeeded())
@@ -168,6 +169,50 @@ namespace toy3d
             }
         }
         return AssetResult<AssetThumbnailSource>(invalid("Skeletal thumbnail geometry is missing."));
+    }
+
+    AssetResult<AssetThumbnailSource> calculate_animation_thumbnail_source(const AssetPair& animation,
+                                                                           const AssetPair& mesh,
+                                                                           const AssetPair& skeleton)
+    {
+        const auto sequence = decode_animation_sequence_asset_pair(animation);
+        const auto reference = decode_skeleton_asset_pair(skeleton);
+        const auto geometry = calculate_skeletal_mesh_thumbnail_source(mesh, skeleton);
+        if (!sequence.succeeded() || !reference.succeeded() || !geometry.succeeded())
+        {
+            return AssetResult<AssetThumbnailSource>(invalid("Animation thumbnail inputs are invalid."));
+        }
+        const auto compatible =
+            validate_animation_compatibility(sequence.value(), skeleton.description.index.asset_id, reference.value());
+        if (!compatible.succeeded())
+        {
+            return AssetResult<AssetThumbnailSource>(compatible);
+        }
+        for (const auto& segment : animation.meta.segments)
+        {
+            if (segment.name != sequence.value().data.tracks_segment || !segment.required)
+            {
+                continue;
+            }
+            ValueLimits limits;
+            limits.max_bytes = animation.description.type_data.size() + segment.bytes.size() + 1024;
+            ValueWriter writer(limits);
+            if (!writer.write_utf8("AnimationFirstFrame").succeeded() ||
+                !writer.write_uint32(thumbnail_generator_version).succeeded() ||
+                !writer.write_utf8(mesh.description.index.asset_id.hex()).succeeded() ||
+                !writer
+                     .write_blob(std::vector<std::uint8_t>(geometry.value().content_hash.begin(),
+                                                           geometry.value().content_hash.end()))
+                     .succeeded() ||
+                !writer.write_blob(animation.description.type_data).succeeded() ||
+                !writer.write_blob(segment.bytes).succeeded())
+            {
+                return AssetResult<AssetThumbnailSource>(
+                    invalid("Animation thumbnail source exceeds its encoding limit."));
+            }
+            return AssetResult<AssetThumbnailSource>(AssetThumbnailSource{1, sha256(writer.bytes())});
+        }
+        return AssetResult<AssetThumbnailSource>(invalid("Animation thumbnail tracks are missing."));
     }
 
     AssetResult<AssetSegmentData> encode_thumbnail_source(const AssetThumbnailSource& source)

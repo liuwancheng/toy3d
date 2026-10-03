@@ -64,7 +64,7 @@ Skeleton 是动画兼容性身份，Mesh 保留自己的 inverse bind；不能�
 
 bone index 只对当前 Skeleton 内容有效，重导入按唯一 bone name 重建显式映射，不按旧数组下标接管。重复名字、找不到祖先、环、多 root、缺失 deform bone、非法 bind 或不可表示 TRS 拒绝。Editor 骨骼选择使用 AssetId + bone name，内容变化后重新解析。
 
-复用反射注册/codegen、AssetPairStore、Catalog 依赖检查、AssetRef 和有界 little-endian 编码。禁止直接序列化原生 Matrix/Transform 内存。现有 StaticMesh 格式保持独立；加入 Scene component variant 时提升受影响的 Scene/Component schema，旧格式离线重建；当前 Scene 7、Actor 6，既有 ID/附着/材质保存边界不变。
+复用反射注册/codegen、AssetPairStore、Catalog 依赖检查、AssetRef 和有界 little-endian 编码。禁止直接序列化原生 Matrix/Transform 内存。现有 StaticMesh 格式保持独立；Scene component variant 按稳定类型名编码，本轮增加独立分支而不改变既有编码；当前 Scene 7、Actor 6、Component 1，既有 ID/附着/材质保存边界不变。
 
 多资产导入不假设已有跨资产原子事务：先完整验证所有候选，按 Skeleton → Mesh/Animation 逐个配对发布，逐项报告 commit。中途失败可能留下已提交、仍合法的资产；失败不自动删除它们。复用现有资产时检测 ID/内容冲突，不能顺带覆盖被其他 Mesh 使用的 Skeleton。
 
@@ -103,9 +103,9 @@ Tools → Import 和 Content Browser 空白处菜单提供 `Import Skeletal Mesh
 - 单位、统一缩放、30/60 Hz 及显式削减超出 8 个 influence 的选项随每次请求保存；不从旧产物反推原始导入选项。`Reimport...` 位于 Project SkeletalMesh/AnimationSequence 的资源菜单，重新选择源和选项；保持目标 AssetId 与原 Skeleton，网格重导入只替换网格，动作重导入只替换该动作，不覆盖关联 Skeleton 或其他 clip。Skeleton 没有独立覆盖入口。
 - `capture_skeletal_import` 在 GT 读取已验证的 Skeleton/目标配对与内容 baseline；`prepare_skeletal_import` 在 TaskGraph worker 使用独立只读 Source mount，解析、验证并完整编码 owned 输出，不捕获 workspace/UI。`publish_skeletal_import` 在 GT 核对工程根、源内容（含外部 buffer）、Skeleton/目标身份、路径和 baseline，预检全部输出，再按依赖顺序逐个发布。源内容复核是有界文件读取和哈希，不解析源模型。
 - 每个对话框一次只拥有一个 `SkeletalImportJob`；取消撤销该请求的发布资格，后台 CPU 工作完成后释放。取消后仍有 worker 时禁止新请求、PIE 与工程切换；退出 cancel/join，worker 不持有窗口。无并行接管时不额外建立数值 generation 系统。
-- 重导入失败保留旧配对。部分发布或发布后 catalog 刷新失败独立报告已提交项，不回滚合法资产，也不将其显示为可重复提交；成功刷新后更新资源列表、选择与缩略图缓存。SkeletalMesh 生成 reference pose 缩略图，Skeleton 与 AnimationSequence 使用类型图标。
+- 重导入失败保留旧配对。部分发布或发布后 catalog 刷新失败独立报告已提交项，不回滚合法资产，也不将其显示为可重复提交；成功刷新后更新资源列表、选择与缩略图缓存。SkeletalMesh 生成 reference pose 缩略图，AnimationSequence 拍摄兼容模型的第 0 秒，Skeleton 使用固定骨架图标。
 
-入口位于 `engine/editor/source/assets/animation/skeletal_mesh_{asset_tools,import_dialog}.*`，复用 Toy3dEditorCore/Toy3dAssetPipeline。验证入口是 `Toy3dEditor.SkeletalImport`（需开启 Assimp）；覆盖共享 Skeleton、两种导入、单资产重导入、过期内容、取消/退出、部分提交与刷新失败。交互预览见后文「Editor 资产预览」，Scene 作者闭环尚未接入。
+入口位于 `engine/editor/source/assets/animation/skeletal_mesh_{asset_tools,import_dialog}.*`，复用 Toy3dEditorCore/Toy3dAssetPipeline。验证入口是 `Toy3dEditor.SkeletalImport`（需开启 Assimp）；覆盖共享 Skeleton、两种导入、单资产重导入、过期内容、取消/退出、部分提交与刷新失败。交互预览见后文「Editor 资产预览」，Scene 作者资源绑定见「Scene 组件资源绑定」。
 
 - 源单位和轴只在导入边界统一到厘米、LH、公共 CCW。网格坐标、骨骼 local TRS、inverse bind、root 动画必须使用同一转换，不只转换顶点或平移。
 - 将 mesh node 的 bind 变换一致地归一到资产 mesh space；保留骨架层级，不使用静态 mesh 的递归 bake 后丢掉骨骼。
@@ -254,17 +254,29 @@ Animation Editor 仅保留最近一次成功的 CPU 资产及 Mesh，关闭窗�
 
 左键拖动 orbit，中键 pan，滚轮 zoom，`F`/Frame All 按当前骨骼点与动态 mesh bounds 重新取景；不缩放/重写顶点、reference pose 或 inverse bind。大窗口按画布比例采样受公共 RHI 512 像素读回上限约束的预览图像。隐藏窗口暂停时钟，不推进主 World、Scene dirty 或 Undo。
 
-SkeletalMesh 缩略图使用 reference pose；Skeleton/AnimationSequence 首版使用类型图标，避免截图依赖可变 preview mesh 或播放时钟。缩略图缓存复用 AssetId/content/generator version 与真实 GPU completion 读回。
+StaticMesh/SkeletalMesh 缩略图拍摄真实几何，骨骼网格使用 reference pose。AnimationSequence 使用兼容网格在时间 0 采样并完成 GPUSkin 后拍摄；不播放、不取中点，不受资产编辑器当前时间影响。Skeleton 使用固定的青色骨架图标，Mesh/Animation 加载或失败时使用中性占位及诊断。
 
-类型图标使用原创的 UE 风格矢量轮廓：Skeleton 青色关节/骨架，SkeletalMesh 紫色人物，AnimationSequence 绿色动作人物和播放标记。网格缩略图生成后替换人物占位图，hash 包含网格数据和 Skeleton reference 数据；仍写入 Saved 缓存，不修改源码资产。
+动画编辑器中明确选择的预览网格，验证及 GPU 成功后写入工程 `/Saved/Editor/AnimationPreviewMeshes`，不修改动画轨道或 Runtime 依赖；选择 None 清除该设置。未指定时按 AssetId 稳定顺序选择同 Skeleton 身份且 reference hash 相同的网格。显式选择缺失或不兼容时失败，不静默改用另一个模型；没有默认网格时仍允许交互骨架预览，缩略图明确报缺少兼容模型。
 
-## Scene 作者闭环（尚未接入）
+缩略图内容身份覆盖网格/骨架/动画数据、实际预览网格 AssetId，以及时间 0、取景和光照规则的 generator version。CPU worker 与 GT 接管、GPU 完成后的发布都检查依赖来源，复用 AssetThumbnailPool 和 renderer-owned preview Scene，缓存写 Saved。生成图片不会修改源码资产或作者 Scene dirty。
 
-runtime 组件 settings 保存 Mesh/Sequence AssetRef、loop/rate/autoplay、primitive flags 和材质 overrides；播放时间/当前 pose/骨骼矩阵数组不保存。闭环包括组件 registry、Place Actor、scene capture/apply/assembly services、DTO/schema/codegen、Undo/Redo、Save/Open，以及独立 PIE render data。引擎资产只读、Editor 写 project/asset、Saved 只放缓存/窗口偏好，所有引用由 Catalog 验证。
+## Scene 组件资源绑定
+
+Place Actors 提供空 Static Mesh 和 Skeletal Mesh Actor，各自自带对应 MeshComponent 根组件；同时支持非 root 网格组件。StaticMesh 保留 builtin Cube/Plane 和资源来源，两类组件均可为空。内容浏览器的网格和动作可拖入场景；动作使用兼容的预览网格创建 SkeletalMeshActor。
+
+组件详情中的 Static Mesh、Skeletal Mesh、Animation 和材质槽使用 `AssetResourcePicker`：缩略图与名称、搜索/类型及骨架兼容过滤、拖放、清空、Find 定位到 Content Browser；路径只显示在 tooltip。Cube/Plane 也在同一缩略图池中拍摄真实几何。资源选择由调用方校验和提交，控件不承担资产加载或 Runtime 所有权。
+
+`MeshAssetBindings` 由 Editor 持有并注入详情面板，在 worker 构造完整 CPU 候选；GT 复核 Scene generation、组件快照和来源后，以一次 history 事务提交。加载/兼容/材质失败保留原组件。换网格时保留仍存在的同名材质槽覆盖，删除消失的槽；Undo/Redo 同时恢复几何、动画、覆盖及资源身份。已有动画与新网格不兼容时拒绝替换，用户可先明确清空动画；清空网格同时清空动画和材质覆盖。关闭工程时 join worker，再随既有 World/RT 生命周期释放资源。
+
+共享 `MeshComponent` 仅统一材质槽、覆盖和 vertex factory 语义，StaticMeshComponent 继续持有静态几何，SkeletalMeshComponent 持有不可变骨骼网格、独立动画实例及变形数据。Scene 通过注入的 `SceneAssemblyServices` 加载资源，不依赖 Editor 预览面板。
+
+`SceneSkeletalMeshData` 是独立组件分支：primitive settings、mesh/animation AssetRef、loop/autoplay/rate/root lock，以及按名称保存的材质覆盖；不保存当前时间、pose 或 GPU 状态。空网格不得带动画/材质引用，空动画使用参考姿态。Scene variant 按稳定类型名编码，新增分支不改变既有编码，保持 Scene 7 / Actor 6 / Component 1；未知分支及旧根版本仍拒绝。Save/Open、装配、历史恢复与 PIE 走同一组件 schema；PIE 重建播放实例和 render data，从时间 0 开始。
+
+本轮不加入 AnimBlueprint、状态机、布料、骨骼资产编辑或 3D bone picking。
 
 ## 验证入口
 
-`Toy3dEditorAnimationPreviewTests` 对应 `Toy3dEditor.AnimationPreview` / `Toy3dEditor.AnimationPreviewMultiThread`，使用隔离 Manny 资产与真实 Vulkan/ImGui 窗口，检查三类打开、Skeleton-only、参考姿态、seek 后 GPUSkin 画面变化、深度线、缩略图并存、候选失败保留、关闭/重开和 resize。截图保存在 build 的测试输出目录。手机、3D bone picking 与 SkeletalMesh Scene/PIE 作者闭环另行验收。
+`Toy3dEditorAnimationPreviewTests` 对应 `Toy3dEditor.AnimationPreview` / `Toy3dEditor.AnimationPreviewMultiThread`，使用隔离 Manny 资产与真实 Vulkan/ImGui 窗口，检查三类打开、Skeleton-only、参考姿态、seek 后 GPUSkin 画面变化、深度线、缩略图并存、候选失败保留、关闭/重开和 resize。同时覆盖空/非 root 组件、后台绑定、兼容失败保旧、Save/Open、Undo/Redo、首帧拍摄及独立 SkeletalMesh PIE。截图保存在 build 的测试输出目录。手机与 3D bone picking 另行验收。
 
 `Toy3dMannyAnimationTests` 在存在 project Manny 资产时登记为 `Toy3dRuntime.MannyAnimation`，读取正式 `.asset`/`.meta`，核对完整 161 骨骼层级/reference、8 个动作的 24 个 UE source pose、共用 Skeleton 身份、bind identity 与量化权重下的动态 bounds；89 骨骼 Simple 布局必须独立。UE JSON 时长为 float，FBX tick 时长是帧间隔，末帧核对使用已校验时长误差后的 clip end；姿态比较分开限制厘米位移与无量纲矩阵误差。此 CPU oracle 不替代最终 GPU/Editor 验收。
 

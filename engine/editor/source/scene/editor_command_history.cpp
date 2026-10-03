@@ -3,11 +3,153 @@
 #include <algorithm>
 #include "gamescene/actor/actor.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 
 namespace toy3d
 {
+    EditorActorState EditorCommandHistory::capture(World& world, const Actor& actor) const
+    {
+        auto state = factory_.capture(actor);
+        if (materials_)
+        {
+            for (const auto& assignment : materials_->capture(world, actor.actor_id()))
+            {
+                for (auto& snapshot : state.components)
+                {
+                    if (snapshot.component_id != assignment.component_id)
+                    {
+                        continue;
+                    }
+                    if (auto* mesh = std::get_if<SceneMeshData>(&snapshot.data.properties))
+                    {
+                        mesh->resources.push_back({"material:" + assignment.slot_name, assignment.material});
+                    }
+                    else if (auto* mesh = std::get_if<SceneSkeletalMeshData>(&snapshot.data.properties))
+                    {
+                        mesh->resources.push_back({"material:" + assignment.slot_name, assignment.material});
+                    }
+                }
+            }
+        }
+        return state;
+    }
+    void EditorCommandHistory::remember_bindings(World& world, const Actor& actor, const EditorActorState& state)
+    {
+        factory_.remember_sources(actor, state);
+        if (!materials_)
+        {
+            return;
+        }
+        std::vector<MaterialSlotAssignment> assignments;
+        for (const auto& snapshot : state.components)
+        {
+            const auto* mesh = std::get_if<SceneMeshData>(&snapshot.data.properties);
+            const auto* skeletal = std::get_if<SceneSkeletalMeshData>(&snapshot.data.properties);
+            if (!mesh && !skeletal)
+            {
+                continue;
+            }
+            for (const auto& binding : mesh ? mesh->resources : skeletal->resources)
+            {
+                if (binding.role.compare(0, 9, "material:") == 0)
+                {
+                    assignments.push_back({snapshot.component_id, binding.role.substr(9), binding.reference});
+                }
+            }
+        }
+        materials_->remember(world, actor.actor_id(), std::move(assignments));
+    }
+    bool EditorCommandHistory::replace_mesh(World& world, std::uint32_t actor_id, EditorComponentSnapshot candidate,
+                                            std::string& error)
+    {
+        if (active_)
+        {
+            error = "Finish the active edit before replacing mesh assets.";
+            return false;
+        }
+        synchronize(world);
+        auto* actor = world.find_actor_by_id(actor_id);
+        auto* component =
+            actor ? dynamic_cast<MeshComponent*>(actor->find_component_by_id(candidate.component_id)) : nullptr;
+        if (!component)
+        {
+            error = "Mesh component no longer exists.";
+            return false;
+        }
+        Record record;
+        record.actor_id = actor_id;
+        record.before = capture(world, *actor);
+        record.after = record.before;
+        auto found = std::find_if(record.after.components.begin(), record.after.components.end(),
+                                  [&](const EditorComponentSnapshot& snapshot)
+                                  {
+                                      return snapshot.component_id == candidate.component_id;
+                                  });
+        if (!record.before.valid || found == record.after.components.end() || found->data.type != candidate.data.type)
+        {
+            error = "Mesh binding candidate has an invalid component type.";
+            return false;
+        }
+        candidate.parent_actor_id = found->parent_actor_id;
+        candidate.parent_component_id = found->parent_component_id;
+        candidate.data.transform = found->data.transform;
+        const auto& old_names = component->material_slot_names();
+        static const std::vector<std::string> empty;
+        const auto& new_names = candidate.mesh            ? candidate.mesh->material_slot_names()
+                                : candidate.skeletal_mesh ? candidate.skeletal_mesh->asset().data.material_slots
+                                                          : empty;
+        candidate.material_overrides.assign(new_names.size(), nullptr);
+        auto* mesh = std::get_if<SceneMeshData>(&candidate.data.properties);
+        auto* skeletal = std::get_if<SceneSkeletalMeshData>(&candidate.data.properties);
+        if (!mesh && !skeletal)
+        {
+            error = "Mesh binding requires mesh author data.";
+            return false;
+        }
+        auto& resources = mesh ? mesh->resources : skeletal->resources;
+        resources.erase(std::remove_if(resources.begin(), resources.end(),
+                                       [](const SceneResourceBinding& binding)
+                                       {
+                                           return binding.role.compare(0, 9, "material:") == 0;
+                                       }),
+                        resources.end());
+        for (std::size_t slot = 0; slot < new_names.size(); ++slot)
+        {
+            const auto old = std::find(old_names.begin(), old_names.end(), new_names[slot]);
+            if (old != old_names.end())
+            {
+                candidate.material_overrides[slot] =
+                    found->material_overrides[static_cast<std::size_t>(old - old_names.begin())];
+                if (materials_)
+                {
+                    auto ref = materials_->reference(world, actor_id, candidate.component_id, new_names[slot]);
+                    if (ref.asset_id.valid())
+                    {
+                        resources.push_back({"material:" + new_names[slot], ref});
+                    }
+                }
+            }
+        }
+        *found = std::move(candidate);
+        if (same_actor_state(record.before, record.after))
+        {
+            error.clear();
+            return true;
+        }
+        if (!apply_actor_state(*actor, record.after, factory_.component_editors(), &factory_.actor_types()))
+        {
+            error = "Mesh or animation candidate rejected; check Skeleton compatibility and material passes.";
+            acknowledge_rollback(world);
+            return false;
+        }
+        remember_bindings(world, *actor, record.after);
+        commit(world, std::move(record));
+        error.clear();
+        return true;
+    }
+
     void EditorCommandHistory::clear()
     {
         cancel();
@@ -96,7 +238,7 @@ namespace toy3d
         }
         pending_ = {};
         pending_.actor_id = actor_id;
-        pending_.before = factory_.capture(*actor);
+        pending_.before = capture(world, *actor);
         if (!pending_.before.valid)
         {
             return;
@@ -162,7 +304,7 @@ namespace toy3d
         {
             return;
         }
-        pending_.after = factory_.capture(*actor);
+        pending_.after = capture(world, *actor);
         if (pending_.after.valid && !same_actor_state(pending_.before, pending_.after))
         {
             commit(world, std::move(pending_));
@@ -276,7 +418,7 @@ namespace toy3d
         record.actor_id = actor->actor_id();
         record.component_id = actor->root_component()->component_id();
         record.placement = request;
-        record.after = factory_.capture(*actor);
+        record.after = capture(world, *actor);
         if (!record.after.valid)
         {
             const auto id = actor->actor_id();
@@ -308,7 +450,7 @@ namespace toy3d
         record.kind = Kind::Delete;
         record.actor_id = actor_id;
         record.component_id = actor->root_component()->component_id();
-        record.before = factory_.capture(*actor);
+        record.before = capture(world, *actor);
         if (!record.before.valid)
         {
             return false;
@@ -323,7 +465,7 @@ namespace toy3d
             {
                 continue;
             }
-            auto state = factory_.capture(*world.find_actor_by_id(id));
+            auto state = capture(world, *world.find_actor_by_id(id));
             const bool attached = std::any_of(state.components.begin(), state.components.end(),
                                               [actor_id](const EditorComponentSnapshot& value)
                                               {
@@ -362,14 +504,13 @@ namespace toy3d
         }
         synchronize(world);
         Actor* actor = world.find_actor_by_id(actor_id);
-        auto* component =
-            actor ? dynamic_cast<StaticMeshComponent*>(actor->find_component_by_id(component_id)) : nullptr;
-        if (!component || !component->static_mesh())
+        auto* component = actor ? dynamic_cast<MeshComponent*>(actor->find_component_by_id(component_id)) : nullptr;
+        if (!component || component->material_slot_names().empty())
         {
             error = "Material target no longer exists.";
             return false;
         }
-        const auto& names = component->static_mesh()->material_slot_names();
+        const auto& names = component->material_slot_names();
         const auto slot = std::find(names.begin(), names.end(), slot_name);
         if (slot == names.end())
         {
@@ -506,8 +647,14 @@ namespace toy3d
         if (record.kind == Kind::Modify)
         {
             Actor* actor = world.find_actor_by_id(record.actor_id);
-            return actor && apply_actor_state(*actor, forward ? record.after : record.before,
-                                              factory_.component_editors(), &factory_.actor_types());
+            const auto& state = forward ? record.after : record.before;
+            if (!actor ||
+                !apply_actor_state(*actor, state, factory_.component_editors(), &factory_.actor_types(), true))
+            {
+                return false;
+            }
+            remember_bindings(world, *actor, state);
+            return true;
         }
         const bool create = (record.kind == Kind::Create) == forward;
         if (create)
@@ -583,7 +730,7 @@ namespace toy3d
                     rollback();
                     return false;
                 }
-                auto previous = factory_.capture(*child);
+                auto previous = capture(world, *child);
                 if (!previous.valid)
                 {
                     rollback();

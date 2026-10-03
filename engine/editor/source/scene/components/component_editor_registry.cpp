@@ -6,6 +6,7 @@
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
 #include "logging/logger.h"
 
 namespace toy3d
@@ -36,6 +37,10 @@ namespace toy3d
         {
             return actor.create_component<DirectionalLightComponent>();
         }
+        SceneComponent& create_skeletal_mesh(Actor& actor)
+        {
+            return actor.create_component<SkeletalMeshComponent>();
+        }
         SceneComponent& create_point(Actor& actor)
         {
             return actor.create_component<PointLightComponent>();
@@ -53,6 +58,8 @@ namespace toy3d
                  draw_node_details}) &&
             add({typeid(StaticMeshComponent), "toy3d.StaticMeshComponent", "Static Mesh", capture_builtin,
                  apply_builtin, create_mesh, draw_mesh_details}) &&
+            add({typeid(SkeletalMeshComponent), "toy3d.SkeletalMeshComponent", "Skeletal Mesh", capture_builtin,
+                 apply_builtin, create_skeletal_mesh, draw_mesh_details}) &&
             add({typeid(DirectionalLightComponent), "toy3d.DirectionalLightComponent", "Directional Light",
                  capture_builtin, apply_builtin, create_directional, draw_directional_light_details}) &&
             add({typeid(PointLightComponent), "toy3d.PointLightComponent", "Point Light", capture_builtin,

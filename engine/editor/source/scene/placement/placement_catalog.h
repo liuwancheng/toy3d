@@ -3,6 +3,7 @@
 #include "math/transform.h"
 #include "asset/asset_identity.h"
 #include "rendercore/geometry/static_mesh.h"
+#include "rendercore/geometry/skeletal_mesh_asset_loader.h"
 #include <cstdint>
 #include <vector>
 
@@ -16,7 +17,8 @@ namespace toy3d
         DirectionalLight,
         PointLight,
         Camera,
-        StaticMesh
+        StaticMesh,
+        SkeletalMesh
     };
 
     struct PlacementItem
@@ -34,7 +36,9 @@ namespace toy3d
         std::string actor_type;
         // A CPU prototype survives history; each spawn gets fresh render resources.
         StaticMeshRef static_mesh;
+        SkeletalMeshAssets skeletal_assets;
         AssetId asset_id;
+        AssetId animation_id;
     };
 
     const std::vector<PlacementItem>& placement_catalog();

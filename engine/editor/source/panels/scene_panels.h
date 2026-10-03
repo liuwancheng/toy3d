@@ -11,6 +11,8 @@ namespace toy3d
     class ActorFactory;
     class SceneViewport;
     class MaterialAssignments;
+    class AssetResourcePicker;
+    class MeshAssetBindings;
 
     void draw_world_settings(World& world, const EditorWorkspace& workspace, EditorCommandHistory& history,
                              std::string& error);
@@ -18,5 +20,6 @@ namespace toy3d
                        const ActorFactory& factory, SceneViewport& viewport);
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,
                       const EditorWorkspace& workspace, SceneViewport& viewport, MaterialAssignments& materials,
-                      std::string& material_error);
+                      std::string& material_error, AssetResourcePicker* picker = nullptr,
+                      MeshAssetBindings* bindings = nullptr);
 } // namespace toy3d

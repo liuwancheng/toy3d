@@ -33,6 +33,7 @@ namespace toy3d
         ~AssetThumbnailPool();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
         AssetThumbnailView request(const AssetCatalogEntry& asset);
+        AssetThumbnailView request_builtin_mesh(const std::string& kind, StaticMeshRef geometry);
         AssetThumbnailView request_material_preview(const MaterialInstanceRef& material, std::uint64_t revision,
                                                     const MaterialPreviewSettings& settings = {});
         void clear_material_preview();
@@ -76,6 +77,7 @@ namespace toy3d
             std::vector<std::uint8_t> original;
             std::vector<std::uint8_t> pixels;
             std::shared_ptr<const AnimationPreviewAsset> skeletal;
+            StaticMeshRef builtin_geometry;
         };
         struct CpuResult;
         void start_load(Entry& entry);

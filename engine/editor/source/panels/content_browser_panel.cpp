@@ -42,50 +42,27 @@ namespace toy3d
                     draw.AddText(ImVec2(position.x + size * 0.7f, position.y + size * 0.7f), IM_COL32_WHITE, "MI");
                 }
             }
-            else if (type == "toy3d.SkeletonAssetData" || type == "toy3d.SkeletalMeshAssetData" ||
-                     type == "toy3d.AnimationSequenceAssetData")
+            else if (type == "toy3d.SkeletonAssetData")
             {
-                // Original vector silhouettes use UE-style type colors and remain crisp at any DPI.
-                const bool animation = type == "toy3d.AnimationSequenceAssetData";
-                const bool skeleton = type == "toy3d.SkeletonAssetData";
-                const ImU32 tint = animation  ? IM_COL32(119, 213, 117, 255)
-                                   : skeleton ? IM_COL32(101, 203, 224, 255)
-                                              : IM_COL32(204, 148, 233, 255);
+                const ImU32 tint = IM_COL32(101, 203, 224, 255);
                 const auto point = [position, size](float x, float y)
                 {
                     return ImVec2(position.x + size * x, position.y + size * y);
                 };
-                const ImVec2 head = point(animation ? 0.58f : 0.5f, 0.2f);
-                const ImVec2 neck = point(0.5f, 0.32f);
-                const ImVec2 hip = point(animation ? 0.45f : 0.5f, 0.56f);
-                const ImVec2 joints[] = {head,
-                                         neck,
-                                         hip,
-                                         point(0.27f, animation ? 0.43f : 0.35f),
-                                         point(0.73f, animation ? 0.3f : 0.35f),
-                                         point(0.23f, animation ? 0.67f : 0.48f),
-                                         point(0.77f, animation ? 0.43f : 0.48f),
-                                         point(0.32f, 0.7f),
-                                         point(0.65f, animation ? 0.62f : 0.7f),
-                                         point(animation ? 0.16f : 0.28f, 0.86f),
-                                         point(0.74f, 0.85f)};
+                const ImVec2 joints[] = {point(0.5f, 0.2f),   point(0.5f, 0.32f),  point(0.5f, 0.56f),
+                                         point(0.27f, 0.35f), point(0.73f, 0.35f), point(0.23f, 0.48f),
+                                         point(0.77f, 0.48f), point(0.32f, 0.7f),  point(0.65f, 0.7f),
+                                         point(0.28f, 0.86f), point(0.74f, 0.85f)};
                 const int segments[][2] = {{0, 1}, {1, 2}, {1, 3}, {1, 4}, {3, 5},
                                            {4, 6}, {2, 7}, {2, 8}, {7, 9}, {8, 10}};
                 for (const auto& segment : segments)
                 {
-                    draw.AddLine(joints[segment[0]], joints[segment[1]], tint, size * (skeleton ? 0.026f : 0.06f));
+                    draw.AddLine(joints[segment[0]], joints[segment[1]], tint, size * 0.026f);
                 }
-                draw.AddCircleFilled(head, size * 0.07f, tint, 16);
-                if (skeleton)
+                draw.AddCircleFilled(joints[0], size * 0.07f, tint, 16);
+                for (const auto& joint : joints)
                 {
-                    for (const auto& joint : joints)
-                    {
-                        draw.AddCircleFilled(joint, size * 0.025f, IM_COL32_WHITE, 10);
-                    }
-                }
-                if (animation)
-                {
-                    draw.AddTriangleFilled(point(0.73f, 0.61f), point(0.73f, 0.78f), point(0.9f, 0.695f), tint);
+                    draw.AddCircleFilled(joint, size * 0.025f, IM_COL32_WHITE, 10);
                 }
             }
             else if (type == "toy3d.Texture2DAssetData")
@@ -292,7 +269,9 @@ namespace toy3d
                                 actions.asset_focus = true;
                             }
                             if (item.asset &&
-                                (is_material || item.asset->file.root_type == "toy3d.StaticMeshAssetData") &&
+                                (is_material || item.asset->file.root_type == "toy3d.StaticMeshAssetData" ||
+                                 item.asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
+                                 item.asset->file.root_type == "toy3d.AnimationSequenceAssetData") &&
                                 ImGui::BeginDragDropSource())
                             {
                                 const AssetId id = item.asset->file.asset_id;
@@ -376,7 +355,8 @@ namespace toy3d
                                     actions.material_parent = item.asset->file.asset_id;
                                 }
                                 const bool is_mesh = item.asset->file.root_type == "toy3d.StaticMeshAssetData" ||
-                                                     item.asset->file.root_type == "toy3d.SkeletalMeshAssetData";
+                                                     item.asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
+                                                     item.asset->file.root_type == "toy3d.AnimationSequenceAssetData";
                                 const bool writable = item.path.compare(0, 9, "/Project/") == 0;
                                 const bool skeletal = item.asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
                                                       item.asset->file.root_type == "toy3d.AnimationSequenceAssetData";

@@ -8,6 +8,7 @@
 #include "math/angle.h"
 #include <cmath>
 #include "scene/editor_command_history.h"
+#include "scene/placement/asset_placement.h"
 #include "scene/components/component_details.h"
 #include "gamescene/actor/actor.h"
 #include "gamescene/world/world.h"
@@ -177,12 +178,13 @@ namespace toy3d
 
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,
                       const EditorWorkspace& workspace, SceneViewport& viewport, MaterialAssignments& materials,
-                      std::string& error)
+                      std::string& error, AssetResourcePicker* picker, MeshAssetBindings* bindings)
     {
         if (ImGui::Begin("Details"))
         {
             const auto* payload = ImGui::GetDragDropPayload();
-            const bool material_drag = payload && payload->IsDataType(MATERIAL_ASSET_DRAG_PAYLOAD);
+            const bool material_drag = payload && (payload->IsDataType(MATERIAL_ASSET_DRAG_PAYLOAD) ||
+                                                   payload->IsDataType(ASSET_DRAG_PAYLOAD));
             // Browsing retains the last Actor so material drag delivery can expose its slots.
             if (selection.focus() == EditorSelectionFocus::Asset && !material_drag)
             {
@@ -219,8 +221,8 @@ namespace toy3d
                     }
                     else if (ImGui::CollapsingHeader(editor->display_name, ImGuiTreeNodeFlags_DefaultOpen))
                     {
-                        ComponentDetailsContext context{world,     *actor,   *component, history, workspace,
-                                                        selection, viewport, materials,  error};
+                        ComponentDetailsContext context{world,    *actor,    *component, history, workspace, selection,
+                                                        viewport, materials, error,      picker,  bindings};
                         ImGui::TextDisabled("Component: %u%s", id,
                                             component == actor->root_component() ? " (Root)" : "");
                         draw_component_transform(context);

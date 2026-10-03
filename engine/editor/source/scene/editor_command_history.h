@@ -49,6 +49,11 @@ namespace toy3d
         bool delete_actor(World& world, std::uint32_t actor_id);
         bool assign_material(World& world, std::uint32_t actor_id, std::uint32_t component_id,
                              const std::string& slot_name, const AssetRef& material, std::string& error);
+        bool replace_mesh(World& world, std::uint32_t actor_id, EditorComponentSnapshot candidate, std::string& error);
+        ActorFactory& actor_factory()
+        {
+            return factory_;
+        }
         bool undo(World& world);
         bool redo(World& world);
         // Empty history is a harmless no-op; execution failures carry a reason for the UI.
@@ -115,6 +120,8 @@ namespace toy3d
             std::uint64_t after_revision = 0;
         };
         void bind(World& world);
+        EditorActorState capture(World& world, const Actor& actor) const;
+        void remember_bindings(World& world, const Actor& actor, const EditorActorState& state);
         void commit(World& world, Record record);
         bool apply(World& world, Record& record, bool forward);
         void remap_actor(std::uint32_t old_id, std::uint32_t new_id,

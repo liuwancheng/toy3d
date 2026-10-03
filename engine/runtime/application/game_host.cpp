@@ -21,6 +21,8 @@
 #include "file_system/native_platform_file.h"
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
+#include "rendercore/geometry/skeletal_mesh_asset_loader.h"
 #include "gamescene/scene_assembly.h"
 #include "gamescene/scene_geometry.h"
 #include "gamescene/scene_view.h"
@@ -228,7 +230,12 @@ namespace toy3d
                     }
                     return create_static_mesh_from_asset(loaded.value(), geometry_.default_material());
                 };
-                services.assign_material = [this](Actor&, StaticMeshComponent& component, const std::string& slot,
+                services.load_skeletal_mesh = [this](const SceneSkeletalMeshData& mesh)
+                {
+                    return load_skeletal_mesh_assets(types_, files_, catalog_.index, mesh,
+                                                     geometry_.default_material());
+                };
+                services.assign_material = [this](Actor&, MeshComponent& component, const std::string& slot,
                                                   const AssetRef& reference, std::string& error)
                 {
                     const auto loaded = materials_->load(reference);
@@ -237,7 +244,7 @@ namespace toy3d
                         error = loaded.status().message;
                         return false;
                     }
-                    const auto& slots = component.static_mesh()->material_slot_names();
+                    const auto& slots = component.material_slot_names();
                     const auto found = std::find(slots.begin(), slots.end(), slot);
                     if (found == slots.end())
                     {

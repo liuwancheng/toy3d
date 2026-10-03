@@ -6,6 +6,8 @@
 #include "gamescene/actor/actor.h"
 #include "gamescene/world/world.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
+#include "gamescene/scene_geometry.h"
 
 namespace toy3d
 {
@@ -44,6 +46,19 @@ namespace toy3d
             {
                 snapshot.mesh = mesh->static_mesh();
             }
+            else if (const auto* mesh = dynamic_cast<const SkeletalMeshComponent*>(component))
+            {
+                snapshot.skeletal_mesh = mesh->skeletal_mesh();
+                snapshot.sequence = mesh->animation_sequence();
+            }
+            if (const auto* mesh = dynamic_cast<const MeshComponent*>(component))
+            {
+                for (std::uint32_t slot = 0; slot < mesh->material_slot_names().size(); ++slot)
+                {
+                    snapshot.material_overrides.push_back(
+                        mesh->has_material_override(slot) ? mesh->material_for_slot(slot) : nullptr);
+                }
+            }
             if (component->parent())
             {
                 snapshot.parent_actor_id = component->parent()->owner().actor_id();
@@ -56,7 +71,7 @@ namespace toy3d
     }
 
     bool apply_actor_state(Actor& actor, const EditorActorState& state, const ComponentEditorRegistry& editors,
-                           const ActorTypeRegistry* types)
+                           const ActorTypeRegistry* types, bool recreate_mesh_resources)
     {
         if (!state.valid || actor.component_count() != state.components.size() || !actor.root_component() ||
             actor.root_component()->component_id() != state.root_component_id)
@@ -82,6 +97,71 @@ namespace toy3d
             {
                 return false;
             }
+            const auto* static_data = std::get_if<SceneMeshData>(&snapshot.data.properties);
+            const auto* skeletal_data = std::get_if<SceneSkeletalMeshData>(&snapshot.data.properties);
+            if ((snapshot.skeletal_mesh && !skeletal_data) || (snapshot.mesh && !static_data) ||
+                (static_data && (snapshot.skeletal_mesh || snapshot.sequence)) ||
+                (skeletal_data && (snapshot.mesh || (!snapshot.skeletal_mesh && snapshot.sequence))))
+            {
+                return false;
+            }
+            if (static_data || skeletal_data)
+            {
+                const auto& settings = static_data ? static_data->settings : skeletal_data->settings;
+                const auto* mesh_component = dynamic_cast<const MeshComponent*>(component);
+                static const std::vector<MaterialInterfaceRef> empty_materials;
+                const auto& defaults = snapshot.mesh            ? snapshot.mesh->material_slots()
+                                       : snapshot.skeletal_mesh ? snapshot.skeletal_mesh->material_slots()
+                                                                : empty_materials;
+                if (!mesh_component || snapshot.material_overrides.size() != defaults.size())
+                {
+                    return false;
+                }
+                const auto factory =
+                    skeletal_data ? shader::VertexFactoryType::GPUSkin : shader::VertexFactoryType::Local;
+                const bool colors =
+                    snapshot.skeletal_mesh || (snapshot.mesh && !snapshot.mesh->vertex_colors().empty());
+                const bool tangent = snapshot.skeletal_mesh
+                                         ? snapshot.skeletal_mesh->asset().geometry.mesh.valid_tangent_frame
+                                         : snapshot.mesh && snapshot.mesh->has_valid_tangent_frame();
+                for (std::size_t slot = 0; slot < defaults.size(); ++slot)
+                {
+                    std::string error;
+                    const auto& effective =
+                        snapshot.material_overrides[slot] ? snapshot.material_overrides[slot] : defaults[slot];
+                    if (!defaults[slot] || !effective ||
+                        !validate_material_geometry(effective->desc(), factory, colors, tangent, error) ||
+                        !validate_material_mesh_pass(effective->desc(), shader::ShaderPassRole::HitProxy, factory,
+                                                     error) ||
+                        ((settings.cast_shadows || mesh_component->cast_shadows()) &&
+                         (!validate_material_mesh_pass(effective->desc(), shader::ShaderPassRole::ShadowDepth, factory,
+                                                       error) ||
+                          !validate_material_mesh_pass(defaults[slot]->desc(), shader::ShaderPassRole::ShadowDepth,
+                                                       factory, error))))
+                    {
+                        return false;
+                    }
+                }
+            }
+            if (snapshot.skeletal_mesh)
+            {
+                const auto* data = std::get_if<SceneSkeletalMeshData>(&snapshot.data.properties);
+                AnimationInstance candidate;
+                std::vector<AnimationSequenceInput> inputs;
+                if (snapshot.sequence)
+                {
+                    inputs.push_back({snapshot.sequence, data->playback});
+                }
+                if (!candidate.set_sources(snapshot.skeletal_mesh->bone_layout(), inputs).succeeded() ||
+                    !candidate
+                         .update({0.0, snapshot.sequence ? std::vector<double>{1.0} : std::vector<double>{},
+                                  data->lock_root})
+                         .succeeded() ||
+                    !candidate.evaluate().succeeded())
+                {
+                    return false;
+                }
+            }
         }
         if (types && !state.actor_type.empty() && !types->apply(actor, state.properties))
         {
@@ -93,6 +173,39 @@ namespace toy3d
             if (!editors.apply(*component, snapshot.data))
             {
                 return false;
+            }
+            if (auto* mesh = dynamic_cast<StaticMeshComponent*>(component))
+            {
+                if (mesh->static_mesh() != snapshot.mesh)
+                {
+                    // Removed StaticMesh render resources cannot be reinitialized. History
+                    // retains CPU geometry, and reconstruction creates a fresh resource owner.
+                    mesh->set_static_mesh(recreate_mesh_resources && snapshot.mesh ? clone_scene_geometry(snapshot.mesh)
+                                                                                   : snapshot.mesh);
+                }
+            }
+            else if (auto* mesh = dynamic_cast<SkeletalMeshComponent*>(component))
+            {
+                const auto status = mesh->skeletal_mesh() != snapshot.skeletal_mesh
+                                        ? mesh->set_assets(snapshot.skeletal_mesh, snapshot.sequence)
+                                    : mesh->animation_sequence() != snapshot.sequence
+                                        ? mesh->set_animation(snapshot.sequence)
+                                        : AssetStatus::success();
+                if (!status.succeeded())
+                {
+                    return false;
+                }
+            }
+            if (auto* mesh = dynamic_cast<MeshComponent*>(component))
+            {
+                for (std::uint32_t slot = 0; slot < snapshot.material_overrides.size(); ++slot)
+                {
+                    const auto& material = snapshot.material_overrides[slot];
+                    if (!(material ? mesh->set_material_override(slot, material) : mesh->clear_material_override(slot)))
+                    {
+                        return false;
+                    }
+                }
             }
         }
         return true;
@@ -142,7 +255,9 @@ namespace toy3d
             const auto& left = a.components[i];
             const auto& right = b.components[i];
             if (left.component_id != right.component_id || left.parent_actor_id != right.parent_actor_id ||
-                left.parent_component_id != right.parent_component_id || left.mesh != right.mesh)
+                left.parent_component_id != right.parent_component_id || left.mesh != right.mesh ||
+                left.skeletal_mesh != right.skeletal_mesh || left.sequence != right.sequence ||
+                left.material_overrides != right.material_overrides)
             {
                 return false;
             }

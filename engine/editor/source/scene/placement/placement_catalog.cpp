@@ -8,6 +8,8 @@ namespace toy3d
     {
         static const std::vector<PlacementItem> items = {
             {PlacementItemId::EmptyActor, "Empty Actor", "Basic", 0.0f},
+            {PlacementItemId::StaticMesh, "Static Mesh", "Basic", 0.0f},
+            {PlacementItemId::SkeletalMesh, "Skeletal Mesh", "Basic", 0.0f},
             {PlacementItemId::Camera, "Camera", "Basic", meters_to_centimeters(1.5f)},
             {PlacementItemId::Cube, "Cube", "Shapes", meters_to_centimeters(0.75f)},
             {PlacementItemId::Plane, "Plane", "Shapes", 0.0f},

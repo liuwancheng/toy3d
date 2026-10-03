@@ -11,6 +11,7 @@
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/actor/skeletal_mesh_actor.h"
+#include "gamescene/scene_geometry.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
@@ -174,6 +175,32 @@ namespace toy3d
         return true;
     }
 
+    bool ThumbnailPreviewScene::prepare(StaticMeshRef mesh)
+    {
+        if (!mesh)
+        {
+            return false;
+        }
+        const auto& bounds = mesh->local_bounds();
+        const Vector3 minimum(bounds.minimum.x, bounds.minimum.y, bounds.minimum.z);
+        const Vector3 maximum(bounds.maximum.x, bounds.maximum.y, bounds.maximum.z);
+        const float radius = length(maximum - minimum) * 0.5f;
+        if (!std::isfinite(radius) || radius <= 0.0f)
+        {
+            return false;
+        }
+        clear_mesh();
+        auto& actor = world_.spawn_actor<StaticMeshActor>();
+        actor.static_mesh_component().set_static_mesh(clone_scene_geometry(mesh));
+        mesh_actor_id_ = actor.actor_id();
+        Transform transform;
+        transform.scale = Vector3(k_preview_radius_cm / radius);
+        transform.translation = -(minimum + maximum) * 0.5f * (k_preview_radius_cm / radius);
+        floor_height_ =
+            (bounds.minimum.y - (bounds.minimum.y + bounds.maximum.y) * 0.5f) * (k_preview_radius_cm / radius) - 0.25f;
+        return actor.root_component()->set_local_transform(transform);
+    }
+
     bool ThumbnailPreviewScene::prepare_skeletal(SkeletalMeshRef mesh,
                                                  std::shared_ptr<const AnimationSequence> sequence)
     {
@@ -241,7 +268,23 @@ namespace toy3d
         const auto mesh =
             SkeletalMesh::create(asset.layout, *asset.mesh,
                                  std::vector<MaterialInterfaceRef>(asset.mesh->data.material_slots.size(), material_));
-        return mesh.succeeded() && prepare_skeletal(mesh.value());
+        if (!mesh.succeeded() || !prepare_skeletal(mesh.value(), asset.sequence))
+        {
+            return false;
+        }
+        auto* component = skeletal_component();
+        if (asset.sequence && (!component->seek(0.0).succeeded() || !component->set_playing(false).succeeded()))
+        {
+            return false;
+        }
+        const auto& deformation = component->deformation();
+        if (deformation && deformation->has_mesh_bounds)
+        {
+            frame_center_ = (deformation->bounds_minimum + deformation->bounds_maximum) * 0.5f;
+            frame_radius_ = std::max(1.0f, length(deformation->bounds_maximum - deformation->bounds_minimum) * 0.5f);
+            floor_height_ = deformation->bounds_minimum.y - 0.25f;
+        }
+        return true;
     }
 
     SkeletalMeshComponent* ThumbnailPreviewScene::skeletal_component()

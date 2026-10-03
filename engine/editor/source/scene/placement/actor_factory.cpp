@@ -10,6 +10,7 @@
 #include "gamescene/actor/camera_actor.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
+#include "gamescene/actor/skeletal_mesh_actor.h"
 #include "gamescene/world/world.h"
 #include "logging/logger.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
@@ -58,6 +59,16 @@ namespace toy3d
                     *mesh = std::move(source);
                 }
             }
+            else if (auto* mesh = std::get_if<SceneSkeletalMeshData>(&snapshot.data.properties))
+            {
+                const auto* component =
+                    dynamic_cast<const SceneComponent*>(actor.find_component_by_id(snapshot.component_id));
+                SceneSkeletalMeshData source;
+                if (component && mesh_source(*component, source))
+                {
+                    *mesh = std::move(source);
+                }
+            }
         }
         return state;
     }
@@ -66,6 +77,12 @@ namespace toy3d
     {
         const auto found = mesh_sources_.find(component.component_id());
         const auto* mesh = dynamic_cast<const StaticMeshComponent*>(&component);
+        if (mesh && !mesh->static_mesh())
+        {
+            data = {};
+            data.settings = mesh->primitive_settings();
+            return true;
+        }
         if (!mesh || found == mesh_sources_.end() || found->second.geometry != mesh->static_mesh())
         {
             return false;
@@ -94,10 +111,75 @@ namespace toy3d
                                                    std::move(source)};
     }
 
+    bool ActorFactory::mesh_source(const SceneComponent& component, SceneSkeletalMeshData& data) const
+    {
+        const auto* mesh = dynamic_cast<const SkeletalMeshComponent*>(&component);
+        if (!mesh)
+        {
+            return false;
+        }
+        const auto found = skeletal_mesh_sources_.find(component.component_id());
+        if (!mesh->skeletal_mesh())
+        {
+            data = {};
+        }
+        else if (found == skeletal_mesh_sources_.end() || found->second.geometry != mesh->skeletal_mesh() ||
+                 found->second.sequence != mesh->animation_sequence())
+        {
+            return false;
+        }
+        else
+        {
+            data = found->second.data;
+        }
+        data.settings = mesh->primitive_settings();
+        data.playback = mesh->playback_settings();
+        data.lock_root = mesh->lock_root();
+        return true;
+    }
+    void ActorFactory::remember_mesh(const SceneComponent& component, const SceneSkeletalMeshData& data)
+    {
+        const auto* mesh = dynamic_cast<const SkeletalMeshComponent*>(&component);
+        if (!mesh)
+        {
+            return;
+        }
+        auto source = data;
+        source.resources.erase(std::remove_if(source.resources.begin(), source.resources.end(),
+                                              [](const SceneResourceBinding& binding)
+                                              {
+                                                  return binding.role != "mesh" && binding.role != "animation";
+                                              }),
+                               source.resources.end());
+        skeletal_mesh_sources_[component.component_id()] = {component.owner().actor_id(), mesh->skeletal_mesh(),
+                                                            mesh->animation_sequence(), std::move(source)};
+    }
+    void ActorFactory::remember_sources(const Actor& actor, const EditorActorState& state)
+    {
+        for (const auto& snapshot : state.components)
+        {
+            const auto* component =
+                dynamic_cast<const SceneComponent*>(actor.find_component_by_id(snapshot.component_id));
+            if (!component)
+            {
+                continue;
+            }
+            if (const auto* data = std::get_if<SceneMeshData>(&snapshot.data.properties))
+            {
+                remember_mesh(*component, *data);
+            }
+            else if (const auto* data = std::get_if<SceneSkeletalMeshData>(&snapshot.data.properties))
+            {
+                remember_mesh(*component, *data);
+            }
+        }
+    }
+
     void ActorFactory::release()
     {
         placed_items_.clear();
         mesh_sources_.clear();
+        skeletal_mesh_sources_.clear();
         geometry_.release();
     }
 
@@ -118,12 +200,12 @@ namespace toy3d
         StaticMeshRef geometry;
         if (request.item == PlacementItemId::StaticMesh)
         {
-            if (!request.asset_id.valid())
+            if (request.static_mesh && !request.asset_id.valid())
             {
                 return nullptr;
             }
-            geometry = clone_scene_geometry(request.static_mesh);
-            if (!geometry)
+            geometry = request.static_mesh ? clone_scene_geometry(request.static_mesh) : nullptr;
+            if (request.static_mesh && !geometry)
             {
                 return nullptr;
             }
@@ -198,6 +280,9 @@ namespace toy3d
         case PlacementItemId::StaticMesh:
             actor = &world.spawn_actor<StaticMeshActor>();
             break;
+        case PlacementItemId::SkeletalMesh:
+            actor = &world.spawn_actor<SkeletalMeshActor>();
+            break;
         case PlacementItemId::DirectionalLight:
             actor = &world.spawn_actor<DirectionalLightActor>();
             break;
@@ -220,6 +305,30 @@ namespace toy3d
         {
             mesh_actor->static_mesh_component().set_static_mesh(std::move(geometry));
         }
+        if (auto* mesh_actor = dynamic_cast<SkeletalMeshActor*>(actor))
+        {
+            if ((request.skeletal_assets.mesh && !request.asset_id.valid()) ||
+                !mesh_actor->skeletal_mesh_component()
+                     .set_assets(request.skeletal_assets.mesh, request.skeletal_assets.sequence)
+                     .succeeded())
+            {
+                world.destroy_actor(*actor);
+                return nullptr;
+            }
+            SceneSkeletalMeshData source;
+            if (request.asset_id.valid())
+            {
+                source.resources.push_back(
+                    {"mesh", {request.asset_id, {}, "toy3d.SkeletalMeshAssetData", AssetRefStrength::Strong}});
+            }
+            if (request.animation_id.valid())
+            {
+                source.resources.push_back(
+                    {"animation",
+                     {request.animation_id, {}, "toy3d.AnimationSequenceAssetData", AssetRefStrength::Strong}});
+            }
+            remember_mesh(mesh_actor->skeletal_mesh_component(), source);
+        }
         placed_items_[actor->actor_id()] = request;
         if (auto* mesh = dynamic_cast<StaticMeshComponent*>(actor->root_component()))
         {
@@ -232,7 +341,7 @@ namespace toy3d
             {
                 source.builtin_mesh = "Plane";
             }
-            else
+            else if (request.asset_id.valid())
             {
                 source.resources.push_back(
                     {"mesh", {request.asset_id, {}, "toy3d.StaticMeshAssetData", AssetRefStrength::Strong}});
@@ -298,13 +407,9 @@ namespace toy3d
             snapshot.component_id = component->component_id();
             if (auto* mesh = dynamic_cast<StaticMeshComponent*>(component))
             {
-                if (!snapshot.mesh)
-                {
-                    valid = false;
-                    break;
-                }
-                mesh->set_static_mesh(clone_scene_geometry(snapshot.mesh));
-                if (!mesh->static_mesh())
+                snapshot.mesh = snapshot.mesh ? clone_scene_geometry(snapshot.mesh) : nullptr;
+                mesh->set_static_mesh(snapshot.mesh);
+                if (std::get<SceneMeshData>(snapshot.data.properties).resources.size() && !mesh->static_mesh())
                 {
                     valid = false;
                     break;
@@ -344,6 +449,7 @@ namespace toy3d
         }
         if (valid)
         {
+            remember_sources(*actor, restored);
             remember(*actor, request);
             return actor;
         }
@@ -371,6 +477,14 @@ namespace toy3d
         else if (typeid(actor) == typeid(Actor))
         {
             request.item = PlacementItemId::EmptyActor;
+        }
+        else if (typeid(actor) == typeid(StaticMeshActor))
+        {
+            request.item = PlacementItemId::StaticMesh;
+        }
+        else if (typeid(actor) == typeid(SkeletalMeshActor))
+        {
+            request.item = PlacementItemId::SkeletalMesh;
         }
         else if (typeid(actor) == typeid(DirectionalLightActor))
         {
@@ -416,6 +530,17 @@ namespace toy3d
     void ActorFactory::forget(std::uint32_t actor_id)
     {
         placed_items_.erase(actor_id);
+        for (auto item = skeletal_mesh_sources_.begin(); item != skeletal_mesh_sources_.end();)
+        {
+            if (item->second.actor_id == actor_id)
+            {
+                item = skeletal_mesh_sources_.erase(item);
+            }
+            else
+            {
+                ++item;
+            }
+        }
         for (auto item = mesh_sources_.begin(); item != mesh_sources_.end();)
         {
             if (item->second.actor_id == actor_id)

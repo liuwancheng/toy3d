@@ -12,6 +12,23 @@
 
 namespace toy3d
 {
+    const std::vector<std::string>& SkeletalMeshComponent::material_slot_names() const
+    {
+        static const std::vector<std::string> empty;
+        return mesh_ ? mesh_->asset().data.material_slots : empty;
+    }
+    MaterialInterfaceRef SkeletalMeshComponent::default_material_for_slot(std::uint32_t slot) const
+    {
+        return mesh_ && slot < mesh_->material_slots().size() ? mesh_->material_slots()[slot] : nullptr;
+    }
+    shader::VertexFactoryType SkeletalMeshComponent::vertex_factory_type() const
+    {
+        return shader::VertexFactoryType::GPUSkin;
+    }
+    bool SkeletalMeshComponent::has_material_override(std::uint32_t slot) const
+    {
+        return slot < material_overrides_.size() && material_overrides_[slot] != nullptr;
+    }
     bool SkeletalMeshComponent::supports_shadow_casting() const
     {
         if (!mesh_)
@@ -31,7 +48,7 @@ namespace toy3d
         return true;
     }
 
-    SkeletalMeshComponent::SkeletalMeshComponent(Actor& owner) : PrimitiveComponent(owner)
+    SkeletalMeshComponent::SkeletalMeshComponent(Actor& owner) : MeshComponent(owner)
     {
         set_tick_enabled(true);
     }
@@ -253,6 +270,18 @@ namespace toy3d
         }
     }
 
+    const std::shared_ptr<const AnimationSequence>& SkeletalMeshComponent::animation_sequence() const
+    {
+        return sequence_;
+    }
+    const AnimationPlaybackSettings& SkeletalMeshComponent::playback_settings() const
+    {
+        return playback_settings_;
+    }
+    bool SkeletalMeshComponent::lock_root() const
+    {
+        return lock_root_;
+    }
     const SkeletalMeshRef& SkeletalMeshComponent::skeletal_mesh() const
     {
         return mesh_;

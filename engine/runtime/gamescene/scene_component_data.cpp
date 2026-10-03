@@ -4,6 +4,7 @@
 #include "gamescene/component/camera_component.h"
 #include "gamescene/component/light_component.h"
 #include "gamescene/component/static_mesh_component.h"
+#include "gamescene/component/skeletal_mesh_component.h"
 
 namespace toy3d
 {
@@ -16,6 +17,10 @@ namespace toy3d
         if (type == "toy3d.StaticMeshComponent")
         {
             return &actor.create_component<StaticMeshComponent>();
+        }
+        if (type == "toy3d.SkeletalMeshComponent")
+        {
+            return &actor.create_component<SkeletalMeshComponent>();
         }
         if (type == "toy3d.DirectionalLightComponent")
         {
@@ -44,6 +49,15 @@ namespace toy3d
             data.type = "toy3d.StaticMeshComponent";
             SceneMeshData props;
             props.settings = mesh->primitive_settings();
+            data.properties = props;
+        }
+        else if (const auto* mesh = dynamic_cast<const SkeletalMeshComponent*>(&component))
+        {
+            data.type = "toy3d.SkeletalMeshComponent";
+            SceneSkeletalMeshData props;
+            props.settings = mesh->primitive_settings();
+            props.playback = mesh->playback_settings();
+            props.lock_root = mesh->lock_root();
             data.properties = props;
         }
         else if (const auto* directional = dynamic_cast<const DirectionalLightComponent*>(&component))
@@ -78,6 +92,15 @@ namespace toy3d
         if (const auto* mesh = std::get_if<SceneMeshData>(&data.properties))
         {
             static_cast<StaticMeshComponent&>(component).set_primitive_settings(mesh->settings);
+        }
+        else if (const auto* mesh = std::get_if<SceneSkeletalMeshData>(&data.properties))
+        {
+            auto& target = static_cast<SkeletalMeshComponent&>(component);
+            if (!target.set_playback_settings(mesh->playback, mesh->lock_root).succeeded())
+            {
+                return false;
+            }
+            target.set_primitive_settings(mesh->settings);
         }
         else if (const auto* light = std::get_if<SceneDirectionalLightData>(&data.properties))
         {

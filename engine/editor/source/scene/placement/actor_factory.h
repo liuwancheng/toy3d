@@ -30,6 +30,9 @@ namespace toy3d
         EditorActorState capture(const Actor& actor) const;
         bool mesh_source(const SceneComponent& component, SceneMeshData& data) const;
         void remember_mesh(const SceneComponent& component, const SceneMeshData& data);
+        bool mesh_source(const SceneComponent& component, SceneSkeletalMeshData& data) const;
+        void remember_mesh(const SceneComponent& component, const SceneSkeletalMeshData& data);
+        void remember_sources(const Actor& actor, const EditorActorState& state);
         ActorTypeRegistry& actor_types()
         {
             return actor_types_;
@@ -63,5 +66,13 @@ namespace toy3d
             SceneMeshData data;
         };
         std::map<std::uint32_t, MeshSource> mesh_sources_;
+        struct SkeletalMeshSource
+        {
+            std::uint32_t actor_id = 0;
+            SkeletalMeshRef geometry;
+            std::shared_ptr<const AnimationSequence> sequence;
+            SceneSkeletalMeshData data;
+        };
+        std::map<std::uint32_t, SkeletalMeshSource> skeletal_mesh_sources_;
     };
 } // namespace toy3d

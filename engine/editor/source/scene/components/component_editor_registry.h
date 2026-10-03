@@ -17,6 +17,8 @@ namespace toy3d
     class MaterialAssignments;
     class ActorFactory;
     class World;
+    class AssetResourcePicker;
+    class MeshAssetBindings;
 
     struct ComponentDetailsContext
     {
@@ -29,6 +31,8 @@ namespace toy3d
         SceneViewport& viewport;
         MaterialAssignments& materials;
         std::string& error;
+        AssetResourcePicker* resource_picker = nullptr;
+        MeshAssetBindings* mesh_bindings = nullptr;
     };
 
     // One descriptor belongs to one runtime component type. It contains behavior,

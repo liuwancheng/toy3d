@@ -7,6 +7,17 @@
 
 namespace toy3d
 {
+    TOY3D_REFLECT_TYPE("toy3d.AnimationPlaybackSettings", 1)
+    struct AnimationPlaybackSettings
+    {
+        TOY3D_PROPERTY("loop", Edit)
+        bool loop = true;
+        TOY3D_PROPERTY("autoplay", Edit)
+        bool autoplay = true;
+        TOY3D_PROPERTY("rate", Edit)
+        double rate = 1.0;
+    };
+
     TOY3D_REFLECT_TYPE("toy3d.PrimitiveSettings", 1)
     struct PrimitiveSettings
     {

@@ -335,6 +335,27 @@ namespace toy3d
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
                                     PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
         material_editor_.set_preview_pool(thumbnails_);
+        animation_editor_.set_preview_mesh_changed(
+            [this]()
+            {
+                thumbnails_.invalidate();
+            });
+        resource_picker_.set_builtin_resolver(
+            [this](const std::string& kind)
+            {
+                return actor_factory_.instantiate_builtin(kind);
+            });
+        resource_picker_.set_browse(
+            [this](const AssetId& id)
+            {
+                const auto* asset = workspace_.catalog().index.find(id);
+                if (asset)
+                {
+                    asset_folder_ = asset->path.utf8().substr(0, asset->path.utf8().find_last_of('/'));
+                    show_engine_content_ = asset_folder_.compare(0, 7, "/Engine") == 0 || show_engine_content_;
+                    selection_.select_asset(id);
+                }
+            });
         material_editor_.edit_session().set_publish(
             [this](const AssetRef& reference)
             {
@@ -398,6 +419,13 @@ namespace toy3d
         tick_play(delta_seconds);
         scene_session_.history().synchronize(world());
         thumbnails_.tick();
+        mesh_bindings_.tick(world());
+        const auto placed_actor = mesh_bindings_.take_placed_actor();
+        if (placed_actor)
+        {
+            selection_.select_actor(world(), placed_actor);
+            scene_viewport_.cancel_pending_hit();
+        }
         texture_preview_.tick();
         animation_editor_.tick(delta_seconds);
         if (!play_session_.active())
@@ -494,6 +522,8 @@ namespace toy3d
         material_editor_.shutdown();
         texture_preview_.shutdown();
         animation_editor_.shutdown();
+        mesh_bindings_.shutdown();
+        resource_picker_.clear();
         thumbnails_.shutdown();
         scene_viewport_.exit_camera_view();
         scene_session_.history().clear();
@@ -591,7 +621,8 @@ namespace toy3d
                              [this]()
                              {
                                  draw_details(world(), selection_, scene_session_.history(), workspace_,
-                                              scene_viewport_, material_assignments_, material_assignment_error_);
+                                              scene_viewport_, material_assignments_, material_assignment_error_,
+                                              &resource_picker_, &mesh_bindings_);
                              }) ||
             !add_scene_panel("world_settings", "World Settings", "World Settings",
                              [this]()
@@ -1014,15 +1045,9 @@ namespace toy3d
         AssetPlacementRequest placed;
         if (scene_viewport_.take_asset_placement(placed))
         {
-            const std::uint32_t actor_id = place_static_mesh_asset(workspace_, world(), actor_factory_,
-                                                                   scene_session_.history(), placed, model_error_);
-            if (actor_id)
+            if (!mesh_bindings_.place(world(), placed))
             {
-                selection_.select_actor(world(), actor_id);
-                scene_viewport_.cancel_pending_hit();
-            }
-            else
-            {
+                model_error_ = mesh_bindings_.error();
                 TOY_LOG_ERROR("Asset placement failed: {}", model_error_);
             }
         }
@@ -1129,6 +1154,7 @@ namespace toy3d
 
     bool EditorApplication::on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks)
     {
+        mesh_bindings_.initialize(tasks);
         return thumbnails_.initialize(scene, actor_factory_.default_material(), tasks);
     }
 

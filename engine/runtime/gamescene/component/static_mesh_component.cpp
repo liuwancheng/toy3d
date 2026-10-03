@@ -13,6 +13,20 @@
 
 namespace toy3d
 {
+    const std::vector<std::string>& StaticMeshComponent::material_slot_names() const
+    {
+        static const std::vector<std::string> empty;
+        return static_mesh_ ? static_mesh_->material_slot_names() : empty;
+    }
+    MaterialInterfaceRef StaticMeshComponent::default_material_for_slot(std::uint32_t slot) const
+    {
+        return static_mesh_ && slot < static_mesh_->material_slots().size() ? static_mesh_->material_slots()[slot]
+                                                                            : nullptr;
+    }
+    shader::VertexFactoryType StaticMeshComponent::vertex_factory_type() const
+    {
+        return shader::VertexFactoryType::Local;
+    }
     bool StaticMeshComponent::supports_shadow_casting() const
     {
         if (!static_mesh_)

@@ -32,6 +32,10 @@ namespace toy3d
         void seek(double time);
         void set_playing(bool playing);
         void set_preview_display(bool mesh, bool bones, bool depth_test);
+        void set_preview_mesh_changed(std::function<void()> changed)
+        {
+            preview_mesh_changed_ = std::move(changed);
+        }
 
       private:
         struct CpuResult;
@@ -88,6 +92,8 @@ namespace toy3d
         bool depth_test_ = false;
         bool lock_root_ = false;
         bool initialized_ = false;
+        bool mesh_preference_pending_ = false;
+        std::function<void()> preview_mesh_changed_;
         int tab_ = 0;
     };
 } // namespace toy3d
