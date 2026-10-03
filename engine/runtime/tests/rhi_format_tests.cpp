@@ -93,6 +93,35 @@ int main()
               !incompatible_format_status.message().empty(),
           "public texture views must reject format reinterpretation diagnostically");
 
+    RHITextureDesc cube = scene_color;
+    cube.cube_compatible = true;
+    cube.array_layers = 6u;
+    RHITextureViewDesc cube_view = color_sampled_view;
+    cube_view.dimension = RHITextureViewDimension::TextureCube;
+    cube_view.subresources.layer_count = 6u;
+    check(validate_texture_desc(cube).succeeded() && validate_texture_view_desc(cube, cube_view).succeeded(),
+          "Single Cube requires explicitly compatible six-layer storage");
+    auto invalid_cube = cube;
+    invalid_cube.cube_compatible = false;
+    check(!validate_texture_view_desc(invalid_cube, cube_view),
+          "Cube view must not reinterpret ordinary array storage");
+    invalid_cube = cube;
+    invalid_cube.width = 32u;
+    check(!validate_texture_desc(invalid_cube), "Non-square Cube storage was accepted");
+    invalid_cube = cube;
+    invalid_cube.array_layers = 5u;
+    check(!validate_texture_desc(invalid_cube), "Incomplete Cube storage was accepted");
+    invalid_cube = cube;
+    invalid_cube.sample_count = 2u;
+    check(!validate_texture_desc(invalid_cube), "Multisample Cube storage was accepted");
+    cube.array_layers = 18u;
+    cube_view.dimension = RHITextureViewDimension::TextureCubeArray;
+    cube_view.subresources.layer_count = 12u;
+    cube_view.subresources.first_layer = 6u;
+    check(validate_texture_view_desc(cube, cube_view).succeeded(), "Aligned Cube array groups must validate");
+    cube_view.subresources.first_layer = 1u;
+    check(!validate_texture_view_desc(cube, cube_view), "Unaligned Cube array first layer was accepted");
+
     if (failure_count != 0)
     {
         std::cerr << failure_count << " test(s) failed\n";

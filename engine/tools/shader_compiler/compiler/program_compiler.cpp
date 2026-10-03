@@ -1,10 +1,18 @@
 #include "compiler/program_compiler.h"
 
-#include "codegen/binding_codegen.h"
+#include "shader/builtin_shader_parameters.h"
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <utility>
+
+#include <spirv_reflect.h>
+
+#include "codegen/binding_codegen.h"
+#include "compiler/standard_surface.h"
+#include "frontend/tokenizer.h"
+#include <set>
 
 namespace toy3d::shader
 {
@@ -50,6 +58,10 @@ namespace toy3d::shader
         std::string combined_include_source(const ShaderAsset& asset)
         {
             std::ostringstream source;
+            if (asset.geometry == ShaderGeometryMode::Standard)
+            {
+                source << "#include \"/Engine/ShaderIncludes/ToySurface.hlsli\"\n";
+            }
             for (const HlslBlock& include : asset.includes)
             {
                 source << "#line " << include.location.line << " \"" << asset.location.path << "\"\n";
@@ -76,7 +88,82 @@ namespace toy3d::shader
             return usage;
         }
 
+        std::set<std::string> identifiers(const std::string& source, const std::string& path)
+        {
+            std::set<std::string> names;
+            Tokenizer tokenizer(source, path);
+            for (Token token = tokenizer.next(); token.kind != TokenKind::EndOfFile; token = tokenizer.next())
+            {
+                if (token.kind == TokenKind::Identifier)
+                {
+                    names.insert(token.text);
+                }
+            }
+            return names;
+        }
+
+        bool validate_static_macro_directives(const std::string& source, const std::string& path,
+                                              std::vector<Diagnostic>& diagnostics)
+        {
+            // Tokenizer skips comments and strings. Reject token concatenation,
+            // which can synthesize an identifier outside the bounded dependency inventory.
+            Tokenizer tokenizer(source, path);
+            Token previous;
+            bool directive_name = false;
+            std::size_t directive_line = 0u;
+            for (Token token = tokenizer.next(); token.kind != TokenKind::EndOfFile; token = tokenizer.next())
+            {
+                if (token.text == "#" && previous.text == "#" && token.location.line == previous.location.line)
+                {
+                    diagnostics.push_back(
+                        {DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant, token.location,
+                         "Token concatenation is unsupported in the static macro dependency contract."});
+                    return false;
+                }
+                if (directive_name && token.location.line == directive_line)
+                {
+                    if (token.text.compare(0u, 14u, "TOY3D_VARIANT_") == 0 ||
+                        token.text.compare(0u, 11u, "TOY3D_PASS_") == 0 || token.text == "TOY3D_GPU_SKIN")
+                    {
+                        diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant,
+                                               token.location,
+                                               "Static and VertexFactory macros are owned by the compiler."});
+                        return false;
+                    }
+                    directive_name = false;
+                }
+                if (previous.text == "#" && token.location.line == previous.location.line &&
+                    (token.text == "define" || token.text == "undef"))
+                {
+                    directive_name = true;
+                    directive_line = token.location.line;
+                }
+                previous = std::move(token);
+            }
+            return true;
+        }
+
+        void append_used_defines(std::string& prelude, const std::string& definitions,
+                                 const std::set<std::string>& names)
+        {
+            std::istringstream lines(definitions);
+            std::string line;
+            while (std::getline(lines, line))
+            {
+                std::istringstream fields(line);
+                std::string directive, name;
+                fields >> directive >> name;
+                if (directive == "#define" && names.count(name) != 0u)
+                {
+                    prelude += line + "\n";
+                }
+            }
+        }
+
         StageCompileOutput compile_stage(const ShaderProgramCompileInput& input, const ShaderPermutation& permutation,
+                                         const ShaderPermutationDomain& material_domain,
+                                         const ShaderPermutationDomain& engine_domain,
+                                         const std::vector<ShaderEngineFeatureDeclaration>& feature_declarations,
                                          const ShaderPass& pass, const EntryPoint& entry,
                                          const std::string& shader_include_source,
                                          const LogicalShaderLayout& logical_layout,
@@ -87,24 +174,6 @@ namespace toy3d::shader
         {
             StageCompileOutput output;
             const ShaderStageFlags stage = stage_flag(entry.stage);
-            BindingCodegenResult bindings = generate_binding_hlsl(logical_layout, target_layout, stage);
-            if (!bindings.succeeded())
-            {
-                output.diagnostics = std::move(bindings.diagnostics);
-                return output;
-            }
-
-            ShaderCompileRequestInput request_input;
-            request_input.target = ShaderTarget::VulkanSpirV;
-            request_input.profile = ShaderCompileProfile::VulkanES31;
-            request_input.stage = stage;
-            request_input.debug_mode = input.debug_mode;
-            request_input.entry_point = entry.name;
-            request_input.source_virtual_path = input.source_virtual_path;
-            request_input.compiler_identity = toolchain.manifest.identity;
-            request_input.generated_prelude = permutation.generated_prelude;
-            request_input.generated_bindings = std::move(*bindings.source);
-            request_input.shader_include_source = shader_include_source;
             const auto program = std::find_if(pass.programs.begin(), pass.programs.end(),
                                               [&](const HlslBlock& block)
                                               {
@@ -117,11 +186,165 @@ namespace toy3d::shader
                                               pass.location, "Missing stage source block."});
                 return output;
             }
-            request_input.pass_source = program->source;
-            request_input.pass_source_line = program->location.line;
+            std::ostringstream body;
+            body << shader_include_source << "\n#line " << program->location.line << " \"" << input.source_virtual_path
+                 << "\"\n"
+                 << program->source;
+            auto expanded = resolve_shader_includes(body.str(), input.source_virtual_path, *input.source_provider);
+            if (!expanded.succeeded())
+            {
+                output.diagnostics = std::move(expanded.diagnostics);
+                return output;
+            }
+            if (!validate_static_macro_directives(*expanded.source, input.source_virtual_path, output.diagnostics))
+            {
+                return output;
+            }
+            const auto names = identifiers(*expanded.source, input.source_virtual_path);
+            if (pass.role == ShaderPassRole::Forward)
+            {
+                const auto declared = [&](ShaderEngineFeature feature)
+                {
+                    return std::any_of(feature_declarations.begin(), feature_declarations.end(),
+                                       [feature](const ShaderEngineFeatureDeclaration& value)
+                                       {
+                                           return value.feature == feature;
+                                       });
+                };
+                const auto require = [&](const std::string& name, ShaderEngineFeature feature)
+                {
+                    if (names.count(name) != 0u && !declared(feature))
+                    {
+                        output.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidParameterGroup,
+                                                      program->location,
+                                                      "Engine Forward input requires a declared Feature: " + name});
+                    }
+                };
+                for (const auto& parameter : builtin_forward_parameters)
+                {
+                    const std::string name = parameter.name;
+                    const auto feature = name.compare(0u, 12u, "environment_") == 0
+                                             ? ShaderEngineFeature::Environment
+                                             : (name.compare(0u, 7u, "shadow_") == 0 ? ShaderEngineFeature::Shadows
+                                                                                     : ShaderEngineFeature::Lighting);
+                    require(name, feature);
+                }
+                for (const auto& resource : builtin_forward_resources)
+                {
+                    const std::string name = resource.name;
+                    require(name, name.compare(0u, 12u, "environment_") == 0 ? ShaderEngineFeature::Environment
+                                                                             : ShaderEngineFeature::Shadows);
+                }
+                for (const auto& name : names)
+                {
+                    if (name.rfind("TOY3D_PASS_SHADOW_MODE", 0u) == 0)
+                    {
+                        require(name, ShaderEngineFeature::Shadows);
+                    }
+                    if (name.rfind("TOY3D_PASS_ENVIRONMENT_MODE", 0u) == 0)
+                    {
+                        require(name, ShaderEngineFeature::Environment);
+                    }
+                }
+            }
+            std::set<std::string> known;
+            const auto check_domain = [&](const ShaderPermutationDomain& domain)
+            {
+                for (const auto& dimension : domain.dimensions)
+                {
+                    ShaderPermutationDomain single;
+                    single.scope = domain.scope;
+                    single.dimensions.push_back(dimension);
+                    const auto definitions = resolve_shader_permutation(single, {});
+                    const auto defined = identifiers(definitions.permutation->generated_prelude, "");
+                    for (const auto& name : defined)
+                    {
+                        if (name.compare(0u, 14u, "TOY3D_VARIANT_") == 0 || name.compare(0u, 11u, "TOY3D_PASS_") == 0)
+                        {
+                            known.insert(name);
+                            if (names.count(name) != 0u &&
+                                (!has_stage(dimension.affected_stages, stage) ||
+                                 (dimension.affected_passes & shader_pass_role_bit(pass.role)) == 0u))
+                            {
+                                output.diagnostics.push_back(
+                                    {DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant, program->location,
+                                     "Macro " + name + " is used outside its declared stage/Pass impact."});
+                            }
+                        }
+                    }
+                }
+            };
+            check_domain(material_domain);
+            ShaderEngineFeatures all_features;
+            all_features.lighting = all_features.shadows = all_features.environment = true;
+            check_domain(shader_pass_domain(ShaderPassRole::Forward, all_features));
+            for (const auto& name : names)
+            {
+                if ((name.compare(0u, 14u, "TOY3D_VARIANT_") == 0 || name.compare(0u, 11u, "TOY3D_PASS_") == 0) &&
+                    known.count(name) == 0u)
+                {
+                    output.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant,
+                                                  program->location, "Undeclared permutation macro: " + name});
+                }
+            }
+            if (!output.diagnostics.empty())
+            {
+                return output;
+            }
+            BindingCodegenResult bindings = generate_binding_hlsl(logical_layout, target_layout, stage, &names);
+            if (!bindings.succeeded())
+            {
+                output.diagnostics = std::move(bindings.diagnostics);
+                return output;
+            }
+            std::vector<ShaderMapBinding> stage_bindings;
+            for (const auto& binding : target_layout.bindings)
+            {
+                if (has_stage(binding.stages, stage) && binding.logical_binding != nullptr)
+                {
+                    bool used = names.count(binding.name) != 0u;
+                    if (binding.logical_binding->constant_buffer != nullptr)
+                    {
+                        for (const auto& member : binding.logical_binding->constant_buffer->members)
+                        {
+                            used = used || names.count(member.name) != 0u;
+                        }
+                    }
+                    if (used)
+                    {
+                        stage_bindings.push_back({binding.binding_id, binding.name, binding.group, binding.category,
+                                                  stage, binding.register_class, binding.register_index,
+                                                  binding.descriptor_set, binding.descriptor_binding, binding.data_size,
+                                                  binding.data_layout_hash, binding.shader_abi_version});
+                    }
+                }
+            }
+            ShaderCompileRequestInput request_input;
+            request_input.target = ShaderTarget::VulkanSpirV;
+            request_input.profile = ShaderCompileProfile::VulkanES31;
+            request_input.stage = stage;
+            request_input.debug_mode = input.debug_mode;
+            request_input.entry_point = entry.name;
+            request_input.source_virtual_path = input.source_virtual_path;
+            request_input.compiler_identity = toolchain.manifest.identity;
+            const auto material = resolve_shader_permutation(material_domain, permutation.selections, stage, pass.role);
+            const auto engine = resolve_shader_permutation(engine_domain, input.pass_selections, stage, pass.role);
+            append_used_defines(request_input.generated_prelude, material.permutation->generated_prelude, names);
+            append_used_defines(request_input.generated_prelude, engine.permutation->generated_prelude, names);
+            if (names.count("TOY3D_GPU_SKIN") != 0u)
+            {
+                request_input.generated_prelude += input.vertex_factory == VertexFactoryType::GPUSkin
+                                                       ? "#define TOY3D_GPU_SKIN 1\n"
+                                                       : "#define TOY3D_GPU_SKIN 0\n";
+            }
+            request_input.generated_bindings = std::move(*bindings.source);
+            request_input.pass_source = std::move(*expanded.source);
+            request_input.source_dependencies = std::move(expanded.dependencies);
             request_input.source_provider = input.source_provider;
-            request_input.logical_layout_hash = logical_layout.logical_layout_hash;
-            request_input.target_binding_hash = target_layout.target_binding_hash;
+            request_input.logical_layout_hash = calculate_shader_stage_logical_layout_hash(
+                make_shader_parameter_schema(logical_layout), stage_bindings, stage);
+            request_input.target_binding_hash = calculate_shader_stage_binding_hash(
+                target_layout.target, target_layout.mapping_version, stage_bindings, stage);
             ShaderCompileRequestResult request = build_shader_compile_request(request_input);
             if (!request.succeeded())
             {
@@ -129,8 +352,25 @@ namespace toy3d::shader
                 return output;
             }
 
-            ShaderCompilerOutput compiled =
-                compile_vulkan_shader(*request.request, toolchain, platform_file, working_directory, process_runner);
+            ShaderCompilerOutput compiled;
+            const std::size_t stage_index =
+                stage == ShaderStageFlags::Vertex ? 0u : (stage == ShaderStageFlags::Pixel ? 1u : 2u);
+            const auto cached = input.stage_cache == nullptr ? nullptr : &input.stage_cache->binaries;
+            if (cached != nullptr && cached->count(request.request->compile_key) != 0u)
+            {
+                compiled.binary = cached->at(request.request->compile_key);
+                ++input.stage_cache->reused[stage_index];
+            }
+            else
+            {
+                compiled = compile_vulkan_shader(*request.request, toolchain, platform_file, working_directory,
+                                                 process_runner);
+                if (compiled.succeeded() && input.stage_cache != nullptr)
+                {
+                    input.stage_cache->binaries.emplace(request.request->compile_key, *compiled.binary);
+                    ++input.stage_cache->compiled[stage_index];
+                }
+            }
             if (!compiled.succeeded())
             {
                 output.diagnostics = std::move(compiled.diagnostics);
@@ -152,6 +392,61 @@ namespace toy3d::shader
         {
             destination.insert(destination.end(), std::make_move_iterator(source.begin()),
                                std::make_move_iterator(source.end()));
+        }
+
+        bool validate_standard_fragment(const ShaderCodeEntry& stage, const SourceLocation& location, bool coverage,
+                                        std::vector<Diagnostic>& diagnostics)
+        {
+            // SPIR-V is already validated by spirv-val. Inspect reachable user
+            // bytecode in a wrapper without the compiler's own coverage clip.
+            const auto& binary = stage.binary;
+            if (binary.size() < 5u * sizeof(std::uint32_t) || binary.size() % sizeof(std::uint32_t) != 0u)
+            {
+                diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::ReflectionMismatch, location,
+                                       "Standard fragment validation requires complete SPIR-V."});
+                return false;
+            }
+            std::vector<std::uint32_t> words(binary.size() / sizeof(std::uint32_t));
+            std::memcpy(words.data(), binary.data(), binary.size());
+            for (std::size_t offset = 5u; offset < words.size();)
+            {
+                const auto count = words[offset] >> 16u;
+                const auto opcode = words[offset] & 0xffffu;
+                if (count == 0u || count > words.size() - offset)
+                {
+                    diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::ReflectionMismatch, location,
+                                           "Malformed Standard fragment instruction."});
+                    return false;
+                }
+                const bool forbidden_discard = opcode == SpvOpKill || opcode == SpvOpTerminateInvocation ||
+                                               opcode == SpvOpDemoteToHelperInvocation;
+                const bool forbidden_output =
+                    opcode == SpvOpDecorate && count >= 4u && words[offset + 2u] == SpvDecorationBuiltIn &&
+                    (words[offset + 3u] == SpvBuiltInFragDepth || words[offset + 3u] == SpvBuiltInSampleMask ||
+                     words[offset + 3u] == SpvBuiltInFragStencilRefEXT);
+                if (forbidden_discard || forbidden_output)
+                {
+                    diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::ReflectionMismatch, location,
+                                           "Standard user functions cannot discard or write depth/sample coverage; use "
+                                           "the shared CoverageFunction or Custom geometry."});
+                    return false;
+                }
+                offset += count;
+            }
+            if (coverage)
+            {
+                for (const auto& binding : stage.reflection.bindings)
+                {
+                    if (binding.group != BindingGroup::Material && binding.group != BindingGroup::Object)
+                    {
+                        diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::ReflectionMismatch, location,
+                                               "CoverageFunction can use Material/Object resources only; View/Pass "
+                                               "dependencies are unsupported."});
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
 
         void add_reflected_usage(std::vector<ParameterUsage>& usage, const ShaderStageReflection& reflection)
@@ -242,11 +537,20 @@ namespace toy3d::shader
         return entry.has_value() && diagnostics.empty();
     }
 
-    ShaderMapEntryCompileResult compile_vulkan_shader_map_entry(
-        const ShaderAsset& asset, const ShaderProgramCompileInput& input, const DiscoveredShaderToolchain& toolchain,
-        PlatformFile& platform_file, const PhysicalPath& working_directory, const ShaderProcessRunner& process_runner)
+    ShaderMapEntryCompileResult compile_vulkan_shader_map_entry(const ShaderAsset& source_asset,
+                                                                const ShaderProgramCompileInput& input,
+                                                                const DiscoveredShaderToolchain& toolchain,
+                                                                PlatformFile& platform_file,
+                                                                const PhysicalPath& working_directory,
+                                                                const ShaderProcessRunner& process_runner)
     {
         ShaderMapEntryCompileResult result;
+        ShaderAsset expanded;
+        if (!expand_standard_surface(source_asset, input.variant_selections, expanded, result.diagnostics))
+        {
+            return result;
+        }
+        const auto& asset = expanded;
         const auto pass = std::find_if(asset.passes.begin(), asset.passes.end(),
                                        [&](const ShaderPass& candidate)
                                        {
@@ -271,6 +575,10 @@ namespace toy3d::shader
         contract.usage = asset.usage;
         contract.role = pass->role;
         contract.geometry = asset.geometry;
+        contract.surface_mode =
+            asset.geometry == ShaderGeometryMode::Standard
+                ? (asset.passes.size() == 3u ? ShaderSurfaceMode::Masked : ShaderSurfaceMode::Opaque)
+                : ShaderSurfaceMode::Explicit;
         contract.vertex_factory_support = asset.vertex_factory_support;
         contract.vertex_factory = input.vertex_factory;
         std::string contract_error;
@@ -286,6 +594,35 @@ namespace toy3d::shader
                                           asset.location, "GPUSkin requires explicit VertexFactories support."});
             return result;
         }
+        const auto plan = plan_shader_compilation(shader_compile_source(asset), {permutation.permutation->selections},
+                                                  input.compile_policy);
+        ShaderEngineFeatures features;
+        std::string feature_error;
+        if (!plan.succeeded() ||
+            !resolve_shader_engine_features(shader_compile_source(asset), permutation.permutation->selections,
+                                            input.compile_policy, features, feature_error))
+        {
+            result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
+                                          asset.location, plan.error.empty() ? feature_error : plan.error});
+            return result;
+        }
+        const auto pass_configuration =
+            resolve_shader_permutation(shader_pass_domain(pass->role, features), input.pass_selections);
+        if (!pass_configuration.succeeded() ||
+            std::none_of(plan.required.begin(), plan.required.end(),
+                         [&](const auto& required)
+                         {
+                             return required.pass.name == pass->name &&
+                                    required.vertex_factory == input.vertex_factory && pass_configuration.succeeded() &&
+                                    required.pass_permutation.key == pass_configuration.permutation->key;
+                         }))
+        {
+            result.diagnostics.push_back(
+                {DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest, asset.location,
+                 "Requested engine Pass configuration is invalid or filtered by compile policy."});
+            return result;
+        }
+        permutation.permutation->generated_prelude += pass_configuration.permutation->generated_prelude;
         permutation.permutation->generated_prelude += input.vertex_factory == VertexFactoryType::GPUSkin
                                                           ? "#define TOY3D_GPU_SKIN 1\n"
                                                           : "#define TOY3D_GPU_SKIN 0\n";
@@ -333,6 +670,39 @@ namespace toy3d::shader
             return result;
         }
         std::vector<ParameterUsage> reflected_usage;
+        if (asset.geometry == ShaderGeometryMode::Standard && pass->role == ShaderPassRole::Forward)
+        {
+            for (const bool coverage : {false, true})
+            {
+                if (coverage && source_asset.passes.front().coverage_function.empty())
+                {
+                    continue;
+                }
+                const auto probe = standard_surface_probe(source_asset, coverage);
+                const auto directory =
+                    platform_file.join_relative(working_directory, coverage ? "coverage_probe" : "shading_probe");
+                if (!directory.succeeded())
+                {
+                    result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
+                                                  asset.location, directory.status().message});
+                    return result;
+                }
+                auto compiled = compile_stage(input, *permutation.permutation, shader_material_domain(asset),
+                                              shader_pass_domain(pass->role, features), asset.features, probe,
+                                              probe.programs.back().entry_points.front(), shader_include_source,
+                                              *logical.layout, *discovery_mapping.layout, toolchain, platform_file,
+                                              directory.value(), false, process_runner);
+                if (!compiled.stage)
+                {
+                    append_diagnostics(result.diagnostics, std::move(compiled.diagnostics));
+                    return result;
+                }
+                if (!validate_standard_fragment(*compiled.stage, pass->location, coverage, result.diagnostics))
+                {
+                    return result;
+                }
+            }
+        }
         for (const EntryPoint& entry : entry_points)
         {
             const FileResult<PhysicalPath> stage_working_directory =
@@ -345,9 +715,10 @@ namespace toy3d::shader
                 return result;
             }
             StageCompileOutput discovered =
-                compile_stage(input, *permutation.permutation, *pass, entry, shader_include_source, *logical.layout,
-                              *discovery_mapping.layout, toolchain, platform_file, stage_working_directory.value(),
-                              false, process_runner);
+                compile_stage(input, *permutation.permutation, shader_material_domain(asset),
+                              shader_pass_domain(pass->role, features), asset.features, *pass, entry,
+                              shader_include_source, *logical.layout, *discovery_mapping.layout, toolchain,
+                              platform_file, stage_working_directory.value(), false, process_runner);
             if (!discovered.stage)
             {
                 append_diagnostics(result.diagnostics, std::move(discovered.diagnostics));
@@ -383,6 +754,7 @@ namespace toy3d::shader
         entry.variant_id_version = permutation.permutation->variant_id_version;
         entry.permutation_version = permutation.permutation->version;
         entry.permutation_key = permutation.permutation->key;
+        entry.pass_permutation_key = pass_configuration.permutation->key;
         entry.mapping_version = final_mapping.layout->mapping_version;
         entry.parameter_schema = make_shader_parameter_schema(*logical.layout);
         result.editor_properties = logical.layout->editor_properties;
@@ -404,9 +776,11 @@ namespace toy3d::shader
                                               "Unable to resolve final compile working directory."});
                 return result;
             }
-            StageCompileOutput compiled = compile_stage(
-                input, *permutation.permutation, *pass, entry_point, shader_include_source, *logical.layout,
-                *final_mapping.layout, toolchain, platform_file, stage_working_directory.value(), true, process_runner);
+            StageCompileOutput compiled =
+                compile_stage(input, *permutation.permutation, shader_material_domain(asset),
+                              shader_pass_domain(pass->role, features), asset.features, *pass, entry_point,
+                              shader_include_source, *logical.layout, *final_mapping.layout, toolchain, platform_file,
+                              stage_working_directory.value(), true, process_runner);
             if (!compiled.stage)
             {
                 append_diagnostics(result.diagnostics, std::move(compiled.diagnostics));

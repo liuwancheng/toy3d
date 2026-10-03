@@ -49,7 +49,7 @@ namespace toy3d
         }
         std::uint32_t stride() const
         {
-            return 24u;
+            return 40u;
         }
 
       private:
@@ -129,6 +129,10 @@ namespace toy3d
         RHIStatus release(RenderResourceManager& manager);
 
         bool is_drawable() const;
+        bool has_valid_tangent_frame() const
+        {
+            return valid_tangent_frame_;
+        }
         const LocalVertexFactory* vertex_factory() const
         {
             return local_vertex_factory_.get();
@@ -152,5 +156,6 @@ namespace toy3d
         std::vector<StaticMeshSection> sections_;
         std::size_t index_count_ = 0;
         bool init_started_ = false;
+        bool valid_tangent_frame_ = false;
     };
 } // namespace toy3d

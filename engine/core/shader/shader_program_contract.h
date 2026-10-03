@@ -20,11 +20,14 @@ namespace toy3d::shader
         ShadowDepth,
         HitProxy
     };
+    constexpr std::uint32_t all_shader_pass_roles = 0x0fu;
+    std::uint32_t shader_pass_role_bit(ShaderPassRole role);
 
     enum class ShaderGeometryMode : std::uint32_t
     {
         None,
-        Custom
+        Custom,
+        Standard
     };
 
     enum class VertexFactoryType : std::uint32_t
@@ -32,6 +35,13 @@ namespace toy3d::shader
         None,
         Local,
         GPUSkin
+    };
+
+    enum class ShaderSurfaceMode : std::uint32_t
+    {
+        Explicit,
+        Opaque,
+        Masked
     };
 
     constexpr std::uint32_t local_vertex_factory_support = 1u;
@@ -47,9 +57,11 @@ namespace toy3d::shader
         ShaderGeometryMode geometry = ShaderGeometryMode::None;
         VertexFactoryType vertex_factory = VertexFactoryType::None;
         std::uint32_t vertex_factory_support = 0u;
+        ShaderSurfaceMode surface_mode = ShaderSurfaceMode::Explicit;
     };
 
     bool supports_vertex_factory(std::uint32_t support, VertexFactoryType factory);
+    bool valid_shader_source_name(const std::string& name);
     bool validate_shader_program_contract(const ShaderProgramContract& contract, std::string& error);
     bool validate_shader_program_stages(const ShaderProgramContract& contract, ShaderStageFlags stages,
                                         std::string& error);

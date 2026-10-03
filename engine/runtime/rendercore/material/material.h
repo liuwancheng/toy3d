@@ -20,33 +20,26 @@ namespace toy3d
 {
     class MaterialRenderProxy;
 
-    enum class MaterialShadingModel
-    {
-        Phong
-    };
-
-    enum class MaterialBlendMode
-    {
-        Opaque,
-        Translucent
-    };
-
     shader::ShaderParameterSchema material_parameter_schema_from_shader_schema(
         const shader::ShaderParameterSchema& shader_schema);
+    // The full schema remains authorable; runtime resources are required only
+    // when a Program in this compiled configuration uses the parameter.
+    bool material_parameter_is_active(const ShaderMapCollection& shader_map, ShaderParameterId parameter_id);
 
     struct MaterialDesc
     {
         std::string shader_name;
         shader::ShaderParameterSchema parameter_schema;
         ShaderMapCollectionRef shader_map;
+        // Authored values for this node only. Shader defaults are resolved from
+        // the selected source revision, never copied into inherited overrides.
+        std::vector<MaterialStaticOption> static_options;
         std::unordered_map<ShaderParameterId, float> scalar_defaults;
         std::unordered_map<ShaderParameterId, vec2> vector2_defaults;
         std::unordered_map<ShaderParameterId, vec3> vector3_defaults;
         std::unordered_map<ShaderParameterId, vec4> vector4_defaults;
         std::unordered_map<ShaderParameterId, TextureRef> texture_defaults;
         std::unordered_map<ShaderParameterId, MaterialSamplerPreset> sampler_defaults;
-        MaterialShadingModel shading_model = MaterialShadingModel::Phong;
-        MaterialBlendMode blend_mode = MaterialBlendMode::Opaque;
         bool two_sided = false;
     };
 
@@ -57,7 +50,7 @@ namespace toy3d
     // CPU admission for the existing mesh formats. An absent map represents an
     // authoring-only material; render preparation still requires a loaded map.
     bool validate_material_geometry(const MaterialDesc& desc, shader::VertexFactoryType factory, bool has_vertex_colors,
-                                    std::string& error);
+                                    bool has_valid_tangent_frame, std::string& error);
 
     bool validate_material_mesh_pass(const MaterialDesc& desc, shader::ShaderPassRole role,
                                      shader::VertexFactoryType factory, std::string& error);
@@ -107,6 +100,7 @@ namespace toy3d
         // C++17 string_view borrows an authoring name only for this GT query.
         bool parameter_value(std::string_view name, MaterialParameterValue& output) const;
         bool overrides_parameter(std::string_view name) const;
+        std::vector<MaterialStaticOption> effective_static_options() const;
         MaterialRenderProxy* material_render_proxy() const noexcept;
         static void release(MaterialInterfaceRef& material);
 
@@ -128,8 +122,26 @@ namespace toy3d
             MaterialDesc descriptor;
             MaterialParameterChanges overrides;
             MaterialInterfaceRef parent;
+            bool shader_configuration_selected = false;
         };
-        static bool publish_configurations(std::vector<Configuration> configurations);
+        struct PreparedConfiguration
+        {
+            Configuration configuration;
+            MaterialRef root;
+            MaterialRef previous_root;
+            bool previously_used = false;
+            std::size_t depth = 1u;
+            MaterialDesc effective;
+            std::vector<MaterialStaticOption> static_options;
+            MaterialRenderProxy* destination = nullptr;
+            std::shared_ptr<MaterialRenderProxy> proxy;
+        };
+        static bool prepare_configurations(std::vector<Configuration> configurations,
+                                           const std::vector<ShaderMapCollectionRef>& shader_family,
+                                           std::vector<PreparedConfiguration>& revisions,
+                                           std::vector<MaterialInstanceRef>& owners);
+        static bool publish_configurations(std::vector<Configuration> configurations,
+                                           const std::vector<ShaderMapCollectionRef>& shader_family = {});
         bool publish_tree(MaterialDesc desc, MaterialParameterChanges overrides);
         bool resolve_material_replacement_publication();
         MaterialDesc desc_;
@@ -164,7 +176,9 @@ namespace toy3d
     class MaterialInstance final : public MaterialInterface
     {
       public:
-        static MaterialInstanceRef create(MaterialInterfaceRef parent);
+        static MaterialInstanceRef create(MaterialInterfaceRef parent, ShaderMapCollectionRef configuration = {});
+        static MaterialInstanceRef create(MaterialInterfaceRef parent, ShaderMapCollectionRef configuration,
+                                          std::vector<MaterialStaticOption> static_options);
         static void release(MaterialInstanceRef& instance);
         MaterialInstance(MaterialInstance&& other) noexcept;
         const MaterialRef& material() const

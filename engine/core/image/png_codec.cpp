@@ -4,9 +4,11 @@
 #include <array>
 #include <limits>
 #include <memory>
+#include <sstream>
 
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
+#define STBI_ONLY_HDR
 #define STBI_NO_STDIO
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -22,7 +24,100 @@ namespace toy3d
         {
             return width != 0 && height != 0 && width <= limits.max_dimension && height <= limits.max_dimension &&
                    width <= static_cast<unsigned>(std::numeric_limits<int>::max() / 4) &&
-                   static_cast<std::uint64_t>(width) * height * 4 <= std::numeric_limits<std::size_t>::max();
+                   static_cast<std::uint64_t>(width) * height * 4 <= std::numeric_limits<std::size_t>::max() &&
+                   static_cast<std::uint64_t>(width) * height * 4 <= limits.max_decoded_bytes;
+        }
+
+        bool validate_hdr_stream(const std::vector<std::uint8_t>& bytes, ImageLimits limits, int& width, int& height)
+        {
+            // Validate before stb: its HDR RLE reader treats EOF as a zero count
+            // without advancing, and also accepts truncated raw/repeat payloads.
+            std::size_t offset = 0u;
+            const auto read_line = [&](std::string& line)
+            {
+                line.clear();
+                while (offset < bytes.size() && offset < 16u * 1024u)
+                {
+                    const auto byte = bytes[offset++];
+                    if (byte == '\n')
+                    {
+                        return true;
+                    }
+                    if (byte == 0u || byte == '\r' || line.size() >= 1022u)
+                    {
+                        return false;
+                    }
+                    line.push_back(static_cast<char>(byte));
+                }
+                return false;
+            };
+            std::string line;
+            if (!read_line(line) || (line != "#?RADIANCE" && line != "#?RGBE"))
+            {
+                return false;
+            }
+            bool has_format = false;
+            do
+            {
+                if (!read_line(line))
+                {
+                    return false;
+                }
+                has_format = has_format || line == "FORMAT=32-bit_rle_rgbe";
+            } while (!line.empty());
+            if (!has_format || !read_line(line) || line.compare(0u, 3u, "-Y ") != 0)
+            {
+                return false;
+            }
+            std::istringstream resolution(line);
+            std::string y_axis, x_axis, trailing;
+            std::uint64_t w = 0u, h = 0u;
+            if (!(resolution >> y_axis >> h >> x_axis >> w) || y_axis != "-Y" || x_axis != "+X" ||
+                (resolution >> trailing) || w > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) ||
+                h > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) ||
+                !valid_size(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), limits) ||
+                w * h * 4u * sizeof(float) > limits.max_decoded_bytes)
+            {
+                return false;
+            }
+            width = static_cast<int>(w);
+            height = static_cast<int>(h);
+            const bool rle = w >= 8u && w < 32768u && bytes.size() - offset >= 4u && bytes[offset] == 2u &&
+                             bytes[offset + 1u] == 2u && (bytes[offset + 2u] & 0x80u) == 0u;
+            if (!rle)
+            {
+                return bytes.size() - offset == w * h * 4u;
+            }
+            for (std::uint64_t row = 0u; row < h; ++row)
+            {
+                if (bytes.size() - offset < 4u || bytes[offset] != 2u || bytes[offset + 1u] != 2u ||
+                    ((static_cast<unsigned>(bytes[offset + 2u]) << 8u) | bytes[offset + 3u]) != w)
+                {
+                    return false;
+                }
+                offset += 4u;
+                for (unsigned channel = 0u; channel < 4u; ++channel)
+                {
+                    std::uint64_t written = 0u;
+                    while (written < w)
+                    {
+                        if (offset == bytes.size())
+                        {
+                            return false;
+                        }
+                        const unsigned count = bytes[offset++];
+                        const unsigned pixels = count > 128u ? count - 128u : count;
+                        const unsigned encoded_bytes = count > 128u ? 1u : count;
+                        if (pixels == 0u || pixels > w - written || encoded_bytes > bytes.size() - offset)
+                        {
+                            return false;
+                        }
+                        written += pixels;
+                        offset += encoded_bytes;
+                    }
+                }
+            }
+            return offset == bytes.size();
         }
 
         std::uint32_t png_uint32(const std::vector<std::uint8_t>& bytes, std::size_t offset)
@@ -154,6 +249,34 @@ namespace toy3d
         candidate.width = static_cast<unsigned>(width);
         candidate.height = static_cast<unsigned>(height);
         candidate.pixels.assign(pixels.get(), pixels.get() + static_cast<std::size_t>(width) * height * 4);
+        output = std::move(candidate);
+        return {};
+    }
+
+    ImageStatus decode_hdr_image(const std::vector<std::uint8_t>& bytes, RgbaFloatImage& output, ImageLimits limits)
+    {
+        if (bytes.empty() || bytes.size() > limits.max_encoded_bytes ||
+            bytes.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+            !stbi_is_hdr_from_memory(bytes.data(), static_cast<int>(bytes.size())))
+        {
+            return {"HDR input must be a bounded Radiance stream."};
+        }
+        int width = 0, height = 0, channels = 0;
+        if (!validate_hdr_stream(bytes, limits, width, height))
+        {
+            return {"HDR requires bounded -Y/+X Radiance with exact complete raw/RLE scanlines."};
+        }
+        std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
+            stbi_loadf_from_memory(bytes.data(), static_cast<int>(bytes.size()), &width, &height, &channels, 4),
+            &stbi_image_free);
+        if (!pixels)
+        {
+            return {"Radiance HDR decoding failed."};
+        }
+        RgbaFloatImage candidate;
+        candidate.width = static_cast<unsigned>(width);
+        candidate.height = static_cast<unsigned>(height);
+        candidate.pixels.assign(pixels.get(), pixels.get() + static_cast<std::size_t>(width) * height * 4u);
         output = std::move(candidate);
         return {};
     }

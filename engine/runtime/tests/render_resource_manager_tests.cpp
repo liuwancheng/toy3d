@@ -152,7 +152,7 @@ namespace
         program.target_binding_hash = nonzero_hash(hash_seed + 1u);
         program.pass_template_hash =
             toy3d::shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state);
-        program.permutation_key = nonzero_hash(hash_seed + 3u);
+        program.permutation_key = toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding constants;
         constants.parameter_id = 10u;
@@ -187,6 +187,11 @@ namespace
         for (toy3d::shader::ShaderParameterConstantMemberSchema& member :
              program.parameter_schema.constant_buffers.front().members)
         {
+            if (member.name == "roughness")
+            {
+                member.minimum_value = 0.0f;
+                member.maximum_value = 1.0f;
+            }
             member.default_value.resize(member.size, 0u);
             if (member.parameter_id == 11u)
             {
@@ -241,7 +246,7 @@ namespace
         program.target_binding_hash = nonzero_hash(61u);
         program.pass_template_hash =
             toy3d::shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state);
-        program.permutation_key = nonzero_hash(62u);
+        program.permutation_key = toy3d::shader::default_shader_permutation_key;
 
         toy3d::ShaderMapBinding view;
         view.parameter_id = toy3d::shader::make_shader_parameter_id(
@@ -504,6 +509,43 @@ namespace
             &scene_renderer, nullptr, toy3d::ViewportFrameOutput{}, render_scene, device, shader_program_cache,
             resource_manager, viewport, scene_render_targets, tonemap_pass_resources, nullptr, viewport_output_target);
     }
+    void test_material_tangent_admission()
+    {
+        using namespace toy3d;
+        shader::ShaderPermutationDomain domain;
+        domain.dimensions.push_back(
+            {"NORMAL", shader::ShaderPermutationValueKind::Boolean, {}, false, {}, shader::ShaderStageFlags::Pixel});
+        shader::ShaderStaticCondition condition;
+        shader::ShaderStaticConditionNode node;
+        node.comparison = {"NORMAL", shader::ShaderPermutationValueKind::Boolean, true, {}};
+        condition.nodes.push_back(node);
+        for (const bool enabled : {false, true})
+        {
+            const std::vector<shader::ShaderPermutationSelection> selections = {
+                {"NORMAL", shader::ShaderPermutationValueKind::Boolean, enabled, {}}};
+            auto data = make_material_program("Forward", 120u);
+            data.permutation_key = shader::resolve_shader_permutation(domain, selections).permutation->key;
+            const auto program = load_program(std::move(data));
+            const auto map = tests::make_material_shader_map(*program, domain, selections, true, condition);
+            check(map.succeeded(), map.error.c_str());
+            if (!map.succeeded())
+            {
+                continue;
+            }
+            MaterialDesc descriptor;
+            descriptor.shader_name = map.collection->index().shader_name;
+            descriptor.shader_map = map.collection;
+            std::string error;
+            check(map.collection->requires_tangent_frame() == enabled,
+                  "Geometry requirement resolves once against each user's typed configuration");
+            check(validate_material_geometry(descriptor, shader::VertexFactoryType::Local, true, false, error) ==
+                      !enabled,
+                  "Normal configuration rejects missing valid tangents; disabled configuration remains usable");
+            check(validate_material_geometry(descriptor, shader::VertexFactoryType::Local, true, true, error),
+                  "Valid immutable tangent geometry admits either static configuration");
+        }
+    }
+
     void test_material_schema_defaults()
     {
         using namespace toy3d;
@@ -571,6 +613,7 @@ namespace
 int main()
 {
     test_material_schema_defaults();
+    test_material_tangent_admission();
     struct TestQueue final : toy3d::RHIQueue
     {
         using toy3d::RHIQueue::RHIQueue;
@@ -607,6 +650,7 @@ int main()
         std::vector<std::uint8_t> last_buffer_initial_data;
         std::uint32_t buffer_creation_count = 0;
         bool return_invalid_depth_view = false;
+        bool supports_linear_filter = true;
         std::vector<std::string>* operations = nullptr;
 
         toy3d::RHIStatus initialize(const toy3d::RHIDeviceDesc&) override
@@ -631,6 +675,10 @@ int main()
                            toy3d::RHIFormatUsage::RenderTarget | toy3d::RHIFormatUsage::DepthStencil |
                            toy3d::RHIFormatUsage::VertexBuffer | toy3d::RHIFormatUsage::CopySource |
                            toy3d::RHIFormatUsage::CopyDestination;
+            if (supports_linear_filter)
+            {
+                result.usage |= toy3d::RHIFormatUsage::LinearFilter;
+            }
             return result;
         }
 
@@ -877,23 +925,24 @@ int main()
     toy3d::ObjectShaderParameters object_parameters;
     object_parameters.toy_object_to_world = object_to_world;
     object_parameters.toy_object_normal_to_world = toy3d::Matrix4::identity();
-    object_parameters.toy_receives_shadows = 1.0f;
+    object_parameters.toy_num_bone_influences = 8u;
     const auto object_binding = toy3d::create_transient_shader_binding(device, uniform_context, object_parameters);
     float object_translation_x = 0.0f;
     float normal_diagonal = 0.0f;
-    float receiver_flag = 0.0f;
+    std::uint32_t bone_influence_count = 0u;
     const bool object_bytes_complete =
         uniform_context.last_buffer_upload_data.size() == sizeof(toy3d::Matrix4) * 2u + 16u;
     if (object_bytes_complete)
     {
         std::memcpy(&object_translation_x, uniform_context.last_buffer_upload_data.data() + 48u, sizeof(float));
         std::memcpy(&normal_diagonal, uniform_context.last_buffer_upload_data.data() + 64u, sizeof(float));
-        std::memcpy(&receiver_flag, uniform_context.last_buffer_upload_data.data() + 128u, sizeof(float));
+        std::memcpy(&bone_influence_count, uniform_context.last_buffer_upload_data.data() + 128u,
+                    sizeof(bone_influence_count));
     }
     check(object_binding.succeeded() && object_binding.value() != nullptr &&
               object_binding.value()->group() == toy3d::RHIBindingGroup::Object && object_bytes_complete &&
-              object_translation_x == 13.0f && normal_diagonal == 1.0f && receiver_flag == 1.0f,
-          "Object ABI materialization must write matrices and the receiver flag");
+              object_translation_x == 13.0f && normal_diagonal == 1.0f && bone_influence_count == 8u,
+          "Object ABI materialization must write matrices and the bone influence count");
 
     struct GraphicsContext final : toy3d::RHIGraphicsCommandContext
     {
@@ -1364,6 +1413,48 @@ int main()
               texture_resource->active_view() != nullptr && texture_resource->binding_generation() == 1u,
           "submit commit must publish the first Texture view and nonzero binding generation");
 
+    toy3d::TextureDesc cube_desc;
+    std::string invalid_texture_error;
+    cube_desc.width = cube_desc.height = 4u;
+    cube_desc.format = toy3d::PixelFormat::R16G16B16A16Float;
+    cube_desc.usage = toy3d::TextureUsage::LinearData;
+    cube_desc.cube = true;
+    cube_desc.requires_linear_filter = true;
+    cube_desc.row_pitches = {32u, 16u, 8u};
+    cube_desc.slice_pitches = {128u, 32u, 8u};
+    cube_desc.mip_pixels = {std::vector<std::uint8_t>(128u * 6u), std::vector<std::uint8_t>(32u * 6u),
+                            std::vector<std::uint8_t>(8u * 6u)};
+    check(cube_desc.validate(invalid_texture_error), "Complete Cube descriptor must validate");
+    auto incomplete_cube = cube_desc;
+    incomplete_cube.mip_pixels[0u].pop_back();
+    check(!incomplete_cube.validate(invalid_texture_error), "Incomplete Cube face must fail before recording");
+    auto cube = toy3d::Texture::create(cube_desc);
+    auto* cube_resource = cube->texture_resource();
+    device.test_capabilities.sampled_cube_textures = true;
+    device.test_limits.max_texture_dimension_cube = 64u;
+    const auto uploads_before_cube = context.texture_upload_count;
+    check(cube_resource->begin_init(manager).succeeded() && manager.record_pending_uploads(context).succeeded() &&
+              context.texture_upload_count == uploads_before_cube + 18u && device.last_texture_desc.cube_compatible &&
+              device.last_texture_desc.array_layers == 6u &&
+              cube_resource->view_for_current_recording()->desc().dimension ==
+                  toy3d::RHITextureViewDimension::TextureCube,
+          "Cube upload must cover every face/mip and create a Cube SRV");
+    check(manager.discard_recording().succeeded() && !cube_resource->active_view(),
+          "Discarded Cube recording must not publish a view");
+    check(manager.record_pending_uploads(context).succeeded() && manager.commit_recording().succeeded(),
+          "Cube re-record/commit must publish atomically");
+    const auto old_cube_view = cube_resource->active_view();
+    const auto old_cube_generation = cube_resource->binding_generation();
+    device.supports_linear_filter = false;
+    check(cube_resource->update(cube_desc, manager).succeeded() && !manager.record_pending_uploads(context).succeeded(),
+          "Unsupported required linear filtering must reject a Cube update");
+    check(manager.discard_recording().succeeded() && cube_resource->active_view() == old_cube_view &&
+              cube_resource->binding_generation() == old_cube_generation,
+          "Failed Cube update must retain the prior published resource/generation");
+    device.supports_linear_filter = true;
+    check(cube_resource->release(manager).succeeded(), "Cube release must detach its manager");
+    cube.reset();
+
     toy3d::ThreadManager material_thread_manager;
     toy3d::TaskGraphCreateResult material_graph_result =
         toy3d::create_task_graph({0u, 256u, false}, material_thread_manager);
@@ -1378,6 +1469,67 @@ int main()
     toy3d::RenderResourceManager frame_manager(device);
     std::unique_ptr<toy3d::RenderScene> frame_render_scene =
         std::make_unique<toy3d::RenderScene>(*material_graph, frame_manager);
+    auto environment_desc = cube_desc;
+    for (auto& pixels : environment_desc.mip_pixels)
+    {
+        for (std::size_t channel = 0u; channel < pixels.size(); channel += 2u)
+        {
+            pixels[channel] = 0u;
+            pixels[channel + 1u] = 0x3cu;
+        }
+    }
+    const auto environment_cpu = toy3d::Texture::create(environment_desc);
+    toy3d::SceneEnvironmentSnapshot environment_snapshot{environment_cpu, toy3d::Quaternion{}, 2.0f};
+    std::string environment_error;
+    check(toy3d::validate_scene_environment_snapshot(environment_snapshot, environment_error),
+          "Scene Environment must accept bounded finite Cube radiance");
+    environment_snapshot.rotation = toy3d::Quaternion(0.0f, 0.0f, 0.0f, 0.0f);
+    check(!toy3d::validate_scene_environment_snapshot(environment_snapshot, environment_error),
+          "Scene Environment must reject a zero rotation before publication");
+    environment_snapshot.rotation = toy3d::Quaternion{};
+    frame_render_scene->update_environment(environment_snapshot);
+    check(frame_render_scene->environment_status().code() == toy3d::RHIErrorCode::NotReady &&
+              frame_manager.record_pending_uploads(context).succeeded(),
+          "Environment must prepare its Cube before exposing a recording view");
+    const auto discarded_environment_view = frame_render_scene->environment_view_for_current_recording();
+    check(discarded_environment_view && frame_manager.discard_recording().succeeded(),
+          "Environment candidate can be discarded before submit");
+    frame_render_scene->resolve_environment_recording(false);
+    check(!frame_render_scene->environment_view_for_current_recording() &&
+              frame_manager.record_pending_uploads(context).succeeded() && frame_manager.commit_recording().succeeded(),
+          "Discarded Environment must re-record rather than publish stale GPU state");
+    frame_render_scene->resolve_environment_recording(true);
+    const auto published_environment_view = frame_render_scene->environment_view_for_current_recording();
+    check(published_environment_view && published_environment_view != discarded_environment_view &&
+              frame_render_scene->environment_for_current_recording().intensity == 2.0f,
+          "Environment resource and settings publish together after commit");
+    {
+        toy3d::RenderScene independent_scene(*material_graph, frame_manager);
+        independent_scene.update_environment(environment_snapshot);
+        check(frame_manager.record_pending_uploads(context).succeeded() && frame_manager.commit_recording().succeeded(),
+              "Another scene can share immutable Environment CPU data");
+        independent_scene.resolve_environment_recording(true);
+        check(independent_scene.environment_view_for_current_recording() != published_environment_view &&
+                  frame_render_scene->environment_view_for_current_recording() == published_environment_view,
+              "Scene domains must own independent Environment GPU allocations");
+    }
+    environment_snapshot.cube = toy3d::Texture::create(environment_desc);
+    device.supports_linear_filter = false;
+    frame_render_scene->update_environment(environment_snapshot);
+    check(!frame_manager.record_pending_uploads(context).succeeded() && frame_manager.discard_recording().succeeded(),
+          "Unsupported Environment filtering must reject the candidate upload");
+    frame_render_scene->resolve_environment_recording(false);
+    check(!frame_render_scene->environment_status().succeeded() &&
+              frame_render_scene->environment_view_for_current_recording() == published_environment_view &&
+              frame_render_scene->environment_for_current_recording().cube == environment_cpu,
+          "Failed replacement must diagnose failure and retain the prior Environment");
+    device.supports_linear_filter = true;
+    frame_render_scene->update_environment({});
+    check(frame_manager.commit_recording().succeeded(), "Off Environment needs no Cube upload");
+    frame_render_scene->resolve_environment_recording(true);
+    check(frame_render_scene->environment_status().succeeded() &&
+              !frame_render_scene->environment_view_for_current_recording() && published_environment_view->texture(),
+          "Clearing Environment detaches the scene while retained bindings keep the old GPU resource alive");
     toy3d::RHITextureDesc present_texture_desc;
     present_texture_desc.width = 64u;
     present_texture_desc.height = 64u;
@@ -1537,14 +1689,10 @@ int main()
     const toy3d::RHIResult<toy3d::RHIFrameEndResult> submitted_frame_result =
         render_test_frame(submitted_frame_renderer, *frame_render_scene, device, frame_manager, frame_viewport,
                           submitted_scene_render_targets, tonemap_resources);
-    // The shadow atlas is cleared once, then Base Pass and Tonemap share the frame transaction.
+    // Empty scenes have no shadow receiver/caster. Only Base Pass clear and Tonemap are recorded.
     const std::vector<std::string> expected_submitted_operations = {"begin_frame",
                                                                     "begin_recording",
                                                                     "record_pending_uploads",
-                                                                    "transition",
-                                                                    "begin_render_pass",
-                                                                    "end_render_pass",
-                                                                    "transition",
                                                                     "transition",
                                                                     "begin_render_pass",
                                                                     "end_render_pass",
@@ -1799,10 +1947,12 @@ int main()
     const auto mixed_end = mixed_begin == mixed_operations.end()
                                ? mixed_operations.end()
                                : std::find(mixed_begin, mixed_operations.end(), "end_render_pass");
-    const bool mixed_bindings_published = view_infos(mixed_renderer).size() == 1u &&
-                                          view_infos(mixed_renderer)[0].mesh_batches().size() == 2u &&
-                                          !view_infos(mixed_renderer)[0].mesh_batches()[0].material_binding() &&
-                                          view_infos(mixed_renderer)[0].mesh_batches()[1].material_binding();
+    const bool mixed_bindings_published =
+        view_infos(mixed_renderer).size() == 1u && view_infos(mixed_renderer)[0].mesh_batches().size() == 2u &&
+        !view_infos(mixed_renderer)[0].mesh_batches()[0].material_binding(
+            *view_infos(mixed_renderer)[0].mesh_batches()[0].material_program().program) &&
+        view_infos(mixed_renderer)[0].mesh_batches()[1].material_binding(
+            *view_infos(mixed_renderer)[0].mesh_batches()[1].material_program().program);
     check(mixed_result.succeeded() && mixed_bindings_published && mixed_begin != mixed_operations.end() &&
               mixed_end != mixed_operations.end() &&
               std::find(mixed_begin, mixed_end, "upload_transient_uniform") == mixed_end &&
@@ -1915,10 +2065,6 @@ int main()
     const std::vector<std::string> expected_submit_failed_operations = {"begin_frame",
                                                                         "begin_recording",
                                                                         "record_pending_uploads",
-                                                                        "transition",
-                                                                        "begin_render_pass",
-                                                                        "end_render_pass",
-                                                                        "transition",
                                                                         "transition",
                                                                         "begin_render_pass",
                                                                         "end_render_pass",
@@ -2168,6 +2314,73 @@ int main()
               "parent fixture ID failed");
         child_data.parent.expected_type = "toy3d.MaterialAssetData";
         child_data.overrides = {{"roughness", 0.9f}};
+        {
+            toy3d::shader::ShaderPermutationDomain domain;
+            domain.dimensions = {{"USE_DETAIL",
+                                  toy3d::shader::ShaderPermutationValueKind::Boolean,
+                                  {},
+                                  false,
+                                  {},
+                                  toy3d::shader::ShaderStageFlags::Pixel}};
+            const auto off = toy3d::shader::resolve_shader_permutation(domain, {});
+            const auto on = toy3d::shader::resolve_shader_permutation(
+                domain, {{"USE_DETAIL", toy3d::shader::ShaderPermutationValueKind::Boolean, true, {}}});
+            auto off_data = asset_program->data();
+            off_data.permutation_key = off.permutation->key;
+            auto on_data = off_data;
+            on_data.permutation_key = on.permutation->key;
+            const auto off_map = toy3d::tests::make_material_shader_map(*load_program(off_data), domain);
+            const auto on_map =
+                toy3d::tests::make_material_shader_map(*load_program(on_data), domain, on.permutation->selections);
+            check(off_map.succeeded() && on_map.succeeded(),
+                  "Typed static configurations must make distinct validated collections");
+            toy3d::MaterialInstanceRef static_root;
+            {
+                const auto built = toy3d::create_material_from_asset(asset_data, off_map.collection, resolved);
+                check(built.succeeded(), "Static configuration root must resolve Shader defaults");
+                static_root = built.value();
+            }
+            auto static_child_data = child_data;
+            static_child_data.static_options = {{"USE_DETAIL", true}};
+            check(!toy3d::create_material_instance_from_asset(static_child_data, static_root, resolved).succeeded(),
+                  "Missing exact static configuration must reject instance creation");
+            toy3d::MaterialInstanceRef static_child;
+            {
+                const auto built = toy3d::create_material_instance_from_asset(static_child_data, static_root, resolved,
+                                                                              on_map.collection);
+                check(built.succeeded() && built.value()->desc().shader_map == on_map.collection,
+                      "Instance must select its own typed static configuration");
+                static_child = built.value();
+            }
+            check(static_root->set_vector("base_color", toy3d::vec4(0.7f, 0.3f, 0.4f, 1.0f)) &&
+                      static_child->desc().shader_map == on_map.collection,
+                  "Parent ordinary parameter publication must preserve child static selection");
+            toy3d::MaterialParameterValue inherited;
+            check(static_child->parameter_value("base_color", inherited) && std::get_if<toy3d::Vector4>(&inherited) &&
+                      std::get_if<toy3d::Vector4>(&inherited)->x == 0.7f,
+                  "Different static configurations must retain ordinary parameter inheritance");
+            static_child_data.static_options = {{"UNKNOWN", true}};
+            check(
+                !toy3d::create_material_instance_from_asset(static_child_data, static_root, resolved, on_map.collection)
+                     .succeeded(),
+                "Unknown static name must fail");
+            static_child_data.static_options = {{"USE_DETAIL", std::string("true")}};
+            check(
+                !toy3d::create_material_instance_from_asset(static_child_data, static_root, resolved, on_map.collection)
+                     .succeeded(),
+                "Enum cannot masquerade as bool");
+            static_child_data.static_options.clear();
+            toy3d::MaterialInstanceRef cleared;
+            {
+                const auto built = toy3d::create_material_instance_from_asset(static_child_data, static_root, resolved);
+                check(built.succeeded() && built.value()->desc().shader_map == off_map.collection,
+                      "Removing local static selection must restore Parent configuration");
+                cleared = built.value();
+            }
+            toy3d::MaterialInstance::release(cleared);
+            toy3d::MaterialInstance::release(static_child);
+            toy3d::MaterialInstance::release(static_root);
+        }
         toy3d::MaterialInstanceRef child_instance;
         {
             const auto built = toy3d::create_material_instance_from_asset(child_data, root_instance, resolved);
@@ -2246,8 +2459,9 @@ int main()
         check(!root_instance->apply_parameters({{"roughness", 0.7f}, {"unknown", 1.0f}}) &&
                   !root_instance->apply_parameters({{"roughness", 0.7f}, {"roughness", 0.8f}}) &&
                   !root_instance->set_scalar("roughness", std::numeric_limits<float>::quiet_NaN()) &&
+                  !root_instance->set_scalar("roughness", -0.01f) && !root_instance->set_scalar("roughness", 1.01f) &&
                   stable_proxy->materialize(device, context).value() == batched_binding.value(),
-              "unknown duplicate or non-finite batch must not publish a partial update or dirty bindings");
+              "invalid names, nonfinite or out-of-Range values must not publish a partial update or dirty bindings");
         check(root_instance->reset_parameter("roughness") && root_instance->reset_parameter("base_color"),
               "runtime reset must resolve immutable Shader defaults");
         const auto reset_binding = stable_proxy->materialize(device, context);
@@ -2284,11 +2498,44 @@ int main()
             subset_has_inactive_texture = subset_has_inactive_texture || value.binding_id == 12u;
         }
     }
-    check(subset_material_binding.succeeded() && subset_material_binding.value()->desc().bindings.size() == 2u &&
-              subset_has_constants && subset_has_inactive_texture,
-          "Material logical materialization must include the complete schema superset even when the Program "
-          "active layout omits a Texture");
+    check(subset_material_binding.succeeded() && subset_material_binding.value()->desc().bindings.size() == 1u &&
+              subset_has_constants && !subset_has_inactive_texture,
+          "Material materialization binds only the selected Program active resources");
+    toy3d::TextureRef unused_texture = toy3d::Texture::create(texture->desc());
+    const auto subset_binding_before_unused_update = subset_material_binding.value();
+    check(subset_material_instance->material_render_proxy()->begin_init_textures(manager) &&
+              subset_material_instance->set_texture("base_color_texture", unused_texture) &&
+              unused_texture->texture_resource()->state() == toy3d::RenderResourceState::Uninitialized &&
+              subset_material_instance->material_render_proxy()->materialize(device, context).value() ==
+                  subset_binding_before_unused_update,
+          "Inactive texture updates neither upload that resource nor invalidate an unrelated active binding");
+    check(!subset_material_instance->material_render_proxy()->materialize(device, context, *active_program),
+          "A draw cannot materialize a Program outside the owner's immutable configuration");
     toy3d::MaterialInstance::release(subset_material_instance);
+    toy3d::Texture::release(unused_texture);
+
+    toy3d::MaterialDesc inactive_default_desc = subset_material->desc();
+    inactive_default_desc.texture_defaults[12u] = nullptr;
+    const auto inactive_default_material = toy3d::Material::create(inactive_default_desc);
+    auto inactive_default_instance = toy3d::MaterialInstance::create(inactive_default_material);
+    check(inactive_default_instance &&
+              inactive_default_instance->material_render_proxy()->begin_init_textures(manager) &&
+              inactive_default_instance->material_render_proxy()->materialize(device, context) &&
+              inactive_default_instance->reset_parameter("base_color_texture"),
+          "An inactive texture default may be absent without manufacturing a dummy resource");
+    if (inactive_default_instance)
+    {
+        const auto old_binding = inactive_default_instance->material_render_proxy()->materialize(device, context);
+        check(!inactive_default_instance->material_render_proxy()->stage_material_candidate(active_shader_map, false) &&
+                  inactive_default_instance->material_render_proxy()->shader_map() == subset_shader_map &&
+                  inactive_default_instance->material_render_proxy()->materialize(device, context).value() ==
+                      old_binding.value(),
+              "Enabling a missing texture fails candidate admission while preserving current Program and binding");
+        toy3d::MaterialInstance::release(inactive_default_instance);
+    }
+    inactive_default_desc.shader_map = active_shader_map;
+    check(!toy3d::Material::create(std::move(inactive_default_desc)),
+          "An active texture default must resolve before Material admission");
 
     toy3d::MaterialInstanceRef render_material_instance = toy3d::MaterialInstance::create(render_material);
     check(render_material_instance != nullptr && render_material_instance->set_scalar("roughness", 0.5f) &&
@@ -2439,15 +2686,17 @@ int main()
     const toy3d::RHIResult<toy3d::RHIBindingSetRef> subset_candidate_binding =
         material_proxy->materialize_staged(device, context);
     check(subset_candidate_binding.succeeded() &&
-              subset_candidate_binding.value() == binding_before_mapping_candidate &&
+              subset_candidate_binding.value() != binding_before_mapping_candidate &&
+              subset_candidate_binding.value()->desc().bindings.size() == 1u &&
               render_material_instance->publish_material_replacement() &&
               material_proxy->shader_map() == subset_shader_map &&
-              material_proxy->materialize(device, context).value() == binding_before_mapping_candidate,
-          "an active-subset-only Program change must reuse the complete Material logical superset");
+              material_proxy->materialize(device, context).value() == subset_candidate_binding.value(),
+          "an active subset change atomically publishes its own smaller Material binding");
     check(render_material_instance->stage_material_replacement(active_shader_map, false) &&
-              material_proxy->materialize_staged(device, context).value() == binding_before_mapping_candidate &&
-              render_material_instance->publish_material_replacement(),
-          "restoring the full active subset must not rebuild the unchanged Material logical superset");
+              material_proxy->materialize_staged(device, context).succeeded() &&
+              render_material_instance->publish_material_replacement() &&
+              material_proxy->materialize(device, context).value()->desc().bindings.size() == 2u,
+          "restoring the full active subset prepares every newly required resource before publication");
 
     check(render_material_instance->stage_material_replacement(candidate_shader_map, true) &&
               material_proxy->materialize_staged(device, context).succeeded() &&

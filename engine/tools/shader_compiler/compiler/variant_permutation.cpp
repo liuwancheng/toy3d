@@ -10,26 +10,21 @@ namespace toy3d::shader
         return permutation.has_value() && diagnostics.empty();
     }
 
-    ShaderPermutationResult resolve_shader_permutation(const ShaderAsset& asset,
-                                                       const std::vector<ShaderVariantSelection>& selections)
+    ShaderPermutationDomain shader_material_domain(const ShaderAsset& asset)
     {
         // AST locations belong to Tools. Core owns the domain validation,
         // normalization, stable identity and macro generation for all consumers.
         ShaderPermutationDomain domain;
-        ShaderPermutationResult result;
         for (const Variant& variant : asset.variants)
         {
             ShaderPermutationDimension dimension;
             dimension.name = variant.name;
+            dimension.affected_stages = variant.affected_stages;
+            dimension.affected_passes = variant.affected_passes;
             if (variant.type == VariantType::Boolean)
             {
                 dimension.kind = ShaderPermutationValueKind::Boolean;
                 dimension.boolean_default = variant.default_value == "true";
-                if (variant.default_value != "true" && variant.default_value != "false")
-                {
-                    result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant,
-                                                  variant.location, "Boolean default must be true or false."});
-                }
                 // Reject inconsistent ASTs even when the parser was bypassed.
                 dimension.options = variant.options;
             }
@@ -41,10 +36,46 @@ namespace toy3d::shader
             }
             else
             {
-                result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant,
-                                              variant.location, "Unknown Variant type."});
+                dimension.kind = static_cast<ShaderPermutationValueKind>(~0u);
             }
             domain.dimensions.push_back(std::move(dimension));
+        }
+        return domain;
+    }
+
+    ShaderCompileSource shader_compile_source(const ShaderAsset& asset)
+    {
+        ShaderCompileSource source;
+        source.name = asset.name;
+        source.usage = asset.usage;
+        source.geometry = asset.geometry;
+        source.vertex_factory_support = asset.vertex_factory_support;
+        source.material_domain = shader_material_domain(asset);
+        source.features = asset.features;
+        source.supported_when = asset.supported_when;
+        source.standard_tangent_input = asset.standard_tangent_input;
+        source.declares_tangent_frame = asset.declares_tangent_frame;
+        source.tangent_frame_when = asset.tangent_frame_when;
+        for (const auto& pass : asset.passes)
+        {
+            source.passes.push_back({pass.name, pass.role});
+        }
+        return source;
+    }
+
+    ShaderPermutationResult resolve_shader_permutation(const ShaderAsset& asset,
+                                                       const std::vector<ShaderVariantSelection>& selections)
+    {
+        const auto domain = shader_material_domain(asset);
+        ShaderPermutationResult result;
+        for (const auto& variant : asset.variants)
+        {
+            if (variant.type == VariantType::Boolean && variant.default_value != "true" &&
+                variant.default_value != "false")
+            {
+                result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidVariant,
+                                              variant.location, "Boolean default must be true or false."});
+            }
         }
 
         std::vector<ShaderPermutationSelection> typed_selections;

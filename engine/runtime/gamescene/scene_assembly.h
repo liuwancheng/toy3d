@@ -13,6 +13,7 @@ namespace toy3d
     class StaticMeshComponent;
     struct SceneAssemblyServices
     {
+        std::function<TextureRef(const AssetRef&, std::string&)> load_environment;
         std::function<StaticMeshRef(const SceneMeshData&, std::string&)> load_mesh;
         std::function<bool(Actor&, StaticMeshComponent&, const std::string&, const AssetRef&, std::string&)>
             assign_material;

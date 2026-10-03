@@ -177,7 +177,7 @@ namespace toy3d
             return AssetResult<std::vector<std::uint8_t>>(mesh.status());
         }
         ValueWriter writer;
-        if (!writer.write_uint32(2).succeeded() || !writer.write_uint32(geometry.num_bone_influences).succeeded() ||
+        if (!writer.write_uint32(3).succeeded() || !writer.write_uint32(geometry.num_bone_influences).succeeded() ||
             !writer.write_blob(mesh.value()).succeeded())
         {
             return AssetResult<std::vector<std::uint8_t>>(invalid("skeletal geometry encoding failed"));
@@ -236,8 +236,8 @@ namespace toy3d
         std::uint32_t version = 0;
         std::uint32_t num_bone_influences = skin_influences_per_group;
         std::vector<std::uint8_t> mesh_bytes;
-        if (bytes.size() > ValueLimits{}.max_bytes || !reader.read_uint32(version).succeeded() ||
-            (version != 1 && version != 2) || (version == 2 && !reader.read_uint32(num_bone_influences).succeeded()) ||
+        if (bytes.size() > ValueLimits{}.max_bytes || !reader.read_uint32(version).succeeded() || version != 3 ||
+            !reader.read_uint32(num_bone_influences).succeeded() ||
             (num_bone_influences != skin_influences_per_group && num_bone_influences != max_skin_influences) ||
             !reader.read_blob(mesh_bytes).succeeded())
         {
@@ -338,7 +338,7 @@ namespace toy3d
         AssetFileIndex index;
         index.asset_id = id;
         index.root_type = "toy3d.SkeletalMeshAssetData";
-        index.schema_version = 1;
+        index.schema_version = 2;
         index.dependencies.push_back(mesh.data.skeleton);
         return encode_asset_pair(types, std::move(index), writer.bytes(),
                                  {{"skeletal_geometry", 2, true, geometry.value()}});
@@ -347,7 +347,7 @@ namespace toy3d
     AssetResult<SkeletalMeshAsset> decode_skeletal_mesh_asset_pair(const AssetPair& pair)
     {
         if (pair.description.index.root_type != "toy3d.SkeletalMeshAssetData" ||
-            pair.description.index.schema_version != 1 || !pair.description.has_meta)
+            pair.description.index.schema_version != 2 || !pair.description.has_meta)
         {
             return AssetResult<SkeletalMeshAsset>(invalid("invalid skeletal mesh type or schema"));
         }

@@ -312,6 +312,15 @@ int main()
     changed.permutation_key[1] = 9;
     check(differs(changed), "permutation must participate in the key");
     changed = source;
+    changed.pass_permutation_key[1] ^= 9u;
+    check(differs(changed), "Pass configuration must distinguish even identical stage bytecode and layouts");
+    std::unordered_map<toy3d::RHIShaderProgramKey, int, ConstantHash> pass_configurations;
+    pass_configurations.emplace(baseline, 1);
+    const auto different_pass = toy3d::RHIShaderProgramKey::from_program(changed);
+    pass_configurations.emplace(different_pass, 2);
+    check(pass_configurations.size() == 2u && pass_configurations.at(different_pass) == 2,
+          "Pass configuration equality remains exact under forced hash collisions");
+    changed = source;
     ++changed.mapping_version;
     check(differs(changed), "mapping version must participate in the key");
     changed = source;

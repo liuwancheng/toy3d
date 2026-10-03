@@ -107,3 +107,5 @@ Logger 将同一事件分发到终端、滚动文件和可选 LogBuffer。LogBuf
 - ImageCodec 做 CPU 转换；runtime Texture 不解码 PNG/JPEG，GPU-ready mip、导入策略和缓存见 Assets。
 
 新增共享服务覆盖 ownership/线程/错误/平台/旧入口删除条件，以最小调用方迁移。核对绕接口、忽略失败、cwd 依赖和重复缓存。构建对应 target/测试；测试名/平台条件从 CMake 查。Process 覆盖 argv、非零退出、截断、超时/取消/detached；FileSystem 覆盖非法路径、mount/权限、短读、发布失败。
+
+`decode_hdr_image` 只解码有界 Radiance HDR，返回线性 `RgbaFloatImage`；ImageLimits 同时限制编码和解码字节，分配前检查 dimensions。`try_encode_float16` 使用既有 GLM 转换，拒绝 NaN/Inf 和超过有限 binary16 范围的输入；环境的非负、alpha、布局限制归资产层。

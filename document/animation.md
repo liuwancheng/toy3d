@@ -25,7 +25,7 @@
 | `engine/runtime/rendercore/geometry/vertex_factory.h` | 接口解释顶点流并报告 Local/GPUSkin 类型；program 选择留 MeshBatch/pass，不由 factory 加载 shader 或材质。 |
 | `engine/runtime/renderscene/mesh_batch.h`、`view/scene_visibility.cpp` | MeshBatch 使用 PrimitiveSceneProxy、VertexFactory 和 RHI index binding；camera/shadow 统一调用 proxy 的 collect_mesh_batches。 |
 | `engine/runtime/renderscene/render_scene.cpp` | 注册、材质更新、最后引用释放通过 PrimitiveSceneProxy 行为调用，具体 geometry 生命周期留各 mesh 实现。 |
-| `engine/runtime/rendercore/shader/shader_vertex_input.cpp` | 支持 position/normal/uv/color 和 BlendIndices0/1、BlendWeights0/1；骨骼索引要求 UInt32×4，权重为 Float32×4。 |
+| `engine/runtime/rendercore/shader/shader_vertex_input.cpp` | 支持 position/normal/uv/color/Tangent0 和 BlendIndices0/1、BlendWeights0/1；骨骼索引要求 UInt32×4，权重为 Float32×4。 |
 | `engine/core/image/pixel_format.h` | RGBA8 UInt/UNorm 分别用于 section-local 索引/权重，与 Core/RHI/Vulkan 映射一致。 |
 | compiler `layout/binding_allocator.cpp`、Vulkan buffer view/binding/type mapping | Buffer<Float4> reflection 选择 ReadOnlyTypedBuffer；公共 typed view/limits 验证和 Vulkan uniform texel buffer usage/view/descriptor/保活已接入。 |
 | `engine/runtime/gamescene/world/world.cpp` | World 在 begin_play 后按 Actor → Component 两阶段调度，SkeletalMeshComponent 通过自己的组件 tick 求值动画。 |
@@ -33,7 +33,7 @@
 
 沿用 [Assets](assets.md) 的身份/配对事务、[Math](math.md) 的厘米/LH/column-vector、[Render Framework](render-framework.md) 的 FIFO 与 GPU 保活、[RHI](rhi.md) 的 binding/state/profile、[Editor](editor.md) 的候选接管和保存规则。
 
-现有 Assets 文档的 StaticMesh 流程只列 FBX/OBJ，实际 importer 及 CMake 测试还覆盖 glTF/GLB；本方案按真实代码描述已有输入范围，不把这些格式的静态导入支持推断为动画支持。
+StaticMesh importer 与 CMake 测试覆盖 FBX/OBJ/glTF/GLB；静态导入支持不等于这些格式的动画链路已验收。
 
 ## 职责、目录与 target
 
@@ -55,7 +55,7 @@
 | 资产 | 内容 | 依赖与格式提议 |
 | --- | --- | --- |
 | Skeleton | 唯一 bone name、parent index、reference local TRS；固定父先子后次序、单 root。helper/非 deform 祖先也保留。 | schema 1，YAML；不反向强引用 Mesh/Animation，避免依赖环。 |
-| SkeletalMesh | Skeleton 引用、材质槽、LOD0 sections、顶点/索引/skin weights、inverse bind、骨骼局部 bounds。 | schema 1；YAML + `.meta` 的 `skeletal_geometry` 必需段，payload version 2；version 1 按 4 槽读取。 |
+| SkeletalMesh | Skeleton 引用、材质槽、LOD0 sections、顶点/索引/skin weights、inverse bind、骨骼局部 bounds。 | schema 2；YAML + `.meta` 的 `skeletal_geometry` 必需段，payload version 3；只接受当前版本，包含共享切线能力与 4/8 影响数。 |
 | AnimationSequence | Skeleton 引用、duration/sample rate/sample count、track-to-bone 映射与 local TRS 样本。 | schema 1；YAML + `.meta` 的 `animation_tracks` 必需段，段自身 version 1。 |
 
 Skeleton/AnimationSequence runtime 表示为不可变 CPU 数据，可跨 World 共享。Mesh CPU 数据也可共享，RT render data 与可变 pose/骨骼矩阵数组首版按 RenderScene 生命周期隔离；同一 Mesh 的不同组件绝不能共用可变骨骼矩阵数组。
@@ -64,7 +64,7 @@ Skeleton 是动画兼容性身份，Mesh 保留自己的 inverse bind；不能�
 
 bone index 只对当前 Skeleton 内容有效，重导入按唯一 bone name 重建显式映射，不按旧数组下标接管。重复名字、找不到祖先、环、多 root、缺失 deform bone、非法 bind 或不可表示 TRS 拒绝。Editor 骨骼选择使用 AssetId + bone name，内容变化后重新解析。
 
-复用反射注册/codegen、AssetPairStore、Catalog 依赖检查、AssetRef 和有界 little-endian 编码。禁止直接序列化原生 Matrix/Transform 内存。现有 StaticMesh 格式保持独立；加入 Scene component variant 时提升受影响的 Scene/Component schema，显式迁移旧场景并保留 ID/附着/材质。具体版本以实施时真实 schema 为准。
+复用反射注册/codegen、AssetPairStore、Catalog 依赖检查、AssetRef 和有界 little-endian 编码。禁止直接序列化原生 Matrix/Transform 内存。现有 StaticMesh 格式保持独立；加入 Scene component variant 时提升受影响的 Scene/Component schema，旧格式离线重建；当前 Scene 7、Actor 6，既有 ID/附着/材质保存边界不变。
 
 多资产导入不假设已有跨资产原子事务：先完整验证所有候选，按 Skeleton → Mesh/Animation 逐个配对发布，逐项报告 commit。中途失败可能留下已提交、仍合法的资产；失败不自动删除它们。复用现有资产时检测 ID/内容冲突，不能顺带覆盖被其他 Mesh 使用的 Skeleton。
 
@@ -72,7 +72,7 @@ bone index 只对当前 Skeleton 内容有效，重导入按唯一 bone name 重
 
 ## 可调用入口
 
-- `asset/animation/animation_asset.*`：Skeleton/AnimationSequence 验证、reference hash 与配对编解码；`asset/mesh/skeletal_mesh_asset.*`：skin geometry、bind/bounds 与 Skeleton 兼容验证。三类 description schema 均为 1，动画 payload version 为 1，骨骼几何写 version 2 并兼容读取 version 1；未知版本拒绝。
+- `asset/animation/animation_asset.*`：Skeleton/AnimationSequence 验证、reference hash 与配对编解码；`asset/mesh/skeletal_mesh_asset.*`：skin geometry、bind/bounds 与 Skeleton 兼容验证。Skeleton/AnimationSequence description schema 1、动画 payload 1；SkeletalMesh schema 2、骨骼几何 payload 3；旧/未知版本拒绝。
 - `asset_pipeline/skeletal_mesh_builder.*`、`skeletal_mesh_import.*`：构建候选和 FBX/glTF/GLB 源解析，返回 owned CPU 数据，不直接发布资产。Assimp 保持 PRIVATE/可关闭。
 - `runtime/animation/animation_pose.*`、`animation_sequence.*`、`sequence_playback_state.*`、`animation_instance.*`：骨骼布局、不可变 sequence、局部采样/混合、独立时钟、Update/Evaluate 与 owned 快照；`animation_player.*` 是单 sequence 的便捷入口。布局和 sequence 构造时复制并完整验证资产候选，多个节点/实例共享 `AnimationSequence`，逐帧仅访问相邻样本。`rendercore/geometry/skeletal_mesh_deformation.*` 单独绑定兼容 Mesh，生成最终 skin/normal 矩阵和 bounds。
 - `gamescene/component/skeletal_mesh_component.*`、`actor/skeletal_mesh_actor.*`：资产/动画候选替换、播放控制与 World 求值；`rendercore/geometry/skeletal_mesh.*`、`scene/skeletal_mesh_scene_proxy.*`：共享 CPU 资产及每实例 RT owner。
@@ -99,7 +99,7 @@ importer 解析与构建 owned 候选，源文件/外部引用受已有 FileSyst
 - deform bone 的 helper 祖先进入骨架；无 track 的骨骼/通道补该 Skeleton 的 reference 值。未登记或无法安全映射的动画通道明确诊断，不能错挂到另一骨骼。
 - 重复 influence 合并、去零、降序稳定排序并归一化；零有效权重顶点默认拒绝。5～8 个正常接收；超过 8 个时默认拒绝，可由用户显式选择保留最大 8 个，报告受影响顶点数与最大丢弃权重。
 - 量化后的有效项紧凑排列；整个 LOD0 最多 4 个有效 influence 时 `num_bone_influences=4`，否则为 8，不按影响数增加 section。权重为 UInt8 UNorm，误差分配后全部槽的整数和精确为 255；索引是 UInt8 section-local bone index，不足补零。CPU 表示容量为 8；payload 与 GPU 顶点流只保存所选 4/8 槽，每顶点 8/16 bytes。CPU bounds 使用最终量化权重，不用量化前数据验证 GPU 行为。
-- geometry payload version 2 在嵌套基础网格前保存 UInt32 `num_bone_influences`，每顶点依次保存所选槽数的索引与权重；version 1 无该字段，读取时按 4 槽并补零扩展。新写入统一 version 2；未知版本、非法槽数及 4 槽 CPU 数据中的非零尾项拒绝。迁移仅保留 version 1 解码，不保留第二套构建/渲染路径。
+- geometry payload 3 在嵌套基础网格前保存 UInt32 `num_bone_influences`，每顶点保存所选槽数的索引与权重，并携带基础网格的 tangent/sign/valid_tangent_frame。仅当前版本可读取，非法槽数及 4 槽 CPU 数据中的非零尾项拒绝；旧资产从源离线重建。
 - 一个 draw section 关联一个 material slot 和 bone map，最多 256 bones；超限按三角形确定性切分 section，并复制跨 section 顶点、重映射 index。这个上限不是整个 Skeleton 的上限，Skeleton 总骨骼数另作 CPU/格式预算。
 - 暂不导入源材质/纹理，复用现有 slot/override。含 cloth/morph 等未支持功能时明确拒绝，或经用户显式选择忽略并带警告，不能静默成功。
 
@@ -130,7 +130,7 @@ world_position    = component_world * skinned_position
 
 root 直接采用 local matrix。归一到同一 mesh space 后，bind pose 必须满足每个有效 skin_matrix 接近 identity；该恒等验证连同已知顶点金值是导入是否正确的核心证据。
 
-GPU 法线采用各 bone skin linear part 的 inverse-transpose 加权后归一化，再经过 component_world 的 inverse-transpose。它是 LBS 法线近似，尤其剧烈形变时不等于变形后三角面重算法线；不宣称等价。退化归一化使用确定的参考方向，包含非有限或奇异矩阵的骨骼矩阵数组在 CPU 发布前拒绝。切线/normal map 不属于现有静态链能力，首版不伪称支持。
+GPU 法线采用各 bone skin linear part 的 inverse-transpose 加权后归一化，再经过 component_world 的 inverse-transpose。它是 LBS 法线近似，尤其剧烈形变时不等于变形后三角面重算法线；不宣称等价。退化归一化使用确定的参考方向，包含非有限或奇异矩阵的骨骼矩阵数组在 CPU 发布前拒绝。切线/bitangent 使用 bone 与 Object 的线性变换，随后正交化并重建 handedness；Standard/PBR 的有效切线条件由 Shader 配置声明，Static/GPUSkin 共用入口，见 [Shader](shader.md#标准表面切线与几何要求)。
 
 root motion 首版不提取、不驱动 Actor：保留 root track，所以 mesh 可能相对 Actor 移动。预览额外提供临时 root lock（只替换 root 的平移/旋转为参考值），不改 AnimationSequence。默认相机固定、不自动追 root；Frame All 显式重取景。
 
@@ -182,7 +182,7 @@ MeshBatch 使用 PrimitiveSceneProxy、VertexFactory、frame-local geometry draw
 
 渲染内部的 Local/GPUSkin vertex factory 由 MeshBatch/pass 自动选择；不是用户材质的播放或 skin 属性。身份进入 ShaderMap key、artifact contract 和加载验证，reflection 验证实际顶点输入与骨骼资源；factory 仍不选择 shader。
 
-compiler 根据该维度注入 engine-owned Object 骨骼矩阵数组 schema 与受控 include；静态 default permutation 不增加骨骼资源要求。shader 作者通过公共 vertex input/deformation helper 获取 mesh-local position/normal，之后沿用 surface 材质逻辑。内置 Unlit/Phong、ShadowDepth 和 HitProxy 共用该 helper，禁止复制三份 skin 公式。项目自定义 shader 必须显式适配公共顶点入口，缺 GPUSkin permutation 时给出不支持诊断，不能自动把任意 HLSL 改写成 skinned shader。
+compiler 根据该维度注入 engine-owned Object 骨骼矩阵数组 schema 与受控 include；静态 default permutation 不增加骨骼资源要求。shader 作者通过公共 vertex input/deformation helper 获取 mesh-local position/normal，之后沿用 surface 材质逻辑。内置 Unlit/Phong/PBR、ShadowDepth 和 HitProxy 共用该 helper，禁止复制三份 skin 公式。项目自定义 shader 必须显式适配公共顶点入口，缺 GPUSkin permutation 时给出不支持诊断，不能自动把任意 HLSL 改写成 skinned shader。
 
 Editor/CMake 经 compiler CLI 为显式适配公共顶点入口的 shader 编译、部署 default 材质选择下的 Local/GPUSkin 两种程序。加载和重编译候选必须完整覆盖源声明的角色与 factories；缺少声明的 GPUSkin、typed 骨骼资源、两组影响输入，或同 Pass schema/state 不兼容均拒绝接管。Renderer 逐程序预检，并检查实际已有网格的 factory 与布局；只声明 GPUSkin 的材质不允许赋给 Local 网格。Material 参数 schema/override 保持跨这两种 factory 一致，允许 vertex input/Object active layout 不同；不能只编译一个 skinned Phong 绕开现有材质系统。重编译完整候选后接管，旧 refs 保持 GPU 生命周期。
 
@@ -249,7 +249,7 @@ runtime 组件 settings 保存 Mesh/Sequence AssetRef、loop/rate/autoplay、pri
 
 复用当前 asset/serialization/Shader/RHI/gamescene/Editor 相关测试 target，新增必要专项测试文件并从 CMake 确认条件；实现后主 agent 复查，再交 sub-agent 使用 verify-toy3d-build 独立验证。CMake 改动重新配置和构建受影响目标，交付前通过 `./scripts/format-cpp.ps1 -Changed -Check`。文档不保留验证流水账。
 
-新增公共 mesh 入口后，同批删除旧 StaticMesh-only 的通用调用分支；StaticMesh 专有资源类型继续保留，不加转发头/target 别名。旧 Scene 格式仅保留明确迁移，新增资产格式不兼容未知版本。首版不迁移不存在的 skeleton 数据。
+新增公共 mesh 入口后，同批删除旧 StaticMesh-only 的通用调用分支；StaticMesh 专有资源类型继续保留，不加转发头/target 别名。本次改变的 Scene/mesh 格式拒绝旧版本，离线重新构建，不保留兼容读取。首版不迁移不存在的 skeleton 数据。
 
 ## UE 参考与本项目选择
 

@@ -6,11 +6,13 @@
 #include <utility>
 
 #include "asset/thumbnail/asset_thumbnail.h"
+#include "asset/texture/builtin_texture_assets.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "logging/logger.h"
 #include "math/length_units.h"
 #include "rendercore/geometry/static_mesh_asset_loader.h"
+#include "rendercore/frame_synchronization.h"
 
 namespace toy3d
 {
@@ -22,9 +24,13 @@ namespace toy3d
         constexpr float k_preview_far_clip_cm = meters_to_centimeters(20.0f);
     } // namespace
 
-    bool ThumbnailPreviewScene::initialize(SceneInterface& scene, MaterialInstanceRef material)
+    // --------------------------------------------------------------------------
+    // ThumbnailPreviewScene: serial private World for thumbnails and material previews
+    // --------------------------------------------------------------------------
+    bool ThumbnailPreviewScene::initialize(SceneInterface& scene, MaterialInstanceRef material,
+                                           SceneEnvironmentSettings environment, TextureRef cube)
     {
-        if (!material || !world_.bind_scene(scene))
+        if (!material || !world_.set_environment(std::move(environment), std::move(cube)) || !world_.bind_scene(scene))
         {
             return false;
         }
@@ -40,7 +46,7 @@ namespace toy3d
         return true;
     }
 
-    bool ThumbnailPreviewScene::prepare(StaticMeshAssetGeometry geometry)
+    bool ThumbnailPreviewScene::prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material)
     {
         clear_mesh();
         if (geometry.vertices.empty())
@@ -82,7 +88,7 @@ namespace toy3d
                         static_cast<float>((vertex.position.y - center_y) * k_preview_radius_cm / radius),
                         static_cast<float>((vertex.position.z - center_z) * k_preview_radius_cm / radius));
         }
-        auto mesh = create_static_mesh_from_asset(geometry, material_);
+        auto mesh = create_static_mesh_from_asset(geometry, material ? std::move(material) : material_);
         if (!mesh)
         {
             return false;

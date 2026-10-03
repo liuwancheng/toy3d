@@ -21,6 +21,8 @@ set(TOY3D_SHADER_COMPILER_CORE_SOURCES
     "compiler/include_resolver.h"
     "compiler/program_compiler.cpp"
     "compiler/program_compiler.h"
+    "compiler/standard_surface.cpp"
+    "compiler/standard_surface.h"
     "compiler/shader_compiler.cpp"
     "compiler/shader_compiler.h"
     "compiler/shader_source_provider.cpp"
@@ -69,6 +71,9 @@ target_link_libraries(Toy3dShaderCompilerCore
  Toy3d::SpirvReflect)
 
 add_executable(Toy3dShaderCompiler "main.cpp")
+target_sources(Toy3dShaderCompiler PRIVATE
+    "shader_map/shader_deployment_cook.cpp"
+    "shader_map/shader_deployment_cook.h")
 target_compile_features(Toy3dShaderCompiler PRIVATE cxx_std_17)
 set_target_properties(Toy3dShaderCompiler PROPERTIES
     CXX_EXTENSIONS OFF
@@ -78,6 +83,7 @@ target_link_libraries(Toy3dShaderCompiler
  Toy3dCore
 
  Toy3dShaderCompilerCore)
+target_link_libraries(Toy3dShaderCompiler PRIVATE Toy3dAssets)
 target_compile_definitions(Toy3dShaderCompiler
     PRIVATE
         "TOY3D_SHADER_COMPILER_LOG_DIR=\"${BINARY_ROOT_DIR}saved/logs\"")
@@ -143,7 +149,8 @@ if(BUILD_TESTING)
         endif()
         target_compile_definitions(Toy3dShaderCompilerCompileTests
             PRIVATE
-                "TOY3D_SHADER_TEST_TOOLCHAIN_ROOT=\"${TOY3D_SHADER_TEST_TOOLCHAIN_ROOT}\"")
+                "TOY3D_SHADER_TEST_TOOLCHAIN_ROOT=\"${TOY3D_SHADER_TEST_TOOLCHAIN_ROOT}\""
+                "TOY3D_SHADER_TEST_ENGINE_INCLUDE_ROOT=\"${CMAKE_SOURCE_DIR}/engine/shader/include\"")
     elseif(TOY3D_SHADER_TEST_DXC AND TOY3D_SHADER_TEST_SPIRV_VAL)
         if(NOT EXISTS "${TOY3D_SHADER_TEST_DXC}")
             message(FATAL_ERROR "TOY3D_SHADER_TEST_DXC does not exist: ${TOY3D_SHADER_TEST_DXC}")

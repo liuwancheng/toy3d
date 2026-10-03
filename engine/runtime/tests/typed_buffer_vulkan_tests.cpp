@@ -35,7 +35,11 @@
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/rhi_shader_program_cache.h"
 #include "rendercore/shader/shader_parameters.h"
+#include "shader/shader_permutation.h"
 #include "shader_parameters/builtin_shader_parameters.generated.h"
+
+void test_pbr_math_and_cube(toy3d::RHIDevice& device);
+void test_skin_tangent_frames(toy3d::RHIDevice& device);
 
 namespace
 {
@@ -136,7 +140,17 @@ namespace
         std::cout << "Skeletal resources influence count " << num_bone_influences
                   << " discard/retry/completion passed\n";
     }
-    void test_production_skeletal_passes(toy3d::RHIDevice& device, std::uint32_t influences, bool custom_roles = false)
+    enum class ProductionPBRMode
+    {
+        Disabled,
+        Direct,
+        Sky,
+        UnlitEmissive
+    };
+
+    void test_production_skeletal_passes(toy3d::RHIDevice& device, std::uint32_t influences, bool custom_roles = false,
+                                         bool standard_roles = false,
+                                         ProductionPBRMode pbr_mode = ProductionPBRMode::Disabled)
     {
         using namespace toy3d;
         ThreadManager threads;
@@ -147,11 +161,20 @@ namespace
         RenderingThread rendering(threads, *graph, RenderingThreadMode::SingleThread);
         check(rendering.start().succeeded(), "Start skeletal fixture render facade");
         {
-            const auto fixture = tests::make_skeletal_fixture(influences, true);
+            auto fixture = tests::make_skeletal_fixture(influences, true);
+            if (pbr_mode != ProductionPBRMode::Disabled)
+            {
+                // These triangles face +Z by winding and are viewed from their back.
+                // Standard surfaces flip the back-face frame; Phong ambient previously hid this mismatch.
+                for (auto& vertex : fixture.mesh.geometry.mesh.vertices)
+                {
+                    vertex.normal = Vector3(0, 0, 1);
+                }
+            }
             ShaderMapEntryLoader phong_loader(PhysicalPath(std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/phong"));
             ShaderMap phong_map(phong_loader);
-            const auto collection = ShaderMapCollection::create_candidate(phong_loader.load_collection(
-                "Toy3d/Surface/Phong", ShaderPlatform::VulkanES31, shader::default_shader_permutation_key));
+            const auto collection = ShaderMapCollection::create_candidate(
+                phong_loader.load_default_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31));
             check(collection.succeeded(), collection.error.c_str());
             const auto local_program =
                 collection.collection->find(shader::ShaderPassRole::Forward, shader::VertexFactoryType::Local);
@@ -161,11 +184,28 @@ namespace
                       local_program.program != skin_program.program &&
                       local_program.program->data().permutation_key == skin_program.program->data().permutation_key,
                   "Real indexed mesh collection has peer Local/GPUSkin programs with the same material configuration");
+            const auto shadow_program = collection.collection->find(
+                shader::ShaderPassRole::Forward, shader::VertexFactoryType::GPUSkin, {},
+                {{"SHADOW_MODE", shader::ShaderPermutationValueKind::Enumeration, false, "PCF"}});
+            const auto has_shadow_atlas = [](const ShaderMapProgramData& data)
+            {
+                return std::any_of(data.bindings.begin(), data.bindings.end(),
+                                   [](const auto& binding)
+                                   {
+                                       return binding.name == "shadow_atlas";
+                                   });
+            };
+            check(shadow_program.succeeded() && collection.collection->features().lighting &&
+                      collection.collection->features().shadows &&
+                      shadow_program.program->data().pass_permutation_key !=
+                          skin_program.program->data().pass_permutation_key &&
+                      !has_shadow_atlas(skin_program.program->data()) &&
+                      has_shadow_atlas(shadow_program.program->data()),
+                  "Real Phong Off omits shadow resources and PCF selects a distinct reflected program");
             check(!collection.collection->find(shader::ShaderPassRole::HitProxy, shader::VertexFactoryType::GPUSkin)
                        .succeeded(),
                   "Missing mesh roles cannot fall back to Forward");
-            auto skin_only = phong_loader.load_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31,
-                                                          shader::default_shader_permutation_key);
+            auto skin_only = phong_loader.load_default_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31);
             skin_only.programs.erase(std::remove_if(skin_only.programs.begin(), skin_only.programs.end(),
                                                     [](const ShaderMapProgramData& data)
                                                     {
@@ -193,13 +233,13 @@ namespace
             MaterialDesc skin_only_descriptor;
             skin_only_descriptor.shader_map = skin_only_map.collection;
             std::string admission_error;
-            check(!validate_material_geometry(skin_only_descriptor, shader::VertexFactoryType::Local, false,
+            check(!validate_material_geometry(skin_only_descriptor, shader::VertexFactoryType::Local, false, false,
                                               admission_error) &&
-                      validate_material_geometry(skin_only_descriptor, shader::VertexFactoryType::GPUSkin, true,
+                      validate_material_geometry(skin_only_descriptor, shader::VertexFactoryType::GPUSkin, true, false,
                                                  admission_error),
                   "New mesh admission rejects Local use of a skin-only Material before publication");
-            auto invalid_collection = phong_loader.load_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31,
-                                                                   shader::default_shader_permutation_key);
+            auto invalid_collection =
+                phong_loader.load_default_collection("Toy3d/Surface/Phong", ShaderPlatform::VulkanES31);
             for (auto& program : invalid_collection.programs)
             {
                 if (program.contract.vertex_factory == shader::VertexFactoryType::GPUSkin)
@@ -220,8 +260,8 @@ namespace
             phong_key.pass_name = "Forward";
             phong_key.role = shader::ShaderPassRole::Forward;
             phong_key.vertex_factory = shader::VertexFactoryType::Local;
-            const auto phong =
-                phong_map.find_or_load_collection(phong_key.shader_name, phong_key.platform, phong_key.permutation_key);
+            const auto phong = phong_map.find_or_load_collection(phong_key.shader_name, phong_key.platform,
+                                                                 collection.collection->index().permutation_key);
             check(phong.succeeded(), phong.error.c_str());
             ShaderMapEntryLoader shadow_loader(PhysicalPath(std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/shadow"));
             ShaderMap shadow_map(shadow_loader);
@@ -242,28 +282,60 @@ namespace
                                                                 shader::default_shader_permutation_key);
             check(hit.succeeded(), hit.error.c_str());
             ShaderMapCollectionRef material_map = phong.collection;
+            const bool pbr = pbr_mode != ProductionPBRMode::Disabled;
+            const bool unlit_pbr = pbr_mode == ProductionPBRMode::UnlitEmissive;
+            if (pbr)
+            {
+                const auto root = unlit_pbr ? std::string(TOY3D_TYPED_BUFFER_SHADER_ROOT) + "/pbr_unlit"
+                                            : std::string(TOY3D_BUILTIN_SHADER_ROOT) + "/pbr";
+                ShaderMapEntryLoader loader{PhysicalPath(root)};
+                std::vector<ShaderMapCollectionRef> family;
+                std::string error;
+                check(loader.load_family("Toy3d/Surface/PBR", ShaderPlatform::VulkanES31, family, error),
+                      error.c_str());
+                check(family.size() == 1u, "Production PBR fixture has one explicit material configuration");
+                material_map = family.front();
+                check(!material_map->requires_tangent_frame(),
+                      "Disabled lighting does not require a tangent frame even with the normal-map option enabled");
+            }
             if (custom_roles)
             {
-                ShaderMapEntryLoader custom_loader(
-                    PhysicalPath(std::string(TOY3D_TYPED_BUFFER_SHADER_ROOT) + "/custom_mesh"));
+                ShaderMapEntryLoader custom_loader(PhysicalPath(std::string(TOY3D_TYPED_BUFFER_SHADER_ROOT) +
+                                                                (standard_roles ? "/standard_mesh" : "/custom_mesh")));
                 ShaderMap custom_map(custom_loader);
-                const auto custom = custom_map.find_or_load_collection(
-                    "Toy3d/Test/CustomMesh", ShaderPlatform::VulkanES31, shader::default_shader_permutation_key);
+                auto configuration = shader::default_shader_permutation_key;
+                const std::string shader_name = standard_roles ? "Toy3d/Test/StandardMesh" : "Toy3d/Test/CustomMesh";
+                if (standard_roles)
+                {
+                    shader::ShaderPermutationDomain domain;
+                    shader::ShaderPermutationDimension mode;
+                    mode.name = "SURFACE_MODE";
+                    mode.kind = shader::ShaderPermutationValueKind::Enumeration;
+                    mode.options = {"Opaque", "Masked"};
+                    mode.enum_default = "Masked";
+                    domain.dimensions.push_back(mode);
+                    const auto resolved = shader::resolve_shader_permutation(domain, {});
+                    check(resolved.succeeded(), "Standard fixture default configuration resolves");
+                    configuration = resolved.permutation->key;
+                }
+                const auto custom =
+                    custom_map.find_or_load_collection(shader_name, ShaderPlatform::VulkanES31, configuration);
                 check(custom.succeeded(), custom.error.c_str());
                 material_map = custom.collection;
-                const auto cached_custom = custom_map.find_or_load_collection(
-                    "Toy3d/Test/CustomMesh", ShaderPlatform::VulkanES31, shader::default_shader_permutation_key);
+                const auto cached_custom =
+                    custom_map.find_or_load_collection(shader_name, ShaderPlatform::VulkanES31, configuration);
                 check(cached_custom.collection == material_map, "Collection cache reuses the immutable configuration");
                 const auto forward =
                     material_map->find(shader::ShaderPassRole::Forward, shader::VertexFactoryType::GPUSkin);
                 const auto custom_shadow =
                     material_map->find(shader::ShaderPassRole::ShadowDepth, shader::VertexFactoryType::GPUSkin);
                 check(forward.succeeded() && custom_shadow.succeeded() &&
-                          std::none_of(forward.program->data().bindings.begin(), forward.program->data().bindings.end(),
-                                       [](const ShaderMapBinding& binding)
-                                       {
-                                           return binding.group == RHIBindingGroup::Material;
-                                       }) &&
+                          (standard_roles || std::none_of(forward.program->data().bindings.begin(),
+                                                          forward.program->data().bindings.end(),
+                                                          [](const ShaderMapBinding& binding)
+                                                          {
+                                                              return binding.group == RHIBindingGroup::Material;
+                                                          })) &&
                           std::any_of(custom_shadow.program->data().bindings.begin(),
                                       custom_shadow.program->data().bindings.end(),
                                       [](const ShaderMapBinding& binding)
@@ -284,12 +356,32 @@ namespace
             {
                 MaterialTextureValues defaults;
                 defaults.named_defaults["white"] = white;
+                defaults.named_defaults["black"] = white;
                 MaterialAssetData descriptor;
                 descriptor.shader_name = material_map->index().shader_name;
                 descriptor.two_sided = true;
+                for (const auto& selection : material_map->index().material_selections)
+                {
+                    MaterialStaticOption option;
+                    option.name = selection.name;
+                    if (selection.kind == shader::ShaderPermutationValueKind::Boolean)
+                    {
+                        option.value = selection.boolean_value;
+                    }
+                    else
+                    {
+                        option.value = selection.enum_value;
+                    }
+                    descriptor.static_options.push_back(std::move(option));
+                }
                 const auto made = create_material_from_asset(descriptor, material_map, defaults);
                 check(made.succeeded(), made.status().message.c_str());
                 material = made.value();
+            }
+            if (unlit_pbr)
+            {
+                check(material->set_vector("emissive_color", vec4(0.25f, 0.1f, 0.05f, 1)),
+                      "Unlit production PBR emissive parameter");
             }
             SkeletalMeshRef mesh;
             {
@@ -311,7 +403,11 @@ namespace
             light->data.shadow_bias = 0;
             light->data.shadow_slope_bias = 0;
             auto* light_identity = light.get();
-            scene.add_light(std::move(light));
+            if (!unlit_pbr)
+            {
+                scene.add_light(std::move(light));
+            }
+            TextureRef environment;
             {
                 World world;
                 auto& actor = world.spawn_actor<SkeletalMeshActor>();
@@ -328,11 +424,56 @@ namespace
                     check(offscreen->set_local_transform(transform), "Offscreen caster transform");
                 }
                 check(world.bind_scene(scene), "Native component registration");
+                if (pbr_mode == ProductionPBRMode::Sky)
+                {
+                    TextureDesc cube;
+                    cube.width = cube.height = 2;
+                    cube.usage = TextureUsage::LinearData;
+                    cube.format = PixelFormat::R16G16B16A16Float;
+                    cube.cube = true;
+                    cube.requires_linear_filter = true;
+                    for (std::uint32_t size : {2u, 1u})
+                    {
+                        cube.row_pitches.push_back(size * 8u);
+                        cube.slice_pitches.push_back(size * size * 8u);
+                        std::vector<std::uint8_t> pixels;
+                        for (std::uint32_t pixel = 0; pixel < 6u * size * size; ++pixel)
+                        {
+                            // Constant HDR RGB=8 and alpha=1, encoded as little-endian binary16.
+                            pixels.insert(pixels.end(), {0, 0x48, 0, 0x48, 0, 0x48, 0, 0x3c});
+                        }
+                        cube.mip_pixels.push_back(std::move(pixels));
+                    }
+                    environment = Texture::create(std::move(cube));
+                    check(static_cast<bool>(environment), "Production PBR controlled HDR environment");
+                    SceneEnvironmentSnapshot snapshot;
+                    snapshot.cube = environment;
+                    scene.update_environment(std::move(snapshot));
+                }
                 world.begin_play();
                 check(component.set_playing(false).succeeded(), "Native paused seek fixture");
-                for (int frame = 0; frame < 2; ++frame)
+                const int frame_count = pbr && !unlit_pbr ? 4 : (standard_roles ? 3 : 2);
+                for (int frame = 0; frame < frame_count; ++frame)
                 {
-                    check(component.seek(static_cast<double>(frame)).succeeded(), "Native pose bridge seek");
+                    check(component.seek(static_cast<double>(std::min(frame, 1))).succeeded(),
+                          "Native pose bridge seek");
+                    if (standard_roles && frame == 2)
+                    {
+                        check(material->set_scalar("coverage", 0.0f),
+                              "Disable shared Masked coverage without recompilation");
+                    }
+                    if (pbr && !unlit_pbr && frame == 2)
+                    {
+                        scene.remove_light(light_identity);
+                        light_identity = nullptr;
+                        check(material->set_scalar("specular", 0.0f) && material->set_scalar("metallic", 0.0f),
+                              "Zero F0 isolates the absence of diffuse environment lighting");
+                    }
+                    if (pbr && !unlit_pbr && frame == 3)
+                    {
+                        check(material->set_vector("emissive_color", vec4(0.5f, 0.2f, 0.1f, 1)),
+                              "Production PBR emissive remains visible with no lights");
+                    }
                     const auto ctx = device.create_graphics_command_context();
                     check(static_cast<bool>(ctx), ctx.status().message().c_str());
                     check_status(ctx.value()->begin_recording("Production skeletal passes"));
@@ -351,9 +492,16 @@ namespace
                     const auto& prepared_view = prepared.view_infos().front();
                     check(prepared_view.mesh_batches().size() == 2u,
                           "Offscreen caster is excluded from the camera while its Shadow role remains drawable");
-                    check(prepared_view.shadow_active() && prepared_view.shadow_cascade_count() > 0 &&
-                              prepared_view.shadow_cascade(0).batches.size() == (custom_roles ? 4u : 2u),
-                          "Production Shadow pass must include both skeletal sections");
+                    if (!unlit_pbr && (!pbr || frame < 2))
+                    {
+                        check(prepared_view.shadow_active() && prepared_view.shadow_cascade_count() > 0 &&
+                                  prepared_view.shadow_cascade(0).batches.size() == (custom_roles ? 4u : 2u),
+                              "Production Shadow pass must include both skeletal sections");
+                    }
+                    else
+                    {
+                        check(!prepared_view.shadow_active(), "No directional light means no PCF atlas or shadow pass");
+                    }
                     for (const auto& shadow_batch : prepared_view.shadow_cascade(0).batches)
                     {
                         if (custom_roles)
@@ -362,7 +510,7 @@ namespace
                                 shadow_batch.mesh_pass_program(shader::ShaderPassRole::ShadowDepth, *shadow.collection);
                             const auto own = material_map->find(shader::ShaderPassRole::ShadowDepth,
                                                                 shader::VertexFactoryType::GPUSkin);
-                            check(selected.program == own.program && shadow_batch.material_binding(),
+                            check(selected.program == own.program && shadow_batch.material_binding(*own.program),
                                   "Custom caster selects its own role and has a prepared logical Material binding");
                         }
                         if (offscreen && shadow_batch.scene_proxy().component_id() == offscreen->component_id() &&
@@ -454,6 +602,7 @@ namespace
                     auto submitted = device.graphics_queue().submit(submission);
                     check(static_cast<bool>(submitted), submitted.status().message().c_str());
                     check_status(manager.commit_recording());
+                    scene.resolve_environment_recording(true);
                     targets.publish_submitted_access(RHIAccess::ShaderResourceGraphics, RHIAccess::DepthStencilWrite);
                     check_status(device.graphics_queue().wait_for_value(submitted.value().completion_value));
                     const auto colors = colors_read.value()->read_texture(device.graphics_queue().completed_value());
@@ -465,21 +614,36 @@ namespace
                     check(static_cast<bool>(stationary_id), stationary_id.status().message().c_str());
                     const auto center = 16 * colors.value().row_pitch + 16 * 4;
                     const auto hit = hit_id.value();
-                    check(stationary_id.value() == 2 &&
-                              colors.value().bytes[16 * colors.value().row_pitch + 24 * 4 + 2] > 0,
+                    const bool masked_out = standard_roles && frame == 2;
+                    const bool dark_pbr = pbr && !unlit_pbr && frame == 2;
+                    std::cout << "Production section " << influences << " frame " << frame
+                              << " id=" << stationary_id.value() << " red="
+                              << static_cast<unsigned>(colors.value().bytes[16 * colors.value().row_pitch + 24 * 4 + 2])
+                              << '\n';
+                    check((masked_out ? stationary_id.value() == 0 : stationary_id.value() == 2) &&
+                              (masked_out || dark_pbr
+                                   ? colors.value().bytes[16 * colors.value().row_pitch + 24 * 4 + 2] == 0
+                                   : colors.value().bytes[16 * colors.value().row_pitch + 24 * 4 + 2] > 0),
                           "Each section must use its own bone map and Object binding");
                     check((frame == 0 && hit == 0 && colors.value().bytes[center + 2] == 0) ||
-                              (frame == 1 && hit == 1 && colors.value().bytes[center + 2] > 0),
+                              (frame == 1 && hit == 1 && colors.value().bytes[center + 2] > 0) ||
+                              (masked_out && hit == 0 && colors.value().bytes[center + 2] == 0) ||
+                              (dark_pbr && hit == 1 && colors.value().bytes[center + 2] == 0) ||
+                              (pbr && frame == 3 && hit == 1 && colors.value().bytes[center + 2] > 0),
                           "Base and HitProxy must move together from bind position to animated center");
                     std::cout << "Production GPUSkin " << influences << " frame " << frame << " center hit=" << hit
                               << " red=" << static_cast<unsigned>(colors.value().bytes[center + 2]) << '\n';
                 }
                 check(world.unbind_scene(), "Skeletal component unregistration");
             }
-            scene.remove_light(light_identity);
+            if (light_identity && !unlit_pbr)
+            {
+                scene.remove_light(light_identity);
+            }
             mesh.reset();
             MaterialInstance::release(material);
             Texture::release(white);
+            environment.reset();
             tonemap.release();
             targets.release();
             programs.clear();
@@ -776,11 +940,17 @@ int main()
         check(old_view.expired(), "completed list may release typed view");
         programs.clear();
     }
+    test_pbr_math_and_cube(device);
+    test_skin_tangent_frames(device);
     test_skeletal_resources(device, 4);
     test_skeletal_resources(device, 8);
     test_production_skeletal_passes(device, 4);
     test_production_skeletal_passes(device, 8);
     test_production_skeletal_passes(device, 8, true);
+    test_production_skeletal_passes(device, 8, true, true);
+    test_production_skeletal_passes(device, 4, false, false, ProductionPBRMode::Direct);
+    test_production_skeletal_passes(device, 8, false, false, ProductionPBRMode::Sky);
+    test_production_skeletal_passes(device, 8, false, false, ProductionPBRMode::UnlitEmissive);
     check_status(device.shutdown());
     check(DestroyWindow(window) != FALSE, "hidden surface destruction");
     std::cout << "Vulkan typed buffer VS read and completion lifetime passed\n";

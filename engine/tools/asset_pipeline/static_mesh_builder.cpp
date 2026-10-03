@@ -1,4 +1,5 @@
 #include "static_mesh_builder.h"
+#include "asset_pipeline/mesh_tangents.h"
 
 #include <utility>
 
@@ -43,6 +44,8 @@ namespace toy3d
         {
             return AssetResult<StaticMeshAssetGeometry>(built);
         }
-        return AssetResult<StaticMeshAssetGeometry>(std::move(result));
+        auto tangents = build_mesh_tangents(result);
+        return tangents.succeeded() ? AssetResult<StaticMeshAssetGeometry>(tangents.value().geometry)
+                                    : AssetResult<StaticMeshAssetGeometry>(tangents.status());
     }
 } // namespace toy3d

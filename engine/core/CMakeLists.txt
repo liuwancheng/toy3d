@@ -21,6 +21,7 @@ target_sources(Toy3dCore PRIVATE
     "file_system/virtual_path.h"
     "image/pixel_format.cpp"
     "image/pixel_format.h"
+    "image/float16.h" "image/float16.cpp"
     "image/png_codec.cpp"
     "image/png_codec.h"
     "logging/logger.cpp"
@@ -135,6 +136,12 @@ target_sources(Toy3dShaderFormat PRIVATE
     "shader/shader_parameter_schema.cpp"
     "shader/shader_permutation.cpp"
     "shader/shader_permutation.h"
+    "shader/shader_compile_plan.h"
+    "shader/shader_compile_plan.cpp"
+    "shader/shader_build_settings.h"
+    "shader/shader_build_settings.cpp"
+    "shader/shader_deployment.h"
+    "shader/shader_deployment.cpp"
 )
 target_compile_features(Toy3dShaderFormat PUBLIC cxx_std_17)
 set_target_properties(Toy3dShaderFormat PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Core")
@@ -189,9 +196,12 @@ target_sources(Toy3dAssets PRIVATE
     "asset/scene/scene_asset.cpp"
     "asset/scene/scene_asset.h"
     "asset/scene/scene_asset_data.h"
+    "asset/texture/environment_asset_data.h"
+    "asset/texture/environment_asset.h" "asset/texture/environment_asset.cpp"
     "asset/texture/texture_asset.cpp"
     "asset/texture/texture_asset.h"
     "asset/texture/texture_asset_data.h"
+    "asset/texture/builtin_texture_assets.h"
     "asset/thumbnail/asset_thumbnail.cpp"
     "asset/thumbnail/asset_thumbnail.h"
 )
@@ -254,10 +264,12 @@ add_custom_command(
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_ASSET_GENERATED_DIR}"
     COMMAND $<TARGET_FILE:Toy3dReflectionCodegen>
         --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/texture/texture_asset_data.h"
+        --input "${CMAKE_CURRENT_SOURCE_DIR}/asset/texture/environment_asset_data.h"
         --header "${TOY3D_GENERATED_HEADER}" --source "${TOY3D_GENERATED_SOURCE}"
         --function register_texture_asset_types
     DEPENDS Toy3dReflectionCodegen
         "${CMAKE_CURRENT_SOURCE_DIR}/asset/texture/texture_asset_data.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/asset/texture/environment_asset_data.h"
     VERBATIM)
 target_sources(Toy3dAssets PRIVATE "${TOY3D_GENERATED_HEADER}" "${TOY3D_GENERATED_SOURCE}")
 

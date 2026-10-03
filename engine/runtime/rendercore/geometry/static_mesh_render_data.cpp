@@ -62,7 +62,7 @@ namespace toy3d
 
     StaticMeshVertexBuffer::StaticMeshVertexBuffer(const std::vector<StaticMeshVertex>& vertices)
     {
-        initial_data_.reserve(vertices.size() * 6u);
+        initial_data_.reserve(vertices.size() * 10u);
         for (const StaticMeshVertex& vertex : vertices)
         {
             initial_data_.push_back(vertex.normal.x);
@@ -71,6 +71,10 @@ namespace toy3d
             initial_data_.push_back(0.0f);
             initial_data_.push_back(vertex.uv0.x);
             initial_data_.push_back(vertex.uv0.y);
+            initial_data_.push_back(vertex.tangent.x);
+            initial_data_.push_back(vertex.tangent.y);
+            initial_data_.push_back(vertex.tangent.z);
+            initial_data_.push_back(vertex.tangent.w);
         }
     }
 
@@ -180,6 +184,7 @@ namespace toy3d
                                    : std::make_unique<ColorVertexBuffer>(static_mesh.vertex_colors())),
           index_buffer_(static_mesh.indices()), sections_(static_mesh.sections())
     {
+        valid_tangent_frame_ = static_mesh.has_valid_tangent_frame();
         // C++17 get_if keeps the fixed 16/32-bit index alternatives explicit
         // while retaining a width-independent range limit for section checks.
         const auto* indices_u16 = std::get_if<std::vector<std::uint16_t>>(&static_mesh.indices());
@@ -263,6 +268,8 @@ namespace toy3d
                               PixelFormat::R32G32B32A32Float, static_mesh_vertex_buffer_.buffer()});
         components.push_back({ShaderVertexAttributeId::TexCoord0, 1u, 16u, static_mesh_vertex_buffer_.stride(),
                               PixelFormat::R32G32Float, static_mesh_vertex_buffer_.buffer()});
+        components.push_back({ShaderVertexAttributeId::Tangent0, 1u, 24u, static_mesh_vertex_buffer_.stride(),
+                              PixelFormat::R32G32B32A32Float, static_mesh_vertex_buffer_.buffer()});
         if (color_vertex_buffer_)
         {
             components.push_back({ShaderVertexAttributeId::Color0, 2u, 0u, color_vertex_buffer_->stride(),

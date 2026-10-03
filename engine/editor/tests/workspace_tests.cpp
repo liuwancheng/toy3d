@@ -3,7 +3,9 @@
 #include "asset/asset_file.h"
 #include "asset/asset_pair.h"
 #include "assets/material/material_asset_tools.h"
+#include "assets/texture/texture_asset_tools.h"
 #include "asset/scene/scene_asset.h"
+#include "asset/texture/environment_asset.h"
 
 #include <chrono>
 #include <filesystem>
@@ -123,9 +125,80 @@ int main()
               "duplicate identities across roots must reject refresh and preserve the previous catalog");
         check(workspace.files().remove_file(duplicate).succeeded() && workspace.refresh(),
               "workspace must recover after removing invalid input");
+        {
+            Texture2DAsset texture;
+            texture.width = texture.height = 1u;
+            texture.format = PixelFormat::R8G8B8A8UNorm;
+            texture.usage = TextureUsage::Normal;
+            TextureAssetMip mip;
+            mip.row_pitch = mip.slice_pitch = 4u;
+            mip.pixels = {128u, 128u, 255u, 255u};
+            texture.mips.push_back(mip);
+            AssetId id;
+            check(AssetId::try_generate(id), "Reimport fixture identity generates");
+            AssetId published;
+            std::string error;
+            const std::string name = "/Project/reimport_normal.asset";
+            check(publish_texture_asset(workspace, name, id, texture, published, error) && published == id,
+                  "Editor publishes a Normal asset in the source project");
+            const auto baseline = workspace.asset_pairs().read(virtual_path(name));
+            check(baseline.succeeded(), "Reimport baseline reads");
+            if (baseline.succeeded())
+            {
+                texture.flip_green = true;
+                check(publish_reimported_texture_asset(workspace, name, id, texture, baseline.value().description_bytes,
+                                                       error),
+                      "Reimport replaces payload and keeps identity");
+                const auto current = workspace.asset_pairs().read(virtual_path(name));
+                const auto loaded = read_texture_asset(workspace.files(), virtual_path(name));
+                check(current.succeeded() && current.value().description.index.asset_id == id && loaded.succeeded() &&
+                          loaded.value().usage == TextureUsage::Normal && loaded.value().flip_green,
+                      "Reimport preserves ID and saves usage/import settings");
+                check(!publish_reimported_texture_asset(workspace, name, id, texture,
+                                                        baseline.value().description_bytes, error),
+                      "Stale baseline rejects a conflicting reimport");
+                if (current.succeeded())
+                {
+                    texture.mips.front().pixels.clear();
+                    check(!publish_reimported_texture_asset(workspace, name, id, texture,
+                                                            current.value().description_bytes, error),
+                          "Invalid reimport rejects before publication");
+                    const auto retained = workspace.asset_pairs().read(virtual_path(name));
+                    check(retained.succeeded() &&
+                              retained.value().description_bytes == current.value().description_bytes &&
+                              encode_asset_meta(retained.value().meta).value() ==
+                                  encode_asset_meta(current.value().meta).value(),
+                          "Failed reimport retains the complete previous asset pair");
+                }
+            }
+        }
         AssetId scene_id;
         check(AssetId::parse("33333333333333333333333333333333", scene_id), "scene identity must parse");
+        AssetId environment_id;
+        check(AssetId::parse("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", environment_id), "environment identity must parse");
+        EnvironmentAsset environment;
+        environment.face_size = 2u;
+        environment.mips.resize(2u);
+        for (std::size_t mip = 0u; mip < environment.mips.size(); ++mip)
+        {
+            const auto size = environment.face_size >> static_cast<std::uint32_t>(mip);
+            for (auto& face : environment.mips[mip].faces)
+            {
+                face.assign(size * size * 4u, 0x3c00u);
+            }
+        }
+        const auto environment_pair = encode_environment_asset_pair(workspace.types(), environment_id, environment);
+        const auto environment_path = virtual_path("/Project/studio.asset");
+        check(environment_pair.succeeded() &&
+                  workspace.asset_pairs()
+                      .publish(environment_path, environment_pair.value(), FilePublishMode::CreateNew)
+                      .succeeded() &&
+                  workspace.refresh(),
+              "Environment asset must publish into the shared catalog");
         SceneAssetData scene;
+        scene.environment.environment = {environment_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
+        scene.environment.rotation = Quaternion(0.0f, 1.0f, 0.0f, 0.0f);
+        scene.environment.intensity = 3.0f;
         SceneActorData scene_actor;
         scene_actor.id = "44444444444444444444444444444444";
         scene_actor.root_component_id = "55555555555555555555555555555555";
@@ -156,6 +229,9 @@ int main()
                                &workspace.catalog().index)
                       .succeeded() &&
                   reopened_scene.actors.size() == 1u && reopened_scene.actors[0].id == scene_actor.id &&
+                  reopened_scene.environment.environment.asset_id == environment_id &&
+                  reopened_scene.environment.rotation == scene.environment.rotation &&
+                  reopened_scene.environment.intensity == 3.0f &&
                   std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties)
                           .shadow.receiver_bias == 0.4f &&
                   std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties)
@@ -165,6 +241,37 @@ int main()
                   std::get<SceneDirectionalLightData>(reopened_scene.actors[0].components[0].properties)
                           .shadow.map_resolution == 1024,
               "Scene Actor identity must survive .scene YAML roundtrip");
+        check(workspace.delete_asset(environment_id).code == AssetErrorCode::Conflict,
+              "Scene strong Environment dependency must prevent deletion");
+        auto invalid_environment_scene = scene;
+        invalid_environment_scene.environment.intensity = -1.0f;
+        check(!validate_scene_asset(invalid_environment_scene).succeeded(),
+              "Scene must reject negative Environment intensity");
+        invalid_environment_scene = scene;
+        invalid_environment_scene.environment.environment.expected_type = "toy3d.Texture2DAssetData";
+        check(!validate_scene_asset(invalid_environment_scene).succeeded(),
+              "Scene Environment requires the exact strong root type");
+        invalid_environment_scene = scene;
+        invalid_environment_scene.environment.rotation = Quaternion(0.0f, 0.0f, 0.0f, 0.0f);
+        check(!validate_scene_asset(invalid_environment_scene).succeeded(),
+              "Scene must reject non-normalizable Environment rotation");
+        SceneAssetData empty_scene;
+        AssetId empty_scene_id;
+        check(AssetId::parse("dddddddddddddddddddddddddddddddd", empty_scene_id), "empty Scene identity must parse");
+        const auto empty_scene_pair = encode_scene_asset_pair(workspace.types(), empty_scene_id, empty_scene);
+        const auto empty_scene_path = virtual_path("/Project/empty.scene");
+        check(empty_scene_pair.succeeded() &&
+                  workspace.asset_pairs()
+                      .publish(empty_scene_path, empty_scene_pair.value(), FilePublishMode::CreateNew)
+                      .succeeded() &&
+                  workspace.refresh(),
+              "Off Environment must serialize as an empty reference without a dependency");
+        SceneAssetData reopened_empty_scene;
+        check(read_scene_asset(workspace.types(), workspace.files(), empty_scene_path, reopened_empty_scene,
+                               &workspace.catalog().index)
+                      .succeeded() &&
+                  !reopened_empty_scene.environment.environment.asset_id.valid() && reopened_empty_scene.actors.empty(),
+              "Off Environment must survive Scene YAML roundtrip");
         AssetId legacy_id;
         check(AssetId::parse("88888888888888888888888888888888", legacy_id), "legacy scene identity must parse");
         const auto legacy_pair = encode_scene_asset_pair(workspace.types(), legacy_id, scene);
@@ -172,12 +279,12 @@ int main()
         if (legacy_pair.succeeded())
         {
             std::string legacy_text(legacy_pair.value().asset.begin(), legacy_pair.value().asset.end());
-            const std::string current_version = "schema_version: 6";
+            const std::string current_version = "schema_version: 7";
             const std::size_t version_position = legacy_text.find(current_version);
             check(version_position != std::string::npos, "Scene schema version fixture must be present");
             if (version_position != std::string::npos)
             {
-                legacy_text.replace(version_position, current_version.size(), "schema_version: 3");
+                legacy_text.replace(version_position, current_version.size(), "schema_version: 6");
                 const VirtualPath legacy_path = virtual_path("/Project/legacy.scene");
                 const std::vector<std::uint8_t> legacy_bytes(legacy_text.begin(), legacy_text.end());
                 check(workspace.files().write_binary(legacy_path, legacy_bytes, FileWriteMode::CreateNew).succeeded(),
@@ -186,7 +293,7 @@ int main()
                 check(
                     !read_scene_asset(workspace.types(), workspace.files(), legacy_path, rejected_scene).succeeded() &&
                         !workspace.refresh(),
-                    "meter Scene must fail strict centimeter schema validation");
+                    "Scene without the current Environment schema must fail strict validation");
                 check(workspace.files().remove_file(legacy_path).succeeded() && workspace.refresh(),
                       "workspace must recover after removing unsupported Scene schema");
             }

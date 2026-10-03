@@ -2,7 +2,7 @@ Shader "Toy3d/Surface/Unlit"
 {
     Version 2
     Usage Material
-    Geometry Custom
+    Geometry Standard
     VertexFactories { Local, GPUSkin }
 
     Properties
@@ -10,17 +10,35 @@ Shader "Toy3d/Surface/Unlit"
         base_color ("Base Color", Color) = (1.0, 1.0, 1.0, 1.0)
         base_color_texture ("Base Color Texture", Texture2D) = "white"
         material_sampler ("Material Sampler", Sampler) = LinearWrap
+        alpha_cutoff ("Alpha Cutoff", Range(0, 1)) = 0.5
         uv_scale ("UV Scale", Float2) = (1.0, 1.0)
     }
 
     Variants
     {
-        USE_VERTEX_COLOR : bool = false
+        USE_VERTEX_COLOR : bool = false Stages { Vertex, Pixel }
+        SURFACE_MODE : enum { Opaque, Masked } = Opaque Stages { Pixel }
     }
+
+    HLSLINCLUDE
+    float4 toy_unlit_base_color(ToySurfaceInput input)
+    {
+        float4 color = base_color * base_color_texture.Sample(material_sampler, input.uv * uv_scale);
+#if TOY3D_VARIANT_USE_VERTEX_COLOR
+        color *= input.color;
+#endif
+        return color;
+    }
+    float toy_unlit_coverage(ToySurfaceInput input)
+    {
+        return toy_unlit_base_color(input).a - alpha_cutoff;
+    }
+    ENDHLSL
 
     Pass "Forward"
     {
         Role Forward
+        CoverageFunction toy_unlit_coverage
         Requires GraphicsBaseline
         PrimitiveTopology TriangleList
         Cull Back
@@ -32,51 +50,12 @@ Shader "Toy3d/Surface/Unlit"
         Blend Off
         ColorWrite RGBA
 
-        HLSLVS
-        #pragma vertex vs_main
-
-        #include "/Engine/ShaderIncludes/ToyMeshVertex.hlsli"
-
-        struct VSInput
-        {
-            float4 position : POSITION0;
-            TOY3D_SKIN_VERTEX_INPUT
-            float4 normal : NORMAL0;
-            float2 uv : TEXCOORD0;
-        };
-
-        struct VSOutput
-        {
-            float4 clip_position : SV_Position;
-            float2 uv : TEXCOORD0;
-        };
-
-        VSOutput vs_main(VSInput input)
-        {
-            float3 mesh_position, mesh_normal;
-            TOY3D_DEFORM_VERTEX(input, mesh_position, mesh_normal);
-            VSOutput output;
-            const float4 world_position =
-                mul(toy_object_to_world, float4(mesh_position, 1.0));
-            output.clip_position = mul(toy_view_projection, world_position);
-            output.uv = input.uv;
-            return output;
-        }
-
-        ENDHLSL
-
         HLSLPS
         #pragma pixel ps_main
 
-        struct VSOutput
+        float4 ps_main(ToySurfaceInput input)
         {
-            float4 clip_position : SV_Position;
-            float2 uv : TEXCOORD0;
-        };
-
-        float4 ps_main(VSOutput input) : SV_Target0
-        {
-            return base_color * base_color_texture.Sample(material_sampler, input.uv * uv_scale);
+            return toy_unlit_base_color(input);
         }
         ENDHLSL
     }

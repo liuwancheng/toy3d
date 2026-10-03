@@ -1,7 +1,7 @@
 format_version: 2
 asset_id: d1adaf1f86e9442bbc9047a761f10c4e
 root_type: toy3d.SceneAssetData
-schema_version: 5
+schema_version: 7
 dependencies:
   - asset_id: 096dc165e01c4cfdbf5c93e4b831f41f
     expected_type: toy3d.MaterialAssetData
@@ -12,6 +12,10 @@ dependencies:
 subresources:
   []
 data:
+  environment:
+    environment: null
+    rotation: [0, 0, 0, 1]
+    intensity: 1
   actors:
     - components:
         - id: 1edf41ba57ad4e6297492bc18af3c036
@@ -43,6 +47,11 @@ data:
           type: toy3d.StaticMeshComponent
       id: 69273acf197942738df008fe5a638ec9
       kind: Cube
+      type: toy3d.StaticMeshActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: 1edf41ba57ad4e6297492bc18af3c036
     - components:
         - id: b3a43838f3d94b2fad5a105e6e53e38e
@@ -74,6 +83,11 @@ data:
           type: toy3d.StaticMeshComponent
       id: c43f6e957e574a33bfb2d57f1fbf75e6
       kind: Plane
+      type: toy3d.StaticMeshActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: b3a43838f3d94b2fad5a105e6e53e38e
     - components:
         - id: 7d96c182c32c41f1b27dac242531c757
@@ -116,6 +130,11 @@ data:
           type: toy3d.DirectionalLightComponent
       id: e710ff7e29ea4f82b00d3f52c36bdb72
       kind: DirectionalLight
+      type: toy3d.DirectionalLightActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: 7d96c182c32c41f1b27dac242531c757
     - components:
         - id: fcbb5892879c2e6e40e81a1988f854f5
@@ -156,4 +175,9 @@ data:
           type: toy3d.StaticMeshComponent
       id: da0021fc99256b64f1d2d0f24aa9cd40
       kind: StaticMesh
+      type: toy3d.StaticMeshActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: fcbb5892879c2e6e40e81a1988f854f5

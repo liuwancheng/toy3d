@@ -6,9 +6,15 @@
 
 namespace toy3d
 {
-    TOY3D_REFLECT_TYPE("toy3d.Texture2DAssetData", 1)
+    TOY3D_REFLECT_TYPE("toy3d.Texture2DAssetData", 2)
     struct Texture2DAssetData
     {
+        TOY3D_PROPERTY("usage", Visible)
+        std::uint32_t usage = 0;
+
+        TOY3D_PROPERTY("flip_green", Visible)
+        bool flip_green = false;
+
         TOY3D_PROPERTY("width", Visible)
         std::uint32_t width = 0;
 

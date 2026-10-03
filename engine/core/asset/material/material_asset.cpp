@@ -7,6 +7,7 @@
 
 #include "asset/asset_pair.h"
 #include "misc/utf8.h"
+#include "shader/shader_compile_plan.h"
 
 namespace toy3d
 {
@@ -106,6 +107,30 @@ namespace toy3d
             return AssetStatus::success();
         }
 
+        AssetStatus validate_static_options(const std::vector<MaterialStaticOption>& values)
+        {
+            if (values.size() > shader::max_shader_permutation_dimensions)
+            {
+                return invalid("static_options", "At most 32 static options are supported.");
+            }
+            std::set<std::string> names;
+            for (const auto& value : values)
+            {
+                if (!canonical_name(value.name) || value.name.size() > 128u ||
+                    value.name.compare(0u, 6u, "TOY3D_") == 0 || !names.insert(value.name).second)
+                {
+                    return invalid("static_options." + value.name, "Invalid or duplicate static option name.");
+                }
+                // C++17 get_if keeps enum strings distinct from bool selections.
+                const auto* option = std::get_if<std::string>(&value.value);
+                if (option && (!canonical_name(*option) || option->size() > 128u))
+                {
+                    return invalid("static_options." + value.name, "Invalid enum option name.");
+                }
+            }
+            return AssetStatus::success();
+        }
+
         void append_texture_dependencies(const std::vector<MaterialParameterOverride>& values,
                                          std::vector<AssetRef>& result)
         {
@@ -140,6 +165,11 @@ namespace toy3d
                     invalid({}, "Material types must be registered and frozen."));
             }
             T sorted = data;
+            std::sort(sorted.static_options.begin(), sorted.static_options.end(),
+                      [](const MaterialStaticOption& a, const MaterialStaticOption& b)
+                      {
+                          return a.name < b.name;
+                      });
             std::sort(sorted.overrides.begin(), sorted.overrides.end(),
                       [](const MaterialParameterOverride& a, const MaterialParameterOverride& b)
                       {
@@ -169,6 +199,11 @@ namespace toy3d
                 return AssetResult<AssetPairBytes>(invalid({}, "Material types must be registered and frozen."));
             }
             T sorted = data;
+            std::sort(sorted.static_options.begin(), sorted.static_options.end(),
+                      [](const MaterialStaticOption& a, const MaterialStaticOption& b)
+                      {
+                          return a.name < b.name;
+                      });
             std::sort(sorted.overrides.begin(), sorted.overrides.end(),
                       [](const MaterialParameterOverride& a, const MaterialParameterOverride& b)
                       {
@@ -319,6 +354,171 @@ namespace toy3d
         return result;
     }
 
+    std::vector<MaterialStaticOption> MaterialAssetHierarchy::effective_static_options() const
+    {
+        std::vector<MaterialStaticOption> result;
+        for (const auto& layer : layers)
+        {
+            result = merge_material_static_options(result, layer.static_options);
+        }
+        return result;
+    }
+
+    std::vector<MaterialStaticOption> merge_material_static_options(const std::vector<MaterialStaticOption>& inherited,
+                                                                    const std::vector<MaterialStaticOption>& local)
+    {
+        std::map<std::string, MaterialStaticOption> values;
+        for (const auto& value : inherited)
+        {
+            values[value.name] = value;
+        }
+        for (const auto& value : local)
+        {
+            values[value.name] = value;
+        }
+        std::vector<MaterialStaticOption> result;
+        for (const auto& value : values)
+        {
+            result.push_back(value.second);
+        }
+        return result;
+    }
+
+    AssetResult<MaterialShaderConfigurations> collect_material_shader_configurations(const TypeRegistry& types,
+                                                                                     const FileSystem& files,
+                                                                                     const AssetCatalog& catalog,
+                                                                                     const std::string& shader_name)
+    {
+        MaterialShaderConfigurations candidate;
+        // Snapshot before reading any hierarchy, then recheck after all reads.
+        // Hashing after resolution could accidentally bless an older hierarchy
+        // with the bytes of a newer descriptor.
+        for (const auto& entry : catalog.entries)
+        {
+            if (!is_material_asset_type(entry.file.root_type))
+            {
+                continue;
+            }
+            const auto pair = read_asset_pair(types, files, entry.path);
+            if (!pair.succeeded())
+            {
+                return AssetResult<MaterialShaderConfigurations>(pair.status());
+            }
+            if (!(pair.value().description.index.asset_id == entry.file.asset_id) ||
+                pair.value().description.index.root_type != entry.file.root_type)
+            {
+                return AssetResult<MaterialShaderConfigurations>(
+                    invalid(entry.path.utf8(), "Material catalog identity changed."));
+            }
+            candidate.descriptors.emplace(entry.path.utf8(), sha256(pair.value().description_bytes));
+        }
+        std::set<std::string> unique;
+        const auto append = [&](const std::vector<MaterialStaticOption>& options) -> bool
+        {
+            shader::ShaderSourceCompileRequest request;
+            request.configurations = {material_static_selections(options)};
+            const auto identity = shader::serialize_shader_source_compile_request(request);
+            if (identity.empty())
+            {
+                return false;
+            }
+            if (unique.insert(identity).second)
+            {
+                candidate.configurations.push_back(request.configurations.front());
+            }
+            return candidate.configurations.size() <= shader::max_shader_compile_source_programs;
+        };
+        append({});
+        for (const auto& entry : catalog.entries)
+        {
+            if (!is_material_asset_type(entry.file.root_type))
+            {
+                continue;
+            }
+            AssetRef reference;
+            reference.asset_id = entry.file.asset_id;
+            reference.expected_type = entry.file.root_type;
+            const auto hierarchy = read_material_hierarchy(types, files, catalog.index, reference);
+            if (!hierarchy.succeeded())
+            {
+                return AssetResult<MaterialShaderConfigurations>(hierarchy.status());
+            }
+            if (hierarchy.value().root.shader_name != shader_name)
+            {
+                continue;
+            }
+            MaterialAssetHierarchy prefix;
+            for (const auto& layer : hierarchy.value().layers)
+            {
+                prefix.layers.push_back(layer);
+                if (!append(prefix.effective_static_options()))
+                {
+                    return AssetResult<MaterialShaderConfigurations>(invalid(
+                        entry.path.utf8(), "Material static configurations are invalid or exceed the source budget."));
+                }
+            }
+        }
+        for (const auto& snapshot : candidate.descriptors)
+        {
+            const auto path = VirtualPath::parse(snapshot.first);
+            const auto pair = read_asset_pair(types, files, path.value());
+            if (!pair.succeeded())
+            {
+                return AssetResult<MaterialShaderConfigurations>(pair.status());
+            }
+            if (sha256(pair.value().description_bytes) != snapshot.second)
+            {
+                return AssetResult<MaterialShaderConfigurations>(
+                    invalid(snapshot.first, "Material descriptor changed while gathering shader configurations."));
+            }
+        }
+        return AssetResult<MaterialShaderConfigurations>(std::move(candidate));
+    }
+
+    std::vector<shader::ShaderPermutationSelection> material_static_selections(
+        const std::vector<MaterialStaticOption>& options)
+    {
+        std::vector<shader::ShaderPermutationSelection> result;
+        for (const auto& option : options)
+        {
+            shader::ShaderPermutationSelection value;
+            value.name = option.name;
+            // C++17 get_if translates the persisted kind without guessing from text.
+            if (const auto* boolean = std::get_if<bool>(&option.value))
+            {
+                value.boolean_value = *boolean;
+            }
+            else if (const auto* enumeration = std::get_if<std::string>(&option.value))
+            {
+                value.kind = shader::ShaderPermutationValueKind::Enumeration;
+                value.enum_value = *enumeration;
+            }
+            result.push_back(std::move(value));
+        }
+        return result;
+    }
+
+    std::vector<MaterialStaticOption> material_static_options(
+        const std::vector<shader::ShaderPermutationSelection>& selections)
+    {
+        std::vector<MaterialStaticOption> result;
+        for (const auto& selection : selections)
+        {
+            MaterialStaticOption option;
+            option.name = selection.name;
+            if (selection.kind == shader::ShaderPermutationValueKind::Boolean)
+            {
+                option.value = selection.boolean_value;
+            }
+            else
+            {
+                option.value = selection.enum_value;
+            }
+            result.push_back(std::move(option));
+        }
+        return result;
+    }
+
     AssetResult<MaterialAssetHierarchy> read_material_hierarchy(const TypeRegistry& types, const FileSystem& files,
                                                                 const AssetIndex& index, const AssetRef& leaf)
     {
@@ -367,7 +567,7 @@ namespace toy3d
                 {
                     return AssetResult<MaterialAssetHierarchy>(read);
                 }
-                result.layers.push_back({current, result.root.overrides});
+                result.layers.push_back({current, result.root.overrides, result.root.static_options});
                 std::reverse(result.layers.begin(), result.layers.end());
                 return AssetResult<MaterialAssetHierarchy>(std::move(result));
             }
@@ -377,7 +577,7 @@ namespace toy3d
             {
                 return AssetResult<MaterialAssetHierarchy>(read);
             }
-            result.layers.push_back({current, std::move(child.overrides)});
+            result.layers.push_back({current, std::move(child.overrides), std::move(child.static_options)});
             current = child.parent;
         }
         return AssetResult<MaterialAssetHierarchy>(
@@ -397,7 +597,8 @@ namespace toy3d
         {
             return invalid("shader_name", "Enter a valid logical Shader name.");
         }
-        return validate_overrides(data.overrides, index);
+        const auto static_valid = validate_static_options(data.static_options);
+        return static_valid.succeeded() ? validate_overrides(data.overrides, index) : static_valid;
     }
 
     AssetStatus validate_material_instance_asset(const MaterialInstanceAssetData& data, const AssetIndex* index)
@@ -407,7 +608,12 @@ namespace toy3d
             return invalid("parent", "Parent must be a Material or Material Instance asset.");
         }
         const AssetStatus parent = validate_reference(data.parent, data.parent.expected_type.c_str(), "parent", index);
-        return parent.succeeded() ? validate_overrides(data.overrides, index) : parent;
+        if (!parent.succeeded())
+        {
+            return parent;
+        }
+        const auto static_valid = validate_static_options(data.static_options);
+        return static_valid.succeeded() ? validate_overrides(data.overrides, index) : static_valid;
     }
 
     bool material_override_matches_schema(const MaterialParameterOverride& item,
@@ -469,6 +675,21 @@ namespace toy3d
             if (!material_override_matches_schema(item, schema))
             {
                 return invalid("overrides." + item.name, "Unknown parameter or incompatible override type.");
+            }
+            // C++17 get_if checks scalar domain constraints without changing
+            // orphan/type matching, which remains an independent authoring rule.
+            if (const auto* scalar = std::get_if<float>(&item.value))
+            {
+                for (const auto& buffer : schema.constant_buffers)
+                {
+                    for (const auto& member : buffer.members)
+                    {
+                        if (member.name == item.name && !shader::validate_shader_scalar_value(member, *scalar))
+                        {
+                            return invalid("overrides." + item.name, "Scalar override is outside its declared Range.");
+                        }
+                    }
+                }
             }
         }
         return AssetStatus::success();

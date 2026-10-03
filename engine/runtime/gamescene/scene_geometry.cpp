@@ -30,8 +30,8 @@ namespace toy3d
             if (!program)
             {
                 ShaderMapEntryLoader loader(shader_entries);
-                ShaderMap shader_map(loader);
-                auto loaded = shader_map.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
+                auto loaded = ShaderMapCollection::create_candidate(
+                    loader.load_default_collection(key.shader_name, key.platform));
                 if (!loaded.succeeded())
                 {
                     TOY_LOG_ERROR("Builtin scene shader load failed: {}", loaded.error);
@@ -86,6 +86,18 @@ namespace toy3d
                                   {{h, h, h}, {0, 1, 0}, {1, 1}},     {{-h, h, h}, {0, 1, 0}, {0, 1}},
                                   {{-h, -h, h}, {0, -1, 0}, {0, 0}},  {{h, -h, h}, {0, -1, 0}, {1, 0}},
                                   {{h, -h, -h}, {0, -1, 0}, {1, 1}},  {{-h, -h, -h}, {0, -1, 0}, {0, 1}}};
+            // Analytic face UVs give an exact frame; imported assets use offline MikkTSpace.
+            for (std::size_t face = 0u; face < 6u; ++face)
+            {
+                const auto first = face * 4u;
+                const vec3 tangent =
+                    glm::normalize(mesh_desc.vertices[first + 1u].position - mesh_desc.vertices[first].position);
+                for (std::size_t corner = 0u; corner < 4u; ++corner)
+                {
+                    mesh_desc.vertices[first + corner].tangent = vec4(tangent, -1.0f);
+                }
+            }
+            mesh_desc.valid_tangent_frame = true;
             // A fixed UInt16 alternative matches the small builtin geometry.
             mesh_desc.indices =
                 std::vector<std::uint16_t>{0,  1,  2,  0,  2,  3,  4,  5,  6,  4,  6,  7,  8,  9,  10, 8,  10, 11,
@@ -116,6 +128,7 @@ namespace toy3d
         desc.sections = prototype->sections();
         desc.material_slots = prototype->material_slots();
         desc.material_slot_names = prototype->material_slot_names();
+        desc.valid_tangent_frame = prototype->has_valid_tangent_frame();
         // Each placement has a fresh render-resource lifecycle. Released vertex
         // buffers discard their upload payload and cannot be reused on a redo.
         return StaticMesh::create(std::move(desc));
@@ -137,6 +150,12 @@ namespace toy3d
                           {{k_plane_half_extent_cm, 0, -k_plane_half_extent_cm}, {0, 1, 0}, {1, 0}},
                           {{k_plane_half_extent_cm, 0, k_plane_half_extent_cm}, {0, 1, 0}, {1, 1}},
                           {{-k_plane_half_extent_cm, 0, k_plane_half_extent_cm}, {0, 1, 0}, {0, 1}}};
+        // Plane UV axes are +X/+Z with normal +Y, hence handedness -1.
+        for (auto& vertex : plane.vertices)
+        {
+            vertex.tangent = vec4(1, 0, 0, -1);
+        }
+        plane.valid_tangent_frame = true;
         // A fixed UInt16 alternative matches the small builtin geometry.
         plane.indices = std::vector<std::uint16_t>{0, 2, 1, 0, 3, 2};
         plane.sections.push_back({0, 6, 0});

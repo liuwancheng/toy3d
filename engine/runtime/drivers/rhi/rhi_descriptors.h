@@ -141,6 +141,9 @@ namespace toy3d
         RHIAccess initial_access = RHIAccess::Unknown;
         RHIClearValue clear_value;
         std::string debug_name;
+        // 2D square storage, whole groups of six layers, single sample. Cube and
+        // CubeArray SRVs require this immutable creation capability.
+        bool cube_compatible = false;
     };
 
     struct RHITextureViewDesc

@@ -364,6 +364,10 @@ namespace toy3d
                     {
                         actions.texture_import_requested = true;
                     }
+                    if (ImGui::MenuItem("Import Environment...", nullptr, false, writable))
+                    {
+                        actions.environment_import_requested = true;
+                    }
                     ImGui::Separator();
                     if (ImGui::MenuItem("Create Material...", nullptr, false, writable))
                     {

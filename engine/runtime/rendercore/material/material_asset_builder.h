@@ -14,6 +14,10 @@ namespace toy3d
         std::map<AssetId, TextureRef> assets;
     };
 
+    AssetStatus resolve_builtin_material_texture_defaults(const FileSystem& files, const AssetIndex& index,
+                                                          const shader::ShaderParameterSchema& schema,
+                                                          MaterialTextureValues& textures);
+
     AssetResult<MaterialDesc> material_descriptor_from_asset(const MaterialAssetData& data,
                                                              ShaderMapCollectionRef program,
                                                              const MaterialTextureValues& textures);
@@ -26,5 +30,6 @@ namespace toy3d
                                                                 const MaterialTextureValues& textures);
     AssetResult<MaterialInstanceRef> create_material_instance_from_asset(const MaterialInstanceAssetData& data,
                                                                          MaterialInterfaceRef parent,
-                                                                         const MaterialTextureValues& textures);
+                                                                         const MaterialTextureValues& textures,
+                                                                         ShaderMapCollectionRef configuration = {});
 } // namespace toy3d

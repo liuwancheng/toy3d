@@ -1,5 +1,7 @@
 # Renderer：View、Mesh Pass、阴影与输出
 
+Forward 仅在可见材质接受 Shadows、其编译 policy 允许 PCF、Primitive 接收阴影且方向光实际投影时建立 atlas；没有接收者/灯光、policy 关闭或缩略图时不分配、清空或绑定替代 atlas。上一提交保留其 GPU 引用；当前帧释放 owner 后使用 Off permutation。各 View 无活动阴影时跳过 shadow pass，其 Pass 参数保留有限的初始化值。
+
 ## 定位与帧流程
 
 engine/runtime/renderscene，属于 Toy3dRuntime。GT 准备 owned ViewFamily 与场景更新，在同 FIFO 中先更新再 draw；RT Renderer 组织 frame/context，SceneRenderer 做 View/场景工作。上传/资源/退出见 [Render Framework](render-framework.md)，提交/WSI 见 [RHI](rhi.md)。
@@ -10,7 +12,7 @@ engine/runtime/renderscene，属于 Toy3dRuntime。GT 准备 owned ViewFamily �
 
 MeshBatch 保存 PrimitiveSceneProxy、VertexFactory、RHI index binding、draw range、MaterialRenderProxy 与 Object snapshot；各 proxy 通过 collect_mesh_batches 输出 frame-local 输入，具体 geometry owner 负责资源生命周期。MeshBatch 表达 geometry/material/primitive 语义；pass prepare 解析 Program/VertexFactory/材质/资源、验证 layout/附件并创建 pipeline/binding，发生在 begin_render_pass 前。execute 仅消费已准备 MeshDrawCommand 的 RHI refs/value 与 draw 参数，不读 Asset/Material schema、不创建 device resource、不调任务系统。
 
-GPUSkin batch 另持 section 骨骼 typed view 强引用，按 vertex factory 类型为 Base/Shadow/HitProxy 选择经过配对验证的 program；4/8 influence 共用 shader。Object binding 按 Proxy/transform generation/section 共享于同帧 camera/shadow/picking，动画 bounds 随 pose 更新；具体 contract 见 [Animation](animation.md#公共网格边界与-permutation)。`SceneRenderer::view_infos() const` 仅在逻辑 RT 只读检查已准备的当前帧数据，不作为 GT 查询 RenderScene 的入口。
+GPUSkin batch 另持 section 骨骼 typed view 强引用，按 role/vertex factory/Pass selection 精确选择集合中的独立 program；4/8 influence 共用 shader。Object binding 按 Proxy/transform generation/section 共享于同帧 camera/shadow/picking，动画 bounds 随 pose 更新；具体 contract 见 [Animation](animation.md#公共网格边界与-permutation)。`SceneRenderer::view_infos() const` 仅在逻辑 RT 只读检查已准备的当前帧数据，不作为 GT 查询 RenderScene 的入口。
 
 入口 pass/base_pass.h、shadow_pass.h、hit_proxy_pass.h；真实 render_base_pass 接受 device、shader cache、graphics context、BasePassInputs 和 draw list，不存在通用 TestPass::execute(RenderPassContext&) 协议。新 pass 复用既有边界，不为减少参数引入 Prepared/Token wrapper。
 
@@ -39,9 +41,16 @@ SceneRenderTargets 在 RT 持有每 View ShadowRenderTargets：D32Float、单 mi
 
 caster bias 在 ShadowDepth vertex shader，符号遵守 reversed-Z；采样以 atlas 倒数宽高步长，tile 本地 clamp/边框防串层，深度软过渡和相机距离 fade/级联混合独立。不能用增 bias 掩盖世界 texel 精度不足。具体 PCF/Gather/soft transition 以 engine/shader 及 pass/shadow_pass.cpp 的实现和金值测试为证据，不能改成传统 Z 比较或假称硬件 raster depth bias 已有。
 
+## 场景环境
+
+World 的 settings 与 CPU Cube 快照通过 SceneInterface 的 FIFO 发布，RenderScene 每个场景域独占自己的 GPU TextureResource。更新先准备完整候选；recording 的环境 view 可用于当前帧，成功 submit/资源 commit 后 `resolve_environment_recording(true)` 接管，discard 保留旧有效环境。上传/格式/过滤能力失败明确诊断，不把已配置资源当 Off。
+
+Forward View 参数提供环境逆旋转、强度和最高 mip；材质 feature/policy 与有效环境共同选择 Sky/Off 的 Program，active Cube/sampler 只在需要时绑定。PBR 使用镜面 IBL，没有球谐、环境漫反射或假 ambient。单个场景域一个环境，主场景、PIE 和 studio preview 相互独立；Asset/World 持久化见 [Assets](assets.md#环境资产) 与 [Editor](editor.md#场景环境与材质预览)。
+
 ## Tonemap、UI、Preview 与读回
 
 场景 HDR color/depth 经 Base，Tonemap 转输出；UI 在最终输出之后按既有线性/显示约定合成，不因预览直接绕后端。Tonemap 参数和 Shader ABI 从 generated typed schema 创建，附件兼容和失败检查在 prepare。
+
 
 UI texture 通过公共 RHI View/受控 ImGui 表示，多个窗口各自持资源/代次，不全局换一张图。Preview 使用独立 World/SceneRenderTargets、同正常 frame 管理；不能操纵主 World、给每个窗口私建 Vulkan ownership。
 

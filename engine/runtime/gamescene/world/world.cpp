@@ -309,6 +309,30 @@ namespace toy3d
             scene_generation_ == (std::numeric_limits<std::uint64_t>::max)() ? 1u : scene_generation_ + 1u;
     }
 
+    bool World::set_environment(SceneEnvironmentSettings settings, TextureRef cube)
+    {
+        std::string error;
+        Quaternion rotation;
+        const SceneEnvironmentSnapshot snapshot{cube, settings.rotation, settings.intensity};
+        if (!validate_scene_environment_settings(settings) ||
+            settings.environment.asset_id.valid() != static_cast<bool>(cube) ||
+            !try_normalize(settings.rotation, rotation) || !validate_scene_environment_snapshot(snapshot, error))
+        {
+            TOY_LOG_ERROR("World Environment snapshot is invalid: {}", error);
+            return false;
+        }
+        settings.rotation = rotation;
+        environment_settings_ = std::move(settings);
+        environment_cube_ = std::move(cube);
+        mark_content_changed();
+        if (scene_interface_)
+        {
+            scene_interface_->update_environment(
+                {environment_cube_, environment_settings_.rotation, environment_settings_.intensity});
+        }
+        return true;
+    }
+
     bool World::bind_scene(SceneInterface& scene)
     {
         if (scene_interface_ != nullptr)
@@ -320,6 +344,8 @@ namespace toy3d
         // while ownership-transfer Add commands are being issued. Contract violations
         // fail fast and therefore do not create a recoverable partial-bind branch.
         scene_interface_ = &scene;
+        scene_interface_->update_environment(
+            {environment_cube_, environment_settings_.rotation, environment_settings_.intensity});
         for (const std::unique_ptr<Actor>& actor : actors_)
         {
             actor->create_render_state_for_registered_components();
@@ -338,6 +364,7 @@ namespace toy3d
         {
             actors_[index - 1]->destroy_render_state_for_registered_components();
         }
+        scene_interface_->update_environment({});
         scene_interface_ = nullptr;
         return true;
     }

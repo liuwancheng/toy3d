@@ -47,6 +47,7 @@ namespace toy3d
         void tick_compile_assignment(World& world, EditorCommandHistory& history, std::string& error);
         AssetStatus reload(const AssetRef& reference);
         bool prepare_shader(const ShaderMapCollectionRef& program, std::string& error);
+        bool prepare_shader(const std::vector<ShaderMapCollectionRef>& programs, std::string& error);
         bool publish_shader(std::string& error, bool defer_completion = false);
         void complete_shader();
         void discard_shader();

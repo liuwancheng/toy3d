@@ -16,6 +16,8 @@ namespace toy3d
         bool timestamp_queries = false;
         bool async_compute_queue = false;
         bool parallel_command_recording = false;
+        bool sampled_cube_textures = false;
+        bool sampled_cube_arrays = false;
     };
 
     struct RHILimits
@@ -24,6 +26,7 @@ namespace toy3d
         std::uint32_t max_vertex_buffers = 1;
         std::uint32_t max_texture_dimension_2d = 1;
         std::uint32_t max_texture_array_layers = 1;
+        std::uint32_t max_texture_dimension_cube = 1;
         std::uint32_t max_uniform_buffer_size = 1;
         std::uint32_t max_binding_slots_per_group = 1;
         std::uint32_t max_dynamic_uniform_buffers = 1;
@@ -49,7 +52,8 @@ namespace toy3d
         VertexBuffer = 1U << 4,
         CopySource = 1U << 5,
         CopyDestination = 1U << 6,
-        ReadOnlyTypedBuffer = 1U << 7
+        ReadOnlyTypedBuffer = 1U << 7,
+        LinearFilter = 1U << 8
     };
     ENUM_CLASS_FLAGS(RHIFormatUsage)
 

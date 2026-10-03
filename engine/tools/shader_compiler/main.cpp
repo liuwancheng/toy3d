@@ -2,6 +2,7 @@
 #include "codegen/shader_parameters_codegen.h"
 #include "codegen/shader_parameters_writer.h"
 #include "compiler/program_compiler.h"
+#include "compiler/standard_surface.h"
 #include "compiler/toolchain_manifest.h"
 #include "logging/logger.h"
 #include "file_system/native_platform_file.h"
@@ -13,11 +14,14 @@
 #include <algorithm>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "platform/platform_defines.h"
+#include "shader/shader_build_settings.h"
+#include "shader_map/shader_deployment_cook.h"
 
 #if WITH_WIN
 #include <Windows.h>
@@ -72,8 +76,11 @@ namespace
                        "  Toy3dShaderCompiler [--toolchain-root <path>] parse <input.shader>\n"
                        "  Toy3dShaderCompiler generate-parameters <output-directory> <input.shader>...\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] compile-vulkan <input.shader> <virtual-path> "
-                       "<pass> <shader-map-root> <working-directory> [--variant <name>=<value>]... "
+                       "<pass> <shader-map-root> <working-directory> [--variant <name>=<value>]... [--request <path>] "
+                       "[--settings <path>] [--project-settings <path>] [--build-mode Editor|Player] "
                        "[--engine-include-root <path>] [--project-include-root <path>]\n"
+                       "  Toy3dShaderCompiler [--toolchain-root <path>] cook-vulkan <engine-root> <project-root|-> "
+                       "<new-deployment-root> <new-work-root> Editor|Player\n"
                        "  Toy3dShaderCompiler [--toolchain-root <path>] toolchain-info");
     }
 
@@ -159,6 +166,55 @@ int main(int argument_count, char** arguments)
     }
 
     const std::string command = arguments[command_index];
+    if (command == "cook-vulkan")
+    {
+        if (command_index + 6 != argument_count)
+        {
+            print_usage();
+            return 2;
+        }
+        const std::string mode = arguments[command_index + 5];
+        if (mode != "Editor" && mode != "Player")
+        {
+            print_usage();
+            return 2;
+        }
+        std::string error;
+        const auto executable = current_executable_path(platform_file, arguments[0], error);
+        if (!executable.succeeded())
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, error);
+            return 2;
+        }
+        toy3d::shader::ShaderDeploymentCookInput input;
+        input.engine_root = toy3d::PhysicalPath(arguments[command_index + 1]);
+        const std::string project = arguments[command_index + 2];
+        input.project_root = project == "-" ? toy3d::PhysicalPath{} : toy3d::PhysicalPath(project);
+        input.output_root = toy3d::PhysicalPath(arguments[command_index + 3]);
+        input.work_root = toy3d::PhysicalPath(arguments[command_index + 4]);
+        input.compiler = executable.value();
+        input.editor = mode == "Editor";
+        if (explicit_toolchain_root)
+        {
+            input.toolchain = *explicit_toolchain_root;
+        }
+        else
+        {
+            const auto root = toy3d::shader::shader_toolchain_root_for_executable(platform_file, executable.value());
+            if (!root.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR, root.status().message);
+                return 2;
+            }
+            input.toolchain = root.value();
+        }
+        if (!toy3d::shader::cook_shader_deployment(platform_file, toy3d::NativeProcessService{}, input, error))
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, error);
+            return 1;
+        }
+        return 0;
+    }
     if (command == "generate-parameters")
     {
         if (explicit_toolchain_root || command_index + 3 > argument_count)
@@ -351,11 +407,64 @@ int main(int argument_count, char** arguments)
         toy3d::shader::ShaderProgramCompileInput compile_input;
         compile_input.source_virtual_path = arguments[command_index + 2];
         compile_input.pass_name = arguments[command_index + 3];
+        toy3d::shader::ShaderSourceCompileRequest source_request;
+        bool request_supplied = false;
+        toy3d::PhysicalPath settings_path, project_settings_path;
+        bool build_editor = true;
+        bool build_mode_supplied = false;
         toy3d::FileSystem includes;
         bool engine_include = false, project_include = false;
         for (int index = compile_required_end; index < argument_count; index += 2)
         {
             const std::string option = arguments[index];
+            if (option == "--settings" || option == "--project-settings")
+            {
+                auto& path = option == "--settings" ? settings_path : project_settings_path;
+                if (!path.empty())
+                {
+                    print_usage();
+                    return 2;
+                }
+                path = toy3d::PhysicalPath(arguments[index + 1]);
+                continue;
+            }
+            else if (option == "--build-mode")
+            {
+                const std::string mode = arguments[index + 1];
+                if (build_mode_supplied || (mode != "Editor" && mode != "Player"))
+                {
+                    print_usage();
+                    return 2;
+                }
+                build_mode_supplied = true;
+                build_editor = mode == "Editor";
+                continue;
+            }
+            else if (option == "--request")
+            {
+                if (request_supplied)
+                {
+                    print_usage();
+                    return 2;
+                }
+                request_supplied = true;
+                const toy3d::PhysicalPath request_path(arguments[index + 1]);
+                const auto stat = platform_file.stat(request_path);
+                if (!stat.succeeded() || stat.value().type != toy3d::FileType::File ||
+                    stat.value().size > toy3d::shader::max_shader_source_compile_request_bytes)
+                {
+                    report_message(toy3d::Logger::Level::TOY_ERROR, "Invalid compile request file or read budget.");
+                    return 2;
+                }
+                const auto text = platform_file.read_text_utf8(request_path);
+                if (!text.succeeded() ||
+                    !toy3d::shader::parse_shader_source_compile_request(text.value(), source_request, error))
+                {
+                    report_message(toy3d::Logger::Level::TOY_ERROR, text.succeeded() ? error : text.status().message);
+                    return 2;
+                }
+                continue;
+            }
             if (option == "--engine-include-root" || option == "--project-include-root")
             {
                 bool& supplied = option == "--engine-include-root" ? engine_include : project_include;
@@ -424,35 +533,172 @@ int main(int argument_count, char** arguments)
             report_message(toy3d::Logger::Level::TOY_ERROR, "Requested Pass is not declared by this source.");
             return 1;
         }
-        toy3d::shader::ShaderMapIndex map_index;
-        map_index.shader_name = result.asset->name;
-        map_index.source_hash = toy3d::sha256(source);
-        const std::size_t factory_count =
-            result.asset->vertex_factory_support == toy3d::shader::all_vertex_factory_support ? 2u : 1u;
-        if (result.asset->passes.size() > toy3d::shader::max_shader_map_index_programs / factory_count)
+        if ((request_supplied && !settings_path.empty()) ||
+            (settings_path.empty() && (!project_settings_path.empty() || build_mode_supplied)))
         {
             report_message(toy3d::Logger::Level::TOY_ERROR,
-                           "Source exceeds the ShaderMap program budget before compilation.");
-            return 1;
+                           "Build settings require --settings and cannot be combined with --request.");
+            return 2;
+        }
+        if (request_supplied && !compile_input.variant_selections.empty())
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, "--request and --variant cannot be combined.");
+            return 2;
+        }
+        if (source_request.policy.target != toy3d::shader::ShaderTarget::VulkanSpirV ||
+            source_request.policy.profile != toy3d::shader::ShaderCompileProfile::VulkanES31)
+        {
+            report_message(toy3d::Logger::Level::TOY_ERROR, "compile-vulkan requires Vulkan ES3.1 policy.");
+            return 2;
+        }
+        const auto domain = toy3d::shader::shader_material_domain(*result.asset);
+        if (!request_supplied)
+        {
+            const auto material =
+                toy3d::shader::resolve_shader_permutation(*result.asset, compile_input.variant_selections);
+            if (!material.succeeded())
+            {
+                for (const auto& diagnostic : material.diagnostics)
+                {
+                    report_diagnostic(diagnostic);
+                }
+                return 1;
+            }
+            source_request.configurations = {material.permutation->selections};
+        }
+        if (!settings_path.empty())
+        {
+            toy3d::shader::ShaderBuildSettings settings;
+            if (!toy3d::shader::read_shader_build_settings(platform_file, settings_path, project_settings_path,
+                                                           settings, error) ||
+                !toy3d::shader::make_shader_source_compile_request(
+                    settings, result.asset->name, toy3d::shader::ShaderTarget::VulkanSpirV,
+                    toy3d::shader::ShaderCompileProfile::VulkanES31, build_editor,
+                    std::move(source_request.configurations), source_request, error))
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR, error);
+                return 2;
+            }
+        }
+        std::vector<toy3d::shader::ShaderMapIndex> indices;
+        std::vector<toy3d::shader::ShaderCompilePlan> plans;
+        std::vector<std::vector<toy3d::shader::ShaderVariantSelection>> selections;
+        std::set<toy3d::Sha256Hash> configuration_keys;
+        std::size_t declared_total = 0u, required_total = 0u, filtered_total = 0u, upper_total = 0u;
+        // Normalize, expand and budget every configuration before invoking DXC.
+        // Standard Masked adds roles, so counting only the unexpanded AST is insufficient.
+        for (const auto& requested : source_request.configurations)
+        {
+            const auto material = toy3d::shader::resolve_shader_permutation(domain, requested);
+            if (!material.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR, material.errors.front().message);
+                return 1;
+            }
+            if (!configuration_keys.insert(material.permutation->key).second)
+            {
+                continue;
+            }
+            std::vector<toy3d::shader::ShaderVariantSelection> variants;
+            for (const auto& selection : material.permutation->selections)
+            {
+                variants.push_back({selection.name, selection.kind == toy3d::shader::ShaderPermutationValueKind::Boolean
+                                                        ? (selection.boolean_value ? "true" : "false")
+                                                        : selection.enum_value});
+            }
+            toy3d::shader::ShaderAsset expanded;
+            std::vector<toy3d::shader::Diagnostic> diagnostics;
+            if (!toy3d::shader::expand_standard_surface(*result.asset, variants, expanded, diagnostics))
+            {
+                for (const auto& diagnostic : diagnostics)
+                {
+                    report_diagnostic(diagnostic);
+                }
+                return 1;
+            }
+            auto plan =
+                toy3d::shader::plan_shader_compilation(toy3d::shader::shader_compile_source(expanded),
+                                                       {material.permutation->selections}, source_request.policy);
+            if (!plan.succeeded())
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR, plan.error);
+                return 1;
+            }
+            std::size_t engine_upper = 1u;
+            for (const auto& feature : expanded.features)
+            {
+                if (feature.feature == toy3d::shader::ShaderEngineFeature::Shadows ||
+                    feature.feature == toy3d::shader::ShaderEngineFeature::Environment)
+                {
+                    engine_upper *= 2u;
+                }
+            }
+            const std::size_t factories =
+                expanded.usage == toy3d::shader::ShaderUsage::Global
+                    ? 1u
+                    : (toy3d::shader::supports_vertex_factory(expanded.vertex_factory_support,
+                                                              toy3d::shader::VertexFactoryType::Local)
+                           ? 1u
+                           : 0u) +
+                          (toy3d::shader::supports_vertex_factory(expanded.vertex_factory_support,
+                                                                  toy3d::shader::VertexFactoryType::GPUSkin)
+                               ? 1u
+                               : 0u);
+            const auto upper = expanded.passes.size() * factories * engine_upper;
+            if (upper > toy3d::shader::max_shader_compile_source_programs - upper_total)
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR,
+                               "Source configuration product exceeds 1024 programs before filtering.");
+                return 1;
+            }
+            upper_total += upper;
+            if (plan.declared_programs > toy3d::shader::max_shader_compile_source_programs - declared_total ||
+                plan.required.size() > toy3d::shader::max_shader_compile_source_programs - required_total)
+            {
+                report_message(
+                    toy3d::Logger::Level::TOY_ERROR,
+                    "Source job exceeds 1024 programs: configurations x expanded roles x factories x engine options.");
+                return 1;
+            }
+            declared_total += plan.declared_programs;
+            required_total += plan.required.size();
+            filtered_total += plan.filtered_programs;
+            toy3d::shader::ShaderMapIndex map_index;
+            map_index.shader_name = result.asset->name;
+            map_index.source_hash = toy3d::sha256(source);
+            map_index.material_domain = domain;
+            map_index.material_selections = material.permutation->selections;
+            map_index.permutation_key = material.permutation->key;
+            map_index.policy = source_request.policy;
+            map_index.features = result.asset->features;
+            map_index.supported_when = result.asset->supported_when;
+            map_index.standard_tangent_input = result.asset->standard_tangent_input;
+            map_index.declares_tangent_frame = result.asset->declares_tangent_frame;
+            map_index.tangent_frame_when = result.asset->tangent_frame_when;
+            for (const auto& pass : expanded.passes)
+            {
+                map_index.passes.push_back({pass.name, pass.role});
+            }
+            indices.push_back(std::move(map_index));
+            plans.push_back(std::move(plan));
+            selections.push_back(std::move(variants));
         }
         const toy3d::PhysicalPath output_root(arguments[command_index + 4]);
         const toy3d::PhysicalPath work_root(arguments[command_index + 5]);
-        std::size_t pass_number = 0u;
-        for (const auto& pass : result.asset->passes)
+        toy3d::shader::ShaderStageCompileCache stage_cache;
+        compile_input.stage_cache = &stage_cache;
+        std::size_t program_number = 0u;
+        for (std::size_t configuration = 0u; configuration < plans.size(); ++configuration)
         {
-            map_index.passes.push_back({pass.name, pass.role});
-            compile_input.pass_name = pass.name;
-            for (const auto factory : {toy3d::shader::VertexFactoryType::None, toy3d::shader::VertexFactoryType::Local,
-                                       toy3d::shader::VertexFactoryType::GPUSkin})
+            auto& map_index = indices[configuration];
+            compile_input.variant_selections = selections[configuration];
+            for (const auto& required : plans[configuration].required)
             {
-                if (!toy3d::shader::supports_vertex_factory(result.asset->vertex_factory_support, factory))
-                {
-                    continue;
-                }
-                compile_input.vertex_factory = factory;
-                const auto work =
-                    platform_file.join_relative(work_root, "pass_" + std::to_string(pass_number) + "/factory_" +
-                                                               std::to_string(static_cast<unsigned>(factory)));
+                compile_input.pass_name = required.pass.name;
+                compile_input.vertex_factory = required.vertex_factory;
+                compile_input.pass_selections = required.pass_permutation.selections;
+                compile_input.compile_policy = source_request.policy;
+                const auto work = platform_file.join_relative(work_root, "program_" + std::to_string(program_number));
                 if (!work.succeeded())
                 {
                     report_message(toy3d::Logger::Level::TOY_ERROR, work.status().message);
@@ -478,20 +724,30 @@ int main(int argument_count, char** arguments)
                 {
                     return 1;
                 }
-                map_index.permutation_key = compiled.entry->permutation_key;
-                map_index.programs.push_back(
-                    {pass.name, compiled.entry->contract, written.shader_map_key, written.entry_content_hash});
-                std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/" << pass.name << "' to "
-                          << written.entry_directory->utf8() << '\n';
+                map_index.programs.push_back({required.pass.name, compiled.entry->contract, written.shader_map_key,
+                                              written.entry_content_hash, required.pass_permutation.key,
+                                              required.pass_permutation.selections});
+                std::cout << "Compiled ShaderMapEntry '" << compiled.entry->shader_name << "/" << required.pass.name
+                          << "' to " << written.entry_directory->utf8() << '\n';
+                ++program_number;
             }
-            ++pass_number;
         }
-        if (!toy3d::shader::write_verified_shader_map_index(platform_file, output_root, map_index, error))
+        std::cout << "Stages: compiled VS=" << stage_cache.compiled[0] << " PS=" << stage_cache.compiled[1]
+                  << " CS=" << stage_cache.compiled[2] << ", reused VS=" << stage_cache.reused[0]
+                  << " PS=" << stage_cache.reused[1] << " CS=" << stage_cache.reused[2] << '\n';
+        // No index is published until every configuration's entries have compiled.
+        // Consumers publish the containing immutable request directory as one revision.
+        for (const auto& index : indices)
         {
-            report_message(toy3d::Logger::Level::TOY_ERROR, "ShaderMap index publication failed: " + error);
-            return 1;
+            if (!toy3d::shader::write_verified_shader_map_index(platform_file, output_root, index, error))
+            {
+                report_message(toy3d::Logger::Level::TOY_ERROR, "ShaderMap index publication failed: " + error);
+                return 1;
+            }
         }
-        std::cout << "Published complete ShaderMap index with " << map_index.programs.size() << " program(s).\n";
+        std::cout << "Published " << indices.size() << " configuration(s), " << required_total << " program(s).\n";
+        std::cout << "Plan: declared=" << declared_total << ", required=" << required_total
+                  << ", filtered=" << filtered_total << '\n';
         return 0;
     }
 

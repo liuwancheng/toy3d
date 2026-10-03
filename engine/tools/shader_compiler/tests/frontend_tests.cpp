@@ -187,7 +187,7 @@ Shader "Tests/V2Contract"
         check(replaced("Local, GPUSkin", "GPUSkin").succeeded(),
               "Offline authoring supports a declared factory subset independent of Editor publication policy");
         check(!replaced("Geometry Custom", "Geometry Standard").succeeded(),
-              "Unimplemented Standard wrapper must fail explicitly");
+              "Standard source cannot provide its own vertex entry");
         check(!replaced("HLSLPS", "HLSLVS").succeeded(), "Stage block/pragma mismatch must fail");
         check(!replaced("HLSLPS\n        #pragma pixel ps_main\n        float4 ps_main() : SV_Target0 { return 1; }\n  "
                         "      ENDHLSL",
@@ -198,6 +198,70 @@ Shader "Tests/V2Contract"
               "Duplicate role declaration must fail");
         check(!replaced("DepthWrite Off", "DepthWrite Off\n Blend On").succeeded(),
               "Mesh transparent blending must fail");
+        const auto featured = replaced("Pass \"DisplayName\"", R"(
+    Variants { USE_LIGHTING : bool = true }
+    Features {
+        Lighting When Equal(USE_LIGHTING, true)
+        Shadows When All(Profile(VulkanES31), Not(Capability(TextureCube)))
+        Environment When Any(Profile(D3D12ShaderModel6), Capability(Rgba16FloatSampled))
+    }
+    SupportedWhen Profile(VulkanES31)
+    Pass "DisplayName")");
+        const auto geometry = replaced("Pass \"DisplayName\"", R"(
+    Variants { NORMAL : bool = false }
+    GeometryRequirements { TangentFrame When Equal(NORMAL, true) }
+    Pass "DisplayName")");
+        check(geometry.succeeded() && geometry.asset->declares_tangent_frame &&
+                  geometry.asset->tangent_frame_when.nodes.size() == 1u,
+              "Custom geometry requirements preserve typed static conditions");
+        check(!replaced("Pass \"DisplayName\"", "SurfaceInputs { Tangent } Pass \"DisplayName\"").succeeded(),
+              "Custom sources cannot request Standard interpolation generation");
+        check(!replaced("Pass \"DisplayName\"", "GeometryRequirements { Unknown } Pass \"DisplayName\"").succeeded(),
+              "Unknown geometry capability rejects at the declaration");
+        check(
+            !replaced("Pass \"DisplayName\"", "GeometryRequirements { TangentFrame TangentFrame } Pass \"DisplayName\"")
+                 .succeeded(),
+            "Duplicate geometry capabilities reject");
+        const auto impacts = replaced(
+            "Pass \"DisplayName\"",
+            "Variants { SHADE : bool = true Stages { Pixel } Passes { Forward, HitProxy } } Pass \"DisplayName\"");
+        check(impacts.succeeded() && impacts.asset->variants.front().affected_stages == ShaderStageFlags::Pixel &&
+                  impacts.asset->variants.front().affected_passes ==
+                      (shader_pass_role_bit(ShaderPassRole::Forward) | shader_pass_role_bit(ShaderPassRole::HitProxy)),
+              "Variants preserve explicit stage and Pass impacts");
+        for (const std::string invalid : {"Stages { }", "Stages { Pixel, Pixel }", "Stages { Unknown }", "Passes { }",
+                                          "Passes { Forward } Passes { HitProxy }"})
+        {
+            check(!replaced("Pass \"DisplayName\"",
+                            "Variants { SHADE : bool = true " + invalid + " } Pass \"DisplayName\"")
+                       .succeeded(),
+                  "Malformed impact annotation rejects: " + invalid);
+        }
+        check(featured.succeeded() && featured.asset->features.size() == 3u &&
+                  featured.asset->features[1].condition.nodes.size() == 4u,
+              "Engine features parse bounded typed postfix expressions");
+        check(
+            !replaced("Pass \"DisplayName\"", "Features { Lighting Shadows Shadows } Pass \"DisplayName\"").succeeded(),
+            "Duplicate engine features reject");
+        check(!replaced("Pass \"DisplayName\"", "Features { Unknown } Pass \"DisplayName\"").succeeded(),
+              "Unknown engine feature names reject");
+        check(!replaced("Pass \"DisplayName\"",
+                        "SupportedWhen Not(Profile(VulkanES31), Profile(VulkanES31)) Pass \"DisplayName\"")
+                   .succeeded(),
+              "Static condition arity rejects at its declaration");
+        check(!replaced("Pass \"DisplayName\"", "SupportedWhen Capability(Unknown) Pass \"DisplayName\"").succeeded(),
+              "Unknown capability names reject");
+        check(!replaced("Pass \"DisplayName\"", "Parameters { Pass { custom_light : Float } } Pass \"DisplayName\"")
+                   .succeeded(),
+              "Material sources cannot author a different engine Pass ABI");
+        check(!replaced("Pass \"DisplayName\"",
+                        "Resources { Pass { custom_cube : TextureCube<Float4> } } Pass \"DisplayName\"")
+                   .succeeded(),
+              "Material sources cannot add arbitrary Pass resources");
+        check(!replaced("Pass \"DisplayName\"",
+                        "Properties { scene_light_color (\"Collision\", Float4) = (0,0,0,0) } Pass \"DisplayName\"")
+                   .succeeded(),
+              "Material properties cannot shadow engine Forward names");
     }
 } // namespace
 

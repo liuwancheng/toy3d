@@ -1,6 +1,7 @@
 #pragma once
 
 #include "image/pixel_format.h"
+#include "image/texture_usage.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,17 +15,21 @@ namespace toy3d
 
     struct TextureDesc
     {
+        TextureUsage usage = TextureUsage::Color;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         PixelFormat format = PixelFormat::Unknown;
         std::vector<std::size_t> row_pitches;
         std::vector<std::size_t> slice_pitches;
+        // Cube levels concatenate six faces; pitches describe one face.
         std::vector<std::vector<std::uint8_t>> mip_pixels;
+        bool cube = false;
+        bool requires_linear_filter = false;
 
         bool validate(std::string& error) const;
     };
 
-    // GT/Asset-side immutable cooked Texture2D identity. The pointed-to render
+    // GT/Asset-side immutable cooked Texture identity. The pointed-to render
     // representation has a stable address, but its mutable state is RT-only.
     class Texture
     {

@@ -3,6 +3,7 @@
 #include "layout/binding_allocator.h"
 
 #include <optional>
+#include <set>
 #include <string>
 
 namespace toy3d::shader
@@ -19,5 +20,6 @@ namespace toy3d::shader
     };
 
     BindingCodegenResult generate_binding_hlsl(const LogicalShaderLayout& logical_layout,
-                                               const TargetBindingLayout& target_layout, ShaderStageFlags stage);
+                                               const TargetBindingLayout& target_layout, ShaderStageFlags stage,
+                                               const std::set<std::string>* referenced_names = nullptr);
 } // namespace toy3d::shader

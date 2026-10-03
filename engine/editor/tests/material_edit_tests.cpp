@@ -257,6 +257,82 @@ int main()
               "edited YAML material remains descriptive only");
         session.clear();
     }
+    // Independent authoring fixture: static history retains raw inheritance,
+    // while the runtime preview adapter continues displaying its previous map.
+    shader::ShaderPermutationDomain domain;
+    domain.dimensions = {
+        {"USE_LIGHTING", shader::ShaderPermutationValueKind::Boolean, {}, true, {}},
+        {"SURFACE_MODE", shader::ShaderPermutationValueKind::Enumeration, {"Opaque", "Masked"}, false, "Opaque"}};
+    AssetId static_root_id;
+    AssetId static_child_id;
+    check(AssetId::try_generate(static_root_id) && AssetId::try_generate(static_child_id), "static fixture identities");
+    MaterialAssetData static_root;
+    static_root.shader_name = root.shader_name;
+    static_root.static_options = {{"USE_LIGHTING", false}};
+    const auto static_root_bytes = encode_material_asset_pair(types, static_root_id, static_root);
+    check(static_root_bytes.succeeded() &&
+              workspace.asset_pairs()
+                  .publish(path("/Project/M_Static.asset"), static_root_bytes.value(), FilePublishMode::CreateNew)
+                  .succeeded() &&
+              workspace.refresh(),
+          "static root publication");
+    MaterialInstanceAssetData static_child;
+    static_child.parent.asset_id = static_root_id;
+    static_child.parent.expected_type = "toy3d.MaterialAssetData";
+    const auto static_child_bytes =
+        encode_material_instance_asset_pair(types, static_child_id, static_child, &workspace.catalog().index);
+    check(static_child_bytes.succeeded() &&
+              workspace.asset_pairs()
+                  .publish(path("/Project/MI_Static.asset"), static_child_bytes.value(), FilePublishMode::CreateNew)
+                  .succeeded() &&
+              workspace.refresh(),
+          "static child publication");
+    check(session.open(static_child_id, schema, root.shader_name, domain).succeeded() &&
+              session.static_options().empty() &&
+              !material_static_selections(session.effective_static_options()).front().boolean_value,
+          "Static child inherits raw Parent selection without copying defaults");
+    check(session.set_static_option({"USE_LIGHTING", true}).succeeded() && session.undo_count() == 1u &&
+              material_static_selections(session.effective_static_options()).front().boolean_value,
+          "Static bool override creates one history entry");
+    check(session.set_static_option({"SURFACE_MODE", std::string("Masked")}).succeeded() && session.undo_count() == 2u,
+          "Typed enum selection is undoable");
+    const auto static_history = session.undo_count();
+    check(!session.set_static_option({"UNKNOWN", true}).succeeded() &&
+              !session.set_static_option({"SURFACE_MODE", true}).succeeded() &&
+              !session.set_static_option({"SURFACE_MODE", std::string("Removed")}).succeeded() &&
+              session.undo_count() == static_history,
+          "Unknown/type/enum errors preserve static draft and history");
+    check(session.remove_static_option("USE_LIGHTING").succeeded() &&
+              !material_static_selections(session.effective_static_options()).back().boolean_value &&
+              session.undo().succeeded() &&
+              material_static_selections(session.effective_static_options()).back().boolean_value &&
+              session.redo().succeeded() &&
+              !material_static_selections(session.effective_static_options()).back().boolean_value,
+          "Clearing a static override and undo/redo preserve Parent inheritance");
+    auto removed_domain = domain;
+    removed_domain.dimensions.pop_back();
+    check(!session.update_static_domain(removed_domain).succeeded() && session.static_domain().dimensions.size() == 2u,
+          "A changed source domain cannot silently drop an authored enum");
+    const auto static_save = session.save();
+    if (!static_save.succeeded())
+    {
+        std::cerr << "Static save: " << static_cast<unsigned>(static_save.code) << " " << static_save.message << '\n';
+    }
+    check(static_save.succeeded() && !session.dirty(),
+          "Static selection saves through existing pair conflict/history path");
+    session.clear();
+    check(session.open(static_child_id, schema, root.shader_name, domain).succeeded() &&
+              session.static_options().size() == 1u && session.static_options().front().name == "SURFACE_MODE",
+          "Reopen preserves own enum and leaves inherited bool implicit");
+    check(session.begin_gesture().succeeded() && !session.set_static_option({"USE_LIGHTING", true}).succeeded() &&
+              session.cancel_gesture().succeeded(),
+          "Static edits cannot overlap a numeric gesture");
+    session.clear();
+    const auto collected =
+        collect_material_shader_configurations(types, workspace.files(), workspace.catalog(), root.shader_name);
+    check(collected.succeeded() && collected.value().configurations.size() == 3u &&
+              collected.value().descriptors.count("/Project/MI_Static.asset") == 1u,
+          "Saved graph collector includes default, Parent and child static prefixes once");
     // Fixture lives beneath the configured build root; no user assets are touched.
     std::cout << (failures ? "Material editor tests failed\n" : "Material editor tests passed\n");
     return failures ? 1 : 0;

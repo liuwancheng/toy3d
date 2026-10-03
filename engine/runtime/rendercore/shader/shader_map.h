@@ -68,6 +68,7 @@ namespace toy3d
             ShaderContentHash permutation_key{};
             shader::ShaderPassRole role = shader::ShaderPassRole::Global;
             shader::VertexFactoryType vertex_factory = shader::VertexFactoryType::None;
+            ShaderContentHash pass_permutation_key = shader::default_shader_permutation_key;
 
             bool operator==(const ProgramKey& other) const;
         };

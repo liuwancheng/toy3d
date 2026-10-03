@@ -1,0 +1,20 @@
+format_version: 2
+asset_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02"
+root_type: "toy3d.MaterialInstanceAssetData"
+schema_version: 2
+dependencies:
+  - asset_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01"
+    expected_type: "toy3d.MaterialAssetData"
+    strength: strong
+subresources: []
+data:
+  parent:
+    asset_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01"
+    expected_type: "toy3d.MaterialAssetData"
+    strength: strong
+  overrides: []
+  static_options:
+    - name: EXTRA_COLOR
+      value: { type: Bool, value: false }
+    - name: QUALITY
+      value: { type: Utf8, value: High }

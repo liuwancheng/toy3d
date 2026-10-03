@@ -1,6 +1,7 @@
 #include "compiler/compile_request.h"
 
 #include <sstream>
+#include <map>
 #include <type_traits>
 
 namespace toy3d::shader
@@ -101,7 +102,27 @@ namespace toy3d::shader
         request.source_virtual_path = input.source_virtual_path;
         request.compiler_identity = input.compiler_identity;
         request.source = std::move(*resolved.source);
-        request.dependencies = std::move(resolved.dependencies);
+        std::map<std::string, Sha256Hash> dependencies;
+        for (const auto& dependency : resolved.dependencies)
+        {
+            dependencies.emplace(dependency.virtual_path, dependency.content_hash);
+        }
+        for (const auto& dependency : input.source_dependencies)
+        {
+            const auto existing = dependencies.find(dependency.virtual_path);
+            if (existing != dependencies.end() && existing->second != dependency.content_hash)
+            {
+                result.diagnostics.push_back({DiagnosticSeverity::Error, DiagnosticCode::InvalidCompileRequest,
+                                              location,
+                                              "Expanded include dependency changed during request construction."});
+                return result;
+            }
+            dependencies[dependency.virtual_path] = dependency.content_hash;
+        }
+        for (const auto& dependency : dependencies)
+        {
+            request.dependencies.push_back({dependency.first, dependency.second});
+        }
         request.logical_layout_hash = input.logical_layout_hash;
         request.target_binding_hash = input.target_binding_hash;
 

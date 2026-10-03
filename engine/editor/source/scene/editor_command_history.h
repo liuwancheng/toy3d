@@ -2,6 +2,8 @@
 
 #include "scene/placement/actor_factory.h"
 #include "scene/material_assignments.h"
+#include "asset/scene/scene_asset_data.h"
+#include "rendercore/texture/texture.h"
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -15,7 +17,8 @@ namespace toy3d
     enum class EditorTransformSource
     {
         Gizmo,
-        Details
+        Details,
+        WorldSettings
     };
 
     // Scene-owned timeline. Records keep value snapshots and resolvable identities.
@@ -38,6 +41,8 @@ namespace toy3d
         {
             return factory_.actor_types();
         }
+        bool preview_environment(World& world, SceneEnvironmentSettings settings, TextureRef cube);
+        bool set_environment(World& world, SceneEnvironmentSettings settings, TextureRef cube);
         void cancel();
         void clear();
         std::uint32_t place_actor(World& world, const PlacementRequest& request);
@@ -80,7 +85,8 @@ namespace toy3d
             Modify,
             Create,
             Delete,
-            Material
+            Material,
+            Environment
         };
         struct AttachedActor
         {
@@ -96,6 +102,11 @@ namespace toy3d
             EditorActorState after;
             std::uint32_t component_id = 0;
             std::string slot_name;
+            SceneEnvironmentSettings environment_before;
+            SceneEnvironmentSettings environment_after;
+            // CPU snapshots keep undo independent from later catalog changes and GPU resource retirement.
+            TextureRef environment_cube_before;
+            TextureRef environment_cube_after;
             AssetRef material_before;
             AssetRef material_after;
             std::vector<MaterialSlotAssignment> material_assignments;

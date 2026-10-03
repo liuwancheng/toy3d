@@ -14,6 +14,7 @@ namespace toy3d
     {
         bool import_requested = false;
         bool texture_import_requested = false;
+        bool environment_import_requested = false;
         bool material_creation_requested = false;
         MaterialAssetCreationKind material_creation_kind = MaterialAssetCreationKind::Material;
         AssetId material_parent;

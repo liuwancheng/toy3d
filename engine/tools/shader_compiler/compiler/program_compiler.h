@@ -7,17 +7,31 @@
 #include "shader/shader_editor_properties.h"
 
 #include <optional>
+#include <map>
+#include <array>
 
 namespace toy3d::shader
 {
+    // Owned by one source job. Cache only binaries already validated by the compiler;
+    // every reuse still reflects against the current Program mapping.
+    struct ShaderStageCompileCache
+    {
+        std::map<Sha256Hash, std::vector<std::uint8_t>> binaries;
+        std::array<std::size_t, 3> compiled{};
+        std::array<std::size_t, 3> reused{};
+    };
+
     struct ShaderProgramCompileInput
     {
         std::string pass_name;
         std::string source_virtual_path;
         ShaderDebugMode debug_mode = ShaderDebugMode::Development;
         std::vector<ShaderVariantSelection> variant_selections;
+        std::vector<ShaderPermutationSelection> pass_selections;
+        ShaderCompilePolicy compile_policy;
         VertexFactoryType vertex_factory = VertexFactoryType::None;
         const ShaderSourceProvider* source_provider = nullptr;
+        ShaderStageCompileCache* stage_cache = nullptr;
     };
 
     struct ShaderMapEntryCompileResult

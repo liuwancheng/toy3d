@@ -1,6 +1,8 @@
 #include "shader/shader_map_entry.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <set>
 #include <type_traits>
 #include <vector>
@@ -200,6 +202,16 @@ namespace toy3d::shader
                     {
                         append_integer(bytes, static_cast<std::uint32_t>(member.default_value.size()));
                         bytes.insert(bytes.end(), member.default_value.begin(), member.default_value.end());
+                        for (const auto& bound : {member.minimum_value, member.maximum_value})
+                        {
+                            append_integer(bytes, static_cast<std::uint32_t>(bound.has_value()));
+                            if (bound)
+                            {
+                                std::uint32_t bits = 0u;
+                                std::memcpy(&bits, &*bound, sizeof(bits));
+                                append_integer(bytes, bits);
+                            }
+                        }
                     }
                 }
             }
@@ -213,6 +225,7 @@ namespace toy3d::shader
                 append_enum(bytes, resource.resource_kind);
                 append_enum(bytes, resource.element_type);
                 append_integer(bytes, resource.array_count);
+                append_enum(bytes, resource.texture_usage);
                 if (include_defaults)
                 {
                     append_enum(bytes, resource.default_value_kind);
@@ -287,6 +300,60 @@ namespace toy3d::shader
         return sha256(bytes);
     }
 
+    Sha256Hash calculate_shader_stage_logical_layout_hash(const ShaderParameterSchema& schema,
+                                                          const std::vector<ShaderMapBinding>& bindings,
+                                                          ShaderStageFlags stage)
+    {
+        ShaderParameterSchema selected;
+        selected.shader_abi_version = schema.shader_abi_version;
+        selected.parameter_id_version = schema.parameter_id_version;
+        const auto active = [&](ShaderParameterId id)
+        {
+            return std::any_of(bindings.begin(), bindings.end(),
+                               [&](const ShaderMapBinding& binding)
+                               {
+                                   return binding.binding_id == id && has_stage(binding.stages, stage);
+                               });
+        };
+        for (const auto& buffer : schema.constant_buffers)
+        {
+            if (active(buffer.binding_id))
+            {
+                selected.constant_buffers.push_back(buffer);
+            }
+        }
+        for (const auto& resource : schema.resources)
+        {
+            if (active(resource.parameter_id))
+            {
+                selected.resources.push_back(resource);
+            }
+        }
+        return calculate_shader_parameter_logical_layout_hash(selected);
+    }
+
+    Sha256Hash calculate_shader_stage_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
+                                                   const std::vector<ShaderMapBinding>& bindings,
+                                                   ShaderStageFlags stage)
+    {
+        std::vector<ShaderMapBinding> selected;
+        for (const auto& binding : bindings)
+        {
+            if (has_stage(binding.stages, stage))
+            {
+                auto copy = binding;
+                copy.stages = stage;
+                // Vulkan declarations use explicit descriptor slots; HLSL register indices are not native identity.
+                if (target == ShaderTarget::VulkanSpirV)
+                {
+                    copy.register_index = 0u;
+                }
+                selected.push_back(std::move(copy));
+            }
+        }
+        return calculate_target_binding_hash(target, mapping_version, selected);
+    }
+
     Sha256Hash calculate_shader_parameter_group_identity(const ShaderParameterSchema& schema, BindingGroup group)
     {
         ShaderParameterSchema group_schema;
@@ -315,6 +382,12 @@ namespace toy3d::shader
         append_enum(bytes, group);
         append_shader_parameter_schema(bytes, group_schema, true);
         return sha256(bytes);
+    }
+
+    bool validate_shader_scalar_value(const ShaderParameterConstantMemberSchema& member, float value)
+    {
+        return std::isfinite(value) && (!member.minimum_value || value >= *member.minimum_value) &&
+               (!member.maximum_value || value <= *member.maximum_value);
     }
 
     bool validate_shader_parameter_schema(const ShaderParameterSchema& schema, std::string& error)
@@ -350,6 +423,33 @@ namespace toy3d::shader
                     error = "Shader parameter schema contains an invalid constant member.";
                     return false;
                 }
+                if (member.minimum_value || member.maximum_value)
+                {
+                    if (buffer.group != BindingGroup::Material || member.type != ShaderValueType::Float32 ||
+                        member.array_count != 1u || member.size != sizeof(float) ||
+                        (member.minimum_value && !std::isfinite(*member.minimum_value)) ||
+                        (member.maximum_value && !std::isfinite(*member.maximum_value)) ||
+                        (member.minimum_value && member.maximum_value && *member.minimum_value > *member.maximum_value))
+                    {
+                        error = "Shader parameter schema has invalid scalar bounds.";
+                        return false;
+                    }
+                    if (!member.default_value.empty())
+                    {
+                        std::uint32_t bits = 0u;
+                        for (std::size_t byte = 0u; byte < sizeof(bits); ++byte)
+                        {
+                            bits |= static_cast<std::uint32_t>(member.default_value[byte]) << (byte * 8u);
+                        }
+                        float value = 0.0f;
+                        std::memcpy(&value, &bits, sizeof(value));
+                        if (!validate_shader_scalar_value(member, value))
+                        {
+                            error = "Shader parameter default is outside its scalar bounds.";
+                            return false;
+                        }
+                    }
+                }
                 reflected_members.push_back({member.parameter_id, member.name, member.type, member.offset, member.size,
                                              member.array_stride, member.matrix_stride});
             }
@@ -366,6 +466,7 @@ namespace toy3d::shader
             if (resource.parameter_id == 0u || resource.name.empty() || resource.array_count == 0u ||
                 resource.category == ShaderParameterCategory::Constant ||
                 !resource_kind_matches_category(resource.resource_kind, resource.category) ||
+                !is_valid_texture_usage(resource.texture_usage) ||
                 static_cast<std::uint32_t>(resource.default_value_kind) >
                     static_cast<std::uint32_t>(ShaderParameterDefaultValueKind::Identifier) ||
                 (resource.default_value_kind == ShaderParameterDefaultValueKind::None &&
@@ -643,6 +744,7 @@ namespace toy3d::shader
         append_enum(bytes, entry.contract.usage);
         append_enum(bytes, entry.contract.role);
         append_enum(bytes, entry.contract.geometry);
+        append_enum(bytes, entry.contract.surface_mode);
         append_enum(bytes, entry.contract.vertex_factory);
         append_integer(bytes, entry.contract.vertex_factory_support);
         append_enum(bytes, entry.target);
@@ -658,9 +760,14 @@ namespace toy3d::shader
         append_integer(bytes, entry.variant_id_version);
         append_integer(bytes, entry.permutation_version);
         bytes.insert(bytes.end(), entry.permutation_key.begin(), entry.permutation_key.end());
+        bytes.insert(bytes.end(), entry.pass_permutation_key.begin(), entry.pass_permutation_key.end());
         for (const ShaderCodeEntry* stage : sorted_stages(entry))
         {
             append_enum(bytes, stage->request.stage);
+            bytes.insert(bytes.end(), stage->request.logical_layout_hash.begin(),
+                         stage->request.logical_layout_hash.end());
+            bytes.insert(bytes.end(), stage->request.target_binding_hash.begin(),
+                         stage->request.target_binding_hash.end());
             bytes.insert(bytes.end(), stage->request.compile_key.begin(), stage->request.compile_key.end());
             bytes.insert(bytes.end(), stage->reflection.reflection_hash.begin(),
                          stage->reflection.reflection_hash.end());

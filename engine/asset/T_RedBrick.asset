@@ -1,12 +1,14 @@
 format_version: 2
 asset_id: a6a53651e980491294a675d094006da0
 root_type: toy3d.Texture2DAssetData
-schema_version: 1
+schema_version: 2
 dependencies:
   []
 subresources:
   []
 data:
+  usage: 1
+  flip_green: false
   height: 1024
   mip_count: 11
   pixel_format: 3

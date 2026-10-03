@@ -22,7 +22,9 @@ namespace toy3d
     // --------------------------------------------------------------------------
     MaterialLibrary::MaterialLibrary(const TypeRegistry& types, const FileSystem& files,
                                      std::function<const AssetIndex&()> index,
-                                     std::function<ShaderMapCollectionRef(const std::string&)> programs,
+                                     std::function<ShaderMapCollectionRef(
+                                         const std::string&, const std::vector<shader::ShaderPermutationSelection>&)>
+                                         programs,
                                      MaterialTextureValues textures)
         : types_(types), files_(files), index_(std::move(index)), programs_(std::move(programs)),
           textures_(std::move(textures))
@@ -75,17 +77,27 @@ namespace toy3d
                 return AssetResult<MaterialInterfaceRef>(textures);
             }
         }
-        const auto program = programs_(hierarchy.value().root.shader_name);
-        if (!program)
+        MaterialAssetData selected_root = hierarchy.value().root;
+        selected_root.static_options = hierarchy.value().effective_static_options();
+        const auto selected_program =
+            programs_(selected_root.shader_name, material_static_selections(selected_root.static_options));
+        if (!selected_program)
         {
             const auto* location = index_().find(reference.asset_id);
-            const std::string reason = shader_diagnostic_ ? shader_diagnostic_(hierarchy.value().root.shader_name)
-                                                          : "Shader '" + hierarchy.value().root.shader_name +
-                                                                "' has no validated Program. Compile it first.";
+            const std::string reason = shader_diagnostic_
+                                           ? shader_diagnostic_(selected_root.shader_name)
+                                           : "The exact static configuration of Shader '" + selected_root.shader_name +
+                                                 "' has no validated ShaderMap. Compile it first.";
             return AssetResult<MaterialInterfaceRef>(
                 failure("Material " + (location ? location->path.utf8() : reference.asset_id.hex()) + ": " + reason));
         }
-        auto descriptor = material_descriptor_from_asset(hierarchy.value().root, program, textures_);
+        const auto default_textures = resolve_builtin_material_texture_defaults(
+            files_, index_(), selected_program->programs().front()->data().parameter_schema, textures_);
+        if (!default_textures.succeeded())
+        {
+            return AssetResult<MaterialInterfaceRef>(default_textures);
+        }
+        auto descriptor = material_descriptor_from_asset(selected_root, selected_program, textures_);
         if (!descriptor.succeeded())
         {
             return AssetResult<MaterialInterfaceRef>(descriptor.status());
@@ -98,6 +110,23 @@ namespace toy3d
         if (!ancestors.succeeded())
         {
             return AssetResult<MaterialInterfaceRef>(ancestors);
+        }
+        std::vector<MaterialDesc> descriptors;
+        MaterialAssetHierarchy prefix;
+        for (const auto& layer : hierarchy.value().layers)
+        {
+            prefix.layers.push_back(layer);
+            auto data = hierarchy.value().root;
+            data.static_options = prefix.effective_static_options();
+            const auto selected = programs_(data.shader_name, material_static_selections(data.static_options));
+            auto desc = material_descriptor_from_asset(data, selected, textures_);
+            if (!desc.succeeded())
+            {
+                return AssetResult<MaterialInterfaceRef>(desc.status());
+            }
+            auto authored = desc.value();
+            authored.static_options = layer.static_options;
+            descriptors.push_back(std::move(authored));
         }
         for (std::size_t i = 0; i < hierarchy.value().layers.size(); ++i)
         {
@@ -118,13 +147,15 @@ namespace toy3d
             if (i == 0u)
             {
                 loaded.root = hierarchy.value().root;
-                loaded.runtime = Material::create(descriptor.value());
+                loaded.runtime = Material::create(descriptors[i]);
             }
             else
             {
                 loaded.instance.parent = hierarchy.value().layers[i - 1u].reference;
                 loaded.instance.overrides = layer.overrides;
-                loaded.runtime = MaterialInstance::create(loaded_.at(loaded.instance.parent.asset_id).runtime);
+                loaded.instance.static_options = layer.static_options;
+                loaded.runtime = MaterialInstance::create(loaded_.at(loaded.instance.parent.asset_id).runtime,
+                                                          descriptors[i].shader_map, layer.static_options);
             }
             if (!loaded.runtime)
             {
@@ -132,7 +163,9 @@ namespace toy3d
             }
             try
             {
-                if (!changes.value().empty() && !loaded.runtime->publish_tree(loaded.runtime->desc(), changes.value()))
+                MaterialInterface::Configuration configuration{loaded.runtime.get(), descriptors[i], changes.value(),
+                                                               loaded.runtime->parent(), true};
+                if (!MaterialInterface::publish_configurations({std::move(configuration)}))
                 {
                     return AssetResult<MaterialInterfaceRef>(failure("Could not publish Material parameters."));
                 }
@@ -194,19 +227,33 @@ namespace toy3d
         {
             return child_textures;
         }
-        auto descriptor = material_descriptor_from_asset(root, std::move(program), textures_);
+        if (!program)
+        {
+            return failure("The selected material static configuration has no validated ShaderMap.");
+        }
+        auto selected = root;
+        selected.static_options = material_static_options(program->index().material_selections);
+        const auto default_textures = resolve_builtin_material_texture_defaults(
+            files_, index_(), program->programs().front()->data().parameter_schema, textures_);
+        if (!default_textures.succeeded())
+        {
+            return default_textures;
+        }
+        auto descriptor = material_descriptor_from_asset(selected, std::move(program), textures_);
         if (!descriptor.succeeded())
         {
             return descriptor.status();
         }
         const bool child = loaded.reference.expected_type == "toy3d.MaterialInstanceAssetData";
+        auto authored = descriptor.value();
+        authored.static_options = child ? instance.static_options : root.static_options;
         auto changes = material_changes_from_overrides(child ? instance.overrides : root.overrides,
                                                        descriptor.value().parameter_schema, textures_);
         if (!changes.succeeded())
         {
             return changes.status();
         }
-        pending_.push_back({loaded.runtime.get(), descriptor.value(), changes.value(), std::move(parent)});
+        pending_.push_back({loaded.runtime.get(), std::move(authored), changes.value(), std::move(parent), true});
         previous_.push_back(
             {loaded.runtime.get(), loaded.runtime->desc(), loaded.runtime->local_overrides_, loaded.runtime->parent()});
         pending_data_[loaded.reference.asset_id] = {root, instance};
@@ -273,6 +320,7 @@ namespace toy3d
                 MaterialInstanceAssetData parent_data;
                 parent_data.parent = hierarchy.layers[i - 1u].reference;
                 parent_data.overrides = layer.overrides;
+                parent_data.static_options = layer.static_options;
                 encoded = encode_value(saved, parent_data);
                 if (encoded.succeeded())
                 {
@@ -334,6 +382,7 @@ namespace toy3d
                 const auto& layers = hierarchy.value().layers;
                 child.parent = layers[layers.size() - 2u].reference;
                 child.overrides = layers.back().overrides;
+                child.static_options = layers.back().static_options;
                 const auto source = load(child.parent);
                 if (!source.succeeded())
                 {
@@ -342,8 +391,10 @@ namespace toy3d
                 }
                 parent = source.value();
             }
-            const auto status = add_configuration(loaded, hierarchy.value().root, child,
-                                                  programs_(hierarchy.value().root.shader_name), std::move(parent));
+            auto root = hierarchy.value().root;
+            root.static_options = hierarchy.value().effective_static_options();
+            const auto selected = programs_(root.shader_name, material_static_selections(root.static_options));
+            const auto status = add_configuration(loaded, hierarchy.value().root, child, selected, std::move(parent));
             if (!status.succeeded())
             {
                 discard();
@@ -365,42 +416,183 @@ namespace toy3d
 
     AssetStatus MaterialLibrary::prepare_shader(ShaderMapCollectionRef program)
     {
+        return prepare_shader(std::vector<ShaderMapCollectionRef>{std::move(program)});
+    }
+
+    AssetStatus MaterialLibrary::prepare_shader(const std::vector<ShaderMapCollectionRef>& programs)
+    {
         discard();
-        if (!program)
+        if (programs.empty() || programs.size() > shader::max_shader_compile_source_programs || !programs.front())
         {
-            return failure("Material Shader candidate is missing.");
+            return failure("Material Shader candidate configuration set is missing or oversized.");
         }
-        if (default_material_ && default_material_->desc().shader_name == program->index().shader_name)
+        const auto& reference = programs.front()->index();
+        const auto domain = shader::serialize_shader_permutation_domain(reference.material_domain);
+        const auto material_schema =
+            material_parameter_schema_from_shader_schema(programs.front()->programs().front()->data().parameter_schema)
+                .schema_identity;
+        std::map<Sha256Hash, ShaderMapCollectionRef> configurations;
+        std::size_t program_count = 0u;
+        for (const auto& program : programs)
         {
+            if (!program)
+            {
+                return failure("Material Shader candidate configuration is null.");
+            }
+            const auto& index = program->index();
+            program_count += program->programs().size();
+            if (index.shader_name != reference.shader_name || index.source_hash != reference.source_hash ||
+                index.target != reference.target || index.profile != reference.profile ||
+                shader::serialize_shader_permutation_domain(index.material_domain) != domain ||
+                material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema)
+                        .schema_identity != material_schema ||
+                program_count > shader::max_shader_compile_source_programs ||
+                !configurations.emplace(index.permutation_key, program).second)
+            {
+                return failure("Material Shader candidate must contain unique configurations of one source revision, "
+                               "profile, domain and complete Material schema within the source budget.");
+            }
+            const auto& policy = index.policy;
+            const auto& expected = reference.policy;
+            bool features_match = index.features.size() == reference.features.size();
+            for (std::size_t i = 0; features_match && i < index.features.size(); ++i)
+            {
+                features_match = index.features[i].feature == reference.features[i].feature &&
+                                 shader::serialize_shader_static_condition(index.features[i].condition) ==
+                                     shader::serialize_shader_static_condition(reference.features[i].condition);
+            }
+            if (!features_match || policy.target != expected.target || policy.profile != expected.profile ||
+                policy.editor != expected.editor || policy.vertex_factory_support != expected.vertex_factory_support ||
+                policy.allow_pcf != expected.allow_pcf || policy.allow_sky != expected.allow_sky ||
+                policy.capabilities != expected.capabilities ||
+                index.standard_tangent_input != reference.standard_tangent_input ||
+                index.declares_tangent_frame != reference.declares_tangent_frame ||
+                shader::serialize_shader_static_condition(index.tangent_frame_when) !=
+                    shader::serialize_shader_static_condition(reference.tangent_frame_when) ||
+                shader::serialize_shader_static_condition(index.supported_when) !=
+                    shader::serialize_shader_static_condition(reference.supported_when))
+            {
+                return failure("Material Shader candidate configurations disagree on source feature or build policy.");
+            }
+        }
+        const auto select = [&](const std::vector<MaterialStaticOption>& options,
+                                ShaderMapCollectionRef& selected) -> AssetStatus
+        {
+            const auto resolved =
+                shader::resolve_shader_permutation(reference.material_domain, material_static_selections(options));
+            if (!resolved.succeeded())
+            {
+                return failure(resolved.errors.front().message);
+            }
+            const auto found = configurations.find(resolved.permutation->key);
+            if (found == configurations.end())
+            {
+                return failure("Material Shader candidate is missing required static configuration " +
+                               sha256_to_hex(resolved.permutation->key) + " of " + reference.shader_name);
+            }
+            selected = found->second;
+            return AssetStatus::success();
+        };
+        if (default_material_ && default_material_->desc().shader_name == reference.shader_name)
+        {
+            ShaderMapCollectionRef program;
+            auto selected = select({}, program);
+            if (!selected.succeeded())
+            {
+                return selected;
+            }
             MaterialAssetData data;
-            data.shader_name = program->index().shader_name;
+            data.shader_name = reference.shader_name;
             data.two_sided = default_material_->desc().two_sided;
+            const auto default_textures = resolve_builtin_material_texture_defaults(
+                files_, index_(), program->programs().front()->data().parameter_schema, textures_);
+            if (!default_textures.succeeded())
+            {
+                return default_textures;
+            }
             const auto descriptor = material_descriptor_from_asset(data, program, textures_);
             if (!descriptor.succeeded())
             {
                 return descriptor.status();
             }
-            // The root was created mutable; its public MaterialRef is read-only.
-            // Only this GT publisher can replace its complete configuration.
             auto* target = const_cast<Material*>(default_material_.get());
-            pending_.push_back({target, descriptor.value(), target->local_overrides_, {}});
+            pending_.push_back({target, descriptor.value(), target->local_overrides_, {}, true});
             previous_.push_back({target, target->desc_, target->local_overrides_, {}});
         }
+        // Resolve every saved hierarchy against the new declaration/defaults.
+        // Looking up old hashes would silently strand instances when defaults or
+        // dimension identities change. No live node changes during preparation.
         for (auto& item : loaded_)
         {
             auto& loaded = item.second;
-            if (loaded.runtime->desc().shader_name != program->index().shader_name)
+            if (loaded.runtime->desc().shader_name != reference.shader_name)
             {
                 continue;
             }
-            const auto status =
-                add_configuration(loaded, loaded.root, loaded.instance, program, loaded.runtime->parent());
+            const auto hierarchy = read_material_hierarchy(types_, files_, index_(), loaded.reference);
+            if (!hierarchy.succeeded() || hierarchy.value().root.shader_name != reference.shader_name)
+            {
+                discard();
+                return hierarchy.succeeded() ? failure("Material Shader identity changed during candidate preparation.")
+                                             : hierarchy.status();
+            }
+            ShaderMapCollectionRef program;
+            auto status = select(hierarchy.value().effective_static_options(), program);
+            if (status.succeeded())
+            {
+                MaterialInstanceAssetData instance;
+                MaterialInterfaceRef parent;
+                if (hierarchy.value().layers.size() > 1u)
+                {
+                    const auto& layers = hierarchy.value().layers;
+                    instance.parent = layers[layers.size() - 2u].reference;
+                    instance.overrides = layers.back().overrides;
+                    instance.static_options = layers.back().static_options;
+                    const auto owner = loaded_.find(instance.parent.asset_id);
+                    if (owner == loaded_.end())
+                    {
+                        status = failure("Material candidate Parent must be loaded before source publication.");
+                    }
+                    else
+                    {
+                        parent = owner->second.runtime;
+                    }
+                }
+                if (status.succeeded())
+                {
+                    status = add_configuration(loaded, hierarchy.value().root, instance, program, std::move(parent));
+                }
+            }
             if (!status.succeeded())
             {
                 discard();
                 return status;
             }
         }
+        pending_shader_family_ = programs;
+        return AssetStatus::success();
+    }
+
+    AssetStatus MaterialLibrary::collect_shader_validation_targets(
+        const std::vector<ShaderMapCollectionRef>& programs, std::vector<MaterialShaderMapValidationTarget>& targets)
+    {
+        auto status = prepare_shader(programs);
+        if (!status.succeeded())
+        {
+            return status;
+        }
+        std::vector<MaterialInterface::PreparedConfiguration> revisions;
+        std::vector<MaterialInstanceRef> owners;
+        if (!MaterialInterface::prepare_configurations(pending_, programs, revisions, owners))
+        {
+            discard();
+            return failure("Material candidate graph has a missing inherited static configuration.");
+        }
+        for (const auto& revision : revisions)
+        {
+            targets.push_back({revision.destination, revision.configuration.descriptor.shader_map});
+        }
+        discard();
         return AssetStatus::success();
     }
 
@@ -408,9 +600,26 @@ namespace toy3d
     {
         try
         {
-            if (!pending_.empty() && !MaterialInterface::publish_configurations(pending_))
+            if (!pending_.empty())
             {
-                return failure("Material candidate graph could not be resolved. Active values are unchanged.");
+                std::vector<MaterialInterface::PreparedConfiguration> revisions;
+                std::vector<MaterialInstanceRef> owners;
+                if (!MaterialInterface::prepare_configurations(pending_, pending_shader_family_, revisions, owners))
+                {
+                    return failure("Material candidate graph could not be resolved. Active values are unchanged.");
+                }
+                // Rollback includes temporary and unmanaged descendants too;
+                // their old source revision cannot be reconstructed from a key.
+                previous_.clear();
+                for (const auto& revision : revisions)
+                {
+                    auto* target = revision.configuration.target;
+                    previous_.push_back({target, target->desc_, target->local_overrides_, target->parent(), true});
+                }
+                if (!MaterialInterface::publish_configurations(pending_, pending_shader_family_))
+                {
+                    return failure("Material candidate graph could not be published. Active values are unchanged.");
+                }
             }
             published_ = true;
             if (!defer_completion)
@@ -435,6 +644,7 @@ namespace toy3d
         }
         pending_.clear();
         previous_.clear();
+        pending_shader_family_.clear();
         pending_data_.clear();
         published_ = false;
     }
@@ -457,6 +667,7 @@ namespace toy3d
         }
         pending_.clear();
         previous_.clear();
+        pending_shader_family_.clear();
         pending_data_.clear();
         published_ = false;
     }

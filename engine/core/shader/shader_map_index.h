@@ -1,10 +1,11 @@
 #pragma once
 
 #include "shader/shader_map_entry.h"
+#include "shader/shader_compile_plan.h"
 
 namespace toy3d::shader
 {
-    constexpr std::uint32_t shader_map_index_version = 1u;
+    constexpr std::uint32_t shader_map_index_version = 5u;
     constexpr std::size_t max_shader_map_index_programs = 1024u;
     constexpr std::size_t max_shader_map_index_bytes = 4u * 1024u * 1024u;
 
@@ -20,6 +21,8 @@ namespace toy3d::shader
         ShaderProgramContract contract;
         Sha256Hash entry_key{};
         Sha256Hash entry_content_hash{};
+        Sha256Hash pass_permutation_key = default_shader_permutation_key;
+        std::vector<ShaderPermutationSelection> pass_selections;
     };
 
     // One source revision and resolved material configuration. Entries remain
@@ -32,9 +35,23 @@ namespace toy3d::shader
         ShaderCompileProfile profile = ShaderCompileProfile::VulkanES31;
         Sha256Hash permutation_key{};
         Sha256Hash source_hash{};
+        ShaderPermutationDomain material_domain;
+        std::vector<ShaderPermutationSelection> material_selections;
+        ShaderCompilePolicy policy;
+        std::vector<ShaderEngineFeatureDeclaration> features;
+        ShaderStaticCondition supported_when;
+        bool standard_tangent_input = false;
+        bool declares_tangent_frame = false;
+        ShaderStaticCondition tangent_frame_when;
         std::vector<ShaderMapIndexPass> passes;
         std::vector<ShaderMapIndexProgram> programs;
     };
+
+    constexpr std::size_t max_shader_map_family_bytes = 16u * 1024u * 1024u;
+    bool validate_shader_map_family(const std::vector<ShaderMapIndex>& indices, std::string& error);
+    bool read_shader_map_indices(const PlatformFile& files, const PhysicalPath& root, const std::string& shader_name,
+                                 ShaderTarget target, ShaderCompileProfile profile,
+                                 std::vector<ShaderMapIndex>& indices, std::string& error);
 
     bool validate_shader_map_index(const ShaderMapIndex& index, std::string& error);
     bool shader_map_index_matches_entry(const ShaderMapIndex& index, const ShaderMapIndexProgram& program,

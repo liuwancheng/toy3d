@@ -214,6 +214,7 @@ namespace toy3d
         if (!worker_)
         {
             candidate_.reset();
+            candidate_configurations_.clear();
             validation_.reset();
             candidate_dependencies_.clear();
         }
@@ -277,6 +278,9 @@ namespace toy3d
         output_.clear();
         candidate_relative_.clear();
         saved_candidate_ = false;
+        material_descriptors_.clear();
+        material_snapshot_ = false;
+        requested_configurations_.clear();
         const auto* source = find(name);
         if (source && !source->discovery_error.empty())
         {
@@ -395,8 +399,10 @@ namespace toy3d
         Revision result;
         result.name = request_name_;
         result.shader_map = std::move(candidate_);
+        result.configurations = std::move(candidate_configurations_);
         result.properties = std::move(candidate_properties_);
         result.source_hash = source_hash_;
+        result.build_settings_hash = build_settings_hash_;
         result.dependencies = std::move(candidate_dependencies_);
         result.relative = candidate_relative_;
         return result;
@@ -446,9 +452,9 @@ namespace toy3d
             builtin_update_->shader_maps.push_back(revision.shader_map);
         }
         task_.phase = ShaderTaskPhase::Validating;
-        task_.current_source = "Tonemap / ImGui";
+        task_.current_source = "Global Shaders";
         builtin_sent_ = false;
-        status_ = "Validating Tonemap and ImGui pipelines...";
+        status_ = "Validating Global Shader pipelines...";
     }
 
     bool ShaderWorkflow::validate_revision(const Revision& revision, std::string& error) const
@@ -457,6 +463,10 @@ namespace toy3d
         if (!source)
         {
             error = "Shader registration changed: " + revision.name;
+            return false;
+        }
+        if (!validate_build_settings(revision.build_settings_hash, error))
+        {
             return false;
         }
         const auto current = files_.read_text_utf8(source->path, maximum_shader_source_bytes);

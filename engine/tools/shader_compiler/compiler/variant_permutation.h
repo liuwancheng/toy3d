@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shader/shader_permutation.h"
+#include "shader/shader_compile_plan.h"
 #include "frontend/diagnostic.h"
 #include "frontend/shader_ast.h"
 
@@ -27,4 +28,6 @@ namespace toy3d::shader
 
     ShaderPermutationResult resolve_shader_permutation(const ShaderAsset& asset,
                                                        const std::vector<ShaderVariantSelection>& selections);
+    ShaderPermutationDomain shader_material_domain(const ShaderAsset& asset);
+    ShaderCompileSource shader_compile_source(const ShaderAsset& asset);
 } // namespace toy3d::shader

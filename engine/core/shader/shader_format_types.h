@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shader/shader_binding_identity.h"
+#include "image/texture_usage.h"
 #include "shader/shader_program_contract.h"
 
 #include <cstdint>
@@ -39,12 +40,12 @@ namespace toy3d::shader
     using ShaderVariantId = std::uint64_t;
     using ShaderEnumValueId = std::uint64_t;
 
-    constexpr std::uint32_t shader_compile_request_version = 2;
+    constexpr std::uint32_t shader_compile_request_version = 3;
     constexpr std::uint32_t shader_variant_id_version = 1;
     constexpr std::uint32_t shader_permutation_version = 1;
-    constexpr std::uint32_t toy_shader_abi_version = 1;
+    constexpr std::uint32_t toy_shader_abi_version = 3;
     constexpr std::uint32_t shader_parameter_id_version = 1;
-    constexpr std::uint32_t shader_parameters_generated_format_version = 2;
+    constexpr std::uint32_t shader_parameters_generated_format_version = 4;
     constexpr std::uint32_t shader_parameters_cpp_identifier_version = 1;
     constexpr std::uint32_t d3d_binding_mapping_version = 2;
     constexpr std::uint32_t vulkan_binding_mapping_version = 2;
@@ -441,6 +442,9 @@ namespace toy3d::shader
         std::uint32_t array_stride = 0;
         std::uint32_t matrix_stride = 0;
         std::vector<std::uint8_t> default_value;
+        // C++17 optional distinguishes unrestricted scalars from authored bounds.
+        std::optional<float> minimum_value;
+        std::optional<float> maximum_value;
     };
 
     struct ShaderParameterConstantBufferSchema
@@ -465,6 +469,7 @@ namespace toy3d::shader
         std::uint32_t array_count = 1;
         ShaderParameterDefaultValueKind default_value_kind = ShaderParameterDefaultValueKind::None;
         std::string default_value;
+        TextureUsage texture_usage = TextureUsage::Color;
     };
 
     struct ShaderParameterSchema
@@ -501,6 +506,7 @@ namespace toy3d::shader
         std::uint32_t variant_id_version = shader_variant_id_version;
         std::uint32_t permutation_version = shader_permutation_version;
         Sha256Hash permutation_key{};
+        Sha256Hash pass_permutation_key = default_shader_permutation_key;
         std::uint32_t mapping_version = 0;
         ShaderParameterSchema parameter_schema;
         std::vector<ShaderMapBinding> bindings;
@@ -518,9 +524,16 @@ namespace toy3d::shader
                                                                     std::uint32_t abi_version = toy_shader_abi_version);
     Sha256Hash calculate_target_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
                                              const std::vector<ShaderMapBinding>& bindings);
+    Sha256Hash calculate_shader_stage_logical_layout_hash(const ShaderParameterSchema& schema,
+                                                          const std::vector<ShaderMapBinding>& bindings,
+                                                          ShaderStageFlags stage);
+    Sha256Hash calculate_shader_stage_binding_hash(ShaderTarget target, std::uint32_t mapping_version,
+                                                   const std::vector<ShaderMapBinding>& bindings,
+                                                   ShaderStageFlags stage);
     Sha256Hash calculate_shader_parameter_schema_identity(const ShaderParameterSchema& schema);
     Sha256Hash calculate_shader_parameter_logical_layout_hash(const ShaderParameterSchema& schema);
     Sha256Hash calculate_shader_parameter_group_identity(const ShaderParameterSchema& schema, BindingGroup group);
+    bool validate_shader_scalar_value(const ShaderParameterConstantMemberSchema& member, float value);
     bool validate_shader_parameter_schema(const ShaderParameterSchema& schema, std::string& error);
     bool validate_active_bindings_are_schema_subset(const ShaderParameterSchema& schema,
                                                     const std::vector<ShaderMapBinding>& bindings, std::string& error);

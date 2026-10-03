@@ -62,12 +62,20 @@ dirty 以已保存内容身份/分支与外部 content revision 判断，不看 
 
 ## Scene Save/Open
 
-当前 Scene/Actor schema 6，保存 Component 稳定 ID/type/settings、非 root component、跨 Actor attachment、primitive/light 阴影字段与材质 AssetRef。
+当前 Scene schema 7、Actor schema 6，保存 Component 稳定 ID/type/settings、非 root component、跨 Actor attachment、primitive/light 阴影字段与材质 AssetRef。
 
 - Open 在候选 DTO、资产依赖和完整 parent graph/Transform 验证后装配并接管；未知类型/非法环/资源失败保留旧 World/session，registry 注册不等于自动可持久化。
 - Save 从 runtime authoritative World 获取完整快照；只在手势结束后，通过 AssetPairStore、同一已验证读取原始 bytes 检查冲突。
 - 磁盘 commit 成功后 catalog/UI refresh 失败独立诊断，不能撤销保存事实；失败不清 dirty，Save As/new/copy 的 AssetId 策略一致。
 - EmptyActor/非 root 组件等按明确支持类型测试；不靠反射猜创建任意 runtime 对象。
+
+## 场景环境与材质预览
+
+World Settings 选择 Environment 资产或 Off，修改非负 intensity、绕世界 X/Y/Z 的相对旋转，或重置完整 Quaternion。资源先加载验证，再走 World/history 完整候选；连续拖动合并一条命令，Escape 取消，Undo/Redo 和 Scene dirty/保存沿同一历史边界。环境属于 World，PIE 独立装配；运行期间只读。Scene 保存引用、旋转、强度，不保存 GPU 状态。
+
+Tools/Content Browser 的 HDR 导入使用既有 TextureImportDialog worker 生命周期；Texture2D 导入选 Color/LinearData/Normal 与 normal flip-green，Reimport 保留 AssetId 并核对磁盘 baseline。所有作者输入写 project/asset。
+
+材质窗口使用独立 studio 球体预览，普通参数即时更新，静态选项等待完整候选；排队与关闭行为见 [Material](material.md#可视预览与缩略图)。
 
 ## 异步与退出
 

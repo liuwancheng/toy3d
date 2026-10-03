@@ -1,7 +1,7 @@
 format_version: 2
 asset_id: 28df673d4ac92e2b93f5096788efd0ed
 root_type: toy3d.MaterialInstanceAssetData
-schema_version: 1
+schema_version: 2
 dependencies:
   - asset_id: 5e915970a839c37c066778960680902d
     expected_type: toy3d.MaterialAssetData
@@ -9,6 +9,7 @@ dependencies:
 subresources:
   []
 data:
+  static_options: []
   overrides:
     []
   parent:

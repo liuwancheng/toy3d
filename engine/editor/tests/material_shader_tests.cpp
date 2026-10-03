@@ -72,6 +72,22 @@ namespace
         }
 
       private:
+        void configure_material_validation(ShaderWorkflow& workflow)
+        {
+            workflow.set_material_validation_targets(
+                [this](const std::vector<ShaderMapCollectionRef>& programs,
+                       std::vector<MaterialShaderMapValidationTarget>& targets, std::string& error)
+                {
+                    const auto status = library_->collect_shader_validation_targets(programs, targets);
+                    if (!status.succeeded())
+                    {
+                        error = status.message;
+                        return false;
+                    }
+                    return panel_.collect_shader_validation_targets(programs, targets, error);
+                });
+        }
+
         bool on_initialize() override
         {
             ImGui::GetIO().IniFilename = nullptr;
@@ -95,9 +111,9 @@ namespace
                 {
                     return workspace_.catalog().index;
                 },
-                [this](const std::string& name)
+                [this](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
                 {
-                    return shaders_.shader_map(name);
+                    return shaders_.shader_map(name, selections);
                 },
                 std::move(textures));
             library_->set_default_material(defaults);
@@ -107,9 +123,15 @@ namespace
                     return shaders_.unavailable_reason(name);
                 });
             materials_.initialize(workspace_, *library_);
+            configure_material_validation(shaders_);
             materials_.set_shader_workflow(shaders_);
             panel_.initialize(workspace_, factory_.default_material()->material(),
                               PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+            panel_.edit_session().set_publish(
+                [this](const AssetRef& reference)
+                {
+                    return library_->reload(reference);
+                });
             std::string error;
             if (!shaders_.initialize(paths_, factory_.default_material()->material(), error))
             {
@@ -182,9 +204,17 @@ namespace
         }
         bool apply_candidate()
         {
+            if (shaders_.origin().valid() &&
+                (!panel_.edit_session().active() || !(panel_.edit_session().id() == shaders_.origin()) ||
+                 panel_.session_revision() != shaders_.origin_revision()))
+            {
+                shaders_.reject("The material draft changed during compilation.");
+                return true;
+            }
             std::string error;
-            if (!materials_.prepare_shader(shaders_.candidate(), error) ||
-                !panel_.prepare_shader(shaders_.candidate(), shaders_.candidate_properties(), error))
+            if (!shaders_.validate_candidate_users(error) ||
+                !materials_.prepare_shader(shaders_.candidate_configurations(), error) ||
+                !panel_.prepare_shader(shaders_.candidate_configurations(), shaders_.candidate_properties(), error))
             {
                 stop(error);
                 return false;
@@ -202,13 +232,22 @@ namespace
             }
             materials_.complete_shader();
             panel_.publish_shader();
+            if (configured_material_ && configured_material_->desc().shader_name == "Project/Surface/Painted" &&
+                configured_material_->desc().shader_map !=
+                    shaders_.shader_map("Project/Surface/Painted",
+                                        {{"TEST_STATIC", shader::ShaderPermutationValueKind::Boolean, true, {}}}))
+            {
+                stop("Multi-configuration publication stranded the loaded configured instance.");
+                return false;
+            }
+
             return true;
         }
         void on_tick(double delta) override
         {
             elapsed_ += delta;
             ++frames_;
-            if (elapsed_ > 120.0)
+            if (elapsed_ > 180.0)
             {
                 stop("Shader integration timed out: " + shaders_.status());
                 return;
@@ -284,6 +323,28 @@ namespace
                     return;
                 }
                 asset_signature_ = sha256(painted.value().asset);
+                MaterialInstanceAssetData configured;
+                configured.parent.asset_id = material_id_;
+                configured.parent.expected_type = "toy3d.MaterialAssetData";
+                configured.static_options = {{"TEST_STATIC", true}};
+                if (!AssetId::try_generate(configured_id_))
+                {
+                    stop("Configured instance identity allocation failed.");
+                    return;
+                }
+                const auto configured_bytes = encode_material_instance_asset_pair(
+                    workspace_.types(), configured_id_, configured, &workspace_.catalog().index);
+                const auto configured_path = VirtualPath::parse("/Project/configured.asset");
+                if (!configured_bytes.succeeded() ||
+                    !workspace_.asset_pairs()
+                         .publish(configured_path.value(), configured_bytes.value(), FilePublishMode::CreateNew)
+                         .succeeded() ||
+                    !workspace_.refresh())
+                {
+                    stop("Configured instance fixture publication failed.");
+                    return;
+                }
+
                 AssetRef painted_ref;
                 painted_ref.asset_id = material_id_;
                 painted_ref.expected_type = "toy3d.MaterialAssetData";
@@ -303,7 +364,7 @@ namespace
             if (restored_ && restored_->candidate_ready() &&
                 restored_->candidate()->index().shader_name != "Project/Surface/Painted")
             {
-                if (!restored_->publish())
+                if ((!restored_->validate_candidate_users(state_.error) || !restored_->publish()))
                 {
                     stop(restored_->error());
                     return;
@@ -324,6 +385,19 @@ namespace
                 {
                     return;
                 }
+                AssetRef configured_reference;
+                configured_reference.asset_id = configured_id_;
+                configured_reference.expected_type = "toy3d.MaterialInstanceAssetData";
+                const auto configured = library_->load(configured_reference);
+                if (!configured.succeeded() || shaders_.find("Project/Surface/Painted")->configurations.size() != 2u ||
+                    configured.value()->desc().shader_map !=
+                        shaders_.shader_map("Project/Surface/Painted",
+                                            {{"TEST_STATIC", shader::ShaderPermutationValueKind::Boolean, true, {}}}))
+                {
+                    stop("Real source job failed to compile/load the saved instance static configuration.");
+                    return;
+                }
+                configured_material_ = configured.value();
                 std::string error;
                 materials_.tick_compile_assignment(world(), history_, error);
                 if (!error.empty() ||
@@ -334,6 +408,24 @@ namespace
                       material_id_))
                 {
                     stop("Compile and Assign did not preserve the normal Undo/Redo transaction: " + error);
+                    return;
+                }
+                // Register the peer only after Compile and Assign has completed its captured scene transaction.
+                // RT must apply each user's own configuration rather than their union of COLOR0 requirements.
+                auto& configured_actor = world().spawn_actor<StaticMeshActor>();
+                StaticMeshDesc colored;
+                const auto& prototype = component()->static_mesh();
+                colored.vertices = prototype->vertices();
+                colored.indices = prototype->indices();
+                colored.sections = prototype->sections();
+                colored.material_slots = prototype->material_slots();
+                colored.material_slot_names = prototype->material_slot_names();
+                colored.valid_tangent_frame = prototype->has_valid_tangent_frame();
+                colored.vertex_colors.assign(colored.vertices.size(), {255, 255, 255, 255});
+                configured_actor.static_mesh_component().set_static_mesh(StaticMesh::create(std::move(colored)));
+                if (!configured_actor.static_mesh_component().set_material_override(0, configured_material_))
+                {
+                    stop("Configured COLOR0 user could not be registered alongside the uncolored default user.");
                     return;
                 }
                 panel_.request_open(material_id_);
@@ -500,7 +592,9 @@ namespace
                     return;
                 }
                 restored_ = std::make_unique<ShaderWorkflow>(processes_, threads_);
+                configure_material_validation(*restored_);
                 std::string error;
+                restored_->set_material_workspace(workspace_);
                 if (!restored_->initialize(paths_, factory_.default_material()->material(), error))
                 {
                     stop(error);
@@ -511,12 +605,22 @@ namespace
             }
             if (phase_ == 3 && restored_->candidate_ready())
             {
-                if (!restored_->publish() || !restored_->shader_map("Project/Surface/Painted"))
+                if ((!restored_->validate_candidate_users(state_.error) || !restored_->publish()) ||
+                    !restored_->shader_map("Project/Surface/Painted"))
                 {
                     stop(restored_->error());
                     return;
                 }
                 std::string color = revised_;
+                const std::string conditional_color =
+                    "\n#if TOY3D_VARIANT_TEST_STATIC\nfloat4 color : COLOR0;\n#endif\n";
+                const auto conditional_declaration = color.find(conditional_color);
+                if (conditional_declaration == std::string::npos)
+                {
+                    stop("Source conditional COLOR0 fixture changed.");
+                    return;
+                }
+                color.erase(conditional_declaration, conditional_color.size());
                 const auto input = color.find("float4 normal : NORMAL0;");
                 if (input == std::string::npos)
                 {
@@ -565,8 +669,9 @@ namespace
             if (phase_ == 5 && shaders_.candidate_ready())
             {
                 std::string error;
-                if (!materials_.prepare_shader(shaders_.candidate(), error) ||
-                    !panel_.prepare_shader(shaders_.candidate(), shaders_.candidate_properties(), error) ||
+                if (!materials_.prepare_shader(shaders_.candidate_configurations(), error) ||
+                    !panel_.prepare_shader(shaders_.candidate_configurations(), shaders_.candidate_properties(),
+                                           error) ||
                     !materials_.publish_shader(error, true))
                 {
                     stop(error);
@@ -620,11 +725,12 @@ namespace
                     return;
                 }
                 if (shaders_.task_status().phase != ShaderTaskPhase::Completed ||
-                    shaders_.task_status().applied != 6u || shaders_.task_status().failed != 1u ||
-                    shaders_.task_status().diagnostics.empty() ||
+                    shaders_.task_status().applied + 1u != shaders_.sources().size() ||
+                    shaders_.task_status().failed != 1u || shaders_.task_status().diagnostics.empty() ||
                     shaders_.task_status().diagnostics.back().message.empty() ||
                     shaders_.task_status().diagnostics.back().message.front() == '\n' ||
-                    shaders_.status().find("6 applied, 1 failed") == std::string::npos ||
+                    shaders_.status().find(std::to_string(shaders_.sources().size() - 1u) + " applied, 1 failed") ==
+                        std::string::npos ||
                     shaders_.shader_map("Project/Surface/Painted") != before_ ||
                     factory_.default_material()->desc().shader_map != shaders_.shader_map("Toy3d/Surface/Phong"))
                 {
@@ -648,8 +754,10 @@ namespace
                     return;
                 }
                 if (shaders_.task_status().phase != ShaderTaskPhase::Completed ||
-                    shaders_.task_status().cancelled != 7u || !shaders_.task_status().diagnostics.empty() ||
-                    shaders_.status().find("0 applied, 0 failed, 7 cancelled") == std::string::npos)
+                    shaders_.task_status().cancelled != shaders_.sources().size() ||
+                    !shaders_.task_status().diagnostics.empty() ||
+                    shaders_.status().find("0 applied, 0 failed, " + std::to_string(shaders_.sources().size()) +
+                                           " cancelled") == std::string::npos)
                 {
                     stop("Batch cancellation lost its summary: " + shaders_.status());
                     return;
@@ -672,7 +780,8 @@ namespace
                 {
                     return;
                 }
-                if (shaders_.status().find("7 applied, 0 failed") == std::string::npos)
+                if (shaders_.status().find(std::to_string(shaders_.sources().size()) + " applied, 0 failed") ==
+                    std::string::npos)
                 {
                     stop("Complete builtin/project batch failed: " + shaders_.status());
                     return;
@@ -732,7 +841,7 @@ namespace
                 {
                     if (source.usage == BuiltinShaderUsage::Global)
                     {
-                        if (source.shader_map != global_before_[index++])
+                        if (index >= global_before_.size() || source.shader_map != global_before_[index++])
                         {
                             stop("Failed Global group replaced a published Program.");
                             return;
@@ -740,8 +849,10 @@ namespace
                     }
                 }
                 const auto record = platform_.read_text_utf8(PhysicalPath(paths_.saved.utf8() + "/globals.txt"));
-                if (shaders_.status().find("5 applied, 2 failed") == std::string::npos || !record.succeeded() ||
-                    record.value() != global_record_)
+                const std::string expected_batch = std::to_string(shaders_.sources().size() - global_before_.size()) +
+                                                   " applied, " + std::to_string(global_before_.size()) + " failed";
+                if (index != global_before_.size() || shaders_.status().find(expected_batch) == std::string::npos ||
+                    !record.succeeded() || record.value() != global_record_)
                 {
                     stop("Failed Global group changed Saved publication or stopped later jobs: " + shaders_.status());
                     return;
@@ -766,14 +877,17 @@ namespace
                 {
                     return;
                 }
-                if (shaders_.status().find("7 applied, 0 failed") == std::string::npos)
+                if (shaders_.status().find(std::to_string(shaders_.sources().size()) + " applied, 0 failed") ==
+                    std::string::npos)
                 {
                     stop("Global group did not recover: " + shaders_.status());
                     return;
                 }
                 restored_->shutdown();
                 restored_ = std::make_unique<ShaderWorkflow>(processes_, threads_);
+                configure_material_validation(*restored_);
                 std::string error;
+                restored_->set_material_workspace(workspace_);
                 if (!restored_->initialize(paths_, factory_.default_material()->material(), error))
                 {
                     stop(error);
@@ -784,7 +898,8 @@ namespace
             }
             if (phase_ == 9)
             {
-                if (restored_->candidate_ready() && !restored_->publish())
+                if (restored_->candidate_ready() &&
+                    (!restored_->validate_candidate_users(state_.error) || !restored_->publish()))
                 {
                     stop(restored_->error());
                     return;
@@ -850,12 +965,90 @@ namespace
                 }
                 restored_->shutdown();
                 restored_ = std::make_unique<ShaderWorkflow>(processes_, threads_);
+                configure_material_validation(*restored_);
                 std::string error;
+                restored_->set_material_workspace(workspace_);
                 if (!restored_->initialize(paths_, factory_.default_material()->material(), error) ||
                     !restored_->find("Project/Surface/CreatedUnlit") ||
                     !restored_->find("Project/Surface/CreatedPhong"))
                 {
                     stop("Created Shader registrations did not survive restart: " + error);
+                    return;
+                }
+                restored_->shutdown();
+                restored_.reset();
+                panel_.set_static_option({"TEST_STATIC", true});
+                if (!shaders_.busy() || !panel_.edit_session().dirty())
+                {
+                    stop("Static option control did not request a complete draft compile.");
+                    return;
+                }
+                panel_.save();
+                const auto descriptor =
+                    workspace_.files().read_binary(VirtualPath::parse("/Project/painted.asset").value());
+                if (!descriptor.succeeded() || sha256(descriptor.value()) != asset_signature_)
+                {
+                    stop("Pending static draft saved before its preview configuration was validated.");
+                    return;
+                }
+                phase_ = 15;
+                return;
+            }
+            if (phase_ == 15 && shaders_.candidate_ready())
+            {
+                const auto previous = component()->material_for_slot(0)->desc().shader_map;
+                panel_.undo();
+                if (!panel_.edit_session().static_options().empty() || !apply_candidate() ||
+                    component()->material_for_slot(0)->desc().shader_map != previous || shaders_.error().empty())
+                {
+                    stop("Undo did not invalidate the in-flight static draft and preserve the scene material.");
+                    return;
+                }
+                phase_ = 16;
+                return;
+            }
+            if (phase_ == 16)
+            {
+                if (shaders_.candidate_ready() && !apply_candidate())
+                {
+                    return;
+                }
+                if (shaders_.busy())
+                {
+                    return;
+                }
+                if (!shaders_.error().empty() || !panel_.edit_session().static_options().empty())
+                {
+                    stop("The current static draft was not recompiled after stale-candidate rejection.");
+                    return;
+                }
+                panel_.set_static_option({"TEST_STATIC", true});
+                phase_ = 17;
+                return;
+            }
+            if (phase_ == 17)
+            {
+                if (shaders_.candidate_ready() && !apply_candidate())
+                {
+                    return;
+                }
+                if (shaders_.busy())
+                {
+                    return;
+                }
+                if (!shaders_.error().empty())
+                {
+                    stop("Static draft configuration failed publication: " + shaders_.error());
+                    return;
+                }
+                panel_.save();
+                const auto current =
+                    shaders_.shader_map("Project/Surface/Painted",
+                                        {{"TEST_STATIC", shader::ShaderPermutationValueKind::Boolean, true, {}}});
+                if (panel_.edit_session().dirty() || !current ||
+                    component()->material_for_slot(0)->desc().shader_map != current)
+                {
+                    stop("Validated static draft did not save and publish through the shared material graph.");
                     return;
                 }
                 state_.complete = true;
@@ -890,6 +1083,7 @@ namespace
             }
             history_.clear();
             materials_.shutdown();
+            configured_material_.reset();
             library_->shutdown();
             library_.reset();
             factory_.release();
@@ -916,6 +1110,8 @@ namespace
         std::vector<ShaderMapCollectionRef> global_before_;
         std::uint32_t actor_id_ = 0;
         AssetId material_id_;
+        AssetId configured_id_;
+        MaterialInterfaceRef configured_material_;
         Sha256Hash asset_signature_{};
         ShaderMapCollectionRef before_;
         std::shared_ptr<std::atomic<int>> mesh_gate_;
@@ -969,6 +1165,18 @@ int main()
     {
         return 1;
     }
+    paths.engine_build_settings = PhysicalPath(root.value().utf8() + "/shader_build.settings");
+    paths.project_build_settings = PhysicalPath(root.value().utf8() + "/config/shader_build.settings");
+    auto build_settings = shader::default_shader_build_settings();
+    build_settings.additional_configurations["Project/Surface/Painted"] = {
+        {{"TEST_STATIC", shader::ShaderPermutationValueKind::Boolean, true, {}}}};
+    if (!platform
+             .write_text_utf8(paths.engine_build_settings, shader::serialize_shader_build_settings(build_settings),
+                              FileWriteMode::CreateNew)
+             .succeeded())
+    {
+        return 1;
+    }
     const PhysicalPath include_root(paths.project_shader.utf8() + "/include");
     const auto include_text = platform.read_text_utf8(PhysicalPath(TOY3D_SHADER_TEST_INCLUDE));
     if (!platform.create_directories(include_root).succeeded() || !include_text.succeeded() ||
@@ -991,9 +1199,30 @@ int main()
     {
         return 1;
     }
+    source_text.insert(display_pass, "Variants { TEST_STATIC : bool = false }\n    ");
+    const std::string normal_declaration = "float4 normal : NORMAL0;";
+    std::size_t declaration = 0u;
+    while ((declaration = source_text.find(normal_declaration, declaration)) != std::string::npos)
+    {
+        const std::string conditional_color = "\n#if TOY3D_VARIANT_TEST_STATIC\nfloat4 color : COLOR0;\n#endif\n";
+        declaration += normal_declaration.size();
+        source_text.insert(declaration, conditional_color);
+        declaration += conditional_color.size();
+    }
+    const std::string position_assignment = "output.world_position = world.xyz;";
+    std::size_t assignment = 0u;
+    while ((assignment = source_text.find(position_assignment, assignment)) != std::string::npos)
+    {
+        const std::string conditional_color_use =
+            "\n#if TOY3D_VARIANT_TEST_STATIC\noutput.world_position += input.color.xyz * 0.01;\n#endif\n";
+        assignment += position_assignment.size();
+        source_text.insert(assignment, conditional_color_use);
+        assignment += conditional_color_use.size();
+    }
+    const auto renamed_pass = source_text.find("Pass \"Forward\"");
     // Display names do not select a renderer role: the complete real compile,
     // assignment, publication and restore path must accept Role Forward here.
-    source_text.replace(display_pass, std::string("Pass \"Forward\"").size(), "Pass \"Preview\"");
+    source_text.replace(renamed_pass, std::string("Pass \"Forward\"").size(), "Pass \"Preview\"");
     if (!platform.write_text_utf8(source, source_text, FileWriteMode::CreateNew).succeeded())
     {
         return 1;
@@ -1025,7 +1254,6 @@ int main()
     TestState state;
     {
         Engine engine;
-        engine.set_shader_load_config({ShaderLoadMode::ShaderMapEntry, PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT)});
         engine.set_application(std::make_unique<ShaderTestApplication>(workspace, paths, source, source_text, state));
 #if WITH_WIN
         engine.init(static_cast<void*>(GetModuleHandleW(nullptr)));

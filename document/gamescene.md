@@ -32,7 +32,7 @@ SkeletalMeshComponent 默认启用自己的 tick，内部推进动画和发布 p
 
 World 的 content revision 用于 Editor 脏状态/外部修改检测，不是帧号或 undo 栈深度。变更内容才增加，读取/纯渲染不增加；Undo 回到已保存内容需要正确身份判断，不能仅靠“同栈深”判干净。
 
-Scene DTO/反射在 core/asset/scene，不能持 runtime 指针。当前 SceneActor/Scene schema 6 持久化 Component 身份、类型、settings、附着及阴影属性。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
+Scene DTO/反射在 core/asset/scene，不能持 runtime 指针。当前 SceneActor schema 6、Scene schema 7 持久化 Component 身份、类型、settings、附着、阴影属性及场景环境。反射注册一个类型不等于自动完成其 runtime 装配和 UI；接入闭环见 [Editor](editor.md)。
 
 ## 游戏工程接入边界
 
@@ -40,7 +40,7 @@ Scene DTO/反射在 core/asset/scene，不能持 runtime 指针。当前 SceneAc
 
 ActorTypeRegistry 分开保存稳定类型名、精确 runtime type、属性 schema、create/validate/capture/apply 和放置模板。create 回调只创建一个属于传入 World 的新 Actor；公共 create 入口检查数量/类型/所有权，错误返回不能接管或删除旧 Actor。回调不得修改旧对象或开始 gameplay。属性是 ReflectedValue 持有的类型/版本/owned bytes；未知类型/版本、无效属性或多余字节拒绝。模块不向引擎 kind switch 添加项目类型。
 
-Scene schema 6 持久化 Actor type/properties；kind 仅保留内置放置类别，自定义类使用 Custom。内置 kind 必须与 Actor type 一致。schema 5 YAML 只走显式候选迁移，按旧 kind 映射类型并填空 ActorSettings，保留 Asset/Actor/Component ID、组件、材质和附着；读取不改源文件，下次正常保存写 schema 6。组件 properties 仍为有限内置 variant，注册新 Actor 不代表支持任意自定义 Component。
+Scene schema 7 持久化 Actor type/properties；kind 仅保留内置放置类别，自定义类使用 Custom。内置 kind 必须与 Actor type 一致。旧 Scene schema 拒绝，要求按当前格式重建。组件 properties 仍为有限内置 variant，注册新 Actor 不代表支持任意自定义 Component。
 
 `assemble_scene` 复用 Runtime 的组件创建/capture/apply 与 SceneGeometry：先验证类型/属性和解析几何，再构建新 Actor/组件并恢复完整附着图；失败只撤回候选，成功才移除旧场景。资源解析和 Material 赋值通过 SceneAssemblyServices 注入，服务持有者负责对应失败回滚。Editor 保留选择/历史/dirty/保存冲突；Game 完整装配、绑定渲染后 begin_play，关闭先 unregister，再 drain 渲染资源。
 
@@ -53,3 +53,9 @@ Scene schema 6 持久化 Actor type/properties；kind 仅保留内置放置类�
 完整用例以 gamescene_tests.cpp 及 Editor placement/workspace 测试为准，不构造不存在的通用 component 动态反射 API。验证未注册/已注册/playing/退出、父子与跨 Actor 环、失败原子性、更新 FIFO、非 root 恢复、资源删除及 World 切换；renderer ownership 的测试还见 renderer_scene_ownership_tests.cpp。
 
 项目扩展验证见 `project/tests/rotating_actor_tests.cpp`：帧率独立旋转、非法设置、类型/schema、候选失败保留旧场景、参数 Undo/Redo、删除恢复、保存重开及 Saved 快照隔离。
+
+## 场景环境
+
+`SceneEnvironmentSettings` schema 1 保存可选 strong `EnvironmentAssetData` root 引用、可归一化四元数和有限非负强度；无引用表示 Off。`World::set_environment(settings, cube)` 同时检查引用与 CPU payload，归一化旋转并更新内容版本；失败保留旧值。场景装配在替换旧 Actors 前完成环境加载和验证，保存从 World 捕获同一 settings。
+
+`SceneInterface::update_environment` 接收 owned snapshot，经 RenderCommand FIFO 发布。绑定 World 时发送当前环境，解绑时显式发送 Off。CPU Cube 可共享，RenderScene 分域持有独立 TextureResource；资源和旋转/强度在 recording 成功提交后一起发布。取消 recording 保留可重试候选，资源失败释放候选、保留旧 GPU 资源并返回诊断；已有 binding 持有的旧 GPU 引用仍有效。

@@ -16,6 +16,10 @@ namespace toy3d
         paths.deployment = PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT);
         paths.engine_assets = PhysicalPath(TOY3D_EDITOR_ENGINE_ASSET_ROOT);
         paths.engine_config = PhysicalPath(TOY3D_EDITOR_ENGINE_CONFIG_ROOT);
+        if (!arguments.has_option("EditorShaderArtifacts"))
+        {
+            paths.shader_deployment = PhysicalPath(TOY3D_GAME_SHADER_ROOT);
+        }
         return run_game_host(paths, linked_game_module(), native_instance);
     }
 } // namespace toy3d

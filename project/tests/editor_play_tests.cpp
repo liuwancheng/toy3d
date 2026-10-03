@@ -17,6 +17,7 @@
 #include "rendercore/rendering_thread.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
+#include "rendercore/shader/shader_map_collection.h"
 #include "scene/editor_selection.h"
 #include "scene/editor_scene_session.h"
 #include "threading/task_graph/task_graph.h"
@@ -36,6 +37,7 @@ namespace
         std::atomic<std::size_t> updates{0};
         void add_primitive(std::unique_ptr<toy3d::PrimitiveSceneProxy> proxy) override
         {
+            mark_material_usage_changed();
             toy3d::enqueue_render_command("PlayTestAdd",
                                           [this, proxy = std::move(proxy)]() mutable noexcept
                                           {
@@ -52,6 +54,7 @@ namespace
         }
         void remove_primitive(toy3d::PrimitiveSceneProxy* proxy) override
         {
+            mark_material_usage_changed();
             toy3d::enqueue_render_command("PlayTestRemove",
                                           [this, proxy]() noexcept
                                           {
@@ -69,6 +72,21 @@ namespace
         }
         void update_primitive_materials(toy3d::PrimitiveSceneProxy*, std::vector<toy3d::MaterialRenderProxy*>) override
         {
+            mark_material_usage_changed();
+        }
+        void update_environment(toy3d::SceneEnvironmentSnapshot environment) override
+        {
+            std::string error;
+            if (!toy3d::validate_scene_environment_snapshot(environment, error))
+            {
+                std::cerr << "Invalid PIE fixture environment: " << error << '\n';
+                std::abort();
+            }
+            toy3d::enqueue_render_command("PlayTestEnvironment",
+                                          [this, environment = std::move(environment)]() mutable noexcept
+                                          {
+                                              environment_ = std::move(environment);
+                                          });
         }
         void add_light(std::unique_ptr<toy3d::LightSceneProxy>) override
         {
@@ -82,6 +100,7 @@ namespace
 
       private:
         std::map<toy3d::PrimitiveSceneProxy*, std::unique_ptr<toy3d::PrimitiveSceneProxy>> proxies_;
+        toy3d::SceneEnvironmentSnapshot environment_;
     };
 } // namespace
 
@@ -106,15 +125,28 @@ bool check_editor_play(toy3d::EditorWorkspace& workspace, const toy3d::ActorType
     key.role = shader::ShaderPassRole::Forward;
     key.vertex_factory = shader::VertexFactoryType::Local;
     key.platform = ShaderPlatform::VulkanES31;
-    const auto loaded = shaders.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
+    const auto defaults =
+        ShaderMapCollection::create_candidate(loader.load_default_collection(key.shader_name, key.platform));
+    check(defaults.succeeded(), "Published fixture Shader defaults resolve from the source domain");
+    if (!defaults.succeeded())
+    {
+        return false;
+    }
+    const auto loaded =
+        shaders.find_or_load_collection(key.shader_name, key.platform, defaults.collection->index().permutation_key);
     check(loaded.succeeded(), "Published fixture Shader Program loads");
     if (!loaded.succeeded())
     {
         return false;
     }
-    auto programs = [program = loaded.collection](const std::string& name)
+    auto programs = [program = loaded.collection](const std::string& name,
+                                                  const std::vector<shader::ShaderPermutationSelection>& selections)
     {
-        return name == "Toy3d/Surface/Phong" ? program : nullptr;
+        const auto resolved = shader::resolve_shader_permutation(program->index().material_domain, selections);
+        return name == "Toy3d/Surface/Phong" && resolved.succeeded() &&
+                       resolved.permutation->key == program->index().permutation_key
+                   ? program
+                   : nullptr;
     };
     // Isolated candidate includes a Mesh proxy while retaining the custom Actor's
     // typed properties. Author DTO and source files are never changed.

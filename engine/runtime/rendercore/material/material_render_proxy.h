@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <string>
 #include <unordered_map>
 
@@ -28,6 +29,8 @@ namespace toy3d
         explicit MaterialRenderProxy(const MaterialDesc& desc);
 
         RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context);
+        RHIResult<RHIBindingSetRef> materialize(RHIDevice& device, RHICommandContext& context,
+                                                const ShaderMapProgram& program);
         RHIStatus begin_init_textures(RenderResourceManager& manager);
 
         RHIStatus stage_material_candidate(ShaderMapCollectionRef shader_map, bool two_sided);
@@ -60,10 +63,23 @@ namespace toy3d
         void apply_vector_update(ShaderParameterId parameter_id, const vec4& value) noexcept;
         void apply_texture_update(ShaderParameterId parameter_id, TextureResource* texture_resource) noexcept;
 
+        struct MaterialBindingCache
+        {
+            ShaderParametersMetadata metadata;
+            RHIBindingSetRef binding_set;
+            std::unordered_map<TextureResource*, std::uint64_t> texture_generations;
+            std::unordered_map<TextureResource*, RHITextureViewRef> texture_views;
+            bool dirty = true;
+        };
         RHIResult<RHIBindingSetRef> materialize_configuration(RHIDevice& device, RHICommandContext& context,
                                                               const ShaderMapCollectionRef& shader_map, bool staged);
-        bool texture_cache_matches(bool staged) const noexcept;
-        bool texture_views_match(bool staged) const noexcept;
+        RHIResult<RHIBindingSetRef> materialize_program(RHIDevice& device, RHICommandContext& context,
+                                                        const ShaderMapCollectionRef& shader_map,
+                                                        const ShaderMapProgram& program, bool staged);
+        RHIStatus retain_configuration_bindings(const ShaderMapCollectionRef& shader_map,
+                                                std::map<Sha256Hash, MaterialBindingCache>& bindings) const;
+        void invalidate_parameter(ShaderParameterId parameter_id, bool constant) noexcept;
+        bool texture_cache_matches(const MaterialBindingCache& binding, bool check_generation) const noexcept;
 
         std::string shader_name_;
         shader::ShaderParameterSchema parameter_schema_;
@@ -79,15 +95,12 @@ namespace toy3d
         std::unordered_map<ShaderParameterId, TextureResource*> texture_parameters_;
         std::unordered_map<ShaderParameterId, MaterialSamplerPreset> sampler_parameters_;
         std::unordered_map<MaterialSamplerPreset, RHISamplerRef> sampler_cache_;
-        RHIBindingSetRef binding_set_;
-        RHIBindingSetRef staged_binding_set_;
-        std::unordered_map<TextureResource*, std::uint64_t> texture_generations_;
-        std::unordered_map<TextureResource*, RHITextureViewRef> texture_views_;
-        std::unordered_map<TextureResource*, std::uint64_t> staged_texture_generations_;
-        std::unordered_map<TextureResource*, RHITextureViewRef> staged_texture_views_;
+        // Active group identities share bindings across roles/factories with
+        // equivalent declarations; values and actual texture views invalidate
+        // only the affected snapshots. Old GPU uses keep their strong references.
+        std::map<Sha256Hash, MaterialBindingCache> bindings_;
+        std::map<Sha256Hash, MaterialBindingCache> staged_bindings_;
         RenderResourceManager* resource_manager_ = nullptr;
-        bool dirty_ = true;
-        bool staged_dirty_ = false;
         bool staged_materialized_ = false;
     };
 } // namespace toy3d

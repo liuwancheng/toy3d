@@ -20,7 +20,7 @@ namespace toy3d
         bool has_same_native_layout(const TextureDesc& left, const TextureDesc& right)
         {
             return left.width == right.width && left.height == right.height && left.format == right.format &&
-                   left.mip_pixels.size() == right.mip_pixels.size();
+                   left.mip_pixels.size() == right.mip_pixels.size() && left.cube == right.cube;
         }
 
         bool is_deterministic_failure(const RHIStatus& status)
@@ -43,7 +43,8 @@ namespace toy3d
             rhi_desc.width = desc.width;
             rhi_desc.height = desc.height;
             rhi_desc.depth = 1;
-            rhi_desc.array_layers = 1;
+            rhi_desc.array_layers = desc.cube ? 6u : 1u;
+            rhi_desc.cube_compatible = desc.cube;
             rhi_desc.mip_levels = static_cast<std::uint32_t>(desc.mip_pixels.size());
             rhi_desc.sample_count = 1;
             rhi_desc.format = desc.format;
@@ -58,13 +59,13 @@ namespace toy3d
         {
             RHITextureViewDesc view_desc;
             view_desc.type = RHIResourceViewType::ShaderResource;
-            view_desc.dimension = RHITextureViewDimension::Texture2D;
+            view_desc.dimension = desc.cube ? RHITextureViewDimension::TextureCube : RHITextureViewDimension::Texture2D;
             view_desc.format = desc.format;
             view_desc.subresources.aspect = RHITextureAspect::Color;
             view_desc.subresources.first_mip = 0;
             view_desc.subresources.mip_count = static_cast<std::uint32_t>(desc.mip_pixels.size());
             view_desc.subresources.first_layer = 0;
-            view_desc.subresources.layer_count = 1;
+            view_desc.subresources.layer_count = desc.cube ? 6u : 1u;
             view_desc.debug_name = "Texture.Asset2D.SRV";
             return view_desc;
         }
@@ -76,7 +77,7 @@ namespace toy3d
             range.first_mip = 0;
             range.mip_count = static_cast<std::uint32_t>(desc.mip_pixels.size());
             range.first_layer = 0;
-            range.layer_count = 1;
+            range.layer_count = desc.cube ? 6u : 1u;
             return range;
         }
 
@@ -96,21 +97,25 @@ namespace toy3d
 
             for (std::size_t mip = 0; mip < desc.mip_pixels.size(); ++mip)
             {
-                RHITextureUploadDesc upload;
-                upload.destination.texture = texture;
-                upload.destination.mip = static_cast<std::uint32_t>(mip);
-                upload.destination.layer = 0;
-                upload.extent.width = std::max(1U, desc.width >> static_cast<std::uint32_t>(mip));
-                upload.extent.height = std::max(1U, desc.height >> static_cast<std::uint32_t>(mip));
-                upload.extent.depth = 1;
-                upload.source.data = desc.mip_pixels[mip].data();
-                upload.source.size = desc.mip_pixels[mip].size();
-                upload.source.row_pitch = desc.row_pitches[mip];
-                upload.source.slice_pitch = desc.slice_pitches[mip];
-                status = context.upload_texture(upload);
-                if (!status)
+                for (std::uint32_t face = 0u; face < (desc.cube ? 6u : 1u); ++face)
                 {
-                    return status;
+                    RHITextureUploadDesc upload;
+                    upload.destination.texture = texture;
+                    upload.destination.mip = static_cast<std::uint32_t>(mip);
+                    upload.destination.layer = face;
+                    upload.extent.width = std::max(1U, desc.width >> static_cast<std::uint32_t>(mip));
+                    upload.extent.height = std::max(1U, desc.height >> static_cast<std::uint32_t>(mip));
+                    upload.extent.depth = 1;
+                    upload.source.data =
+                        desc.mip_pixels[mip].data() + static_cast<std::size_t>(face) * desc.slice_pitches[mip];
+                    upload.source.size = desc.cube ? desc.slice_pitches[mip] : desc.mip_pixels[mip].size();
+                    upload.source.row_pitch = desc.row_pitches[mip];
+                    upload.source.slice_pitch = desc.slice_pitches[mip];
+                    status = context.upload_texture(upload);
+                    if (!status)
+                    {
+                        return status;
+                    }
                 }
             }
 
@@ -233,6 +238,12 @@ namespace toy3d
         }
     }
 
+    TextureUsage TextureResource::usage_for_current_recording() const noexcept
+    {
+        return has_pending_update_ ? pending_desc_.usage
+                                   : (has_active_desc_ ? active_desc_.usage : initial_desc_.usage);
+    }
+
     const RHITextureViewRef& TextureResource::view_for_current_recording() const noexcept
     {
         return candidate_view_ ? candidate_view_ : active_view_;
@@ -253,6 +264,15 @@ namespace toy3d
             return initial_upload ? fail(invalid) : invalid;
         }
 
+        if (upload_desc.requires_linear_filter &&
+            !EnumHasAllFlags(device.format_capabilities(upload_desc.format).usage,
+                             RHIFormatUsage::Sampled | RHIFormatUsage::LinearFilter))
+        {
+            const auto unsupported = RHIStatus::failure(
+                RHIErrorCode::Unsupported, "Texture requires sampling with linear filtering on this device/profile.");
+            deterministic_recording_failure_ = true;
+            return initial_upload ? fail(unsupported) : unsupported;
+        }
         const bool create_candidate = initial_upload || pending_replacement_;
         RHITextureRef upload_texture = active_texture_;
         RHITextureViewRef upload_view = active_view_;

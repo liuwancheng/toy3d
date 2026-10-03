@@ -134,9 +134,11 @@ namespace toy3d
             return RHIResult<RHITextureRef>::failure(sample_count.status().code(), sample_count.status().message());
         }
 
+        const VkImageCreateFlags flags = desc.cube_compatible ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0u;
         VkImageFormatProperties image_format_properties{};
-        const VkResult format_properties_result = vkGetPhysicalDeviceImageFormatProperties(
-            physical_device, format, image_type.value(), VK_IMAGE_TILING_OPTIMAL, usage, 0, &image_format_properties);
+        const VkResult format_properties_result =
+            vkGetPhysicalDeviceImageFormatProperties(physical_device, format, image_type.value(),
+                                                     VK_IMAGE_TILING_OPTIMAL, usage, flags, &image_format_properties);
         if (format_properties_result == VK_ERROR_FORMAT_NOT_SUPPORTED ||
             (format_properties_result == VK_SUCCESS &&
              (image_format_properties.sampleCounts & sample_count.value()) == 0))
@@ -153,6 +155,17 @@ namespace toy3d
         }
 
         VkImageCreateInfo create_info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        if (desc.width > image_format_properties.maxExtent.width ||
+            desc.height > image_format_properties.maxExtent.height ||
+            desc.depth > image_format_properties.maxExtent.depth ||
+            desc.mip_levels > image_format_properties.maxMipLevels ||
+            desc.array_layers > image_format_properties.maxArrayLayers)
+        {
+            return RHIResult<RHITextureRef>::failure(
+                RHIErrorCode::Unsupported,
+                "Vulkan image dimensions/mips/layers exceed this format and creation-flags support.");
+        }
+        create_info.flags = flags;
         create_info.imageType = image_type.value();
         create_info.format = format;
         create_info.extent = {desc.width, desc.height, desc.depth};

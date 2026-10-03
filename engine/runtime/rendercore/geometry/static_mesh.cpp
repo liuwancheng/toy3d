@@ -121,7 +121,7 @@ namespace toy3d
         {
             std::string error;
             if (!validate_material_geometry(desc.material_slots[slot]->desc(), shader::VertexFactoryType::Local,
-                                            !desc.vertex_colors.empty(), error))
+                                            !desc.vertex_colors.empty(), desc.valid_tangent_frame, error))
             {
                 TOY_LOG_ERROR("StaticMesh material slot {} rejected: {}", slot, error);
                 return nullptr;
@@ -150,10 +150,23 @@ namespace toy3d
         bounds.maximum = vec3(std::numeric_limits<float>::lowest());
         for (const StaticMeshVertex& vertex : desc.vertices)
         {
-            if (!is_finite(vertex.position) || !is_finite(vertex.normal) || !is_finite(vertex.uv0))
+            if (!is_finite(vertex.position) || !is_finite(vertex.normal) || !is_finite(vertex.uv0) ||
+                !is_finite(vec3(vertex.tangent)) || !std::isfinite(vertex.tangent.w) ||
+                std::abs(std::abs(vertex.tangent.w) - 1.0f) > 1.0e-4f)
             {
                 TOY_LOG_ERROR("StaticMesh vertex data must contain finite values.");
                 return nullptr;
+            }
+            if (desc.valid_tangent_frame)
+            {
+                const auto normal_length = glm::dot(vertex.normal, vertex.normal);
+                const auto tangent = vec3(vertex.tangent);
+                if (normal_length < 1.0e-20f || std::abs(glm::dot(tangent, tangent) - 1.0f) > 1.0e-3f ||
+                    std::abs(glm::dot(vertex.normal / std::sqrt(normal_length), tangent)) > 1.0e-3f)
+                {
+                    TOY_LOG_ERROR("StaticMesh declared tangent frame is invalid.");
+                    return nullptr;
+                }
             }
             bounds.minimum = glm::min(bounds.minimum, vertex.position);
             bounds.maximum = glm::max(bounds.maximum, vertex.position);
@@ -169,7 +182,7 @@ namespace toy3d
         : vertices_(std::move(desc.vertices)), vertex_colors_(std::move(desc.vertex_colors)),
           indices_(std::move(desc.indices)), sections_(std::move(desc.sections)),
           material_slots_(std::move(desc.material_slots)), material_slot_names_(std::move(desc.material_slot_names)),
-          local_bounds_(local_bounds)
+          valid_tangent_frame_(desc.valid_tangent_frame), local_bounds_(local_bounds)
     {
         render_data_ = std::make_unique<StaticMeshRenderData>(*this);
     }
@@ -178,8 +191,8 @@ namespace toy3d
         : vertices_(std::move(other.vertices_)), vertex_colors_(std::move(other.vertex_colors_)),
           indices_(std::move(other.indices_)), sections_(std::move(other.sections_)),
           material_slots_(std::move(other.material_slots_)),
-          material_slot_names_(std::move(other.material_slot_names_)), local_bounds_(other.local_bounds_),
-          render_data_(std::move(other.render_data_))
+          material_slot_names_(std::move(other.material_slot_names_)), valid_tangent_frame_(other.valid_tangent_frame_),
+          local_bounds_(other.local_bounds_), render_data_(std::move(other.render_data_))
     {
     }
 } // namespace toy3d

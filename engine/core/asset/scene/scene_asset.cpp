@@ -45,6 +45,10 @@ namespace toy3d
                     *found = reference;
                 }
             };
+            if (data.environment.environment.asset_id.valid())
+            {
+                append(data.environment.environment);
+            }
             for (const auto& actor : data.actors)
             {
                 if (types)
@@ -80,6 +84,24 @@ namespace toy3d
             return refs;
         }
     } // namespace
+
+    bool validate_scene_environment_settings(const SceneEnvironmentSettings& settings)
+    {
+        Quaternion normalized;
+        const auto& reference = settings.environment;
+        if (!is_finite(settings.intensity) || settings.intensity < 0.0f ||
+            !try_normalize(settings.rotation, normalized))
+        {
+            return false;
+        }
+        if (!reference.asset_id.valid())
+        {
+            return reference.expected_type.empty() && !reference.subresource_id.valid() &&
+                   reference.strength == AssetRefStrength::Strong;
+        }
+        return reference.expected_type == "toy3d.EnvironmentAssetData" && !reference.subresource_id.valid() &&
+               reference.strength == AssetRefStrength::Strong;
+    }
 
     bool validate_component_data(const SceneComponentData& component)
     {
@@ -149,6 +171,19 @@ namespace toy3d
 
     AssetStatus validate_scene_asset(const SceneAssetData& data, const AssetIndex* index, const TypeRegistry* types)
     {
+        if (!validate_scene_environment_settings(data.environment))
+        {
+            return invalid("Scene Environment requires finite nonnegative intensity, valid rotation and an optional "
+                           "strong Environment root.");
+        }
+        if (index && data.environment.environment.asset_id.valid())
+        {
+            const auto resolved = index->resolve(data.environment.environment, "environment");
+            if (!resolved.succeeded())
+            {
+                return resolved;
+            }
+        }
         if (data.actors.size() > k_max_scene_actors)
         {
             return invalid("scene actor count exceeds limit");
@@ -157,6 +192,10 @@ namespace toy3d
         std::set<std::string> ids;
         std::map<std::string, std::string> parents;
         std::map<AssetId, std::string> reference_types;
+        if (data.environment.environment.asset_id.valid())
+        {
+            reference_types.emplace(data.environment.environment.asset_id, data.environment.environment.expected_type);
+        }
         const std::map<std::string, std::string> builtin_types = {{"EmptyActor", "toy3d.Actor"},
                                                                   {"Cube", "toy3d.StaticMeshActor"},
                                                                   {"Plane", "toy3d.StaticMeshActor"},

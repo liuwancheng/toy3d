@@ -101,6 +101,9 @@ namespace
                                               mesh->set_material_render_proxies(std::move(materials));
                                           });
         }
+        void update_environment(toy3d::SceneEnvironmentSnapshot) override
+        {
+        }
         void add_light(std::unique_ptr<toy3d::LightSceneProxy>) override
         {
         }
@@ -243,12 +246,135 @@ int main(int argc, char** argv)
         {
             return workspace.catalog().index;
         },
-        [defaults](const std::string& name)
+        [defaults](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
         {
             return name == defaults->desc().shader_name ? defaults->desc().shader_map : nullptr;
         },
         textures);
     materials.initialize(workspace, library);
+    {
+        // This fixture preserves real reflected programs while modelling a
+        // source revision with one static dimension unused by its HLSL.
+        const auto configuration = [&](bool enabled, const std::string& revision, bool default_enabled = false)
+        {
+            ShaderMapCollectionLoadResult loaded;
+            loaded.index = defaults->desc().shader_map->index();
+            loaded.index.source_hash = sha256(revision);
+            shader::ShaderPermutationDimension dimension;
+            dimension.name = "TEST_STATIC";
+            dimension.boolean_default = default_enabled;
+            // Preserve the built-in feature conditions and their dimensions;
+            // TEST_STATIC adds an independent, unused authored option.
+            loaded.index.material_domain.dimensions.push_back(dimension);
+            const auto selected = shader::resolve_shader_permutation(
+                loaded.index.material_domain,
+                {{"TEST_STATIC", shader::ShaderPermutationValueKind::Boolean, enabled, {}}});
+            loaded.index.material_selections = selected.permutation->selections;
+            loaded.index.permutation_key = selected.permutation->key;
+            for (const auto& program : defaults->desc().shader_map->programs())
+            {
+                auto data = program->data();
+                data.permutation_key = selected.permutation->key;
+                loaded.programs.push_back(std::move(data));
+            }
+            const auto result = ShaderMapCollection::create_candidate(std::move(loaded));
+            if (!result.succeeded())
+            {
+                std::cerr << "FAILED: construct static configuration: " << result.error << '\n';
+                std::exit(1);
+            }
+            return result.collection;
+        };
+        const auto off = configuration(false, "static revision 1");
+        const auto on = configuration(true, "static revision 1");
+        const auto off_next = configuration(false, "static revision 2");
+        const auto on_next = configuration(true, "static revision 2");
+        auto selected_child = child;
+        selected_child.static_options = {{"TEST_STATIC", true}};
+        check(write_instance(child_id, selected_child, child_path.value(), FilePublishMode::Replace) &&
+                  workspace.refresh(),
+              "save instance static override for graph publication");
+        MaterialLibrary configurations_library(
+            workspace.types(), workspace.files(),
+            [&workspace]() -> const AssetIndex&
+            {
+                return workspace.catalog().index;
+            },
+            [off, on](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& values)
+            {
+                if (name != off->index().shader_name)
+                {
+                    return ShaderMapCollectionRef{};
+                }
+                const auto resolved = shader::resolve_shader_permutation(off->index().material_domain, values);
+                return resolved.succeeded() ? (resolved.permutation->key == on->index().permutation_key ? on : off)
+                                            : ShaderMapCollectionRef{};
+            },
+            textures);
+        const AssetRef selected_reference{child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
+        const auto selected = configurations_library.load(selected_reference);
+        check(selected.succeeded() && selected.value()->desc().shader_map == on &&
+                  selected.value()->parent()->desc().shader_map == off,
+              "root and child resolve their own saved static configurations");
+        auto inherited = configurations_library.create_instance(selected.value()->parent());
+        check(inherited.succeeded() && inherited.value()->desc().static_options.empty(),
+              "temporary child stores no copied Shader defaults");
+        auto pinned = MaterialInstance::create(selected.value()->parent(), off, {{"TEST_STATIC", false}});
+        check(pinned && pinned->desc().static_options.size() == 1u,
+              "explicit runtime configuration retains its authored static selection even if equal to Parent");
+        auto* const stable_proxy = selected.value()->material_render_proxy();
+        check(!configurations_library.prepare_shader(std::vector<ShaderMapCollectionRef>{off_next}).succeeded() &&
+                  selected.value()->desc().shader_map == on && selected.value()->parent()->desc().shader_map == off,
+              "missing child configuration rejects the entire source candidate without partial updates");
+        check(!configurations_library.prepare_shader(std::vector<ShaderMapCollectionRef>{off_next, on}).succeeded(),
+              "different source revisions cannot form a publication set");
+        check(
+            configurations_library.prepare_shader(std::vector<ShaderMapCollectionRef>{on_next, off_next}).succeeded() &&
+                configurations_library.publish(true).succeeded() && selected.value()->desc().shader_map == on_next &&
+                selected.value()->parent()->desc().shader_map == off_next &&
+                selected.value()->material_render_proxy() == stable_proxy,
+            "all static configurations publish together while preserving stable runtime and Proxy identities");
+        configurations_library.discard();
+        check(selected.value()->desc().shader_map == on && selected.value()->parent()->desc().shader_map == off,
+              "whole-source transaction rollback restores both configurations");
+        check(
+            configurations_library.prepare_shader(std::vector<ShaderMapCollectionRef>{off_next, on_next}).succeeded() &&
+                configurations_library.publish().succeeded(),
+            "commit complete static configuration graph");
+        const auto off_new_default = configuration(false, "static revision 3", true);
+        const auto on_new_default = configuration(true, "static revision 3", true);
+        std::vector<MaterialShaderMapValidationTarget> targets;
+        check(configurations_library.collect_shader_validation_targets({off_new_default, on_new_default}, targets)
+                      .succeeded() &&
+                  inherited.value()->desc().shader_map == off_next,
+              "preflight resolves the future graph without mutating active static selections");
+        const auto target_map = [&](MaterialRenderProxy* proxy)
+        {
+            const auto found = std::find_if(targets.begin(), targets.end(),
+                                            [proxy](const MaterialShaderMapValidationTarget& value)
+                                            {
+                                                return value.proxy == proxy;
+                                            });
+            return found == targets.end() ? ShaderMapCollectionRef{} : found->shader_map;
+        };
+        check(target_map(inherited.value()->material_render_proxy()) == on_new_default &&
+                  target_map(pinned->material_render_proxy()) == off_new_default,
+              "each user is preflighted against its resolved configuration rather than the configuration union");
+        check(configurations_library.prepare_shader({off_new_default, on_new_default}).succeeded() &&
+                  configurations_library.publish(true).succeeded() &&
+                  inherited.value()->desc().shader_map == on_new_default &&
+                  pinned->desc().shader_map == off_new_default,
+              "new Shader default updates inherited children while preserving explicit equal-valued overrides");
+        configurations_library.discard();
+        check(inherited.value()->desc().shader_map == off_next && pinned->desc().shader_map == off_next,
+              "rollback restores source revisions for unmanaged and temporary descendants too");
+        // This child was created outside the Library and owns its release;
+        // finish its FIFO lifetime before retiring the shared Parent graph.
+        MaterialInstance::release(pinned);
+        configurations_library.shutdown();
+        check(write_instance(child_id, child, child_path.value(), FilePublishMode::Replace) && workspace.refresh(),
+              "restore saved static fixture without changing the main Library");
+    }
     {
         AssetId grand_id;
         check(AssetId::try_generate(grand_id), "allocate grandchild identity");

@@ -16,6 +16,7 @@
 #include "renderscene/mesh_batch.h"
 #include "renderscene/pass/mesh_draw_command.h"
 #include "renderscene/view/view_info.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
 
 namespace toy3d
 {
@@ -132,7 +133,8 @@ namespace toy3d
             {
                 const MeshBatch& mesh_batch = view_info.mesh_batches()[batch_index];
                 MaterialRenderProxy& material_proxy = mesh_batch.material_render_proxy();
-                const auto selected = mesh_batch.material_program();
+                const auto selected =
+                    mesh_batch.material_program(view_info.shadow_active(), view_info.environment_active());
                 if (!selected.succeeded())
                 {
                     if (mesh_batch.bone_matrices() || inputs.require_complete_meshes)
@@ -167,13 +169,27 @@ namespace toy3d
                 }
                 if (batch_status)
                 {
+                    RHIBindingSetRef lighting_binding;
+                    const ForwardPassParameters lighting;
+                    const auto metadata = shader_parameters_metadata_for_program(shader_parameters_metadata(lighting),
+                                                                                 shader_program->data());
+                    if (!metadata)
+                    {
+                        return metadata.status();
+                    }
+                    const auto found = inputs.lighting_bindings[view_index].find(metadata.value().group_identity);
+                    if (found != inputs.lighting_bindings[view_index].end())
+                    {
+                        lighting_binding = found->second;
+                    }
                     batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::Pass,
-                                                             inputs.lighting_bindings[view_index], owner_bindings.pass);
+                                                             lighting_binding, owner_bindings.pass);
                 }
                 if (batch_status)
                 {
                     batch_status = resolve_mesh_draw_binding(device, *shader_program, RHIBindingGroup::Material,
-                                                             mesh_batch.material_binding(), owner_bindings.material);
+                                                             mesh_batch.material_binding(*shader_program),
+                                                             owner_bindings.material);
                 }
                 if (batch_status)
                 {

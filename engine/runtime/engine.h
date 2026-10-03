@@ -31,16 +31,10 @@ namespace toy3d
     struct ImGuiDrawData;
     struct ViewportFrameOutput;
 
-    enum class ShaderLoadMode
-    {
-        ShaderMapEntry,
-        ShaderCodeLibrary
-    };
-
     struct ShaderLoadConfig
     {
-        ShaderLoadMode mode = ShaderLoadMode::ShaderCodeLibrary;
-        PhysicalPath path;
+        PhysicalPath builtin_root;
+        bool include_editor_programs = true;
     };
 
     struct EngineStartupPaths

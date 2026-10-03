@@ -1,6 +1,9 @@
 #include "rendercore/material/material_asset_builder.h"
 
+#include <algorithm>
 #include <exception>
+#include "asset/texture/builtin_texture_assets.h"
+#include "rendercore/texture/texture_asset_loader.h"
 
 #include "rendercore/shader/shader_map.h"
 
@@ -23,6 +26,19 @@ namespace toy3d
                 if (!material_override_matches_schema(item, schema))
                 {
                     continue;
+                }
+                if (const auto* scalar = std::get_if<float>(&item.value))
+                {
+                    for (const auto& buffer : schema.constant_buffers)
+                    {
+                        for (const auto& member : buffer.members)
+                        {
+                            if (member.name == item.name && !shader::validate_shader_scalar_value(member, *scalar))
+                            {
+                                return failure("Material scalar is outside its declared Range: " + item.name);
+                            }
+                        }
+                    }
                 }
                 // C++17 get_if resolves Texture references without erasing their Asset identity.
                 if (const auto* reference = std::get_if<AssetRef>(&item.value))
@@ -130,6 +146,60 @@ namespace toy3d
         }
     } // namespace
 
+    AssetStatus resolve_builtin_material_texture_defaults(const FileSystem& files, const AssetIndex& index,
+                                                          const shader::ShaderParameterSchema& schema,
+                                                          MaterialTextureValues& textures)
+    {
+        MaterialTextureValues candidate = textures;
+        for (const auto& resource : schema.resources)
+        {
+            if (resource.group != shader::BindingGroup::Material ||
+                resource.resource_kind != shader::ResourceKind::Texture2D ||
+                resource.default_value_kind != shader::ShaderParameterDefaultValueKind::String)
+            {
+                continue;
+            }
+            const auto existing = candidate.named_defaults.find(resource.default_value);
+            if (existing != candidate.named_defaults.end() && existing->second)
+            {
+                if (existing->second->desc().cube || existing->second->desc().usage != resource.texture_usage)
+                {
+                    return failure("Builtin texture default usage mismatch: " + resource.name);
+                }
+                continue;
+            }
+            const auto spec = std::find_if(builtin_texture_assets.begin(), builtin_texture_assets.end(),
+                                           [&](const BuiltinTextureAsset& entry)
+                                           {
+                                               return resource.default_value == entry.default_name;
+                                           });
+            if (spec == builtin_texture_assets.end())
+            {
+                // Explicit project defaults remain the calling composition root's responsibility.
+                continue;
+            }
+            AssetRef reference;
+            if (!AssetId::parse(spec->asset_id, reference.asset_id) || spec->usage != resource.texture_usage)
+            {
+                return failure("Builtin texture default has incompatible Usage: " + resource.name);
+            }
+            reference.expected_type = "toy3d.Texture2DAssetData";
+            const auto* location = index.find(reference.asset_id);
+            if (!location || location->path.utf8().compare(0u, 8u, "/Engine/") != 0)
+            {
+                return failure("Missing engine texture default: " + resource.default_value);
+            }
+            const auto loaded = load_texture_asset(files, index, reference);
+            if (!loaded.succeeded())
+            {
+                return loaded.status();
+            }
+            candidate.named_defaults[resource.default_value] = loaded.value();
+        }
+        textures = std::move(candidate);
+        return AssetStatus::success();
+    }
+
     AssetResult<MaterialDesc> material_descriptor_from_asset(const MaterialAssetData& data,
                                                              ShaderMapCollectionRef program,
                                                              const MaterialTextureValues& textures)
@@ -146,11 +216,22 @@ namespace toy3d
         {
             return AssetResult<MaterialDesc>(failure("A matching compiled Forward Shader program is required."));
         }
+        const auto configuration = shader::resolve_shader_permutation(program->index().material_domain,
+                                                                      material_static_selections(data.static_options));
+        if (!configuration.succeeded())
+        {
+            return AssetResult<MaterialDesc>(failure(configuration.errors.front().message));
+        }
+        if (configuration.permutation->key != program->index().permutation_key)
+        {
+            return AssetResult<MaterialDesc>(failure("Compiled ShaderMap does not match the material static options."));
+        }
         MaterialDesc desc;
         desc.shader_name = data.shader_name;
         desc.parameter_schema =
             material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema);
         desc.shader_map = std::move(program);
+        desc.static_options = data.static_options;
         desc.two_sided = data.two_sided;
         std::string error;
         if (!initialize_material_constant_defaults(desc, error))
@@ -181,6 +262,11 @@ namespace toy3d
             const auto found = textures.named_defaults.find(resource.default_value);
             if (found == textures.named_defaults.end() || !found->second)
             {
+                if (!material_parameter_is_active(*desc.shader_map, resource.parameter_id))
+                {
+                    desc.texture_defaults.emplace(resource.parameter_id, nullptr);
+                    continue;
+                }
                 return AssetResult<MaterialDesc>(
                     failure("Unresolved builtin texture default: " + resource.default_value));
             }
@@ -260,7 +346,8 @@ namespace toy3d
 
     AssetResult<MaterialInstanceRef> create_material_instance_from_asset(const MaterialInstanceAssetData& data,
                                                                          MaterialInterfaceRef parent,
-                                                                         const MaterialTextureValues& textures)
+                                                                         const MaterialTextureValues& textures,
+                                                                         ShaderMapCollectionRef configuration)
     {
         const auto valid = validate_material_instance_asset(data);
         if (!valid.succeeded())
@@ -276,7 +363,44 @@ namespace toy3d
         {
             return AssetResult<MaterialInstanceRef>(changes.status());
         }
-        auto child = MaterialInstance::create(std::move(parent));
+        if (!data.static_options.empty())
+        {
+            if (!parent->desc().shader_map)
+            {
+                return AssetResult<MaterialInstanceRef>(
+                    failure("Static options require a validated Parent ShaderMap."));
+            }
+            std::map<std::string, shader::ShaderPermutationSelection> selected;
+            for (const auto& value : material_static_selections(parent->effective_static_options()))
+            {
+                selected[value.name] = value;
+            }
+            for (const auto& value : material_static_selections(data.static_options))
+            {
+                selected[value.name] = value;
+            }
+            std::vector<shader::ShaderPermutationSelection> selections;
+            for (const auto& value : selected)
+            {
+                selections.push_back(value.second);
+            }
+            const auto resolved =
+                shader::resolve_shader_permutation(parent->desc().shader_map->index().material_domain, selections);
+            if (!resolved.succeeded())
+            {
+                return AssetResult<MaterialInstanceRef>(failure(resolved.errors.front().message));
+            }
+            if (!configuration)
+            {
+                configuration = parent->desc().shader_map;
+            }
+            if (configuration->index().permutation_key != resolved.permutation->key)
+            {
+                return AssetResult<MaterialInstanceRef>(
+                    failure("The instance static configuration must be compiled before creation."));
+            }
+        }
+        auto child = MaterialInstance::create(std::move(parent), std::move(configuration), data.static_options);
         if (!child)
         {
             return AssetResult<MaterialInstanceRef>(failure("Could not create MaterialInstance."));

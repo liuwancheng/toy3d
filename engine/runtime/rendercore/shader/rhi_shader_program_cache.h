@@ -68,6 +68,7 @@ namespace toy3d
         std::string pass_name;
         ShaderPlatform platform = ShaderPlatform::VulkanES31;
         ShaderContentHash permutation_key{};
+        ShaderContentHash pass_permutation_key = shader::default_shader_permutation_key;
         std::uint32_t mapping_version = 0;
         ShaderContentHash logical_layout_hash{};
         ShaderContentHash target_binding_hash{};

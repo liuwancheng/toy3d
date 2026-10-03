@@ -547,22 +547,19 @@ int main()
         corrupt[4] = 5;
         check(!decode_skeletal_mesh_geometry(corrupt).succeeded(), "invalid storage width accepted");
         corrupt = encoded.value();
-        corrupt[0] = 3;
+        corrupt[0] = 99;
         check(!decode_skeletal_mesh_geometry(corrupt).succeeded(), "unknown payload version accepted");
         corrupt = encoded.value();
         corrupt.resize(16);
         check(!decode_skeletal_mesh_geometry(corrupt).succeeded(), "truncated payload accepted");
         if (count == 4)
         {
-            // Version 1 stored the same four-slot body, without the width field.
-            auto legacy = encoded.value();
-            legacy.erase(legacy.begin() + 4, legacy.begin() + 8);
-            legacy[0] = 1;
-            const auto upgraded = decode_skeletal_mesh_geometry(legacy);
-            check(upgraded.succeeded() && upgraded.value().num_bone_influences == 4 &&
-                      upgraded.value().skin_weights[0].weights[4] == 0 &&
-                      upgraded.value().skin_weights[0].bone_indices[7] == 0,
-                  "version one expands four slots with a zero tail");
+            for (const auto old_version : {1u, 2u})
+            {
+                auto old = encoded.value();
+                old[0] = static_cast<std::uint8_t>(old_version);
+                check(!decode_skeletal_mesh_geometry(old).succeeded(), "old skeletal payload accepted");
+            }
             auto tail = geometry;
             tail.skin_weights[0].weights[4] = 1;
             check(!validate_skeletal_mesh_geometry(tail).succeeded(), "nonzero inactive slot accepted");

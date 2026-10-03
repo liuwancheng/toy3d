@@ -88,6 +88,10 @@ namespace toy3d
         {
             return shadow_cascades_.at(index);
         }
+        bool environment_active() const
+        {
+            return environment_active_;
+        }
         bool shadow_active() const
         {
             return shadow_active_;
@@ -149,6 +153,7 @@ namespace toy3d
         std::array<Vector2, ShadowRenderTargets::k_max_cascade_count - 1u> shadow_splits_{};
         std::size_t shadow_cascade_count_ = 0u;
         bool shadow_active_ = false;
+        bool environment_active_ = false;
     };
 
 } // namespace toy3d

@@ -33,7 +33,8 @@ namespace toy3d
         }
 
         TextureAssetMip downsample(const TextureAssetMip& previous, std::uint32_t source_width,
-                                   std::uint32_t source_height, std::uint32_t target_width, std::uint32_t target_height)
+                                   std::uint32_t source_height, std::uint32_t target_width, std::uint32_t target_height,
+                                   TextureUsage usage)
         {
             TextureAssetMip next;
             next.row_pitch = target_width * 4u;
@@ -67,16 +68,42 @@ namespace toy3d
                             const std::size_t offset = static_cast<std::size_t>(sy) * previous.row_pitch + sx * 4u;
                             for (std::size_t channel = 0; channel < 3u; ++channel)
                             {
-                                accum[channel] += linear[previous.pixels[offset + channel]] * weight;
+                                const float encoded = static_cast<float>(previous.pixels[offset + channel]) / 255.0f;
+                                const float value =
+                                    usage == TextureUsage::Color
+                                        ? linear[previous.pixels[offset + channel]]
+                                        : (usage == TextureUsage::Normal ? encoded * 2.0f - 1.0f : encoded);
+                                accum[channel] += value * weight;
                             }
                             accum[3] += static_cast<float>(previous.pixels[offset + 3u]) * weight;
                         }
                     }
                     const float area = (right - left) * (bottom - top);
                     const std::size_t output = static_cast<std::size_t>(y) * next.row_pitch + x * 4u;
+                    float normal_length = 1.0f;
+                    if (usage == TextureUsage::Normal)
+                    {
+                        normal_length = std::sqrt(accum[0] * accum[0] + accum[1] * accum[1] + accum[2] * accum[2]);
+                        if (normal_length < 1.0e-6f)
+                        {
+                            accum[0] = accum[1] = 0.0f;
+                            accum[2] = normal_length = 1.0f;
+                        }
+                    }
                     for (std::size_t channel = 0; channel < 3u; ++channel)
                     {
-                        next.pixels[output + channel] = linear_to_srgb(accum[channel] / area);
+                        if (usage == TextureUsage::Color)
+                        {
+                            next.pixels[output + channel] = linear_to_srgb(accum[channel] / area);
+                        }
+                        else
+                        {
+                            const float value = usage == TextureUsage::Normal
+                                                    ? accum[channel] / normal_length * 0.5f + 0.5f
+                                                    : accum[channel] / area;
+                            next.pixels[output + channel] =
+                                static_cast<std::uint8_t>(std::lround(std::max(0.0f, std::min(1.0f, value)) * 255.0f));
+                        }
                     }
                     next.pixels[output + 3u] = static_cast<std::uint8_t>(std::lround(accum[3] / area));
                 }
@@ -85,8 +112,13 @@ namespace toy3d
         }
     } // namespace
 
-    AssetResult<Texture2DAsset> import_texture_image(const std::vector<std::uint8_t>& source)
+    AssetResult<Texture2DAsset> import_texture_image(const std::vector<std::uint8_t>& source,
+                                                     const TextureImportSettings& settings)
     {
+        if (!is_valid_texture_usage(settings.usage) || (settings.flip_green && settings.usage != TextureUsage::Normal))
+        {
+            return AssetResult<Texture2DAsset>(invalid("Invalid texture import usage or green-channel option."));
+        }
         if (source.empty() || source.size() > source_limit)
         {
             return AssetResult<Texture2DAsset>(invalid("Source image exceeds the 32 MiB import limit."));
@@ -109,7 +141,35 @@ namespace toy3d
         Texture2DAsset result;
         result.width = image.width;
         result.height = image.height;
-        result.format = PixelFormat::R8G8B8A8UNormSRGB;
+        result.usage = settings.usage;
+        result.flip_green = settings.flip_green;
+        result.format =
+            settings.usage == TextureUsage::Color ? PixelFormat::R8G8B8A8UNormSRGB : PixelFormat::R8G8B8A8UNorm;
+        if (settings.usage == TextureUsage::Normal)
+        {
+            for (std::size_t offset = 0u; offset < image.pixels.size(); offset += 4u)
+            {
+                float vector[3]{};
+                for (std::size_t channel = 0u; channel < 3u; ++channel)
+                {
+                    vector[channel] = static_cast<float>(image.pixels[offset + channel]) / 255.0f * 2.0f - 1.0f;
+                }
+                if (settings.flip_green)
+                {
+                    vector[1] = -vector[1];
+                }
+                const float length = std::sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
+                if (length < 1.0e-6f)
+                {
+                    return AssetResult<Texture2DAsset>(invalid("Normal texture contains a degenerate encoded vector."));
+                }
+                for (std::size_t channel = 0u; channel < 3u; ++channel)
+                {
+                    image.pixels[offset + channel] =
+                        static_cast<std::uint8_t>(std::lround((vector[channel] / length * 0.5f + 0.5f) * 255.0f));
+                }
+            }
+        }
         TextureAssetMip first;
         first.row_pitch = image.width * 4u;
         first.slice_pitch = first.row_pitch * image.height;
@@ -121,7 +181,8 @@ namespace toy3d
         {
             const std::uint32_t next_width = std::max(1u, width / 2u);
             const std::uint32_t next_height = std::max(1u, height / 2u);
-            result.mips.push_back(downsample(result.mips.back(), width, height, next_width, next_height));
+            result.mips.push_back(
+                downsample(result.mips.back(), width, height, next_width, next_height, settings.usage));
             width = next_width;
             height = next_height;
         }

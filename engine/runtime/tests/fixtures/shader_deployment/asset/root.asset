@@ -1,0 +1,13 @@
+format_version: 2
+asset_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01"
+root_type: "toy3d.MaterialAssetData"
+schema_version: 2
+dependencies: []
+subresources: []
+data:
+  shader_name: "Project/Cook/Surface"
+  overrides: []
+  static_options:
+    - name: EXTRA_COLOR
+      value: { type: Bool, value: true }
+  two_sided: false

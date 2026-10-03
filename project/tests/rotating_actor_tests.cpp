@@ -7,7 +7,6 @@
 
 #include "application/game_host.h"
 #include "asset/asset_yaml.h"
-#include "serialization/schema_migration.h"
 #include "file_system/native_platform_file.h"
 #include "gamescene/scene_assembly.h"
 #include "gamescene/world/world.h"
@@ -139,7 +138,7 @@ namespace
         AssetId asset;
         AssetId::try_generate(asset);
         const auto encoded = encode_scene_asset_pair(metadata, asset, scene);
-        check(encoded.succeeded(), "Scene6 dynamic payload encodes");
+        check(encoded.succeeded(), "Scene7 dynamic payload encodes");
         if (!encoded.succeeded())
         {
             return;
@@ -149,7 +148,9 @@ namespace
         if (decoded.succeeded())
         {
             ValueReader reader(decoded.value().type_data);
-            check(decode_value(reader, roundtrip).succeeded() && reader.at_end(), "Scene6 codec roundtrip");
+            check(decoded.value().index.schema_version == 7u && decode_value(reader, roundtrip).succeeded() &&
+                      reader.at_end(),
+                  "Scene7 codec roundtrip");
         }
         check(decoded.succeeded() && roundtrip.actors.size() == 1 && roundtrip.actors.front().type == saved.type &&
                   roundtrip.actors.front().properties.bytes == payload.bytes,
@@ -271,24 +272,37 @@ namespace
         }
 
         NativePlatformFile platform;
-        const auto legacy = platform.read_binary(PhysicalPath(TOY3D_TEST_ENGINE_ASSETS "/Scenes/Default.scene"));
-        check(legacy.succeeded(), "Legacy scene fixture reads");
-        if (!legacy.succeeded())
+        const auto fixture = platform.read_binary(PhysicalPath(TOY3D_TEST_ENGINE_ASSETS "/Scenes/Default.scene"));
+        check(fixture.succeeded(), "Current built-in scene fixture reads");
+        if (!fixture.succeeded())
         {
             return;
         }
-        const auto migrated = decode_asset_yaml(metadata, legacy.value());
-        check(migrated.succeeded() && migrated.value().index.schema_version == 6,
-              "Scene5 explicitly migrates to Scene6");
-        if (migrated.succeeded())
+        const auto current = decode_asset_yaml(metadata, fixture.value());
+        check(current.succeeded() && current.value().index.schema_version == 7u, "Built-in fixture uses Scene7");
+        if (current.succeeded())
         {
             SceneAssetData data;
-            ValueReader reader(migrated.value().type_data);
-            check(decode_value(reader, data).succeeded() && !data.actors.empty() &&
+            ValueReader reader(current.value().type_data);
+            check(decode_value(reader, data).succeeded() && reader.at_end() && !data.actors.empty() &&
                       data.actors.front().id == saved.id &&
                       data.actors.front().root_component_id == saved.root_component_id &&
                       data.actors.front().type == "toy3d.StaticMeshActor",
-                  "Migration retains actor/component identities and infers legacy type");
+                  "Current fixture retains actor/component identities and explicit concrete type");
+        }
+        const std::string yaml(encoded.value().asset.begin(), encoded.value().asset.end());
+        const std::string marker = "schema_version: 7";
+        const auto marker_position = yaml.find(marker);
+        check(marker_position != std::string::npos, "Current scene carries an explicit schema version");
+        if (marker_position != std::string::npos)
+        {
+            for (const auto old_version : {5u, 6u})
+            {
+                auto old_yaml = yaml;
+                old_yaml.replace(marker_position, marker.size(), "schema_version: " + std::to_string(old_version));
+                const std::vector<std::uint8_t> old_bytes(old_yaml.begin(), old_yaml.end());
+                check(!decode_asset_yaml(metadata, old_bytes).succeeded(), "Old scene schemas require offline rebuild");
+            }
         }
     }
     void check_actor_widgets(toy3d::World& world, toy3d::RotatingActor& actor, toy3d::EditorCommandHistory& history,

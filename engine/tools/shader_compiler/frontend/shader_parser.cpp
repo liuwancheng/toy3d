@@ -1,5 +1,7 @@
 #include "frontend/shader_parser.h"
 
+#include "shader/builtin_shader_parameters.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
@@ -287,44 +289,6 @@ namespace toy3d::shader
         bool allows_matrix_element(ResourceKind kind)
         {
             return kind == ResourceKind::StructuredBuffer || kind == ResourceKind::RWStructuredBuffer;
-        }
-
-        bool valid_shader_name(std::string_view name)
-        {
-            if (name.empty() || name.front() == '/' || name.back() == '/')
-            {
-                return false;
-            }
-            std::size_t segment_start = 0;
-            while (segment_start < name.size())
-            {
-                const std::size_t segment_end = name.find('/', segment_start);
-                const std::size_t end = segment_end == std::string_view::npos ? name.size() : segment_end;
-                if (end == segment_start)
-                {
-                    return false;
-                }
-                const char first = name[segment_start];
-                if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_'))
-                {
-                    return false;
-                }
-                for (std::size_t index = segment_start + 1; index < end; ++index)
-                {
-                    const char value = name[index];
-                    if (!((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
-                          (value >= '0' && value <= '9') || value == '_'))
-                    {
-                        return false;
-                    }
-                }
-                if (segment_end == std::string_view::npos)
-                {
-                    break;
-                }
-                segment_start = segment_end + 1;
-            }
-            return true;
         }
 
         bool is_stencil_compare(std::string_view value)
@@ -676,10 +640,10 @@ namespace toy3d::shader
         if (const auto name = expect(TokenKind::StringLiteral, "Expected the Shader display name."))
         {
             asset.name = name->text;
-            if (!valid_shader_name(asset.name))
+            if (!valid_shader_source_name(asset.name))
             {
                 add_error(DiagnosticCode::InvalidShaderName, name->location,
-                          "Shader name must contain slash-separated ASCII identifier segments.");
+                          "Shader name must contain slash-separated ASCII identifier segments within 256 bytes.");
             }
         }
         expect(TokenKind::LeftBrace, "Expected '{' after the Shader name.");
@@ -724,16 +688,17 @@ namespace toy3d::shader
         {
             if (!match_identifier("Geometry"))
             {
-                add_error(DiagnosticCode::InvalidShaderName, peek().location, "Mesh sources require Geometry Custom.");
+                add_error(DiagnosticCode::InvalidShaderName, peek().location,
+                          "Mesh sources require explicit Geometry.");
             }
-            else if (const auto geometry = expect_identifier("Expected Custom after Geometry."))
+            else if (const auto geometry = expect_identifier("Expected Standard or Custom after Geometry."))
             {
-                if (geometry->text != "Custom")
+                if (geometry->text != "Custom" && geometry->text != "Standard")
                 {
-                    add_error(DiagnosticCode::InvalidShaderName, geometry->location,
-                              "Only Custom geometry is currently implemented; Standard wrappers are not available.");
+                    add_error(DiagnosticCode::InvalidShaderName, geometry->location, "Unknown geometry mode.");
                 }
-                asset.geometry = ShaderGeometryMode::Custom;
+                asset.geometry =
+                    geometry->text == "Standard" ? ShaderGeometryMode::Standard : ShaderGeometryMode::Custom;
             }
             if (!match_identifier("VertexFactories"))
             {
@@ -750,6 +715,10 @@ namespace toy3d::shader
         bool has_parameters = false;
         bool has_resources = false;
         bool has_variants = false;
+        bool has_features = false;
+        bool has_supported_when = false;
+        bool has_surface_inputs = false;
+        bool has_geometry_requirements = false;
         while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
         {
             if (match_identifier("Properties"))
@@ -764,6 +733,11 @@ namespace toy3d::shader
             }
             else if (match_identifier("Parameters"))
             {
+                if (asset.usage == ShaderUsage::Material)
+                {
+                    add_error(DiagnosticCode::InvalidParameterGroup, peek().location,
+                              "Material Pass parameters are engine-owned; author values belong in Properties.");
+                }
                 if (has_parameters)
                 {
                     add_error(DiagnosticCode::DuplicateSection, peek().location,
@@ -774,6 +748,11 @@ namespace toy3d::shader
             }
             else if (match_identifier("Resources"))
             {
+                if (asset.usage == ShaderUsage::Material)
+                {
+                    add_error(DiagnosticCode::InvalidParameterGroup, peek().location,
+                              "Material Pass resources are engine-owned; declare Features and Material Properties.");
+                }
                 if (has_resources)
                 {
                     add_error(DiagnosticCode::DuplicateSection, peek().location,
@@ -790,6 +769,73 @@ namespace toy3d::shader
                 }
                 has_variants = true;
                 parse_variants(asset);
+            }
+            else if (match_identifier("Features"))
+            {
+                if (has_features || asset.usage != ShaderUsage::Material)
+                {
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "Features are declared once on Material sources.");
+                }
+                has_features = true;
+                parse_features(asset);
+            }
+            else if (match_identifier("SurfaceInputs"))
+            {
+                if (has_surface_inputs || asset.geometry != ShaderGeometryMode::Standard)
+                {
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "SurfaceInputs occur once on a Standard source.");
+                }
+                has_surface_inputs = true;
+                expect(TokenKind::LeftBrace, "Expected '{' after SurfaceInputs.");
+                while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+                {
+                    const Token input = consume();
+                    if (input.kind != TokenKind::Identifier || input.text != "Tangent" || asset.standard_tangent_input)
+                    {
+                        add_error(DiagnosticCode::InvalidShaderName, input.location,
+                                  "Unknown or duplicate SurfaceInput; supported input is Tangent.");
+                    }
+                    asset.standard_tangent_input = true;
+                }
+                expect(TokenKind::RightBrace, "Expected '}' after SurfaceInputs.");
+            }
+            else if (match_identifier("GeometryRequirements"))
+            {
+                if (has_geometry_requirements || asset.usage == ShaderUsage::Global)
+                {
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "GeometryRequirements occur once on a mesh source.");
+                }
+                has_geometry_requirements = true;
+                expect(TokenKind::LeftBrace, "Expected '{' after GeometryRequirements.");
+                while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+                {
+                    const Token requirement = consume();
+                    if (requirement.kind != TokenKind::Identifier || requirement.text != "TangentFrame" ||
+                        asset.declares_tangent_frame)
+                    {
+                        add_error(DiagnosticCode::InvalidShaderName, requirement.location,
+                                  "Unknown or duplicate GeometryRequirement; supported requirement is TangentFrame.");
+                    }
+                    asset.declares_tangent_frame = true;
+                    if (match_identifier("When"))
+                    {
+                        parse_static_condition(asset.tangent_frame_when);
+                    }
+                }
+                expect(TokenKind::RightBrace, "Expected '}' after GeometryRequirements.");
+            }
+            else if (match_identifier("SupportedWhen"))
+            {
+                if (has_supported_when)
+                {
+                    add_error(DiagnosticCode::DuplicateSection, peek().location,
+                              "SupportedWhen may only be declared once.");
+                }
+                has_supported_when = true;
+                parse_static_condition(asset.supported_when);
             }
             else if (match_identifier("HLSLINCLUDE"))
             {
@@ -823,6 +869,12 @@ namespace toy3d::shader
             add_error(DiagnosticCode::MissingEntryPoint, asset.location,
                       "Shader asset must contain at least one Pass.");
         }
+        if (asset.declares_tangent_frame && asset.geometry == ShaderGeometryMode::Standard &&
+            !asset.standard_tangent_input)
+        {
+            add_error(DiagnosticCode::InvalidShaderName, asset.location,
+                      "Standard TangentFrame requires SurfaceInputs { Tangent }.");
+        }
         bool has_forward = false;
         std::unordered_set<std::uint32_t> roles;
         for (const ShaderPass& pass : asset.passes)
@@ -830,6 +882,8 @@ namespace toy3d::shader
             ShaderProgramContract contract;
             contract.usage = asset.usage;
             contract.geometry = asset.geometry;
+            contract.surface_mode = asset.geometry == ShaderGeometryMode::Standard ? ShaderSurfaceMode::Opaque
+                                                                                   : ShaderSurfaceMode::Explicit;
             contract.role = pass.role;
             contract.vertex_factory_support = asset.vertex_factory_support;
             contract.vertex_factory =
@@ -998,6 +1052,31 @@ namespace toy3d::shader
         expect(TokenKind::RightParenthesis, "Expected ')' after the property declaration.");
         expect(TokenKind::Equal, "Expected '=' before the property default value.");
         parse_default_value(property.default_value);
+        if (match_identifier("Usage"))
+        {
+            const auto usage = expect_identifier("Expected Color, LinearData or Normal texture usage.");
+            if (property.type != PropertyType::Texture2D || !usage)
+            {
+                add_error(DiagnosticCode::InvalidPropertyType, property.location,
+                          "Texture Usage applies to Texture2D Properties only.");
+            }
+            else if (usage->text == "Color")
+            {
+                property.texture_usage = TextureUsage::Color;
+            }
+            else if (usage->text == "LinearData")
+            {
+                property.texture_usage = TextureUsage::LinearData;
+            }
+            else if (usage->text == "Normal")
+            {
+                property.texture_usage = TextureUsage::Normal;
+            }
+            else
+            {
+                add_error(DiagnosticCode::InvalidPropertyType, usage->location, "Unknown sampled texture usage.");
+            }
+        }
         if (!duplicate)
         {
             asset.properties.push_back(std::move(property));
@@ -1215,6 +1294,11 @@ namespace toy3d::shader
             consume();
             return false;
         }
+        if (name->text == "Stages" || name->text == "Passes")
+        {
+            add_error(DiagnosticCode::ReservedIdentifier, name->location,
+                      "Stages and Passes are reserved impact annotations.");
+        }
         Variant variant;
         variant.name = name->text;
         variant.location = name->location;
@@ -1279,10 +1363,258 @@ namespace toy3d::shader
         {
             add_error(DiagnosticCode::InvalidVariant, type->location, "Unknown variant type '" + type->text + "'.");
         }
+        bool stages_declared = false;
+        bool passes_declared = false;
+        while (check_identifier("Stages") || check_identifier("Passes"))
+        {
+            const bool stages = match_identifier("Stages");
+            if (!stages)
+            {
+                match_identifier("Passes");
+            }
+            auto& declared = stages ? stages_declared : passes_declared;
+            if (declared)
+            {
+                add_error(DiagnosticCode::InvalidVariant, peek().location, "Duplicate variant impact declaration.");
+            }
+            declared = true;
+            expect(TokenKind::LeftBrace, "Expected '{' before variant impact names.");
+            std::uint32_t mask = 0u;
+            while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+            {
+                const auto value = expect_identifier("Expected a stage or mesh Pass role.");
+                if (!value)
+                {
+                    consume();
+                    break;
+                }
+                std::uint32_t bit = 0u;
+                if (stages)
+                {
+                    if (value->text == "Vertex")
+                    {
+                        bit = static_cast<std::uint32_t>(ShaderStageFlags::Vertex);
+                    }
+                    else if (value->text == "Pixel")
+                    {
+                        bit = static_cast<std::uint32_t>(ShaderStageFlags::Pixel);
+                    }
+                    else if (value->text == "Compute")
+                    {
+                        bit = static_cast<std::uint32_t>(ShaderStageFlags::Compute);
+                    }
+                }
+                else
+                {
+                    if (value->text == "Global")
+                    {
+                        bit = shader_pass_role_bit(ShaderPassRole::Global);
+                    }
+                    else if (value->text == "Forward")
+                    {
+                        bit = shader_pass_role_bit(ShaderPassRole::Forward);
+                    }
+                    else if (value->text == "ShadowDepth")
+                    {
+                        bit = shader_pass_role_bit(ShaderPassRole::ShadowDepth);
+                    }
+                    else if (value->text == "HitProxy")
+                    {
+                        bit = shader_pass_role_bit(ShaderPassRole::HitProxy);
+                    }
+                }
+                if (bit == 0u || (mask & bit) != 0u)
+                {
+                    add_error(DiagnosticCode::InvalidVariant, value->location, "Unknown or duplicate impact name.");
+                }
+                mask |= bit;
+                if (!match(TokenKind::Comma))
+                {
+                    break;
+                }
+            }
+            expect(TokenKind::RightBrace, "Expected '}' after variant impact names.");
+            if (mask == 0u)
+            {
+                add_error(DiagnosticCode::InvalidVariant, variant.location, "Variant impact cannot be empty.");
+            }
+            if (stages)
+            {
+                variant.affected_stages = static_cast<ShaderStageFlags>(mask);
+            }
+            else
+            {
+                variant.affected_passes = mask;
+            }
+        }
         if (!duplicate)
         {
             asset.variants.push_back(std::move(variant));
         }
+        return true;
+    }
+
+    bool ShaderParser::parse_features(ShaderAsset& asset)
+    {
+        if (!expect(TokenKind::LeftBrace, "Expected '{' after Features."))
+        {
+            return false;
+        }
+        while (!check(TokenKind::RightBrace) && !check(TokenKind::EndOfFile))
+        {
+            const auto name = expect_identifier("Expected an engine feature.");
+            if (!name)
+            {
+                consume();
+                return false;
+            }
+            ShaderEngineFeatureDeclaration declaration;
+            if (name->text == "Lighting")
+            {
+                declaration.feature = ShaderEngineFeature::Lighting;
+            }
+            else if (name->text == "Shadows")
+            {
+                declaration.feature = ShaderEngineFeature::Shadows;
+            }
+            else if (name->text == "Environment")
+            {
+                declaration.feature = ShaderEngineFeature::Environment;
+            }
+            else
+            {
+                add_error(DiagnosticCode::InvalidVariant, name->location,
+                          "Unknown engine feature '" + name->text + "'.");
+            }
+            if (std::any_of(asset.features.begin(), asset.features.end(),
+                            [&](const auto& existing)
+                            {
+                                return existing.feature == declaration.feature;
+                            }))
+            {
+                add_error(DiagnosticCode::InvalidVariant, name->location, "Duplicate engine feature.");
+            }
+            if (match_identifier("When") && !parse_static_condition(declaration.condition))
+            {
+                return false;
+            }
+            asset.features.push_back(std::move(declaration));
+        }
+        return expect(TokenKind::RightBrace, "Expected '}' after Features.").has_value();
+    }
+
+    bool ShaderParser::parse_static_condition(ShaderStaticCondition& condition, std::size_t depth)
+    {
+        if (depth >= max_shader_static_condition_nodes || condition.nodes.size() >= max_shader_static_condition_nodes)
+        {
+            add_error(DiagnosticCode::InvalidVariant, peek().location, "Static condition exceeds the 64-node budget.");
+            return false;
+        }
+        const auto operation = expect_identifier("Expected Equal, Profile, Capability, Not, All or Any.");
+        if (!operation || !expect(TokenKind::LeftParenthesis, "Expected '(' after static condition operation."))
+        {
+            return false;
+        }
+        ShaderStaticConditionNode node;
+        if (operation->text == "Equal")
+        {
+            const auto name = expect_identifier("Expected Material static option name.");
+            expect(TokenKind::Comma, "Expected ',' after Material static option name.");
+            const auto value = expect_identifier("Expected typed bool or enum value.");
+            if (!name || !value)
+            {
+                return false;
+            }
+            node.comparison.name = name->text;
+            if (value->text == "true" || value->text == "false")
+            {
+                node.comparison.boolean_value = value->text == "true";
+            }
+            else
+            {
+                node.comparison.kind = ShaderPermutationValueKind::Enumeration;
+                node.comparison.enum_value = value->text;
+            }
+        }
+        else if (operation->text == "Profile" || operation->text == "Capability")
+        {
+            const auto value = expect_identifier("Expected a profile or capability name.");
+            if (!value)
+            {
+                return false;
+            }
+            if (operation->text == "Profile")
+            {
+                node.operation = ShaderStaticConditionOperation::Profile;
+                if (value->text == "VulkanES31")
+                {
+                    node.profile = ShaderCompileProfile::VulkanES31;
+                }
+                else if (value->text == "D3D11FeatureLevel11_0")
+                {
+                    node.profile = ShaderCompileProfile::D3D11FeatureLevel11_0;
+                }
+                else if (value->text == "D3D12ShaderModel6")
+                {
+                    node.profile = ShaderCompileProfile::D3D12ShaderModel6;
+                }
+                else
+                {
+                    add_error(DiagnosticCode::InvalidVariant, value->location, "Unknown compile profile.");
+                }
+            }
+            else
+            {
+                node.operation = ShaderStaticConditionOperation::Capability;
+                if (value->text == "TextureCube")
+                {
+                    node.capability = ShaderStaticCapability::TextureCube;
+                }
+                else if (value->text == "ReadOnlyTypedBuffer")
+                {
+                    node.capability = ShaderStaticCapability::ReadOnlyTypedBuffer;
+                }
+                else if (value->text == "Rgba16FloatSampled")
+                {
+                    node.capability = ShaderStaticCapability::Rgba16FloatSampled;
+                }
+                else
+                {
+                    add_error(DiagnosticCode::InvalidVariant, value->location, "Unknown static capability.");
+                }
+            }
+        }
+        else if (operation->text == "Not" || operation->text == "All" || operation->text == "Any")
+        {
+            node.operation = operation->text == "Not"
+                                 ? ShaderStaticConditionOperation::Not
+                                 : (operation->text == "All" ? ShaderStaticConditionOperation::All
+                                                             : ShaderStaticConditionOperation::Any);
+            do
+            {
+                if (!parse_static_condition(condition, depth + 1u))
+                {
+                    return false;
+                }
+                ++node.argument_count;
+            } while (match(TokenKind::Comma));
+            if (node.operation == ShaderStaticConditionOperation::Not && node.argument_count != 1u)
+            {
+                add_error(DiagnosticCode::InvalidVariant, operation->location, "Not requires one argument.");
+            }
+        }
+        else
+        {
+            add_error(DiagnosticCode::InvalidVariant, operation->location, "Unknown static condition operation.");
+            return false;
+        }
+        if (!expect(TokenKind::RightParenthesis, "Expected ')' after static condition.") ||
+            condition.nodes.size() >= max_shader_static_condition_nodes)
+        {
+            add_error(DiagnosticCode::InvalidVariant, operation->location, "Invalid or oversized static condition.");
+            return false;
+        }
+        condition.nodes.push_back(std::move(node));
         return true;
     }
 
@@ -1345,6 +1677,19 @@ namespace toy3d::shader
                 if (const auto requirement = expect_identifier("Expected a capability after Requires."))
                 {
                     pass.requirements.push_back(requirement->text);
+                }
+                continue;
+            }
+            if (match_identifier("CoverageFunction"))
+            {
+                if (const auto function = expect_identifier("Expected a shared coverage function."))
+                {
+                    if (!pass.coverage_function.empty() || asset.geometry != ShaderGeometryMode::Standard)
+                    {
+                        add_error(DiagnosticCode::InvalidPassState, function->location,
+                                  "CoverageFunction is declared once and only for Standard geometry.");
+                    }
+                    pass.coverage_function = function->text;
                 }
                 continue;
             }
@@ -1497,7 +1842,7 @@ namespace toy3d::shader
         }
         else
         {
-            validate_program(pass);
+            validate_program(pass, asset.geometry);
         }
         asset.passes.push_back(std::move(pass));
         return true;
@@ -1838,7 +2183,7 @@ namespace toy3d::shader
         }
     }
 
-    void ShaderParser::validate_program(ShaderPass& pass)
+    void ShaderParser::validate_program(ShaderPass& pass, ShaderGeometryMode geometry)
     {
         const bool has_vertex = std::any_of(pass.programs.begin(), pass.programs.end(),
                                             [](const HlslBlock& block)
@@ -1858,6 +2203,17 @@ namespace toy3d::shader
                                                  return !block.entry_points.empty() &&
                                                         block.entry_points.front().stage == ShaderStage::Compute;
                                              });
+        if (geometry == ShaderGeometryMode::Standard)
+        {
+            if (pass.role != ShaderPassRole::Forward || has_vertex || has_compute || !has_pixel ||
+                pass.state.blend.enabled)
+            {
+                add_error(DiagnosticCode::MixedProgramStages, pass.location,
+                          "Standard geometry declares a Forward HLSLPS shading function; VS and other roles are "
+                          "generated, and blending is unsupported.");
+            }
+            return;
+        }
         if (pass.role != ShaderPassRole::Global &&
             (has_compute || (!has_pixel && pass.role != ShaderPassRole::ShadowDepth)))
         {
@@ -1887,6 +2243,25 @@ namespace toy3d::shader
 
     void ShaderParser::validate_identifier(ShaderAsset& asset, const Token& token, std::string_view category)
     {
+        if (asset.usage == ShaderUsage::Material)
+        {
+            for (const auto& parameter : builtin_forward_parameters)
+            {
+                if (token.text == parameter.name)
+                {
+                    add_error(DiagnosticCode::ReservedIdentifier, token.location,
+                              "Material identifier collides with an engine Forward parameter.");
+                }
+            }
+            for (const auto& resource : builtin_forward_resources)
+            {
+                if (token.text == resource.name)
+                {
+                    add_error(DiagnosticCode::ReservedIdentifier, token.location,
+                              "Material identifier collides with an engine Forward resource.");
+                }
+            }
+        }
         if (token.text.rfind("toy3d_", 0) == 0 || token.text.rfind("TOY3D_", 0) == 0)
         {
             add_error(DiagnosticCode::ReservedIdentifier, token.location,

@@ -54,6 +54,7 @@ namespace toy3d
         ShaderContentHash permutation_key = shader::default_shader_permutation_key;
         shader::ShaderPassRole role = shader::ShaderPassRole::Global;
         shader::VertexFactoryType vertex_factory = shader::VertexFactoryType::None;
+        ShaderContentHash pass_permutation_key = shader::default_shader_permutation_key;
     };
 
     struct ShaderMapBinding
@@ -105,6 +106,7 @@ namespace toy3d
         shader::ShaderGraphicsPassState graphics_pass_state;
         ShaderContentHash pass_template_hash{};
         ShaderContentHash permutation_key{};
+        ShaderContentHash pass_permutation_key = shader::default_shader_permutation_key;
         shader::ShaderParameterSchema parameter_schema;
         std::vector<ShaderMapBinding> bindings;
         std::vector<ShaderMapStage> stages;

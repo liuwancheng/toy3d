@@ -1,7 +1,9 @@
 #pragma once
 
 #include "drivers/rhi/rhi_resource.h"
+#include "misc/sha256.h"
 
+#include <map>
 #include <vector>
 
 namespace toy3d
@@ -19,7 +21,7 @@ namespace toy3d
         const std::vector<ViewInfo>& views;
         RHITextureViewRef scene_color;
         RHITextureViewRef scene_depth;
-        std::vector<RHIBindingSetRef> lighting_bindings;
+        std::vector<std::map<Sha256Hash, RHIBindingSetRef>> lighting_bindings;
         vec4 clear_color{0.0f, 0.0f, 0.0f, 1.0f};
         bool require_complete_meshes = false;
     };

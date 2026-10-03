@@ -95,9 +95,23 @@ namespace toy3d
         std::vector<SceneComponentData> components;
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.SceneAssetData", 6)
+    TOY3D_REFLECT_TYPE("toy3d.SceneEnvironmentSettings", 1)
+    struct SceneEnvironmentSettings
+    {
+        TOY3D_PROPERTY("environment", Edit)
+        AssetRef environment;
+        TOY3D_PROPERTY("rotation", Edit)
+        Quaternion rotation;
+        TOY3D_PROPERTY("intensity", Edit)
+        float intensity = 1.0f;
+    };
+    bool validate_scene_environment_settings(const SceneEnvironmentSettings& settings);
+
+    TOY3D_REFLECT_TYPE("toy3d.SceneAssetData", 7)
     struct SceneAssetData
     {
+        TOY3D_PROPERTY("environment", Edit)
+        SceneEnvironmentSettings environment;
         TOY3D_PROPERTY("actors", Edit)
         std::vector<SceneActorData> actors;
     };

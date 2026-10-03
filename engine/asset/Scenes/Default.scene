@@ -1,14 +1,23 @@
 format_version: 2
 asset_id: "cabe9641747b43c390a45de97f06de84"
 root_type: "toy3d.SceneAssetData"
-schema_version: 5
+schema_version: 7
 dependencies: []
 subresources: []
 data:
+  environment:
+    environment: null
+    rotation: [0, 0, 0, 1]
+    intensity: 1
   actors:
     -
       id: "9bf3a6c28c9d403897b7062c62a7affb"
       kind: "Cube"
+      type: toy3d.StaticMeshActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: "0e607a83b9034e008a8dc1266760c6d7"
       components:
         -
@@ -31,6 +40,11 @@ data:
     -
       id: "98b7493edef24774a14133b98b3c565b"
       kind: "Plane"
+      type: toy3d.StaticMeshActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: "f44589e97ee9433aad4cdd35759f448b"
       components:
         -
@@ -53,6 +67,11 @@ data:
     -
       id: "7911cd4e3f8c441fb2dddf7a62820f8e"
       kind: "DirectionalLight"
+      type: toy3d.DirectionalLightActor
+      properties:
+        type: toy3d.ActorSettings
+        schema_version: 1
+        value: {}
       root_component_id: "83e1d6917f9d4a4b927a650e1f799a67"
       components:
         -

@@ -69,6 +69,7 @@ namespace toy3d
         key.pass_name = program.pass_name;
         key.platform = program.platform;
         key.permutation_key = program.permutation_key;
+        key.pass_permutation_key = program.pass_permutation_key;
         key.mapping_version = program.mapping_version;
         key.logical_layout_hash = program.logical_layout_hash;
         key.target_binding_hash = program.target_binding_hash;
@@ -127,9 +128,10 @@ namespace toy3d
     bool RHIShaderProgramKey::operator==(const RHIShaderProgramKey& other) const
     {
         return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
-               permutation_key == other.permutation_key && mapping_version == other.mapping_version &&
-               logical_layout_hash == other.logical_layout_hash && target_binding_hash == other.target_binding_hash &&
-               bindings == other.bindings && stages == other.stages && vertex_inputs == other.vertex_inputs;
+               permutation_key == other.permutation_key && pass_permutation_key == other.pass_permutation_key &&
+               mapping_version == other.mapping_version && logical_layout_hash == other.logical_layout_hash &&
+               target_binding_hash == other.target_binding_hash && bindings == other.bindings &&
+               stages == other.stages && vertex_inputs == other.vertex_inputs;
     }
 
     std::size_t RHIShaderProgramKeyHash::operator()(const RHIShaderProgramKey& key) const
@@ -139,6 +141,7 @@ namespace toy3d
         hash_scalar(result, key.pass_name);
         hash_enum(result, key.platform);
         hash_content(result, key.permutation_key);
+        hash_content(result, key.pass_permutation_key);
         hash_scalar(result, key.mapping_version);
         hash_content(result, key.logical_layout_hash);
         hash_content(result, key.target_binding_hash);

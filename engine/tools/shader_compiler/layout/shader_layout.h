@@ -34,6 +34,9 @@ namespace toy3d::shader
         std::uint32_t matrix_stride = 0;
         std::vector<std::uint8_t> default_value;
         SourceLocation location;
+        // C++17 optional carries Range semantics separately from GPU packing.
+        std::optional<float> minimum_value;
+        std::optional<float> maximum_value;
     };
 
     struct ShaderParameterGroupInput
@@ -73,6 +76,7 @@ namespace toy3d::shader
         std::uint32_t array_count = 1;
         DefaultValue default_value;
         SourceLocation location;
+        TextureUsage texture_usage = TextureUsage::Color;
     };
 
     struct LogicalShaderLayout
@@ -127,6 +131,7 @@ namespace toy3d::shader
     ShaderParameterGroupInput builtin_shader_parameter_input(BindingGroup group);
     ConstantBufferPackResult pack_constant_buffer(BindingGroup group, const std::vector<ConstantMemberInput>& members);
     ShaderResourceParameter builtin_gpu_skin_resource();
+    std::vector<ShaderResourceParameter> builtin_forward_resource_inputs();
     LogicalLayoutResult compile_logical_layout(const ShaderAsset& asset,
                                                VertexFactoryType factory = VertexFactoryType::Local,
                                                ShaderPassRole role = ShaderPassRole::Forward);

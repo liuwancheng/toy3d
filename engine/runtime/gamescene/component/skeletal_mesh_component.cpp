@@ -289,7 +289,8 @@ namespace toy3d
             return false;
         }
         std::string error;
-        if (!validate_material_geometry(material->desc(), shader::VertexFactoryType::GPUSkin, true, error))
+        if (!validate_material_geometry(material->desc(), shader::VertexFactoryType::GPUSkin, true,
+                                        mesh_->asset().geometry.mesh.valid_tangent_frame, error))
         {
             TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
             return false;
@@ -319,7 +320,7 @@ namespace toy3d
         }
         std::string error;
         if (!validate_material_geometry(mesh_->material_slots()[slot]->desc(), shader::VertexFactoryType::GPUSkin, true,
-                                        error))
+                                        mesh_->asset().geometry.mesh.valid_tangent_frame, error))
         {
             TOY_LOG_ERROR("Material slot {} rejected: {}", slot, error);
             return false;

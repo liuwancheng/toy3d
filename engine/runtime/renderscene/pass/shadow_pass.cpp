@@ -118,8 +118,9 @@ namespace toy3d
                 command.pipeline = std::move(pipeline).value();
                 command.vertex_buffers = std::move(buffers);
                 command.index_buffer = batch.index_buffer_binding();
-                status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Material,
-                                                   batch.material_binding(), command.bindings.material);
+                status =
+                    resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Material,
+                                              batch.material_binding(*selected.program), command.bindings.material);
                 if (status)
                 {
                     status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::View,

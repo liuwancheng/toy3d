@@ -19,6 +19,7 @@ namespace toy3d
         vec3 position{0.0f};
         vec3 normal{0.0f, 1.0f, 0.0f};
         vec2 uv0{0.0f};
+        vec4 tangent{1.0f, 0.0f, 0.0f, 1.0f};
     };
 
     struct StaticMeshSection
@@ -41,6 +42,7 @@ namespace toy3d
         std::vector<MaterialInterfaceRef> material_slots;
         // Stable imported slot names survive geometry reconstruction and reordering.
         std::vector<std::string> material_slot_names;
+        bool valid_tangent_frame = false;
     };
 
     class StaticMesh
@@ -78,6 +80,10 @@ namespace toy3d
         {
             return material_slot_names_;
         }
+        bool has_valid_tangent_frame() const
+        {
+            return valid_tangent_frame_;
+        }
         const AxisAlignedBounds& local_bounds() const
         {
             return local_bounds_;
@@ -96,6 +102,7 @@ namespace toy3d
         std::vector<StaticMeshSection> sections_;
         std::vector<MaterialInterfaceRef> material_slots_;
         std::vector<std::string> material_slot_names_;
+        bool valid_tangent_frame_ = false;
         AxisAlignedBounds local_bounds_;
         std::unique_ptr<StaticMeshRenderData> render_data_;
     };

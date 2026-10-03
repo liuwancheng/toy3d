@@ -1,0 +1,21 @@
+format_version: 2
+asset_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa03"
+root_type: "toy3d.SceneAssetData"
+schema_version: 7
+dependencies: []
+subresources: []
+data:
+  environment:
+    environment: null
+    rotation: [0, 0, 0, 1]
+    intensity: 1
+  actors:
+    - id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa04"
+      kind: Custom
+      type: project.NativeActor
+      properties:
+        type: project.NativeSettings
+        schema_version: 1
+        value: { enabled: true }
+      root_component_id: ""
+      components: []

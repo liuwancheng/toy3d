@@ -44,6 +44,7 @@ namespace toy3d::shader
         std::string enum_default;
         ShaderStageFlags affected_stages =
             ShaderStageFlags::Vertex | ShaderStageFlags::Pixel | ShaderStageFlags::Compute;
+        std::uint32_t affected_passes = all_shader_pass_roles;
     };
 
     struct ShaderPermutationDomain
@@ -65,6 +66,7 @@ namespace toy3d::shader
         std::uint32_t variant_id_version = shader_variant_id_version;
         std::uint32_t version = shader_permutation_version;
         std::vector<ShaderPermutationRecord> records;
+        std::vector<ShaderPermutationSelection> selections;
         Sha256Hash key{};
         std::string generated_prelude;
     };
@@ -99,7 +101,12 @@ namespace toy3d::shader
 
     // None resolves the full configuration. A single stage projects the validated
     // configuration onto its declared inputs; even omitted dimensions are checked.
+    // optional distinguishes full-role normalization from a specific Pass projection.
     ShaderPermutationResolution resolve_shader_permutation(const ShaderPermutationDomain& domain,
                                                            const std::vector<ShaderPermutationSelection>& selections,
-                                                           ShaderStageFlags stage = ShaderStageFlags::None);
+                                                           ShaderStageFlags stage = ShaderStageFlags::None,
+                                                           std::optional<ShaderPassRole> role = std::nullopt);
+
+    std::string serialize_shader_permutation_domain(const ShaderPermutationDomain& domain);
+    bool parse_shader_permutation_domain(const std::string& text, ShaderPermutationDomain& domain, std::string& error);
 } // namespace toy3d::shader

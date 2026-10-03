@@ -17,7 +17,6 @@ namespace toy3d
         cast_shadows_ = cast_shadows;
         receives_shadows_ = receives_shadows;
         object_shader_parameters_.toy_object_to_world = world_transform_;
-        object_shader_parameters_.toy_receives_shadows = receives_shadows_ ? 1.0f : 0.0f;
         update_normal_transform();
     }
 
@@ -73,7 +72,6 @@ namespace toy3d
         visible_ = visible;
         cast_shadows_ = cast_shadows;
         receives_shadows_ = receives_shadows;
-        object_shader_parameters_.toy_receives_shadows = receives_shadows_ ? 1.0f : 0.0f;
     }
 
     void PrimitiveSceneProxy::update_normal_transform()

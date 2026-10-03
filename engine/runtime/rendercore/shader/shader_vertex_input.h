@@ -16,7 +16,8 @@ namespace toy3d
         BlendIndices0,
         BlendWeights0,
         BlendIndices1,
-        BlendWeights1
+        BlendWeights1,
+        Tangent0
     };
 
     // Immutable RenderCore value derived from verified vertex-stage reflection.

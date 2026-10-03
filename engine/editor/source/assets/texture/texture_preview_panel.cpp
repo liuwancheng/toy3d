@@ -354,8 +354,15 @@ namespace toy3d
             ImGui::TextWrapped("%s", path_.empty() ? "Loading Texture2D..." : path_.c_str());
             if (asset_)
             {
-                ImGui::Text("%u x %u  |  RGBA8 sRGB  |  %u Mips", asset_->width, asset_->height,
+                ImGui::Text("%u x %u  |  %s  |  %u Mips", asset_->width, asset_->height,
+                            asset_->usage == TextureUsage::Color
+                                ? "Color (sRGB)"
+                                : (asset_->usage == TextureUsage::Normal ? "Normal (+Y)" : "Linear Data"),
                             static_cast<unsigned>(asset_->mips.size()));
+            }
+            if (asset_ && reimport_callback_ && path_.compare(0u, 9u, "/Project/") == 0 && ImGui::Button("Reimport..."))
+            {
+                reimport_callback_(asset_id_, {asset_->usage, asset_->flip_green});
             }
             if (!error_.empty())
             {

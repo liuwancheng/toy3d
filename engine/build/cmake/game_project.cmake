@@ -71,6 +71,31 @@ function(toy3d_add_game_hosts module descriptor)
         endif()
         toy3d_deploy_common_resources("${TOY3D_HOST_TARGET}")
     endforeach()
+    get_filename_component(TOY3D_GAME_PROJECT_ROOT "${descriptor}" DIRECTORY)
+    set(TOY3D_GAME_SHADER_BASE "${CMAKE_BINARY_DIR}/generated/game_shader/${module}")
+    set(TOY3D_GAME_SHADER_OUTPUT "${TOY3D_GAME_SHADER_BASE}/output")
+    set(TOY3D_GAME_SHADER_WORK "${TOY3D_GAME_SHADER_BASE}/work")
+    set(TOY3D_GAME_SHADER_DEPLOY "${BINARY_ROOT_DIR}shader/${module}_player")
+    file(GLOB_RECURSE TOY3D_GAME_SHADER_INPUTS CONFIGURE_DEPENDS
+        "${TOY3D_GAME_PROJECT_ROOT}/shader/*" "${TOY3D_GAME_PROJECT_ROOT}/asset/*"
+        "${TOY3D_GAME_PROJECT_ROOT}/config/*" "${TOY3D_GAME_ENGINE_ROOT}/shader/builtin/*"
+        "${TOY3D_GAME_ENGINE_ROOT}/shader/include/*" "${TOY3D_GAME_ENGINE_ROOT}/asset/*")
+    add_custom_command(OUTPUT "${TOY3D_GAME_SHADER_BASE}/cook.stamp"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_GAME_SHADER_BASE}"
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory "${TOY3D_GAME_SHADER_OUTPUT}"
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory "${TOY3D_GAME_SHADER_WORK}"
+        COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}" cook-vulkan
+            "${TOY3D_GAME_ENGINE_ROOT}" "${TOY3D_GAME_PROJECT_ROOT}" "${TOY3D_GAME_SHADER_OUTPUT}"
+            "${TOY3D_GAME_SHADER_WORK}" Player
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory "${TOY3D_GAME_SHADER_DEPLOY}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${TOY3D_GAME_SHADER_OUTPUT}" "${TOY3D_GAME_SHADER_DEPLOY}"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${TOY3D_GAME_SHADER_BASE}/cook.stamp"
+        DEPENDS Toy3dShaderCompiler ${TOY3D_GAME_SHADER_INPUTS}
+            "${TOY3D_GAME_ENGINE_ROOT}/config/shader_build.settings" VERBATIM)
+    add_custom_target("${module}Shaders" DEPENDS "${TOY3D_GAME_SHADER_BASE}/cook.stamp")
+    set_target_properties("${module}Shaders" PROPERTIES FOLDER "Game/${module}")
+    add_dependencies("${module}Game" "${module}Shaders")
+    target_compile_definitions("${module}Game" PRIVATE "TOY3D_GAME_SHADER_ROOT=\"${TOY3D_GAME_SHADER_DEPLOY}\"")
     # A project Editor is deployed together with the Game it launches for Scene Play.
     add_dependencies("${module}Editor" "${module}Game")
 endfunction()

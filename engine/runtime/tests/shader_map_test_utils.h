@@ -8,7 +8,10 @@
 
 namespace toy3d::tests
 {
-    inline ShaderMapCollectionResult make_material_shader_map(const ShaderMapProgram& program)
+    inline ShaderMapCollectionResult make_material_shader_map(
+        const ShaderMapProgram& program, const shader::ShaderPermutationDomain& domain = {},
+        const std::vector<shader::ShaderPermutationSelection>& selections = {}, bool requires_tangent_frame = false,
+        const shader::ShaderStaticCondition& tangent_condition = {})
     {
         ShaderMapCollectionLoadResult loaded;
         auto data = program.data();
@@ -31,6 +34,10 @@ namespace toy3d::tests
         loaded.index.shader_name = data.shader_name;
         loaded.index.source_hash = sha256("mock material source");
         loaded.index.permutation_key = data.permutation_key;
+        loaded.index.material_domain = domain;
+        loaded.index.material_selections = selections;
+        loaded.index.declares_tangent_frame = requires_tangent_frame;
+        loaded.index.tangent_frame_when = tangent_condition;
         loaded.index.passes.push_back({data.pass_name, data.contract.role});
         loaded.index.programs.push_back(
             {data.pass_name, data.contract, sha256("mock entry"), sha256("mock entry content")});

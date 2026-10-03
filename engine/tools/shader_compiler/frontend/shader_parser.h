@@ -51,6 +51,8 @@ namespace toy3d::shader
         bool parse_variants(ShaderAsset& asset);
         bool parse_vertex_factories(ShaderAsset& asset);
         bool parse_variant(ShaderAsset& asset);
+        bool parse_features(ShaderAsset& asset);
+        bool parse_static_condition(ShaderStaticCondition& condition, std::size_t depth = 0u);
         bool parse_pass(ShaderAsset& asset);
         bool parse_stencil_state(ShaderPass& pass);
         bool parse_stencil_face(ShaderGraphicsPassState::StencilFaceState& face);
@@ -59,7 +61,7 @@ namespace toy3d::shader
         bool parse_default_value(DefaultValue& value);
         std::optional<double> parse_number();
         void extract_pragmas(HlslBlock& block);
-        void validate_program(ShaderPass& pass);
+        void validate_program(ShaderPass& pass, ShaderGeometryMode geometry);
         void validate_identifier(ShaderAsset& asset, const Token& token, std::string_view category);
         void add_error(DiagnosticCode code, const SourceLocation& at, std::string message);
         void copy_tokenizer_diagnostics();

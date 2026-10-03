@@ -26,7 +26,8 @@ namespace toy3d
         {
             return program.shader_name == key.shader_name && program.pass_name == key.pass_name &&
                    program.platform == key.platform && program.permutation_key == key.permutation_key &&
-                   program.contract.role == key.role && program.contract.vertex_factory == key.vertex_factory;
+                   program.contract.role == key.role && program.contract.vertex_factory == key.vertex_factory &&
+                   program.pass_permutation_key == key.pass_permutation_key;
         }
 
         shader::BindingGroup to_shader_group(RHIBindingGroup group)
@@ -372,7 +373,8 @@ namespace toy3d
         {
             return result;
         }
-        if (key.shader_name.empty() || key.pass_name.empty() || hash_is_zero(key.permutation_key))
+        if (key.shader_name.empty() || key.pass_name.empty() ||
+            (hash_is_zero(key.permutation_key) || hash_is_zero(key.pass_permutation_key)))
         {
             result.error = "ShaderMap key requires shader/pass names and a permutation key.";
             return result;
@@ -387,7 +389,7 @@ namespace toy3d
             !shader::is_valid_shader_graphics_pass_state(program.graphics_pass_state) ||
             shader::calculate_shader_graphics_pass_state_hash(program.graphics_pass_state) !=
                 program.pass_template_hash ||
-            hash_is_zero(program.permutation_key))
+            (hash_is_zero(program.permutation_key) || hash_is_zero(program.pass_permutation_key)))
         {
             result.error = "ShaderMap program contains an invalid version or stable hash.";
             return result;

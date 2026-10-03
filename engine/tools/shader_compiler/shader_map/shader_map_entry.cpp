@@ -69,6 +69,76 @@ namespace toy3d::shader
             return true;
         }
 
+        bool publish_stage_code(PlatformFile& files, const PhysicalPath& root, const ShaderCodeEntry& code)
+        {
+            const auto code_root = files.join_relative(root, "stage_code");
+            if (!code_root.succeeded())
+            {
+                return false;
+            }
+            const auto root_stat = files.stat(root);
+            const auto before = files.stat(code_root.value());
+            if (!root_stat.succeeded() || root_stat.value().type != FileType::Directory ||
+                (before.succeeded() && before.value().type != FileType::Directory) ||
+                (!before.succeeded() && before.status().code != FileErrorCode::NotFound) ||
+                !files.create_directories(code_root.value()).succeeded())
+            {
+                return false;
+            }
+            const auto after = files.stat(code_root.value());
+            if (!after.succeeded() || after.value().type != FileType::Directory)
+            {
+                return false;
+            }
+            const auto hash = sha256(code.binary);
+            auto staging = create_shader_entry_staging_directory(files, code_root.value(), sha256_to_hex(hash));
+            const auto accept_existing = [&]()
+            {
+                const auto root_stat = files.stat(code_root.value());
+                if (!staging.final_directory || !root_stat.succeeded() || root_stat.value().type != FileType::Directory)
+                {
+                    return false;
+                }
+                const auto directory = files.stat(*staging.final_directory);
+                const auto path = files.join_relative(*staging.final_directory, "code.spv");
+                if (!directory.succeeded() || directory.value().type != FileType::Directory || !path.succeeded())
+                {
+                    return false;
+                }
+                const auto stat = files.stat(path.value());
+                if (!stat.succeeded() || stat.value().type != FileType::File || stat.value().size != code.binary.size())
+                {
+                    return false;
+                }
+                const auto existing = files.read_binary(path.value());
+                return existing.succeeded() && sha256(existing.value()) == hash;
+            };
+            if (staging.status.code == FileErrorCode::AlreadyExists)
+            {
+                return accept_existing();
+            }
+            if (!staging.succeeded())
+            {
+                return false;
+            }
+            const auto path = files.join_relative(*staging.staging_directory, "code.spv");
+            const bool written =
+                path.succeeded() && files.write_binary(path.value(), code.binary, FileWriteMode::CreateNew).succeeded();
+            if (!written)
+            {
+                cleanup_shader_entry_staging_directory(files, *staging.staging_directory);
+                return false;
+            }
+            const auto published =
+                publish_shader_entry_directory(files, *staging.staging_directory, *staging.final_directory);
+            if (!published.succeeded())
+            {
+                cleanup_shader_entry_staging_directory(files, *staging.staging_directory);
+                return published.code == FileErrorCode::AlreadyExists && accept_existing();
+            }
+            return true;
+        }
+
         bool validate_dependencies(const std::vector<ShaderDependency>& dependencies)
         {
             std::string previous;
@@ -125,6 +195,7 @@ namespace toy3d::shader
             calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state) != entry.pass_template_hash ||
             entry.variant_id_version != shader_variant_id_version ||
             entry.permutation_version != shader_permutation_version || hash_is_zero(entry.permutation_key) ||
+            hash_is_zero(entry.pass_permutation_key) ||
             entry.logical_layout_hash != entry.parameter_schema.logical_layout_hash ||
             !validate_shader_parameter_schema(entry.parameter_schema, schema_error) ||
             !validate_active_bindings_are_schema_subset(entry.parameter_schema, entry.bindings, schema_error))
@@ -150,8 +221,11 @@ namespace toy3d::shader
                  stage_value != static_cast<std::uint32_t>(ShaderStageFlags::Pixel) &&
                  stage_value != static_cast<std::uint32_t>(ShaderStageFlags::Compute)) ||
                 (stage_mask & stage_value) != 0u || stage.request.entry_point != stage.reflection.entry_point ||
-                stage.request.logical_layout_hash != entry.logical_layout_hash ||
-                stage.request.target_binding_hash != entry.target_binding_hash ||
+                stage.request.logical_layout_hash != calculate_shader_stage_logical_layout_hash(
+                                                         entry.parameter_schema, entry.bindings, stage.request.stage) ||
+                stage.request.target_binding_hash !=
+                    calculate_shader_stage_binding_hash(entry.target, entry.mapping_version, entry.bindings,
+                                                        stage.request.stage) ||
                 hash_is_zero(stage.request.compile_key) || hash_is_zero(stage.reflection.reflection_hash) ||
                 calculate_shader_stage_reflection_hash(stage.reflection) != stage.reflection.reflection_hash ||
                 !validate_dependencies(stage.request.dependencies))
@@ -290,6 +364,7 @@ namespace toy3d::shader
                  << "usage=" << static_cast<std::uint32_t>(entry.contract.usage) << '\n'
                  << "role=" << static_cast<std::uint32_t>(entry.contract.role) << '\n'
                  << "geometry=" << static_cast<std::uint32_t>(entry.contract.geometry) << '\n'
+                 << "surface_mode=" << static_cast<std::uint32_t>(entry.contract.surface_mode) << '\n'
                  << "vertex_factory=" << static_cast<std::uint32_t>(entry.contract.vertex_factory) << '\n'
                  << "vertex_factory_support=" << entry.contract.vertex_factory_support << '\n'
                  << "target=" << static_cast<std::uint32_t>(entry.target) << '\n'
@@ -348,6 +423,7 @@ namespace toy3d::shader
                  << "variant_id_version=" << entry.variant_id_version << '\n'
                  << "permutation_version=" << entry.permutation_version << '\n'
                  << "permutation_key=" << sha256_to_hex(entry.permutation_key) << '\n'
+                 << "pass_permutation_key=" << sha256_to_hex(entry.pass_permutation_key) << '\n'
                  << "stage_count=" << entry.stages.size() << '\n';
         std::ostringstream mapping;
         mapping << "mapping_version=" << entry.mapping_version << '\n';
@@ -392,18 +468,16 @@ namespace toy3d::shader
             stage_manifest << "stage=" << static_cast<std::uint32_t>(stage.request.stage) << '\n'
                            << "entry_point=" << stage.request.entry_point << '\n'
                            << "compile_key=" << sha256_to_hex(stage.request.compile_key) << '\n'
+                           << "logical_layout_hash=" << sha256_to_hex(stage.request.logical_layout_hash) << '\n'
+                           << "target_binding_hash=" << sha256_to_hex(stage.request.target_binding_hash) << '\n'
                            << "reflection_hash=" << sha256_to_hex(stage.reflection.reflection_hash) << '\n'
                            << "binary_hash=" << sha256_to_hex(binary_hash) << '\n'
                            << "reflection_file_hash=" << sha256_to_hex(sha256(reflection_text)) << '\n'
                            << "dependencies_file_hash=" << sha256_to_hex(sha256(dependencies_text)) << '\n';
-            const FileResult<PhysicalPath> binary_path =
-                platform_file.join_relative(*staging.staging_directory, prefix + ".spv");
-            wrote_all =
-                wrote_all && write_text(prefix + ".manifest.txt", stage_manifest.str()).succeeded() &&
-                binary_path.succeeded() &&
-                platform_file.write_binary(binary_path.value(), stage.binary, FileWriteMode::CreateNew).succeeded() &&
-                write_text(prefix + ".reflection.txt", reflection_text).succeeded() &&
-                write_text(prefix + ".dependencies.txt", dependencies_text).succeeded();
+            wrote_all = wrote_all && publish_stage_code(platform_file, shader_map_root, stage) &&
+                        write_text(prefix + ".manifest.txt", stage_manifest.str()).succeeded() &&
+                        write_text(prefix + ".reflection.txt", reflection_text).succeeded() &&
+                        write_text(prefix + ".dependencies.txt", dependencies_text).succeeded();
         }
         if (!wrote_all)
         {

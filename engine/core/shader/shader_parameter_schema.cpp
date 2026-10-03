@@ -1,6 +1,8 @@
 #include "shader/shader_map_entry.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <limits>
 #include <sstream>
 #include <string_view>
@@ -99,6 +101,49 @@ namespace toy3d::shader
             }
         }
 
+        std::string encode_bound(const std::optional<float>& bound)
+        {
+            if (!bound)
+            {
+                return "-";
+            }
+            std::uint32_t bits = 0u;
+            std::memcpy(&bits, &*bound, sizeof(bits));
+            std::vector<std::uint8_t> bytes;
+            for (std::size_t byte = 0u; byte < sizeof(bits); ++byte)
+            {
+                bytes.push_back(static_cast<std::uint8_t>(bits >> (byte * 8u)));
+            }
+            return bytes_to_hex(bytes);
+        }
+
+        bool decode_bound(std::string_view text, std::optional<float>& bound)
+        {
+            if (text == "-")
+            {
+                bound.reset();
+                return true;
+            }
+            std::vector<std::uint8_t> bytes;
+            if (!hex_to_bytes(text, bytes) || bytes.size() != sizeof(float))
+            {
+                return false;
+            }
+            std::uint32_t bits = 0u;
+            for (std::size_t byte = 0u; byte < bytes.size(); ++byte)
+            {
+                bits |= static_cast<std::uint32_t>(bytes[byte]) << (byte * 8u);
+            }
+            float value = 0.0f;
+            std::memcpy(&value, &bits, sizeof(value));
+            if (!std::isfinite(value))
+            {
+                return false;
+            }
+            bound = value;
+            return true;
+        }
+
         bool safe_name(std::string_view value)
         {
             return !value.empty() && value.size() <= 1024u &&
@@ -127,7 +172,8 @@ namespace toy3d::shader
                 output << "member\t" << buffer.binding_id << '\t' << member.parameter_id << '\t' << member.name << '\t'
                        << static_cast<std::uint32_t>(member.type) << '\t' << member.offset << '\t' << member.size
                        << '\t' << member.array_count << '\t' << member.array_stride << '\t' << member.matrix_stride
-                       << '\t' << bytes_to_hex(member.default_value) << '\n';
+                       << '\t' << bytes_to_hex(member.default_value) << '\t' << encode_bound(member.minimum_value)
+                       << '\t' << encode_bound(member.maximum_value) << '\n';
             }
         }
         for (const ShaderParameterResourceSchema& resource : schema.resources)
@@ -139,7 +185,7 @@ namespace toy3d::shader
                    << static_cast<std::uint32_t>(resource.resource_kind) << '\t'
                    << static_cast<std::uint32_t>(resource.element_type) << '\t' << resource.array_count << '\t'
                    << static_cast<std::uint32_t>(resource.default_value_kind) << '\t' << bytes_to_hex(default_bytes)
-                   << '\n';
+                   << '\t' << static_cast<std::uint32_t>(resource.texture_usage) << '\n';
         }
         return output.str();
     }
@@ -204,7 +250,7 @@ namespace toy3d::shader
                 buffer.data_layout_hash = *data_layout_hash;
                 parsed.constant_buffers.push_back(std::move(buffer));
             }
-            else if (fields[0] == "member" && fields.size() == 11u)
+            else if (fields[0] == "member" && fields.size() == 13u)
             {
                 ShaderParameterId buffer_id = 0;
                 ShaderParameterConstantMemberSchema member;
@@ -214,7 +260,9 @@ namespace toy3d::shader
                     type > static_cast<std::uint32_t>(ShaderValueType::Float32x4x4) ||
                     !parse_unsigned(fields[5], member.offset) || !parse_unsigned(fields[6], member.size) ||
                     !parse_unsigned(fields[7], member.array_count) || !parse_unsigned(fields[8], member.array_stride) ||
-                    !parse_unsigned(fields[9], member.matrix_stride) || !hex_to_bytes(fields[10], member.default_value))
+                    !parse_unsigned(fields[9], member.matrix_stride) ||
+                    !hex_to_bytes(fields[10], member.default_value) ||
+                    !decode_bound(fields[11], member.minimum_value) || !decode_bound(fields[12], member.maximum_value))
                 {
                     error = "Shader parameter schema constant member record is invalid.";
                     return false;
@@ -233,7 +281,7 @@ namespace toy3d::shader
                 member.type = static_cast<ShaderValueType>(type);
                 buffer->members.push_back(std::move(member));
             }
-            else if (fields[0] == "resource" && fields.size() == 10u)
+            else if (fields[0] == "resource" && fields.size() == 11u)
             {
                 ShaderParameterResourceSchema resource;
                 std::uint32_t group = 0;
@@ -241,6 +289,7 @@ namespace toy3d::shader
                 std::uint32_t kind = 0;
                 std::uint32_t element = 0;
                 std::uint32_t default_kind = 0;
+                std::uint32_t texture_usage = 0;
                 std::vector<std::uint8_t> default_bytes;
                 if (!parse_unsigned(fields[1], resource.parameter_id) || !safe_name(fields[2]) ||
                     !parse_unsigned(fields[3], group) || group > static_cast<std::uint32_t>(BindingGroup::Object) ||
@@ -251,7 +300,8 @@ namespace toy3d::shader
                     element > static_cast<std::uint32_t>(ShaderResourceElementType::Float4x4) ||
                     !parse_unsigned(fields[7], resource.array_count) || !parse_unsigned(fields[8], default_kind) ||
                     default_kind > static_cast<std::uint32_t>(ShaderParameterDefaultValueKind::Identifier) ||
-                    !hex_to_bytes(fields[9], default_bytes))
+                    !hex_to_bytes(fields[9], default_bytes) || !parse_unsigned(fields[10], texture_usage) ||
+                    !is_valid_texture_usage(static_cast<TextureUsage>(texture_usage)))
                 {
                     error = "Shader parameter schema resource record is invalid.";
                     return false;
@@ -263,6 +313,7 @@ namespace toy3d::shader
                 resource.element_type = static_cast<ShaderResourceElementType>(element);
                 resource.default_value_kind = static_cast<ShaderParameterDefaultValueKind>(default_kind);
                 resource.default_value.assign(default_bytes.begin(), default_bytes.end());
+                resource.texture_usage = static_cast<TextureUsage>(texture_usage);
                 parsed.resources.push_back(std::move(resource));
             }
             else

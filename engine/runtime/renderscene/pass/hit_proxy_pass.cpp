@@ -149,7 +149,7 @@ namespace toy3d
                     return pass_binding.status();
                 }
                 status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::Material,
-                                                   batch.material_binding(), draw.bindings.material);
+                                                   batch.material_binding(*selected.program), draw.bindings.material);
                 if (status)
                 {
                     status = resolve_mesh_draw_binding(device, *selected.program, RHIBindingGroup::View,

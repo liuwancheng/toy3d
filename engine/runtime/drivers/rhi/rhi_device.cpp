@@ -253,6 +253,12 @@ namespace toy3d
             return RHIResult<RHITextureRef>::failure(RHIErrorCode::Unsupported,
                                                      "Texture dimensions exceed the device limit.");
         }
+        if (desc.cube_compatible &&
+            (!capabilities().sampled_cube_textures || desc.width > limits().max_texture_dimension_cube))
+        {
+            return RHIResult<RHITextureRef>::failure(RHIErrorCode::Unsupported,
+                                                     "Cube storage exceeds this device capability or size limit.");
+        }
         if (desc.array_layers > limits().max_texture_array_layers)
         {
             return RHIResult<RHITextureRef>::failure(RHIErrorCode::Unsupported,
@@ -410,6 +416,11 @@ namespace toy3d
         {
             return RHIResult<RHITextureViewRef>::failure(
                 RHIErrorCode::Unsupported, "Unordered-access texture views are not supported by this device.");
+        }
+        if (desc.dimension == RHITextureViewDimension::TextureCubeArray && !capabilities().sampled_cube_arrays)
+        {
+            return RHIResult<RHITextureViewRef>::failure(RHIErrorCode::Unsupported,
+                                                         "Cube array sampling is not enabled.");
         }
         return finalize_creation_result(create_texture_view_impl(texture, desc), "texture view");
     }

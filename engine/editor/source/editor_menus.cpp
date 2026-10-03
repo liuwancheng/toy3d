@@ -132,6 +132,15 @@ namespace toy3d
                             TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
                         }
                     }
+                    if (ImGui::MenuItem("Import Environment...", nullptr, false,
+                                        !model_import_.active() && !material_create_.active() &&
+                                            !shader_create_.active()))
+                    {
+                        if (!texture_import_.request_environment(asset_folder_))
+                        {
+                            model_error_ = texture_import_.error();
+                        }
+                    }
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("Shaders", !play_session_.active()))

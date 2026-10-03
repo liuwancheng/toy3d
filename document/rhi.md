@@ -82,3 +82,9 @@ recreate 在 clean begin，用共享 queue idle 收尾，完整 replacement 创�
 代表测试 engine/runtime/tests/rhi_device_frontend_tests.cpp、rhi_format_tests.cpp、rhi_binding_tests.cpp、rhi_resource_state_tests.cpp、rhi_shader_program_cache_tests.cpp、rhi_viewport_status_tests.cpp、vulkan_type_mapping_tests.cpp、vulkan_device_lifecycle_tests.cpp、vulkan_swapchain_tests.cpp。mock contract 验证不能替代真实 Vulkan 渲染/最小化/重建/退出；其它后端设计评估不等于已经运行。
 
 rhi_resource_state_tests.cpp 当前直接使用 Vulkan 实现，与三个 vulkan_* 测试一样仅在 backend 开关开启时登记；其它公共 RHI 测试保持可在 backend 关闭时构建。Vulkan 测试显式声明 SDK/VMA 依赖，不从 Runtime 公共 include 中借用。
+
+## Cube 存储与过滤能力
+
+`RHITextureDesc::cube_compatible` 是不可变存储能力：方形 Texture2D、单采样、完整六层组。Cube/CubeArray ShaderResource view 必须显式使用该存储并按六层对齐；Cube 只取一组。`sampled_cube_textures`/`max_texture_dimension_cube` 控制创建；CubeArray 另检 `sampled_cube_arrays`。Vulkan 使用 CUBE_COMPATIBLE flag，并按相同 flag 查询 image format 的 extent/mips/layers 限制；可选 imageCubeArray 仅在设备支持时启用。公共接口表达 D3D11/12 可对应的存储与 view 语义，当前实现/验证不代表这些后端已运行。
+
+`RHIFormatUsage::LinearFilter` 与 Sampled 分别报告，不能由“可采样”推断浮点格式可线性过滤。上层按工作负载声明最低需求，能力不足返回 Unsupported。

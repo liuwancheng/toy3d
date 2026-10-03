@@ -32,7 +32,8 @@ namespace toy3d
         {
             std::string error;
             // Skin render data always supplies COLOR0, using white for absent authored colors.
-            if (!validate_material_geometry(materials[slot]->desc(), shader::VertexFactoryType::GPUSkin, true, error))
+            if (!validate_material_geometry(materials[slot]->desc(), shader::VertexFactoryType::GPUSkin, true,
+                                            asset.geometry.mesh.valid_tangent_frame, error))
             {
                 return AssetResult<SkeletalMeshRef>(
                     AssetStatus{AssetErrorCode::Value,

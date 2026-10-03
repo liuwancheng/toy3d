@@ -8,9 +8,12 @@
 
 namespace toy3d
 {
-    TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 2)
+    TOY3D_REFLECT_TYPE("toy3d.StaticMeshAssetData", 3)
     struct StaticMeshAssetData
     {
+        TOY3D_PROPERTY("valid_tangent_frame", Visible)
+        bool valid_tangent_frame = false;
+
         TOY3D_PROPERTY("material_slots", Visible)
         std::vector<std::string> material_slots;
 

@@ -1,12 +1,15 @@
 #pragma once
 
 #include "asset/asset_index.h"
+#include "asset/asset_catalog.h"
 #include "shader/shader_format_types.h"
+#include "shader/shader_permutation.h"
 #include "asset/material/material_asset_data.h"
 #include "material_asset_reflection.h"
 #include "asset/asset_pair.h"
 
 #include <cstddef>
+#include <map>
 
 namespace toy3d
 {
@@ -22,19 +25,39 @@ namespace toy3d
     {
         AssetRef reference;
         std::vector<MaterialParameterOverride> overrides;
+        std::vector<MaterialStaticOption> static_options;
     };
     struct MaterialAssetHierarchy
     {
         MaterialAssetData root;
         std::vector<MaterialAssetLayer> layers;
         std::vector<MaterialParameterOverride> effective_overrides(const shader::ShaderParameterSchema& schema) const;
+        std::vector<MaterialStaticOption> effective_static_options() const;
     };
+    struct MaterialShaderConfigurations
+    {
+        std::vector<std::vector<shader::ShaderPermutationSelection>> configurations;
+        std::map<std::string, Sha256Hash> descriptors;
+    };
+    // Saved asset hierarchies contribute every prefix; defaults are always requested.
+    // Descriptor hashes allow the composition root to reject changes before publication.
+    AssetResult<MaterialShaderConfigurations> collect_material_shader_configurations(const TypeRegistry& types,
+                                                                                     const FileSystem& files,
+                                                                                     const AssetCatalog& catalog,
+                                                                                     const std::string& shader_name);
+
     AssetResult<MaterialAssetHierarchy> read_material_hierarchy(const TypeRegistry& types, const FileSystem& files,
                                                                 const AssetIndex& index, const AssetRef& leaf);
 
     AssetStatus validate_material_asset(const MaterialAssetData& data, const AssetIndex* index = nullptr);
     AssetStatus validate_material_instance_asset(const MaterialInstanceAssetData& data,
                                                  const AssetIndex* index = nullptr);
+    std::vector<shader::ShaderPermutationSelection> material_static_selections(
+        const std::vector<MaterialStaticOption>& options);
+    std::vector<MaterialStaticOption> material_static_options(
+        const std::vector<shader::ShaderPermutationSelection>& selections);
+    std::vector<MaterialStaticOption> merge_material_static_options(const std::vector<MaterialStaticOption>& inherited,
+                                                                    const std::vector<MaterialStaticOption>& local);
     bool material_override_matches_schema(const MaterialParameterOverride& value,
                                           const shader::ShaderParameterSchema& schema);
     AssetStatus validate_material_overrides_schema(const std::vector<MaterialParameterOverride>& values,

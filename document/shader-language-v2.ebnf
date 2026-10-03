@@ -6,15 +6,42 @@ shader          = "Shader", shader_name, "{", "Version", "2", "Usage", usage,
                   [ mesh_geometry ],
                   { top_level_item }, "}" ;
 usage           = "Global" | "Material" | "MeshPass" ;
-mesh_geometry   = "Geometry", "Custom", "VertexFactories", "{",
+mesh_geometry   = "Geometry", ("Custom" | "Standard"), "VertexFactories", "{",
                   vertex_factory, { ",", vertex_factory }, "}" ;
 vertex_factory  = "Local" | "GPUSkin" ;
 (* mesh_geometry is mandatory for Material/MeshPass, forbidden for Global.
-   Standard wrappers, engine feature declarations and stage option effects
-   are not available in this implementation yet. *)
+   Standard accepts only Forward HLSLPS; the pixel pragma names a float4
+   shading function taking ToySurfaceInput. Compiler owns vertex/fragment entry wrappers.
+   SURFACE_MODE enum {Opaque,Masked}, when declared, selects coverage.
+   Masked requires CoverageFunction naming float(ToySurfaceInput), defined
+   in HLSLINCLUDE; negative results clip, nonnegative results remain visible.
+   Engine feature declarations below are engine-owned permissions, not
+   user-defined keywords. Shadows/Environment require a Lighting declaration. *)
 
 top_level_item  = properties | parameters | resources | variants
-                | hlsl_include | pass ;
+                | features | supported_when | surface_inputs | geometry_requirements | hlsl_include | pass ;
+
+surface_inputs  = "SurfaceInputs", "{", [ "Tangent" ], "}" ;
+geometry_requirements = "GeometryRequirements", "{", [ "TangentFrame", [ "When", static_condition ] ], "}" ;
+(* SurfaceInputs is Standard-only: fixed interpolation capability for the whole source.
+   GeometryRequirements is mesh-only: evaluates for each material configuration;
+   Standard TangentFrame requires the Tangent source input. Neither changes shader keys
+   by runtime inference. Each section occurs at most once. *)
+
+features        = "Features", "{", { engine_feature, [ "When", static_condition ] }, "}" ;
+engine_feature  = "Lighting" | "Shadows" | "Environment" ;
+supported_when  = "SupportedWhen", static_condition ;
+static_condition = "Equal", "(", identifier, ",", identifier, ")"
+                 | "Profile", "(", compile_profile, ")"
+                 | "Capability", "(", static_capability, ")"
+                 | "Not", "(", static_condition, ")"
+                 | ( "All" | "Any" ), "(", static_condition, { ",", static_condition }, ")" ;
+compile_profile = "VulkanES31" | "D3D11FeatureLevel11_0" | "D3D12ShaderModel6" ;
+static_capability = "TextureCube" | "ReadOnlyTypedBuffer" | "Rgba16FloatSampled" ;
+(* Features and SupportedWhen occur at most once. Features are Material-only.
+   Every condition branch is validated; at most 64 postfix nodes per expression.
+   Equal uses true/false for bool dimensions and an option name for enums.
+   No arbitrary HLSL expression, file operation or runtime value is allowed. *)
 
 (* Properties, Parameters, Resources and Variants may each occur at most once.
    HLSLINCLUDE and Pass may occur multiple times. At least one Pass is required.
@@ -22,7 +49,8 @@ top_level_item  = properties | parameters | resources | variants
 
 properties      = "Properties", "{", { property }, "}" ;
 property        = identifier, "(", string, ",", property_type, ")",
-                  "=", default_value ;
+                  "=", default_value, [ "Usage", texture_usage ] ;
+texture_usage   = "Color" | "LinearData" | "Normal" ;
 property_type   = numeric_property_type | texture_property_type
                 | sampler_property_type
                 | "Range", "(", number, ",", number, ")" ;
@@ -74,9 +102,15 @@ matrix_32_type  = "Float2x2" | "Float2x3" | "Float2x4"
                 | "Float4x2" | "Float4x3" | "Float4x4" ;
 
 variants        = "Variants", "{", { variant }, "}" ;
-variant         = identifier, ":", "bool", "=", boolean
-                | identifier, ":", "enum", "{", identifier,
-                  { ",", identifier }, "}", "=", identifier ;
+variant         = identifier, ":", variant_value, { variant_impact } ;
+variant_value   = "bool", "=", boolean
+                | "enum", "{", identifier, { ",", identifier }, "}", "=", identifier ;
+variant_impact  = "Stages", "{", stage_name, { ",", stage_name }, "}"
+                | "Passes", "{", pass_role, { ",", pass_role }, "}" ;
+stage_name      = "Vertex" | "Pixel" | "Compute" ;
+(* Each impact annotation occurs at most once. Names must be unique and non-empty.
+   Omitted annotation means all stages/roles. Stages and Passes are reserved variant names.
+   Macro use in expanded includes is checked against these declarations. *)
 
 pass            = "Pass", string, "{", { pass_item | hlsl_program }, "}" ;
 pass_role       = "Global" | "Forward" | "ShadowDepth" | "HitProxy" ;
@@ -85,6 +119,7 @@ pass_role       = "Global" | "Forward" | "ShadowDepth" | "HitProxy" ;
    MeshPass accepts ShadowDepth/HitProxy only. *)
 
 pass_item       = "Role", pass_role
+                | "CoverageFunction", identifier
                 | "Requires", identifier
                 | "PrimitiveTopology", topology
                 | "Cull", ( "Off" | "Front" | "Back" )
@@ -152,7 +187,9 @@ shader_name     = string ;
    - comments use // or slash-star syntax;
    - ENDHLSL ends a raw block only as the first non-whitespace token on its own
      source line;
-   - Parameters currently only accepts the Pass group; omitted parameter defaults are
+   - Parameters/Resources are only author-declared on Global sources. Material mesh
+     roles use engine-owned Pass ABI; Properties supply user Material data.
+     Parameters currently only accepts the Pass group; omitted parameter defaults are
      zero-initialized; arrays, structs and native cbuffer/register/set syntax
      are not part of v2;
    - duplicate sections, duplicate Pass state, unknown keywords, invalid masks,

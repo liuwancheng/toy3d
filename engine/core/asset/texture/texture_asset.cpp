@@ -59,10 +59,12 @@ namespace toy3d
     AssetStatus validate_texture_asset(const Texture2DAsset& texture)
     {
         if (texture.width == 0 || texture.height == 0 || texture.width > maximum_dimension ||
-            texture.height > maximum_dimension || texture.format != PixelFormat::R8G8B8A8UNormSRGB ||
+            texture.height > maximum_dimension || !texture_usage_matches_format(texture.usage, texture.format) ||
+            (texture.flip_green && texture.usage != TextureUsage::Normal) ||
             texture.mips.size() != full_mip_count(texture.width, texture.height))
         {
-            return invalid("Texture2D requires RGBA8 sRGB, bounded dimensions and a complete mip chain.");
+            return invalid(
+                "Texture2D requires an explicit compatible usage/format, bounded dimensions and a complete mip chain.");
         }
         std::size_t total = 0;
         for (std::size_t level = 0; level < texture.mips.size(); ++level)
@@ -95,6 +97,8 @@ namespace toy3d
             return AssetResult<std::vector<std::uint8_t>>(invalid("Texture2D needs a valid asset ID."));
         }
         Texture2DAssetData metadata;
+        metadata.usage = static_cast<std::uint32_t>(texture.usage);
+        metadata.flip_green = texture.flip_green;
         metadata.width = texture.width;
         metadata.height = texture.height;
         metadata.pixel_format = static_cast<std::uint32_t>(texture.format);
@@ -119,7 +123,7 @@ namespace toy3d
         AssetFileIndex index;
         index.asset_id = id;
         index.root_type = "toy3d.Texture2DAssetData";
-        index.schema_version = 1u;
+        index.schema_version = 2u;
         AssetFileLimits limits;
         limits.max_file_bytes = maximum_file;
         return encode_asset_file(std::move(index), std::move(optional_segments), limits);
@@ -134,7 +138,7 @@ namespace toy3d
         {
             return AssetResult<Texture2DAsset>(index.status());
         }
-        if (index.value().root_type != "toy3d.Texture2DAssetData" || index.value().schema_version != 1u ||
+        if (index.value().root_type != "toy3d.Texture2DAssetData" || index.value().schema_version != 2u ||
             !index.value().dependencies.empty() || !index.value().subresources.empty())
         {
             return AssetResult<Texture2DAsset>(invalid("Unsupported Texture2D asset root or dependencies."));
@@ -168,7 +172,10 @@ namespace toy3d
         Texture2DAssetData metadata;
         if (!decode_value(reader, metadata).succeeded() || !reader.at_end() || metadata.width == 0 ||
             metadata.height == 0 || metadata.width > maximum_dimension || metadata.height > maximum_dimension ||
-            metadata.pixel_format != static_cast<std::uint32_t>(PixelFormat::R8G8B8A8UNormSRGB) ||
+            metadata.pixel_format >= static_cast<std::uint32_t>(PixelFormat::Max) ||
+            !texture_usage_matches_format(static_cast<TextureUsage>(metadata.usage),
+                                          static_cast<PixelFormat>(metadata.pixel_format)) ||
+            (metadata.flip_green && metadata.usage != static_cast<std::uint32_t>(TextureUsage::Normal)) ||
             metadata.mip_count != full_mip_count(metadata.width, metadata.height))
         {
             return AssetResult<Texture2DAsset>(invalid("Texture2D metadata is invalid."));
@@ -185,7 +192,9 @@ namespace toy3d
         Texture2DAsset candidate;
         candidate.width = metadata.width;
         candidate.height = metadata.height;
-        candidate.format = PixelFormat::R8G8B8A8UNormSRGB;
+        candidate.usage = static_cast<TextureUsage>(metadata.usage);
+        candidate.flip_green = metadata.flip_green;
+        candidate.format = static_cast<PixelFormat>(metadata.pixel_format);
         candidate.mips.reserve(count);
         for (std::uint32_t level = 0; level < count; ++level)
         {
@@ -226,6 +235,8 @@ namespace toy3d
             return AssetResult<AssetPairBytes>(invalid("Texture2D needs a valid asset ID."));
         }
         Texture2DAssetData metadata;
+        metadata.usage = static_cast<std::uint32_t>(texture.usage);
+        metadata.flip_green = texture.flip_green;
         metadata.width = texture.width;
         metadata.height = texture.height;
         metadata.pixel_format = static_cast<std::uint32_t>(texture.format);
@@ -248,7 +259,7 @@ namespace toy3d
         AssetFileIndex index;
         index.asset_id = id;
         index.root_type = "toy3d.Texture2DAssetData";
-        index.schema_version = 1u;
+        index.schema_version = 2u;
         AssetFileLimits limits;
         limits.max_file_bytes = maximum_file;
         return encode_asset_pair(types, std::move(index), writer.bytes(),
@@ -271,7 +282,7 @@ namespace toy3d
             return AssetResult<Texture2DAsset>(pair.status());
         }
         const auto& description = pair.value().description;
-        if (description.index.root_type != "toy3d.Texture2DAssetData" || description.index.schema_version != 1u ||
+        if (description.index.root_type != "toy3d.Texture2DAssetData" || description.index.schema_version != 2u ||
             !description.has_meta || !description.index.dependencies.empty() || !description.index.subresources.empty())
         {
             return AssetResult<Texture2DAsset>(invalid("Unsupported Texture2D asset root or dependencies."));
@@ -280,7 +291,10 @@ namespace toy3d
         Texture2DAssetData metadata;
         if (!decode_value(reader, metadata).succeeded() || !reader.at_end() || metadata.width == 0 ||
             metadata.height == 0 || metadata.width > maximum_dimension || metadata.height > maximum_dimension ||
-            metadata.pixel_format != static_cast<std::uint32_t>(PixelFormat::R8G8B8A8UNormSRGB) ||
+            metadata.pixel_format >= static_cast<std::uint32_t>(PixelFormat::Max) ||
+            !texture_usage_matches_format(static_cast<TextureUsage>(metadata.usage),
+                                          static_cast<PixelFormat>(metadata.pixel_format)) ||
+            (metadata.flip_green && metadata.usage != static_cast<std::uint32_t>(TextureUsage::Normal)) ||
             metadata.mip_count != full_mip_count(metadata.width, metadata.height))
         {
             return AssetResult<Texture2DAsset>(invalid("Texture2D metadata is invalid."));
@@ -313,7 +327,9 @@ namespace toy3d
         Texture2DAsset candidate;
         candidate.width = metadata.width;
         candidate.height = metadata.height;
-        candidate.format = PixelFormat::R8G8B8A8UNormSRGB;
+        candidate.usage = static_cast<TextureUsage>(metadata.usage);
+        candidate.flip_green = metadata.flip_green;
+        candidate.format = static_cast<PixelFormat>(metadata.pixel_format);
         candidate.mips.reserve(count);
         for (std::uint32_t level = 0u; level < count; ++level)
         {

@@ -57,7 +57,9 @@ namespace toy3d
             desc.usage = RHIResourceUsage::VertexBuffer;
             desc.size = 16u;
             auto position = device_->create_buffer(desc);
-            desc.size = 24u;
+            // Representative Standard surface stream: normal float4, UV float2, tangent/sign float4.
+            constexpr std::uint32_t surface_stride = 10u * sizeof(float);
+            desc.size = surface_stride;
             auto surface = device_->create_buffer(desc);
             desc.size = 4u;
             auto attributes = device_->create_buffer(desc);
@@ -68,8 +70,12 @@ namespace toy3d
             representative_buffers = {position.value(), surface.value(), attributes.value()};
             std::vector<VertexStreamComponent> components = {
                 {ShaderVertexAttributeId::Position0, 0u, 0u, 16u, PixelFormat::R32G32B32A32Float, position.value()},
-                {ShaderVertexAttributeId::Normal0, 1u, 0u, 24u, PixelFormat::R32G32B32A32Float, surface.value()},
-                {ShaderVertexAttributeId::TexCoord0, 1u, 16u, 24u, PixelFormat::R32G32Float, surface.value()},
+                {ShaderVertexAttributeId::Normal0, 1u, 0u, surface_stride, PixelFormat::R32G32B32A32Float,
+                 surface.value()},
+                {ShaderVertexAttributeId::TexCoord0, 1u, 16u, surface_stride, PixelFormat::R32G32Float,
+                 surface.value()},
+                {ShaderVertexAttributeId::Tangent0, 1u, 24u, surface_stride, PixelFormat::R32G32B32A32Float,
+                 surface.value()},
                 {ShaderVertexAttributeId::Color0, 2u, 0u, 4u, PixelFormat::R8G8B8A8UNorm, attributes.value()}};
             if (data.contract.vertex_factory == shader::VertexFactoryType::Local)
             {

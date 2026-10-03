@@ -12,6 +12,7 @@ namespace toy3d
             return nullptr;
         }
         StaticMeshDesc desc;
+        desc.valid_tangent_frame = geometry.valid_tangent_frame;
         desc.vertices.reserve(geometry.vertices.size());
         desc.vertex_colors.reserve(geometry.vertices.size());
         for (const StaticMeshAssetVertex& vertex : geometry.vertices)
@@ -19,7 +20,8 @@ namespace toy3d
             // StaticMeshDesc retains legacy GLM storage; convert only at this adapter.
             desc.vertices.push_back({{vertex.position.x, vertex.position.y, vertex.position.z},
                                      {vertex.normal.x, vertex.normal.y, vertex.normal.z},
-                                     {vertex.uv0.x, vertex.uv0.y}});
+                                     {vertex.uv0.x, vertex.uv0.y},
+                                     {vertex.tangent.x, vertex.tangent.y, vertex.tangent.z, vertex.tangent.w}});
             desc.vertex_colors.push_back(vertex.color);
         }
         // C++17 variant selects the UInt32 asset payload without an untyped buffer.

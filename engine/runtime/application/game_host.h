@@ -11,6 +11,7 @@ namespace toy3d
         PhysicalPath deployment;
         PhysicalPath engine_assets;
         PhysicalPath engine_config;
+        PhysicalPath shader_deployment;
     };
     // The entry point supplies the module; no project singleton or dynamic library.
     int run_game_host(const GameHostPaths& paths, const GameModuleRegistration& module, void* native_instance);

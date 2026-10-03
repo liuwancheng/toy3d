@@ -1,4 +1,5 @@
 #include "scene/editor_play_session.h"
+#include "rendercore/texture/texture_asset_loader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,10 +19,11 @@ namespace toy3d
         stop();
     }
 
-    bool EditorPlaySession::start(const SceneAssetData& data, EditorWorkspace& workspace,
-                                  const ActorTypeRegistry& actors,
-                                  const std::function<ShaderMapCollectionRef(const std::string&)>& programs,
-                                  SceneInterface& scene)
+    bool EditorPlaySession::start(
+        const SceneAssetData& data, EditorWorkspace& workspace, const ActorTypeRegistry& actors,
+        const std::function<ShaderMapCollectionRef(const std::string&,
+                                                   const std::vector<shader::ShaderPermutationSelection>&)>& programs,
+        SceneInterface& scene)
     {
         if (active())
         {
@@ -35,7 +37,7 @@ namespace toy3d
             return false;
         }
         input_session_owned_ = true;
-        const auto program = programs("Toy3d/Surface/Phong");
+        const auto program = programs("Toy3d/Surface/Phong", {});
         if (!program || !geometry_.initialize({}, program))
         {
             error_ = "Play requires a validated published Phong Program. Recompile Shaders first.";
@@ -64,6 +66,16 @@ namespace toy3d
         materials_->set_default_material(defaults);
         world_ = std::make_unique<World>();
         SceneAssemblyServices services;
+        services.load_environment = [this, &workspace](const AssetRef& reference, std::string& error) -> TextureRef
+        {
+            const auto loaded = load_environment_asset(workspace.files(), workspace.catalog().index, reference);
+            if (!loaded.succeeded())
+            {
+                error = loaded.status().message;
+                return {};
+            }
+            return loaded.value();
+        };
         services.load_mesh = [this, &workspace](const SceneMeshData& mesh, std::string& error) -> StaticMeshRef
         {
             if (!mesh.builtin_mesh.empty())

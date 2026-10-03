@@ -3,6 +3,7 @@
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
 #include "rendercore/shader/shader_uniform_buffer.h"
+#include "rendercore/shader/shader_map_program.h"
 
 #include <algorithm>
 #include <cstring>
@@ -166,7 +167,8 @@ namespace toy3d
                 {
                     schema_buffer.members.push_back({member.parameter_id, member.name, member.type, member.offset,
                                                      member.size, member.array_count, member.array_stride,
-                                                     member.matrix_stride, member.default_value});
+                                                     member.matrix_stride, member.default_value, member.minimum_value,
+                                                     member.maximum_value});
                     reflected_members.push_back({member.parameter_id, member.name, member.type, member.offset,
                                                  member.size, member.array_stride, member.matrix_stride});
                 }
@@ -181,9 +183,10 @@ namespace toy3d
             }
             for (const ShaderParameterResourceMetadata& resource : metadata.resources)
             {
-                group_schema.resources.push_back(
-                    {resource.parameter_id, resource.name, metadata.group, resource.category, resource.resource_kind,
-                     resource.element_type, resource.array_count, resource.default_value_kind, resource.default_value});
+                group_schema.resources.push_back({resource.parameter_id, resource.name, metadata.group,
+                                                  resource.category, resource.resource_kind, resource.element_type,
+                                                  resource.array_count, resource.default_value_kind,
+                                                  resource.default_value, resource.texture_usage});
             }
             if (shader::calculate_shader_parameter_group_identity(group_schema, metadata.group) !=
                 metadata.group_identity)
@@ -572,6 +575,106 @@ namespace toy3d
         return RHIStatus::success();
     }
 
+    RHIResult<ShaderParametersMetadata> shader_parameters_metadata_for_program(const ShaderParametersMetadata& metadata,
+                                                                               const ShaderMapProgramData& program)
+    {
+        const auto valid = validate_shader_parameters_metadata(metadata);
+        if (!valid)
+        {
+            return RHIResult<ShaderParametersMetadata>::failure(valid.code(), valid.message());
+        }
+        const auto group = to_rhi_group(metadata.group);
+        const bool used = std::any_of(program.bindings.begin(), program.bindings.end(),
+                                      [group](const auto& binding)
+                                      {
+                                          return binding.group == group;
+                                      });
+        if (used)
+        {
+            const auto schema = validate_shader_parameters_group_against_schema(metadata, program.parameter_schema);
+            if (!schema)
+            {
+                return RHIResult<ShaderParametersMetadata>::failure(schema.code(), schema.message());
+            }
+        }
+        std::set<shader::ShaderParameterId> active_ids;
+        for (const auto& binding : program.bindings)
+        {
+            if (binding.group != group)
+            {
+                continue;
+            }
+            const auto resource = std::find_if(metadata.resources.begin(), metadata.resources.end(),
+                                               [&](const auto& known)
+                                               {
+                                                   return known.parameter_id == binding.parameter_id &&
+                                                          known.array_count == binding.array_count;
+                                               });
+            const bool buffer = binding.parameter_id == metadata.constant_buffer.binding_id &&
+                                binding.type == RHIResourceBindingType::UniformBuffer && binding.array_count == 1u &&
+                                binding.constant_buffer_size == metadata.constant_buffer.size &&
+                                binding.data_layout_hash == metadata.constant_buffer.data_layout_hash &&
+                                binding.shader_abi_version == metadata.constant_buffer.shader_abi_version;
+            if (!active_ids.insert(binding.parameter_id).second || (!buffer && resource == metadata.resources.end()))
+            {
+                return RHIResult<ShaderParametersMetadata>::failure(
+                    RHIErrorCode::InvalidArgument,
+                    "Program active binding does not match the full owner declarations.");
+            }
+        }
+        auto projected = metadata;
+        const auto active = [&](shader::ShaderParameterId id)
+        {
+            return std::any_of(program.bindings.begin(), program.bindings.end(),
+                               [group, id](const auto& binding)
+                               {
+                                   return binding.group == group && binding.parameter_id == id;
+                               });
+        };
+        if (!active(projected.constant_buffer.binding_id))
+        {
+            projected.constant_buffer = {};
+        }
+        projected.resources.erase(std::remove_if(projected.resources.begin(), projected.resources.end(),
+                                                 [&](const auto& resource)
+                                                 {
+                                                     return !active(resource.parameter_id);
+                                                 }),
+                                  projected.resources.end());
+        shader::ShaderParameterSchema group_schema = program.parameter_schema;
+        group_schema.constant_buffers.erase(
+            std::remove_if(group_schema.constant_buffers.begin(), group_schema.constant_buffers.end(),
+                           [&](const auto& buffer)
+                           {
+                               return buffer.group != metadata.group || !active(buffer.binding_id);
+                           }),
+            group_schema.constant_buffers.end());
+        group_schema.resources.erase(std::remove_if(group_schema.resources.begin(), group_schema.resources.end(),
+                                                    [&](const auto& resource)
+                                                    {
+                                                        return resource.group != metadata.group ||
+                                                               !active(resource.parameter_id);
+                                                    }),
+                                     group_schema.resources.end());
+        projected.group_identity = shader::calculate_shader_parameter_group_identity(group_schema, metadata.group);
+        // A validated owner may have no active values in this Program. The
+        // caller skips binding creation for that group; authored empty metadata
+        // remains invalid at the ordinary metadata admission boundary.
+        if (projected.constant_buffer.size == 0u && projected.resources.empty())
+        {
+            return RHIResult<ShaderParametersMetadata>::success(std::move(projected));
+        }
+        const auto projected_valid = validate_shader_parameters_metadata(projected);
+        if (!projected_valid)
+        {
+            return RHIResult<ShaderParametersMetadata>::failure(projected_valid.code(), projected_valid.message());
+        }
+        return RHIResult<ShaderParametersMetadata>::success(std::move(projected));
+    }
+
+    // --------------------------------------------------------------------------
+    // ShaderParameterEncoder: typed value encoding with optional active projection
+    // --------------------------------------------------------------------------
     ShaderParameterEncoder::ShaderParameterEncoder(const ShaderParametersMetadata& metadata_value)
         : metadata(metadata_value), source_schema_identity(metadata_value.schema_identity),
           source_group_identity(metadata_value.group_identity),
@@ -584,6 +687,58 @@ namespace toy3d
             return;
         }
         encoded_constant_bytes.assign(metadata_value.constant_buffer.size, 0u);
+    }
+
+    ShaderParameterEncoder::ShaderParameterEncoder(const ShaderParametersMetadata& metadata_value,
+                                                   const ShaderMapProgramData& program)
+        : ShaderParameterEncoder(metadata_value)
+    {
+        const auto projected = shader_parameters_metadata_for_program(metadata_value, program);
+        if (!projected)
+        {
+            fail(projected.status().message());
+            return;
+        }
+        active_metadata_ = projected.value();
+        source_group_identity = active_metadata_->group_identity;
+        source_data_layout_hash = active_metadata_->constant_buffer.data_layout_hash;
+        encoded_constant_bytes.assign(active_metadata_->constant_buffer.size, 0u);
+    }
+
+    const ShaderParametersMetadata& ShaderParameterEncoder::binding_metadata() const
+    {
+        return active_metadata_ ? *active_metadata_ : metadata;
+    }
+
+    bool ShaderParameterEncoder::encode_constants() const
+    {
+        return !active_metadata_ || active_metadata_->constant_buffer.size != 0u;
+    }
+
+    bool ShaderParameterEncoder::encode_resource(const ShaderParameterResourceMetadata& resource)
+    {
+        if (!active_metadata_)
+        {
+            return true;
+        }
+        const auto declared = std::find_if(metadata.resources.begin(), metadata.resources.end(),
+                                           [&](const auto& known)
+                                           {
+                                               return known.parameter_id == resource.parameter_id &&
+                                                      known.category == resource.category &&
+                                                      known.resource_kind == resource.resource_kind &&
+                                                      known.element_type == resource.element_type;
+                                           });
+        if (declared == metadata.resources.end())
+        {
+            fail("Program-bound encoding received an undeclared resource field.");
+            return false;
+        }
+        return std::any_of(active_metadata_->resources.begin(), active_metadata_->resources.end(),
+                           [&](const auto& active)
+                           {
+                               return active.parameter_id == resource.parameter_id;
+                           });
     }
 
     RHIResult<RHIBindingSetRef> create_transient_shader_binding(RHIDevice& device, RHICommandContext& context,
@@ -646,7 +801,7 @@ namespace toy3d
                                                      shader::ShaderValueType expected_type, const void* values,
                                                      std::uint32_t value_count, std::uint32_t value_size)
     {
-        if (!encoder_error.empty())
+        if (!encoder_error.empty() || !encode_constants())
         {
             return;
         }
@@ -670,7 +825,7 @@ namespace toy3d
                                                      shader::ShaderValueType expected_type, const float* values,
                                                      std::uint32_t row_count, std::uint32_t column_count)
     {
-        if (!encoder_error.empty())
+        if (!encoder_error.empty() || !encode_constants())
         {
             return;
         }
@@ -866,7 +1021,7 @@ namespace toy3d
     void ShaderParameterEncoder::add_resource(const ShaderParameterResourceMetadata& resource,
                                               const RHITextureViewRef& value)
     {
-        if (!encoder_error.empty())
+        if (!encoder_error.empty() || !encode_resource(resource))
         {
             return;
         }
@@ -882,7 +1037,7 @@ namespace toy3d
     void ShaderParameterEncoder::add_resource(const ShaderParameterResourceMetadata& resource,
                                               const RHISamplerRef& value)
     {
-        if (!encoder_error.empty())
+        if (!encoder_error.empty() || !encode_resource(resource))
         {
             return;
         }
@@ -897,7 +1052,7 @@ namespace toy3d
     void ShaderParameterEncoder::add_resource(const ShaderParameterResourceMetadata& resource,
                                               const RHIBufferRef& value)
     {
-        if (!encoder_error.empty())
+        if (!encoder_error.empty() || !encode_resource(resource))
         {
             return;
         }
@@ -914,7 +1069,7 @@ namespace toy3d
     void ShaderParameterEncoder::add_resource(const ShaderParameterResourceMetadata& resource,
                                               const RHIBufferViewRef& value)
     {
-        if (!encoder_error.empty())
+        if (!encoder_error.empty() || !encode_resource(resource))
         {
             return;
         }

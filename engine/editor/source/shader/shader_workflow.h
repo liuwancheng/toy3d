@@ -4,6 +4,7 @@
 #include "file_system/file_system.h"
 #include "file_system/native_platform_file.h"
 #include "shader/shader_editor_properties.h"
+#include "shader/shader_build_settings.h"
 #include "platform/platform_services.h"
 #include "rendercore/material/material_shader_map_validation.h"
 #include "rendercore/material/material.h"
@@ -13,6 +14,7 @@
 #include "threading/thread_manager.h"
 
 #include <map>
+#include <functional>
 #include <set>
 #include <memory>
 #include <string>
@@ -20,6 +22,8 @@
 
 namespace toy3d
 {
+    class EditorWorkspace;
+
     constexpr std::size_t maximum_registered_shader_sources = 256u;
     constexpr std::size_t maximum_shader_manifest_bytes = 64u * 1024u;
     constexpr std::size_t maximum_shader_source_bytes = 4u * 1024u * 1024u;
@@ -67,6 +71,8 @@ namespace toy3d
         PhysicalPath compiler;
         PhysicalPath toolchain;
         PhysicalPath code_executable;
+        PhysicalPath engine_build_settings;
+        PhysicalPath project_build_settings;
     };
 
     struct EditorShaderSource
@@ -74,6 +80,7 @@ namespace toy3d
         std::string name;
         VirtualPath path;
         ShaderMapCollectionRef shader_map;
+        std::map<Sha256Hash, ShaderMapCollectionRef> configurations;
         std::vector<shader::ShaderEditorProperty> properties;
         std::string pass = "Forward";
         BuiltinShaderUsage usage = BuiltinShaderUsage::Material;
@@ -92,12 +99,17 @@ namespace toy3d
         {
         }
         ~ShaderWorkflow();
+        void set_material_workspace(
+            EditorWorkspace& workspace,
+            std::function<std::vector<shader::ShaderPermutationSelection>(const std::string&)> draft = {});
+
         bool initialize(ShaderWorkflowPaths paths, MaterialRef defaults, std::string& error);
         const std::vector<EditorShaderSource>& sources() const
         {
             return sources_;
         }
-        ShaderMapCollectionRef shader_map(const std::string& name) const;
+        ShaderMapCollectionRef shader_map(const std::string& name,
+                                          const std::vector<shader::ShaderPermutationSelection>& selections = {}) const;
         const EditorShaderSource* find(const std::string& name) const;
         bool open_source(const std::string& name, std::uint32_t line = 1u, std::uint32_t column = 1u);
         bool has_error_location() const;
@@ -117,6 +129,14 @@ namespace toy3d
         std::string unavailable_reason(const std::string& name) const;
         void tick();
         void collect_validation(std::vector<MaterialShaderMapValidationRef>& requests);
+        void set_material_validation_targets(
+            std::function<bool(const std::vector<ShaderMapCollectionRef>&,
+                               std::vector<MaterialShaderMapValidationTarget>&, std::string&)>
+                collect)
+        {
+            collect_material_targets_ = std::move(collect);
+        }
+        bool validate_candidate_users(std::string& error);
         void collect_builtin_updates(std::vector<BuiltinShaderUpdateRef>& requests);
         bool busy() const
         {
@@ -126,6 +146,10 @@ namespace toy3d
         const ShaderMapCollectionRef& candidate() const
         {
             return candidate_;
+        }
+        const std::vector<ShaderMapCollectionRef>& candidate_configurations() const
+        {
+            return candidate_configurations_;
         }
         bool candidate_ready() const;
         const AssetId& origin() const
@@ -162,8 +186,10 @@ namespace toy3d
         {
             std::string name;
             ShaderMapCollectionRef shader_map;
+            std::vector<ShaderMapCollectionRef> configurations;
             std::vector<shader::ShaderEditorProperty> properties;
             Sha256Hash source_hash{};
+            Sha256Hash build_settings_hash{};
             std::map<std::string, Sha256Hash> dependencies;
             std::string relative;
         };
@@ -193,6 +219,9 @@ namespace toy3d
         bool read_sources(std::string& error);
         bool physical_source(const EditorShaderSource& source, PhysicalPath& path, std::string& error) const;
         bool load_candidate(const PhysicalPath& directory, const std::string& name, std::string& error);
+        bool validate_material_inputs(std::string& error);
+        bool validate_scene_users(std::string& error) const;
+        bool validate_build_settings(const Sha256Hash& expected, std::string& error) const;
         bool validate_interface(const ShaderMapCollection& shader_map, std::string& error) const;
         bool mount(const PhysicalPath& root, const std::string& virtual_root, bool writable, std::string& error);
         bool error_location(std::uint32_t& line, std::uint32_t& column) const;
@@ -203,6 +232,18 @@ namespace toy3d
         ShaderWorkflowPaths paths_;
         ShaderTaskStatus task_;
         MaterialRef defaults_;
+        std::function<bool(const std::vector<ShaderMapCollectionRef>&, std::vector<MaterialShaderMapValidationTarget>&,
+                           std::string&)>
+            collect_material_targets_;
+        std::vector<MaterialShaderMapValidationTarget> validated_material_targets_;
+        bool material_targets_captured_ = false;
+        std::vector<MaterialShaderMapValidationRef> completed_material_validations_;
+        EditorWorkspace* material_workspace_ = nullptr;
+        std::function<std::vector<shader::ShaderPermutationSelection>(const std::string&)> draft_configuration_;
+        std::map<std::string, Sha256Hash> material_descriptors_;
+        bool material_snapshot_ = false;
+        std::vector<std::vector<shader::ShaderPermutationSelection>> requested_configurations_;
+
         std::vector<EditorShaderSource> sources_;
         std::unique_ptr<Thread> worker_;
         std::shared_ptr<CompileResult> result_;
@@ -212,11 +253,14 @@ namespace toy3d
         std::uint64_t origin_revision_ = 0u;
         AssetId request_id_;
         Sha256Hash source_hash_{};
+        Sha256Hash build_settings_hash_{};
         PhysicalPath request_directory_;
         MaterialShaderMapValidationRef validation_;
         bool validation_sent_ = false;
         std::uint32_t validation_attempts_ = 0u;
         ShaderMapCollectionRef candidate_;
+        std::vector<ShaderMapCollectionRef> candidate_configurations_;
+        std::size_t validation_configuration_ = 0u;
         std::vector<shader::ShaderEditorProperty> candidate_properties_;
         std::map<std::string, Sha256Hash> candidate_dependencies_;
         std::string candidate_relative_;

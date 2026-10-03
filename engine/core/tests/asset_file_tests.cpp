@@ -41,6 +41,19 @@ int main()
     ValueWriter reference_writer;
     check(encode_value(reference_writer, reference).succeeded(), "asset reference encode failed");
     AssetRef restored_reference;
+    ValueWriter empty_reference_writer;
+    AssetRef empty_reference;
+    check(encode_value(empty_reference_writer, empty_reference).succeeded(), "canonical empty AssetRef must encode");
+    ValueReader empty_reference_reader(empty_reference_writer.bytes());
+    AssetRef decoded_empty_reference = reference;
+    check(decode_value(empty_reference_reader, decoded_empty_reference).succeeded() &&
+              empty_reference_reader.at_end() && !decoded_empty_reference.asset_id.valid() &&
+              decoded_empty_reference.expected_type.empty(),
+          "canonical empty AssetRef must roundtrip without becoming a dependency");
+    empty_reference.strength = AssetRefStrength::Weak;
+    ValueWriter invalid_empty_reference_writer;
+    check(!encode_value(invalid_empty_reference_writer, empty_reference).succeeded(),
+          "empty AssetRef must reject noncanonical strength");
     ValueReader reference_reader(reference_writer.bytes());
     check(decode_value(reference_reader, restored_reference).succeeded() && reference_reader.at_end() &&
               restored_reference.asset_id == id && restored_reference.expected_type == reference.expected_type &&

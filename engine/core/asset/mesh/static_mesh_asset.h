@@ -4,6 +4,7 @@
 #include "asset/mesh/static_mesh_asset_data.h"
 #include "static_mesh_reflection.h"
 #include "asset/asset_pair.h"
+#include "math/vector4.h"
 
 namespace toy3d
 {
@@ -13,6 +14,7 @@ namespace toy3d
         Vector3 normal;
         Vector2 uv0;
         std::array<std::uint8_t, 4> color{255, 255, 255, 255};
+        Vector4 tangent{1, 0, 0, 1};
     };
 
     struct StaticMeshAssetSection
@@ -28,6 +30,7 @@ namespace toy3d
         std::vector<std::uint32_t> indices;
         std::vector<StaticMeshAssetSection> sections;
         std::vector<std::string> material_slots;
+        bool valid_tangent_frame = false;
     };
 
     AssetStatus validate_static_mesh_geometry(const StaticMeshAssetGeometry& geometry);

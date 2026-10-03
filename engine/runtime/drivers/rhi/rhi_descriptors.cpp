@@ -377,6 +377,14 @@ namespace toy3d
             return RHIStatus::failure(RHIErrorCode::InvalidArgument,
                                       "Multisampled textures cannot have multiple mip levels.");
         }
+        if (desc.cube_compatible &&
+            (desc.dimension != RHIResourceDimension::Texture2D || desc.width != desc.height || desc.depth != 1u ||
+             desc.array_layers < 6u || desc.array_layers % 6u != 0u || desc.sample_count != 1u))
+        {
+            return RHIStatus::failure(
+                RHIErrorCode::InvalidArgument,
+                "Cube-compatible storage requires square 2D single-sample images with groups of six layers.");
+        }
         if (desc.dimension == RHIResourceDimension::Texture3D && desc.array_layers != 1)
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "3D textures cannot have array layers.");
@@ -478,6 +486,20 @@ namespace toy3d
         if (!range_status)
         {
             return range_status;
+        }
+        if (view_desc.dimension == RHITextureViewDimension::TextureCube ||
+            view_desc.dimension == RHITextureViewDimension::TextureCubeArray)
+        {
+            const auto layers = view_desc.subresources.layer_count == RHI_ALL_LAYERS
+                                    ? texture_desc.array_layers - view_desc.subresources.first_layer
+                                    : view_desc.subresources.layer_count;
+            if (!texture_desc.cube_compatible || view_desc.type != RHIResourceViewType::ShaderResource ||
+                view_desc.subresources.first_layer % 6u != 0u || layers % 6u != 0u ||
+                (view_desc.dimension == RHITextureViewDimension::TextureCube && layers != 6u))
+            {
+                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                          "Cube SRVs require compatible storage and aligned complete six-face groups.");
+            }
         }
         const RHIResourceUsage required_usage =
             view_desc.type == RHIResourceViewType::ShaderResource    ? RHIResourceUsage::ShaderResource

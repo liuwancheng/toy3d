@@ -2,6 +2,8 @@
 
 #include "gamescene/actor/actor.h"
 #include "gamescene/world/world_types.h"
+#include "asset/scene/scene_asset_data.h"
+#include "rendercore/texture/texture.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -65,6 +67,15 @@ namespace toy3d
             return content_revision_;
         }
         void mark_content_changed();
+        bool set_environment(SceneEnvironmentSettings settings, TextureRef cube);
+        const SceneEnvironmentSettings& environment_settings() const
+        {
+            return environment_settings_;
+        }
+        const TextureRef& environment_cube() const
+        {
+            return environment_cube_;
+        }
         bool bind_scene(SceneInterface& scene);
         bool unbind_scene();
         SceneInterface* scene_interface() const
@@ -133,5 +144,7 @@ namespace toy3d
         bool dispatching_lifecycle_ = false;
         // World observes the stable RenderCore façade; Renderer retains all scene ownership.
         SceneInterface* scene_interface_ = nullptr;
+        SceneEnvironmentSettings environment_settings_;
+        TextureRef environment_cube_;
     };
 } // namespace toy3d

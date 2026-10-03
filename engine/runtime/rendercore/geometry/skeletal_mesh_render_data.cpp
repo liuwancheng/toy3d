@@ -18,6 +18,7 @@ namespace toy3d
                 vertex.position = vec3(source.position.x, source.position.y, source.position.z);
                 vertex.normal = vec3(source.normal.x, source.normal.y, source.normal.z);
                 vertex.uv0 = vec2(source.uv0.x, source.uv0.y);
+                vertex.tangent = vec4(source.tangent.x, source.tangent.y, source.tangent.z, source.tangent.w);
                 vertices.push_back(vertex);
             }
             return vertices;
@@ -44,6 +45,7 @@ namespace toy3d
           bone_maps_(geometry.section_bone_maps), num_bone_influences_(geometry.num_bone_influences),
           index_count_(geometry.mesh.indices.size()), valid_(validate_skeletal_mesh_geometry(geometry).succeeded())
     {
+        valid_tangent_frame_ = geometry.mesh.valid_tangent_frame;
     }
 
     std::array<RenderResource*, 5> SkeletalMeshRenderData::resources()
@@ -96,6 +98,8 @@ namespace toy3d
             {ShaderVertexAttributeId::Normal0, 1, 0, attributes_buffer_.stride(), PixelFormat::R32G32B32A32Float,
              attributes_buffer_.buffer()},
             {ShaderVertexAttributeId::TexCoord0, 1, 16, attributes_buffer_.stride(), PixelFormat::R32G32Float,
+             attributes_buffer_.buffer()},
+            {ShaderVertexAttributeId::Tangent0, 1, 24, attributes_buffer_.stride(), PixelFormat::R32G32B32A32Float,
              attributes_buffer_.buffer()},
             {ShaderVertexAttributeId::Color0, 2, 0, color_buffer_.stride(), PixelFormat::R8G8B8A8UNorm,
              color_buffer_.buffer()},

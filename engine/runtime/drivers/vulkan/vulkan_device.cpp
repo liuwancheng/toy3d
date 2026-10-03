@@ -330,6 +330,10 @@ namespace toy3d
         if ((features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0)
         {
             result.usage |= RHIFormatUsage::Sampled;
+            if ((features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0u)
+            {
+                result.usage |= RHIFormatUsage::LinearFilter;
+            }
         }
         if ((features & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0)
         {
@@ -756,6 +760,7 @@ namespace toy3d
         enabled_features.geometryShader = available_features.geometryShader;
         enabled_features.tessellationShader = available_features.tessellationShader;
         enabled_features.samplerAnisotropy = available_features.samplerAnisotropy;
+        enabled_features.imageCubeArray = available_features.imageCubeArray;
         enabled_features.fragmentStoresAndAtomics = available_features.fragmentStoresAndAtomics;
 
         std::vector<const char*> extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -802,11 +807,15 @@ namespace toy3d
         device_capabilities.timestamp_queries = properties.limits.timestampComputeAndGraphics == VK_TRUE;
         device_capabilities.async_compute_queue = false;
         device_capabilities.parallel_command_recording = false;
+        // Cube sampling/storage is part of Vulkan 1.1; CubeArray remains optional.
+        device_capabilities.sampled_cube_textures = true;
+        device_capabilities.sampled_cube_arrays = features.imageCubeArray == VK_TRUE;
 
         device_limits.max_color_attachments = properties.limits.maxColorAttachments;
         device_limits.max_vertex_buffers = properties.limits.maxVertexInputBindings;
         device_limits.max_texture_dimension_2d = properties.limits.maxImageDimension2D;
         device_limits.max_texture_array_layers = properties.limits.maxImageArrayLayers;
+        device_limits.max_texture_dimension_cube = properties.limits.maxImageDimensionCube;
         device_limits.max_uniform_buffer_size = properties.limits.maxUniformBufferRange;
         device_limits.max_binding_slots_per_group = properties.limits.maxPerStageDescriptorUniformBuffers;
         device_limits.max_dynamic_uniform_buffers = properties.limits.maxDescriptorSetUniformBuffersDynamic;

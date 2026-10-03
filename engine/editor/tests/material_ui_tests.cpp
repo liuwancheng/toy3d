@@ -121,7 +121,8 @@ int main()
     key.pass_name = "Forward";
     key.role = shader::ShaderPassRole::Forward;
     key.vertex_factory = shader::VertexFactoryType::Local;
-    const auto program = map.find_or_load_collection(key.shader_name, key.platform, key.permutation_key);
+    const auto program =
+        ShaderMapCollection::create_candidate(loader.load_default_collection(key.shader_name, key.platform));
     if (!program.succeeded())
     {
         std::cerr << program.error;

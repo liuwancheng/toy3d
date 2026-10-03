@@ -107,11 +107,17 @@ namespace
             {
                 if (!scene_ || !play_.start(
                                    snapshot_, workspace_, factory_.actor_types(),
-                                   [this](const std::string& name)
+                                   [this](const std::string& name,
+                                          const std::vector<shader::ShaderPermutationSelection>& selections)
                                    {
                                        const auto material = factory_.default_material()->material();
-                                       return name == material->desc().shader_name ? material->desc().shader_map
-                                                                                   : nullptr;
+                                       const auto map = material->desc().shader_map;
+                                       const auto selected =
+                                           shader::resolve_shader_permutation(map->index().material_domain, selections);
+                                       return name == material->desc().shader_name && selected.succeeded() &&
+                                                      selected.permutation->key == map->index().permutation_key
+                                                  ? map
+                                                  : nullptr;
                                    },
                                    *scene_))
                 {
@@ -219,10 +225,6 @@ bool check_editor_play_integration(toy3d::EditorWorkspace& workspace, void* plat
     std::string error;
     {
         toy3d::Engine engine;
-        toy3d::ShaderLoadConfig config;
-        config.mode = toy3d::ShaderLoadMode::ShaderMapEntry;
-        config.path = toy3d::PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT);
-        engine.set_shader_load_config(std::move(config));
         engine.set_application(std::make_unique<PlayIntegrationApplication>(workspace, complete, error));
         engine.init(platform_context);
         engine.main_loop();

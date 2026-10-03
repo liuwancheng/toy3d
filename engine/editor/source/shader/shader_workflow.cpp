@@ -15,8 +15,10 @@
 #include "rendercore/shader/shader_map_collection.h"
 #include "shader_parameters/toy3d_editor_hitproxy.generated.h"
 #include "shader_parameters/toy3d_shadowdepth_default.generated.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
 #include "logging/logger.h"
 #include "asset/material/material_asset.h"
+#include "workspace/editor_workspace.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/material/material_asset_builder.h"
 #include "misc/utf8.h"
@@ -68,6 +70,40 @@ namespace toy3d
         shutdown();
     }
 
+    void ShaderWorkflow::set_material_workspace(
+        EditorWorkspace& workspace,
+        std::function<std::vector<shader::ShaderPermutationSelection>(const std::string&)> draft)
+    {
+        material_workspace_ = &workspace;
+        draft_configuration_ = std::move(draft);
+    }
+
+    bool ShaderWorkflow::validate_material_inputs(std::string& error)
+    {
+        if (!material_workspace_ || !material_snapshot_)
+        {
+            return true;
+        }
+        if (!material_workspace_->refresh())
+        {
+            error = material_workspace_->error();
+            return false;
+        }
+        const auto gathered = collect_material_shader_configurations(
+            material_workspace_->types(), material_workspace_->files(), material_workspace_->catalog(), request_name_);
+        if (!gathered.succeeded())
+        {
+            error = gathered.status().message;
+            return false;
+        }
+        if (gathered.value().descriptors != material_descriptors_)
+        {
+            error = "Material descriptors changed during compilation. Recompile the current saved configuration graph.";
+            return false;
+        }
+        return true;
+    }
+
     bool ShaderWorkflow::mount(const PhysicalPath& root, const std::string& name, bool writable, std::string& error)
     {
         DirectoryFileStoreDesc desc;
@@ -102,6 +138,12 @@ namespace toy3d
     bool ShaderWorkflow::initialize(ShaderWorkflowPaths paths, MaterialRef defaults, std::string& error)
     {
         paths_ = std::move(paths);
+        shader::ShaderBuildSettings settings;
+        if (!shader::read_shader_build_settings(platform_, paths_.engine_build_settings, paths_.project_build_settings,
+                                                settings, error))
+        {
+            return false;
+        }
         defaults_ = std::move(defaults);
         if (!defaults_ || !defaults_->desc().shader_map)
         {
@@ -307,6 +349,7 @@ namespace toy3d
                 // A malformed edit does not invalidate a previously published
                 // Program. Conflicting/deleted identities cannot revive it.
                 source.shader_map = old->shader_map;
+                source.configurations = old->configurations;
                 source.properties = old->properties;
                 if (source.discovery_error.empty())
                 {
@@ -329,10 +372,22 @@ namespace toy3d
         }
         return nullptr;
     }
-    ShaderMapCollectionRef ShaderWorkflow::shader_map(const std::string& name) const
+    ShaderMapCollectionRef ShaderWorkflow::shader_map(
+        const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections) const
     {
         const auto* source = find(name);
-        return source ? source->shader_map : nullptr;
+        if (!source || !source->shader_map)
+        {
+            return {};
+        }
+        const auto configuration =
+            shader::resolve_shader_permutation(source->shader_map->index().material_domain, selections);
+        if (!configuration.succeeded())
+        {
+            return {};
+        }
+        const auto found = source->configurations.find(configuration.permutation->key);
+        return found == source->configurations.end() ? nullptr : found->second;
     }
 
     bool ShaderWorkflow::physical_source(const EditorShaderSource& source, PhysicalPath& output,
@@ -517,11 +572,68 @@ namespace toy3d
             error_ = "Unable to resolve Shader compile output paths.";
             return request_failed("Recompile", name);
         }
-        std::vector<std::string> arguments = {"--toolchain-root",      paths_.toolchain.utf8(),
-                                              "compile-vulkan",        physical.utf8(),
-                                              source->path.utf8(),     source->pass,
-                                              output.value().utf8(),   work.value().utf8(),
-                                              "--engine-include-root", paths_.engine_include.utf8()};
+        shader::ShaderSourceCompileRequest compile_request;
+        material_descriptors_.clear();
+        material_snapshot_ = false;
+        if (source->usage == BuiltinShaderUsage::Material && material_workspace_)
+        {
+            if (!material_workspace_->refresh())
+            {
+                error_ = material_workspace_->error();
+                return request_failed("Gather Material configurations", name);
+            }
+            const auto gathered = collect_material_shader_configurations(
+                material_workspace_->types(), material_workspace_->files(), material_workspace_->catalog(), name);
+            if (!gathered.succeeded())
+            {
+                error_ = gathered.status().message;
+                return request_failed("Gather Material configurations", name);
+            }
+            compile_request.configurations = gathered.value().configurations;
+            material_descriptors_ = gathered.value().descriptors;
+            material_snapshot_ = true;
+        }
+        if (source->usage == BuiltinShaderUsage::Material && draft_configuration_)
+        {
+            compile_request.configurations.push_back(draft_configuration_(name));
+        }
+        shader::ShaderBuildSettings settings;
+        if (!shader::read_shader_build_settings(platform_, paths_.engine_build_settings, paths_.project_build_settings,
+                                                settings, error_) ||
+            !shader::make_shader_source_compile_request(
+                settings, name, shader::ShaderTarget::VulkanSpirV, shader::ShaderCompileProfile::VulkanES31, true,
+                std::move(compile_request.configurations), compile_request, error_))
+        {
+            return request_failed("Gather Shader build policy", name);
+        }
+        build_settings_hash_ = sha256(shader::serialize_shader_build_settings(settings));
+        requested_configurations_ = compile_request.configurations;
+        const auto request_text = shader::serialize_shader_source_compile_request(compile_request);
+        const auto request_path = platform_.join_relative(request_directory_, "compile_request.txt");
+        if (request_text.empty() || !request_path.succeeded())
+        {
+            error_ = "Invalid or oversized Shader source compile request.";
+            return request_failed("Gather Material configurations", name);
+        }
+        const auto request_written =
+            platform_.write_text_utf8(request_path.value(), request_text, FileWriteMode::CreateNew);
+        if (!request_written.succeeded())
+        {
+            error_ = request_written.message;
+            return request_failed("Write compile request", name);
+        }
+        std::vector<std::string> arguments = {"--toolchain-root",
+                                              paths_.toolchain.utf8(),
+                                              "compile-vulkan",
+                                              physical.utf8(),
+                                              source->path.utf8(),
+                                              source->pass,
+                                              output.value().utf8(),
+                                              work.value().utf8(),
+                                              "--request",
+                                              request_path.value().utf8(),
+                                              "--engine-include-root",
+                                              paths_.engine_include.utf8()};
         const auto project_include = platform_.join_relative(paths_.project_shader, "include");
         if (!project_include.succeeded())
         {
@@ -644,47 +756,57 @@ namespace toy3d
                 error = "Only the current Vulkan ES3.1 Material compile target is available.";
                 return false;
             }
-            const auto reference =
-                defaults_->desc().shader_map->find(shader::ShaderPassRole::Forward, data.contract.vertex_factory);
-            if (!reference.succeeded())
+            // Full engine ABI is authoritative. A default Material's reflection may omit
+            // resources (notably Sky Cube) that another valid source actively consumes.
+            const ViewShaderParameters view;
+            const ObjectShaderParameters object;
+            const GPUSkinObjectShaderParameters skin_object;
+            const ForwardPassParameters forward;
+            const ShadowDepthPassParameters shadow;
+            const HitProxyPassParameters hit;
+            const auto& object_metadata = data.contract.vertex_factory == shader::VertexFactoryType::GPUSkin
+                                              ? shader_parameters_metadata(skin_object)
+                                              : shader_parameters_metadata(object);
+            const auto* pass_metadata = &shader_parameters_metadata(forward);
+            if (data.contract.role == shader::ShaderPassRole::ShadowDepth)
             {
-                error = reference.error;
-                return false;
+                pass_metadata = &shader_parameters_metadata(shadow);
             }
-            if (data.contract.role != shader::ShaderPassRole::Forward)
+            else if (data.contract.role == shader::ShaderPassRole::HitProxy)
             {
-                const ShadowDepthPassParameters shadow;
-                const HitProxyPassParameters hit;
-                const auto& metadata = data.contract.role == shader::ShaderPassRole::ShadowDepth
-                                           ? shader_parameters_metadata(shadow)
-                                           : shader_parameters_metadata(hit);
-                const auto status = validate_shader_parameters_group_against_schema(metadata, data.parameter_schema);
+                pass_metadata = &shader_parameters_metadata(hit);
+            }
+            const ShaderParametersMetadata* groups[] = {&shader_parameters_metadata(view), &object_metadata,
+                                                        pass_metadata};
+            for (const auto* metadata : groups)
+            {
+                const auto status = validate_shader_parameters_group_against_schema(*metadata, data.parameter_schema);
                 if (!status)
                 {
-                    error = "Material mesh Pass parameters must match the engine role: " + status.message();
+                    error = "Shader changed an engine-owned group ABI: " + status.message();
+                    return false;
+                }
+                const auto active = shader_parameters_metadata_for_program(*metadata, data);
+                if (!active)
+                {
+                    error =
+                        "Material active engine binding does not match its canonical ABI: " + active.status().message();
                     return false;
                 }
             }
-            for (const auto& binding : data.bindings)
+            for (const auto& buffer : data.parameter_schema.constant_buffers)
             {
-                if (binding.group == RHIBindingGroup::Material ||
-                    (binding.group == RHIBindingGroup::Pass && data.contract.role != shader::ShaderPassRole::Forward))
+                if (buffer.group == shader::BindingGroup::Global)
                 {
-                    continue;
+                    error = "Material cannot declare engine Global constants.";
+                    return false;
                 }
-                const auto& known = reference.program->data().bindings;
-                const auto found =
-                    std::find_if(known.begin(), known.end(),
-                                 [&binding](const ShaderMapBinding& value)
-                                 {
-                                     return value.group == binding.group && value.parameter_id == binding.parameter_id;
-                                 });
-                if (found == known.end() || found->type != binding.type || found->array_count != binding.array_count ||
-                    found->data_layout_hash != binding.data_layout_hash ||
-                    found->constant_buffer_size != binding.constant_buffer_size ||
-                    found->shader_abi_version != binding.shader_abi_version)
+            }
+            for (const auto& resource : data.parameter_schema.resources)
+            {
+                if (resource.group == shader::BindingGroup::Global)
                 {
-                    error = "Shader changed an engine-owned View, Object, Global or Forward lighting contract.";
+                    error = "Material cannot declare engine Global resources.";
                     return false;
                 }
             }
@@ -694,190 +816,258 @@ namespace toy3d
 
     bool ShaderWorkflow::load_candidate(const PhysicalPath& directory, const std::string& name, std::string& error)
     {
-        // Cache locators stay within the configured Saved/deployment roots,
-        // including when an on-disk directory is a link or junction.
         const auto canonical = platform_.canonical(directory);
         const auto saved = platform_.canonical(paths_.saved);
         const auto builtin = platform_.canonical(paths_.builtin_root);
-        if (!canonical.succeeded())
+        if (!canonical.succeeded() || !((saved.succeeded() && contains(saved.value(), canonical.value())) ||
+                                        (builtin.succeeded() && contains(builtin.value(), canonical.value()))))
         {
-            error = "Cannot resolve Shader artifacts " + directory.utf8() + ": " + canonical.status().message;
+            error = "Shader artifact directory is unavailable or escapes its configured root: " + directory.utf8();
             return false;
         }
-        if (!((saved.succeeded() && contains(saved.value(), canonical.value())) ||
-              (builtin.succeeded() && contains(builtin.value(), canonical.value()))))
-        {
-            error = "Shader artifact directory escapes its configured root: " + directory.utf8();
-            return false;
-        }
-        ShaderMapEntryLoader loader(canonical.value());
         const auto* source = find(name);
         if (!source)
         {
             error = "Shader source is not registered.";
             return false;
         }
-        ShaderMapProgramKey key{name, source->pass, ShaderPlatform::VulkanES31};
         const auto text = files_.read_text_utf8(source->path, maximum_shader_source_bytes);
         if (!text.succeeded())
         {
             error = text.status().message;
             return false;
         }
-        // Reuse the compiler's typed default selection, including nonempty
-        // domains (Unlit has USE_VERTEX_COLOR=false). An empty-domain key does
-        // not mean "default" for every Shader; never choose the first cache entry.
         const auto parsed = shader::parse_shader(text.value(), source->path.utf8());
-        if (!parsed.succeeded())
+        if (!parsed.succeeded() || parsed.asset->name != name)
         {
-            error = "Cannot parse registered Shader source.";
+            error = "Cannot parse matching registered Shader declaration.";
             for (const auto& diagnostic : parsed.diagnostics)
             {
                 error += "\n" + shader::format_diagnostic(diagnostic);
             }
             return false;
         }
-        if (parsed.asset->name != name)
+        const auto domain = shader::shader_material_domain(*parsed.asset);
+        const auto defaults = shader::resolve_shader_permutation(domain, {});
+        if (!defaults.succeeded())
         {
-            error = "Shader declaration does not match its registered name.";
+            error = "Cannot resolve Shader default configuration.";
             return false;
         }
-        const auto permutation = shader::resolve_shader_permutation(*parsed.asset, {});
-        if (!permutation.succeeded())
-        {
-            error = "Cannot resolve default Shader permutation.";
-            return false;
-        }
-        key.permutation_key = permutation.permutation->key;
-        const auto pass = std::find_if(parsed.asset->passes.begin(), parsed.asset->passes.end(),
-                                       [&](const shader::ShaderPass& value)
-                                       {
-                                           return value.name == source->pass;
-                                       });
-        if (pass == parsed.asset->passes.end())
-        {
-            error = "Registered pass is missing from Shader declaration.";
-            return false;
-        }
-        key.role = pass->role;
-        key.vertex_factory = parsed.asset->usage == shader::ShaderUsage::Global
-                                 ? shader::VertexFactoryType::None
-                                 : (shader::supports_vertex_factory(parsed.asset->vertex_factory_support,
-                                                                    shader::VertexFactoryType::Local)
-                                        ? shader::VertexFactoryType::Local
-                                        : shader::VertexFactoryType::GPUSkin);
-        auto candidate =
-            ShaderMapCollection::create_candidate(loader.load_collection(name, key.platform, key.permutation_key));
-        if (!candidate.succeeded())
-        {
-            error = candidate.error;
-            return false;
-        }
-        if (source->usage == BuiltinShaderUsage::Material && !validate_interface(*candidate.collection, error))
+        std::vector<shader::ShaderMapIndex> indices;
+        if (!shader::read_shader_map_indices(platform_, canonical.value(), name, shader::ShaderTarget::VulkanSpirV,
+                                             shader::ShaderCompileProfile::VulkanES31, indices, error))
         {
             return false;
         }
-        if (source->usage == BuiltinShaderUsage::Material)
+        if (indices.front().source_hash != sha256(text.value()) ||
+            shader::serialize_shader_permutation_domain(indices.front().material_domain) !=
+                shader::serialize_shader_permutation_domain(domain) ||
+            !indices.front().policy.editor)
         {
-            // Validate the supported material model even when no window or scene
-            // user exists yet. Reuse the runtime builder, including its resource
-            // and default-value rules, before calling a Shader ready for creation.
-            MaterialTextureValues textures;
-            for (const auto& resource : defaults_->parameter_schema().resources)
+            error = "Shader artifact source/domain/Editor policy does not match the current request. Recompile: " +
+                    source->path.utf8();
+            return false;
+        }
+        std::vector<std::vector<shader::ShaderPermutationSelection>> requested = requested_configurations_;
+        if (restoring_ && source->usage == BuiltinShaderUsage::Material && material_workspace_)
+        {
+            const auto gathered = collect_material_shader_configurations(
+                material_workspace_->types(), material_workspace_->files(), material_workspace_->catalog(), name);
+            if (!gathered.succeeded())
             {
-                const auto found = defaults_->desc().texture_defaults.find(resource.parameter_id);
-                if (found != defaults_->desc().texture_defaults.end())
-                {
-                    textures.named_defaults[resource.default_value] = found->second;
-                }
+                error = gathered.status().message;
+                return false;
             }
-            MaterialInstanceRef checked;
+            requested = gathered.value().configurations;
+        }
+        shader::ShaderBuildSettings settings;
+        shader::ShaderSourceCompileRequest expected_request;
+        if (!shader::read_shader_build_settings(platform_, paths_.engine_build_settings, paths_.project_build_settings,
+                                                settings, error) ||
+            !shader::make_shader_source_compile_request(settings, name, shader::ShaderTarget::VulkanSpirV,
+                                                        shader::ShaderCompileProfile::VulkanES31, true,
+                                                        std::move(requested), expected_request, error))
+        {
+            return false;
+        }
+        const auto settings_hash = sha256(shader::serialize_shader_build_settings(settings));
+        if ((!restoring_ && settings_hash != build_settings_hash_) ||
+            shader::serialize_shader_source_compile_request({expected_request.policy, {{}}}) !=
+                shader::serialize_shader_source_compile_request({indices.front().policy, {{}}}))
+        {
+            error = "Shader artifact family policy differs from the current build settings.";
+            return false;
+        }
+        build_settings_hash_ = settings_hash;
+        requested = std::move(expected_request.configurations);
+        requested.push_back({});
+        for (const auto& selection : requested)
+        {
+            const auto resolved = shader::resolve_shader_permutation(domain, selection);
+            if (!resolved.succeeded())
             {
-                MaterialAssetData descriptor;
-                descriptor.shader_name = name;
-                const auto built = create_material_from_asset(descriptor, candidate.collection, textures);
-                if (!built.succeeded())
-                {
-                    error = built.status().message;
-                    return false;
-                }
-                checked = built.value();
+                error = resolved.errors.front().message;
+                return false;
             }
-            MaterialInstance::release(checked);
+            if (std::none_of(indices.begin(), indices.end(),
+                             [&](const shader::ShaderMapIndex& index)
+                             {
+                                 return index.permutation_key == resolved.permutation->key;
+                             }))
+            {
+                error = "Shader artifact family is missing requested configuration " +
+                        sha256_to_hex(resolved.permutation->key);
+                return false;
+            }
         }
-        shader::ShaderMapIndex index;
-        if (!shader::read_shader_map_index(platform_, directory, name, shader::ShaderTarget::VulkanSpirV,
-                                           shader::ShaderCompileProfile::VulkanES31, key.permutation_key, index, error))
-        {
-            return false;
-        }
-        if (index.source_hash != sha256(text.value()))
-        {
-            error = "Shader source changed. Save files and recompile: " + source->path.utf8();
-            return false;
-        }
+        ShaderMapEntryLoader loader(canonical.value());
+        std::vector<ShaderMapCollectionRef> configurations;
+        ShaderMapCollectionRef default_map;
         std::vector<shader::ShaderEditorProperty> properties;
         std::map<std::string, Sha256Hash> dependencies;
-        for (const auto& record : index.programs)
+        Sha256Hash material_schema{};
+        const auto factory =
+            shader::supports_vertex_factory(parsed.asset->vertex_factory_support, shader::VertexFactoryType::Local)
+                ? shader::VertexFactoryType::Local
+                : shader::VertexFactoryType::GPUSkin;
+        for (const auto& index : indices)
         {
-            const auto verified = shader::read_verified_shader_map_entry(platform_, directory, record.entry_key);
-            if (!shader::shader_map_index_matches_entry(index, record, verified))
+            auto candidate = ShaderMapCollection::create_candidate(
+                loader.load_collection(name, ShaderPlatform::VulkanES31, index.permutation_key));
+            if (!candidate.succeeded())
             {
-                error = "Cannot verify indexed ShaderMapEntry " + sha256_to_hex(record.entry_key);
-                for (const auto& diagnostic : verified.diagnostics)
-                {
-                    error += "\n" + diagnostic;
-                }
+                error = candidate.error;
                 return false;
             }
-            for (const auto& stage : verified.entry->stages)
+            if (source->usage == BuiltinShaderUsage::Material)
             {
-                for (const auto& dependency : stage.request.dependencies)
+                if (!validate_interface(*candidate.collection, error))
                 {
-                    if (dependency.virtual_path.compare(0, 11u, "/Generated/") == 0 ||
-                        dependency.virtual_path.compare(0, 10u, "builtin://") == 0)
+                    return false;
+                }
+                const auto schema = material_parameter_schema_from_shader_schema(
+                    candidate.collection->programs().front()->data().parameter_schema);
+                if (!configurations.empty() && material_schema != schema.schema_identity)
+                {
+                    error = "Shader configurations disagree on complete Material schema.";
+                    return false;
+                }
+                material_schema = schema.schema_identity;
+                MaterialTextureValues textures;
+                for (const auto& resource : defaults_->parameter_schema().resources)
+                {
+                    const auto found = defaults_->desc().texture_defaults.find(resource.parameter_id);
+                    if (found != defaults_->desc().texture_defaults.end())
                     {
-                        continue;
+                        textures.named_defaults[resource.default_value] = found->second;
                     }
-                    const auto path = VirtualPath::parse(dependency.virtual_path);
-                    if (!path.succeeded())
+                }
+                if (material_workspace_)
+                {
+                    const auto defaults = resolve_builtin_material_texture_defaults(
+                        material_workspace_->files(), material_workspace_->catalog().index, schema, textures);
+                    if (!defaults.succeeded())
                     {
-                        error = path.status().message;
+                        error = defaults.message;
                         return false;
                     }
-                    const auto current = files_.read_text_utf8(path.value(), maximum_shader_source_bytes);
-                    if (!current.succeeded())
+                }
+                MaterialAssetData descriptor;
+                descriptor.shader_name = name;
+                descriptor.static_options = material_static_options(index.material_selections);
+                MaterialInstanceRef checked;
+                {
+                    const auto built = create_material_from_asset(descriptor, candidate.collection, textures);
+                    if (!built.succeeded())
                     {
-                        error = "Cannot read Shader dependency " + dependency.virtual_path + ": " +
-                                current.status().message;
+                        error = built.status().message;
                         return false;
                     }
-                    if (sha256(current.value()) != dependency.content_hash)
+                    checked = built.value();
+                }
+                MaterialInstance::release(checked);
+            }
+            for (const auto& record : index.programs)
+            {
+                const auto verified =
+                    shader::read_verified_shader_map_entry(platform_, canonical.value(), record.entry_key);
+                if (!shader::shader_map_index_matches_entry(index, record, verified))
+                {
+                    error = "Cannot verify indexed ShaderMapEntry " + sha256_to_hex(record.entry_key);
+                    return false;
+                }
+                for (const auto& stage : verified.entry->stages)
+                {
+                    for (const auto& dependency : stage.request.dependencies)
                     {
-                        error = "Shader dependency changed. Save files and recompile: " + dependency.virtual_path;
-                        return false;
+                        if (dependency.virtual_path.compare(0, 11u, "/Generated/") == 0 ||
+                            dependency.virtual_path.compare(0, 10u, "builtin://") == 0)
+                        {
+                            continue;
+                        }
+                        const auto path = VirtualPath::parse(dependency.virtual_path);
+                        if (!path.succeeded())
+                        {
+                            error = path.status().message;
+                            return false;
+                        }
+                        const auto current = files_.read_text_utf8(path.value(), maximum_shader_source_bytes);
+                        if (!current.succeeded() || sha256(current.value()) != dependency.content_hash)
+                        {
+                            error =
+                                "Shader dependency changed or is unavailable. Recompile: " + dependency.virtual_path;
+                            return false;
+                        }
+                        const auto previous = dependencies.find(dependency.virtual_path);
+                        if (previous != dependencies.end() && previous->second != dependency.content_hash)
+                        {
+                            error = "Shader configurations disagree on source dependency revisions.";
+                            return false;
+                        }
+                        dependencies[dependency.virtual_path] = dependency.content_hash;
                     }
-                    dependencies[dependency.virtual_path] = dependency.content_hash;
+                }
+                if (source->usage == BuiltinShaderUsage::Material &&
+                    index.permutation_key == defaults.permutation->key &&
+                    verified.entry->contract.vertex_factory == factory &&
+                    verified.entry->contract.role == shader::ShaderPassRole::Forward &&
+                    !shader::read_shader_editor_properties(
+                        platform_, *verified.entry_directory, name,
+                        candidate.collection->find(shader::ShaderPassRole::Forward, factory)
+                            .program->data()
+                            .parameter_schema,
+                        properties, error))
+                {
+                    return false;
                 }
             }
-            if (source->usage == BuiltinShaderUsage::Material &&
-                verified.entry->contract.vertex_factory == key.vertex_factory &&
-                verified.entry->contract.role == key.role && verified.entry->pass_name == key.pass_name &&
-                !shader::read_shader_editor_properties(
-                    platform_, *verified.entry_directory, name,
-                    candidate.collection->find(key.role, key.vertex_factory).program->data().parameter_schema,
-                    properties, error))
+            if (index.permutation_key == defaults.permutation->key)
             {
-                return false;
+                default_map = candidate.collection;
             }
+            configurations.push_back(std::move(candidate.collection));
         }
-        candidate_ = std::move(candidate.collection);
+        if (!default_map || !validate_material_inputs(error))
+        {
+            if (!default_map)
+            {
+                error = "Shader configuration family has no typed default configuration.";
+            }
+            return false;
+        }
+        candidate_ = std::move(default_map);
+        candidate_configurations_ = std::move(configurations);
+        validated_material_targets_.clear();
+        material_targets_captured_ = false;
+        completed_material_validations_.clear();
         candidate_properties_ = std::move(properties);
         candidate_dependencies_ = std::move(dependencies);
+        validation_configuration_ = 0u;
         if (source->usage == BuiltinShaderUsage::Material)
         {
             validation_ = std::make_shared<MaterialShaderMapValidation>();
-            validation_->shader_map = candidate_;
+            validation_->shader_map = candidate_configurations_.front();
         }
         validation_sent_ = false;
         validation_attempts_ = 0u;
@@ -971,6 +1161,12 @@ namespace toy3d
                             if (source.name == revision.name)
                             {
                                 source.shader_map = revision.shader_map;
+                                source.configurations.clear();
+                                for (const auto& configuration : revision.configurations)
+                                {
+                                    source.configurations.emplace(configuration->index().permutation_key,
+                                                                  configuration);
+                                }
                                 source.diagnostic.clear();
                             }
                         }
@@ -1097,7 +1293,7 @@ namespace toy3d
             if (validation_->status.code() == RHIErrorCode::NotReady && validation_attempts_ < 120u)
             {
                 auto next = std::make_shared<MaterialShaderMapValidation>();
-                next->shader_map = candidate_;
+                next->shader_map = candidate_configurations_[validation_configuration_];
                 validation_ = std::move(next);
                 validation_sent_ = false;
                 ++validation_attempts_;
@@ -1108,6 +1304,10 @@ namespace toy3d
                 const auto failure = validation_->status.message();
                 validation_.reset();
                 candidate_.reset();
+                candidate_configurations_.clear();
+                completed_material_validations_.clear();
+                validated_material_targets_.clear();
+                material_targets_captured_ = false;
                 const auto* source = find(request_name_);
                 if (restoring_ && saved_candidate_ && source && !source->artifacts.empty())
                 {
@@ -1127,7 +1327,17 @@ namespace toy3d
                 reject(failure);
                 return;
             }
+            completed_material_validations_.push_back(validation_);
             validation_.reset();
+            ++validation_configuration_;
+            if (validation_configuration_ < candidate_configurations_.size())
+            {
+                validation_ = std::make_shared<MaterialShaderMapValidation>();
+                validation_->shader_map = candidate_configurations_[validation_configuration_];
+                validation_sent_ = false;
+                validation_attempts_ = 0u;
+                return;
+            }
             task_.phase = ShaderTaskPhase::Publishing;
             status_ = "Shader candidate ready.";
         }
@@ -1141,9 +1351,93 @@ namespace toy3d
     {
         if (validation_ && !validation_sent_)
         {
+            if (collect_material_targets_)
+            {
+                if (!material_targets_captured_)
+                {
+                    std::string error;
+                    if (!collect_material_targets_(candidate_configurations_, validated_material_targets_, error))
+                    {
+                        reject(error);
+                        return;
+                    }
+                    material_targets_captured_ = true;
+                }
+                validation_->targets = validated_material_targets_;
+                validation_->exact_targets = true;
+            }
             requests.push_back(validation_);
             validation_sent_ = true;
         }
+    }
+
+    bool ShaderWorkflow::validate_scene_users(std::string& error) const
+    {
+        for (const auto& validation : completed_material_validations_)
+        {
+            for (const auto& revision : validation->scene_revisions)
+            {
+                if (revision.generation->load(std::memory_order_acquire) != revision.value)
+                {
+                    error = "Scene geometry, material users or caster roles changed during validation. Recompile.";
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    bool ShaderWorkflow::validate_candidate_users(std::string& error)
+    {
+        if (!validate_scene_users(error))
+        {
+            return false;
+        }
+        if (!collect_material_targets_ || !candidate_ ||
+            candidate_->programs().front()->data().contract.usage != shader::ShaderUsage::Material)
+        {
+            return true;
+        }
+        std::vector<MaterialShaderMapValidationTarget> current;
+        if (!material_targets_captured_ || !collect_material_targets_(candidate_configurations_, current, error))
+        {
+            if (error.empty())
+            {
+                error = "Material candidate users were not validated.";
+            }
+            return false;
+        }
+        const auto canonical = [](const std::vector<MaterialShaderMapValidationTarget>& values)
+        {
+            std::map<MaterialRenderProxy*, ShaderMapCollectionRef> result;
+            for (const auto& value : values)
+            {
+                result.emplace(value.proxy, value.shader_map);
+            }
+            return result;
+        };
+        if (canonical(current) != canonical(validated_material_targets_))
+        {
+            error = "Material users or their static configurations changed during validation. Recompile.";
+            return false;
+        }
+        return true;
+    }
+
+    bool ShaderWorkflow::validate_build_settings(const Sha256Hash& expected, std::string& error) const
+    {
+        shader::ShaderBuildSettings settings;
+        if (!shader::read_shader_build_settings(platform_, paths_.engine_build_settings, paths_.project_build_settings,
+                                                settings, error))
+        {
+            return false;
+        }
+        if (sha256(shader::serialize_shader_build_settings(settings)) != expected)
+        {
+            error = "Shader build settings changed during candidate preparation. Recompile.";
+            return false;
+        }
+        return true;
     }
 
     bool ShaderWorkflow::publish()
@@ -1151,6 +1445,10 @@ namespace toy3d
         if (!candidate_ || validation_)
         {
             error_ = "Shader candidate validation is incomplete.";
+            return false;
+        }
+        if (!validate_scene_users(error_))
+        {
             return false;
         }
         const auto* registered = find(request_name_);
@@ -1190,6 +1488,10 @@ namespace toy3d
                 return false;
             }
         }
+        if (!validate_build_settings(build_settings_hash_, error_) || !validate_material_inputs(error_))
+        {
+            return false;
+        }
         if (!restoring_ && !write_publication(request_name_, candidate_relative_, source_hash_))
         {
             return false;
@@ -1200,6 +1502,11 @@ namespace toy3d
             if (source.name == request_name_)
             {
                 source.shader_map = candidate_;
+                source.configurations.clear();
+                for (const auto& configuration : candidate_configurations_)
+                {
+                    source.configurations.emplace(configuration->index().permutation_key, configuration);
+                }
                 source.properties = std::move(candidate_properties_);
                 source.diagnostic.clear();
             }
@@ -1207,6 +1514,10 @@ namespace toy3d
         status_ = std::move(next_status);
         error_.clear();
         candidate_.reset();
+        candidate_configurations_.clear();
+        completed_material_validations_.clear();
+        validated_material_targets_.clear();
+        material_targets_captured_ = false;
         candidate_dependencies_.clear();
         finish_batch_item(true);
         if (!busy())
@@ -1242,6 +1553,10 @@ namespace toy3d
             TOY_LOG_ERROR("Shader [{}]: {}", request_name_, error_);
         }
         candidate_.reset();
+        candidate_configurations_.clear();
+        completed_material_validations_.clear();
+        validated_material_targets_.clear();
+        material_targets_captured_ = false;
         validation_.reset();
         candidate_properties_.clear();
         candidate_dependencies_.clear();
@@ -1262,6 +1577,10 @@ namespace toy3d
         result_.reset();
         validation_.reset();
         candidate_.reset();
+        candidate_configurations_.clear();
+        completed_material_validations_.clear();
+        validated_material_targets_.clear();
+        material_targets_captured_ = false;
         sources_.clear();
         defaults_.reset();
         restore_queue_.clear();

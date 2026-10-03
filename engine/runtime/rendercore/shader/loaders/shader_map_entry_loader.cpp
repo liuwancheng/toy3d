@@ -9,6 +9,7 @@
 #include "rendercore/shader/shader_map_collection.h"
 #include "shader/shader_map_entry.h"
 #include "shader/shader_program_contract.h"
+#include "shader/shader_deployment.h"
 
 namespace toy3d
 {
@@ -205,6 +206,7 @@ namespace toy3d
             program.graphics_pass_state = entry.graphics_pass_state;
             program.pass_template_hash = entry.pass_template_hash;
             program.permutation_key = entry.permutation_key;
+            program.pass_permutation_key = entry.pass_permutation_key;
             program.parameter_schema = entry.parameter_schema;
 
             for (const shader::ShaderMapBinding& binding : entry.bindings)
@@ -316,6 +318,129 @@ namespace toy3d
     {
     }
 
+    ShaderMapCollectionLoadResult ShaderMapEntryLoader::load_default_collection(const std::string& name,
+                                                                                ShaderPlatform platform) const
+    {
+        ShaderMapCollectionLoadResult result;
+        if (platform != ShaderPlatform::VulkanES31)
+        {
+            result.error = "Default collection loading supports Vulkan ES3.1 only.";
+            return result;
+        }
+        std::vector<shader::ShaderMapIndex> indices;
+        if (!shader::read_shader_map_indices(platform_file_, entry_root_, name, shader::ShaderTarget::VulkanSpirV,
+                                             shader::ShaderCompileProfile::VulkanES31, indices, result.error))
+        {
+            return result;
+        }
+        if (indices.empty())
+        {
+            result.error = "No published ShaderMap configurations exist for the source.";
+            return result;
+        }
+        const auto defaults = shader::resolve_shader_permutation(indices.front().material_domain, {});
+        if (!defaults.succeeded())
+        {
+            result.error = defaults.errors.front().message;
+            return result;
+        }
+        return load_collection(name, platform, defaults.permutation->key);
+    }
+
+    bool ShaderMapEntryLoader::load_family(const std::string& name, ShaderPlatform platform,
+                                           std::vector<ShaderMapCollectionRef>& configurations,
+                                           std::string& error) const
+    {
+        if (platform != ShaderPlatform::VulkanES31)
+        {
+            error = "ShaderMapEntry family loading currently supports Vulkan ES3.1 only.";
+            return false;
+        }
+        std::vector<shader::ShaderMapIndex> indices;
+        if (!shader::read_shader_map_indices(platform_file_, entry_root_, name, shader::ShaderTarget::VulkanSpirV,
+                                             shader::ShaderCompileProfile::VulkanES31, indices, error))
+        {
+            return false;
+        }
+        std::vector<ShaderMapCollectionRef> candidate;
+        Sha256Hash material_identity{};
+        for (const auto& index : indices)
+        {
+            auto loaded = ShaderMapCollection::create_candidate(load_collection(name, platform, index.permutation_key));
+            if (!loaded.succeeded())
+            {
+                error = loaded.error;
+                return false;
+            }
+            const auto& schema = loaded.collection->programs().front()->data().parameter_schema;
+            const auto identity =
+                shader::calculate_shader_parameter_group_identity(schema, shader::BindingGroup::Material);
+            if (!candidate.empty() && identity != material_identity)
+            {
+                error = "ShaderMap family configurations disagree on complete Material schema.";
+                return false;
+            }
+            material_identity = identity;
+            candidate.push_back(std::move(loaded.collection));
+        }
+        configurations = std::move(candidate);
+        return true;
+    }
+
+    bool ShaderMapEntryLoader::load_deployment(std::vector<ShaderMapCollectionRef>& configurations,
+                                               std::string& error) const
+    {
+        shader::ShaderDeployment deployment;
+        if (!shader::read_shader_deployment(platform_file_, entry_root_, deployment, error))
+        {
+            return false;
+        }
+        if (deployment.policy.target != shader::ShaderTarget::VulkanSpirV ||
+            deployment.policy.profile != shader::ShaderCompileProfile::VulkanES31)
+        {
+            error = "ShaderMap deployment loading currently supports Vulkan ES3.1 only.";
+            return false;
+        }
+        std::vector<ShaderMapCollectionRef> candidate;
+        std::size_t program_count = 0u;
+        const auto policy = shader::serialize_shader_source_compile_request({deployment.policy, {{}}});
+        for (const auto& source : deployment.sources)
+        {
+            std::vector<ShaderMapCollectionRef> family;
+            if (!load_family(source.name, ShaderPlatform::VulkanES31, family, error))
+            {
+                return false;
+            }
+            std::vector<Sha256Hash> keys;
+            for (const auto& map : family)
+            {
+                if (map->index().source_hash != source.source_hash ||
+                    shader::serialize_shader_source_compile_request({map->index().policy, {{}}}) != policy)
+                {
+                    error = "Shader deployment source/policy differs from its immutable family.";
+                    return false;
+                }
+                keys.push_back(map->index().permutation_key);
+                program_count += map->programs().size();
+                candidate.push_back(map);
+            }
+            auto expected = source.configurations;
+            std::sort(expected.begin(), expected.end());
+            if (keys != expected)
+            {
+                error = "Shader deployment is missing required source configuration coverage.";
+                return false;
+            }
+        }
+        if (program_count != deployment.required_programs)
+        {
+            error = "Shader deployment required Program coverage differs from its manifest.";
+            return false;
+        }
+        configurations = std::move(candidate);
+        return true;
+    }
+
     ShaderMapProgramLoadResult ShaderMapEntryLoader::load_program(const ShaderMapProgramKey& key) const
     {
         ShaderMapProgramLoadResult result;
@@ -331,8 +456,21 @@ namespace toy3d
             result.error = std::move(candidate.error);
             return result;
         }
-        auto selected = candidate.collection->find(key.role, key.vertex_factory,
-                                                   key.role == shader::ShaderPassRole::Global ? key.pass_name : "");
+        ShaderMapProgramResult selected;
+        for (const auto& program : candidate.collection->programs())
+        {
+            const auto& data = program->data();
+            if (data.contract.role == key.role && data.contract.vertex_factory == key.vertex_factory &&
+                data.pass_name == key.pass_name && data.pass_permutation_key == key.pass_permutation_key)
+            {
+                selected = {program, {}};
+                break;
+            }
+        }
+        if (!selected.program)
+        {
+            selected.error = "ShaderMap collection does not contain the exact requested Pass configuration.";
+        }
         if (!selected.succeeded())
         {
             result.error = std::move(selected.error);
@@ -387,6 +525,7 @@ namespace toy3d
             key.permutation_key = permutation;
             key.role = record.contract.role;
             key.vertex_factory = record.contract.vertex_factory;
+            key.pass_permutation_key = record.pass_permutation_key;
             auto validated = validate_shader_map_program(std::move(*program), key);
             if (!validated.succeeded())
             {

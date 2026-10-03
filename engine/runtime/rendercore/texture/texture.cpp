@@ -64,6 +64,16 @@ namespace toy3d
     bool TextureDesc::validate(std::string& error) const
     {
         error.clear();
+        if (!is_valid_texture_usage(usage))
+        {
+            error = "Texture has an invalid sampled-image usage";
+            return false;
+        }
+        if (cube && (width != height))
+        {
+            error = "Cube faces must be square";
+            return false;
+        }
         if (width == 0 || height == 0)
         {
             error = "Texture2D width and height must be non-zero";
@@ -109,6 +119,12 @@ namespace toy3d
                 slice_pitches[mip] % row_pitches[mip] != 0)
             {
                 error = "Texture2D mip slice pitch must cover complete padded rows";
+                return false;
+            }
+            if (cube && (slice_pitches[mip] > std::numeric_limits<std::size_t>::max() / 6u ||
+                         mip_pixels[mip].size() != slice_pitches[mip] * 6u))
+            {
+                error = "Cube mip must contain six complete face payloads";
                 return false;
             }
             if (mip_pixels[mip].size() < slice_pitches[mip])

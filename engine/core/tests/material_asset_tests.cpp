@@ -5,6 +5,8 @@
 #include <iostream>
 #include <limits>
 
+#include "asset/asset_yaml.h"
+
 namespace
 {
     void check(bool value, const char* message)
@@ -38,6 +40,7 @@ int main()
     MaterialAssetData root;
     root.shader_name = "Toy3d/Surface/Phong";
     root.two_sided = true;
+    root.static_options = {{"USE_LIGHTING", true}, {"SURFACE_MODE", std::string("Masked")}};
     root.overrides = {{"scalar", 0.5f},
                       {"uv", Vector2(2, 3)},
                       {"normal", Vector3(0, 1, 0)},
@@ -48,6 +51,7 @@ int main()
     check(bytes.succeeded(), "Typed material asset did not encode");
     auto reordered = root;
     std::reverse(reordered.overrides.begin(), reordered.overrides.end());
+    std::reverse(reordered.static_options.begin(), reordered.static_options.end());
     const auto sorted_bytes = encode_material_asset(types, root_id, reordered);
     check(sorted_bytes.succeeded() && sorted_bytes.value() == bytes.value(),
           "Override order changed deterministic bytes");
@@ -60,10 +64,37 @@ int main()
                                           bytes.value().begin() +
                                               static_cast<std::ptrdiff_t>(segment.offset + segment.length));
     ValueReader reader(typed);
+    AssetYamlDocument yaml_document;
+    yaml_document.index = inspected.value();
+    yaml_document.type_data = typed;
+    const auto yaml_bytes = encode_asset_yaml(types, yaml_document);
+    check(yaml_bytes.succeeded(), "Static enum and bool YAML encoding failed");
+    const auto yaml_restored = decode_asset_yaml(types, yaml_bytes.value());
+    check(yaml_restored.succeeded() && yaml_restored.value().type_data == typed,
+          "Static enum and bool YAML roundtrip changed typed data");
     MaterialAssetData restored;
     check(decode_value(reader, restored).succeeded() && reader.at_end() && restored.two_sided &&
               restored.shader_name == root.shader_name && restored.overrides.size() == 6u,
           "Typed material roundtrip failed");
+    check(restored.static_options.size() == 2u && std::get_if<std::string>(&restored.static_options.front().value) &&
+              *std::get_if<std::string>(&restored.static_options.front().value) == "Masked" &&
+              std::get_if<bool>(&restored.static_options.back().value) &&
+              *std::get_if<bool>(&restored.static_options.back().value),
+          "Static option kind/value roundtrip failed");
+    auto static_bad = root;
+    static_bad.static_options.push_back(static_bad.static_options.front());
+    check(!validate_material_asset(static_bad).succeeded(), "Duplicate static options accepted");
+    static_bad = root;
+    static_bad.static_options.front().value = std::string("");
+    check(!validate_material_asset(static_bad).succeeded(), "Empty enum option accepted");
+    MaterialAssetHierarchy hierarchy;
+    hierarchy.layers = {{{}, {}, root.static_options}, {{}, {}, {{"USE_LIGHTING", false}}}};
+    const auto inherited = material_static_selections(hierarchy.effective_static_options());
+    check(inherited.size() == 2u && inherited.front().enum_value == "Masked" && !inherited.back().boolean_value,
+          "Static options did not override root-to-leaf");
+    hierarchy.layers.back().static_options.clear();
+    check(material_static_selections(hierarchy.effective_static_options()).back().boolean_value,
+          "Clearing a static option failed to restore Parent selection");
     // get_if verifies that the persisted variant retained its type and exact authored value.
     check(std::get_if<Vector4>(&restored.overrides.front().value) &&
               *std::get_if<Vector4>(&restored.overrides.front().value) == Vector4(1, 0.5f, 0, 1),
@@ -81,7 +112,7 @@ int main()
     AssetFileIndex root_index;
     root_index.asset_id = root_id;
     root_index.root_type = "toy3d.MaterialAssetData";
-    root_index.schema_version = 1u;
+    root_index.schema_version = 2u;
     const auto root_path = VirtualPath::parse("/Engine/Root.asset");
     check(root_path.succeeded() && index.add(root_path.value(), root_index).succeeded(), "Root fixture index failed");
     MaterialInstanceAssetData child;

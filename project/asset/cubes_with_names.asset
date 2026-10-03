@@ -1,12 +1,13 @@
 format_version: 2
 asset_id: be8961056cb1612c669e22eeabeedeee
 root_type: toy3d.StaticMeshAssetData
-schema_version: 2
+schema_version: 3
 dependencies:
   []
 subresources:
   []
 data:
+  valid_tangent_frame: true
   geometry_segment: render_geometry
   index_count: 1260
   material_slots:
@@ -15,7 +16,7 @@ data:
   vertex_count: 1260
 meta:
   format_version: 1
-  size: 50544
-  sha256: 3e7870593aa50780ea7d003bc8fe9fa1065f2870d58c81c56681df737062a247
+  size: 70705
+  sha256: b50991b10a4cf1a2a63b7ddb5a37efa18b765ba7f44f9414adad02b10e171098
   required_segments:
     - render_geometry

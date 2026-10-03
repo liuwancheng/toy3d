@@ -4,6 +4,7 @@ set(TOY3D_SHADER_PARAMETERS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shader_par
 set(TOY3D_BUILTIN_SHADER_SOURCES
     "unlit|Toy3d/Surface/Unlit|surface/unlit.shader|Forward|Material"
     "phong|Toy3d/Surface/Phong|surface/phong.shader|Forward|Material"
+    "pbr|Toy3d/Surface/PBR|surface/pbr.shader|Forward|Material"
     "tonemap|Toy3d/PostProcess/Tonemap|postprocess/tonemap.shader|Tonemap|Global"
     "imgui|Toy3d/UI/ImGui|ui/imgui.shader|ImGui|Global"
     "hit_proxy|Toy3d/Editor/HitProxy|editor/hit_proxy.shader|HitProxy|MeshPass"
@@ -40,11 +41,13 @@ foreach(TOY3D_SHADER_RECORD IN LISTS TOY3D_BUILTIN_SHADER_SOURCES)
             "${TOY3D_SHADER_SOURCE}" "/Engine/Shaders/${TOY3D_SHADER_RELATIVE}" "${TOY3D_SHADER_PASS}"
             "${TOY3D_SHADER_OUTPUT}" "${CMAKE_BINARY_DIR}/generated/shader_work/${TOY3D_SHADER_DIRECTORY}"
             --engine-include-root "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            --settings "${CMAKE_CURRENT_SOURCE_DIR}/../config/shader_build.settings" --build-mode Editor
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${BINARY_ROOT_DIR}/shader/${TOY3D_SHADER_DIRECTORY}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ROOT_DIR}/shader"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${TOY3D_SHADER_OUTPUT}" "${BINARY_ROOT_DIR}/shader/${TOY3D_SHADER_DIRECTORY}"
         COMMAND ${CMAKE_COMMAND} -E touch "${TOY3D_SHADER_STAMP}"
-        DEPENDS Toy3dShaderCompiler "${TOY3D_SHADER_SOURCE}" ${TOY3D_SHADER_INCLUDE_FILES} VERBATIM)
+        DEPENDS Toy3dShaderCompiler "${TOY3D_SHADER_SOURCE}" ${TOY3D_SHADER_INCLUDE_FILES}
+            "${CMAKE_CURRENT_SOURCE_DIR}/../config/shader_build.settings" VERBATIM)
 endforeach()
 configure_file("builtin_shader_sources.h.in" "${TOY3D_SHADER_PARAMETERS_OUTPUT_DIR}/builtin_shader_sources.generated.h" @ONLY)
 set(TOY3D_SHADER_PARAMETERS_STAMP "${TOY3D_SHADER_PARAMETERS_OUTPUT_DIR}/generation.stamp")

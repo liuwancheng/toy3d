@@ -19,6 +19,17 @@ namespace toy3d
     ShaderMapCollection::ShaderMapCollection(shader::ShaderMapIndex index, std::vector<ShaderMapProgramRef> programs)
         : index_(std::move(index)), programs_(std::move(programs))
     {
+        shader::ShaderCompileSource source;
+        source.usage = index_.programs.front().contract.usage;
+        source.material_domain = index_.material_domain;
+        source.features = index_.features;
+        std::string error;
+        // Index admission has already evaluated this immutable configuration.
+        shader::resolve_shader_engine_features(source, index_.material_selections, index_.policy, features_, error);
+        bool required = false;
+        shader::evaluate_shader_static_condition(index_.tangent_frame_when, index_.material_domain,
+                                                 index_.material_selections, index_.policy, required, error);
+        requires_tangent_frame_ = index_.declares_tangent_frame && required;
     }
 
     const shader::ShaderMapIndex& ShaderMapCollection::index() const
@@ -29,6 +40,16 @@ namespace toy3d
     const std::vector<ShaderMapProgramRef>& ShaderMapCollection::programs() const
     {
         return programs_;
+    }
+
+    bool ShaderMapCollection::requires_tangent_frame() const
+    {
+        return requires_tangent_frame_;
+    }
+
+    const shader::ShaderEngineFeatures& ShaderMapCollection::features() const
+    {
+        return features_;
     }
 
     ShaderMapCollectionResult ShaderMapCollection::create_candidate(ShaderMapCollectionLoadResult loaded)
@@ -54,6 +75,7 @@ namespace toy3d
             auto& data = loaded.programs[number];
             const auto& record = loaded.index.programs[number];
             if (data.contract.usage != record.contract.usage || data.contract.geometry != record.contract.geometry ||
+                data.contract.surface_mode != record.contract.surface_mode ||
                 data.contract.vertex_factory_support != record.contract.vertex_factory_support)
             {
                 result.error = "ShaderMap collection programs must match their index and have no attached programs.";
@@ -65,6 +87,7 @@ namespace toy3d
             key.permutation_key = loaded.index.permutation_key;
             key.role = record.contract.role;
             key.vertex_factory = record.contract.vertex_factory;
+            key.pass_permutation_key = record.pass_permutation_key;
             if (key.vertex_factory == shader::VertexFactoryType::GPUSkin)
             {
                 const auto bone_id = shader::make_shader_parameter_id(
@@ -136,17 +159,25 @@ namespace toy3d
         return result;
     }
 
-    ShaderMapProgramResult ShaderMapCollection::find(shader::ShaderPassRole role, shader::VertexFactoryType factory,
-                                                     const std::string& global_pass_name) const
+    ShaderMapProgramResult ShaderMapCollection::find(
+        shader::ShaderPassRole role, shader::VertexFactoryType factory, const std::string& global_pass_name,
+        const std::vector<shader::ShaderPermutationSelection>& pass_selections) const
     {
         if ((role == shader::ShaderPassRole::Global) != !global_pass_name.empty())
         {
             return {nullptr, "Global queries require an explicit Pass name; mesh queries use role/VertexFactory."};
         }
+        const auto configuration =
+            shader::resolve_shader_permutation(shader::shader_pass_domain(role, features_), pass_selections);
+        if (!configuration.succeeded())
+        {
+            return {nullptr, configuration.errors.front().message};
+        }
         for (const auto& program : programs_)
         {
             const auto& data = program->data();
             if (data.contract.role == role && data.contract.vertex_factory == factory &&
+                data.pass_permutation_key == configuration.permutation->key &&
                 (global_pass_name.empty() || data.pass_name == global_pass_name))
             {
                 return {program, {}};

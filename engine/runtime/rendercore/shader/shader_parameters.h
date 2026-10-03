@@ -14,12 +14,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace toy3d
 {
     class RHICommandContext;
+    struct ShaderMapProgramData;
 
     struct ShaderParameterConstantMemberMetadata
     {
@@ -32,6 +34,9 @@ namespace toy3d
         std::uint32_t matrix_stride = 0;
         std::vector<std::uint8_t> default_value;
         std::string name;
+        // C++17 optional preserves authored bounds in generated group identity.
+        std::optional<float> minimum_value;
+        std::optional<float> maximum_value;
     };
 
     struct ShaderParameterConstantBufferMetadata
@@ -54,6 +59,7 @@ namespace toy3d
         shader::ShaderParameterDefaultValueKind default_value_kind = shader::ShaderParameterDefaultValueKind::None;
         std::string default_value;
         std::string name;
+        TextureUsage texture_usage = TextureUsage::Color;
     };
 
     struct ShaderParametersMetadata
@@ -105,6 +111,7 @@ namespace toy3d
     {
       public:
         explicit ShaderParameterEncoder(const ShaderParametersMetadata& metadata);
+        ShaderParameterEncoder(const ShaderParametersMetadata& metadata, const ShaderMapProgramData& program);
         ShaderParameterEncoder(ShaderParametersMetadata&&) = delete;
 
         void write_constant(const ShaderParameterConstantMemberMetadata& member, float value);
@@ -141,6 +148,7 @@ namespace toy3d
         bool succeeded() const;
         const std::string& error() const;
         bool matches_metadata_identity(const ShaderParametersMetadata& metadata) const;
+        const ShaderParametersMetadata& binding_metadata() const;
 
         // These direct array overloads preserve the generated field's element
         // type and fixed count for the canonical array-stride encoder path.
@@ -163,8 +171,13 @@ namespace toy3d
                                  shader::ShaderValueType expected_type, const float* values, std::uint32_t row_count,
                                  std::uint32_t column_count);
         void fail(std::string message);
+        bool encode_resource(const ShaderParameterResourceMetadata& resource);
+        bool encode_constants() const;
 
         const ShaderParametersMetadata& metadata;
+        // C++17 optional owns the projected declarations only for Program-bound
+        // encoding; generated field reads still use the validated full metadata.
+        std::optional<ShaderParametersMetadata> active_metadata_;
         std::vector<std::uint8_t> encoded_constant_bytes;
         std::vector<EncodedShaderTextureValue> encoded_texture_values;
         std::vector<EncodedShaderSamplerValue> encoded_sampler_values;
@@ -178,6 +191,8 @@ namespace toy3d
     };
 
     RHIStatus validate_shader_parameters_metadata(const ShaderParametersMetadata& metadata);
+    RHIResult<ShaderParametersMetadata> shader_parameters_metadata_for_program(const ShaderParametersMetadata& metadata,
+                                                                               const ShaderMapProgramData& program);
     // Engine-owned groups can be shared across sources with different Material/other groups.
     RHIStatus validate_shader_parameters_group_against_schema(const ShaderParametersMetadata& metadata,
                                                               const shader::ShaderParameterSchema& schema);
@@ -195,6 +210,10 @@ namespace toy3d
     void ShaderParameterEncoder::write_constant_array(const ShaderParameterConstantMemberMetadata& member,
                                                       const std::array<Value, Count>& values)
     {
+        if (!encode_constants())
+        {
+            return;
+        }
         constexpr std::size_t k_max_metadata_count = std::numeric_limits<std::uint32_t>::max();
         if (Count > k_max_metadata_count || member.array_count != Count || member.array_stride == 0u ||
             member.array_count > std::numeric_limits<std::uint32_t>::max() / member.array_stride ||
@@ -270,5 +289,16 @@ namespace toy3d
         ShaderParameterEncoder encoder(metadata);
         encode_shader_parameters(parameters, encoder);
         return create_transient_shader_binding(device, context, metadata, encoder);
+    }
+
+    template <typename Parameters>
+    RHIResult<RHIBindingSetRef> create_transient_shader_binding(RHIDevice& device, RHICommandContext& context,
+                                                                const Parameters& parameters,
+                                                                const ShaderMapProgramData& program)
+    {
+        const ShaderParametersMetadata& metadata = shader_parameters_metadata(parameters);
+        ShaderParameterEncoder encoder(metadata, program);
+        encode_shader_parameters(parameters, encoder);
+        return create_transient_shader_binding(device, context, encoder.binding_metadata(), encoder);
     }
 } // namespace toy3d

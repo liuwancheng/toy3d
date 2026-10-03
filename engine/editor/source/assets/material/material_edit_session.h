@@ -22,8 +22,23 @@ namespace toy3d
         {
         }
         AssetStatus open(const AssetId& id, shader::ShaderParameterSchema schema,
-                         const std::string& registered_shader_name = "Toy3d/Surface/Phong");
+                         const std::string& registered_shader_name = "Toy3d/Surface/Phong",
+                         shader::ShaderPermutationDomain static_domain = {});
         AssetStatus update_schema(shader::ShaderParameterSchema schema);
+        AssetStatus update_static_domain(shader::ShaderPermutationDomain domain);
+        const shader::ShaderPermutationDomain& static_domain() const
+        {
+            return static_domain_;
+        }
+        using StaticDomainResolver = std::function<AssetResult<shader::ShaderPermutationDomain>(const std::string&)>;
+        void set_static_domain_resolver(StaticDomainResolver resolver)
+        {
+            static_domain_resolver_ = std::move(resolver);
+        }
+        const std::vector<MaterialStaticOption>& static_options() const;
+        AssetStatus set_static_option(const MaterialStaticOption& value);
+        AssetStatus remove_static_option(const std::string& name);
+
         void set_preview(PreviewPrepare prepare, PreviewNotify notify);
         using SchemaResolver = std::function<AssetResult<shader::ShaderParameterSchema>(const std::string&)>;
         void set_parent_preview(SchemaResolver schema, std::function<AssetStatus(const MaterialAssetData&)> prepare,
@@ -76,6 +91,7 @@ namespace toy3d
         const std::vector<MaterialParameterOverride>& overrides() const;
         std::vector<MaterialParameterOverride> effective_overrides() const;
         std::vector<MaterialParameterOverride> effective_overrides(const shader::ShaderParameterSchema& schema) const;
+        std::vector<MaterialStaticOption> effective_static_options() const;
         AssetStatus begin_gesture();
         AssetStatus set_parameter(const MaterialParameterOverride& value);
         AssetStatus remove_parameter(const std::string& name);
@@ -86,6 +102,9 @@ namespace toy3d
         AssetStatus save();
 
       private:
+        AssetStatus validate_static_options(const shader::ShaderPermutationDomain& domain,
+                                            const std::vector<MaterialStaticOption>& options) const;
+        AssetStatus commit_static_options(std::vector<MaterialStaticOption> options);
         AssetStatus validate_overrides(const std::vector<MaterialParameterOverride>& values) const;
         AssetStatus validate_instance(const MaterialInstanceAssetData& value) const;
         AssetStatus prepare_instance(const MaterialInstanceAssetData& value);
@@ -103,6 +122,10 @@ namespace toy3d
         VirtualPath path_;
         AssetFileIndex opened_index_;
         shader::ShaderParameterSchema schema_;
+        shader::ShaderPermutationDomain static_domain_;
+        StaticDomainResolver static_domain_resolver_;
+        shader::ShaderPermutationDomain pending_parent_domain_;
+
         MaterialAssetData parent_;
         std::vector<MaterialAssetLayer> parent_layers_;
         MaterialAssetData pending_parent_;

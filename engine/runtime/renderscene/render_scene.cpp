@@ -12,6 +12,7 @@
 #include "renderscene/primitive_scene_info.h"
 #include "renderscene/mesh_batch.h"
 #include "rendercore/render_resource_manager.h"
+#include "rendercore/texture/texture_resource.h"
 #include "threading/task_graph/task_graph_interface.h"
 
 namespace toy3d
@@ -63,10 +64,31 @@ namespace toy3d
         // Renderer must release all scene-owned state before the logical RT returns.
         assert(is_on_logical_rendering_thread());
         primitives_.clear();
+        if (pending_environment_resource_)
+        {
+            const auto released = pending_environment_resource_->release(resource_manager_);
+            if (!released)
+            {
+                TOY_LOG_ERROR("Pending scene Environment release failed: {}", released.message());
+            }
+        }
+        if (environment_resource_)
+        {
+            const auto released = environment_resource_->release(resource_manager_);
+            if (!released)
+            {
+                TOY_LOG_ERROR("Scene Environment release failed: {}", released.message());
+            }
+        }
     }
 
     void RenderScene::add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy)
     {
+        if (proxy)
+        {
+            material_user_shadow_roles_[proxy.get()] = proxy->cast_shadows();
+            mark_material_usage_changed();
+        }
         enqueue_render_command("AddPrimitive",
                                [this, proxy = std::move(proxy)]() mutable noexcept
                                {
@@ -78,6 +100,7 @@ namespace toy3d
                                                  AxisAlignedBounds world_bounds, bool visible, bool cast_shadows,
                                                  bool receives_shadows)
     {
+        update_shadow_admission(proxy, cast_shadows);
         enqueue_render_command(
             "UpdatePrimitiveTransform",
             [this, proxy, world_transform = std::move(world_transform), world_bounds = std::move(world_bounds), visible,
@@ -91,6 +114,7 @@ namespace toy3d
     void RenderScene::update_primitive_materials(PrimitiveSceneProxy* proxy,
                                                  std::vector<MaterialRenderProxy*> materials)
     {
+        mark_material_usage_changed();
         enqueue_render_command(
             "UpdatePrimitiveMaterials",
             [this, proxy, materials = std::move(materials)]() mutable noexcept
@@ -132,6 +156,7 @@ namespace toy3d
                                                 Matrix4 world_transform, AxisAlignedBounds world_bounds, bool visible,
                                                 bool cast_shadows, bool receives_shadows)
     {
+        update_shadow_admission(proxy, cast_shadows);
         enqueue_render_command(
             "UpdateSkeletalMeshPose",
             [this, proxy, deformation = std::move(deformation), world_transform, world_bounds, visible, cast_shadows,
@@ -163,11 +188,23 @@ namespace toy3d
 
     void RenderScene::remove_primitive(PrimitiveSceneProxy* proxy)
     {
+        material_user_shadow_roles_.erase(proxy);
+        mark_material_usage_changed();
         enqueue_render_command("RemovePrimitive",
                                [this, proxy]() noexcept
                                {
                                    remove_primitive_render_thread(proxy);
                                });
+    }
+
+    void RenderScene::update_shadow_admission(PrimitiveSceneProxy* proxy, bool cast_shadows)
+    {
+        const auto found = material_user_shadow_roles_.find(proxy);
+        if (found != material_user_shadow_roles_.end() && found->second != cast_shadows)
+        {
+            found->second = cast_shadows;
+            mark_material_usage_changed();
+        }
     }
 
     void RenderScene::add_primitive_render_thread(std::unique_ptr<PrimitiveSceneProxy> proxy) noexcept
@@ -273,6 +310,11 @@ namespace toy3d
     RHIStatus RenderScene::preparation_status() const
     {
         assert(is_on_logical_rendering_thread());
+        const auto environment = environment_status();
+        if (!environment)
+        {
+            return environment;
+        }
         if (!preparation_error_)
         {
             return preparation_error_;

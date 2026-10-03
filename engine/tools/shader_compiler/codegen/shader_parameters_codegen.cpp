@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <iterator>
+#include <iomanip>
+#include <limits>
+#include <locale>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -329,6 +332,19 @@ namespace toy3d::shader
             output << "}}";
         }
 
+        void append_scalar_bound(std::ostringstream& output, const std::optional<float>& bound)
+        {
+            if (!bound)
+            {
+                output << "std::nullopt";
+                return;
+            }
+            std::ostringstream literal;
+            literal.imbue(std::locale::classic());
+            literal << std::scientific << std::setprecision(std::numeric_limits<float>::max_digits10) << *bound;
+            output << "std::optional<float>{" << literal.str() << "f}";
+        }
+
         void append_preamble(std::ostringstream& output)
         {
             output << "#pragma once\n\n"
@@ -340,7 +356,7 @@ namespace toy3d::shader
                       "#include \"math/vector3.h\"\n"
                       "#include \"math/vector4.h\"\n"
                       "#include \"rendercore/shader/shader_parameters.h\"\n\n"
-                      "#include <array>\n#include <cstdint>\n\n"
+                      "#include <array>\n#include <cstdint>\n#include <optional>\n\n"
                       "namespace toy3d\n{\n";
         }
 
@@ -436,7 +452,11 @@ namespace toy3d::shader
                         }
                         output << static_cast<unsigned int>(member.default_value[byte_index]) << 'u';
                     }
-                    output << "}, " << cpp_string_literal(member.name) << '}';
+                    output << "}, " << cpp_string_literal(member.name) << ", ";
+                    append_scalar_bound(output, member.minimum_value);
+                    output << ", ";
+                    append_scalar_bound(output, member.maximum_value);
+                    output << '}';
                 }
                 output << "}, " << cpp_string_literal(buffer->name);
             }
@@ -455,6 +475,10 @@ namespace toy3d::shader
                        << resource.array_count << "u, shader::ShaderParameterDefaultValueKind::"
                        << default_value_kind_name(resource.default_value_kind) << ", "
                        << cpp_string_literal(resource.default_value) << ", " << cpp_string_literal(resource.name)
+                       << ", TextureUsage::"
+                       << (resource.texture_usage == TextureUsage::Color
+                               ? "Color"
+                               : (resource.texture_usage == TextureUsage::Normal ? "Normal" : "LinearData"))
                        << '}';
             }
             output << "},\n            ";
@@ -576,6 +600,10 @@ namespace toy3d::shader
         for (std::size_t number = 0; number < identifiers.identifiers->passes.size(); ++number)
         {
             const auto& pass = identifiers.identifiers->passes[number];
+            if (asset.usage == ShaderUsage::Material && asset.passes[number].role == ShaderPassRole::Forward)
+            {
+                continue;
+            }
             const auto role_layout = compile_logical_layout(asset, VertexFactoryType::Local, asset.passes[number].role);
             if (!role_layout.succeeded())
             {
@@ -600,6 +628,16 @@ namespace toy3d::shader
         append_preamble(output);
         append_group(output, "GlobalShaderParameters", BindingGroup::Global, schema);
         append_group(output, "ViewShaderParameters", BindingGroup::View, schema);
+        ShaderAsset forward_asset;
+        forward_asset.usage = ShaderUsage::Material;
+        const auto forward_layout = compile_logical_layout(forward_asset);
+        if (!forward_layout.succeeded())
+        {
+            result.diagnostics = forward_layout.diagnostics;
+            return result;
+        }
+        append_group(output, "ForwardPassParameters", BindingGroup::Pass,
+                     make_shader_parameter_schema(*forward_layout.layout));
         append_group(output, "ObjectShaderParameters", BindingGroup::Object, schema);
         append_group(output, "GPUSkinObjectShaderParameters", BindingGroup::Object,
                      make_builtin_schema(VertexFactoryType::GPUSkin));

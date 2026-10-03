@@ -21,7 +21,7 @@ namespace toy3d
     namespace
     {
         bool destination(const std::string& source, const std::string& folder, const std::string& name,
-                         std::string& path, std::string& error)
+                         std::string& path, std::string& error, bool environment)
         {
             if (folder != "/Project" && folder.compare(0, 9, "/Project/") != 0)
             {
@@ -43,9 +43,10 @@ namespace toy3d
                     c = static_cast<char>(c + ('a' - 'A'));
                 }
             }
-            if (extension != ".png" && extension != ".jpg" && extension != ".jpeg")
+            if (environment ? extension != ".hdr"
+                            : (extension != ".png" && extension != ".jpg" && extension != ".jpeg"))
             {
-                error = "Select a PNG or JPEG image.";
+                error = environment ? "Select a Radiance HDR panorama." : "Select a PNG or JPEG image.";
                 return false;
             }
             if (name.empty() || name.size() >= 256u || !is_valid_utf8(name) ||
@@ -82,6 +83,10 @@ namespace toy3d
             prepared_.reset();
             task_.reset();
         }
+        reimport_path_.clear();
+        reimport_baseline_.clear();
+        reimport_id_ = {};
+        environment_ = false;
         folder_.clear();
         error_.clear();
         next_ = 0;
@@ -114,12 +119,60 @@ namespace toy3d
         return true;
     }
 
+    bool TextureImportDialog::request_environment(const std::string& folder, const std::vector<std::string>& sources)
+    {
+        if (!request(folder, sources))
+        {
+            return false;
+        }
+        environment_ = true;
+        return true;
+    }
+
+    bool TextureImportDialog::request_reimport(EditorWorkspace& workspace, const AssetId& id,
+                                               TextureImportSettings settings)
+    {
+        const auto location = workspace.catalog().index.find(id);
+        if (!location || location->index.root_type != "toy3d.Texture2DAssetData" ||
+            location->path.utf8().compare(0u, 9u, "/Project/") != 0)
+        {
+            return false;
+        }
+        const auto snapshot = workspace.asset_pairs().read(location->path);
+        if (!snapshot.succeeded())
+        {
+            error_ = snapshot.status().message;
+            return false;
+        }
+        const std::string path = location->path.utf8();
+        if (!request(path.substr(0u, path.find_last_of('/'))))
+        {
+            return false;
+        }
+        reimport_id_ = id;
+        reimport_path_ = path;
+        reimport_baseline_ = snapshot.value().description_bytes;
+        reimport_settings_ = settings;
+        candidates_.front().settings = settings;
+        std::string name = path.substr(path.find_last_of('/') + 1u);
+        name.resize(name.size() - 6u);
+        if (name.empty() || name.size() >= candidates_.front().name.size())
+        {
+            clear();
+            error_ = "The original texture filename exceeds the supported name capacity.";
+            return false;
+        }
+        std::memcpy(candidates_.front().name.data(), name.c_str(), name.size() + 1u);
+        return true;
+    }
+
     void TextureImportDialog::set_sources(const std::vector<std::string>& sources)
     {
         candidates_.clear();
         for (const auto& source : sources)
         {
             Candidate candidate;
+            candidate.settings = reimport_id_.valid() ? reimport_settings_ : TextureImportSettings{};
             if (source.size() >= candidate.source.size() || !is_valid_utf8(source) ||
                 source.find('\0') != std::string::npos)
             {
@@ -150,6 +203,15 @@ namespace toy3d
                     std::memcpy(candidate.name.data(), name.c_str(), name.size() + 1u);
                 }
             }
+            if (reimport_id_.valid())
+            {
+                std::string name = reimport_path_.substr(reimport_path_.find_last_of('/') + 1u);
+                name.resize(name.size() - 6u);
+                if (name.size() < candidate.name.size())
+                {
+                    std::memcpy(candidate.name.data(), name.c_str(), name.size() + 1u);
+                }
+            }
             candidates_.push_back(std::move(candidate));
         }
         if (candidates_.empty())
@@ -173,13 +235,21 @@ namespace toy3d
         {
             browse_ = false;
             std::vector<std::string> paths;
-            if (!pick_texture_files(window, paths, error_))
+            if (!(environment_ ? pick_environment_files(window, paths, error_)
+                               : pick_texture_files(window, paths, error_)))
             {
                 TOY_LOG_ERROR("{}", error_);
             }
             else if (!paths.empty())
             {
-                set_sources(paths);
+                if (reimport_id_.valid() && paths.size() != 1u)
+                {
+                    error_ = "Choose one source image for reimport.";
+                }
+                else
+                {
+                    set_sources(paths);
+                }
             }
             else if (open_)
             {
@@ -187,13 +257,14 @@ namespace toy3d
                 return;
             }
         }
+        const char* title = environment_ ? "Environment Import" : "Texture2D Import";
         if (open_)
         {
-            ImGui::OpenPopup("Texture2D Import");
+            ImGui::OpenPopup(title);
             open_ = false;
         }
         ImGui::SetNextWindowSize(ImVec2(680, 0), ImGuiCond_Appearing);
-        if (!ImGui::BeginPopupModal("Texture2D Import", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             return;
         }
@@ -206,8 +277,24 @@ namespace toy3d
             if (prepared_->error.empty())
             {
                 AssetId published;
-                publish_texture_asset(workspace, prepared_->destination, prepared_->id, prepared_->texture, published,
-                                      prepared_->error);
+                if (reimport_id_.valid())
+                {
+                    if (publish_reimported_texture_asset(workspace, reimport_path_, reimport_id_, prepared_->texture,
+                                                         reimport_baseline_, prepared_->error))
+                    {
+                        published = reimport_id_;
+                    }
+                }
+                else if (environment_)
+                {
+                    publish_environment_asset(workspace, prepared_->destination, prepared_->id, prepared_->environment,
+                                              published, prepared_->error);
+                }
+                else
+                {
+                    publish_texture_asset(workspace, prepared_->destination, prepared_->id, prepared_->texture,
+                                          published, prepared_->error);
+                }
                 prepared_->saved = published.valid();
                 if (published.valid())
                 {
@@ -238,15 +325,20 @@ namespace toy3d
             {
                 auto& candidate = candidates_[next_];
                 std::string path;
-                if (!destination(candidate.source.data(), folder_, candidate.name.data(), path, candidate.error))
+                if (!destination(candidate.source.data(), folder_, candidate.name.data(), path, candidate.error,
+                                 environment_))
                 {
                     TOY_LOG_ERROR("Texture2D import [{}]: {}", candidate.source.data(), candidate.error);
                     failed_.push_back(std::move(candidate));
                     ++next_;
                     continue;
                 }
-                AssetId id;
-                if (!AssetId::try_generate(id) || workspace.catalog().index.find(id))
+                if (reimport_id_.valid())
+                {
+                    path = reimport_path_;
+                }
+                AssetId id = reimport_id_;
+                if (!id.valid() && (!AssetId::try_generate(id) || workspace.catalog().index.find(id)))
                 {
                     candidate.error = "Could not generate a unique Texture2D asset ID.";
                     TOY_LOG_ERROR("Texture2D import [{}]: {}", candidate.source.data(), candidate.error);
@@ -266,22 +358,33 @@ namespace toy3d
                 prepared_->id = id;
                 prepared_->destination = path;
                 const PhysicalPath source(candidate.source.data());
+                const TextureImportSettings settings = candidate.settings;
+                const EnvironmentImportSettings environment_settings = candidate.environment_settings;
+                const bool environment = environment_;
                 auto result = prepared_;
                 try
                 {
-                    task_ = dispatch_graph_task(TaskGraphInterface::get(), "Import Texture2D",
-                                                [result, source](NamedThread, const GraphEventRef&)
-                                                {
-                                                    try
-                                                    {
-                                                        prepare_texture_asset_from_source(source, result->texture,
-                                                                                          result->error);
-                                                    }
-                                                    catch (const std::exception& exception)
-                                                    {
-                                                        result->error = exception.what();
-                                                    }
-                                                });
+                    task_ = dispatch_graph_task(
+                        TaskGraphInterface::get(), "Import Texture2D",
+                        [result, source, settings, environment_settings, environment](NamedThread, const GraphEventRef&)
+                        {
+                            try
+                            {
+                                if (environment)
+                                {
+                                    prepare_environment_asset_from_source(source, result->environment, result->error,
+                                                                          environment_settings);
+                                }
+                                else
+                                {
+                                    prepare_texture_asset_from_source(source, result->texture, result->error, settings);
+                                }
+                            }
+                            catch (const std::exception& exception)
+                            {
+                                result->error = exception.what();
+                            }
+                        });
                 }
                 catch (const std::exception& exception)
                 {
@@ -307,9 +410,11 @@ namespace toy3d
             }
         }
         ImGui::Text("Destination: %s", folder_.c_str());
-        ImGui::TextWrapped(
-            "PNG/JPEG to RGBA8 sRGB with a full mip chain. RGB mip filtering uses linear color; alpha stays linear.");
-        ImGui::TextDisabled("32 MiB source | 4096 px per edge | 128 MiB asset payload");
+        ImGui::TextWrapped(environment_ ? "Import a 2:1 Radiance HDR panorama as a prefiltered reflection environment."
+                                        : "Choose Color for color images, LinearData for packed data, or Normal for "
+                                          "tangent-space normal maps.");
+        ImGui::TextDisabled(environment_ ? "32 MiB source | 512 px per face | bounded offline prefilter"
+                                         : "32 MiB source | 4096 px per edge | 128 MiB asset payload");
         ImGui::BeginDisabled(running_);
         if (ImGui::Button("Choose Files..."))
         {
@@ -323,7 +428,51 @@ namespace toy3d
             auto& candidate = candidates_[i];
             ImGui::PushID(static_cast<int>(i));
             ImGui::InputText("Source", candidate.source.data(), candidate.source.size());
+            ImGui::BeginDisabled(reimport_id_.valid());
             ImGui::InputText("Resource Name", candidate.name.data(), candidate.name.size());
+            ImGui::EndDisabled();
+            if (environment_)
+            {
+                int face = 0;
+                for (std::uint32_t size = 2u; size < candidate.environment_settings.face_size; size *= 2u)
+                {
+                    ++face;
+                }
+                if (ImGui::Combo("Face Resolution", &face,
+                                 "2\0"
+                                 "4\0"
+                                 "8\0"
+                                 "16\0"
+                                 "32\0"
+                                 "64\0"
+                                 "128\0"
+                                 "256\0"
+                                 "512\0"))
+                {
+                    candidate.environment_settings.face_size = 2u << face;
+                }
+                int samples = static_cast<int>(candidate.environment_settings.sample_count);
+                if (ImGui::SliderInt("Prefilter Samples", &samples, 16, 1024))
+                {
+                    candidate.environment_settings.sample_count = static_cast<std::uint32_t>(samples);
+                }
+            }
+            else
+            {
+                int usage = static_cast<int>(candidate.settings.usage) - 1;
+                if (ImGui::Combo("Usage", &usage, "Color\0Linear Data\0Normal\0"))
+                {
+                    candidate.settings.usage = static_cast<TextureUsage>(usage + 1);
+                    if (candidate.settings.usage != TextureUsage::Normal)
+                    {
+                        candidate.settings.flip_green = false;
+                    }
+                }
+                if (candidate.settings.usage == TextureUsage::Normal)
+                {
+                    ImGui::Checkbox("Flip Green Channel", &candidate.settings.flip_green);
+                }
+            }
             if (!candidate.error.empty())
             {
                 ImGui::TextWrapped("%s", candidate.error.c_str());

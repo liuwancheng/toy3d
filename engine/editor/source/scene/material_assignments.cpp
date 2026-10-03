@@ -153,12 +153,17 @@ namespace toy3d
 
     bool MaterialAssignments::prepare_shader(const ShaderMapCollectionRef& program, std::string& error)
     {
+        return prepare_shader(std::vector<ShaderMapCollectionRef>{program}, error);
+    }
+
+    bool MaterialAssignments::prepare_shader(const std::vector<ShaderMapCollectionRef>& programs, std::string& error)
+    {
         if (!library_)
         {
             error = "MaterialLibrary is unavailable.";
             return false;
         }
-        const auto status = library_->prepare_shader(program);
+        const auto status = library_->prepare_shader(programs);
         if (!status.succeeded())
         {
             error = status.message;

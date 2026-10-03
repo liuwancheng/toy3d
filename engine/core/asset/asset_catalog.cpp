@@ -16,7 +16,7 @@ namespace toy3d
 
         AssetStatus scan_directory(const FileSystem& files, const VirtualPath& directory, AssetCatalog& catalog,
                                    std::size_t depth, const TypeRegistry& types, std::set<std::string>& paired_meta,
-                                   std::vector<VirtualPath>& all_meta)
+                                   std::vector<VirtualPath>& all_meta, bool include_scenes)
         {
             if (depth > k_max_directory_depth)
             {
@@ -61,8 +61,8 @@ namespace toy3d
                                 {}};
                     }
                     catalog.directories.push_back(child.value());
-                    const AssetStatus nested =
-                        scan_directory(files, child.value(), catalog, depth + 1u, types, paired_meta, all_meta);
+                    const AssetStatus nested = scan_directory(files, child.value(), catalog, depth + 1u, types,
+                                                              paired_meta, all_meta, include_scenes);
                     if (!nested.succeeded())
                     {
                         return nested;
@@ -71,6 +71,12 @@ namespace toy3d
                 else if (entry.type == FileType::File &&
                          asset_descriptor_kind(child.value()) != AssetDescriptorKind::Invalid)
                 {
+                    // Shader Cook collects asset references; project-native Scene
+                    // settings belong to the host that registers their types.
+                    if (!include_scenes && asset_descriptor_kind(child.value()) == AssetDescriptorKind::Scene)
+                    {
+                        continue;
+                    }
                     if (catalog.entries.size() >= k_max_catalog_entries)
                     {
                         return {AssetErrorCode::TooLarge,
@@ -115,7 +121,7 @@ namespace toy3d
     } // namespace
 
     static AssetResult<AssetCatalog> scan_asset_catalog_impl(const TypeRegistry& types, const FileSystem& files,
-                                                             const std::vector<VirtualPath>& roots)
+                                                             const std::vector<VirtualPath>& roots, bool include_scenes)
     {
         if (roots.empty())
         {
@@ -145,7 +151,8 @@ namespace toy3d
                 }
             }
             candidate.directories.push_back(root);
-            const AssetStatus scanned = scan_directory(files, root, candidate, 0u, types, paired_meta, all_meta);
+            const AssetStatus scanned =
+                scan_directory(files, root, candidate, 0u, types, paired_meta, all_meta, include_scenes);
             if (!scanned.succeeded())
             {
                 return AssetResult<AssetCatalog>(scanned);
@@ -183,8 +190,8 @@ namespace toy3d
     }
 
     AssetResult<AssetCatalog> scan_asset_catalog(const TypeRegistry& types, const FileSystem& files,
-                                                 const std::vector<VirtualPath>& roots)
+                                                 const std::vector<VirtualPath>& roots, bool include_scenes)
     {
-        return scan_asset_catalog_impl(types, files, roots);
+        return scan_asset_catalog_impl(types, files, roots, include_scenes);
     }
 } // namespace toy3d

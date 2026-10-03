@@ -58,6 +58,9 @@ namespace
         void update_primitive_materials(toy3d::PrimitiveSceneProxy*, std::vector<toy3d::MaterialRenderProxy*>) override
         {
         }
+        void update_environment(toy3d::SceneEnvironmentSnapshot) override
+        {
+        }
         void add_light(std::unique_ptr<toy3d::LightSceneProxy> proxy) override
         {
             lights.push_back(std::move(proxy));
@@ -753,6 +756,34 @@ int main()
         ImGui::NewFrame();
         draw();
         ImGui::DestroyContext(context);
+    }
+    {
+        World world;
+        ActorFactory factory;
+        EditorCommandHistory history(factory);
+        history.mark_saved(world);
+        SceneEnvironmentSettings settings;
+        settings.intensity = 2.0f;
+        check(history.preview_environment(world, settings, {}), "Environment gesture starts without an Actor");
+        settings.intensity = 3.0f;
+        check(history.preview_environment(world, settings, {}), "Environment drag coalesces updates");
+        history.finish(world, EditorTransformSource::WorldSettings);
+        check(history.dirty(world) && world.environment_settings().intensity == 3.0f,
+              "Environment editing marks the scene dirty");
+        check(history.undo(world) && world.environment_settings().intensity == 1.0f && !history.dirty(world),
+              "One undo restores the complete pre-drag environment and save revision");
+        check(history.redo(world) && world.environment_settings().intensity == 3.0f,
+              "Environment redo restores the final drag value");
+        settings.intensity = 4.0f;
+        check(history.preview_environment(world, settings, {}), "Second environment gesture starts");
+        history.cancel();
+        check(world.environment_settings().intensity == 3.0f && !history.active(),
+              "Cancel restores the prior environment snapshot");
+        settings.intensity = -1.0f;
+        const auto revision = world.content_revision();
+        check(!history.preview_environment(world, settings, {}) && !history.active() &&
+                  world.content_revision() == revision,
+              "Invalid environment changes leave World and history untouched");
     }
     return failures == 0 ? 0 : 1;
 }

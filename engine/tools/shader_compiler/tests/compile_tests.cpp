@@ -2,6 +2,8 @@
 #include "compiler/compile_request.h"
 #include "compiler/dxc_adapter.h"
 #include "compiler/program_compiler.h"
+#include "compiler/standard_surface.h"
+#include "shader/shader_map_index.h"
 #include "compiler/shader_compiler.h"
 #include "compiler/toolchain_manifest.h"
 #include "compiler/variant_permutation.h"
@@ -13,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -710,7 +713,7 @@ namespace
         entry.logical_layout_hash = entry.parameter_schema.logical_layout_hash;
         entry.graphics_pass_state.cull_mode = ShaderGraphicsPassState::CullMode::Front;
         entry.pass_template_hash = calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state);
-        entry.permutation_key[0] = 6u;
+        entry.permutation_key = default_shader_permutation_key;
         TargetBindingLayout empty_layout;
         empty_layout.target = ShaderTarget::VulkanSpirV;
         empty_layout.mapping_version = vulkan_binding_mapping_version;
@@ -719,8 +722,10 @@ namespace
         ShaderCodeEntry stage;
         stage.request.stage = ShaderStageFlags::Vertex;
         stage.request.entry_point = "vs_main";
-        stage.request.logical_layout_hash = entry.logical_layout_hash;
-        stage.request.target_binding_hash = entry.target_binding_hash;
+        stage.request.logical_layout_hash =
+            calculate_shader_stage_logical_layout_hash(entry.parameter_schema, entry.bindings, stage.request.stage);
+        stage.request.target_binding_hash = calculate_shader_stage_binding_hash(entry.target, entry.mapping_version,
+                                                                                entry.bindings, stage.request.stage);
         stage.request.compile_key[0] = 4u;
         stage.reflection.stage = ShaderStageFlags::Vertex;
         stage.reflection.entry_point = "vs_main";
@@ -747,7 +752,13 @@ namespace
                   "injected ShaderMap storage failure must be diagnostic");
             const toy3d::FileResult<std::vector<toy3d::DirectoryEntry>> children =
                 platform_file.enumerate_directory(physical_path(entry_root));
-            check(children.succeeded() && children.value().empty(),
+            check(children.succeeded() && std::all_of(children.value().begin(), children.value().end(),
+                                                      [](const toy3d::DirectoryEntry& child)
+                                                      {
+                                                          return child.path.utf8().find(".tmp.") == std::string::npos &&
+                                                                 child.path.utf8().find("stage_code") !=
+                                                                     std::string::npos;
+                                                      }),
                   "failed ShaderMap publication must clean only its owned staging directory");
             std::filesystem::remove_all(root);
         }
@@ -772,8 +783,12 @@ namespace
               "concurrent publication of one ShaderMap key must have one publisher and one cache hit");
         const toy3d::FileResult<std::vector<toy3d::DirectoryEntry>> children =
             platform_file.enumerate_directory(entry_root);
-        check(children.succeeded() && children.value().size() == 1u &&
-                  children.value()[0].path.utf8().find(".tmp.") == std::string::npos,
+        check(children.succeeded() && children.value().size() == 2u &&
+                  std::all_of(children.value().begin(), children.value().end(),
+                              [](const toy3d::DirectoryEntry& child)
+                              {
+                                  return child.path.utf8().find(".tmp.") == std::string::npos;
+                              }),
               "concurrent ShaderMap publication must leave one final directory and no staging residue");
         std::filesystem::remove_all(root);
 
@@ -896,8 +911,9 @@ namespace
         auto binary_fixture = publish_corrupt_fixture("storage_corrupt_binary");
         if (binary_fixture.second.entry_directory)
         {
-            const std::filesystem::path binary_path =
-                std::filesystem::u8path(binary_fixture.second.entry_directory->utf8()) / "vertex.spv";
+            const std::filesystem::path binary_path = binary_fixture.first / "entries" / "stage_code" /
+                                                      toy3d::sha256_to_hex(toy3d::sha256(entry.stages.front().binary)) /
+                                                      "code.spv";
             std::vector<std::uint8_t> corrupt_binary = minimal_spirv_header();
             corrupt_binary[0] ^= 0xffu;
             write_bytes(binary_path, corrupt_binary);
@@ -1254,6 +1270,424 @@ namespace
     }
 
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)
+    void test_real_pbr_surface()
+    {
+        using namespace toy3d::shader;
+        const auto discovered =
+            discover_shader_toolchain(platform_file, toy3d::PhysicalPath(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT));
+        check(discovered.succeeded(), "PBR requires the locked shader toolchain");
+        if (!discovered.succeeded())
+        {
+            return;
+        }
+        std::vector<VirtualIncludeFile> includes;
+        for (const std::string name : {"ToySurface.hlsli", "ToyMeshVertex.hlsli", "ToyGPUSkin.hlsli",
+                                       "ToyLighting.hlsli", "ToyShadow.hlsli", "ToyBRDF.hlsli", "ToyPBR.hlsli"})
+        {
+            const auto source = platform_file.read_text_utf8(
+                toy3d::PhysicalPath(std::string(TOY3D_SHADER_TEST_ENGINE_INCLUDE_ROOT) + "/" + name));
+            check(source.succeeded(), "PBR public include must exist");
+            if (!source.succeeded())
+            {
+                return;
+            }
+            includes.push_back({"/Engine/ShaderIncludes/" + name, source.value()});
+        }
+        const auto source = platform_file.read_text_utf8(
+            toy3d::PhysicalPath(std::string(TOY3D_SHADER_TEST_ENGINE_INCLUDE_ROOT) + "/../builtin/surface/pbr.shader"));
+        check(source.succeeded(), "Builtin PBR source must exist");
+        if (!source.succeeded())
+        {
+            return;
+        }
+        const auto parsed = parse_shader(source.value(), "/Engine/Shaders/surface/pbr.shader");
+        check(parsed.succeeded(), "Builtin PBR must parse the declared common protocol");
+        if (!parsed.succeeded())
+        {
+            return;
+        }
+        const RegisteredShaderSourceProvider provider(std::move(includes));
+        ShaderStageCompileCache cache;
+        ShaderProgramCompileInput input;
+        input.source_provider = &provider;
+        input.source_virtual_path = "/Engine/Shaders/surface/pbr.shader";
+        input.stage_cache = &cache;
+        const auto working = make_test_directory("pbr_surface");
+        const std::vector<std::vector<ShaderVariantSelection>> configurations = {{},
+                                                                                 {{"USE_NORMAL_MAP", "true"}},
+                                                                                 {{"USE_LIGHTING", "false"},
+                                                                                  {"USE_NORMAL_MAP", "true"},
+                                                                                  {"USE_MRO_MAP", "true"},
+                                                                                  {"USE_EMISSIVE_MAP", "true"}},
+                                                                                 {{"SURFACE_MODE", "Masked"},
+                                                                                  {"USE_NORMAL_MAP", "true"},
+                                                                                  {"USE_MRO_MAP", "true"},
+                                                                                  {"USE_EMISSIVE_MAP", "true"},
+                                                                                  {"USE_VERTEX_COLOR", "true"}}};
+        toy3d::Sha256Hash default_vertex[2]{};
+        for (std::size_t configuration = 0u; configuration < configurations.size(); ++configuration)
+        {
+            input.variant_selections = configurations[configuration];
+            ShaderAsset expanded;
+            std::vector<Diagnostic> diagnostics;
+            check(expand_standard_surface(*parsed.asset, input.variant_selections, expanded, diagnostics),
+                  "PBR Standard expansion");
+            for (const auto& pass : expanded.passes)
+            {
+                input.pass_name = pass.name;
+                for (std::size_t factory = 0u; factory < 2u; ++factory)
+                {
+                    input.vertex_factory = factory == 0u ? VertexFactoryType::Local : VertexFactoryType::GPUSkin;
+                    const bool forward = pass.role == ShaderPassRole::Forward;
+                    for (const bool sky : {false, true})
+                    {
+                        if (sky && (!forward || configuration == 2u))
+                        {
+                            continue;
+                        }
+                        input.pass_selections.clear();
+                        if (sky)
+                        {
+                            input.pass_selections.push_back(
+                                {"ENVIRONMENT_MODE", ShaderPermutationValueKind::Enumeration, false, "Sky"});
+                            input.pass_selections.push_back(
+                                {"SHADOW_MODE", ShaderPermutationValueKind::Enumeration, false, "PCF"});
+                        }
+                        const auto compiled = compile_vulkan_shader_map_entry(
+                            *parsed.asset, input, *discovered.toolchain, platform_file,
+                            physical_path(working / (std::to_string(configuration) + "_" + std::to_string(factory) +
+                                                     "_" + std::to_string(sky) + "_" +
+                                                     std::to_string(static_cast<unsigned>(pass.role)))));
+                        for (const auto& diagnostic : compiled.diagnostics)
+                        {
+                            std::cerr << diagnostic.message << '\n';
+                        }
+                        check(compiled.succeeded(),
+                              "PBR actual Vulkan compilation must cover lit/unlit, maps, Sky/PCF and Masked roles");
+                        if (!compiled.succeeded())
+                        {
+                            continue;
+                        }
+                        const auto active = [&](const std::string& name)
+                        {
+                            return std::any_of(compiled.entry->bindings.begin(), compiled.entry->bindings.end(),
+                                               [&](const ShaderMapBinding& binding)
+                                               {
+                                                   return binding.name == name;
+                                               });
+                        };
+                        if (forward)
+                        {
+                            check(active("environment_cube") == sky,
+                                  "PBR Off/Sky must have exact active Cube resources");
+                            check(active("normal_texture") == (configuration == 1u || configuration == 3u),
+                                  "Unlit PBR removes Normal despite authored option");
+                            check(active("metallic_roughness_occlusion_texture") == (configuration == 3u),
+                                  "Unlit PBR removes MRO despite authored option");
+                            check(active("emissive_texture") == (configuration == 2u || configuration == 3u),
+                                  "Emissive sampling survives disabled Lighting");
+                            if (configuration == 0u && !sky)
+                            {
+                                default_vertex[factory] = compiled.entry->stages.front().request.compile_key;
+                            }
+                            if (configuration == 1u || configuration == 2u)
+                            {
+                                check(compiled.entry->stages.front().request.compile_key == default_vertex[factory],
+                                      "PBR Pixel switches reuse the same Vertex code identity");
+                            }
+                        }
+                        else
+                        {
+                            check(active("base_color_texture") && !active("normal_texture") &&
+                                      !active("emissive_texture") && !active("environment_cube"),
+                                  "Masked Shadow/HitProxy use shared coverage without Forward shading resources");
+                        }
+                    }
+                }
+            }
+        }
+        check(cache.reused[0] > 0u && cache.reused[1] > 0u,
+              "PBR stage cache must reuse validated binaries across roles/configurations");
+        std::filesystem::remove_all(working);
+    }
+
+    void test_real_standard_surface()
+    {
+        using namespace toy3d::shader;
+        const auto discovered =
+            discover_shader_toolchain(platform_file, toy3d::PhysicalPath(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT));
+        if (!discovered.succeeded())
+        {
+            check(false, "Standard surface requires the locked toolchain");
+            return;
+        }
+        std::vector<VirtualIncludeFile> includes;
+        for (const std::string name : {"ToySurface.hlsli", "ToyMeshVertex.hlsli", "ToyGPUSkin.hlsli"})
+        {
+            const auto text = platform_file.read_text_utf8(
+                toy3d::PhysicalPath(std::string(TOY3D_SHADER_TEST_ENGINE_INCLUDE_ROOT) + "/" + name));
+            check(text.succeeded(), "Public Standard includes exist");
+            if (!text.succeeded())
+            {
+                return;
+            }
+            includes.push_back({"/Engine/ShaderIncludes/" + name, text.value()});
+        }
+        const RegisteredShaderSourceProvider provider(std::move(includes));
+        const std::string source = R"shader(
+Shader "Tests/Standard"
+{
+    Version 2
+    Usage Material
+    Geometry Standard
+    VertexFactories { Local, GPUSkin }
+    Properties { coverage ("Coverage", Float) = 1 forward_only ("Value", Float) = 1 }
+    Variants { SURFACE_MODE : enum { Opaque, Masked } = Masked }
+    HLSLINCLUDE
+    float coverage_value(ToySurfaceInput input) { return coverage - 0.5; }
+    ENDHLSL
+    Pass "Color"
+    {
+        Role Forward
+        CoverageFunction coverage_value
+        HLSLPS
+        #pragma pixel shade
+        float4 shade(ToySurfaceInput input) { return float4(forward_only, 0, 0, 1); }
+        ENDHLSL
+    }
+})shader";
+        const auto parsed = parse_shader(source, "/Project/Shaders/Standard.shader");
+        check(parsed.succeeded(), "Standard exposes a shading function and shared coverage rather than user VS");
+        if (!parsed.succeeded())
+        {
+            return;
+        }
+        ShaderProgramCompileInput input;
+        input.source_virtual_path = "/Project/Shaders/Standard.shader";
+        input.source_provider = &provider;
+        const auto working = make_test_directory("standard_surface");
+        ShaderMapIndex index;
+        index.shader_name = parsed.asset->name;
+        index.source_hash = toy3d::sha256(source);
+        index.material_domain = shader_material_domain(*parsed.asset);
+        index.material_selections = resolve_shader_permutation(*parsed.asset, {}).permutation->selections;
+        ShaderAsset expanded;
+        std::vector<Diagnostic> diagnostics;
+        check(expand_standard_surface(*parsed.asset, {}, expanded, diagnostics) && expanded.passes.size() == 3u,
+              "Masked generates all three roles");
+        for (const std::string name : {"ShadowDepth", "HitProxy"})
+        {
+            auto collision = *parsed.asset;
+            collision.passes.front().name = name;
+            ShaderAsset named;
+            check(expand_standard_surface(collision, {}, named, diagnostics) && named.passes.size() == 3u &&
+                      named.passes[0].name != named.passes[1].name && named.passes[0].name != named.passes[2].name &&
+                      named.passes[1].name != named.passes[2].name,
+                  "Generated role names remain distinct from arbitrary Forward display names");
+        }
+        for (const auto& pass : expanded.passes)
+        {
+            index.passes.push_back({pass.name, pass.role});
+            for (const auto factory : {VertexFactoryType::Local, VertexFactoryType::GPUSkin})
+            {
+                input.pass_name = pass.name;
+                input.vertex_factory = factory;
+                const auto compiled = compile_vulkan_shader_map_entry(
+                    *parsed.asset, input, *discovered.toolchain, platform_file,
+                    physical_path(working / (pass.name + std::to_string(static_cast<unsigned>(factory)))));
+                for (const auto& diagnostic : compiled.diagnostics)
+                {
+                    std::cerr << format_diagnostic(diagnostic) << '\n';
+                }
+                check(compiled.succeeded(), "Masked role compiles independently of Forward-only parameters");
+                if (!compiled.succeeded())
+                {
+                    return;
+                }
+                check(compiled.entry->contract.surface_mode == ShaderSurfaceMode::Masked,
+                      "Compiled coverage mode is part of the artifact contract");
+                index.permutation_key = compiled.entry->permutation_key;
+                index.programs.push_back({pass.name, compiled.entry->contract,
+                                          calculate_shader_map_key(*compiled.entry),
+                                          calculate_shader_map_entry_content_hash(*compiled.entry)});
+            }
+        }
+        std::string error;
+        check(validate_shader_map_index(index, error), "Complete Masked role/factory coverage validates");
+        index.passes.pop_back();
+        index.programs.erase(index.programs.end() - 2, index.programs.end());
+        check(!validate_shader_map_index(index, error),
+              "Removing a whole Masked role cannot enable Opaque default reuse");
+        input.pass_name = "Color";
+        input.vertex_factory = VertexFactoryType::Local;
+        input.variant_selections = {{"SURFACE_MODE", "Opaque"}};
+        const auto opaque = compile_vulkan_shader_map_entry(*parsed.asset, input, *discovered.toolchain, platform_file,
+                                                            physical_path(working / "opaque"));
+        for (const auto& diagnostic : opaque.diagnostics)
+        {
+            std::cerr << format_diagnostic(diagnostic) << '\n';
+        }
+        check(opaque.succeeded() && opaque.entry->contract.surface_mode == ShaderSurfaceMode::Opaque,
+              "Opaque keeps only the verified Forward wrapper");
+        auto tangent_source = *parsed.asset;
+        tangent_source.standard_tangent_input = true;
+        tangent_source.declares_tangent_frame = true;
+        Variant normal_option;
+        normal_option.type = VariantType::Boolean;
+        normal_option.name = "USE_NORMAL_MAP";
+        normal_option.default_value = "false";
+        normal_option.affected_stages = ShaderStageFlags::Pixel;
+        normal_option.affected_passes = shader_pass_role_bit(ShaderPassRole::Forward);
+        tangent_source.variants.push_back(normal_option);
+        ShaderStaticConditionNode normal_condition;
+        normal_condition.comparison = {"USE_NORMAL_MAP", ShaderPermutationValueKind::Boolean, true, {}};
+        tangent_source.tangent_frame_when.nodes = {normal_condition};
+        tangent_source.passes.front().programs.front().source = R"(
+float4 shade(ToySurfaceInput input)
+{
+#if TOY3D_VARIANT_USE_NORMAL_MAP
+    return float4(input.world_tangent, 1);
+#else
+    return float4(input.world_normal, 1);
+#endif
+})";
+        ShaderStageCompileCache tangent_cache;
+        input.stage_cache = &tangent_cache;
+        for (const auto factory : {VertexFactoryType::Local, VertexFactoryType::GPUSkin})
+        {
+            input.vertex_factory = factory;
+            toy3d::Sha256Hash vertex_key{};
+            std::size_t first_compiled = 0u, first_reused = 0u;
+            for (const std::string enabled : {"false", "true"})
+            {
+                input.variant_selections = {{"SURFACE_MODE", "Opaque"}, {"USE_NORMAL_MAP", enabled}};
+                const auto frame = compile_vulkan_shader_map_entry(
+                    tangent_source, input, *discovered.toolchain, platform_file,
+                    physical_path(working / ("tangent_" + std::to_string(static_cast<unsigned>(factory)) + enabled)));
+                for (const auto& diagnostic : frame.diagnostics)
+                {
+                    std::cerr << format_diagnostic(diagnostic) << '\n';
+                }
+                check(frame.succeeded(),
+                      "Tangent Standard compiles Local and 4/8 GPUSkin in both normal-map configurations");
+                if (!frame.succeeded())
+                {
+                    return;
+                }
+                if (enabled == "false")
+                {
+                    for (const auto& attribute : frame.entry->stages.front().reflection.interface_variables)
+                    {
+                        if (attribute.input)
+                        {
+                            std::cerr << "Tangent input evidence: " << attribute.name
+                                      << ", semantic=" << attribute.semantic << '\n';
+                        }
+                    }
+                }
+                check(std::any_of(frame.entry->stages.front().reflection.interface_variables.begin(),
+                                  frame.entry->stages.front().reflection.interface_variables.end(),
+                                  [](const auto& attribute)
+                                  {
+                                      return attribute.input &&
+                                             (attribute.semantic == "TANGENT0" || attribute.semantic == "TANGENT" ||
+                                              attribute.name == "in.var.TANGENT0");
+                                  }),
+                      "Fixed Standard Tangent input remains present even when the PS configuration does not use it");
+                if (enabled == "false")
+                {
+                    vertex_key = frame.entry->stages.front().request.compile_key;
+                    first_compiled = tangent_cache.compiled[0];
+                    first_reused = tangent_cache.reused[0];
+                }
+                else
+                {
+                    check(vertex_key == frame.entry->stages.front().request.compile_key,
+                          "Normal-map PS-only configuration shares the complete tangent-deforming VS");
+                    check(tangent_cache.compiled[0] == first_compiled && tangent_cache.reused[0] > first_reused,
+                          "The second material configuration performs no additional vertex compilation");
+                }
+            }
+        }
+        check(tangent_cache.compiled[0] >= 2u && tangent_cache.reused[0] >= 4u,
+              "Tangent VS compilation is shared per actual factory, without another skin influence variant");
+        input.stage_cache = nullptr;
+        input.variant_selections = {{"SURFACE_MODE", "Opaque"}};
+        auto featured = *parsed.asset;
+        featured.features = {{ShaderEngineFeature::Lighting, {}},
+                             {ShaderEngineFeature::Shadows, {}},
+                             {ShaderEngineFeature::Environment, {}}};
+        featured.passes.front().programs.front().source = R"(
+float4 shade(ToySurfaceInput input)
+{
+    return float4(TOY3D_PASS_SHADOW_MODE == TOY3D_PASS_SHADOW_MODE_PCF,
+                  TOY3D_PASS_ENVIRONMENT_MODE == TOY3D_PASS_ENVIRONMENT_MODE_Sky, forward_only, 1);
+})";
+        ShaderAsset featured_expanded;
+        check(expand_standard_surface(featured, input.variant_selections, featured_expanded, diagnostics),
+              "Feature test expands Opaque without extra roles");
+        const auto feature_plan = plan_shader_compilation(
+            shader_compile_source(featured_expanded),
+            {resolve_shader_permutation(featured, input.variant_selections).permutation->selections},
+            input.compile_policy);
+        check(feature_plan.succeeded() && feature_plan.required.size() == 8u,
+              "Real Standard plan contains both factories and all engine options");
+        std::set<toy3d::Sha256Hash> pass_keys, entry_keys;
+        for (const auto& required : feature_plan.required)
+        {
+            if (required.vertex_factory != VertexFactoryType::Local)
+            {
+                continue;
+            }
+            input.pass_selections = required.pass_permutation.selections;
+            const auto compiled_feature = compile_vulkan_shader_map_entry(
+                featured, input, *discovered.toolchain, platform_file,
+                physical_path(working / ("features_" + toy3d::sha256_to_hex(required.pass_permutation.key))));
+            for (const auto& diagnostic : compiled_feature.diagnostics)
+            {
+                std::cerr << format_diagnostic(diagnostic) << '\n';
+            }
+            check(compiled_feature.succeeded(), "Engine Pass macros compile with the real toolchain");
+            if (compiled_feature.entry)
+            {
+                pass_keys.insert(compiled_feature.entry->pass_permutation_key);
+                entry_keys.insert(calculate_shader_map_key(*compiled_feature.entry));
+                const auto written = write_verified_shader_map_entry(
+                    platform_file, physical_path(working / "feature_maps"), *compiled_feature.entry);
+                const auto read = read_verified_shader_map_entry(platform_file, physical_path(working / "feature_maps"),
+                                                                 written.shader_map_key);
+                check(written.succeeded() && read.succeeded() &&
+                          read.entry->pass_permutation_key == required.pass_permutation.key,
+                      "Pass identity survives verified entry persistence");
+            }
+        }
+        check(pass_keys.size() == 4u && entry_keys.size() == 4u,
+              "Independent engine options never collide in artifact identity");
+        input.compile_policy.allow_pcf = false;
+        input.pass_selections = {{"SHADOW_MODE", ShaderPermutationValueKind::Enumeration, false, "PCF"}};
+        check(!compile_vulkan_shader_map_entry(featured, input, *discovered.toolchain, platform_file,
+                                               physical_path(working / "filtered_feature"))
+                   .succeeded(),
+              "Policy-filtered PCF fails before compiling");
+        input.compile_policy = {};
+        input.pass_selections.clear();
+        auto invalid = *parsed.asset;
+        invalid.passes.front().programs.front().source =
+            "float4 shade(ToySurfaceInput input) { clip(coverage - 0.5); return 1; }";
+        check(!compile_vulkan_shader_map_entry(invalid, input, *discovered.toolchain, platform_file,
+                                               physical_path(working / "invalid_discard"))
+                   .succeeded(),
+              "Opaque cannot hide user discard behind a Standard declaration");
+        invalid = *parsed.asset;
+        invalid.includes.front().source =
+            "float coverage_value(ToySurfaceInput input) { return toy_camera_position.x; }";
+        input.variant_selections.clear();
+        check(!compile_vulkan_shader_map_entry(invalid, input, *discovered.toolchain, platform_file,
+                                               physical_path(working / "invalid_coverage_view"))
+                   .succeeded(),
+              "Shared coverage cannot depend on camera-specific View resources");
+    }
+
     void test_real_program_compiler()
     {
         using namespace toy3d::shader;
@@ -1385,16 +1819,18 @@ Shader "Tests/ProgramCompile"
                 write_verified_shader_map_entry(platform_file, physical_path(working / "shader-map"), *compiled.entry);
             check(entry_write.succeeded(),
                   "Strictly validated Program compilation must publish one atomic ShaderMapEntry");
-            check(
-                entry_write.entry_directory &&
-                    std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) /
-                                            "manifest.txt") &&
-                    std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) /
-                                            "mapping.txt") &&
-                    std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) /
-                                            "vertex.spv") &&
-                    std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) / "pixel.spv"),
-                "ShaderMapEntry must contain manifest, mapping, and all stage binaries");
+            check(entry_write.entry_directory &&
+                      std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) /
+                                              "manifest.txt") &&
+                      std::filesystem::exists(std::filesystem::u8path(entry_write.entry_directory->utf8()) /
+                                              "mapping.txt") &&
+                      std::filesystem::exists(working / "shader-map" / "stage_code" /
+                                              toy3d::sha256_to_hex(toy3d::sha256(compiled.entry->stages[0].binary)) /
+                                              "code.spv") &&
+                      std::filesystem::exists(working / "shader-map" / "stage_code" /
+                                              toy3d::sha256_to_hex(toy3d::sha256(compiled.entry->stages[1].binary)) /
+                                              "code.spv"),
+                  "ShaderMapEntry references verified shared stage binaries");
             const ShaderMapEntryWriteResult duplicate =
                 write_verified_shader_map_entry(platform_file, physical_path(working / "shader-map"), *compiled.entry);
             check(duplicate.succeeded() && duplicate.cache_hit,
@@ -1405,6 +1841,47 @@ Shader "Tests/ProgramCompile"
                       loaded.entry->stages.size() == 2u,
                   "ShaderMap reader must validate and reconstruct a real reflected Program Entry");
         }
+        ShaderAsset stage_source = *parsed.asset;
+        stage_source.variants.front().affected_stages = ShaderStageFlags::Pixel;
+        auto& vertex_source = stage_source.passes.front().programs.front().source;
+        vertex_source.erase(vertex_source.find("        float4 ps_main"));
+        auto& pixel_source = stage_source.passes.front().programs.back().source;
+        const auto alternate = pixel_source.find("#else");
+        const auto factor = pixel_source.find(" * tint;", alternate);
+        pixel_source.replace(factor, std::string(" * tint;").size(), " * tint * 0.5;");
+        ShaderStageCompileCache stage_cache;
+        input.stage_cache = &stage_cache;
+        const auto first_stage = compile_vulkan_shader_map_entry(stage_source, input, *discovered.toolchain,
+                                                                 platform_file, physical_path(working / "stage_first"));
+        input.variant_selections.front().value = "false";
+        const auto second_stage = compile_vulkan_shader_map_entry(
+            stage_source, input, *discovered.toolchain, platform_file, physical_path(working / "stage_second"));
+        for (const auto& diagnostic : second_stage.diagnostics)
+        {
+            std::cerr << format_diagnostic(diagnostic) << '\n';
+        }
+        check(
+            first_stage.succeeded() && second_stage.succeeded() &&
+                first_stage.entry->stages[0].request.compile_key == second_stage.entry->stages[0].request.compile_key &&
+                first_stage.entry->stages[1].request.compile_key != second_stage.entry->stages[1].request.compile_key &&
+                stage_cache.reused[0] >= 2u && stage_cache.compiled[0] == 1u,
+            "PS-only configurations share actual vertex compilation while compiling distinct pixel inputs");
+        auto redefining = stage_source;
+        redefining.passes.front().programs.back().source += "\n#define TOY3D_VARIANT_USE_TINT 0\n";
+        const auto overridden = compile_vulkan_shader_map_entry(redefining, input, *discovered.toolchain, platform_file,
+                                                                physical_path(working / "reserved_macro"));
+        check(!overridden.succeeded() && has_diagnostic(overridden.diagnostics, DiagnosticCode::InvalidVariant),
+              "Authors cannot redefine compiler-owned static macros");
+        redefining.passes.front().programs.back().source = "#define CONCAT(a,b) a ## b\n" + pixel_source;
+        const auto concatenated = compile_vulkan_shader_map_entry(
+            redefining, input, *discovered.toolchain, platform_file, physical_path(working / "concatenated_macro"));
+        check(!concatenated.succeeded() && has_diagnostic(concatenated.diagnostics, DiagnosticCode::InvalidVariant),
+              "Token concatenation cannot bypass the static macro dependency inventory");
+        stage_source.passes.front().programs.front().source += "\n#if TOY3D_VARIANT_USE_TINT\n#endif\n";
+        const auto crossed = compile_vulkan_shader_map_entry(stage_source, input, *discovered.toolchain, platform_file,
+                                                             physical_path(working / "stage_invalid"));
+        check(!crossed.succeeded() && has_diagnostic(crossed.diagnostics, DiagnosticCode::InvalidVariant),
+              "PS-only macros in vertex source reject before compilation");
         if (compiled.succeeded())
         {
             std::filesystem::remove_all(working);
@@ -1432,6 +1909,8 @@ int main()
     (defined(TOY3D_SHADER_TEST_DXC) && defined(TOY3D_SHADER_TEST_SPIRV_VAL))
     test_real_dxc_spirv_integration();
 #if defined(TOY3D_SHADER_TEST_TOOLCHAIN_ROOT)
+    test_real_pbr_surface();
+    test_real_standard_surface();
     test_real_program_compiler();
 #endif
 #endif

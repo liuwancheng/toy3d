@@ -6,6 +6,7 @@
 #include "ui/ui_texture_work.h"
 
 #include <map>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -30,6 +31,12 @@ namespace toy3d
         ~AssetThumbnailPool();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
         AssetThumbnailView request(const AssetCatalogEntry& asset);
+        AssetThumbnailView request_material_preview(const MaterialInstanceRef& material, std::uint64_t revision);
+        void clear_material_preview();
+        void set_material_resolver(std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> resolver)
+        {
+            material_resolver_ = std::move(resolver);
+        }
         void generate(const AssetId& id);
         void invalidate();
         void tick();
@@ -75,6 +82,21 @@ namespace toy3d
 
         EditorWorkspace& workspace_;
         ThumbnailPreviewScene preview_;
+        StaticMeshAssetGeometry material_preview_geometry_;
+        std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> material_resolver_;
+        // Observing the asset-editor owner avoids extending its final-release lifetime.
+        std::weak_ptr<MaterialInstance> preview_material_;
+        std::weak_ptr<MaterialInstance> rendered_preview_material_;
+        ImGuiTextureId material_preview_texture_;
+        ImGuiTextureId material_preview_candidate_;
+        std::uint64_t material_preview_revision_ = 0u;
+        std::uint64_t rendered_preview_revision_ = 0u;
+        std::uint64_t pending_preview_revision_ = 0u;
+        std::uint64_t material_preview_request_ = 0u;
+        std::uint64_t material_preview_visible_frame_ = 0u;
+        std::string material_preview_error_;
+        bool material_preview_active_ = false;
+        bool material_preview_cancelled_ = false;
         TaskGraphInterface* tasks_ = nullptr;
         GraphEventRef cpu_task_;
         std::shared_ptr<CpuResult> cpu_result_;

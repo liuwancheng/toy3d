@@ -436,6 +436,7 @@ if(BUILD_TESTING)
     target_link_libraries(Toy3dRenderResourceManagerTests PRIVATE Toy3dRuntime)
     add_test(NAME Toy3dRuntime.RenderResourceManager
         COMMAND Toy3dRenderResourceManagerTests)
+    set_tests_properties(Toy3dRuntime.RenderResourceManager PROPERTIES TIMEOUT 120)
 
     add_executable(Toy3dGameSceneTests
         "tests/gamescene_tests.cpp")
@@ -558,6 +559,34 @@ if(BUILD_TESTING)
         add_dependencies(Toy3dShaderMapEntryLoaderTests
             Toy3dShaderMapEntryLoaderFixture)
         add_test(NAME Toy3dRuntime.ShaderMapEntryLoader COMMAND Toy3dShaderMapEntryLoaderTests)
+        set(TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE "${CMAKE_BINARY_DIR}/generated/test_fixtures/shader_deployment")
+        set(TOY3D_SHADER_DEPLOYMENT_FIXTURE_ROOT "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}/output")
+        file(GLOB_RECURSE TOY3D_SHADER_DEPLOYMENT_INPUTS CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader_deployment/*"
+            "${TOY3D_ROOT_DIR}/engine/asset/*"
+            "${TOY3D_ROOT_DIR}/engine/shader/builtin/*"
+            "${TOY3D_ROOT_DIR}/engine/shader/include/*")
+        add_custom_command(OUTPUT "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}/cook.stamp"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}"
+            COMMAND "${CMAKE_COMMAND}" -E remove_directory "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_ROOT}"
+            COMMAND "${CMAKE_COMMAND}" -E remove_directory "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}/work"
+            COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}" cook-vulkan
+                "${TOY3D_ROOT_DIR}/engine" "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader_deployment"
+                "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_ROOT}" "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}/work" Player
+            COMMAND "${CMAKE_COMMAND}" -E touch "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}/cook.stamp"
+            DEPENDS Toy3dShaderCompiler ${TOY3D_SHADER_DEPLOYMENT_INPUTS}
+                "${TOY3D_ROOT_DIR}/engine/config/shader_build.settings" VERBATIM)
+        add_custom_target(Toy3dShaderDeploymentFixture DEPENDS "${TOY3D_SHADER_DEPLOYMENT_FIXTURE_BASE}/cook.stamp")
+        set_target_properties(Toy3dShaderDeploymentFixture PROPERTIES FOLDER "Engine/Tests")
+        add_executable(Toy3dShaderDeploymentTests "tests/shader_deployment_tests.cpp")
+        target_compile_features(Toy3dShaderDeploymentTests PRIVATE cxx_std_17)
+        set_target_properties(Toy3dShaderDeploymentTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
+        target_compile_definitions(Toy3dShaderDeploymentTests PRIVATE
+            "TOY3D_SHADER_DEPLOYMENT_TEST_ROOT=\"${TOY3D_SHADER_DEPLOYMENT_FIXTURE_ROOT}\"")
+        target_compile_options(Toy3dShaderDeploymentTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+        target_link_libraries(Toy3dShaderDeploymentTests PRIVATE Toy3dRuntime)
+        add_dependencies(Toy3dShaderDeploymentTests Toy3dShaderDeploymentFixture)
+        add_test(NAME Toy3dRuntime.ShaderDeployment COMMAND Toy3dShaderDeploymentTests)
         if(TOY3D_ENABLE_VULKAN_RHI AND WIN32)
             set(TOY3D_TYPED_BUFFER_SHADER_ROOT "${CMAKE_BINARY_DIR}/generated/test_fixtures/typed_buffer")
             set(TOY3D_TYPED_BUFFER_SHADER_STAMP "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/generation.stamp")
@@ -579,12 +608,41 @@ if(BUILD_TESTING)
                     "/Engine/Tests/Shaders/custom_mesh.shader" "Forward"
                     "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/custom_mesh" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/custom_mesh/work"
                     --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/standard_mesh.shader"
+                    "/Engine/Tests/Shaders/standard_mesh.shader" "Forward"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/standard_mesh" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/standard_mesh/work"
+                    --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/pbr_validation.shader"
+                    "/Engine/Tests/Shaders/pbr_validation.shader" "PBRValidation"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/pbr_validation" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/pbr_validation/work"
+                    --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shaders/skin_tangent_validation.shader"
+                    "/Engine/Tests/Shaders/skin_tangent_validation.shader" "SkinTangent"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/skin_tangent" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/skin_tangent/work"
+                    --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
+                COMMAND $<TARGET_FILE:Toy3dShaderCompiler> --toolchain-root "${TOY3D_SHADER_TOOLCHAIN_ROOT}"
+                    compile-vulkan "${CMAKE_SOURCE_DIR}/engine/shader/builtin/surface/pbr.shader"
+                    "/Engine/Shaders/builtin/surface/pbr.shader" "Forward"
+                    "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/pbr_unlit" "${TOY3D_TYPED_BUFFER_SHADER_ROOT}/pbr_unlit/work"
+                    --variant USE_LIGHTING=false --variant USE_EMISSIVE_MAP=true --variant USE_NORMAL_MAP=true
+                    --engine-include-root "${CMAKE_SOURCE_DIR}/engine/shader/include"
                 COMMAND "${CMAKE_COMMAND}" -E touch "${TOY3D_TYPED_BUFFER_SHADER_STAMP}"
                 DEPENDS Toy3dShaderCompiler "tests/fixtures/shaders/typed_buffer.shader"
                     "tests/fixtures/shaders/gpu_skin.shader" "tests/fixtures/shaders/custom_mesh.shader"
+                    "tests/fixtures/shaders/standard_mesh.shader" "tests/fixtures/shaders/pbr_validation.shader" "tests/fixtures/shaders/skin_tangent_validation.shader"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToySurface.hlsli"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyPBR.hlsli"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyBRDF.hlsli"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyLighting.hlsli"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/builtin/surface/pbr.shader"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyShadow.hlsli"
+                    "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyMeshVertex.hlsli"
                     "${CMAKE_SOURCE_DIR}/engine/shader/include/ToyGPUSkin.hlsli" VERBATIM)
             add_custom_target(Toy3dTypedBufferShaderFixture DEPENDS "${TOY3D_TYPED_BUFFER_SHADER_STAMP}")
-            add_executable(Toy3dTypedBufferVulkanTests "tests/typed_buffer_vulkan_tests.cpp")
+            add_executable(Toy3dTypedBufferVulkanTests "tests/typed_buffer_vulkan_tests.cpp" "tests/pbr_vulkan_tests.cpp" "tests/skin_tangent_vulkan_tests.cpp")
             target_compile_features(Toy3dTypedBufferVulkanTests PRIVATE cxx_std_17)
             set_target_properties(Toy3dTypedBufferVulkanTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Tests")
             target_link_libraries(Toy3dTypedBufferVulkanTests PRIVATE Toy3dRuntime Toy3dAssetPipeline "${vulkan_lib}" vma)

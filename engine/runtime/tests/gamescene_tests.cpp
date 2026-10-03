@@ -479,6 +479,24 @@ int main()
     test_lifecycle_tick_guards();
 
     World world;
+    SceneEnvironmentSettings environment_settings;
+    environment_settings.rotation = Quaternion(0.0f, 0.0f, 0.0f, 2.0f);
+    environment_settings.intensity = 3.0f;
+    check(world.set_environment(environment_settings, nullptr) &&
+              world.environment_settings().rotation == Quaternion{} && world.environment_settings().intensity == 3.0f,
+          "World must normalize and own its Environment settings");
+    const auto environment_revision = world.content_revision();
+    environment_settings.intensity = -1.0f;
+    check(!world.set_environment(environment_settings, nullptr) && world.content_revision() == environment_revision &&
+              world.environment_settings().intensity == 3.0f,
+          "Rejected Environment must preserve World settings and content revision");
+    environment_settings.intensity = 1.0f;
+    check(AssetId::parse("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", environment_settings.environment.asset_id),
+          "Environment fixture ID must parse");
+    environment_settings.environment.expected_type = "toy3d.EnvironmentAssetData";
+    check(!world.set_environment(environment_settings, nullptr) && world.content_revision() == environment_revision,
+          "Configured Environment must not silently become Off when its CPU payload is missing");
+    check(world.set_environment({}, nullptr), "World must explicitly clear Environment");
     Actor& parent_actor = world.spawn_actor();
     Actor& child_actor = world.spawn_actor();
     check(world.actor_count() == 2 && world.contains(parent_actor) && parent_actor.is_registered(),

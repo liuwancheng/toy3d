@@ -35,7 +35,19 @@ namespace toy3d
         std::variant<float, Vector2, Vector3, Vector4, AssetRef, MaterialSamplerPreset> value = 0.0f;
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.MaterialAssetData", 1)
+    TOY3D_REFLECT_TYPE("toy3d.MaterialStaticOption", 1)
+    struct MaterialStaticOption
+    {
+        TOY3D_PROPERTY("name", Visible)
+        std::string name;
+
+        // The persisted variant discriminator is the explicit bool/enum kind.
+        // Enum values retain their authored names; IDs belong to the Shader domain.
+        TOY3D_PROPERTY("value", Edit)
+        std::variant<bool, std::string> value = false;
+    };
+
+    TOY3D_REFLECT_TYPE("toy3d.MaterialAssetData", 2)
     struct MaterialAssetData
     {
         TOY3D_PROPERTY("shader_name", Visible)
@@ -44,11 +56,14 @@ namespace toy3d
         TOY3D_PROPERTY("overrides", Edit)
         std::vector<MaterialParameterOverride> overrides;
 
+        TOY3D_PROPERTY("static_options", Edit)
+        std::vector<MaterialStaticOption> static_options;
+
         TOY3D_PROPERTY("two_sided", Edit)
         bool two_sided = false;
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.MaterialInstanceAssetData", 1)
+    TOY3D_REFLECT_TYPE("toy3d.MaterialInstanceAssetData", 2)
     struct MaterialInstanceAssetData
     {
         TOY3D_PROPERTY("parent", Edit)
@@ -56,5 +71,8 @@ namespace toy3d
 
         TOY3D_PROPERTY("overrides", Edit)
         std::vector<MaterialParameterOverride> overrides;
+
+        TOY3D_PROPERTY("static_options", Edit)
+        std::vector<MaterialStaticOption> static_options;
     };
 } // namespace toy3d

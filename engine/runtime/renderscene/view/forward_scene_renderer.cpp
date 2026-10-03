@@ -23,7 +23,7 @@
 #include "renderscene/view/scene_visibility.h"
 #include "renderscene/view/view_shader_bindings.h"
 #include "rendercore/shader/shader_parameters.h"
-#include "shader_parameters/toy3d_surface_phong.generated.h"
+#include "shader_parameters/builtin_shader_parameters.generated.h"
 
 namespace toy3d
 {
@@ -63,6 +63,17 @@ namespace toy3d
                                       "Forward scene passes rejected their SceneViewFamily inputs.");
         }
 
+        const auto environment_status = render_scene.environment_status();
+        if (!environment_status)
+        {
+            return environment_status;
+        }
+        const auto& environment = render_scene.environment_for_current_recording();
+        const bool environment_active = environment.cube && environment.intensity > 0.0f;
+        for (auto& view : view_infos())
+        {
+            view.environment_active_ = environment_active;
+        }
         compute_scene_visibility(render_scene, view_infos());
         std::vector<const LightSceneData*> enabled_lights;
         for (const auto& light : render_scene.lights())
@@ -91,21 +102,41 @@ namespace toy3d
                 ++directional_count;
             }
         }
-        ShadowRenderTargets& shadow_targets = scene_render_targets.shadow_targets();
-        const LightSceneData* shadow_light = thumbnail_preview_ ? nullptr : directional_light;
-        const std::size_t cascade_count =
-            shadow_light ? static_cast<std::size_t>(shadow_light->shadow_cascade_count) : 1u;
-        const std::uint32_t requested_resolution = shadow_light
-                                                       ? static_cast<std::uint32_t>(shadow_light->shadow_map_resolution)
-                                                       : LightSceneData::k_default_shadow_resolution;
-        RHIStatus status =
-            shadow_targets.ensure_views(device, view_infos().size(), cascade_count, requested_resolution);
-        if (!status)
+        bool needs_pcf = false;
+        for (const auto& view : view_infos())
         {
-            return status;
+            for (const auto& batch : view.mesh_batches())
+            {
+                const auto& map = batch.material_render_proxy().shader_map();
+                needs_pcf = needs_pcf || (map && map->features().shadows && map->index().policy.allow_pcf &&
+                                          batch.scene_proxy().receives_shadows());
+            }
         }
-        status =
-            compute_shadow_visibility(render_scene, shadow_light, view_infos(), shadow_targets.layout().max_resolution);
+        ShadowRenderTargets& shadow_targets = scene_render_targets.shadow_targets();
+        const LightSceneData* shadow_light = !thumbnail_preview_ && needs_pcf && directional_light &&
+                                                     directional_light->cast_shadows &&
+                                                     directional_light->intensity > 0.0f
+                                                 ? directional_light
+                                                 : nullptr;
+        RHIStatus status = RHIStatus::success();
+        if (shadow_light)
+        {
+            status = shadow_targets.ensure_views(device, view_infos().size(),
+                                                 static_cast<std::size_t>(shadow_light->shadow_cascade_count),
+                                                 static_cast<std::uint32_t>(shadow_light->shadow_map_resolution));
+            if (!status)
+            {
+                return status;
+            }
+        }
+        else
+        {
+            // Submitted command lists retain previous atlas references. The
+            // current frame needs no allocation, clear pass or fake descriptor.
+            shadow_targets.release();
+        }
+        status = compute_shadow_visibility(render_scene, shadow_light, view_infos(),
+                                           shadow_light ? shadow_targets.layout().max_resolution : 0u);
         if (!status)
         {
             return status;
@@ -150,6 +181,10 @@ namespace toy3d
 
         for (std::size_t view_index = 0; view_index < view_infos().size(); ++view_index)
         {
+            if (!view_infos()[view_index].shadow_active())
+            {
+                continue;
+            }
             status = render_shadow_pass(device, shader_program_cache, context, view_infos()[view_index], shadow_targets,
                                         view_index, mesh_pass_programs.shadow_depth_default);
             if (!status)
@@ -186,13 +221,14 @@ namespace toy3d
             }
         }
 
-        std::vector<RHIBindingSetRef> lighting_bindings(view_infos().size());
+        std::vector<std::map<Sha256Hash, RHIBindingSetRef>> lighting_bindings(view_infos().size());
         bool needs_lighting_binding = false;
+        bool needs_environment_sampler = false;
         for (const ViewInfo& view : view_infos())
         {
             for (const MeshBatch& batch : view.mesh_batches())
             {
-                const auto selected = batch.material_program();
+                const auto selected = batch.material_program(view.shadow_active(), view.environment_active());
                 const auto& program = selected.program;
                 if (!program)
                 {
@@ -203,9 +239,20 @@ namespace toy3d
                     if (binding.group == RHIBindingGroup::Pass)
                     {
                         needs_lighting_binding = true;
+                        needs_environment_sampler = needs_environment_sampler || binding.name == "environment_sampler";
                     }
                 }
             }
+        }
+        RHISamplerRef environment_sampler;
+        if (needs_environment_sampler)
+        {
+            const auto sampler = render_scene.environment_sampler(device);
+            if (!sampler)
+            {
+                return sampler.status();
+            }
+            environment_sampler = sampler.value();
         }
         // Empty/unlit draws do not require a lighting upload or a Pass binding.
         if (needs_lighting_binding)
@@ -221,6 +268,15 @@ namespace toy3d
                 lighting.point_light_positions = Matrix4::zero();
                 lighting.point_light_colors = Matrix4::zero();
                 lighting.point_light_count = 0.0f;
+                if (environment_active)
+                {
+                    lighting.environment_world_to_cube = to_matrix4(conjugate(environment.rotation));
+                    lighting.environment_parameters =
+                        Vector4(environment.intensity,
+                                static_cast<float>(environment.cube->desc().mip_pixels.size() - 1u), 0.0f, 0.0f);
+                    lighting.environment_cube = render_scene.environment_view_for_current_recording();
+                    lighting.environment_sampler = environment_sampler;
+                }
                 if (directional_light)
                 {
                     const Vector3 radiance = directional_light->color * directional_light->intensity;
@@ -262,28 +318,51 @@ namespace toy3d
                     Vector4(view.shadow_cascade(0u).transition_scale, view.shadow_cascade(1u).transition_scale,
                             view.shadow_cascade(2u).transition_scale,
                             directional_light ? directional_light->shadow_receiver_bias : 0.0f);
-                const ShadowAtlasLayout& atlas = shadow_targets.layout();
-                lighting.shadow_texel_size =
-                    Vector4(1.0f / static_cast<float>(atlas.width), 1.0f / static_cast<float>(atlas.height),
-                            static_cast<float>(atlas.width), static_cast<float>(atlas.height));
-                // Regions are pixel offsets and usable sizes. Inactive regions remain zero and are never sampled.
-                const auto tile_region = [](const ShadowCascadeTile& tile)
+                if (view.shadow_active())
                 {
-                    return Vector4(static_cast<float>(tile.x + ShadowCascadeTile::k_border),
-                                   static_cast<float>(tile.y + ShadowCascadeTile::k_border),
-                                   static_cast<float>(tile.resolution()), static_cast<float>(tile.resolution()));
-                };
-                lighting.shadow_cascade_0_region = tile_region(atlas.tiles[0]);
-                lighting.shadow_cascade_1_region = tile_region(atlas.tiles[1]);
-                lighting.shadow_cascade_2_region = tile_region(atlas.tiles[2]);
-                lighting.shadow_atlas = shadow_targets.shader_view(view_index);
-                lighting.shadow_sampler = shadow_targets.sampler();
-                auto created = create_transient_shader_binding(device, context, lighting);
-                if (!created)
-                {
-                    return created.status();
+                    const ShadowAtlasLayout& atlas = shadow_targets.layout();
+                    lighting.shadow_texel_size =
+                        Vector4(1.0f / static_cast<float>(atlas.width), 1.0f / static_cast<float>(atlas.height),
+                                static_cast<float>(atlas.width), static_cast<float>(atlas.height));
+                    // Regions are pixel offsets and usable sizes. Inactive regions remain zero and are never sampled.
+                    const auto tile_region = [](const ShadowCascadeTile& tile)
+                    {
+                        return Vector4(static_cast<float>(tile.x + ShadowCascadeTile::k_border),
+                                       static_cast<float>(tile.y + ShadowCascadeTile::k_border),
+                                       static_cast<float>(tile.resolution()), static_cast<float>(tile.resolution()));
+                    };
+                    lighting.shadow_cascade_0_region = tile_region(atlas.tiles[0]);
+                    lighting.shadow_cascade_1_region = tile_region(atlas.tiles[1]);
+                    lighting.shadow_cascade_2_region = tile_region(atlas.tiles[2]);
+                    lighting.shadow_atlas = shadow_targets.shader_view(view_index);
+                    lighting.shadow_sampler = shadow_targets.sampler();
                 }
-                lighting_bindings[view_index] = std::move(created).value();
+                for (const auto& batch : view.mesh_batches())
+                {
+                    const auto selected = batch.material_program(view.shadow_active(), view.environment_active());
+                    if (!selected.succeeded())
+                    {
+                        return RHIStatus::failure(RHIErrorCode::Unsupported, selected.error);
+                    }
+                    ShaderParameterEncoder encoder(shader_parameters_metadata(lighting), selected.program->data());
+                    if (!encoder.succeeded())
+                    {
+                        return RHIStatus::failure(RHIErrorCode::InvalidArgument, encoder.error());
+                    }
+                    const auto& metadata = encoder.binding_metadata();
+                    if ((metadata.constant_buffer.size == 0u && metadata.resources.empty()) ||
+                        lighting_bindings[view_index].count(metadata.group_identity) != 0u)
+                    {
+                        continue;
+                    }
+                    encode_shader_parameters(lighting, encoder);
+                    auto created = create_transient_shader_binding(device, context, metadata, encoder);
+                    if (!created)
+                    {
+                        return created.status();
+                    }
+                    lighting_bindings[view_index].emplace(metadata.group_identity, std::move(created).value());
+                }
             }
             const bool overflow = point_count > max_point_lights || directional_count > 1;
             if (overflow && !render_scene.light_limit_reported())

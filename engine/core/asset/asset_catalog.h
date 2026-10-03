@@ -23,5 +23,5 @@ namespace toy3d
     // Scan all roots before validating references, so project assets may depend
     // on engine assets. Roots must be nonempty and must not overlap.
     AssetResult<AssetCatalog> scan_asset_catalog(const TypeRegistry& types, const FileSystem& files,
-                                                 const std::vector<VirtualPath>& roots);
+                                                 const std::vector<VirtualPath>& roots, bool include_scenes = true);
 } // namespace toy3d

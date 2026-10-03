@@ -1,5 +1,7 @@
 #include "codegen/binding_codegen.h"
 
+#include <algorithm>
+#include <set>
 #include <sstream>
 #include <type_traits>
 
@@ -216,7 +218,8 @@ namespace toy3d::shader
     }
 
     BindingCodegenResult generate_binding_hlsl(const LogicalShaderLayout& logical_layout,
-                                               const TargetBindingLayout& target_layout, ShaderStageFlags stage)
+                                               const TargetBindingLayout& target_layout, ShaderStageFlags stage,
+                                               const std::set<std::string>* referenced_names)
     {
         BindingCodegenResult result;
         if (stage == ShaderStageFlags::None ||
@@ -231,13 +234,22 @@ namespace toy3d::shader
         std::ostringstream source;
         source << "#ifndef TOY_BINDINGS_GENERATED\n#define TOY_BINDINGS_GENERATED\n";
         source << "#line 1 \"/Generated/ToyBindings.hlsli\"\n\n";
+        const auto uses_buffer = [&](const ConstantBufferLayout& buffer)
+        {
+            return referenced_names == nullptr || std::any_of(buffer.members.begin(), buffer.members.end(),
+                                                              [&](const ShaderConstantMember& member)
+                                                              {
+                                                                  return referenced_names->count(member.name) != 0u;
+                                                              });
+        };
+        const auto uses_resource = [&](const ShaderResourceParameter& resource)
+        {
+            return referenced_names == nullptr || referenced_names->count(resource.name) != 0u;
+        };
+        std::set<ShaderParameterId> declared;
         for (const NativeBinding& binding : target_layout.bindings)
         {
-            // A Vulkan Program uses one mapping shared by all stages. Emit the complete
-            // Program declaration set because DXC still parses non-entry functions in the
-            // shared Pass source; optimization determines the actual stage visibility.
-            if (target_layout.target != ShaderTarget::VulkanSpirV &&
-                (!has_stage(binding.stages, stage) || binding.stages != stage))
+            if (!has_stage(binding.stages, stage))
             {
                 continue;
             }
@@ -249,6 +261,12 @@ namespace toy3d::shader
                                               "Native binding is missing its logical binding."});
                 continue;
             }
+            if ((binding.logical_binding->constant_buffer && !uses_buffer(*binding.logical_binding->constant_buffer)) ||
+                (binding.logical_binding->resource && !uses_resource(*binding.logical_binding->resource)))
+            {
+                continue;
+            }
+            declared.insert(binding.binding_id);
             if (target_layout.target == ShaderTarget::VulkanSpirV)
             {
                 source << "[[vk::binding(" << binding.descriptor_binding << ", " << binding.descriptor_set << ")]]\n";
@@ -257,8 +275,12 @@ namespace toy3d::shader
             if (binding.logical_binding->constant_buffer)
             {
                 const ConstantBufferLayout& buffer = *binding.logical_binding->constant_buffer;
-                source << "cbuffer " << binding.name << " : register(" << register_name << binding.register_index
-                       << ")\n{\n";
+                source << "cbuffer " << binding.name;
+                if (target_layout.target != ShaderTarget::VulkanSpirV)
+                {
+                    source << " : register(" << register_name << binding.register_index << ")";
+                }
+                source << "\n{\n";
                 for (const ShaderConstantMember& member : buffer.members)
                 {
                     source << "    ";
@@ -278,8 +300,45 @@ namespace toy3d::shader
             else if (binding.logical_binding->resource)
             {
                 const ShaderResourceParameter& resource = *binding.logical_binding->resource;
-                source << resource_declaration(resource) << ' ' << resource.name << " : register(" << register_name
-                       << binding.register_index << ");\n\n";
+                source << resource_declaration(resource) << ' ' << resource.name;
+                if (target_layout.target != ShaderTarget::VulkanSpirV)
+                {
+                    source << " : register(" << register_name << binding.register_index << ")";
+                }
+                source << ";\n\n";
+            }
+        }
+        // DXC parses unreachable helpers too. Preserve their declarations
+        // without native slots; optimization removes them, and strict final
+        // reflection rejects any unexpectedly active automatic binding.
+        for (const auto& buffer : logical_layout.constant_buffers)
+        {
+            if (declared.count(buffer.binding_id) != 0u || !uses_buffer(buffer))
+            {
+                continue;
+            }
+            source << "cbuffer toy_inactive_" << buffer.binding_id << "\n{\n";
+            for (const auto& member : buffer.members)
+            {
+                source << "    ";
+                if (is_matrix(member.type))
+                {
+                    source << "column_major ";
+                }
+                source << value_type_name(member.type) << ' ' << member.name;
+                if (member.array_count > 1u)
+                {
+                    source << '[' << member.array_count << ']';
+                }
+                source << " : packoffset(" << packoffset(member.offset) << ");\n";
+            }
+            source << "};\n\n";
+        }
+        for (const auto& resource : logical_layout.resources)
+        {
+            if (declared.count(resource.parameter_id) == 0u && uses_resource(resource))
+            {
+                source << resource_declaration(resource) << ' ' << resource.name << ";\n";
             }
         }
         source << "#endif\n";

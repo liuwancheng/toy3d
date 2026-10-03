@@ -4,6 +4,7 @@ Shader "Toy3d/Test/CustomMesh"
     Usage Material
     Geometry Custom
     VertexFactories { Local, GPUSkin }
+    Features { Lighting Shadows }
     Properties
     {
         coverage ("Coverage", Range(0.0, 1.0)) = 1.0

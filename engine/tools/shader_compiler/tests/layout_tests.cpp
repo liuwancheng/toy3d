@@ -52,6 +52,8 @@ namespace
         forward_parameter.name = "forward_only";
         forward_parameter.type = ShaderValueType::Float32;
         asset.parameters.push_back(forward_parameter);
+        check(!compile_logical_layout(asset).succeeded(), "Material authors cannot replace the engine Forward ABI");
+        asset.parameters.clear();
         for (const auto role : {ShaderPassRole::Forward, ShaderPassRole::ShadowDepth, ShaderPassRole::HitProxy})
         {
             ShaderPass pass;
@@ -71,6 +73,12 @@ namespace
             return;
         }
         const auto forward_schema = make_shader_parameter_schema(*forward.layout);
+        const auto peer_forward = compile_logical_layout(asset, VertexFactoryType::GPUSkin, ShaderPassRole::Forward);
+        check(peer_forward.succeeded() &&
+                  calculate_shader_parameter_group_identity(forward_schema, BindingGroup::Pass) ==
+                      calculate_shader_parameter_group_identity(make_shader_parameter_schema(*peer_forward.layout),
+                                                                BindingGroup::Pass),
+              "Local/GPUSkin share the complete engine Forward ABI");
         const auto shadow_schema = make_shader_parameter_schema(*shadow.layout);
         const auto hit_schema = make_shader_parameter_schema(*hit.layout);
         check(calculate_shader_parameter_group_identity(forward_schema, BindingGroup::Material) ==
@@ -87,6 +95,8 @@ namespace
         if (generated.succeeded())
         {
             const auto& text = *generated.source;
+            check(text.find("struct ForwardPassParameters") == std::string::npos,
+                  "Material codegen must not redefine the engine Forward struct");
             const auto shadow_start = text.find("struct ShadowDepthPassParameters");
             const auto hit_start = text.find("struct HitProxyPassParameters");
             check(shadow_start != std::string::npos && hit_start != std::string::npos &&
@@ -303,7 +313,7 @@ Shader "Tests/Layout"
         const ShaderParameterGroupInput object_input = builtin_shader_parameter_input(BindingGroup::Object);
         check(global_input.group == BindingGroup::Global && global_input.constant_members.empty() &&
                   view_input.group == BindingGroup::View && view_input.constant_members.size() == 8u &&
-                  object_input.group == BindingGroup::Object && object_input.constant_members.size() == 4u,
+                  object_input.group == BindingGroup::Object && object_input.constant_members.size() == 3u,
               "Global/View/Object schemas must enter the same normalized group input used by declared groups");
         check(
             first.layout->constant_buffers.size() == 4,
@@ -338,16 +348,15 @@ Shader "Tests/Layout"
               "canonical View schema must preserve the real view-projection ToyShaderABI path");
         check(material_buffer != first.layout->constant_buffers.end() && material_buffer->members[0].offset == 0,
               "constant member order must follow Material property source order");
-        check(object_buffer != first.layout->constant_buffers.end() && object_buffer->members.size() == 4 &&
+        check(object_buffer != first.layout->constant_buffers.end() && object_buffer->members.size() == 3 &&
                   object_buffer->members[0].name == "toy_object_to_world" &&
                   object_buffer->members[0].matrix_stride == 16 &&
                   object_buffer->members[1].name == "toy_object_normal_to_world" &&
                   object_buffer->members[1].offset == 64 && object_buffer->members[1].matrix_stride == 16 &&
-                  object_buffer->members[2].name == "toy_receives_shadows" && object_buffer->members[2].offset == 128 &&
-                  object_buffer->members[3].name == "toy_num_bone_influences" &&
-                  object_buffer->members[3].type == ShaderValueType::UInt32 &&
-                  object_buffer->members[3].offset == 132 && object_buffer->size == 144,
-              "canonical Object schema must include the receiver flag after the two matrices");
+                  object_buffer->members[2].name == "toy_num_bone_influences" &&
+                  object_buffer->members[2].type == ShaderValueType::UInt32 &&
+                  object_buffer->members[2].offset == 128 && object_buffer->size == 144,
+              "canonical Object schema contains only matrices and runtime skin width, with canonical padding");
         check(pass_buffer != first.layout->constant_buffers.end() && pass_buffer->members.size() == 2 &&
                   pass_buffer->members[0].name == "exposure_ev" && pass_buffer->members[0].offset == 0 &&
                   pass_buffer->members[1].name == "projection" && pass_buffer->members[1].offset == 16 &&
@@ -441,6 +450,30 @@ Shader "Tests/Layout"
         }
         const auto& properties = compiled.layout->editor_properties;
         const auto schema = make_shader_parameter_schema(*compiled.layout);
+        const ShaderParameterConstantMemberSchema* range_member = nullptr;
+        for (const auto& buffer : schema.constant_buffers)
+        {
+            for (const auto& member : buffer.members)
+            {
+                if (member.name == asset.properties[1].name)
+                {
+                    range_member = &member;
+                }
+            }
+        }
+        check(range_member && range_member->minimum_value == 0.0f && range_member->maximum_value == 1.0f &&
+                  validate_shader_scalar_value(*range_member, 0.0f) &&
+                  validate_shader_scalar_value(*range_member, 1.0f) &&
+                  !validate_shader_scalar_value(*range_member, -0.01f) &&
+                  !validate_shader_scalar_value(*range_member, 1.01f),
+              "Range bounds belong to the public runtime schema, including both endpoints");
+        auto changed_bounds = asset;
+        changed_bounds.properties[1].range_max = 2.0;
+        const auto changed_bounds_layout = compile_logical_layout(changed_bounds);
+        check(changed_bounds_layout.layout &&
+                  changed_bounds_layout.layout->logical_layout_hash == compiled.layout->logical_layout_hash &&
+                  changed_bounds_layout.layout->parameter_schema_hash != compiled.layout->parameter_schema_hash,
+              "Scalar bounds change schema identity while preserving GPU layout and stage packing");
         check(properties.size() == asset.properties.size() &&
                   properties[0].control == ShaderEditorPropertyControl::Color &&
                   properties[1].control == ShaderEditorPropertyControl::Range && properties[1].range_min == 0.0f &&
@@ -491,6 +524,8 @@ Shader "Tests/Layout"
         check(parse_shader_parameter_schema(serialize_shader_parameter_schema(schema), roundtrip, error) &&
                   roundtrip.editor_properties_hash == schema.editor_properties_hash,
               "public schema must preserve the Editor digest when display text is stripped");
+        check(serialize_shader_parameter_schema(roundtrip) == serialize_shader_parameter_schema(schema),
+              "Runtime-only schema must retain exact binary32 bounds without Editor metadata");
         auto old = schema;
         old.generated_format_version = 1u;
         old.schema_identity = calculate_shader_parameter_schema_identity(old);
@@ -853,7 +888,7 @@ Shader "Toy3d/UI/ImGui"
                       builtin.source->find("Matrix4 toy_object_to_world = Matrix4::zero();") != std::string::npos &&
                       builtin.source->find("Matrix4 toy_object_normal_to_world = Matrix4::zero();") !=
                           std::string::npos &&
-                      builtin.source->find("float toy_receives_shadows{};") != std::string::npos &&
+                      builtin.source->find("toy_receives_shadows") == std::string::npos &&
                       builtin.source->find("std::uint32_t toy_num_bone_influences{};") != std::string::npos,
                   "builtin header must contain canonical View and Object typed fields");
             check(builtin.source->find(toy3d::sha256_to_hex(builtin_schema.schema_identity)) != std::string::npos &&

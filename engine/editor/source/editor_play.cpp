@@ -60,11 +60,13 @@ namespace toy3d
             {
                 if (!play_session_.start(
                         data, workspace_, actor_factory_.actor_types(),
-                        [this, defaults](const std::string& name)
+                        [this, defaults](const std::string& name,
+                                         const std::vector<shader::ShaderPermutationSelection>& selections)
                         {
-                            return shader_workflow_ready_
-                                       ? shaders_.shader_map(name)
-                                       : (name == defaults->desc().shader_name ? defaults->desc().shader_map : nullptr);
+                            return shader_workflow_ready_ ? shaders_.shader_map(name, selections)
+                                                          : (name == defaults->desc().shader_name && selections.empty()
+                                                                 ? defaults->desc().shader_map
+                                                                 : nullptr);
                         },
                         *play_scene_))
                 {

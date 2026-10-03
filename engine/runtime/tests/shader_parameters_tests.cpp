@@ -505,6 +505,62 @@ int main()
                          tonemap_result.value()->desc().bindings.size() == 3u,
                      "Valid Tonemap parameters must upload once and create one complete Pass binding");
 
+    ShaderMapProgramData off_program;
+    const auto& tonemap_metadata = shader_parameters_metadata(tonemap_parameters);
+    tests::append_shader_parameters_metadata(tonemap_metadata, off_program.parameter_schema);
+    off_program.parameter_schema.logical_layout_hash =
+        shader::calculate_shader_parameter_logical_layout_hash(off_program.parameter_schema);
+    off_program.parameter_schema.schema_identity =
+        shader::calculate_shader_parameter_schema_identity(off_program.parameter_schema);
+    ShaderMapBinding constant_binding;
+    constant_binding.parameter_id = tonemap_metadata.constant_buffer.binding_id;
+    constant_binding.group = RHIBindingGroup::Pass;
+    constant_binding.type = RHIResourceBindingType::UniformBuffer;
+    constant_binding.constant_buffer_size = tonemap_metadata.constant_buffer.size;
+    constant_binding.data_layout_hash = tonemap_metadata.constant_buffer.data_layout_hash;
+    constant_binding.shader_abi_version = tonemap_metadata.shader_abi_version;
+    off_program.bindings = {constant_binding};
+    TonemapPassParameters off_parameters;
+    off_parameters.exposure_ev = 3.0f;
+    const auto off_binding =
+        create_transient_shader_binding(materialization_device, materialization_context, off_parameters, off_program);
+    success &= check(off_binding && off_binding.value()->desc().bindings.size() == 1u,
+                     "Generated fields may contain null inactive textures/samplers without dummy resources");
+    const auto off_metadata = shader_parameters_metadata_for_program(tonemap_metadata, off_program);
+    success &= check(off_metadata && off_metadata.value().group_identity != tonemap_metadata.group_identity &&
+                         off_metadata.value().constant_buffer.data_layout_hash ==
+                             tonemap_metadata.constant_buffer.data_layout_hash,
+                     "Active group identity changes while canonical constant layout remains intact");
+    ShaderMapProgramData no_pass_program = off_program;
+    no_pass_program.bindings.clear();
+    const auto no_pass_metadata = shader_parameters_metadata_for_program(tonemap_metadata, no_pass_program);
+    ShaderParameterEncoder no_pass_encoder(tonemap_metadata, no_pass_program);
+    encode_shader_parameters(off_parameters, no_pass_encoder);
+    success &= check(no_pass_metadata && no_pass_metadata.value().constant_buffer.size == 0u &&
+                         no_pass_metadata.value().resources.empty() && no_pass_encoder.succeeded() &&
+                         no_pass_encoder.constant_bytes().empty() && no_pass_encoder.texture_values().empty() &&
+                         no_pass_encoder.sampler_values().empty(),
+                     "A Program without this group produces an empty active projection for the owner to skip");
+    ShaderMapBinding active_texture;
+    for (const auto& resource : tonemap_metadata.resources)
+    {
+        if (resource.category == shader::ShaderParameterCategory::SampledTexture)
+        {
+            active_texture.parameter_id = resource.parameter_id;
+        }
+    }
+    active_texture.group = RHIBindingGroup::Pass;
+    active_texture.type = RHIResourceBindingType::SampledTexture;
+    off_program.bindings.push_back(active_texture);
+    const auto uploads_before_active_missing = materialization_context.upload_count;
+    const auto active_missing =
+        create_transient_shader_binding(materialization_device, materialization_context, off_parameters, off_program);
+    success &= check(!active_missing && materialization_context.upload_count == uploads_before_active_missing,
+                     "The same missing texture fails before upload as soon as the selected Program uses it");
+    off_program.bindings.back().parameter_id = 123456789u;
+    success &= check(!shader_parameters_metadata_for_program(tonemap_metadata, off_program),
+                     "Active bindings cannot introduce resources outside the full owner schema");
+
     ImGuiPassParameters missing_imgui_sampler;
     missing_imgui_sampler.font_texture = pass_texture;
     const std::uint32_t uploads_before_missing_imgui = materialization_context.upload_count;

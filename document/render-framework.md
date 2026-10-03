@@ -50,3 +50,5 @@ RenderResource 状态 Uninitialized/PendingUpload/Ready/Failed/Released，mutabl
 测试入口 engine/runtime/tests/rendering_thread_tests.cpp、frame_synchronization_tests.cpp、render_resource_manager_tests.cpp、renderer_scene_ownership_tests.cpp。覆盖多线程/SingleThread、非法 producer、捕获 ownership、terminal 后 fence、bootstrap 失败、record/submit/abort/present、重复退出和 payload 析构线程；RHI/WSI 结果分类见 [RHI](rhi.md)。
 
 改桥/资源生命周期应检查从 GT 创建到最后 GPU completion 的完整链，不只修改一层局部“成功”分支；不能把 CPU fence 改成 GPU 安全证明。
+
+Asset Texture 的 `TextureDesc::cube` 使用方形六面存储；每个 mip payload 顺序连接六 faces，row/slice pitch 描述一个 face。通用 Texture 不限制为环境格式或 512；严格环境 loader 从 EnvironmentAsset 构建 RGBA16F 完整 mips，并声明 `requires_linear_filter`。TextureResource 复用现有 recording/discard/commit/completion 生命周期，逐 face/mip 上传、覆盖完整六层 transitions；失败更新保留旧 binding generation 与 view。

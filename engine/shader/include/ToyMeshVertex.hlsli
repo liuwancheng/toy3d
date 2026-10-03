@@ -12,10 +12,16 @@
     toy_gpu_skin(toy_bone_matrices, toy_num_bone_influences, \
                  input.bone_indices, input.bone_weights, input.extra_bone_indices, input.extra_bone_weights, \
                  input.position.xyz, input.normal.xyz, out_position, out_normal)
+#define TOY3D_DEFORM_FRAME(input, out_tangent, out_bitangent) \
+    toy_gpu_skin_frame(toy_bone_matrices, toy_num_bone_influences, \
+                       input.bone_indices, input.bone_weights, input.extra_bone_indices, input.extra_bone_weights, \
+                       input.normal.xyz, input.tangent, out_tangent, out_bitangent)
 #else
 #define TOY3D_SKIN_VERTEX_INPUT
 #define TOY3D_DEFORM_VERTEX(input, out_position, out_normal) \
     out_position = input.position.xyz; out_normal = input.normal.xyz
+#define TOY3D_DEFORM_FRAME(input, out_tangent, out_bitangent) \
+    out_tangent = input.tangent.xyz; out_bitangent = cross(input.normal.xyz, input.tangent.xyz) * input.tangent.w
 #endif
 
 #endif

@@ -1,4 +1,5 @@
 #include "skeletal_mesh_builder.h"
+#include "asset_pipeline/mesh_tangents.h"
 
 #include <algorithm>
 #include <cmath>
@@ -152,15 +153,23 @@ namespace toy3d
         {
             return AssetResult<SkeletalMeshBuildResult>(invalid("invalid skeletal build input"));
         }
+        const auto tangents = build_mesh_tangents(input.mesh);
+        if (!tangents.succeeded())
+        {
+            return AssetResult<SkeletalMeshBuildResult>(tangents.status());
+        }
+        const auto& source_mesh = tangents.value().geometry;
         SkeletalMeshBuildResult result;
         auto& output = result.mesh.geometry;
-        output.mesh.material_slots = input.mesh.material_slots;
+        output.mesh.material_slots = source_mesh.material_slots;
+        output.mesh.valid_tangent_frame = source_mesh.valid_tangent_frame;
         output.inverse_bind_matrices = input.inverse_bind_matrices;
         output.bone_local_bounds.resize(skeleton.bones.size());
-        std::vector<QuantizedInfluences> quantized(input.mesh.vertices.size());
-        for (std::size_t i = 0; i < input.influences.size(); ++i)
+        std::vector<QuantizedInfluences> quantized(source_mesh.vertices.size());
+        for (std::size_t i = 0; i < source_mesh.vertices.size(); ++i)
         {
-            const auto valid = quantize(input.influences[i], skeleton.bones.size(), options, quantized[i], result);
+            const auto valid = quantize(input.influences[tangents.value().source_vertices[i]], skeleton.bones.size(),
+                                        options, quantized[i], result);
             if (!valid.succeeded())
             {
                 return AssetResult<SkeletalMeshBuildResult>(valid);
@@ -168,7 +177,7 @@ namespace toy3d
         }
         // Split in stable source triangle order. Each output section owns its vertices;
         // local bone indices cannot leak between two different section mappings.
-        for (const auto& source_section : input.mesh.sections)
+        for (const auto& source_section : source_mesh.sections)
         {
             std::map<std::uint32_t, std::uint32_t> vertex_map;
             std::map<std::uint32_t, std::uint8_t> bone_map;
@@ -187,7 +196,7 @@ namespace toy3d
                 std::set<std::uint32_t> triangle_bones;
                 for (std::size_t corner = 0; corner < 3; ++corner)
                 {
-                    const auto& skin = quantized[input.mesh.indices[triangle + corner]];
+                    const auto& skin = quantized[source_mesh.indices[triangle + corner]];
                     for (std::size_t influence = 0; influence < max_skin_influences; ++influence)
                     {
                         if (skin.weights[influence] != 0)
@@ -215,7 +224,7 @@ namespace toy3d
                 }
                 for (std::size_t corner = 0; corner < 3; ++corner)
                 {
-                    const auto source_vertex = input.mesh.indices[triangle + corner];
+                    const auto source_vertex = source_mesh.indices[triangle + corner];
                     auto found = vertex_map.find(source_vertex);
                     if (found == vertex_map.end())
                     {
@@ -226,7 +235,7 @@ namespace toy3d
                         }
                         const auto new_index = static_cast<std::uint32_t>(output.mesh.vertices.size());
                         found = vertex_map.emplace(source_vertex, new_index).first;
-                        output.mesh.vertices.push_back(input.mesh.vertices[source_vertex]);
+                        output.mesh.vertices.push_back(source_mesh.vertices[source_vertex]);
                         SkinWeights skin;
                         const auto& source_skin = quantized[source_vertex];
                         skin.weights = source_skin.weights;
@@ -238,7 +247,7 @@ namespace toy3d
                                 skin.bone_indices[i] = bone_map.at(bone);
                                 extend(output.bone_local_bounds[bone],
                                        transform_position(input.inverse_bind_matrices[bone],
-                                                          input.mesh.vertices[source_vertex].position));
+                                                          source_mesh.vertices[source_vertex].position));
                             }
                         }
                         for (std::size_t i = skin_influences_per_group; i < max_skin_influences; ++i)

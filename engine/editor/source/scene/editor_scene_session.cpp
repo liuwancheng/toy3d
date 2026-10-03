@@ -1,4 +1,5 @@
 #include "scene/editor_scene_session.h"
+#include "rendercore/texture/texture_asset_loader.h"
 #include "gamescene/scene_assembly.h"
 
 #include <algorithm>
@@ -143,6 +144,7 @@ namespace toy3d
             return false;
         }
         SceneAssetData candidate;
+        candidate.environment = world_->environment_settings();
         for (const auto id : world_->actor_ids())
         {
             const Actor* actor = world_->find_actor_by_id(id);
@@ -283,6 +285,16 @@ namespace toy3d
             return false;
         }
         SceneAssemblyServices services;
+        services.load_environment = [this](const AssetRef& reference, std::string& error) -> TextureRef
+        {
+            const auto loaded = load_environment_asset(workspace_.files(), workspace_.catalog().index, reference);
+            if (!loaded.succeeded())
+            {
+                error = loaded.status().message;
+                return {};
+            }
+            return loaded.value();
+        };
         services.load_mesh = [&](const SceneMeshData& mesh, std::string& problem) -> StaticMeshRef
         {
             if (!mesh.builtin_mesh.empty())

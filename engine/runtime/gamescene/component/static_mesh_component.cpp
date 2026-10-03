@@ -83,7 +83,8 @@ namespace toy3d
 
         std::string error;
         if (!validate_material_geometry(material->desc(), shader::VertexFactoryType::Local,
-                                        !static_mesh_->vertex_colors().empty(), error))
+                                        !static_mesh_->vertex_colors().empty(), static_mesh_->has_valid_tangent_frame(),
+                                        error))
         {
             TOY_LOG_ERROR("Material slot {} rejected: {}", material_slot, error);
             return false;
@@ -115,7 +116,7 @@ namespace toy3d
         std::string error;
         if (!validate_material_geometry(static_mesh_->material_slots()[material_slot]->desc(),
                                         shader::VertexFactoryType::Local, !static_mesh_->vertex_colors().empty(),
-                                        error))
+                                        static_mesh_->has_valid_tangent_frame(), error))
         {
             TOY_LOG_ERROR("Material slot {} rejected: {}", material_slot, error);
             return false;

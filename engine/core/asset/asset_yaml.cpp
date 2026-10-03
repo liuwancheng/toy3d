@@ -116,6 +116,8 @@ namespace toy3d
             {
             case ValueKind::Bool:
                 return "Bool";
+            case ValueKind::Utf8:
+                return "Utf8";
             case ValueKind::Float32:
                 return "Float32";
             case ValueKind::Vector2:
@@ -447,6 +449,16 @@ namespace toy3d
                 {
                     return false;
                 }
+                if (!reference.asset_id.valid())
+                {
+                    if (!reference.expected_type.empty() || reference.subresource_id.valid() ||
+                        reference.strength != AssetRefStrength::Strong)
+                    {
+                        return false;
+                    }
+                    output = YAML::Node(YAML::NodeType::Null);
+                    return true;
+                }
                 output = write_reference(reference);
                 return true;
             }
@@ -645,6 +657,10 @@ namespace toy3d
             case ValueKind::AssetRef:
             {
                 AssetRef reference;
+                if (node.IsNull())
+                {
+                    return encode_value(writer, reference).succeeded();
+                }
                 return read_reference(node, reference) && encode_value(writer, reference).succeeded();
             }
             case ValueKind::Vector2:
@@ -711,6 +727,10 @@ namespace toy3d
             }
             if (shape.kind == ValueKind::AssetRef)
             {
+                if (node.IsNull())
+                {
+                    return true;
+                }
                 AssetRef reference;
                 if (!read_reference(node, reference))
                 {
@@ -906,42 +926,6 @@ namespace toy3d
             result.index.root_type = node["root_type"].as<std::string>();
             result.index.schema_version = node["schema_version"].as<std::uint32_t>();
             const TypeDesc* type = types.find(result.index.root_type);
-            // Explicit Scene 5 -> 6 migration: this changes only the decoded candidate.
-            // The original bytes remain available for Editor save conflict checks.
-            if (type && result.index.root_type == "toy3d.SceneAssetData" && result.index.schema_version == 5u &&
-                type->schema_version == 6u)
-            {
-                if (!node["data"].IsMap() || !node["data"]["actors"].IsSequence())
-                {
-                    return AssetResult<AssetYamlDocument>(fail(result.index.asset_id, "data", "Invalid legacy Scene."));
-                }
-                const std::map<std::string, std::string> classes = {{"EmptyActor", "toy3d.Actor"},
-                                                                    {"Cube", "toy3d.StaticMeshActor"},
-                                                                    {"Plane", "toy3d.StaticMeshActor"},
-                                                                    {"StaticMesh", "toy3d.StaticMeshActor"},
-                                                                    {"DirectionalLight", "toy3d.DirectionalLightActor"},
-                                                                    {"PointLight", "toy3d.PointLightActor"},
-                                                                    {"Camera", "toy3d.CameraActor"}};
-                for (auto actor : node["data"]["actors"])
-                {
-                    if (!actor.IsMap() || actor.size() != 4u || !actor["kind"])
-                    {
-                        return AssetResult<AssetYamlDocument>(
-                            fail(result.index.asset_id, "actors", "Invalid legacy Actor."));
-                    }
-                    const auto found = classes.find(actor["kind"].as<std::string>());
-                    if (found == classes.end())
-                    {
-                        return AssetResult<AssetYamlDocument>(
-                            fail(result.index.asset_id, "kind", "Unknown legacy Actor kind."));
-                    }
-                    actor["type"] = found->second;
-                    actor["properties"]["type"] = "toy3d.ActorSettings";
-                    actor["properties"]["schema_version"] = 1;
-                    actor["properties"]["value"] = YAML::Node(YAML::NodeType::Map);
-                }
-                result.index.schema_version = 6u;
-            }
             if (!types.frozen() || !type || result.index.schema_version != type->schema_version)
             {
                 return AssetResult<AssetYamlDocument>(

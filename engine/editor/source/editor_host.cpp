@@ -107,7 +107,6 @@ int toy3d::run_editor_host(void* hInstance, const EditorHostConfig& host)
         g_engine.exit();
         return 1;
     }
-    g_engine.set_shader_load_config({ShaderLoadMode::ShaderMapEntry, PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT)});
     g_engine.set_application(
         std::make_unique<EditorApplication>(workspace, log_buffer, project.get(), saved.utf8(), &actor_types,
                                             native_project ? host.game_executable : PhysicalPath{}));

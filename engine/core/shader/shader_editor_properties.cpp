@@ -113,7 +113,8 @@ namespace toy3d::shader
                                (property.control == ShaderEditorPropertyControl::Color &&
                                 member.type == ShaderValueType::Float32x4) ||
                                (property.control == ShaderEditorPropertyControl::Range &&
-                                member.type == ShaderValueType::Float32));
+                                member.type == ShaderValueType::Float32 && property.range_min == member.minimum_value &&
+                                property.range_max == member.maximum_value));
                 }
             }
             for (const ShaderParameterResourceSchema& resource : schema.resources)

@@ -23,6 +23,20 @@ namespace toy3d
             error = valid.message;
             return false;
         }
+        TextureRef environment;
+        if (data.environment.environment.asset_id.valid())
+        {
+            environment =
+                services.load_environment ? services.load_environment(data.environment.environment, error) : nullptr;
+            if (!environment)
+            {
+                if (error.empty())
+                {
+                    error = "Scene Environment could not load.";
+                }
+                return false;
+            }
+        }
         std::map<std::string, StaticMeshRef> meshes;
         for (const auto& actor : data.actors)
         {
@@ -168,6 +182,12 @@ namespace toy3d
                     return false;
                 }
             }
+        }
+        if (!world.set_environment(data.environment, std::move(environment)))
+        {
+            error = "Scene Environment snapshot was rejected.";
+            rollback();
+            return false;
         }
         for (const auto id : old)
         {

@@ -10,7 +10,7 @@ namespace toy3d
                                      std::string& error)
     {
         if (!asset.width || !asset.height || mip >= asset.mips.size() || mip >= 32u ||
-            asset.format != PixelFormat::R8G8B8A8UNormSRGB)
+            !texture_usage_matches_format(asset.usage, asset.format))
         {
             error = "Unsupported texture mip or format.";
             return false;

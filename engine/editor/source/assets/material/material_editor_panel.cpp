@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <exception>
+#include <cmath>
 #include <utility>
 
 #include "imgui.h"
+#include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "imgui_internal.h"
 
 #include "logging/logger.h"
@@ -17,6 +19,15 @@ namespace toy3d
 {
     namespace
     {
+        Sha256Hash static_options_identity(const MaterialEditSession& session)
+        {
+            MaterialAssetData data;
+            data.shader_name = session.root_data().shader_name;
+            data.static_options = session.effective_static_options();
+            ValueWriter writer;
+            return encode_value(writer, data).succeeded() ? sha256(writer.bytes()) : Sha256Hash{};
+        }
+
         AssetStatus parameter_error(const std::string& message)
         {
             return {AssetErrorCode::Value, {}, {}, {}, {}, message, {}};
@@ -62,6 +73,23 @@ namespace toy3d
             return value;
         }
     } // namespace
+
+    void MaterialEditorPanel::set_shader_workflow(ShaderWorkflow& workflow)
+    {
+        shaders_ = &workflow;
+        if (workspace_)
+        {
+            workflow.set_material_workspace(*workspace_,
+                                            [this](const std::string& name)
+                                            {
+                                                const auto& session = edit_session();
+                                                return session.active() && session.root_data().shader_name == name
+                                                           ? material_static_selections(
+                                                                 session.effective_static_options())
+                                                           : std::vector<shader::ShaderPermutationSelection>{};
+                                            });
+        }
+    }
 
     void MaterialEditorPanel::initialize(EditorWorkspace& workspace, MaterialRef defaults,
                                          const PhysicalPath& shader_root)
@@ -179,7 +207,8 @@ namespace toy3d
         }
         if (decision == MaterialCloseDecision::Save)
         {
-            const auto saved = edit_session().save();
+            const auto ready = validate_static_preview();
+            const auto saved = ready.succeeded() ? edit_session().save() : ready;
             report(saved);
             if (!saved.succeeded())
             {
@@ -258,6 +287,22 @@ namespace toy3d
         return result;
     }
 
+    AssetResult<MaterialInstanceRef> MaterialEditorPanel::build_preview_material(const MaterialAssetData& data,
+                                                                                 ShaderMapCollectionRef program)
+    {
+        if (workspace_ && program)
+        {
+            const auto defaults = resolve_builtin_material_texture_defaults(
+                workspace_->files(), workspace_->catalog().index, program->programs().front()->data().parameter_schema,
+                textures_);
+            if (!defaults.succeeded())
+            {
+                return AssetResult<MaterialInstanceRef>(defaults);
+            }
+        }
+        return create_material_from_asset(data, std::move(program), textures_);
+    }
+
     bool MaterialEditorPanel::open(const AssetId& id)
     {
         if (!defaults_ || !defaults_->desc().shader_map)
@@ -285,7 +330,8 @@ namespace toy3d
                 return false;
             }
             const auto& root = hierarchy.value().root;
-            program = shaders_->shader_map(root.shader_name);
+            program = shaders_->shader_map(root.shader_name,
+                                           material_static_selections(hierarchy.value().effective_static_options()));
             if (!program)
             {
                 report(parameter_error("Shader has no published Program. Compile it from Create Material first."));
@@ -295,7 +341,7 @@ namespace toy3d
         const auto schema =
             material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema);
         MaterialEditSession candidate(*workspace_);
-        auto status = candidate.open(id, schema, program->index().shader_name);
+        auto status = candidate.open(id, schema, program->index().shader_name, program->index().material_domain);
         if (!status.succeeded())
         {
             report(status);
@@ -305,6 +351,7 @@ namespace toy3d
         // to this window and does not mutate ActorFactory's shared default.
         MaterialAssetData effective = candidate.root_data();
         effective.overrides = candidate.effective_overrides();
+        effective.static_options = candidate.effective_static_options();
         status = ensure_texture_values(effective.overrides);
         if (!status.succeeded())
         {
@@ -313,7 +360,7 @@ namespace toy3d
         }
         MaterialInstanceRef next;
         {
-            const auto built = create_material_from_asset(effective, program, textures_);
+            const auto built = build_preview_material(effective, program);
             if (!built.succeeded())
             {
                 report(built.status());
@@ -321,7 +368,7 @@ namespace toy3d
             }
             next = built.value();
         }
-        status = edit_session().open(id, schema, program->index().shader_name);
+        status = edit_session().open(id, schema, program->index().shader_name, program->index().material_domain);
         if (!status.succeeded())
         {
             MaterialInstance::release(next);
@@ -330,8 +377,13 @@ namespace toy3d
         }
         if (runtime_)
         {
+            if (previews_)
+            {
+                previews_->clear_material_preview();
+            }
             MaterialInstance::release(runtime_);
         }
+        ++preview_revision_;
         runtime_ = std::move(next);
         defaults_ = runtime_->material();
         ++session_revision_;
@@ -363,11 +415,26 @@ namespace toy3d
                     {
                         report(parameter_error("Material parameters could not be published."));
                     }
+                    else
+                    {
+                        ++preview_revision_;
+                    }
                 }
                 catch (const std::exception& exception)
                 {
                     report(parameter_error(exception.what()));
                 }
+            });
+        edit_session().set_static_domain_resolver(
+            [this](const std::string& name) -> AssetResult<shader::ShaderPermutationDomain>
+            {
+                const auto program = shaders_ ? shaders_->shader_map(name) : defaults_->desc().shader_map;
+                if (!program || program->index().shader_name != name)
+                {
+                    return AssetResult<shader::ShaderPermutationDomain>(
+                        parameter_error("Compile the Parent Shader before selecting it."));
+                }
+                return AssetResult<shader::ShaderPermutationDomain>(program->index().material_domain);
             });
         edit_session().set_parent_preview(
             [this](const std::string& name) -> AssetResult<shader::ShaderParameterSchema>
@@ -391,15 +458,18 @@ namespace toy3d
                 {
                     return textures;
                 }
-                const auto program =
-                    shaders_ ? shaders_->shader_map(effective.shader_name) : defaults_->desc().shader_map;
-                const auto built = create_material_from_asset(effective, program, textures_);
+                const auto program = shaders_
+                                         ? shaders_->shader_map(effective.shader_name,
+                                                                material_static_selections(effective.static_options))
+                                         : defaults_->desc().shader_map;
+                const auto built = build_preview_material(effective, program);
                 if (!built.succeeded())
                 {
                     return built.status();
                 }
                 shader_candidate_ = built.value();
                 candidate_schema_ = shader_candidate_->parameter_schema();
+                candidate_static_domain_ = program->index().material_domain;
                 if (shaders_)
                 {
                     const auto* source = shaders_->find(effective.shader_name);
@@ -424,9 +494,14 @@ namespace toy3d
     {
         discard_shader();
         ++session_revision_;
+        static_recompile_pending_ = false;
         edit_session().clear();
         if (runtime_)
         {
+            if (previews_)
+            {
+                previews_->clear_material_preview();
+            }
             MaterialInstance::release(runtime_);
         }
         focused_ = false;
@@ -436,18 +511,51 @@ namespace toy3d
                                              const std::vector<shader::ShaderEditorProperty>& properties,
                                              std::string& error)
     {
+        return prepare_shader(std::vector<ShaderMapCollectionRef>{program}, properties, error);
+    }
+
+    bool MaterialEditorPanel::prepare_shader(const std::vector<ShaderMapCollectionRef>& programs,
+                                             const std::vector<shader::ShaderEditorProperty>& properties,
+                                             std::string& error)
+    {
         discard_shader();
         auto& session = edit_session();
-        if (!session.active() || session.root_data().shader_name != program->index().shader_name)
+        if (programs.empty() || !programs.front())
+        {
+            error = "Material Shader candidate configuration set is empty.";
+            return false;
+        }
+        if (!session.active() || session.root_data().shader_name != programs.front()->index().shader_name)
         {
             return true;
         }
+        const auto options = session.effective_static_options();
+        const auto selection = shader::resolve_shader_permutation(programs.front()->index().material_domain,
+                                                                  material_static_selections(options));
+        if (!selection.succeeded())
+        {
+            error = selection.errors.front().message;
+            return false;
+        }
+        const auto selected = std::find_if(programs.begin(), programs.end(),
+                                           [&](const ShaderMapCollectionRef& configuration)
+                                           {
+                                               return configuration && configuration->index().permutation_key ==
+                                                                           selection.permutation->key;
+                                           });
+        if (selected == programs.end())
+        {
+            error = "Shader candidate is missing the current material draft configuration.";
+            return false;
+        }
+        const auto& program = *selected;
         if (session.gesturing())
         {
             error = "Finish the parameter gesture before applying compiled code.";
             return false;
         }
         MaterialAssetData effective = session.root_data();
+        effective.static_options = options;
         auto schema =
             material_parameter_schema_from_shader_schema(program->programs().front()->data().parameter_schema);
         effective.overrides = session.effective_overrides(schema);
@@ -459,7 +567,8 @@ namespace toy3d
         }
         candidate_properties_ = properties;
         candidate_schema_ = std::move(schema);
-        const auto built = create_material_from_asset(effective, program, textures_);
+        candidate_static_domain_ = program->index().material_domain;
+        const auto built = build_preview_material(effective, program);
         if (!built.succeeded())
         {
             error = built.status().message;
@@ -476,7 +585,11 @@ namespace toy3d
             return;
         }
         auto& session = edit_session();
-        const auto status = session.update_schema(std::move(candidate_schema_));
+        auto status = session.update_static_domain(std::move(candidate_static_domain_));
+        if (status.succeeded())
+        {
+            status = session.update_schema(std::move(candidate_schema_));
+        }
         if (!status.succeeded())
         {
             report(status);
@@ -485,8 +598,13 @@ namespace toy3d
         }
         if (runtime_)
         {
+            if (previews_)
+            {
+                previews_->clear_material_preview();
+            }
             MaterialInstance::release(runtime_);
         }
+        ++preview_revision_;
         runtime_ = std::move(shader_candidate_);
         defaults_ = runtime_->material();
         properties_ = std::move(candidate_properties_);
@@ -501,6 +619,37 @@ namespace toy3d
         }
         candidate_properties_.clear();
         candidate_schema_ = {};
+        candidate_static_domain_ = {};
+    }
+    bool MaterialEditorPanel::collect_shader_validation_targets(const std::vector<ShaderMapCollectionRef>& programs,
+                                                                std::vector<MaterialShaderMapValidationTarget>& targets,
+                                                                std::string& error) const
+    {
+        if (!runtime_ || !edit_session().active() || programs.empty() ||
+            edit_session().root_data().shader_name != programs.front()->index().shader_name)
+        {
+            return true;
+        }
+        const auto selected =
+            shader::resolve_shader_permutation(programs.front()->index().material_domain,
+                                               material_static_selections(edit_session().effective_static_options()));
+        if (!selected.succeeded())
+        {
+            error = selected.errors.front().message;
+            return false;
+        }
+        const auto found = std::find_if(programs.begin(), programs.end(),
+                                        [&](const ShaderMapCollectionRef& value)
+                                        {
+                                            return value->index().permutation_key == selected.permutation->key;
+                                        });
+        if (found == programs.end())
+        {
+            error = "Material preview draft has no candidate configuration.";
+            return false;
+        }
+        targets.push_back({runtime_->material_render_proxy(), *found});
+        return true;
     }
     void MaterialEditorPanel::complete_transition()
     {
@@ -537,25 +686,181 @@ namespace toy3d
         workspace_ = nullptr;
         session_.reset();
     }
+    void MaterialEditorPanel::request_static_configuration()
+    {
+        ++session_revision_;
+        static_recompile_pending_ = shaders_ && shaders_->busy();
+        if (shaders_ && !shaders_->busy() && !modal_pending() && !edit_session().gesturing())
+        {
+            shaders_->recompile(edit_session().root_data().shader_name, edit_session().id(), session_revision_);
+        }
+    }
+
+    void MaterialEditorPanel::set_static_option(const MaterialStaticOption& value)
+    {
+        const auto before = static_options_identity(edit_session());
+        const auto status = edit_session().set_static_option(value);
+        report(status);
+        if (status.succeeded() && before != static_options_identity(edit_session()))
+        {
+            request_static_configuration();
+        }
+    }
+
+    void MaterialEditorPanel::remove_static_option(const std::string& name)
+    {
+        const auto before = static_options_identity(edit_session());
+        const auto status = edit_session().remove_static_option(name);
+        report(status);
+        if (status.succeeded() && before != static_options_identity(edit_session()))
+        {
+            request_static_configuration();
+        }
+    }
+
     void MaterialEditorPanel::undo()
     {
         if (workspace_ && edit_session().undo_count())
         {
-            report(edit_session().undo());
+            const auto before = static_options_identity(edit_session());
+            const auto status = edit_session().undo();
+            report(status);
+            if (status.succeeded() && before != static_options_identity(edit_session()))
+            {
+                request_static_configuration();
+            }
         }
     }
+
     void MaterialEditorPanel::redo()
     {
         if (workspace_ && edit_session().redo_count())
         {
-            report(edit_session().redo());
+            const auto before = static_options_identity(edit_session());
+            const auto status = edit_session().redo();
+            report(status);
+            if (status.succeeded() && before != static_options_identity(edit_session()))
+            {
+                request_static_configuration();
+            }
         }
     }
+    AssetStatus MaterialEditorPanel::validate_static_preview() const
+    {
+        const auto& session = edit_session();
+        if (!session.active() || !runtime_ || !runtime_->desc().shader_map)
+        {
+            return parameter_error("The material preview is unavailable.");
+        }
+        const auto selected = shader::resolve_shader_permutation(
+            session.static_domain(), material_static_selections(session.effective_static_options()));
+        return selected.succeeded() && selected.permutation->key == runtime_->desc().shader_map->index().permutation_key
+                   ? AssetStatus::success()
+                   : parameter_error("Compile and apply the current static options before saving.");
+    }
+
     void MaterialEditorPanel::save()
     {
         if (workspace_ && edit_session().active())
         {
-            report(edit_session().save());
+            const auto ready = validate_static_preview();
+            report(ready.succeeded() ? edit_session().save() : ready);
+        }
+    }
+
+    void MaterialEditorPanel::draw_static_options()
+    {
+        auto& session = edit_session();
+        const auto& domain = session.static_domain();
+        const auto options = session.effective_static_options();
+        const auto configuration = shader::resolve_shader_permutation(domain, material_static_selections(options));
+        if (!configuration.succeeded())
+        {
+            ImGui::TextWrapped("Static options unavailable: %s", configuration.errors.front().message.c_str());
+            return;
+        }
+        if (!domain.dimensions.empty() && ImGui::CollapsingHeader("Static Options", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            const auto local = session.static_options();
+            for (const auto& dimension : domain.dimensions)
+            {
+                const auto chosen = std::find_if(configuration.permutation->selections.begin(),
+                                                 configuration.permutation->selections.end(),
+                                                 [&](const shader::ShaderPermutationSelection& item)
+                                                 {
+                                                     return item.name == dimension.name;
+                                                 });
+                const bool overridden = std::any_of(local.begin(), local.end(),
+                                                    [&](const MaterialStaticOption& item)
+                                                    {
+                                                        return item.name == dimension.name;
+                                                    });
+                ImGui::PushID(dimension.name.c_str());
+                ImGui::BeginDisabled(!session.writable() || session.gesturing() || modal_pending() ||
+                                     (shaders_ && shaders_->busy()));
+                if (dimension.kind == shader::ShaderPermutationValueKind::Boolean)
+                {
+                    bool value = chosen->boolean_value;
+                    if (ImGui::Checkbox(dimension.name.c_str(), &value))
+                    {
+                        set_static_option({dimension.name, value});
+                    }
+                }
+                else if (ImGui::BeginCombo(dimension.name.c_str(), chosen->enum_value.c_str()))
+                {
+                    for (const auto& option : dimension.options)
+                    {
+                        if (ImGui::Selectable(option.c_str(), chosen->enum_value == option))
+                        {
+                            set_static_option({dimension.name, option});
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!overridden);
+                if (ImGui::Button(session.is_instance() ? "Inherit" : "Default"))
+                {
+                    remove_static_option(dimension.name);
+                }
+                ImGui::EndDisabled();
+                ImGui::EndDisabled();
+                ImGui::PopID();
+            }
+            if (runtime_ && runtime_->desc().shader_map &&
+                runtime_->desc().shader_map->index().permutation_key != configuration.permutation->key)
+            {
+                ImGui::TextWrapped("Static options are pending compilation. The previous material remains visible.");
+            }
+        }
+        if (shaders_ && ImGui::CollapsingHeader("Shader Capabilities"))
+        {
+            const auto* source = shaders_->find(session.root_data().shader_name);
+            if (source && source->shader_map)
+            {
+                const auto& index = source->shader_map->index();
+                shader::ShaderCompileSource declaration;
+                declaration.material_domain = index.material_domain;
+                declaration.features = index.features;
+                shader::ShaderEngineFeatures features;
+                std::string error;
+                if (shader::resolve_shader_engine_features(declaration, configuration.permutation->selections,
+                                                           index.policy, features, error))
+                {
+                    ImGui::TextDisabled("Lighting: %s | Shadows: %s | Environment: %s",
+                                        features.lighting ? "Yes" : "No", features.shadows ? "Yes" : "No",
+                                        features.environment ? "Yes" : "No");
+                }
+                else
+                {
+                    ImGui::TextWrapped("%s", error.c_str());
+                }
+                const auto factories = index.programs.front().contract.vertex_factory_support;
+                ImGui::TextDisabled(
+                    "Local: %s | GPU Skin: %s",
+                    shader::supports_vertex_factory(factories, shader::VertexFactoryType::Local) ? "Yes" : "No",
+                    shader::supports_vertex_factory(factories, shader::VertexFactoryType::GPUSkin) ? "Yes" : "No");
+            }
         }
     }
 
@@ -836,6 +1141,25 @@ namespace toy3d
         }
     }
 
+    void MaterialEditorPanel::draw_preview()
+    {
+        const auto preview = previews_->request_material_preview(runtime_, preview_revision_);
+        if (preview.texture_id.valid())
+        {
+            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(preview.texture_id.value())),
+                         ImVec2(192, 192));
+        }
+        if (preview.busy)
+        {
+            ImGui::TextDisabled("Updating preview...");
+        }
+        if (!preview.error.empty())
+        {
+            ImGui::TextWrapped("%s", preview.error.c_str());
+        }
+        ImGui::Separator();
+    }
+
     void MaterialEditorPanel::draw()
     {
         if (!workspace_)
@@ -843,6 +1167,12 @@ namespace toy3d
             return;
         }
         auto& session = edit_session();
+        if (static_recompile_pending_ && session.active() && shaders_ && !shaders_->busy() && !modal_pending() &&
+            !session.gesturing())
+        {
+            static_recompile_pending_ = false;
+            shaders_->recompile(session.root_data().shader_name, session.id(), session_revision_);
+        }
         if (modal_pending())
         {
             if (session.dirty() || session.gesturing() || pending_save_failed_)
@@ -920,6 +1250,10 @@ namespace toy3d
         }
         if (drawn)
         {
+            if (previews_ && runtime_)
+            {
+                draw_preview();
+            }
             ImGui::TextWrapped("%s%s", session.path().utf8().c_str(), session.dirty() ? " *" : "");
             ImGui::TextDisabled("%s%s", session.root_data().shader_name.c_str(),
                                 session.writable() ? "" : " | Read only");
@@ -995,6 +1329,7 @@ namespace toy3d
                     ImGui::TextUnformatted(shaders_->output().c_str());
                 }
             }
+            draw_static_options();
             ImGui::TextDisabled("Two sided: %s", session.root_data().two_sided ? "Yes" : "No");
             ImGui::BeginDisabled(!session.writable() || modal_pending());
             if (ImGui::Button("Save"))

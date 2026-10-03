@@ -8,7 +8,9 @@ namespace toy3d
 {
     ValueStatus encode_value(ValueWriter& writer, const AssetRef& value)
     {
-        if (!value.asset_id.valid() || value.expected_type.empty())
+        const bool empty_reference = !value.asset_id.valid() && value.expected_type.empty() &&
+                                     !value.subresource_id.valid() && value.strength == AssetRefStrength::Strong;
+        if (!empty_reference && (!value.asset_id.valid() || value.expected_type.empty()))
         {
             return writer.failure(ValueErrorCode::InvalidValue, "invalid asset reference identity or type");
         }
@@ -70,7 +72,9 @@ namespace toy3d
         {
             return status;
         }
-        if (!candidate.asset_id.valid() || candidate.expected_type.empty() || strength > 2)
+        const bool empty_reference = !candidate.asset_id.valid() && candidate.expected_type.empty() &&
+                                     !candidate.subresource_id.valid() && strength == 0u;
+        if ((!empty_reference && (!candidate.asset_id.valid() || candidate.expected_type.empty())) || strength > 2)
         {
             return reader.failure(ValueErrorCode::InvalidValue, "invalid asset reference identity, type or strength");
         }

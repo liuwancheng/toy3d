@@ -8,6 +8,12 @@ namespace toy3d
         error = "Native model selection is unsupported on this platform. Enter a source file path instead.";
         return false;
     }
+    bool pick_environment_files(IWindow&, std::vector<std::string>& paths, std::string& error)
+    {
+        paths.clear();
+        error = "Native environment selection is unsupported. Enter a Radiance HDR source path.";
+        return false;
+    }
     bool pick_texture_files(IWindow&, std::vector<std::string>& paths, std::string& error)
     {
         paths.clear();

@@ -38,12 +38,38 @@ int main()
     check(middle[0] >= 186u && middle[0] <= 190u && middle[0] == middle[1] && middle[1] == middle[2] &&
               middle[3] == 255u,
           "sRGB mip filtering did not occur in linear space");
+    const auto linear = toy3d::import_texture_image(png, {toy3d::TextureUsage::LinearData, false});
+    check(linear.succeeded() && linear.value().format == toy3d::PixelFormat::R8G8B8A8UNorm &&
+              linear.value().mips[1].pixels[0] == 128u,
+          "Linear data mip must not use sRGB transfer");
+    toy3d::Rgba8Image normals;
+    normals.width = normals.height = 2u;
+    normals.pixels = {128, 218, 218, 255, 128, 218, 218, 255, 128, 218, 218, 255, 128, 218, 218, 255};
+    std::vector<std::uint8_t> normal_png;
+    check(toy3d::encode_png(normals, normal_png).succeeded(), "Normal PNG encoding failed");
+    const auto normal = toy3d::import_texture_image(normal_png, {toy3d::TextureUsage::Normal, true});
+    check(normal.succeeded() && normal.value().usage == toy3d::TextureUsage::Normal && normal.value().flip_green &&
+              normal.value().mips[0].pixels[1] < 128u && normal.value().mips[1].pixels[1] < 128u,
+          "Normal import must flip Y once and preserve it while renormalizing mips");
+    auto invalid_usage = linear.value();
+    invalid_usage.usage = toy3d::TextureUsage::Color;
+    check(!toy3d::validate_texture_asset(invalid_usage).succeeded(), "Incompatible usage/format cannot be cooked");
+    check(!toy3d::import_texture_image(png, {toy3d::TextureUsage::LinearData, true}).succeeded(),
+          "Green flip applies to Normal import only");
     toy3d::AssetId id;
     check(toy3d::AssetId::try_generate(id), "asset ID generation failed");
     const auto asset = toy3d::encode_texture_asset(id, imported.value());
     check(asset.succeeded(), "Texture2D package encoding failed");
     const auto decoded = toy3d::decode_texture_asset(asset.value());
-    check(decoded.succeeded() && decoded.value().mips[1].pixels == middle, "Texture2D package round trip failed");
+    check(decoded.succeeded() && decoded.value().mips[1].pixels == middle &&
+              decoded.value().usage == toy3d::TextureUsage::Color,
+          "Texture2D package round trip failed");
+    const auto normal_asset = toy3d::encode_texture_asset(id, normal.value());
+    const auto normal_decoded = toy3d::decode_texture_asset(normal_asset.value());
+    check(normal_decoded.succeeded() && normal_decoded.value().usage == toy3d::TextureUsage::Normal &&
+              normal_decoded.value().flip_green &&
+              normal_decoded.value().mips[1].pixels == normal.value().mips[1].pixels,
+          "Cooked normal texture must preserve import settings and payload");
     toy3d::TypeRegistry types;
     check(toy3d::register_texture_asset_types(types).succeeded() && types.freeze().succeeded(),
           "Texture2D pair schema registration failed");

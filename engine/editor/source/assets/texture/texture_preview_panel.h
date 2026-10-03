@@ -7,6 +7,8 @@
 #include "ui/ui_texture_work.h"
 
 #include <cstdint>
+#include <functional>
+#include "asset_pipeline/texture_import.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,6 +24,10 @@ namespace toy3d
       public:
         explicit TexturePreviewPanel(EditorWorkspace& workspace);
         ~TexturePreviewPanel();
+        void set_reimport_callback(std::function<void(const AssetId&, TextureImportSettings)> callback)
+        {
+            reimport_callback_ = std::move(callback);
+        }
         void request_open(const AssetId& id, bool focus = true);
         void invalidate();
         void tick();
@@ -46,6 +52,7 @@ namespace toy3d
         void close();
         void reject_preview(std::string error);
 
+        std::function<void(const AssetId&, TextureImportSettings)> reimport_callback_;
         EditorWorkspace& workspace_;
         AssetId asset_id_;
         std::string path_;

@@ -9,6 +9,10 @@
 #include "logging/logger.h"
 #include "threading/task_graph/graph_task.h"
 #include "asset/texture/texture_asset.h"
+#include "asset/material/material_asset.h"
+#include "asset/texture/builtin_texture_assets.h"
+#include "rendercore/texture/texture_asset_loader.h"
+#include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
 
 namespace toy3d
@@ -39,7 +43,8 @@ namespace toy3d
 
         bool make_texture_thumbnail(const Texture2DAsset& asset, std::vector<std::uint8_t>& bgra)
         {
-            if (asset.format != PixelFormat::R8G8B8A8UNormSRGB || asset.mips.empty())
+            if ((asset.format != PixelFormat::R8G8B8A8UNormSRGB && asset.format != PixelFormat::R8G8B8A8UNorm) ||
+                asset.mips.empty())
             {
                 return false;
             }
@@ -119,7 +124,29 @@ namespace toy3d
     bool AssetThumbnailPool::initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks)
     {
         tasks_ = &tasks;
-        initialized_ = preview_.initialize(scene, std::move(material));
+        SceneEnvironmentSettings environment;
+        if (!AssetId::parse(builtin_studio_environment_id, environment.environment.asset_id))
+        {
+            TOY_LOG_ERROR("Invalid built-in studio environment identity.");
+            return false;
+        }
+        environment.environment.expected_type = "toy3d.EnvironmentAssetData";
+        const auto loaded =
+            load_environment_asset(workspace_.files(), workspace_.catalog().index, environment.environment);
+        if (!loaded.succeeded())
+        {
+            TOY_LOG_ERROR("Thumbnail studio environment: {}", loaded.status().message);
+            return false;
+        }
+        const auto geometry_path = VirtualPath::parse("/Engine/S_MaterialPreview.asset");
+        const auto geometry = read_static_mesh_asset(workspace_.files(), geometry_path.value());
+        if (!geometry.succeeded() || !geometry.value().valid_tangent_frame)
+        {
+            TOY_LOG_ERROR("Material preview geometry is missing or has no tangent frame.");
+            return false;
+        }
+        material_preview_geometry_ = geometry.value();
+        initialized_ = preview_.initialize(scene, std::move(material), environment, loaded.value());
         if (!initialized_)
         {
             preview_.shutdown();
@@ -160,7 +187,8 @@ namespace toy3d
     AssetThumbnailView AssetThumbnailPool::request(const AssetCatalogEntry& asset)
     {
         if (!initialized_ ||
-            (asset.file.root_type != "toy3d.StaticMeshAssetData" && asset.file.root_type != "toy3d.Texture2DAssetData"))
+            (asset.file.root_type != "toy3d.StaticMeshAssetData" &&
+             asset.file.root_type != "toy3d.Texture2DAssetData" && !is_material_asset_type(asset.file.root_type)))
         {
             return {};
         }
@@ -180,6 +208,56 @@ namespace toy3d
         Entry& entry = it->second;
         entry.last_visible_frame = frame_;
         return {entry.texture, entry.stage != Stage::Ready && entry.stage != Stage::Failed, entry.error};
+    }
+
+    AssetThumbnailView AssetThumbnailPool::request_material_preview(const MaterialInstanceRef& material,
+                                                                    std::uint64_t revision)
+    {
+        if (!initialized_ || !material)
+        {
+            return {};
+        }
+        if (preview_material_.lock() != material || material_preview_revision_ != revision)
+        {
+            material_preview_revision_ = revision;
+            material_preview_error_.clear();
+        }
+        preview_material_ = material;
+        material_preview_visible_frame_ = frame_;
+        return {material_preview_texture_,
+                material_preview_active_ || rendered_preview_revision_ != material_preview_revision_ ||
+                    rendered_preview_material_.lock() != material,
+                material_preview_error_};
+    }
+
+    void AssetThumbnailPool::clear_material_preview()
+    {
+        preview_material_.reset();
+        rendered_preview_material_.reset();
+        material_preview_error_.clear();
+        if (material_preview_active_)
+        {
+            // An already submitted result is retired on delivery; do not reuse the World until it arrives.
+            preview_.clear_mesh();
+            material_preview_cancelled_ = true;
+            if (pending_work_.preview.request_id == material_preview_request_)
+            {
+                pending_work_.preview = {};
+                material_preview_active_ = false;
+                material_preview_candidate_ = {};
+            }
+        }
+        // StaticMeshComponent removal retains its CPU material through a FIFO command.
+        // Drain that removal before the asset editor performs its required final release.
+        if (initialized_ && !flush_rendering_commands().succeeded())
+        {
+            TOY_LOG_ERROR("Could not drain the material preview references.");
+        }
+        if (material_preview_texture_.valid())
+        {
+            pending_work_.retire_textures.push_back(material_preview_texture_);
+            material_preview_texture_ = {};
+        }
     }
 
     void AssetThumbnailPool::generate(const AssetId& id)
@@ -210,6 +288,7 @@ namespace toy3d
 
     void AssetThumbnailPool::invalidate()
     {
+        ++material_preview_revision_;
         for (auto& pair : entries_)
         {
             Entry& entry = pair.second;
@@ -248,6 +327,34 @@ namespace toy3d
         entry.candidate_texture = ImGuiTextureId(next_texture_++);
         entry.stage = Stage::Loading;
         active_id_ = entry.id;
+        if (is_material_asset_type(asset->file.root_type))
+        {
+            AssetRef reference;
+            reference.asset_id = asset->file.asset_id;
+            reference.expected_type = asset->file.root_type;
+            if (!material_resolver_)
+            {
+                fail(entry, "Material thumbnail resolver is not configured.");
+                return;
+            }
+            const auto material = material_resolver_(reference);
+            if (!material.succeeded())
+            {
+                fail(entry, material.status().message);
+                return;
+            }
+            if (!preview_.prepare(material_preview_geometry_, material.value()))
+            {
+                fail(entry, "Could not prepare the material thumbnail sphere.");
+                return;
+            }
+            entry.stage = Stage::AwaitGpu;
+            pending_work_.preview = {entry.request_id,
+                                     entry.candidate_texture,
+                                     {thumbnail_default_size, thumbnail_default_size},
+                                     {preview_.view()}};
+            return;
+        }
         auto result = std::make_shared<CpuResult>();
         result->request_id = entry.request_id;
         cpu_result_ = result;
@@ -395,6 +502,10 @@ namespace toy3d
             return;
         }
         ++frame_;
+        if (material_preview_active_)
+        {
+            return;
+        }
         if (cpu_task_ && cpu_task_->is_complete())
         {
             auto result = std::move(cpu_result_);
@@ -522,6 +633,36 @@ namespace toy3d
                 next = &entry;
             }
         }
+        if (!next && material_preview_visible_frame_ + 2u >= frame_)
+        {
+            const auto material = preview_material_.lock();
+            if (material && (rendered_preview_material_.lock() != material ||
+                             rendered_preview_revision_ != material_preview_revision_))
+            {
+                if (next_request_ == std::numeric_limits<std::uint64_t>::max() || next_texture_ >= (1ull << 40))
+                {
+                    material_preview_error_ = "Preview identifier space exhausted.";
+                    return;
+                }
+                rendered_preview_material_ = material;
+                pending_preview_revision_ = material_preview_revision_;
+                if (!preview_.prepare(material_preview_geometry_, material))
+                {
+                    material_preview_error_ = "Could not prepare the material preview scene.";
+                    preview_.clear_mesh();
+                    rendered_preview_revision_ = pending_preview_revision_;
+                    return;
+                }
+                material_preview_request_ = next_request_++;
+                material_preview_candidate_ = ImGuiTextureId(next_texture_++);
+                material_preview_active_ = true;
+                material_preview_cancelled_ = false;
+                pending_work_.preview = {material_preview_request_,
+                                         material_preview_candidate_,
+                                         {thumbnail_default_size, thumbnail_default_size},
+                                         {preview_.view()}};
+            }
+        }
         if (next)
         {
             try
@@ -543,6 +684,33 @@ namespace toy3d
 
     void AssetThumbnailPool::on_texture_result(UiTextureResult result)
     {
+        if (material_preview_active_ && result.request_id == material_preview_request_ &&
+            result.texture_id == material_preview_candidate_)
+        {
+            preview_.clear_mesh();
+            material_preview_active_ = false;
+            rendered_preview_revision_ = pending_preview_revision_;
+            if (material_preview_cancelled_ || pending_preview_revision_ != material_preview_revision_ ||
+                preview_material_.lock() != rendered_preview_material_.lock() || !result.succeeded())
+            {
+                pending_work_.retire_textures.push_back(result.texture_id);
+                material_preview_error_ =
+                    material_preview_cancelled_ || pending_preview_revision_ != material_preview_revision_
+                        ? ""
+                        : result.error;
+            }
+            else
+            {
+                if (material_preview_texture_.valid())
+                {
+                    pending_work_.retire_textures.push_back(material_preview_texture_);
+                }
+                material_preview_texture_ = result.texture_id;
+                material_preview_error_.clear();
+            }
+            material_preview_candidate_ = {};
+            return;
+        }
         const auto it = entries_.find(active_id_);
         if (it == entries_.end() || it->second.request_id != result.request_id)
         {
@@ -628,6 +796,10 @@ namespace toy3d
     std::vector<ImGuiTextureId> AssetThumbnailPool::texture_ids() const
     {
         std::vector<ImGuiTextureId> result;
+        if (material_preview_texture_.valid())
+        {
+            result.push_back(material_preview_texture_);
+        }
         for (const auto& pair : entries_)
         {
             if (pair.second.texture.valid())
@@ -650,6 +822,9 @@ namespace toy3d
         }
         cpu_task_.reset();
         cpu_result_.reset();
+        clear_material_preview();
+        material_preview_active_ = false;
+        material_preview_geometry_ = {};
         if (initialized_)
         {
             preview_.shutdown();

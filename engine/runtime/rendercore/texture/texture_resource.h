@@ -11,7 +11,7 @@ namespace toy3d
     class RenderResourceManager;
 
     // Stable Render-side representation. All mutable fields are confined to
-    // the logical Rendering Thread; the Asset owns this allocation.
+    // the logical Rendering Thread; a Texture or RenderScene owns this allocation.
     class TextureResource final : public RenderResource
     {
       public:
@@ -22,6 +22,7 @@ namespace toy3d
         RHIStatus release(RenderResourceManager& manager);
 
         const RHITextureViewRef& view_for_current_recording() const noexcept;
+        TextureUsage usage_for_current_recording() const noexcept;
         const RHITextureViewRef& active_view() const noexcept
         {
             return active_view_;

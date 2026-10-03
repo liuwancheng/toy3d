@@ -515,7 +515,7 @@ namespace toy3d
         }
 
         bool resource_recording_started = false;
-        const auto abort_recording = [&resource_manager, &viewport, &frame, &resource_recording_started,
+        const auto abort_recording = [&resource_manager, &render_scene, &viewport, &frame, &resource_recording_started,
                                       imgui_renderer](const RHIStatus& failure) -> RHIResult<RHIFrameEndResult>
         {
             if (imgui_renderer != nullptr)
@@ -526,6 +526,7 @@ namespace toy3d
             if (resource_recording_started)
             {
                 discard_status = resource_manager.discard_recording();
+                render_scene.resolve_environment_recording(false);
                 if (!discard_status)
                 {
                     TOY_LOG_ERROR("Renderer frame could not discard its RenderResource recording after '{}': {}",
@@ -763,6 +764,7 @@ namespace toy3d
                 imgui_renderer->discard_frame_recording();
             }
             const RHIStatus discard_status = resource_manager.discard_recording();
+            render_scene.resolve_environment_recording(false);
             if (!discard_status)
             {
                 TOY_LOG_ERROR(
@@ -790,6 +792,10 @@ namespace toy3d
             }
         }
         const RHIStatus commit_status = resource_manager.commit_recording();
+        if (commit_status)
+        {
+            render_scene.resolve_environment_recording(true);
+        }
         if (!commit_status)
         {
             TOY_LOG_ERROR("Renderer frame submitted but RenderResource publication failed: {}",
@@ -924,6 +930,14 @@ namespace toy3d
                 ui_status = record_ui_work(context, ui_readback);
                 return ui_status;
             });
+        const bool resources_submitted = result && result.value().completion_value != 0u;
+        for (auto* scene : {render_scene_.get(), play_scene_.get(), preview_scene_.get()})
+        {
+            if (scene && scene != active_scene)
+            {
+                scene->resolve_environment_recording(resources_submitted);
+            }
+        }
         if (output.scene_feedback && scene_renderer &&
             output.scene_feedback->state.load(std::memory_order_acquire) == SceneRenderState::Pending)
         {
@@ -1067,6 +1081,17 @@ namespace toy3d
 
     void Renderer::validate_material_shader_map(MaterialShaderMapValidationRef request)
     {
+        if (request)
+        {
+            for (const auto* scene : {scene_interface(), preview_scene_interface(), play_scene_interface()})
+            {
+                if (scene)
+                {
+                    const auto generation = scene->material_usage_generation();
+                    request->scene_revisions.push_back({generation, generation->load(std::memory_order_acquire)});
+                }
+            }
+        }
         enqueue_render_command(
             "ValidateMaterialProgram",
             [this, request = std::move(request)]() noexcept
@@ -1119,6 +1144,32 @@ namespace toy3d
                                 {
                                     continue;
                                 }
+                                if (request->exact_targets)
+                                {
+                                    const auto target =
+                                        std::find_if(request->targets.begin(), request->targets.end(),
+                                                     [&](const MaterialShaderMapValidationTarget& value)
+                                                     {
+                                                         return value.proxy == &batch.material_render_proxy();
+                                                     });
+                                    if (target == request->targets.end() || !target->shader_map ||
+                                        target->shader_map->index().source_hash !=
+                                            request->shader_map->index().source_hash)
+                                    {
+                                        return RHIStatus::failure(
+                                            RHIErrorCode::InvalidArgument,
+                                            "A live Material user is not enrolled in this source candidate.");
+                                    }
+                                    if (target->shader_map != request->shader_map)
+                                    {
+                                        continue;
+                                    }
+                                }
+                                else if (current->index().permutation_key !=
+                                         request->shader_map->index().permutation_key)
+                                {
+                                    continue;
+                                }
                                 const auto forward =
                                     batch.find_program(*request->shader_map, shader::ShaderPassRole::Forward);
                                 const auto context = " Actor " + std::to_string(batch.scene_proxy().actor_id()) +
@@ -1128,6 +1179,12 @@ namespace toy3d
                                 if (!forward.succeeded())
                                 {
                                     return RHIStatus::failure(RHIErrorCode::Unsupported, forward.error + context);
+                                }
+                                if (request->shader_map->requires_tangent_frame() && !batch.has_valid_tangent_frame())
+                                {
+                                    return RHIStatus::failure(
+                                        RHIErrorCode::Unsupported,
+                                        "Candidate Material requires a valid mesh tangent frame." + context);
                                 }
                                 MaterialDesc descriptor;
                                 descriptor.shader_name = request->shader_map->index().shader_name;

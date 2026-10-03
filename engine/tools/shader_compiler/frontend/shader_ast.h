@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shader/shader_format_types.h"
+#include "shader/shader_compile_plan.h"
 #include "frontend/source_location.h"
 
 #include <cstdint>
@@ -54,6 +55,7 @@ namespace toy3d::shader
         std::optional<double> range_max;
         DefaultValue default_value;
         SourceLocation location;
+        TextureUsage texture_usage = TextureUsage::Color;
     };
 
     struct Resource
@@ -88,6 +90,9 @@ namespace toy3d::shader
         std::vector<std::string> options;
         std::string default_value;
         SourceLocation location;
+        ShaderStageFlags affected_stages =
+            ShaderStageFlags::Vertex | ShaderStageFlags::Pixel | ShaderStageFlags::Compute;
+        std::uint32_t affected_passes = all_shader_pass_roles;
     };
 
     enum class ShaderStage
@@ -115,6 +120,7 @@ namespace toy3d::shader
     {
         std::string name;
         ShaderPassRole role = ShaderPassRole::Global;
+        std::string coverage_function;
         std::vector<std::string> requirements;
         ShaderGraphicsPassState state;
         bool has_explicit_graphics_state = false;
@@ -133,6 +139,11 @@ namespace toy3d::shader
         std::vector<Parameter> parameters;
         std::vector<Resource> resources;
         std::vector<Variant> variants;
+        std::vector<ShaderEngineFeatureDeclaration> features;
+        ShaderStaticCondition supported_when;
+        bool standard_tangent_input = false;
+        bool declares_tangent_frame = false;
+        ShaderStaticCondition tangent_frame_when;
         std::vector<HlslBlock> includes;
         std::vector<ShaderPass> passes;
         SourceLocation location;

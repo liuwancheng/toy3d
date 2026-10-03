@@ -47,7 +47,7 @@ namespace toy3d
         std::string tracks_segment = "animation_tracks";
     };
 
-    TOY3D_REFLECT_TYPE("toy3d.SkeletalMeshAssetData", 1)
+    TOY3D_REFLECT_TYPE("toy3d.SkeletalMeshAssetData", 2)
     struct SkeletalMeshAssetData
     {
         TOY3D_PROPERTY("skeleton", Visible)

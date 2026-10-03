@@ -312,13 +312,19 @@ namespace toy3d
             {
                 return workspace_.catalog().index;
             },
-            [this, defaults](const std::string& name)
+            [this, defaults](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
             {
                 return shader_workflow_ready_
-                           ? shaders_.shader_map(name)
-                           : (name == defaults->desc().shader_name ? defaults->desc().shader_map : nullptr);
+                           ? shaders_.shader_map(name, selections)
+                           : (name == defaults->desc().shader_name && selections.empty() ? defaults->desc().shader_map
+                                                                                         : nullptr);
             },
             std::move(textures));
+        thumbnails_.set_material_resolver(
+            [this](const AssetRef& reference)
+            {
+                return materials_->load(reference);
+            });
         materials_->set_default_material(defaults);
         materials_->set_shader_diagnostic(
             [this](const std::string& name)
@@ -328,10 +334,28 @@ namespace toy3d
         material_assignments_.initialize(workspace_, *materials_);
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
                                     PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+        material_editor_.set_preview_pool(thumbnails_);
         material_editor_.edit_session().set_publish(
             [this](const AssetRef& reference)
             {
-                return materials_->reload(reference);
+                const auto status = materials_->reload(reference);
+                if (status.succeeded())
+                {
+                    thumbnails_.invalidate();
+                }
+                return status;
+            });
+        shaders_.set_material_validation_targets(
+            [this](const std::vector<ShaderMapCollectionRef>& programs,
+                   std::vector<MaterialShaderMapValidationTarget>& targets, std::string& error)
+            {
+                const auto status = materials_->collect_shader_validation_targets(programs, targets);
+                if (!status.succeeded())
+                {
+                    error = status.message;
+                    return false;
+                }
+                return material_editor_.collect_shader_validation_targets(programs, targets, error);
             });
 
         auto& arguments = CommandLineParser::get_instance();
@@ -339,7 +363,9 @@ namespace toy3d
         if (project_ && project_->active())
         {
             shader_paths.project_shader = project_->shader();
+            shader_paths.project_build_settings = PhysicalPath(project_->config().utf8() + "/shader_build.settings");
         }
+        shader_paths.engine_build_settings = PhysicalPath(TOY3D_EDITOR_ENGINE_CONFIG_ROOT "/shader_build.settings");
         shader_paths.engine_shader = PhysicalPath(TOY3D_EDITOR_ENGINE_SHADER_ROOT);
         shader_paths.engine_include = PhysicalPath(TOY3D_EDITOR_ENGINE_INCLUDE_ROOT);
         shader_paths.builtin_root = PhysicalPath(TOY3D_BUILTIN_SHADER_ROOT);
@@ -409,8 +435,10 @@ namespace toy3d
         std::string error;
         try
         {
-            if (!material_assignments_.prepare_shader(shaders_.candidate(), error) ||
-                !material_editor_.prepare_shader(shaders_.candidate(), shaders_.candidate_properties(), error))
+            if (!shaders_.validate_candidate_users(error) ||
+                !material_assignments_.prepare_shader(shaders_.candidate_configurations(), error) ||
+                !material_editor_.prepare_shader(shaders_.candidate_configurations(), shaders_.candidate_properties(),
+                                                 error))
             {
                 material_assignments_.discard_shader();
                 material_editor_.discard_shader();
@@ -494,6 +522,15 @@ namespace toy3d
 
     bool EditorApplication::register_panels()
     {
+        texture_preview_.set_reimport_callback(
+            [this](const AssetId& id, TextureImportSettings settings)
+            {
+                if (!play_session_.active() && !model_import_.active() && !texture_import_.active() &&
+                    !texture_import_.request_reimport(workspace_, id, settings))
+                {
+                    model_error_ = texture_import_.error();
+                }
+            });
         auto add_scene_panel = [this](const char* id, const char* title, const char* window, std::function<void()> draw)
         {
             EditorPanel panel;
@@ -552,6 +589,12 @@ namespace toy3d
                              {
                                  draw_details(world(), selection_, scene_session_.history(), workspace_,
                                               scene_viewport_, material_assignments_, material_assignment_error_);
+                             }) ||
+            !add_scene_panel("world_settings", "World Settings", "World Settings",
+                             [this]()
+                             {
+                                 draw_world_settings(world(), workspace_, scene_session_.history(),
+                                                     material_assignment_error_);
                              }) ||
             !add_scene_panel("scene_viewport", "Scene Viewport", "Scene Viewport###Game Viewport",
                              [this]()
@@ -694,6 +737,11 @@ namespace toy3d
             TOY_LOG_ERROR("Request model import: {}", model_error_);
         }
 #endif
+        if (workspace_.has_project() && browser.environment_import_requested && !material_create_.active() &&
+            !shader_create_.active() && !model_import_.active() && !texture_import_.request_environment(asset_folder_))
+        {
+            model_error_ = texture_import_.error();
+        }
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
@@ -703,6 +751,7 @@ namespace toy3d
             {
                 continue;
             }
+            bool environment = false;
             bool image = false;
             bool model = false;
             for (const auto& path : dropped.paths)
@@ -718,15 +767,23 @@ namespace toy3d
                 {
                     image = true;
                 }
+                else if (extension == ".hdr")
+                {
+                    environment = true;
+                }
                 else
                 {
                     model = true;
                 }
             }
-            if (image && model)
+            if ((image && model) || (environment && (image || model)))
             {
-                model_error_ = "Drop image and model files separately.";
+                model_error_ = "Drop HDR environments, color/data images and model files separately.";
                 TOY_LOG_ERROR("Asset drop: {}", model_error_);
+            }
+            else if (environment && !texture_import_.request_environment(asset_folder_, dropped.paths))
+            {
+                model_error_ = texture_import_.error();
             }
             else if (image && !texture_import_.request(asset_folder_, dropped.paths))
             {
@@ -814,6 +871,7 @@ namespace toy3d
                 ImGui::DockBuilderDockWindow("Scene Viewport###Game Viewport", scene_dock);
                 ImGui::DockBuilderDockWindow("Outliner", outliner_dock);
                 ImGui::DockBuilderDockWindow("Details", details_dock);
+                ImGui::DockBuilderDockWindow("World Settings", details_dock);
                 ImGui::DockBuilderDockWindow("Texture Preview", details_dock);
                 ImGui::DockBuilderDockWindow("Content Browser", content_dock);
                 ImGui::DockBuilderDockWindow("Console", content_dock);

@@ -19,6 +19,23 @@
 
 namespace toy3d
 {
+    bool material_parameter_is_active(const ShaderMapCollection& shader_map, ShaderParameterId parameter_id)
+    {
+        for (const auto& program : shader_map.programs())
+        {
+            if (std::any_of(program->data().bindings.begin(), program->data().bindings.end(),
+                            [parameter_id](const auto& binding)
+                            {
+                                return binding.group == RHIBindingGroup::Material &&
+                                       binding.parameter_id == parameter_id;
+                            }))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool validate_material_mesh_pass(const MaterialDesc& desc, shader::ShaderPassRole role,
                                      shader::VertexFactoryType factory, std::string& error)
     {
@@ -32,7 +49,8 @@ namespace toy3d
             return true;
         }
         const auto& name = desc.shader_map->index().shader_name;
-        if (role != shader::ShaderPassRole::Forward && (name == "Toy3d/Surface/Phong" || name == "Toy3d/Surface/Unlit"))
+        if ((role == shader::ShaderPassRole::ShadowDepth || role == shader::ShaderPassRole::HitProxy) &&
+            desc.shader_map->programs().front()->data().contract.surface_mode == shader::ShaderSurfaceMode::Opaque)
         {
             return true;
         }
@@ -41,11 +59,16 @@ namespace toy3d
     }
 
     bool validate_material_geometry(const MaterialDesc& desc, shader::VertexFactoryType factory, bool has_vertex_colors,
-                                    std::string& error)
+                                    bool has_valid_tangent_frame, std::string& error)
     {
         if (!desc.shader_map)
         {
             return true;
+        }
+        if (desc.shader_map->requires_tangent_frame() && !has_valid_tangent_frame)
+        {
+            error = desc.shader_name + " requires a valid tangent frame for this static configuration.";
+            return false;
         }
         const auto forward = desc.shader_map->find(shader::ShaderPassRole::Forward, factory);
         if (!forward.succeeded())
@@ -178,7 +201,7 @@ namespace toy3d
                                     item.value = desc.scalar_defaults.at(item.id);
                                 }
                                 const auto* value = std::get_if<float>(&item.value);
-                                if (!value || !std::isfinite(*value))
+                                if (!value || !shader::validate_shader_scalar_value(member, *value))
                                 {
                                     return false;
                                 }
@@ -248,7 +271,10 @@ namespace toy3d
                                 item.value = desc.texture_defaults.at(item.id);
                             }
                             const auto* value = std::get_if<TextureRef>(&item.value);
-                            if (!value || !*value)
+                            if (!value ||
+                                (!*value && (!reset || !desc.shader_map ||
+                                             material_parameter_is_active(*desc.shader_map, item.id))) ||
+                                (*value && ((*value)->desc().cube || (*value)->desc().usage != resource.texture_usage)))
                             {
                                 return false;
                             }
@@ -307,7 +333,9 @@ namespace toy3d
                     {
                     case shader::ShaderValueType::Float32:
                         ++scalar_count;
-                        has_runtime_default = desc.scalar_defaults.count(member.parameter_id) == 1u;
+                        has_runtime_default =
+                            desc.scalar_defaults.count(member.parameter_id) == 1u &&
+                            shader::validate_shader_scalar_value(member, desc.scalar_defaults.at(member.parameter_id));
                         break;
                     case shader::ShaderValueType::Float32x2:
                         ++vector2_count;
@@ -369,9 +397,16 @@ namespace toy3d
                 }
                 if (resource.default_value_kind == shader::ShaderParameterDefaultValueKind::None ||
                     desc.texture_defaults.count(resource.parameter_id) != 1u ||
-                    !desc.texture_defaults.at(resource.parameter_id))
+                    (!desc.texture_defaults.at(resource.parameter_id) &&
+                     (!desc.shader_map || material_parameter_is_active(*desc.shader_map, resource.parameter_id))))
                 {
                     error = "Material Texture schema is missing its canonical or runtime default";
+                    return false;
+                }
+                const auto& texture = desc.texture_defaults.at(resource.parameter_id);
+                if (texture && (texture->desc().cube || texture->desc().usage != resource.texture_usage))
+                {
+                    error = "Material Texture usage differs from Shader requirement: " + resource.name;
                     return false;
                 }
                 ++texture_count;
@@ -461,7 +496,8 @@ namespace toy3d
                                 << (byte * 8u);
                     }
                     std::memcpy(&values[component], &bits, sizeof(bits));
-                    if (!std::isfinite(values[component]))
+                    if (!std::isfinite(values[component]) ||
+                        (count == 1u && !shader::validate_shader_scalar_value(member, values[component])))
                     {
                         error = "Material default is not finite: " + member.name;
                         return false;
@@ -635,7 +671,15 @@ namespace toy3d
     // --------------------------------------------------------------------------
     // MaterialInstance: Direct Parent ownership and local mutable overrides
     // --------------------------------------------------------------------------
-    MaterialInstanceRef MaterialInstance::create(MaterialInterfaceRef parent)
+    MaterialInstanceRef MaterialInstance::create(MaterialInterfaceRef parent, ShaderMapCollectionRef configuration)
+    {
+        auto options = configuration ? material_static_options(configuration->index().material_selections)
+                                     : std::vector<MaterialStaticOption>{};
+        return create(std::move(parent), std::move(configuration), std::move(options));
+    }
+
+    MaterialInstanceRef MaterialInstance::create(MaterialInterfaceRef parent, ShaderMapCollectionRef configuration,
+                                                 std::vector<MaterialStaticOption> static_options)
     {
         if (!parent)
         {
@@ -662,6 +706,33 @@ namespace toy3d
             }
         }
         MaterialInstance value(parent, std::move(root));
+        value.desc_.static_options = std::move(static_options);
+        const auto selected = configuration ? configuration : parent->desc().shader_map;
+        if (selected)
+        {
+            const auto resolved = shader::resolve_shader_permutation(
+                selected->index().material_domain,
+                material_static_selections(
+                    merge_material_static_options(parent->effective_static_options(), value.desc_.static_options)));
+            if (!resolved.succeeded() || resolved.permutation->key != selected->index().permutation_key)
+            {
+                TOY_LOG_ERROR("MaterialInstance local static options do not match its compiled configuration.");
+                return {};
+            }
+        }
+        if (configuration)
+        {
+            const auto schema = material_parameter_schema_from_shader_schema(
+                configuration->programs().front()->data().parameter_schema);
+            if (configuration->index().shader_name != parent->desc().shader_name ||
+                schema.schema_identity != parent->parameter_schema().schema_identity)
+            {
+                TOY_LOG_ERROR("MaterialInstance static configuration has an incompatible Shader/schema.");
+                return {};
+            }
+            value.desc_.shader_map = configuration;
+            value.shader_map_ = std::move(configuration);
+        }
         auto result = std::make_shared<MaterialInstance>(std::move(value));
         parent->children_.push_back(result);
         // No inherited value becomes a local override.
@@ -808,6 +879,13 @@ namespace toy3d
                            });
     }
 
+    std::vector<MaterialStaticOption> MaterialInterface::effective_static_options() const
+    {
+        const auto source = parent();
+        return merge_material_static_options(
+            source ? source->effective_static_options() : std::vector<MaterialStaticOption>{}, desc_.static_options);
+    }
+
     bool MaterialInterface::parameter_value(std::string_view name, MaterialParameterValue& output) const
     {
         for (const auto& value : local_overrides_)
@@ -869,21 +947,12 @@ namespace toy3d
         return publish_configurations({{this, std::move(desc), std::move(overrides), parent()}});
     }
 
-    bool MaterialInterface::publish_configurations(std::vector<Configuration> configurations)
+    bool MaterialInterface::prepare_configurations(std::vector<Configuration> configurations,
+                                                   const std::vector<ShaderMapCollectionRef>& shader_family,
+                                                   std::vector<PreparedConfiguration>& prepared,
+                                                   std::vector<MaterialInstanceRef>& owners)
     {
-        struct Revision
-        {
-            Configuration configuration;
-            MaterialRef root;
-            MaterialRef previous_root;
-            bool previously_used = false;
-            std::size_t depth = 1u;
-            MaterialDesc effective;
-            MaterialRenderProxy* destination = nullptr;
-            std::shared_ptr<MaterialRenderProxy> proxy;
-        };
         std::map<const MaterialInterface*, Configuration> inputs;
-        std::vector<MaterialInstanceRef> owners;
         std::function<void(MaterialInterface*)> collect = [&](MaterialInterface* target)
         {
             if (inputs.count(target))
@@ -912,7 +981,7 @@ namespace toy3d
         {
             inputs.at(configuration.target) = std::move(configuration);
         }
-        auto revisions = std::make_shared<std::vector<Revision>>();
+        auto revisions = std::make_shared<std::vector<PreparedConfiguration>>();
         revisions->reserve(inputs.size());
         std::map<const MaterialInterface*, std::size_t> positions;
         std::set<const MaterialInterface*> visiting;
@@ -926,7 +995,7 @@ namespace toy3d
             {
                 return false;
             }
-            Revision revision;
+            PreparedConfiguration revision;
             revision.configuration = inputs.at(target);
             revision.previously_used = target->render_proxy_used_;
             if (const auto* child = dynamic_cast<const MaterialInstance*>(target))
@@ -936,6 +1005,9 @@ namespace toy3d
             auto source = revision.configuration.parent;
             if (source)
             {
+                const auto selected_map = revision.configuration.descriptor.shader_map;
+                const auto local_options = revision.configuration.descriptor.static_options;
+                auto inherited_options = source->effective_static_options();
                 auto found = inputs.find(source.get());
                 if (found != inputs.end())
                 {
@@ -948,6 +1020,7 @@ namespace toy3d
                     revision.configuration.descriptor = parent_revision.configuration.descriptor;
                     revision.effective = parent_revision.effective;
                     revision.root = parent_revision.root;
+                    inherited_options = parent_revision.static_options;
                 }
                 else
                 {
@@ -1019,10 +1092,55 @@ namespace toy3d
                         revision.root = std::dynamic_pointer_cast<const MaterialInstance>(source)->material();
                     }
                 }
+                revision.configuration.descriptor.static_options = local_options;
+                revision.static_options = merge_material_static_options(inherited_options, local_options);
+                auto selected = revision.configuration.descriptor.shader_map;
+                if (selected)
+                {
+                    const auto resolved = shader::resolve_shader_permutation(
+                        selected->index().material_domain, material_static_selections(revision.static_options));
+                    if (!resolved.succeeded())
+                    {
+                        return false;
+                    }
+                    if (!shader_family.empty())
+                    {
+                        const auto found = std::find_if(shader_family.begin(), shader_family.end(),
+                                                        [&](const ShaderMapCollectionRef& candidate)
+                                                        {
+                                                            return candidate && candidate->index().permutation_key ==
+                                                                                    resolved.permutation->key;
+                                                        });
+                        if (found == shader_family.end())
+                        {
+                            return false;
+                        }
+                        selected = *found;
+                    }
+                    else if (revision.configuration.shader_configuration_selected)
+                    {
+                        selected = selected_map;
+                    }
+                    else if (selected->index().permutation_key != resolved.permutation->key)
+                    {
+                        selected = selected_map;
+                    }
+                    if (!selected || selected->index().permutation_key != resolved.permutation->key ||
+                        selected->index().shader_name != revision.configuration.descriptor.shader_name ||
+                        material_parameter_schema_from_shader_schema(
+                            selected->programs().front()->data().parameter_schema)
+                                .schema_identity != revision.configuration.descriptor.parameter_schema.schema_identity)
+                    {
+                        return false;
+                    }
+                    revision.configuration.descriptor.shader_map = selected;
+                    revision.effective.shader_map = selected;
+                }
             }
             else
             {
                 revision.effective = revision.configuration.descriptor;
+                revision.static_options = revision.configuration.descriptor.static_options;
             }
             if (revision.depth > maximum_material_parent_depth)
             {
@@ -1081,6 +1199,19 @@ namespace toy3d
                 return false;
             }
         }
+        prepared = std::move(*revisions);
+        return true;
+    }
+
+    bool MaterialInterface::publish_configurations(std::vector<Configuration> configurations,
+                                                   const std::vector<ShaderMapCollectionRef>& shader_family)
+    {
+        auto revisions = std::make_shared<std::vector<PreparedConfiguration>>();
+        std::vector<MaterialInstanceRef> owners;
+        if (!prepare_configurations(std::move(configurations), shader_family, *revisions, owners))
+        {
+            return false;
+        }
         auto previous = std::make_shared<std::vector<Configuration>>();
         for (const auto& revision : *revisions)
         {
@@ -1090,12 +1221,12 @@ namespace toy3d
             {
                 if (const auto old_parent = target->parent())
                 {
-                    old_parent->children_.reserve(old_parent->children_.size() + inputs.size());
+                    old_parent->children_.reserve(old_parent->children_.size() + revisions->size());
                 }
                 if (revision.configuration.parent)
                 {
                     revision.configuration.parent->children_.reserve(revision.configuration.parent->children_.size() +
-                                                                     inputs.size());
+                                                                     revisions->size());
                 }
             }
         }

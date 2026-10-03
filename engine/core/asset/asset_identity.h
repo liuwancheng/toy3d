@@ -40,6 +40,8 @@ namespace toy3d
 
     struct AssetRef
     {
+        // Unset optional fields use the canonical empty value (zero IDs,
+        // empty expected_type, Strong). Dependency/index APIs require a valid ID.
         AssetId asset_id;
         SubresourceId subresource_id;
         std::string expected_type;

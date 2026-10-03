@@ -852,6 +852,7 @@ namespace toy3d::shader
                                                        "usage",
                                                        "role",
                                                        "geometry",
+                                                       "surface_mode",
                                                        "vertex_factory",
                                                        "vertex_factory_support",
                                                        "target",
@@ -891,6 +892,7 @@ namespace toy3d::shader
                                                        "variant_id_version",
                                                        "permutation_version",
                                                        "permutation_key",
+                                                       "pass_permutation_key",
                                                        "stage_count"};
         const auto manifest = key_value_fields(*manifest_text, manifest_fields, result, "ShaderMapEntry manifest");
         if (!manifest)
@@ -909,6 +911,7 @@ namespace toy3d::shader
         const auto usage = parse_unsigned<std::uint32_t>(manifest->at("usage"));
         const auto role = parse_unsigned<std::uint32_t>(manifest->at("role"));
         const auto geometry = parse_unsigned<std::uint32_t>(manifest->at("geometry"));
+        const auto surface_mode = parse_unsigned<std::uint32_t>(manifest->at("surface_mode"));
         const auto vertex_factory = parse_unsigned<std::uint32_t>(manifest->at("vertex_factory"));
         const auto vertex_factory_support = parse_unsigned<std::uint32_t>(manifest->at("vertex_factory_support"));
         const auto content_hash = parse_hash(manifest->at("entry_content_hash"), result, "entry_content_hash");
@@ -918,10 +921,13 @@ namespace toy3d::shader
         const auto binding_hash = parse_hash(manifest->at("target_binding_hash"), result, "target_binding_hash");
         const auto pass_hash = parse_hash(manifest->at("pass_template_hash"), result, "pass_template_hash");
         const auto permutation_key = parse_hash(manifest->at("permutation_key"), result, "permutation_key");
+        const auto pass_permutation_key =
+            parse_hash(manifest->at("pass_permutation_key"), result, "pass_permutation_key");
         const auto graphics_pass_state = parse_graphics_pass_state(*manifest, result);
-        if (!usage || !role || !geometry || !vertex_factory || !vertex_factory_support || !entry_version ||
-            *entry_version != shader_map_entry_version || manifest->at("shader_map_key") != key_text ||
-            !shader_name(manifest->at("shader_name")) || !safe_scalar(manifest->at("pass_name")) || !target ||
+        if (!usage || !role || !geometry || !surface_mode || !vertex_factory || !vertex_factory_support ||
+            !entry_version || *entry_version != shader_map_entry_version ||
+            manifest->at("shader_map_key") != key_text || !shader_name(manifest->at("shader_name")) ||
+            !safe_scalar(manifest->at("pass_name")) || !target ||
             *target != static_cast<std::uint32_t>(ShaderTarget::VulkanSpirV) || !profile ||
             *profile != static_cast<std::uint32_t>(ShaderCompileProfile::VulkanES31) || !mapping_version ||
             *mapping_version != vulkan_binding_mapping_version || !generated_format_version ||
@@ -929,8 +935,9 @@ namespace toy3d::shader
             *variant_id_version != shader_variant_id_version || !permutation_version ||
             *permutation_version != shader_permutation_version || !stage_count || *stage_count == 0u ||
             *stage_count > 3u || !content_hash || !logical_hash || !schema_identity || !binding_hash || !pass_hash ||
-            !permutation_key || !graphics_pass_state || hash_is_zero(*content_hash) || hash_is_zero(*logical_hash) ||
-            hash_is_zero(*binding_hash) || hash_is_zero(*pass_hash) || hash_is_zero(*permutation_key))
+            !permutation_key || !pass_permutation_key || !graphics_pass_state || hash_is_zero(*content_hash) ||
+            hash_is_zero(*logical_hash) || hash_is_zero(*binding_hash) || hash_is_zero(*pass_hash) ||
+            hash_is_zero(*permutation_key) || hash_is_zero(*pass_permutation_key))
         {
             add_error(result, "ShaderMapEntry manifest contains an unsupported or invalid value; regenerate Shader "
                               "output for the current format.");
@@ -943,6 +950,7 @@ namespace toy3d::shader
         entry.contract.usage = static_cast<ShaderUsage>(*usage);
         entry.contract.role = static_cast<ShaderPassRole>(*role);
         entry.contract.geometry = static_cast<ShaderGeometryMode>(*geometry);
+        entry.contract.surface_mode = static_cast<ShaderSurfaceMode>(*surface_mode);
         entry.contract.vertex_factory = static_cast<VertexFactoryType>(*vertex_factory);
         entry.contract.vertex_factory_support = *vertex_factory_support;
         std::string contract_error;
@@ -961,6 +969,7 @@ namespace toy3d::shader
         entry.variant_id_version = *variant_id_version;
         entry.permutation_version = *permutation_version;
         entry.permutation_key = *permutation_key;
+        entry.pass_permutation_key = *pass_permutation_key;
         if (calculate_shader_graphics_pass_state_hash(entry.graphics_pass_state) != entry.pass_template_hash)
         {
             add_error(result, "ShaderMapEntry graphics Pass state does not match pass_template_hash.");
@@ -1018,9 +1027,15 @@ namespace toy3d::shader
             {
                 return result;
             }
-            const std::set<std::string> stage_fields = {
-                "stage",       "entry_point",          "compile_key",           "reflection_hash",
-                "binary_hash", "reflection_file_hash", "dependencies_file_hash"};
+            const std::set<std::string> stage_fields = {"stage",
+                                                        "entry_point",
+                                                        "compile_key",
+                                                        "reflection_hash",
+                                                        "binary_hash",
+                                                        "reflection_file_hash",
+                                                        "dependencies_file_hash",
+                                                        "logical_layout_hash",
+                                                        "target_binding_hash"};
             const auto stage_manifest =
                 key_value_fields(*stage_manifest_text, stage_fields, result, prefix + " stage manifest");
             if (!stage_manifest)
@@ -1043,7 +1058,35 @@ namespace toy3d::shader
                 add_error(result, "Stage manifest contains an invalid value.");
                 return result;
             }
-            auto binary = read_binary(platform_file, *directory, prefix + ".spv", result);
+            const auto logical_hash =
+                parse_hash(stage_manifest->at("logical_layout_hash"), result, "logical_layout_hash");
+            const auto binding_hash =
+                parse_hash(stage_manifest->at("target_binding_hash"), result, "target_binding_hash");
+            if (!logical_hash || !binding_hash ||
+                *logical_hash != calculate_shader_stage_logical_layout_hash(entry.parameter_schema, entry.bindings,
+                                                                            stage_info.first) ||
+                *binding_hash != calculate_shader_stage_binding_hash(entry.target, entry.mapping_version,
+                                                                     entry.bindings, stage_info.first))
+            {
+                add_error(result, "Stage ABI identity differs from its Program mapping.");
+                return result;
+            }
+            const auto code_root = child_path(platform_file, shader_map_root, "stage_code", result);
+            const auto code_directory =
+                code_root ? child_path(platform_file, *code_root, sha256_to_hex(*binary_hash), result) : std::nullopt;
+            if (!code_directory)
+            {
+                return result;
+            }
+            const auto code_root_stat = platform_file.stat(*code_root);
+            const auto code_stat = platform_file.stat(*code_directory);
+            if (!code_root_stat.succeeded() || code_root_stat.value().type != FileType::Directory ||
+                !code_stat.succeeded() || code_stat.value().type != FileType::Directory)
+            {
+                add_error(result, "Stage code directories must be ordinary owned directories.");
+                return result;
+            }
+            auto binary = read_binary(platform_file, *code_directory, "code.spv", result);
             auto reflection_text =
                 read_text(platform_file, *directory, prefix + ".reflection.txt", maximum_metadata_size, result);
             auto dependencies_text =
@@ -1073,8 +1116,8 @@ namespace toy3d::shader
             code.request.profile = entry.profile;
             code.request.stage = stage_info.first;
             code.request.entry_point = stage_manifest->at("entry_point");
-            code.request.logical_layout_hash = entry.logical_layout_hash;
-            code.request.target_binding_hash = entry.target_binding_hash;
+            code.request.logical_layout_hash = *logical_hash;
+            code.request.target_binding_hash = *binding_hash;
             code.request.compile_key = *compile_key;
             code.request.dependencies = std::move(*dependencies);
             code.reflection = std::move(*reflection);

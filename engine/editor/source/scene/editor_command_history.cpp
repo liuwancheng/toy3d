@@ -142,6 +142,21 @@ namespace toy3d
         {
             return;
         }
+        if (pending_.kind == Kind::Environment)
+        {
+            pending_.environment_after = world.environment_settings();
+            pending_.environment_cube_after = world.environment_cube();
+            const auto& before = pending_.environment_before;
+            const auto& after = pending_.environment_after;
+            if (!(before.environment.asset_id == after.environment.asset_id) || before.rotation != after.rotation ||
+                before.intensity != after.intensity ||
+                pending_.environment_cube_before != pending_.environment_cube_after)
+            {
+                commit(world, std::move(pending_));
+            }
+            observed_generation_ = world.content_revision();
+            return;
+        }
         Actor* actor = world.find_actor_by_id(pending_.actor_id);
         if (!actor)
         {
@@ -166,10 +181,71 @@ namespace toy3d
         return actor && factory_.actor_types().apply(*actor, candidate);
     }
 
+    bool EditorCommandHistory::preview_environment(World& world, SceneEnvironmentSettings settings, TextureRef cube)
+    {
+        // Validate before starting a gesture; failed edits leave history and World untouched.
+        if (!validate_scene_environment_settings(settings) ||
+            settings.environment.asset_id.valid() != static_cast<bool>(cube))
+        {
+            error_ = "Invalid environment settings or missing Cube asset.";
+            return false;
+        }
+        if (active_ && (world_ != &world || pending_.kind != Kind::Environment))
+        {
+            error_ = "Finish the active gesture before editing the environment.";
+            return false;
+        }
+        const bool started = !active_;
+        if (started)
+        {
+            synchronize(world);
+            pending_ = {};
+            pending_.kind = Kind::Environment;
+            pending_.environment_before = world.environment_settings();
+            pending_.environment_cube_before = world.environment_cube();
+        }
+        if (!world.set_environment(std::move(settings), std::move(cube)))
+        {
+            error_ = "World rejected the environment Cube or settings.";
+            if (started)
+            {
+                pending_ = {};
+            }
+            return false;
+        }
+        active_ = true;
+        source_ = EditorTransformSource::WorldSettings;
+        observed_generation_ = world.content_revision();
+        error_.clear();
+        return true;
+    }
+
+    bool EditorCommandHistory::set_environment(World& world, SceneEnvironmentSettings settings, TextureRef cube)
+    {
+        if (!preview_environment(world, std::move(settings), std::move(cube)))
+        {
+            return false;
+        }
+        finish(world, EditorTransformSource::WorldSettings);
+        return true;
+    }
+
     void EditorCommandHistory::cancel()
     {
         if (active_ && world_)
         {
+            if (pending_.kind == Kind::Environment)
+            {
+                if (!world_->set_environment(pending_.environment_before, pending_.environment_cube_before))
+                {
+                    error_ = "Could not restore cancelled environment gesture.";
+                    TOY_LOG_ERROR("{}", error_);
+                }
+                observed_generation_ = world_->content_revision();
+                active_ = false;
+                pending_ = {};
+                return;
+            }
             Actor* actor = world_->find_actor_by_id(pending_.actor_id);
             if (actor &&
                 !apply_actor_state(*actor, pending_.before, factory_.component_editors(), &factory_.actor_types()))
@@ -409,6 +485,16 @@ namespace toy3d
         if (world_ != &world)
         {
             return false;
+        }
+        if (record.kind == Kind::Environment)
+        {
+            if (!world.set_environment(forward ? record.environment_after : record.environment_before,
+                                       forward ? record.environment_cube_after : record.environment_cube_before))
+            {
+                error_ = "Could not restore the recorded environment snapshot.";
+                return false;
+            }
+            return true;
         }
         if (record.kind == Kind::Material)
         {

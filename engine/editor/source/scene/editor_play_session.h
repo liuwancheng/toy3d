@@ -35,7 +35,9 @@ namespace toy3d
       public:
         ~EditorPlaySession();
         bool start(const SceneAssetData& data, EditorWorkspace& workspace, const ActorTypeRegistry& actors,
-                   const std::function<ShaderMapCollectionRef(const std::string&)>& programs, SceneInterface& scene);
+                   const std::function<ShaderMapCollectionRef(
+                       const std::string&, const std::vector<shader::ShaderPermutationSelection>&)>& programs,
+                   SceneInterface& scene);
         void tick(double delta_seconds);
         void pause();
         void resume();

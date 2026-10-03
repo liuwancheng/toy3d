@@ -1259,9 +1259,8 @@ namespace
                                                     make_bounds({0.0f, 0.0f, 4.0f}, {0.25f, 0.25f, 0.25f}), false, true,
                                                     false);
             check(inside->cast_shadows() && !inside->receives_shadows() &&
-                      inside->object_shader_parameters().toy_receives_shadows == 0.0f &&
                       inside->object_data_generation() == shadow_generation + 1u,
-                  "Receiver toggle must update Object parameters and generation independently of casting");
+                  "Receiver toggle must update CPU selection and generation independently of casting");
 
             std::vector<toy3d::SceneView> infinite_views;
             infinite_views.push_back(make_perspective_view(

@@ -48,4 +48,38 @@ void toy_gpu_skin(Buffer<float4> bone_matrices, uint num_bone_influences,
     skinned_normal = magnitude_squared > 1e-20 ? skinned_normal * rsqrt(magnitude_squared) : reference_normal;
 }
 
+// Tangents and bitangents are directions: use the affine linear rows,
+// while normals above use inverse transpose. Reconstruct handedness after LBS.
+void toy_gpu_skin_frame_accumulate(Buffer<float4> bone_matrices, uint4 indices, float4 weights,
+                                  float3 tangent, float3 bitangent,
+                                  inout float3 skinned_tangent, inout float3 skinned_bitangent)
+{
+    [unroll]
+    for (uint influence = 0; influence < 4; ++influence)
+    {
+        const uint first = indices[influence] * 6;
+        const float3 row0 = bone_matrices.Load(first).xyz;
+        const float3 row1 = bone_matrices.Load(first + 1).xyz;
+        const float3 row2 = bone_matrices.Load(first + 2).xyz;
+        skinned_tangent += weights[influence] * float3(dot(row0, tangent), dot(row1, tangent), dot(row2, tangent));
+        skinned_bitangent += weights[influence] * float3(dot(row0, bitangent), dot(row1, bitangent), dot(row2, bitangent));
+    }
+}
+void toy_gpu_skin_frame(Buffer<float4> bone_matrices, uint num_bone_influences,
+                       uint4 indices, float4 weights, uint4 extra_indices, float4 extra_weights,
+                       float3 normal, float4 tangent, out float3 skinned_tangent, out float3 skinned_bitangent)
+{
+    skinned_tangent = 0;
+    skinned_bitangent = 0;
+    const float3 bitangent = cross(normal, tangent.xyz) * tangent.w;
+    toy_gpu_skin_frame_accumulate(bone_matrices, indices, weights, tangent.xyz, bitangent,
+                                 skinned_tangent, skinned_bitangent);
+    [branch]
+    if (num_bone_influences == 8)
+    {
+        toy_gpu_skin_frame_accumulate(bone_matrices, extra_indices, extra_weights, tangent.xyz, bitangent,
+                                     skinned_tangent, skinned_bitangent);
+    }
+}
+
 #endif

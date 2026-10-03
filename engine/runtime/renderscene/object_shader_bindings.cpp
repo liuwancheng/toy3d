@@ -16,6 +16,30 @@
 
 namespace toy3d
 {
+    namespace
+    {
+        RHIResult<RHIBindingSetRef> create_object_shader_binding(RHIDevice& device, RHICommandContext& context,
+                                                                 const MeshBatch& mesh_batch)
+        {
+            const auto& object = mesh_batch.object_shader_parameters();
+            if (mesh_batch.bone_matrices())
+            {
+                if (object.toy_num_bone_influences != 4 && object.toy_num_bone_influences != 8)
+                {
+                    return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument,
+                                                                "Invalid skin influence width.");
+                }
+                GPUSkinObjectShaderParameters skin;
+                skin.toy_object_to_world = object.toy_object_to_world;
+                skin.toy_object_normal_to_world = object.toy_object_normal_to_world;
+                skin.toy_num_bone_influences = object.toy_num_bone_influences;
+                skin.toy_bone_matrices = mesh_batch.bone_matrices();
+                return create_transient_shader_binding(device, context, skin);
+            }
+            return create_transient_shader_binding(device, context, object);
+        }
+    } // namespace
+
     RHIStatus create_object_shader_bindings(RHIDevice& device, RHICommandContext& context,
                                             std::vector<ViewInfo>& view_infos)
     {
@@ -92,27 +116,7 @@ namespace toy3d
                                        mesh_batch.bone_matrices() ? mesh_batch.section_index() : 0u));
             if (!cached)
             {
-                const auto& object = mesh_batch.object_shader_parameters();
-                RHIResult<RHIBindingSetRef> created =
-                    RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::NotReady, "Object binding is not created.");
-                if (mesh_batch.bone_matrices())
-                {
-                    if (object.toy_num_bone_influences != 4 && object.toy_num_bone_influences != 8)
-                    {
-                        return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Invalid skin influence width.");
-                    }
-                    GPUSkinObjectShaderParameters skin;
-                    skin.toy_object_to_world = object.toy_object_to_world;
-                    skin.toy_object_normal_to_world = object.toy_object_normal_to_world;
-                    skin.toy_receives_shadows = object.toy_receives_shadows;
-                    skin.toy_num_bone_influences = object.toy_num_bone_influences;
-                    skin.toy_bone_matrices = mesh_batch.bone_matrices();
-                    created = create_transient_shader_binding(device, context, skin);
-                }
-                else
-                {
-                    created = create_transient_shader_binding(device, context, object);
-                }
+                auto created = create_object_shader_binding(device, context, mesh_batch);
                 if (!created)
                 {
                     return created.status();

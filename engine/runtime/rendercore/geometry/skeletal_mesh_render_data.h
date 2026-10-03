@@ -21,6 +21,10 @@ namespace toy3d
         RHIStatus prepare_current_recording();
         RHIStatus release(RenderResourceManager& manager);
         bool is_drawable() const;
+        bool has_valid_tangent_frame() const
+        {
+            return valid_tangent_frame_;
+        }
         const GPUSkinVertexFactory* vertex_factory() const
         {
             return vertex_factory_.get();
@@ -57,5 +61,6 @@ namespace toy3d
         std::size_t index_count_ = 0;
         bool valid_ = false;
         bool init_started_ = false;
+        bool valid_tangent_frame_ = false;
     };
 } // namespace toy3d

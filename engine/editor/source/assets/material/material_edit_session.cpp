@@ -43,7 +43,8 @@ namespace toy3d
     }
 
     AssetStatus MaterialEditSession::open(const AssetId& id, shader::ShaderParameterSchema schema,
-                                          const std::string& registered_shader_name)
+                                          const std::string& registered_shader_name,
+                                          shader::ShaderPermutationDomain static_domain)
     {
         if (dirty() || gesturing())
         {
@@ -101,6 +102,14 @@ namespace toy3d
         {
             return fail(AssetErrorCode::Schema, "Material Shader does not match its registered Program.");
         }
+        MaterialAssetHierarchy static_hierarchy;
+        static_hierarchy.layers = parent_layers;
+        static_hierarchy.layers.push_back({{}, {}, child ? instance.static_options : root.static_options});
+        const auto static_valid = validate_static_options(static_domain, static_hierarchy.effective_static_options());
+        if (!static_valid.succeeded())
+        {
+            return static_valid;
+        }
         // Bind a complete candidate first. Failure leaves the previous session
         // intact; the callbacks observe this owner only after publication.
         std::unique_ptr<EditSession<MaterialAssetData>> next_root;
@@ -142,7 +151,8 @@ namespace toy3d
                 workspace_.types(), *type, id, location->path, root,
                 [this](const MaterialAssetData& data)
                 {
-                    return validate_material_asset(data, &workspace_.catalog().index);
+                    const auto valid = validate_material_asset(data, &workspace_.catalog().index);
+                    return valid.succeeded() ? validate_static_options(static_domain_, data.static_options) : valid;
                 },
                 &workspace_.catalog().index,
                 [this](const MaterialAssetData& data, EditChangeKind)
@@ -164,6 +174,7 @@ namespace toy3d
         path_ = location->path;
         opened_index_ = location->index;
         schema_ = std::move(schema);
+        static_domain_ = std::move(static_domain);
         parent_ = std::move(parent);
         parent_layers_ = std::move(parent_layers);
         root_ = std::move(next_root);
@@ -213,7 +224,24 @@ namespace toy3d
                 return added;
             }
         }
-        return candidate.validate_strong_dependencies();
+        const auto dependencies = candidate.validate_strong_dependencies();
+        if (!dependencies.succeeded())
+        {
+            return dependencies;
+        }
+        auto domain = static_domain_;
+        if (static_domain_resolver_)
+        {
+            const auto resolved = static_domain_resolver_(hierarchy.value().root.shader_name);
+            if (!resolved.succeeded())
+            {
+                return resolved.status();
+            }
+            domain = resolved.value();
+        }
+        MaterialAssetHierarchy all = hierarchy.value();
+        all.layers.push_back({{}, {}, value.static_options});
+        return validate_static_options(domain, all.effective_static_options());
     }
 
     AssetStatus MaterialEditSession::prepare_instance(const MaterialInstanceAssetData& value)
@@ -231,6 +259,16 @@ namespace toy3d
             return hierarchy.status();
         }
         auto schema = schema_;
+        auto domain = static_domain_;
+        if (static_domain_resolver_)
+        {
+            const auto resolved = static_domain_resolver_(hierarchy.value().root.shader_name);
+            if (!resolved.succeeded())
+            {
+                return resolved.status();
+            }
+            domain = resolved.value();
+        }
         if (schema_resolver_)
         {
             const auto resolved = schema_resolver_(hierarchy.value().root.shader_name);
@@ -246,7 +284,8 @@ namespace toy3d
         }
         MaterialAssetData effective = hierarchy.value().root;
         MaterialAssetHierarchy all = hierarchy.value();
-        all.layers.push_back({{}, value.overrides});
+        all.layers.push_back({{}, value.overrides, value.static_options});
+        effective.static_options = all.effective_static_options();
         effective.overrides = all.effective_overrides(schema);
         if (parent_prepare_)
         {
@@ -260,6 +299,7 @@ namespace toy3d
         pending_parent_.overrides = hierarchy.value().effective_overrides(schema);
         pending_parent_layers_ = hierarchy.value().layers;
         pending_parent_schema_ = std::move(schema);
+        pending_parent_domain_ = std::move(domain);
         parent_prepared_ = true;
         return AssetStatus::success();
     }
@@ -271,6 +311,7 @@ namespace toy3d
             parent_ = std::move(pending_parent_);
             parent_layers_ = std::move(pending_parent_layers_);
             schema_ = std::move(pending_parent_schema_);
+            static_domain_ = std::move(pending_parent_domain_);
             parent_prepared_ = false;
             if (parent_notify_)
             {
@@ -371,6 +412,9 @@ namespace toy3d
         path_ = {};
         opened_index_ = {};
         schema_ = {};
+        static_domain_ = {};
+        static_domain_resolver_ = {};
+        pending_parent_domain_ = {};
         parent_ = {};
     }
 
@@ -497,6 +541,7 @@ namespace toy3d
     {
         MaterialAssetData resolved = root_data();
         resolved.overrides = effective(values);
+        resolved.static_options = effective_static_options();
         for (const auto& buffer : schema_.constant_buffers)
         {
             for (const auto& member : buffer.members)
@@ -582,6 +627,124 @@ namespace toy3d
         {
             preview_notify_(effective(values));
         }
+    }
+
+    AssetStatus MaterialEditSession::validate_static_options(const shader::ShaderPermutationDomain& domain,
+                                                             const std::vector<MaterialStaticOption>& options) const
+    {
+        const auto selected = shader::resolve_shader_permutation(domain, material_static_selections(options));
+        return selected.succeeded() ? AssetStatus::success()
+                                    : fail(AssetErrorCode::Value, selected.errors.front().message);
+    }
+
+    AssetStatus MaterialEditSession::update_static_domain(shader::ShaderPermutationDomain domain)
+    {
+        const auto valid = validate_static_options(domain, effective_static_options());
+        if (!valid.succeeded())
+        {
+            return valid;
+        }
+        static_domain_ = std::move(domain);
+        return AssetStatus::success();
+    }
+
+    const std::vector<MaterialStaticOption>& MaterialEditSession::static_options() const
+    {
+        return root_       ? root_->value().static_options
+               : instance_ ? instance_->value().static_options
+                           : parent_.static_options;
+    }
+
+    AssetStatus MaterialEditSession::set_static_option(const MaterialStaticOption& value)
+    {
+        if (!writable() || gesturing())
+        {
+            return fail(AssetErrorCode::InvalidState, "Finish the gesture before changing a writable static option.");
+        }
+        auto options = static_options();
+        const auto found = std::find_if(options.begin(), options.end(),
+                                        [&](const MaterialStaticOption& item)
+                                        {
+                                            return item.name == value.name;
+                                        });
+        if (found == options.end())
+        {
+            options.push_back(value);
+        }
+        else
+        {
+            *found = value;
+        }
+        return commit_static_options(std::move(options));
+    }
+
+    AssetStatus MaterialEditSession::remove_static_option(const std::string& name)
+    {
+        if (!writable() || gesturing())
+        {
+            return fail(AssetErrorCode::InvalidState, "Finish the gesture before clearing a writable static option.");
+        }
+        auto options = static_options();
+        options.erase(std::remove_if(options.begin(), options.end(),
+                                     [&](const MaterialStaticOption& item)
+                                     {
+                                         return item.name == name;
+                                     }),
+                      options.end());
+        return commit_static_options(std::move(options));
+    }
+
+    AssetStatus MaterialEditSession::commit_static_options(std::vector<MaterialStaticOption> options)
+    {
+        std::sort(options.begin(), options.end(),
+                  [](const MaterialStaticOption& left, const MaterialStaticOption& right)
+                  {
+                      return left.name < right.name;
+                  });
+        MaterialAssetHierarchy hierarchy;
+        hierarchy.layers = parent_layers_;
+        hierarchy.layers.push_back({{}, {}, options});
+        const auto valid = validate_static_options(static_domain_, hierarchy.effective_static_options());
+        if (!valid.succeeded())
+        {
+            return valid;
+        }
+        MaterialAssetData material = root_data();
+        MaterialInstanceAssetData instance = instance_ ? instance_->value() : MaterialInstanceAssetData{};
+        material.static_options = options;
+        instance.static_options = std::move(options);
+        ValueWriter writer;
+        const auto encoded = root_ ? encode_value(writer, material) : encode_value(writer, instance);
+        if (!encoded.succeeded())
+        {
+            return fail(AssetErrorCode::Value, encoded.message);
+        }
+        const auto* type = workspace_.types().find(opened_index_.root_type);
+        if (!type)
+        {
+            return fail(AssetErrorCode::Schema, "Material type is not registered.");
+        }
+        const PropertyPath property{PropertyPathPart::field("static_options")};
+        const auto accessed = access_property(workspace_.types(), *type, writer.bytes(), property);
+        if (!accessed.succeeded())
+        {
+            return accessed.status();
+        }
+        const EditPatch patch{property, accessed.value().value_bytes, EditChangeKind::Setter};
+        const auto edited = root_ ? root_->apply_edit({patch}) : instance_->apply_edit({patch});
+        return edited.succeeded() ? AssetStatus::success() : edited.status();
+    }
+
+    std::vector<MaterialStaticOption> MaterialEditSession::effective_static_options() const
+    {
+        MaterialAssetHierarchy hierarchy;
+        hierarchy.layers = parent_layers_;
+        MaterialAssetLayer local;
+        local.static_options = root_       ? root_->value().static_options
+                               : instance_ ? instance_->value().static_options
+                                           : std::vector<MaterialStaticOption>{};
+        hierarchy.layers.push_back(std::move(local));
+        return hierarchy.effective_static_options();
     }
 
     AssetStatus MaterialEditSession::begin_gesture()

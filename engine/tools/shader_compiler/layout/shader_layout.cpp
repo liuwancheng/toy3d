@@ -1,6 +1,8 @@
 #include "layout/shader_layout.h"
 
 #include <algorithm>
+
+#include "shader/builtin_shader_parameters.h"
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -413,6 +415,23 @@ namespace toy3d::shader
         }
         LogicalLayoutResult result;
         LogicalShaderLayout layout;
+        if (asset.usage == ShaderUsage::Material && role == ShaderPassRole::Forward)
+        {
+            if (!asset.parameters.empty() || !asset.resources.empty())
+            {
+                add_error(result.diagnostics, DiagnosticCode::InvalidParameterGroup, asset.location,
+                          "Material Forward parameters/resources belong to the engine; use Properties and Features.");
+                return result;
+            }
+            for (const auto& member : builtin_forward_parameters)
+            {
+                Parameter parameter;
+                parameter.name = member.name;
+                parameter.type = member.type;
+                asset.parameters.push_back(std::move(parameter));
+            }
+            layout.resources = builtin_forward_resource_inputs();
+        }
 
         // View and Object constants are engine-owned canonical schemas. Keep
         // them in every logical layout so HLSL usage, rather than a Shader-name
@@ -529,6 +548,17 @@ namespace toy3d::shader
                     if (property != asset.properties.end())
                     {
                         write_numeric_default(member, property->default_value);
+                        if (property->type == PropertyType::Range)
+                        {
+                            if (property->range_min)
+                            {
+                                member.minimum_value = static_cast<float>(*property->range_min);
+                            }
+                            if (property->range_max)
+                            {
+                                member.maximum_value = static_cast<float>(*property->range_max);
+                            }
+                        }
                     }
                 }
                 layout.constant_buffers.push_back(std::move(*packed.layout));
@@ -607,6 +637,7 @@ namespace toy3d::shader
                                         ? ResourceElementType::Float4
                                         : ResourceElementType::None;
             resource.default_value = property.default_value;
+            resource.texture_usage = property.texture_usage;
             resource.location = property.location;
             resource.parameter_id = make_shader_parameter_id(resource.group, resource.category, resource.name);
             layout.resources.push_back(std::move(resource));
@@ -707,10 +738,10 @@ namespace toy3d::shader
             buffer.shader_abi_version = input.shader_abi_version;
             for (const ShaderConstantMember& input_member : input.members)
             {
-                buffer.members.push_back({input_member.parameter_id, input_member.name, input_member.type,
-                                          input_member.offset, input_member.size, input_member.array_count,
-                                          input_member.array_stride, input_member.matrix_stride,
-                                          input_member.default_value});
+                buffer.members.push_back(
+                    {input_member.parameter_id, input_member.name, input_member.type, input_member.offset,
+                     input_member.size, input_member.array_count, input_member.array_stride, input_member.matrix_stride,
+                     input_member.default_value, input_member.minimum_value, input_member.maximum_value});
             }
             schema.constant_buffers.push_back(std::move(buffer));
         }
@@ -733,6 +764,7 @@ namespace toy3d::shader
                 resource.default_value_kind = ShaderParameterDefaultValueKind::Identifier;
             }
             resource.default_value = input.default_value.text;
+            resource.texture_usage = input.texture_usage;
             schema.resources.push_back(std::move(resource));
         }
         schema.logical_layout_hash = calculate_shader_parameter_logical_layout_hash(schema);

@@ -176,7 +176,7 @@ namespace toy3d
             candidate.emplace_back(*this, *render_data_.vertex_factory(), render_data_.index_buffer_binding(),
                                    *materials[section.material_slot], section.first_index, section.index_count,
                                    static_cast<std::uint32_t>(i), bone_buffers_[i]->view(),
-                                   render_data_.num_bone_influences());
+                                   render_data_.num_bone_influences(), render_data_.has_valid_tangent_frame());
         }
         batches.insert(batches.end(), candidate.begin(), candidate.end());
         return RHIStatus::success();

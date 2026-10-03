@@ -12,8 +12,9 @@ namespace toy3d
     class ThumbnailPreviewScene final
     {
       public:
-        bool initialize(SceneInterface& scene, MaterialInstanceRef material);
-        bool prepare(StaticMeshAssetGeometry geometry);
+        bool initialize(SceneInterface& scene, MaterialInstanceRef material, SceneEnvironmentSettings environment = {},
+                        TextureRef cube = {});
+        bool prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material = {});
         SceneView view() const;
         void clear_mesh();
         void shutdown();

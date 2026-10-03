@@ -3,6 +3,7 @@
 #include "asset/asset_file.h"
 #include "asset/asset_pair.h"
 #include "image/pixel_format.h"
+#include "image/texture_usage.h"
 #include "asset/texture/texture_asset_data.h"
 #include "texture_asset_reflection.h"
 
@@ -20,6 +21,8 @@ namespace toy3d
 
     struct Texture2DAsset
     {
+        TextureUsage usage = TextureUsage::Color;
+        bool flip_green = false;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         PixelFormat format = PixelFormat::Unknown;

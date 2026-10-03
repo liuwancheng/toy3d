@@ -79,7 +79,8 @@ namespace toy3d
     bool ShaderMap::ProgramKey::operator==(const ProgramKey& other) const
     {
         return shader_name == other.shader_name && pass_name == other.pass_name && platform == other.platform &&
-               permutation_key == other.permutation_key && role == other.role && vertex_factory == other.vertex_factory;
+               permutation_key == other.permutation_key && role == other.role &&
+               vertex_factory == other.vertex_factory && pass_permutation_key == other.pass_permutation_key;
     }
 
     std::size_t ShaderMap::ProgramKeyHash::operator()(const ProgramKey& key) const
@@ -93,18 +94,24 @@ namespace toy3d
         {
             hash_combine(result, byte);
         }
+        for (std::uint8_t byte : key.pass_permutation_key)
+        {
+            hash_combine(result, byte);
+        }
         return result;
     }
 
     ShaderMap::ProgramKey ShaderMap::make_key(const ShaderMapProgramData& program)
     {
-        return {program.shader_name,     program.pass_name,     program.platform,
-                program.permutation_key, program.contract.role, program.contract.vertex_factory};
+        return {program.shader_name,         program.pass_name,     program.platform,
+                program.permutation_key,     program.contract.role, program.contract.vertex_factory,
+                program.pass_permutation_key};
     }
 
     ShaderMap::ProgramKey ShaderMap::make_key(const ShaderMapProgramKey& key)
     {
-        return {key.shader_name, key.pass_name, key.platform, key.permutation_key, key.role, key.vertex_factory};
+        return {key.shader_name,    key.pass_name,           key.platform, key.permutation_key, key.role,
+                key.vertex_factory, key.pass_permutation_key};
     }
 
     ShaderMapCollectionResult ShaderMap::find_or_load_collection(const std::string& name, ShaderPlatform platform,

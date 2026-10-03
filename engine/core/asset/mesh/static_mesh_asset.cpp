@@ -3,6 +3,7 @@
 #include "asset/asset_pair.h"
 
 #include <set>
+#include <cmath>
 #include <algorithm>
 #include <utility>
 
@@ -12,8 +13,8 @@ namespace toy3d
 {
     namespace
     {
-        constexpr std::uint32_t k_static_mesh_schema_version = 2;
-        constexpr std::uint32_t k_geometry_version = 2;
+        constexpr std::uint32_t k_static_mesh_schema_version = 3;
+        constexpr std::uint32_t k_geometry_version = 3;
 
         AssetStatus invalid(const char* message)
         {
@@ -51,9 +52,18 @@ namespace toy3d
         for (const StaticMeshAssetVertex& vertex : geometry.vertices)
         {
             Vector3 normalized;
-            if (!is_finite(vertex.position) || !is_finite(vertex.uv0) || !try_normalize(vertex.normal, normalized))
+            if (!is_finite(vertex.position) || !is_finite(vertex.uv0) || !is_finite(vertex.tangent) ||
+                std::abs(std::abs(vertex.tangent.w) - 1.0f) > 1.0e-4f || !try_normalize(vertex.normal, normalized))
             {
                 return invalid("invalid static mesh vertex");
+            }
+            if (geometry.valid_tangent_frame)
+            {
+                const Vector3 tangent(vertex.tangent.x, vertex.tangent.y, vertex.tangent.z);
+                if (std::abs(dot(tangent, tangent) - 1.0f) > 1.0e-3f || std::abs(dot(normalized, tangent)) > 1.0e-3f)
+                {
+                    return invalid("invalid declared static mesh tangent frame");
+                }
             }
         }
         for (const std::uint32_t index : geometry.indices)
@@ -101,6 +111,7 @@ namespace toy3d
         }
         ValueWriter writer;
         if (!writer.write_uint32(k_geometry_version).succeeded() ||
+            !writer.write_bool(geometry.valid_tangent_frame).succeeded() ||
             !writer.write_array_length(static_cast<std::uint32_t>(geometry.vertices.size())).succeeded())
         {
             return AssetResult<std::vector<std::uint8_t>>(invalid("geometry encoding failed"));
@@ -108,7 +119,8 @@ namespace toy3d
         for (const StaticMeshAssetVertex& vertex : geometry.vertices)
         {
             if (!encode_value(writer, vertex.position).succeeded() ||
-                !encode_value(writer, vertex.normal).succeeded() || !encode_value(writer, vertex.uv0).succeeded())
+                !encode_value(writer, vertex.normal).succeeded() || !encode_value(writer, vertex.uv0).succeeded() ||
+                !encode_value(writer, vertex.tangent).succeeded())
             {
                 return AssetResult<std::vector<std::uint8_t>>(invalid("vertex encoding failed"));
             }
@@ -165,7 +177,8 @@ namespace toy3d
         std::uint32_t version = 0;
         std::uint32_t count = 0;
         if (!reader.read_uint32(version).succeeded() || version != k_geometry_version ||
-            !reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 36u)
+            !reader.read_bool(geometry.valid_tangent_frame).succeeded() ||
+            !reader.read_array_length(count).succeeded() || count > (bytes.size() - reader.offset()) / 52u)
         {
             return AssetResult<StaticMeshAssetGeometry>(invalid("invalid geometry version or vertex count"));
         }
@@ -173,7 +186,8 @@ namespace toy3d
         for (StaticMeshAssetVertex& vertex : geometry.vertices)
         {
             if (!decode_value(reader, vertex.position).succeeded() ||
-                !decode_value(reader, vertex.normal).succeeded() || !decode_value(reader, vertex.uv0).succeeded())
+                !decode_value(reader, vertex.normal).succeeded() || !decode_value(reader, vertex.uv0).succeeded() ||
+                !decode_value(reader, vertex.tangent).succeeded())
             {
                 return AssetResult<StaticMeshAssetGeometry>(invalid("invalid vertex data"));
             }
@@ -245,6 +259,7 @@ namespace toy3d
             return AssetResult<std::vector<std::uint8_t>>(blob.status());
         }
         StaticMeshAssetData metadata;
+        metadata.valid_tangent_frame = geometry.valid_tangent_frame;
         metadata.material_slots = geometry.material_slots;
         metadata.vertex_count = static_cast<std::uint32_t>(geometry.vertices.size());
         metadata.index_count = static_cast<std::uint32_t>(geometry.indices.size());
@@ -326,7 +341,8 @@ namespace toy3d
         {
             return geometry;
         }
-        if (geometry.value().vertices.size() != metadata.vertex_count ||
+        if (metadata.valid_tangent_frame != geometry.value().valid_tangent_frame ||
+            geometry.value().vertices.size() != metadata.vertex_count ||
             geometry.value().indices.size() != metadata.index_count ||
             geometry.value().material_slots != metadata.material_slots)
         {
@@ -345,6 +361,7 @@ namespace toy3d
             return AssetResult<AssetPairBytes>(blob.status());
         }
         StaticMeshAssetData metadata;
+        metadata.valid_tangent_frame = geometry.valid_tangent_frame;
         metadata.material_slots = geometry.material_slots;
         metadata.vertex_count = static_cast<std::uint32_t>(geometry.vertices.size());
         metadata.index_count = static_cast<std::uint32_t>(geometry.indices.size());
@@ -408,7 +425,8 @@ namespace toy3d
         {
             return geometry;
         }
-        if (geometry.value().vertices.size() != metadata.vertex_count ||
+        if (metadata.valid_tangent_frame != geometry.value().valid_tangent_frame ||
+            geometry.value().vertices.size() != metadata.vertex_count ||
             geometry.value().indices.size() != metadata.index_count ||
             geometry.value().material_slots != metadata.material_slots)
         {

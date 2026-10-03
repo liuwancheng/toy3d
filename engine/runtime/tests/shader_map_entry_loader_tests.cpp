@@ -43,6 +43,17 @@ namespace
     void test_verified_entry_loads()
     {
         toy3d::ShaderMapEntryLoader loader(toy3d::PhysicalPath(TOY3D_SHADER_MAP_ENTRY_TEST_ROOT));
+        std::vector<toy3d::ShaderMapCollectionRef> family;
+        std::string family_error;
+        check(loader.load_family("Toy3d/Test/TestPass", toy3d::ShaderPlatform::VulkanES31, family, family_error) &&
+                  family.size() == 1u,
+              "Deployed family verifies every complete collection before publication");
+        const auto retained = family.front();
+        check(!loader.load_family("Missing/Source", toy3d::ShaderPlatform::VulkanES31, family, family_error) &&
+                  family.size() == 1u && family.front() == retained,
+              "A failed family load preserves previous complete output");
+        check(!loader.load_family("Toy3d/Test/TestPass", toy3d::ShaderPlatform::D3D11SM5, family, family_error),
+              "An unsupported family profile rejects explicitly");
         toy3d::ShaderMapProgramKey key;
         key.shader_name = "Toy3d/Test/TestPass";
         key.pass_name = "TestPass";
@@ -116,6 +127,14 @@ namespace
               "pixel Shader reflection must be generated from the verified entry");
 
         toy3d::ShaderMapProgramData invalid = *loaded.program;
+        invalid.pass_permutation_key[0] ^= 1u;
+        check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
+              "Runtime admission rejects a different Pass configuration even when every stage is identical");
+        auto missing_pass = key;
+        missing_pass.pass_permutation_key[0] ^= 1u;
+        check(!loader.load_program(missing_pass).succeeded(),
+              "Entry loader never substitutes Off for an unknown Pass key");
+        invalid = *loaded.program;
         invalid.stages.back().reflection.clear();
         check(!toy3d::validate_shader_map_program(std::move(invalid), key).succeeded(),
               "missing required stage reflection must fail runtime validation");
@@ -298,8 +317,12 @@ namespace
               "cross-target parity must compare logical data shape");
 
         reflected.semantic = "TANGENT0";
+        check(toy3d::try_make_shader_vertex_input(reflected, other_target_input, error) &&
+                  other_target_input.attribute_id == toy3d::ShaderVertexAttributeId::Tangent0,
+              "TANGENT0 preserves Float4 direction and handedness");
+        reflected.semantic = "BINORMAL0";
         check(!toy3d::try_make_shader_vertex_input(reflected, other_target_input, error),
-              "the first-stage contract must reject unsupported logical attributes");
+              "unknown logical attributes must reject");
     }
 } // namespace
 

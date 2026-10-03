@@ -47,6 +47,10 @@ namespace toy3d
         {
             return files_;
         }
+        const FileSystem& files() const
+        {
+            return files_;
+        }
         const TypeRegistry& types() const
         {
             return types_;

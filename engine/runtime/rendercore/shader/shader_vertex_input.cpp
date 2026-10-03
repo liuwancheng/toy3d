@@ -47,6 +47,13 @@ namespace toy3d
                 component_count = 4u;
                 return true;
             }
+            if (semantic == "TANGENT" || semantic == "TANGENT0")
+            {
+                attribute_id = ShaderVertexAttributeId::Tangent0;
+                semantic_name = "TANGENT";
+                component_count = 4u;
+                return true;
+            }
             if (semantic == "TEXCOORD" || semantic == "TEXCOORD0")
             {
                 attribute_id = ShaderVertexAttributeId::TexCoord0;

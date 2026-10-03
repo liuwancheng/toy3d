@@ -3,6 +3,10 @@
 
 #include <string>
 #include "imgui.h"
+#include "imgui_internal.h"
+#include "rendercore/texture/texture_asset_loader.h"
+#include "math/angle.h"
+#include <cmath>
 #include "scene/editor_command_history.h"
 #include "scene/components/component_details.h"
 #include "gamescene/actor/actor.h"
@@ -13,6 +17,136 @@
 
 namespace toy3d
 {
+    void draw_world_settings(World& world, const EditorWorkspace& workspace, EditorCommandHistory& history,
+                             std::string& error)
+    {
+        if (ImGui::Begin("World Settings"))
+        {
+            SceneEnvironmentSettings settings = world.environment_settings();
+            const auto* current = workspace.catalog().index.find(settings.environment.asset_id);
+            const char* label = current ? current->path.utf8().c_str()
+                                        : (settings.environment.asset_id.valid() ? "Missing environment" : "Off");
+            if (ImGui::BeginCombo("Reflection Environment", label))
+            {
+                if (ImGui::Selectable("Off", !settings.environment.asset_id.valid()))
+                {
+                    settings.environment = {};
+                    if (!history.set_environment(world, settings, {}))
+                    {
+                        error = history.error();
+                    }
+                    else
+                    {
+                        error.clear();
+                    }
+                }
+                for (const auto& asset : workspace.catalog().entries)
+                {
+                    if (asset.file.root_type != "toy3d.EnvironmentAssetData")
+                    {
+                        continue;
+                    }
+                    if (ImGui::Selectable(asset.path.utf8().c_str(),
+                                          asset.file.asset_id == settings.environment.asset_id))
+                    {
+                        settings.environment = {
+                            asset.file.asset_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
+                        const auto loaded =
+                            load_environment_asset(workspace.files(), workspace.catalog().index, settings.environment);
+                        if (!loaded.succeeded())
+                        {
+                            error = loaded.status().message;
+                        }
+                        else if (!history.set_environment(world, settings, loaded.value()))
+                        {
+                            error = history.error();
+                        }
+                        else
+                        {
+                            error.clear();
+                        }
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            settings = world.environment_settings();
+            const auto finish_edit = [&]()
+            {
+                if (ImGui::IsItemDeactivated())
+                {
+                    history.finish(world, EditorTransformSource::WorldSettings);
+                }
+            };
+            if (ImGui::DragFloat("Intensity", &settings.intensity, 0.01f, 0.0f, 0.0f, "%.3f"))
+            {
+                if (!history.preview_environment(world, settings, world.environment_cube()))
+                {
+                    error = history.error();
+                }
+                else
+                {
+                    error.clear();
+                }
+            }
+            finish_edit();
+            // Relative world-axis rotations preserve the complete quaternion without Euler singularities.
+            constexpr std::size_t rotation_axis_count = 3u;
+            const char* rotation_labels[rotation_axis_count] = {
+                "Rotate around X (degrees)", "Rotate around Y (degrees)", "Rotate around Z (degrees)"};
+            const Vector3 rotation_axes[rotation_axis_count] = {Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1)};
+            for (std::size_t axis = 0u; axis < rotation_axis_count; ++axis)
+            {
+                float rotation_delta_degrees = 0.0f;
+                if (ImGui::DragFloat(rotation_labels[axis], &rotation_delta_degrees, 0.5f, 0.0f, 0.0f, "%.1f"))
+                {
+                    settings = world.environment_settings();
+                    Quaternion delta;
+                    if (try_make_quaternion_from_axis_angle(
+                            rotation_axes[axis], Radians(rotation_delta_degrees * 0.017453292519943295f), delta))
+                    {
+                        settings.rotation = delta * settings.rotation;
+                        if (!history.preview_environment(world, settings, world.environment_cube()))
+                        {
+                            error = history.error();
+                        }
+                        else
+                        {
+                            error.clear();
+                        }
+                    }
+                }
+                finish_edit();
+            }
+            if (ImGui::Button("Reset Rotation"))
+            {
+                settings = world.environment_settings();
+                settings.rotation = Quaternion::identity();
+                if (!history.set_environment(world, settings, world.environment_cube()))
+                {
+                    error = history.error();
+                }
+            }
+            ImGui::TextDisabled("Specular reflection only; scene lights provide diffuse lighting.");
+            if (!error.empty())
+            {
+                ImGui::TextWrapped("%s", error.c_str());
+            }
+        }
+        ImGui::End();
+        if (history.active_for(EditorTransformSource::WorldSettings))
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            {
+                history.cancel();
+                ImGui::ClearActiveID();
+            }
+            else if (!ImGui::IsAnyItemActive())
+            {
+                history.finish(world, EditorTransformSource::WorldSettings);
+            }
+        }
+    }
+
     bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history,
                        const ActorFactory& factory, SceneViewport& viewport)
     {

@@ -1,0 +1,19 @@
+format_version: 2
+asset_id: 407ebd6e5a4f4d17b8f36e1f088c3afd
+root_type: toy3d.EnvironmentAssetData
+schema_version: 1
+dependencies:
+  []
+subresources:
+  []
+data:
+  algorithm_version: 1
+  face_size: 64
+  mip_count: 7
+  orientation_version: 1
+meta:
+  format_version: 1
+  size: 262221
+  sha256: a0d6bd05488791c456f2b61a0ad8909661d0acfc2669b8f1ab72f74a2098827a
+  required_segments:
+    - environment_mips

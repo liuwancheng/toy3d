@@ -1,6 +1,8 @@
 #include "shader/shader_permutation.h"
 
 #include <algorithm>
+#include <iomanip>
+#include <locale>
 #include <map>
 #include <set>
 #include <sstream>
@@ -104,12 +106,12 @@ namespace toy3d::shader
 
     ShaderPermutationResolution resolve_shader_permutation(const ShaderPermutationDomain& domain,
                                                            const std::vector<ShaderPermutationSelection>& selections,
-                                                           ShaderStageFlags stage)
+                                                           ShaderStageFlags stage, std::optional<ShaderPassRole> role)
     {
         ShaderPermutationResolution result;
         if ((domain.scope != ShaderPermutationScope::Material && domain.scope != ShaderPermutationScope::Pass) ||
             domain.dimensions.size() > max_shader_permutation_dimensions ||
-            selections.size() > max_shader_permutation_dimensions ||
+            selections.size() > max_shader_permutation_dimensions || (role && shader_pass_role_bit(*role) == 0u) ||
             (stage != ShaderStageFlags::None && stage != ShaderStageFlags::Vertex && stage != ShaderStageFlags::Pixel &&
              stage != ShaderStageFlags::Compute))
         {
@@ -158,7 +160,8 @@ namespace toy3d::shader
         {
             const auto stages = static_cast<std::uint8_t>(dimension.affected_stages);
             if (!valid_identifier(dimension.name) || !valid_kind(dimension.kind) || stages == 0u ||
-                (stages & ~all_stages) != 0u ||
+                (stages & ~all_stages) != 0u || dimension.affected_passes == 0u ||
+                (dimension.affected_passes & ~all_shader_pass_roles) != 0u ||
                 (dimension.kind == ShaderPermutationValueKind::Boolean &&
                  (!dimension.options.empty() || !dimension.enum_default.empty())) ||
                 (dimension.kind == ShaderPermutationValueKind::Enumeration &&
@@ -248,7 +251,9 @@ namespace toy3d::shader
         {
             // Validate the entire domain above before projecting, so an inactive
             // typo or orphan cannot be accepted by a particular stage.
-            const bool active = stage == ShaderStageFlags::None || has_stage(item.dimension->affected_stages, stage);
+            const bool active =
+                (stage == ShaderStageFlags::None || has_stage(item.dimension->affected_stages, stage)) &&
+                (!role || (item.dimension->affected_passes & shader_pass_role_bit(*role)) != 0u);
             const std::string macro_name = std::string(prefix) + item.dimension->name;
             const auto add_macro = [&](const std::string& name, std::uint32_t value)
             {
@@ -284,6 +289,12 @@ namespace toy3d::shader
             if (active)
             {
                 permutation.records.push_back(item.record);
+                ShaderPermutationSelection selection;
+                selection.name = item.dimension->name;
+                selection.kind = item.record.kind;
+                selection.boolean_value = item.record.boolean_value;
+                selection.enum_value = item.enum_value;
+                permutation.selections.push_back(std::move(selection));
             }
         }
         if (!result.errors.empty())
@@ -318,5 +329,88 @@ namespace toy3d::shader
         permutation.generated_prelude = prelude.str();
         result.permutation = std::move(permutation);
         return result;
+    }
+
+    std::string serialize_shader_permutation_domain(const ShaderPermutationDomain& domain)
+    {
+        std::ostringstream out;
+        out.imbue(std::locale::classic());
+        out << "permutation_domain 2 " << static_cast<std::uint32_t>(domain.scope) << ' ' << domain.dimensions.size()
+            << '\n';
+        auto dimensions = domain.dimensions;
+        std::sort(dimensions.begin(), dimensions.end(),
+                  [](const ShaderPermutationDimension& a, const ShaderPermutationDimension& b)
+                  {
+                      return a.name < b.name;
+                  });
+        for (const auto& dimension : dimensions)
+        {
+            out << "dimension " << std::quoted(dimension.name) << ' ' << static_cast<std::uint32_t>(dimension.kind)
+                << ' ' << (dimension.boolean_default ? 1u : 0u) << ' ' << std::quoted(dimension.enum_default) << ' '
+                << static_cast<std::uint32_t>(dimension.affected_stages) << ' ' << dimension.affected_passes << ' '
+                << dimension.options.size();
+            for (const auto& option : dimension.options)
+            {
+                out << ' ' << std::quoted(option);
+            }
+            out << '\n';
+        }
+        return out.str();
+    }
+
+    bool parse_shader_permutation_domain(const std::string& text, ShaderPermutationDomain& domain, std::string& error)
+    {
+        if (text.size() > 256u * 1024u)
+        {
+            error = "Permutation domain exceeds the read limit.";
+            return false;
+        }
+        std::istringstream in(text);
+        in.imbue(std::locale::classic());
+        ShaderPermutationDomain candidate;
+        std::string tag;
+        std::uint32_t version = 0u, scope = 0u, count = 0u;
+        if (!(in >> tag >> version >> scope >> count) || tag != "permutation_domain" || version != 2u ||
+            count > max_shader_permutation_dimensions)
+        {
+            error = "Invalid permutation domain header.";
+            return false;
+        }
+        candidate.scope = static_cast<ShaderPermutationScope>(scope);
+        for (std::uint32_t i = 0u; i < count; ++i)
+        {
+            ShaderPermutationDimension dimension;
+            std::uint32_t kind = 0u, boolean = 0u, stages = 0u, passes = 0u, options = 0u;
+            if (!(in >> tag >> std::quoted(dimension.name) >> kind >> boolean >> std::quoted(dimension.enum_default) >>
+                  stages >> passes >> options) ||
+                tag != "dimension" || boolean > 1u || options > max_shader_permutation_enum_values)
+            {
+                error = "Invalid permutation dimension record.";
+                return false;
+            }
+            dimension.kind = static_cast<ShaderPermutationValueKind>(kind);
+            dimension.boolean_default = boolean != 0u;
+            dimension.affected_stages = static_cast<ShaderStageFlags>(stages);
+            dimension.affected_passes = passes;
+            for (std::uint32_t j = 0u; j < options; ++j)
+            {
+                std::string option;
+                if (!(in >> std::quoted(option)))
+                {
+                    error = "Truncated permutation enum options.";
+                    return false;
+                }
+                dimension.options.push_back(std::move(option));
+            }
+            candidate.dimensions.push_back(std::move(dimension));
+        }
+        const auto valid = resolve_shader_permutation(candidate, {});
+        if (!valid.succeeded() || serialize_shader_permutation_domain(candidate) != text)
+        {
+            error = valid.errors.empty() ? "Noncanonical permutation domain." : valid.errors.front().message;
+            return false;
+        }
+        domain = std::move(candidate);
+        return true;
     }
 } // namespace toy3d::shader
