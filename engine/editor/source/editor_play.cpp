@@ -3,6 +3,7 @@
 #include <exception>
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "input/input_system.h"
 #include "logging/logger.h"
 #include "workspace/editor_workspace.h"
@@ -11,14 +12,22 @@ namespace toy3d
 {
     bool EditorApplication::can_start_play() const
     {
-        return play_scene_ && !play_session_.active() && !startup_pending_ && !shaders_.busy() &&
+        const auto* context = ImGui::GetCurrentContext();
+        if (!context)
+        {
+            return false;
+        }
+        const auto* current = context->CurrentWindow;
+        const bool menu = current && (current->Flags & ImGuiWindowFlags_ChildMenu) != 0;
+        return play_scene_ && !package_task_ && !play_session_.active() && !startup_pending_ && !shaders_.busy() &&
                !mesh_bindings_.busy() && !model_import_.active() && !skeletal_import_.active() &&
-               !texture_import_.active() && !material_create_.active() && !shader_create_.active() &&
-               !material_editor_.modal_pending() && !material_editor_.edit_session().gesturing() &&
-               !scene_session_.history().active() && !show_new_project_ && !show_project_settings_ &&
-               !show_scene_save_as_ && !waiting_material_project_ && pending_scene_action_ == SceneAction::None &&
-               !scene_confirm_requested_ && ImGui::GetDragDropPayload() == nullptr &&
-               !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+               !texture_import_.active() && pending_model_sources_.empty() && !material_create_.active() &&
+               !shader_create_.active() && !material_editor_.modal_pending() &&
+               !material_editor_.edit_session().gesturing() && !scene_session_.history().active() &&
+               !show_new_project_ && !show_project_settings_ && !show_scene_save_as_ && !waiting_material_project_ &&
+               pending_scene_action_ == SceneAction::None && !scene_confirm_requested_ &&
+               ImGui::GetDragDropPayload() == nullptr &&
+               (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || menu);
     }
 
     void EditorApplication::stop_play()

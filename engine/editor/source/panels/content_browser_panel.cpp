@@ -2,14 +2,17 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cctype>
 #include <vector>
 
 #include "imgui.h"
 #include "logging/logger.h"
+#include "panels/property_widgets.h"
 #include "scene/placement/asset_placement.h"
 #include "scene/editor_selection.h"
 #include "scene/material_assignments.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
+#include "assets/thumbnails/thumbnail_widget.h"
 #include "workspace/editor_workspace.h"
 
 namespace toy3d
@@ -21,83 +24,20 @@ namespace toy3d
             return path.substr(0, path.find_last_of('/'));
         }
 
-        void draw_placeholder(ImDrawList& draw, ImVec2 position, float size, bool folder, const std::string& type)
+        std::string folder_label(const std::string& path)
         {
-            const ImU32 color = folder ? IM_COL32(190, 151, 74, 255) : IM_COL32(116, 149, 181, 255);
-            const ImVec2 a(position.x + size * 0.2f, position.y + size * 0.3f);
-            const ImVec2 b(position.x + size * 0.8f, position.y + size * 0.75f);
-            if (folder)
-            {
-                draw.AddRectFilled(a, b, color, 4);
-                draw.AddRectFilled(ImVec2(a.x, a.y - size * 0.09f), ImVec2(a.x + size * 0.25f, a.y + 4), color, 3);
-            }
-            else if (type == "toy3d.MaterialAssetData" || type == "toy3d.MaterialInstanceAssetData")
-            {
-                const ImVec2 center(position.x + size * 0.5f, position.y + size * 0.5f);
-                draw.AddCircleFilled(center, size * 0.3f, IM_COL32(106, 151, 167, 255), 32);
-                draw.AddCircleFilled(ImVec2(center.x - size * 0.07f, center.y - size * 0.07f), size * 0.21f,
-                                     IM_COL32(146, 195, 208, 255), 32);
-                if (type == "toy3d.MaterialInstanceAssetData")
-                {
-                    draw.AddText(ImVec2(position.x + size * 0.7f, position.y + size * 0.7f), IM_COL32_WHITE, "MI");
-                }
-            }
-            else if (type == "toy3d.SkeletonAssetData")
-            {
-                const ImU32 tint = IM_COL32(101, 203, 224, 255);
-                const auto point = [position, size](float x, float y)
-                {
-                    return ImVec2(position.x + size * x, position.y + size * y);
-                };
-                const ImVec2 joints[] = {point(0.5f, 0.2f),   point(0.5f, 0.32f),  point(0.5f, 0.56f),
-                                         point(0.27f, 0.35f), point(0.73f, 0.35f), point(0.23f, 0.48f),
-                                         point(0.77f, 0.48f), point(0.32f, 0.7f),  point(0.65f, 0.7f),
-                                         point(0.28f, 0.86f), point(0.74f, 0.85f)};
-                const int segments[][2] = {{0, 1}, {1, 2}, {1, 3}, {1, 4}, {3, 5},
-                                           {4, 6}, {2, 7}, {2, 8}, {7, 9}, {8, 10}};
-                for (const auto& segment : segments)
-                {
-                    draw.AddLine(joints[segment[0]], joints[segment[1]], tint, size * 0.026f);
-                }
-                draw.AddCircleFilled(joints[0], size * 0.07f, tint, 16);
-                for (const auto& joint : joints)
-                {
-                    draw.AddCircleFilled(joint, size * 0.025f, IM_COL32_WHITE, 10);
-                }
-            }
-            else if (type == "toy3d.Texture2DAssetData")
-            {
-                draw.AddRectFilled(a, b, IM_COL32(124, 151, 173, 255), 3);
-                draw.AddRectFilled(ImVec2(a.x + 4, a.y + 4), ImVec2(b.x - 4, b.y - 4), IM_COL32(62, 85, 103, 255), 2);
-                draw.AddCircleFilled(ImVec2(a.x + size * 0.17f, a.y + size * 0.16f), size * 0.055f,
-                                     IM_COL32(232, 205, 128, 255));
-                draw.AddTriangleFilled(ImVec2(a.x + 4, b.y - 4), ImVec2(a.x + size * 0.24f, a.y + size * 0.22f),
-                                       ImVec2(a.x + size * 0.48f, b.y - 4), IM_COL32(122, 177, 143, 255));
-            }
-            else if (type == "toy3d.SceneAssetData")
-            {
-                draw.AddRectFilled(a, b, IM_COL32(57, 82, 105, 255), 4);
-                draw.AddCircleFilled(ImVec2(a.x + size * 0.14f, a.y + size * 0.14f), size * 0.065f,
-                                     IM_COL32(245, 199, 103, 255));
-                draw.AddTriangleFilled(ImVec2(a.x + 4, b.y - 4), ImVec2(a.x + size * 0.25f, a.y + size * 0.2f),
-                                       ImVec2(a.x + size * 0.47f, b.y - 4), IM_COL32(115, 163, 130, 255));
-                draw.AddTriangleFilled(ImVec2(a.x + size * 0.25f, b.y - 4),
-                                       ImVec2(a.x + size * 0.47f, a.y + size * 0.12f), ImVec2(b.x - 4, b.y - 4),
-                                       IM_COL32(150, 185, 150, 255));
-            }
-            else
-            {
-                const ImVec2 top(position.x + size * 0.5f, position.y + size * 0.18f);
-                const ImVec2 left(a.x, position.y + size * 0.4f);
-                const ImVec2 right(b.x, left.y);
-                const ImVec2 middle(top.x, position.y + size * 0.58f);
-                const ImVec2 bottom(top.x, position.y + size * 0.85f);
-                draw.AddQuadFilled(top, right, middle, left, color);
-                draw.AddQuadFilled(left, middle, bottom, ImVec2(left.x, bottom.y - size * 0.18f),
-                                   IM_COL32(72, 103, 134, 255));
-                draw.AddQuadFilled(middle, right, ImVec2(right.x, bottom.y - size * 0.18f), bottom,
-                                   IM_COL32(91, 127, 159, 255));
-            }
+            return path == "/Project"  ? "Content"
+                   : path == "/Engine" ? "Engine Content"
+                                       : path.substr(path.find_last_of('/') + 1);
+        }
+
+        void toolbar_divider(float height)
+        {
+            const auto position = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(1.0f, height));
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(position.x, position.y + height * 0.2f),
+                                                ImVec2(position.x, position.y + height * 0.8f),
+                                                ImGui::GetColorU32(ImGuiCol_Separator));
         }
 
         struct BrowserItem
@@ -105,19 +45,152 @@ namespace toy3d
             std::string path;
             const AssetCatalogEntry* asset = nullptr;
         };
+
+        std::string item_name(const BrowserItem& item)
+        {
+            std::string name = item.path.substr(item.path.find_last_of('/') + 1);
+            if (item.asset)
+            {
+                name = name.substr(0, name.find_last_of('.'));
+            }
+            return name;
+        }
+
+        const char* asset_label(const std::string& type)
+        {
+            if (type == "toy3d.SceneAssetData")
+            {
+                return "Level";
+            }
+            if (type == "toy3d.StaticMeshAssetData")
+            {
+                return "Static Mesh";
+            }
+            if (type == "toy3d.SkeletalMeshAssetData")
+            {
+                return "Skeletal Mesh";
+            }
+            if (type == "toy3d.MaterialAssetData")
+            {
+                return "Material";
+            }
+            if (type == "toy3d.MaterialInstanceAssetData")
+            {
+                return "Material Instance";
+            }
+            if (type == "toy3d.Texture2DAssetData")
+            {
+                return "Texture";
+            }
+            if (type == "toy3d.SkeletonAssetData")
+            {
+                return "Skeleton";
+            }
+            if (type == "toy3d.AnimationSequenceAssetData")
+            {
+                return "Animation Sequence";
+            }
+            if (type == "toy3d.EnvironmentAssetData")
+            {
+                return "Environment";
+            }
+            return "Asset";
+        }
+
+        bool matches_search(std::string name, std::string search)
+        {
+            const auto lower = [](unsigned char value)
+            {
+                return static_cast<char>(std::tolower(value));
+            };
+            std::transform(name.begin(), name.end(), name.begin(), lower);
+            std::transform(search.begin(), search.end(), search.begin(), lower);
+            return name.find(search) != std::string::npos;
+        }
+
+        void draw_create_menu(ContentBrowserActions& actions, bool writable, const std::string& folder);
+
+        void draw_folder_tree(const AssetCatalog& catalog, const std::string& path, std::string& folder, bool reveal,
+                              ContentBrowserActions& actions)
+        {
+            const bool has_children = std::any_of(catalog.directories.begin(), catalog.directories.end(),
+                                                  [&path](const VirtualPath& directory)
+                                                  {
+                                                      return parent_folder(directory.utf8()) == path;
+                                                  });
+            const bool ancestor = folder == path || folder.compare(0, path.size() + 1, path + "/") == 0;
+            if (reveal && ancestor)
+            {
+                ImGui::SetNextItemOpen(true);
+            }
+            auto flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+            if (!has_children)
+            {
+                flags |= ImGuiTreeNodeFlags_Leaf;
+            }
+            if (folder == path)
+            {
+                flags |= ImGuiTreeNodeFlags_Selected;
+            }
+            const std::string label = folder_label(path);
+            const bool open = ImGui::TreeNodeEx(path.c_str(), flags, "%s", label.c_str());
+            if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+            {
+                folder = path;
+            }
+            if (ImGui::BeginPopupContextItem())
+            {
+                folder = path;
+                draw_create_menu(actions, path == "/Project" || path.compare(0, 9, "/Project/") == 0, path);
+                ImGui::EndPopup();
+            }
+            if (open)
+            {
+                for (const auto& directory : catalog.directories)
+                {
+                    if (parent_folder(directory.utf8()) == path)
+                    {
+                        draw_folder_tree(catalog, directory.utf8(), folder, reveal, actions);
+                    }
+                }
+                ImGui::TreePop();
+            }
+        }
+
+        void draw_create_menu(ContentBrowserActions& actions, bool writable, const std::string& folder)
+        {
+            const std::string import_label = "Import to " + folder + "...";
+            if (ImGui::MenuItem(import_label.c_str(), nullptr, false, writable))
+            {
+                actions.import_requested = true;
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Material", nullptr, false, writable))
+            {
+                actions.material_creation_requested = true;
+                actions.material_creation_kind = MaterialAssetCreationKind::Material;
+            }
+            if (ImGui::MenuItem("Material Instance", nullptr, false, writable))
+            {
+                actions.material_creation_requested = true;
+                actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;
+            }
+        }
     } // namespace
 
     void ContentBrowserPanel::clear()
     {
         pending_delete_ = {};
         delete_error_.clear();
+        search_.fill('\0');
+        revealed_folder_.clear();
     }
 
     ContentBrowserActions ContentBrowserPanel::draw(EditorWorkspace& workspace, EditorSelection& selection,
                                                     std::string& folder, bool& show_engine_content,
                                                     AssetThumbnailPool& thumbnails, bool import_enabled)
     {
-        constexpr float tile_size = 128.0f;
+        const float requested_tile_size = ImGui::GetFontSize() * 5.0f * thumbnail_scale_;
         AssetId requested_delete;
         ContentBrowserActions actions;
         if (ImGui::Begin("Content Browser"))
@@ -127,9 +200,99 @@ namespace toy3d
             actions.visible = true;
             actions.region_min = Vector2(region.x, region.y);
             actions.region_max = Vector2(region.x + size.x, region.y + size.y);
-            const bool writable =
-                workspace.has_project() && (folder == "/Project" || folder.compare(0, 9, "/Project/") == 0);
-            if (ImGui::Button("Rescan Assets"))
+            if (!workspace.has_project())
+            {
+                show_engine_content = true;
+            }
+            if (!show_engine_content && (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0))
+            {
+                folder = "/Project";
+            }
+            const auto folder_exists = [&workspace](const std::string& candidate)
+            {
+                return std::any_of(workspace.catalog().directories.begin(), workspace.catalog().directories.end(),
+                                   [&candidate](const VirtualPath& directory)
+                                   {
+                                       return directory.utf8() == candidate;
+                                   });
+            };
+            // Refresh may remove the current directory; return to its nearest surviving parent.
+            while (!folder_exists(folder) && !parent_folder(folder).empty())
+            {
+                folder = parent_folder(folder);
+            }
+            if (!folder_exists(folder))
+            {
+                folder = workspace.has_project() ? "/Project" : "/Engine";
+            }
+            const auto writable_folder = [&workspace, &folder]()
+            {
+                return workspace.has_project() && (folder == "/Project" || folder.compare(0, 9, "/Project/") == 0);
+            };
+            const auto& style = ImGui::GetStyle();
+            const float frame = ImGui::GetFrameHeight();
+            const float spacing = style.ItemSpacing.x;
+            const float toolbar_start = ImGui::GetCursorPosX();
+            const float toolbar_available = ImGui::GetContentRegionAvail().x;
+            const auto button_width = [&style](const std::string& label)
+            {
+                return ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2.0f;
+            };
+            const float add_width = button_width("+ Add");
+            const float import_width = button_width("Import");
+            const float separator_width = ImGui::CalcTextSize(">").x;
+            std::vector<std::string> breadcrumbs;
+            const std::string current_path = folder;
+            std::size_t segment = 1;
+            float path_width = 0.0f;
+            while (segment < current_path.size())
+            {
+                const auto slash = current_path.find('/', segment);
+                const std::string path = current_path.substr(0, slash);
+                if (!breadcrumbs.empty())
+                {
+                    path_width += separator_width + spacing * 2.0f;
+                }
+                breadcrumbs.push_back(path);
+                path_width += button_width(folder_label(path));
+                if (slash == std::string::npos)
+                {
+                    break;
+                }
+                segment = slash + 1;
+            }
+            // Keep the row left aligned and reserve the remaining width for its path.
+            const float controls_width = add_width + import_width + frame * 2.0f + 1.0f + spacing * 5.0f;
+            const float available_path_width = std::max(1.0f, toolbar_available - controls_width);
+            const bool compact_path = path_width > available_path_width;
+            path_width = std::min(path_width, available_path_width);
+            ImGui::BeginGroup();
+            ImGui::BeginDisabled(!writable_folder());
+            if (ImGui::Button("+ Add", ImVec2(add_width, frame)))
+            {
+                ImGui::OpenPopup("Add Content");
+            }
+            ImGui::EndDisabled();
+            if (ImGui::BeginPopup("Add Content"))
+            {
+                draw_create_menu(actions, writable_folder(), folder);
+                ImGui::EndPopup();
+            }
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!writable_folder());
+            if (ImGui::Button("Import", ImVec2(import_width, frame)))
+            {
+                actions.import_requested = true;
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                ImGui::SetTooltip(writable_folder() ? "Import files into the current Content folder"
+                                                    : "Select a writable Content folder to import assets");
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (property_action_button("Refresh", PropertyAction::Reset,
+                                       "Refresh the asset catalog without reimporting source files"))
             {
                 if (!workspace.refresh())
                 {
@@ -141,28 +304,74 @@ namespace toy3d
                     actions.assets_refreshed = true;
                 }
             }
-            if (ImGui::IsItemHovered())
-            {
-                ImGui::SetTooltip("Rescan Project and Engine asset files. This does not reimport source files.");
-            }
             ImGui::SameLine();
-            if (!workspace.has_project())
+            toolbar_divider(frame);
+            ImGui::SameLine();
+            // Only action buttons have a resting fill; navigation remains light and clickable.
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, style.Colors[ImGuiCol_FrameBgHovered]);
+            ImGui::BeginDisabled(parent_folder(folder).empty());
+            if (ImGui::ArrowButton("Parent Folder", ImGuiDir_Up))
             {
-                show_engine_content = true;
+                folder = parent_folder(folder);
             }
-            ImGui::BeginDisabled(!workspace.has_project());
-            if (ImGui::Checkbox("Show Engine Content", &show_engine_content) && !show_engine_content &&
-                (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0))
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             {
-                folder = workspace.has_project() ? "/Project" : "/Engine";
+                ImGui::SetTooltip("Open parent folder");
             }
             ImGui::EndDisabled();
-            ImGui::TextUnformatted(folder.c_str());
-            if (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0)
+            ImGui::SameLine();
+            if (compact_path)
             {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(read only)");
+                // Narrow panes use one clipped path control; its menu retains every ancestor.
+                const std::string label = folder_label(current_path) + "###Compact Path";
+                if (ImGui::Button(label.c_str(), ImVec2(path_width, frame)))
+                {
+                    ImGui::OpenPopup("Folder Path");
+                }
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("%s", current_path.c_str());
+                }
+                if (ImGui::BeginPopup("Folder Path"))
+                {
+                    for (const auto& path : breadcrumbs)
+                    {
+                        if (ImGui::MenuItem(path.c_str(), nullptr, path == current_path))
+                        {
+                            folder = path;
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
             }
+            else
+            {
+                for (std::size_t index = 0; index < breadcrumbs.size(); ++index)
+                {
+                    if (index != 0)
+                    {
+                        ImGui::SameLine();
+                        ImGui::AlignTextToFramePadding();
+                        ImGui::TextDisabled(">");
+                        ImGui::SameLine();
+                    }
+                    const auto& path = breadcrumbs[index];
+                    const std::string label = folder_label(path);
+                    ImGui::PushID(path.c_str());
+                    if (ImGui::Button(label.c_str(), ImVec2(button_width(label), frame)))
+                    {
+                        folder = path;
+                    }
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("%s", path.c_str());
+                    }
+                    ImGui::PopID();
+                }
+            }
+            ImGui::PopStyleColor(2);
+            ImGui::EndGroup();
             if (!workspace.error().empty())
             {
                 ImGui::TextWrapped("Asset scan: %s", workspace.error().c_str());
@@ -172,56 +381,72 @@ namespace toy3d
                 ImGui::TextWrapped("Asset operation: %s", delete_error_.c_str());
             }
             ImGui::Separator();
-            if (ImGui::BeginTable("Content Browser Columns", 2,
-                                  ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+            std::size_t item_count = 0;
+            const float footer_height = ImGui::GetFrameHeightWithSpacing();
+            if (ImGui::BeginTable(
+                    "Content Browser Layout", 2,
+                    ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY,
+                    ImVec2(0, std::max(ImGui::GetFrameHeight(), ImGui::GetContentRegionAvail().y - footer_height))))
             {
-                ImGui::TableSetupColumn("Folders", ImGuiTableColumnFlags_WidthFixed, 190);
+                // Keep the same columns when Sources is hidden so saved widths remain meaningful.
+                ImGui::TableSetupColumn(
+                    "Sources", ImGuiTableColumnFlags_WidthFixed | (show_sources_ ? 0 : ImGuiTableColumnFlags_Disabled),
+                    ImGui::GetFontSize() * 12);
                 ImGui::TableSetupColumn("Assets", ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                ImGui::BeginChild("Folder Tree");
-                for (const auto& directory : workspace.catalog().directories)
+                if (show_sources_)
                 {
-                    const auto& path = directory.utf8();
-                    if (!show_engine_content && (path == "/Engine" || path.compare(0, 8, "/Engine/") == 0))
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextDisabled("Sources");
+                    ImGui::Separator();
+                    ImGui::BeginChild("Folder Tree");
+                    const bool reveal = revealed_folder_ != folder;
+                    if (workspace.has_project())
                     {
-                        continue;
+                        draw_folder_tree(workspace.catalog(), "/Project", folder, reveal, actions);
                     }
-                    const auto depth = std::count(path.begin(), path.end(), '/');
-                    const float indent = static_cast<float>(depth > 0 ? depth - 1 : 0) * 12;
-                    ImGui::Indent(indent);
-                    ImGui::PushID(path.c_str());
-                    if (ImGui::Selectable(path.substr(path.find_last_of('/') + 1).c_str(), folder == path))
+                    if (show_engine_content)
                     {
-                        folder = path;
+                        draw_folder_tree(workspace.catalog(), "/Engine", folder, reveal, actions);
                     }
-                    ImGui::PopID();
-                    ImGui::Unindent(indent);
+                    revealed_folder_ = folder;
+                    ImGui::EndChild();
                 }
-                ImGui::EndChild();
                 ImGui::TableSetColumnIndex(1);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputTextWithHint("##SearchAssets", "Search assets and folders...", search_.data(),
+                                         search_.size());
                 ImGui::BeginChild("Asset Tiles");
                 std::vector<BrowserItem> items;
                 for (const auto& directory : workspace.catalog().directories)
                 {
-                    if (parent_folder(directory.utf8()) == folder)
+                    if (parent_folder(directory.utf8()) == folder &&
+                        matches_search(directory.utf8().substr(directory.utf8().find_last_of('/') + 1), search_.data()))
                     {
                         items.push_back({directory.utf8(), nullptr});
                     }
                 }
                 for (const auto& asset : workspace.catalog().entries)
                 {
-                    if (parent_folder(asset.path.utf8()) == folder)
+                    if (parent_folder(asset.path.utf8()) == folder &&
+                        matches_search(item_name({asset.path.utf8(), &asset}), search_.data()))
                     {
                         items.push_back({asset.path.utf8(), &asset});
                     }
                 }
-                const float spacing = 12;
-                // Three caption lines keep ordinary asset names readable at the smallest tile size.
-                // The existing tooltip remains the full-name fallback for unusually long names.
-                const float row_height = tile_size + 64;
+                item_count = items.size();
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float line_height = ImGui::GetTextLineHeight();
+                // Reserve two name lines and the type even in a shallow docked browser.
+                const float caption_height = line_height * 3.0f + spacing * 2.0f;
+                const float tile_size =
+                    std::min(requested_tile_size,
+                             std::max(line_height * 2.0f, ImGui::GetContentRegionAvail().y - caption_height));
+                const float row_height = tile_size + line_height * 3.0f + spacing * 2.0f;
+                // Shallow panels shrink the image, while captions retain a readable card width.
+                const float card_width = requested_tile_size;
                 const int columns =
-                    std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / (tile_size + spacing)));
+                    std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / (card_width + spacing)));
                 const int rows = static_cast<int>((items.size() + columns - 1) / columns);
                 const ImVec2 origin = ImGui::GetCursorScreenPos();
                 ImGuiListClipper clipper;
@@ -238,13 +463,13 @@ namespace toy3d
                                 break;
                             }
                             const auto& item = items[index];
-                            const ImVec2 position(origin.x + column * (tile_size + spacing),
+                            const ImVec2 position(origin.x + column * (card_width + spacing),
                                                   origin.y + row * row_height);
-                            const ImVec2 end(position.x + tile_size, position.y + row_height - spacing);
+                            const ImVec2 end(position.x + card_width, position.y + row_height - spacing);
                             ImGui::SetCursorScreenPos(position);
                             ImGui::PushID(item.path.c_str());
                             const bool selected = item.asset && selection.asset_id() == item.asset->file.asset_id;
-                            if (ImGui::InvisibleButton("Tile", ImVec2(tile_size, row_height - spacing)))
+                            if (ImGui::InvisibleButton("Tile", ImVec2(card_width, row_height - spacing)))
                             {
                                 if (item.asset)
                                 {
@@ -296,36 +521,30 @@ namespace toy3d
                                                          : IM_COL32(31, 33, 37, 255),
                                                4);
                             AssetThumbnailView thumbnail;
+                            const ImVec2 thumbnail_position(position.x + (card_width - tile_size) * 0.5f, position.y);
                             if (item.asset)
                             {
                                 thumbnail = thumbnails.request(*item.asset);
                             }
-                            if (thumbnail.texture_id.valid())
+                            if (item.asset)
                             {
-                                draw.AddImage(reinterpret_cast<ImTextureID>(
-                                                  static_cast<std::uintptr_t>(thumbnail.texture_id.value())),
-                                              position, ImVec2(position.x + tile_size, position.y + tile_size));
+                                paint_asset_thumbnail(draw, thumbnail_position, tile_size, thumbnail,
+                                                      item.asset->file.root_type);
                             }
                             else
                             {
-                                draw_placeholder(draw, position, tile_size, !item.asset,
-                                                 item.asset ? item.asset->file.root_type : "");
+                                draw_asset_placeholder(draw, thumbnail_position, tile_size, true, "");
                             }
-                            const std::string name = item.path.substr(item.path.find_last_of('/') + 1);
-                            draw.PushClipRect(position, end, true);
+                            const std::string name = item_name(item);
+                            draw.PushClipRect(position, ImVec2(end.x, end.y - line_height - 6), true);
                             draw.AddText(ImGui::GetFont(), ImGui::GetFontSize(),
                                          ImVec2(position.x + 4, position.y + tile_size + 3), IM_COL32_WHITE,
-                                         name.c_str(), nullptr, tile_size - 8);
-                            if (thumbnail.busy)
-                            {
-                                draw.AddText(ImVec2(position.x + 4, position.y + tile_size - 20), IM_COL32_WHITE,
-                                             "Generating...");
-                            }
-                            if (!thumbnail.error.empty())
-                            {
-                                draw.AddText(ImVec2(position.x + 4, position.y + tile_size - 20),
-                                             IM_COL32(255, 130, 100, 255), "Failed");
-                            }
+                                         name.c_str(), nullptr, card_width - 8);
+                            draw.PopClipRect();
+                            const char* type_label = item.asset ? asset_label(item.asset->file.root_type) : "Folder";
+                            const float type_y = end.y - line_height - 3;
+                            draw.PushClipRect(ImVec2(position.x, type_y), end, true);
+                            draw.AddText(ImVec2(position.x + 4, type_y), IM_COL32(158, 158, 163, 255), type_label);
                             draw.PopClipRect();
                             if (hovered)
                             {
@@ -333,7 +552,8 @@ namespace toy3d
                                 ImGui::TextUnformatted(name.c_str());
                                 if (item.asset)
                                 {
-                                    ImGui::TextDisabled("%s", item.asset->file.root_type.c_str());
+                                    ImGui::TextDisabled("%s", asset_label(item.asset->file.root_type));
+                                    ImGui::TextUnformatted(item.path.c_str());
                                 }
                                 if (!thumbnail.error.empty())
                                 {
@@ -385,54 +605,71 @@ namespace toy3d
                 }
                 if (items.empty())
                 {
-                    ImGui::TextDisabled("Right-click here to import or create assets");
+                    ImGui::TextDisabled(search_[0] == '\0' ? "This folder is empty. Add or import content above."
+                                                           : "No assets or folders match the search.");
                 }
                 if (ImGui::BeginPopupContextWindow("Content Actions",
                                                    ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
                 {
-                    if (ImGui::MenuItem("Import Static Mesh...", nullptr, false, import_enabled && writable))
-                    {
-                        actions.import_requested = true;
-                    }
-                    if (ImGui::MenuItem("Import Skeletal Mesh...", nullptr, false, import_enabled && writable))
-                    {
-                        actions.skeletal_import_requested = true;
-                    }
-                    if (ImGui::MenuItem("Import Animation...", nullptr, false, import_enabled && writable))
-                    {
-                        actions.animation_import_requested = true;
-                    }
-                    if (ImGui::MenuItem("Import Texture2D...", nullptr, false, writable))
-                    {
-                        actions.texture_import_requested = true;
-                    }
-                    if (ImGui::MenuItem("Import Environment...", nullptr, false, writable))
-                    {
-                        actions.environment_import_requested = true;
-                    }
-                    ImGui::Separator();
-                    if (ImGui::MenuItem("Create Material...", nullptr, false, writable))
-                    {
-                        actions.material_creation_requested = true;
-                        actions.material_creation_kind = MaterialAssetCreationKind::Material;
-                    }
-                    if (ImGui::MenuItem("Create Material Instance...", nullptr, false, writable))
-                    {
-                        actions.material_creation_requested = true;
-                        actions.material_creation_kind = MaterialAssetCreationKind::MaterialInstance;
-                    }
-                    if (!writable)
+                    draw_create_menu(actions, writable_folder(), folder);
+                    if (!writable_folder())
                     {
                         ImGui::TextDisabled("Engine content is read only");
-                    }
-                    if (!import_enabled)
-                    {
-                        ImGui::TextDisabled("Model import is disabled in this build");
                     }
                     ImGui::EndPopup();
                 }
                 ImGui::EndChild();
                 ImGui::EndTable();
+            }
+            ImGui::BeginGroup();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%u items", static_cast<unsigned>(item_count));
+            if (search_[0] != '\0')
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(filtered)");
+            }
+            if (!writable_folder())
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("| Read only");
+            }
+            ImGui::EndGroup();
+            const float footer_label_width = ImGui::GetItemRectSize().x;
+            const float footer_width = ImGui::GetWindowContentRegionMax().x - toolbar_start;
+            const float view_width = button_width("View Options");
+            const float slider_width = ImGui::GetFontSize() * 8.0f;
+            const bool show_slider = footer_width > footer_label_width + slider_width + view_width + spacing * 2.0f;
+            const bool compact_view = footer_width < footer_label_width + view_width + spacing;
+            const float settings_width = compact_view ? frame : view_width;
+            const float footer_controls_width = settings_width + (show_slider ? slider_width + spacing : 0.0f);
+            ImGui::SameLine(std::max(toolbar_start + footer_label_width + spacing,
+                                     ImGui::GetWindowContentRegionMax().x - footer_controls_width));
+            if (show_slider)
+            {
+                ImGui::SetNextItemWidth(slider_width);
+                ImGui::SliderFloat("##ThumbnailSize", &thumbnail_scale_, 0.6f, 1.6f, "Size", ImGuiSliderFlags_NoInput);
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("Thumbnail size");
+                }
+                ImGui::SameLine();
+            }
+            if (ImGui::Button(compact_view ? "...###View Options" : "View Options", ImVec2(settings_width, frame)))
+            {
+                ImGui::OpenPopup("Browser View Options");
+            }
+            if (ImGui::BeginPopup("Browser View Options"))
+            {
+                ImGui::Checkbox("Show Sources", &show_sources_);
+                ImGui::BeginDisabled(!workspace.has_project());
+                if (ImGui::Checkbox("Show Engine Content", &show_engine_content) && !show_engine_content &&
+                    (folder == "/Engine" || folder.compare(0, 8, "/Engine/") == 0))
+                {
+                    folder = "/Project";
+                }
+                ImGui::EndDisabled();
+                ImGui::EndPopup();
             }
             if (requested_delete.valid())
             {

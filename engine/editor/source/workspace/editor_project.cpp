@@ -163,7 +163,7 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
             return text;
         }
         FileStatus ensure_launcher(FileSystem& files, const char* name, const char* source, const std::string& host,
-                                   const char* legacy_hash)
+                                   const char* legacy_hash, const std::string& legacy_host)
         {
             const auto path = VirtualPath::parse(std::string("/Game/") + name).value();
             const auto existing = files.read_text_utf8(path);
@@ -177,8 +177,10 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
                 const auto replacement = launcher_text(source, host);
                 // Only exact previously generated scripts are upgraded. Custom contents remain owned by the user.
                 // sha256 borrows the UTF-8 text through its existing string_view API.
-                if (normalized != replacement && (normalized == launcher_text(source, "Toy3dEditor") ||
-                                                  sha256_to_hex(sha256(normalized)) == legacy_hash))
+                if (normalized != replacement &&
+                    (normalized == launcher_text(source, "Toy3dEditor") ||
+                     (!legacy_host.empty() && normalized == launcher_text(source, legacy_host)) ||
+                     sha256_to_hex(sha256(normalized)) == legacy_hash))
                 {
                     return files.write_binary_atomic(path,
                                                      std::vector<std::uint8_t>(replacement.begin(), replacement.end()),
@@ -192,18 +194,20 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
             return ensure_project_file(files, name, launcher_text(source, host));
         }
         FileStatus write_launchers(FileSystem& files, const std::string& filename, const PhysicalPath& editor_directory,
-                                   const std::string& host = "Toy3dEditor")
+                                   const std::string& host = "Toy3dEditor", const std::string& legacy_host = {})
         {
-            auto status = ensure_launcher(files, "launch_editor.bat", launch_batch, host,
-                                          "a0712e785769650787ca77c22348efaeccdfce6c60ec54ca6c23958b74314fee");
+            auto status =
+                ensure_launcher(files, "launch_editor.bat", launch_batch, host,
+                                "a0712e785769650787ca77c22348efaeccdfce6c60ec54ca6c23958b74314fee", legacy_host);
             if (status.succeeded())
             {
-                status = ensure_launcher(files, "launch_editor.sh", launch_shell, host,
-                                         "4c54228d1063066d220005869b48d855350c87aa08906f3dc5b2ff698b022f89");
+                status =
+                    ensure_launcher(files, "launch_editor.sh", launch_shell, host,
+                                    "4c54228d1063066d220005869b48d855350c87aa08906f3dc5b2ff698b022f89", legacy_host);
             }
             if (status.succeeded())
             {
-                status = ensure_project_file(files, ".gitignore", "/saved/\n");
+                status = ensure_project_file(files, ".gitignore", "/saved/\n/binaries/\n");
             }
             if (status.succeeded())
             {
@@ -263,10 +267,9 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
         }
         if (!loaded.value().modules.empty() &&
             (loaded.value().modules.size() != 1u || loaded.value().modules.front().type != GameModuleType::Runtime ||
-             loaded.value().modules.front().name != module_))
+             loaded.value().modules.front().name.empty()))
         {
-            return project_error(
-                "This host does not contain the requested Runtime module. Build and launch the project Editor.");
+            return project_error("This Editor supports one project Runtime module.");
         }
         // Optional content directories are created through the rooted store;
         // reparse points cannot redirect authoring outside the project.
@@ -293,8 +296,8 @@ exec "$editor" "$@" "--Project=$project_dir/$descriptor"
             }
         }
         const auto launchers = write_launchers(
-            files_, filename, editor_directory_,
-            loaded.value().modules.empty() ? "Toy3dEditor" : loaded.value().modules.front().name + "Editor");
+            files_, filename, editor_directory_, "Toy3dEditor",
+            loaded.value().modules.empty() ? std::string{} : loaded.value().modules.front().name + "Editor");
         if (!launchers.succeeded())
         {
             return launchers;

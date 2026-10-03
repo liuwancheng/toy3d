@@ -55,6 +55,8 @@ target_link_libraries(MyAssetTool PRIVATE Toy3dAssets) # 同时获得 Core/Shade
 
 ## 平台服务与外部进程
 
+`platform/dynamic_library.h` 提供 DynamicLibrary 独占 OS image 的 RAII 所有权，只接受绝对 UTF-8 路径，报告加载/符号查询失败；Windows 使用受控 LoadLibraryEx 搜索 flags，macOS/Linux 使用 dlopen。调用方负责先销毁库内对象与回调再 close；Core 不持有项目注册策略。executable_file_path() 从 OS 查询当前可执行文件位置，供部署入口定位包根，不依赖 cwd。Toy3dCore 为共享库，宿主与项目模块共用日志、任务和其他 Core 状态。
+
 平台外部操作统一声明于 `platform/platform_services.h`，实现在对应 cpp，归属 Toy3dCore；Windows 的 shell32/ole32 为该目标的 PRIVATE 依赖。文件承载进程执行、用户所有的 detached 程序和桌面目录打开，类型仍使用 ProcessService/NativeProcessService；文件读写、线程和 runtime 窗口行为各归原模块。
 
 用户数据根查询由 platform/platform_services.h 的 user_data_directory() 提供，返回 FileResult<PhysicalPath>，不创建目录。Windows 使用 Known Folder LocalAppData；macOS 使用 HOME/Library/Application Support；Linux 使用绝对 XDG_DATA_HOME 或 HOME/.local/share。Editor 决定 Toy3d/Editor 子目录，Core 不持工程全局状态。

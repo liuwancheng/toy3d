@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iostream>
 #include <cctype>
+#include <charconv>
 
 #include "application/application.h"
 #include "asset/asset_catalog.h"
@@ -74,6 +75,19 @@ namespace toy3d
           protected:
             bool on_initialize() override
             {
+                const auto& frame_arguments = CommandLineParser::get_instance();
+                if (frame_arguments.has_option("Game.FrameLimit"))
+                {
+                    const auto text = frame_arguments.get_option("Game.FrameLimit");
+                    // from_chars validates the complete bounded smoke-run argument without exceptions.
+                    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), frame_limit_);
+                    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || frame_limit_ == 0u ||
+                        frame_limit_ > 10000u)
+                    {
+                        TOY_LOG_ERROR("Game.FrameLimit must be an integer in [1, 10000].");
+                        return false;
+                    }
+                }
                 auto registered = register_static_mesh_asset_types(types_);
                 if (registered.succeeded())
                 {
@@ -264,6 +278,14 @@ namespace toy3d
                 TOY_LOG_INFO("Game loaded Scene [{}] with {} Actors; gameplay starts after renderer binding.", scene,
                              world().actor_count());
                 return true;
+            }
+            void on_tick(double) override
+            {
+                if (frame_limit_ && ++ticks_ >= frame_limit_)
+                {
+                    TOY_LOG_INFO("Game completed {} ticks; closing the bounded run.", ticks_);
+                    window().close();
+                }
             }
             void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
             {
@@ -463,6 +485,8 @@ namespace toy3d
             AssetCatalog catalog_;
             SceneGeometry geometry_;
             std::unique_ptr<MaterialLibrary> materials_;
+            std::uint32_t ticks_ = 0u;
+            std::uint32_t frame_limit_ = 0u;
         };
     } // namespace
 
@@ -504,11 +528,14 @@ namespace toy3d
             std::cerr << "Game project: " << project.status().message << '\n';
             return 1;
         }
-        if (project.value().engine_association != "toy3d_dev" || project.value().modules.size() != 1u ||
-            project.value().modules.front().type != GameModuleType::Runtime ||
-            project.value().modules.front().name != module.name)
+        const bool matching_module = project.value().modules.empty()
+                                         ? module.name.empty()
+                                         : project.value().modules.size() == 1u &&
+                                               project.value().modules.front().type == GameModuleType::Runtime &&
+                                               project.value().modules.front().name == module.name;
+        if (project.value().engine_association != "toy3d_dev" || !matching_module)
         {
-            std::cerr << "Game host requires one matching Runtime module (" << module.name << ").\n";
+            std::cerr << "Game host requires matching project Runtime modules (" << module.name << ").\n";
             return 1;
         }
         const PhysicalPath saved(parent.value().utf8() + "/saved");

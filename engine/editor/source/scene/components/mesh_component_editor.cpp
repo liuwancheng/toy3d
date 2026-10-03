@@ -1,6 +1,7 @@
 #include "scene/components/component_details.h"
 
 #include "imgui.h"
+#include "panels/property_widgets.h"
 #include "assets/asset_resource_picker.h"
 #include "gamescene/component/skeletal_mesh_component.h"
 #include "gamescene/component/static_mesh_component.h"
@@ -97,8 +98,10 @@ namespace toy3d
             {
                 return;
             }
-            ImGui::Separator();
-            ImGui::TextUnformatted("Materials");
+            if (!ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                return;
+            }
             ImGui::BeginDisabled(context.history.active() || (context.mesh_bindings && context.mesh_bindings->busy()));
             for (const auto& name : component->material_slot_names())
             {
@@ -165,21 +168,21 @@ namespace toy3d
         auto& settings = static_data ? static_data->settings : skeletal_data->settings;
         ImGui::BeginDisabled(ImGui::GetDragDropPayload() != nullptr ||
                              (context.mesh_bindings && context.mesh_bindings->busy()));
-        bool changed = ImGui::Checkbox("Visible", &settings.visible);
+        bool changed = property_bool("Visible", &settings.visible);
         finish_component_edit(context, data, changed);
-        changed = ImGui::Checkbox("Cast Shadows", &settings.cast_shadows);
+        changed = property_bool("Cast Shadows", &settings.cast_shadows);
         finish_component_edit(context, data, changed);
-        changed = ImGui::Checkbox("Receive Shadows", &settings.receives_shadows);
+        changed = property_bool("Receive Shadows", &settings.receives_shadows);
         finish_component_edit(context, data, changed);
         if (skeletal_data)
         {
-            changed = ImGui::Checkbox("Loop", &skeletal_data->playback.loop);
+            changed = property_bool("Loop", &skeletal_data->playback.loop);
             finish_component_edit(context, data, changed);
-            changed = ImGui::Checkbox("Autoplay", &skeletal_data->playback.autoplay);
+            changed = property_bool("Autoplay", &skeletal_data->playback.autoplay);
             finish_component_edit(context, data, changed);
-            changed = ImGui::InputDouble("Playback Rate", &skeletal_data->playback.rate, 0.1, 1.0, "%.2f");
+            changed = property_double("Playback Rate", &skeletal_data->playback.rate, 0.1, 1.0, "%.2f");
             finish_component_edit(context, data, changed);
-            changed = ImGui::Checkbox("Lock Root", &skeletal_data->lock_root);
+            changed = property_bool("Lock Root", &skeletal_data->lock_root);
             finish_component_edit(context, data, changed);
         }
         ImGui::EndDisabled();

@@ -37,7 +37,7 @@ Scene DTO/反射在 core/asset/scene，不能持 runtime 指针。当前 SceneAc
 
 ## 游戏工程接入边界
 
-项目 `src` 编译为 Runtime 静态模块，例如 ShadowDemo；同一模块分别链接项目 Editor/Game 宿主。Runtime 不依赖项目或 Editor。`GameModuleRegistration` 由宿主显式注入；模块在资产扫描前注册反射 schema，在 World 创建前冻结 ActorTypeRegistry。没有 DLL 加载、热重载或自动 C++ 工程生成。构建/工程关联见 [Runtime](runtime.md#工程与分层配置)。
+项目 `src` 编译为 Runtime 静态模块，例如 ShadowDemo；同一模块用于共享 Editor 动态加载的项目 DLL 和静态链接的独立 Game。Runtime 不依赖项目或 Editor。`GameModuleRegistration` 由宿主显式注入；模块在资产扫描前注册反射 schema，在 World 创建前冻结 ActorTypeRegistry。DLL 生命周期覆盖其对象与注册回调，不支持热重载或自动 C++ 工程生成。构建/工程关联见 [Runtime](runtime.md#工程与分层配置)。
 
 ActorTypeRegistry 分开保存稳定类型名、精确 runtime type、属性 schema、create/validate/capture/apply 和放置模板。create 回调只创建一个属于传入 World 的新 Actor；公共 create 入口检查数量/类型/所有权，错误返回不能接管或删除旧 Actor。回调不得修改旧对象或开始 gameplay。属性是 ReflectedValue 持有的类型/版本/owned bytes；未知类型/版本、无效属性或多余字节拒绝。模块不向引擎 kind switch 添加项目类型。
 

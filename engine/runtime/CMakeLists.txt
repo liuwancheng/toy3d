@@ -33,7 +33,7 @@ file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS "*.cpp")
 list(FILTER ALL_HEADER_FILES EXCLUDE REGEX ".*/tests/.*\\.h$")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/tests/.*\\.cpp$")
 
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/application/(host_entry|game_main)\\.cpp$")
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/application/(host_entry|game_main|generic_game_main)\\.cpp$")
 
 # Vulkan sources are registered explicitly below so backend code is only built
 # when TOY3D_ENABLE_VULKAN_RHI is enabled.
@@ -67,7 +67,26 @@ endif()
 set(HEADER_FILES ${ALL_HEADER_FILES} ${PLATFORM_HEADER_FILES})
 set(SOURCE_FILES ${ALL_SOURCE_FILES} ${PLATFORM_SOURCE_FILES})
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HEADER_FILES} ${SOURCE_FILES})
-add_library(${TARGET_NAME} STATIC ${HEADER_FILES} ${SOURCE_FILES})
+add_library(${TARGET_NAME} SHARED ${HEADER_FILES} ${SOURCE_FILES})
+toy3d_shared_library(${TARGET_NAME})
+include(GenerateExportHeader)
+generate_export_header(Toy3dRuntime EXPORT_MACRO_NAME TOY3D_RUNTIME_API
+    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime_export.h")
+target_include_directories(Toy3dRuntime PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(GLOB_RECURSE TOY3D_ABI_HEADERS CONFIGURE_DEPENDS
+    "${TOY3D_ROOT_DIR}/engine/core/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+list(FILTER TOY3D_ABI_HEADERS EXCLUDE REGEX "/tests/")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${TOY3D_ABI_HEADERS})
+set(TOY3D_ABI_CONTENT "${TOY3D_ENABLE_VULKAN_RHI}|${TOY3D_ENABLE_SHADER_MAP_ENTRY_LOADING}|${CMAKE_CXX_FLAGS}|${CMAKE_CXX_FLAGS_DEBUG}|${CMAKE_CXX_FLAGS_RELEASE}|${CMAKE_CXX_FLAGS_RELWITHDEBINFO}|${CMAKE_CXX_FLAGS_MINSIZEREL}")
+foreach(TOY3D_ABI_HEADER IN LISTS TOY3D_ABI_HEADERS)
+    file(SHA256 "${TOY3D_ABI_HEADER}" TOY3D_ABI_HASH)
+    get_filename_component(TOY3D_ABI_NAME "${TOY3D_ABI_HEADER}" NAME)
+    string(APPEND TOY3D_ABI_CONTENT "|${TOY3D_ABI_NAME}:${TOY3D_ABI_HASH}")
+endforeach()
+string(SHA256 TOY3D_ABI_ID "${TOY3D_ABI_CONTENT}")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>/game_module_build.h"
+    CONTENT "#pragma once\n#define TOY3D_MODULE_BUILD_ID \"1|${CMAKE_PROJECT_VERSION}|${CMAKE_SYSTEM_NAME}|${CMAKE_SYSTEM_PROCESSOR}|${CMAKE_SIZEOF_VOID_P}|${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}|${TOY3D_ABI_ID}|$<CONFIG>\"\n#define TOY3D_MODULE_CONFIG \"$<CONFIG>\"\n")
+target_include_directories(Toy3dRuntime PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>")
 target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
 target_link_libraries(${TARGET_NAME} PUBLIC Toy3dAssets)
 target_compile_definitions(${TARGET_NAME} PRIVATE

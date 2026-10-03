@@ -2,13 +2,14 @@
 
 #include "animation/animation_instance.h"
 #include "assets/animation/animation_preview_asset.h"
-#include "assets/thumbnails/thumbnail_preview_scene.h"
+#include "assets/preview/asset_preview_scene.h"
 #include "threading/task_graph/task_graph_interface.h"
 #include "ui/ui_texture_work.h"
 
 namespace toy3d
 {
     class EditorWorkspace;
+    class AssetResourcePicker;
 
     // GT-owned read-only asset session. CPU candidates and UI image identities
     // are owned here; the Renderer owns the independent scene and GPU targets.
@@ -18,6 +19,10 @@ namespace toy3d
         explicit AnimationEditorPanel(EditorWorkspace& workspace);
         ~AnimationEditorPanel();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
+        void set_resource_picker(AssetResourcePicker& picker)
+        {
+            resource_picker_ = &picker;
+        }
         void request_open(const AssetId& id, bool focus = true);
         void invalidate();
         void tick(double delta_seconds);
@@ -32,6 +37,8 @@ namespace toy3d
         void seek(double time);
         void set_playing(bool playing);
         void set_preview_display(bool mesh, bool bones, bool depth_test);
+        bool set_preview_scene_settings(const PreviewSceneSettings& settings);
+        const PreviewSceneSettings& preview_scene_settings() const;
         void set_preview_mesh_changed(std::function<void()> changed)
         {
             preview_mesh_changed_ = std::move(changed);
@@ -46,9 +53,20 @@ namespace toy3d
         SceneView view() const;
         std::vector<DebugLineVertex> bone_lines(const AnimationEvaluation& evaluation) const;
         void draw_bone(std::uint32_t index);
+        void draw_asset_details();
+        void draw_bone_details();
+        void draw_preview_selectors();
+        void draw_animation_browser();
+        void draw_playback();
+        void draw_viewport();
 
         EditorWorkspace& workspace_;
-        ThumbnailPreviewScene scene_;
+        AssetResourcePicker* resource_picker_ = nullptr;
+        AssetPreviewScene scene_;
+        PreviewSceneSettings preview_settings_;
+        TextureRef environment_cube_;
+        AssetId loaded_environment_;
+        std::vector<AssetId> compatible_sequences_;
         MaterialInstanceRef material_;
         TaskGraphInterface* tasks_ = nullptr;
         GraphEventRef cpu_task_;
@@ -69,6 +87,8 @@ namespace toy3d
         ImGuiTextureId candidate_id_;
         std::uint64_t revision_ = 0;
         std::uint64_t candidate_revision_ = 0;
+        std::uint64_t preview_revision_ = 0;
+        std::uint64_t candidate_preview_revision_ = 0;
         std::uint64_t next_request_ = 1;
         std::uint64_t next_texture_ = 1ull << 44;
         std::int32_t selected_bone_ = -1;
@@ -94,6 +114,5 @@ namespace toy3d
         bool initialized_ = false;
         bool mesh_preference_pending_ = false;
         std::function<void()> preview_mesh_changed_;
-        int tab_ = 0;
     };
 } // namespace toy3d

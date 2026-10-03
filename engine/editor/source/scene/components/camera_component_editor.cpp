@@ -1,6 +1,7 @@
 #include "scene/components/component_details.h"
 
 #include "imgui.h"
+#include "panels/property_widgets.h"
 #include "scene/editor_command_history.h"
 #include "gamescene/actor/actor.h"
 #include "viewport/scene_viewport.h"
@@ -20,11 +21,11 @@ namespace toy3d
         {
             return;
         }
-        bool changed = ImGui::DragFloat("Vertical FOV (degrees)", &settings->vertical_fov, 0.25f);
+        bool changed = property_float("Vertical FOV (degrees)", &settings->vertical_fov, 0.25f);
         finish_component_edit(context, data, changed);
-        changed = ImGui::DragFloat("Near Clip (cm)", &settings->near_clip, 1.0f);
+        changed = property_float("Near Clip (cm)", &settings->near_clip, 1.0f);
         finish_component_edit(context, data, changed);
-        changed = ImGui::DragFloat("Far Clip (cm)", &settings->far_clip, meters_to_centimeters(1.0f));
+        changed = property_float("Far Clip (cm)", &settings->far_clip, meters_to_centimeters(1.0f));
         finish_component_edit(context, data, changed);
         ImGui::TextDisabled("Aspect ratio follows the viewport");
         // Current viewport viewing targets an Actor's root camera.

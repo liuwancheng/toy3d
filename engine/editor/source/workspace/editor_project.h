@@ -11,8 +11,7 @@ namespace toy3d
     class EditorProject
     {
       public:
-        explicit EditorProject(PhysicalPath editor_directory, std::string module = {})
-            : editor_directory_(std::move(editor_directory)), module_(std::move(module))
+        explicit EditorProject(PhysicalPath editor_directory) : editor_directory_(std::move(editor_directory))
         {
         }
         FileStatus open(const PhysicalPath& descriptor);
@@ -62,6 +61,5 @@ namespace toy3d
         PhysicalPath root_;
         PhysicalPath editor_directory_;
         GameProject project_;
-        std::string module_;
     };
 } // namespace toy3d

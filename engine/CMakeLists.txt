@@ -34,6 +34,19 @@ endif()
 if(WIN32)
     set(SPDLOG_WCHAR_FILENAMES ON CACHE BOOL "Use native Unicode log paths on Windows" FORCE)
 endif()
+add_library(imgui SHARED
+    "${THIRD_PARTY_DIR}/imgui/imgui.cpp" "${THIRD_PARTY_DIR}/imgui/imgui_draw.cpp"
+    "${THIRD_PARTY_DIR}/imgui/imgui_tables.cpp" "${THIRD_PARTY_DIR}/imgui/imgui_widgets.cpp"
+    "${THIRD_PARTY_DIR}/ImGuizmo/ImGuizmo.cpp")
+target_compile_features(imgui PUBLIC cxx_std_17)
+target_include_directories(imgui PUBLIC "${THIRD_PARTY_DIR}/imgui" "${THIRD_PARTY_DIR}/ImGuizmo")
+# ImGuizmo shares IMGUI_API and must live in the same DLL as the ImGui context.
+set_target_properties(imgui PROPERTIES CXX_EXTENSIONS OFF)
+if(WIN32)
+    target_compile_definitions(imgui PRIVATE "IMGUI_API=__declspec(dllexport)"
+        INTERFACE "IMGUI_API=__declspec(dllimport)")
+endif()
+toy3d_shared_library(imgui)
 add_subdirectory(thirdparty)
 add_subdirectory(core)
 

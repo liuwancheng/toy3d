@@ -51,7 +51,7 @@ Forward View 参数提供环境逆旋转、强度和最高 mip；材质 feature/
 
 场景 HDR color/depth 经 Base，Tonemap 转输出；UI 在最终输出之后按既有线性/显示约定合成，不因预览直接绕后端。Tonemap 参数和 Shader ABI 从 generated typed schema 创建，附件兼容和失败检查在 prepare。
 
-材质窗口请求可在 Base 后、Tonemap 前绘制 EnvironmentBackground Global Pass。全屏三角形使用 reversed-Z 的零深度与 Equal 测试，只填未被几何覆盖的像素；加载同一 HDR color/depth 前显式建立写入到读取的依赖，不写深度。相机射线按环境逆旋转采样 Cube mip 0，与镜面 IBL 共用该场景域资源；背景隐藏不改变反射。窗口固定曝光随不可变 PreviewFrameRequest 传到 Tonemap，缩略图保持 EV 0 和禁用背景/阴影。背景 pipeline 延迟创建，Global Shader 候选准备/提交与旧资源退役沿既有原子发布边界。
+材质与动画窗口请求可在 Base 后、Tonemap 前绘制 EnvironmentBackground Global Pass。全屏三角形使用 reversed-Z 的零深度与 Equal 测试，只填未被几何覆盖的像素；加载同一 HDR color/depth 前显式建立写入到读取的依赖，不写深度。相机射线按环境逆旋转采样 Cube mip 0，与镜面 IBL 共用该场景域资源；背景隐藏不改变反射。窗口固定曝光随不可变 PreviewFrameRequest 传到 Tonemap，缩略图保持 EV 0 和禁用背景/阴影。背景 pipeline 延迟创建，Global Shader 候选准备/提交与旧资源退役沿既有原子发布边界。
 
 UI texture 通过公共 RHI View/受控 ImGui 表示，多个窗口各自持资源/代次，不全局换一张图。Preview 使用独立 World/SceneRenderTargets、同正常 frame 管理；不能操纵主 World、给每个窗口私建 Vulkan ownership。
 
@@ -61,7 +61,7 @@ UI 快照遇到未登记纹理仍拒绝整帧，并诊断 draw-list/command、�
 
 Editor 的 Play RenderScene 与编辑/Preview Scene 独立，Renderer 持有、Running 后发布 SceneInterface，退出先撤回。ViewportFrameOutput 的 play_scene 在提交时选择对应场景，复用主视口附件；编辑注册不随显示切换释放。各场景 MeshRenderData 生命周期独立。SceneRenderFeedback 是单次准备反馈，RT 在 geometry 可绘制且场景帧提交成功后发布 Ready，不能作为 GPU completion；启动失败发布诊断，UI/GT 不读取可变 RenderScene。运行会话与输入边界见 [Editor](editor.md#视口内-play)。
 
-异步颜色读回必须等待实际 GPU completion，结果包含请求身份、尺寸/row pitch/格式；worker PNG 编码/缓存后 GT 检验 AssetId/content/generation 才接管，过期/失败丢弃。缩略图失败不回滚资产保存。
+异步颜色读回必须等待实际 GPU completion，RHI 结果包含尺寸/row pitch/格式，Renderer 将 owned BGRA 像素与请求身份、尺寸回传 GT；Editor 负责后台依赖复核、PNG 编码/缓存及候选图片接管，具体见 [Editor](editor.md#资产缩略图)。过期/失败丢弃，缩略图失败不回滚资产保存。
 
 ## 修改与验证
 

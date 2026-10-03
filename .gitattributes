@@ -5,3 +5,4 @@ engine/thirdparty/ShaderToolchain/**/*.lib filter=lfs diff=lfs merge=lfs -text
 engine/thirdparty/ShaderToolchain/**/*.a filter=lfs diff=lfs merge=lfs -text
 engine/thirdparty/ShaderToolchain/macos-*/bin/dxc filter=lfs diff=lfs merge=lfs -text
 engine/thirdparty/ShaderToolchain/macos-*/bin/spirv-val filter=lfs diff=lfs merge=lfs -text
+engine/tools/asset_pipeline/thirdparty/mikktspace/* -text

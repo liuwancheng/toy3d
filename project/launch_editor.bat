@@ -4,7 +4,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 set "TOY3D_DESCRIPTOR="
 set "TOY3D_DEFAULT_BIN="
-set "TOY3D_EDITOR_NAME=ShadowDemoEditor"
+set "TOY3D_EDITOR_NAME=Toy3dEditor"
 if exist "%~dp0saved\editor_launch.txt" (
     rem FOR /F handles the UTF-8 LF record; SET /P requires CRLF.
     for /f "usebackq eol=| delims=" %%L in ("%~dp0saved\editor_launch.txt") do (

@@ -1,4 +1,5 @@
 #pragma once
+#include "runtime_export.h"
 
 #include "math/math.h"
 #include "drivers/rhi/rhi_capabilities.h"
@@ -31,7 +32,7 @@ namespace toy3d
         std::uint32_t layer_count = RHI_ALL_LAYERS;
     };
 
-    struct RHIClearValue
+    struct TOY3D_RUNTIME_API RHIClearValue
     {
         enum class Type : std::uint8_t
         {

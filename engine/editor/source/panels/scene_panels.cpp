@@ -3,6 +3,7 @@
 
 #include <string>
 #include "imgui.h"
+#include "panels/property_widgets.h"
 #include "imgui_internal.h"
 #include "rendercore/texture/texture_asset_loader.h"
 #include "math/angle.h"
@@ -27,38 +28,14 @@ namespace toy3d
             const auto* current = workspace.catalog().index.find(settings.environment.asset_id);
             const char* label = current ? current->path.utf8().c_str()
                                         : (settings.environment.asset_id.valid() ? "Missing environment" : "Off");
-            if (ImGui::BeginCombo("Reflection Environment", label))
+            if (begin_property_row("Reflection Environment"))
             {
-                if (ImGui::Selectable("Off", !settings.environment.asset_id.valid()))
+                if (ImGui::BeginCombo("##Environment", label))
                 {
-                    settings.environment = {};
-                    if (!history.set_environment(world, settings, {}))
+                    if (ImGui::Selectable("Off", !settings.environment.asset_id.valid()))
                     {
-                        error = history.error();
-                    }
-                    else
-                    {
-                        error.clear();
-                    }
-                }
-                for (const auto& asset : workspace.catalog().entries)
-                {
-                    if (asset.file.root_type != "toy3d.EnvironmentAssetData")
-                    {
-                        continue;
-                    }
-                    if (ImGui::Selectable(asset.path.utf8().c_str(),
-                                          asset.file.asset_id == settings.environment.asset_id))
-                    {
-                        settings.environment = {
-                            asset.file.asset_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
-                        const auto loaded =
-                            load_environment_asset(workspace.files(), workspace.catalog().index, settings.environment);
-                        if (!loaded.succeeded())
-                        {
-                            error = loaded.status().message;
-                        }
-                        else if (!history.set_environment(world, settings, loaded.value()))
+                        settings.environment = {};
+                        if (!history.set_environment(world, settings, {}))
                         {
                             error = history.error();
                         }
@@ -67,8 +44,36 @@ namespace toy3d
                             error.clear();
                         }
                     }
+                    for (const auto& asset : workspace.catalog().entries)
+                    {
+                        if (asset.file.root_type != "toy3d.EnvironmentAssetData")
+                        {
+                            continue;
+                        }
+                        if (ImGui::Selectable(asset.path.utf8().c_str(),
+                                              asset.file.asset_id == settings.environment.asset_id))
+                        {
+                            settings.environment = {
+                                asset.file.asset_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
+                            const auto loaded = load_environment_asset(workspace.files(), workspace.catalog().index,
+                                                                       settings.environment);
+                            if (!loaded.succeeded())
+                            {
+                                error = loaded.status().message;
+                            }
+                            else if (!history.set_environment(world, settings, loaded.value()))
+                            {
+                                error = history.error();
+                            }
+                            else
+                            {
+                                error.clear();
+                            }
+                        }
+                    }
+                    ImGui::EndCombo();
                 }
-                ImGui::EndCombo();
+                end_property_row();
             }
             settings = world.environment_settings();
             const auto finish_edit = [&]()
@@ -78,7 +83,7 @@ namespace toy3d
                     history.finish(world, EditorTransformSource::WorldSettings);
                 }
             };
-            if (ImGui::DragFloat("Intensity", &settings.intensity, 0.01f, 0.0f, 0.0f, "%.3f"))
+            if (property_float("Intensity", &settings.intensity, 0.01f, 0.0f, 0.0f, "%.3f"))
             {
                 if (!history.preview_environment(world, settings, world.environment_cube()))
                 {
@@ -98,7 +103,7 @@ namespace toy3d
             for (std::size_t axis = 0u; axis < rotation_axis_count; ++axis)
             {
                 float rotation_delta_degrees = 0.0f;
-                if (ImGui::DragFloat(rotation_labels[axis], &rotation_delta_degrees, 0.5f, 0.0f, 0.0f, "%.1f"))
+                if (property_float(rotation_labels[axis], &rotation_delta_degrees, 0.5f, 0.0f, 0.0f, "%.1f"))
                 {
                     settings = world.environment_settings();
                     Quaternion delta;

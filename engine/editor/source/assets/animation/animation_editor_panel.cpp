@@ -1,4 +1,6 @@
 #include "assets/animation/animation_editor_panel.h"
+#include "assets/asset_resource_picker.h"
+#include "assets/preview/preview_scene_widgets.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,6 +14,7 @@
 #include "gamescene/component/skeletal_mesh_component.h"
 #include "drivers/rhi/rhi_command_descriptors.h"
 #include "logging/logger.h"
+#include "panels/property_widgets.h"
 #include "rendercore/texture/texture_asset_loader.h"
 #include "threading/task_graph/graph_task.h"
 #include "workspace/editor_workspace.h"
@@ -59,10 +62,7 @@ namespace toy3d
                                           TaskGraphInterface& tasks)
     {
         SceneEnvironmentSettings environment;
-        if (!AssetId::parse(builtin_studio_environment_id, environment.environment.asset_id))
-        {
-            return false;
-        }
+        environment.environment.asset_id = preview_settings_.environment;
         environment.environment.expected_type = "toy3d.EnvironmentAssetData";
         const auto cube =
             load_environment_asset(workspace_.files(), workspace_.catalog().index, environment.environment);
@@ -73,7 +73,9 @@ namespace toy3d
         }
         material_ = std::move(material);
         tasks_ = &tasks;
-        initialized_ = scene_.initialize(scene, material_, environment, cube.value()) && scene_.configure_thumbnail();
+        environment_cube_ = cube.value();
+        loaded_environment_ = preview_settings_.environment;
+        initialized_ = scene_.initialize(scene, material_, environment, environment_cube_);
         if (!initialized_)
         {
             scene_.shutdown();
@@ -103,6 +105,7 @@ namespace toy3d
 
     void AnimationEditorPanel::invalidate()
     {
+        loaded_environment_ = {};
         cached_asset_.reset();
         cached_mesh_.reset();
         if (open_ && requested_id_.valid())
@@ -165,9 +168,15 @@ namespace toy3d
         selected_sequence_ = asset_->sequence_id;
         selected_bone_ = -1;
         mesh_dirty_ = render_dirty_ = true;
-        tab_ = asset_->root_type == "toy3d.SkeletonAssetData"       ? 0
-               : asset_->root_type == "toy3d.SkeletalMeshAssetData" ? 1
-                                                                    : 2;
+        compatible_sequences_.clear();
+        for (const auto& entry : workspace_.catalog().entries)
+        {
+            if (entry.file.root_type == "toy3d.AnimationSequenceAssetData" &&
+                animation_asset_matches_layout(workspace_.types(), workspace_.files(), entry, *asset_->layout))
+            {
+                compatible_sequences_.push_back(entry.file.asset_id);
+            }
+        }
         frame_all();
         return true;
     }
@@ -420,11 +429,39 @@ namespace toy3d
         {
             return;
         }
+        // Resolve a full environment candidate before changing the mesh or World.
+        TextureRef environment_cube = environment_cube_;
+        if (!(loaded_environment_ == preview_settings_.environment))
+        {
+            environment_cube.reset();
+            if (preview_settings_.environment.valid())
+            {
+                AssetRef reference;
+                reference.asset_id = preview_settings_.environment;
+                reference.expected_type = "toy3d.EnvironmentAssetData";
+                const auto loaded = load_environment_asset(workspace_.files(), workspace_.catalog().index, reference);
+                if (!loaded.succeeded())
+                {
+                    error_ = "Preview environment: " + loaded.status().message;
+                    render_dirty_ = false;
+                    return;
+                }
+                environment_cube = loaded.value();
+            }
+        }
         if (mesh_dirty_ && !prepare_mesh())
         {
             render_dirty_ = false;
             return;
         }
+        if (!scene_.configure(preview_settings_, environment_cube))
+        {
+            error_ = "Could not configure the animation preview scene.";
+            render_dirty_ = false;
+            return;
+        }
+        loaded_environment_ = preview_settings_.environment;
+        environment_cube_ = std::move(environment_cube);
         AnimationUpdateInput update;
         update.weights = asset_->sequence ? std::vector<double>{1} : std::vector<double>{};
         update.lock_root = lock_root_;
@@ -465,11 +502,15 @@ namespace toy3d
         }
         candidate_id_ = ImGuiTextureId(next_texture_++);
         candidate_revision_ = revision_;
+        candidate_preview_revision_ = preview_revision_;
         auto& request = work.animation_preview;
         request.request_id = next_request_++;
         request.texture_id = candidate_id_;
         request.extent = extent_;
         request.views.push_back(view());
+        request.show_environment = preview_settings_.show_environment;
+        request.render_shadows = preview_settings_.show_shadows;
+        request.exposure_ev = preview_settings_.exposure_ev;
         if (show_bones_)
         {
             request.debug_lines = bone_lines(*evaluation.value());
@@ -486,14 +527,16 @@ namespace toy3d
         }
         const auto completed = candidate_id_;
         candidate_id_ = {};
-        if (!open_ || candidate_revision_ != revision_ || !result.succeeded())
+        if (!open_ || candidate_revision_ != revision_ || candidate_preview_revision_ != preview_revision_ ||
+            !result.succeeded())
         {
             pending_work_.retire_textures.push_back(completed);
-            if (!result.succeeded() && candidate_revision_ == revision_)
+            if (!result.succeeded() && candidate_revision_ == revision_ &&
+                candidate_preview_revision_ == preview_revision_)
             {
                 mesh_preference_pending_ = false;
                 error_ = result.error;
-                scene_.clear_mesh();
+                scene_.clear_geometry();
                 if (previous_asset_)
                 {
                     auto previous = std::move(previous_asset_);
@@ -566,6 +609,28 @@ namespace toy3d
         render_dirty_ = true;
     }
 
+    bool AnimationEditorPanel::set_preview_scene_settings(const PreviewSceneSettings& settings)
+    {
+        if (!validate_preview_scene_settings(settings))
+        {
+            error_ = "Invalid animation preview scene settings.";
+            return false;
+        }
+        if (!(preview_settings_ == settings))
+        {
+            preview_settings_ = settings;
+            ++preview_revision_;
+            render_dirty_ = true;
+            error_.clear();
+        }
+        return true;
+    }
+
+    const PreviewSceneSettings& AnimationEditorPanel::preview_scene_settings() const
+    {
+        return preview_settings_;
+    }
+
     void AnimationEditorPanel::draw_bone(std::uint32_t index)
     {
         const auto& bones = asset_->layout->skeleton().bones;
@@ -604,6 +669,271 @@ namespace toy3d
         ImGui::PopID();
     }
 
+    void AnimationEditorPanel::draw_asset_details()
+    {
+        ImGui::TextWrapped("%s", name_for(workspace_.catalog(), asset_->id, "Asset").c_str());
+        ImGui::TextDisabled("%s", asset_->root_type == "toy3d.SkeletonAssetData"       ? "Skeleton"
+                                  : asset_->root_type == "toy3d.SkeletalMeshAssetData" ? "Skeletal Mesh"
+                                                                                       : "Animation Sequence");
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("%s", asset_->path.c_str());
+        }
+        if (ImGui::CollapsingHeader("Skeleton", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Bones: %zu", asset_->layout->skeleton().bones.size());
+        }
+        if (asset_->mesh && ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            const auto& geometry = asset_->mesh->geometry;
+            ImGui::Text("Vertices: %zu", geometry.mesh.vertices.size());
+            ImGui::Text("Influences / vertex: %u", geometry.num_bone_influences);
+            ImGui::Text("Sections: %zu", geometry.section_bone_maps.size());
+            for (std::size_t i = 0; i < geometry.section_bone_maps.size(); ++i)
+            {
+                ImGui::Text("Section %zu: %zu bones", i, geometry.section_bone_maps[i].size());
+            }
+        }
+        if (asset_->mesh && ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            for (const auto& slot : asset_->mesh->data.material_slots)
+            {
+                ImGui::TextWrapped("%s", slot.c_str());
+            }
+        }
+        if (asset_->sequence && ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Duration: %.3f s", asset_->sequence->duration());
+            ImGui::Text("Sample rate: %u", asset_->sample_rate);
+        }
+    }
+
+    void AnimationEditorPanel::draw_bone_details()
+    {
+        if (selected_bone_ < 0)
+        {
+            ImGui::TextDisabled("Select a bone in Skeleton Tree");
+            return;
+        }
+        const auto& bone = asset_->layout->skeleton().bones[selected_bone_];
+        ImGui::TextWrapped("%s", bone.name.c_str());
+        ImGui::Text("Parent: %d", bone.parent_index);
+        const auto show_transform = [](const char* label, const Transform& transform)
+        {
+            if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                const auto show_value = [](const char* name, const char* format, const float* value)
+                {
+                    if (begin_property_row(name))
+                    {
+                        ImGui::Text(format, value[0], value[1], value[2], value[3]);
+                        end_property_row();
+                    }
+                };
+                const float translation[] = {transform.translation.x, transform.translation.y, transform.translation.z,
+                                             0};
+                const float rotation[] = {transform.rotation.x, transform.rotation.y, transform.rotation.z,
+                                          transform.rotation.w};
+                const float scale[] = {transform.scale.x, transform.scale.y, transform.scale.z, 0};
+                show_value("Location", "%.2f  %.2f  %.2f", translation);
+                show_value("Rotation (Q)", "%.3f  %.3f  %.3f  %.3f", rotation);
+                show_value("Scale", "%.3f  %.3f  %.3f", scale);
+            }
+        };
+        show_transform("Reference Local", bone.reference_local_transform);
+        const auto evaluated = animation_.evaluate();
+        if (evaluated.succeeded())
+        {
+            show_transform("Current Local", evaluated.value()->local_pose.local_transforms[selected_bone_]);
+            if (ImGui::CollapsingHeader("Component Space", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                const auto position =
+                    transform_position(evaluated.value()->component_pose.bone_matrices[selected_bone_], Vector3());
+                ImGui::Text("Location: %.2f  %.2f  %.2f", position.x, position.y, position.z);
+            }
+        }
+    }
+
+    void AnimationEditorPanel::draw_preview_selectors()
+    {
+        if (!resource_picker_)
+        {
+            return;
+        }
+        const auto selector = [this](const char* label, const char* type, bool mesh)
+        {
+            const auto current = mesh ? selected_mesh_ : selected_sequence_;
+            AssetResourceSelection selected;
+            const auto compatible = [this](const AssetCatalogEntry& entry)
+            {
+                return animation_asset_matches_layout(workspace_.types(), workspace_.files(), entry, *asset_->layout);
+            };
+            if (resource_picker_->draw(label, workspace_, {current, {}}, {type}, selected, error_, compatible))
+            {
+                select(mesh ? selected.asset : selected_mesh_, mesh ? selected_sequence_ : selected.asset);
+            }
+        };
+        if (ImGui::CollapsingHeader("Preview Assets", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            selector("Preview Mesh", "toy3d.SkeletalMeshAssetData", true);
+            selector("Animation", "toy3d.AnimationSequenceAssetData", false);
+        }
+        if (ImGui::CollapsingHeader("Display", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            if (property_bool("Show Mesh", &show_mesh_))
+            {
+                mesh_dirty_ = render_dirty_ = true;
+            }
+            render_dirty_ |= property_bool("Show Bones", &show_bones_);
+            render_dirty_ |= property_bool("Bone Depth Test", &depth_test_);
+            render_dirty_ |= property_bool("Lock Root", &lock_root_);
+        }
+    }
+
+    void AnimationEditorPanel::draw_animation_browser()
+    {
+        ImGui::TextUnformatted("Asset Browser");
+        ImGui::Separator();
+        ImGui::BeginDisabled(cpu_task_ || needs_load_);
+        if (ImGui::Selectable("Reference Pose", !selected_sequence_.valid()))
+        {
+            select(selected_mesh_, {});
+        }
+        for (const auto& id : compatible_sequences_)
+        {
+            const auto label = name_for(workspace_.catalog(), id, "Missing Animation");
+            ImGui::PushID(id.hex().c_str());
+            if (ImGui::Selectable(label.c_str(), id == selected_sequence_))
+            {
+                select(selected_mesh_, id);
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndDisabled();
+    }
+
+    void AnimationEditorPanel::draw_playback()
+    {
+        ImGui::Separator();
+        if (!asset_->sequence)
+        {
+            ImGui::TextDisabled("Reference Pose");
+            return;
+        }
+        const auto* clock = animation_.playback_state(0);
+        if (!clock)
+        {
+            return;
+        }
+        const double duration = asset_->sequence->duration();
+        float time = static_cast<float>(clock->time());
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##Time", &time, 0, static_cast<float>(duration), "%.3f s"))
+        {
+            seek(time);
+        }
+        if (ImGui::Button("|<##Start"))
+        {
+            seek(0);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("<##Previous Sample"))
+        {
+            seek(std::max(0.0, clock->time() - 1.0 / asset_->sample_rate));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(clock->playing() ? "||##Pause" : ">##Play"))
+        {
+            set_playing(!clock->playing());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(">##Next Sample"))
+        {
+            seek(std::min(duration, clock->time() + 1.0 / asset_->sample_rate));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(">|##End"))
+        {
+            seek(duration);
+        }
+        ImGui::SameLine();
+        bool changed = ImGui::Checkbox("Loop", &playback_.loop);
+        float rate = static_cast<float>(playback_.rate);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
+        if (ImGui::SliderFloat("Speed", &rate, 0.1f, 4.0f, "%.2fx"))
+        {
+            playback_.rate = rate;
+            changed = true;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%.2f s | %u fps", duration, asset_->sample_rate);
+        if (changed)
+        {
+            const auto status = animation_.set_playback_settings(0, playback_);
+            if (!status.succeeded())
+            {
+                error_ = status.message;
+            }
+            render_dirty_ = true;
+        }
+    }
+
+    void AnimationEditorPanel::draw_viewport()
+    {
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        const ImVec2 size(std::max(1.0f, available.x), std::max(1.0f, available.y));
+        // Keep the canvas aspect ratio within the public readback budget;
+        // a larger editor window samples the same bounded GPU image.
+        const float fit =
+            std::min(1.0f, static_cast<float>(rhi_max_texture_readback_dimension) / std::max(size.x, size.y));
+        const Extent extent{std::max(1u, static_cast<std::uint32_t>(size.x * fit)),
+                            std::max(1u, static_cast<std::uint32_t>(size.y * fit))};
+        if (extent.width != extent_.width || extent.height != extent_.height)
+        {
+            extent_ = extent;
+            render_dirty_ = true;
+        }
+        const auto position = ImGui::GetCursorScreenPos();
+        // Claim orbit/pan gestures so dragging the image cannot move the asset window.
+        ImGui::InvisibleButton("Preview image", size,
+                               ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonMiddle);
+        if (texture_id_.valid())
+        {
+            ImGui::GetWindowDrawList()->AddImage(
+                reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(texture_id_.value())), position,
+                ImVec2(position.x + size.x, position.y + size.y));
+        }
+        if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+        {
+            auto& io = ImGui::GetIO();
+            // C++17 clamp keeps pitch away from the poles and bounds camera zoom.
+            if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+            {
+                yaw_ = std::remainder(yaw_ + io.MouseDelta.x * 0.4f, 360.0f);
+                pitch_ = std::clamp(pitch_ - io.MouseDelta.y * 0.4f, -80.0f, 80.0f);
+                render_dirty_ = true;
+            }
+            if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
+            {
+                const auto camera = view();
+                const auto rotation = camera.camera_orientation();
+                const Matrix4 axes = to_matrix4(rotation);
+                center_ = center_ +
+                          transform_vector(axes, Vector3(-io.MouseDelta.x, io.MouseDelta.y, 0)) * (distance_ * 0.0015f);
+                render_dirty_ = true;
+            }
+            if (io.MouseWheel != 0)
+            {
+                distance_ = std::clamp(distance_ * std::exp(-io.MouseWheel * 0.12f), radius_ * 0.05f, radius_ * 100.0f);
+                render_dirty_ = true;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_F))
+            {
+                frame_all();
+            }
+        }
+    }
+
     void AnimationEditorPanel::draw()
     {
         visible_ = false;
@@ -616,232 +946,142 @@ namespace toy3d
             ImGui::SetNextWindowFocus();
             focus_requested_ = false;
         }
-        ImGui::SetNextWindowSize(ImVec2(1000, 750), ImGuiCond_FirstUseEver);
+        const float font = ImGui::GetFontSize();
+        ImGui::SetNextWindowSize(ImVec2(font * 70.0f, font * 40.0f), ImGuiCond_FirstUseEver);
         bool keep_open = open_;
         visible_ = ImGui::Begin("Animation Editor", &keep_open);
-        // Begin can report content after its close button clears keep_open.
-        // Do not emit image commands whose registered identity close() will withdraw.
+        // Closing must not emit commands for the image identities close() withdraws.
         if (visible_ && keep_open)
         {
+            if (ImGui::Button("Frame All (F)"))
+            {
+                frame_all();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset View"))
+            {
+                yaw_ = 25;
+                pitch_ = 12;
+                frame_all();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Show"))
+            {
+                ImGui::OpenPopup("Viewport Display");
+            }
+            if (ImGui::BeginPopup("Viewport Display"))
+            {
+                if (ImGui::MenuItem("Mesh", nullptr, &show_mesh_))
+                {
+                    mesh_dirty_ = render_dirty_ = true;
+                }
+                render_dirty_ |= ImGui::MenuItem("Bones", nullptr, &show_bones_);
+                render_dirty_ |= ImGui::MenuItem("Bone Depth Test", nullptr, &depth_test_);
+                ImGui::EndPopup();
+            }
+            if (asset_)
+            {
+                ImGui::SameLine();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("%s", name_for(workspace_.catalog(), asset_->id, "Asset").c_str());
+            }
             if (cpu_task_ || needs_load_)
             {
-                ImGui::Text("Loading mesh and animation assets... %.1f s", loading_seconds_);
-                ImGui::TextWrapped("%s", name_for(workspace_.catalog(), requested_id_, "Animation asset").c_str());
+                ImGui::Text("Loading: %s (%.1f s)", name_for(workspace_.catalog(), requested_id_, "Asset").c_str(),
+                            loading_seconds_);
             }
             if (!error_.empty())
             {
                 ImGui::TextWrapped("Preview: %s", error_.c_str());
             }
-            if (asset_)
+            ImGui::Separator();
+            if (asset_ &&
+                ImGui::BeginTable("AnimationWorkspace", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV,
+                                  ImGui::GetContentRegionAvail()))
             {
-                ImGui::TextUnformatted(asset_->path.c_str());
-                const char* tabs[] = {"Skeleton", "Skeletal Mesh", "Animation"};
-                for (int i = 0; i < 3; ++i)
+                ImGui::TableSetupColumn("Skeleton", ImGuiTableColumnFlags_WidthStretch, 0.20f);
+                ImGui::TableSetupColumn("Viewport", ImGuiTableColumnFlags_WidthStretch, 0.50f);
+                ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch, 0.30f);
+                ImGui::TableNextColumn();
+                ImGui::BeginChild("SkeletonSidebar", ImVec2(0, 0));
+                if (ImGui::BeginTabBar("SkeletonPanels"))
                 {
-                    if (i)
+                    if (ImGui::BeginTabItem("Skeleton Tree"))
                     {
-                        ImGui::SameLine();
-                    }
-                    if (ImGui::Selectable(tabs[i], tab_ == i, 0, ImVec2(130, 0)))
-                    {
-                        tab_ = i;
-                    }
-                }
-                const auto& catalog = workspace_.catalog();
-                auto selector = [this, &catalog](const char* label, const char* type, bool mesh)
-                {
-                    const auto selected = mesh ? selected_mesh_ : selected_sequence_;
-                    const auto preview = name_for(catalog, selected, mesh ? "Skeleton only" : "Reference pose");
-                    if (ImGui::BeginCombo(label, preview.c_str()))
-                    {
-                        if (ImGui::Selectable(mesh ? "Skeleton only" : "Reference pose", !selected.valid()))
+                        ImGui::BeginChild("Bone tree", ImVec2(0, 0));
+                        ImGui::TextDisabled("%zu bones", asset_->layout->skeleton().bones.size());
+                        for (std::uint32_t i = 0; i < asset_->layout->skeleton().bones.size(); ++i)
                         {
-                            select(mesh ? AssetId() : selected_mesh_, mesh ? selected_sequence_ : AssetId());
-                        }
-                        for (const auto& entry : catalog.entries)
-                        {
-                            if (entry.file.root_type == type &&
-                                animation_asset_matches_layout(workspace_.types(), workspace_.files(), entry,
-                                                               *asset_->layout))
+                            if (asset_->layout->skeleton().bones[i].parent_index < 0)
                             {
-                                ImGui::PushID(entry.file.asset_id.hex().c_str());
-                                if (ImGui::Selectable(entry.path.utf8().c_str(), selected == entry.file.asset_id))
-                                {
-                                    select(mesh ? entry.file.asset_id : selected_mesh_,
-                                           mesh ? selected_sequence_ : entry.file.asset_id);
-                                }
-                                ImGui::PopID();
+                                draw_bone(i);
                             }
                         }
-                        ImGui::EndCombo();
+                        ImGui::EndChild();
+                        ImGui::EndTabItem();
                     }
-                };
-                selector("Preview mesh", "toy3d.SkeletalMeshAssetData", true);
-                selector("Sequence", "toy3d.AnimationSequenceAssetData", false);
-                if (ImGui::Checkbox("Mesh", &show_mesh_))
-                {
-                    mesh_dirty_ = render_dirty_ = true;
-                }
-                ImGui::SameLine();
-                render_dirty_ |= ImGui::Checkbox("Bones", &show_bones_);
-                ImGui::SameLine();
-                render_dirty_ |= ImGui::Checkbox("Depth test", &depth_test_);
-                ImGui::SameLine();
-                if (ImGui::Button("Frame All (F)"))
-                {
-                    frame_all();
-                }
-                if (asset_->sequence)
-                {
-                    const auto* clock = animation_.playback_state(0);
-                    if (ImGui::Button(clock && clock->playing() ? "Pause" : "Play"))
+                    if (ImGui::BeginTabItem("Asset Details"))
                     {
-                        set_playing(!clock->playing());
+                        ImGui::BeginChild("AssetDetailsScroll", ImVec2(0, 0));
+                        draw_asset_details();
+                        ImGui::EndChild();
+                        ImGui::EndTabItem();
                     }
-                    ImGui::SameLine();
-                    if (ImGui::Button("< Sample"))
-                    {
-                        seek(std::max(0.0, clock->time() - 1.0 / asset_->sample_rate));
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Sample >"))
-                    {
-                        seek(std::min(asset_->sequence->duration(), clock->time() + 1.0 / asset_->sample_rate));
-                    }
-                    ImGui::SameLine();
-                    bool playback_changed = ImGui::Checkbox("Loop", &playback_.loop);
-                    ImGui::SameLine();
-                    float rate = static_cast<float>(playback_.rate);
-                    ImGui::SetNextItemWidth(120);
-                    if (ImGui::SliderFloat("Rate", &rate, 0.1f, 4.0f))
-                    {
-                        playback_.rate = rate;
-                        playback_changed = true;
-                    }
-                    if (playback_changed)
-                    {
-                        animation_.set_playback_settings(0, playback_);
-                    }
-                    ImGui::SameLine();
-                    render_dirty_ |= ImGui::Checkbox("Lock root", &lock_root_);
-                    float time = static_cast<float>(clock->time());
-                    if (ImGui::SliderFloat("Time (s)", &time, 0, static_cast<float>(asset_->sequence->duration()),
-                                           "%.3f"))
-                    {
-                        seek(time);
-                    }
-                    ImGui::Text("%.3f s | %u samples/s", asset_->sequence->duration(), asset_->sample_rate);
-                }
-                ImGui::BeginChild("Bone tree", ImVec2(230, 0), true);
-                if (tab_ == 0)
-                {
-                    ImGui::Text("%zu bones", asset_->layout->skeleton().bones.size());
-                    for (std::uint32_t i = 0; i < asset_->layout->skeleton().bones.size(); ++i)
-                    {
-                        if (asset_->layout->skeleton().bones[i].parent_index < 0)
-                        {
-                            draw_bone(i);
-                        }
-                    }
-                    if (selected_bone_ >= 0)
-                    {
-                        const auto& bone = asset_->layout->skeleton().bones[selected_bone_];
-                        const auto evaluated = animation_.evaluate();
-                        ImGui::Separator();
-                        ImGui::TextWrapped("%s (parent %d)", bone.name.c_str(), bone.parent_index);
-                        const auto show_transform = [](const char* label, const Transform& transform)
-                        {
-                            ImGui::TextUnformatted(label);
-                            ImGui::Text("T: %.2f %.2f %.2f", transform.translation.x, transform.translation.y,
-                                        transform.translation.z);
-                            ImGui::Text("Q: %.3f %.3f %.3f %.3f", transform.rotation.x, transform.rotation.y,
-                                        transform.rotation.z, transform.rotation.w);
-                            ImGui::Text("S: %.3f %.3f %.3f", transform.scale.x, transform.scale.y, transform.scale.z);
-                        };
-                        show_transform("Reference local", bone.reference_local_transform);
-                        if (evaluated.succeeded())
-                        {
-                            const auto& local = evaluated.value()->local_pose.local_transforms[selected_bone_];
-                            const auto position = transform_position(
-                                evaluated.value()->component_pose.bone_matrices[selected_bone_], Vector3());
-                            show_transform("Current local", local);
-                            ImGui::Text("Component T: %.2f %.2f %.2f", position.x, position.y, position.z);
-                        }
-                    }
-                }
-                else if (tab_ == 1 && asset_->mesh)
-                {
-                    const auto& data = asset_->mesh->geometry;
-                    ImGui::Text("%zu vertices", data.mesh.vertices.size());
-                    ImGui::Text("%u influences/vertex", data.num_bone_influences);
-                    for (std::size_t i = 0; i < data.section_bone_maps.size(); ++i)
-                    {
-                        ImGui::Text("Section %zu: %zu bones", i, data.section_bone_maps[i].size());
-                    }
-                    for (const auto& slot : asset_->mesh->data.material_slots)
-                    {
-                        ImGui::TextWrapped("Material: %s", slot.c_str());
-                    }
-                }
-                else
-                {
-                    ImGui::TextWrapped("Preview only. Assets and the level are unchanged.");
+                    ImGui::EndTabBar();
                 }
                 ImGui::EndChild();
-                ImGui::SameLine();
-                ImGui::BeginChild("Animation viewport", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar);
-                const ImVec2 available = ImGui::GetContentRegionAvail();
-                const ImVec2 size(std::max(1.0f, available.x), std::max(1.0f, available.y));
-                // Keep the canvas aspect ratio within the public readback budget;
-                // a larger editor window samples the same bounded GPU image.
-                const float fit =
-                    std::min(1.0f, static_cast<float>(rhi_max_texture_readback_dimension) / std::max(size.x, size.y));
-                const Extent extent{std::max(1u, static_cast<std::uint32_t>(size.x * fit)),
-                                    std::max(1u, static_cast<std::uint32_t>(size.y * fit))};
-                if (extent.width != extent_.width || extent.height != extent_.height)
+                ImGui::TableNextColumn();
+                ImGui::BeginChild("PreviewCenter", ImVec2(0, 0), false,
+                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                ImGui::TextUnformatted("Viewport");
+                const float transport_height =
+                    asset_->sequence ? ImGui::GetFrameHeightWithSpacing() * 3.0f + ImGui::GetStyle().ItemSpacing.y
+                                     : ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+                ImGui::BeginChild("Animation viewport",
+                                  ImVec2(0, std::max(font * 2, ImGui::GetContentRegionAvail().y - transport_height)),
+                                  true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                draw_viewport();
+                ImGui::EndChild();
+                draw_playback();
+                ImGui::EndChild();
+                ImGui::TableNextColumn();
+                ImGui::BeginChild("PreviewSidebar", ImVec2(0, 0));
+                const float browser_height = std::min(font * 9.0f, ImGui::GetContentRegionAvail().y * 0.30f);
+                ImGui::BeginChild("PreviewProperties",
+                                  ImVec2(0, std::max(font * 2, ImGui::GetContentRegionAvail().y - browser_height -
+                                                                   ImGui::GetStyle().ItemSpacing.y)));
+                if (ImGui::BeginTabBar("AnimationProperties"))
                 {
-                    extent_ = extent;
-                    render_dirty_ = true;
-                }
-                if (texture_id_.valid())
-                {
-                    ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(texture_id_.value())), size);
-                }
-                else
-                {
-                    ImGui::InvisibleButton("Preview image", size);
-                }
-                if (ImGui::IsItemHovered())
-                {
-                    auto& io = ImGui::GetIO();
-                    // C++17 clamp keeps pitch away from the poles and bounds camera zoom.
-                    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                    if (ImGui::BeginTabItem("Details"))
                     {
-                        yaw_ = std::remainder(yaw_ + io.MouseDelta.x * 0.4f, 360.0f);
-                        pitch_ = std::clamp(pitch_ - io.MouseDelta.y * 0.4f, -80.0f, 80.0f);
-                        render_dirty_ = true;
+                        ImGui::BeginChild("AnimationDetailsScroll", ImVec2(0, 0));
+                        draw_preview_selectors();
+                        if (ImGui::CollapsingHeader("Selected Bone", ImGuiTreeNodeFlags_DefaultOpen))
+                        {
+                            draw_bone_details();
+                        }
+                        ImGui::EndChild();
+                        ImGui::EndTabItem();
                     }
-                    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
+                    if (ImGui::BeginTabItem("Preview Scene Settings"))
                     {
-                        const auto camera = view();
-                        const auto rotation = camera.camera_orientation();
-                        const Matrix4 axes = to_matrix4(rotation);
-                        center_ = center_ + transform_vector(axes, Vector3(-io.MouseDelta.x, io.MouseDelta.y, 0)) *
-                                                (distance_ * 0.0015f);
-                        render_dirty_ = true;
+                        ImGui::BeginChild("PreviewSceneScroll", ImVec2(0, 0));
+                        auto settings = preview_settings_;
+                        if (draw_preview_scene_settings(workspace_, settings))
+                        {
+                            set_preview_scene_settings(settings);
+                        }
+                        ImGui::EndChild();
+                        ImGui::EndTabItem();
                     }
-                    if (io.MouseWheel != 0)
-                    {
-                        distance_ =
-                            std::clamp(distance_ * std::exp(-io.MouseWheel * 0.12f), radius_ * 0.05f, radius_ * 100.0f);
-                        render_dirty_ = true;
-                    }
-                    if (ImGui::IsKeyPressed(ImGuiKey_F))
-                    {
-                        frame_all();
-                    }
+                    ImGui::EndTabBar();
                 }
                 ImGui::EndChild();
+                ImGui::BeginChild("AnimationAssetBrowser", ImVec2(0, 0), true);
+                draw_animation_browser();
+                ImGui::EndChild();
+                ImGui::EndChild();
+                ImGui::EndTable();
             }
         }
         ImGui::End();
@@ -880,7 +1120,7 @@ namespace toy3d
         }
         candidate_id_ = texture_id_ = {};
         pending_work_.release_animation_preview = true;
-        scene_.clear_mesh();
+        scene_.clear_geometry();
         mesh_.reset();
         asset_.reset();
         previous_asset_.reset();
@@ -900,6 +1140,7 @@ namespace toy3d
         }
         cpu_task_.reset();
         cpu_result_.reset();
+        resource_picker_ = nullptr;
         if (initialized_)
         {
             close();
@@ -908,6 +1149,8 @@ namespace toy3d
         material_.reset();
         cached_asset_.reset();
         cached_mesh_.reset();
+        environment_cube_.reset();
+        loaded_environment_ = {};
         initialized_ = false;
         tasks_ = nullptr;
     }

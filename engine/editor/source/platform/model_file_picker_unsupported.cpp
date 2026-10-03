@@ -2,6 +2,12 @@
 
 namespace toy3d
 {
+    bool pick_asset_files(IWindow&, std::vector<std::string>& paths, std::string& error)
+    {
+        paths.clear();
+        error = "Native asset selection is unsupported on this platform.";
+        return false;
+    }
     bool pick_model_files(IWindow&, std::vector<std::string>& paths, std::string& error)
     {
         paths.clear();

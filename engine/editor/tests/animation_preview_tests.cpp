@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 #include "platform/platform_defines.h"
@@ -19,6 +20,7 @@
 #include "gamescene/world/world.h"
 #include "image/png_codec.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "panels/content_browser_panel.h"
 #include "rendercore/frame_synchronization.h"
 #include "scene/placement/actor_factory.h"
@@ -282,6 +284,55 @@ namespace
             }
             pool_.tick();
             panel_.tick(delta);
+            if (phase_ == 26)
+            {
+                // Exercise the production canvas across real ImGui frames; no private
+                // camera access or OS input timing is needed to prove orbit behavior.
+                auto& io = ImGui::GetIO();
+                if (orbit_frame_ == 0)
+                {
+                    const auto* root = ImGui::FindWindowByName("Animation Editor");
+                    check(root != nullptr, "Animation window exists for orbit input");
+                    orbit_window_position_ = root->Pos;
+                    bool found = false;
+                    for (const auto* child : ImGui::GetCurrentContext()->Windows)
+                    {
+                        if (std::string(child->Name).find("/Animation viewport_") != std::string::npos)
+                        {
+                            orbit_position_ = child->InnerRect.GetCenter();
+                            found = true;
+                            break;
+                        }
+                    }
+                    check(found, "Production animation canvas exists for orbit input");
+                    io.AddMousePosEvent(orbit_position_.x, orbit_position_.y);
+                }
+                else if (orbit_frame_ == 1)
+                {
+                    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+                }
+                else if (orbit_frame_ == 2)
+                {
+                    io.AddMousePosEvent(orbit_position_.x + 80.0f, orbit_position_.y);
+                }
+                else if (orbit_frame_ == 3)
+                {
+                    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+                }
+                ++orbit_frame_;
+            }
+            if (phase_ == 24 && !panel_.error().empty())
+            {
+                const auto ids = panel_.texture_ids();
+                if (panel_.error().find("Preview environment:") == std::string::npos || ids.size() != 1 ||
+                    ids.front() != retained_preview_texture_ || !panel_.asset() || !(panel_.asset()->id == full_))
+                {
+                    fail("Invalid preview environment replaced the active asset or image.");
+                    return;
+                }
+                panel_.set_preview_scene_settings(PreviewSceneSettings{});
+                phase_ = 25;
+            }
             if (phase_ == 5 && !panel_.error().empty())
             {
                 if (!panel_.asset() || !(panel_.asset()->id == idle_))
@@ -414,7 +465,10 @@ namespace
         void on_build_ui() override
         {
             const auto size = ImGui::GetIO().DisplaySize;
-            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+            if (phase_ != 26)
+            {
+                ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+            }
 #if WITH_WIN
             const ImVec2 preview_size(size.x, std::max(360.0f, size.y - 190));
 #else
@@ -602,8 +656,66 @@ namespace
                 {
                     return;
                 }
+                pose_hash_ = hash;
+                {
+                    auto settings = panel_.preview_scene_settings();
+                    check(settings == MaterialPreviewSettings{}.scene,
+                          "Animation and material previews use the same default scene.");
+                    settings.show_environment = false;
+                    check(panel_.set_preview_scene_settings(settings), "Hide animation environment background");
+                }
+                phase_ = 21;
+                break;
+            case 21:
+                check(hash != pose_hash_, "Background visibility changes the real animation preview image");
+                pose_hash_ = hash;
+                {
+                    auto settings = panel_.preview_scene_settings();
+                    settings.exposure_ev = 1;
+                    panel_.set_preview_scene_settings(settings);
+                }
+                phase_ = 22;
+                break;
+            case 22:
+                check(hash != pose_hash_, "Exposure changes the real animation preview image");
+                pose_hash_ = hash;
+                {
+                    auto settings = panel_.preview_scene_settings();
+                    settings.show_floor = false;
+                    settings.show_shadows = false;
+                    panel_.set_preview_scene_settings(settings);
+                }
+                phase_ = 23;
+                break;
+            case 23:
+                check(hash != pose_hash_, "Floor visibility changes the real animation preview image");
+                retained_preview_texture_ = result.texture_id;
+                {
+                    auto settings = panel_.preview_scene_settings();
+                    settings.exposure_ev = std::numeric_limits<float>::quiet_NaN();
+                    check(!panel_.set_preview_scene_settings(settings), "Reject non-finite preview settings");
+                    settings = panel_.preview_scene_settings();
+                    AssetId::try_generate(settings.environment);
+                    panel_.set_preview_scene_settings(settings);
+                }
+                phase_ = 24;
+                break;
+            case 25:
+                check(panel_.preview_scene_settings() == PreviewSceneSettings{},
+                      "Restore the common scene after failure");
+                pose_hash_ = hash;
+                phase_ = 26;
+                break;
+            case 26:
+            {
+                check(hash != pose_hash_, "Dragging the production viewport rotates the GPU preview");
+                const auto* root = ImGui::FindWindowByName("Animation Editor");
+                check(root && root->Pos.x == orbit_window_position_.x && root->Pos.y == orbit_window_position_.y,
+                      "Orbit input does not move the animation editor window");
+                ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
                 phase_ = 8;
                 break;
+            }
             default:
                 break;
             }
@@ -635,12 +747,16 @@ namespace
         std::string folder_ = "/Project";
         bool show_engine_ = false;
         int phase_ = 0;
+        ImGuiTextureId retained_preview_texture_;
         int timed_phase_ = -1;
         double elapsed_ = 0;
         std::uint64_t author_revision_ = 0;
         Sha256Hash pose_hash_{};
         std::map<std::uint64_t, Sha256Hash> thumbnail_hashes_;
         Extent old_extent_;
+        int orbit_frame_ = 0;
+        ImVec2 orbit_position_;
+        ImVec2 orbit_window_position_;
     };
 } // namespace
 

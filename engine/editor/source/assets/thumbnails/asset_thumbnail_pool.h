@@ -3,7 +3,7 @@
 #include "assets/animation/animation_preview_asset.h"
 
 #include "asset/thumbnail/asset_thumbnail.h"
-#include "assets/thumbnails/thumbnail_preview_scene.h"
+#include "assets/preview/asset_preview_scene.h"
 #include "threading/task_graph/task_graph_interface.h"
 #include "ui/ui_texture_work.h"
 
@@ -25,7 +25,7 @@ namespace toy3d
     };
 
     // Editor policy: bounded visible-item cache, one CPU/GPU job in flight,
-    // explicit persistence for existing assets, automatic persistence on import.
+    // worker-owned disk validation/publication before GT image adoption.
     class AssetThumbnailPool final
     {
       public:
@@ -37,6 +37,8 @@ namespace toy3d
         AssetThumbnailView request_material_preview(const MaterialInstanceRef& material, std::uint64_t revision,
                                                     const MaterialPreviewSettings& settings = {});
         void clear_material_preview();
+        // GT composition root supplies the existing placement prototypes; the Pool stores CPU copies only.
+        void set_material_preview_meshes(const StaticMeshRef& plane, const StaticMeshRef& cube);
         void set_material_resolver(std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> resolver)
         {
             material_resolver_ = std::move(resolver);
@@ -55,6 +57,7 @@ namespace toy3d
             Queued,
             Loading,
             AwaitGpu,
+            Validating,
             SaveQueued,
             Saving,
             Ready,
@@ -82,16 +85,21 @@ namespace toy3d
         struct CpuResult;
         void start_load(Entry& entry);
         void start_save(Entry& entry);
+        void start_validate(Entry& entry);
+        void publish_texture(Entry& entry);
         void fail(Entry& entry, std::string error);
         void finish(Entry& entry);
         bool make_room();
+        void apply_invalidation();
 
         EditorWorkspace& workspace_;
-        ThumbnailPreviewScene preview_;
+        AssetPreviewScene preview_;
         std::map<AssetId, TextureRef> preview_environments_;
         MaterialPreviewSettings material_preview_settings_;
         std::uint64_t material_source_revision_ = 0u;
         StaticMeshAssetGeometry material_preview_geometry_;
+        StaticMeshAssetGeometry material_preview_plane_;
+        StaticMeshAssetGeometry material_preview_cube_;
         std::function<AssetResult<MaterialInterfaceRef>(const AssetRef&)> material_resolver_;
         // Observing the asset-editor owner avoids extending its final-release lifetime.
         std::weak_ptr<MaterialInstance> preview_material_;
@@ -116,5 +124,6 @@ namespace toy3d
         std::uint64_t next_request_ = 1;
         std::uint64_t next_texture_ = 3;
         bool initialized_ = false;
+        bool invalidation_pending_ = false;
     };
 } // namespace toy3d

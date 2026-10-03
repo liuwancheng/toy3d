@@ -1,4 +1,5 @@
 #pragma once
+#include "runtime_export.h"
 
 #include "gamescene/component/actor_component.h"
 #include "gamescene/component/scene_component.h"
@@ -15,7 +16,7 @@ namespace toy3d
 {
     class World;
 
-    class Actor
+    class TOY3D_RUNTIME_API Actor
     {
       public:
         explicit Actor(World& world) : world_(world)

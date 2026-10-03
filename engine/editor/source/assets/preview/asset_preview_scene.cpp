@@ -1,4 +1,4 @@
-#include "assets/thumbnails/thumbnail_preview_scene.h"
+#include "assets/preview/asset_preview_scene.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,6 +8,7 @@
 #include "asset/thumbnail/asset_thumbnail.h"
 #include "assets/animation/animation_preview_asset.h"
 #include "asset/texture/builtin_texture_assets.h"
+#include "drivers/rhi/rhi_resource.h"
 #include "gamescene/actor/light_actor.h"
 #include "gamescene/actor/static_mesh_actor.h"
 #include "gamescene/actor/skeletal_mesh_actor.h"
@@ -20,9 +21,9 @@
 namespace toy3d
 {
     // --------------------------------------------------------------------------
-    // MaterialPreviewSettings: window-owned lighting and camera configuration
+    // PreviewSceneSettings: per-window environment, lighting and display policy
     // --------------------------------------------------------------------------
-    MaterialPreviewSettings::MaterialPreviewSettings()
+    PreviewSceneSettings::PreviewSceneSettings()
     {
         if (!AssetId::parse(builtin_courtyard_environment_id, environment))
         {
@@ -30,18 +31,16 @@ namespace toy3d
         }
     }
 
-    bool operator==(const MaterialPreviewSettings& a, const MaterialPreviewSettings& b)
+    bool operator==(const PreviewSceneSettings& a, const PreviewSceneSettings& b)
     {
         return a.environment == b.environment && a.environment_intensity == b.environment_intensity &&
                a.environment_rotation == b.environment_rotation && a.light_intensity == b.light_intensity &&
                a.light_color == b.light_color && a.light_yaw == b.light_yaw && a.light_pitch == b.light_pitch &&
-               a.exposure_ev == b.exposure_ev && a.camera_yaw == b.camera_yaw && a.camera_pitch == b.camera_pitch &&
-               a.camera_distance == b.camera_distance && a.extent == b.extent &&
-               a.show_environment == b.show_environment && a.show_floor == b.show_floor &&
-               a.show_shadows == b.show_shadows;
+               a.exposure_ev == b.exposure_ev && a.show_environment == b.show_environment &&
+               a.show_floor == b.show_floor && a.show_shadows == b.show_shadows;
     }
 
-    bool validate_material_preview_settings(const MaterialPreviewSettings& s)
+    bool validate_preview_scene_settings(const PreviewSceneSettings& s)
     {
         return std::isfinite(s.environment_intensity) && s.environment_intensity >= 0 && s.environment_intensity <= 8 &&
                std::isfinite(s.environment_rotation) && std::abs(s.environment_rotation) <= 360 &&
@@ -49,11 +48,25 @@ namespace toy3d
                is_finite(s.light_color) && s.light_color.x >= 0 && s.light_color.y >= 0 && s.light_color.z >= 0 &&
                s.light_color.x <= 1 && s.light_color.y <= 1 && s.light_color.z <= 1 && std::isfinite(s.light_yaw) &&
                std::abs(s.light_yaw) <= 360 && std::isfinite(s.light_pitch) && s.light_pitch >= -89 &&
-               s.light_pitch <= -5 && std::isfinite(s.exposure_ev) && std::abs(s.exposure_ev) <= 8 &&
+               s.light_pitch <= -5 && std::isfinite(s.exposure_ev) && std::abs(s.exposure_ev) <= 8;
+    }
+
+    bool operator==(const MaterialPreviewSettings& a, const MaterialPreviewSettings& b)
+    {
+        return a.scene == b.scene && a.mesh == b.mesh && a.camera_yaw == b.camera_yaw &&
+               a.camera_pitch == b.camera_pitch && a.camera_distance == b.camera_distance && a.extent == b.extent;
+    }
+
+    bool validate_material_preview_settings(const MaterialPreviewSettings& s)
+    {
+        return validate_preview_scene_settings(s.scene) &&
+               (s.mesh == MaterialPreviewMesh::Sphere || s.mesh == MaterialPreviewMesh::Plane ||
+                s.mesh == MaterialPreviewMesh::Cube) &&
                std::isfinite(s.camera_yaw) && std::abs(s.camera_yaw) <= 360 && std::isfinite(s.camera_pitch) &&
                s.camera_pitch >= -80 && s.camera_pitch <= 80 && std::isfinite(s.camera_distance) &&
                s.camera_distance >= 220 && s.camera_distance <= 1000 && s.extent.width >= 96 &&
-               s.extent.width <= 1024 && s.extent.height >= 96 && s.extent.height <= 1024;
+               s.extent.width <= rhi_max_texture_readback_dimension && s.extent.height >= 96 &&
+               s.extent.height <= rhi_max_texture_readback_dimension;
     }
 
     namespace
@@ -65,10 +78,10 @@ namespace toy3d
     } // namespace
 
     // --------------------------------------------------------------------------
-    // ThumbnailPreviewScene: serial private World for thumbnails and material previews
+    // AssetPreviewScene: private World implementation for asset previews and thumbnails
     // --------------------------------------------------------------------------
-    bool ThumbnailPreviewScene::initialize(SceneInterface& scene, MaterialInstanceRef material,
-                                           SceneEnvironmentSettings environment, TextureRef cube)
+    bool AssetPreviewScene::initialize(SceneInterface& scene, MaterialInstanceRef material,
+                                       SceneEnvironmentSettings environment, TextureRef cube)
     {
         thumbnail_environment_ = environment;
         thumbnail_cube_ = cube;
@@ -110,18 +123,14 @@ namespace toy3d
         floor.indices = std::vector<std::uint16_t>{0, 2, 1, 0, 3, 2};
         floor.sections.push_back({0u, 6u, 0u});
         floor.material_slots.push_back(floor_material_);
-        floor_mesh_ = StaticMesh::create(std::move(floor));
-        if (!floor_mesh_)
-        {
-            return false;
-        }
+        floor_geometry_ = std::move(floor);
         // Register the floor only when a live preview needs it. A hidden, never-drawn
         // component would block startup Shader validation on an upload that has no frame.
         world_.initialize();
         return true;
     }
 
-    bool ThumbnailPreviewScene::prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material)
+    bool AssetPreviewScene::prepare(StaticMeshAssetGeometry geometry, MaterialInterfaceRef material)
     {
         clear_mesh();
         if (geometry.vertices.empty())
@@ -175,7 +184,7 @@ namespace toy3d
         return true;
     }
 
-    bool ThumbnailPreviewScene::prepare(StaticMeshRef mesh)
+    bool AssetPreviewScene::prepare(StaticMeshRef mesh)
     {
         if (!mesh)
         {
@@ -201,8 +210,7 @@ namespace toy3d
         return actor.root_component()->set_local_transform(transform);
     }
 
-    bool ThumbnailPreviewScene::prepare_skeletal(SkeletalMeshRef mesh,
-                                                 std::shared_ptr<const AnimationSequence> sequence)
+    bool AssetPreviewScene::prepare_skeletal(SkeletalMeshRef mesh, std::shared_ptr<const AnimationSequence> sequence)
     {
         if (!mesh || mesh->asset().geometry.mesh.vertices.empty())
         {
@@ -259,7 +267,7 @@ namespace toy3d
         return true;
     }
 
-    bool ThumbnailPreviewScene::prepare_skeletal(const AnimationPreviewAsset& asset)
+    bool AssetPreviewScene::prepare_skeletal(const AnimationPreviewAsset& asset)
     {
         if (!asset.mesh)
         {
@@ -287,25 +295,25 @@ namespace toy3d
         return true;
     }
 
-    SkeletalMeshComponent* ThumbnailPreviewScene::skeletal_component()
+    SkeletalMeshComponent* AssetPreviewScene::skeletal_component()
     {
         auto* actor = skeletal_ ? world_.find_actor_by_id(mesh_actor_id_) : nullptr;
         return actor ? &static_cast<SkeletalMeshActor*>(actor)->skeletal_mesh_component() : nullptr;
     }
 
-    const Vector3& ThumbnailPreviewScene::frame_center() const
+    const Vector3& AssetPreviewScene::frame_center() const
     {
         return frame_center_;
     }
 
-    float ThumbnailPreviewScene::frame_radius() const
+    float AssetPreviewScene::frame_radius() const
     {
         return frame_radius_;
     }
 
-    bool ThumbnailPreviewScene::configure(const MaterialPreviewSettings& settings, TextureRef cube)
+    bool AssetPreviewScene::configure(const PreviewSceneSettings& settings, TextureRef cube)
     {
-        if (!validate_material_preview_settings(settings) || (settings.environment.valid() && !cube))
+        if (!validate_preview_scene_settings(settings) || (settings.environment.valid() && !cube))
         {
             return false;
         }
@@ -342,6 +350,9 @@ namespace toy3d
         light->light_component().set_cast_shadows(settings.show_shadows);
         if (!floor && settings.show_floor)
         {
+            // Removing the last proxy ends its render-data lifetime. Reopening
+            // creates fresh render data from the small owned CPU floor description.
+            floor_mesh_ = StaticMesh::create(floor_geometry_);
             if (!floor_mesh_)
             {
                 return false;
@@ -355,6 +366,8 @@ namespace toy3d
         {
             Transform floor_transform;
             floor_transform.translation.y = floor_height_;
+            floor_transform.translation.x = frame_center_.x;
+            floor_transform.translation.z = frame_center_.z;
             if (!floor->root_component()->set_local_transform(floor_transform))
             {
                 return false;
@@ -364,9 +377,9 @@ namespace toy3d
         return true;
     }
 
-    bool ThumbnailPreviewScene::configure_thumbnail()
+    bool AssetPreviewScene::configure_thumbnail()
     {
-        MaterialPreviewSettings settings;
+        PreviewSceneSettings settings;
         settings.environment = thumbnail_environment_.environment.asset_id;
         settings.environment_intensity = thumbnail_environment_.intensity;
         settings.show_floor = false;
@@ -381,7 +394,7 @@ namespace toy3d
                light && light->root_component()->set_local_transform(transform);
     }
 
-    SceneView ThumbnailPreviewScene::view(const MaterialPreviewSettings& settings) const
+    SceneView AssetPreviewScene::view(const MaterialPreviewSettings& settings) const
     {
         const float yaw = settings.camera_yaw * k_pi / 180;
         const float pitch = settings.camera_pitch * k_pi / 180;
@@ -400,7 +413,7 @@ namespace toy3d
                          k_preview_near_clip_cm, k_preview_far_clip_cm);
     }
 
-    SceneView ThumbnailPreviewScene::view() const
+    SceneView AssetPreviewScene::view() const
     {
         const Vector3 center = skeletal_ ? frame_center_ : Vector3();
         const Vector3 position = center + Vector3(2.5f, 1.7f, -3.0f) * (skeletal_ ? frame_radius_ : 100.0f);
@@ -417,7 +430,7 @@ namespace toy3d
                          skeletal_ ? std::max(k_preview_far_clip_cm, frame_radius_ * 20.0f) : k_preview_far_clip_cm);
     }
 
-    void ThumbnailPreviewScene::clear_mesh()
+    void AssetPreviewScene::clear_mesh()
     {
         if (auto* actor = world_.find_actor_by_id(mesh_actor_id_))
         {
@@ -432,9 +445,23 @@ namespace toy3d
         frame_radius_ = 100.0f;
     }
 
-    void ThumbnailPreviewScene::shutdown()
+    void AssetPreviewScene::clear_geometry()
     {
         clear_mesh();
+        if (auto* floor = world_.find_actor_by_id(floor_actor_id_))
+        {
+            if (!world_.destroy_actor(*floor))
+            {
+                TOY_LOG_ERROR("Preview floor teardown failed.");
+            }
+        }
+        floor_actor_id_ = 0;
+        floor_mesh_.reset();
+    }
+
+    void AssetPreviewScene::shutdown()
+    {
+        clear_geometry();
         for (const auto id : world_.actor_ids())
         {
             if (auto* actor = world_.find_actor_by_id(id))
@@ -456,6 +483,7 @@ namespace toy3d
         material_.reset();
         // Unregister all components before dropping their independent material owners.
         floor_mesh_.reset();
+        floor_geometry_ = {};
         MaterialInstance::release(floor_material_);
         thumbnail_cube_.reset();
         light_actor_id_ = 0;

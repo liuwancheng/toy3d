@@ -18,3 +18,4 @@ output/*
 /project/asset-v1-backup-*/
 __pycache__/
 *.aps
+/project/binaries/

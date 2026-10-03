@@ -28,10 +28,12 @@
 #include "asset/scene/scene_asset.h"
 #include "workspace/editor_project.h"
 #include "config/console_manager.h"
+#include "platform/platform_services.h"
 
 #include <string>
 #include <utility>
 #include <vector>
+#include <atomic>
 
 namespace toy3d
 {
@@ -141,6 +143,18 @@ namespace toy3d
         void request_project_open(const PhysicalPath& descriptor);
         void launch_project();
         void standalone_play();
+        void package_project();
+        void tick_package();
+        void stop_package();
+        struct PackageOperation
+        {
+            std::atomic<bool> cancel{false};
+            ProcessResult result;
+            PhysicalPath output;
+        };
+        std::shared_ptr<PackageOperation> package_operation_;
+        GraphEventRef package_task_;
+        PhysicalPath last_package_output_;
         bool can_start_play() const;
         void tick_play(double delta_seconds);
         void stop_play();
@@ -187,6 +201,11 @@ namespace toy3d
         bool reset_dock_layout_ = false;
         std::string asset_folder_ = "/Project";
         bool show_engine_content_ = false;
+        std::vector<std::string> pending_model_sources_;
+        std::string pending_import_folder_;
+        int pending_model_kind_ = 0;
+        bool request_asset_import(const std::string& folder, const std::vector<std::string>& sources);
+        void draw_model_import_options();
         StaticMeshImportDialog model_import_;
         SkeletalMeshImportDialog skeletal_import_;
         TextureImportDialog texture_import_;

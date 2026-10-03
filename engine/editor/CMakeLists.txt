@@ -20,6 +20,9 @@ list(APPEND EDITOR_SOURCES
 # Asset sessions/workspace remain independently usable without the runtime UI.
 add_library(Toy3dEditorCore STATIC)
 target_sources(Toy3dEditorCore PRIVATE
+    "source/assets/preview/preview_scene_widgets.h" "source/assets/preview/preview_scene_widgets.cpp"
+    "source/panels/property_widgets.h" "source/panels/property_widgets.cpp"
+    "source/assets/thumbnails/thumbnail_widget.h" "source/assets/thumbnails/thumbnail_widget.cpp"
     "source/assets/asset_resource_picker.h" "source/assets/asset_resource_picker.cpp"
     "source/scene/mesh_asset_bindings.h" "source/scene/mesh_asset_bindings.cpp"
     "source/assets/animation/animation_preview_asset.h" "source/assets/animation/animation_preview_asset.cpp"
@@ -54,7 +57,7 @@ target_sources(Toy3dEditorCore PRIVATE
 target_compile_features(Toy3dEditorCore PUBLIC cxx_std_17)
 set_target_properties(Toy3dEditorCore PROPERTIES CXX_EXTENSIONS OFF FOLDER "Engine/Editor")
 target_include_directories(Toy3dEditorCore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/source")
-target_link_libraries(Toy3dEditorCore PUBLIC Toy3dRuntime Toy3dAssets imguizmo)
+target_link_libraries(Toy3dEditorCore PUBLIC Toy3dRuntime Toy3dAssets imgui)
 target_link_libraries(Toy3dEditorCore PRIVATE Toy3dShaderCompilerCore)
 target_compile_definitions(Toy3dEditorCore PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
     "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
@@ -136,6 +139,10 @@ target_compile_definitions(Toy3dEditorCore PRIVATE
     "TOY3D_EDITOR_ENGINE_INCLUDE_ROOT=\"${ENGINE_ROOT_DIR}/shader/include\""
     "TOY3D_EDITOR_SHADER_COMPILER=\"${BINARY_ROOT_DIR}$<TARGET_FILE_NAME:Toy3dShaderCompiler>\""
     "TOY3D_EDITOR_SHADER_TOOLCHAIN=\"${TOY3D_SHADER_TOOLCHAIN_ROOT}\"")
+target_compile_definitions(Toy3dEditorCore PRIVATE
+    "TOY3D_PACKAGE_CMAKE=\"${CMAKE_COMMAND}\""
+    "TOY3D_PACKAGE_SCRIPT=\"${TOY3D_ROOT_DIR}/engine/build/cmake/package_project.cmake\""
+    "TOY3D_PACKAGE_BUILD=\"${CMAKE_BINARY_DIR}\"")
 
 target_sources(Toy3dEditorCore PRIVATE
     "source/shader/shader_workflow.h" "source/shader/shader_workflow.cpp"
@@ -148,8 +155,12 @@ target_sources(Toy3dEditorCore PRIVATE
     "source/scene/material_assignments.h"
     "source/assets/material/material_edit_session.h" "source/assets/material/material_edit_session.cpp"
     "source/assets/material/material_editor_panel.h" "source/assets/material/material_editor_panel.cpp"
-    "source/assets/thumbnails/thumbnail_preview_scene.h" "source/assets/thumbnails/thumbnail_preview_scene.cpp"
+    "source/assets/preview/asset_preview_scene.h" "source/assets/preview/asset_preview_scene.cpp"
     "source/assets/thumbnails/asset_thumbnail_pool.h" "source/assets/thumbnails/asset_thumbnail_pool.cpp"
+    "source/assets/thumbnails/thumbnail_source.h" "source/assets/thumbnails/thumbnail_source.cpp"
+    "source/assets/mesh/mesh_thumbnail.h" "source/assets/mesh/mesh_thumbnail.cpp"
+    "source/assets/animation/animation_thumbnail.h" "source/assets/animation/animation_thumbnail.cpp"
+    "source/assets/material/material_thumbnail.h" "source/assets/material/material_thumbnail.cpp"
     "source/panels/content_browser_panel.h" "source/panels/content_browser_panel.cpp"
     "source/assets/mesh/static_mesh_import_dialog.h" "source/assets/mesh/static_mesh_import_dialog.cpp"
     "source/assets/animation/skeletal_mesh_import_dialog.h" "source/assets/animation/skeletal_mesh_import_dialog.cpp"
@@ -176,7 +187,7 @@ else()
 endif()
 target_sources(Toy3dEditorCore PRIVATE "source/platform/model_file_picker.h" "${TOY3D_MODEL_PICKER_SOURCE}")
 target_link_libraries(Toy3dEditorCore PRIVATE ${TOY3D_MODEL_PICKER_LIBRARIES})
-target_link_libraries(Toy3dEditorCore PRIVATE Toy3dRuntime Toy3dAssets Toy3dCore Toy3dAssetPipeline imguizmo)
+target_link_libraries(Toy3dEditorCore PRIVATE Toy3dRuntime Toy3dAssets Toy3dCore Toy3dAssetPipeline imgui)
 if(TOY3D_ENABLE_ASSIMP_MODEL_IMPORT)
     target_sources(Toy3dEditorCore PRIVATE
         "source/assets/mesh/static_mesh_asset_tools.h" "source/assets/mesh/static_mesh_asset_tools.cpp")
@@ -252,10 +263,21 @@ if(BUILD_TESTING)
     target_compile_options(Toy3dEditorTexturePreviewTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     add_test(NAME Toy3dEditor.TexturePreview COMMAND Toy3dEditorTexturePreviewTests)
 
+    add_executable(Toy3dEditorThumbnailSourceTests "tests/thumbnail_source_tests.cpp")
+    target_compile_features(Toy3dEditorThumbnailSourceTests PRIVATE cxx_std_17)
+    set_target_properties(Toy3dEditorThumbnailSourceTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
+    target_link_libraries(Toy3dEditorThumbnailSourceTests PRIVATE Toy3dEditorCore)
+    target_compile_definitions(Toy3dEditorThumbnailSourceTests PRIVATE
+        "TOY3D_THUMBNAIL_SOURCE_TEST_ROOT=\"${CMAKE_BINARY_DIR}/thumbnail-source-test-output\"")
+    target_compile_options(Toy3dEditorThumbnailSourceTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+    add_test(NAME Toy3dEditor.ThumbnailSource COMMAND Toy3dEditorThumbnailSourceTests)
+    add_test(NAME Toy3dEditor.ThumbnailSourceSingleThread COMMAND Toy3dEditorThumbnailSourceTests --singlethread)
+    set_tests_properties(Toy3dEditor.ThumbnailSource Toy3dEditor.ThumbnailSourceSingleThread PROPERTIES TIMEOUT 45)
+
     if(TOY3D_ENABLE_VULKAN_RHI AND (WIN32 OR APPLE))
         add_executable(Toy3dEditorAnimationPreviewTests
             "tests/animation_preview_tests.cpp" "source/workspace/editor_workspace.cpp"
-            "source/assets/thumbnails/asset_thumbnail_pool.cpp" "source/assets/thumbnails/thumbnail_preview_scene.cpp"
+            "source/assets/thumbnails/asset_thumbnail_pool.cpp" "source/assets/preview/asset_preview_scene.cpp"
             "source/panels/content_browser_panel.cpp")
         target_compile_features(Toy3dEditorAnimationPreviewTests PRIVATE cxx_std_17)
         set_target_properties(Toy3dEditorAnimationPreviewTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
@@ -280,7 +302,7 @@ if(BUILD_TESTING)
             "tests/editor_play_integration_tests.cpp"
             "source/workspace/editor_workspace.cpp"
             "source/assets/material/material_edit_session.cpp"
-            "source/assets/thumbnails/asset_thumbnail_pool.cpp" "source/assets/thumbnails/thumbnail_preview_scene.cpp"
+            "source/assets/thumbnails/asset_thumbnail_pool.cpp" "source/assets/preview/asset_preview_scene.cpp"
             "source/panels/content_browser_panel.cpp"
             "source/assets/mesh/static_mesh_import_dialog.cpp" "${TOY3D_MODEL_PICKER_SOURCE}"
 )
@@ -310,7 +332,9 @@ if(BUILD_TESTING)
             "TOY3D_EDITOR_DEPLOY_ROOT=\"${BINARY_ROOT_DIR}\"")
         target_compile_options(Toy3dEditorThumbnailTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
         add_test(NAME Toy3dEditor.Thumbnail COMMAND Toy3dEditorThumbnailTests)
-        set_tests_properties(Toy3dEditor.Thumbnail PROPERTIES TIMEOUT 45 RESOURCE_LOCK Toy3dGpuWindow)
+        add_test(NAME Toy3dEditor.ThumbnailSingleThread COMMAND Toy3dEditorThumbnailTests --singlethread)
+        set_tests_properties(Toy3dEditor.Thumbnail Toy3dEditor.ThumbnailSingleThread
+            PROPERTIES TIMEOUT 45 RESOURCE_LOCK Toy3dGpuWindow)
         add_test(NAME Toy3dEditor.Play COMMAND Toy3dEditorThumbnailTests --pie-integration)
         set_tests_properties(Toy3dEditor.Play PROPERTIES TIMEOUT 45 RESOURCE_LOCK Toy3dGpuWindow)
     endif()
@@ -366,7 +390,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorPlacementTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorPlacementTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorPlacementTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorPlacementTests PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets imguizmo)
+    target_link_libraries(Toy3dEditorPlacementTests PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets imgui)
     target_compile_definitions(Toy3dEditorPlacementTests PRIVATE
         WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\"")
@@ -381,7 +405,7 @@ if(BUILD_TESTING)
     target_compile_features(Toy3dEditorMaterialAssignmentTests PRIVATE cxx_std_17)
     set_target_properties(Toy3dEditorMaterialAssignmentTests PROPERTIES CXX_EXTENSIONS OFF FOLDER "Tests/Editor")
     target_include_directories(Toy3dEditorMaterialAssignmentTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
-    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets Toy3dAssetPipeline imguizmo)
+    target_link_libraries(Toy3dEditorMaterialAssignmentTests PRIVATE Toy3dEditorCore Toy3dRuntime Toy3dAssets Toy3dAssetPipeline imgui)
     target_compile_definitions(Toy3dEditorMaterialAssignmentTests PRIVATE WITH_EDITOR=1 WITH_EDITORONLY_DATA=1
         "TOY3D_MATERIAL_TEST_ROOT=\"${CMAKE_BINARY_DIR}/material-assignment-test-output\""
         "TOY3D_SHADER_MAP_ENTRY_ROOT=\"${BINARY_ROOT_DIR}shader/phong\""

@@ -14,4 +14,5 @@ namespace toy3d
     bool pick_model_files(IWindow& owner, std::vector<std::string>& paths, std::string& error);
     bool pick_environment_files(IWindow& owner, std::vector<std::string>& paths, std::string& error);
     bool pick_texture_files(IWindow& owner, std::vector<std::string>& paths, std::string& error);
+    bool pick_asset_files(IWindow& owner, std::vector<std::string>& paths, std::string& error);
 } // namespace toy3d

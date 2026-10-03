@@ -20,8 +20,12 @@ namespace toy3d
 #if WITH_WIN
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 {
+    // Preserve inherited capture pipes for headless Cook and bounded Game runs.
+    const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    const DWORD output_type = output && output != INVALID_HANDLE_VALUE ? GetFileType(output) : FILE_TYPE_UNKNOWN;
+    const bool redirected = output_type == FILE_TYPE_PIPE || output_type == FILE_TYPE_DISK;
     // GUI launch does not allocate a second console; shell launch retains diagnostics.
-    if (AttachConsole(ATTACH_PARENT_PROCESS))
+    if (!redirected && AttachConsole(ATTACH_PARENT_PROCESS))
     {
         FILE* stream = nullptr;
         freopen_s(&stream, "conout$", "w", stdout);

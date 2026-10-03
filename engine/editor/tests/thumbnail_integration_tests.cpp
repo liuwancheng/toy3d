@@ -85,6 +85,8 @@ namespace
         }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override
         {
+            pool_.set_material_preview_meshes(factory_.instantiate_builtin("Plane"),
+                                              factory_.instantiate_builtin("Cube"));
             return pool_.initialize(scene, factory_.default_material(), tasks);
         }
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
@@ -96,10 +98,39 @@ namespace
         void on_collect_ui_render_work(UiRenderWork& work) override
         {
             pool_.collect_render_work(work);
+            if (invalidation_frame_)
+            {
+                for (const auto id : invalidated_textures_)
+                {
+                    if (std::find(work.retire_textures.begin(), work.retire_textures.end(), id) !=
+                        work.retire_textures.end())
+                    {
+                        stop("Mid-UI invalidation retired an image used by the current draw commands.");
+                        return;
+                    }
+                }
+                invalidation_frame_ = false;
+                check_invalidation_retirement_ = true;
+            }
+            else if (check_invalidation_retirement_)
+            {
+                const auto registered = pool_.texture_ids();
+                for (const auto id : invalidated_textures_)
+                {
+                    if (std::find(work.retire_textures.begin(), work.retire_textures.end(), id) ==
+                            work.retire_textures.end() ||
+                        std::find(registered.begin(), registered.end(), id) != registered.end())
+                    {
+                        stop("Invalidated images were not retired at the next pre-UI tick.");
+                        return;
+                    }
+                }
+                check_invalidation_retirement_ = false;
+            }
             if (phase_ == 14 && work.preview.request_id)
             {
                 stale_texture_ = work.preview.texture_id;
-                preview_settings_.environment_rotation = -90.0f;
+                preview_settings_.scene.environment_rotation = -90.0f;
                 // Advance the desired settings while the old frame is already dispatched.
                 pool_.request_material_preview(preview_material_, 2u, preview_settings_);
                 phase_ = 15;
@@ -257,7 +288,7 @@ namespace
                 {
                     return;
                 }
-                pool_.invalidate();
+                invalidate_after_draw_ = true;
                 phase_ = 2;
             }
             else if (phase_ == 2 && a.texture_id.valid() && b.texture_id.valid() && !a.busy && !b.busy)
@@ -269,10 +300,16 @@ namespace
                     return;
                 }
                 pool_.generate(first_);
+                conflict_texture_ = a.texture_id;
                 phase_ = 3;
             }
             else if (phase_ == 3 && !a.busy && !a.error.empty())
             {
+                if (a.texture_id != conflict_texture_)
+                {
+                    stop("A failed thumbnail replaced the previously displayed image.");
+                    return;
+                }
                 if (a.error.find("conflict") == std::string::npos)
                 {
                     stop("Expected an asset save conflict.");
@@ -363,8 +400,8 @@ namespace
                         stop("PBR preview did not update or mutated the level World.");
                         return;
                     }
-                    preview_settings_.show_floor = false;
-                    preview_settings_.show_shadows = false;
+                    preview_settings_.scene.show_floor = false;
+                    preview_settings_.scene.show_shadows = false;
                     phase_ = 7;
                 }
                 else if (phase_ >= 7 && phase_ <= 13 && preview.texture_id.valid() && !preview.busy)
@@ -376,27 +413,27 @@ namespace
                     if (phase_ == 7)
                     {
                         background_pixels_ = material_pixels_;
-                        preview_settings_.show_environment = false;
+                        preview_settings_.scene.show_environment = false;
                     }
                     else if (phase_ == 8)
                     {
-                        preview_settings_.show_environment = true;
-                        preview_settings_.environment_rotation = 90.0f;
+                        preview_settings_.scene.show_environment = true;
+                        preview_settings_.scene.environment_rotation = 90.0f;
                     }
                     else if (phase_ == 9)
                     {
                         prior_preview_pixels_ = material_pixels_;
-                        preview_settings_.exposure_ev = 1.0f;
+                        preview_settings_.scene.exposure_ev = 1.0f;
                     }
                     else if (phase_ == 10)
                     {
                         prior_preview_pixels_ = material_pixels_;
-                        preview_settings_.show_floor = true;
+                        preview_settings_.scene.show_floor = true;
                     }
                     else if (phase_ == 11)
                     {
                         prior_preview_pixels_ = material_pixels_;
-                        preview_settings_.show_shadows = true;
+                        preview_settings_.scene.show_shadows = true;
                         pool_.generate(second_);
                     }
                     else if (phase_ == 12)
@@ -408,7 +445,7 @@ namespace
                     else
                     {
                         prior_texture_ = preview.texture_id;
-                        preview_settings_.environment_rotation = 120.0f;
+                        preview_settings_.scene.environment_rotation = 120.0f;
                     }
                     ++phase_;
                 }
@@ -420,10 +457,38 @@ namespace
                         return;
                     }
                     prior_texture_ = preview.texture_id;
-                    AssetId::parse("26e14823067241ee84676de813b2e8c3", preview_settings_.environment);
+                    AssetId::parse("26e14823067241ee84676de813b2e8c3", preview_settings_.scene.environment);
                     phase_ = 16;
                 }
-                else if (phase_ == 17 && preview.busy)
+                else if (phase_ == 17 && preview.texture_id.valid() && !preview.busy)
+                {
+                    auto oversized = preview_settings_;
+                    oversized.extent = {513u, 384u};
+                    const auto rejected = pool_.request_material_preview(preview_material_, 2u, oversized);
+                    if (rejected.texture_id != preview.texture_id || rejected.busy || rejected.error.empty())
+                    {
+                        stop(
+                            "An oversized material preview bypassed the RHI readback bound or replaced the old image.");
+                        return;
+                    }
+                    original_material_image_hash_ = material_image_hash_;
+                    preview_settings_.mesh = MaterialPreviewMesh::Plane;
+                    preview_settings_.extent = {512u, 512u};
+                    phase_ = 18;
+                }
+                else if ((phase_ == 18 || phase_ == 19) && preview.texture_id.valid() && !preview.busy)
+                {
+                    if (!material_has_color_ || material_image_hash_ == original_material_image_hash_ ||
+                        world().actor_count() != level_actor_count_)
+                    {
+                        stop("Plane/Cube preview did not render a distinct image or mutated the level World.");
+                        return;
+                    }
+                    original_material_image_hash_ = material_image_hash_;
+                    preview_settings_.mesh = phase_ == 18 ? MaterialPreviewMesh::Cube : MaterialPreviewMesh::Sphere;
+                    ++phase_;
+                }
+                else if (phase_ == 20 && preview.busy)
                 {
                     // Close with a replacement still queued or in flight, then let shutdown drain it.
                     pool_.clear_material_preview();
@@ -701,6 +766,26 @@ namespace
                 }
             }
             ImGui::End();
+            if (invalidate_after_draw_)
+            {
+                invalidate_after_draw_ = false;
+                invalidated_textures_ = pool_.texture_ids();
+                if (invalidated_textures_.size() < 2u)
+                {
+                    stop("Mid-UI invalidation requires both ready thumbnail fixtures.");
+                    return;
+                }
+                // Material Save publishes after the Content Browser has emitted its Images.
+                // Repeated callbacks must coalesce without changing this frame's registry.
+                pool_.invalidate();
+                pool_.invalidate();
+                if (pool_.texture_ids() != invalidated_textures_)
+                {
+                    stop("Mid-UI invalidation removed texture IDs before the ImGui snapshot.");
+                    return;
+                }
+                invalidation_frame_ = true;
+            }
             if (!import_dialog_shown_)
             {
                 import_dialog_shown_ = true;
@@ -743,6 +828,10 @@ namespace
         EditorSelection selection_;
         StaticMeshImportDialog import_dialog_;
         bool import_dialog_shown_ = false;
+        bool invalidate_after_draw_ = false;
+        bool invalidation_frame_ = false;
+        bool check_invalidation_retirement_ = false;
+        std::vector<ImGuiTextureId> invalidated_textures_;
         std::string folder_ = "/Project";
         bool show_engine_ = false;
         AssetId first_;
@@ -756,6 +845,7 @@ namespace
         std::vector<std::uint8_t> prior_preview_pixels_;
         ImGuiTextureId stale_texture_;
         ImGuiTextureId prior_texture_;
+        ImGuiTextureId conflict_texture_;
         bool stale_rejected_ = false;
         bool thumbnail_after_preview_ = false;
         Sha256Hash second_thumbnail_hash_{};
@@ -882,7 +972,9 @@ int main(int argc, char** argv)
     }
 #endif
     CommandLineParser::get_instance().parser_args(
-        {"ThumbnailTests", "--Window.Width=720", "--Window.Height=480", "--Window.Title=Thumbnail Tests"});
+        {"ThumbnailTests", "--Window.Width=720", "--Window.Height=480", "--Window.Title=Thumbnail Tests",
+         argc == 2 && std::string(argv[1]) == "--singlethread" ? "--Renderer.MultiThreaded=false"
+                                                               : "--Renderer.MultiThreaded=true"});
     if (argc == 2 && std::string(argv[1]) == "--pie-integration")
     {
 #if WITH_WIN

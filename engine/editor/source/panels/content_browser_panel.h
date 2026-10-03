@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <array>
 #include "math/vector2.h"
 #include "assets/material/material_asset_tools.h"
 
@@ -13,11 +14,7 @@ namespace toy3d
     struct ContentBrowserActions
     {
         bool import_requested = false;
-        bool skeletal_import_requested = false;
-        bool animation_import_requested = false;
         AssetId skeletal_reimport;
-        bool texture_import_requested = false;
-        bool environment_import_requested = false;
         bool material_creation_requested = false;
         MaterialAssetCreationKind material_creation_kind = MaterialAssetCreationKind::Material;
         AssetId material_parent;
@@ -45,5 +42,9 @@ namespace toy3d
       private:
         AssetId pending_delete_;
         std::string delete_error_;
+        std::array<char, 256> search_{};
+        float thumbnail_scale_ = 1.0f;
+        bool show_sources_ = true;
+        std::string revealed_folder_;
     };
 } // namespace toy3d

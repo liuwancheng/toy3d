@@ -15,7 +15,8 @@ namespace toy3d
         {
             Model,
             Texture,
-            Environment
+            Environment,
+            Asset
         };
         bool pick_files(IWindow& owner, std::vector<std::string>& paths, std::string& error, FileSelection kind)
         {
@@ -24,18 +25,23 @@ namespace toy3d
             auto* window = dynamic_cast<Win32Window*>(&owner);
             if (!window || !window->get_native_hwnd())
             {
-                error = "Model file selection requires a native editor window.";
+                error = "File selection requires a native editor window.";
                 return false;
             }
             std::vector<wchar_t> buffer(65536, L'\0');
             OPENFILENAMEW dialog{};
             dialog.lStructSize = sizeof(dialog);
             dialog.hwndOwner = window->get_native_hwnd();
-            dialog.lpstrTitle = kind == FileSelection::Environment ? L"Import Environment"
-                                : kind == FileSelection::Texture   ? L"Import Texture2D"
-                                                                   : L"Import Model";
+            dialog.lpstrTitle = kind == FileSelection::Asset         ? L"Import Assets"
+                                : kind == FileSelection::Environment ? L"Import Environment"
+                                : kind == FileSelection::Texture     ? L"Import Texture2D"
+                                                                     : L"Import Model";
             dialog.lpstrFilter =
-                kind == FileSelection::Environment ? L"Radiance HDR\0*.hdr\0All files\0*.*\0\0"
+                kind == FileSelection::Asset
+                    ? L"Supported "
+                      L"Assets\0*.fbx;*.obj;*.gltf;*.glb;*.png;*.jpg;*.jpeg;*.hdr\0Models\0*.fbx;*.obj;*.gltf;*."
+                      L"glb\0Images\0*.png;*.jpg;*.jpeg\0HDR Environments\0*.hdr\0\0"
+                : kind == FileSelection::Environment ? L"Radiance HDR\0*.hdr\0All files\0*.*\0\0"
                 : kind == FileSelection::Texture
                     ? L"Images (PNG, JPEG)\0*.png;*.jpg;*.jpeg\0All files\0*.*\0\0"
                     : L"Static Mesh (FBX, OBJ, glTF, GLB)\0*.fbx;*.obj;*.gltf;*.glb\0All files\0*.*\0\0";
@@ -50,7 +56,7 @@ namespace toy3d
                 {
                     return true;
                 }
-                error = "Model file selection failed (code " + std::to_string(status) + ").";
+                error = "File selection failed (code " + std::to_string(status) + ").";
                 return false;
             }
             try
@@ -71,7 +77,7 @@ namespace toy3d
                         if (paths.size() >= maximum_file_drop_paths)
                         {
                             paths.clear();
-                            error = "Select at most 32 model files.";
+                            error = "Select at most 32 source files.";
                             return false;
                         }
                         paths.push_back((first / name).u8string());
@@ -82,7 +88,7 @@ namespace toy3d
             catch (const std::exception& exception)
             {
                 paths.clear();
-                error = std::string("Model path conversion failed: ") + exception.what();
+                error = std::string("Source path conversion failed: ") + exception.what();
                 return false;
             }
             return true;
@@ -102,6 +108,10 @@ namespace toy3d
     bool pick_texture_files(IWindow& owner, std::vector<std::string>& paths, std::string& error)
     {
         return pick_files(owner, paths, error, FileSelection::Texture);
+    }
+    bool pick_asset_files(IWindow& owner, std::vector<std::string>& paths, std::string& error)
+    {
+        return pick_files(owner, paths, error, FileSelection::Asset);
     }
     bool pick_project_file(IWindow& owner, std::string& path, std::string& error)
     {

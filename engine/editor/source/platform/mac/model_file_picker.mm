@@ -11,7 +11,8 @@ namespace toy3d
         {
             Model,
             Texture,
-            Environment
+            Environment,
+            Asset
         };
     bool pick_files(std::vector<std::string>& paths, std::string& error, FileSelection kind)
     {
@@ -20,18 +21,18 @@ namespace toy3d
         @autoreleasepool
         {
             NSOpenPanel* panel = [NSOpenPanel openPanel];
-            panel.title = kind == FileSelection::Environment ? @"Import Environment" : kind == FileSelection::Texture ? @"Import Texture2D" : @"Import Model";
+            panel.title = kind == FileSelection::Asset ? @"Import Assets" : kind == FileSelection::Environment ? @"Import Environment" : kind == FileSelection::Texture ? @"Import Texture2D" : @"Import Model";
             panel.canChooseDirectories = NO;
             panel.canChooseFiles = YES;
             panel.allowsMultipleSelection = YES;
-            panel.allowedFileTypes = kind == FileSelection::Environment ? @[@"hdr"] : kind == FileSelection::Texture ? @[@"png", @"jpg", @"jpeg"] : @[@"fbx", @"obj", @"gltf", @"glb"];
+            panel.allowedFileTypes = kind == FileSelection::Asset ? @[@"fbx", @"obj", @"gltf", @"glb", @"png", @"jpg", @"jpeg", @"hdr"] : kind == FileSelection::Environment ? @[@"hdr"] : kind == FileSelection::Texture ? @[@"png", @"jpg", @"jpeg"] : @[@"fbx", @"obj", @"gltf", @"glb"];
             if ([panel runModal] != NSModalResponseOK) return true;
             if (panel.URLs.count > maximum_file_drop_paths)
-            { error = "Select at most 32 model files."; return false; }
+            { error = "Select at most 32 source files."; return false; }
             for (NSURL* url in panel.URLs)
             {
                 const char* path = url.path.UTF8String;
-                if (!path) { paths.clear(); error = "Model path conversion failed."; return false; }
+                if (!path) { paths.clear(); error = "Source path conversion failed."; return false; }
                 paths.emplace_back(path);
             }
         }
@@ -49,6 +50,10 @@ namespace toy3d
 
     bool pick_texture_files(IWindow&, std::vector<std::string>& paths, std::string& error)
     { return pick_files(paths, error, FileSelection::Texture); }
+    bool pick_asset_files(IWindow&, std::vector<std::string>& paths, std::string& error)
+    {
+        return pick_files(paths, error, FileSelection::Asset);
+    }
     namespace
     {
         bool pick_project_path(std::string& path, std::string& error, bool folder)

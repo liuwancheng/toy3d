@@ -11,6 +11,8 @@
 #include "gamescene/world/world.h"
 #include "platform/model_file_picker.h"
 #include "workspace/editor_workspace.h"
+#include "threading/task_graph/graph_task.h"
+#include "game_module_build.h"
 
 namespace toy3d
 {
@@ -116,9 +118,7 @@ namespace toy3d
             TOY_LOG_ERROR("Open Project: {}", project_error_);
             return;
         }
-        const auto module =
-            description.value().modules.empty() ? std::string{} : description.value().modules.front().name;
-        EditorProject candidate{PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT), module};
+        EditorProject candidate{PhysicalPath(TOY3D_EDITOR_DEPLOY_ROOT)};
         const auto opened = candidate.open(descriptor);
         if (!opened.succeeded())
         {
@@ -127,16 +127,15 @@ namespace toy3d
             return;
         }
         pending_project_ = candidate.descriptor();
-        pending_editor_executable_ = PhysicalPath(std::string(TOY3D_EDITOR_DEPLOY_ROOT) + "/" +
-                                                  (module.empty() ? "Toy3dEditor" : module + "Editor")
+        pending_editor_executable_ = PhysicalPath(std::string(TOY3D_EDITOR_DEPLOY_ROOT) + "/" + "Toy3dEditor"
 #if WITH_WIN
                                                   + ".exe"
 #elif WITH_MAC
-                                                  + ".app/Contents/MacOS/" +
-                                                  (module.empty() ? "Toy3dEditor" : module + "Editor")
+                                                  + ".app/Contents/MacOS/" + "Toy3dEditor"
 #endif
         );
-        if (shaders_.busy() || model_import_.active() || skeletal_import_.active() || texture_import_.active())
+        if (package_task_ || shaders_.busy() || model_import_.active() || skeletal_import_.active() ||
+            texture_import_.active())
         {
             pending_project_ = {};
             project_scene_saved_ = false;
@@ -200,6 +199,10 @@ namespace toy3d
         auto arguments = CommandLineParser::get_instance().launch_arguments();
         arguments.push_back("--Project=" + project_->descriptor().utf8());
         arguments.push_back("--PlayScene=" + path.utf8());
+        if (project_->description().modules.empty())
+        {
+            arguments.push_back("--EditorShaderArtifacts");
+        }
         const auto launched = processes_.launch_detached(game_executable_, arguments);
         if (!launched.succeeded())
         {
@@ -301,6 +304,17 @@ namespace toy3d
 
     void EditorApplication::draw_project_dialogs()
     {
+        if (package_operation_)
+        {
+            ImGui::Begin("Packaging Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+            ImGui::TextUnformatted("Building, cooking and packaging...");
+            ImGui::TextWrapped("%s", package_operation_->output.utf8().c_str());
+            if (ImGui::Button("Cancel") && package_operation_)
+            {
+                package_operation_->cancel.store(true);
+            }
+            ImGui::End();
+        }
         if (show_new_project_)
         {
             ImGui::OpenPopup("New Project");
@@ -483,6 +497,98 @@ namespace toy3d
                 }
             }
             ImGui::End();
+        }
+    }
+
+    void EditorApplication::package_project()
+    {
+#if WITH_WIN
+        if (!project_ || !project_->active() || package_task_ || play_session_.active() || startup_pending_ ||
+            shaders_.busy() || model_import_.active() || skeletal_import_.active() || texture_import_.active() ||
+            material_editor_.modal_pending())
+        {
+            return;
+        }
+        if (scene_dirty() || (material_editor_.edit_session().active() && material_editor_.edit_session().dirty()))
+        {
+            TOY_LOG_ERROR("Save Scene and Material changes before packaging.");
+            return;
+        }
+        AssetId operation_id;
+        if (!AssetId::try_generate(operation_id) || !TaskGraphInterface::is_running())
+        {
+            TOY_LOG_ERROR("Could not start project packaging.");
+            return;
+        }
+        auto operation = std::make_shared<PackageOperation>();
+        operation->output = PhysicalPath(project_->saved().utf8() + "/packages/" + project_->description().name + "-" +
+                                         operation_id.hex().substr(0u, 8u));
+        const std::vector<std::string> arguments{"-DTOY3D_PROJECT=" + project_->descriptor().utf8(),
+                                                 std::string("-DTOY3D_BUILD=") + TOY3D_PACKAGE_BUILD,
+                                                 "-DTOY3D_OUTPUT=" + operation->output.utf8(),
+                                                 std::string("-DTOY3D_CONFIGURATION=") + TOY3D_MODULE_CONFIG,
+                                                 "-DTOY3D_BUILD_EDITOR=OFF",
+                                                 "-P",
+                                                 TOY3D_PACKAGE_SCRIPT};
+        try
+        {
+            package_task_ = dispatch_graph_task(TaskGraphInterface::get(), "Package project",
+                                                [operation, arguments](NamedThread, const GraphEventRef&)
+                                                {
+                                                    NativeProcessService processes;
+                                                    ProcessRunOptions options;
+                                                    options.timeout_ms = 1200000u;
+                                                    options.maximum_output_bytes = 16u * 1024u * 1024u;
+                                                    options.cancel = &operation->cancel;
+                                                    operation->result = processes.run(PhysicalPath(TOY3D_PACKAGE_CMAKE),
+                                                                                      arguments, options);
+                                                });
+            package_operation_ = std::move(operation);
+        }
+        catch (const std::exception& error)
+        {
+            TOY_LOG_ERROR("Package project: {}", error.what());
+        }
+#else
+        TOY_LOG_ERROR("Project packaging currently supports Windows only.");
+#endif
+    }
+
+    void EditorApplication::tick_package()
+    {
+        if (!package_task_ || !package_task_->is_complete())
+        {
+            return;
+        }
+        const auto result = std::move(package_operation_->result);
+        const bool succeeded = package_task_->get_outcome() == TaskOutcome::Succeeded && result.succeeded();
+        if (succeeded)
+        {
+            last_package_output_ = package_operation_->output;
+            notifications_.success("Package Project", "Game package is ready: " + last_package_output_.utf8());
+            TOY_LOG_INFO("Project package: {}", last_package_output_.utf8());
+        }
+        else
+        {
+            TOY_LOG_ERROR("Package project failed: {}\n{}", result.message, result.output);
+        }
+        package_task_.reset();
+        package_operation_.reset();
+    }
+
+    void EditorApplication::stop_package()
+    {
+        if (package_task_)
+        {
+            package_operation_->cancel.store(true);
+            const auto waited =
+                TaskGraphInterface::get().wait_until_task_completes(package_task_, NamedThread::GameThread);
+            if (!waited.succeeded())
+            {
+                TOY_LOG_ERROR("Could not drain project packaging during shutdown.");
+            }
+            package_task_.reset();
+            package_operation_.reset();
         }
     }
 } // namespace toy3d

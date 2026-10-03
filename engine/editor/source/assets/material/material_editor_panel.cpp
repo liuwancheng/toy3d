@@ -1,4 +1,5 @@
 #include "assets/material/material_editor_panel.h"
+#include "assets/preview/preview_scene_widgets.h"
 
 #include <algorithm>
 #include <exception>
@@ -6,8 +7,13 @@
 #include <utility>
 
 #include "imgui.h"
-#include "assets/thumbnails/asset_thumbnail_pool.h"
+#include "panels/property_widgets.h"
 #include "imgui_internal.h"
+
+#include "asset/texture/builtin_texture_assets.h"
+#include "assets/asset_resource_picker.h"
+#include "assets/thumbnails/asset_thumbnail_pool.h"
+#include "drivers/rhi/rhi_resource.h"
 
 #include "logging/logger.h"
 #include "rendercore/shader/shader_map.h"
@@ -684,6 +690,9 @@ namespace toy3d
         textures_.named_defaults.clear();
         textures_.assets.clear();
         workspace_ = nullptr;
+        previews_ = nullptr;
+        resource_picker_ = nullptr;
+        shaders_ = nullptr;
         session_.reset();
     }
     void MaterialEditorPanel::request_static_configuration()
@@ -798,32 +807,45 @@ namespace toy3d
                 ImGui::PushID(dimension.name.c_str());
                 ImGui::BeginDisabled(!session.writable() || session.gesturing() || modal_pending() ||
                                      (shaders_ && shaders_->busy()));
+                if (!begin_property_row(dimension.name.c_str(),
+                                        ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x))
+                {
+                    ImGui::EndDisabled();
+                    ImGui::PopID();
+                    continue;
+                }
                 if (dimension.kind == shader::ShaderPermutationValueKind::Boolean)
                 {
                     bool value = chosen->boolean_value;
-                    if (ImGui::Checkbox(dimension.name.c_str(), &value))
+                    if (ImGui::Checkbox("##Value", &value))
                     {
                         set_static_option({dimension.name, value});
                     }
                 }
-                else if (ImGui::BeginCombo(dimension.name.c_str(), chosen->enum_value.c_str()))
+                else
                 {
-                    for (const auto& option : dimension.options)
+                    if (ImGui::BeginCombo("##Value", chosen->enum_value.c_str()))
                     {
-                        if (ImGui::Selectable(option.c_str(), chosen->enum_value == option))
+                        for (const auto& option : dimension.options)
                         {
-                            set_static_option({dimension.name, option});
+                            if (ImGui::Selectable(option.c_str(), chosen->enum_value == option))
+                            {
+                                set_static_option({dimension.name, option});
+                            }
                         }
+                        ImGui::EndCombo();
                     }
-                    ImGui::EndCombo();
                 }
                 ImGui::SameLine();
                 ImGui::BeginDisabled(!overridden);
-                if (ImGui::Button(session.is_instance() ? "Inherit" : "Default"))
+                if (property_action_button("Reset", PropertyAction::Reset,
+                                           session.is_instance() ? "Restore inherited option"
+                                                                 : "Restore default option"))
                 {
                     remove_static_option(dimension.name);
                 }
                 ImGui::EndDisabled();
+                end_property_row();
                 ImGui::EndDisabled();
                 ImGui::PopID();
             }
@@ -909,6 +931,36 @@ namespace toy3d
             auto value = inherited ? *inherited : constant_default(defaults_->desc(), member);
             bool overridden = find_override(session.overrides(), member.name) != nullptr;
             ImGui::PushID(member.name.c_str());
+            const char* title = row.property ? row.property->display_name.c_str() : member.name.c_str();
+            const float action_width = ImGui::GetFrameHeight();
+            if (!begin_property_row(title))
+            {
+                ImGui::PopID();
+                continue;
+            }
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted(title);
+                if (!overridden)
+                {
+                    const auto source = session.parameter_source(member.name);
+                    const auto* location = workspace_->catalog().index.find(source.asset_id);
+                    ImGui::Text("Inherited: %s", location ? location->path.utf8().c_str() : "Shader default");
+                }
+                const auto& programs = defaults_->desc().shader_map->programs();
+                if (std::none_of(programs.begin(), programs.end(),
+                                 [&member](const ShaderMapProgramRef& program)
+                                 {
+                                     return program->find_parameter_binding(member.parameter_id) != nullptr;
+                                 }))
+                {
+                    ImGui::TextUnformatted("Unused in this variant");
+                }
+                ImGui::EndTooltip();
+            }
+            const float value_width = std::max(1.0f, ImGui::GetContentRegionAvail().x - action_width * 2.0f -
+                                                         ImGui::GetStyle().ItemSpacing.x * 2.0f);
             ImGui::BeginDisabled(!session.writable() || session.gesturing());
             if (ImGui::Checkbox("##Override", &overridden))
             {
@@ -916,19 +968,8 @@ namespace toy3d
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
-            ImGui::TextUnformatted(row.property ? row.property->display_name.c_str() : member.name.c_str());
-            const auto& programs = defaults_->desc().shader_map->programs();
-            if (std::none_of(programs.begin(), programs.end(),
-                             [&member](const ShaderMapProgramRef& program)
-                             {
-                                 return program->find_parameter_binding(member.parameter_id) != nullptr;
-                             }))
-            {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(unused in this variant)");
-            }
             ImGui::BeginDisabled(!session.writable());
-            ImGui::SetNextItemWidth(-90.0f);
+            ImGui::SetNextItemWidth(value_width);
             bool changed = false;
             // C++17 get_if selects familiar ImGui controls for the fixed numeric
             // alternatives. Shader UI metadata supplies presentation only.
@@ -967,7 +1008,7 @@ namespace toy3d
             {
                 if (row.property && row.property->control == shader::ShaderEditorPropertyControl::Color)
                 {
-                    changed = ImGui::ColorEdit4("##Value", vector->data(), ImGuiColorEditFlags_Float);
+                    changed = property_color_value("##Value", vector->data(), true, value_width);
                 }
                 else
                 {
@@ -988,18 +1029,14 @@ namespace toy3d
             }
             ImGui::SameLine();
             ImGui::BeginDisabled(!overridden || session.gesturing());
-            if (ImGui::Button(session.is_instance() ? "Inherit" : "Reset"))
+            if (property_action_button("Reset", PropertyAction::Reset,
+                                       session.is_instance() ? "Restore inherited value" : "Restore Shader default"))
             {
                 report(session.remove_parameter(member.name));
             }
             ImGui::EndDisabled();
             ImGui::EndDisabled();
-            if (!overridden)
-            {
-                const auto source = session.parameter_source(member.name);
-                const auto* location = workspace_->catalog().index.find(source.asset_id);
-                ImGui::TextDisabled("Inherited: %s", location ? location->path.utf8().c_str() : "Shader default");
-            }
+            end_property_row();
             ImGui::PopID();
         }
         for (const auto& resource : session.schema().resources)
@@ -1017,57 +1054,63 @@ namespace toy3d
                     break;
                 }
             }
-            ImGui::TextUnformatted(title);
-            ImGui::SameLine();
+            const bool numeric_resource = resource.resource_kind != shader::ResourceKind::Texture2D;
+            if (numeric_resource &&
+                !begin_property_row(title, ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x))
+            {
+                ImGui::PopID();
+                continue;
+            }
             ImGui::BeginDisabled(!session.writable() || session.gesturing());
             if (resource.category == shader::ShaderParameterCategory::SampledTexture &&
                 resource.resource_kind == shader::ResourceKind::Texture2D)
             {
+                // C++17 get_if distinguishes texture references from sampler presets without coercion.
                 const auto* reference = selected ? std::get_if<AssetRef>(&selected->value) : nullptr;
-                const auto* location = reference ? workspace_->catalog().index.find(reference->asset_id) : nullptr;
-                const std::string label =
-                    location ? location->path.utf8() : "Shader default: " + resource.default_value;
-                if (ImGui::BeginCombo("##Texture", label.c_str()))
+                AssetResourceSelection current;
+                if (reference)
                 {
-                    for (const auto& entry : workspace_->catalog().entries)
+                    current.asset = reference->asset_id;
+                }
+                else
+                {
+                    for (const auto& builtin : builtin_texture_assets)
                     {
-                        if (entry.file.root_type != "toy3d.Texture2DAssetData")
+                        if (resource.default_value == builtin.default_name)
                         {
-                            continue;
+                            AssetId::parse(builtin.asset_id, current.asset);
+                            break;
                         }
-                        if (ImGui::Selectable(entry.path.utf8().c_str(),
-                                              reference && reference->asset_id == entry.file.asset_id))
+                    }
+                }
+                if (resource_picker_)
+                {
+                    AssetResourceSelection next;
+                    std::string error;
+                    if (resource_picker_->draw(title, *workspace_, current, {"toy3d.Texture2DAssetData"}, next, error))
+                    {
+                        if (!next.asset.valid())
                         {
-                            AssetRef next;
-                            next.asset_id = entry.file.asset_id;
-                            next.expected_type = entry.file.root_type;
-                            MaterialParameterOverride value{resource.name, next};
+                            report(session.remove_parameter(resource.name));
+                        }
+                        else
+                        {
+                            AssetRef asset;
+                            asset.asset_id = next.asset;
+                            asset.expected_type = "toy3d.Texture2DAssetData";
+                            MaterialParameterOverride value{resource.name, asset};
                             const auto ready = ensure_texture_values({value});
                             report(ready.succeeded() ? session.set_parameter(value) : ready);
                         }
                     }
-                    ImGui::EndCombo();
-                }
-                if (ImGui::BeginDragDropTarget())
-                {
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("TOY3D_TEXTURE_ASSET"))
+                    if (!error.empty())
                     {
-                        if (payload->DataSize == sizeof(AssetId))
-                        {
-                            const auto id = *static_cast<const AssetId*>(payload->Data);
-                            const auto* entry = workspace_->catalog().index.find(id);
-                            if (entry && entry->index.root_type == "toy3d.Texture2DAssetData")
-                            {
-                                AssetRef next;
-                                next.asset_id = id;
-                                next.expected_type = entry->index.root_type;
-                                MaterialParameterOverride value{resource.name, next};
-                                const auto ready = ensure_texture_values({value});
-                                report(ready.succeeded() ? session.set_parameter(value) : ready);
-                            }
-                        }
+                        error_ = error;
                     }
-                    ImGui::EndDragDropTarget();
+                }
+                else
+                {
+                    ImGui::TextDisabled("Texture picker unavailable");
                 }
             }
             else if (resource.category == shader::ShaderParameterCategory::Sampler &&
@@ -1106,19 +1149,22 @@ namespace toy3d
             {
                 ImGui::TextDisabled("Unsupported resource type");
             }
-            ImGui::SameLine();
-            ImGui::BeginDisabled(!overridden);
-            if (ImGui::Button(session.is_instance() ? "Inherit" : "Reset"))
+            if (numeric_resource)
             {
-                report(session.remove_parameter(resource.name));
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!overridden);
+                if (property_action_button("Reset", PropertyAction::Reset,
+                                           session.is_instance() ? "Restore inherited value"
+                                                                 : "Restore Shader default"))
+                {
+                    report(session.remove_parameter(resource.name));
+                }
+                ImGui::EndDisabled();
             }
             ImGui::EndDisabled();
-            ImGui::EndDisabled();
-            if (!overridden)
+            if (numeric_resource)
             {
-                const auto source = session.parameter_source(resource.name);
-                const auto* location = workspace_->catalog().index.find(source.asset_id);
-                ImGui::TextDisabled("Inherited: %s", location ? location->path.utf8().c_str() : "Shader default");
+                end_property_row();
             }
             ImGui::PopID();
         }
@@ -1143,22 +1189,47 @@ namespace toy3d
 
     void MaterialEditorPanel::draw_preview()
     {
-        if (!ImGui::BeginTable("MaterialPreview", 2, ImGuiTableFlags_Resizable))
+        const auto shape_button = [&](const char* label, MaterialPreviewMesh mesh)
         {
-            return;
-        }
-        ImGui::TableSetupColumn("Viewport", ImGuiTableColumnFlags_WidthStretch, 1.2f);
-        ImGui::TableSetupColumn("Preview Settings", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableNextColumn();
-        const float side = std::max(192.0f, std::min(ImGui::GetContentRegionAvail().x, 512.0f));
-        // Quantize small layout fluctuations so an unchanged window does not keep reallocating targets.
-        const auto pixels = static_cast<std::uint32_t>(side / 16.0f) * 16u;
-        preview_settings_.extent = {pixels, pixels};
+            const bool active = preview_settings_.mesh == mesh;
+            if (active)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+            }
+            if (ImGui::Button(label))
+            {
+                preview_settings_.mesh = mesh;
+            }
+            if (active)
+            {
+                ImGui::PopStyleColor();
+            }
+        };
+        shape_button("Sphere", MaterialPreviewMesh::Sphere);
+        ImGui::SameLine();
+        shape_button("Plane", MaterialPreviewMesh::Plane);
+        ImGui::SameLine();
+        shape_button("Cube", MaterialPreviewMesh::Cube);
+        ImGui::Separator();
+        const auto available = ImGui::GetContentRegionAvail();
+        const ImVec2 size(std::max(96.0f, std::min(available.x, 1024.0f)),
+                          std::max(96.0f, std::min(available.y - 40.0f, 1024.0f)));
+        // Readback is bounded by the public RHI; a larger pane scales the image rather than the GPU target.
+        const float scale = std::min(1.0f, rhi_max_texture_readback_dimension / std::max(size.x, size.y));
+        preview_settings_.extent = {std::max(96u, static_cast<std::uint32_t>(size.x * scale / 16.0f) * 16u),
+                                    std::max(96u, static_cast<std::uint32_t>(size.y * scale / 16.0f) * 16u)};
+        const float fit = std::min(size.x / preview_settings_.extent.width, size.y / preview_settings_.extent.height);
+        const ImVec2 image_size(preview_settings_.extent.width * fit, preview_settings_.extent.height * fit);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (size.x - image_size.x) * 0.5f);
         const auto preview = previews_->request_material_preview(runtime_, preview_revision_, preview_settings_);
         if (preview.texture_id.valid())
         {
-            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(preview.texture_id.value())),
-                         ImVec2(side, side));
+            const auto position = ImGui::GetCursorScreenPos();
+            // Claim orbit gestures so the root window cannot move when dragging its preview image.
+            ImGui::InvisibleButton("PreviewImage", image_size);
+            ImGui::GetWindowDrawList()->AddImage(
+                reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(preview.texture_id.value())), position,
+                ImVec2(position.x + image_size.x, position.y + image_size.y));
             if (ImGui::IsItemHovered())
             {
                 const auto& io = ImGui::GetIO();
@@ -1176,7 +1247,7 @@ namespace toy3d
         }
         else
         {
-            ImGui::Dummy(ImVec2(side, side));
+            ImGui::Dummy(image_size);
         }
         if (preview.busy)
         {
@@ -1186,53 +1257,6 @@ namespace toy3d
         {
             ImGui::TextWrapped("%s", preview.error.c_str());
         }
-        ImGui::TableNextColumn();
-        const float label_width = ImGui::CalcTextSize("Environment Intensity").x + ImGui::GetStyle().ItemInnerSpacing.x;
-        ImGui::PushItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - label_width));
-        ImGui::TextUnformatted("Preview Scene");
-        std::string environment_name = preview_settings_.environment.valid() ? "Missing Environment" : "Off";
-        for (const auto& entry : workspace_->catalog().entries)
-        {
-            if (entry.file.asset_id == preview_settings_.environment)
-            {
-                environment_name = entry.path.utf8();
-                break;
-            }
-        }
-        if (ImGui::BeginCombo("Environment", environment_name.c_str()))
-        {
-            if (ImGui::Selectable("Off", !preview_settings_.environment.valid()))
-            {
-                preview_settings_.environment = {};
-            }
-            for (const auto& entry : workspace_->catalog().entries)
-            {
-                if (entry.file.root_type == "toy3d.EnvironmentAssetData" &&
-                    ImGui::Selectable(entry.path.utf8().c_str(), entry.file.asset_id == preview_settings_.environment))
-                {
-                    preview_settings_.environment = entry.file.asset_id;
-                }
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::Checkbox("Show Background", &preview_settings_.show_environment);
-        ImGui::Checkbox("Show Floor", &preview_settings_.show_floor);
-        ImGui::Checkbox("Shadows", &preview_settings_.show_shadows);
-        ImGui::SliderFloat("Environment Intensity", &preview_settings_.environment_intensity, 0.0f, 8.0f);
-        ImGui::SliderFloat("Environment Rotation", &preview_settings_.environment_rotation, -180.0f, 180.0f,
-                           "%.0f deg");
-        ImGui::SliderFloat("Exposure", &preview_settings_.exposure_ev, -8.0f, 8.0f, "%.2f EV");
-        ImGui::SliderFloat("Light Intensity", &preview_settings_.light_intensity, 0.0f, 16.0f);
-        ImGui::ColorEdit3("Light Color", preview_settings_.light_color.data());
-        ImGui::SliderFloat("Light Yaw", &preview_settings_.light_yaw, -180.0f, 180.0f, "%.0f deg");
-        ImGui::SliderFloat("Light Pitch", &preview_settings_.light_pitch, -89.0f, -5.0f, "%.0f deg");
-        if (ImGui::Button("Reset Preview"))
-        {
-            preview_settings_ = MaterialPreviewSettings{};
-        }
-        ImGui::PopItemWidth();
-        ImGui::EndTable();
-        ImGui::Separator();
     }
 
     void MaterialEditorPanel::draw()
@@ -1308,13 +1332,16 @@ namespace toy3d
             }
             return;
         }
-        ImGui::SetNextWindowSize(ImVec2(840, 850), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(std::min(1100.0f, ImGui::GetIO().DisplaySize.x - 40.0f),
+                                        std::min(760.0f, ImGui::GetIO().DisplaySize.y - 40.0f)),
+                                 ImGuiCond_FirstUseEver);
         if (focus_requested_)
         {
             ImGui::SetNextWindowFocus();
             focus_requested_ = false;
         }
         bool visible = true;
+        ImGui::SetNextWindowBgAlpha(1.0f);
         const bool drawn = ImGui::Begin("Material Editor", &visible,
                                         session.dirty() || session.gesturing() ? ImGuiWindowFlags_UnsavedDocument
                                                                                : ImGuiWindowFlags_None);
@@ -1325,87 +1352,6 @@ namespace toy3d
         }
         if (drawn)
         {
-            if (previews_ && runtime_)
-            {
-                draw_preview();
-            }
-            ImGui::TextWrapped("%s%s", session.path().utf8().c_str(), session.dirty() ? " *" : "");
-            ImGui::TextDisabled("%s%s", session.root_data().shader_name.c_str(),
-                                session.writable() ? "" : " | Read only");
-            if (session.is_instance())
-            {
-                const auto& reference = session.instance_data()->parent;
-                const auto* parent = workspace_->catalog().index.find(reference.asset_id);
-                ImGui::BeginDisabled(!session.writable() || session.gesturing() || modal_pending() ||
-                                     (shaders_ && shaders_->busy()));
-                if (ImGui::BeginCombo("Parent", parent ? parent->path.utf8().c_str() : "Missing Parent"))
-                {
-                    for (const auto& entry : workspace_->catalog().entries)
-                    {
-                        if (!is_material_asset_type(entry.file.root_type) || entry.file.asset_id == session.id())
-                        {
-                            continue;
-                        }
-                        if (ImGui::Selectable(entry.path.utf8().c_str(), entry.file.asset_id == reference.asset_id))
-                        {
-                            AssetRef next;
-                            next.asset_id = entry.file.asset_id;
-                            next.expected_type = entry.file.root_type;
-                            report(session.set_parent(next));
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-                ImGui::EndDisabled();
-                if (ImGui::Button("Open Parent"))
-                {
-                    request_open(session.instance_data()->parent.asset_id);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Locate Parent"))
-                {
-                    locate_parent_ = session.instance_data()->parent.asset_id;
-                }
-                if (ImGui::CollapsingHeader("Parent Chain"))
-                {
-                    for (auto layer = session.parent_layers().rbegin(); layer != session.parent_layers().rend();
-                         ++layer)
-                    {
-                        const auto* location = workspace_->catalog().index.find(layer->reference.asset_id);
-                        ImGui::TextUnformatted(location ? location->path.utf8().c_str()
-                                                        : layer->reference.asset_id.hex().c_str());
-                    }
-                }
-            }
-            if (shaders_)
-            {
-                if (ImGui::Button("Open Source"))
-                {
-                    shaders_->open_source(session.root_data().shader_name);
-                }
-                ImGui::SameLine();
-                ImGui::BeginDisabled(shaders_->busy() || session.gesturing() || modal_pending());
-                if (ImGui::Button("Recompile"))
-                {
-                    shaders_->recompile(session.root_data().shader_name, session.id(), session_revision_);
-                }
-                ImGui::EndDisabled();
-                ImGui::TextWrapped("%s", shaders_->status().c_str());
-                if (!shaders_->error().empty())
-                {
-                    ImGui::TextWrapped("%s", shaders_->error().c_str());
-                }
-                if (shaders_->has_error_location() && ImGui::Button("Open Error in VS Code"))
-                {
-                    shaders_->open_error();
-                }
-                if (!shaders_->output().empty() && ImGui::CollapsingHeader("Compiler Output"))
-                {
-                    ImGui::TextUnformatted(shaders_->output().c_str());
-                }
-            }
-            draw_static_options();
-            ImGui::TextDisabled("Two sided: %s", session.root_data().two_sided ? "Yes" : "No");
             ImGui::BeginDisabled(!session.writable() || modal_pending());
             if (ImGui::Button("Save"))
             {
@@ -1426,25 +1372,150 @@ namespace toy3d
             }
             ImGui::EndDisabled();
             ImGui::EndDisabled();
-            if (!metadata_warning_.empty())
-            {
-                ImGui::TextWrapped("Properties unavailable; using schema controls: %s", metadata_warning_.c_str());
-            }
-            if (!error_.empty())
-            {
-                ImGui::TextWrapped("%s", error_.c_str());
-                if (!session.dirty() && ImGui::Button("Retry Publish"))
-                {
-                    report(session.publish_saved());
-                }
-            }
             ImGui::Separator();
             if (focused_ && ImGui::IsKeyPressed(ImGuiKey_Escape) && session.gesturing())
             {
                 report(session.cancel_gesture());
                 ImGui::ClearActiveID();
             }
-            draw_parameters();
+            if (ImGui::BeginTable("MaterialWorkspace", 2, ImGuiTableFlags_Resizable, ImGui::GetContentRegionAvail()))
+            {
+                ImGui::TableSetupColumn("Viewport", ImGuiTableColumnFlags_WidthStretch, 0.55f);
+                ImGui::TableSetupColumn("Properties", ImGuiTableColumnFlags_WidthStretch, 0.45f);
+                ImGui::TableNextColumn();
+                ImGui::BeginChild("Viewport", ImVec2(0, 0), true,
+                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                if (previews_ && runtime_)
+                {
+                    draw_preview();
+                }
+                else
+                {
+                    ImGui::TextDisabled("Preview unavailable");
+                }
+                ImGui::EndChild();
+                ImGui::TableNextColumn();
+                ImGui::BeginChild("Properties", ImVec2(0, 0));
+                if (ImGui::BeginTabBar("MaterialProperties"))
+                {
+                    if (ImGui::BeginTabItem("Details"))
+                    {
+                        ImGui::BeginChild("DetailsScroll", ImVec2(0, 0));
+                        ImGui::TextWrapped("%s%s", session.path().utf8().c_str(), session.dirty() ? " *" : "");
+                        ImGui::TextDisabled("%s%s", session.root_data().shader_name.c_str(),
+                                            session.writable() ? "" : " | Read only");
+                        if (session.is_instance())
+                        {
+                            const auto& reference = session.instance_data()->parent;
+                            ImGui::BeginDisabled(!session.writable() || session.gesturing() || modal_pending() ||
+                                                 (shaders_ && shaders_->busy()));
+                            AssetResourceSelection selected;
+                            std::string picker_error;
+                            if (resource_picker_ && resource_picker_->draw(
+                                                        "Parent", *workspace_, {reference.asset_id, {}},
+                                                        {"toy3d.MaterialAssetData", "toy3d.MaterialInstanceAssetData"},
+                                                        selected, picker_error,
+                                                        [&](const AssetCatalogEntry& entry)
+                                                        {
+                                                            return !(entry.file.asset_id == session.id());
+                                                        },
+                                                        false, false))
+                            {
+                                const auto* parent = workspace_->catalog().index.find(selected.asset);
+                                if (parent)
+                                {
+                                    report(session.set_parent(
+                                        {selected.asset, {}, parent->index.root_type, AssetRefStrength::Strong}));
+                                }
+                            }
+                            if (!picker_error.empty())
+                            {
+                                error_ = picker_error;
+                            }
+                            ImGui::EndDisabled();
+                            if (ImGui::Button("Open Parent"))
+                            {
+                                request_open(session.instance_data()->parent.asset_id);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("Locate Parent"))
+                            {
+                                locate_parent_ = session.instance_data()->parent.asset_id;
+                            }
+                            if (ImGui::CollapsingHeader("Parent Chain"))
+                            {
+                                for (auto layer = session.parent_layers().rbegin();
+                                     layer != session.parent_layers().rend(); ++layer)
+                                {
+                                    const auto* location = workspace_->catalog().index.find(layer->reference.asset_id);
+                                    ImGui::TextUnformatted(location ? location->path.utf8().c_str()
+                                                                    : layer->reference.asset_id.hex().c_str());
+                                }
+                            }
+                        }
+                        if (shaders_)
+                        {
+                            if (ImGui::Button("Open Source"))
+                            {
+                                shaders_->open_source(session.root_data().shader_name);
+                            }
+                            ImGui::SameLine();
+                            ImGui::BeginDisabled(shaders_->busy() || session.gesturing() || modal_pending());
+                            if (ImGui::Button("Recompile"))
+                            {
+                                shaders_->recompile(session.root_data().shader_name, session.id(), session_revision_);
+                            }
+                            ImGui::EndDisabled();
+                            ImGui::TextWrapped("%s", shaders_->status().c_str());
+                            if (!shaders_->error().empty())
+                            {
+                                ImGui::TextWrapped("%s", shaders_->error().c_str());
+                            }
+                            if (shaders_->has_error_location() && ImGui::Button("Open Error in VS Code"))
+                            {
+                                shaders_->open_error();
+                            }
+                            if (!shaders_->output().empty() && ImGui::CollapsingHeader("Compiler Output"))
+                            {
+                                ImGui::TextUnformatted(shaders_->output().c_str());
+                            }
+                        }
+                        draw_static_options();
+                        ImGui::TextDisabled("Two sided: %s", session.root_data().two_sided ? "Yes" : "No");
+                        if (!metadata_warning_.empty())
+                        {
+                            ImGui::TextWrapped("Properties unavailable; using schema controls: %s",
+                                               metadata_warning_.c_str());
+                        }
+                        if (!error_.empty())
+                        {
+                            ImGui::TextWrapped("%s", error_.c_str());
+                            if (!session.dirty() && ImGui::Button("Retry Publish"))
+                            {
+                                report(session.publish_saved());
+                            }
+                        }
+                        ImGui::Separator();
+                        draw_parameters();
+                        ImGui::EndChild();
+                        ImGui::EndTabItem();
+                    }
+                    if (ImGui::BeginTabItem("Preview Scene"))
+                    {
+                        ImGui::BeginChild("PreviewSettingsScroll", ImVec2(0, 0));
+                        draw_preview_scene_settings(*workspace_, preview_settings_.scene);
+                        if (ImGui::Button("Reset Preview"))
+                        {
+                            preview_settings_ = MaterialPreviewSettings{};
+                        }
+                        ImGui::EndChild();
+                        ImGui::EndTabItem();
+                    }
+                    ImGui::EndTabBar();
+                }
+                ImGui::EndChild();
+                ImGui::EndTable();
+            }
         }
         else if (session.gesturing())
         {

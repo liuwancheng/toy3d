@@ -4,6 +4,8 @@
 #include <cstring>
 
 #include "imgui.h"
+#include "assets/thumbnails/thumbnail_widget.h"
+#include "panels/property_widgets.h"
 #include "scene/placement/asset_placement.h"
 #include "scene/material_assignments.h"
 #include "workspace/editor_workspace.h"
@@ -18,28 +20,6 @@ namespace toy3d
             auto name = path.substr(slash == std::string::npos ? 0 : slash + 1);
             const auto extension = name.find_last_of('.');
             return extension == std::string::npos ? name : name.substr(0, extension);
-        }
-        void draw_thumbnail(const AssetThumbnailView& thumbnail, float size)
-        {
-            const auto position = ImGui::GetCursorScreenPos();
-            if (thumbnail.texture_id.valid())
-            {
-                ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(thumbnail.texture_id.value())),
-                             ImVec2(size, size));
-            }
-            else
-            {
-                ImGui::Dummy(ImVec2(size, size));
-                auto* draw = ImGui::GetWindowDrawList();
-                draw->AddRectFilled(position, ImVec2(position.x + size, position.y + size), IM_COL32(45, 48, 52, 255),
-                                    4);
-                draw->AddText(ImVec2(position.x + 5, position.y + size * 0.4f), IM_COL32(170, 175, 180, 255),
-                              thumbnail.busy ? "..." : "--");
-            }
-            if (!thumbnail.error.empty() && ImGui::IsItemHovered())
-            {
-                ImGui::SetTooltip("%s", thumbnail.error.c_str());
-            }
         }
     } // namespace
 
@@ -62,7 +42,8 @@ namespace toy3d
     bool AssetResourcePicker::draw(const char* label, const EditorWorkspace& workspace,
                                    const AssetResourceSelection& current, const std::vector<std::string>& types,
                                    AssetResourceSelection& selected, std::string& error,
-                                   const std::function<bool(const AssetCatalogEntry&)>& filter, bool allow_builtins)
+                                   const std::function<bool(const AssetCatalogEntry&)>& filter, bool allow_builtins,
+                                   bool clear_allowed)
     {
         bool changed = false;
         const auto accepted = [&](const AssetCatalogEntry& entry)
@@ -91,75 +72,129 @@ namespace toy3d
             return thumbnails_.request_builtin_mesh(name, geometry);
         };
         ImGui::PushID(label);
-        ImGui::TextUnformatted(label);
+        bool open_picker = false;
         const auto* asset = find(current.asset);
-        draw_thumbnail(asset                      ? thumbnails_.request(*asset)
-                       : !current.builtin.empty() ? builtin_thumbnail(current.builtin)
-                                                  : AssetThumbnailView{},
-                       48);
-        ImGui::SameLine();
-        const std::string name = asset                      ? resource_name(asset->path.utf8())
-                                 : !current.builtin.empty() ? current.builtin
-                                 : current.asset.valid()    ? "Missing resource"
-                                                            : "None";
-        if (ImGui::Button((name + "###Resource").c_str(),
-                          ImVec2(std::max(60.0f, ImGui::GetContentRegionAvail().x - 105), 48)))
+        if (begin_property_row(label))
         {
-            ImGui::OpenPopup("Resource picker");
-        }
-        if (asset && ImGui::IsItemHovered())
-        {
-            ImGui::SetTooltip("%s", asset->path.utf8().c_str());
-        }
-        if (ImGui::BeginDragDropTarget())
-        {
-            const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(ASSET_DRAG_PAYLOAD);
-            if (!payload)
+            const float frame = ImGui::GetFrameHeight();
+            const float size = frame * 2.0f + ImGui::GetStyle().ItemSpacing.y;
+            const float width = ImGui::GetContentRegionAvail().x;
+            const std::string type = asset                      ? asset->file.root_type
+                                     : !current.builtin.empty() ? "toy3d.StaticMeshAssetData"
+                                     : types.empty()            ? ""
+                                                                : types.front();
+            ImGui::BeginGroup();
+            if (asset_thumbnail_widget(asset                      ? thumbnails_.request(*asset)
+                                       : !current.builtin.empty() ? builtin_thumbnail(current.builtin)
+                                                                  : AssetThumbnailView{},
+                                       type, size, true) &&
+                !ImGui::GetDragDropPayload())
             {
-                payload = ImGui::AcceptDragDropPayload(MATERIAL_ASSET_DRAG_PAYLOAD);
+                open_picker = true;
             }
-            if (payload && payload->IsDelivery())
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            const std::string name = asset                      ? resource_name(asset->path.utf8())
+                                     : !current.builtin.empty() ? current.builtin
+                                     : current.asset.valid()    ? "Missing resource"
+                                                                : "None";
+            const float name_width = std::max(1.0f, width - size - ImGui::GetStyle().ItemSpacing.x);
+            ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(18, 18, 19, 255));
+            ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+            const auto name_position = ImGui::GetCursorScreenPos();
+            if (ImGui::Button((name + "###Resource").c_str(), ImVec2(name_width, frame)) &&
+                !ImGui::GetDragDropPayload())
             {
-                AssetId id;
-                if (payload->DataSize == sizeof(id))
+                open_picker = true;
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor();
+            if (asset && ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("%s", asset->path.utf8().c_str());
+            }
+            auto* draw = ImGui::GetWindowDrawList();
+            const float arrow_x = name_position.x + name_width - frame * 0.55f;
+            draw->AddRectFilled(ImVec2(name_position.x + std::max(0.0f, name_width - frame), name_position.y),
+                                ImVec2(name_position.x + name_width, name_position.y + frame),
+                                IM_COL32(18, 18, 19, 255), 2.0f);
+            draw->AddTriangleFilled(ImVec2(arrow_x - 3, name_position.y + frame * 0.4f),
+                                    ImVec2(arrow_x + 3, name_position.y + frame * 0.4f),
+                                    ImVec2(arrow_x, name_position.y + frame * 0.65f),
+                                    ImGui::GetColorU32(ImGuiCol_Text));
+            // The action row flows normally below the resource name, inside the card group.
+            if (selected_asset_)
+            {
+                const auto* entry = find(selected_asset_());
+                ImGui::BeginDisabled(!entry || !accepted(*entry));
+                if (property_action_button("Use", PropertyAction::Use,
+                                           "Use compatible asset selected in the Content Browser"))
                 {
-                    std::memcpy(&id, payload->Data, sizeof(id));
-                }
-                const auto* entry = find(id);
-                if (entry && accepted(*entry))
-                {
-                    selected = {id, {}};
+                    selected = {entry->file.asset_id, {}};
                     changed = true;
                 }
-                else
-                {
-                    error = "The dragged resource is missing or incompatible with this field.";
-                }
+                ImGui::EndDisabled();
+                ImGui::SameLine(0, 2.0f);
             }
-            ImGui::EndDragDropTarget();
-        }
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!current.asset.valid() && current.builtin.empty());
-        if (ImGui::Button("Clear"))
-        {
-            selected = {};
-            changed = true;
-        }
-        ImGui::EndDisabled();
-        if (browse_ && current.asset.valid())
-        {
-            ImGui::SameLine();
-            if (ImGui::Button("Find"))
+            ImGui::BeginDisabled(!browse_ || !current.asset.valid());
+            if (property_action_button("Find", PropertyAction::Find, "Find resource in the Content Browser"))
             {
                 browse_(current.asset);
             }
+            ImGui::EndDisabled();
+            ImGui::SameLine(0, 2.0f);
+            ImGui::BeginDisabled(!clear_allowed || (!current.asset.valid() && current.builtin.empty()));
+            if (property_action_button("Clear", PropertyAction::Clear, "Clear reference / restore inherited default"))
+            {
+                selected = {};
+                changed = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::EndGroup();
+            ImGui::EndGroup();
+            if (ImGui::BeginDragDropTarget())
+            {
+                const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(ASSET_DRAG_PAYLOAD);
+                if (!payload)
+                {
+                    payload = ImGui::AcceptDragDropPayload(MATERIAL_ASSET_DRAG_PAYLOAD);
+                }
+                if (!payload)
+                {
+                    payload = ImGui::AcceptDragDropPayload("TOY3D_TEXTURE_ASSET");
+                }
+                if (payload && payload->IsDelivery())
+                {
+                    AssetId id;
+                    if (payload->DataSize == sizeof(id))
+                    {
+                        std::memcpy(&id, payload->Data, sizeof(id));
+                    }
+                    const auto* entry = find(id);
+                    if (entry && accepted(*entry))
+                    {
+                        selected = {id, {}};
+                        changed = true;
+                    }
+                    else
+                    {
+                        error = "The dragged resource is missing or incompatible with this field.";
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            end_property_row();
+        }
+        if (open_picker)
+        {
+            ImGui::OpenPopup("Resource picker");
         }
         ImGui::SetNextWindowSize(ImVec2(410, 460), ImGuiCond_Appearing);
         if (ImGui::BeginPopup("Resource picker"))
         {
             auto& search = searches_[ImGui::GetID("Search")];
             ImGui::InputText("Search", search.data(), search.size());
-            if (ImGui::Selectable("None", !current.asset.valid() && current.builtin.empty()))
+            if (clear_allowed && ImGui::Selectable("None", !current.asset.valid() && current.builtin.empty()))
             {
                 selected = {};
                 changed = true;
@@ -173,7 +208,7 @@ namespace toy3d
                     {
                         continue;
                     }
-                    draw_thumbnail(builtin_thumbnail(builtin), 40);
+                    asset_thumbnail_widget(builtin_thumbnail(builtin), "toy3d.StaticMeshAssetData", 40);
                     ImGui::SameLine();
                     if (ImGui::Selectable(builtin, current.builtin == builtin, 0, ImVec2(0, 40)))
                     {
@@ -201,7 +236,7 @@ namespace toy3d
                 {
                     const auto& entry = *matches[static_cast<std::size_t>(index)];
                     ImGui::PushID(entry.file.asset_id.hex().c_str());
-                    draw_thumbnail(thumbnails_.request(entry), 40);
+                    asset_thumbnail_widget(thumbnails_.request(entry), entry.file.root_type, 40);
                     ImGui::SameLine();
                     if (ImGui::Selectable(resource_name(entry.path.utf8()).c_str(),
                                           current.asset == entry.file.asset_id, 0, ImVec2(0, 40)))

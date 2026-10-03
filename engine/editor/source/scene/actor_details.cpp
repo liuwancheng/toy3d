@@ -1,6 +1,7 @@
 #include "scene/actor_details.h"
 
 #include "imgui.h"
+#include "panels/property_widgets.h"
 #include "imgui_internal.h"
 #include "reflection/type_registry.h"
 #include "scene/editor_command_history.h"
@@ -44,7 +45,7 @@ namespace toy3d
                 decoded = reader.read_bool(value).succeeded();
                 if (decoded)
                 {
-                    changed = ImGui::Checkbox(property.name.c_str(), &value);
+                    changed = property_bool(property.name.c_str(), &value);
                     writer.write_bool(value);
                 }
             }
@@ -54,7 +55,7 @@ namespace toy3d
                 decoded = reader.read_float32(value).succeeded();
                 if (decoded)
                 {
-                    changed = ImGui::DragFloat(property.name.c_str(), &value, 0.5f);
+                    changed = property_float(property.name.c_str(), &value, 0.5f);
                     writer.write_float32(value);
                 }
             }
@@ -64,7 +65,7 @@ namespace toy3d
                 decoded = decode_value(reader, value).succeeded();
                 if (decoded)
                 {
-                    changed = ImGui::DragFloat3(property.name.c_str(), value.data(), 0.01f);
+                    changed = property_float_n(property.name.c_str(), value.data(), 3, 0.01f);
                     encode_value(writer, value);
                 }
             }

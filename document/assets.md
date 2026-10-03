@@ -75,7 +75,8 @@ AssetPairStore 是配对一致性入口；调用方不能自己分别写 YAML/me
 StaticMesh：FBX/OBJ/glTF/GLB → Assimp → MeshDescription → CPU MeshBuilder → YAML/meta → runtime StaticMesh。
 
 - bake 源层级变换、保持 origin、合并实例；源单位显式转厘米，不能无条件乘 100。材质仅保留 slot 名，不自动导入/猜测纹理。
-- 当前一个 LOD、UV0/color/Tangent0；构建使用 Tools 私有的固定 MikkTSpace revision `3e895b49d05ea07e4c2133156cfa94369e19e409`，CMake 核对两份 upstream 文件 SHA256，离线源通过 TOY3D_MIKKTSPACE_SOURCE_DIR 指定。Runtime 不依赖 MikkTSpace。corner 结果按原顶点与完整 tangent/sign 拆分，返回 source_vertices 供骨骼 builder 同步复制全部 influences；不平均跨接缝切线。缺有效 UV 的资产标记 valid_tangent_frame=false、保留初始化的安全切线，可用于 NormalMap=Off；旧 payload 2 拒绝，需要离线重建。skeletal payload 3/metadata 2 复用同一几何能力。不承诺 morph，animation/camera/light 可按已有诊断忽略。
+- 静态导入在 bake 后按现有法线归一化容差跳过有限的退化三角形，并按源网格报告跳过数量；所有网格均无有效三角形时明确失败。非法索引、非有限值、溢出和不可逆变换仍拒绝。MeshDescription/产物验证保持严格，不把退化面写入资产。
+- 当前一个 LOD、UV0/color/Tangent0；构建使用 Tools 私有的固定 MikkTSpace revision `3e895b49d05ea07e4c2133156cfa94369e19e409`，两份 upstream 原文件保存在 `engine/tools/asset_pipeline/thirdparty/mikktspace/`，保留版权声明与原始字节，CMake 核对 SHA256，直接使用本地源码，不联网下载。Runtime 不依赖 MikkTSpace。corner 结果按原顶点与完整 tangent/sign 拆分，返回 source_vertices 供骨骼 builder 同步复制全部 influences；不平均跨接缝切线。缺有效 UV 的资产标记 valid_tangent_frame=false、保留初始化的安全切线，可用于 NormalMap=Off；旧 payload 2 拒绝，需要离线重建。skeletal payload 3/metadata 2 复用同一几何能力。不承诺 morph，animation/camera/light 可按已有诊断忽略。
 - MeshDescription 是 CPU 建模数据，StaticMesh render_geometry 是可加载渲染数据，runtime 不依赖 Assimp 或重新建模。
 - 重导入先完整候选验证再替换，bounds/index/数量/有限值/材质槽都检查，失败保留旧资产。
 
@@ -89,7 +90,7 @@ Editor 导入可选择用途；Project 纹理预览的 Reimport 重新选择源�
 
 ## 缩略图与验证
 
-缩略图缓存位于 /Saved/AssetThumbnails，以 AssetId、内容摘要、generator version 为身份；StaticMesh 使用独立 preview World、渲染和异步读回生成 PNG。Material/MaterialInstance 使用 S_MaterialPreview 球体及其已保存材质配置，与 live preview 共用独立 studio World 串行队列；generator version 为 3，失败不覆盖已有图像。失败/缓存丢失不回滚已保存资产，结果还须核对请求代次和当前资源。
+缩略图是以 AssetId、内容摘要和 thumbnail_generator_version 为身份的可重建外部缓存，写 /Saved/AssetThumbnails，不修改资产描述/meta；失败或丢失不回滚已保存资产。各类型生成、线程、图片接管与缓存策略统一见 [Editor](editor.md#资产缩略图)。
 
 代表性测试：core/tests/reflection_tests.cpp、serialization_tests.cpp；tools/reflection_codegen/tests/codegen_tests.cpp、resource_kind_tests.cpp；tools/asset_pipeline/tests/static_mesh_import_tests.cpp、asset_pipeline/tests/texture_import_tests.cpp；core/tests/material_asset_tests.cpp、tests/asset_thumbnail_tests.cpp；engine/editor/tests/workspace_tests.cpp、thumbnail_integration_tests.cpp。先从 CMake 确认 target/条件，构建受影响链，再测 round-trip、损坏/上限、发布中断恢复、ID/引用、旧版本拒绝和候选失败保留旧结果。
 

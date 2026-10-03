@@ -18,7 +18,7 @@
 #include "scene/editor_command_history.h"
 #include "shader/shader_workflow.h"
 #include "assets/material/material_editor_panel.h"
-#include "assets/thumbnails/thumbnail_preview_scene.h"
+#include "assets/preview/asset_preview_scene.h"
 #include "scene/placement/actor_factory.h"
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/render_command.h"
@@ -1112,7 +1112,7 @@ namespace
         std::unique_ptr<ShaderWorkflow> restored_;
         NativePlatformFile platform_;
         ActorFactory factory_;
-        ThumbnailPreviewScene preview_scene_;
+        AssetPreviewScene preview_scene_;
         std::unique_ptr<MaterialLibrary> library_;
         MaterialAssignments materials_;
         MaterialEditorPanel panel_;

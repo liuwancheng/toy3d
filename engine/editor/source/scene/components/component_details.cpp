@@ -1,6 +1,7 @@
 #include "scene/components/component_details.h"
 
 #include "imgui.h"
+#include "panels/property_widgets.h"
 #include "imgui_internal.h"
 #include "scene/editor_command_history.h"
 #include "gamescene/actor/actor.h"
@@ -53,14 +54,14 @@ namespace toy3d
         }
         ImGui::BeginDisabled(ImGui::GetDragDropPayload() != nullptr);
         bool changed =
-            ImGui::DragFloat3("Location (cm)", data.transform.translation.data(), meters_to_centimeters(0.05f));
+            property_float_n("Location (cm)", data.transform.translation.data(), 3, meters_to_centimeters(0.05f));
         finish_component_edit(context, data, changed);
         if (!capture_component_edit(context, data))
         {
             ImGui::EndDisabled();
             return;
         }
-        changed = ImGui::DragFloat3("Scale", data.transform.scale.data(), 0.01f);
+        changed = property_float_n("Scale", data.transform.scale.data(), 3, 0.01f);
         finish_component_edit(context, data, changed);
         ImGui::TextDisabled("Rotation: use the viewport gizmo");
         ImGui::EndDisabled();

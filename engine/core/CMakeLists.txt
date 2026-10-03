@@ -1,6 +1,7 @@
 find_package(Threads REQUIRED)
 
-add_library(Toy3dCore STATIC)
+add_library(Toy3dCore SHARED)
+toy3d_shared_library(Toy3dCore)
 target_sources(Toy3dCore PRIVATE
     "file_system/directory_file_store.cpp"
     "file_system/directory_file_store.h"
@@ -60,6 +61,7 @@ target_sources(Toy3dCore PRIVATE
     "platform/platform_defines.h"
     "platform/platform_services.cpp"
     "platform/platform_services.h"
+    "platform/dynamic_library.h" "platform/dynamic_library.cpp"
     "reflection/reflection_macros.h"
     "reflection/type_registry.cpp"
     "reflection/type_registry.h"
@@ -114,12 +116,14 @@ if(BUILD_TESTING)
     set_tests_properties(Toy3dCore.Logging PROPERTIES TIMEOUT 20)
 endif()
 target_compile_options(Toy3dCore PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+target_link_libraries(Toy3dCore PRIVATE ${CMAKE_DL_LIBS})
 if(WIN32)
     target_compile_definitions(Toy3dCore PUBLIC NOMINMAX)
     target_link_libraries(Toy3dCore PRIVATE shell32 ole32)
 endif()
 
-add_library(Toy3dShaderFormat STATIC)
+add_library(Toy3dShaderFormat SHARED)
+toy3d_shared_library(Toy3dShaderFormat)
 target_sources(Toy3dShaderFormat PRIVATE
     "shader/builtin_shader_parameters.h"
     "shader/shader_binding_identity.h"
@@ -156,7 +160,8 @@ if(BUILD_TESTING)
     add_test(NAME Toy3dShaderFormat.Permutation COMMAND Toy3dShaderPermutationTests)
 endif()
 
-add_library(Toy3dAssets STATIC)
+add_library(Toy3dAssets SHARED)
+toy3d_shared_library(Toy3dAssets)
 target_sources(Toy3dAssets PRIVATE
     "asset/asset_catalog.cpp"
     "asset/asset_catalog.h"

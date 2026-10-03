@@ -40,7 +40,7 @@ function Test-FirstPartyCppPath {
     param([string]$Path)
 
     $normalizedPath = $Path.Replace("\", "/")
-    if ($normalizedPath -match "^(engine/thirdparty|engine/runtime/generated|build|bin)/") {
+    if ($normalizedPath -match "^(engine/thirdparty|engine/tools/asset_pipeline/thirdparty|engine/runtime/generated|build|bin)/") {
         return $false
     }
 

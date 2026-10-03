@@ -70,6 +70,7 @@ namespace toy3d
             {
                 warnings.push_back("Only UV0 is retained in this version.");
             }
+            std::size_t skipped_triangles = 0;
             for (unsigned face_index = 0; face_index < source.mNumFaces; ++face_index)
             {
                 const aiFace& face = source.mFaces[face_index];
@@ -89,11 +90,23 @@ namespace toy3d
                         return false;
                     }
                 }
+                const Vector3 area_normal =
+                    cross(mesh.positions[first_vertex + indices[1]] - mesh.positions[first_vertex + indices[0]],
+                          mesh.positions[first_vertex + indices[2]] - mesh.positions[first_vertex + indices[0]]);
+                const float area_length_squared = length_squared(area_normal);
+                // Only finite degeneracy is recoverable. Overflow and invalid indices
+                // still reject the candidate rather than silently dropping corrupt data.
+                if (!is_finite(area_normal) || !is_finite(area_length_squared))
+                {
+                    return false;
+                }
+                if (area_length_squared <= k_normalization_tolerance_squared)
+                {
+                    ++skipped_triangles;
+                    continue;
+                }
                 Vector3 face_normal;
-                if (!try_normalize(
-                        cross(mesh.positions[first_vertex + indices[1]] - mesh.positions[first_vertex + indices[0]],
-                              mesh.positions[first_vertex + indices[2]] - mesh.positions[first_vertex + indices[0]]),
-                        face_normal))
+                if (!try_normalize(area_normal, face_normal))
                 {
                     return false;
                 }
@@ -140,6 +153,12 @@ namespace toy3d
                     mesh.corners.push_back(corner);
                 }
                 mesh.triangles.push_back(triangle);
+            }
+            if (skipped_triangles != 0)
+            {
+                const std::string name = source.mName.length != 0 ? source.mName.C_Str() : "<unnamed>";
+                warnings.push_back("Mesh '" + name + "': skipped " + std::to_string(skipped_triangles) +
+                                   " degenerate triangles.");
             }
             return true;
         }
@@ -246,6 +265,10 @@ namespace toy3d
         {
             return Result(
                 invalid("mesh conversion rejected skin/morph, invalid geometry or transforms, or exceeded limits"));
+        }
+        if (result.mesh.triangles.empty())
+        {
+            return Result(invalid("no valid triangles remain after removing degenerate triangles"));
         }
         if (scene->mNumAnimations)
         {

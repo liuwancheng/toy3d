@@ -2,7 +2,12 @@
 
 namespace toy3d
 {
-
+    InputSystem& InputSystem::get_instance()
+    {
+        // One Runtime-owned instance is shared by the Editor, tests and project DLLs.
+        static InputSystem instance;
+        return instance;
+    }
     bool InputSystem::init()
     {
         keyboard_device = std::make_shared<KeyboardDevice>();

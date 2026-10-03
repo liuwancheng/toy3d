@@ -22,7 +22,7 @@ NamedThread 正确 attach，区分 GT/RT/worker/Unknown；SingleThread 逻辑 RT
 
 - TrackSubsequents 产生可等待 completion；FireAndForget 仅适合不需要结果且 ownership 完整转移。
 - GraphEvent 是 CPU 完成点，不代表 GPU/WSI/外部 I/O。
-- 同线程等待使用 scheduler 已知线程处理入口，不能消费者等自己后面的任务；Unknown 等待不授予 NamedThread 权限。
+- 同线程等待使用 scheduler 已知线程处理入口，不能消费者等自己后面的任务；Unknown 等待不授予 NamedThread 权限。多线程下 GT 等待/Drain 会帮助执行 AnyWorker 就绪任务，所以 AnyWorker 不保证物理 worker 执行；普通后台任务不得假定该路由隔离 GT。
 - 不持业务锁等待任务；长期阻塞进程/I/O 用专用线程，不占 worker。
 - 按现有 TaskGraphStatus/Exception 处理失败，不虚构 enqueue bool/全局 pool API。
 

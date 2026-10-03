@@ -4,6 +4,8 @@
 #include <iostream>
 #include <vector>
 
+#include "asset/thumbnail/asset_thumbnail.h"
+
 int main()
 {
     using namespace toy3d;
@@ -38,6 +40,52 @@ int main()
         pixels != previous)
     {
         std::cerr << "Invalid row pitch changed the preview image.";
+        return EXIT_FAILURE;
+    }
+    texture.width = 256;
+    texture.height = 128;
+    texture.mips.clear();
+    texture.mips.push_back({1024, 131072, std::vector<std::uint8_t>(131072, 255)});
+    TextureAssetMip small;
+    small.row_pitch = 512;
+    small.slice_pitch = 32768;
+    small.pixels.resize(small.slice_pitch);
+    for (std::size_t i = 0; i < small.pixels.size(); i += 4)
+    {
+        small.pixels[i] = 10;
+        small.pixels[i + 1] = 20;
+        small.pixels[i + 2] = 30;
+        small.pixels[i + 3] = 255;
+    }
+    texture.mips.push_back(small);
+    if (!make_texture_thumbnail_pixels(texture, pixels, error) || !error.empty() ||
+        pixels.size() != static_cast<std::size_t>(thumbnail_default_size) * thumbnail_default_size * 4u)
+    {
+        std::cerr << "Thumbnail mip selection failed: " << error;
+        return EXIT_FAILURE;
+    }
+    const std::size_t center = (64u * thumbnail_default_size + 64u) * 4u;
+    if (pixels[center] != 30u || pixels[center + 1u] != 20u || pixels[center + 2u] != 10u ||
+        pixels[center + 3u] != 255u || pixels[0] != 180u)
+    {
+        std::cerr << "Thumbnail did not preserve mip color, opaque alpha or aspect padding.";
+        return EXIT_FAILURE;
+    }
+    for (std::size_t i = 3; i < texture.mips[1].pixels.size(); i += 4)
+    {
+        texture.mips[1].pixels[i] = 0;
+    }
+    if (!make_texture_thumbnail_pixels(texture, pixels, error) || pixels[center] != 180u ||
+        pixels[center + 1u] != 180u || pixels[center + 2u] != 180u || pixels[center + 3u] != 255u)
+    {
+        std::cerr << "Transparent thumbnail pixels did not use the checkerboard.";
+        return EXIT_FAILURE;
+    }
+    const auto thumbnail = pixels;
+    texture.mips[1].row_pitch = 1;
+    if (make_texture_thumbnail_pixels(texture, pixels, error) || pixels != thumbnail)
+    {
+        std::cerr << "Invalid thumbnail rows replaced the prior output.";
         return EXIT_FAILURE;
     }
     std::cout << "Texture preview channels, mip selection and invalid pitch passed.\n";

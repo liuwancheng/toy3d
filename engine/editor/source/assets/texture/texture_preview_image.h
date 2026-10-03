@@ -22,4 +22,7 @@ namespace toy3d
     bool make_texture_preview_pixels(const Texture2DAsset& asset, std::uint32_t mip, TexturePreviewChannel channel,
                                      std::uint32_t& width, std::uint32_t& height, std::vector<std::uint8_t>& bgra,
                                      std::string& error);
+    // Select a small authored mip and fit it into the fixed opaque thumbnail.
+    bool make_texture_thumbnail_pixels(const Texture2DAsset& asset, std::vector<std::uint8_t>& bgra,
+                                       std::string& error);
 } // namespace toy3d

@@ -18,14 +18,24 @@
 #include "logging/logger.h"
 #include "platform/platform_services.h"
 #include "workspace/editor_project.h"
+#include "application/game_module.h"
+#include "asset_pipeline/asset_cook.h"
 
-int toy3d::run_editor_host(void* hInstance, const EditorHostConfig& host)
+int toy3d::run_editor_host(void* hInstance)
 {
+    GameModuleLibrary module_owner;
     Engine g_engine;
     ActorTypeRegistry actor_types;
+    GameModuleRegistration module;
+    PhysicalPath game_executable;
     auto& arguments = CommandLineParser::get_instance();
     const PhysicalPath editor_directory(TOY3D_EDITOR_DEPLOY_ROOT);
-    auto project = std::make_unique<EditorProject>(editor_directory, host.module.name);
+#if WITH_WIN
+    game_executable = PhysicalPath(editor_directory.utf8() + "/Toy3dGame.exe");
+#else
+    game_executable = PhysicalPath(editor_directory.utf8() + "/Toy3dGame");
+#endif
+    auto project = std::make_unique<EditorProject>(editor_directory);
     std::string project_error;
     if (arguments.has_option("Project"))
     {
@@ -33,8 +43,32 @@ int toy3d::run_editor_host(void* hInstance, const EditorHostConfig& host)
         if (!opened.succeeded())
         {
             project_error = opened.message;
-            project = std::make_unique<EditorProject>(editor_directory, host.module.name);
+            std::cerr << "Open Project: " << opened.message << '\n';
+            return 1;
         }
+    }
+    if (project->active() && !project->description().modules.empty())
+    {
+        const auto& name = project->description().modules.front().name;
+#if WITH_WIN
+        const std::string suffix = ".dll";
+        const std::string game_suffix = ".exe";
+#elif WITH_MAC
+        const std::string suffix = ".dylib";
+        const std::string game_suffix;
+#else
+        const std::string suffix = ".so";
+        const std::string game_suffix;
+#endif
+        const auto library =
+            PhysicalPath(project->root().utf8() + "/binaries/" + TOY3D_MODULE_CONFIG + "/" + name + suffix);
+        if (!module_owner.load(library, name, project_error))
+        {
+            std::cerr << project_error << ". Build the project module and restart Editor.\n";
+            return 1;
+        }
+        module = module_owner.registration();
+        game_executable = PhysicalPath(editor_directory.utf8() + "/" + name + "Game" + game_suffix);
     }
     NativePlatformFile platform;
     PhysicalPath saved;
@@ -99,7 +133,7 @@ int toy3d::run_editor_host(void* hInstance, const EditorHostConfig& host)
                               [&](TypeRegistry& types)
                               {
                                   return !native_project ||
-                                         (host.module.register_types && host.module.register_types(types, actor_types));
+                                         (module.register_types && module.register_types(types, actor_types));
                               }) ||
         !actor_types.freeze(workspace.types()))
     {
@@ -107,9 +141,31 @@ int toy3d::run_editor_host(void* hInstance, const EditorHostConfig& host)
         g_engine.exit();
         return 1;
     }
-    g_engine.set_application(
-        std::make_unique<EditorApplication>(workspace, log_buffer, project.get(), saved.utf8(), &actor_types,
-                                            native_project ? host.game_executable : PhysicalPath{}));
+    if (arguments.has_option("CookProject"))
+    {
+        if (!project->active())
+        {
+            TOY_LOG_ERROR("CookProject requires an explicit project.");
+            return 1;
+        }
+        const auto cooked = cook_runtime_assets(workspace.types(), workspace.files(), workspace.catalog(),
+                                                PhysicalPath(arguments.get_option("CookProject")));
+        if (!cooked.succeeded())
+        {
+            TOY_LOG_ERROR("CookProject: {}", cooked.message);
+            return 1;
+        }
+        TOY_LOG_INFO("CookProject published {} validated runtime asset pairs.", workspace.catalog().entries.size());
+        return 0;
+    }
+    if (arguments.has_option("ValidateProject"))
+    {
+        TOY_LOG_INFO("Project module and {} asset pairs validated.", workspace.catalog().entries.size());
+        return 0;
+    }
+    g_engine.set_application(std::make_unique<EditorApplication>(workspace, log_buffer, project.get(), saved.utf8(),
+                                                                 &actor_types,
+                                                                 project->active() ? game_executable : PhysicalPath{}));
     g_engine.init(hInstance);
     const bool initialized = g_engine.initialized();
     if (initialized)

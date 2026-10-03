@@ -29,7 +29,7 @@
 | `engine/core/image/pixel_format.h` | RGBA8 UInt/UNorm 分别用于 section-local 索引/权重，与 Core/RHI/Vulkan 映射一致。 |
 | compiler `layout/binding_allocator.cpp`、Vulkan buffer view/binding/type mapping | Buffer<Float4> reflection 选择 ReadOnlyTypedBuffer；公共 typed view/limits 验证和 Vulkan uniform texel buffer usage/view/descriptor/保活已接入。 |
 | `engine/runtime/gamescene/world/world.cpp` | World 在 begin_play 后按 Actor → Component 两阶段调度，SkeletalMeshComponent 通过自己的组件 tick 求值动画。 |
-| `engine/runtime/renderscene/renderer.h`、Editor `assets/animation/animation_editor_panel.*` 与 `assets/thumbnails/thumbnail_preview_scene.*` | Renderer 独立持有 thumbnail 与 animation preview scene/targets，共用设备与提交。仅静态缩略图归一化预览副本；骨骼网格始终保留厘米数据并调整相机取景。 |
+| `engine/runtime/renderscene/renderer.h`、Editor `assets/animation/animation_editor_panel.*` 与 `assets/preview/asset_preview_scene.*` | Renderer 独立持有 thumbnail 与 animation preview scene/targets，共用设备与提交。仅静态缩略图归一化预览副本；骨骼网格始终保留厘米数据并调整相机取景。 |
 
 沿用 [Assets](assets.md) 的身份/配对事务、[Math](math.md) 的厘米/LH/column-vector、[Render Framework](render-framework.md) 的 FIFO 与 GPU 保活、[RHI](rhi.md) 的 binding/state/profile、[Editor](editor.md) 的候选接管和保存规则。
 
@@ -236,13 +236,13 @@ Toy3d 当前移动目标是 Vulkan profile，不是 OpenGL ES 后端；移动支
 
 ## Editor 资产预览
 
-Content Browser 双击 Skeleton、SkeletalMesh 或 AnimationSequence，在 `Animation Editor` 打开只读预览。Skeleton、Skeletal Mesh、Animation 标签共享一个 session；Skeleton 无需 Mesh。动作默认选择同一 Skeleton 身份下的首个网格，也可选择 Skeleton only；候选按 identity/reference hash 严格校验，不按名称匹配。当前网格使用引擎默认预览材质，材质槽名称只读，不加载源 FBX 材质。
+Content Browser 双击 Skeleton、SkeletalMesh 或 AnimationSequence，在 `Animation Editor` 打开只读预览。三类资产共享一个 session；Skeleton 无需 Mesh。窗口采用顶部单行靠左工具栏、左侧 Skeleton Tree / Asset Details、中间 Viewport、右侧 Details / Preview Scene Settings；左右宽度可调，各区域独立滚动。兼容动画列表在右下方，播放、逐样本、循环、倍速和时间轴在视口底部。动作默认选择同一 Skeleton 身份下的首个网格，也可选择 Skeleton only；候选按 identity/reference hash 严格校验，不按名称匹配。当前网格使用引擎默认预览材质，材质槽名称只读，不加载源 FBX 材质。
 
 - Skeleton：骨骼树、父子线/关节点、名称、reference/current local TRS 与 component-space 位移只读；选中骨骼高亮，可选兼容 mesh；不编辑骨骼层级或权重。
 - SkeletalMesh：reference pose 默认；可选择兼容动画，显示 mesh/mesh+bone/bone-only，材质槽、section bone 数与 influence 信息只读，复用 orbit/pan/zoom/Frame All。
 - AnimationSequence：选择兼容 preview mesh 或只看骨架；播放/暂停、循环、倍速、时间轴 seek、逐样本步进、root lock，显示 duration/sample rate。纯预览操作不污染资产/Scene dirty 或 Undo。
 
-预览复用 Forward/Tonemap/UI 和正常 GPUSkin 路径，使用固定 studio 环境光与方向光，不开启预览阴影。骨骼线通过 `Toy3d/Debug/Lines` Global Shader 和公共 RHI LineList 绘制，深度遮挡仅选择 pipeline 状态，共用一个 program。默认 overlay 可辨识。骨架-only 和将网格平移出画面的空视图允许完成；缩略图仍要求存在完整网格绘制。3D bone picking 尚未接入；场景组件拾取仍用现有 HitProxy。
+预览复用 Forward/Tonemap/UI 和正常 GPUSkin 路径，使用与材质窗口一致的 courtyard HDR、方向光和灰色地面，支持环境/背景/地面/阴影/曝光设置；公共实现与窗口隔离见 [Editor 通用资产预览场景](editor.md#通用资产预览场景)。骨骼线通过 `Toy3d/Debug/Lines` Global Shader 和公共 RHI LineList 绘制，深度遮挡仅选择 pipeline 状态，共用一个 program。默认 overlay 可辨识。骨架-only 和将网格平移出画面的空视图允许完成；缩略图仍要求存在完整网格绘制。3D bone picking 尚未接入；场景组件拾取仍用现有 HitProxy。
 
 Renderer 拥有一个 animation preview scene/targets，与现有 thumbnail scene 同帧调度，共用 device/context/submit；Editor 只持非 owning SceneInterface 和受控 UI texture 身份。CPU worker 使用 catalog 副本和 owned 候选，GT 接管前复核 Mesh、Skeleton、Sequence 描述和 meta 摘要。失败保留旧显示；关闭撤回 generation、注销组件并退役图像/targets，退出 join worker 后清理场景。新帧完成前不修改渲染场景中的姿态，防止 retry 将旧骨骼线和新蒙皮混合。
 

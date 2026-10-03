@@ -13,9 +13,10 @@ namespace toy3d
     {
         if (ImGui::BeginMainMenuBar())
         {
-            const bool project_commands = !shaders_.busy() && !model_import_.active() && !skeletal_import_.active() &&
-                                          !texture_import_.active() && !material_create_.active() &&
-                                          !shader_create_.active() && !waiting_material_project_;
+            const bool project_commands = !package_task_ && !shaders_.busy() && !model_import_.active() &&
+                                          !skeletal_import_.active() && !texture_import_.active() &&
+                                          !material_create_.active() && !shader_create_.active() &&
+                                          !waiting_material_project_;
             if (ImGui::BeginMenu("Scene", !play_session_.active()))
             {
                 if (ImGui::MenuItem("New Project...", nullptr, false, project_commands))
@@ -52,6 +53,21 @@ namespace toy3d
                 {
                     standalone_play();
                 }
+#if WITH_WIN
+                if (ImGui::MenuItem("Package Project (Windows)", nullptr, false,
+                                    project_commands && workspace_.has_project() && !startup_pending_))
+                {
+                    package_project();
+                }
+                if (ImGui::MenuItem("Open Last Package", nullptr, false, !last_package_output_.empty()))
+                {
+                    std::string error;
+                    if (!open_directory_on_desktop(last_package_output_, error))
+                    {
+                        TOY_LOG_ERROR("Open package: {}", error);
+                    }
+                }
+#endif
                 ImGui::Separator();
                 if (ImGui::MenuItem("New Scene"))
                 {

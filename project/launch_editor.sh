@@ -5,7 +5,7 @@ case "$0" in /*) script="$0" ;; *) script="./$0" ;; esac
 project_dir=$(CDPATH= cd -P "$(dirname "$script")" && pwd -P)
 descriptor=
 default_bin=
-editor_name='ShadowDemoEditor'
+editor_name='Toy3dEditor'
 if [ -f "$project_dir/saved/editor_launch.txt" ]; then
     { IFS= read -r descriptor || :; IFS= read -r default_bin || :; } < "$project_dir/saved/editor_launch.txt"
 fi

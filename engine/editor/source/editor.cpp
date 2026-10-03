@@ -17,6 +17,7 @@
 #include "panels/place_actors_panel.h"
 #include "panels/scene_panels.h"
 #include "panels/content_browser_panel.h"
+#include "platform/model_file_picker.h"
 #include "rendercore/frame_synchronization.h"
 #include "workspace/editor_workspace.h"
 #include "scene/placement/asset_placement.h"
@@ -278,6 +279,16 @@ namespace toy3d
         style.WindowRounding = 3.0f;
         style.FrameRounding = 3.0f;
         style.TabRounding = 3.0f;
+        // Neutral property surfaces keep blue for selection and active interaction.
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.125f, 1.0f);
+        style.Colors[ImGuiCol_ChildBg] = ImVec4(0.12f, 0.12f, 0.125f, 1.0f);
+        style.Colors[ImGuiCol_Header] = ImVec4(0.19f, 0.19f, 0.20f, 1.0f);
+        style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.25f, 0.27f, 1.0f);
+        style.Colors[ImGuiCol_Button] = ImVec4(0.17f, 0.17f, 0.18f, 1.0f);
+        style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.27f, 0.27f, 0.29f, 1.0f);
+        style.Colors[ImGuiCol_FrameBg] = ImVec4(0.07f, 0.07f, 0.075f, 1.0f);
+        style.Colors[ImGuiCol_Border] = ImVec4(0.08f, 0.08f, 0.085f, 1.0f);
+
         layout_path_ = saved_root_ + "/editor_layout.ini";
         ImGui::GetIO().IniFilename = layout_path_.c_str();
         if (!workspace_.has_project())
@@ -335,6 +346,15 @@ namespace toy3d
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
                                     PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
         material_editor_.set_preview_pool(thumbnails_);
+        material_editor_.set_resource_picker(resource_picker_);
+        animation_editor_.set_resource_picker(resource_picker_);
+        resource_picker_.set_selected_asset(
+            [this]()
+            {
+                return selection_.asset_id();
+            });
+        thumbnails_.set_material_preview_meshes(actor_factory_.instantiate_builtin("Plane"),
+                                                actor_factory_.instantiate_builtin("Cube"));
         animation_editor_.set_preview_mesh_changed(
             [this]()
             {
@@ -416,6 +436,7 @@ namespace toy3d
 
     void EditorApplication::on_tick(double delta_seconds)
     {
+        tick_package();
         tick_play(delta_seconds);
         scene_session_.history().synchronize(world());
         thumbnails_.tick();
@@ -505,6 +526,7 @@ namespace toy3d
 
     void EditorApplication::on_shutdown()
     {
+        stop_package();
         stop_play();
         play_scene_ = nullptr;
         panels_.clear();
@@ -742,6 +764,134 @@ namespace toy3d
         return true;
     }
 
+    bool EditorApplication::request_asset_import(const std::string& folder, const std::vector<std::string>& sources)
+    {
+        if (folder != "/Project" && folder.compare(0, 9, "/Project/") != 0)
+        {
+            model_error_ = "Select a writable Content folder before importing.";
+            return false;
+        }
+        if (sources.empty())
+        {
+            return true;
+        }
+        bool image = false;
+        bool environment = false;
+        bool model = false;
+        for (const auto& path : sources)
+        {
+            const auto dot = path.find_last_of('.');
+            std::string extension = dot == std::string::npos ? "" : path.substr(dot);
+            std::transform(extension.begin(), extension.end(), extension.begin(),
+                           [](unsigned char value)
+                           {
+                               return static_cast<char>(std::tolower(value));
+                           });
+            if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
+            {
+                image = true;
+            }
+            else if (extension == ".hdr")
+            {
+                environment = true;
+            }
+            else if (extension == ".fbx" || extension == ".obj" || extension == ".gltf" || extension == ".glb")
+            {
+                model = true;
+            }
+            else
+            {
+                model_error_ = "Unsupported import file: " + path;
+                return false;
+            }
+        }
+        if ((image && model) || (environment && (image || model)))
+        {
+            model_error_ = "Select textures, HDR environments or models separately.";
+            return false;
+        }
+        if (environment)
+        {
+            if (texture_import_.request_environment(folder, sources))
+            {
+                return true;
+            }
+            model_error_ = texture_import_.error();
+            return false;
+        }
+        if (image)
+        {
+            if (texture_import_.request(folder, sources))
+            {
+                return true;
+            }
+            model_error_ = texture_import_.error();
+            return false;
+        }
+#if WITH_MODEL_IMPORT
+        // Keep the chosen destination stable while the model-type modal is open.
+        pending_import_folder_ = folder;
+        pending_model_sources_ = sources;
+        pending_model_kind_ = 0;
+        ImGui::OpenPopup("Import Model");
+        return true;
+#else
+        model_error_ = "Model import is disabled in this build.";
+        return false;
+#endif
+    }
+
+    void EditorApplication::draw_model_import_options()
+    {
+        if (!ImGui::BeginPopupModal("Import Model", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            return;
+        }
+        ImGui::Text("Destination: %s", pending_import_folder_.c_str());
+        ImGui::Text("%u selected file(s)", static_cast<unsigned>(pending_model_sources_.size()));
+        ImGui::Combo("Import As", &pending_model_kind_, "Static Mesh\0Skeletal Mesh\0Animation\0\0");
+        const bool single_source_required = pending_model_kind_ != 0 && pending_model_sources_.size() != 1;
+        if (single_source_required)
+        {
+            ImGui::TextWrapped("Skeletal Mesh and Animation import require one source file at a time.");
+        }
+        if (!model_error_.empty())
+        {
+            ImGui::TextWrapped("%s", model_error_.c_str());
+        }
+        bool close = false;
+        ImGui::BeginDisabled(single_source_required);
+        if (ImGui::Button("Continue"))
+        {
+#if WITH_MODEL_IMPORT
+            if (pending_model_kind_ == 0)
+            {
+                close = model_import_.request(pending_import_folder_, pending_model_sources_);
+                model_error_ = close ? "" : model_import_.error();
+            }
+            else
+            {
+                close =
+                    skeletal_import_.request(pending_import_folder_, pending_model_kind_ == 2, pending_model_sources_);
+                model_error_ = close ? "" : skeletal_import_.error();
+            }
+#endif
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+        {
+            close = true;
+        }
+        if (close)
+        {
+            pending_model_sources_.clear();
+            pending_import_folder_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     void EditorApplication::draw_asset_browser()
     {
         ImGui::BeginDisabled(play_session_.active());
@@ -777,104 +927,44 @@ namespace toy3d
         {
             material_create_.request(browser.material_creation_kind, asset_folder_, browser.material_parent);
         }
-        if (workspace_.has_project() && browser.texture_import_requested &&
-            (!material_create_.active() && !shader_create_.active()) && !model_import_.active() &&
-            !skeletal_import_.active() && !texture_import_.request(asset_folder_))
+        const bool can_import = workspace_.has_project() && !material_create_.active() && !shader_create_.active() &&
+                                !model_import_.active() && !skeletal_import_.active() && !texture_import_.active() &&
+                                pending_model_sources_.empty();
+        if (browser.import_requested && can_import)
         {
-            model_error_ = texture_import_.error();
-            TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
+            // Native selection blocks this GT call; capture the current destination before opening it.
+            const std::string destination = asset_folder_;
+            std::vector<std::string> sources;
+            model_error_.clear();
+            if (!pick_asset_files(window(), sources, model_error_) || !request_asset_import(destination, sources))
+            {
+                TOY_LOG_ERROR("Request asset import: {}", model_error_);
+            }
         }
 #if WITH_MODEL_IMPORT
-        if (workspace_.has_project() && !material_create_.active() && !shader_create_.active() &&
-            !texture_import_.active() && !model_import_.active() && !skeletal_import_.active())
+        if (browser.skeletal_reimport.valid() && can_import &&
+            !skeletal_import_.request_reimport(workspace_, browser.skeletal_reimport))
         {
-            if ((browser.skeletal_import_requested || browser.animation_import_requested) &&
-                !skeletal_import_.request(asset_folder_, browser.animation_import_requested))
-            {
-                model_error_ = skeletal_import_.error();
-            }
-            if (browser.skeletal_reimport.valid() &&
-                !skeletal_import_.request_reimport(workspace_, browser.skeletal_reimport))
-            {
-                model_error_ = skeletal_import_.error();
-            }
-        }
-        if (workspace_.has_project() && browser.import_requested &&
-            (!material_create_.active() && !shader_create_.active()) && !texture_import_.active() &&
-            !skeletal_import_.active() && !model_import_.request(asset_folder_))
-        {
-            model_error_ = model_import_.error();
-            TOY_LOG_ERROR("Request model import: {}", model_error_);
+            model_error_ = skeletal_import_.error();
         }
 #endif
-        if (workspace_.has_project() && browser.environment_import_requested && !material_create_.active() &&
-            !shader_create_.active() && !model_import_.active() && !skeletal_import_.active() &&
-            !texture_import_.request_environment(asset_folder_))
-        {
-            model_error_ = texture_import_.error();
-        }
         FileDropEvent dropped;
         while (window().take_file_drop(dropped))
         {
             if (!workspace_.has_project() || model_import_.active() || skeletal_import_.active() ||
-                texture_import_.active() || material_create_.active() || shader_create_.active() ||
-                ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) || !browser.accepts_drop(dropped.position))
+                texture_import_.active() || !pending_model_sources_.empty() || material_create_.active() ||
+                shader_create_.active() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) ||
+                !browser.accepts_drop(dropped.position))
             {
                 continue;
             }
-            bool environment = false;
-            bool image = false;
-            bool model = false;
-            for (const auto& path : dropped.paths)
+            model_error_.clear();
+            if (!request_asset_import(asset_folder_, dropped.paths))
             {
-                std::string extension =
-                    path.substr(path.find_last_of('.') == std::string::npos ? path.size() : path.find_last_of('.'));
-                std::transform(extension.begin(), extension.end(), extension.begin(),
-                               [](unsigned char c)
-                               {
-                                   return static_cast<char>(std::tolower(c));
-                               });
-                if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
-                {
-                    image = true;
-                }
-                else if (extension == ".hdr")
-                {
-                    environment = true;
-                }
-                else
-                {
-                    model = true;
-                }
-            }
-            if ((image && model) || (environment && (image || model)))
-            {
-                model_error_ = "Drop HDR environments, color/data images and model files separately.";
                 TOY_LOG_ERROR("Asset drop: {}", model_error_);
             }
-            else if (environment && !texture_import_.request_environment(asset_folder_, dropped.paths))
-            {
-                model_error_ = texture_import_.error();
-            }
-            else if (image && !texture_import_.request(asset_folder_, dropped.paths))
-            {
-                model_error_ = texture_import_.error();
-                TOY_LOG_ERROR("Request Texture2D import: {}", model_error_);
-            }
-#if WITH_MODEL_IMPORT
-            else if (model && !model_import_.request(asset_folder_, dropped.paths))
-            {
-                model_error_ = model_import_.error();
-                TOY_LOG_ERROR("Request model import: {}", model_error_);
-            }
-#else
-            else if (model)
-            {
-                model_error_ = "Model import is disabled in this build.";
-                TOY_LOG_ERROR("Asset drop: {}", model_error_);
-            }
-#endif
         }
+        draw_model_import_options();
     }
 
     void EditorApplication::on_build_ui()
@@ -1075,10 +1165,11 @@ namespace toy3d
             focused &&
             (focused == ImGui::FindWindowByName("Scene Viewport###Game Viewport") ||
              focused == ImGui::FindWindowByName("Outliner") || focused == ImGui::FindWindowByName("Details"));
-        const bool modal_active =
-            model_import_.active() || skeletal_import_.active() || texture_import_.active() || show_new_project_ ||
-            show_project_settings_ || show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
-            material_editor_.modal_pending() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        const bool modal_active = model_import_.active() || skeletal_import_.active() || texture_import_.active() ||
+                                  show_new_project_ || show_project_settings_ || show_scene_save_as_ ||
+                                  material_create_.active() || shader_create_.active() ||
+                                  !pending_model_sources_.empty() || material_editor_.modal_pending() ||
+                                  ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
         // Keep Stop available even when the viewport tab is hidden/collapsed.
         if (play_session_.active() && !modal_active && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape))
         {
@@ -1098,7 +1189,7 @@ namespace toy3d
         panels_.process_shortcuts(play_session_.active() || model_import_.active() || skeletal_import_.active() ||
                                   texture_import_.active() || show_new_project_ || show_project_settings_ ||
                                   show_scene_save_as_ || material_create_.active() || shader_create_.active() ||
-                                  material_editor_.modal_pending());
+                                  !pending_model_sources_.empty() || material_editor_.modal_pending());
         notifications_.update(shaders_.task_status());
         notifications_.draw(console_, shaders_);
     }

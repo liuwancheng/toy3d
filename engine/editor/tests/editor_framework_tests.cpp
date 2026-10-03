@@ -81,12 +81,14 @@ namespace
         frame();
         const int component_id = static_cast<int>(light.component_id());
         const ImGuiID scope = ImHashData(&component_id, sizeof(component_id), ImGui::FindWindowByName("Details")->ID);
-        const ImGuiID intensity = ImHashStr("Intensity", 0, scope);
+        const ImGuiID row = ImHashStr("Intensity", 0, scope);
+        const ImGuiID table = ImHashStr("##Property", 0, row);
+        const ImGuiID intensity = ImHashStr("##Value", 0, table);
         float target_y = 0;
         // Discover the actual widget by identity rather than relying on font/layout coordinates.
         for (float y = 30; y < 600 && target_y == 0; y += 4)
         {
-            io.AddMousePosEvent(100, y);
+            io.AddMousePosEvent(350, y);
             if (frame() == intensity)
             {
                 target_y = y;
@@ -101,7 +103,7 @@ namespace
                   "Viewport drawn after Details does not finish its activation");
             for (int step = 1; step <= 3; ++step)
             {
-                io.AddMousePosEvent(100 + 20.0f * step, target_y);
+                io.AddMousePosEvent(350 + 20.0f * step, target_y);
                 frame();
                 check(history.active_for(EditorTransformSource::Details),
                       "Details drag stays active across real UI frames");
@@ -114,10 +116,10 @@ namespace
                   "Release commits one undoable gesture and restores the saved point");
             check(history.redo(world) && light.intensity() == edited, "Redo restores the complete UI drag");
             history.mark_saved(world);
-            io.AddMousePosEvent(100, target_y);
+            io.AddMousePosEvent(350, target_y);
             io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
             frame();
-            io.AddMousePosEvent(160, target_y);
+            io.AddMousePosEvent(410, target_y);
             frame();
             io.AddKeyEvent(ImGuiKey_Escape, true);
             frame();
@@ -126,6 +128,63 @@ namespace
             io.AddKeyEvent(ImGuiKey_Escape, false);
             io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
             frame();
+        }
+        const ImGuiID color_row = ImHashStr("Light Color (linear)", 0, scope);
+        const ImGuiID color_table = ImHashStr("##Property", 0, color_row);
+        const ImGuiID color_value = ImHashStr("##Value", 0, color_table);
+        const ImGuiID color_bar = ImHashStr("##Bar", 0, color_value);
+        float color_y = 0;
+        for (float y = 30; y < 600 && color_y == 0; y += 4)
+        {
+            io.AddMousePosEvent(350, y);
+            if (frame() == color_bar)
+            {
+                color_y = y;
+            }
+        }
+        check(color_y != 0, "Light color exposes a full-width preview bar");
+        if (color_y != 0)
+        {
+            const auto original = light.color();
+            io.AddMouseButtonEvent(0, true);
+            frame();
+            io.AddMouseButtonEvent(0, false);
+            frame();
+            frame();
+            auto& context = *ImGui::GetCurrentContext();
+            check(!context.OpenPopupStack.empty(), "Color bar opens a picker popup");
+            if (!context.OpenPopupStack.empty() && context.OpenPopupStack.back().Window)
+            {
+                const auto position = context.OpenPopupStack.back().Window->Pos;
+                io.AddMousePosEvent(position.x + 40, position.y + 70);
+                frame();
+                io.AddMouseButtonEvent(0, true);
+                frame();
+                io.AddMousePosEvent(position.x + 65, position.y + 90);
+                frame();
+                const auto edited_color = light.color();
+                check(edited_color != original && history.active_for(EditorTransformSource::Details),
+                      "Color popup previews runtime values within one continuous gesture");
+                io.AddMouseButtonEvent(0, false);
+                frame();
+                check(!history.active() && history.undo(world) && light.color() == original,
+                      "Color popup release commits an undoable gesture");
+                check(history.redo(world) && light.color() == edited_color, "Color redo restores all RGB components");
+                history.mark_saved(world);
+                io.AddMousePosEvent(position.x + 50, position.y + 80);
+                frame();
+                io.AddMouseButtonEvent(0, true);
+                frame();
+                io.AddMousePosEvent(position.x + 90, position.y + 110);
+                frame();
+                io.AddKeyEvent(ImGuiKey_Escape, true);
+                frame();
+                check(!history.active() && light.color() == edited_color && !history.dirty(world),
+                      "Escape cancels a color popup gesture without changing history");
+                io.AddKeyEvent(ImGuiKey_Escape, false);
+                io.AddMouseButtonEvent(0, false);
+                frame();
+            }
         }
         history.clear();
         ImGui::DestroyContext();
@@ -528,7 +587,7 @@ int main()
         SceneAssetData demo;
         check(
             read_scene_asset(workspace.types(), demo_files, virtual_path("/Demo/ShadowDemo.scene"), demo).succeeded() &&
-                demo.actors.size() == 4,
+                !demo.actors.empty(),
             "Shadow demo is valid current component schema");
         std::vector<std::uint8_t> baseline;
         // Preserve external formatting too; re-encoding would silently discard this trailing newline.

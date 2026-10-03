@@ -21,11 +21,7 @@ namespace toy3d
 
         using EventSink = std::function<void(const InputEvent&)>;
 
-        static InputSystem& get_instance()
-        {
-            static InputSystem instance;
-            return instance;
-        }
+        static InputSystem& get_instance();
 
         bool init();
         void exit();

@@ -30,7 +30,7 @@ Console 作为 PanelRegistry 中的普通面板，由 EditorApplication 持有�
 
 无工程可浏览引擎资产和编辑临时场景，创作 Material/Shader/Import 要求项目写入根。引擎默认 Scene 加载后 clean；修改后 Save 走项目 Save As，禁止写引擎资产。无工程 Save 引导创建资源工程，并将当前 Scene 保存为该工程的 Startup.scene，再关联新工程。
 
-EditorProject::create 先在父目录的独占 staging 建目录/配置，最后写 .toy，再以 no-replace 重命名发布；已存在目标不覆盖。普通失败只清理本次独占 staging，不承诺断电时的目录发布持久性。新工程默认继承引擎场景，资源目录为空。项目 Editor 仅承载自身已链接的一个 Runtime 模块，资源工程使用 Toy3dEditor；不生成 C++ 模板或自动构建。
+EditorProject::create 先在父目录的独占 staging 建目录/配置，最后写 .toy，再以 no-replace 重命名发布；已存在目标不覆盖。普通失败只清理本次独占 staging，不承诺断电时的目录发布持久性。新工程默认继承引擎场景，资源目录为空。项目和资源工程统一使用 Toy3dEditor，入口按描述动态加载一个 Runtime 模块；不生成 C++ 模板或自动构建。
 
 首版一个进程关联一个工程，切换启动目标 Editor 实例；继承显式命令行配置覆盖。后台编译/Import 完成或取消后才切换，材质/场景 dirty 依次确认；launch 接受后关闭当前窗口，launch 失败保持会话。启动进程成功不等于完成 GPU/资源初始化，不作跨进程 ready 保证。Project Settings 保存 Editor/Game 默认场景覆盖并显示当前有效值来源，下次启动生效。
 
@@ -40,7 +40,7 @@ Scene > Standalone Play 仅在关联已构建 Game 的项目 Editor 中可用，
 
 ### 视口内 Play
 
-Scene Viewport 右上角提供 Play/Pause/Resume/Stop 图标按钮，悬停显示动作名，保留原 docking 窗口身份。无工程/资源工程可运行内置 Actor；项目 Actor 使用当前 Editor 已链接、已注册的模块，不依赖 Game 可执行文件。首版单个会话，不含 Simulate/Eject、多客户端、运行状态回写或热重载。
+Scene Viewport 右上角提供 Play/Pause/Resume/Stop 图标按钮，悬停显示动作名，保留原 docking 窗口身份。无工程/资源工程可运行内置 Actor；项目 Actor 使用当前 Editor 已加载、已注册的模块，不依赖 Game 可执行文件。首版单个会话，不含 Simulate/Eject、多客户端、运行状态回写或热重载。
 
 - source/scene/EditorPlaySession 属 Toy3dEditorCore，由 EditorApplication 持有。启动捕获当前未保存内容到内存 SceneAssetData，复用 assemble_scene 和冻结注册表，不落盘。运行 Actor/Component、Mesh 渲染数据、MaterialLibrary 与可变材质实例独立；编辑对象、选择、history、dirty 和观察相机保持原样。不能仅以两个 World 中相同的 Actor ID 认定对象相同。
 - Renderer 提供独立 Play RenderScene，Engine/Application 帧提交选择对应 SceneInterface，复用主视口附件和 RHI。编辑渲染注册始终保留；移除最后一个 Mesh Proxy 会终结 Mesh 资源生命周期，不能反复解绑/重绑编辑 World，也不能跨 RenderScene 共用这种 MeshRenderData。缩略图/材质预览与动画交互预览使用各自独立的 Preview Scene。Game/PIE 共用 gamescene/scene_view.h 的相机规则，停止恢复编辑观察相机。
@@ -53,6 +53,16 @@ Scene Viewport 右上角提供 Play/Pause/Resume/Stop 图标按钮，悬停显�
 项目 Actor 出现在 Place Actors 的 Project 分类；Details 由注册属性元数据驱动当前 bool、float32、Vector3 控件，其余字段只读显示。所有参数更新走 Actor validate/apply 与同一连续手势历史；删除恢复也保存 concrete type 和 owned 属性。不能把声明 Edit 自动解释为支持任意反射控件。扩展示例见 project/src，完整边界见 [GameScene](gamescene.md#游戏工程接入边界)。
 
 ## 选择、交互与 Undo
+
+### 属性与资源显示
+
+统一显示层放在 Toy3dEditorCore：panels/property_widgets 提供两列属性行、数值/布尔/枚举控件与颜色条；assets/thumbnails/thumbnail_widget 提供所有资产缩略图的边框、类型色条、占位和生成状态。AssetResourcePicker 组合左标签、右缩略图、资源名下拉框与紧凑操作图标；Content Browser 和选择弹窗复用同一缩略图绘制，网格、材质、贴图、骨骼及动画不另设样式。
+
+Content Browser 顶部保持单行靠左排列，Add 下拉菜单、独立 Import 按钮与刷新图标构成操作区，通过分隔线与向上导航、轻量路径面包屑隔开；所有控件按同一行高垂直居中对齐。窄栏路径收为单个截断控件，tooltip 显示完整路径，点击菜单保留所有父目录入口。左侧 Sources 为可折叠目录树，右侧按当前目录显示文件夹和资产卡片，底部显示数量、缩略图大小及 View Options；窄栏隐藏大小滑条并缩短设置按钮，保持单行。Add 集中已有材质/材质实例创建和当前目录导入；Import 先打开原生多选文件窗口，PNG/JPEG 与 HDR 分别进入贴图和环境选项，模型文件先选择 Static Mesh、Skeletal Mesh 或 Animation，再复用已有导入设置。骨骼网格和动画仍限单个源文件，不同导入类别不能混选；取消不创建资产。目录树右键使用点击的目录，资产区空白右键使用当前目录，外部文件拖入共用同一导入路由；选文件后目标目录保持不变。项目根显示 Content，引擎根显示 Engine Content；显示名不改变 /Project、/Engine 虚拟路径。Scene 与其他资产共用列表和选择/打开入口，卡片标为 Level；不创建独立场景目录或移动作者文件。搜索忽略 ASCII 大小写，筛选当前目录中的名称；隐藏引擎内容时返回项目根，目录失效时返回最近有效父目录。Sources 可隐藏，Engine Content 的只读限制保持原有工作流。
+
+实现范围为已有材质参数/预览设置、组件 Details、Actor 已支持反射字段和 World Settings。颜色条点击打开浮点颜色选择器，RGBA 显示透明棋盘格，预览条从线性 RGB 转换为显示色，保存值不改变。控件只负责显示和 ImGui 编辑手势；资源兼容/加载、候选验证、默认/继承和 Undo 仍归调用方。单次调色拖动沿既有连续手势，Escape 取消；只读与加载失败保留原语义。全部 UI 在 GT，不新增 worker、RHI、资产格式、全局服务或 target；跨平台沿现有 ImGui，尺寸从字体高度推导，窄栏截断标签并提供完整 tooltip。
+
+动画窗口的 Preview mesh / Sequence 选择也使用 AssetResourcePicker，仍以当前骨骼 layout 过滤兼容资源；清空分别回到无网格或参考姿态。旧缩略图绘制已删除，资源卡片和主属性面板不保留平行样式入口。验证复用 MaterialUi、Framework、项目 Actor/Play、AnimationPreview 和材质赋值测试，并检查窄栏/高 DPI、拖放、只读、颜色弹窗的取消及 Undo；构建覆盖共享 Toy3dEditor、项目模块 DLL 与 Game。
 
 selection 保存稳定 Actor/Component/Asset ID，使用时解析，删除/切 World 清理失效选择；不长期缓存裸指针。Input 优先级 modal/text → gizmo → viewport → shortcuts → game。
 
@@ -79,9 +89,33 @@ Tools/Content Browser 的 HDR 导入使用既有 TextureImportDialog worker 生�
 
 骨骼网格、动作导入与 Project 资源的 `Reimport...` 使用独立 CPU worker、GT 冲突复核和逐资产配对发布；Skeleton 选择、源要求、取消/退出与使用入口见 [Animation](animation.md#editor-导入与重导入)。
 
-Content Browser 双击 Skeleton/SkeletalMesh/AnimationSequence 打开只读 `Animation Editor`，共享骨骼树、网格和动作标签，提供播放、时间轴、逐样本、root lock 与相机操作。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态，动作缩略图拍摄兼容模型的第 0 秒，Skeleton 保留固定骨架图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
+Content Browser 双击 Skeleton/SkeletalMesh/AnimationSequence 打开同一只读 `Animation Editor` 会话，提供骨骼树、预览网格/动作选择、播放、时间轴、逐样本、root lock 与相机操作。交互预览和缩略图各自使用 Renderer-owned 场景，骨骼网格缩略图为参考姿态，动作缩略图拍摄兼容模型的第 0 秒，Skeleton 保留固定骨架图标。行为、兼容校验和生命周期见 [Animation](animation.md#editor-资产预览)。
 
-材质窗口显示独立 HDR 庭院背景、球体与灰色地面，可调整预览环境、灯光、曝光和相机；普通参数即时更新图像，静态选项等待完整候选。Content Browser 的 Material/Instance 缩略图保留固定 studio 配置。设置、排队、关闭、资源退役与失败保留旧图见 [Material](material.md#可视预览与缩略图)，不把预览效果写进主场景。
+材质窗口的视口布局、Sphere/Plane/Cube 模型、贴图缩略图参数与交互见 [Material](material.md#可视预览与缩略图)。普通参数即时更新图像，静态选项等待完整候选；Content Browser 的 Material/Instance 缩略图保留固定 studio 配置，不把窗口效果写进主场景。
+
+### 通用资产预览场景
+
+assets/preview/asset_preview_scene 的 AssetPreviewScene 统一实现材质、角色和缩略图的私有 World、灯光及地面，继续归 Toy3dEditorCore。PreviewSceneSettings 只表达环境、主光、背景、地面、阴影和曝光；MaterialPreviewSettings 组合该配置及材质模型/相机，角色相机与播放状态仍归 AnimationEditorPanel。preview_scene_widgets 复用 property_widgets 绘制两类窗口相同的 Environment / Lighting / Floor 设置；Reset Scene 仅恢复公共设置，各窗口自己的 Reset Preview / Reset View 管理模型或相机。环境读取沿既有 load_environment_asset，不另建资产管理服务。
+
+共用实现与默认 E_PreviewCourtyard、方向光、灰色地面，各窗口保留独立配置、World、Renderer-owned scene/targets、图像身份及 revision。材质与缩略图仍在 Pool 域串行，角色仍在独立 animation 域；只在在途请求结束后更新 World，背景/阴影/曝光复制进 PreviewFrameRequest，变更公共设置后过期图像退役。CPU 候选沿既有 TaskGraph，UI/场景配置与接管在 GT，GPU 沿正常 FIFO/submit。环境加载失败、非法设置和 GPU 失败诊断并保留旧图；关闭撤回请求、退出 join/drain，不修改主 World、资产 dirty、Undo 或持久化格式。
+
+角色保留厘米单位、真实尺寸与独立取景；地面按网格参考姿态下沿及中心定位，播放时不追随脚部。缩略图继续显式采用固定 studio、无背景/地面/阴影的配置，不读取窗口设置。公共 RHI 和每边最多 512 像素读回边界不变，不加入后端专用 API。角色窗口布局及资产兼容行为见 [Animation](animation.md#editor-资产预览)，材质模型与参数行为见 [Material](material.md#可视预览与缩略图)。
+
+验证入口为 AnimationPreview ST/MT 的默认一致性、真实 GPU 背景/曝光/地面变化、失败保旧及切换/关闭；MaterialUi 的共享控件 Reset 与窗口配置隔离；Thumbnail 的固定配置及材质窗口隔离。真实 Editor 另检查高 DPI、侧栏宽度、背景/地面/阴影及退出，未运行的平台不作支持验收。
+
+## 资产缩略图
+
+Content Browser、AssetResourcePicker 和导入流程共用 EditorApplication 持有的 AssetThumbnailPool。固定支持 Material/Instance、Texture2D、StaticMesh、SkeletalMesh、AnimationSequence 及内置 Cube/Plane；Skeleton 使用固定图标，不引入生成器注册框架。材质球、贴图 mip/透明棋盘格、真实网格取景、参考姿态和动画第 0 秒保持既有规则。
+
+生成入口为 assets/texture/texture_preview_image、assets/mesh/mesh_thumbnail、assets/animation/animation_thumbnail 和 assets/material/material_thumbnail；assets/thumbnails/thumbnail_source 统一准备 owned CPU 输入及处理缓存，AssetThumbnailPool 管调度和结果接管，均编入 Toy3dEditorCore。MaterialLibrary 是 GT 发布域，材质解析通过注入的 GT resolver，实时材质窗口会话仍与缩略图共享拍摄场景。
+
+TaskGraph 的 AnyWorker 任务负责网格/动画/贴图读取与解码、骨骼依赖磁盘复核、PNG 编码、保存前内容比较及 Saved 原子写盘。普通 tick/读回回调的 GT 接管只核对当前 catalog 的身份/路径、request 与刷新代次，并准备 World/组件和接管纹理；启动时 studio/球体及材质 resolver 的读取仍在 GT。GPU 完成后，缓存上传候选先异步复核，新拍摄网格/动画候选先复核并保存，成功才替换已有图。CPU 任务只捕获 catalog 副本、owned 输入和 Workspace 生命周期内的文件服务，不访问 UI/World/Proxy；退出先等待任务，再释放输入和场景。SingleThread 映射到 GT，多线程下 GT 等待/Drain 也可能帮助执行 AnyWorker，因此该路由不提供严格的物理后台线程隔离，见 [Threading](threading.md#taskgraph-contract)。
+
+池保持单个在途资产、共享预览场景和 128 条图片容量，没有跨资产流水线。磁盘 PNG 缓存仅用于网格和动画，材质/贴图保留内存图片。缓存写 /Saved/AssetThumbnails，身份为 AssetId、内容摘要与 thumbnail_generator_version；已在途的旧任务最多产生按旧内容身份命名的可重建缓存，GT 不接管过期结果，不写源码资产。文件/依赖变化、worker 异常和 GPU 失败明确诊断，重新生成失败保留已有图片；刷新会失效旧条目，失败时使用占位及诊断。Windows/macOS 沿已有 FileSystem 和公共 RHI 路径，图像尺寸/字节限制沿 Core PNG contract。
+
+保存或刷新可在 UI 绘制途中请求缩略图失效；池合并请求，在下一次绘制前的 tick 才清除图片并提交纹理退役。当帧已经输出的 Image 命令仍保留注册身份及 RT binding，不能在帧尾快照或绘制前释放它们。
+
+验证入口：tests/thumbnail_source_tests.cpp（CPU 准备、缓存损坏/重载、资产变化冲突、ST/MT、任务退出）、texture_preview_image_tests.cpp（mip、透明背景、损坏输入保旧）、thumbnail_integration_tests.cpp（真实 GPU、绘制中失效与次帧退役、缓存上传、冲突保旧和预览隔离）、animation_preview_tests.cpp（参考姿态/首帧、兼容输入与交互预览并存）。构建与测试名从 engine/editor/CMakeLists.txt 核对。
 
 ## 异步与退出
 

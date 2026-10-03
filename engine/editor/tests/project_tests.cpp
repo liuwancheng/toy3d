@@ -228,6 +228,28 @@ int main()
     EditorProject rejected(editor_directory);
     check(!rejected.open(renamed_project.descriptor()).succeeded() && !rejected.active(),
           "Invalid typed project configuration never publishes an active association");
+    const auto native_created = EditorProject::create(root, "NativeGame", editor_directory);
+    EditorProject native_fixture(editor_directory);
+    check(native_created.succeeded() && native_fixture.open(native_created.value()).succeeded(),
+          "Native project migration fixture created");
+    auto native_description = native_fixture.description();
+    native_description.modules.push_back({"ShadowDemo", GameModuleType::Runtime});
+    const auto native_encoded = encode_game_project(native_description);
+    std::string legacy_shell = shell.value();
+    for (std::size_t offset = 0u; (offset = legacy_shell.find("Toy3dEditor", offset)) != std::string::npos;)
+    {
+        legacy_shell.replace(offset, 11u, "ShadowDemoEditor");
+        offset += 16u;
+    }
+    check(native_encoded.succeeded() && write(native_fixture.files(), "/Game/NativeGame.toy", native_encoded.value()) &&
+              write(native_fixture.files(), "/Game/launch_editor.sh", legacy_shell) &&
+              write(native_fixture.files(), "/Game/launch_editor.bat", "custom native launcher\n"),
+          "Legacy project Editor launcher fixture written");
+    EditorProject shared_host(editor_directory);
+    check(shared_host.open(native_created.value()).succeeded() &&
+              shared_host.files().read_text_utf8(path("/Game/launch_editor.sh")).value() == shell.value() &&
+              shared_host.files().read_text_utf8(path("/Game/launch_editor.bat")).value() == "custom native launcher\n",
+          "Native project uses shared Editor and migrates only known legacy launcher templates");
     const auto removed = platform.remove_directory_tree(root);
     check(removed.succeeded(), "Owned isolated fixture is cleaned");
     return failures == 0 ? 0 : 1;

@@ -334,11 +334,13 @@ namespace
         frame();
         const char* label = "speed_degrees_per_second";
         const auto scope = ImHashStr(label, 0, ImGui::FindWindowByName("Actor Properties")->ID);
-        const auto control = ImHashStr(label, 0, scope);
+        const auto row = ImHashStr(label, 0, scope);
+        const auto table = ImHashStr("##Property", 0, row);
+        const auto control = ImHashStr("##Value", 0, table);
         float target_y = 0;
         for (float y = 25; y < 200 && target_y == 0; y += 3)
         {
-            io.AddMousePosEvent(100, y);
+            io.AddMousePosEvent(350, y);
             if (frame() == control)
             {
                 target_y = y;
@@ -352,7 +354,7 @@ namespace
             io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
             frame();
             check(history.active_for(EditorTransformSource::Details), "Actor widget starts shared history gesture");
-            io.AddMousePosEvent(160, target_y);
+            io.AddMousePosEvent(410, target_y);
             frame();
             const auto edited = actor.rotation_settings().speed_degrees_per_second;
             io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
@@ -363,7 +365,7 @@ namespace
             check(history.redo(world) && actor.rotation_settings().speed_degrees_per_second == edited,
                   "Widget gesture redo");
             history.mark_saved(world);
-            io.AddMousePosEvent(100, target_y);
+            io.AddMousePosEvent(350, target_y);
             io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
             frame();
             io.AddMousePosEvent(180, target_y);

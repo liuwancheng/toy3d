@@ -7,7 +7,7 @@
 #include "rendercore/material/material_asset_builder.h"
 #include "rendercore/material/material_shader_map_validation.h"
 #include "rendercore/shader/shader_map.h"
-#include "assets/thumbnails/thumbnail_preview_scene.h"
+#include "assets/preview/asset_preview_scene.h"
 
 #include <string>
 #include <vector>
@@ -17,6 +17,7 @@ namespace toy3d
     class EditorWorkspace;
     class ShaderWorkflow;
     class AssetThumbnailPool;
+    class AssetResourcePicker;
 
     enum class MaterialCloseDecision
     {
@@ -44,6 +45,10 @@ namespace toy3d
             previews_ = &previews;
         }
         void set_shader_workflow(ShaderWorkflow& workflow);
+        void set_resource_picker(AssetResourcePicker& picker)
+        {
+            resource_picker_ = &picker;
+        }
         bool prepare_shader(const ShaderMapCollectionRef& program,
                             const std::vector<shader::ShaderEditorProperty>& properties, std::string& error);
         bool prepare_shader(const std::vector<ShaderMapCollectionRef>& programs,
@@ -110,6 +115,7 @@ namespace toy3d
         shader::ShaderPermutationDomain candidate_static_domain_;
         ShaderWorkflow* shaders_ = nullptr;
         AssetThumbnailPool* previews_ = nullptr;
+        AssetResourcePicker* resource_picker_ = nullptr;
         MaterialPreviewSettings preview_settings_;
         std::uint64_t preview_revision_ = 0u;
         std::uint64_t session_revision_ = 0u;

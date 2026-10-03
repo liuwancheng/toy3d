@@ -11,10 +11,16 @@ namespace toy3d
     class SkeletalMeshComponent;
     class AnimationSequence;
     struct AnimationPreviewAsset;
-    // Editor session state, copied into each request; never persisted in the Material or level.
-    struct MaterialPreviewSettings
+    enum class MaterialPreviewMesh
     {
-        MaterialPreviewSettings();
+        Sphere,
+        Plane,
+        Cube
+    };
+    // Each window owns its settings; submitted frames copy immutable values.
+    struct PreviewSceneSettings
+    {
+        PreviewSceneSettings();
         AssetId environment;
         float environment_intensity = 1.0f;
         float environment_rotation = 0.0f;
@@ -23,20 +29,28 @@ namespace toy3d
         float light_yaw = -40.0f;
         float light_pitch = -45.0f;
         float exposure_ev = 0.0f;
-        float camera_yaw = 40.0f;
-        float camera_pitch = 22.0f;
-        float camera_distance = 430.0f;
-        Extent extent{384u, 384u};
         bool show_environment = true;
         bool show_floor = true;
         bool show_shadows = true;
+    };
+    bool operator==(const PreviewSceneSettings& left, const PreviewSceneSettings& right);
+    bool validate_preview_scene_settings(const PreviewSceneSettings& settings);
+
+    struct MaterialPreviewSettings
+    {
+        PreviewSceneSettings scene;
+        MaterialPreviewMesh mesh = MaterialPreviewMesh::Sphere;
+        float camera_yaw = 40.0f;
+        float camera_pitch = 22.0f;
+        float camera_distance = 600.0f;
+        Extent extent{384u, 384u};
     };
     bool operator==(const MaterialPreviewSettings& left, const MaterialPreviewSettings& right);
     bool validate_material_preview_settings(const MaterialPreviewSettings& settings);
 
     // A GT-owned preview World observes a separate Renderer-owned scene.
     // It never changes the level World, selection, camera, or command history.
-    class ThumbnailPreviewScene final
+    class AssetPreviewScene final
     {
       public:
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, SceneEnvironmentSettings environment = {},
@@ -48,11 +62,12 @@ namespace toy3d
         SkeletalMeshComponent* skeletal_component();
         const Vector3& frame_center() const;
         float frame_radius() const;
-        bool configure(const MaterialPreviewSettings& settings, TextureRef cube);
+        bool configure(const PreviewSceneSettings& settings, TextureRef cube);
         bool configure_thumbnail();
         SceneView view() const;
         SceneView view(const MaterialPreviewSettings& settings) const;
         void clear_mesh();
+        void clear_geometry();
         void shutdown();
 
       private:
@@ -60,6 +75,7 @@ namespace toy3d
         MaterialInstanceRef material_;
         MaterialInstanceRef floor_material_;
         StaticMeshRef floor_mesh_;
+        StaticMeshDesc floor_geometry_;
         float floor_height_ = 0.0f;
         SceneEnvironmentSettings thumbnail_environment_;
         TextureRef thumbnail_cube_;

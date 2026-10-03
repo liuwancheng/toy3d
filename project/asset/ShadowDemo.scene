@@ -9,6 +9,9 @@ dependencies:
   - asset_id: 0ef8ef9b73c25d85b8a844ab077d0bf9
     expected_type: toy3d.AnimationSequenceAssetData
     strength: strong
+  - asset_id: 28df673d4ac92e2b93f5096788efd0ed
+    expected_type: toy3d.MaterialInstanceAssetData
+    strength: strong
   - asset_id: be8961056cb1612c669e22eeabeedeee
     expected_type: toy3d.StaticMeshAssetData
     strength: strong
@@ -209,6 +212,16 @@ data:
                     expected_type: toy3d.AnimationSequenceAssetData
                     strength: strong
                   role: animation
+                - reference:
+                    asset_id: 28df673d4ac92e2b93f5096788efd0ed
+                    expected_type: toy3d.MaterialInstanceAssetData
+                    strength: strong
+                  role: material:MI_Manny_02_0
+                - reference:
+                    asset_id: 28df673d4ac92e2b93f5096788efd0ed
+                    expected_type: toy3d.MaterialInstanceAssetData
+                    strength: strong
+                  role: material:MI_Manny_01_1
               settings:
                 cast_shadows: true
                 receives_shadows: true

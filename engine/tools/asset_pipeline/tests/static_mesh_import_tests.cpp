@@ -211,6 +211,53 @@ int main()
         require(files.remove_file(path("/Output/local.obj")).succeeded(), "source removal failed");
         require(read_static_mesh_asset(files, new_asset).succeeded(), "source-free load failed");
 
+        // Distinct collinear vertices, coincident positions and repeated indices
+        // must be removed before corners are emitted, without losing the valid face.
+        replace_text(files, "/Output/mixed_degenerate.obj",
+                     "o Mixed\nv 0 0 0\nv 1 0 0\nv 0 1 0\nv 2 0 0\nv 0 0 0\n"
+                     "vt 0 0\nvt 1 0\nvt 0 1\n"
+                     "f 1 2 4\nf 1 2 5\nf 1 1 2\nf 1/1 2/2 3/3\n");
+        const auto mixed = import_static_meshes(files, path("/Output/mixed_degenerate.obj"), file_unit_options);
+        require(mixed.succeeded(), "mixed valid/degenerate geometry rejected");
+        require(mixed.value()[0].mesh.triangles.size() == 1 && mixed.value()[0].mesh.corners.size() == 3,
+                "degenerate faces left corners or removed the valid triangle");
+        bool warned = false;
+        for (const auto& warning : mixed.value()[0].warnings)
+        {
+            warned = warned || warning.find("Mesh 'Mixed': skipped 3 degenerate triangles.") != std::string::npos;
+        }
+        require(warned, "skipped triangle count and source mesh name were not reported");
+        const auto& mixed_corners = mixed.value()[0].mesh.corners;
+        require(mixed_corners[0].uv0 == Vector2(0, 0) &&
+                    ((mixed_corners[1].uv0 == Vector2(1, 0) && mixed_corners[2].uv0 == Vector2(0, 1)) ||
+                     (mixed_corners[1].uv0 == Vector2(0, 1) && mixed_corners[2].uv0 == Vector2(1, 0))),
+                "surviving triangle lost UVs");
+        const auto mixed_asset =
+            import_static_mesh_asset(files, path("/Output/mixed_degenerate.obj"), id, file_unit_options);
+        require(mixed_asset.succeeded(), "cleaned geometry did not build/encode");
+        const auto repeated_mixed =
+            import_static_mesh_asset(files, path("/Output/mixed_degenerate.obj"), id, file_unit_options);
+        require(repeated_mixed.succeeded() && repeated_mixed.value().pair.asset == mixed_asset.value().pair.asset &&
+                    repeated_mixed.value().pair.meta == mixed_asset.value().pair.meta &&
+                    repeated_mixed.value().warnings == mixed_asset.value().warnings,
+                "degenerate cleanup is nondeterministic");
+
+        replace_text(files, "/Output/all_degenerate.obj", "v 0 0 0\nv 1 0 0\nv 2 0 0\nf 1 2 3\n");
+        const auto empty = import_static_meshes(files, path("/Output/all_degenerate.obj"), file_unit_options);
+        require(!empty.succeeded() &&
+                    empty.status().message == "no valid triangles remain after removing degenerate triangles",
+                "all-degenerate geometry was accepted or did not diagnose missing valid triangles");
+
+        replace_text(files, "/Output/degenerate_part.obj",
+                     "o EmptyPart\nv 0 0 0\nv 1 0 0\nv 2 0 0\nf 1 2 3\n"
+                     "o ValidPart\nv 0 1 0\nf 1 2 4\n");
+        const auto part = import_static_mesh_asset(files, path("/Output/degenerate_part.obj"), id, file_unit_options);
+        require(part.succeeded(), "an empty source part prevented valid combined geometry from importing");
+
+        replace_text(files, "/Output/overflow.obj", "v 0 0 0\nv 1e20 0 0\nv 0 1e20 0\nf 1 2 3\n");
+        require(!import_static_meshes(files, path("/Output/overflow.obj"), file_unit_options).succeeded(),
+                "non-finite cross product was silently treated as removable degeneracy");
+
         replace_text(files, "/Output/axis.fbx", fbx_fixture(1, 2, -1, 1, false));
         const auto centimeter = import_static_meshes(files, path("/Output/axis.fbx"), file_unit_options);
         if (!centimeter.succeeded())

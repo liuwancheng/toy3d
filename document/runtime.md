@@ -38,6 +38,12 @@ FileSystem 在 startup 注册/冻结 mounts，源码/部署模式均显式确定
 
 ## 工程与分层配置
 
+### 共享 Editor 与项目模块
+
+资源工程和 C++ 工程共用 Toy3dEditor。模块加载属于 Runtime/application，底层 DynamicLibrary RAII 属 Core/platform；Toy3dCore、Toy3dShaderFormat、Toy3dAssets、Toy3dRuntime 及 ImGui 使用共享库，EditorCore 承载界面。这样项目 DLL 和宿主共用运行状态及 UI context。
+
+项目导出单一 `toy3d_game_module` 注册入口，ABI version 为 1。宿主校验引擎版本、公共头内容、构建选项、编译器、平台、架构与配置身份，再在 GT 注册反射及 Actor 工厂；模块缺失或不匹配明确退出。模块由入口持有，销毁 World、Application、Workspace 和全部注册回调后卸载。宿主从 `<工程>/binaries/<配置>/<Module>.dll` 读取独占加载副本，允许构建更新原 DLL，但类型变化需重启 Editor；不支持热重载或进程内切换项目。
+
 `<Name>.toy` 是 YAML 工程描述，工程根取描述文件所在目录，不猜 cwd，不固定使用仓库 project。格式见 core/asset/game_project.h；解析/编码复用 Toy3dAssets 的 PRIVATE yaml-cpp，不新增库。必填 format_version=1、32 位小写十六进制 project_id、name、engine_association；拒绝重复字段、未知字段/版本、alias/tag、多文档和超限输入。名字为字母开头的 ASCII 字母/数字/下划线，最多 64 字符，排除 Windows 保留名。
 
 仓库中的真实描述为 [ShadowDemo.toy](../project/ShadowDemo.toy)；新建工程由 EditorProject::create 生成自己的 ID，不复制该工程身份。
@@ -52,15 +58,15 @@ modules:
     type: Runtime
 ```
 
-当前支持关联 `toy3d_dev` 的资源工程（modules=[]）或一个已链接的 Runtime 模块。描述格式仍可表达 Editor 模块，但宿主拒绝额外/不匹配模块；没有引擎安装注册表、动态加载或热重载。`EditorProject(editor_directory, module_name)` 校验宿主身份，普通 Toy3dEditor 不承载项目 C++。Scene > Open Project 按目标描述选择 Toy3dEditor 或 <Module>Editor，新进程切换，不把旧工程模块带到新工程。
+当前支持关联 `toy3d_dev` 的资源工程（modules=[]）或一个 Runtime 模块。描述格式可表达 Editor 模块，但宿主拒绝 Editor 模块和多个 Runtime 模块；没有引擎安装注册表。EditorProject(editor_directory) 只验证描述及路径，入口另行加载模块；Scene > Open Project 始终启动共享 Toy3dEditor 新进程。
 
-创建入口 EditorProject::create(parent, name, editor_directory) 仍生成资源工程、独立 ID 与 asset/config/shader/include/src/saved，不生成 C++ 模板。C++ 工程由明确的 `TOY3D_GAME_PROJECT` CMake 路径加入，默认为仓库 project，空值仅构建引擎。模块链接 Toy3dRuntime，在自身 CMake 调用 `toy3d_add_game_hosts(module, descriptor)`；生成 <Module>Editor（复用 Toy3dEditorCore）和 <Module>Game（不链接 Editor）。项目 Editor 构建也部署对应 Game。工程不靠目录扫描自动编译。
+EditorProject::create(parent, name, editor_directory) 生成资源工程、独立 ID 与 asset/config/shader/include/src/saved，不生成 C++ 模板。C++ 工程由明确的 TOY3D_GAME_PROJECT CMake 路径加入，默认为仓库 project，空值仅构建引擎。模块链接 Toy3dRuntime，在自身 CMake 调用 toy3d_add_game_hosts(module, descriptor)；同一份项目源静态库用于 <Module>Module DLL 和 <Module>Game（不链接 Editor）。Toy3dEditor 构建依赖两者；不生成项目专属 Editor target，不扫描任意工程目录编译。
 
 仓库示例的构建/启动：
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON -DTOY3D_ENABLE_VULKAN_RHI=ON
-cmake --build build --config Debug --target ShadowDemoEditor --parallel
+cmake --build build --config Debug --target Toy3dEditor --parallel
 ./project/launch_editor.bat
 # 直接运行游戏，使用 Game.StartupScene：
 ./bin/ShadowDemoGame.exe --Project=D:/GitProject/toy3d/project/ShadowDemo.toy
@@ -80,15 +86,32 @@ StartupScene=/Project/ShadowDemo.scene
 StartupScene=/Project/RotatingActor.scene
 ```
 
-Editor 未指定工程时打开 `/Engine/Scenes/Default.scene`；有效工程按 Editor.StartupScene 打开，空值使用同一默认场景。场景非法/缺失/装配失败记录诊断并回退，保持工程关联，不修改工程配置。描述/配置校验失败则无工程启动并记录错误；默认场景本身损坏明确报错，不以硬编码 Cube/Light 替代。场景加载等待 Shader 启动验证完成，Editor 不 begin_play。Game 优先使用 --PlayScene，再取 Game.StartupScene，空值使用引擎默认 Scene；有效项目的场景缺失/非法明确退出，避免掩盖游戏配置错误。
+Editor 未指定工程时打开 `/Engine/Scenes/Default.scene`；有效工程按 Editor.StartupScene 打开，空值使用同一默认场景。场景非法/缺失/装配失败记录诊断并回退，保持工程关联，不修改工程配置。显式指定工程时，描述/配置校验失败明确退出；默认场景本身损坏明确报错，不以硬编码 Cube/Light 替代。场景加载等待 Shader 启动验证完成，Editor 不 begin_play。Game 优先使用 --PlayScene，再取 Game.StartupScene，空值使用引擎默认 Scene；有效项目的场景缺失/非法明确退出，避免掩盖游戏配置错误。
 
 工程 Saved 放 `<工程>/saved`；无工程放 OS 用户数据根/Toy3d/Editor。日志每 Editor/Game 实例按角色、本地启动日期时间和进程号命名，格式见 [Core 日志分发](core.md#日志分发)；布局和 Shader 缓存在同一 Saved 下。资源工程不加入引擎 CMake、不拷贝到 bin；引擎部署只复制自身 asset/config 和 Editor UI 资源。`--Project=D:/path/Game.toy` 可显式打开工程。
 
-创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有自定义脚本保留；仅完全匹配已知生成模板的旧脚本升级为当前宿主。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本按模块启动 Toy3dEditor 或 <Module>Editor，不自动构建；Game 可直接启动或由 Scene > Standalone Play 启动；Saved 记录为本机缓存，不纳入版本管理。
+创建/打开工程自动补齐 launch_editor.bat、launch_editor.sh，已有自定义脚本保留；仅完全匹配已知生成模板的旧脚本升级为当前宿主。EditorProject 由入口注入 Editor 部署目录；saved/editor_launch.txt 缓存两行 UTF-8 数据（实际描述文件名、Editor 部署目录），打开时原子刷新，描述文件/项目移动后按新入口更新。启动脚本从自身目录定位工程，优先 TOY3D_EDITOR_BIN，再用 Saved 记录；记录缺失时要求根目录恰有一个 .toy，尝试相邻 ../bin。支持空格/Unicode 路径和额外启动参数，绑定的 --Project 最后传入；缺工程/Editor 或启动失败返回非零，不自动构建。Windows 无参数失败时暂停便于双击查看；POSIX 使用 sh launch_editor.sh，不依赖新建文件的 executable 位。脚本统一启动 Toy3dEditor，不自动构建；Game 可直接启动或由 Scene > Standalone Play 启动；Saved 记录为本机缓存，不纳入版本管理。
 
-验证入口：editor/tests/project_tests.cpp（描述、创建/移动、隔离、默认资产/无工程挂载）、runtime/tests/console_manager_tests.cpp（覆盖来源、失败整层保留）、editor/tests/editor_framework_tests.cpp（场景路径读取和 clean 状态）。项目扩展验证见 project/tests/rotating_actor_tests.cpp。工程进程内切换、DLL 热重载、C++ 模板生成和全资产 Cook 尚未实现；Shader Cook 已接入项目 Game 构建。Game 正常启动读取 `GameHostPaths.shader_deployment` 指定的 Player 清单，在装配场景前预加载全部 ShaderMap family，typed 配置查询只访问 CPU 缓存；缺源、配置、清单或 entry 明确失败。项目 `<module>Shaders` target 使用共享 Cook，在 build 生成 Player 目录，成功后拷贝到独立部署目录并将路径注入 Game；不使用 Saved 复活被删除的 Shader。开发时显式 `--EditorShaderArtifacts` 使用已发布的 Editor artifacts，Saved publication source hash 必须与整 family 一致，缺记录才查内置部署；这条开发入口同样预加载完整 family，缺配置不退回默认。`ShaderLoadConfig` 仅注入 built-in root 和是否需要 Editor 程序，已删除未使用的 ShaderCodeLibrary 模式与旧 path 字段；Game 不要求 HitProxy，Editor 仍必须具有 ShadowDepth/HitProxy/Global 所需程序。GPU Skin 使用同一集合与姿态；目前只有 Vulkan ES3.1 产物加载，其他后端未实现时必须明确不支持。
+验证入口：editor/tests/project_tests.cpp（描述、创建/移动、隔离、默认资产/无工程挂载）、runtime/tests/console_manager_tests.cpp（覆盖来源、失败整层保留）、editor/tests/editor_framework_tests.cpp（场景路径读取和 clean 状态）。项目扩展验证见 project/tests/rotating_actor_tests.cpp。工程进程内切换、DLL 热重载和 C++ 模板生成尚未实现；Shader Cook 已接入项目 Game 构建。Game 正常启动读取 `GameHostPaths.shader_deployment` 指定的 Player 清单，在装配场景前预加载全部 ShaderMap family，typed 配置查询只访问 CPU 缓存；缺源、配置、清单或 entry 明确失败。项目 `<module>Shaders` target 使用共享 Cook，在 build 生成 Player 目录，成功后拷贝到独立部署目录并将路径注入 Game；不使用 Saved 复活被删除的 Shader。开发时显式 `--EditorShaderArtifacts` 使用已发布的 Editor artifacts，Saved publication source hash 必须与整 family 一致，缺记录才查内置部署；这条开发入口同样预加载完整 family，缺配置不退回默认。`ShaderLoadConfig` 仅注入 built-in root 和是否需要 Editor 程序，已删除未使用的 ShaderCodeLibrary 模式与旧 path 字段；Game 不要求 HitProxy，Editor 仍必须具有 ShadowDepth/HitProxy/Global 所需程序。GPU Skin 使用同一集合与姿态；目前只有 Vulkan ES3.1 产物加载，其他后端未实现时必须明确不支持。
 
-工程缺少 Git 规则时同时补齐 .gitignore（忽略 /saved/）和 .gitattributes（launch_editor.sh 保持 LF），已有规则文件保留；自定义规则须自行保留上述约束，避免提交本机启动缓存或把 shell 脚本检出为 CRLF。
+工程缺少 Git 规则时同时补齐 .gitignore（忽略 /saved/ 和 /binaries/）和 .gitattributes（launch_editor.sh 保持 LF），已有规则文件保留；自定义规则须自行保留上述约束，避免提交本机启动缓存或把 shell 脚本检出为 CRLF。
+
+### Windows 打包
+
+Editor 的 Scene > Package Project (Windows) 与 scripts/package-project.ps1 共用 engine/build/cmake/package_project.cmake，要求 CMake 3.21+、VS2022 x64 和已配置的 Vulkan/Shader 工具链。入口按 .toy 所在工程的 CMakeLists.txt 选择原生项目，否则使用 Toy3dGame 资源宿主。构建、资产 Cook、Player Shader Cook、Stage、Package 按顺序执行；可选 Run 启动最终包。Editor 使用当前配置，输出到 saved/packages 的新目录；打包前要求保存当前 Scene 和 Material，后台进程可取消，退出等待进程树结束。取消可能留下未发布的独占临时 Stage。
+
+Toy3dAssetPipeline 验证完整资产 catalog 和强依赖，保留资产身份/反射描述及 required meta payload，删除可选 Editor payload；沿现有 .asset/.scene + .meta 格式，未做不可达资产裁剪。文件对校验或源描述冲突导致 Cook 失败，调用方丢弃 Stage。C++ 类型由共享 Editor 的项目模块注册，离线 pipeline 不依赖 Runtime/Editor。
+
+Stage 仅包含 Game、必要运行 DLL、engine/project 资产和配置、Player Shader deployment、工程描述与清单；不带 Editor、项目模块 DLL、源码 Shader、源 C++、Saved 缓存。game_package.ini 的 [Package] 固定 FormatVersion=1 和相对 Descriptor；Game 从自身可执行文件目录解析包根，配置/资产/Shader 都相对该根，拒绝路径逃逸和开发 Shader 参数。package_manifest.txt 记录配置及逐文件 SHA256，作为部署核对清单，运行时不逐文件校验它。日志写包内 project/saved。
+
+输出必须为新目录，不能与引擎/项目源码根重叠；失败清理本次独占 Stage，最终使用 no-replace 目录重命名发布，不覆盖既有包。目录发布不承诺断电持久性。首期仅支持 Windows 松散目录包与 Vulkan Player，不包含 Pak、安装器或移动端打包。
+
+```powershell
+./scripts/package-project.ps1 -Project ./project/ShadowDemo.toy -Output ./build/packages/ShadowDemo -Configuration Debug
+# 可选 -Run 启动已打包 Game；验证用 Game 支持 --Game.FrameLimit=8
+```
+
+验证入口：project/tests/module_host_tests.cpp（真实 DLL、注册与 World tick、缺失/名称/构建身份失败）、tools/asset_pipeline/tests/asset_cook_tests.cpp（required payload、可选数据剥离、缺依赖及输出保护）；打包集成需把产物移到另一目录，从无关 cwd 运行 Game 并检查加载、帧数、日志及退出。
 
 ## Platform/Input 与修改检查
 

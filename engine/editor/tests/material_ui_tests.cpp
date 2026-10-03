@@ -1,4 +1,6 @@
 #include "assets/material/material_editor_panel.h"
+#include "assets/asset_resource_picker.h"
+#include "assets/preview/preview_scene_widgets.h"
 #include "panels/editor_panel_registry.h"
 
 #include <iostream>
@@ -43,6 +45,159 @@ namespace
             ImGui::EndPopup();
         }
         ImGui::Render();
+    }
+
+    void test_preview_scene_controls(const toy3d::EditorWorkspace& workspace)
+    {
+        using namespace toy3d;
+        MaterialPreviewSettings material;
+        material.mesh = MaterialPreviewMesh::Plane;
+        material.camera_distance = 700;
+        material.scene.show_floor = false;
+        material.scene.exposure_ev = 2;
+        PreviewSceneSettings animation;
+        animation.light_intensity = 4;
+        const auto animation_before = animation;
+        ImVec2 reset_position;
+        const auto draw = [&]()
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(600, 750), ImGuiCond_Always);
+            ImGui::Begin("Shared Preview Scene Controls", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            draw_preview_scene_settings(workspace, material.scene);
+            const auto minimum = ImGui::GetItemRectMin();
+            const auto maximum = ImGui::GetItemRectMax();
+            reset_position = ImVec2((minimum.x + maximum.x) * 0.5f, (minimum.y + maximum.y) * 0.5f);
+            ImGui::End();
+            ImGui::Render();
+        };
+        draw();
+        draw();
+        auto& io = ImGui::GetIO();
+        io.AddMousePosEvent(reset_position.x, reset_position.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        draw();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        draw();
+        check(material.scene == PreviewSceneSettings{},
+              "Shared Reset Scene restores environment, light and floor defaults");
+        check(material.mesh == MaterialPreviewMesh::Plane && material.camera_distance == 700,
+              "Shared scene controls preserve material model and camera");
+        check(animation == animation_before, "Changing one preview leaves another window's settings intact");
+    }
+
+    void test_texture_picker(toy3d::AssetResourcePicker& picker, const toy3d::EditorWorkspace& workspace,
+                             const toy3d::AssetId& incompatible)
+    {
+        using namespace toy3d;
+        AssetId texture;
+        AssetId other_texture;
+        AssetId::parse("a6a53651e980491294a675d094006da0", texture);
+        AssetId::parse("26e14823067241ee84676de813b2e8c3", other_texture);
+        check(workspace.catalog().index.find(texture) && workspace.catalog().index.find(other_texture),
+              "texture picker fixtures exist in the real engine catalog");
+        AssetId selected = texture;
+        AssetId browsed;
+        picker.set_selected_asset(
+            [&]()
+            {
+                return selected;
+            });
+        picker.set_browse(
+            [&](const AssetId& id)
+            {
+                browsed = id;
+            });
+        AssetResourceSelection current{other_texture, {}};
+        std::string error;
+        ImVec2 thumbnail;
+        ImVec2 use;
+        ImVec2 clear;
+        ImVec2 find;
+        ImVec2 name;
+        const auto draw = [&](const char* payload_type = nullptr, const AssetId* payload_asset = nullptr)
+        {
+            ImGui::NewFrame();
+            if (payload_type && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern))
+            {
+                ImGui::SetDragDropPayload(payload_type, payload_asset, sizeof(AssetId));
+                ImGui::TextUnformatted("Texture fixture");
+                ImGui::EndDragDropSource();
+            }
+            ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(500, 180), ImGuiCond_Always);
+            ImGui::Begin("Texture picker interaction", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            const auto& style = ImGui::GetStyle();
+            AssetResourceSelection next;
+            const bool changed = picker.draw("Texture", workspace, current, {"toy3d.Texture2DAssetData"}, next, error);
+            ImGui::PushID("Texture");
+            ImGui::PushID("Texture");
+            const auto* table = ImGui::GetCurrentContext()->Tables.GetByKey(ImGui::GetID("##Property"));
+            ImGui::PopID();
+            ImGui::PopID();
+            if (table)
+            {
+                const float x = table->Columns[1].WorkMinX;
+                const float y = table->RowPosY1 + style.CellPadding.y;
+                const float frame = ImGui::GetFrameHeight();
+                const float size = frame * 2.0f + style.ItemSpacing.y;
+                thumbnail = ImVec2(x + size * 0.5f, y + size * 0.5f);
+                name = ImVec2(x + size + style.ItemSpacing.x + 8, y + frame * 0.5f);
+                use = ImVec2(name.x - 8 + frame * 0.5f, y + frame + style.ItemSpacing.y + frame * 0.5f);
+                find = ImVec2(use.x + frame + 2, use.y);
+                clear = ImVec2(find.x + frame + 2, use.y);
+            }
+            if (changed)
+            {
+                current = next;
+            }
+            ImGui::End();
+            ImGui::Render();
+            return changed;
+        };
+        auto& io = ImGui::GetIO();
+        const auto click = [&](ImVec2 position)
+        {
+            io.AddMousePosEvent(position.x, position.y);
+            draw();
+            io.AddMouseButtonEvent(0, true);
+            draw();
+            io.AddMouseButtonEvent(0, false);
+            return draw();
+        };
+        draw();
+        check(click(use) && current.asset == texture, "Use assigns the compatible Content Browser selection");
+        check(!click(find) && browsed == texture, "Find locates the current reference without changing it");
+        check(click(clear) && !current.asset.valid(), "Clear returns an empty selection to restore caller defaults");
+        current.asset = other_texture;
+        selected = incompatible;
+        check(!click(use) && current.asset == other_texture, "Use cannot assign a Material to a Texture2D field");
+        click(thumbnail);
+        check(ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
+              "clicking the thumbnail opens the searchable texture picker");
+        click(ImVec2(510, 10));
+        draw();
+        check(!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
+              "clicking outside dismisses the texture picker before drag/drop tests");
+        const auto drop = [&](ImVec2 target, const char* payload_type, const AssetId& asset)
+        {
+            io.AddMousePosEvent(target.x, target.y);
+            draw();
+            io.AddMouseButtonEvent(0, true);
+            draw(payload_type, &asset);
+            draw(payload_type, &asset);
+            io.AddMouseButtonEvent(0, false);
+            return draw(payload_type, &asset);
+        };
+        check(drop(thumbnail, "TOY3D_TEXTURE_ASSET", texture) && current.asset == texture,
+              "Texture payload delivers onto the thumbnail itself");
+        check(drop(name, "TOY3D_TEXTURE_ASSET", other_texture) && current.asset == other_texture,
+              "Texture payload delivers onto the resource name");
+        check(!drop(thumbnail, "TOY3D_ASSET", incompatible) && current.asset == other_texture && !error.empty(),
+              "incompatible drop diagnoses and preserves the current texture");
+        picker.set_selected_asset({});
+        picker.set_browse({});
     }
 } // namespace
 
@@ -162,6 +317,11 @@ int main()
     // Engine teardown also runs when initialization failed before a session existed.
     panel.shutdown();
     panel.initialize(workspace, defaults->material(), PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+    AssetThumbnailPool thumbnails(workspace);
+    AssetResourcePicker picker(thumbnails);
+    panel.set_resource_picker(picker);
+    test_preview_scene_controls(workspace);
+    test_texture_picker(picker, workspace, root_id);
     EditorPanelRegistry panels;
     check(panels.add({"material", "Material Editor", "Material Editor",
                       [&]()

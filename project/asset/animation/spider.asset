@@ -1,0 +1,24 @@
+format_version: 2
+asset_id: 82423f6c8c61d50e26138b338fb121cc
+root_type: toy3d.StaticMeshAssetData
+schema_version: 3
+dependencies:
+  []
+subresources:
+  []
+data:
+  geometry_segment: render_geometry
+  index_count: 3936
+  material_slots:
+    - BeinTex_0
+    - Skin_1
+    - Augentex_2
+    - HLeibTex_3
+  valid_tangent_frame: false
+  vertex_count: 3936
+meta:
+  format_version: 1
+  size: 220608
+  sha256: df2348575c8ca995b9518a9b19311fc52a53b676476242270770f7188139c49e
+  required_segments:
+    - render_geometry
