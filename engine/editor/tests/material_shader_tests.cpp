@@ -23,6 +23,7 @@
 #include "rendercore/frame_synchronization.h"
 #include "rendercore/render_command.h"
 #include "rendercore/geometry/static_mesh_render_data.h"
+#include "rendercore/texture/texture_asset_decode.h"
 #include "workspace/editor_workspace.h"
 
 namespace
@@ -111,6 +112,22 @@ namespace
                 [this]() -> const AssetIndex&
                 {
                     return workspace_.catalog().index;
+                },
+                [this](const AssetRef& reference, std::string& error) -> TextureRef
+                {
+                    const auto descriptor =
+                        build_texture2d_desc(workspace_.files(), workspace_.catalog().index, reference);
+                    if (!descriptor.succeeded())
+                    {
+                        error = descriptor.status().message;
+                        return {};
+                    }
+                    TextureRef texture = Texture::create(TextureDesc(descriptor.value()));
+                    if (!texture)
+                    {
+                        error = "Texture2D runtime descriptor is invalid.";
+                    }
+                    return texture;
                 },
                 [this](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
                 {

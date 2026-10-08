@@ -81,13 +81,13 @@ MaterialRenderProxy 按 active Material group identity 缓存绑定；拥有相�
 
 ## 可视预览与缩略图
 
-MaterialEditorPanel 的私有 runtime 随参数 revision 请求最新预览；静态候选成功才切换 runtime，编译期间保留旧图。AssetThumbnailPool 把 Material/Instance 缩略图与 live preview 排入一个 Renderer preview scene，串行使用同一设备、上下文及提交路径。已有缩略图任务先处理，live request 合并到最新值；窗口暂停请求后不持续刷新。地面组件在首次需要显示时注册，启动阶段的 Shader 验证不依赖尚未请求的预览帧来上传几何。
+MaterialEditorPanel 的私有 runtime 随参数 revision 请求最新预览；静态候选成功才切换 runtime，编译期间保留旧图。AssetThumbnailPool 把 Material/Instance 缩略图与 live preview 排入一个 Renderer preview scene，串行使用同一设备、上下文及提交路径。已有缩略图任务先处理，live request 合并到最新值；worker/磁盘阶段的在途条目不占用 UI 预览帧，因此长资产加载期间 live preview 仍能出图；窗口暂停请求后不持续刷新。地面组件在首次需要显示时注册，启动阶段的 Shader 验证不依赖尚未请求的预览帧来上传几何。
 
 窗口采用顶部操作栏、左侧 Viewport、右侧 Details / Preview Scene 页签；左右宽度可调，参数与场景设置各自滚动。Viewport 仅提供 Sphere、Plane（竖直正方形）和 Cube 三种预览，默认相机距离 600cm。球体沿用引擎预览资产，Plane/Cube 由 Editor composition root 注入现有 ActorFactory 几何，Pool 复制并归一化，不增加模型生成系统。模型选择与相机、灯光设置均属于窗口会话，不参与材质 dirty/history、主 World 或资产缩略图。
 
 窗口默认使用 E_PreviewCourtyard HDR、方向光与独立灰色地面；场景配置和设置控件与角色窗口共用，实例独立，见 [Editor 通用资产预览场景](editor.md#通用资产预览场景)。Preview Scene 可选择引擎/项目 Environment 或 Off，调整环境强度/绕 Y 旋转、主光颜色/方向/强度及固定曝光，分别切换背景、地面和阴影；背景显隐不关闭镜面 IBL，Off 才撤回环境。拖动图像环绕相机，滚轮缩放，Reset Preview 恢复默认设置。图像按可用宽高量化渲染，每边 96..512（公共 RHI readback 上限）；大面板等比放大显示，窄面板适配图像比例。GT 负责模型切换；缺少模型或非法设置明确诊断并保留旧图，GPU 与退出生命周期沿既有 Pool 路径。
 
-Texture2D 参数和实例 Parent 复用 AssetResourcePicker，显示有效引用（包括 Shader 内置默认贴图）的缩略图和名称，支持搜索、使用内容浏览器当前选择、定位及拖放赋值；缩略图与资源名称区域均可接收贴图。选择后先完成类型/加载检查，再进入窗口参数历史；贴图 Clear / None 删除本层覆盖并恢复继承或 Shader 默认，不写入空引用，必需的 Parent 禁止清空。属性行和颜色条使用 [Editor 统一显示层](editor.md#属性与资源显示)，参数覆盖保留独立勾选，Reset 恢复本层默认/继承，标签 tooltip 展示继承来源与未使用状态。材质只保存 AssetRef，不保存预览图。实现落在 Toy3dEditorCore 的既有 panel/picker/pool；不改变资产格式、RHI 或线程调度。验证入口为 MaterialUi 的真实 ImGui 控件与 Thumbnail 的 Vulkan 三种模型、切换/过期结果和缩略图隔离测试。
+Texture2D 参数和实例 Parent 复用 AssetResourcePicker，显示有效引用（包括 Shader 内置默认贴图）的缩略图和名称，支持搜索、使用内容浏览器当前选择、定位及拖放赋值；缩略图与资源名称区域均可接收贴图。贴图槽的解码走共享 AssetLoader（[资产加载门面](assets.md#资产加载门面)），在 GT 之外完成：引用类型/索引在提交前校验，构建 runtime 材质需要贴图就位，因此提交走装配适配器（Critical + 有界等待）——等待期间 GT 仍负责 adopt，超时/失败/在途失效都返回诊断且不改变已提交内容。解码失败按 identity 记忆并给出诊断，identity 在解码中被失效时句柄转为 `invalidated`，下次提交重新请求。未就绪或失败期间该槽位按父级/Shader 默认贴图渲染——预览不会因为一张坏图被替换或中断。贴图 Clear / None 删除本层覆盖并恢复继承或 Shader 默认。属性行和颜色条使用 [Editor 统一显示层](editor.md#属性与资源显示)，参数覆盖保留独立勾选，Reset 恢复本层默认/继承，标签 tooltip 展示继承来源与未使用状态。材质只保存 AssetRef，不保存预览图。内置 white/black/brick/normal_flat/white_linear 默认贴图仍由 `resolve_builtin_material_texture_defaults` 在 renderer 侧同步解析并缓存于窗口会话。实现落在 Toy3dEditorCore 的既有 panel/picker/pool；不改变资产格式、RHI 或线程调度。验证入口为 MaterialUi 的真实 ImGui 控件（含 pending 提交、接管重放与失败记忆）、Thumbnail 的 Vulkan 三种模型、切换/过期结果和缩略图隔离测试。
 
 缩略图仍使用固定 studio、固定小尺寸和无地面/阴影的轻量配置。GT 仅在串行队列空闲后切换私有 World 配置，Draw 携带不可变设置；背景采样同一环境的 mip 0，反射采样 GGX mip，同步强度/旋转，没有球谐或环境漫反射。图片仅在实际 GPU readback 成功且材质/设置 revision 仍匹配时接管；过期结果退役，失败保留旧图并诊断。关闭/替换私有 runtime 前撤回 mesh、取消未发送请求、退役 UI texture，并 drain FIFO 后释放最终 Material owner；普通帧不 flush。Asset reload 使缓存与窗口环境候选失效，不将窗口草稿写成已保存资产；统一生成入口及缓存策略见 [Editor](editor.md#资产缩略图)。
 

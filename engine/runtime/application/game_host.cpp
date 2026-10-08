@@ -1,7 +1,10 @@
 #include "application/game_host.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "asset_loader/asset_loader.h"
+#include "rendercore/geometry/static_mesh_load_job.h"
+#include "rendercore/texture/texture_load_job.h"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <sstream>
 #include <iostream>
@@ -73,6 +76,10 @@ namespace toy3d
             }
 
           protected:
+            void set_asset_loader(AssetLoader& assets) override
+            {
+                assets_ = &assets;
+            }
             bool on_initialize() override
             {
                 const auto& frame_arguments = CommandLineParser::get_instance();
@@ -177,6 +184,15 @@ namespace toy3d
                     {
                         return catalog_.index;
                     },
+                    [this](const AssetRef& reference, std::string& error) -> TextureRef
+                    {
+                        if (assets_ == nullptr)
+                        {
+                            error = "Material texture: the asset loader is unavailable.";
+                            return {};
+                        }
+                        return load_assembly_texture(*assets_, reference, catalog_.index, error);
+                    },
                     [this](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
                     {
                         return load_shader_map(name, selections);
@@ -210,13 +226,14 @@ namespace toy3d
                 SceneAssemblyServices services;
                 services.load_environment = [this](const AssetRef& reference, std::string& error) -> TextureRef
                 {
-                    const auto loaded = load_environment_asset(files_, catalog_.index, reference);
-                    if (!loaded.succeeded())
+                    if (assets_ == nullptr)
                     {
-                        error = loaded.status().message;
+                        error = "Scene environment: the asset loader is unavailable.";
                         return {};
                     }
-                    return loaded.value();
+                    // Startup assembly cannot continue without the environment, so this one
+                    // Critical decode is waited for while the loader thread does the work.
+                    return load_assembly_texture(*assets_, reference, catalog_.index, error);
                 };
                 services.load_mesh = [this](const SceneMeshData& mesh, std::string& error) -> StaticMeshRef
                 {
@@ -229,24 +246,25 @@ namespace toy3d
                                                      {
                                                          return value.role == "mesh";
                                                      });
-                    const auto* location =
-                        source == mesh.resources.end() ? nullptr : catalog_.index.find(source->reference.asset_id);
-                    if (!location)
+                    if (source == mesh.resources.end())
                     {
                         error = "Scene mesh asset is missing.";
                         return {};
                     }
-                    const auto loaded = read_static_mesh_asset(files_, location->path);
-                    if (!loaded.succeeded())
+                    if (assets_ == nullptr)
                     {
-                        error = loaded.status().message;
+                        error = "Scene mesh: the asset loader is unavailable.";
                         return {};
                     }
-                    return create_static_mesh_from_asset(loaded.value(), geometry_.default_material(),
-                                                         [this](const AssetRef& reference)
-                                                         {
-                                                             return materials_->load(reference);
-                                                         });
+                    // Startup assembly cannot continue without the mesh; the shared loader
+                    // decodes it while the Game Thread adopts the runtime mesh.
+                    return load_assembly_static_mesh(
+                        *assets_, source->reference, catalog_.index, geometry_.default_material(),
+                        [this](const AssetRef& reference)
+                        {
+                            return materials_->load(reference);
+                        },
+                        error);
                 };
                 services.load_skeletal_mesh = [this](const SceneSkeletalMeshData& mesh)
                 {
@@ -487,6 +505,8 @@ namespace toy3d
             GameModuleRegistration module_;
             NativePlatformFile platform_;
             FileSystem files_;
+            // Injected by the Engine before on_initialize(); assembly waits on it per identity.
+            AssetLoader* assets_ = nullptr;
             TypeRegistry types_;
             ActorTypeRegistry actors_;
             AssetCatalog catalog_;

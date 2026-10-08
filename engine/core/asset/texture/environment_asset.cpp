@@ -139,6 +139,9 @@ namespace toy3d
         }
         ValueLimits limits;
         limits.max_bytes = payload_limit;
+        // One face is the dense decode unit. The budget is exactly the largest legal
+        // face (512 x 512 RGBA16F); a smaller value would reject a valid asset.
+        limits.max_array_elements = maximum_environment_face_size * maximum_environment_face_size * 4u;
         ValueReader reader(bytes, limits);
         EnvironmentAsset candidate;
         std::uint32_t version = 0u, count = 0u;
@@ -168,12 +171,16 @@ namespace toy3d
             for (auto& face : candidate.mips[mip].faces)
             {
                 face.resize(static_cast<std::size_t>(size) * size * 4u);
-                for (auto& bits : face)
+                // Dense FP16 faces decode through one bulk read per face; scalar codec
+                // calls dominated environment loading on the Game Thread.
+                const auto decoded = reader.read_uint16_array(face.data(), face.size());
+                if (!decoded.succeeded())
                 {
-                    if (!reader.read_uint16(bits).succeeded())
-                    {
-                        return AssetResult<EnvironmentAsset>(invalid("Truncated Environment face."));
-                    }
+                    // Exact length is verified above, so a failure here reports the
+                    // element budget rather than a length mismatch.
+                    return AssetResult<EnvironmentAsset>(invalid(
+                        decoded.code == ValueErrorCode::TooLarge ? "Environment face exceeds the dense decode budget."
+                                                                 : "Truncated Environment face."));
                 }
             }
         }

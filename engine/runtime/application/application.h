@@ -13,6 +13,7 @@
 namespace toy3d
 {
     class Engine;
+    class AssetLoader;
     class World;
     class SceneInterface;
     class TaskGraphInterface;
@@ -25,6 +26,13 @@ namespace toy3d
     {
       public:
         virtual ~Application() = default;
+
+        // Engine owns the decode service and hands it over before on_initialize(), so assembly
+        // resolves assets on the loader thread instead of decoding on the Game Thread.
+        virtual void set_asset_loader(AssetLoader& assets)
+        {
+            static_cast<void>(assets);
+        }
 
       protected:
         World& world();

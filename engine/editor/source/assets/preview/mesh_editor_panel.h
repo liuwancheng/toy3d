@@ -1,6 +1,7 @@
 #pragma once
 
 #include "animation/animation_instance.h"
+#include "asset_loader/asset_loader.h"
 #include "assets/preview/mesh_preview_asset.h"
 #include "assets/preview/asset_preview_scene.h"
 #include "assets/mesh/mesh_material_edit_session.h"
@@ -20,6 +21,11 @@ namespace toy3d
         explicit MeshEditorPanel(EditorWorkspace& workspace);
         ~MeshEditorPanel();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
+        // GT composition root injects the shared asset loader before initialize().
+        void set_asset_loader(AssetLoader& assets)
+        {
+            assets_ = &assets;
+        }
         void set_resource_picker(AssetResourcePicker& picker)
         {
             resource_picker_ = &picker;
@@ -95,6 +101,7 @@ namespace toy3d
         AssetResourcePicker* resource_picker_ = nullptr;
         AssetPreviewScene scene_;
         PreviewSceneSettings preview_settings_;
+        AssetLoader* assets_ = nullptr;
         TextureRef environment_cube_;
         AssetId loaded_environment_;
         std::vector<AssetId> compatible_sequences_;

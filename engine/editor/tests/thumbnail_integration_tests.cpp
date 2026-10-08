@@ -22,6 +22,7 @@
 #include "engine.h"
 #include "file_system/native_platform_file.h"
 #include "image/png_codec.h"
+#include "threading/thread_manager.h"
 #include "scene/placement/actor_factory.h"
 #include "scene/placement/asset_placement.h"
 #include "scene/editor_command_history.h"
@@ -64,6 +65,16 @@ namespace
         }
 
       private:
+        bool ensure_asset_loader()
+        {
+            if (!loader_.running() && !loader_.initialize(workspace_.files(), loader_threads_))
+            {
+                state_.error = "Asset loader thread could not start.";
+                return false;
+            }
+            pool_.set_asset_loader(loader_);
+            return true;
+        }
         bool on_initialize() override
         {
             ImGui::GetIO().IniFilename = nullptr;
@@ -87,6 +98,10 @@ namespace
         {
             pool_.set_material_preview_meshes(factory_.instantiate_builtin("Plane"),
                                               factory_.instantiate_builtin("Cube"));
+            if (!ensure_asset_loader())
+            {
+                return false;
+            }
             return pool_.initialize(scene, factory_.default_material(), tasks);
         }
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
@@ -159,8 +174,11 @@ namespace
             {
                 second_thumbnail_hash_ = sha256(result.bgra_pixels);
             }
-            if (capture && phase_ == 12 && result.extent.width == thumbnail_default_size)
+            // The isolation property must not depend on how preview and thumbnail frames
+            // interleave, so the check is armed when the regeneration is requested.
+            if (capture && expect_second_thumbnail_ && result.extent.width == thumbnail_default_size)
             {
+                expect_second_thumbnail_ = false;
                 if (sha256(result.bgra_pixels) != second_thumbnail_hash_)
                 {
                     stop("Material preview floor, lighting, or environment leaked into a subsequent thumbnail.");
@@ -252,6 +270,8 @@ namespace
                 stop("Thumbnail integration timed out.");
                 return;
             }
+            // Adoption is Game Thread work, exactly like the editor composition root does.
+            loader_.tick();
             pool_.tick();
             if (!started_)
             {
@@ -435,6 +455,9 @@ namespace
                         prior_preview_pixels_ = material_pixels_;
                         preview_settings_.scene.show_shadows = true;
                         pool_.generate(second_);
+                        // The regenerated thumbnail must stay isolated from the reconfigured
+                        // preview scene regardless of the frame order.
+                        expect_second_thumbnail_ = true;
                     }
                     else if (phase_ == 12)
                     {
@@ -777,6 +800,14 @@ namespace
                 }
                 // Material Save publishes after the Content Browser has emitted its Images.
                 // Repeated callbacks must coalesce without changing this frame's registry.
+                // A targeted identity defers exactly like the full rescans that follow.
+                pool_.invalidate(first_);
+                pool_.invalidate(first_);
+                if (pool_.texture_ids() != invalidated_textures_)
+                {
+                    stop("Targeted invalidation removed texture IDs before the ImGui snapshot.");
+                    return;
+                }
                 pool_.invalidate();
                 pool_.invalidate();
                 if (pool_.texture_ids() != invalidated_textures_)
@@ -809,6 +840,7 @@ namespace
         {
             import_dialog_.clear();
             pool_.shutdown();
+            loader_.shutdown();
             if (preview_material_)
             {
                 MaterialInstance::release(preview_material_);
@@ -822,6 +854,9 @@ namespace
 
         EditorWorkspace& workspace_;
         AssetThumbnailPool pool_;
+        // The preview pool consumes the shared loader, so this host owns one loader thread.
+        ThreadManager loader_threads_;
+        AssetLoader loader_;
         ActorFactory factory_;
         EditorCommandHistory history_;
         ContentBrowserPanel browser_;
@@ -848,6 +883,7 @@ namespace
         ImGuiTextureId conflict_texture_;
         bool stale_rejected_ = false;
         bool thumbnail_after_preview_ = false;
+        bool expect_second_thumbnail_ = false;
         Sha256Hash second_thumbnail_hash_{};
         Sha256Hash material_image_hash_{};
         Sha256Hash original_material_image_hash_{};

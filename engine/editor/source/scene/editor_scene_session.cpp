@@ -1,8 +1,11 @@
 #include "scene/editor_scene_session.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "asset_loader/asset_loader.h"
+#include "rendercore/geometry/static_mesh_load_job.h"
+#include "rendercore/texture/texture_load_job.h"
 #include "gamescene/scene_assembly.h"
 
 #include <algorithm>
+#include <chrono>
 #include "asset/asset_descriptor_path.h"
 #include "gamescene/component/static_mesh_component.h"
 #include "gamescene/component/skeletal_mesh_component.h"
@@ -288,13 +291,14 @@ namespace toy3d
         SceneAssemblyServices services;
         services.load_environment = [this](const AssetRef& reference, std::string& error) -> TextureRef
         {
-            const auto loaded = load_environment_asset(workspace_.files(), workspace_.catalog().index, reference);
-            if (!loaded.succeeded())
+            if (assets_ == nullptr)
             {
-                error = loaded.status().message;
+                error = "Scene environment: the asset loader is unavailable.";
                 return {};
             }
-            return loaded.value();
+            // Assembly cannot continue without the World environment, so this one Critical
+            // decode is waited for; preview windows keep polling instead.
+            return load_assembly_texture(*assets_, reference, workspace_.catalog().index, error);
         };
         services.load_mesh = [&](const SceneMeshData& mesh, std::string& problem) -> StaticMeshRef
         {
@@ -307,21 +311,20 @@ namespace toy3d
                                              {
                                                  return value.role == "mesh";
                                              });
-            const auto* location =
-                source == mesh.resources.end() ? nullptr : workspace_.catalog().index.find(source->reference.asset_id);
-            if (!location)
+            if (source == mesh.resources.end())
             {
                 problem = "Scene mesh asset is missing.";
                 return {};
             }
-            const auto loaded = read_static_mesh_asset(workspace_.files(), location->path);
-            if (!loaded.succeeded())
+            if (assets_ == nullptr)
             {
-                problem = loaded.status().message;
+                problem = "Scene mesh: the asset loader is unavailable.";
                 return {};
             }
-            return create_static_mesh_from_asset(loaded.value(), factory_.default_material(),
-                                                 factory_.material_resolver());
+            // Assembly cannot continue without the mesh, so this one Critical decode is waited
+            // for on the loader thread instead of being read and built inline here.
+            return load_assembly_static_mesh(*assets_, source->reference, workspace_.catalog().index,
+                                             factory_.default_material(), factory_.material_resolver(), problem);
         };
         services.load_skeletal_mesh = [this](const SceneSkeletalMeshData& mesh)
         {

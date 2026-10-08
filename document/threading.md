@@ -26,6 +26,18 @@ NamedThread 正确 attach，区分 GT/RT/worker/Unknown；SingleThread 逻辑 RT
 - 不持业务锁等待任务；长期阻塞进程/I/O 用专用线程，不占 worker。
 - 按现有 TaskGraphStatus/Exception 处理失败，不虚构 enqueue bool/全局 pool API。
 
+## 资源加载线程
+
+`engine/runtime/asset_loader` 的 AssetLoader 是资产对解码的统一入口，拥有一个由 composition root 注入的专用线程（`ThreadManager` 上的 "AssetLoader"）与四级优先级队列（Critical/High/Normal/Low，同级 FIFO）；它复用 Core 的 Thread/Event，不新建第二套任务系统，也不注册全局单例。队列按请求累积，但同一 identity 只保留一个在途任务（single-flight），逐帧轮询不会堆积解码。需要"立即拿到 TextureRef"的组件（如 `MaterialLibrary`）不再自己解码，而由 composition root 注入 resolver，策略见第 3 段。
+
+加载线程只读 `FileSystem`/`AssetIndex` 快照（GT 独占 mount/refresh/发布），只产出 owned CPU payload，不访问 GPU/World/UI，也不创建运行时对象；每种资源的知识都在自己的 `AssetLoadJob` 里（`decode` 跑加载线程，`adopt`/`bytes` 跑 GT），门面只调度接口。GT 在 `tick()` 的 adopt 阶段接管并创建/退役运行时对象。等待者由在途任务以 shared_ptr 持有，因此调用方丢弃句柄不会取消共享解码，只有全部等待者显式 `cancel()` 时任务才在开始前被丢弃。
+
+装配路径（Scene 装配的环境与 StaticMesh、PIE、World Settings、Game 启动 Scene、PIE/Game 与材质窗口的材质贴图解析）无法在缺资产时继续，因此允许对 `AssetLoadPriority::Critical` 请求做**有界等待**：`load_assembly_texture`/`load_assembly_static_mesh` 内部用 `AssetLoader::wait(handle, timeout)`，等待期间仍由 GT 执行 adopt，超时/失败/在途失效都返回空并给出诊断；它不持业务锁。装配等待可由帧循环内的动作触发（打开 Scene、启动 Scene 的自动装载、启动 PIE、改 World Settings），上界是超时值而非"一帧内完成"，因此这些动作不是无成本的。窗口与预览的 Environment cube 不在帧内等待：逐帧 `tick()` 轮询并保留旧图。
+
+`adopt()` 自己也可能触发装配等待（StaticMesh 的 adopt 解析材质，材质解析再解析贴图），所以 `tick()` 必须可重入：它每次只从共享结果队列取一个条目再 adopt，嵌套的 `wait`/`tick` 因此能继续消费同一批结果，而不会等一个已经解码完、只是尚未 adopt 的资产直到超时。加载线程为串行且不抢占在途解码，一次装配等待的上界是"当前那次解码结束"与超时值中的较小者，命中共享缓存时立即返回。`decode` 抛出的异常被记为该条目的失败诊断，加载线程不会因此退出。
+
+退出顺序为禁新请求 → 清队列与在途 → join 加载线程 → 再 drain 渲染；长期 I/O 解码因此不占 AnyWorker 配额。每个进程只有一个加载器实例：Engine 在 `initialize_render_framework` 创建它、在 `shutdown_render_framework` 里（世界释放之后、线程管理器销毁之前）join，并通过 `Application::set_asset_loader` 在 `on_initialize` 之前注入给应用——Editor 与 Game host 用同一份，Editor 不再自建；测试宿主仍可各自构造自己的加载器。加载位置的生命周期见 [Assets](assets.md#资产加载门面)。
+
 ## Shutdown 与验证
 
 先停止生产，再按 shutdown mode 处理已接受任务与依赖；渲染 drain 后才关闭 TaskGraph。Event/root/payload 必须覆盖消费者生命周期。

@@ -1,11 +1,13 @@
 #include "panels/scene_panels.h"
 #include "scene/actor_details.h"
 
+#include <chrono>
 #include <string>
 #include "imgui.h"
 #include "panels/property_widgets.h"
 #include "imgui_internal.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "asset_loader/asset_loader.h"
+#include "rendercore/texture/texture_load_job.h"
 #include "math/angle.h"
 #include <cmath>
 #include "scene/editor_command_history.h"
@@ -20,7 +22,7 @@
 namespace toy3d
 {
     void draw_world_settings(World& world, const EditorWorkspace& workspace, EditorCommandHistory& history,
-                             std::string& error)
+                             AssetLoader* assets, std::string& error)
     {
         if (ImGui::Begin("World Settings"))
         {
@@ -55,19 +57,30 @@ namespace toy3d
                         {
                             settings.environment = {
                                 asset.file.asset_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
-                            const auto loaded = load_environment_asset(workspace.files(), workspace.catalog().index,
-                                                                       settings.environment);
-                            if (!loaded.succeeded())
+                            if (assets == nullptr)
                             {
-                                error = loaded.status().message;
-                            }
-                            else if (!history.set_environment(world, settings, loaded.value()))
-                            {
-                                error = history.error();
+                                error = "World environment: the asset loader is unavailable.";
                             }
                             else
                             {
-                                error.clear();
+                                // A World environment change is committed in the same frame, so
+                                // this one Critical decode is waited for instead of leaving the
+                                // World on a half-applied setting.
+                                std::string load_error;
+                                const auto loaded = load_assembly_texture(*assets, settings.environment,
+                                                                          workspace.catalog().index, load_error);
+                                if (!loaded)
+                                {
+                                    error = load_error;
+                                }
+                                else if (!history.set_environment(world, settings, loaded))
+                                {
+                                    error = history.error();
+                                }
+                                else
+                                {
+                                    error.clear();
+                                }
                             }
                         }
                     }

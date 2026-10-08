@@ -691,7 +691,8 @@ namespace toy3d
                         {
                             selection.clear_asset();
                         }
-                        thumbnails.invalidate();
+                        // The deleted identity and its thumbnail entry disappear together.
+                        thumbnails.invalidate(pending_delete_);
                         pending_delete_ = {};
                         delete_error_.clear();
                         ImGui::CloseCurrentPopup();

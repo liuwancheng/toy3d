@@ -11,13 +11,14 @@
 #include "imgui_internal.h"
 
 #include "asset/texture/builtin_texture_assets.h"
+#include "asset_loader/asset_loader.h"
 #include "assets/asset_resource_picker.h"
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 #include "drivers/rhi/rhi_resource.h"
 
 #include "logging/logger.h"
 #include "rendercore/shader/shader_map.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "rendercore/texture/texture_load_job.h"
 #include "workspace/editor_workspace.h"
 #include "shader/shader_workflow.h"
 
@@ -165,15 +166,25 @@ namespace toy3d
             {
                 continue;
             }
-            const auto loaded = load_texture_asset(workspace_->files(), workspace_->catalog().index, *reference);
-            if (!loaded.succeeded())
+            if (assets_ == nullptr)
             {
-                return loaded.status();
+                return parameter_error("Texture loading: the asset loader is unavailable.");
             }
-            textures_.assets.emplace(reference->asset_id, loaded.value());
+            // Building the runtime material needs every referenced image in this call, so the
+            // shared loader is waited for (bounded). The decode itself still runs on the loader
+            // thread, and a decode failure is remembered there instead of being retried per frame.
+            std::string error;
+            const auto loaded = load_assembly_texture(*assets_, *reference, workspace_->catalog().index, error,
+                                                      std::chrono::seconds(5));
+            if (!loaded)
+            {
+                return parameter_error("Texture asset: " + error);
+            }
+            textures_.assets.emplace(reference->asset_id, loaded);
         }
         return AssetStatus::success();
     }
+
     void MaterialEditorPanel::request_close()
     {
         close_requested_ = true;
@@ -510,6 +521,8 @@ namespace toy3d
             }
             MaterialInstance::release(runtime_);
         }
+        // Decodes started for the closed runtime cannot be replayed; reopening re-requests the
+        // same identities and is served from the shared cache.
         focused_ = false;
     }
 
@@ -693,6 +706,7 @@ namespace toy3d
         previews_ = nullptr;
         resource_picker_ = nullptr;
         shaders_ = nullptr;
+        assets_ = nullptr;
         session_.reset();
     }
     void MaterialEditorPanel::request_static_configuration()

@@ -11,13 +11,18 @@ namespace toy3d
 {
     namespace
     {
-        std::uint32_t decode_uint32(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+        // The wire format is little endian; dense streams decode from a raw source
+        // pointer so bulk reads do not rely on host endianness or native layout.
+        std::uint16_t decode_uint16(const std::uint8_t* source)
         {
-            // The wire format is little endian; do not rely on host endianness
-            // or native object layout when decoding dense numeric streams.
-            return static_cast<std::uint32_t>(bytes[offset]) | (static_cast<std::uint32_t>(bytes[offset + 1u]) << 8u) |
-                   (static_cast<std::uint32_t>(bytes[offset + 2u]) << 16u) |
-                   (static_cast<std::uint32_t>(bytes[offset + 3u]) << 24u);
+            return static_cast<std::uint16_t>(static_cast<std::uint16_t>(source[0]) |
+                                              (static_cast<std::uint16_t>(source[1]) << 8u));
+        }
+
+        std::uint32_t decode_uint32(const std::uint8_t* source)
+        {
+            return static_cast<std::uint32_t>(source[0]) | (static_cast<std::uint32_t>(source[1]) << 8u) |
+                   (static_cast<std::uint32_t>(source[2]) << 16u) | (static_cast<std::uint32_t>(source[3]) << 24u);
         }
     } // namespace
 
@@ -399,7 +404,7 @@ namespace toy3d
         {
             return error(ValueErrorCode::Truncated, "input ends inside value");
         }
-        value = decode_uint32(bytes_, offset_);
+        value = decode_uint32(bytes_.data() + offset_);
         offset_ += 4u;
         return ValueStatus::success();
     }
@@ -424,7 +429,7 @@ namespace toy3d
         {
             return error(ValueErrorCode::Truncated, "input ends inside value");
         }
-        const std::uint32_t bits = decode_uint32(bytes_, offset_);
+        const std::uint32_t bits = decode_uint32(bytes_.data() + offset_);
         offset_ += 4u;
         float decoded = 0.0f;
         std::memcpy(&decoded, &bits, sizeof(decoded));
@@ -556,6 +561,22 @@ namespace toy3d
         return ValueStatus::success();
     }
 
+    ValueStatus ValueReader::read_uint16_array(std::uint16_t* values, std::size_t count)
+    {
+        const auto valid = validate_array_read(values, count, 2);
+        if (valid != ValueErrorCode::None)
+        {
+            return array_error(valid);
+        }
+        const std::uint8_t* source = bytes_.data() + offset_;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            values[i] = decode_uint16(source + i * 2u);
+        }
+        offset_ += count * 2u;
+        return ValueStatus::success();
+    }
+
     ValueStatus ValueReader::read_uint32_array(std::uint32_t* values, std::size_t count)
     {
         const auto valid = validate_array_read(values, count, 4);
@@ -563,9 +584,10 @@ namespace toy3d
         {
             return array_error(valid);
         }
+        const std::uint8_t* source = bytes_.data() + offset_;
         for (std::size_t i = 0; i < count; ++i)
         {
-            values[i] = decode_uint32(bytes_, offset_ + i * 4u);
+            values[i] = decode_uint32(source + i * 4u);
         }
         offset_ += count * 4u;
         return ValueStatus::success();
@@ -580,9 +602,10 @@ namespace toy3d
         }
         // Validate the whole block before publishing values, without allocating
         // a status/string for every component or a second array for rollback.
+        const std::uint8_t* source = bytes_.data() + offset_;
         for (std::size_t i = 0; i < count; ++i)
         {
-            const auto bits = decode_uint32(bytes_, offset_ + i * 4u);
+            const auto bits = decode_uint32(source + i * 4u);
             float value = 0;
             std::memcpy(&value, &bits, sizeof(value));
             if (!std::isfinite(value))
@@ -594,7 +617,7 @@ namespace toy3d
         }
         for (std::size_t i = 0; i < count; ++i)
         {
-            const auto bits = decode_uint32(bytes_, offset_ + i * 4u);
+            const auto bits = decode_uint32(source + i * 4u);
             std::memcpy(values + i, &bits, sizeof(float));
         }
         offset_ += count * 4u;

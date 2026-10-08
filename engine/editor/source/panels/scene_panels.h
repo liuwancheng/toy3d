@@ -13,9 +13,12 @@ namespace toy3d
     class MaterialAssignments;
     class AssetResourcePicker;
     class MeshAssetBindings;
+    class AssetLoader;
 
+    // The loader resolves the chosen environment; nullptr is reported as an explicit
+    // diagnostic instead of silently keeping the previous World environment.
     void draw_world_settings(World& world, const EditorWorkspace& workspace, EditorCommandHistory& history,
-                             std::string& error);
+                             AssetLoader* assets, std::string& error);
     bool draw_outliner(World& world, EditorSelection& selection, EditorCommandHistory& history,
                        const ActorFactory& factory, SceneViewport& viewport);
     void draw_details(World& world, EditorSelection& selection, EditorCommandHistory& history,

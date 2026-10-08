@@ -6,6 +6,7 @@
 #include "assets/texture/texture_asset_tools.h"
 #include "asset/scene/scene_asset.h"
 #include "asset/texture/environment_asset.h"
+#include "rendercore/texture/texture_asset_decode.h"
 
 #include <chrono>
 #include <filesystem>
@@ -31,6 +32,15 @@ namespace
         const auto parsed = toy3d::VirtualPath::parse(value);
         check(parsed.succeeded(), "fixture virtual path must parse");
         return parsed.succeeded() ? parsed.value() : toy3d::VirtualPath{};
+    }
+
+    // Environment fixture radiance: mip-major, then face, then texel. Values stay
+    // small positive FP16 numbers while making the packed order observable. The
+    // ordinal assumes the small fixture face size; a larger face would leave the
+    // finite-positive half range and be rejected by the asset validation.
+    std::uint16_t packed_red_ordinal(std::size_t mip, std::size_t face, std::size_t texel)
+    {
+        return static_cast<std::uint16_t>(mip * 32u + face * 4u + texel);
     }
 } // namespace
 
@@ -182,9 +192,15 @@ int main()
         for (std::size_t mip = 0u; mip < environment.mips.size(); ++mip)
         {
             const auto size = environment.face_size >> static_cast<std::uint32_t>(mip);
-            for (auto& face : environment.mips[mip].faces)
+            for (std::size_t face_index = 0u; face_index < environment_face_count; ++face_index)
             {
+                auto& face = environment.mips[mip].faces[face_index];
                 face.assign(size * size * 4u, 0x3c00u);
+                // The red channel carries the packed ordinal of this (mip, face, texel).
+                for (std::size_t texel = 0u; texel < size * size; ++texel)
+                {
+                    face[texel * 4u] = static_cast<std::uint16_t>(0x3c00u + packed_red_ordinal(mip, face_index, texel));
+                }
             }
         }
         const auto environment_pair = encode_environment_asset_pair(workspace.types(), environment_id, environment);
@@ -195,6 +211,44 @@ int main()
                       .succeeded() &&
                   workspace.refresh(),
               "Environment asset must publish into the shared catalog");
+        // The decode seam must keep the RGBA16F cube contract: one packed little-endian payload
+        // per mip with the six faces concatenated in order. Texture creation itself is the
+        // loader's adopt step, so the layout is asserted on the CPU descriptor.
+        const AssetRef environment_reference{
+            environment_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
+        const auto environment_desc =
+            build_environment_texture_desc(workspace.files(), workspace.catalog().index, environment_reference);
+        check(environment_desc.succeeded(), "Published Environment must decode into a CPU cube descriptor");
+        if (environment_desc.succeeded())
+        {
+            const TextureDesc& desc = environment_desc.value();
+            check(desc.cube && desc.format == PixelFormat::R16G16B16A16Float && desc.width == 2u && desc.height == 2u &&
+                      desc.usage == TextureUsage::LinearData && desc.requires_linear_filter &&
+                      desc.mip_pixels.size() == 2u && desc.row_pitches == std::vector<std::size_t>({16u, 8u}) &&
+                      desc.slice_pitches == std::vector<std::size_t>({32u, 8u}) &&
+                      desc.mip_pixels.front().size() == 32u * environment_face_count,
+                  "Environment runtime descriptor must keep the complete cube mip layout");
+            bool packed = desc.mip_pixels.size() == 2u && desc.slice_pitches.size() == 2u;
+            for (std::size_t mip = 0u; packed && mip < desc.mip_pixels.size(); ++mip)
+            {
+                const std::size_t texels = static_cast<std::size_t>(2u >> mip) * (2u >> mip);
+                for (std::size_t face = 0u; packed && face < environment_face_count; ++face)
+                {
+                    for (std::size_t texel = 0u; packed && texel < texels; ++texel)
+                    {
+                        const std::size_t offset = face * desc.slice_pitches[mip] + texel * 8u;
+                        packed =
+                            desc.mip_pixels[mip][offset] ==
+                                static_cast<std::uint8_t>(packed_red_ordinal(mip, face, texel)) &&
+                            desc.mip_pixels[mip][offset + 1u] == 0x3cu && desc.mip_pixels[mip][offset + 2u] == 0x00u &&
+                            desc.mip_pixels[mip][offset + 3u] == 0x3cu && desc.mip_pixels[mip][offset + 4u] == 0x00u &&
+                            desc.mip_pixels[mip][offset + 5u] == 0x3cu && desc.mip_pixels[mip][offset + 6u] == 0x00u &&
+                            desc.mip_pixels[mip][offset + 7u] == 0x3cu;
+                    }
+                }
+            }
+            check(packed, "Environment faces must pack little endian in +X/-X/+Y/-Y/+Z/-Z order per mip");
+        }
         SceneAssetData scene;
         scene.environment.environment = {environment_id, {}, "toy3d.EnvironmentAssetData", AssetRefStrength::Strong};
         scene.environment.rotation = Quaternion(0.0f, 1.0f, 0.0f, 0.0f);

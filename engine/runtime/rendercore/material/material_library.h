@@ -13,7 +13,12 @@ namespace toy3d
     class MaterialLibrary final
     {
       public:
+        // The library never decodes by itself: the composition root injects the resolver, and its
+        // policy follows the caller's path (assembly waits on the loader, a frame path stays off
+        // the decode thread by consulting the shared cache first).
+        using TextureResolver = std::function<TextureRef(const AssetRef& reference, std::string& error)>;
         MaterialLibrary(const TypeRegistry& types, const FileSystem& files, std::function<const AssetIndex&()> index,
+                        TextureResolver load_texture,
                         std::function<ShaderMapCollectionRef(const std::string&,
                                                              const std::vector<shader::ShaderPermutationSelection>&)>
                             programs,
@@ -60,6 +65,7 @@ namespace toy3d
         const TypeRegistry& types_;
         const FileSystem& files_;
         std::function<const AssetIndex&()> index_;
+        TextureResolver load_texture_;
         std::function<ShaderMapCollectionRef(const std::string&,
                                              const std::vector<shader::ShaderPermutationSelection>&)>
             programs_;

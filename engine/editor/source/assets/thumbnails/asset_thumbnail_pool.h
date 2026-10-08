@@ -3,6 +3,7 @@
 #include "assets/preview/mesh_preview_asset.h"
 
 #include "asset/thumbnail/asset_thumbnail.h"
+#include "asset_loader/asset_loader.h"
 #include "assets/preview/asset_preview_scene.h"
 #include "threading/task_graph/task_graph_interface.h"
 #include "ui/ui_texture_work.h"
@@ -32,6 +33,11 @@ namespace toy3d
         explicit AssetThumbnailPool(EditorWorkspace& workspace);
         ~AssetThumbnailPool();
         bool initialize(SceneInterface& scene, MaterialInstanceRef material, TaskGraphInterface& tasks);
+        // GT composition root injects the shared asset loader before initialize().
+        void set_asset_loader(AssetLoader& assets)
+        {
+            assets_ = &assets;
+        }
         AssetThumbnailView request(const AssetCatalogEntry& asset);
         AssetThumbnailView request_builtin_mesh(const std::string& kind, StaticMeshRef geometry);
         AssetThumbnailView request_material_preview(const MaterialInstanceRef& material, std::uint64_t revision,
@@ -45,7 +51,13 @@ namespace toy3d
             preview_.set_material_resolver(material_resolver_);
         }
         void generate(const AssetId& id);
+        // Full invalidation for catalog-wide changes (rescan, project switch).
         void invalidate();
+        // Invalidates one identity and its strong dependency closure; unrelated cached
+        // images stay usable, so saving an asset no longer requeues the whole cache.
+        // Unlike the full path this leaves the live preview revision alone; only a changed
+        // Environment re-renders it.
+        void invalidate(const AssetId& changed);
         void tick();
         void collect_render_work(UiRenderWork& work);
         void on_texture_result(UiTextureResult result);
@@ -92,10 +104,13 @@ namespace toy3d
         void finish(Entry& entry);
         bool make_room();
         void apply_invalidation();
+        // Submits the live material preview frame when one is due; reports whether this
+        // frame's single UI preview slot was taken.
+        bool start_material_preview();
 
         EditorWorkspace& workspace_;
         AssetPreviewScene preview_;
-        std::map<AssetId, TextureRef> preview_environments_;
+        AssetLoader* assets_ = nullptr;
         MaterialPreviewSettings material_preview_settings_;
         std::uint64_t material_source_revision_ = 0u;
         StaticMeshAssetGeometry material_preview_geometry_;
@@ -126,5 +141,9 @@ namespace toy3d
         std::uint64_t next_texture_ = 3;
         bool initialized_ = false;
         bool invalidation_pending_ = false;
+        // Full rescans clear the whole cache; targeted callbacks queue identities that
+        // are resolved to their strong dependency closure on the next pre-UI tick.
+        bool full_invalidation_ = false;
+        std::vector<AssetId> pending_invalidations_;
     };
 } // namespace toy3d

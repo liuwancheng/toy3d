@@ -13,6 +13,7 @@
 namespace toy3d
 {
     class Application;
+    class AssetLoader;
     class LogBuffer;
     class FrameEndSync;
     class IPlatform;
@@ -106,6 +107,9 @@ namespace toy3d
         std::unique_ptr<IWindow> window;
         std::shared_ptr<RHISurface> rhi_surface;
         std::unique_ptr<ThreadManager> thread_manager;
+        // Shared decode service for runtime assembly; the Game Thread owns adoption, the worker
+        // only reads the frozen FileSystem and produces owned CPU payloads.
+        std::unique_ptr<AssetLoader> asset_loader;
         std::unique_ptr<TaskGraphInterface> task_graph;
         std::unique_ptr<Renderer> renderer;
         std::unique_ptr<RenderingThread> rendering_thread;

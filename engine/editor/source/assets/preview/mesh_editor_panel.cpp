@@ -16,7 +16,7 @@
 #include "drivers/rhi/rhi_command_descriptors.h"
 #include "logging/logger.h"
 #include "panels/property_widgets.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "rendercore/texture/texture_load_job.h"
 #include "threading/task_graph/graph_task.h"
 #include "workspace/editor_workspace.h"
 
@@ -64,16 +64,23 @@ namespace toy3d
         SceneEnvironmentSettings environment;
         environment.environment.asset_id = preview_settings_.environment;
         environment.environment.expected_type = "toy3d.EnvironmentAssetData";
-        const auto cube =
-            load_environment_asset(workspace_.files(), workspace_.catalog().index, environment.environment);
-        if (!cube.succeeded())
+        if (assets_ == nullptr)
         {
-            error_ = cube.status().message;
+            error_ = "Preview environment: the asset loader is unavailable.";
+            return false;
+        }
+        // The first cube is needed before the private World exists, so this one Critical decode
+        // is waited for; later environment switches are served from the shared cache.
+        auto environment_handle =
+            request_texture(*assets_, environment.environment, workspace_.catalog().index, AssetLoadPriority::Critical);
+        if (!assets_->wait(environment_handle, std::chrono::seconds(5)) || !environment_handle.get())
+        {
+            error_ = environment_handle.failed() ? environment_handle.error() : "Preview environment decode failed.";
             return false;
         }
         material_ = std::move(material);
         tasks_ = &tasks;
-        environment_cube_ = cube.value();
+        environment_cube_ = environment_handle.get();
         loaded_environment_ = preview_settings_.environment;
         initialized_ = scene_.initialize(scene, material_, environment, environment_cube_);
         if (!initialized_)
@@ -111,6 +118,10 @@ namespace toy3d
     void MeshEditorPanel::invalidate()
     {
         loaded_environment_ = {};
+        if (assets_)
+        {
+            assets_->invalidate_all();
+        }
         cached_asset_.reset();
         cached_mesh_.reset();
         if (material_session_.dirty())
@@ -526,17 +537,30 @@ namespace toy3d
             environment_cube.reset();
             if (preview_settings_.environment.valid())
             {
-                AssetRef reference;
-                reference.asset_id = preview_settings_.environment;
-                reference.expected_type = "toy3d.EnvironmentAssetData";
-                const auto loaded = load_environment_asset(workspace_.files(), workspace_.catalog().index, reference);
-                if (!loaded.succeeded())
+                if (!assets_)
                 {
-                    error_ = "Preview environment: " + loaded.status().message;
+                    error_ = "Preview environment: the asset loader is unavailable.";
                     render_dirty_ = false;
                     return;
                 }
-                environment_cube = loaded.value();
+                AssetRef reference;
+                reference.asset_id = preview_settings_.environment;
+                reference.expected_type = "toy3d.EnvironmentAssetData";
+                // The loader thread decodes the cube at the tier its asset type carries; this
+                // frame only re-arms the request.
+                const auto environment = request_texture(*assets_, reference, workspace_.catalog().index);
+                if (environment.failed())
+                {
+                    error_ = "Preview environment: " + environment.error();
+                    render_dirty_ = false;
+                    return;
+                }
+                if (!environment.ready())
+                {
+                    render_dirty_ = true;
+                    return;
+                }
+                environment_cube = environment.get();
             }
         }
         if (mesh_dirty_ && !prepare_mesh())
@@ -1514,6 +1538,7 @@ namespace toy3d
         cached_asset_.reset();
         cached_mesh_.reset();
         environment_cube_.reset();
+        assets_ = nullptr;
         loaded_environment_ = {};
         initialized_ = false;
         tasks_ = nullptr;

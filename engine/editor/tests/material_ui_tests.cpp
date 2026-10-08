@@ -1,10 +1,15 @@
+#include "asset_loader/asset_loader.h"
+#include "rendercore/texture/texture_load_job.h"
+#include "asset/texture/builtin_texture_assets.h"
 #include "assets/material/material_editor_panel.h"
 #include "assets/asset_resource_picker.h"
 #include "assets/preview/preview_scene_widgets.h"
 #include "panels/editor_panel_registry.h"
 
+#include <chrono>
 #include <iostream>
 #include <memory>
+#include <thread>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -12,6 +17,7 @@
 #include "rendercore/rendering_thread.h"
 #include "rendercore/shader/loaders/shader_map_entry_loader.h"
 #include "rendercore/shader/shader_map.h"
+#include "shader/shader_format_types.h"
 #include "threading/task_graph/task_graph.h"
 #include "threading/thread_manager.h"
 #include "workspace/editor_workspace.h"
@@ -269,15 +275,15 @@ int main()
     {
         return 1;
     }
-    ShaderMapEntryLoader loader(PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
-    ShaderMap map(loader);
+    ShaderMapEntryLoader entry_loader(PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+    ShaderMap map(entry_loader);
     ShaderMapProgramKey key;
     key.shader_name = root.shader_name;
     key.pass_name = "Forward";
     key.role = shader::ShaderPassRole::Forward;
     key.vertex_factory = shader::VertexFactoryType::Local;
     const auto program =
-        ShaderMapCollection::create_candidate(loader.load_default_collection(key.shader_name, key.platform));
+        ShaderMapCollection::create_candidate(entry_loader.load_default_collection(key.shader_name, key.platform));
     if (!program.succeeded())
     {
         std::cerr << program.error;
@@ -319,6 +325,119 @@ int main()
     panel.initialize(workspace, defaults->material(), PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
     AssetThumbnailPool thumbnails(workspace);
     AssetResourcePicker picker(thumbnails);
+    // The loader outlives every consumer that holds it; the panel is injected here so its
+    // texture slots decode off the Game Thread like the preview windows do.
+    AssetLoader loader;
+    check(loader.initialize(workspace.files(), threads), "asset loader thread must start");
+    panel.set_asset_loader(loader);
+    // The shared loader hands every consumer the same adopted Texture and drops it on
+    // invalidation instead of letting each owner decode its own copy.
+    {
+        // A missing identity must fail, and the failure must be remembered rather than retried.
+        AssetRef reference;
+        check(AssetId::parse(std::string(32u, '1'), reference.asset_id), "removed identity fixture must parse");
+        reference.expected_type = "toy3d.EnvironmentAssetData";
+        const auto miss = request_texture(loader, reference, workspace.catalog().index, AssetLoadPriority::High);
+        check(!miss.ready() && miss.pending(), "an unknown identity must start a decode");
+        // Decoding is asynchronous; adoption follows on a later tick, exactly as a frame does.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (miss.pending() && std::chrono::steady_clock::now() < deadline)
+        {
+            loader.tick();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        check(miss.failed() && !miss.error().empty(),
+              "a removed identity must report its decode failure instead of an empty image");
+        check(loader.cached_entries() == 0u, "a failed decode must not repopulate the cache");
+        // The failure is remembered per identity: a consumer polling every frame must observe
+        // the error instead of restarting the same failing decode.
+        const auto repeated = request_texture(loader, reference, workspace.catalog().index, AssetLoadPriority::High);
+        check(repeated.failed() && repeated.error() == miss.error(),
+              "a failed decode must be reported again without being repeated");
+        // The type table decides the tier when the caller states none, so cube and ordinary
+        // texture loads cannot end up on inconsistent tiers across windows.
+        check(default_asset_load_priority("toy3d.EnvironmentAssetData") == AssetLoadPriority::High,
+              "an environment cube must default to the High tier");
+        check(default_asset_load_priority("toy3d.TextureAssetData") == AssetLoadPriority::Normal,
+              "an ordinary texture must default to the Normal tier");
+        // A polling consumer drops its handle every frame; that must not cancel the shared
+        // decode, so the finished cube still reaches the cache for the next request.
+        AssetRef environment;
+        check(AssetId::parse(builtin_studio_environment_id, environment.asset_id),
+              "studio environment identity must parse");
+        environment.expected_type = "toy3d.EnvironmentAssetData";
+        const auto request_start = std::chrono::steady_clock::now();
+        request_texture(loader, environment, workspace.catalog().index);
+        std::cout << "AssetLoader request (Game Thread): "
+                  << std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - request_start).count()
+                  << " us for a 4 MB cube face that decodes on the loader thread" << std::endl;
+        const auto environment_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (loader.cached_entries() == 0u && std::chrono::steady_clock::now() < environment_deadline)
+        {
+            loader.tick();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        check(loader.cached_entries() == 1u, "a dropped handle must not cancel the shared decode");
+        const auto environment_hit = request_texture(loader, environment, workspace.catalog().index);
+        check(environment_hit.ready(), "a completed shared decode must serve the next request from the cache");
+        const std::size_t single_identity_bytes = loader.cached_bytes();
+        // A candidate invalidated while its decode is in flight must release its waiter with a
+        // retry state instead of leaving the handle pending forever.
+        loader.invalidate(environment.asset_id);
+        const auto stranded = request_texture(loader, environment, workspace.catalog().index);
+        loader.invalidate(environment.asset_id);
+        loader.tick();
+        check(stranded.invalidated() && !stranded.pending(),
+              "an invalidated in-flight candidate must release its waiter instead of hanging");
+        const auto refreshed = request_texture(loader, environment, workspace.catalog().index);
+        const auto refresh_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (refreshed.pending() && std::chrono::steady_clock::now() < refresh_deadline)
+        {
+            loader.tick();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        check(refreshed.ready(), "a request after invalidation must be resolved by a fresh decode");
+        check(loader.cached_bytes() == single_identity_bytes && loader.cached_entries() == 1u,
+              "a re-decoded identity must be billed once, not once per decode");
+        // Assembly paths wait for a Critical decode instead of polling; a resolved handle must
+        // come back true and a missing identity must time out instead of blocking forever.
+        const auto assembly_start = std::chrono::steady_clock::now();
+        auto assembly = request_texture(loader, environment, workspace.catalog().index, AssetLoadPriority::Critical);
+        const bool assembly_ready = loader.wait(assembly, std::chrono::seconds(5));
+        std::cout
+            << "Assembly wait (identity a preview already decoded): "
+            << std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - assembly_start).count()
+            << " us" << std::endl;
+        check(assembly_ready && assembly.ready() && assembly.get() == refreshed.get(),
+              "assembly must reuse the texture a preview already decoded");
+        // A catalog rescan invalidates everything: the cache is dropped and an in-flight waiter
+        // is released with the retry state instead of staying pending.
+        loader.invalidate(environment.asset_id);
+        const auto wholed = request_texture(loader, environment, workspace.catalog().index);
+        loader.invalidate_all();
+        check(wholed.invalidated() && !wholed.pending(),
+              "invalidate_all must release an in-flight waiter instead of leaving it pending");
+        check(loader.cached_entries() == 0u, "invalidate_all must drop every cached identity");
+        AssetId missing;
+        check(AssetId::parse(std::string(32u, 'f'), missing), "missing identity fixture must parse");
+        AssetRef absent;
+        absent.asset_id = missing;
+        absent.expected_type = "toy3d.EnvironmentAssetData";
+        auto timed_out = request_texture(loader, absent, workspace.catalog().index, AssetLoadPriority::Critical);
+        check(!loader.wait(timed_out, std::chrono::milliseconds(500)) && timed_out.failed(),
+              "an assembly wait must report a decode failure instead of blocking forever");
+        // The cache is keyed by identity while a typed handle downcasts its job, so a second entry
+        // point asking for the same identity as another kind must be refused, not cast blindly.
+        loader.invalidate_all();
+        auto as_environment = request_texture(loader, environment, workspace.catalog().index);
+        loader.wait(as_environment, std::chrono::seconds(30));
+        check(as_environment.ready(), "the type-conflict fixture must cache its identity first");
+        AssetRef mislabelled = environment;
+        mislabelled.expected_type = "toy3d.StaticMeshAssetData";
+        const auto mismatched = request_texture(loader, mislabelled, workspace.catalog().index);
+        check(mismatched.failed() && mismatched.error().find("requested as") != std::string::npos,
+              "the same identity requested as another kind must fail instead of casting the cached job");
+    }
     panel.set_resource_picker(picker);
     test_preview_scene_controls(workspace);
     test_texture_picker(picker, workspace, root_id);
@@ -429,7 +548,12 @@ int main()
         const AssetRef self{child_id, {}, "toy3d.MaterialInstanceAssetData", AssetRefStrength::Strong};
         check(!session.set_parent(self).succeeded(), "self Parent is rejected");
     }
-    check(session.set_parameter({"specular_power", 100.0f}).succeeded(), "child draft");
+    const auto scalar_start = std::chrono::steady_clock::now();
+    const bool scalar_draft = session.set_parameter({"specular_power", 100.0f}).succeeded();
+    std::cout << "Material scalar slot: Game Thread commit "
+              << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - scalar_start).count()
+              << " ms for comparison with the texture slot above" << std::endl;
+    check(scalar_draft, "child draft");
     frame(panel, panels);
     io.AddKeyEvent(ImGuiMod_Ctrl, true);
     io.AddKeyEvent(ImGuiKey_Z, true);
@@ -482,10 +606,52 @@ int main()
     check(panel.resolve_unsaved(MaterialCloseDecision::Cancel) && !panel.take_exit(),
           "cancel pending close after publication retry");
     dismiss_popup();
+    // A texture slot decodes through the shared loader, but building the runtime material needs
+    // the image present: the commit must resolve and cache it before it returns, otherwise the
+    // builder rejects the batch with "Texture asset is not loaded for parameter".
+    if (defaults->desc().shader_map)
+    {
+        std::string texture_parameter;
+        for (const auto& resource : defaults->desc().shader_map->programs().front()->data().parameter_schema.resources)
+        {
+            if (resource.category == shader::ShaderParameterCategory::SampledTexture &&
+                resource.resource_kind == shader::ResourceKind::Texture2D &&
+                resource.texture_usage == TextureUsage::Color)
+            {
+                texture_parameter = resource.name;
+                break;
+            }
+        }
+        check(!texture_parameter.empty(), "the Phong schema must expose a sampled texture parameter");
+        AssetRef white;
+        check(AssetId::parse(builtin_texture_assets[0].asset_id, white.asset_id),
+              "builtin texture identity must parse");
+        white.expected_type = "toy3d.Texture2DAssetData";
+        const MaterialParameterOverride bound{texture_parameter, white};
+        const std::size_t entries_before = loader.cached_entries();
+        const auto commit_start = std::chrono::steady_clock::now();
+        const auto committed = session.set_parameter(bound);
+        const auto commit_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - commit_start).count();
+        check(committed.succeeded(), "a texture batch must resolve its image and commit");
+        bool recorded = false;
+        for (const auto& value : session.overrides())
+        {
+            recorded = recorded || value.name == texture_parameter;
+        }
+        check(recorded, "the committed texture override must be recorded");
+        std::cout << "Material texture slot: Game Thread commit " << commit_ms
+                  << " ms including the loader wait; the decode itself ran on the loader thread" << std::endl;
+        check(loader.cached_entries() == entries_before + 1u,
+              "a texture batch must resolve and cache its image before the runtime material is built");
+        check(session.active() && session.overrides().size() == 2u,
+              "the committed batch must keep both the scalar and the texture override");
+    }
     session.set_publish({});
     panels.clear();
     panel.shutdown();
     panel.shutdown();
+    loader.shutdown();
     ImGui::DestroyContext();
     MaterialInstance::release(defaults);
     check(texture.use_count() == 1u, "window closes release every shared default texture reference");

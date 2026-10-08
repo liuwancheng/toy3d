@@ -393,7 +393,7 @@ namespace
         }
         bool on_initialize_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override
         {
-            if (!pool_.initialize(scene, factory_.default_material(), tasks))
+            if (!ensure_asset_loader() || !pool_.initialize(scene, factory_.default_material(), tasks))
             {
                 return false;
             }
@@ -406,12 +406,25 @@ namespace
         }
         bool on_initialize_animation_preview_scene(SceneInterface& scene, TaskGraphInterface& tasks) override
         {
-            if (!panel_.initialize(scene, factory_.default_material(), tasks))
+            if (!ensure_asset_loader() || !panel_.initialize(scene, factory_.default_material(), tasks))
             {
                 state_.error = panel_.error();
                 return false;
             }
             panel_.request_open(skeleton_);
+            return true;
+        }
+        bool ensure_asset_loader()
+        {
+            if (!loader_.running() && !loader_.initialize(workspace_.files(), loader_threads_))
+            {
+                state_.error = "Asset loader thread could not start.";
+                return false;
+            }
+            pool_.set_asset_loader(loader_);
+            panel_.set_asset_loader(loader_);
+            // The PIE session resolves material textures through the same shared loader.
+            play_.set_asset_loader(loader_);
             return true;
         }
         void on_build_scene_views(std::vector<SceneView>& views, const Extent& extent) const override
@@ -427,6 +440,7 @@ namespace
         }
         void on_tick(double delta) override
         {
+            loader_.tick();
             if (phase_ != timed_phase_)
             {
                 timed_phase_ = phase_;
@@ -1042,6 +1056,7 @@ namespace
             play_.stop();
             panel_.shutdown();
             pool_.shutdown();
+            loader_.shutdown();
             MaterialInstance::release(assigned_material_);
             if (!flush_rendering_commands().succeeded())
             {
@@ -1053,6 +1068,9 @@ namespace
         EditorWorkspace& workspace_;
         MeshEditorPanel panel_;
         AssetThumbnailPool pool_;
+        // Preview owners share one decode service, so this host owns one loader thread.
+        ThreadManager loader_threads_;
+        AssetLoader loader_;
         ActorFactory factory_;
         MaterialInstanceRef assigned_material_;
         EditorPlaySession play_;

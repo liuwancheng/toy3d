@@ -1,5 +1,7 @@
 #include "asset_pipeline/environment_import.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -32,6 +34,32 @@ namespace
             image.pixels[i] = 1.0f;
         }
         return image;
+    }
+
+    // Fixed little-endian wire fixtures keep decode coverage independent of the importer.
+    void append_uint32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
+    {
+        for (std::uint32_t shift = 0u; shift < 32u; shift += 8u)
+        {
+            bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+
+    void append_half_values(std::vector<std::uint8_t>& bytes, std::size_t count, std::uint16_t value)
+    {
+        std::array<std::uint8_t, 512> chunk{};
+        for (std::size_t i = 0u; i < chunk.size(); i += 2u)
+        {
+            chunk[i] = static_cast<std::uint8_t>(value & 0xffu);
+            chunk[i + 1u] = static_cast<std::uint8_t>(value >> 8u);
+        }
+        std::size_t remaining = count * 2u;
+        while (remaining != 0u)
+        {
+            const std::size_t take = std::min(remaining, chunk.size());
+            bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(take));
+            remaining -= take;
+        }
     }
 } // namespace
 
@@ -116,6 +144,26 @@ int main()
     damaged[20u] = 0u;
     damaged[21u] = 0x7cu;
     check(!decode_environment_mips(damaged).succeeded(), "Infinite Cube radiance was accepted");
+    // The largest legal asset decodes one face per bulk read; its 1,048,576 values
+    // per face must stay inside the reader's element budget.
+    const std::uint32_t maximum_face_values = maximum_environment_face_size * maximum_environment_face_size * 4u;
+    std::vector<std::uint8_t> maximum_payload;
+    append_uint32(maximum_payload, 1u);
+    append_uint32(maximum_payload, maximum_environment_face_size);
+    append_uint32(maximum_payload, environment_algorithm_version);
+    append_uint32(maximum_payload, environment_orientation_version);
+    append_uint32(maximum_payload, environment_mip_count(maximum_environment_face_size));
+    for (std::uint32_t mip = 0u; mip < environment_mip_count(maximum_environment_face_size); ++mip)
+    {
+        const std::uint32_t size = std::max(1u, maximum_environment_face_size >> mip);
+        append_half_values(maximum_payload, static_cast<std::size_t>(size) * size * 4u * environment_face_count,
+                           0x3c00u);
+    }
+    const auto maximum = decode_environment_mips(maximum_payload);
+    check(maximum.succeeded() && maximum.value().face_size == maximum_environment_face_size &&
+              maximum.value().mips.size() == environment_mip_count(maximum_environment_face_size) &&
+              maximum.value().mips.front().faces.front().size() == maximum_face_values,
+          "Maximum 512-face Environment must decode one face per bulk read");
     auto invalid = constant_panorama(1.0f);
     invalid.pixels[0u] = -1.0f;
     check(!build_environment_asset(invalid, {4u, 32u}).succeeded(),

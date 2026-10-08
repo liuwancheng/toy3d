@@ -1,5 +1,7 @@
 #include "assets/thumbnails/asset_thumbnail_pool.h"
 
+#include <algorithm>
+#include <chrono>
 #include <exception>
 #include <limits>
 #include <utility>
@@ -10,8 +12,9 @@
 #include "threading/task_graph/graph_task.h"
 #include "asset/material/material_asset.h"
 #include "asset/texture/builtin_texture_assets.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "asset_loader/asset_loader.h"
 #include "rendercore/frame_synchronization.h"
+#include "rendercore/texture/texture_load_job.h"
 #include "workspace/editor_workspace.h"
 
 namespace toy3d
@@ -19,7 +22,6 @@ namespace toy3d
     namespace
     {
         constexpr std::size_t cache_capacity = 128;
-        constexpr std::size_t preview_environment_capacity = 4u;
 
         const AssetCatalogEntry* find_asset(const EditorWorkspace& workspace, const AssetId& id)
         {
@@ -64,11 +66,19 @@ namespace toy3d
             return false;
         }
         environment.environment.expected_type = "toy3d.EnvironmentAssetData";
-        const auto loaded =
-            load_environment_asset(workspace_.files(), workspace_.catalog().index, environment.environment);
-        if (!loaded.succeeded())
+        if (!assets_)
         {
-            TOY_LOG_ERROR("Thumbnail studio environment: {}", loaded.status().message);
+            TOY_LOG_ERROR("Thumbnail studio environment: the asset loader is unavailable.");
+            return false;
+        }
+        // The first cube is needed before the private World exists, so this one Critical decode
+        // is waited for; every later request for the identity is served from the shared cache.
+        auto environment_handle =
+            request_texture(*assets_, environment.environment, workspace_.catalog().index, AssetLoadPriority::Critical);
+        if (!assets_->wait(environment_handle, std::chrono::seconds(5)) || !environment_handle.get())
+        {
+            TOY_LOG_ERROR("Thumbnail studio environment: {}",
+                          environment_handle.failed() ? environment_handle.error() : "decode did not complete");
             return false;
         }
         const auto geometry_path = VirtualPath::parse("/Engine/S_MaterialPreview.asset");
@@ -79,8 +89,7 @@ namespace toy3d
             return false;
         }
         material_preview_geometry_ = geometry.value();
-        preview_environments_.emplace(environment.environment.asset_id, loaded.value());
-        initialized_ = preview_.initialize(scene, std::move(material), environment, loaded.value());
+        initialized_ = preview_.initialize(scene, std::move(material), environment, environment_handle.get());
         if (!initialized_)
         {
             preview_.shutdown();
@@ -281,23 +290,134 @@ namespace toy3d
         // Save/rescan callbacks can run after another panel emitted Image commands.
         // Keep their IDs and RT bindings until the next pre-UI tick; retirement
         // is processed before rendering the frame that carries it.
+        full_invalidation_ = true;
+        invalidation_pending_ = true;
+    }
+
+    void AssetThumbnailPool::invalidate(const AssetId& changed)
+    {
+        if (!changed.valid())
+        {
+            invalidate();
+            return;
+        }
+        // Targeted invalidation defers exactly like the full path: repeated callbacks in
+        // one frame coalesce and no registered image disappears before its tick.
+        if (std::find(pending_invalidations_.begin(), pending_invalidations_.end(), changed) ==
+            pending_invalidations_.end())
+        {
+            pending_invalidations_.push_back(changed);
+        }
         invalidation_pending_ = true;
     }
 
     void AssetThumbnailPool::apply_invalidation()
     {
         invalidation_pending_ = false;
-        preview_environments_.clear();
-        ++material_preview_revision_;
-        for (auto& pair : entries_)
+        if (full_invalidation_)
         {
-            Entry& entry = pair.second;
-            const auto* asset = find_asset(workspace_, entry.id);
-            // Only mesh/animation captures have source snapshots for the disk cache.
-            // Rescanning must not enable persistence on live material or texture previews.
-            entry.persist = asset && (asset->file.root_type == "toy3d.StaticMeshAssetData" ||
-                                      asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
-                                      asset->file.root_type == "toy3d.AnimationSequenceAssetData");
+            full_invalidation_ = false;
+            pending_invalidations_.clear();
+            if (assets_)
+            {
+                assets_->invalidate_all();
+            }
+            ++material_preview_revision_;
+            for (auto& pair : entries_)
+            {
+                Entry& entry = pair.second;
+                const auto* asset = find_asset(workspace_, entry.id);
+                // Only mesh/animation captures have source snapshots for the disk cache.
+                // Rescanning must not enable persistence on live material or texture previews.
+                entry.persist = asset && (asset->file.root_type == "toy3d.StaticMeshAssetData" ||
+                                          asset->file.root_type == "toy3d.SkeletalMeshAssetData" ||
+                                          asset->file.root_type == "toy3d.AnimationSequenceAssetData");
+                if (entry.id == active_id_)
+                {
+                    entry.rerun = true;
+                    continue;
+                }
+                if (entry.texture.valid())
+                {
+                    pending_work_.retire_textures.push_back(entry.texture);
+                }
+                entry.texture = {};
+                entry.stage = Stage::Queued;
+                entry.error.clear();
+            }
+            return;
+        }
+        if (pending_invalidations_.empty())
+        {
+            return;
+        }
+        // Only the changed identities and the strong dependencies that render differently
+        // are affected; unrelated cached images stay usable.
+        std::vector<AssetId> affected = pending_invalidations_;
+        pending_invalidations_.clear();
+        for (std::size_t index = 0u; index < affected.size(); ++index)
+        {
+            for (const auto& asset : workspace_.catalog().entries)
+            {
+                const bool depends = std::any_of(asset.file.dependencies.begin(), asset.file.dependencies.end(),
+                                                 [&](const AssetRef& dependency)
+                                                 {
+                                                     return dependency.strength == AssetRefStrength::Strong &&
+                                                            dependency.asset_id == affected[index];
+                                                 });
+                if (depends && std::find(affected.begin(), affected.end(), asset.file.asset_id) == affected.end())
+                {
+                    affected.push_back(asset.file.asset_id);
+                }
+            }
+        }
+        for (const auto& id : affected)
+        {
+            const auto* location = workspace_.catalog().index.find(id);
+            const auto found = entries_.find(id);
+            if (!location)
+            {
+                // A removed asset drops its cached image instead of requeueing a dead entry.
+                if (found == entries_.end())
+                {
+                    continue;
+                }
+                Entry& removed = found->second;
+                if (active_id_ == id)
+                {
+                    // An in-flight candidate never returns to an erased entry, and the result
+                    // callback drops it, so its renderer texture and preview mesh are released
+                    // here instead of leaking.
+                    if (removed.candidate_texture.valid())
+                    {
+                        pending_work_.retire_textures.push_back(removed.candidate_texture);
+                    }
+                    preview_.clear_mesh();
+                    active_id_ = {};
+                }
+                if (removed.texture.valid())
+                {
+                    pending_work_.retire_textures.push_back(removed.texture);
+                }
+                entries_.erase(found);
+                continue;
+            }
+            // The shared loader owns decoded textures for every consumer, so a changed
+            // identity is dropped there as well as in this pool's image cache.
+            if (assets_)
+            {
+                assets_->invalidate(id);
+            }
+            if (location->index.root_type == "toy3d.EnvironmentAssetData")
+            {
+                // The live preview samples the cube, so a changed Environment re-renders it.
+                ++material_preview_revision_;
+            }
+            if (found == entries_.end())
+            {
+                continue;
+            }
+            Entry& entry = found->second;
             if (entry.id == active_id_)
             {
                 entry.rerun = true;
@@ -315,6 +435,12 @@ namespace toy3d
 
     void AssetThumbnailPool::start_load(Entry& entry)
     {
+        if (cpu_task_ && !cpu_task_->is_complete())
+        {
+            // A deleted entry abandons its running task; dispatching now would overwrite
+            // that handle and leave the task unwaited by shutdown(). Retry next frame.
+            return;
+        }
         const auto* asset = find_asset(workspace_, entry.id);
         if (!asset && !entry.builtin_geometry)
         {
@@ -376,6 +502,8 @@ namespace toy3d
         const bool force = entry.force;
         FileSystem* files = &workspace_.files();
         AssetPairStore* pairs = &workspace_.asset_pairs();
+        // A deleted entry can abandon its worker task; never overwrite a handle that is
+        // still running, or shutdown() would stop waiting for that task.
         cpu_task_ =
             dispatch_graph_task(*tasks_, "Load asset thumbnail",
                                 [result, files, pairs, snapshot, catalog, force](NamedThread, const GraphEventRef&)
@@ -593,6 +721,13 @@ namespace toy3d
                     fail(entry, error.what());
                 }
             }
+            // A worker- or disk-bound entry does not own the single UI preview slot, so the
+            // live preview may start while that entry is still in flight instead of waiting
+            // out a multi-second asset load.
+            if (active_id_.valid() && entries_.at(active_id_).stage != Stage::AwaitGpu)
+            {
+                start_material_preview();
+            }
             return;
         }
         Entry* next = nullptr;
@@ -609,82 +744,95 @@ namespace toy3d
                 next = &entry;
             }
         }
-        if (!next && material_preview_visible_frame_ + 2u >= frame_)
+        // Queued thumbnails are processed first (their images are already demanded by the
+        // browser); the live preview shares a frame only when the entry in flight holds no
+        // UI preview slot of its own.
+        if (!next)
         {
-            const auto material = preview_material_.lock();
-            if (material && (rendered_preview_material_.lock() != material ||
-                             rendered_preview_revision_ != material_preview_revision_))
-            {
-                if (next_request_ == std::numeric_limits<std::uint64_t>::max() || next_texture_ >= (1ull << 40))
-                {
-                    material_preview_error_ = "Preview identifier space exhausted.";
-                    return;
-                }
-                rendered_preview_material_ = material;
-                pending_preview_revision_ = material_preview_revision_;
-                TextureRef environment_cube;
-                const auto environment_id = material_preview_settings_.scene.environment;
-                if (environment_id.valid())
-                {
-                    auto cached = preview_environments_.find(environment_id);
-                    if (cached == preview_environments_.end())
-                    {
-                        AssetRef reference;
-                        reference.asset_id = environment_id;
-                        reference.expected_type = "toy3d.EnvironmentAssetData";
-                        const auto loaded =
-                            load_environment_asset(workspace_.files(), workspace_.catalog().index, reference);
-                        if (!loaded.succeeded())
-                        {
-                            material_preview_error_ = "Preview environment: " + loaded.status().message;
-                            rendered_preview_revision_ = pending_preview_revision_;
-                            return;
-                        }
-                        if (preview_environments_.size() >= preview_environment_capacity)
-                        {
-                            // The current World and submitted snapshots retain any environment still in use.
-                            preview_environments_.erase(preview_environments_.begin());
-                        }
-                        cached = preview_environments_.emplace(environment_id, loaded.value()).first;
-                    }
-                    environment_cube = cached->second;
-                }
-                const auto& geometry =
-                    material_preview_settings_.mesh == MaterialPreviewMesh::Plane  ? material_preview_plane_
-                    : material_preview_settings_.mesh == MaterialPreviewMesh::Cube ? material_preview_cube_
-                                                                                   : material_preview_geometry_;
-                if (!preview_.prepare(geometry, material) ||
-                    !preview_.configure(material_preview_settings_.scene, environment_cube))
-                {
-                    material_preview_error_ = "Could not prepare the material preview scene.";
-                    preview_.clear_mesh();
-                    rendered_preview_revision_ = pending_preview_revision_;
-                    return;
-                }
-                material_preview_request_ = next_request_++;
-                material_preview_candidate_ = ImGuiTextureId(next_texture_++);
-                material_preview_active_ = true;
-                material_preview_cancelled_ = false;
-                pending_work_.preview = {material_preview_request_,
-                                         material_preview_candidate_,
-                                         material_preview_settings_.extent,
-                                         {preview_.view(material_preview_settings_)},
-                                         material_preview_settings_.scene.show_environment,
-                                         material_preview_settings_.scene.show_shadows,
-                                         material_preview_settings_.scene.exposure_ev};
-            }
+            start_material_preview();
+            return;
         }
-        if (next)
+        try
         {
-            try
-            {
-                start_load(*next);
-            }
-            catch (const std::exception& error)
-            {
-                fail(*next, error.what());
-            }
+            start_load(*next);
         }
+        catch (const std::exception& error)
+        {
+            fail(*next, error.what());
+        }
+    }
+
+    bool AssetThumbnailPool::start_material_preview()
+    {
+        if (!(material_preview_visible_frame_ + 2u >= frame_))
+        {
+            return false;
+        }
+        const auto material = preview_material_.lock();
+        if (!material ||
+            (rendered_preview_material_.lock() == material && rendered_preview_revision_ == material_preview_revision_))
+        {
+            return false;
+        }
+        if (next_request_ == std::numeric_limits<std::uint64_t>::max() || next_texture_ >= (1ull << 40))
+        {
+            material_preview_error_ = "Preview identifier space exhausted.";
+            return false;
+        }
+        rendered_preview_material_ = material;
+        pending_preview_revision_ = material_preview_revision_;
+        TextureRef environment_cube;
+        const auto environment_id = material_preview_settings_.scene.environment;
+        if (environment_id.valid())
+        {
+            if (!assets_)
+            {
+                material_preview_error_ = "Preview environment: the asset loader is unavailable.";
+                rendered_preview_revision_ = pending_preview_revision_;
+                return false;
+            }
+            AssetRef reference;
+            reference.asset_id = environment_id;
+            reference.expected_type = "toy3d.EnvironmentAssetData";
+            // The loader thread decodes the cube at the tier its asset type carries; the preview
+            // starts on the frame that adopts it, so a busy thumbnail queue no longer delays it.
+            const auto environment = request_texture(*assets_, reference, workspace_.catalog().index);
+            if (environment.failed())
+            {
+                material_preview_error_ = "Preview environment: " + environment.error();
+                rendered_preview_revision_ = pending_preview_revision_;
+                return false;
+            }
+            if (!environment.ready())
+            {
+                return false;
+            }
+            environment_cube = environment.get();
+        }
+        const auto& geometry = material_preview_settings_.mesh == MaterialPreviewMesh::Plane ? material_preview_plane_
+                               : material_preview_settings_.mesh == MaterialPreviewMesh::Cube
+                                   ? material_preview_cube_
+                                   : material_preview_geometry_;
+        if (!preview_.prepare(geometry, material) ||
+            !preview_.configure(material_preview_settings_.scene, environment_cube))
+        {
+            material_preview_error_ = "Could not prepare the material preview scene.";
+            preview_.clear_mesh();
+            rendered_preview_revision_ = pending_preview_revision_;
+            return false;
+        }
+        material_preview_request_ = next_request_++;
+        material_preview_candidate_ = ImGuiTextureId(next_texture_++);
+        material_preview_active_ = true;
+        material_preview_cancelled_ = false;
+        pending_work_.preview = {material_preview_request_,
+                                 material_preview_candidate_,
+                                 material_preview_settings_.extent,
+                                 {preview_.view(material_preview_settings_)},
+                                 material_preview_settings_.scene.show_environment,
+                                 material_preview_settings_.scene.show_shadows,
+                                 material_preview_settings_.scene.exposure_ev};
+        return true;
     }
 
     void AssetThumbnailPool::collect_render_work(UiRenderWork& work)
@@ -846,16 +994,19 @@ namespace toy3d
         material_preview_geometry_ = {};
         material_preview_plane_ = {};
         material_preview_cube_ = {};
-        preview_environments_.clear();
+        // The shared loader owns decoded cubes and outlives this pool.
         if (initialized_)
         {
             preview_.shutdown();
         }
+        assets_ = nullptr;
         entries_.clear();
         pending_work_ = {};
         active_id_ = {};
         initialized_ = false;
         invalidation_pending_ = false;
+        full_invalidation_ = false;
+        pending_invalidations_.clear();
         tasks_ = nullptr;
     }
 } // namespace toy3d

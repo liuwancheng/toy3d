@@ -1,7 +1,10 @@
 #include "scene/editor_play_session.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "asset_loader/asset_loader.h"
+#include "rendercore/geometry/static_mesh_load_job.h"
+#include "rendercore/texture/texture_load_job.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "asset/mesh/static_mesh_asset.h"
@@ -64,19 +67,29 @@ namespace toy3d
             {
                 return workspace.catalog().index;
             },
+            [this, &workspace](const AssetRef& reference, std::string& error) -> TextureRef
+            {
+                if (assets_ == nullptr)
+                {
+                    error = "Material texture: the asset loader is unavailable.";
+                    return {};
+                }
+                return load_assembly_texture(*assets_, reference, workspace.catalog().index, error);
+            },
             programs, std::move(textures));
         materials_->set_default_material(defaults);
         world_ = std::make_unique<World>();
         SceneAssemblyServices services;
         services.load_environment = [this, &workspace](const AssetRef& reference, std::string& error) -> TextureRef
         {
-            const auto loaded = load_environment_asset(workspace.files(), workspace.catalog().index, reference);
-            if (!loaded.succeeded())
+            if (assets_ == nullptr)
             {
-                error = loaded.status().message;
+                error = "Scene environment: the asset loader is unavailable.";
                 return {};
             }
-            return loaded.value();
+            // PIE assembly cannot continue without the environment; a preview window that
+            // already decoded this identity is served straight from the shared cache.
+            return load_assembly_texture(*assets_, reference, workspace.catalog().index, error);
         };
         services.load_mesh = [this, &workspace](const SceneMeshData& mesh, std::string& error) -> StaticMeshRef
         {
@@ -89,24 +102,25 @@ namespace toy3d
                                              {
                                                  return value.role == "mesh";
                                              });
-            const auto* location =
-                source == mesh.resources.end() ? nullptr : workspace.catalog().index.find(source->reference.asset_id);
-            if (!location)
+            if (source == mesh.resources.end())
             {
                 error = "Play scene mesh asset is missing.";
                 return {};
             }
-            const auto loaded = read_static_mesh_asset(workspace.files(), location->path);
-            if (!loaded.succeeded())
+            if (assets_ == nullptr)
             {
-                error = loaded.status().message;
+                error = "Play scene mesh: the asset loader is unavailable.";
                 return {};
             }
-            return create_static_mesh_from_asset(loaded.value(), geometry_.default_material(),
-                                                 [this](const AssetRef& reference)
-                                                 {
-                                                     return materials_->load(reference);
-                                                 });
+            // PIE assembly cannot continue without the mesh; the shared loader decodes it on its
+            // own thread and the Game Thread adopts the runtime mesh.
+            return load_assembly_static_mesh(
+                *assets_, source->reference, workspace.catalog().index, geometry_.default_material(),
+                [this](const AssetRef& reference)
+                {
+                    return materials_->load(reference);
+                },
+                error);
         };
         services.load_skeletal_mesh = [this, &workspace](const SceneSkeletalMeshData& mesh)
         {

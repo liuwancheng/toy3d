@@ -1,6 +1,6 @@
 #include "engine.h"
-
 #include "application/application.h"
+#include "asset_loader/asset_loader.h"
 #include "input/input_system.h"
 #include "imgui.h"
 #include "config/command_line_parser.h"
@@ -244,6 +244,20 @@ namespace toy3d
     {
         thread_manager = std::make_unique<ThreadManager>();
 
+        // The file system is frozen by pre_init(), so the loader thread may read it; a failed
+        // start is logged here and surfaces as an explicit diagnostic at the first request.
+        // There is exactly one instance per process: the Engine owns it and the application
+        // consumes it through set_asset_loader(), which the Editor relies on as well.
+        asset_loader = std::make_unique<AssetLoader>();
+        if (!asset_loader->initialize(file_system, *thread_manager))
+        {
+            TOY_LOG_ERROR("Runtime asset loader thread is unavailable.");
+        }
+        if (application)
+        {
+            application->set_asset_loader(*asset_loader);
+        }
+
         const bool use_rendering_thread = ConsoleManager::get_instance().get_bool("Renderer.MultiThreaded", true);
         TaskGraphConfig task_graph_config;
         task_graph_config.multithreaded = use_rendering_thread;
@@ -467,6 +481,14 @@ namespace toy3d
                 static_cast<void>(world->unbind_scene());
             }
             world.reset();
+        }
+
+        // Every Scene owner released its references above, so the decode service is the last
+        // holder of the shared textures and joins its thread before the device is torn down.
+        if (asset_loader)
+        {
+            asset_loader->shutdown();
+            asset_loader.reset();
         }
 
         if (rendering_thread)
@@ -817,6 +839,12 @@ namespace toy3d
             }
             if (world)
             {
+                // Adoption is Game Thread work; assembly may also have waited on the same
+                // results, so ticking here keeps the cache and waiters current every frame.
+                if (asset_loader)
+                {
+                    asset_loader->tick();
+                }
                 if (world->lifecycle_state() == WorldLifecycleState::Playing)
                 {
                     static_cast<void>(world->tick(delta_time));

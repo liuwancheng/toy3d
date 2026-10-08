@@ -24,6 +24,7 @@
 #include "rendercore/render_command.h"
 #include "rendercore/rendering_thread.h"
 #include "rendercore/scene/primitive_scene_proxy.h"
+#include "rendercore/texture/texture_asset_decode.h"
 #include "rendercore/scene/static_mesh_scene_proxy.h"
 #include "rendercore/scene_interface.h"
 #include "scene/editor_selection.h"
@@ -249,6 +250,22 @@ int main(int argc, char** argv)
         {
             return workspace.catalog().index;
         },
+        [&workspace](const AssetRef& reference, std::string& error) -> TextureRef
+        {
+            // The fixture resolves textures synchronously so the library stays loader-independent.
+            const auto descriptor = build_texture2d_desc(workspace.files(), workspace.catalog().index, reference);
+            if (!descriptor.succeeded())
+            {
+                error = descriptor.status().message;
+                return {};
+            }
+            TextureRef texture = Texture::create(TextureDesc(descriptor.value()));
+            if (!texture)
+            {
+                error = "Texture2D runtime descriptor is invalid.";
+            }
+            return texture;
+        },
         [defaults](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
         {
             return name == defaults->desc().shader_name ? defaults->desc().shader_map : nullptr;
@@ -302,6 +319,21 @@ int main(int argc, char** argv)
             [&workspace]() -> const AssetIndex&
             {
                 return workspace.catalog().index;
+            },
+            [&workspace](const AssetRef& reference, std::string& error) -> TextureRef
+            {
+                const auto descriptor = build_texture2d_desc(workspace.files(), workspace.catalog().index, reference);
+                if (!descriptor.succeeded())
+                {
+                    error = descriptor.status().message;
+                    return {};
+                }
+                TextureRef texture = Texture::create(TextureDesc(descriptor.value()));
+                if (!texture)
+                {
+                    error = "Texture2D runtime descriptor is invalid.";
+                }
+                return texture;
             },
             [off, on](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& values)
             {

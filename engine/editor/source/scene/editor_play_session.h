@@ -12,6 +12,7 @@
 namespace toy3d
 {
     class EditorWorkspace;
+    class AssetLoader;
     enum class EditorPlayState
     {
         Stopped,
@@ -34,6 +35,11 @@ namespace toy3d
     {
       public:
         ~EditorPlaySession();
+        // Assembly resolves environments through the shared loader instead of decoding on the GT.
+        void set_asset_loader(AssetLoader& assets)
+        {
+            assets_ = &assets;
+        }
         bool start(const SceneAssetData& data, EditorWorkspace& workspace, const ActorTypeRegistry& actors,
                    const std::function<ShaderMapCollectionRef(
                        const std::string&, const std::vector<shader::ShaderPermutationSelection>&)>& programs,
@@ -54,6 +60,7 @@ namespace toy3d
         std::unique_ptr<World> world_;
         SceneGeometry geometry_;
         std::unique_ptr<MaterialLibrary> materials_;
+        AssetLoader* assets_ = nullptr;
         std::shared_ptr<SceneRenderFeedback> feedback_;
         EditorPlayState state_ = EditorPlayState::Stopped;
         EditorPlayAction action_ = EditorPlayAction::None;

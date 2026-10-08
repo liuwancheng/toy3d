@@ -115,7 +115,9 @@ assets/mesh/mesh_material_edit_session 由 GT 持有，复用 Core EditSession �
 
 ### 通用资产预览场景
 
-assets/preview/asset_preview_scene 的 AssetPreviewScene 统一实现材质、角色和缩略图的私有 World、灯光及地面，继续归 Toy3dEditorCore。PreviewSceneSettings 只表达环境、主光、背景、地面、阴影和曝光；MaterialPreviewSettings 组合该配置及材质模型/相机，角色相机与播放状态仍归 MeshEditorPanel。preview_scene_widgets 复用 property_widgets 绘制两类窗口相同的 Environment / Lighting / Floor 设置；Reset Scene 仅恢复公共设置，各窗口自己的 Reset Preview / Reset View 管理模型或相机。环境读取沿既有 load_environment_asset，不另建资产管理服务。
+assets/preview/asset_preview_scene 的 AssetPreviewScene 统一实现材质、角色和缩略图的私有 World、灯光及地面，继续归 Toy3dEditorCore。PreviewSceneSettings 只表达环境、主光、背景、地面、阴影和曝光；MaterialPreviewSettings 组合该配置及材质模型/相机，角色相机与播放状态仍归 MeshEditorPanel。preview_scene_widgets 复用 property_widgets 绘制两类窗口相同的 Environment / Lighting / Floor 设置；Reset Scene 仅恢复公共设置，各窗口自己的 Reset Preview / Reset View 管理模型或相机。环境读取经共享 AssetLoader：装配与首帧 cube 经 Critical 有界等待，帧内的环境切换用默认档位轮询，不另建资产管理服务。
+
+`engine/runtime/asset_loader` 的 AssetLoader 供预览窗口异步取得 Environment cube 与贴图：`TextureLoadJob` 在加载线程调用 `build_environment_texture_desc`/`build_texture2d_desc` 产出 owned CPU `TextureDesc`，**Texture 所有权仍在 GT**——GT 在 `AssetLoader::tick()` 的 adopt 阶段执行 `Texture::create` 并缓存（按字节预算淘汰），窗口只消费已就绪的 cube。请求按 asset 身份去重、单任务在途并带优先级（预览环境用 `AssetLoadPriority::High`）；窗口在等待期内保留上一张图或上一帧场景并重试，失败保留旧状态并给出诊断；`invalidate()` 丢弃缓存与在途候选，`invalidate_all()` 用于 Catalog 重扫，`shutdown()` 先等线程退出再释放。首个环境由窗口 `initialize` 内联 `request_texture(..., Critical)` + 有界 `wait()` 取得（私有 World 的首次 `set_environment` 需要 cube），只在 `on_initialize_preview_scene`/`on_initialize_animation_preview_scene` 里调用，不在帧循环；Scene 装配、PIE 与 Game 启动 Scene 用同一档位、经 `load_assembly_texture` 适配器取环境，因此预览窗口刚解码过的环境不会被重复解码。
 
 共用实现与默认 E_PreviewCourtyard、方向光、灰色地面，各窗口保留独立配置、World、Renderer-owned scene/targets、图像身份及 revision。材质与缩略图仍在 Pool 域串行，静态网格与角色仍在独立 animation 域；只在在途请求结束后更新 World，背景/阴影/曝光复制进 PreviewFrameRequest，变更公共设置后过期图像退役。CPU 候选沿既有 TaskGraph，UI/场景配置与接管在 GT，GPU 沿正常 FIFO/submit。环境加载失败、非法设置和 GPU 失败诊断并保留旧图；场景设置自身关闭时撤回请求、退出时 join/drain，不修改主 World、资产 dirty、Undo 或持久化格式。
 
@@ -129,9 +131,9 @@ Content Browser、AssetResourcePicker 和导入流程共用 EditorApplication �
 
 生成入口为 assets/texture/texture_preview_image、assets/mesh/mesh_thumbnail、assets/animation/animation_thumbnail 和 assets/material/material_thumbnail；assets/thumbnails/thumbnail_source 统一准备 owned CPU 输入及处理缓存，AssetThumbnailPool 管调度和结果接管，均编入 Toy3dEditorCore。MaterialLibrary 是 GT 发布域，材质解析通过注入的 GT resolver，实时材质窗口会话仍与缩略图共享拍摄场景。
 
-TaskGraph 的 AnyWorker 任务负责网格/动画/贴图读取与解码、骨骼依赖磁盘复核、PNG 编码、保存前内容比较及 Saved 原子写盘。普通 tick/读回回调的 GT 接管只核对当前 catalog 的身份/路径、request 与刷新代次，并准备 World/组件和接管纹理；启动时 studio/球体及材质 resolver 的读取仍在 GT。GPU 完成后，缓存上传候选先异步复核，新拍摄网格/动画候选先复核并保存，成功才替换已有图。CPU 任务只捕获 catalog 副本、owned 输入和 Workspace 生命周期内的文件服务，不访问 UI/World/Proxy；退出先等待任务，再释放输入和场景。SingleThread 映射到 GT，多线程下 GT 等待/Drain 也可能帮助执行 AnyWorker，因此该路由不提供严格的物理后台线程隔离，见 [Threading](threading.md#taskgraph-contract)。
+TaskGraph 的 AnyWorker 任务负责网格/动画/贴图读取与解码、骨骼依赖磁盘复核、PNG 编码、保存前内容比较及 Saved 原子写盘。普通 tick/读回回调的 GT 接管只核对当前 catalog 的身份/路径、request 与刷新代次，并准备 World/组件和接管纹理；启动时 studio 环境由 loader 线程解码、GT 只做有界等待，材质 resolver 的读取仍在 GT（先查共享缓存，未命中时同步解码单张贴图）。GPU 完成后，缓存上传候选先异步复核，新拍摄网格/动画候选先复核并保存，成功才替换已有图。CPU 任务只捕获 catalog 副本、owned 输入和 Workspace 生命周期内的文件服务，不访问 UI/World/Proxy；退出先等待任务，再释放输入和场景。SingleThread 映射到 GT，多线程下 GT 等待/Drain 也可能帮助执行 AnyWorker，因此该路由不提供严格的物理后台线程隔离，见 [Threading](threading.md#taskgraph-contract)。
 
-池保持单个在途资产、共享预览场景和 128 条图片容量，没有跨资产流水线。磁盘 PNG 缓存仅用于网格和动画，材质/贴图保留内存图片。缓存写 /Saved/AssetThumbnails，身份为 AssetId、内容摘要与 thumbnail_generator_version；已在途的旧任务最多产生按旧内容身份命名的可重建缓存，GT 不接管过期结果，不写源码资产。文件/依赖变化、worker 异常和 GPU 失败明确诊断，重新生成失败保留已有图片；刷新会失效旧条目，失败时使用占位及诊断。Windows/macOS 沿已有 FileSystem 和公共 RHI 路径，图像尺寸/字节限制沿 Core PNG contract。
+池保持单个在途资产、共享预览场景和 128 条图片容量，没有跨资产流水线。保存、删除等定向变更只失效该身份及其强依赖闭包，其余缓存图片保持可用；工程重扫或手动刷新才整池失效。定向与整池失效同样延迟到下一次 pre-UI tick 生效，帧内已输出的 Image 身份与 RT binding 不变。磁盘 PNG 缓存仅用于网格和动画，材质/贴图保留内存图片。缓存写 /Saved/AssetThumbnails，身份为 AssetId、内容摘要与 thumbnail_generator_version；已在途的旧任务最多产生按旧内容身份命名的可重建缓存，GT 不接管过期结果，不写源码资产。文件/依赖变化、worker 异常和 GPU 失败明确诊断，重新生成失败保留已有图片；刷新会失效旧条目，失败时使用占位及诊断。Windows/macOS 沿已有 FileSystem 和公共 RHI 路径，图像尺寸/字节限制沿 Core PNG contract。
 
 保存或刷新可在 UI 绘制途中请求缩略图失效；池合并请求，在下一次绘制前的 tick 才清除图片并提交纹理退役。当帧已经输出的 Image 命令仍保留注册身份及 RT binding，不能在帧尾快照或绘制前释放它们。
 

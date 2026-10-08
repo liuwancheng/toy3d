@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <exception>
 #include "asset/texture/builtin_texture_assets.h"
-#include "rendercore/texture/texture_asset_loader.h"
+#include "rendercore/texture/texture_asset_decode.h"
 
 #include "rendercore/shader/shader_map.h"
 
@@ -189,12 +189,17 @@ namespace toy3d
             {
                 return failure("Missing engine texture default: " + resource.default_value);
             }
-            const auto loaded = load_texture_asset(files, index, reference);
-            if (!loaded.succeeded())
+            const auto descriptor = build_texture2d_desc(files, index, reference);
+            if (!descriptor.succeeded())
             {
-                return loaded.status();
+                return descriptor.status();
             }
-            candidate.named_defaults[resource.default_value] = loaded.value();
+            TextureRef texture = Texture::create(std::move(descriptor).value());
+            if (!texture)
+            {
+                return failure("Invalid engine texture default: " + resource.default_value);
+            }
+            candidate.named_defaults[resource.default_value] = std::move(texture);
         }
         textures = std::move(candidate);
         return AssetStatus::success();

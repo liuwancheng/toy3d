@@ -19,6 +19,7 @@
 #include "panels/content_browser_panel.h"
 #include "platform/model_file_picker.h"
 #include "rendercore/frame_synchronization.h"
+#include "rendercore/texture/texture_load_job.h"
 #include "workspace/editor_workspace.h"
 #include "scene/placement/asset_placement.h"
 #include "config/command_line_parser.h"
@@ -307,6 +308,12 @@ namespace toy3d
             return false;
         }
         scene_session_.bind(world());
+        // The Engine owns the one decode service per process and injects it before
+        // on_initialize(); every consumer below shares that instance.
+        if (assets_ == nullptr)
+        {
+            TOY_LOG_ERROR("Editor received no asset loader; previews and assembly will report it unavailable.");
+        }
         MaterialTextureValues textures;
         const auto defaults = actor_factory_.default_material()->material();
         for (const auto& resource : defaults->parameter_schema().resources)
@@ -322,6 +329,18 @@ namespace toy3d
             [this]() -> const AssetIndex&
             {
                 return workspace_.catalog().index;
+            },
+            [this](const AssetRef& reference, std::string& error) -> TextureRef
+            {
+                if (assets_ == nullptr)
+                {
+                    error = "Material texture: the asset loader is unavailable.";
+                    return {};
+                }
+                // The library also serves window and thumbnail frames, but building a runtime
+                // material needs its textures present, so this one decode is waited for (bounded,
+                // on the loader thread); a cached identity returns immediately.
+                return load_assembly_texture(*assets_, reference, workspace_.catalog().index, error);
             },
             [this, defaults](const std::string& name, const std::vector<shader::ShaderPermutationSelection>& selections)
             {
@@ -351,6 +370,18 @@ namespace toy3d
         mesh_editor_.set_material_resolver(actor_factory_.material_resolver());
         material_editor_.initialize(workspace_, actor_factory_.default_material()->material(),
                                     PhysicalPath(TOY3D_SHADER_MAP_ENTRY_ROOT));
+        // A missing loader is reported once above; the consumers themselves also report it, and
+        // nothing may dereference the pointer here.
+        if (assets_ != nullptr)
+        {
+            thumbnails_.set_asset_loader(*assets_);
+            mesh_editor_.set_asset_loader(*assets_);
+            material_editor_.set_asset_loader(*assets_);
+            // Scene assembly and PIE resolve their environments and meshes through the same
+            // loader, so a window that already decoded an identity no longer pays twice.
+            scene_session_.set_asset_loader(*assets_);
+            play_session_.set_asset_loader(*assets_);
+        }
         material_editor_.set_preview_pool(thumbnails_);
         material_editor_.set_resource_picker(resource_picker_);
         mesh_editor_.set_resource_picker(resource_picker_);
@@ -388,7 +419,8 @@ namespace toy3d
                 const auto status = materials_->reload(reference);
                 if (status.succeeded())
                 {
-                    thumbnails_.invalidate();
+                    // Only this material and its strong dependents render differently.
+                    thumbnails_.invalidate(reference.asset_id);
                 }
                 return status;
             });
@@ -445,6 +477,8 @@ namespace toy3d
         tick_package();
         tick_play(delta_seconds);
         scene_session_.history().synchronize(world());
+        // The Engine already ticked the shared loader this frame, so panels can poll their
+        // preview handles directly.
         thumbnails_.tick();
         mesh_bindings_.tick(world());
         const auto placed_actor = mesh_bindings_.take_placed_actor();
@@ -553,6 +587,8 @@ namespace toy3d
         mesh_bindings_.shutdown();
         resource_picker_.clear();
         thumbnails_.shutdown();
+        // Every preview owner dropped its references above; the Engine owns the decode service
+        // and joins its thread after this shutdown returns.
         scene_viewport_.exit_camera_view();
         scene_session_.history().clear();
         for (const auto actor_id : world().actor_ids())
@@ -655,7 +691,7 @@ namespace toy3d
             !add_scene_panel("world_settings", "World Settings", "World Settings",
                              [this]()
                              {
-                                 draw_world_settings(world(), workspace_, scene_session_.history(),
+                                 draw_world_settings(world(), workspace_, scene_session_.history(), assets_,
                                                      material_assignment_error_);
                              }) ||
             !add_scene_panel("scene_viewport", "Scene Viewport", "Scene Viewport###Game Viewport",

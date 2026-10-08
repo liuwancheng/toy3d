@@ -23,7 +23,7 @@ CPU DTO/验证/格式在 engine/core，导入与构建在 engine/tools，运行�
 - CMake 显式登记输入，codegen 不做完整预处理/include 展开；标记后的字段声明可跨行，到分号结束，换行不改变字段语义；支持受控数值/string/math/嵌套/vector/有限 variant/AssetRef，拒绝指针、private、未知类型及不完整声明。生成文件进入 build，不手改产物。
 - TypeRegistry 显式注册、冻结，各可执行文件只注册需要的 schema。DTO 不包含 runtime/editor/native handles。
 - binary 编码固定宽度 little-endian；string 是有界 UTF-8，数组/嵌套深度/总字节均有界；错误含 offset/path。未知 required 拒绝；UnknownOptionalField 必须保持只读，不能未知数据丢失后保存成功。
-- `ValueReader` 的 uint8/uint32/float32 批量读取不附加长度前缀，由调用方先读取数量；检查总字节、元素上限、目标指针和剩余长度，float32 逐值拒绝非有限数。失败保持目标数组及 reader 位置不变，非有限数错误 offset 指向该值；空数组允许空指针，输出存储不得与输入字节重叠。不依赖 struct padding、主机字节序或原生对象布局。Reader 及输出仍由调用线程独占，输入保持原有非 owning 生命周期。
+- `ValueReader` 的 uint8/uint16/uint32/float32 批量读取不附加长度前缀，由调用方先读取数量；检查总字节、元素上限、目标指针和剩余长度，float32 逐值拒绝非有限数。失败保持目标数组及 reader 位置不变，非有限数错误 offset 指向该值；空数组允许空指针，输出存储不得与输入字节重叠。密集数值载荷（如 Environment mip）按整块读取，不逐元素走标量 codec。不依赖 struct padding、主机字节序或原生对象布局。Reader 及输出仍由调用线程独占，输入保持原有非 owning 生命周期。
 - `AssetResult::value()` 的右值重载用于把已检查成功的 owned 候选移动给下一层；左值仍只读。消费后不得再次把该结果当成完整资产使用；错误与持久化格式不变。实现归 Toy3dCore/Toy3dAssets，边界验证入口为 `Toy3dCore.Serialization` 和资产几何/动画测试。
 - schema migration 是显式整候选转换并验证，不能靠默认填充静默迁移单位/格式。
 - PropertyPath 用稳定 field/index/element ID/variant 身份；可重排集合不能把下标当永久身份。EditSession owner-thread 验证整个 patch，preview 成功才 publish，撤销/重做保持一致；Save 冲突检查和成功后清 dirty，失败不丢草稿。
@@ -57,6 +57,16 @@ type string/schema version 是持久化身份，Visible 字段仍序列化，只
 - 当前 Scene schema 为 7、SceneActor schema 为 6；StaticMesh 描述 schema 为 4，render_geometry 为 3，单位厘米。SkeletalMesh 描述 schema 为 3，skeletal_geometry 为 3。仅上一版网格 YAML 描述的显式材质字段迁移可读，见下节；旧几何及旧二进制生产读取仍拒绝，测试中隔离的旧格式 fixture 不是兼容入口。
 
 源代码入口：asset/asset_identity.h、asset_pair.h、asset_yaml.h、asset_meta.h、asset_index.h，DTO 在各资源模块。格式/单位改变必须提升正确版本并明确迁移或拒绝，不能修改 parser 后继续声称旧字节等价。
+
+## 资产加载门面
+
+`engine/runtime/asset_loader` 的 AssetLoader 是资产对（asset pair）解码的统一入口，每个进程只有一个实例：Engine 创建并持有它，在 `on_initialize` 之前通过 `Application::set_asset_loader` 注入给应用（Editor 与 Game host 用同一份），取代各调用点自行决定线程/缓存/策略的做法。门面本身不认识任何载荷类型：扩展一种资源 = 在对应 decoder 旁新增一个 `AssetLoadJob` 子类（`decode` 在加载线程产出 owned CPU 数据、`adopt` 在 GT 创建运行时对象、`bytes` 供缓存计量）+ 一个类型化入口（现有：`request_texture`/`load_assembly_texture` 与 `request_static_mesh`/`load_assembly_static_mesh`），门面的队列/优先级/single-flight/缓存/失效/有界等待逻辑完全复用。请求由 `AssetHandle<T>` 返回（`pending/ready/failed/invalidated`，`get()` 是请求时绑定的类型化取值器，调用点不做转换）。缓存、失败记忆与在途登记都按 identity 索引，而句柄的取值器会把 Job 向下转型，因此同一 identity 若以另一种 `expected_type` 再次请求，会得到显式诊断（"already known as X but requested as Y"）而不是拿到错误类型的 Job；失败记忆同样带类型，避免把一种类型的失败报告给另一种请求。`MaterialLibrary` 这类需要"立即拿到 TextureRef"的组件不再自己解码，而是由 composition root 注入 resolver：构建 runtime 材质需要贴图就位，因此 resolver 走 `load_assembly_texture`（Critical + 有界等待，解码仍在加载线程）。档位现状：Critical 由装配路径显式传入；Environment 类型默认为 High（预览窗口的环境请求即走该默认）；其余请求默认 Normal；**Low 目前没有调用点**，保留给后续迁移的预取/缩略图路径，档位顺序由 `priority_bucket` 显式映射而非枚举序号。
+
+加载线程只解码出 owned CPU payload（当前为 `TextureDesc` 与 `StaticMeshAssetGeometry`），GT 在 `tick()` 的 adopt 阶段创建运行时对象（Texture / StaticMesh）并交付等待者与缓存，运行时对象所有权不离开 GT。句柄状态为 `pending/ready/failed/invalidated`：`cancel()` 终结本次等待（无论解码是否已经开始，该句柄都不会再收到结果），共享任务只有在**全部**等待者都已取消时才在开始前被丢弃，**丢弃句柄不等于取消**——同一 identity 的解码仍会完成并进入共享缓存，因此逐帧轮询的调用方既不中断加载也不重复解码；解码失败按 identity 记忆并在 `invalidate()` 前返回同一诊断，避免逐帧重启同一个失败解码；`invalidated` 表示该 identity 在解码在途时被失效，等待者应重新请求当前内容，而不是继续等一个不会到达的结果。被失效（stale）的解码结果整体丢弃；被取消的等待者只是不再收到投递，其结果仍会进入共享缓存。
+
+缓存按 identity 存已 adopt 的运行时对象（以 Job 形态持有，`bytes` 由 Job 提供），超出字节预算时按最近使用淘汰（预算只统计 CPU payload，是软上限且不代表进程内存上限：GPU 资源与仍被句柄/场景引用的对象不会因淘汰而释放）；`invalidate(id)`（重导入/删除/来源失效）与 `invalidate_all()`（Catalog 重扫、工程切换）丢弃缓存、清除失败记忆、解除受影响 identity 的在途登记，并把仍在等待的句柄标记为 `invalidated`；因此失效后立刻到来的请求一定由新的解码满足，而不会挂在一个永远不会交付的候选上，旧等待者也不会被永久搁置。缓存只能由 adopt 写入，没有旁路入库接口。摘要全量校验只留在发布/导入边界，不做按内容摘要的惰性失效。不声明优先级时按 `default_asset_load_priority` 的类型档位请求，避免同类资产在不同窗口落到不同档；Critical 由无法在缺资产时继续的装配路径使用（Scene 装配的环境与 StaticMesh、PIE、World Settings、Game 启动 Scene 与材质贴图解析、材质窗口的 Texture2D 参数槽，以及两个预览窗 `initialize` 的首帧 cube），它们用 `wait()` 做有界等待；窗口与缩略图的 Environment cube 逐帧轮询。StaticMesh 装配（Scene/PIE/Game 启动）已接入门面，Scene graph 解析与骨骼/动画解码仍走各自既有路径，迁移按调用点分批进行；非资产对解码（如缩略图源图 PNG）不在门面范围内。rendercore 的 `build_environment_texture_desc`/`build_texture2d_desc`（`texture_asset_decode.{h,cpp}`）是门面与 `TextureLoadJob` 共用的纯 CPU 解码缝：**资产解码路径里**运行时对象只在 Job 的 `adopt` 创建（`TextureLoadJob::adopt`），内置默认贴图（`material_asset_builder.cpp`）与引擎基础几何（`scene_geometry.cpp`）不走门面，仍各自调用 `Texture::create`。
+
+加载位置的线程契约见 [Threading](threading.md#资源加载线程)。
 
 ## 发布、恢复与操作
 

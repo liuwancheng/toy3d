@@ -43,6 +43,34 @@ int main()
               byte_reader.offset() == 0 && byte_reader.read_uint8_array(raw, 8).succeeded() &&
               std::vector<std::uint8_t>(raw, raw + 8) == block,
           "bulk byte destination validation failed");
+    // Bulk uint16 shares the dense-array contract with uint32: little endian,
+    // transactional failure and the same element/byte budgets.
+    const std::vector<std::uint8_t> halves = {0x34, 0x12, 0xcd, 0xab};
+    toy3d::ValueReader half_reader(halves);
+    std::uint16_t half_values[2]{0, 0};
+    check(half_reader.read_uint16_array(half_values, 2).succeeded() && half_values[0] == 0x1234u &&
+              half_values[1] == 0xabcdu && half_reader.at_end(),
+          "bulk uint16 endian conversion failed");
+    check(half_reader.read_uint16_array(nullptr, 0).succeeded() &&
+              half_reader.read_uint16_array(half_values, 1).code == toy3d::ValueErrorCode::Truncated &&
+              half_values[0] == 0x1234u && half_reader.offset() == halves.size(),
+          "bulk uint16 empty read or failure state changed the destination");
+    const std::vector<std::uint8_t> odd_halves = {0x01, 0x02, 0x03};
+    toy3d::ValueReader odd_half_reader(odd_halves);
+    check(odd_half_reader.read_uint16_array(half_values, 1).succeeded() && half_values[0] == 0x0201u &&
+              odd_half_reader.read_uint16_array(half_values, 1).code == toy3d::ValueErrorCode::Truncated &&
+              odd_half_reader.offset() == 2,
+          "bulk uint16 misaligned tail was accepted");
+    toy3d::ValueReader null_half_reader(halves);
+    check(null_half_reader.read_uint16_array(nullptr, 1).code == toy3d::ValueErrorCode::InvalidValue &&
+              null_half_reader.offset() == 0,
+          "bulk uint16 destination validation failed");
+    toy3d::ValueLimits half_limits;
+    half_limits.max_array_elements = 1;
+    toy3d::ValueReader element_limited_half(halves, half_limits);
+    check(element_limited_half.read_uint16_array(half_values, 2).code == toy3d::ValueErrorCode::TooLarge &&
+              element_limited_half.offset() == 0,
+          "bulk uint16 element limit was ignored");
     const std::vector<std::uint8_t> floats = {0, 0, 0x80, 0x3f, 0, 0, 0x80, 0xbf};
     toy3d::ValueReader float_reader(floats);
     float values[2]{42, 43};

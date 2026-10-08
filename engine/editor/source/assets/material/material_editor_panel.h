@@ -18,6 +18,7 @@ namespace toy3d
     class ShaderWorkflow;
     class AssetThumbnailPool;
     class AssetResourcePicker;
+    class AssetLoader;
 
     enum class MaterialCloseDecision
     {
@@ -43,6 +44,11 @@ namespace toy3d
         void set_preview_pool(AssetThumbnailPool& previews)
         {
             previews_ = &previews;
+        }
+        // The composition root injects the shared loader; texture slots decode off the Game Thread.
+        void set_asset_loader(AssetLoader& assets)
+        {
+            assets_ = &assets;
         }
         void set_shader_workflow(ShaderWorkflow& workflow);
         void set_resource_picker(AssetResourcePicker& picker)
@@ -116,6 +122,7 @@ namespace toy3d
         ShaderWorkflow* shaders_ = nullptr;
         AssetThumbnailPool* previews_ = nullptr;
         AssetResourcePicker* resource_picker_ = nullptr;
+        AssetLoader* assets_ = nullptr;
         MaterialPreviewSettings preview_settings_;
         std::uint64_t preview_revision_ = 0u;
         std::uint64_t session_revision_ = 0u;

@@ -109,6 +109,7 @@ namespace toy3d
         // Failure preserves the destination and cursor. Empty arrays permit nullptr.
         // Destination storage must not overlap the input bytes.
         ValueStatus read_uint8_array(std::uint8_t* values, std::size_t count);
+        ValueStatus read_uint16_array(std::uint16_t* values, std::size_t count);
         ValueStatus read_uint32_array(std::uint32_t* values, std::size_t count);
         ValueStatus read_float32_array(float* values, std::size_t count);
 

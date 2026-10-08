@@ -350,7 +350,8 @@ if(BUILD_TESTING)
     target_include_directories(Toy3dEditorWorkspaceTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/source")
     target_sources(Toy3dEditorWorkspaceTests PRIVATE "source/assets/material/material_asset_tools.cpp"
         "source/assets/texture/texture_asset_tools.cpp")
-    target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dCore Toy3dAssets Toy3dAssetPipeline)
+    # Runtime is linked for the Environment runtime texture loader covered beside the published pair.
+    target_link_libraries(Toy3dEditorWorkspaceTests PRIVATE Toy3dCore Toy3dAssets Toy3dAssetPipeline Toy3dRuntime)
     target_compile_options(Toy3dEditorWorkspaceTests PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
     add_test(NAME Toy3dEditor.Workspace COMMAND Toy3dEditorWorkspaceTests)
 

@@ -5,7 +5,6 @@
 
 #include "logging/logger.h"
 #include "rendercore/shader/shader_map.h"
-#include "rendercore/texture/texture_asset_loader.h"
 
 namespace toy3d
 {
@@ -21,13 +20,13 @@ namespace toy3d
     // MaterialLibrary: Stable asset owners and whole-graph GT publication
     // --------------------------------------------------------------------------
     MaterialLibrary::MaterialLibrary(const TypeRegistry& types, const FileSystem& files,
-                                     std::function<const AssetIndex&()> index,
+                                     std::function<const AssetIndex&()> index, TextureResolver load_texture,
                                      std::function<ShaderMapCollectionRef(
                                          const std::string&, const std::vector<shader::ShaderPermutationSelection>&)>
                                          programs,
                                      MaterialTextureValues textures)
-        : types_(types), files_(files), index_(std::move(index)), programs_(std::move(programs)),
-          textures_(std::move(textures))
+        : types_(types), files_(files), index_(std::move(index)), load_texture_(std::move(load_texture)),
+          programs_(std::move(programs)), textures_(std::move(textures))
     {
     }
 
@@ -41,12 +40,13 @@ namespace toy3d
             {
                 continue;
             }
-            const auto loaded = load_texture_asset(files_, index_(), *reference);
-            if (!loaded.succeeded())
+            std::string error;
+            TextureRef texture = load_texture_ ? load_texture_(*reference, error) : TextureRef{};
+            if (!texture)
             {
-                return loaded.status();
+                return failure(error.empty() ? "Material texture could not be loaded." : error);
             }
-            textures_.assets.emplace(reference->asset_id, loaded.value());
+            textures_.assets.emplace(reference->asset_id, std::move(texture));
         }
         return AssetStatus::success();
     }

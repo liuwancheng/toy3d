@@ -11,6 +11,7 @@ namespace toy3d
     class EditorWorkspace;
     class EditorSelection;
     class SceneViewport;
+    class AssetLoader;
 
     // Owns the author session, not the World or runtime objects.
     class EditorSceneSession
@@ -18,6 +19,11 @@ namespace toy3d
       public:
         EditorSceneSession(EditorWorkspace& workspace, ActorFactory& factory, MaterialAssignments& materials,
                            EditorSelection& selection, SceneViewport& viewport);
+        // Assembly resolves environments through the shared loader instead of decoding on the GT.
+        void set_asset_loader(AssetLoader& assets)
+        {
+            assets_ = &assets;
+        }
         void bind(World& world);
         EditorCommandHistory& history()
         {
@@ -56,6 +62,7 @@ namespace toy3d
         MaterialAssignments& materials_;
         EditorSelection& selection_;
         SceneViewport& viewport_;
+        AssetLoader* assets_ = nullptr;
         EditorCommandHistory history_;
         World* world_ = nullptr;
         AssetId asset_id_;

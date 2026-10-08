@@ -58,6 +58,13 @@ namespace toy3d
             game_executable_ = std::move(game_executable);
         }
 
+        // The Engine owns the one decode service per process and hands it over before
+        // on_initialize(); every editor consumer below uses this same instance.
+        void set_asset_loader(AssetLoader& assets) override
+        {
+            assets_ = &assets;
+        }
+
       protected:
         bool on_initialize() override;
         bool starts_world_play() const override
@@ -213,6 +220,8 @@ namespace toy3d
         MaterialEditorPanel material_editor_;
         NativeProcessService processes_;
         ThreadManager shader_threads_;
+        // Injected by the Engine; the editor never creates its own loader.
+        AssetLoader* assets_ = nullptr;
         ShaderWorkflow shaders_{processes_, shader_threads_};
         bool shader_workflow_ready_ = false;
         EditorPanelRegistry panels_;
