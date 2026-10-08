@@ -68,10 +68,10 @@ namespace toy3d
     // and either end_frame() or abort_frame(). It exposes the current presentation image as a normal
     // render-graph external resource while keeping acquire synchronization
     // private to the viewport implementation.
-    class RHIFrameContext : public RHIObject
+    class RHIFrameContext : public RHIResource
     {
       public:
-        explicit RHIFrameContext(const RHIDevice& owner) : RHIObject(owner)
+        explicit RHIFrameContext(const RHIDevice& owner) : RHIResource(owner)
         {
         }
         ~RHIFrameContext() override = default;
@@ -109,11 +109,11 @@ namespace toy3d
     // Owns the presentation lifecycle for one native surface. RenderScene
     // records ordered pass command lists, but never acquires or presents a
     // swapchain image directly.
-    class RHIViewportContext : public RHIObject
+    class RHIViewportContext : public RHIResource
     {
       public:
         explicit RHIViewportContext(const RHIDevice& owner, std::string debug_name = {})
-            : RHIObject(owner, std::move(debug_name))
+            : RHIResource(owner, std::move(debug_name))
         {
         }
         virtual ~RHIViewportContext() = default;

@@ -9,17 +9,21 @@ namespace toy3d
 {
     // Immutable geometry candidate. Pose buffers belong to the instance proxy,
     // so multiple instances of this geometry retain independent animation state.
-    class SkeletalMeshRenderData final
+    class SkeletalMeshRenderData final : public std::enable_shared_from_this<SkeletalMeshRenderData>
     {
       public:
         explicit SkeletalMeshRenderData(const SkeletalMeshAssetGeometry& geometry);
-        ~SkeletalMeshRenderData() = default;
+        ~SkeletalMeshRenderData();
         SkeletalMeshRenderData(const SkeletalMeshRenderData&) = delete;
         SkeletalMeshRenderData& operator=(const SkeletalMeshRenderData&) = delete;
 
-        RHIStatus begin_init(RenderResourceManager& manager);
         RHIStatus prepare_current_recording();
-        RHIStatus release(RenderResourceManager& manager);
+        RenderResourceState state() const;
+        RHIStatus failure_status() const;
+        std::size_t ref_count() const noexcept
+        {
+            return ref_count_;
+        }
         bool is_drawable() const;
         bool has_valid_tangent_frame() const
         {
@@ -48,7 +52,20 @@ namespace toy3d
         }
 
       private:
+        friend class RenderResourceManager;
+        template <typename T> friend class RenderResourceRef;
+
         std::array<RenderResource*, 5> resources();
+        std::array<const RenderResource*, 5> resources() const;
+        RHIStatus validate_geometry() const;
+        void reset_vertex_factory() noexcept;
+        void retain() noexcept;
+        void release() noexcept;
+
+        RenderResourceManager* owner_manager_ = nullptr;
+        std::thread::id ref_thread_{};
+        std::size_t ref_count_ = 0;
+        bool reclaim_requested_ = false;
         PositionVertexBuffer position_buffer_;
         StaticMeshVertexBuffer attributes_buffer_;
         ColorVertexBuffer color_buffer_;
@@ -60,7 +77,6 @@ namespace toy3d
         std::uint32_t num_bone_influences_ = 0;
         std::size_t index_count_ = 0;
         bool valid_ = false;
-        bool init_started_ = false;
         bool valid_tangent_frame_ = false;
     };
 } // namespace toy3d

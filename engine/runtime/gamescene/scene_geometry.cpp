@@ -131,8 +131,8 @@ namespace toy3d
         desc.material_slot_names = prototype->material_slot_names();
         desc.default_material_references = prototype->default_material_references();
         desc.valid_tangent_frame = prototype->has_valid_tangent_frame();
-        // Each placement has a fresh render-resource lifecycle. Released vertex
-        // buffers discard their upload payload and cannot be reused on a redo.
+        // Each placement owns its material-slot snapshot. Its retained geometry
+        // payload also supports reupload after device residency is reclaimed.
         return StaticMesh::create(std::move(desc));
     }
 
@@ -183,6 +183,13 @@ namespace toy3d
     {
         cube_.reset();
         plane_.reset();
-        MaterialInstance::release(material_);
+        if (material_)
+        {
+            // Scene consumers have unregistered, but cached CPU meshes can still
+            // own the default material. Retire its proxy through RT FIFO before
+            // returning this owner's reference; do not require the final CPU ref.
+            material_->retire_proxy();
+            material_.reset();
+        }
     }
 } // namespace toy3d

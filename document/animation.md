@@ -160,7 +160,7 @@ SkeletalMeshComponent 默认启用自己的通用组件 tick，在 Actor 阶段�
 
 编辑 World 不 begin_play、不自动播放。asset preview session 显式推进它自己的播放器；Game/PIE 经 World 阶段播放。暂停/不可见窗口只影响对应 session，不能停主 World。以后并行求值时，将 immutable input/owned output 经 TaskGraph 处理，在 GT 接管后发布 RT，worker 不直接 enqueue_render_command。
 
-`SkeletalMesh` 共享不可变 CPU 资产与材质；每个 `SkeletalMeshSceneProxy` 在所属 RenderScene 内独占 geometry 和 section 骨骼上传资源，避免跨场景释放或实例互相覆盖。组件保存独立 AnimationInstance、Deformer 和 owned 求值输出。资产绑定先完整验证/求值候选，再替换渲染状态；单 sequence 更换、seek 与动画更新保持 Proxy 身份。
+`SkeletalMesh` 共享不可变 CPU 资产、材质及 geometry render data；每个 `SkeletalMeshSceneProxy` 持有 geometry 的渲染引用，并独占 section 骨骼上传资源，避免实例姿态互相覆盖。共享 geometry 的驻留由 RenderResourceManager 管理，单个场景退出不释放其他场景仍引用的资源。组件保存独立 AnimationInstance、Deformer 和 owned 求值输出。资产绑定先完整验证/求值候选，再替换渲染状态；单 sequence 更换、seek 与动画更新保持 Proxy 身份。
 
 `SceneInterface::update_skeletal_mesh_pose` 通过同一 FIFO 命令发布 owned deformation、world transform、bounds 与 primitive flags。RT 先复核注册身份、布局和递增 pose revision，再接管 section 上传与相同版本的 bounds。每个 section 的骨骼 view 是 frame-local MeshBatch 的强引用；Object binding 按 Proxy/transform generation/section 缓存，camera、shadow 与 HitProxy 复用同一版本，GPU completion 保活仍由 RHI command list 负责。播放时间与求值不增加 World content revision。
 
@@ -250,7 +250,7 @@ Renderer 拥有一个 animation preview scene/targets，与现有 thumbnail scen
 
 大网格数组使用 Core 批量数值读取，解码候选移动交接。`SkeletalMesh` 创建入口完整校验并独占不可变几何；deformer 绑定已创建的 Mesh 时共享其几何生命周期，仅 raw DTO 入口重新完整校验并制作快照。此路径不改变四/八影响格式或 GPU Skin ABI。
 
-Animation Editor 仅保留最近一次成功的 CPU 资产及 Mesh，关闭窗口仍注销组件并退役 GPU 图像/渲染数据；同网格切换动作保留已注册 Mesh，仅更换动画。worker 捕获只读缓存快照，复用要求 Source identity/path/完整 description（含 meta 摘要）一致，读取仍验证 meta；重导入/Rescan 撤回缓存及旧 generation，GT 发布前仍复核文件。缓存有界为一个候选，失败保留旧显示，退出先 join worker 再释放缓存。不新增全局 AssetManager 或跨 Scene 共享 render data；验证包含动作切换、关闭重开、内容变化、失败及退出。
+Animation Editor 仅保留最近一次成功的 CPU 资产及 Mesh，关闭窗口仍注销组件并退役 GPU 图像/渲染数据；同网格切换动作保留已注册 Mesh，仅更换动画。worker 捕获只读缓存快照，复用要求 Source identity/path/完整 description（含 meta 摘要）一致，读取仍验证 meta；重导入/Rescan 撤回缓存及旧 generation，GT 发布前仍复核文件。缓存有界为一个候选，失败保留旧显示，退出先 join worker 再释放缓存。不新增全局 AssetManager；同一 SkeletalMesh 的不可变 render data 按 [Render Framework](render-framework.md#共享资源生命周期) 共享，pose 与预览图像仍归实例；验证包含动作切换、关闭重开、内容变化、失败及退出。
 
 左键拖动 orbit，中键 pan，滚轮 zoom，`F`/Frame All 按当前骨骼点与动态 mesh bounds 重新取景；不缩放/重写顶点、reference pose 或 inverse bind。大窗口按画布比例采样受公共 RHI 512 像素读回上限约束的预览图像。隐藏窗口暂停时钟，不推进主 World、Scene dirty 或 Undo。
 
@@ -270,7 +270,7 @@ Place Actors 提供空 Static Mesh 和 Skeletal Mesh Actor，各自自带对应 
 
 共享 `MeshComponent` 仅统一材质槽、覆盖和 vertex factory 语义，StaticMeshComponent 继续持有静态几何，SkeletalMeshComponent 持有不可变骨骼网格、独立动画实例及变形数据。Scene 通过注入的 `SceneAssemblyServices` 加载资源，不依赖 Editor 预览面板。
 
-`SceneSkeletalMeshData` 是独立组件分支：primitive settings、mesh/animation AssetRef、loop/autoplay/rate/root lock，以及按名称保存的材质覆盖；不保存当前时间、pose 或 GPU 状态。空网格不得带动画/材质引用，空动画使用参考姿态。Scene variant 按稳定类型名编码，新增分支不改变既有编码，保持 Scene 7 / Actor 6 / Component 1；未知分支及旧根版本仍拒绝。Save/Open、装配、历史恢复与 PIE 走同一组件 schema；PIE 重建播放实例和 render data，从时间 0 开始。
+`SceneSkeletalMeshData` 是独立组件分支：primitive settings、mesh/animation AssetRef、loop/autoplay/rate/root lock，以及按名称保存的材质覆盖；不保存当前时间、pose 或 GPU 状态。空网格不得带动画/材质引用，空动画使用参考姿态。Scene variant 按稳定类型名编码，新增分支不改变既有编码，保持 Scene 7 / Actor 6 / Component 1；未知分支及旧根版本仍拒绝。Save/Open、装配、历史恢复与 PIE 走同一组件 schema；PIE 重建播放实例和 pose buffer，从时间 0 开始；同一 SkeletalMesh 引用可共享不可变几何的设备资源。
 
 本轮不加入 AnimBlueprint、状态机、布料、骨骼资产编辑或 3D bone picking。
 

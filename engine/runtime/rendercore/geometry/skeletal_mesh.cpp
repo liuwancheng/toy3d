@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "rendercore/geometry/skeletal_mesh_render_data.h"
+
 namespace toy3d
 {
     AssetResult<SkeletalMeshRef> SkeletalMesh::create(std::shared_ptr<const AnimationBoneLayout> layout,
@@ -53,6 +55,7 @@ namespace toy3d
                                std::vector<MaterialInterfaceRef> materials)
         : bone_layout_(std::move(layout)), asset_(std::move(asset)), materials_(std::move(materials))
     {
+        render_data_ = std::make_shared<SkeletalMeshRenderData>(asset_.geometry);
     }
 
     const std::shared_ptr<const AnimationBoneLayout>& SkeletalMesh::bone_layout() const
@@ -68,5 +71,10 @@ namespace toy3d
     const std::vector<MaterialInterfaceRef>& SkeletalMesh::material_slots() const
     {
         return materials_;
+    }
+
+    SkeletalMeshRenderData* SkeletalMesh::render_data() const noexcept
+    {
+        return render_data_.get();
     }
 } // namespace toy3d

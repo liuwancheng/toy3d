@@ -55,6 +55,11 @@ namespace toy3d
         {
             return validate_texture_subresource_range(texture->desc(), transition.subresources);
         }
+        if (!std::dynamic_pointer_cast<RHIBuffer>(transition.resource))
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
+                                      "Resource transition supports only Buffer and Texture objects.");
+        }
         if (transition.subresources.aspect != RHITextureAspect::Color || transition.subresources.first_mip != 0 ||
             transition.subresources.first_layer != 0 || transition.subresources.mip_count != RHI_ALL_MIPS ||
             transition.subresources.layer_count != RHI_ALL_LAYERS)

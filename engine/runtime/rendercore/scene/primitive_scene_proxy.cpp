@@ -25,16 +25,6 @@ namespace toy3d
         return RHIStatus::success();
     }
 
-    RHIStatus PrimitiveSceneProxy::release_resources(RenderResourceManager&, bool)
-    {
-        return RHIStatus::success();
-    }
-
-    bool PrimitiveSceneProxy::shares_geometry_resources(const PrimitiveSceneProxy&) const
-    {
-        return false;
-    }
-
     bool PrimitiveSceneProxy::resources_drawable() const
     {
         return true;

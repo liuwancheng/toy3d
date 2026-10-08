@@ -22,12 +22,12 @@ namespace toy3d
 
     RHIStatus SkinWeightVertexBuffer::record_upload(RHIDevice& device, RHIGraphicsCommandContext& context)
     {
+        bool deterministic = false;
         if (num_bone_influences_ != skin_influences_per_group && num_bone_influences_ != max_skin_influences)
         {
             return fail(
                 RHIStatus::failure(RHIErrorCode::InvalidArgument, "Skin storage must have four or eight slots."));
         }
-        bool deterministic = false;
         const auto status =
             record_mesh_buffer_upload(device, context, bytes_.data(), bytes_.size(), RHIResourceUsage::VertexBuffer,
                                       RHIAccess::VertexBuffer, "SkeletalMesh.SkinWeights", buffer_, deterministic);
@@ -36,17 +36,16 @@ namespace toy3d
 
     void SkinWeightVertexBuffer::on_recording_committed() noexcept
     {
-        std::vector<std::uint8_t>().swap(bytes_);
+        // Keep the immutable weights for later residency uploads.
     }
 
     void SkinWeightVertexBuffer::on_recording_discarded() noexcept
     {
-        buffer_.reset();
+        release_rhi();
     }
 
     void SkinWeightVertexBuffer::release_rhi() noexcept
     {
         buffer_.reset();
-        std::vector<std::uint8_t>().swap(bytes_);
     }
 } // namespace toy3d

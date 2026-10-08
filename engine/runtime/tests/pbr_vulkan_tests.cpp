@@ -114,7 +114,7 @@ void test_pbr_math_and_cube(toy3d::RHIDevice& device)
     }
     RenderResourceManager manager(device);
     TextureResource cube(cube_desc);
-    status(cube.begin_init(manager));
+    status(manager.begin_init(cube));
     RHITextureDesc output;
     output.width = 16;
     output.height = 7;
@@ -225,7 +225,7 @@ void test_pbr_math_and_cube(toy3d::RHIDevice& device)
             }
         }
     }
-    status(cube.release(manager));
+    status(manager.release(cube));
     programs.clear();
     std::cout << "112 PBR/Cube pixels verified against independent double reference\n";
 }

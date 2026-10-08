@@ -1,5 +1,10 @@
 #include "rendercore/material/material_render_proxy.h"
 
+#include <algorithm>
+#include <set>
+#include <utility>
+#include <vector>
+
 #include "drivers/rhi/rhi_command_context.h"
 #include "logging/logger.h"
 #include "rendercore/material/material.h"
@@ -7,11 +12,6 @@
 #include "rendercore/render_resource.h"
 #include "rendercore/render_resource_manager.h"
 #include "rendercore/texture/texture_resource.h"
-
-#include <algorithm>
-#include <set>
-#include <utility>
-#include <vector>
 
 namespace toy3d
 {
@@ -116,23 +116,6 @@ namespace toy3d
                                        : RHIStatus::failure(RHIErrorCode::InvalidArgument, encoder.error());
         }
 
-        RHIStatus begin_init_texture_resource(TextureResource& resource, RenderResourceManager& manager)
-        {
-            switch (resource.state())
-            {
-            case RenderResourceState::Uninitialized:
-                return resource.begin_init(manager);
-            case RenderResourceState::PendingUpload:
-            case RenderResourceState::Ready:
-                return RHIStatus::success();
-            case RenderResourceState::Failed:
-                return resource.failure_status();
-            case RenderResourceState::Released:
-                return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                          "Material texture resource was already released");
-            }
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material texture resource has an unknown state");
-        }
         RHISamplerDesc material_sampler_desc(MaterialSamplerPreset preset)
         {
             RHISamplerDesc desc;
@@ -168,8 +151,13 @@ namespace toy3d
         vector4_parameters_ = desc.vector4_defaults;
         for (const auto& default_texture : desc.texture_defaults)
         {
-            texture_parameters_[default_texture.first] =
-                default_texture.second ? default_texture.second->texture_resource() : nullptr;
+            auto* resource = default_texture.second ? default_texture.second->texture_resource() : nullptr;
+            texture_parameters_[default_texture.first] = resource;
+            if (resource)
+            {
+                // C++17 weak_from_this locks the independently owned resource representation.
+                texture_owners_[default_texture.first] = resource->weak_from_this().lock();
+            }
         }
         sampler_parameters_ = desc.sampler_defaults;
     }
@@ -284,11 +272,15 @@ namespace toy3d
             return;
         }
         texture_parameters_[parameter_id] = texture_resource;
+        // C++17 weak_from_this keeps the replacement representation alive without
+        // extending the GT Texture object's lifetime into the RT configuration.
+        texture_owners_[parameter_id] = texture_resource ? texture_resource->weak_from_this().lock() : nullptr;
+        texture_refs_.erase(parameter_id);
         if (resource_manager_ != nullptr && texture_resource != nullptr &&
             ((shader_map_ && material_parameter_is_active(*shader_map_, parameter_id)) ||
              (staged_shader_map_ && material_parameter_is_active(*staged_shader_map_, parameter_id))))
         {
-            const RHIStatus status = begin_init_texture_resource(*texture_resource, *resource_manager_);
+            const RHIStatus status = begin_init_textures(*resource_manager_);
             if (!status)
             {
                 TOY_LOG_ERROR("MaterialRenderProxy could not initialize a TextureResource update: {}",
@@ -300,7 +292,11 @@ namespace toy3d
 
     RHIStatus MaterialRenderProxy::begin_init_textures(RenderResourceManager& manager)
     {
-        resource_manager_ = &manager;
+        if (resource_manager_ != nullptr && resource_manager_ != &manager)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Material textures belong to another manager");
+        }
+        std::unordered_map<ShaderParameterId, RenderResourceRef<TextureResource>> candidate;
         for (const auto& texture_parameter : texture_parameters_)
         {
             if (shader_map_ && !material_parameter_is_active(*shader_map_, texture_parameter.first) &&
@@ -314,12 +310,15 @@ namespace toy3d
                 return RHIStatus::failure(RHIErrorCode::NotReady,
                                           "Active Material texture parameter has no TextureResource");
             }
-            const RHIStatus status = begin_init_texture_resource(*resource, manager);
-            if (!status)
+            auto acquired = manager.acquire(*resource);
+            if (!acquired)
             {
-                return status;
+                return acquired.status();
             }
+            candidate[texture_parameter.first] = std::move(acquired).value();
         }
+        texture_refs_ = std::move(candidate);
+        resource_manager_ = &manager;
         return RHIStatus::success();
     }
 
@@ -341,6 +340,23 @@ namespace toy3d
             }
         }
         staged_materialized_ = false;
+    }
+
+    void MaterialRenderProxy::release_inactive_textures() noexcept
+    {
+        for (auto entry = texture_refs_.begin(); entry != texture_refs_.end();)
+        {
+            const bool active = (shader_map_ && material_parameter_is_active(*shader_map_, entry->first)) ||
+                                (staged_shader_map_ && material_parameter_is_active(*staged_shader_map_, entry->first));
+            if (!active)
+            {
+                entry = texture_refs_.erase(entry);
+            }
+            else
+            {
+                ++entry;
+            }
+        }
     }
 
     bool MaterialRenderProxy::texture_cache_matches(const MaterialBindingCache& binding,
@@ -510,6 +526,7 @@ namespace toy3d
         two_sided_ = staged_two_sided_;
         bindings_ = std::move(staged_bindings_);
         staged_materialized_ = false;
+        release_inactive_textures();
         return RHIStatus::success();
     }
 
@@ -519,6 +536,7 @@ namespace toy3d
         staged_two_sided_ = false;
         staged_bindings_.clear();
         staged_materialized_ = false;
+        release_inactive_textures();
     }
 
     shader::ShaderGraphicsPassState MaterialRenderProxy::effective_graphics_pass_state(

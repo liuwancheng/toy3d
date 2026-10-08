@@ -116,6 +116,7 @@ namespace toy3d
       private:
         friend class MaterialInstance;
         friend class MaterialLibrary;
+        friend class SceneGeometry;
         struct Configuration
         {
             MaterialInterface* target = nullptr;

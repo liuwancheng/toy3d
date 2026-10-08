@@ -7,6 +7,8 @@
 #include "gamescene/component/static_mesh_component.h"
 #include "imgui.h"
 #include "rendercore/frame_synchronization.h"
+#include "rendercore/render_command.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
 #include "scene/editor_play_session.h"
 #include "scene/editor_scene_session.h"
 #include "scene/editor_selection.h"
@@ -23,9 +25,10 @@ namespace
     class PlayIntegrationApplication final : public Application
     {
       public:
-        PlayIntegrationApplication(EditorWorkspace& workspace, bool& complete, std::string& error)
+        PlayIntegrationApplication(EditorWorkspace& workspace, bool& complete, std::string& error,
+                                   StaticMeshRef& cached_mesh)
             : workspace_(workspace), complete_(complete), error_(error),
-              author_(workspace, factory_, materials_, selection_, viewport_)
+              author_(workspace, factory_, materials_, selection_, viewport_), cached_mesh_(cached_mesh)
         {
         }
 
@@ -47,6 +50,14 @@ namespace
                 return false;
             }
             author_actor_ = actor;
+            const auto* mesh = dynamic_cast<const StaticMeshComponent*>(actor->root_component());
+            if (!mesh)
+            {
+                return false;
+            }
+            // Model the identity cache retaining a CPU mesh/default material
+            // through SceneGeometry release and beyond Engine/RT shutdown.
+            cached_mesh_ = mesh->static_mesh();
             author_.bind(world());
             if (!author_.capture(snapshot_))
             {
@@ -135,15 +146,18 @@ namespace
             }
             if (phase_ == 1 && play_.state() == EditorPlayState::Playing && ++frames_ >= 3)
             {
-                const auto* mesh = dynamic_cast<const StaticMeshComponent*>(
+                auto* mesh = dynamic_cast<StaticMeshComponent*>(
                     play_.world()->find_actor_by_id(play_.world()->actor_ids().front())->root_component());
                 const auto* author_mesh = dynamic_cast<const StaticMeshComponent*>(author_actor_->root_component());
-                if (!mesh || !author_mesh || mesh->static_mesh() == author_mesh->static_mesh() ||
-                    !author_mesh->has_render_state() || world().lifecycle_state() == WorldLifecycleState::Playing)
+                if (!mesh || !author_mesh || !author_mesh->has_render_state() ||
+                    world().lifecycle_state() == WorldLifecycleState::Playing)
                 {
-                    fail("Vulkan PIE reused author resources or changed author gameplay state.");
+                    fail("Vulkan PIE lost mesh state or changed author gameplay state.");
                     return;
                 }
+                // Exercise the same shared asset representation returned by the
+                // identity cache, even though this fixture assembles a built-in cube.
+                mesh->set_static_mesh(author_mesh->static_mesh());
                 play_.pause();
                 paused_time_ = play_.world()->world_time_seconds();
                 phase_ = 2;
@@ -174,6 +188,19 @@ namespace
             }
             else if (phase_ == 4 && ++frames_ >= 3)
             {
+                const auto* mesh = dynamic_cast<const StaticMeshComponent*>(author_actor_->root_component());
+                bool drawable = false;
+                enqueue_render_command("CheckAuthorGeometryAfterPlay",
+                                       [geometry = mesh->static_mesh(), &drawable]() noexcept
+                                       {
+                                           drawable = geometry->render_data()->is_drawable() &&
+                                                      geometry->render_data()->ref_count() == 1u;
+                                       });
+                if (!flush_rendering_commands().succeeded() || !drawable)
+                {
+                    fail("Stopping PIE revoked the author's shared geometry residency.");
+                    return;
+                }
                 if (++cycles_ == 3)
                 {
                     complete_ = true;
@@ -216,6 +243,7 @@ namespace
         int phase_ = 0;
         int frames_ = 0;
         int cycles_ = 0;
+        StaticMeshRef& cached_mesh_;
     };
 } // namespace
 
@@ -223,13 +251,21 @@ bool check_editor_play_integration(toy3d::EditorWorkspace& workspace, void* plat
 {
     bool complete = false;
     std::string error;
+    toy3d::StaticMeshRef cached_mesh;
     {
         toy3d::Engine engine;
-        engine.set_application(std::make_unique<PlayIntegrationApplication>(workspace, complete, error));
+        engine.set_application(std::make_unique<PlayIntegrationApplication>(workspace, complete, error, cached_mesh));
         engine.init(platform_context);
         engine.main_loop();
         engine.exit();
     }
+    if (!cached_mesh || cached_mesh->material_slots().empty() ||
+        cached_mesh->material_slots().front()->material_render_proxy() != nullptr ||
+        cached_mesh->render_data()->state() != toy3d::RenderResourceState::Uninitialized)
+    {
+        error = "Cached CPU mesh must outlive shutdown with its material proxy retired and geometry detached.";
+    }
+    cached_mesh.reset();
     if (!complete || !error.empty())
     {
         std::cerr << "Vulkan PIE integration failed: " << error << '\n';

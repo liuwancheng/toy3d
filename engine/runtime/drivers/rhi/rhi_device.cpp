@@ -545,10 +545,10 @@ namespace toy3d
         }
         for (const RHIBindingValue& value : desc.bindings)
         {
-            const RHIObject* object = value.buffer         ? static_cast<const RHIObject*>(value.buffer.get())
-                                      : value.buffer_view  ? static_cast<const RHIObject*>(value.buffer_view.get())
-                                      : value.texture_view ? static_cast<const RHIObject*>(value.texture_view.get())
-                                                           : static_cast<const RHIObject*>(value.sampler.get());
+            const RHIResource* object = value.buffer         ? static_cast<const RHIResource*>(value.buffer.get())
+                                        : value.buffer_view  ? static_cast<const RHIResource*>(value.buffer_view.get())
+                                        : value.texture_view ? static_cast<const RHIResource*>(value.texture_view.get())
+                                                             : static_cast<const RHIResource*>(value.sampler.get());
             if (object == nullptr || !object->is_owned_by(*this))
             {
                 return RHIResult<RHIBindingSetRef>::failure(RHIErrorCode::InvalidArgument,

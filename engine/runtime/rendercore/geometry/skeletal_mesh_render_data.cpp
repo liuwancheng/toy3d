@@ -1,5 +1,6 @@
 #include "rendercore/geometry/skeletal_mesh_render_data.h"
 
+#include <cassert>
 #include <utility>
 
 #include "rendercore/render_resource_manager.h"
@@ -48,36 +49,86 @@ namespace toy3d
         valid_tangent_frame_ = geometry.mesh.valid_tangent_frame;
     }
 
+    SkeletalMeshRenderData::~SkeletalMeshRenderData()
+    {
+        assert(ref_count_ == 0);
+        if (owner_manager_)
+        {
+            const RHIStatus status = owner_manager_->release(*this);
+            assert(status.succeeded());
+        }
+    }
+
     std::array<RenderResource*, 5> SkeletalMeshRenderData::resources()
     {
         return {&position_buffer_, &attributes_buffer_, &color_buffer_, &skin_weights_buffer_, &index_buffer_};
     }
 
-    RHIStatus SkeletalMeshRenderData::begin_init(RenderResourceManager& manager)
+    std::array<const RenderResource*, 5> SkeletalMeshRenderData::resources() const
     {
-        if (!valid_)
+        return {&position_buffer_, &attributes_buffer_, &color_buffer_, &skin_weights_buffer_, &index_buffer_};
+    }
+
+    RHIStatus SkeletalMeshRenderData::validate_geometry() const
+    {
+        return valid_ ? RHIStatus::success()
+                      : RHIStatus::failure(RHIErrorCode::InvalidArgument, "Invalid skeletal mesh geometry.");
+    }
+
+    void SkeletalMeshRenderData::reset_vertex_factory() noexcept
+    {
+        vertex_factory_.reset();
+    }
+
+    RenderResourceState SkeletalMeshRenderData::state() const
+    {
+        bool pending = false;
+        bool ready = true;
+        for (const RenderResource* resource : resources())
         {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Invalid skeletal mesh geometry.");
-        }
-        if (init_started_)
-        {
-            return RHIStatus::success();
-        }
-        const auto buffers = resources();
-        for (std::size_t i = 0; i < buffers.size(); ++i)
-        {
-            const auto status = manager.begin_init(*buffers[i]);
-            if (!status)
+            if (!resource)
             {
-                for (std::size_t previous = 0; previous < i; ++previous)
-                {
-                    manager.release(*buffers[previous]);
-                }
-                return status;
+                continue;
+            }
+            if (resource->state() == RenderResourceState::Failed)
+            {
+                return RenderResourceState::Failed;
+            }
+            pending = pending || resource->state() == RenderResourceState::PendingUpload;
+            ready = ready && resource->state() == RenderResourceState::Ready;
+        }
+        return pending ? RenderResourceState::PendingUpload
+               : ready ? RenderResourceState::Ready
+                       : RenderResourceState::Uninitialized;
+    }
+
+    RHIStatus SkeletalMeshRenderData::failure_status() const
+    {
+        for (const RenderResource* resource : resources())
+        {
+            if (resource && resource->state() == RenderResourceState::Failed)
+            {
+                return resource->failure_status();
             }
         }
-        init_started_ = true;
         return RHIStatus::success();
+    }
+
+    void SkeletalMeshRenderData::retain() noexcept
+    {
+        assert(ref_thread_ == std::this_thread::get_id());
+        ++ref_count_;
+        reclaim_requested_ = false;
+    }
+
+    void SkeletalMeshRenderData::release() noexcept
+    {
+        assert(ref_thread_ == std::this_thread::get_id());
+        assert(ref_count_ > 0);
+        if (--ref_count_ == 0)
+        {
+            reclaim_requested_ = true;
+        }
     }
 
     RHIStatus SkeletalMeshRenderData::prepare_current_recording()
@@ -122,26 +173,6 @@ namespace toy3d
         }
         vertex_factory_ = std::move(candidate);
         return RHIStatus::success();
-    }
-
-    RHIStatus SkeletalMeshRenderData::release(RenderResourceManager& manager)
-    {
-        vertex_factory_.reset();
-        if (!init_started_)
-        {
-            return RHIStatus::success();
-        }
-        RHIStatus status;
-        for (auto* resource : resources())
-        {
-            const auto released = manager.release(*resource);
-            if (status && !released)
-            {
-                status = released;
-            }
-        }
-        init_started_ = false;
-        return status;
     }
 
     bool SkeletalMeshRenderData::is_drawable() const

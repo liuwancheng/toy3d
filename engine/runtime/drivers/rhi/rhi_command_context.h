@@ -10,10 +10,10 @@ namespace toy3d
 {
     class RHIQueue;
 
-    class RHICommandList : public RHIObject
+    class RHICommandList : public RHIResource
     {
       public:
-        using RHIObject::RHIObject;
+        using RHIResource::RHIResource;
         ~RHICommandList() override = default;
 
         RHICommandListState state() const
@@ -68,10 +68,10 @@ namespace toy3d
 
     using RHICommandListRef = std::shared_ptr<RHICommandList>;
 
-    class RHICommandContext : public RHIObject
+    class RHICommandContext : public RHIResource
     {
       public:
-        explicit RHICommandContext(const RHIDevice& owner) : RHIObject(owner)
+        explicit RHICommandContext(const RHIDevice& owner) : RHIResource(owner)
         {
         }
         virtual ~RHICommandContext() = default;

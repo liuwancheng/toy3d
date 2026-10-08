@@ -18,10 +18,10 @@ namespace toy3d
         RHIQueueCompletionValue completion_value = 0;
     };
 
-    class RHIQueue : public RHIObject
+    class RHIQueue : public RHIResource
     {
       public:
-        explicit RHIQueue(const RHIDevice& owner) : RHIObject(owner)
+        explicit RHIQueue(const RHIDevice& owner) : RHIResource(owner)
         {
         }
         ~RHIQueue() override = default;

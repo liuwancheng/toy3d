@@ -35,9 +35,6 @@ namespace toy3d
     {
       public:
         static std::shared_ptr<const Texture> create(TextureDesc desc);
-        // The caller must hold the final TextureRef. Normal return transfers
-        // that ownership to a RenderCommand and clears the caller reference.
-        static void release(std::shared_ptr<const Texture>& texture);
         ~Texture();
 
         Texture(const Texture&) = delete;
@@ -61,7 +58,7 @@ namespace toy3d
         explicit Texture(TextureDesc desc);
 
         TextureDesc desc_;
-        std::unique_ptr<TextureResource> texture_resource_;
+        std::shared_ptr<TextureResource> texture_resource_;
     };
 
     using TextureRef = std::shared_ptr<const Texture>;

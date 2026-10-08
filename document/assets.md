@@ -60,6 +60,8 @@ type string/schema version 是持久化身份，Visible 字段仍序列化，只
 
 ## 资产加载门面
 
+加载缓存持有 CPU 资产身份，不决定共享设备资源的释放。作者场景/PIE 可共享同一运行网格；proxy 的渲染使用引用及可回收驻留见 [Render Framework](render-framework.md#共享资源生命周期)。
+
 `engine/runtime/asset_loader` 的 AssetLoader 是资产对（asset pair）解码的统一入口，每个进程只有一个实例：Engine 创建并持有它，在 `on_initialize` 之前通过 `Application::set_asset_loader` 注入给应用（Editor 与 Game host 用同一份），取代各调用点自行决定线程/缓存/策略的做法。门面本身不认识任何载荷类型：扩展一种资源 = 在对应 decoder 旁新增一个 `AssetLoadJob` 子类（`decode` 在加载线程产出 owned CPU 数据、`adopt` 在 GT 创建运行时对象、`bytes` 供缓存计量）+ 一个类型化入口（现有：`request_texture`/`load_assembly_texture` 与 `request_static_mesh`/`load_assembly_static_mesh`），门面的队列/优先级/single-flight/缓存/失效/有界等待逻辑完全复用。请求由 `AssetHandle<T>` 返回（`pending/ready/failed/invalidated`，`get()` 是请求时绑定的类型化取值器，调用点不做转换）。缓存、失败记忆与在途登记都按 identity 索引，而句柄的取值器会把 Job 向下转型，因此同一 identity 若以另一种 `expected_type` 再次请求，会得到显式诊断（"already known as X but requested as Y"）而不是拿到错误类型的 Job；失败记忆同样带类型，避免把一种类型的失败报告给另一种请求。`MaterialLibrary` 这类需要"立即拿到 TextureRef"的组件不再自己解码，而是由 composition root 注入 resolver：构建 runtime 材质需要贴图就位，因此 resolver 走 `load_assembly_texture`（Critical + 有界等待，解码仍在加载线程）。档位现状：Critical 由装配路径显式传入；Environment 类型默认为 High（预览窗口的环境请求即走该默认）；其余请求默认 Normal；**Low 目前没有调用点**，保留给后续迁移的预取/缩略图路径，档位顺序由 `priority_bucket` 显式映射而非枚举序号。
 
 加载线程只解码出 owned CPU payload（当前为 `TextureDesc` 与 `StaticMeshAssetGeometry`），GT 在 `tick()` 的 adopt 阶段创建运行时对象（Texture / StaticMesh）并交付等待者与缓存，运行时对象所有权不离开 GT。句柄状态为 `pending/ready/failed/invalidated`：`cancel()` 终结本次等待（无论解码是否已经开始，该句柄都不会再收到结果），共享任务只有在**全部**等待者都已取消时才在开始前被丢弃，**丢弃句柄不等于取消**——同一 identity 的解码仍会完成并进入共享缓存，因此逐帧轮询的调用方既不中断加载也不重复解码；解码失败按 identity 记忆并在 `invalidate()` 前返回同一诊断，避免逐帧重启同一个失败解码；`invalidated` 表示该 identity 在解码在途时被失效，等待者应重新请求当前内容，而不是继续等一个不会到达的结果。被失效（stale）的解码结果整体丢弃；被取消的等待者只是不再收到投递，其结果仍会进入共享缓存。

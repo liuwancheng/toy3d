@@ -91,9 +91,16 @@ namespace
         const std::vector<Vector4> rows{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0},
                                         {1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}};
         RenderResourceManager manager(device);
-        SkeletalMeshRenderData mesh(geometry);
+        auto geometry_owner = std::make_shared<SkeletalMeshRenderData>(geometry);
+        SkeletalMeshRenderData& mesh = *geometry_owner;
         BoneMatrixBuffer bones(rows);
-        check_status(mesh.begin_init(manager));
+        auto acquired = manager.acquire(mesh);
+        check(static_cast<bool>(acquired), acquired.status().message().c_str());
+        auto geometry_ref = std::move(acquired).value();
+        auto second_geometry_ref = geometry_ref;
+        check(mesh.ref_count() == 2u, "skeletal consumers must count at the shared geometry owner");
+        std::weak_ptr<SkeletalMeshRenderData> weak_owner = geometry_owner;
+        geometry_owner.reset();
         check_status(manager.begin_init(bones));
         {
             auto context = device.create_graphics_command_context();
@@ -131,7 +138,14 @@ namespace
             completion = submitted.value().completion_value;
             check_status(manager.commit_recording());
             check(bones.state() == RenderResourceState::Ready, "bone upload ready requires successful submit");
-            check_status(mesh.release(manager));
+            const auto original_index = mesh.index_buffer_binding().buffer;
+            second_geometry_ref = {};
+            check_status(manager.collect_reclaims());
+            check(mesh.ref_count() == 1u && mesh.is_drawable() && mesh.index_buffer_binding().buffer == original_index,
+                  "dropping one skeletal consumer must preserve shared geometry residency");
+            geometry_ref = {};
+            check_status(manager.collect_reclaims());
+            check(weak_owner.expired(), "last skeletal consumer must drain the owner pin after detaching its leaves");
             check_status(manager.release(bones));
         }
         check(!submitted_index.expired(), "queue must retain released skeletal geometry until completion");
@@ -642,7 +656,7 @@ namespace
             }
             mesh.reset();
             MaterialInstance::release(material);
-            Texture::release(white);
+            white.reset();
             environment.reset();
             tonemap.release();
             targets.release();

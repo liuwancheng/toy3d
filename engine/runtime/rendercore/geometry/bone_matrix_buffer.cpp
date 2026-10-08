@@ -63,7 +63,7 @@ namespace toy3d
 
     void BoneMatrixBuffer::on_recording_committed() noexcept
     {
-        std::vector<float>().swap(values_);
+        // Retain immutable rows while CPU ownership survives a residency cycle.
     }
 
     void BoneMatrixBuffer::on_recording_discarded() noexcept
@@ -76,6 +76,5 @@ namespace toy3d
     {
         view_.reset();
         buffer_.reset();
-        std::vector<float>().swap(values_);
     }
 } // namespace toy3d

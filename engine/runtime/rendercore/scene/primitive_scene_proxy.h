@@ -29,9 +29,6 @@ namespace toy3d
         // Resource lifecycle and frame-local geometry are supplied by each primitive.
         // Non-mesh primitives have no mesh resources or draw sections.
         virtual RHIStatus begin_init_resources(RenderResourceManager& manager);
-        // Always retire instance resources; shared geometry ends only with the scene's last reference.
-        virtual RHIStatus release_resources(RenderResourceManager& manager, bool release_shared_geometry);
-        virtual bool shares_geometry_resources(const PrimitiveSceneProxy& other) const;
         virtual bool resources_drawable() const;
         virtual std::size_t mesh_section_count() const;
         virtual RHIStatus collect_mesh_batches(std::vector<MeshBatch>& batches) const;

@@ -6,7 +6,8 @@
 
 namespace toy3d
 {
-    // Shared CPU geometry and default Material; released after World unregisters.
+    // Shared CPU geometry and default Material; after World unregisters, release
+    // retires the RT proxy while cached CPU meshes may retain the descriptor.
     class SceneGeometry
     {
       public:

@@ -27,31 +27,22 @@ namespace toy3d
                                    }
                                    environment.rotation = rotation;
                                    environment_error_ = RHIStatus::success();
-                                   if (pending_environment_resource_)
-                                   {
-                                       const auto status = pending_environment_resource_->release(resource_manager_);
-                                       if (!status)
-                                       {
-                                           environment_error_ = status;
-                                           return;
-                                       }
-                                       pending_environment_resource_.reset();
-                                   }
+                                   pending_environment_resource_ = {};
                                    pending_environment_ = std::move(environment);
                                    has_pending_environment_ = true;
                                    if (pending_environment_.cube && pending_environment_.cube != environment_.cube)
                                    {
-                                       // CPU payload can be shared by Worlds; each scene domain
-                                       // owns its independent GPU allocation and pending publication.
-                                       pending_environment_resource_ =
-                                           std::make_unique<TextureResource>(pending_environment_.cube->desc());
-                                       const auto status = pending_environment_resource_->begin_init(resource_manager_);
-                                       if (!status)
+                                       auto acquired =
+                                           resource_manager_.acquire(*pending_environment_.cube->texture_resource());
+                                       if (!acquired)
                                        {
-                                           pending_environment_resource_.reset();
                                            has_pending_environment_ = false;
                                            pending_environment_ = {};
-                                           environment_error_ = status;
+                                           environment_error_ = acquired.status();
+                                       }
+                                       else
+                                       {
+                                           pending_environment_resource_ = std::move(acquired).value();
                                        }
                                    }
                                });
@@ -130,13 +121,7 @@ namespace toy3d
             if (pending_environment_resource_ && pending_environment_resource_->state() == RenderResourceState::Failed)
             {
                 environment_error_ = pending_environment_resource_->failure_status();
-                const auto released = pending_environment_resource_->release(resource_manager_);
-                if (!released)
-                {
-                    TOY_LOG_ERROR("Failed Environment candidate release: {}", released.message());
-                    return;
-                }
-                pending_environment_resource_.reset();
+                pending_environment_resource_ = {};
                 pending_environment_ = {};
                 has_pending_environment_ = false;
             }
@@ -151,15 +136,6 @@ namespace toy3d
         }
         if (pending_environment_.cube != environment_.cube)
         {
-            if (environment_resource_)
-            {
-                const auto released = environment_resource_->release(resource_manager_);
-                if (!released)
-                {
-                    environment_error_ = released;
-                    return;
-                }
-            }
             environment_resource_ = std::move(pending_environment_resource_);
         }
         environment_ = std::move(pending_environment_);

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "rendercore/scene/primitive_scene_proxy.h"
+#include "rendercore/render_resource.h"
+#include "rendercore/geometry/static_mesh_render_data.h"
 
 #include <vector>
 
@@ -9,8 +11,8 @@ namespace toy3d
     class MaterialRenderProxy;
     class StaticMeshRenderData;
 
-    // Static-mesh-specific Render-side state. Resource references are non-owning and
-    // are protected by Proxy update/remove/release FIFO ordering.
+    // The proxy transports owned geometry to RT admission, then holds a rendering
+    // reference independently of asset caches and other scenes.
     class StaticMeshSceneProxy final : public PrimitiveSceneProxy
     {
       public:
@@ -21,8 +23,6 @@ namespace toy3d
         ~StaticMeshSceneProxy() override = default;
 
         RHIStatus begin_init_resources(RenderResourceManager& manager) override;
-        RHIStatus release_resources(RenderResourceManager& manager, bool release_shared_geometry) override;
-        bool shares_geometry_resources(const PrimitiveSceneProxy& other) const override;
         bool resources_drawable() const override;
         std::size_t mesh_section_count() const override;
         RHIStatus collect_mesh_batches(std::vector<MeshBatch>& batches) const override;
@@ -34,5 +34,7 @@ namespace toy3d
 
       private:
         StaticMeshRenderData* render_data_ = nullptr;
+        std::shared_ptr<StaticMeshRenderData> pending_owner_;
+        RenderResourceRef<StaticMeshRenderData> geometry_;
     };
 } // namespace toy3d

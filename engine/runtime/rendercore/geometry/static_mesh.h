@@ -111,7 +111,7 @@ namespace toy3d
         std::vector<AssetRef> default_material_references_;
         bool valid_tangent_frame_ = false;
         AxisAlignedBounds local_bounds_;
-        std::unique_ptr<StaticMeshRenderData> render_data_;
+        std::shared_ptr<StaticMeshRenderData> render_data_;
     };
 
     using StaticMeshRef = std::shared_ptr<const StaticMesh>;

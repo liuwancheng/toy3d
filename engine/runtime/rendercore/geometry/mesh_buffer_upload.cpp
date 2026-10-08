@@ -41,6 +41,8 @@ namespace toy3d
         RHIStatus status = context.transition_resources({to_copy});
         if (!status)
         {
+            out_deterministic_failure =
+                status.code() == RHIErrorCode::InvalidArgument || status.code() == RHIErrorCode::Unsupported;
             return status;
         }
 
@@ -51,6 +53,8 @@ namespace toy3d
         status = context.upload_buffer(upload);
         if (!status)
         {
+            out_deterministic_failure =
+                status.code() == RHIErrorCode::InvalidArgument || status.code() == RHIErrorCode::Unsupported;
             return status;
         }
 
@@ -61,6 +65,8 @@ namespace toy3d
         status = context.transition_resources({to_final});
         if (!status)
         {
+            out_deterministic_failure =
+                status.code() == RHIErrorCode::InvalidArgument || status.code() == RHIErrorCode::Unsupported;
             return status;
         }
 

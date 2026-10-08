@@ -24,7 +24,6 @@ namespace toy3d
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
         void release_rhi() noexcept override;
-
         std::uint32_t num_bone_influences_ = 0;
         std::vector<std::uint8_t> bytes_;
         RHIBufferRef buffer_;

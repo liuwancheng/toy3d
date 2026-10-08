@@ -33,7 +33,6 @@ namespace toy3d
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
         void release_rhi() noexcept override;
-
         std::vector<float> initial_data_;
         RHIBufferRef rhi_buffer_;
     };
@@ -57,7 +56,6 @@ namespace toy3d
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
         void release_rhi() noexcept override;
-
         std::vector<float> initial_data_;
         RHIBufferRef rhi_buffer_;
     };
@@ -81,7 +79,6 @@ namespace toy3d
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
         void release_rhi() noexcept override;
-
         std::vector<std::array<std::uint8_t, 4>> initial_data_;
         RHIBufferRef rhi_buffer_;
     };
@@ -105,7 +102,6 @@ namespace toy3d
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
         void release_rhi() noexcept override;
-
         std::vector<std::uint8_t> initial_data_;
         RHIIndexFormat format_ = RHIIndexFormat::UInt16;
         RHIBufferRef rhi_buffer_;
@@ -113,20 +109,24 @@ namespace toy3d
 
     // Stable Render-side candidate copied from one immutable StaticMesh geometry.
     // It owns all buffer resources and never reads the source Asset after creation.
-    class StaticMeshRenderData final
+    class StaticMeshRenderData final : public std::enable_shared_from_this<StaticMeshRenderData>
     {
       public:
         explicit StaticMeshRenderData(const StaticMesh& static_mesh);
-        ~StaticMeshRenderData() = default;
+        ~StaticMeshRenderData();
 
         StaticMeshRenderData(const StaticMeshRenderData&) = delete;
         StaticMeshRenderData& operator=(const StaticMeshRenderData&) = delete;
         StaticMeshRenderData(StaticMeshRenderData&&) = delete;
         StaticMeshRenderData& operator=(StaticMeshRenderData&&) = delete;
 
-        RHIStatus begin_init(RenderResourceManager& manager);
         RHIStatus prepare_current_recording();
-        RHIStatus release(RenderResourceManager& manager);
+        RenderResourceState state() const;
+        RHIStatus failure_status() const;
+        std::size_t ref_count() const noexcept
+        {
+            return ref_count_;
+        }
 
         bool is_drawable() const;
         bool has_valid_tangent_frame() const
@@ -148,6 +148,20 @@ namespace toy3d
         }
 
       private:
+        friend class RenderResourceManager;
+        template <typename T> friend class RenderResourceRef;
+
+        std::array<RenderResource*, 4> resources();
+        std::array<const RenderResource*, 4> resources() const;
+        RHIStatus validate_geometry() const;
+        void reset_vertex_factory() noexcept;
+        void retain() noexcept;
+        void release() noexcept;
+
+        RenderResourceManager* owner_manager_ = nullptr;
+        std::thread::id ref_thread_{};
+        std::size_t ref_count_ = 0;
+        bool reclaim_requested_ = false;
         PositionVertexBuffer position_vertex_buffer_;
         StaticMeshVertexBuffer static_mesh_vertex_buffer_;
         std::unique_ptr<ColorVertexBuffer> color_vertex_buffer_;
@@ -155,7 +169,6 @@ namespace toy3d
         std::unique_ptr<LocalVertexFactory> local_vertex_factory_;
         std::vector<StaticMeshSection> sections_;
         std::size_t index_count_ = 0;
-        bool init_started_ = false;
         bool valid_tangent_frame_ = false;
     };
 } // namespace toy3d

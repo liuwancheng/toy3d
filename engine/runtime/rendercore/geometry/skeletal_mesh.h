@@ -6,7 +6,9 @@
 
 namespace toy3d
 {
-    // Immutable CPU mesh shared by GT consumers. Each scene proxy owns its render data.
+    class SkeletalMeshRenderData;
+
+    // Immutable CPU mesh and shared geometry; pose buffers belong to each proxy.
     class SkeletalMesh final
     {
       public:
@@ -20,6 +22,7 @@ namespace toy3d
         const std::shared_ptr<const AnimationBoneLayout>& bone_layout() const;
         const SkeletalMeshAsset& asset() const;
         const std::vector<MaterialInterfaceRef>& material_slots() const;
+        SkeletalMeshRenderData* render_data() const noexcept;
 
       private:
         SkeletalMesh(std::shared_ptr<const AnimationBoneLayout> layout, SkeletalMeshAsset asset,
@@ -27,6 +30,7 @@ namespace toy3d
         std::shared_ptr<const AnimationBoneLayout> bone_layout_;
         SkeletalMeshAsset asset_;
         std::vector<MaterialInterfaceRef> materials_;
+        std::shared_ptr<SkeletalMeshRenderData> render_data_;
     };
 
     using SkeletalMeshRef = std::shared_ptr<const SkeletalMesh>;

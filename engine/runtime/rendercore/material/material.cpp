@@ -144,14 +144,7 @@ namespace toy3d
         {
             for (auto& value : desc.texture_defaults)
             {
-                if (value.second && value.second.use_count() == 1)
-                {
-                    Texture::release(value.second);
-                }
-                else
-                {
-                    value.second.reset();
-                }
+                value.second.reset();
             }
             for (auto& value : changes)
             {
@@ -161,14 +154,7 @@ namespace toy3d
                 {
                     continue;
                 }
-                if (*texture && texture->use_count() == 1)
-                {
-                    Texture::release(*texture);
-                }
-                else
-                {
-                    texture->reset();
-                }
+                texture->reset();
             }
         }
 

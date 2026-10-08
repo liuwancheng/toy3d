@@ -185,7 +185,7 @@ namespace toy3d
           default_material_references_(std::move(desc.default_material_references)),
           valid_tangent_frame_(desc.valid_tangent_frame), local_bounds_(local_bounds)
     {
-        render_data_ = std::make_unique<StaticMeshRenderData>(*this);
+        render_data_ = std::make_shared<StaticMeshRenderData>(*this);
     }
 
     StaticMesh::StaticMesh(StaticMesh&& other) noexcept

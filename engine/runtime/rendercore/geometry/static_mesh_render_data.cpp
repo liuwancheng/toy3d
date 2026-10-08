@@ -1,28 +1,19 @@
 #include "rendercore/geometry/static_mesh_render_data.h"
 
+#include <cassert>
 #include <cstring>
 #include <utility>
 
 #include "drivers/rhi/rhi_command_context.h"
 #include "drivers/rhi/rhi_device.h"
-#include "rendercore/render_resource_manager.h"
 #include "rendercore/geometry/mesh_buffer_upload.h"
+#include "rendercore/render_resource_manager.h"
 
 namespace toy3d
 {
-    namespace
-    {
-        void release_float_payload(std::vector<float>& payload)
-        {
-            std::vector<float>().swap(payload);
-        }
-
-        RHIStatus preserve_first_failure(const RHIStatus& first, const RHIStatus& next)
-        {
-            return first.succeeded() ? next : first;
-        }
-    } // namespace
-
+    // --------------------------------------------------------------------------
+    // PositionVertexBuffer: 不可变 CPU 流与 RHI buffer
+    // --------------------------------------------------------------------------
     PositionVertexBuffer::PositionVertexBuffer(const std::vector<StaticMeshVertex>& vertices)
     {
         initial_data_.reserve(vertices.size() * 4u);
@@ -46,20 +37,22 @@ namespace toy3d
 
     void PositionVertexBuffer::on_recording_committed() noexcept
     {
-        release_float_payload(initial_data_);
+        // Retain the immutable CPU stream for future residency uploads.
     }
 
     void PositionVertexBuffer::on_recording_discarded() noexcept
     {
-        rhi_buffer_.reset();
+        release_rhi();
     }
 
     void PositionVertexBuffer::release_rhi() noexcept
     {
         rhi_buffer_.reset();
-        release_float_payload(initial_data_);
     }
 
+    // --------------------------------------------------------------------------
+    // StaticMeshVertexBuffer: 不可变 CPU 流与 RHI buffer
+    // --------------------------------------------------------------------------
     StaticMeshVertexBuffer::StaticMeshVertexBuffer(const std::vector<StaticMeshVertex>& vertices)
     {
         initial_data_.reserve(vertices.size() * 10u);
@@ -89,20 +82,22 @@ namespace toy3d
 
     void StaticMeshVertexBuffer::on_recording_committed() noexcept
     {
-        release_float_payload(initial_data_);
+        // Retain the immutable CPU stream for future residency uploads.
     }
 
     void StaticMeshVertexBuffer::on_recording_discarded() noexcept
     {
-        rhi_buffer_.reset();
+        release_rhi();
     }
 
     void StaticMeshVertexBuffer::release_rhi() noexcept
     {
         rhi_buffer_.reset();
-        release_float_payload(initial_data_);
     }
 
+    // --------------------------------------------------------------------------
+    // ColorVertexBuffer: 不可变 CPU 流与 RHI buffer
+    // --------------------------------------------------------------------------
     ColorVertexBuffer::ColorVertexBuffer(std::vector<std::array<std::uint8_t, 4>> colors)
         : initial_data_(std::move(colors))
     {
@@ -120,20 +115,22 @@ namespace toy3d
 
     void ColorVertexBuffer::on_recording_committed() noexcept
     {
-        std::vector<std::array<std::uint8_t, 4>>().swap(initial_data_);
+        // Retain the immutable CPU stream for future residency uploads.
     }
 
     void ColorVertexBuffer::on_recording_discarded() noexcept
     {
-        rhi_buffer_.reset();
+        release_rhi();
     }
 
     void ColorVertexBuffer::release_rhi() noexcept
     {
         rhi_buffer_.reset();
-        std::vector<std::array<std::uint8_t, 4>>().swap(initial_data_);
     }
 
+    // --------------------------------------------------------------------------
+    // StaticMeshIndexBuffer: 不可变 CPU 流与 RHI buffer
+    // --------------------------------------------------------------------------
     StaticMeshIndexBuffer::StaticMeshIndexBuffer(const StaticMeshIndexData& indices)
     {
         // The fixed two-width variant is decoded explicitly so the RHI binding
@@ -163,20 +160,22 @@ namespace toy3d
 
     void StaticMeshIndexBuffer::on_recording_committed() noexcept
     {
-        std::vector<std::uint8_t>().swap(initial_data_);
+        // Retain the immutable CPU stream for future residency uploads.
     }
 
     void StaticMeshIndexBuffer::on_recording_discarded() noexcept
     {
-        rhi_buffer_.reset();
+        release_rhi();
     }
 
     void StaticMeshIndexBuffer::release_rhi() noexcept
     {
         rhi_buffer_.reset();
-        std::vector<std::uint8_t>().swap(initial_data_);
     }
 
+    // --------------------------------------------------------------------------
+    // StaticMeshRenderData: 完整网格的上传与驻留
+    // --------------------------------------------------------------------------
     StaticMeshRenderData::StaticMeshRenderData(const StaticMesh& static_mesh)
         : position_vertex_buffer_(static_mesh.vertices()), static_mesh_vertex_buffer_(static_mesh.vertices()),
           color_vertex_buffer_(static_mesh.vertex_colors().empty()
@@ -198,48 +197,85 @@ namespace toy3d
         }
     }
 
-    RHIStatus StaticMeshRenderData::begin_init(RenderResourceManager& manager)
+    StaticMeshRenderData::~StaticMeshRenderData()
     {
-        if (init_started_)
+        assert(ref_count_ == 0);
+        if (owner_manager_)
         {
-            return RHIStatus::success();
+            const RHIStatus status = owner_manager_->release(*this);
+            assert(status.succeeded());
         }
-        RHIStatus status = manager.begin_init(position_vertex_buffer_);
-        if (!status)
+    }
+
+    std::array<RenderResource*, 4> StaticMeshRenderData::resources()
+    {
+        return {&position_vertex_buffer_, &static_mesh_vertex_buffer_, color_vertex_buffer_.get(), &index_buffer_};
+    }
+
+    std::array<const RenderResource*, 4> StaticMeshRenderData::resources() const
+    {
+        return {&position_vertex_buffer_, &static_mesh_vertex_buffer_, color_vertex_buffer_.get(), &index_buffer_};
+    }
+
+    RHIStatus StaticMeshRenderData::validate_geometry() const
+    {
+        return RHIStatus::success();
+    }
+
+    void StaticMeshRenderData::reset_vertex_factory() noexcept
+    {
+        local_vertex_factory_.reset();
+    }
+
+    RenderResourceState StaticMeshRenderData::state() const
+    {
+        bool pending = false;
+        bool ready = true;
+        for (const RenderResource* resource : resources())
         {
-            return status;
-        }
-        init_started_ = true;
-        status = manager.begin_init(static_mesh_vertex_buffer_);
-        if (!status)
-        {
-            manager.release(position_vertex_buffer_);
-            init_started_ = false;
-            return status;
-        }
-        if (color_vertex_buffer_)
-        {
-            status = manager.begin_init(*color_vertex_buffer_);
-            if (!status)
+            if (!resource)
             {
-                manager.release(static_mesh_vertex_buffer_);
-                manager.release(position_vertex_buffer_);
-                init_started_ = false;
-                return status;
+                continue;
+            }
+            if (resource->state() == RenderResourceState::Failed)
+            {
+                return RenderResourceState::Failed;
+            }
+            pending = pending || resource->state() == RenderResourceState::PendingUpload;
+            ready = ready && resource->state() == RenderResourceState::Ready;
+        }
+        return pending ? RenderResourceState::PendingUpload
+               : ready ? RenderResourceState::Ready
+                       : RenderResourceState::Uninitialized;
+    }
+
+    RHIStatus StaticMeshRenderData::failure_status() const
+    {
+        for (const RenderResource* resource : resources())
+        {
+            if (resource && resource->state() == RenderResourceState::Failed)
+            {
+                return resource->failure_status();
             }
         }
-        status = manager.begin_init(index_buffer_);
-        if (!status)
+        return RHIStatus::success();
+    }
+
+    void StaticMeshRenderData::retain() noexcept
+    {
+        assert(ref_thread_ == std::this_thread::get_id());
+        ++ref_count_;
+        reclaim_requested_ = false;
+    }
+
+    void StaticMeshRenderData::release() noexcept
+    {
+        assert(ref_thread_ == std::this_thread::get_id());
+        assert(ref_count_ > 0);
+        if (--ref_count_ == 0)
         {
-            if (color_vertex_buffer_)
-            {
-                manager.release(*color_vertex_buffer_);
-            }
-            manager.release(static_mesh_vertex_buffer_);
-            manager.release(position_vertex_buffer_);
-            init_started_ = false;
+            reclaim_requested_ = true;
         }
-        return status;
     }
 
     RHIStatus StaticMeshRenderData::prepare_current_recording()
@@ -284,25 +320,6 @@ namespace toy3d
         }
         local_vertex_factory_ = std::move(candidate);
         return RHIStatus::success();
-    }
-
-    RHIStatus StaticMeshRenderData::release(RenderResourceManager& manager)
-    {
-        local_vertex_factory_.reset();
-        if (!init_started_)
-        {
-            return RHIStatus::success();
-        }
-
-        RHIStatus status = manager.release(index_buffer_);
-        if (color_vertex_buffer_)
-        {
-            status = preserve_first_failure(status, manager.release(*color_vertex_buffer_));
-        }
-        status = preserve_first_failure(status, manager.release(static_mesh_vertex_buffer_));
-        status = preserve_first_failure(status, manager.release(position_vertex_buffer_));
-        init_started_ = false;
-        return status;
     }
 
     bool StaticMeshRenderData::is_drawable() const

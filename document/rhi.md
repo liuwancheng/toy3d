@@ -16,6 +16,8 @@ capabilities、limits、format support、profile 表达差异，Cook/runtime 验
 
 RHIDevice 是公共创建前端，rhi_device.h 的非虚入口做共同 validation/owner/lifecycle 检查，再调用 backend *_impl；不能新增绕前端正式创建入口。资源/view/shader/pipeline 创建和 command recording 分层，后端 enums 集中映射，不按公共枚举数值强转。
 
+- RHIResource 是 Buffer、Texture、Readback、View、Shader、Pipeline、Sampler、Binding、Fence、Queue、CommandContext/List 和 Frame/ViewportContext 等对象的唯一公共根基类，提供不可变 device 归属、debug name 和虚析构；Surface 可在 device 创建前存在。RHIResourceRef 为 shared_ptr 强引用，表示对象保活，不包含 RenderResourceRef 的渲染驻留计数。各对象仍由既有 device/viewport 创建入口和调用方所有，recording/提交保活链及析构线程约束不因统一基类而改变；具体后端负责 native 销毁。
+- 公共根不代表所有对象均分配显存或支持状态转换。RHIResourceTransition 仅支持 Buffer、Texture，公共 validation 对其他类型返回 InvalidArgument，不能仅检查 device 归属。此规则适用于公共 Vulkan/D3D11/D3D12/mobile 设计，未实现后端仍明确报不支持。实现位于 Toy3dRuntime 的 drivers/rhi，验证入口为 RHIBinding、RHIDeviceFrontend、RHIResourceState 和 TypedBufferVulkan 测试。
 - 明确 creator/CPU owner/GPU in-flight reference/destroyer/device/thread；跨 device 资源/列表非法，销毁前结束 GPU 使用。
 - RHICPUAccess 为 None/Read/Write，不存在 ReadWrite 万能配置；CPU map/读回能力由资源用途、格式和支持路径验证。
 - buffer structured stride 只属于 structured 用途；vertex stride/index format 由对应 binding 语义处理，不能混成一个创建字段。

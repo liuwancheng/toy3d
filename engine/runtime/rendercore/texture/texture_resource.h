@@ -11,15 +11,13 @@ namespace toy3d
     class RenderResourceManager;
 
     // Stable Render-side representation. All mutable fields are confined to
-    // the logical Rendering Thread; a Texture or RenderScene owns this allocation.
+    // the logical Rendering Thread; CPU assets and manager pins share its allocation.
     class TextureResource final : public RenderResource
     {
       public:
         explicit TextureResource(const TextureDesc& initial_desc);
 
-        RHIStatus begin_init(RenderResourceManager& manager);
         RHIStatus update(TextureDesc desc, RenderResourceManager& manager);
-        RHIStatus release(RenderResourceManager& manager);
 
         const RHITextureViewRef& view_for_current_recording() const noexcept;
         TextureUsage usage_for_current_recording() const noexcept;
@@ -33,9 +31,11 @@ namespace toy3d
         }
 
       private:
-        friend class Texture;
+        bool supports_update() const noexcept override
+        {
+            return true;
+        }
 
-        void release_from_owner_manager() noexcept;
         RHIStatus record_upload(RHIDevice& device, RHIGraphicsCommandContext& context) override;
         void on_recording_committed() noexcept override;
         void on_recording_discarded() noexcept override;
@@ -48,7 +48,6 @@ namespace toy3d
         RHITextureViewRef active_view_;
         RHITextureRef candidate_texture_;
         RHITextureViewRef candidate_view_;
-        RenderResourceManager* owner_manager_ = nullptr;
         std::uint64_t binding_generation_ = 0;
         bool has_active_desc_ = false;
         bool has_pending_update_ = false;

@@ -64,22 +64,6 @@ namespace toy3d
         // Renderer must release all scene-owned state before the logical RT returns.
         assert(is_on_logical_rendering_thread());
         primitives_.clear();
-        if (pending_environment_resource_)
-        {
-            const auto released = pending_environment_resource_->release(resource_manager_);
-            if (!released)
-            {
-                TOY_LOG_ERROR("Pending scene Environment release failed: {}", released.message());
-            }
-        }
-        if (environment_resource_)
-        {
-            const auto released = environment_resource_->release(resource_manager_);
-            if (!released)
-            {
-                TOY_LOG_ERROR("Scene Environment release failed: {}", released.message());
-            }
-        }
     }
 
     void RenderScene::add_primitive(std::unique_ptr<PrimitiveSceneProxy> proxy)
@@ -287,19 +271,6 @@ namespace toy3d
 
         std::unique_ptr<PrimitiveSceneInfo> removed = std::move(*found);
         primitives_.erase(found);
-        const auto still_referenced = std::find_if(
-            primitives_.begin(), primitives_.end(),
-            [&removed](const std::unique_ptr<PrimitiveSceneInfo>& info)
-            {
-                return info && info->proxy() && removed->proxy()->shares_geometry_resources(*info->proxy());
-            });
-        const auto status =
-            removed->proxy()->release_resources(resource_manager_, still_referenced == primitives_.end());
-        if (!status)
-        {
-            TOY_LOG_ERROR("RenderScene could not release primitive resources: {}", status.message());
-        }
-
         removed.reset();
         if (primitives_.empty())
         {

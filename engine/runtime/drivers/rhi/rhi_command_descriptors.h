@@ -37,6 +37,8 @@ namespace toy3d
 
     struct RHIResourceTransition
     {
+        // Only Buffer and Texture support access transitions; other RHIResource
+        // types are rejected by the public validation before backend recording.
         RHIResourceRef resource;
         RHISubresourceRange subresources;
         RHIAccess before = RHIAccess::Unknown;

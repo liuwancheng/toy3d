@@ -483,8 +483,8 @@ namespace toy3d
             world.reset();
         }
 
-        // Every Scene owner released its references above, so the decode service is the last
-        // holder of the shared textures and joins its thread before the device is torn down.
+        // Stop decoding before device teardown. Outstanding CPU asset handles may
+        // survive this cache; the RT manager revokes their device residency independently.
         if (asset_loader)
         {
             asset_loader->shutdown();

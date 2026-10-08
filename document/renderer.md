@@ -43,7 +43,7 @@ caster bias 在 ShadowDepth vertex shader，符号遵守 reversed-Z；采样以 
 
 ## 场景环境
 
-World 的 settings 与 CPU Cube 快照通过 SceneInterface 的 FIFO 发布，RenderScene 每个场景域独占自己的 GPU TextureResource。更新先准备完整候选；recording 的环境 view 可用于当前帧，成功 submit/资源 commit 后 `resolve_environment_recording(true)` 接管，discard 保留旧有效环境。上传/格式/过滤能力失败明确诊断，不把已配置资源当 Off。
+World 的 settings 与 CPU Cube 快照通过 SceneInterface 的 FIFO 发布；同一 Cube 资产的 TextureResource 可由多个场景域共享，各域持独立渲染使用句柄。更新先准备完整候选；recording 的环境 view 可用于当前帧，成功 submit/资源 commit 后 `resolve_environment_recording(true)` 接管，discard 保留旧有效环境。上传/格式/过滤能力失败明确诊断，不把已配置资源当 Off。场景删除不决定共享几何/纹理的销毁，生命周期见 [Render Framework](render-framework.md#共享资源生命周期)。
 
 Forward View 参数提供环境逆旋转、强度和最高 mip；材质 feature/policy 与有效环境共同选择 Sky/Off 的 Program，active Cube/sampler 只在需要时绑定。PBR 使用镜面 IBL，没有球谐、环境漫反射或假 ambient。单个场景域一个环境，主场景、PIE 和 studio preview 相互独立；Asset/World 持久化见 [Assets](assets.md#环境资产) 与 [Editor](editor.md#场景环境与材质预览)。
 

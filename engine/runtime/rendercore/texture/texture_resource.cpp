@@ -1,17 +1,13 @@
 #include "rendercore/texture/texture_resource.h"
 
-#include "drivers/rhi/rhi_command_context.h"
-#include "drivers/rhi/rhi_device.h"
-#include "logging/logger.h"
-#include "rendercore/render_command.h"
-#include "rendercore/render_resource_manager.h"
-
 #include <algorithm>
-#include <exception>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <utility>
+
+#include "drivers/rhi/rhi_command_context.h"
+#include "drivers/rhi/rhi_device.h"
+#include "rendercore/render_resource_manager.h"
 
 namespace toy3d
 {
@@ -26,14 +22,6 @@ namespace toy3d
         bool is_deterministic_failure(const RHIStatus& status)
         {
             return status.code() == RHIErrorCode::InvalidArgument || status.code() == RHIErrorCode::Unsupported;
-        }
-
-        void release_pixel_payload(TextureDesc& desc) noexcept
-        {
-            for (std::vector<std::uint8_t>& mip : desc.mip_pixels)
-            {
-                std::vector<std::uint8_t>().swap(mip);
-            }
         }
 
         RHITextureDesc make_rhi_texture_desc(const TextureDesc& desc)
@@ -128,8 +116,11 @@ namespace toy3d
         }
     } // namespace
 
+    // --------------------------------------------------------------------------
+    // Texture: CPU 资产身份与资源表示所有权
+    // --------------------------------------------------------------------------
     Texture::Texture(TextureDesc desc)
-        : desc_(std::move(desc)), texture_resource_(std::make_unique<TextureResource>(desc_))
+        : desc_(std::move(desc)), texture_resource_(std::make_shared<TextureResource>(desc_))
     {
     }
 
@@ -140,48 +131,11 @@ namespace toy3d
     {
     }
 
-    void Texture::release(std::shared_ptr<const Texture>& texture)
-    {
-        if (!texture)
-        {
-            return;
-        }
-        if (texture.use_count() != 1)
-        {
-            throw std::invalid_argument("Texture final release requires the caller to hold the last TextureRef");
-        }
-
-        std::shared_ptr<const Texture> release_owner = texture;
-        enqueue_render_command("ReleaseTextureResource",
-                               [release_owner = std::move(release_owner)]() noexcept
-                               {
-                                   TextureResource* const resource = release_owner->texture_resource_.get();
-                                   if (resource != nullptr)
-                                   {
-                                       resource->release_from_owner_manager();
-                                   }
-                               });
-
-        texture.reset();
-    }
-
+    // --------------------------------------------------------------------------
+    // TextureResource: 纹理上传、更新与可回收驻留
+    // --------------------------------------------------------------------------
     TextureResource::TextureResource(const TextureDesc& initial_desc) : initial_desc_(initial_desc)
     {
-    }
-
-    RHIStatus TextureResource::begin_init(RenderResourceManager& manager)
-    {
-        std::string error;
-        if (!initial_desc_.validate(error))
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Invalid TextureDesc: " + error);
-        }
-        const RHIStatus status = manager.begin_init(*this);
-        if (status)
-        {
-            owner_manager_ = &manager;
-        }
-        return status;
     }
 
     RHIStatus TextureResource::update(TextureDesc desc, RenderResourceManager& manager)
@@ -190,11 +144,6 @@ namespace toy3d
         if (!desc.validate(error))
         {
             return RHIStatus::failure(RHIErrorCode::InvalidArgument, "Invalid Texture update: " + error);
-        }
-        if (owner_manager_ != &manager)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Texture update requires its owning RenderResourceManager");
         }
         const RHIStatus status = manager.begin_update(*this);
         if (!status)
@@ -207,35 +156,6 @@ namespace toy3d
         has_pending_update_ = true;
         deterministic_recording_failure_ = false;
         return RHIStatus::success();
-    }
-
-    RHIStatus TextureResource::release(RenderResourceManager& manager)
-    {
-        if (owner_manager_ != nullptr && owner_manager_ != &manager)
-        {
-            return RHIStatus::failure(RHIErrorCode::InvalidArgument,
-                                      "Texture release requires its owning RenderResourceManager");
-        }
-        const RHIStatus status = manager.release(*this);
-        if (status)
-        {
-            owner_manager_ = nullptr;
-        }
-        return status;
-    }
-
-    void TextureResource::release_from_owner_manager() noexcept
-    {
-        if (owner_manager_ == nullptr)
-        {
-            return;
-        }
-        const RHIStatus status = release(*owner_manager_);
-        if (!status)
-        {
-            TOY_LOG_ERROR("TextureResource ownership-transfer release failed: {}", status.message());
-            std::terminate();
-        }
     }
 
     TextureUsage TextureResource::usage_for_current_recording() const noexcept
@@ -329,20 +249,23 @@ namespace toy3d
         {
             active_texture_ = std::move(candidate_texture_);
             active_view_ = std::move(candidate_view_);
-            active_desc_ = has_pending_update_ ? std::move(pending_desc_) : std::move(initial_desc_);
-            release_pixel_payload(active_desc_);
-            has_active_desc_ = true;
             if (binding_generation_ < std::numeric_limits<std::uint64_t>::max())
             {
                 ++binding_generation_;
             }
         }
-
+        // Keep the latest committed pixels as the source for future residency.
         if (has_pending_update_)
         {
-            pending_desc_ = TextureDesc{};
-            has_pending_update_ = false;
+            active_desc_ = std::move(pending_desc_);
         }
+        else if (!has_active_desc_)
+        {
+            active_desc_ = std::move(initial_desc_);
+        }
+        has_active_desc_ = true;
+        pending_desc_ = TextureDesc{};
+        has_pending_update_ = false;
         pending_replacement_ = false;
         deterministic_recording_failure_ = false;
     }
@@ -351,10 +274,6 @@ namespace toy3d
     {
         candidate_view_.reset();
         candidate_texture_.reset();
-        if (state() == RenderResourceState::Failed)
-        {
-            release_pixel_payload(initial_desc_);
-        }
         if (has_pending_update_ && deterministic_recording_failure_)
         {
             pending_desc_ = TextureDesc{};
@@ -368,15 +287,21 @@ namespace toy3d
     {
         candidate_view_.reset();
         candidate_texture_.reset();
+        if (active_view_ && binding_generation_ < std::numeric_limits<std::uint64_t>::max())
+        {
+            ++binding_generation_;
+        }
         active_view_.reset();
         active_texture_.reset();
-        release_pixel_payload(initial_desc_);
-        release_pixel_payload(active_desc_);
-        release_pixel_payload(pending_desc_);
+        if (has_active_desc_)
+        {
+            initial_desc_ = std::move(active_desc_);
+        }
+        active_desc_ = TextureDesc{};
+        pending_desc_ = TextureDesc{};
         has_active_desc_ = false;
         has_pending_update_ = false;
         pending_replacement_ = false;
         deterministic_recording_failure_ = false;
-        binding_generation_ = 0;
     }
 } // namespace toy3d

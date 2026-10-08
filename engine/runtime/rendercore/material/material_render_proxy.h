@@ -5,6 +5,8 @@
 #include "rendercore/shader/shader_map_collection.h"
 #include "rendercore/shader/shader_parameters.h"
 #include "asset/material/material_asset_data.h"
+#include "rendercore/render_resource.h"
+#include "rendercore/texture/texture_resource.h"
 
 #include <cstdint>
 #include <memory>
@@ -80,6 +82,7 @@ namespace toy3d
                                                 std::map<Sha256Hash, MaterialBindingCache>& bindings) const;
         void invalidate_parameter(ShaderParameterId parameter_id, bool constant) noexcept;
         bool texture_cache_matches(const MaterialBindingCache& binding, bool check_generation) const noexcept;
+        void release_inactive_textures() noexcept;
 
         std::string shader_name_;
         shader::ShaderParameterSchema parameter_schema_;
@@ -93,6 +96,9 @@ namespace toy3d
         std::unordered_map<ShaderParameterId, vec3> vector3_parameters_;
         std::unordered_map<ShaderParameterId, vec4> vector4_parameters_;
         std::unordered_map<ShaderParameterId, TextureResource*> texture_parameters_;
+        // Owned transport keeps opaque Texture identities alive before RT admission.
+        std::unordered_map<ShaderParameterId, std::shared_ptr<RenderResource>> texture_owners_;
+        std::unordered_map<ShaderParameterId, RenderResourceRef<TextureResource>> texture_refs_;
         std::unordered_map<ShaderParameterId, MaterialSamplerPreset> sampler_parameters_;
         std::unordered_map<MaterialSamplerPreset, RHISamplerRef> sampler_cache_;
         // Active group identities share bindings across roles/factories with

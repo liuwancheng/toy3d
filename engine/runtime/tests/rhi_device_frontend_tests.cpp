@@ -802,6 +802,47 @@ namespace
               "valid command resources must enter the backend hook exactly once");
     }
 
+    void test_command_frontend_rejects_non_transition_resources()
+    {
+        RecordingDevice device;
+        initialize(device);
+        auto context_result = device.create_graphics_command_context();
+        auto* context = context_result ? dynamic_cast<RecordingContext*>(context_result.value().get()) : nullptr;
+        toy3d::RHITextureDesc texture_desc;
+        texture_desc.format = toy3d::PixelFormat::R8G8B8A8UNorm;
+        texture_desc.usage = toy3d::RHIResourceUsage::ShaderResource;
+        const auto texture = device.create_texture(texture_desc);
+        check(context != nullptr && texture, "transition type validation setup must succeed");
+        if (context == nullptr || !texture)
+        {
+            return;
+        }
+
+        toy3d::RHIResourceTransition transition;
+        transition.resource = texture.value();
+        transition.before = toy3d::RHIAccess::Common;
+        transition.after = toy3d::RHIAccess::ShaderResourceGraphics;
+        check(context->transition_resources({transition}) && context->transition_count == 1,
+              "Texture must remain a legal transition target under the common resource base");
+
+        // These objects share device identity and strong ownership, but none
+        // supports Buffer/Texture access transitions.
+        const std::vector<toy3d::RHIResourceRef> unsupported = {
+            std::make_shared<toy3d::RHIReadback>(device, "readback"),
+            std::make_shared<toy3d::RHISampler>(device, toy3d::RHISamplerDesc{}),
+            std::make_shared<toy3d::RHIShader>(device, toy3d::RHIShaderDesc{}),
+            std::make_shared<toy3d::RHITextureView>(texture.value(), toy3d::RHITextureViewDesc{}),
+            std::make_shared<RecordingContext>(device)};
+        for (const auto& resource : unsupported)
+        {
+            toy3d::RHIResourceTransition invalid = transition;
+            invalid.resource = resource;
+            const auto status = context->transition_resources({transition, invalid});
+            check(!status && status.code() == toy3d::RHIErrorCode::InvalidArgument && context->transition_count == 1,
+                  "Non-transition RHIResource must reject the whole batch before the backend hook");
+        }
+    }
+
     void test_pixel_readback_frontend()
     {
         RecordingDevice first;
@@ -1079,6 +1120,7 @@ int main()
     test_frontend_rejects_invalid_and_cross_device_inputs();
     test_backend_contract_and_unsupported_results();
     test_command_frontend_rejects_cross_device_resources();
+    test_command_frontend_rejects_non_transition_resources();
     test_pixel_readback_frontend();
     test_color_readback_frontend();
     test_viewport_frontend_validates_frame_outputs();

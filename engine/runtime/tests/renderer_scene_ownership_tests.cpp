@@ -1592,9 +1592,7 @@ namespace
                 {
                     toy3d::World play_world;
                     auto& play_actor = play_world.spawn_actor<toy3d::StaticMeshActor>();
-                    toy3d::MaterialInstanceRef play_material;
-                    auto play_mesh = make_mesh(&play_material);
-                    play_actor.static_mesh_component().set_static_mesh(play_mesh);
+                    play_actor.static_mesh_component().set_static_mesh(mesh);
                     check(play_world.bind_scene(*play_interface), "Fresh Play World binds independently");
                     check(play_world.unbind_scene() && toy3d::flush_rendering_commands().succeeded(),
                           "Play removal drains without withdrawing the author scene");
@@ -1603,8 +1601,6 @@ namespace
                               actor.static_mesh_component().static_mesh() == mesh,
                           "Repeated Play keeps author registration and resource identity intact");
                     play_actor.static_mesh_component().set_static_mesh(nullptr);
-                    play_mesh.reset();
-                    toy3d::MaterialInstance::release(play_material);
                     check(toy3d::flush_rendering_commands().succeeded(), "Play material release drains");
                 }
                 check(world.unbind_scene() && world.scene_interface() == nullptr,

@@ -5,6 +5,7 @@
 
 #include "rendercore/geometry/static_mesh_render_data.h"
 #include "rendercore/material/material_render_proxy.h"
+#include "rendercore/render_resource_manager.h"
 #include "renderscene/mesh_batch.h"
 
 namespace toy3d
@@ -18,23 +19,30 @@ namespace toy3d
                               cast_shadows, receives_shadows, std::move(material_render_proxies)),
           render_data_(render_data)
     {
+        // The GT-created proxy transports ownership; its rendering reference is
+        // acquired only when the RT accepts it into a scene.
+        if (render_data_)
+        {
+            // C++17 weak_from_this preserves ownership without throwing for a
+            // frame-local borrowed test proxy that never enters a scene.
+            pending_owner_ = render_data_->weak_from_this().lock();
+        }
     }
 
     RHIStatus StaticMeshSceneProxy::begin_init_resources(RenderResourceManager& manager)
     {
-        return render_data_ ? render_data_->begin_init(manager)
-                            : RHIStatus::failure(RHIErrorCode::InvalidArgument, "StaticMesh has no render data.");
-    }
-
-    RHIStatus StaticMeshSceneProxy::release_resources(RenderResourceManager& manager, bool release_shared_geometry)
-    {
-        return render_data_ && release_shared_geometry ? render_data_->release(manager) : RHIStatus::success();
-    }
-
-    bool StaticMeshSceneProxy::shares_geometry_resources(const PrimitiveSceneProxy& other) const
-    {
-        const auto* mesh = dynamic_cast<const StaticMeshSceneProxy*>(&other);
-        return render_data_ && mesh && render_data_ == mesh->render_data_;
+        if (!render_data_)
+        {
+            return RHIStatus::failure(RHIErrorCode::InvalidArgument, "StaticMesh has no render data.");
+        }
+        auto acquired = manager.acquire(*render_data_);
+        if (!acquired)
+        {
+            return acquired.status();
+        }
+        geometry_ = std::move(acquired).value();
+        pending_owner_.reset();
+        return RHIStatus::success();
     }
 
     bool StaticMeshSceneProxy::resources_drawable() const

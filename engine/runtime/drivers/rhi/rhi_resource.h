@@ -13,18 +13,20 @@ namespace toy3d
 {
     class RHIDevice;
 
-    class RHIObject
+    // Common identity for RHI objects; concrete types define their native
+    // storage, access capabilities, and recording/completion lifetime.
+    class RHIResource
     {
       public:
-        explicit RHIObject(std::string debug_name = {}) : RHIObject(nullptr, std::move(debug_name))
+        explicit RHIResource(std::string debug_name = {}) : RHIResource(nullptr, std::move(debug_name))
         {
         }
 
-        RHIObject(const RHIDevice& owner, std::string debug_name = {}) : RHIObject(&owner, std::move(debug_name))
+        RHIResource(const RHIDevice& owner, std::string debug_name = {}) : RHIResource(&owner, std::move(debug_name))
         {
         }
 
-        virtual ~RHIObject() = default;
+        virtual ~RHIResource() = default;
 
         const std::string& debug_name() const
         {
@@ -42,7 +44,7 @@ namespace toy3d
         }
 
       protected:
-        RHIObject(const RHIDevice* owner, std::string debug_name)
+        RHIResource(const RHIDevice* owner, std::string debug_name)
             : owning_device(owner), object_debug_name(std::move(debug_name))
         {
         }
@@ -54,13 +56,6 @@ namespace toy3d
         // device exists.
         const RHIDevice* const owning_device = nullptr;
         std::string object_debug_name;
-    };
-
-    class RHIResource : public RHIObject
-    {
-      public:
-        using RHIObject::RHIObject;
-        ~RHIResource() override = default;
     };
 
     class RHIBuffer : public RHIResource
@@ -153,11 +148,11 @@ namespace toy3d
         RHITextureDesc resource_desc;
     };
 
-    class RHITextureView : public RHIObject
+    class RHITextureView : public RHIResource
     {
       public:
         RHITextureView(std::shared_ptr<RHITexture> texture, RHITextureViewDesc desc)
-            : RHIObject(texture ? texture->owner_device() : nullptr, desc.debug_name),
+            : RHIResource(texture ? texture->owner_device() : nullptr, desc.debug_name),
               viewed_texture(std::move(texture)), view_desc(std::move(desc))
         {
         }
@@ -177,11 +172,11 @@ namespace toy3d
         RHITextureViewDesc view_desc;
     };
 
-    class RHIBufferView : public RHIObject
+    class RHIBufferView : public RHIResource
     {
       public:
         RHIBufferView(std::shared_ptr<RHIBuffer> buffer, RHIBufferViewDesc desc)
-            : RHIObject(buffer ? buffer->owner_device() : nullptr, desc.debug_name), viewed_buffer(std::move(buffer)),
+            : RHIResource(buffer ? buffer->owner_device() : nullptr, desc.debug_name), viewed_buffer(std::move(buffer)),
               view_desc(std::move(desc))
         {
         }
@@ -201,15 +196,15 @@ namespace toy3d
         RHIBufferViewDesc view_desc;
     };
 
-    class RHIShader : public RHIObject
+    class RHIShader : public RHIResource
     {
       public:
-        explicit RHIShader(RHIShaderDesc desc) : RHIObject(desc.debug_name), shader_desc(std::move(desc))
+        explicit RHIShader(RHIShaderDesc desc) : RHIResource(desc.debug_name), shader_desc(std::move(desc))
         {
         }
 
         RHIShader(const RHIDevice& owner, RHIShaderDesc desc)
-            : RHIObject(owner, desc.debug_name), shader_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), shader_desc(std::move(desc))
         {
         }
 
@@ -222,15 +217,16 @@ namespace toy3d
         RHIShaderDesc shader_desc;
     };
 
-    class RHIBindingLayout : public RHIObject
+    class RHIBindingLayout : public RHIResource
     {
       public:
-        explicit RHIBindingLayout(RHIBindingLayoutDesc desc) : RHIObject(desc.debug_name), layout_desc(std::move(desc))
+        explicit RHIBindingLayout(RHIBindingLayoutDesc desc)
+            : RHIResource(desc.debug_name), layout_desc(std::move(desc))
         {
         }
 
         RHIBindingLayout(const RHIDevice& owner, RHIBindingLayoutDesc desc)
-            : RHIObject(owner, desc.debug_name), layout_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), layout_desc(std::move(desc))
         {
         }
 
@@ -243,15 +239,15 @@ namespace toy3d
         RHIBindingLayoutDesc layout_desc;
     };
 
-    class RHISampler : public RHIObject
+    class RHISampler : public RHIResource
     {
       public:
-        explicit RHISampler(RHISamplerDesc desc) : RHIObject(desc.debug_name), sampler_desc(std::move(desc))
+        explicit RHISampler(RHISamplerDesc desc) : RHIResource(desc.debug_name), sampler_desc(std::move(desc))
         {
         }
 
         RHISampler(const RHIDevice& owner, RHISamplerDesc desc)
-            : RHIObject(owner, desc.debug_name), sampler_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), sampler_desc(std::move(desc))
         {
         }
 
@@ -264,16 +260,16 @@ namespace toy3d
         RHISamplerDesc sampler_desc;
     };
 
-    class RHIGraphicsPipeline : public RHIObject
+    class RHIGraphicsPipeline : public RHIResource
     {
       public:
         explicit RHIGraphicsPipeline(RHIGraphicsPipelineDesc desc)
-            : RHIObject(desc.debug_name), pipeline_desc(std::move(desc))
+            : RHIResource(desc.debug_name), pipeline_desc(std::move(desc))
         {
         }
 
         RHIGraphicsPipeline(const RHIDevice& owner, RHIGraphicsPipelineDesc desc)
-            : RHIObject(owner, desc.debug_name), pipeline_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), pipeline_desc(std::move(desc))
         {
         }
 
@@ -286,11 +282,11 @@ namespace toy3d
         RHIGraphicsPipelineDesc pipeline_desc;
     };
 
-    class RHIBindingSet : public RHIObject
+    class RHIBindingSet : public RHIResource
     {
       public:
         RHIBindingSet(const RHIDevice& owner, RHIBindingSetDesc desc)
-            : RHIObject(owner, desc.debug_name), binding_set_desc(std::move(desc))
+            : RHIResource(owner, desc.debug_name), binding_set_desc(std::move(desc))
         {
         }
 
@@ -311,10 +307,10 @@ namespace toy3d
     // A GPU fence marks an explicit point in recorded GPU work. It is intended
     // for CPU polling, such as asynchronous readback; it does not represent
     // swapchain acquire or present synchronization.
-    class RHIGPUFence : public RHIObject
+    class RHIGPUFence : public RHIResource
     {
       public:
-        using RHIObject::RHIObject;
+        using RHIResource::RHIResource;
         ~RHIGPUFence() override = default;
 
         virtual RHIResult<bool> is_signaled() const = 0;
@@ -339,10 +335,10 @@ namespace toy3d
     // Stores platform window identity without exposing graphics-backend types.
     // Vulkan, D3D11, and D3D12 translate the opaque handles in their own
     // platform-specific surface creation code.
-    class RHISurface : public RHIObject
+    class RHISurface : public RHIResource
     {
       public:
-        explicit RHISurface(RHISurfaceDesc desc) : RHIObject(desc.debug_name), surface_desc(std::move(desc))
+        explicit RHISurface(RHISurfaceDesc desc) : RHIResource(desc.debug_name), surface_desc(std::move(desc))
         {
         }
 

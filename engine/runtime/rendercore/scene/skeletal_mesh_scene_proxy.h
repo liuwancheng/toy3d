@@ -18,7 +18,6 @@ namespace toy3d
                                std::uint32_t component_id, bool cast_shadows, bool receives_shadows);
         ~SkeletalMeshSceneProxy() override = default;
         RHIStatus begin_init_resources(RenderResourceManager& manager) override;
-        RHIStatus release_resources(RenderResourceManager& manager, bool release_shared_geometry) override;
         bool resources_drawable() const override;
         std::size_t mesh_section_count() const override;
         RHIStatus collect_mesh_batches(std::vector<MeshBatch>& batches) const override;
@@ -28,10 +27,10 @@ namespace toy3d
 
       private:
         RHIStatus make_bone_buffers(const SkeletalMeshDeformationData& deformation,
-                                    std::vector<std::unique_ptr<BoneMatrixBuffer>>& buffers) const;
+                                    std::vector<std::shared_ptr<BoneMatrixBuffer>>& buffers) const;
         SkeletalMeshRef mesh_;
-        mutable SkeletalMeshRenderData render_data_;
+        RenderResourceRef<SkeletalMeshRenderData> render_data_;
         std::shared_ptr<const SkeletalMeshDeformationData> deformation_;
-        std::vector<std::unique_ptr<BoneMatrixBuffer>> bone_buffers_;
+        std::vector<RenderResourceRef<BoneMatrixBuffer>> bone_buffers_;
     };
 } // namespace toy3d

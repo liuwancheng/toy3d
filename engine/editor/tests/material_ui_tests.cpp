@@ -655,7 +655,7 @@ int main()
     ImGui::DestroyContext();
     MaterialInstance::release(defaults);
     check(texture.use_count() == 1u, "window closes release every shared default texture reference");
-    Texture::release(texture);
+    texture.reset();
     check(rendering.stop().succeeded(), "facade shutdown");
     check(graph->shutdown(TaskGraphShutdownMode::Drain).succeeded(), "graph shutdown");
     std::cout << (failures ? "Material UI tests failed\n" : "Material UI and close decisions passed\n");

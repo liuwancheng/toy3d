@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rendercore/render_resource.h"
+
 #include "drivers/rhi/rhi_resource.h"
 
 #include <map>
@@ -101,8 +103,8 @@ namespace toy3d
         RHIStatus preparation_error_;
         SceneEnvironmentSnapshot environment_;
         SceneEnvironmentSnapshot pending_environment_;
-        std::unique_ptr<TextureResource> environment_resource_;
-        std::unique_ptr<TextureResource> pending_environment_resource_;
+        RenderResourceRef<TextureResource> environment_resource_;
+        RenderResourceRef<TextureResource> pending_environment_resource_;
         RHISamplerRef environment_sampler_;
         bool has_pending_environment_ = false;
         RHIStatus environment_error_;

@@ -651,6 +651,7 @@ int main()
         std::uint32_t buffer_creation_count = 0;
         bool return_invalid_depth_view = false;
         bool supports_linear_filter = true;
+        std::string rejected_buffer_name;
         std::vector<std::string>* operations = nullptr;
 
         toy3d::RHIStatus initialize(const toy3d::RHIDeviceDesc&) override
@@ -698,6 +699,11 @@ int main()
                                                                  const toy3d::RHIInitialData* initial_data) override
         {
             ++buffer_creation_count;
+            if (desc.debug_name == rejected_buffer_name)
+            {
+                return toy3d::RHIResult<toy3d::RHIBufferRef>::failure(toy3d::RHIErrorCode::Unsupported,
+                                                                      "Injected mesh buffer creation failure");
+            }
             if (operations != nullptr)
             {
                 operations->push_back("device_create");
@@ -951,6 +957,8 @@ int main()
         std::uint32_t transition_count = 0;
         std::uint32_t upload_count = 0;
         std::uint32_t texture_upload_count = 0;
+        std::uint32_t failed_buffer_upload = 0;
+        toy3d::RHIErrorCode failed_buffer_error = toy3d::RHIErrorCode::BackendFailure;
         std::vector<std::uint8_t> last_buffer_upload_data;
         std::vector<std::string>* operations = nullptr;
         std::uint32_t* view_uniform_upload_count = nullptr;
@@ -989,6 +997,10 @@ int main()
         toy3d::RHIStatus upload_buffer_impl(const toy3d::RHIBufferUploadDesc& desc) override
         {
             ++upload_count;
+            if (upload_count == failed_buffer_upload)
+            {
+                return toy3d::RHIStatus::failure(failed_buffer_error, "Injected retryable mesh upload failure");
+            }
             if (view_uniform_upload_count != nullptr && desc.source.size == 416u)
             {
                 ++(*view_uniform_upload_count);
@@ -1177,7 +1189,7 @@ int main()
         }
     } context(device);
 
-    struct : toy3d::RenderResource
+    struct TestRenderResource : toy3d::RenderResource
     {
         int record_count = 0;
         int commit_count = 0;
@@ -1285,8 +1297,110 @@ int main()
     const toy3d::StaticMeshRef static_mesh = toy3d::StaticMesh::create(std::move(mesh_desc));
     check(static_mesh != nullptr, "the StaticMesh resource smoke requires a valid immutable Asset");
 
+    {
+        auto position = std::make_shared<toy3d::PositionVertexBuffer>(static_mesh->vertices());
+        auto reference = manager.acquire(*position);
+        check(reference && manager.record_pending_uploads(context) && manager.commit_recording() &&
+                  position->state() == toy3d::RenderResourceState::Ready && position->buffer(),
+              "PositionVertexBuffer must retain its independent RenderResource lifecycle");
+        reference.value() = {};
+        check(manager.collect_reclaims() && !position->buffer() &&
+                  position->state() == toy3d::RenderResourceState::Uninitialized,
+              "An independently owned buffer must support residency reclamation");
+    }
+    {
+        auto geometry = std::make_shared<toy3d::StaticMeshRenderData>(*static_mesh);
+        toy3d::RenderResourceManager other_manager(device);
+        auto acquired = manager.acquire(*geometry);
+        check(acquired && !other_manager.acquire(*geometry) && !manager.release(*geometry),
+              "Mesh owner admission must reject another manager and forced release with active references");
+        toy3d::RenderResourceRef<toy3d::StaticMeshRenderData> geometry_ref = std::move(acquired).value();
+        auto second_ref = geometry_ref;
+        check(geometry->ref_count() == 2u, "Typed owner references must count copies once at the mesh owner");
+        second_ref = {};
+        std::weak_ptr<toy3d::StaticMeshRenderData> owner = geometry;
+        geometry.reset();
+        check(manager.record_pending_uploads(context) && geometry_ref->prepare_current_recording() &&
+                  manager.commit_recording(),
+              "An owner reference must keep every borrowed member buffer alive after the CPU owner drops");
+        geometry_ref = {};
+        check(!owner.expired() && manager.collect_reclaims() && owner.expired(),
+              "The final manager pin must outlive borrowed upload addresses and drain during RT reclamation");
+    }
+    {
+        auto geometry = std::make_shared<toy3d::StaticMeshRenderData>(*static_mesh);
+        auto reference = manager.acquire(*geometry);
+        device.rejected_buffer_name = "StaticMesh.StaticMeshVertexBuffer";
+        const auto uploads = context.upload_count;
+        check(reference && !manager.record_pending_uploads(context) && context.upload_count == uploads + 1u &&
+                  geometry->state() == toy3d::RenderResourceState::Failed && !geometry->prepare_current_recording(),
+              "Failure in a later buffer must prevent incomplete geometry publication");
+        check(manager.discard_recording() && !geometry->is_drawable() &&
+                  geometry->failure_status().code() == toy3d::RHIErrorCode::Unsupported,
+              "A deterministic leaf failure must roll back all candidates and preserve the mesh diagnostic");
+        device.rejected_buffer_name.clear();
+        const auto after_failure = context.upload_count;
+        check(manager.record_pending_uploads(context) && manager.commit_recording() &&
+                  context.upload_count == after_failure && !manager.acquire(*geometry),
+              "Deterministic mesh failure must cancel sibling uploads and reject readmission while referenced");
+        reference.value() = {};
+        check(manager.collect_reclaims() && geometry->state() == toy3d::RenderResourceState::Uninitialized,
+              "A failed mesh must be reclaimable after its last rendering reference drains");
+        auto retried = manager.acquire(*geometry);
+        check(retried && manager.record_pending_uploads(context) && geometry->prepare_current_recording() &&
+                  manager.commit_recording(),
+              "Reclaimed geometry must be able to initialize every leaf resource again");
+        retried.value() = {};
+        check(manager.collect_reclaims().succeeded(), "Recovered geometry must release cleanly");
+    }
+    {
+        auto geometry = std::make_shared<toy3d::StaticMeshRenderData>(*static_mesh);
+        auto reference = manager.acquire(*geometry);
+        context.failed_buffer_upload = context.upload_count + 2u;
+        check(reference && !manager.record_pending_uploads(context) && manager.discard_recording() &&
+                  !geometry->is_drawable() && geometry->state() == toy3d::RenderResourceState::PendingUpload,
+              "A retryable later-buffer failure must withdraw the entire candidate and keep its pending leaves");
+        context.failed_buffer_upload = 0;
+        check(manager.record_pending_uploads(context) && geometry->prepare_current_recording() &&
+                  manager.commit_recording() && geometry->state() == toy3d::RenderResourceState::Ready,
+              "A later recording must rebuild the complete geometry after partial upload rollback");
+        reference.value() = {};
+        check(manager.collect_reclaims().succeeded(), "Retried geometry must release cleanly");
+        auto unsupported = manager.acquire(*geometry);
+        context.failed_buffer_upload = context.upload_count + 2u;
+        context.failed_buffer_error = toy3d::RHIErrorCode::Unsupported;
+        check(unsupported && !manager.record_pending_uploads(context) && manager.discard_recording() &&
+                  geometry->state() == toy3d::RenderResourceState::Failed && !geometry->is_drawable(),
+              "Unsupported context upload must preserve a deterministic leaf failure and withdraw siblings");
+        context.failed_buffer_upload = 0;
+        context.failed_buffer_error = toy3d::RHIErrorCode::BackendFailure;
+        unsupported.value() = {};
+        check(manager.collect_reclaims().succeeded(), "Unsupported mesh must release cleanly");
+    }
+    {
+        auto geometry = std::make_shared<toy3d::StaticMeshRenderData>(*static_mesh);
+        toy3d::RenderResourceRef<toy3d::StaticMeshRenderData> surviving;
+        {
+            toy3d::RenderResourceManager terminal_owner_manager(device);
+            auto reference = terminal_owner_manager.acquire(*geometry);
+            surviving = std::move(reference).value();
+            check(terminal_owner_manager.record_pending_uploads(context) && surviving->prepare_current_recording() &&
+                      terminal_owner_manager.clear_for_terminal() && !surviving->is_drawable() &&
+                      surviving->state() == toy3d::RenderResourceState::Uninitialized,
+                  "Terminal clear must detach member buffers and cached bindings before dropping mesh owner pins");
+        }
+        check(!manager.acquire(*geometry), "Detached mesh references must drain before another manager can bind it");
+        surviving = {};
+        auto rebound = manager.acquire(*geometry);
+        check(rebound && manager.record_pending_uploads(context) && geometry->prepare_current_recording() &&
+                  manager.commit_recording(),
+              "A detached CPU mesh may bind another manager after its old references drain");
+        rebound.value() = {};
+        check(manager.collect_reclaims().succeeded(), "Rebound mesh must release cleanly");
+    }
+
     toy3d::StaticMeshRenderData render_data(*static_mesh);
-    check(render_data.begin_init(manager).succeeded(),
+    check(manager.begin_init(render_data).succeeded(),
           "StaticMeshRenderData begin_init must enqueue its complete buffer candidate");
     const std::uint32_t transitions_before_mesh = context.transition_count;
     const std::uint32_t uploads_before_mesh = context.upload_count;
@@ -1340,7 +1454,7 @@ int main()
                   .succeeded() &&
               layouts.size() == 3u && attributes.size() == 4u && bindings.size() == 3u,
           "LocalVertexFactory must match fixed geometry streams including optional COLOR0 without selecting a Shader");
-    check(render_data.release(manager).succeeded() && !render_data.is_drawable(),
+    check(manager.release(render_data).succeeded() && !render_data.is_drawable(),
           "releasing StaticMeshRenderData must close its complete drawable gate");
 
     toy3d::StaticMeshDesc uncolored_desc;
@@ -1355,7 +1469,7 @@ int main()
     const toy3d::StaticMeshRef uncolored_mesh = toy3d::StaticMesh::create(std::move(uncolored_desc));
     check(uncolored_mesh != nullptr, "StaticMesh must allow the optional color stream to be absent");
     toy3d::StaticMeshRenderData uncolored_render_data(*uncolored_mesh);
-    check(uncolored_render_data.begin_init(manager).succeeded() &&
+    check(manager.begin_init(uncolored_render_data).succeeded() &&
               manager.record_pending_uploads(context).succeeded() &&
               uncolored_render_data.prepare_current_recording().succeeded() && manager.commit_recording().succeeded(),
           "an uncolored mesh candidate must initialize as three required buffers");
@@ -1371,7 +1485,7 @@ int main()
     check(!uncolored_render_data.vertex_factory()->build_vertex_input(shader_inputs, layouts, attributes, bindings),
           "an uncolored LocalVertexFactory must reject a Shader that requires COLOR0");
     check(uncolored_render_data.index_buffer_binding().format == toy3d::RHIIndexFormat::UInt32 &&
-              uncolored_render_data.release(manager).succeeded(),
+              manager.release(uncolored_render_data).succeeded(),
           "the uncolored candidate must preserve UInt32 indices and release normally");
 
     toy3d::TextureDesc invalid_texture_desc;
@@ -1395,7 +1509,7 @@ int main()
     check(texture != nullptr && texture->texture_resource() != nullptr,
           "a valid Texture must own a stable TextureResource allocation");
     toy3d::TextureResource* const texture_resource = texture->texture_resource();
-    check(texture_resource->begin_init(manager).succeeded(),
+    check(manager.begin_init(*texture_resource).succeeded(),
           "TextureResource initial payload must enter the shared manager");
     const std::uint32_t texture_transitions_before = context.transition_count;
     check(
@@ -1433,7 +1547,7 @@ int main()
     device.test_capabilities.sampled_cube_textures = true;
     device.test_limits.max_texture_dimension_cube = 64u;
     const auto uploads_before_cube = context.texture_upload_count;
-    check(cube_resource->begin_init(manager).succeeded() && manager.record_pending_uploads(context).succeeded() &&
+    check(manager.begin_init(*cube_resource).succeeded() && manager.record_pending_uploads(context).succeeded() &&
               context.texture_upload_count == uploads_before_cube + 18u && device.last_texture_desc.cube_compatible &&
               device.last_texture_desc.array_layers == 6u &&
               cube_resource->view_for_current_recording()->desc().dimension ==
@@ -1452,7 +1566,12 @@ int main()
               cube_resource->binding_generation() == old_cube_generation,
           "Failed Cube update must retain the prior published resource/generation");
     device.supports_linear_filter = true;
-    check(cube_resource->release(manager).succeeded(), "Cube release must detach its manager");
+    check(manager.release(*cube_resource).succeeded(), "Cube release must detach its manager");
+    check(manager.begin_init(*cube_resource) && manager.record_pending_uploads(context) && manager.commit_recording() &&
+              cube_resource->active_view() != old_cube_view &&
+              cube_resource->binding_generation() > old_cube_generation,
+          "Reclaimed Cube must upload retained pixels and publish a generation distinct from the old view");
+    check(manager.release(*cube_resource).succeeded(), "Reloaded Cube must release normally");
     cube.reset();
 
     toy3d::ThreadManager material_thread_manager;
@@ -1469,6 +1588,43 @@ int main()
     toy3d::RenderResourceManager frame_manager(device);
     std::unique_ptr<toy3d::RenderScene> frame_render_scene =
         std::make_unique<toy3d::RenderScene>(*material_graph, frame_manager);
+    {
+        toy3d::RenderScene author_scene(*material_graph, frame_manager);
+        toy3d::RenderScene play_scene(*material_graph, frame_manager);
+        auto* shared_geometry = static_mesh->render_data();
+        auto author_proxy = std::make_unique<toy3d::StaticMeshSceneProxy>(
+            toy3d::Matrix4::identity(), static_mesh->local_bounds(), true, shared_geometry,
+            std::vector<toy3d::MaterialRenderProxy*>{&batch_material_proxy});
+        auto play_proxy = std::make_unique<toy3d::StaticMeshSceneProxy>(
+            toy3d::Matrix4::identity(), static_mesh->local_bounds(), true, shared_geometry,
+            std::vector<toy3d::MaterialRenderProxy*>{&batch_material_proxy});
+        auto* author_identity = author_proxy.get();
+        auto* play_identity = play_proxy.get();
+        author_scene.add_primitive(std::move(author_proxy));
+        play_scene.add_primitive(std::move(play_proxy));
+        check(shared_geometry->ref_count() == 2u && frame_manager.record_pending_uploads(context) &&
+                  shared_geometry->prepare_current_recording() && frame_manager.commit_recording(),
+              "Author and Play proxies must share one complete geometry upload");
+        const auto original_index_buffer = shared_geometry->index_buffer_binding().buffer;
+        play_scene.remove_primitive(play_identity);
+        check(shared_geometry->ref_count() == 1u && frame_manager.collect_reclaims() &&
+                  shared_geometry->prepare_current_recording() && shared_geometry->is_drawable() &&
+                  shared_geometry->index_buffer_binding().buffer == original_index_buffer,
+              "Stopping Play must preserve the author's drawable geometry and buffer identity");
+        author_scene.remove_primitive(author_identity);
+        check(frame_manager.collect_reclaims() && !shared_geometry->is_drawable() &&
+                  shared_geometry->state() == toy3d::RenderResourceState::Uninitialized,
+              "Removing the last scene must reclaim residency while keeping the CPU mesh");
+        auto reloaded = frame_manager.acquire(*shared_geometry);
+        check(reloaded && frame_manager.record_pending_uploads(context) &&
+                  shared_geometry->prepare_current_recording() && frame_manager.commit_recording() &&
+                  shared_geometry->is_drawable() &&
+                  shared_geometry->index_buffer_binding().buffer != original_index_buffer,
+              "A cached mesh must rebuild fresh GPU buffers after residency reclamation");
+        reloaded.value() = {};
+        check(frame_manager.collect_reclaims() && original_index_buffer,
+              "Revoking mesh residency must not revoke a retained RHI reference");
+    }
     auto environment_desc = cube_desc;
     for (auto& pixels : environment_desc.mip_pixels)
     {
@@ -1509,10 +1665,13 @@ int main()
         check(frame_manager.record_pending_uploads(context).succeeded() && frame_manager.commit_recording().succeeded(),
               "Another scene can share immutable Environment CPU data");
         independent_scene.resolve_environment_recording(true);
-        check(independent_scene.environment_view_for_current_recording() != published_environment_view &&
+        check(independent_scene.environment_view_for_current_recording() == published_environment_view &&
                   frame_render_scene->environment_view_for_current_recording() == published_environment_view,
-              "Scene domains must own independent Environment GPU allocations");
+              "Scene domains must share immutable Environment GPU allocations through independent references");
     }
+    check(frame_manager.collect_reclaims().succeeded() &&
+              frame_render_scene->environment_view_for_current_recording() == published_environment_view,
+          "Removing another scene must retain the author's Environment resources");
     environment_snapshot.cube = toy3d::Texture::create(environment_desc);
     device.supports_linear_filter = false;
     frame_render_scene->update_environment(environment_snapshot);
@@ -1787,7 +1946,7 @@ int main()
     base_pass_mesh_desc.material_slots.push_back(base_pass_material_instance);
     const toy3d::StaticMeshRef base_pass_mesh = toy3d::StaticMesh::create(std::move(base_pass_mesh_desc));
     toy3d::StaticMeshRenderData base_pass_render_data(*base_pass_mesh);
-    check(base_pass_render_data.begin_init(frame_manager).succeeded() &&
+    check(frame_manager.begin_init(base_pass_render_data).succeeded() &&
               frame_manager.record_pending_uploads(context).succeeded() &&
               base_pass_render_data.prepare_current_recording().succeeded() &&
               frame_manager.commit_recording().succeeded(),
@@ -1913,7 +2072,7 @@ int main()
     mixed_mesh_desc.material_slots.push_back(complete_material_instance);
     const toy3d::StaticMeshRef mixed_mesh = toy3d::StaticMesh::create(std::move(mixed_mesh_desc));
     toy3d::StaticMeshRenderData mixed_render_data(*mixed_mesh);
-    check(mixed_render_data.begin_init(frame_manager).succeeded() &&
+    check(frame_manager.begin_init(mixed_render_data).succeeded() &&
               frame_manager.record_pending_uploads(context).succeeded() &&
               mixed_render_data.prepare_current_recording().succeeded() && frame_manager.commit_recording().succeeded(),
           "mixed-validity Base Pass fixture must publish drawable mesh buffers");
@@ -1959,7 +2118,7 @@ int main()
               std::find(mixed_begin, mixed_end, "device_create") == mixed_end &&
               std::count(mixed_operations.begin(), mixed_operations.end(), "draw_indexed") == 1,
           "a missing required owner binding must skip only its batch while a later valid batch still records");
-    check(frame_manager.release(mixed_resource).succeeded() && mixed_render_data.release(frame_manager).succeeded(),
+    check(frame_manager.release(mixed_resource).succeeded() && frame_manager.release(mixed_render_data).succeeded(),
           "mixed-validity Base Pass resources must release cleanly");
     mixed_scene.reset();
     missing_material_proxy.reset();
@@ -2044,7 +2203,7 @@ int main()
               invalid_pass_operations.back() == "abort_frame",
           "invalid prepare input must not begin a render pass and must discard and abort exactly once");
     check(frame_manager.release(invalid_pass_resource).succeeded(), "invalid-pass resource must remain releasable");
-    check(base_pass_render_data.release(frame_manager).succeeded(),
+    check(frame_manager.release(base_pass_render_data).succeeded(),
           "Base Pass operation-order mesh resources must release cleanly");
     base_pass_scene.reset();
     base_pass_material_proxy.reset();
@@ -2512,7 +2671,7 @@ int main()
     check(!subset_material_instance->material_render_proxy()->materialize(device, context, *active_program),
           "A draw cannot materialize a Program outside the owner's immutable configuration");
     toy3d::MaterialInstance::release(subset_material_instance);
-    toy3d::Texture::release(unused_texture);
+    unused_texture.reset();
 
     toy3d::MaterialDesc inactive_default_desc = subset_material->desc();
     inactive_default_desc.texture_defaults[12u] = nullptr;
@@ -2738,7 +2897,17 @@ int main()
           "Material fixture Task Graph must shut down cleanly");
     material_graph.reset();
 
-    check(texture_resource->release(manager).succeeded(),
+    {
+        toy3d::MaterialRenderProxy texture_owner(render_material->desc());
+        check(texture_owner.begin_init_textures(manager).succeeded(),
+              "Active Material textures must acquire registered rendering ownership");
+        const auto count = texture_resource->ref_count();
+        toy3d::RenderResourceManager another_manager(device);
+        check(!texture_owner.begin_init_textures(another_manager) && texture_resource->ref_count() == count &&
+                  texture_owner.begin_init_textures(manager) && texture_resource->ref_count() == count,
+              "Material readmission must reject another manager without changing the existing references");
+    }
+    check(manager.release(*texture_resource).succeeded(),
           "TextureResource release must detach manager state without waiting for GPU completion");
 
     deterministic.deterministic_failure = true;
@@ -2753,7 +2922,7 @@ int main()
     check(manager.begin_init(released_while_recording) && manager.record_pending_uploads(context),
           "pending release smoke must first enter the current recording collection");
     check(manager.release(released_while_recording) &&
-              released_while_recording.state() == toy3d::RenderResourceState::Released &&
+              released_while_recording.state() == toy3d::RenderResourceState::Uninitialized &&
               released_while_recording.discard_count == 1 && released_while_recording.release_count == 1,
           "release before submit must discard Ready publication and release only CPU refs");
     check(manager.commit_recording().succeeded(),
@@ -2768,6 +2937,69 @@ int main()
           "terminal clear must discard recording and detach every pending pointer first");
     check(!terminal_manager.record_pending_uploads(context),
           "terminal-cleared manager must never dereference resources again");
+
+    {
+        auto resource = std::make_shared<TestRenderResource>();
+        toy3d::RenderResourceManager shared_manager(device);
+        auto first = shared_manager.acquire(*resource);
+        auto second = shared_manager.acquire(*resource);
+        check(first && second && resource->ref_count() == 2u,
+              "Independent consumers must acquire the same representation without duplicating upload");
+        {
+            auto copied = first.value();
+            auto moved = std::move(copied);
+            check(resource->ref_count() == 3u && !copied && moved,
+                  "Copy adds one rendering reference; moving transfers it without changing the count");
+            moved = moved;
+            check(resource->ref_count() == 3u, "Self assignment must preserve rendering ownership");
+        }
+        check(resource->ref_count() == 2u && shared_manager.record_pending_uploads(context) &&
+                  shared_manager.commit_recording() && resource->record_count == 1,
+              "All consumers must share one complete upload transaction");
+        toy3d::RenderResourceManager other_manager(device);
+        check(!other_manager.acquire(*resource) && !other_manager.begin_update(*resource),
+              "A representation cannot be used by another manager while attached");
+        first.value() = {};
+        check(shared_manager.collect_reclaims() && resource->release_count == 0 && resource->ref_count() == 1u,
+              "Removing one scene must not release a resource another scene still uses");
+        second.value() = {};
+        check(resource->release_count == 0, "The last reference only requests reclamation");
+        auto reused = shared_manager.acquire(*resource);
+        check(reused && shared_manager.collect_reclaims() && resource->release_count == 0,
+              "Reacquiring before collection must cancel the pending reclamation");
+        reused.value() = {};
+        check(shared_manager.collect_reclaims() && resource->release_count == 1 &&
+                  resource->state() == toy3d::RenderResourceState::Uninitialized,
+              "Collection must revoke residency and permit later reinitialization");
+        auto reloaded = shared_manager.acquire(*resource);
+        check(reloaded && shared_manager.record_pending_uploads(context),
+              "A reclaimed CPU representation must support a fresh upload");
+        reloaded.value() = {};
+        check(!shared_manager.collect_reclaims() && shared_manager.discard_recording() &&
+                  shared_manager.collect_reclaims() && resource->release_count == 2,
+              "Reclamation waits for recording resolution, including an upload whose last user disappeared");
+        auto final_ref = shared_manager.acquire(*resource);
+        check(final_ref && shared_manager.record_pending_uploads(context) && shared_manager.commit_recording(),
+              "The same CPU source remains usable after discard and reclamation");
+        const std::weak_ptr<TestRenderResource> weak_resource = resource;
+        resource.reset();
+        check(!weak_resource.expired(), "CPU cache eviction must not invalidate a rendering reference");
+        final_ref.value() = {};
+        check(!weak_resource.expired() && shared_manager.collect_reclaims() && weak_resource.expired(),
+              "The manager pin must survive until RT reclamation and then release the representation");
+    }
+    {
+        auto resource = std::make_shared<TestRenderResource>();
+        toy3d::RenderResourceManager detached_manager(device);
+        auto reference = detached_manager.acquire(*resource);
+        check(reference && detached_manager.record_pending_uploads(context) && detached_manager.commit_recording() &&
+                  detached_manager.clear_for_terminal() && resource->release_count == 1 &&
+                  resource->state() == toy3d::RenderResourceState::Uninitialized,
+              "Terminal clear must revoke all registered RHI ownership even when CPU consumers survive");
+        check(!detached_manager.acquire(*resource), "A terminal manager must reject reacquisition");
+        reference.value() = {};
+        check(resource->ref_count() == 0u, "A detached handle must release without calling its former manager");
+    }
 
     if (failure_count != 0)
     {
